@@ -511,13 +511,26 @@
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
   gap: 0.75rem;
-  align-items: center;
+  align-items: start;
   min-width: 0;
+  min-height: 0;
+  height: auto !important;
   padding: 0;
-  border: 0;
+  border: 0 !important;
   background: transparent;
   color: inherit;
+  line-height: normal;
   text-align: left;
+  white-space: normal;
+}
+
+.wayfinder-app .option-main,
+.wayfinder-app .option-main:focus,
+.wayfinder-app .option-main:focus-visible,
+.wayfinder-app .option-main:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: 0 !important;
 }
 
 .option-main img,
@@ -541,6 +554,7 @@
 .option-copy,
 .preview-heading {
   display: flex;
+  align-self: start;
   flex-direction: column;
   gap: 0.22rem;
   min-width: 0;
@@ -554,7 +568,11 @@
 }
 
 .option-name {
+  display: block;
   font: 600 1.08rem/1.2 var(--serif, serif);
+  line-height: 1.2;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .option-source,

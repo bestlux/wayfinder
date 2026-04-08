@@ -54,11 +54,8 @@
             <button type="button" class="step-link{{#if active}} active{{/if}}{{#if complete}} complete{{/if}}" data-wayfinder-action="select-step" data-step-id="{{id}}">
               <span class="step-index">{{index}}</span>
               <span class="step-copy">
-                <span class="step-title-row">
-                  <span class="step-title">{{title}}</span>
-                  <span class="step-status">{{status}}</span>
-                </span>
-                <span class="step-meta">Level {{level}} · {{modeLabel}}</span>
+                <span class="step-title">{{title}}</span>
+                <span class="step-status">{{status}}</span>
               </span>
             </button>
           {{/each}}

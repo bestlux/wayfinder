@@ -289,25 +289,47 @@
 }
 
 .step-link {
+  position: relative;
   display: grid;
   grid-template-columns: 2.25rem minmax(0, 1fr);
   gap: 0.75rem;
   align-items: start;
   width: 100%;
-  padding: 0.7rem 1rem;
-  border: 0;
-  border-left: 3px solid transparent;
+  min-height: 0;
+  height: auto !important;
+  padding: 0.7rem 1rem 0.7rem calc(1rem + 3px);
+  border: 0 !important;
   background: transparent;
   color: var(--wf-ink);
+  line-height: normal;
   text-align: left;
+  white-space: normal;
+}
+
+.wayfinder-app .step-link,
+.wayfinder-app .step-link:focus,
+.wayfinder-app .step-link:focus-visible,
+.wayfinder-app .step-link:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: 0 !important;
 }
 
 .step-link:hover {
   background: rgba(94, 0, 0, 0.04);
 }
 
+.step-link.active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--wf-primary);
+}
+
 .step-link.active {
-  border-left-color: var(--wf-primary);
   background:
     linear-gradient(90deg, rgba(94, 0, 0, 0.1) 0%, rgba(94, 0, 0, 0.03) 62%, transparent 100%);
 }
@@ -318,11 +340,12 @@
 
 .step-index {
   display: inline-flex;
+  align-self: start;
   align-items: center;
   justify-content: center;
   width: 1.7rem;
   height: 1.7rem;
-  margin-top: 0.1rem;
+  margin-top: 0.05rem;
   border-radius: 999px;
   background: var(--wf-secondary);
   color: var(--text-light, #f4f1ea);
@@ -331,38 +354,34 @@
 
 .step-copy {
   display: flex;
+  align-self: start;
   flex-direction: column;
   gap: 0.18rem;
   min-width: 0;
 }
 
-.step-title-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.6rem;
-}
-
 .step-title {
+  display: block;
   min-width: 0;
   overflow: hidden;
-  font: 600 0.98rem/1.2 var(--serif, serif);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font: 600 0.92rem/1.3 var(--serif, serif);
+  line-height: 1.3;
+  white-space: normal;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
 }
 
 .step-status,
-.step-meta,
 .step-badge,
 .manual-label {
+  display: block;
   color: var(--wf-ink-soft);
   font: 700 0.66rem/1.25 var(--sans-serif, sans-serif);
   letter-spacing: 0.08em;
+  line-height: 1.25;
   text-transform: uppercase;
-}
-
-.step-meta {
-  font-size: 0.64rem;
 }
 
 .wizard-stage {

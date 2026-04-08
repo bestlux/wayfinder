@@ -1,0 +1,46 @@
+{
+  "id": "pf2e-wayfinder",
+  "title": "Wayfinder",
+  "description": "A guided Pathfinder 2e walkthrough for character creation and leveling inside Foundry VTT.",
+  "version": "0.1.0",
+  "authors": [
+    {
+      "name": "Codex + iomancer"
+    }
+  ],
+  "esmodules": [
+    "scripts/wayfinder.js"
+  ],
+  "styles": [
+    {
+      "src": "styles/wayfinder.css",
+      "layer": null
+    }
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "path": "lang/en.json"
+    }
+  ],
+  "compatibility": {
+    "minimum": "13.351",
+    "verified": "13.351",
+    "maximum": 13
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "pf2e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "7.10.1",
+          "verified": "7.10.1"
+        }
+      }
+    ]
+  },
+  "manifest": "",
+  "download": "",
+  "url": ""
+}

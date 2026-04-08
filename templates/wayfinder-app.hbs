@@ -1,0 +1,219 @@
+<section class="wayfinder-shell">
+  <header class="wayfinder-masthead">
+    <div class="masthead-copy">
+      <p class="eyebrow">Wayfinder</p>
+      <h2>{{actorName}}</h2>
+      <p class="guidance">{{guidance}}</p>
+
+      <dl class="summary-strip">
+        {{#each summary}}
+          <div class="summary-item{{#if complete}} complete{{/if}}">
+            <dt>{{label}}</dt>
+            <dd>{{value}}</dd>
+          </div>
+        {{/each}}
+      </dl>
+    </div>
+
+    <aside class="masthead-status">
+      <div class="level-card">
+        <div class="level-badge">
+          <span class="level-label">Current</span>
+          <strong>{{currentLevel}}</strong>
+        </div>
+        <div class="level-badge target">
+          <span class="level-label">Target</span>
+          <strong>{{targetLevel}}</strong>
+        </div>
+      </div>
+
+      <div class="target-controls">
+        <button type="button" class="icon" data-wayfinder-action="target-down" aria-label="Lower target level">
+          <i class="fa-solid fa-minus"></i>
+        </button>
+        <button type="button" class="icon" data-wayfinder-action="target-up" aria-label="Raise target level">
+          <i class="fa-solid fa-plus"></i>
+        </button>
+      </div>
+
+      <p class="progress-note">{{completedCount}} of {{stepCount}} steps ready</p>
+    </aside>
+  </header>
+
+  {{#if hasPendingSteps}}
+    <section class="wizard-frame">
+      <aside class="wizard-rail">
+        <header class="rail-header">
+          <p class="eyebrow">Journey</p>
+          <h3>Build Path</h3>
+          <p class="rail-copy">Move in order, but jump freely when you need to compare earlier choices.</p>
+        </header>
+
+        <div class="wizard-step-list">
+          {{#each steps}}
+            <button type="button" class="step-link{{#if active}} active{{/if}}{{#if complete}} complete{{/if}}" data-wayfinder-action="select-step" data-step-id="{{id}}">
+              <span class="step-index">{{index}}</span>
+              <span class="step-copy">
+                <span class="step-title-row">
+                  <span class="step-title">{{title}}</span>
+                  <span class="step-status">{{status}}</span>
+                </span>
+                <span class="step-meta">Level {{level}} · {{modeLabel}}</span>
+              </span>
+            </button>
+          {{/each}}
+        </div>
+      </aside>
+
+      <main class="wizard-stage">
+        {{#if activePane}}
+          <header class="active-step-header">
+            <div class="active-step-copy">
+              <p class="eyebrow">Step {{activeStepIndex}} of {{stepCount}}</p>
+              <div class="active-step-heading">
+                <h3>{{activePane.title}}</h3>
+                <span class="step-badge">Level {{activePane.level}} · {{activePane.modeLabel}}</span>
+              </div>
+              <p>{{activePane.description}}</p>
+            </div>
+
+            <div class="step-nav-controls">
+              <button type="button" class="secondary" data-wayfinder-action="previous-step" {{#unless canGoPrevious}}disabled{{/unless}}>Previous</button>
+              <button type="button" class="secondary" data-wayfinder-action="next-step" {{#unless canGoNext}}disabled{{/unless}}>Next</button>
+            </div>
+          </header>
+
+          {{#if activePane.isManual}}
+            <section class="manual-pane">
+              <article class="manual-sheet">
+                <header class="manual-header">
+                  <p class="eyebrow">Manual Checkpoint</p>
+                  <h4>{{activePane.title}}</h4>
+                  <p>{{activePane.description}}</p>
+                </header>
+
+                <div class="manual-body">
+                  <div class="manual-status">
+                    <span class="manual-label">Draft status</span>
+                    <strong>{{activePane.selectedLabel}}</strong>
+                  </div>
+
+                  <label class="manual-check">
+                    <input type="checkbox" data-wayfinder-manual data-step-id="{{activePane.stepId}}" {{#if activePane.completed}}checked{{/if}} />
+                    <span>Mark this checkpoint complete once the PF2E sheet work is finished.</span>
+                  </label>
+                </div>
+              </article>
+            </section>
+          {{/if}}
+
+          {{#if activePane.isPickItem}}
+            <section class="selection-stage">
+              <section class="option-browser">
+                <header class="browser-header">
+                  <div>
+                    <p class="eyebrow">Available Options</p>
+                    <h4>{{activePane.resultCount}} matching choice{{#unless (eq activePane.resultCount 1)}}s{{/unless}}</h4>
+                  </div>
+
+                  <label class="search-shell">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="search" value="{{activePane.search}}" placeholder="Search by name, source, or rarity" data-wayfinder-search data-step-id="{{activePane.stepId}}" />
+                  </label>
+                </header>
+
+                <div class="option-list">
+                  {{#each activePane.options}}
+                    <article class="option-row{{#if previewing}} previewing{{/if}}{{#if selected}} selected{{/if}}">
+                      <button type="button" class="option-main" data-wayfinder-action="preview-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
+                        <img src="{{img}}" alt="{{name}}" />
+                        <span class="option-copy">
+                          <span class="option-title-row">
+                            <span class="option-name">{{name}}</span>
+                            {{#if rarity}}
+                              <span class="option-rarity rarity-{{rarity}}">{{rarity}}</span>
+                            {{/if}}
+                          </span>
+                          <span class="option-source">{{sourceLabel}}</span>
+                        </span>
+                      </button>
+
+                      <button type="button" class="option-select{{#if selected}} is-selected{{/if}}" data-wayfinder-action="select-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
+                        {{#if selected}}Chosen{{else}}Choose{{/if}}
+                      </button>
+                    </article>
+                  {{/each}}
+                </div>
+              </section>
+
+              <section class="preview-pane">
+                {{#if activePane.preview}}
+                  <header class="preview-banner">
+                    <img src="{{activePane.preview.img}}" alt="{{activePane.preview.title}}" />
+
+                    <div class="preview-heading">
+                      <p class="eyebrow">Reference</p>
+                      <h4>{{activePane.preview.title}}</h4>
+                      {{#if activePane.preview.source}}
+                        <p class="preview-source">{{activePane.preview.source}}</p>
+                      {{/if}}
+
+                      <ul class="preview-tags">
+                        {{#if activePane.preview.rarity}}
+                          <li class="tag rarity-{{activePane.preview.rarity}}">{{activePane.preview.rarity}}</li>
+                        {{/if}}
+                        {{#each activePane.preview.tags}}
+                          <li class="tag">{{this}}</li>
+                        {{/each}}
+                      </ul>
+                    </div>
+
+                    <div class="preview-actions">
+                      <button type="button" class="primary" data-wayfinder-action="select-option" data-step-id="{{activePane.stepId}}" data-value="{{activePane.preview.value}}">
+                        {{activePane.preview.selectedLabel}}
+                      </button>
+                      {{#if activePane.selectedValue}}
+                        <button type="button" class="secondary" data-wayfinder-action="clear-option" data-step-id="{{activePane.slotId}}">
+                          Clear
+                        </button>
+                      {{/if}}
+                    </div>
+                  </header>
+
+                  {{#if activePane.preview.details.length}}
+                    <dl class="detail-grid">
+                      {{#each activePane.preview.details}}
+                        <div class="detail-row">
+                          <dt>{{label}}</dt>
+                          <dd>{{value}}</dd>
+                        </div>
+                      {{/each}}
+                    </dl>
+                  {{/if}}
+
+                  <section class="preview-description prose">
+                    {{{activePane.preview.description}}}
+                  </section>
+                {{else}}
+                  <div class="preview-empty">
+                    <p>No options match the current filters.</p>
+                  </div>
+                {{/if}}
+              </section>
+            </section>
+          {{/if}}
+        {{/if}}
+      </main>
+    </section>
+  {{else}}
+    <section class="wayfinder-empty">
+      <p>{{localize "PF2E-WAYFINDER.App.NoPending"}}</p>
+    </section>
+  {{/if}}
+
+  <footer class="wayfinder-footer">
+    <button type="button" class="secondary" data-wayfinder-action="clear-draft">Clear Draft</button>
+    <button type="button" class="secondary" data-wayfinder-action="save-draft">Save Draft</button>
+    <button type="button" class="primary" data-wayfinder-action="apply-draft">Apply Changes</button>
+  </footer>
+</section>

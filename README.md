@@ -1,0 +1,37 @@
+# Wayfinder
+
+Wayfinder is a Foundry VTT module for Pathfinder 2e that guides players through initial character creation and later level-up milestones from inside the character sheet.
+
+## Current Scope
+
+This first implementation is a working vertical slice with:
+
+- PF2E-only support on Foundry VTT 13 / PF2E 7.10.1
+- An actor-sheet header action for owned PF2E character actors
+- Draft-based guided selection for ancestry, heritage, background, class, and common feat milestones
+- Configurable extra compendium allowlisting beyond official PF2E packs
+- Actor flag persistence for resumable drafts
+- Guided manual checkpoints for ability boosts and skill increases where the module intentionally defers to PF2E/native sheet workflows instead of forcing brittle automation
+
+## Development
+
+Install dependencies and build:
+
+```powershell
+npm install
+npm run build
+```
+
+Run tests:
+
+```powershell
+npm test
+```
+
+For local Foundry development, the repo is intended to be linked into:
+
+`C:\Users\iomancer\AppData\Local\FoundryVTT\Data\modules\pf2e-wayfinder`
+
+## Notes
+
+Wayfinder deliberately reuses PF2E compendium data and actor item application where possible. It does not attempt to replace PF2E's full rules engine or every class-specific choice UI in this first pass.

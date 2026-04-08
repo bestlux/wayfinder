@@ -1,0 +1,35 @@
+{
+  "PF2E-WAYFINDER": {
+    "Controls": {
+      "Open": "Open Wayfinder"
+    },
+    "App": {
+      "Title": "Wayfinder",
+      "Subtitle": "Guided PF2E creation and level-up",
+      "TargetLevel": "Target Level",
+      "CurrentLevel": "Current Level",
+      "NoPending": "No pending Wayfinder steps were detected for this actor.",
+      "SaveDraft": "Save Draft",
+      "Apply": "Apply Changes",
+      "ClearDraft": "Clear Draft",
+      "IncreaseTarget": "Increase target level",
+      "DecreaseTarget": "Decrease target level",
+      "Guidance": "Wayfinder automates compendium-backed item choices and actor level changes. Ability boosts and skill increases remain guided checkpoints in this first cut."
+    },
+    "Settings": {
+      "ExtraPacks": {
+        "Name": "Extra PF2E compendium allowlist",
+        "Hint": "Comma-separated compendium ids to search in addition to the official PF2E packs, for example world.homebrew-feats,my-module.custom-options."
+      }
+    },
+    "Notifications": {
+      "OwnerOnly": "You must own this character to use Wayfinder.",
+      "MissingSelections": "Complete all required Wayfinder selections before applying changes.",
+      "DuplicateSelections": "The same compendium choice cannot fill multiple Wayfinder slots in the same draft.",
+      "SavedDraft": "Wayfinder draft saved.",
+      "ClearedDraft": "Wayfinder draft cleared.",
+      "Applied": "Wayfinder changes applied.",
+      "ApplyCancelled": "Wayfinder apply cancelled."
+    }
+  }
+}

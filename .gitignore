@@ -1,0 +1,9 @@
+agents/
+node_modules/
+coverage/
+dist/
+*.log
+*.tmp
+*.tsbuildinfo
+*.zip
+.DS_Store

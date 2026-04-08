@@ -2,7 +2,7 @@ import { OFFICIAL_PACKS } from "./constants.js";
 import { getExtraPackSetting } from "./settings.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
 const indexCache = new Map();
-export async function getOptionsForStep(step) {
+export async function getOptionsForStep(step, context = { ancestrySlug: null }) {
     if (step.kind !== "pick-item" || !step.filters) {
         return [];
     }
@@ -15,7 +15,7 @@ export async function getOptionsForStep(step) {
         }
         const index = await getPackIndex(pack);
         for (const entry of index) {
-            if (!matchesFilters(entry, step.filters)) {
+            if (!matchesFilters(entry, step, context)) {
                 continue;
             }
             const level = numericOrNull(entry?.system?.level?.value);
@@ -41,8 +41,8 @@ export async function getOptionsForStep(step) {
     }
     return dedupeAndSort(results);
 }
-export async function resolveSelection(rawValue, step) {
-    const options = await getOptionsForStep(step);
+export async function resolveSelection(rawValue, step, context = { ancestrySlug: null }) {
+    const options = await getOptionsForStep(step, context);
     const selected = options.find((option) => option.value === rawValue);
     if (!selected) {
         return null;
@@ -90,6 +90,7 @@ async function getPackIndex(pack) {
             "type",
             "system.level.value",
             "system.featType.value",
+            "system.ancestry.slug",
             "system.traits.rarity",
             "system.publication.title"
         ]
@@ -98,7 +99,8 @@ async function getPackIndex(pack) {
     indexCache.set(pack.metadata.id, contents);
     return contents;
 }
-function matchesFilters(entry, filters) {
+function matchesFilters(entry, step, context) {
+    const filters = step.filters;
     if (!filters) {
         return true;
     }
@@ -114,6 +116,12 @@ function matchesFilters(entry, filters) {
     if (typeof filters.maxLevel === "number") {
         const level = numericOrNull(entry?.system?.level?.value);
         if (level !== null && level > filters.maxLevel) {
+            return false;
+        }
+    }
+    if (step.slotKind === "heritage" && context.ancestrySlug) {
+        const heritageAncestrySlug = stringOrNull(entry?.system?.ancestry?.slug);
+        if (heritageAncestrySlug && heritageAncestrySlug !== context.ancestrySlug) {
             return false;
         }
     }

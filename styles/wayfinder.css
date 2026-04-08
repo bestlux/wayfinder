@@ -490,8 +490,8 @@
 .search-shell {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.65rem 0.8rem;
+  gap: 0.5rem;
+  padding: 0.42rem 0.65rem;
   border: 1px solid var(--wf-rule);
   border-radius: var(--wf-radius);
   background: rgba(255, 252, 245, 0.72);

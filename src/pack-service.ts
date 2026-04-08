@@ -1,11 +1,11 @@
 import { OFFICIAL_PACKS } from "./constants.js";
 import { getExtraPackSetting } from "./settings.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
-import type { OptionRecord, PendingStep, SelectionRef } from "./types.js";
+import type { OptionContext, OptionRecord, PendingStep, SelectionRef } from "./types.js";
 
 const indexCache = new Map<string, any[]>();
 
-export async function getOptionsForStep(step: PendingStep): Promise<OptionRecord[]> {
+export async function getOptionsForStep(step: PendingStep, context: OptionContext = { ancestrySlug: null }): Promise<OptionRecord[]> {
   if (step.kind !== "pick-item" || !step.filters) {
     return [];
   }
@@ -21,7 +21,7 @@ export async function getOptionsForStep(step: PendingStep): Promise<OptionRecord
 
     const index = await getPackIndex(pack);
     for (const entry of index) {
-      if (!matchesFilters(entry, step.filters)) {
+      if (!matchesFilters(entry, step, context)) {
         continue;
       }
 
@@ -51,8 +51,12 @@ export async function getOptionsForStep(step: PendingStep): Promise<OptionRecord
   return dedupeAndSort(results);
 }
 
-export async function resolveSelection(rawValue: string, step: PendingStep): Promise<SelectionRef | null> {
-  const options = await getOptionsForStep(step);
+export async function resolveSelection(
+  rawValue: string,
+  step: PendingStep,
+  context: OptionContext = { ancestrySlug: null }
+): Promise<SelectionRef | null> {
+  const options = await getOptionsForStep(step, context);
   const selected = options.find((option) => option.value === rawValue);
   if (!selected) {
     return null;
@@ -107,6 +111,7 @@ async function getPackIndex(pack: any): Promise<any[]> {
       "type",
       "system.level.value",
       "system.featType.value",
+      "system.ancestry.slug",
       "system.traits.rarity",
       "system.publication.title"
     ]
@@ -117,7 +122,8 @@ async function getPackIndex(pack: any): Promise<any[]> {
   return contents;
 }
 
-function matchesFilters(entry: any, filters: PendingStep["filters"]): boolean {
+function matchesFilters(entry: any, step: PendingStep, context: OptionContext): boolean {
+  const filters = step.filters;
   if (!filters) {
     return true;
   }
@@ -136,6 +142,13 @@ function matchesFilters(entry: any, filters: PendingStep["filters"]): boolean {
   if (typeof filters.maxLevel === "number") {
     const level = numericOrNull(entry?.system?.level?.value);
     if (level !== null && level > filters.maxLevel) {
+      return false;
+    }
+  }
+
+  if (step.slotKind === "heritage" && context.ancestrySlug) {
+    const heritageAncestrySlug = stringOrNull(entry?.system?.ancestry?.slug);
+    if (heritageAncestrySlug && heritageAncestrySlug !== context.ancestrySlug) {
       return false;
     }
   }

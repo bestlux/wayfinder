@@ -345,7 +345,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       };
     }
 
-    const options = await getOptionsForStep(step);
+    const optionContext = await this.#buildOptionContext();
+    const options = await getOptionsForStep(step, optionContext);
     const search = this.#searchByStepId.get(step.id) ?? "";
     const filteredOptions = options.filter((option) => this.#matchesSearch(option, search));
     const selectedValue = this.#selectedValueFor(step);
@@ -509,7 +510,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
-    const selection = await resolveSelection(rawValue, step);
+    const optionContext = await this.#buildOptionContext();
+    const selection = await resolveSelection(rawValue, step, optionContext);
     if (!selection) {
       return;
     }
@@ -522,9 +524,103 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
+    const previousSelection = this.#requireDraft().selections[selection.slotId];
     this.#requireDraft().selections[selection.slotId] = selection;
+    if (step.slotKind === "ancestry" && previousSelection?.uuid !== selection.uuid) {
+      this.#clearDependentAncestrySelections();
+    }
     this.#previewValueByStepId.set(stepId, rawValue);
     this.#moveStep(1);
+  }
+
+  #clearDependentAncestrySelections(): void {
+    delete this.#requireDraft().selections["heritage-level-1"];
+    this.#previewValueByStepId.delete("heritage-level-1");
+
+    for (const slotId of Object.keys(this.#requireDraft().selections)) {
+      if (slotId.startsWith("ancestry-feat-level-")) {
+        delete this.#requireDraft().selections[slotId];
+        this.#previewValueByStepId.delete(slotId);
+      }
+    }
+  }
+
+  async #buildOptionContext(): Promise<{ ancestrySlug: string | null }> {
+    return {
+      ancestrySlug: await this.#resolveAncestrySlug()
+    };
+  }
+
+  async #resolveAncestrySlug(): Promise<string | null> {
+    const draftSelection = Object.values(this.#requireDraft().selections).find((selection) => selection.itemType === "ancestry");
+    if (draftSelection) {
+      const draftDocument = await fetchSelectionDocument(draftSelection);
+      const slug = this.#extractSlug(draftDocument);
+      if (slug) {
+        return slug;
+      }
+    }
+
+    const ancestryItem = this.#findActorItemByType("ancestry");
+    if (!ancestryItem) {
+      return null;
+    }
+
+    const sourceId = ancestryItem?.flags?.core?.sourceId;
+    if (typeof sourceId === "string" && sourceId.startsWith("Compendium.")) {
+      const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
+      const packId = match?.[1];
+      const documentId = match?.[2];
+      if (packId && documentId) {
+        const sourceDocument = await fetchSelectionDocument({
+          slotId: "ancestry-level-1",
+          packId,
+          documentId,
+          uuid: sourceId,
+          itemType: "ancestry",
+          featType: null,
+          name: ancestryItem.name ?? "",
+          level: null
+        });
+        const sourceSlug = this.#extractSlug(sourceDocument);
+        if (sourceSlug) {
+          return sourceSlug;
+        }
+      }
+    }
+
+    return this.#extractSlug(ancestryItem);
+  }
+
+  #findActorItemByType(type: string): any | null {
+    const items = Array.isArray(this.actor?.items?.contents)
+      ? this.actor.items.contents
+      : Array.isArray(this.actor?.items)
+        ? this.actor.items
+        : [];
+    return items.find((item: any) => item?.type === type) ?? null;
+  }
+
+  #extractSlug(document: any): string | null {
+    const systemSlug = document?.system?.slug;
+    if (typeof systemSlug === "string" && systemSlug.trim()) {
+      return systemSlug.trim();
+    }
+
+    const ancestrySlug = document?.system?.ancestry?.slug;
+    if (typeof ancestrySlug === "string" && ancestrySlug.trim()) {
+      return ancestrySlug.trim();
+    }
+
+    const name = typeof document?.name === "string" ? document.name.trim() : "";
+    if (!name) {
+      return null;
+    }
+
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || null;
   }
 
   #moveStep(delta: number): void {

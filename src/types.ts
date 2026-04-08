@@ -93,6 +93,10 @@ export interface OptionRecord {
   label: string;
 }
 
+export interface OptionContext {
+  ancestrySlug: string | null;
+}
+
 export interface ActorSummary {
   currentLevel: number;
   needsCreation: boolean;

@@ -1,9 +1,13 @@
 <section class="wayfinder-shell">
   <header class="wayfinder-masthead">
-    <div class="masthead-copy">
-      <p class="eyebrow">Wayfinder</p>
-      <h2>{{actorName}}</h2>
-      <p class="guidance">{{guidance}}</p>
+    <div class="masthead-main">
+      <div class="masthead-copy">
+        <p class="eyebrow">Wayfinder</p>
+        <div class="masthead-title-row">
+          <h2>{{actorName}}</h2>
+          <p class="guidance">{{guidance}}</p>
+        </div>
+      </div>
 
       <dl class="summary-strip">
         {{#each summary}}
@@ -27,16 +31,17 @@
         </div>
       </div>
 
-      <div class="target-controls">
-        <button type="button" class="icon" data-wayfinder-action="target-down" aria-label="Lower target level">
-          <i class="fa-solid fa-minus"></i>
-        </button>
-        <button type="button" class="icon" data-wayfinder-action="target-up" aria-label="Raise target level">
-          <i class="fa-solid fa-plus"></i>
-        </button>
+      <div class="status-controls">
+        <p class="progress-note">{{completedCount}} of {{stepCount}} steps ready</p>
+        <div class="target-controls">
+          <button type="button" class="icon" data-wayfinder-action="target-down" aria-label="Lower target level">
+            <i class="fa-solid fa-minus"></i>
+          </button>
+          <button type="button" class="icon" data-wayfinder-action="target-up" aria-label="Raise target level">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
       </div>
-
-      <p class="progress-note">{{completedCount}} of {{stepCount}} steps ready</p>
     </aside>
   </header>
 

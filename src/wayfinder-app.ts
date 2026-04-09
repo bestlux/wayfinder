@@ -1611,10 +1611,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (!boosts || typeof boosts !== "object") {
       return "";
     }
-    return Object.values(boosts)
-      .flatMap((entry: any) => Array.isArray(entry?.value) ? entry.value : [])
-      .map((value: string) => value.toUpperCase())
-      .join(", ");
+    const slots = Object.values(boosts)
+      .map((entry: any) => Array.isArray(entry?.value) ? entry.value as string[] : [])
+      .filter((values) => values.length > 0);
+    return slots
+      .map((values) => {
+        if (values.length >= ABILITY_KEYS.length) return "Free";
+        return values.map((v) => v.toUpperCase()).join(" or ");
+      })
+      .join("; ");
   }
 
   #formatFlaws(flaws: any): string {

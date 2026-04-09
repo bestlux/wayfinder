@@ -933,7 +933,7 @@
 
 .detail-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
   gap: 0;
   margin: 0;
   padding: 0;
@@ -948,6 +948,14 @@
   padding: 0.25rem 0.55rem;
   border-bottom: 1px solid rgba(95, 77, 57, 0.12);
   background: rgba(255, 251, 243, 0.7);
+  cursor: default;
+  transition: background-color var(--wf-transition), box-shadow var(--wf-transition);
+}
+
+.detail-row:hover {
+  background: rgba(255, 251, 243, 0.98);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+  z-index: 5;
 }
 
 .detail-row dt,
@@ -970,6 +978,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: white-space var(--wf-transition);
+}
+
+.detail-row:hover dd {
+  white-space: normal;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 /* ── Preview Description ───────────────────────────────── */

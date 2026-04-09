@@ -12,6 +12,7 @@
   --wf-secondary: var(--color-pf-secondary, #171f69);
   --wf-accent: var(--color-pf-tertiary, #e9d7a1);
   --wf-accent-dark: var(--color-pf-tertiary-dark, #c7af72);
+  --wf-accent-contrast: #8b5a19;
   --wf-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
   --wf-radius: 3px;
   color: var(--wf-ink);
@@ -82,10 +83,16 @@
 
 .eyebrow {
   margin: 0;
-  color: var(--wf-accent);
+  color: var(--wf-accent-contrast);
   font: 700 0.67rem/1 var(--sans-serif, sans-serif);
   letter-spacing: 0.14em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
   text-transform: uppercase;
+}
+
+.wayfinder-masthead .eyebrow {
+  color: var(--wf-accent);
+  text-shadow: none;
 }
 
 .wayfinder-masthead h2,

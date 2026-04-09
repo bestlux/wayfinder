@@ -124,7 +124,7 @@
                   </label>
                 </header>
 
-                <div class="option-list">
+                <div class="option-list" data-wayfinder-option-list data-step-id="{{activePane.stepId}}">
                   {{#each activePane.options}}
                     <article class="option-row{{#if previewing}} previewing{{/if}}{{#if selected}} selected{{/if}}">
                       <button type="button" class="option-main" data-wayfinder-action="preview-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">

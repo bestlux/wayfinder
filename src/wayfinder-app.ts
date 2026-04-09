@@ -104,6 +104,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #activeStepId: string | null = null;
   #searchByStepId = new Map<string, string>();
   #previewValueByStepId = new Map<string, string>();
+  #listScrollByStepId = new Map<string, number>();
+  #pendingSearchFocus: { stepId: string; cursor: number } | null = null;
 
   static open(actor: any): void {
     if (!canUseWayfinder(actor)) {
@@ -208,9 +210,34 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       search.addEventListener("input", this.#onSearchInput);
     }
 
+    for (const list of root.querySelectorAll<HTMLElement>("[data-wayfinder-option-list]")) {
+      const stepId = list.dataset.stepId;
+      if (!stepId) {
+        continue;
+      }
+
+      const previousScrollTop = this.#listScrollByStepId.get(stepId);
+      if (typeof previousScrollTop === "number") {
+        list.scrollTop = previousScrollTop;
+      }
+
+      list.addEventListener("scroll", this.#onOptionListScroll, { passive: true });
+    }
+
     const manual = root.querySelector<HTMLInputElement>("[data-wayfinder-manual]");
     if (manual) {
       manual.addEventListener("change", this.#onManualChange);
+    }
+
+    if (this.#pendingSearchFocus) {
+      const { stepId, cursor } = this.#pendingSearchFocus;
+      const nextSearch = root.querySelector<HTMLInputElement>(`[data-wayfinder-search][data-step-id="${stepId}"]`);
+      if (nextSearch) {
+        nextSearch.focus();
+        const caret = Math.min(cursor, nextSearch.value.length);
+        nextSearch.setSelectionRange(caret, caret);
+      }
+      this.#pendingSearchFocus = null;
     }
   }
 
@@ -228,6 +255,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     event.preventDefault();
     event.stopPropagation();
+    this.#rememberInteractiveState();
 
     switch (action) {
       case "select-step":
@@ -283,8 +311,19 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
+    this.#rememberInteractiveState(input);
     this.#searchByStepId.set(stepId, input.value);
     this.render(false);
+  };
+
+  #onOptionListScroll = (event: Event): void => {
+    const list = event.currentTarget as HTMLElement | null;
+    const stepId = list?.dataset.stepId;
+    if (!stepId || !list) {
+      return;
+    }
+
+    this.#listScrollByStepId.set(stepId, list.scrollTop);
   };
 
   #onManualChange = (event: Event): void => {
@@ -536,13 +575,42 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #clearDependentAncestrySelections(): void {
     delete this.#requireDraft().selections["heritage-level-1"];
     this.#previewValueByStepId.delete("heritage-level-1");
+    this.#listScrollByStepId.delete("heritage-level-1");
 
     for (const slotId of Object.keys(this.#requireDraft().selections)) {
       if (slotId.startsWith("ancestry-feat-level-")) {
         delete this.#requireDraft().selections[slotId];
         this.#previewValueByStepId.delete(slotId);
+        this.#listScrollByStepId.delete(slotId);
       }
     }
+  }
+
+  #rememberInteractiveState(searchInput?: HTMLInputElement | null): void {
+    const root = this.element;
+    if (!(root instanceof HTMLElement)) {
+      return;
+    }
+
+    for (const list of root.querySelectorAll<HTMLElement>("[data-wayfinder-option-list]")) {
+      const stepId = list.dataset.stepId;
+      if (!stepId) {
+        continue;
+      }
+      this.#listScrollByStepId.set(stepId, list.scrollTop);
+    }
+
+    const activeSearch = searchInput ?? root.querySelector<HTMLInputElement>("[data-wayfinder-search]:focus");
+    const stepId = activeSearch?.dataset.stepId;
+    if (!activeSearch || !stepId) {
+      this.#pendingSearchFocus = null;
+      return;
+    }
+
+    this.#pendingSearchFocus = {
+      stepId,
+      cursor: activeSearch.selectionStart ?? activeSearch.value.length
+    };
   }
 
   async #buildOptionContext(): Promise<{ ancestrySlug: string | null }> {

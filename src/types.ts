@@ -10,7 +10,34 @@ export type SlotKind =
   | "ability-boosts"
   | "skill-increase";
 
-export type StepKind = "pick-item" | "manual";
+export type StepKind = "pick-item" | "manual" | "boost";
+export type AbilityKey = "str" | "dex" | "con" | "int" | "wis" | "cha";
+export type BoostLevel = 1 | 5 | 10 | 15 | 20;
+
+export interface VoluntaryFlawDraft {
+  touched: boolean;
+  enabled: boolean;
+  legacy: boolean;
+  boost: AbilityKey | null;
+  flaws: AbilityKey[];
+}
+
+export interface BoostDraftState {
+  ancestry: {
+    modeTouched: boolean;
+    mode: "standard" | "alternate";
+    selectedBoosts: Record<string, AbilityKey | null>;
+    alternateBoosts: AbilityKey[];
+    voluntary: VoluntaryFlawDraft;
+  };
+  background: {
+    selectedBoosts: Record<string, AbilityKey | null>;
+  };
+  class: {
+    keyAbility: AbilityKey | null;
+  };
+  levels: Record<string, AbilityKey[]>;
+}
 
 export interface SelectionRef {
   slotId: string;
@@ -27,6 +54,7 @@ export interface DraftState {
   version: number;
   targetLevel: number;
   selections: Record<string, SelectionRef>;
+  boosts: BoostDraftState;
   manual: Record<string, boolean>;
   updatedAt: string | null;
 }
@@ -88,6 +116,8 @@ export interface OptionRecord {
   featType: string | null;
   name: string;
   level: number | null;
+  slug: string | null;
+  traits: string[];
   rarity: string | null;
   source: string | null;
   label: string;
@@ -95,6 +125,17 @@ export interface OptionRecord {
 
 export interface OptionContext {
   ancestrySlug: string | null;
+  ancestryTraits: string[];
+  heritageTraits: string[];
+  classSlug: string | null;
+  hasDedicationFeat: boolean;
+}
+
+export interface PickerInfoState {
+  tone: "blocked" | "empty" | "search";
+  eyebrow: string;
+  title: string;
+  message: string;
 }
 
 export interface ActorSummary {

@@ -56,11 +56,11 @@ export function buildSteps(snapshot, currentLevel, targetLevel) {
         featTypes: ["general"]
     }));
     if (snapshot.isBlank || !allCreationAnchorsPresent(snapshot)) {
-        steps.push(makeManualStep("ability-boosts", 1, "Assign creation boosts", "Use the PF2E attribute builder on the actor sheet to apply ancestry, background, and class-related boosts before finalizing the build."));
+        steps.push(makeBoostStep("ability-boosts", 1, "Assign creation boosts", "Allocate ancestry, background, class, and free level 1 boosts inside Wayfinder before finalizing the draft."));
     }
     for (const level of ABILITY_BOOST_LEVELS) {
         if (level > currentLevel && level <= targetLevel) {
-            steps.push(makeManualStep("ability-boosts", level, `Level ${level} ability boosts`, "Apply this level's four free boosts using the PF2E sheet tools, then mark the checkpoint complete."));
+            steps.push(makeBoostStep("ability-boosts", level, `Level ${level} ability boosts`, "Allocate this level's four free boosts directly in Wayfinder and keep the draft coherent before applying."));
         }
     }
     for (const level of SKILL_INCREASE_LEVELS) {
@@ -122,6 +122,19 @@ function makeManualStep(slotKind, level, title, description) {
         id: slotId,
         level,
         kind: "manual",
+        slotKind,
+        title,
+        description,
+        required: true,
+        slotId
+    };
+}
+function makeBoostStep(slotKind, level, title, description) {
+    const slotId = `${slotKind}-level-${level}`;
+    return {
+        id: slotId,
+        level,
+        kind: "boost",
         slotKind,
         title,
         description,

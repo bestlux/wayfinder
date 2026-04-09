@@ -1,24 +1,21 @@
+import { BOOST_LEVELS, getEffectiveBuildState, listActorItems } from "./build-state.js";
 import { MODULE_ID } from "./constants.js";
 import { fetchSelectionDocument } from "./pack-service.js";
 const SINGLETON_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 export async function applyDraftToActor(actor, draft, steps) {
     const selections = orderSelections(draft, steps);
+    const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
     for (const selection of selections.filter((entry) => SINGLETON_ITEM_TYPES.has(entry.itemType))) {
         await replaceSingletonItem(actor, selection);
     }
-    const featSources = [];
     for (const selection of selections.filter((entry) => entry.itemType === "feat")) {
         if (hasSourceId(actor, selection.uuid)) {
             continue;
         }
-        const source = await createEmbeddedSource(selection);
-        if (source) {
-            featSources.push(source);
-        }
+        const step = stepsBySlotId.get(selection.slotId);
+        await insertFeatSelection(actor, selection, step ?? null);
     }
-    if (featSources.length > 0) {
-        await actor.createEmbeddedDocuments("Item", featSources);
-    }
+    await applyBoostDraft(actor, draft);
     const currentLevel = Number(actor?.system?.details?.level?.value ?? 1) || 1;
     if (draft.targetLevel > currentLevel) {
         await actor.update({
@@ -52,6 +49,94 @@ async function createEmbeddedSource(selection) {
     };
     return source;
 }
+async function insertFeatSelection(actor, selection, step) {
+    const document = await fetchSelectionDocument(selection);
+    if (!document) {
+        return;
+    }
+    const slotData = resolveFeatSlotData(actor, selection, step);
+    if (typeof actor?.feats?.insertFeat === "function") {
+        const inserted = await actor.feats.insertFeat(document, slotData);
+        await stampSelectionFlags(actor, inserted, selection);
+        return;
+    }
+    const source = await createEmbeddedSource(selection);
+    if (!source) {
+        return;
+    }
+    if (slotData) {
+        source.system ??= {};
+        source.system.location = slotData.slotId ?? slotData.groupId;
+        source.system.level ??= {};
+        if (typeof step?.level === "number") {
+            source.system.level.taken = step.level;
+        }
+    }
+    await actor.createEmbeddedDocuments("Item", [source]);
+}
+function resolveFeatSlotData(actor, selection, step) {
+    const groupId = resolveFeatGroupId(selection, step);
+    if (!groupId) {
+        return null;
+    }
+    const group = typeof actor?.feats?.get === "function" ? actor.feats.get(groupId) : actor?.feats?.[groupId];
+    const slots = Object.values(group?.slots ?? {});
+    if (slots.length === 0) {
+        return { groupId, slotId: null };
+    }
+    const matchingLevel = slots.find((slot) => slot.level === step?.level && !slot.feat);
+    const firstOpen = slots.find((slot) => !slot.feat);
+    return {
+        groupId,
+        slotId: matchingLevel?.id ?? firstOpen?.id ?? null
+    };
+}
+function resolveFeatGroupId(selection, step) {
+    switch (step?.slotKind) {
+        case "ancestry-feat":
+            return "ancestry";
+        case "class-feat":
+            return "class";
+        case "skill-feat":
+            return "skill";
+        case "general-feat":
+            return "general";
+        default:
+            switch (selection.featType) {
+                case "ancestry":
+                    return "ancestry";
+                case "class":
+                case "archetype":
+                    return "class";
+                case "skill":
+                    return "skill";
+                case "general":
+                    return "general";
+                default:
+                    return null;
+            }
+    }
+}
+async function stampSelectionFlags(actor, items, selection) {
+    if (!Array.isArray(items) || items.length === 0 || typeof actor?.updateEmbeddedDocuments !== "function") {
+        return;
+    }
+    const updates = [];
+    for (const item of items) {
+        if (!item?.id) {
+            continue;
+        }
+        updates.push({
+            _id: item.id,
+            "flags.core.sourceId": selection.uuid,
+            [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
+            [`flags.${MODULE_ID}.slotId`]: selection.slotId
+        });
+    }
+    if (updates.length > 0) {
+        await actor.updateEmbeddedDocuments("Item", updates);
+    }
+}
 function orderSelections(draft, steps) {
     const order = new Map();
     steps.forEach((step, index) => order.set(step.slotId, index));
@@ -61,5 +146,55 @@ function orderSelections(draft, steps) {
 }
 function hasSourceId(actor, sourceId) {
     return Array.from(actor?.items ?? []).some((item) => item?.flags?.core?.sourceId === sourceId);
+}
+async function applyBoostDraft(actor, draft) {
+    const buildState = await getEffectiveBuildState(actor, draft);
+    const updates = [];
+    const ancestryItem = listActorItems(actor).find((item) => item?.type === "ancestry");
+    if (ancestryItem && buildState.ancestry) {
+        const ancestryUpdate = { _id: ancestryItem.id };
+        if (buildState.ancestry.mode === "alternate") {
+            ancestryUpdate["system.alternateAncestryBoosts"] = buildState.ancestry.alternateBoosts;
+        }
+        else {
+            ancestryUpdate["system.-=alternateAncestryBoosts"] = null;
+        }
+        for (const [slot, value] of Object.entries(buildState.ancestry.selectedBoosts)) {
+            ancestryUpdate[`system.boosts.${slot}.selected`] = value;
+        }
+        ancestryUpdate["system.voluntary.flaws"] = buildState.ancestry.voluntary.enabled
+            ? buildState.ancestry.voluntary.flaws
+            : [];
+        if (buildState.ancestry.voluntary.enabled && buildState.ancestry.voluntary.legacy) {
+            ancestryUpdate["system.voluntary.boost"] = buildState.ancestry.voluntary.boost;
+        }
+        else {
+            ancestryUpdate["system.voluntary.-=boost"] = null;
+        }
+        updates.push(ancestryUpdate);
+    }
+    const backgroundItem = listActorItems(actor).find((item) => item?.type === "background");
+    if (backgroundItem && buildState.background) {
+        const backgroundUpdate = { _id: backgroundItem.id };
+        for (const [slot, value] of Object.entries(buildState.background.selectedBoosts)) {
+            backgroundUpdate[`system.boosts.${slot}.selected`] = value;
+        }
+        updates.push(backgroundUpdate);
+    }
+    const classItem = listActorItems(actor).find((item) => item?.type === "class");
+    if (classItem && buildState.class) {
+        updates.push({
+            _id: classItem.id,
+            "system.keyAbility.selected": buildState.class.selectedKeyAbility
+        });
+    }
+    if (updates.length > 0) {
+        await actor.updateEmbeddedDocuments("Item", updates);
+    }
+    const actorBoostUpdate = Object.fromEntries(BOOST_LEVELS.map((level) => [
+        `system.build.attributes.boosts.${level}`,
+        buildState.levelBoosts[level]
+    ]));
+    await actor.update(actorBoostUpdate);
 }
 //# sourceMappingURL=actor-updater.js.map

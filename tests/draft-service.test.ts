@@ -4,9 +4,31 @@ import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft, no
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 1,
+      version: 2,
       targetLevel: 4,
       selections: {},
+      boosts: {
+        ancestry: {
+          modeTouched: false,
+          mode: "standard",
+          selectedBoosts: {},
+          alternateBoosts: [],
+          voluntary: {
+            touched: false,
+            enabled: false,
+            legacy: false,
+            boost: null,
+            flaws: []
+          }
+        },
+        background: {
+          selectedBoosts: {}
+        },
+        class: {
+          keyAbility: null
+        },
+        levels: {}
+      },
       manual: {},
       updatedAt: null
     });
@@ -41,6 +63,31 @@ describe("draft-service", () => {
       manual: {
         one: true,
         two: false
+      },
+      boosts: {
+        ancestry: {
+          modeTouched: false,
+          mode: "alternate",
+          alternateBoosts: ["str", "dex", "dex", "bad"],
+          selectedBoosts: {
+            one: "int",
+            two: "bad"
+          },
+          voluntary: {
+            touched: false,
+            enabled: true,
+            legacy: true,
+            boost: "wis",
+            flaws: ["str", "str", "bad"]
+          }
+        },
+        class: {
+          keyAbility: "con"
+        },
+        levels: {
+          1: ["str", "dex", "con", "wis", "cha"],
+          2: ["bad"]
+        }
       }
     }, 1);
 
@@ -50,11 +97,37 @@ describe("draft-service", () => {
       one: true,
       two: false
     });
+    expect(draft.boosts).toEqual({
+      ancestry: {
+        modeTouched: false,
+        mode: "alternate",
+        selectedBoosts: {
+          one: "int"
+        },
+        alternateBoosts: ["str", "dex"],
+        voluntary: {
+          touched: false,
+          enabled: true,
+          legacy: true,
+          boost: "wis",
+          flaws: ["str", "str"]
+        }
+      },
+      background: {
+        selectedBoosts: {}
+      },
+      class: {
+        keyAbility: "con"
+      },
+      levels: {
+        1: ["str", "dex", "con", "wis"]
+      }
+    });
   });
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(1);
+    expect(patched.version).toBe(2);
     expect(patched.updatedAt).not.toBeNull();
   });
 

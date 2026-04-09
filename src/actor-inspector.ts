@@ -39,7 +39,7 @@ export function inspectActor(actor: any): ActorSnapshot {
     }
 
     if (type === "feat") {
-      const featType = String(item?.system?.featType?.value ?? "");
+      const featType = String(item?.system?.featType?.value ?? item?.system?.category ?? "");
       if (featType in featCounts) {
         featCounts[featType as keyof typeof featCounts] += 1;
       }

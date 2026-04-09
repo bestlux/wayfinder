@@ -1,14 +1,22 @@
 <section class="wayfinder-shell">
-  <header class="wayfinder-masthead">
-    <div class="masthead-main">
-      <div class="masthead-copy">
+  <header class="wayfinder-dossier">
+    <div class="dossier-identity">
+      <div class="dossier-title">
         <p class="eyebrow">Wayfinder</p>
-        <div class="masthead-title-row">
+        <div class="dossier-title-row">
           <h2>{{actorName}}</h2>
-          <p class="guidance">{{guidance}}</p>
+          <p class="dossier-line">{{dossierLine}}</p>
         </div>
       </div>
 
+      <div class="dossier-progress">
+        <p class="eyebrow">Draft Progress</p>
+        <p class="progress-note">{{completedCount}} of {{stepCount}} steps prepared</p>
+        <p class="guidance">{{guidance}}</p>
+      </div>
+    </div>
+
+    <div class="dossier-ledger">
       <dl class="summary-strip">
         {{#each summary}}
           <div class="summary-item{{#if complete}} complete{{/if}}">
@@ -17,9 +25,8 @@
           </div>
         {{/each}}
       </dl>
-    </div>
 
-    <aside class="masthead-status">
+      <aside class="dossier-controls">
       <div class="level-card">
         <div class="level-badge">
           <span class="level-label">Current</span>
@@ -31,8 +38,8 @@
         </div>
       </div>
 
-      <div class="status-controls">
-        <p class="progress-note">{{completedCount}} of {{stepCount}} steps ready</p>
+      <div class="control-stack">
+        <p class="control-label">Target Level</p>
         <div class="target-controls">
           <button type="button" class="icon" data-wayfinder-action="target-down" aria-label="Lower target level">
             <i class="fa-solid fa-minus"></i>
@@ -42,7 +49,8 @@
           </button>
         </div>
       </div>
-    </aside>
+      </aside>
+    </div>
   </header>
 
   {{#if hasPendingSteps}}
@@ -56,7 +64,7 @@
 
         <div class="wizard-step-list">
           {{#each steps}}
-            <button type="button" class="step-link{{#if active}} active{{/if}}{{#if complete}} complete{{/if}}" data-wayfinder-action="select-step" data-step-id="{{id}}">
+            <button type="button" class="step-link{{#if active}} active{{/if}}{{#if complete}} complete{{/if}}{{#if invalidated}} invalidated{{/if}}" data-wayfinder-action="select-step" data-step-id="{{id}}">
               <span class="step-index">{{index}}</span>
               <span class="step-copy">
                 <span class="step-title">{{title}}</span>
@@ -77,6 +85,12 @@
                 <span class="step-badge">Level {{activePane.level}} · {{activePane.modeLabel}}</span>
               </div>
               <p>{{activePane.description}}</p>
+              {{#if activePane.contextNote}}
+                <p class="context-note">{{activePane.contextNote}}</p>
+              {{/if}}
+              {{#if statusNote}}
+                <p class="status-note">{{statusNote}}</p>
+              {{/if}}
             </div>
 
             <div class="step-nav-controls">
@@ -109,6 +123,169 @@
             </section>
           {{/if}}
 
+          {{#if activePane.isBoost}}
+            <section class="boost-stage">
+              {{#if activePane.blocked}}
+                <div class="picker-state picker-state-blocked boost-blocked">
+                  <p class="eyebrow">Prerequisite Required</p>
+                  <h4>{{activePane.blockedTitle}}</h4>
+                  <p>{{activePane.blockedMessage}}</p>
+                </div>
+              {{else}}
+                <section class="boost-ledger">
+                  <header class="browser-header boost-summary-header">
+                    <div>
+                      <p class="eyebrow">Projected Ability Modifiers</p>
+                      <h4>{{activePane.selectedLabel}}</h4>
+                    </div>
+                  </header>
+
+                  <div class="boost-ability-grid">
+                    {{#each activePane.abilitySummary}}
+                      <article class="boost-ability-card{{#if partial}} partial{{/if}}">
+                        <span class="boost-ability-label">{{label}}</span>
+                        <strong>{{modifierLabel}}</strong>
+                        {{#if partial}}
+                          <span class="boost-ability-note">Partial</span>
+                        {{/if}}
+                      </article>
+                    {{/each}}
+                  </div>
+                </section>
+
+                <section class="boost-sections">
+                  {{#if activePane.ancestrySection}}
+                    <article class="boost-sheet">
+                      <header class="boost-section-header">
+                        <div>
+                          <p class="eyebrow">Ancestry</p>
+                          <h4>Choose ancestry boosts</h4>
+                        </div>
+                        <div class="boost-section-tools">
+                          <span class="boost-remaining">{{activePane.ancestrySection.remaining}} remaining</span>
+                          {{#if activePane.ancestrySection.canToggleAlternate}}
+                            <button type="button" class="secondary compact" data-wayfinder-action="toggle-ancestry-mode" data-step-id="{{activePane.stepId}}">
+                              {{#if (eq activePane.ancestrySection.mode "alternate")}}Use printed boosts{{else}}Use alternate boosts{{/if}}
+                            </button>
+                          {{/if}}
+                        </div>
+                      </header>
+
+                      <div class="boost-button-grid">
+                        {{#each activePane.ancestrySection.buttons}}
+                          <button type="button" class="boost-choice{{#if selected}} selected{{/if}}" data-wayfinder-action="toggle-boost-choice" data-step-id="{{../activePane.stepId}}" data-section="ancestry" data-attribute="{{attribute}}" {{#if disabled}}disabled{{/if}}>
+                            <span class="boost-choice-code">{{attribute}}</span>
+                            <span class="boost-choice-label">{{label}}</span>
+                          </button>
+                        {{/each}}
+                      </div>
+                    </article>
+                  {{/if}}
+
+                  {{#if activePane.voluntarySection}}
+                    <article class="boost-sheet voluntary-sheet">
+                      <header class="boost-section-header">
+                        <div>
+                          <p class="eyebrow">Optional</p>
+                          <h4>Voluntary flaws</h4>
+                        </div>
+                        <div class="boost-section-tools voluntary-tools">
+                          <button type="button" class="secondary compact" data-wayfinder-action="toggle-voluntary-enabled" data-step-id="{{activePane.stepId}}">
+                            {{#if activePane.voluntarySection.enabled}}Disable{{else}}Enable{{/if}}
+                          </button>
+                          {{#if activePane.voluntarySection.enabled}}
+                            <button type="button" class="secondary compact" data-wayfinder-action="toggle-voluntary-legacy" data-step-id="{{activePane.stepId}}">
+                              {{#if activePane.voluntarySection.legacy}}Legacy rules on{{else}}Legacy rules off{{/if}}
+                            </button>
+                          {{/if}}
+                        </div>
+                      </header>
+
+                      {{#if activePane.voluntarySection.enabled}}
+                        <div class="voluntary-list">
+                          {{#each activePane.voluntarySection.buttons}}
+                            <div class="voluntary-row">
+                              <span class="voluntary-label">{{label}}</span>
+                              <div class="voluntary-actions">
+                                <button type="button" class="secondary compact{{#if flawSelected}} is-selected{{/if}}" data-wayfinder-action="toggle-voluntary-choice" data-step-id="{{../activePane.stepId}}" data-attribute="{{attribute}}" data-choice-kind="flaw" {{#if flawDisabled}}disabled{{/if}}>Flaw</button>
+                                {{#if showSecondFlaw}}
+                                  <button type="button" class="secondary compact{{#if secondFlawSelected}} is-selected{{/if}}" data-wayfinder-action="toggle-voluntary-choice" data-step-id="{{../activePane.stepId}}" data-attribute="{{attribute}}" data-choice-kind="second-flaw" {{#if secondFlawDisabled}}disabled{{/if}}>Second flaw</button>
+                                {{/if}}
+                                {{#if showBoost}}
+                                  <button type="button" class="secondary compact{{#if boostSelected}} is-selected{{/if}}" data-wayfinder-action="toggle-voluntary-choice" data-step-id="{{../activePane.stepId}}" data-attribute="{{attribute}}" data-choice-kind="boost" {{#if boostDisabled}}disabled{{/if}}>Boost</button>
+                                {{/if}}
+                              </div>
+                            </div>
+                          {{/each}}
+                        </div>
+                      {{/if}}
+                    </article>
+                  {{/if}}
+
+                  {{#if activePane.backgroundSection}}
+                    <article class="boost-sheet">
+                      <header class="boost-section-header">
+                        <div>
+                          <p class="eyebrow">Background</p>
+                          <h4>Choose background boosts</h4>
+                        </div>
+                        <span class="boost-remaining">{{activePane.backgroundSection.remaining}} remaining</span>
+                      </header>
+
+                      <div class="boost-button-grid">
+                        {{#each activePane.backgroundSection.buttons}}
+                          <button type="button" class="boost-choice{{#if selected}} selected{{/if}}" data-wayfinder-action="toggle-boost-choice" data-step-id="{{../activePane.stepId}}" data-section="background" data-attribute="{{attribute}}" {{#if disabled}}disabled{{/if}}>
+                            <span class="boost-choice-code">{{attribute}}</span>
+                            <span class="boost-choice-label">{{label}}</span>
+                          </button>
+                        {{/each}}
+                      </div>
+                    </article>
+                  {{/if}}
+
+                  {{#if activePane.classSection}}
+                    <article class="boost-sheet">
+                      <header class="boost-section-header">
+                        <div>
+                          <p class="eyebrow">Class</p>
+                          <h4>Choose key ability</h4>
+                        </div>
+                      </header>
+
+                      <div class="boost-button-grid">
+                        {{#each activePane.classSection.options}}
+                          <button type="button" class="boost-choice{{#if selected}} selected{{/if}}" data-wayfinder-action="toggle-boost-choice" data-step-id="{{../activePane.stepId}}" data-section="class" data-attribute="{{attribute}}">
+                            <span class="boost-choice-code">{{attribute}}</span>
+                            <span class="boost-choice-label">{{label}}</span>
+                          </button>
+                        {{/each}}
+                      </div>
+                    </article>
+                  {{/if}}
+
+                  <article class="boost-sheet">
+                    <header class="boost-section-header">
+                      <div>
+                        <p class="eyebrow">Level {{activePane.levelSection.level}}</p>
+                        <h4>Choose free boosts</h4>
+                      </div>
+                      <span class="boost-remaining">{{activePane.levelSection.remaining}} remaining</span>
+                    </header>
+
+                    <div class="boost-button-grid">
+                      {{#each activePane.levelSection.buttons}}
+                        <button type="button" class="boost-choice{{#if selected}} selected{{/if}}{{#if partial}} partial{{/if}}" data-wayfinder-action="toggle-boost-choice" data-step-id="{{../activePane.stepId}}" data-section="level-{{../activePane.levelSection.level}}" data-attribute="{{attribute}}" {{#if disabled}}disabled{{/if}}>
+                          <span class="boost-choice-code">{{attribute}}</span>
+                          <span class="boost-choice-label">{{label}}</span>
+                        </button>
+                      {{/each}}
+                    </div>
+                  </article>
+                </section>
+              {{/if}}
+            </section>
+          {{/if}}
+
           {{#if activePane.isPickItem}}
             <section class="selection-stage">
               <section class="option-browser">
@@ -124,28 +301,38 @@
                   </label>
                 </header>
 
-                <div class="option-list" data-wayfinder-option-list data-step-id="{{activePane.stepId}}">
-                  {{#each activePane.options}}
-                    <article class="option-row{{#if previewing}} previewing{{/if}}{{#if selected}} selected{{/if}}">
-                      <button type="button" class="option-main" data-wayfinder-action="preview-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
-                        <img src="{{img}}" alt="{{name}}" />
-                        <span class="option-copy">
-                          <span class="option-title-row">
-                            <span class="option-name">{{name}}</span>
-                            {{#if rarity}}
-                              <span class="option-rarity rarity-{{rarity}}">{{rarity}}</span>
-                            {{/if}}
+                {{#if activePane.options.length}}
+                  <div class="option-list" data-wayfinder-option-list data-step-id="{{activePane.stepId}}">
+                    {{#each activePane.options}}
+                      <article class="option-row{{#if previewing}} previewing{{/if}}{{#if selected}} selected{{/if}}">
+                        <button type="button" class="option-main" data-wayfinder-action="preview-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
+                          <img src="{{img}}" alt="{{name}}" />
+                          <span class="option-copy">
+                            <span class="option-title-row">
+                              <span class="option-name">{{name}}</span>
+                              {{#if rarity}}
+                                <span class="option-rarity rarity-{{rarity}}">{{rarity}}</span>
+                              {{/if}}
+                            </span>
+                            <span class="option-source">{{sourceLabel}}</span>
                           </span>
-                          <span class="option-source">{{sourceLabel}}</span>
-                        </span>
-                      </button>
+                        </button>
 
-                      <button type="button" class="option-select{{#if selected}} is-selected{{/if}}" data-wayfinder-action="select-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
-                        {{#if selected}}Chosen{{else}}Choose{{/if}}
-                      </button>
-                    </article>
-                  {{/each}}
-                </div>
+                        <button type="button" class="option-select{{#if selected}} is-selected{{/if}}" data-wayfinder-action="select-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
+                          {{#if selected}}Chosen{{else}}Choose{{/if}}
+                        </button>
+                      </article>
+                    {{/each}}
+                  </div>
+                {{else}}
+                  {{#if activePane.infoState}}
+                    <div class="picker-state picker-state-{{activePane.infoState.tone}}">
+                      <p class="eyebrow">{{activePane.infoState.eyebrow}}</p>
+                      <h4>{{activePane.infoState.title}}</h4>
+                      <p>{{activePane.infoState.message}}</p>
+                    </div>
+                  {{/if}}
+                {{/if}}
               </section>
 
               <section class="preview-pane">
@@ -197,9 +384,17 @@
                     {{{activePane.preview.description}}}
                   </section>
                 {{else}}
-                  <div class="preview-empty">
-                    <p>No options match the current filters.</p>
-                  </div>
+                  {{#if activePane.infoState}}
+                    <div class="preview-empty picker-state picker-state-{{activePane.infoState.tone}}">
+                      <p class="eyebrow">{{activePane.infoState.eyebrow}}</p>
+                      <h4>{{activePane.infoState.title}}</h4>
+                      <p>{{activePane.infoState.message}}</p>
+                    </div>
+                  {{else}}
+                    <div class="preview-empty">
+                      <p>No options match the current filters.</p>
+                    </div>
+                  {{/if}}
                 {{/if}}
               </section>
             </section>

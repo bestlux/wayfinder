@@ -33,7 +33,7 @@ export function inspectActor(actor) {
             sourceIds.add(sourceId);
         }
         if (type === "feat") {
-            const featType = String(item?.system?.featType?.value ?? "");
+            const featType = String(item?.system?.featType?.value ?? item?.system?.category ?? "");
             if (featType in featCounts) {
                 featCounts[featType] += 1;
             }

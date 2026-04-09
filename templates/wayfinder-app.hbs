@@ -1,69 +1,51 @@
 <section class="wayfinder-shell">
-  <header class="wayfinder-dossier">
-    <div class="dossier-identity">
-      <div class="dossier-title">
-        <p class="eyebrow">Wayfinder</p>
-        <div class="dossier-title-row">
-          <h2>{{actorName}}</h2>
-          <p class="dossier-line">{{dossierLine}}</p>
-        </div>
-      </div>
-
-      <div class="dossier-progress">
-        <p class="eyebrow">Draft Progress</p>
-        <p class="progress-note">{{completedCount}} of {{stepCount}} steps prepared</p>
-        <p class="guidance">{{guidance}}</p>
-      </div>
-    </div>
-
-    <div class="dossier-ledger">
-      <dl class="summary-strip">
-        {{#each summary}}
-          <div class="summary-item{{#if complete}} complete{{/if}}">
-            <dt>{{label}}</dt>
-            <dd>{{value}}</dd>
-          </div>
-        {{/each}}
-      </dl>
-
-      <aside class="dossier-controls">
-      <div class="level-card">
-        <div class="level-badge">
-          <span class="level-label">Current</span>
-          <strong>{{currentLevel}}</strong>
-        </div>
-        <div class="level-badge target">
-          <span class="level-label">Target</span>
-          <strong>{{targetLevel}}</strong>
-        </div>
-      </div>
-
-      <div class="control-stack">
-        <p class="control-label">Target Level</p>
-        <div class="target-controls">
-          <button type="button" class="icon" data-wayfinder-action="target-down" aria-label="Lower target level">
-            <i class="fa-solid fa-minus"></i>
-          </button>
-          <button type="button" class="icon" data-wayfinder-action="target-up" aria-label="Raise target level">
-            <i class="fa-solid fa-plus"></i>
-          </button>
-        </div>
-      </div>
-      </aside>
-    </div>
-  </header>
-
   {{#if hasPendingSteps}}
     <section class="wizard-frame">
       <aside class="wizard-rail">
         <header class="rail-header">
-          <p class="eyebrow">Journey</p>
-          <h3>Build Path</h3>
-          <p class="rail-copy">Move in order, but jump freely when you need to compare earlier choices.</p>
+          <p class="eyebrow">Wayfinder</p>
+          <h2 class="rail-actor-name">{{actorName}}</h2>
+          <p class="rail-dossier-line">{{dossierLine}}</p>
+
+          <div class="rail-status-row">
+            <div class="level-card">
+              <div class="level-badge">
+                <span class="level-label">Cur</span>
+                <strong>{{currentLevel}}</strong>
+              </div>
+              <div class="level-badge target">
+                <span class="level-label">Tgt</span>
+                <strong>{{targetLevel}}</strong>
+              </div>
+            </div>
+
+            <div class="target-controls">
+              <button type="button" class="icon" data-wayfinder-action="target-down" aria-label="Lower target level">
+                <i class="fa-solid fa-minus"></i>
+              </button>
+              <button type="button" class="icon" data-wayfinder-action="target-up" aria-label="Raise target level">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+
+            <div class="rail-progress">
+              <div class="progress-dots">
+                {{#each steps}}
+                  <span class="progress-dot{{#if complete}} filled{{/if}}{{#if active}} active{{/if}}{{#if invalidated}} warn{{/if}}" title="{{title}}"></span>
+                {{/each}}
+              </div>
+              <span class="progress-label">{{completedCount}}/{{stepCount}}</span>
+            </div>
+          </div>
         </header>
 
         <div class="wizard-step-list">
           {{#each steps}}
+            {{#if firstInLevel}}
+              <div class="step-level-divider">
+                <span class="step-level-divider-label">Level {{level}}</span>
+              </div>
+            {{/if}}
             <button type="button" class="step-link{{#if active}} active{{/if}}{{#if complete}} complete{{/if}}{{#if invalidated}} invalidated{{/if}}" data-wayfinder-action="select-step" data-step-id="{{id}}">
               <span class="step-index">{{index}}</span>
               <span class="step-copy">
@@ -77,27 +59,29 @@
 
       <main class="wizard-stage">
         {{#if activePane}}
-          <header class="active-step-header">
-            <div class="active-step-copy">
-              <p class="eyebrow">Step {{activeStepIndex}} of {{stepCount}}</p>
-              <div class="active-step-heading">
-                <h3>{{activePane.title}}</h3>
-                <span class="step-badge">Level {{activePane.level}} · {{activePane.modeLabel}}</span>
-              </div>
-              <p>{{activePane.description}}</p>
-              {{#if activePane.contextNote}}
-                <p class="context-note">{{activePane.contextNote}}</p>
-              {{/if}}
-              {{#if statusNote}}
-                <p class="status-note">{{statusNote}}</p>
-              {{/if}}
+          <header class="stage-bar">
+            <div class="stage-bar-copy">
+              <span class="stage-bar-step">Step {{activeStepIndex}}</span>
+              <h3>{{activePane.title}}</h3>
+              <span class="step-badge">Level {{activePane.level}} · {{activePane.modeLabel}}</span>
             </div>
 
             <div class="step-nav-controls">
-              <button type="button" class="secondary" data-wayfinder-action="previous-step" {{#unless canGoPrevious}}disabled{{/unless}}>Previous</button>
-              <button type="button" class="secondary" data-wayfinder-action="next-step" {{#unless canGoNext}}disabled{{/unless}}>Next</button>
+              <button type="button" class="nav-btn" data-wayfinder-action="previous-step" {{#unless canGoPrevious}}disabled{{/unless}} aria-label="Previous step">
+                <i class="fa-solid fa-chevron-left"></i>
+              </button>
+              <button type="button" class="nav-btn" data-wayfinder-action="next-step" {{#unless canGoNext}}disabled{{/unless}} aria-label="Next step">
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
             </div>
           </header>
+
+          {{#if statusNote}}
+            <div class="status-note">
+              <i class="fa-solid fa-circle-info"></i>
+              <span>{{statusNote}}</span>
+            </div>
+          {{/if}}
 
           {{#if activePane.isManual}}
             <section class="manual-pane">
@@ -133,11 +117,9 @@
                 </div>
               {{else}}
                 <section class="boost-ledger">
-                  <header class="browser-header boost-summary-header">
-                    <div>
-                      <p class="eyebrow">Projected Ability Modifiers</p>
-                      <h4>{{activePane.selectedLabel}}</h4>
-                    </div>
+                  <header class="boost-summary-header">
+                    <p class="eyebrow">Projected Ability Modifiers</p>
+                    <h4>{{activePane.selectedLabel}}</h4>
                   </header>
 
                   <div class="boost-ability-grid">
@@ -290,14 +272,16 @@
             <section class="selection-stage">
               <section class="option-browser">
                 <header class="browser-header">
-                  <div>
-                    <p class="eyebrow">Available Options</p>
+                  <div class="browser-header-row">
                     <h4>{{activePane.resultCount}} matching choice{{#unless (eq activePane.resultCount 1)}}s{{/unless}}</h4>
+                    {{#if activePane.contextNote}}
+                      <p class="context-note">{{activePane.contextNote}}</p>
+                    {{/if}}
                   </div>
 
                   <label class="search-shell">
                     <i class="fa-solid fa-magnifying-glass"></i>
-                    <input type="search" value="{{activePane.search}}" placeholder="Search by name, source, or rarity" data-wayfinder-search data-step-id="{{activePane.stepId}}" />
+                    <input type="search" value="{{activePane.search}}" placeholder="Search name, source, rarity…" data-wayfinder-search data-step-id="{{activePane.stepId}}" />
                   </label>
                 </header>
 
@@ -319,7 +303,7 @@
                         </button>
 
                         <button type="button" class="option-select{{#if selected}} is-selected{{/if}}" data-wayfinder-action="select-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
-                          {{#if selected}}Chosen{{else}}Choose{{/if}}
+                          {{#if selected}}<i class="fa-solid fa-check"></i> Chosen{{else}}Choose{{/if}}
                         </button>
                       </article>
                     {{/each}}
@@ -341,7 +325,6 @@
                     <img src="{{activePane.preview.img}}" alt="{{activePane.preview.title}}" />
 
                     <div class="preview-heading">
-                      <p class="eyebrow">Reference</p>
                       <h4>{{activePane.preview.title}}</h4>
                       {{#if activePane.preview.source}}
                         <p class="preview-source">{{activePane.preview.source}}</p>
@@ -392,7 +375,7 @@
                     </div>
                   {{else}}
                     <div class="preview-empty">
-                      <p>No options match the current filters.</p>
+                      <p>Select an option to preview its details.</p>
                     </div>
                   {{/if}}
                 {{/if}}
@@ -409,8 +392,10 @@
   {{/if}}
 
   <footer class="wayfinder-footer">
-    <button type="button" class="secondary" data-wayfinder-action="clear-draft">Clear Draft</button>
-    <button type="button" class="secondary" data-wayfinder-action="save-draft">Save Draft</button>
-    <button type="button" class="primary" data-wayfinder-action="apply-draft">Apply Changes</button>
+    <button type="button" class="footer-clear" data-wayfinder-action="clear-draft">Clear Draft</button>
+    <div class="footer-actions">
+      <button type="button" class="secondary" data-wayfinder-action="save-draft">Save Draft</button>
+      <button type="button" class="primary" data-wayfinder-action="apply-draft">Apply Changes</button>
+    </div>
   </footer>
 </section>

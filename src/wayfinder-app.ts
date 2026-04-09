@@ -19,6 +19,7 @@ interface StepNavRow {
   invalidated: boolean;
   modeLabel: string;
   status: string;
+  firstInLevel: boolean;
 }
 
 interface SummaryItem {
@@ -267,7 +268,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       complete: await this.#isStepComplete(step, effectiveBuildState),
       invalidated: this.#recentlyInvalidatedStepIds.has(step.slotId) && !await this.#isStepComplete(step, effectiveBuildState),
       modeLabel: this.#modeLabel(step.kind),
-      status: await this.#stepStatus(step, effectiveBuildState)
+      status: await this.#stepStatus(step, effectiveBuildState),
+      firstInLevel: index === 0 || plan.steps[index - 1].level !== step.level
     })));
 
     return {

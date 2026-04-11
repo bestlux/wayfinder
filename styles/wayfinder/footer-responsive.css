@@ -1,0 +1,132 @@
+/* ── Footer ────────────────────────────────────────────── */
+
+.wayfinder-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.25rem 0.1rem 0;
+  border-top: 1px solid rgba(95, 77, 57, 0.18);
+}
+
+.footer-clear {
+  padding: 0.25rem 0.4rem;
+  border: none;
+  border-radius: var(--wf-radius);
+  background: transparent;
+  color: var(--wf-ink-soft);
+  font: 600 0.68rem/1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color var(--wf-transition),
+    background-color var(--wf-transition);
+}
+
+.footer-clear:hover {
+  color: var(--wf-primary);
+  background: rgba(94, 0, 0, 0.05);
+}
+
+.footer-actions {
+  display: flex;
+  gap: 0.3rem;
+}
+
+/* ── Prose ─────────────────────────────────────────────── */
+
+.prose {
+  color: var(--wf-ink);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  color: var(--wf-primary);
+  font-family: var(--serif, serif);
+}
+
+/* ── Responsive ────────────────────────────────────────── */
+
+@media (max-width: 1180px) {
+  .selection-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .option-browser {
+    border-right: 0;
+    border-bottom: 1px solid var(--wf-rule);
+  }
+}
+
+@media (max-width: 980px) {
+  .wizard-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--wf-rule);
+  }
+
+  .boost-ability-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .boost-button-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .wayfinder-shell {
+    padding: 0.4rem;
+  }
+
+  .selection-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .stage-bar {
+    flex-wrap: wrap;
+  }
+
+  .preview-banner {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-banner img {
+    width: 72px;
+    height: 72px;
+  }
+
+  .preview-actions {
+    flex-direction: row;
+  }
+
+  .footer-actions,
+  .step-nav-controls {
+    flex-wrap: wrap;
+  }
+
+  .boost-ability-grid,
+  .boost-button-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .boost-section-header,
+  .voluntary-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .boost-section-tools,
+  .voluntary-actions,
+  .voluntary-tools {
+    justify-content: flex-start;
+  }
+}

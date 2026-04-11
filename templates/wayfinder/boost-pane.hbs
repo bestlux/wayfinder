@@ -1,0 +1,158 @@
+<section class="boost-stage">
+  {{#if activePane.blocked}}
+    <div class="picker-state picker-state-blocked boost-blocked">
+      <p class="eyebrow">Prerequisite Required</p>
+      <h4>{{activePane.blockedTitle}}</h4>
+      <p>{{activePane.blockedMessage}}</p>
+    </div>
+  {{else}}
+    <section class="boost-ledger">
+      <header class="boost-summary-header">
+        <p class="eyebrow">Projected Ability Modifiers</p>
+        <h4>{{activePane.selectedLabel}}</h4>
+      </header>
+
+      <div class="boost-ability-grid">
+        {{#each activePane.abilitySummary}}
+          <article class="boost-ability-card{{#if partial}} partial{{/if}}">
+            <span class="boost-ability-label">{{label}}</span>
+            <strong>{{modifierLabel}}</strong>
+            {{#if partial}}
+              <span class="boost-ability-note">Partial</span>
+            {{/if}}
+          </article>
+        {{/each}}
+      </div>
+    </section>
+
+    <section class="boost-sections">
+      {{#if activePane.ancestrySection}}
+        <article class="boost-sheet">
+          <header class="boost-section-header">
+            <div>
+              <p class="eyebrow">Ancestry</p>
+              <h4>Choose ancestry boosts</h4>
+            </div>
+            <div class="boost-section-tools">
+              <span class="boost-remaining">{{activePane.ancestrySection.remaining}} remaining</span>
+              {{#if activePane.ancestrySection.canToggleAlternate}}
+                <button type="button" class="secondary compact" data-wayfinder-action="toggle-ancestry-mode" data-step-id="{{activePane.stepId}}">
+                  {{#if (eq activePane.ancestrySection.mode "alternate")}}Use printed boosts{{else}}Use alternate boosts{{/if}}
+                </button>
+              {{/if}}
+            </div>
+          </header>
+
+          <div class="boost-button-grid">
+            {{#each activePane.ancestrySection.buttons}}
+              <button type="button" class="boost-choice{{#if selected}} selected{{/if}}" data-wayfinder-action="toggle-boost-choice" data-step-id="{{../activePane.stepId}}" data-section="ancestry" data-attribute="{{attribute}}" {{#if disabled}}disabled{{/if}}>
+                <span class="boost-choice-code">{{attribute}}</span>
+                <span class="boost-choice-label">{{label}}</span>
+              </button>
+            {{/each}}
+          </div>
+        </article>
+      {{/if}}
+
+      {{#if activePane.voluntarySection}}
+        <article class="boost-sheet voluntary-sheet">
+          <header class="boost-section-header">
+            <div>
+              <p class="eyebrow">Optional</p>
+              <h4>Voluntary flaws</h4>
+            </div>
+            <div class="boost-section-tools voluntary-tools">
+              <button type="button" class="secondary compact" data-wayfinder-action="toggle-voluntary-enabled" data-step-id="{{activePane.stepId}}">
+                {{#if activePane.voluntarySection.enabled}}Disable{{else}}Enable{{/if}}
+              </button>
+              {{#if activePane.voluntarySection.enabled}}
+                <button type="button" class="secondary compact" data-wayfinder-action="toggle-voluntary-legacy" data-step-id="{{activePane.stepId}}">
+                  {{#if activePane.voluntarySection.legacy}}Legacy rules on{{else}}Legacy rules off{{/if}}
+                </button>
+              {{/if}}
+            </div>
+          </header>
+
+          {{#if activePane.voluntarySection.enabled}}
+            <div class="voluntary-list">
+              {{#each activePane.voluntarySection.buttons}}
+                <div class="voluntary-row">
+                  <span class="voluntary-label">{{label}}</span>
+                  <div class="voluntary-actions">
+                    <button type="button" class="secondary compact{{#if flawSelected}} is-selected{{/if}}" data-wayfinder-action="toggle-voluntary-choice" data-step-id="{{../activePane.stepId}}" data-attribute="{{attribute}}" data-choice-kind="flaw" {{#if flawDisabled}}disabled{{/if}}>Flaw</button>
+                    {{#if showSecondFlaw}}
+                      <button type="button" class="secondary compact{{#if secondFlawSelected}} is-selected{{/if}}" data-wayfinder-action="toggle-voluntary-choice" data-step-id="{{../activePane.stepId}}" data-attribute="{{attribute}}" data-choice-kind="second-flaw" {{#if secondFlawDisabled}}disabled{{/if}}>Second flaw</button>
+                    {{/if}}
+                    {{#if showBoost}}
+                      <button type="button" class="secondary compact{{#if boostSelected}} is-selected{{/if}}" data-wayfinder-action="toggle-voluntary-choice" data-step-id="{{../activePane.stepId}}" data-attribute="{{attribute}}" data-choice-kind="boost" {{#if boostDisabled}}disabled{{/if}}>Boost</button>
+                    {{/if}}
+                  </div>
+                </div>
+              {{/each}}
+            </div>
+          {{/if}}
+        </article>
+      {{/if}}
+
+      {{#if activePane.backgroundSection}}
+        <article class="boost-sheet">
+          <header class="boost-section-header">
+            <div>
+              <p class="eyebrow">Background</p>
+              <h4>Choose background boosts</h4>
+            </div>
+            <span class="boost-remaining">{{activePane.backgroundSection.remaining}} remaining</span>
+          </header>
+
+          <div class="boost-button-grid">
+            {{#each activePane.backgroundSection.buttons}}
+              <button type="button" class="boost-choice{{#if selected}} selected{{/if}}" data-wayfinder-action="toggle-boost-choice" data-step-id="{{../activePane.stepId}}" data-section="background" data-attribute="{{attribute}}" {{#if disabled}}disabled{{/if}}>
+                <span class="boost-choice-code">{{attribute}}</span>
+                <span class="boost-choice-label">{{label}}</span>
+              </button>
+            {{/each}}
+          </div>
+        </article>
+      {{/if}}
+
+      {{#if activePane.classSection}}
+        <article class="boost-sheet">
+          <header class="boost-section-header">
+            <div>
+              <p class="eyebrow">Class</p>
+              <h4>Choose key ability</h4>
+            </div>
+          </header>
+
+          <div class="boost-button-grid">
+            {{#each activePane.classSection.options}}
+              <button type="button" class="boost-choice{{#if selected}} selected{{/if}}" data-wayfinder-action="toggle-boost-choice" data-step-id="{{../activePane.stepId}}" data-section="class" data-attribute="{{attribute}}">
+                <span class="boost-choice-code">{{attribute}}</span>
+                <span class="boost-choice-label">{{label}}</span>
+              </button>
+            {{/each}}
+          </div>
+        </article>
+      {{/if}}
+
+      <article class="boost-sheet">
+        <header class="boost-section-header">
+          <div>
+            <p class="eyebrow">Level {{activePane.levelSection.level}}</p>
+            <h4>Choose free boosts</h4>
+          </div>
+          <span class="boost-remaining">{{activePane.levelSection.remaining}} remaining</span>
+        </header>
+
+        <div class="boost-button-grid">
+          {{#each activePane.levelSection.buttons}}
+            <button type="button" class="boost-choice{{#if selected}} selected{{/if}}{{#if partial}} partial{{/if}}" data-wayfinder-action="toggle-boost-choice" data-step-id="{{../activePane.stepId}}" data-section="level-{{../activePane.levelSection.level}}" data-attribute="{{attribute}}" {{#if disabled}}disabled{{/if}}>
+              <span class="boost-choice-code">{{attribute}}</span>
+              <span class="boost-choice-label">{{label}}</span>
+            </button>
+          {{/each}}
+        </div>
+      </article>
+    </section>
+  {{/if}}
+</section>

@@ -1,0 +1,21 @@
+<section class="manual-pane">
+  <article class="manual-sheet">
+    <header class="manual-header">
+      <p class="eyebrow">Manual Checkpoint</p>
+      <h4>{{activePane.title}}</h4>
+      <p>{{activePane.description}}</p>
+    </header>
+
+    <div class="manual-body">
+      <div class="manual-status">
+        <span class="manual-label">Draft status</span>
+        <strong>{{activePane.selectedLabel}}</strong>
+      </div>
+
+      <label class="manual-check">
+        <input type="checkbox" data-wayfinder-manual data-step-id="{{activePane.stepId}}" {{#if activePane.completed}}checked{{/if}} />
+        <span>Mark this checkpoint complete once the PF2E sheet work is finished.</span>
+      </label>
+    </div>
+  </article>
+</section>

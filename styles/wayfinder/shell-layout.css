@@ -1,0 +1,557 @@
+/* ── Wizard Frame ──────────────────────────────────────── */
+
+.wizard-frame {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+  border: 1px solid rgba(95, 77, 57, 0.22);
+  background:
+    linear-gradient(180deg, rgba(247, 240, 226, 0.99) 0%, rgba(241, 231, 212, 0.98) 100%);
+  box-shadow:
+    0 0 0 1px rgba(159, 114, 91, 0.25),
+    0 0 0 2px rgba(233, 215, 161, 0.4),
+    0 0 0 3px rgba(149, 109, 88, 0.2);
+  overflow: hidden;
+}
+
+/* ── Rail ──────────────────────────────────────────────── */
+
+.wizard-rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background:
+    linear-gradient(180deg, rgba(236, 226, 204, 0.98) 0%, rgba(227, 212, 184, 0.98) 100%);
+  border-right: 1px solid var(--wf-rule);
+}
+
+/* ── Rail Header (character identity + controls) ───────── */
+
+.rail-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.06rem;
+  padding: 0.5rem 0.65rem 0.45rem;
+  border-bottom: 1px solid rgba(95, 77, 57, 0.2);
+  background:
+    url("/systems/pf2e/assets/sheet/border-pattern.webp") repeat-x top,
+    linear-gradient(180deg, rgba(239, 228, 206, 0.99) 0%, rgba(232, 218, 192, 0.95) 100%);
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--wf-accent-contrast);
+  font: 700 0.54rem/1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.14em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+  text-transform: uppercase;
+}
+
+.rail-actor-name {
+  margin: 0.12rem 0 0;
+  color: var(--wf-primary);
+  font: 600 1.25rem/1 var(--serif, "Signika", serif);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-dossier-line {
+  margin: 0.08rem 0 0;
+  color: var(--wf-ink-soft);
+  font: 600 0.78rem/1.2 var(--serif, serif);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Rail Status Row (levels + progress) ───────────────── */
+
+.rail-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(95, 77, 57, 0.14);
+}
+
+.level-card {
+  display: flex;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.level-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.5rem;
+  padding-top: 0.06rem;
+  background: url("/systems/pf2e/assets/sheet/level-badge.webp") no-repeat center / contain;
+  text-align: center;
+}
+
+.level-badge strong {
+  color: var(--text-light, #f4f1ea);
+  font: 600 0.88rem/1 var(--serif, serif);
+}
+
+.level-label {
+  color: var(--wf-accent-dark);
+  font: 700 0.4rem/1.2 var(--sans-serif, sans-serif);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.target-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.target-controls .icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.15rem;
+  padding: 0;
+  border-radius: var(--wf-radius);
+  border: 1px solid var(--wf-rule-strong);
+  background: linear-gradient(180deg, #f5eedf 0%, #e6d7bc 100%);
+  color: var(--wf-ink);
+  font-size: 0.55rem;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1);
+  transition:
+    background-color var(--wf-transition),
+    box-shadow var(--wf-transition);
+}
+
+.target-controls .icon:hover:not(:disabled) {
+  background: linear-gradient(180deg, #fcf7ea 0%, #ebddc3 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1),
+    0 0 3px rgba(94, 0, 0, 0.15);
+}
+
+.target-controls .icon:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Progress Dots ─────────────────────────────────────── */
+
+.rail-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.progress-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.progress-dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--wf-rule);
+  transition: background-color var(--wf-transition);
+}
+
+.progress-dot.filled {
+  background: var(--wf-green);
+}
+
+.progress-dot.active {
+  background: var(--wf-primary);
+  box-shadow: 0 0 0 1.5px rgba(94, 0, 0, 0.3);
+}
+
+.progress-dot.warn {
+  background: var(--wf-warn);
+}
+
+.progress-label {
+  color: var(--wf-ink-soft);
+  font: 700 0.56rem/1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ── Step List ─────────────────────────────────────────── */
+
+.wizard-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0.15rem 0;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wf-rule) transparent;
+}
+
+/* ── Level Group Dividers ──────────────────────────────── */
+
+.step-level-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.55rem 0.15rem;
+  flex-shrink: 0;
+}
+
+.step-level-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--wf-rule);
+}
+
+.step-level-divider-label {
+  color: var(--wf-accent-contrast);
+  font: 700 0.5rem/1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.step-link {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  gap: 0.4rem;
+  align-items: center;
+  width: 100%;
+  min-height: 0;
+  height: auto !important;
+  padding: 0.3rem 0.55rem 0.3rem calc(0.55rem + 3px);
+  border: 0 !important;
+  background: transparent;
+  color: var(--wf-ink);
+  line-height: normal;
+  text-align: left;
+  white-space: normal;
+  flex-shrink: 0;
+  transition: background-color var(--wf-transition);
+}
+
+.wayfinder-app .step-link,
+.wayfinder-app .step-link:focus,
+.wayfinder-app .step-link:focus-visible,
+.wayfinder-app .step-link:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+.step-link:hover {
+  background: rgba(94, 0, 0, 0.04);
+}
+
+.step-link.active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--wf-primary);
+}
+
+.step-link.active {
+  background:
+    linear-gradient(90deg, rgba(94, 0, 0, 0.1) 0%, rgba(94, 0, 0, 0.03) 62%, transparent 100%);
+}
+
+.step-link.invalidated {
+  background:
+    linear-gradient(90deg, rgba(139, 90, 25, 0.12) 0%, rgba(139, 90, 25, 0.05) 62%, transparent 100%);
+}
+
+/* Step index badge */
+
+.step-index {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 999px;
+  background: var(--wf-secondary);
+  color: var(--text-light, #f4f1ea);
+  font: 700 0.55rem/1 var(--sans-serif, sans-serif);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.step-link.complete .step-index {
+  background: var(--wf-green);
+  color: transparent;
+  position: relative;
+}
+
+.step-link.complete .step-index::after {
+  content: "\f00c";
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  font-size: 0.5rem;
+  color: var(--text-light, #f4f1ea);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-link.invalidated .step-index {
+  background: var(--wf-warn);
+  color: transparent;
+  position: relative;
+}
+
+.step-link.invalidated .step-index::after {
+  content: "\f071";
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  font-size: 0.42rem;
+  color: var(--text-light, #f4f1ea);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Step copy */
+
+.step-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.04rem;
+  min-width: 0;
+}
+
+.step-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-width: 0;
+  overflow: hidden;
+  font: 600 0.78rem/1.2 var(--serif, serif);
+  white-space: normal;
+  word-break: break-word;
+}
+
+.step-status {
+  display: block;
+  color: var(--wf-ink-soft);
+  font: 700 0.48rem/1.15 var(--sans-serif, sans-serif);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── Stage ─────────────────────────────────────────────── */
+
+.wizard-stage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background:
+    linear-gradient(180deg, rgba(249, 243, 231, 0.99) 0%, rgba(244, 235, 219, 0.98) 100%);
+}
+
+/* ── Stage Bar (compact single-row header) ─────────────── */
+
+.stage-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.32rem 0.6rem;
+  border-bottom: 1px solid var(--wf-rule);
+  background:
+    linear-gradient(180deg, rgba(240, 231, 214, 0.8) 0%, rgba(236, 226, 207, 0.3) 100%);
+}
+
+.stage-bar-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem 0.55rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.stage-bar-step {
+  color: var(--wf-ink-soft);
+  font: 700 0.54rem/1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.stage-bar h3 {
+  margin: 0;
+  color: var(--wf-primary);
+  font: 600 1.15rem/1 var(--serif, "Signika", serif);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.step-badge {
+  color: var(--wf-ink-soft);
+  font: 700 0.54rem/1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.step-nav-controls {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  border-radius: var(--wf-radius);
+  border: 1px solid var(--wf-rule-strong);
+  background: linear-gradient(180deg, #f5eedf 0%, #e6d7bc 100%);
+  color: var(--wf-ink);
+  font-size: 0.65rem;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1);
+  transition:
+    background-color var(--wf-transition),
+    box-shadow var(--wf-transition);
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #fcf7ea 0%, #ebddc3 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1),
+    0 0 3px rgba(94, 0, 0, 0.15);
+}
+
+.nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ── Status Note (inline alert) ────────────────────────── */
+
+.status-note {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.6rem;
+  border-bottom: 1px solid rgba(94, 0, 0, 0.15);
+  background: rgba(94, 0, 0, 0.05);
+  color: var(--wf-primary);
+  font: 700 0.64rem/1.3 var(--sans-serif, sans-serif);
+  letter-spacing: 0.02em;
+}
+
+.status-note i {
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+/* ── Shared Button Base ────────────────────────────────── */
+
+.primary,
+.secondary,
+.option-select {
+  min-height: 1.75rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--wf-radius);
+  border: 1px solid var(--wf-rule-strong);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.12),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1);
+  transition:
+    background-color var(--wf-transition),
+    border-color var(--wf-transition),
+    color var(--wf-transition),
+    box-shadow var(--wf-transition);
+}
+
+.primary {
+  background: linear-gradient(180deg, #7d0808 0%, #560000 100%);
+  border-color: #300000;
+  color: var(--text-light, #f4f1ea);
+}
+
+.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #911010 0%, #660000 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.12),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1),
+    0 0 6px rgba(94, 0, 0, 0.3);
+}
+
+.secondary,
+.option-select {
+  background: linear-gradient(180deg, #f5eedf 0%, #e6d7bc 100%);
+  color: var(--wf-ink);
+}
+
+.secondary:hover:not(:disabled),
+.option-select:hover:not(:disabled) {
+  background: linear-gradient(180deg, #fcf7ea 0%, #ebddc3 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.12),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1),
+    0 0 3px rgba(94, 0, 0, 0.12);
+}
+
+.primary:disabled,
+.secondary:disabled,
+.option-select:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.secondary.compact,
+.option-select.compact {
+  min-height: 1.45rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.7rem;
+}
+
+.secondary.is-selected {
+  background: linear-gradient(180deg, rgba(94, 0, 0, 0.18) 0%, rgba(94, 0, 0, 0.08) 100%);
+  border-color: rgba(94, 0, 0, 0.3);
+}
+

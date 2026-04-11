@@ -1,0 +1,68 @@
+/* ═══════════════════════════════════════════════════════════
+   Wayfinder — PF2E Character Builder
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Root & Foundation ─────────────────────────────────── */
+
+.wayfinder-app {
+  --wf-ink: #251e16;
+  --wf-ink-soft: #6d6153;
+  --wf-paper: #f6f0e3;
+  --wf-paper-strong: #ece2cf;
+  --wf-paper-muted: #e2d4bc;
+  --wf-rule: #baa991;
+  --wf-rule-strong: #8f7b67;
+  --wf-primary: var(--color-pf-primary, #5e0000);
+  --wf-secondary: var(--color-pf-secondary, #171f69);
+  --wf-accent: var(--color-pf-tertiary, #e9d7a1);
+  --wf-accent-dark: var(--color-pf-tertiary-dark, #c7af72);
+  --wf-accent-contrast: #8b5a19;
+  --wf-green: #314b31;
+  --wf-warn: #8b5a19;
+  --wf-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+  --wf-radius: 2px;
+  --wf-transition: 150ms ease-in-out;
+  --wf-rarity-common: #323232;
+  --wf-rarity-uncommon: #98513d;
+  --wf-rarity-rare: #002664;
+  --wf-rarity-unique: #54166e;
+  color: var(--wf-ink);
+}
+
+/* ── Sheet Integration ─────────────────────────────────── */
+
+.sheet-navigation .wayfinder-launch {
+  color: var(--color-pf-tertiary, #e9d7a1);
+}
+
+.sheet-navigation .wayfinder-launch:hover {
+  color: #fff3c8;
+}
+
+.wayfinder-app .window-content {
+  background:
+    url("/systems/pf2e/assets/sheet/border-pattern.webp") repeat-x top,
+    linear-gradient(180deg, #190f11 0%, #281618 100%);
+  color: var(--wf-ink);
+}
+
+.wayfinder-app button,
+.wayfinder-app input {
+  font: inherit;
+}
+
+/* ── Shell ─────────────────────────────────────────────── */
+
+.wayfinder-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0.3rem;
+  border: 1px solid rgba(233, 215, 161, 0.16);
+  background:
+    linear-gradient(180deg, rgba(249, 243, 231, 0.985) 0%, rgba(240, 230, 210, 0.99) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+

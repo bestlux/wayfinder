@@ -1,0 +1,47 @@
+<section class="skill-increase-stage">
+  <article class="skill-increase-sheet">
+    <header class="skill-increase-header">
+      <div>
+        <p class="eyebrow">Skill Progression</p>
+        <h4>{{activePane.selectedLabel}}</h4>
+        <p>{{activePane.description}}</p>
+      </div>
+      <div class="skill-increase-cap">
+        <span class="skill-cap-label">Max rank now</span>
+        <strong>{{activePane.maxRankLabel}}</strong>
+      </div>
+    </header>
+
+    <div class="skill-increase-list" data-wayfinder-scroll-id="{{activePane.stepId}}:skills">
+      {{#each activePane.skills}}
+        <button
+          type="button"
+          class="skill-increase-option{{#if selected}} selected{{/if}}"
+          data-wayfinder-action="select-skill-increase"
+          data-step-id="{{../activePane.stepId}}"
+          data-slug="{{slug}}"
+          {{#if disabled}}disabled{{/if}}
+        >
+          <span class="skill-increase-ranks">
+            <span class="rank-chip current">{{currentRankCode}}</span>
+            <i class="fa-solid fa-arrow-right-long"></i>
+            <span class="rank-chip target">{{targetRankCode}}</span>
+          </span>
+          <span class="skill-increase-copy">
+            <span class="skill-increase-name">{{label}}</span>
+            <span class="skill-increase-detail">
+              {{#if disabledReason}}
+                {{disabledReason}}
+              {{else}}
+                {{currentRankLabel}} to {{targetRankLabel}}
+              {{/if}}
+            </span>
+          </span>
+          <span class="skill-increase-action">
+            {{#if selected}}Chosen{{else}}Choose{{/if}}
+          </span>
+        </button>
+      {{/each}}
+    </div>
+  </article>
+</section>

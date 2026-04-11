@@ -1,0 +1,112 @@
+<section class="selection-stage">
+  <section class="option-browser">
+    <header class="browser-header">
+      <div class="browser-header-row">
+        <h4>{{activePane.resultCount}} matching choice{{#unless (eq activePane.resultCount 1)}}s{{/unless}}</h4>
+        {{#if activePane.contextNote}}
+          <p class="context-note">{{activePane.contextNote}}</p>
+        {{/if}}
+      </div>
+
+      <label class="search-shell">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="search" value="{{activePane.search}}" placeholder="Search name, source, rarity…" data-wayfinder-search data-step-id="{{activePane.stepId}}" />
+      </label>
+    </header>
+
+    {{#if activePane.options.length}}
+      <div class="option-list" data-wayfinder-option-list data-step-id="{{activePane.stepId}}" data-wayfinder-scroll-id="{{activePane.stepId}}:options">
+        {{#each activePane.options}}
+          <article class="option-row{{#if previewing}} previewing{{/if}}{{#if selected}} selected{{/if}}">
+            <button type="button" class="option-main" data-wayfinder-action="preview-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
+              <img src="{{img}}" alt="{{name}}" />
+              <span class="option-copy">
+                <span class="option-title-row">
+                  <span class="option-name">{{name}}</span>
+                  {{#if rarity}}
+                    <span class="option-rarity rarity-{{rarity}}">{{rarity}}</span>
+                  {{/if}}
+                </span>
+                <span class="option-source">{{sourceLabel}}</span>
+              </span>
+            </button>
+
+            <button type="button" class="option-select{{#if selected}} is-selected{{/if}}" data-wayfinder-action="select-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
+              {{#if selected}}<i class="fa-solid fa-check"></i> Chosen{{else}}Choose{{/if}}
+            </button>
+          </article>
+        {{/each}}
+      </div>
+    {{else}}
+      {{#if activePane.infoState}}
+        <div class="picker-state picker-state-{{activePane.infoState.tone}}">
+          <p class="eyebrow">{{activePane.infoState.eyebrow}}</p>
+          <h4>{{activePane.infoState.title}}</h4>
+          <p>{{activePane.infoState.message}}</p>
+        </div>
+      {{/if}}
+    {{/if}}
+  </section>
+
+  <section class="preview-pane">
+    {{#if activePane.preview}}
+      <header class="preview-banner">
+        <img src="{{activePane.preview.img}}" alt="{{activePane.preview.title}}" />
+
+        <div class="preview-heading">
+          <h4>{{activePane.preview.title}}</h4>
+          {{#if activePane.preview.source}}
+            <p class="preview-source">{{activePane.preview.source}}</p>
+          {{/if}}
+
+          <ul class="preview-tags">
+            {{#if activePane.preview.rarity}}
+              <li class="tag rarity-{{activePane.preview.rarity}}">{{activePane.preview.rarity}}</li>
+            {{/if}}
+            {{#each activePane.preview.tags}}
+              <li class="tag">{{this}}</li>
+            {{/each}}
+          </ul>
+        </div>
+
+        <div class="preview-actions">
+          <button type="button" class="primary" data-wayfinder-action="select-option" data-step-id="{{activePane.stepId}}" data-value="{{activePane.preview.value}}">
+            {{activePane.preview.selectedLabel}}
+          </button>
+          {{#if activePane.selectedValue}}
+            <button type="button" class="secondary" data-wayfinder-action="clear-option" data-step-id="{{activePane.slotId}}">
+              Clear
+            </button>
+          {{/if}}
+        </div>
+      </header>
+
+      {{#if activePane.preview.details.length}}
+        <dl class="detail-grid">
+          {{#each activePane.preview.details}}
+            <div class="detail-row">
+              <dt>{{label}}</dt>
+              <dd title="{{value}}">{{value}}</dd>
+            </div>
+          {{/each}}
+        </dl>
+      {{/if}}
+
+      <section class="preview-description prose">
+        {{{activePane.preview.description}}}
+      </section>
+    {{else}}
+      {{#if activePane.infoState}}
+        <div class="preview-empty picker-state picker-state-{{activePane.infoState.tone}}">
+          <p class="eyebrow">{{activePane.infoState.eyebrow}}</p>
+          <h4>{{activePane.infoState.title}}</h4>
+          <p>{{activePane.infoState.message}}</p>
+        </div>
+      {{else}}
+        <div class="preview-empty">
+          <p>Select an option to preview its details.</p>
+        </div>
+      {{/if}}
+    {{/if}}
+  </section>
+</section>

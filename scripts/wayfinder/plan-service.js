@@ -115,7 +115,7 @@ export function modeLabel(kind) {
         case "skill-training":
             return "Training";
         case "class-branch":
-            return "Branch";
+            return "Class Path";
         case "boost":
             return "Boosts";
         default:

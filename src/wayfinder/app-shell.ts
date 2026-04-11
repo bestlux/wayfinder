@@ -8,6 +8,7 @@ import { canUseWayfinder } from "../permissions.js";
 import type { EffectiveBuildState } from "../build-state.js";
 import type { AbilityKey, BoostLevel, DraftState, OptionContext, PendingStep, SelectionRef } from "../types.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
+import { buildClassBranchSteps, buildClassTrainingSteps } from "./class-choice-service.js";
 import { formatSlug, sameMembers } from "./formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane, compareSkillIncreaseSlotIds } from "./panes/skill-pane.js";
 import {
@@ -311,194 +312,22 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   async #buildPlan(snapshot = inspectActor(this.actor), draft = this.#requireDraft()) {
     return buildWayfinderPlan(snapshot, draft, {
-      buildClassTrainingSteps: (planSnapshot, planDraft, targetLevel) => this.#buildClassTrainingSteps(planSnapshot, planDraft, targetLevel),
-      buildClassBranchSteps: (planSnapshot, planDraft, targetLevel) => this.#buildClassBranchSteps(planSnapshot, planDraft, targetLevel)
+      buildClassTrainingSteps: (_planSnapshot, _planDraft, targetLevel) => buildClassTrainingSteps({
+        draftClassSelection: this.#findDraftSelectionByType("class"),
+        targetLevel,
+        fetchSelectionDocument,
+        extractSlug: (document) => this.#extractSlug(document),
+        localize: (value) => game.i18n.localize(value)
+      }),
+      buildClassBranchSteps: async (_planSnapshot, planDraft, targetLevel) => buildClassBranchSteps({
+        draft: planDraft,
+        effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
+        targetLevel,
+        fetchSelectionDocument,
+        extractSlug: (document) => this.#extractSlug(document),
+        readExistingBranchSelection: (branch) => this.#readExistingBranchSelection(branch)
+      })
     });
-  }
-
-  async #buildClassTrainingSteps(snapshot: ReturnType<typeof inspectActor>, draft: DraftState, targetLevel: number): Promise<PendingStep[]> {
-    const classSelection = this.#findDraftSelectionByType("class");
-    if (!classSelection || targetLevel < 1) {
-      return [];
-    }
-
-    const classDocument = await fetchSelectionDocument(classSelection);
-    const classSlug = this.#extractSlug(classDocument);
-    if (classSlug !== "fighter" || !classDocument) {
-      return [];
-    }
-
-    const rules = Array.isArray(classDocument.system?.rules) ? classDocument.system.rules : [];
-    const choiceRules = rules
-      .map((rule: any, ruleIndex: number) => ({ rule, ruleIndex }))
-      .filter(({ rule }) => rule?.key === "ChoiceSet" && Array.isArray(rule?.choices))
-      .map(({ rule, ruleIndex }) => ({
-        ruleIndex,
-        flag: String(rule.flag ?? ""),
-        prompt: game.i18n.localize(String(rule.prompt ?? "Choose a skill")),
-        options: (rule.choices as Array<{ label?: string; value?: string }>)
-          .filter((choice) => typeof choice?.value === "string" && choice.value.length > 0)
-          .map((choice) => ({
-            slug: String(choice.value).trim().toLowerCase(),
-            label: game.i18n.localize(String(choice.label ?? choice.value ?? ""))
-          }))
-      }))
-      .filter((entry) => entry.flag.length > 0 && entry.options.length > 0);
-
-    const additionalCount = Number(classDocument.system?.trainedSkills?.additional ?? 0);
-    const fixedSkills = Array.isArray(classDocument.system?.trainedSkills?.value)
-      ? classDocument.system.trainedSkills.value
-          .filter((entry: unknown): entry is string => typeof entry === "string" && entry.length > 0)
-          .map((entry: string) => entry.trim().toLowerCase())
-      : [];
-
-    if (choiceRules.length === 0 && additionalCount <= 0) {
-      return [];
-    }
-
-    return [{
-      id: `skill-training-${classSlug}-level-1`,
-      level: 1,
-      kind: "skill-training",
-      slotKind: "skill-training",
-      title: `${classDocument.name} skill training`,
-      description: "Choose the class skill training decisions this class grants at 1st level.",
-      required: true,
-      slotId: `skill-training-${classSlug}-level-1`,
-      training: {
-        classSlug,
-        className: classDocument.name ?? "Class",
-        fixedSkills,
-        choiceRules,
-        additionalCount
-      }
-    }];
-  }
-
-  async #buildClassBranchSteps(snapshot: ReturnType<typeof inspectActor>, draft: DraftState, targetLevel: number): Promise<PendingStep[]> {
-    const classDocument = await this.#resolveDraftOrActorDocument("class");
-    if (!classDocument) {
-      return [];
-    }
-
-    const classSlug = this.#extractSlug(classDocument);
-    const items = Object.values(classDocument?.system?.items ?? {}) as Array<{ level?: number; uuid?: string; name?: string }>;
-    const selectorEntries = items.filter((entry) =>
-      typeof entry?.uuid === "string"
-      && entry.uuid.startsWith("Compendium.")
-      && Number(entry.level ?? 0) <= targetLevel
-    );
-
-    const selectorSelections = selectorEntries
-      .map((entry) => this.#selectionFromCompendiumUuid(entry.uuid ?? "", entry.name ?? "", "feat"))
-      .filter((entry): entry is SelectionRef => entry !== null);
-
-    const selectorDocuments = await Promise.all(selectorSelections.map((selection) => fetchSelectionDocument(selection)));
-    const steps: PendingStep[] = [];
-
-    for (let index = 0; index < selectorSelections.length; index += 1) {
-      const selectorSelection = selectorSelections[index];
-      const selectorDocument = selectorDocuments[index];
-      const branch = this.#extractClassBranchMeta(selectorDocument, selectorSelection, classSlug);
-      if (!branch) {
-        continue;
-      }
-
-      const actorSelection = this.#readExistingBranchSelection(branch);
-      const draftSelection = draft.branchSelections[branch.slotId];
-      if (actorSelection && !draftSelection) {
-        continue;
-      }
-
-      steps.push({
-        id: branch.slotId,
-        level: selectorDocument?.system?.level?.value ?? 1,
-        kind: "class-branch",
-        slotKind: "class-branch",
-        title: branch.selectorName,
-        description: `Choose the ${branch.selectorName.toLowerCase()} option that defines this class path.`,
-        required: true,
-        slotId: branch.slotId,
-        filters: {
-          itemType: "feat",
-          featTypes: ["classfeature"],
-          maxLevel: selectorDocument?.system?.level?.value ?? 1
-        },
-        branch
-      });
-    }
-
-    return steps;
-  }
-
-  #extractClassBranchMeta(selectorDocument: any, selectorSelection: SelectionRef, classSlug: string | null): PendingStep["branch"] | null {
-    if (!selectorDocument || selectorDocument.type !== "feat" || selectorDocument?.system?.category !== "classfeature") {
-      return null;
-    }
-
-    const rules = Array.isArray(selectorDocument.system?.rules) ? selectorDocument.system.rules : [];
-    const choiceRuleIndex = rules.findIndex((rule: any) => rule?.key === "ChoiceSet" && typeof rule?.flag === "string");
-    if (choiceRuleIndex === -1) {
-      return null;
-    }
-
-    const choiceRule = rules[choiceRuleIndex];
-    const grantRule = rules.find((rule: any) => rule?.key === "GrantItem" && typeof rule?.uuid === "string");
-    if (!grantRule) {
-      return null;
-    }
-
-    const optionTag = this.#extractChoiceTag(choiceRule, String(choiceRule.flag));
-    if (!optionTag) {
-      return null;
-    }
-
-    const selectorSlug = this.#extractSlug(selectorDocument) ?? selectorSelection.documentId;
-    const level = Number(selectorDocument?.system?.level?.value ?? 1) || 1;
-
-    return {
-      selectorPackId: selectorSelection.packId,
-      selectorDocumentId: selectorSelection.documentId,
-      selectorUuid: selectorSelection.uuid,
-      selectorName: selectorDocument.name ?? selectorSelection.name,
-      selectorRuleIndex: choiceRuleIndex,
-      flag: String(choiceRule.flag),
-      optionTag,
-      classSlug,
-      slotId: `class-branch-${selectorSlug}-level-${level}`
-    } as PendingStep["branch"];
-  }
-
-  #extractChoiceTag(choiceRule: any, flag: string): string | null {
-    const filters = Array.isArray(choiceRule?.choices?.filter) ? choiceRule.choices.filter : [];
-    const directTag = filters
-      .filter((entry: unknown): entry is string => typeof entry === "string")
-      .map((entry) => /^item:tag:(.+)$/.exec(entry)?.[1] ?? null)
-      .find((entry): entry is string => typeof entry === "string" && entry.length > 0);
-    if (directTag) {
-      return directTag.trim().toLowerCase();
-    }
-
-    const uuid = typeof choiceRule?.uuid === "string" ? choiceRule.uuid : "";
-    return uuid.includes(`rulesSelections.${flag}`) ? flag.trim().toLowerCase() : null;
-  }
-
-  #selectionFromCompendiumUuid(uuid: string, name: string, itemType: string): SelectionRef | null {
-    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(uuid);
-    if (!match) {
-      return null;
-    }
-
-    return {
-      slotId: "",
-      packId: match[1],
-      documentId: match[2],
-      uuid,
-      itemType,
-      featType: itemType === "feat" ? "classfeature" : null,
-      name,
-      level: null
-    };
   }
 
   #readExistingBranchSelection(branch: NonNullable<PendingStep["branch"]>): string | null {

@@ -3,6 +3,8 @@ export type SlotKind =
   | "heritage"
   | "background"
   | "class"
+  | "skill-training"
+  | "class-branch"
   | "ancestry-feat"
   | "class-feat"
   | "skill-feat"
@@ -10,7 +12,7 @@ export type SlotKind =
   | "ability-boosts"
   | "skill-increase";
 
-export type StepKind = "pick-item" | "manual" | "boost";
+export type StepKind = "pick-item" | "manual" | "boost" | "skill-increase" | "class-branch" | "skill-training";
 export type AbilityKey = "str" | "dex" | "con" | "int" | "wis" | "cha";
 export type BoostLevel = 1 | 5 | 10 | 15 | 20;
 
@@ -56,7 +58,15 @@ export interface DraftState {
   selections: Record<string, SelectionRef>;
   boosts: BoostDraftState;
   manual: Record<string, boolean>;
+  skillIncreases: Record<string, string>;
+  skillTrainings: Record<string, SkillTrainingDraft>;
+  branchSelections: Record<string, SelectionRef>;
   updatedAt: string | null;
+}
+
+export interface SkillTrainingDraft {
+  ruleChoices: Record<string, string>;
+  additional: string[];
 }
 
 export interface ModuleState {
@@ -80,6 +90,7 @@ export interface ActorSnapshot {
   };
   sourceIds: string[];
   namesByType: Record<string, string[]>;
+  skillRanks: Record<string, number>;
 }
 
 export interface StepFilters {
@@ -98,6 +109,29 @@ export interface PendingStep {
   required: boolean;
   slotId: string;
   filters?: StepFilters;
+  branch?: {
+    slotId: string;
+    selectorPackId: string;
+    selectorDocumentId: string;
+    selectorUuid: string;
+    selectorName: string;
+    selectorRuleIndex: number;
+    flag: string;
+    optionTag: string;
+    classSlug: string | null;
+  };
+  training?: {
+    classSlug: string;
+    className: string;
+    fixedSkills: string[];
+    choiceRules: Array<{
+      ruleIndex: number;
+      flag: string;
+      prompt: string;
+      options: Array<{ slug: string; label: string }>;
+    }>;
+    additionalCount: number;
+  };
 }
 
 export interface ProgressionPlan {
@@ -176,6 +210,7 @@ export interface WayfinderStep {
     | "heritage"
     | "background"
     | "class"
+    | "class-branch"
     | "initial-ability-boosts"
     | "ability-boosts"
     | "ancestry-feat"

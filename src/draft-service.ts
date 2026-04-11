@@ -1,6 +1,6 @@
-import type { AbilityKey, BoostDraftState, DraftState, ModuleState } from "./types.js";
+import type { AbilityKey, BoostDraftState, DraftState, ModuleState, SelectionRef } from "./types.js";
 
-const DRAFT_VERSION = 2;
+const DRAFT_VERSION = 3;
 const STATE_VERSION = 1;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
@@ -10,6 +10,9 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     selections: {},
     boosts: createEmptyBoostDraft(),
     manual: {},
+    skillIncreases: {},
+    skillTrainings: {},
+    branchSelections: {},
     updatedAt: null
   };
 }
@@ -32,6 +35,9 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     selections: sanitizeSelections(draft.selections),
     boosts: sanitizeBoosts(draft.boosts),
     manual: sanitizeManual(draft.manual),
+    skillIncreases: sanitizeSkillIncreases(draft.skillIncreases),
+    skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
+    branchSelections: sanitizeSelections(draft.branchSelections),
     updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null
   };
 }
@@ -113,6 +119,53 @@ function sanitizeSelections(raw: unknown): DraftState["selections"] {
       featType: typeof selection.featType === "string" ? selection.featType : null,
       name,
       level: typeof selection.level === "number" ? clampLevel(selection.level) : null
+    };
+  }
+
+  return result;
+}
+
+function sanitizeSkillIncreases(raw: unknown): Record<string, string> {
+  if (!isRecord(raw)) {
+    return {};
+  }
+
+  const result: Record<string, string> = {};
+  for (const [slotId, value] of Object.entries(raw)) {
+    if (typeof value === "string" && value.trim()) {
+      result[slotId] = value.trim().toLowerCase();
+    }
+  }
+  return result;
+}
+
+function sanitizeSkillTrainings(raw: unknown): DraftState["skillTrainings"] {
+  if (!isRecord(raw)) {
+    return {};
+  }
+
+  const result: DraftState["skillTrainings"] = {};
+  for (const [slotId, value] of Object.entries(raw)) {
+    if (!isRecord(value)) {
+      continue;
+    }
+
+    const ruleChoices = isRecord(value.ruleChoices)
+      ? Object.fromEntries(
+          Object.entries(value.ruleChoices)
+            .filter(([, selection]) => typeof selection === "string" && selection.trim())
+            .map(([flag, selection]) => [flag, String(selection).trim().toLowerCase()])
+        )
+      : {};
+    const additional = Array.isArray(value.additional)
+      ? value.additional
+          .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+          .map((entry) => entry.trim().toLowerCase())
+      : [];
+
+    result[slotId] = {
+      ruleChoices,
+      additional: Array.from(new Set(additional))
     };
   }
 

@@ -1,11 +1,11 @@
-import { ABILITY_KEYS, DRAFT_FLAG, MODULE_ID, MODULE_TITLE, STATE_FLAG } from "./constants.js";
+import { ABILITY_KEYS, DRAFT_FLAG, MODULE_ID, MODULE_TITLE, PROFICIENCY_CODES, PROFICIENCY_LABELS, SKILL_LABELS, STATE_FLAG } from "./constants.js";
 import { inspectActor } from "./actor-inspector.js";
 import { applyDraftToActor } from "./actor-updater.js";
 import { BOOST_LEVELS, getEffectiveBuildState, getEffectiveSingletonDocument, listActorItems } from "./build-state.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "./draft-service.js";
 import { fetchSelectionDocument, getOptionsForStep, getPickerInfoState, resolveSelection } from "./pack-service.js";
 import { canUseWayfinder } from "./permissions.js";
-import { buildProgressionPlan } from "./progression.js";
+import { buildProgressionPlan, sortPendingSteps } from "./progression.js";
 import type { AbilityKey, BoostLevel, DraftState, OptionContext, OptionRecord, PendingStep, PickerInfoState, SelectionRef, StepKind } from "./types.js";
 import type { EffectiveBuildState } from "./build-state.js";
 
@@ -51,6 +51,8 @@ interface PickStepPane {
   isPickItem: true;
   isManual: false;
   isBoost: false;
+  isSkillIncrease: false;
+  isSkillTraining: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -72,6 +74,8 @@ interface ManualStepPane {
   isPickItem: false;
   isManual: true;
   isBoost: false;
+  isSkillIncrease: false;
+  isSkillTraining: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -115,6 +119,8 @@ interface BoostStepPane {
   isPickItem: false;
   isManual: false;
   isBoost: true;
+  isSkillIncrease: false;
+  isSkillTraining: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -152,7 +158,75 @@ interface BoostStepPane {
   };
 }
 
-type ActivePane = PickStepPane | ManualStepPane | BoostStepPane | null;
+interface SkillOption {
+  slug: string;
+  label: string;
+  currentRank: number;
+  currentRankLabel: string;
+  currentRankCode: string;
+  targetRank: number;
+  targetRankLabel: string;
+  targetRankCode: string;
+  selected: boolean;
+  disabled: boolean;
+  disabledReason: string | null;
+}
+
+interface SkillIncreaseStepPane {
+  kind: "skill-increase";
+  isPickItem: false;
+  isManual: false;
+  isBoost: false;
+  isSkillIncrease: true;
+  isSkillTraining: false;
+  stepId: string;
+  slotId: string;
+  level: number;
+  modeLabel: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  selectedLabel: string;
+  maxRankLabel: string;
+  skills: SkillOption[];
+}
+
+interface SkillTrainingRuleChoicePane {
+  flag: string;
+  prompt: string;
+  selectedSlug: string | null;
+  selectedLabel: string | null;
+  options: Array<{
+    slug: string;
+    label: string;
+    selected: boolean;
+  }>;
+}
+
+interface SkillTrainingStepPane {
+  kind: "skill-training";
+  isPickItem: false;
+  isManual: false;
+  isBoost: false;
+  isSkillIncrease: false;
+  isSkillTraining: true;
+  stepId: string;
+  slotId: string;
+  level: number;
+  modeLabel: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  selectedLabel: string;
+  className: string;
+  fixedSkills: string[];
+  choiceSections: SkillTrainingRuleChoicePane[];
+  additionalCount: number;
+  additionalRemaining: number;
+  additionalSkills: Array<SkillOption & { selected: boolean }>;
+}
+
+type ActivePane = PickStepPane | ManualStepPane | BoostStepPane | SkillIncreaseStepPane | SkillTrainingStepPane | null;
 
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
   static DEFAULT_OPTIONS = {
@@ -182,7 +256,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #activeStepId: string | null = null;
   #searchByStepId = new Map<string, string>();
   #previewValueByStepId = new Map<string, string>();
-  #listScrollByStepId = new Map<string, number>();
+  #scrollById = new Map<string, number>();
   #pendingSearchFocus: { stepId: string; cursor: number } | null = null;
   #recentlyInvalidatedStepIds = new Set<string>();
   #statusNote: string | null = null;
@@ -221,7 +295,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   async _prepareContext(): Promise<any> {
     const snapshot = inspectActor(this.actor);
     const draft = this.#ensureDraft(snapshot.level);
-    const plan = buildProgressionPlan(snapshot, draft.targetLevel);
+    const plan = await this.#buildPlan(snapshot, draft);
     const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
     const activeStep = await this.#resolveActiveStep(plan.steps, effectiveBuildState);
     const activePane = activeStep ? await this.#buildActivePane(activeStep, effectiveBuildState) : null;
@@ -307,18 +381,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       search.addEventListener("input", this.#onSearchInput);
     }
 
-    for (const list of root.querySelectorAll<HTMLElement>("[data-wayfinder-option-list]")) {
-      const stepId = list.dataset.stepId;
-      if (!stepId) {
+    for (const scrollable of root.querySelectorAll<HTMLElement>("[data-wayfinder-scroll-id]")) {
+      const scrollId = scrollable.dataset.wayfinderScrollId;
+      if (!scrollId) {
         continue;
       }
 
-      const previousScrollTop = this.#listScrollByStepId.get(stepId);
+      const previousScrollTop = this.#scrollById.get(scrollId);
       if (typeof previousScrollTop === "number") {
-        list.scrollTop = previousScrollTop;
+        scrollable.scrollTop = previousScrollTop;
       }
 
-      list.addEventListener("scroll", this.#onOptionListScroll, { passive: true });
+      scrollable.addEventListener("scroll", this.#onScrollableScroll, { passive: true });
     }
 
     const manual = root.querySelector<HTMLInputElement>("[data-wayfinder-manual]");
@@ -360,10 +434,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.render(false);
         break;
       case "previous-step":
-        this.#moveStep(-1);
+        await this.#moveStep(-1);
         break;
       case "next-step":
-        this.#moveStep(1);
+        await this.#moveStep(1);
         break;
       case "preview-option":
         if (target.dataset.stepId && target.dataset.value) {
@@ -397,6 +471,21 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             target.dataset.attribute as AbilityKey,
             target.dataset.choiceKind as "flaw" | "second-flaw" | "boost"
           );
+        }
+        break;
+      case "select-skill-increase":
+        if (target.dataset.stepId && target.dataset.slug) {
+          this.#selectSkillIncrease(target.dataset.stepId, target.dataset.slug);
+        }
+        break;
+      case "select-training-rule":
+        if (target.dataset.stepId && target.dataset.flag && target.dataset.slug) {
+          this.#selectTrainingRule(target.dataset.stepId, target.dataset.flag, target.dataset.slug);
+        }
+        break;
+      case "toggle-training-skill":
+        if (target.dataset.stepId && target.dataset.slug) {
+          await this.#toggleTrainingSkill(target.dataset.stepId, target.dataset.slug);
         }
         break;
       case "clear-option":
@@ -436,14 +525,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.render(false);
   };
 
-  #onOptionListScroll = (event: Event): void => {
-    const list = event.currentTarget as HTMLElement | null;
-    const stepId = list?.dataset.stepId;
-    if (!stepId || !list) {
+  #onScrollableScroll = (event: Event): void => {
+    const scrollable = event.currentTarget as HTMLElement | null;
+    const scrollId = scrollable?.dataset.wayfinderScrollId;
+    if (!scrollId || !scrollable) {
       return;
     }
 
-    this.#listScrollByStepId.set(stepId, list.scrollTop);
+    this.#scrollById.set(scrollId, scrollable.scrollTop);
   };
 
   #onManualChange = (event: Event): void => {
@@ -469,6 +558,207 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#draft = createEmptyDraft(1);
     }
     return this.#draft;
+  }
+
+  async #buildPlan(snapshot = inspectActor(this.actor), draft = this.#requireDraft()): Promise<ReturnType<typeof buildProgressionPlan>> {
+    const plan = buildProgressionPlan(snapshot, draft.targetLevel);
+    const trainingSteps = await this.#buildClassTrainingSteps(snapshot, draft, plan.targetLevel);
+    const branchSteps = await this.#buildClassBranchSteps(snapshot, draft, plan.targetLevel);
+    return {
+      ...plan,
+      steps: sortPendingSteps([...plan.steps, ...trainingSteps, ...branchSteps])
+    };
+  }
+
+  async #buildClassTrainingSteps(snapshot: ReturnType<typeof inspectActor>, draft: DraftState, targetLevel: number): Promise<PendingStep[]> {
+    const classSelection = this.#findDraftSelectionByType("class");
+    if (!classSelection || targetLevel < 1) {
+      return [];
+    }
+
+    const classDocument = await fetchSelectionDocument(classSelection);
+    const classSlug = this.#extractSlug(classDocument);
+    if (classSlug !== "fighter" || !classDocument) {
+      return [];
+    }
+
+    const rules = Array.isArray(classDocument.system?.rules) ? classDocument.system.rules : [];
+    const choiceRules = rules
+      .map((rule: any, ruleIndex: number) => ({ rule, ruleIndex }))
+      .filter(({ rule }) => rule?.key === "ChoiceSet" && Array.isArray(rule?.choices))
+      .map(({ rule, ruleIndex }) => ({
+        ruleIndex,
+        flag: String(rule.flag ?? ""),
+        prompt: game.i18n.localize(String(rule.prompt ?? "Choose a skill")),
+        options: (rule.choices as Array<{ label?: string; value?: string }>)
+          .filter((choice) => typeof choice?.value === "string" && choice.value.length > 0)
+          .map((choice) => ({
+            slug: String(choice.value).trim().toLowerCase(),
+            label: game.i18n.localize(String(choice.label ?? choice.value ?? ""))
+          }))
+      }))
+      .filter((entry) => entry.flag.length > 0 && entry.options.length > 0);
+
+    const additionalCount = Number(classDocument.system?.trainedSkills?.additional ?? 0);
+    const fixedSkills = Array.isArray(classDocument.system?.trainedSkills?.value)
+      ? classDocument.system.trainedSkills.value
+          .filter((entry: unknown): entry is string => typeof entry === "string" && entry.length > 0)
+          .map((entry: string) => entry.trim().toLowerCase())
+      : [];
+
+    if (choiceRules.length === 0 && additionalCount <= 0) {
+      return [];
+    }
+
+    return [{
+      id: `skill-training-${classSlug}-level-1`,
+      level: 1,
+      kind: "skill-training",
+      slotKind: "skill-training",
+      title: `${classDocument.name} skill training`,
+      description: "Choose the class skill training decisions this class grants at 1st level.",
+      required: true,
+      slotId: `skill-training-${classSlug}-level-1`,
+      training: {
+        classSlug,
+        className: classDocument.name ?? "Class",
+        fixedSkills,
+        choiceRules,
+        additionalCount
+      }
+    }];
+  }
+
+  async #buildClassBranchSteps(snapshot: ReturnType<typeof inspectActor>, draft: DraftState, targetLevel: number): Promise<PendingStep[]> {
+    const classDocument = await this.#resolveDraftOrActorDocument("class");
+    if (!classDocument) {
+      return [];
+    }
+
+    const classSlug = this.#extractSlug(classDocument);
+    const items = Object.values(classDocument?.system?.items ?? {}) as Array<{ level?: number; uuid?: string; name?: string }>;
+    const selectorEntries = items.filter((entry) =>
+      typeof entry?.uuid === "string"
+      && entry.uuid.startsWith("Compendium.")
+      && Number(entry.level ?? 0) <= targetLevel
+    );
+
+    const selectorSelections = selectorEntries
+      .map((entry) => this.#selectionFromCompendiumUuid(entry.uuid ?? "", entry.name ?? "", "feat"))
+      .filter((entry): entry is SelectionRef => entry !== null);
+
+    const selectorDocuments = await Promise.all(selectorSelections.map((selection) => fetchSelectionDocument(selection)));
+    const steps: PendingStep[] = [];
+
+    for (let index = 0; index < selectorSelections.length; index += 1) {
+      const selectorSelection = selectorSelections[index];
+      const selectorDocument = selectorDocuments[index];
+      const branch = this.#extractClassBranchMeta(selectorDocument, selectorSelection, classSlug);
+      if (!branch) {
+        continue;
+      }
+
+      const actorSelection = this.#readExistingBranchSelection(branch);
+      const draftSelection = draft.branchSelections[branch.slotId];
+      if (actorSelection && !draftSelection) {
+        continue;
+      }
+
+      steps.push({
+        id: branch.slotId,
+        level: selectorDocument?.system?.level?.value ?? 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: branch.selectorName,
+        description: `Choose the ${branch.selectorName.toLowerCase()} option that defines this class path.`,
+        required: true,
+        slotId: branch.slotId,
+        filters: {
+          itemType: "feat",
+          featTypes: ["classfeature"],
+          maxLevel: selectorDocument?.system?.level?.value ?? 1
+        },
+        branch
+      });
+    }
+
+    return steps;
+  }
+
+  #extractClassBranchMeta(selectorDocument: any, selectorSelection: SelectionRef, classSlug: string | null): PendingStep["branch"] | null {
+    if (!selectorDocument || selectorDocument.type !== "feat" || selectorDocument?.system?.category !== "classfeature") {
+      return null;
+    }
+
+    const rules = Array.isArray(selectorDocument.system?.rules) ? selectorDocument.system.rules : [];
+    const choiceRuleIndex = rules.findIndex((rule: any) => rule?.key === "ChoiceSet" && typeof rule?.flag === "string");
+    if (choiceRuleIndex === -1) {
+      return null;
+    }
+
+    const choiceRule = rules[choiceRuleIndex];
+    const grantRule = rules.find((rule: any) => rule?.key === "GrantItem" && typeof rule?.uuid === "string");
+    if (!grantRule) {
+      return null;
+    }
+
+    const optionTag = this.#extractChoiceTag(choiceRule, String(choiceRule.flag));
+    if (!optionTag) {
+      return null;
+    }
+
+    const selectorSlug = this.#extractSlug(selectorDocument) ?? selectorSelection.documentId;
+    const level = Number(selectorDocument?.system?.level?.value ?? 1) || 1;
+
+    return {
+      selectorPackId: selectorSelection.packId,
+      selectorDocumentId: selectorSelection.documentId,
+      selectorUuid: selectorSelection.uuid,
+      selectorName: selectorDocument.name ?? selectorSelection.name,
+      selectorRuleIndex: choiceRuleIndex,
+      flag: String(choiceRule.flag),
+      optionTag,
+      classSlug,
+      slotId: `class-branch-${selectorSlug}-level-${level}`
+    } as PendingStep["branch"];
+  }
+
+  #extractChoiceTag(choiceRule: any, flag: string): string | null {
+    const filters = Array.isArray(choiceRule?.choices?.filter) ? choiceRule.choices.filter : [];
+    const directTag = filters
+      .filter((entry: unknown): entry is string => typeof entry === "string")
+      .map((entry) => /^item:tag:(.+)$/.exec(entry)?.[1] ?? null)
+      .find((entry): entry is string => typeof entry === "string" && entry.length > 0);
+    if (directTag) {
+      return directTag.trim().toLowerCase();
+    }
+
+    const uuid = typeof choiceRule?.uuid === "string" ? choiceRule.uuid : "";
+    return uuid.includes(`rulesSelections.${flag}`) ? flag.trim().toLowerCase() : null;
+  }
+
+  #selectionFromCompendiumUuid(uuid: string, name: string, itemType: string): SelectionRef | null {
+    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(uuid);
+    if (!match) {
+      return null;
+    }
+
+    return {
+      slotId: "",
+      packId: match[1],
+      documentId: match[2],
+      uuid,
+      itemType,
+      featType: itemType === "feat" ? "classfeature" : null,
+      name,
+      level: null
+    };
+  }
+
+  #readExistingBranchSelection(branch: NonNullable<PendingStep["branch"]>): string | null {
+    const selectorItem = this.#findActorItemBySourceId(branch.selectorUuid);
+    const rulesSelection = selectorItem?.flags?.pf2e?.rulesSelections?.[branch.flag];
+    return typeof rulesSelection === "string" && rulesSelection.length > 0 ? rulesSelection : null;
   }
 
   async #resolveActiveStep(steps: PendingStep[], effectiveBuildState: EffectiveBuildState): Promise<PendingStep | null> {
@@ -501,6 +791,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         isPickItem: false,
         isManual: true,
         isBoost: false,
+        isSkillIncrease: false,
+        isSkillTraining: false,
         stepId: step.id,
         slotId: step.slotId,
         level: step.level,
@@ -514,6 +806,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     if (step.kind === "boost") {
       return this.#buildBoostPane(step, effectiveBuildState);
+    }
+
+    if (step.kind === "skill-training") {
+      return this.#buildSkillTrainingPane(step);
+    }
+
+    if (step.kind === "skill-increase") {
+      return this.#buildSkillIncreasePane(step);
     }
 
     const optionContext = await this.#buildOptionContext();
@@ -534,15 +834,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       isPickItem: true,
       isManual: false,
       isBoost: false,
+      isSkillIncrease: false,
+      isSkillTraining: false,
       stepId: step.id,
       slotId: step.slotId,
       level: step.level,
-      modeLabel: "Selection",
+      modeLabel: this.#modeLabel(step.kind),
       title: step.title,
       description: step.description,
       search,
       selectedValue,
-      selectedLabel: this.#requireDraft().selections[step.slotId]?.name ?? null,
+      selectedLabel: this.#selectedSelection(step)?.name ?? null,
       resultCount: visibleOptions.length,
       contextNote,
       infoState,
@@ -648,8 +950,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   #selectedValueFor(step: PendingStep): string {
-    const selection = this.#requireDraft().selections[step.slotId];
+    const selection = this.#selectedSelection(step);
     return selection ? `${selection.packId}:${selection.documentId}` : "";
+  }
+
+  #selectedSelection(step: PendingStep): SelectionRef | null {
+    return step.kind === "class-branch"
+      ? this.#requireDraft().branchSelections[step.slotId] ?? null
+      : this.#requireDraft().selections[step.slotId] ?? null;
   }
 
   #resolvePreviewValue(stepId: string, filteredOptions: OptionRecord[], allOptions: OptionRecord[], selectedValue: string): string {
@@ -682,7 +990,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   async #chooseOption(stepId: string, rawValue: string): Promise<void> {
     this.#statusNote = null;
     const snapshot = inspectActor(this.actor);
-    const plan = buildProgressionPlan(snapshot, this.#requireDraft().targetLevel);
+    const plan = await this.#buildPlan(snapshot, this.#requireDraft());
     const step = plan.steps.find((entry) => entry.id === stepId);
     if (!step) {
       return;
@@ -694,16 +1002,23 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
-    const duplicates = Object.values(this.#requireDraft().selections).some(
-      (existing) => existing.uuid === selection.uuid && existing.slotId !== selection.slotId
-    );
+    const duplicates = [
+      ...Object.values(this.#requireDraft().selections),
+      ...Object.values(this.#requireDraft().branchSelections)
+    ].some((existing) => existing.uuid === selection.uuid && existing.slotId !== selection.slotId);
     if (duplicates) {
       ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.DuplicateSelections"));
       return;
     }
 
-    const previousSelection = this.#requireDraft().selections[selection.slotId];
-    this.#requireDraft().selections[selection.slotId] = selection;
+    const previousSelection = step.kind === "class-branch"
+      ? this.#requireDraft().branchSelections[selection.slotId]
+      : this.#requireDraft().selections[selection.slotId];
+    if (step.kind === "class-branch") {
+      this.#requireDraft().branchSelections[selection.slotId] = selection;
+    } else {
+      this.#requireDraft().selections[selection.slotId] = selection;
+    }
     this.#recentlyInvalidatedStepIds.delete(selection.slotId);
 
     if (step.slotKind === "ancestry" && previousSelection?.uuid !== selection.uuid) {
@@ -747,10 +1062,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       }
       if (previousClassSlug !== nextClassSlug) {
         const invalidated = this.#invalidateSelectionsByPrefix("class-feat-level-");
-        if (invalidated.length > 0 || boostReset) {
+        const branchInvalidated = this.#invalidateBranchSelectionsByPrefix("class-branch-");
+        const trainingInvalidated = this.#invalidateTrainingSelectionsByPrefix("skill-training-");
+        if (invalidated.length > 0 || branchInvalidated.length > 0 || trainingInvalidated.length > 0 || boostReset) {
           this.#statusNote = boostReset
-            ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted class feats for review."
-            : "Class changed. Wayfinder marked drafted class feats for review.";
+            ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted class training, class branches, and class feats for review."
+            : "Class changed. Wayfinder marked drafted class training, class branches, and class feats for review.";
         }
       } else if (boostReset) {
         this.#statusNote = "Class changed. Wayfinder cleared the key-ability draft choice for review.";
@@ -758,7 +1075,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     this.#previewValueByStepId.set(stepId, rawValue);
-    this.#moveStep(1);
+    await this.#moveStep(1);
   }
 
   #invalidateDependentAncestrySelections(): string[] {
@@ -774,12 +1091,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
-    for (const list of root.querySelectorAll<HTMLElement>("[data-wayfinder-option-list]")) {
-      const stepId = list.dataset.stepId;
-      if (!stepId) {
+    for (const scrollable of root.querySelectorAll<HTMLElement>("[data-wayfinder-scroll-id]")) {
+      const scrollId = scrollable.dataset.wayfinderScrollId;
+      if (!scrollId) {
         continue;
       }
-      this.#listScrollByStepId.set(stepId, list.scrollTop);
+      this.#scrollById.set(scrollId, scrollable.scrollTop);
     }
 
     const activeSearch = searchInput ?? root.querySelector<HTMLInputElement>("[data-wayfinder-search]:focus");
@@ -847,6 +1164,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           ? `Showing feats keyed to ${className} plus archetype follow-up feats unlocked by an existing dedication. Shared class feats that list ${className} also remain available.`
           : `Showing feats keyed to ${className} plus dedication feats that can begin an archetype path. Shared class feats that list ${className} also remain available.`;
       }
+      case "class-branch": {
+        const classDocument = await this.#resolveDraftOrActorDocument("class");
+        const className = classDocument?.name;
+        const selectorName = step.branch?.selectorName;
+        if (className && selectorName) {
+          return `Showing ${className} options granted by ${selectorName}. Wayfinder will write the selector choice into PF2E's native class-feature data on apply.`;
+        }
+
+        return className
+          ? `Showing class branch options keyed to ${className}.`
+          : null;
+      }
       case "skill-feat":
         return "Showing baseline skill feats. Archetype-tagged skill feats stay hidden until Wayfinder tracks a specific archetype path.";
       case "general-feat":
@@ -884,6 +1213,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       isPickItem: false,
       isManual: false,
       isBoost: true,
+      isSkillIncrease: false,
+      isSkillTraining: false,
       stepId: step.id,
       slotId: step.slotId,
       level: step.level,
@@ -1025,6 +1356,315 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         partial: effectiveBuildState.projectedAbilities[attribute].partial && selected.includes(attribute)
       }))
     };
+  }
+
+  async #buildSkillIncreasePane(step: PendingStep): Promise<SkillIncreaseStepPane> {
+    const draft = this.#requireDraft();
+    const projectedRanks = await this.#projectSkillRanks(draft, step.slotId);
+    const selectedSkill = draft.skillIncreases[step.slotId] ?? null;
+    const maxRank = this.#maxProficiencyRank(step.level);
+    const maxRankLabel = PROFICIENCY_LABELS[maxRank] ?? "Expert";
+
+    const skillEntries = this.#getSkillList(projectedRanks);
+
+    const skills: SkillOption[] = skillEntries.map(({ slug, label }) => {
+      const currentRank = Math.min(4, Math.max(0, projectedRanks[slug] ?? 0));
+      const targetRank = Math.min(4, currentRank + 1);
+      const atCap = currentRank >= maxRank;
+      const isSelected = selectedSkill === slug;
+
+      let disabledReason: string | null = null;
+      if (atCap) {
+        disabledReason = `Already at ${PROFICIENCY_LABELS[currentRank]} (max for level ${step.level})`;
+      }
+
+      return {
+        slug,
+        label,
+        currentRank,
+        currentRankLabel: PROFICIENCY_LABELS[currentRank] ?? "Untrained",
+        currentRankCode: PROFICIENCY_CODES[currentRank] ?? "U",
+        targetRank,
+        targetRankLabel: PROFICIENCY_LABELS[targetRank] ?? "Trained",
+        targetRankCode: PROFICIENCY_CODES[targetRank] ?? "T",
+        selected: isSelected,
+        disabled: atCap && !isSelected,
+        disabledReason
+      };
+    });
+
+    const selectedLabel = selectedSkill
+      ? `${SKILL_LABELS[selectedSkill] ?? this.#formatSlug(selectedSkill)} → ${PROFICIENCY_LABELS[Math.min(4, (projectedRanks[selectedSkill] ?? 0) + 1)] ?? "Trained"}`
+      : "Choose one skill";
+
+    return {
+      kind: "skill-increase",
+      isPickItem: false,
+      isManual: false,
+      isBoost: false,
+      isSkillIncrease: true,
+      isSkillTraining: false,
+      stepId: step.id,
+      slotId: step.slotId,
+      level: step.level,
+      modeLabel: "Skill Increase",
+      title: step.title,
+      description: step.description,
+      completed: !!selectedSkill,
+      selectedLabel,
+      maxRankLabel,
+      skills
+    };
+  }
+
+  async #buildSkillTrainingPane(step: PendingStep): Promise<SkillTrainingStepPane> {
+    const draft = this.#requireDraft();
+    const training = draft.skillTrainings[step.slotId] ?? { ruleChoices: {}, additional: [] };
+    const metadata = step.training;
+    if (!metadata) {
+      throw new Error(`Missing training metadata for step ${step.slotId}`);
+    }
+
+    const projectedRanks = await this.#projectSkillRanks(draft, step.slotId);
+    const reservedSkills = new Set<string>([
+      ...metadata.fixedSkills,
+      ...Object.values(training.ruleChoices)
+    ]);
+
+    const additionalSkills = this.#getSkillList(projectedRanks)
+      .filter(({ slug }) => !reservedSkills.has(slug))
+      .map(({ slug, label }) => {
+        const currentRank = Math.min(4, Math.max(0, projectedRanks[slug] ?? 0));
+        const selected = training.additional.includes(slug);
+        return {
+          slug,
+          label,
+          currentRank,
+          currentRankLabel: PROFICIENCY_LABELS[currentRank] ?? "Untrained",
+          currentRankCode: PROFICIENCY_CODES[currentRank] ?? "U",
+          targetRank: 1,
+          targetRankLabel: "Trained",
+          targetRankCode: "T",
+          selected,
+          disabled: currentRank >= 1 && !selected,
+          disabledReason: currentRank >= 1 ? "Already trained from another source" : null
+        };
+      });
+
+    const choiceSections = metadata.choiceRules.map((choiceRule) => {
+      const selectedSlug = training.ruleChoices[choiceRule.flag] ?? null;
+      return {
+        flag: choiceRule.flag,
+        prompt: choiceRule.prompt,
+        selectedSlug,
+        selectedLabel: selectedSlug ? (SKILL_LABELS[selectedSlug] ?? this.#formatSlug(selectedSlug)) : null,
+        options: choiceRule.options.map((option) => ({
+          ...option,
+          selected: option.slug === selectedSlug
+        }))
+      };
+    });
+
+    const fixedLabels = metadata.fixedSkills.map((slug) => SKILL_LABELS[slug] ?? this.#formatSlug(slug));
+    const selectedLabels = [
+      ...Object.values(training.ruleChoices).map((slug) => SKILL_LABELS[slug] ?? this.#formatSlug(slug)),
+      ...training.additional.map((slug) => SKILL_LABELS[slug] ?? this.#formatSlug(slug))
+    ];
+
+    return {
+      kind: "skill-training",
+      isPickItem: false,
+      isManual: false,
+      isBoost: false,
+      isSkillIncrease: false,
+      isSkillTraining: true,
+      stepId: step.id,
+      slotId: step.slotId,
+      level: step.level,
+      modeLabel: "Skill Training",
+      title: step.title,
+      description: step.description,
+      completed: this.#isTrainingStepComplete(step),
+      selectedLabel: selectedLabels.length > 0
+        ? `${selectedLabels.length}/${metadata.choiceRules.length + metadata.additionalCount} chosen`
+        : "Choose class skill training",
+      className: metadata.className,
+      fixedSkills: fixedLabels,
+      choiceSections,
+      additionalCount: metadata.additionalCount,
+      additionalRemaining: Math.max(0, metadata.additionalCount - training.additional.length),
+      additionalSkills
+    };
+  }
+
+  async #projectSkillRanks(
+    draft: DraftState,
+    upToSlotId: string
+  ): Promise<Record<string, number>> {
+    const snapshot = inspectActor(this.actor);
+    const projected = { ...snapshot.skillRanks };
+    const [backgroundDocument, classDocument] = await Promise.all([
+      this.#resolveDraftOrActorDocument("background"),
+      this.#resolveDraftOrActorDocument("class")
+    ]);
+
+    for (const slug of this.#extractFixedTrainedSkills(backgroundDocument)) {
+      projected[slug] = Math.max(projected[slug] ?? 0, 1);
+    }
+
+    for (const slug of this.#extractFixedTrainedSkills(classDocument)) {
+      projected[slug] = Math.max(projected[slug] ?? 0, 1);
+    }
+
+    const sortedTrainingSlotIds = Object.keys(draft.skillTrainings).sort((left, right) => left.localeCompare(right));
+
+    for (const slotId of sortedTrainingSlotIds) {
+      if (slotId >= upToSlotId) {
+        break;
+      }
+
+      const training = draft.skillTrainings[slotId];
+      if (!training) {
+        continue;
+      }
+
+      for (const slug of [...Object.values(training.ruleChoices), ...training.additional]) {
+        if (!slug) {
+          continue;
+        }
+
+        projected[slug] = Math.max(projected[slug] ?? 0, 1);
+      }
+    }
+
+    const sortedSlotIds = Object.keys(draft.skillIncreases).sort((left, right) =>
+      this.#compareSkillIncreaseSlotIds(left, right)
+    );
+
+    for (const slotId of sortedSlotIds) {
+      if (slotId >= upToSlotId) {
+        break;
+      }
+
+      const slug = draft.skillIncreases[slotId];
+      if (slug && typeof projected[slug] === "number") {
+        projected[slug] = Math.min(4, projected[slug] + 1);
+      } else if (slug) {
+        projected[slug] = 1;
+      }
+    }
+
+    return projected;
+  }
+
+  #compareSkillIncreaseSlotIds(left: string, right: string): number {
+    const leftLevel = this.#skillIncreaseLevelFromSlotId(left);
+    const rightLevel = this.#skillIncreaseLevelFromSlotId(right);
+    if (leftLevel !== rightLevel) {
+      return leftLevel - rightLevel;
+    }
+
+    return left.localeCompare(right);
+  }
+
+  #skillIncreaseLevelFromSlotId(slotId: string): number {
+    const match = /skill-increase-level-(\d+)/.exec(slotId);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+  }
+
+  #maxProficiencyRank(level: number): number {
+    if (level >= 15) return 4;
+    if (level >= 7) return 3;
+    return 2;
+  }
+
+  #extractFixedTrainedSkills(document: any): string[] {
+    const skills = Array.isArray(document?.system?.trainedSkills?.value)
+      ? document.system.trainedSkills.value
+      : [];
+    return skills
+      .filter((entry: unknown): entry is string => typeof entry === "string" && entry.length > 0)
+      .map((entry) => entry.trim().toLowerCase());
+  }
+
+  #getSkillList(actorSkillRanks: Record<string, number>): Array<{ slug: string; label: string }> {
+    const configSkills = globalThis.CONFIG?.PF2E?.skills;
+    const result: Array<{ slug: string; label: string }> = [];
+    const seen = new Set<string>();
+
+    if (configSkills && typeof configSkills === "object") {
+      for (const slug of Object.keys(configSkills)) {
+        const entry = configSkills[slug];
+        const sourceLabel = typeof entry === "string" ? entry : entry?.label;
+        const label = this.#skillLabel(slug, sourceLabel);
+        result.push({ slug, label });
+        seen.add(slug);
+      }
+    } else {
+      for (const [slug, label] of Object.entries(SKILL_LABELS)) {
+        result.push({ slug, label: this.#skillLabel(slug, label) });
+        seen.add(slug);
+      }
+    }
+
+    for (const slug of Object.keys(actorSkillRanks)) {
+      if (!seen.has(slug)) {
+        result.push({ slug, label: this.#skillLabel(slug) });
+      }
+    }
+
+    return result.sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  #skillLabel(slug: string, sourceLabel?: string): string {
+    const localized = typeof sourceLabel === "string" && sourceLabel.length > 0
+      ? game.i18n.localize(sourceLabel)
+      : "";
+    if (localized && localized !== sourceLabel) {
+      return localized;
+    }
+
+    const fallback = SKILL_LABELS[slug];
+    if (fallback) {
+      return game.i18n.localize(fallback);
+    }
+
+    return this.#formatSlug(slug);
+  }
+
+  #selectSkillIncrease(stepId: string, slug: string): void {
+    this.#statusNote = null;
+    const draft = this.#requireDraft();
+    const slotId = stepId;
+
+    if (draft.skillIncreases[slotId] === slug) {
+      delete draft.skillIncreases[slotId];
+    } else {
+      draft.skillIncreases[slotId] = slug;
+    }
+
+    this.render(false);
+  }
+
+  #selectTrainingRule(stepId: string, flag: string, slug: string): void {
+    this.#statusNote = null;
+    const draft = this.#requireDraft();
+    draft.skillTrainings[stepId] ??= { ruleChoices: {}, additional: [] };
+    draft.skillTrainings[stepId].ruleChoices[flag] = slug;
+    this.render(false);
+  }
+
+  async #toggleTrainingSkill(stepId: string, slug: string): Promise<void> {
+    this.#statusNote = null;
+    const draft = this.#requireDraft();
+    const step = (await this.#buildPlan()).steps.find((entry) => entry.slotId === stepId);
+    const additionalCount = step?.training?.additionalCount ?? 0;
+    draft.skillTrainings[stepId] ??= { ruleChoices: {}, additional: [] };
+    const current = draft.skillTrainings[stepId].additional;
+    draft.skillTrainings[stepId].additional = current.includes(slug)
+      ? current.filter((entry) => entry !== slug)
+      : [...current, slug].slice(0, additionalCount);
+    this.render(false);
   }
 
   async #toggleAncestryMode(): Promise<void> {
@@ -1200,11 +1840,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return game.i18n.localize(globalThis.CONFIG?.PF2E?.abilities?.[attribute] ?? attribute.toUpperCase());
   }
 
-  async #resolveDraftOrActorDocument(itemType: "ancestry" | "heritage" | "class"): Promise<any | null> {
+  async #resolveDraftOrActorDocument(itemType: "ancestry" | "heritage" | "background" | "class"): Promise<any | null> {
     return getEffectiveSingletonDocument(this.actor, this.#requireDraft(), itemType);
   }
 
-  #findDraftSelectionByType(itemType: "ancestry" | "heritage" | "class"): SelectionRef | null {
+  #findDraftSelectionByType(itemType: "ancestry" | "heritage" | "background" | "class"): SelectionRef | null {
     return Object.values(this.#requireDraft().selections).find((selection) => selection.itemType === itemType) ?? null;
   }
 
@@ -1235,6 +1875,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   #findActorItemByType(type: string): any | null {
     return listActorItems(this.actor).find((item: any) => item?.type === type) ?? null;
+  }
+
+  #findActorItemBySourceId(sourceId: string): any | null {
+    return listActorItems(this.actor).find((item: any) =>
+      item?.sourceId === sourceId
+      || item?.flags?.core?.sourceId === sourceId
+      || item?._stats?.compendiumSource === sourceId
+    ) ?? null;
   }
 
   #extractSlug(document: any): string | null {
@@ -1313,9 +1961,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return draftedFeatDocuments.some((document) => this.#extractContextTraits(document).includes("dedication"));
   }
 
-  #moveStep(delta: number): void {
+  async #moveStep(delta: number): Promise<void> {
     const snapshot = inspectActor(this.actor);
-    const plan = buildProgressionPlan(snapshot, this.#requireDraft().targetLevel);
+    const plan = await this.#buildPlan(snapshot, this.#requireDraft());
     const currentIndex = plan.steps.findIndex((step) => step.id === this.#activeStepId);
     if (currentIndex === -1) {
       return;
@@ -1327,12 +1975,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   #clearSelection(slotId: string): number {
-    if (!this.#requireDraft().selections[slotId]) {
+    const draft = this.#requireDraft();
+    const hasItemSelection = !!draft.selections[slotId];
+    const hasBranchSelection = !!draft.branchSelections[slotId];
+    const hasTrainingSelection = !!draft.skillTrainings[slotId];
+    if (!hasItemSelection && !hasBranchSelection && !hasTrainingSelection) {
       this.#recentlyInvalidatedStepIds.delete(slotId);
       return 0;
     }
 
-    delete this.#requireDraft().selections[slotId];
+    delete draft.selections[slotId];
+    delete draft.branchSelections[slotId];
+    delete draft.skillTrainings[slotId];
     if (slotId === "ancestry-level-1") {
       this.#resetAncestryBoostDraft();
       this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
@@ -1341,10 +1995,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
     } else if (slotId === "class-level-1") {
       this.#resetClassBoostDraft();
+      this.#invalidateBranchSelectionsByPrefix("class-branch-");
+      this.#invalidateTrainingSelectionsByPrefix("skill-training-");
+      this.#invalidateSelectionsByPrefix("class-feat-level-");
       this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
     }
     this.#previewValueByStepId.delete(slotId);
-    this.#listScrollByStepId.delete(slotId);
+    for (const key of [...this.#scrollById.keys()]) {
+      if (key === slotId || key.startsWith(`${slotId}:`)) {
+        this.#scrollById.delete(key);
+      }
+    }
     this.#recentlyInvalidatedStepIds.delete(slotId);
     return 1;
   }
@@ -1352,6 +2013,32 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #clearSelectionsByPrefix(prefix: string): number {
     let cleared = 0;
     for (const slotId of Object.keys(this.#requireDraft().selections)) {
+      if (!slotId.startsWith(prefix)) {
+        continue;
+      }
+
+      cleared += this.#clearSelection(slotId);
+    }
+
+    return cleared;
+  }
+
+  #clearBranchSelectionsByPrefix(prefix: string): number {
+    let cleared = 0;
+    for (const slotId of Object.keys(this.#requireDraft().branchSelections)) {
+      if (!slotId.startsWith(prefix)) {
+        continue;
+      }
+
+      cleared += this.#clearSelection(slotId);
+    }
+
+    return cleared;
+  }
+
+  #clearTrainingSelectionsByPrefix(prefix: string): number {
+    let cleared = 0;
+    for (const slotId of Object.keys(this.#requireDraft().skillTrainings)) {
       if (!slotId.startsWith(prefix)) {
         continue;
       }
@@ -1374,6 +2061,32 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #invalidateSelectionsByPrefix(prefix: string): string[] {
     const invalidated: string[] = [];
     for (const slotId of Object.keys(this.#requireDraft().selections)) {
+      if (!slotId.startsWith(prefix)) {
+        continue;
+      }
+
+      invalidated.push(...this.#invalidateSelection(slotId));
+    }
+
+    return invalidated;
+  }
+
+  #invalidateBranchSelectionsByPrefix(prefix: string): string[] {
+    const invalidated: string[] = [];
+    for (const slotId of Object.keys(this.#requireDraft().branchSelections)) {
+      if (!slotId.startsWith(prefix)) {
+        continue;
+      }
+
+      invalidated.push(...this.#invalidateSelection(slotId));
+    }
+
+    return invalidated;
+  }
+
+  #invalidateTrainingSelectionsByPrefix(prefix: string): string[] {
+    const invalidated: string[] = [];
+    for (const slotId of Object.keys(this.#requireDraft().skillTrainings)) {
       if (!slotId.startsWith(prefix)) {
         continue;
       }
@@ -1432,6 +2145,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return !!draft.selections[step.slotId];
     }
 
+    if (step.kind === "class-branch") {
+      return !!draft.branchSelections[step.slotId];
+    }
+
+    if (step.kind === "skill-training") {
+      return this.#isTrainingStepComplete(step);
+    }
+
+    if (step.kind === "skill-increase") {
+      return typeof draft.skillIncreases[step.slotId] === "string" && draft.skillIncreases[step.slotId].length > 0;
+    }
+
     const buildState = effectiveBuildState ?? await getEffectiveBuildState(this.actor, draft);
     if (step.level === 1) {
       return !!buildState.ancestry
@@ -1461,6 +2186,38 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return draft.selections[step.slotId]?.name ?? "Choose one";
     }
 
+    if (step.kind === "class-branch") {
+      if (this.#recentlyInvalidatedStepIds.has(step.slotId) && !draft.branchSelections[step.slotId]) {
+        return "Needs attention";
+      }
+
+      return draft.branchSelections[step.slotId]?.name ?? "Choose one";
+    }
+
+    if (step.kind === "skill-training") {
+      if (this.#recentlyInvalidatedStepIds.has(step.slotId) && !this.#isTrainingStepComplete(step)) {
+        return "Needs attention";
+      }
+
+      const training = draft.skillTrainings[step.slotId];
+      const selectedCount = training
+        ? Object.values(training.ruleChoices).filter(Boolean).length + training.additional.length
+        : 0;
+      const total = (step.training?.choiceRules.length ?? 0) + (step.training?.additionalCount ?? 0);
+      return selectedCount >= total && total > 0
+        ? "Ready to apply"
+        : `${selectedCount}/${total} chosen`;
+    }
+
+    if (step.kind === "skill-increase") {
+      if (this.#recentlyInvalidatedStepIds.has(step.slotId) && !draft.skillIncreases[step.slotId]) {
+        return "Needs attention";
+      }
+
+      const slug = draft.skillIncreases[step.slotId];
+      return slug ? `${SKILL_LABELS[slug] ?? this.#formatSlug(slug)} selected` : "Choose one";
+    }
+
     const buildState = effectiveBuildState ?? await getEffectiveBuildState(this.actor, draft);
     if (this.#recentlyInvalidatedStepIds.has(step.slotId) && !await this.#isStepComplete(step, buildState)) {
       return "Needs attention";
@@ -1480,6 +2237,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     switch (kind) {
       case "pick-item":
         return "Selection";
+      case "skill-increase":
+        return "Skill";
+      case "skill-training":
+        return "Training";
+      case "class-branch":
+        return "Branch";
       case "boost":
         return "Boosts";
       default:
@@ -1509,6 +2272,26 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   #isClassBoostSectionComplete(buildState: EffectiveBuildState): boolean {
     return !!buildState.class?.selectedKeyAbility;
+  }
+
+  #isTrainingStepComplete(step: PendingStep): boolean {
+    const training = step.training;
+    if (!training) {
+      return false;
+    }
+
+    const draftTraining = this.#requireDraft().skillTrainings[step.slotId];
+    if (!draftTraining) {
+      return false;
+    }
+
+    const choiceComplete = training.choiceRules.every((rule) => {
+      const selection = draftTraining.ruleChoices[rule.flag];
+      return typeof selection === "string" && selection.length > 0;
+    });
+
+    const additionalComplete = draftTraining.additional.length === training.additionalCount;
+    return choiceComplete && additionalComplete;
   }
 
   #remainingCreationBoostChoices(buildState: EffectiveBuildState): number {
@@ -1548,7 +2331,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#statusNote = null;
     const snapshot = inspectActor(this.actor);
     const draft = this.#requireDraft();
-    const plan = buildProgressionPlan(snapshot, draft.targetLevel);
+    const plan = await this.#buildPlan(snapshot, draft);
     const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
     const completion = await Promise.all(plan.steps.map((step) => this.#isStepComplete(step, effectiveBuildState)));
     const missing = completion.some((value) => !value);

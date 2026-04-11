@@ -191,6 +191,50 @@ describe("pack-service dependency filtering", () => {
     ]);
   });
 
+  it("filters class-branch choices to the selector tag for the drafted class", async () => {
+    setPack("pf2e.classfeatures", [
+      classFeatureEntry("scoundrel", "Scoundrel", ["rogue"], ["rogue-racket"]),
+      classFeatureEntry("ruffian", "Ruffian", ["rogue"], ["rogue-racket"]),
+      classFeatureEntry("warpriest", "Warpriest", ["cleric"], ["cleric-doctrine"]),
+      classFeatureEntry("thesis-of-unity", "Thesis of Unity", ["wizard"], ["arcane-thesis"])
+    ]);
+
+    const options = await getOptionsForStep({
+      id: "class-branch-rogues-racket-level-1",
+      level: 1,
+      kind: "class-branch",
+      slotKind: "class-branch",
+      title: "Rogue's Racket",
+      description: "Choose a rogue's racket.",
+      required: true,
+      slotId: "class-branch-rogues-racket-level-1",
+      filters: {
+        itemType: "feat",
+        featTypes: ["classfeature"],
+        maxLevel: 1
+      },
+      branch: {
+        slotId: "class-branch-rogues-racket-level-1",
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "uGuCGQvUmioFV2Bd",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.uGuCGQvUmioFV2Bd",
+        selectorName: "Rogue's Racket",
+        selectorRuleIndex: 0,
+        flag: "roguesRacket",
+        optionTag: "rogue-racket",
+        classSlug: "rogue"
+      }
+    }, {
+      ...EMPTY_CONTEXT,
+      classSlug: "rogue"
+    });
+
+    expect(options.map((option) => option.name)).toEqual([
+      "Ruffian",
+      "Scoundrel"
+    ]);
+  });
+
   it("distinguishes blocked, empty-source, and search-empty picker states", () => {
     const heritageStep = makeStep("heritage", {
       itemType: "heritage"
@@ -311,6 +355,30 @@ function featEntry(slug: string, name: string, featType: string, traits: string[
       traits: {
         rarity: "common",
         value: traits
+      },
+      publication: {
+        title: "Player Core"
+      }
+    }
+  };
+}
+
+function classFeatureEntry(slug: string, name: string, traits: string[], otherTags: string[]): any {
+  return {
+    _id: slug,
+    name,
+    img: `${slug}.webp`,
+    type: "feat",
+    system: {
+      slug,
+      category: "classfeature",
+      level: {
+        value: 1
+      },
+      traits: {
+        rarity: "common",
+        value: traits,
+        otherTags
       },
       publication: {
         title: "Player Core"

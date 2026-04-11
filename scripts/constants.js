@@ -19,6 +19,39 @@ export const OFFICIAL_PACKS = {
     heritage: ["pf2e.heritages"],
     background: ["pf2e.backgrounds"],
     class: ["pf2e.classes"],
-    feat: ["pf2e.feats-srd"]
+    feat: ["pf2e.feats-srd"],
+    classFeature: ["pf2e.classfeatures"]
+};
+export const SKILL_LABELS = {
+    acrobatics: "Acrobatics",
+    arcana: "Arcana",
+    athletics: "Athletics",
+    crafting: "Crafting",
+    deception: "Deception",
+    diplomacy: "Diplomacy",
+    intimidation: "Intimidation",
+    medicine: "Medicine",
+    nature: "Nature",
+    occultism: "Occultism",
+    performance: "Performance",
+    religion: "Religion",
+    society: "Society",
+    stealth: "Stealth",
+    survival: "Survival",
+    thievery: "Thievery"
+};
+export const PROFICIENCY_LABELS = {
+    0: "Untrained",
+    1: "Trained",
+    2: "Expert",
+    3: "Master",
+    4: "Legendary"
+};
+export const PROFICIENCY_CODES = {
+    0: "U",
+    1: "T",
+    2: "E",
+    3: "M",
+    4: "L"
 };
 //# sourceMappingURL=constants.js.map

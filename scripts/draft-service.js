@@ -1,4 +1,4 @@
-const DRAFT_VERSION = 2;
+const DRAFT_VERSION = 3;
 const STATE_VERSION = 1;
 export function createEmptyDraft(targetLevel = 1) {
     return {
@@ -7,6 +7,9 @@ export function createEmptyDraft(targetLevel = 1) {
         selections: {},
         boosts: createEmptyBoostDraft(),
         manual: {},
+        skillIncreases: {},
+        skillTrainings: {},
+        branchSelections: {},
         updatedAt: null
     };
 }
@@ -26,6 +29,9 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
         selections: sanitizeSelections(draft.selections),
         boosts: sanitizeBoosts(draft.boosts),
         manual: sanitizeManual(draft.manual),
+        skillIncreases: sanitizeSkillIncreases(draft.skillIncreases),
+        skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
+        branchSelections: sanitizeSelections(draft.branchSelections),
         updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null
     };
 }
@@ -98,6 +104,44 @@ function sanitizeSelections(raw) {
             featType: typeof selection.featType === "string" ? selection.featType : null,
             name,
             level: typeof selection.level === "number" ? clampLevel(selection.level) : null
+        };
+    }
+    return result;
+}
+function sanitizeSkillIncreases(raw) {
+    if (!isRecord(raw)) {
+        return {};
+    }
+    const result = {};
+    for (const [slotId, value] of Object.entries(raw)) {
+        if (typeof value === "string" && value.trim()) {
+            result[slotId] = value.trim().toLowerCase();
+        }
+    }
+    return result;
+}
+function sanitizeSkillTrainings(raw) {
+    if (!isRecord(raw)) {
+        return {};
+    }
+    const result = {};
+    for (const [slotId, value] of Object.entries(raw)) {
+        if (!isRecord(value)) {
+            continue;
+        }
+        const ruleChoices = isRecord(value.ruleChoices)
+            ? Object.fromEntries(Object.entries(value.ruleChoices)
+                .filter(([, selection]) => typeof selection === "string" && selection.trim())
+                .map(([flag, selection]) => [flag, String(selection).trim().toLowerCase()]))
+            : {};
+        const additional = Array.isArray(value.additional)
+            ? value.additional
+                .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+                .map((entry) => entry.trim().toLowerCase())
+            : [];
+        result[slotId] = {
+            ruleChoices,
+            additional: Array.from(new Set(additional))
         };
     }
     return result;

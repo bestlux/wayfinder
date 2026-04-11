@@ -4,7 +4,7 @@ import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft, no
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 2,
+      version: 3,
       targetLevel: 4,
       selections: {},
       boosts: {
@@ -30,6 +30,9 @@ describe("draft-service", () => {
         levels: {}
       },
       manual: {},
+      skillIncreases: {},
+      skillTrainings: {},
+      branchSelections: {},
       updatedAt: null
     });
   });
@@ -64,6 +67,20 @@ describe("draft-service", () => {
         one: true,
         two: false
       },
+      skillIncreases: {
+        keep: "Acrobatics",
+        drop: "",
+        bad: 2
+      },
+      skillTrainings: {
+        fighter: {
+          ruleChoices: {
+            fighterSkill: "Athletics",
+            bad: 2
+          },
+          additional: ["Society", "", 3, "Medicine", "Society"]
+        }
+      },
       boosts: {
         ancestry: {
           modeTouched: false,
@@ -97,6 +114,17 @@ describe("draft-service", () => {
       one: true,
       two: false
     });
+    expect(draft.skillIncreases).toEqual({
+      keep: "acrobatics"
+    });
+    expect(draft.skillTrainings).toEqual({
+      fighter: {
+        ruleChoices: {
+          fighterSkill: "athletics"
+        },
+        additional: ["society", "medicine"]
+      }
+    });
     expect(draft.boosts).toEqual({
       ancestry: {
         modeTouched: false,
@@ -127,7 +155,7 @@ describe("draft-service", () => {
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(2);
+    expect(patched.version).toBe(3);
     expect(patched.updatedAt).not.toBeNull();
   });
 

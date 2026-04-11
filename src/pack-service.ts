@@ -14,7 +14,7 @@ const EMPTY_OPTION_CONTEXT: OptionContext = {
 };
 
 export async function getOptionsForStep(step: PendingStep, context: OptionContext = EMPTY_OPTION_CONTEXT): Promise<OptionRecord[]> {
-  if (step.kind !== "pick-item" || !step.filters) {
+  if ((step.kind !== "pick-item" && step.kind !== "class-branch") || !step.filters) {
     return [];
   }
 
@@ -163,6 +163,15 @@ export function getPickerBlockedState(step: PendingStep, context: OptionContext)
             title: "Choose a class first",
             message: "Class feat options are filtered from the drafted class. Pick the class step before reviewing class feats."
           };
+    case "class-branch":
+      return context.classSlug
+        ? null
+        : {
+            tone: "blocked",
+            eyebrow: "Prerequisite required",
+            title: "Choose a class first",
+            message: "Class branch options are pulled from the drafted class's selector features. Pick the class step before reviewing branch options."
+          };
     default:
       return null;
   }
@@ -180,6 +189,8 @@ function resolvePackIds(slotKind: PendingStep["slotKind"]): string[] {
       return mergePackIds([...OFFICIAL_PACKS.background], extras);
     case "class":
       return mergePackIds([...OFFICIAL_PACKS.class], extras);
+    case "class-branch":
+      return mergePackIds([...OFFICIAL_PACKS.classFeature], extras);
     default:
       return mergePackIds([...OFFICIAL_PACKS.feat], extras);
   }
@@ -200,6 +211,7 @@ async function getPackIndex(pack: any): Promise<any[]> {
       "system.ancestry.slug",
       "system.category",
       "system.traits.value",
+      "system.traits.otherTags",
       "system.traits.rarity",
       "system.publication.title"
     ]
@@ -239,6 +251,10 @@ function matchesFilters(entry: any, step: PendingStep, context: OptionContext, t
     if (heritageAncestrySlug && heritageAncestrySlug !== context.ancestrySlug) {
       return false;
     }
+  }
+
+  if (step.slotKind === "class-branch") {
+    return matchesClassBranchContext(entry, step, context);
   }
 
   if (step.slotKind === "ancestry-feat") {
@@ -350,6 +366,30 @@ function matchesSkillFeatContext(entry: any): boolean {
 
   const traits = extractEntryTraits(entry);
   return !traits.includes("archetype") && !traits.includes("dedication");
+}
+
+function matchesClassBranchContext(entry: any, step: PendingStep, context: OptionContext): boolean {
+  const branch = step.branch;
+  if (!branch) {
+    return false;
+  }
+
+  const category = stringOrNull(entry?.system?.category);
+  if (category && category !== "classfeature") {
+    return false;
+  }
+
+  if (branch.classSlug && context.classSlug && branch.classSlug !== context.classSlug) {
+    return false;
+  }
+
+  const otherTags = normalizeTraitList(entry?.system?.traits?.otherTags);
+  if (!otherTags.includes(branch.optionTag)) {
+    return false;
+  }
+
+  const traits = extractEntryTraits(entry);
+  return !branch.classSlug || traits.length === 0 || traits.includes(branch.classSlug);
 }
 
 function normalizeTraitList(value: unknown): string[] {

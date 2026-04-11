@@ -81,11 +81,15 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
 
   for (const level of SKILL_INCREASE_LEVELS) {
     if (level > currentLevel && level <= targetLevel) {
-      steps.push(makeManualStep("skill-increase", level, `Level ${level} skill increase`, "Apply this level's skill increase using PF2E's native actor controls, then mark the checkpoint complete."));
+      steps.push(makeSkillIncreaseStep(level));
     }
   }
 
-  return steps.sort((left, right) => {
+  return sortPendingSteps(steps);
+}
+
+export function sortPendingSteps(steps: PendingStep[]): PendingStep[] {
+  return [...steps].sort((left, right) => {
     const levelDelta = left.level - right.level;
     if (levelDelta !== 0) {
       return levelDelta;
@@ -150,6 +154,21 @@ function makePickStep(slotKind: PendingStep["slotKind"], level: number, title: s
   };
 }
 
+function makeSkillIncreaseStep(level: number): PendingStep {
+  const slotId = `skill-increase-level-${level}`;
+  const maxRankLabel = level >= 15 ? "Legendary" : level >= 7 ? "Master" : "Expert";
+  return {
+    id: slotId,
+    level,
+    kind: "skill-increase",
+    slotKind: "skill-increase",
+    title: `Level ${level} skill increase`,
+    description: `Increase one skill's proficiency rank by one step (up to ${maxRankLabel} at this level).`,
+    required: true,
+    slotId
+  };
+}
+
 function makeManualStep(slotKind: PendingStep["slotKind"], level: number, title: string, description: string): PendingStep {
   const slotId = `${slotKind}-level-${level}`;
   return {
@@ -203,18 +222,22 @@ function sortWeight(kind: PendingStep["slotKind"]): number {
       return 2;
     case "class":
       return 3;
-    case "ancestry-feat":
+    case "skill-training":
       return 4;
-    case "class-feat":
+    case "class-branch":
       return 5;
-    case "skill-feat":
+    case "ancestry-feat":
       return 6;
-    case "general-feat":
+    case "class-feat":
       return 7;
-    case "ability-boosts":
+    case "skill-feat":
       return 8;
-    case "skill-increase":
+    case "general-feat":
       return 9;
+    case "ability-boosts":
+      return 10;
+    case "skill-increase":
+      return 11;
     default:
       return 99;
   }

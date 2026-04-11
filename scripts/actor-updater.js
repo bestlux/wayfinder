@@ -8,6 +8,8 @@ export async function applyDraftToActor(actor, draft, steps) {
     for (const selection of selections.filter((entry) => SINGLETON_ITEM_TYPES.has(entry.itemType))) {
         await replaceSingletonItem(actor, selection);
     }
+    const projectedTrainingRanks = await applyTrainingDraft(actor, draft, steps);
+    await applyBranchDraft(actor, draft, steps);
     for (const selection of selections.filter((entry) => entry.itemType === "feat")) {
         if (hasSourceId(actor, selection.uuid)) {
             continue;
@@ -16,12 +18,165 @@ export async function applyDraftToActor(actor, draft, steps) {
         await insertFeatSelection(actor, selection, step ?? null);
     }
     await applyBoostDraft(actor, draft);
+    await applySkillIncreaseDraft(actor, draft, projectedTrainingRanks);
     const currentLevel = Number(actor?.system?.details?.level?.value ?? 1) || 1;
     if (draft.targetLevel > currentLevel) {
         await actor.update({
             "system.details.level.value": draft.targetLevel
         });
     }
+}
+async function applyBranchDraft(actor, draft, steps) {
+    const stepOrder = new Map(steps.map((step, index) => [step.slotId, index]));
+    const orderedSteps = steps
+        .filter((step) => step.kind === "class-branch" && step.branch)
+        .sort((left, right) => (stepOrder.get(left.slotId) ?? 0) - (stepOrder.get(right.slotId) ?? 0));
+    for (const step of orderedSteps) {
+        const selection = draft.branchSelections[step.slotId];
+        const branch = step.branch;
+        if (!selection || !branch) {
+            continue;
+        }
+        const selectorItem = findItemBySourceId(actor, branch.selectorUuid);
+        if (!selectorItem?.id) {
+            continue;
+        }
+        const existingGranted = listActorItems(actor).find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItem.id) ?? null;
+        const existingGrantedMatches = existingGranted && itemMatchesSourceId(existingGranted, selection.uuid);
+        if (existingGranted && !existingGrantedMatches) {
+            await actor.deleteEmbeddedDocuments("Item", [existingGranted.id]);
+        }
+        let grantedItem = existingGrantedMatches ? existingGranted : null;
+        if (!grantedItem) {
+            const source = await createEmbeddedSource(selection);
+            if (!source) {
+                continue;
+            }
+            source.flags ??= {};
+            source.flags.pf2e ??= {};
+            source.flags.pf2e.grantedBy = {
+                id: selectorItem.id,
+                onDelete: "cascade"
+            };
+            const created = await actor.createEmbeddedDocuments("Item", [source]);
+            grantedItem = Array.isArray(created) ? created[0] ?? null : null;
+            if (!grantedItem?.id) {
+                continue;
+            }
+        }
+        const selectorRules = Array.isArray(selectorItem.system?.rules)
+            ? cloneData(selectorItem.system.rules)
+            : [];
+        const selectorRule = selectorRules[branch.selectorRuleIndex];
+        if (selectorRule) {
+            selectorRule.selection = selection.uuid;
+        }
+        await actor.updateEmbeddedDocuments("Item", [
+            {
+                _id: selectorItem.id,
+                "system.rules": selectorRules,
+                [`flags.pf2e.rulesSelections.${branch.flag}`]: selection.uuid,
+                [`flags.pf2e.itemGrants.${branch.flag}`]: {
+                    id: grantedItem.id,
+                    onDelete: "detach",
+                    nested: null
+                },
+                [`flags.${MODULE_ID}.slotId`]: step.slotId
+            },
+            {
+                _id: grantedItem.id,
+                "flags.core.sourceId": selection.uuid,
+                "flags.pf2e.grantedBy": {
+                    id: selectorItem.id,
+                    onDelete: "cascade"
+                },
+                [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
+                [`flags.${MODULE_ID}.slotId`]: step.slotId
+            }
+        ]);
+    }
+}
+async function applyTrainingDraft(actor, draft, steps) {
+    const projectedRanks = {};
+    for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
+        const rank = Number(data?.rank ?? 0);
+        projectedRanks[slug] = Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
+    }
+    const stepMap = new Map(steps.map((step) => [step.slotId, step]));
+    const classUpdates = [];
+    for (const [slotId, training] of Object.entries(draft.skillTrainings)) {
+        const step = stepMap.get(slotId);
+        if (step?.kind !== "skill-training" || !step.training) {
+            continue;
+        }
+        const classItem = listActorItems(actor).find((item) => item?.type === "class");
+        if (classItem?.id && step.training.choiceRules.length > 0) {
+            const classRules = cloneData(Array.isArray(classItem.system?.rules) ? classItem.system.rules : []);
+            const classUpdate = { _id: classItem.id };
+            for (const choiceRule of step.training.choiceRules) {
+                const selection = training.ruleChoices[choiceRule.flag];
+                if (!selection) {
+                    continue;
+                }
+                if (classRules[choiceRule.ruleIndex]) {
+                    classRules[choiceRule.ruleIndex].selection = selection;
+                }
+                classUpdate[`flags.pf2e.rulesSelections.${choiceRule.flag}`] = selection;
+                projectedRanks[selection] = Math.max(projectedRanks[selection] ?? 0, 1);
+            }
+            classUpdate["system.rules"] = classRules;
+            classUpdates.push(classUpdate);
+        }
+        for (const slug of training.additional) {
+            projectedRanks[slug] = Math.max(projectedRanks[slug] ?? 0, 1);
+        }
+    }
+    if (classUpdates.length > 0) {
+        await actor.updateEmbeddedDocuments("Item", classUpdates);
+    }
+    const skillUpdates = Object.entries(projectedRanks)
+        .filter(([slug, rank]) => {
+        const current = Number(actor?.system?.skills?.[slug]?.rank ?? 0);
+        return rank > current;
+    })
+        .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]);
+    if (skillUpdates.length > 0) {
+        await actor.update(Object.fromEntries(skillUpdates));
+    }
+    return projectedRanks;
+}
+async function applySkillIncreaseDraft(actor, draft, baseRanks) {
+    const projectedRanks = baseRanks ? { ...baseRanks } : {};
+    if (!baseRanks) {
+        for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
+            const rank = Number(data?.rank ?? 0);
+            projectedRanks[slug] = Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
+        }
+    }
+    const sortedEntries = Object.entries(draft.skillIncreases).sort(([left], [right]) => compareSkillIncreaseSlotIds(left, right));
+    for (const [, slug] of sortedEntries) {
+        if (typeof slug !== "string" || !slug) {
+            continue;
+        }
+        const currentRank = projectedRanks[slug] ?? 0;
+        projectedRanks[slug] = Math.min(4, currentRank + 1);
+    }
+    const updates = Object.entries(projectedRanks).map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]);
+    if (updates.length > 0) {
+        await actor.update(Object.fromEntries(updates));
+    }
+}
+function compareSkillIncreaseSlotIds(left, right) {
+    const leftLevel = skillIncreaseLevelFromSlotId(left);
+    const rightLevel = skillIncreaseLevelFromSlotId(right);
+    if (leftLevel !== rightLevel) {
+        return leftLevel - rightLevel;
+    }
+    return left.localeCompare(right);
+}
+function skillIncreaseLevelFromSlotId(slotId) {
+    const match = /skill-increase-level-(\d+)/.exec(slotId);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 }
 async function replaceSingletonItem(actor, selection) {
     const existing = Array.from(actor?.items ?? []).filter((item) => item.type === selection.itemType);
@@ -145,7 +300,21 @@ function orderSelections(draft, steps) {
     });
 }
 function hasSourceId(actor, sourceId) {
-    return Array.from(actor?.items ?? []).some((item) => item?.flags?.core?.sourceId === sourceId);
+    return listActorItems(actor).some((item) => itemMatchesSourceId(item, sourceId));
+}
+function findItemBySourceId(actor, sourceId) {
+    return listActorItems(actor).find((item) => itemMatchesSourceId(item, sourceId)) ?? null;
+}
+function itemMatchesSourceId(item, sourceId) {
+    return item?.sourceId === sourceId
+        || item?.flags?.core?.sourceId === sourceId
+        || item?._stats?.compendiumSource === sourceId;
+}
+function cloneData(value) {
+    if (typeof globalThis.structuredClone === "function") {
+        return globalThis.structuredClone(value);
+    }
+    return JSON.parse(JSON.stringify(value));
 }
 async function applyBoostDraft(actor, draft) {
     const buildState = await getEffectiveBuildState(actor, draft);

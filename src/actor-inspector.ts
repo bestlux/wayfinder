@@ -53,8 +53,23 @@ export function inspectActor(actor: any): ActorSnapshot {
     singletonSlots,
     featCounts,
     sourceIds: Array.from(sourceIds),
-    namesByType
+    namesByType,
+    skillRanks: extractSkillRanks(actor)
   };
+}
+
+function extractSkillRanks(actor: any): Record<string, number> {
+  const skills = actor?.system?.skills;
+  if (!skills || typeof skills !== "object") {
+    return {};
+  }
+
+  const result: Record<string, number> = {};
+  for (const [slug, data] of Object.entries(skills)) {
+    const rank = Number((data as any)?.rank ?? 0);
+    result[slug] = Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
+  }
+  return result;
 }
 
 function normalizeItems(actor: any): any[] {

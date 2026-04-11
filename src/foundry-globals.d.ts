@@ -8,4 +8,3 @@ declare const CONST: any;
 declare const fromUuid: any;
 declare const TextEditor: any;
 declare const loadTemplates: any;
-declare const globalThis: any;

@@ -7,7 +7,7 @@ export function registerSettings(): void {
     scope: "world",
     config: true,
     type: String,
-    default: ""
+    default: "",
   });
 }
 

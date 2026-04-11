@@ -8,7 +8,7 @@ const EMPTY_OPTION_CONTEXT = {
     ancestryTraits: [],
     heritageTraits: [],
     classSlug: null,
-    hasDedicationFeat: false
+    hasDedicationFeat: false,
 };
 export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
     if ((step.kind !== "pick-item" && step.kind !== "class-branch") || !step.filters) {
@@ -48,7 +48,7 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
                 traits,
                 rarity: stringOrNull(entry?.system?.traits?.rarity),
                 source: stringOrNull(entry?.system?.publication?.title),
-                label: level === null ? name : `${name} (Level ${level})`
+                label: level === null ? name : `${name} (Level ${level})`,
             });
         }
     }
@@ -68,7 +68,7 @@ export async function resolveSelection(rawValue, step, context = EMPTY_OPTION_CO
         itemType: selected.itemType,
         featType: selected.featType,
         name: selected.name,
-        level: selected.level
+        level: selected.level,
     };
 }
 export async function fetchSelectionDocument(selection) {
@@ -92,7 +92,7 @@ export function getPickerInfoState(step, context, optionCount, filteredCount, se
             tone: "empty",
             eyebrow: "No matching sources",
             title: "No valid options are available",
-            message: "The enabled compendia do not currently provide any choices that fit this step."
+            message: "The enabled compendia do not currently provide any choices that fit this step.",
         };
     }
     if (search.trim() && filteredCount === 0) {
@@ -100,7 +100,7 @@ export function getPickerInfoState(step, context, optionCount, filteredCount, se
             tone: "search",
             eyebrow: "Search results",
             title: "No choices match this search",
-            message: "Adjust the search terms to widen the list again."
+            message: "Adjust the search terms to widen the list again.",
         };
     }
     return null;
@@ -114,7 +114,7 @@ export function getPickerBlockedState(step, context) {
                     tone: "blocked",
                     eyebrow: "Prerequisite required",
                     title: "Choose an ancestry first",
-                    message: "Wayfinder filters heritages from the drafted ancestry. Pick the ancestry step before reviewing heritage options."
+                    message: "Wayfinder filters heritages from the drafted ancestry. Pick the ancestry step before reviewing heritage options.",
                 };
         case "ancestry-feat":
             return context.ancestryTraits.length > 0
@@ -123,7 +123,7 @@ export function getPickerBlockedState(step, context) {
                     tone: "blocked",
                     eyebrow: "Prerequisite required",
                     title: "Choose an ancestry before ancestry feats",
-                    message: "Ancestry feats are filtered from the drafted ancestry and any versatile heritage tags."
+                    message: "Ancestry feats are filtered from the drafted ancestry and any versatile heritage tags.",
                 };
         case "class-feat":
             return context.classSlug
@@ -132,7 +132,7 @@ export function getPickerBlockedState(step, context) {
                     tone: "blocked",
                     eyebrow: "Prerequisite required",
                     title: "Choose a class first",
-                    message: "Class feat options are filtered from the drafted class. Pick the class step before reviewing class feats."
+                    message: "Class feat options are filtered from the drafted class. Pick the class step before reviewing class feats.",
                 };
         case "class-branch":
             return context.classSlug
@@ -141,7 +141,7 @@ export function getPickerBlockedState(step, context) {
                     tone: "blocked",
                     eyebrow: "Prerequisite required",
                     title: "Choose a class first",
-                    message: "Class branch options are pulled from the drafted class's selector features. Pick the class step before reviewing branch options."
+                    message: "Class branch options are pulled from the drafted class's selector features. Pick the class step before reviewing branch options.",
                 };
         default:
             return null;
@@ -180,8 +180,8 @@ async function getPackIndex(pack) {
             "system.traits.value",
             "system.traits.otherTags",
             "system.traits.rarity",
-            "system.publication.title"
-        ]
+            "system.publication.title",
+        ],
     });
     const contents = Array.from(index ?? []);
     indexCache.set(pack.metadata.id, contents);
@@ -249,9 +249,7 @@ function stringOrNull(value) {
     return typeof value === "string" && value.length > 0 ? value : null;
 }
 function extractEntrySlug(entry) {
-    return stringOrNull(entry?.system?.slug)
-        ?? stringOrNull(entry?.system?.ancestry?.slug)
-        ?? slugifyName(entry?.name);
+    return stringOrNull(entry?.system?.slug) ?? stringOrNull(entry?.system?.ancestry?.slug) ?? slugifyName(entry?.name);
 }
 function extractEntryTraits(entry) {
     return normalizeTraitList(entry?.system?.traits?.value);
@@ -291,9 +289,7 @@ function matchesClassFeatContext(entry, context, _traitCatalog) {
     }
     const isArchetypeFeat = traits.includes("archetype") || traits.includes("dedication");
     if (isArchetypeFeat) {
-        return context.hasDedicationFeat
-            ? traits.includes("archetype")
-            : traits.includes("dedication");
+        return context.hasDedicationFeat ? traits.includes("archetype") : traits.includes("dedication");
     }
     return false;
 }
@@ -366,13 +362,13 @@ async function getTraitCatalog(slotKind) {
 }
 function getConfiguredTraitCatalog(kind) {
     const pf2eConfig = globalThis.CONFIG?.PF2E;
-    const traitMap = kind === "class"
-        ? pf2eConfig?.classTraits
-        : pf2eConfig?.ancestryTraits;
+    const traitMap = kind === "class" ? pf2eConfig?.classTraits : pf2eConfig?.ancestryTraits;
     if (!traitMap || typeof traitMap !== "object") {
         return new Set();
     }
-    return new Set(Object.keys(traitMap).map((key) => key.trim().toLowerCase()).filter(Boolean));
+    return new Set(Object.keys(traitMap)
+        .map((key) => key.trim().toLowerCase())
+        .filter(Boolean));
 }
 function slugifyName(value) {
     if (typeof value !== "string") {
@@ -382,8 +378,6 @@ function slugifyName(value) {
     if (!trimmed) {
         return null;
     }
-    return trimmed
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "") || null;
+    return trimmed.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || null;
 }
 //# sourceMappingURL=pack-service.js.map

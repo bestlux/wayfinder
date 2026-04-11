@@ -22,7 +22,7 @@ export async function applyDraftToActor(actor, draft, steps) {
     const currentLevel = Number(actor?.system?.details?.level?.value ?? 1) || 1;
     if (draft.targetLevel > currentLevel) {
         await actor.update({
-            "system.details.level.value": draft.targetLevel
+            "system.details.level.value": draft.targetLevel,
         });
     }
 }
@@ -56,17 +56,15 @@ async function applyBranchDraft(actor, draft, steps) {
             source.flags.pf2e ??= {};
             source.flags.pf2e.grantedBy = {
                 id: selectorItem.id,
-                onDelete: "cascade"
+                onDelete: "cascade",
             };
             const created = await actor.createEmbeddedDocuments("Item", [source]);
-            grantedItem = Array.isArray(created) ? created[0] ?? null : null;
+            grantedItem = Array.isArray(created) ? (created[0] ?? null) : null;
             if (!grantedItem?.id) {
                 continue;
             }
         }
-        const selectorRules = Array.isArray(selectorItem.system?.rules)
-            ? cloneData(selectorItem.system.rules)
-            : [];
+        const selectorRules = Array.isArray(selectorItem.system?.rules) ? cloneData(selectorItem.system.rules) : [];
         const selectorRule = selectorRules[branch.selectorRuleIndex];
         if (selectorRule) {
             selectorRule.selection = selection.uuid;
@@ -79,20 +77,20 @@ async function applyBranchDraft(actor, draft, steps) {
                 [`flags.pf2e.itemGrants.${branch.flag}`]: {
                     id: grantedItem.id,
                     onDelete: "detach",
-                    nested: null
+                    nested: null,
                 },
-                [`flags.${MODULE_ID}.slotId`]: step.slotId
+                [`flags.${MODULE_ID}.slotId`]: step.slotId,
             },
             {
                 _id: grantedItem.id,
                 "flags.core.sourceId": selection.uuid,
                 "flags.pf2e.grantedBy": {
                     id: selectorItem.id,
-                    onDelete: "cascade"
+                    onDelete: "cascade",
                 },
                 [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
-                [`flags.${MODULE_ID}.slotId`]: step.slotId
-            }
+                [`flags.${MODULE_ID}.slotId`]: step.slotId,
+            },
         ]);
     }
 }
@@ -200,7 +198,7 @@ async function createEmbeddedSource(selection) {
     source.flags.core.sourceId = selection.uuid;
     source.flags[MODULE_ID] = {
         importedBy: MODULE_ID,
-        slotId: selection.slotId
+        slotId: selection.slotId,
     };
     return source;
 }
@@ -243,7 +241,7 @@ function resolveFeatSlotData(actor, selection, step) {
     const firstOpen = slots.find((slot) => !slot.feat);
     return {
         groupId,
-        slotId: matchingLevel?.id ?? firstOpen?.id ?? null
+        slotId: matchingLevel?.id ?? firstOpen?.id ?? null,
     };
 }
 function resolveFeatGroupId(selection, step) {
@@ -285,7 +283,7 @@ async function stampSelectionFlags(actor, items, selection) {
             _id: item.id,
             "flags.core.sourceId": selection.uuid,
             [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
-            [`flags.${MODULE_ID}.slotId`]: selection.slotId
+            [`flags.${MODULE_ID}.slotId`]: selection.slotId,
         });
     }
     if (updates.length > 0) {
@@ -306,9 +304,9 @@ function findItemBySourceId(actor, sourceId) {
     return listActorItems(actor).find((item) => itemMatchesSourceId(item, sourceId)) ?? null;
 }
 function itemMatchesSourceId(item, sourceId) {
-    return item?.sourceId === sourceId
-        || item?.flags?.core?.sourceId === sourceId
-        || item?._stats?.compendiumSource === sourceId;
+    return (item?.sourceId === sourceId ||
+        item?.flags?.core?.sourceId === sourceId ||
+        item?._stats?.compendiumSource === sourceId);
 }
 function cloneData(value) {
     if (typeof globalThis.structuredClone === "function") {
@@ -354,16 +352,13 @@ async function applyBoostDraft(actor, draft) {
     if (classItem && buildState.class) {
         updates.push({
             _id: classItem.id,
-            "system.keyAbility.selected": buildState.class.selectedKeyAbility
+            "system.keyAbility.selected": buildState.class.selectedKeyAbility,
         });
     }
     if (updates.length > 0) {
         await actor.updateEmbeddedDocuments("Item", updates);
     }
-    const actorBoostUpdate = Object.fromEntries(BOOST_LEVELS.map((level) => [
-        `system.build.attributes.boosts.${level}`,
-        buildState.levelBoosts[level]
-    ]));
+    const actorBoostUpdate = Object.fromEntries(BOOST_LEVELS.map((level) => [`system.build.attributes.boosts.${level}`, buildState.levelBoosts[level]]));
     await actor.update(actorBoostUpdate);
 }
 //# sourceMappingURL=actor-updater.js.map

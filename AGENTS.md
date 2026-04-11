@@ -13,9 +13,17 @@ Repo-local instructions for `D:\Source\foundryvtt\character-gen`.
 ## Validation
 
 - Required before closing meaningful work:
+  - `npm run format:check`
+  - `npm run lint`
   - `npm run build`
   - `npm test`
 - If `src/` changes, make sure the generated `scripts/` output is updated in the same change.
+
+## Tooling
+
+- `Biome` owns formatting and import organization.
+- `ESLint` owns TypeScript linting for `src/`, `tests/`, and repo config files.
+- Do not hand-edit `scripts/` without regenerating from `src/`.
 
 ## Wayfinder Structure
 

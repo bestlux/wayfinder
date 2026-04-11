@@ -11,18 +11,18 @@ function makeSnapshot(partial: Partial<ActorSnapshot> = {}): ActorSnapshot {
       ancestry: false,
       heritage: false,
       background: false,
-      class: false
+      class: false,
     },
     featCounts: {
       ancestry: 0,
       class: 0,
       archetype: 0,
       skill: 0,
-      general: 0
+      general: 0,
     },
     sourceIds: [],
     namesByType: {},
-    ...partial
+    ...partial,
   };
 }
 
@@ -38,54 +38,57 @@ describe("progression", () => {
       "background",
       "class",
       "ancestry-feat",
-      "ability-boosts"
+      "ability-boosts",
     ]);
   });
 
   it("advances a complete level 3 actor to level 4 recommendations", () => {
-    const plan = buildProgressionPlan(makeSnapshot({
-      level: 3,
-      isBlank: false,
-      singletonSlots: {
-        ancestry: true,
-        heritage: true,
-        background: true,
-        class: true
-      },
-      featCounts: {
-        ancestry: 1,
-        class: 1,
-        archetype: 0,
-        skill: 1,
-        general: 1
-      }
-    }));
+    const plan = buildProgressionPlan(
+      makeSnapshot({
+        level: 3,
+        isBlank: false,
+        singletonSlots: {
+          ancestry: true,
+          heritage: true,
+          background: true,
+          class: true,
+        },
+        featCounts: {
+          ancestry: 1,
+          class: 1,
+          archetype: 0,
+          skill: 1,
+          general: 1,
+        },
+      })
+    );
 
     expect(plan.recommendedTargetLevel).toBe(4);
-    expect(plan.steps.map((step) => step.slotKind)).toEqual([
-      "class-feat",
-      "skill-feat"
-    ]);
+    expect(plan.steps.map((step) => step.slotKind)).toEqual(["class-feat", "skill-feat"]);
   });
 
   it("includes later milestone steps up to a requested level", () => {
-    const steps = buildSteps(makeSnapshot({
-      level: 4,
-      isBlank: false,
-      singletonSlots: {
-        ancestry: true,
-        heritage: true,
-        background: true,
-        class: true
-      },
-      featCounts: {
-        ancestry: 1,
-        class: 2,
-        archetype: 0,
-        skill: 1,
-        general: 1
-      }
-    }), 4, 5);
+    const steps = buildSteps(
+      makeSnapshot({
+        level: 4,
+        isBlank: false,
+        singletonSlots: {
+          ancestry: true,
+          heritage: true,
+          background: true,
+          class: true,
+        },
+        featCounts: {
+          ancestry: 1,
+          class: 2,
+          archetype: 0,
+          skill: 1,
+          general: 1,
+        },
+      }),
+      4,
+      5
+    );
 
     expect(steps.map((step) => `${step.slotKind}:${step.level}`)).toContain("ability-boosts:5");
     expect(steps.map((step) => `${step.slotKind}:${step.level}`)).toContain("skill-feat:4");

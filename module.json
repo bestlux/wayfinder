@@ -8,9 +8,7 @@
       "name": "Codex + iomancer"
     }
   ],
-  "esmodules": [
-    "scripts/wayfinder.js"
-  ],
+  "esmodules": ["scripts/wayfinder.js"],
   "styles": [
     {
       "src": "styles/wayfinder.css",

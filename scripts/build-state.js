@@ -6,7 +6,7 @@ async function getEffectiveBuildState(actor, draft) {
         getEffectiveSingletonDocument(actor, draft, "ancestry"),
         getEffectiveSingletonDocument(actor, draft, "heritage"),
         getEffectiveSingletonDocument(actor, draft, "background"),
-        getEffectiveSingletonDocument(actor, draft, "class")
+        getEffectiveSingletonDocument(actor, draft, "class"),
     ]);
     const ancestry = ancestryDocument ? buildEffectiveAncestryState(ancestryDocument, draft.boosts) : null;
     const background = backgroundDocument ? buildEffectiveBackgroundState(backgroundDocument, draft.boosts) : null;
@@ -18,7 +18,7 @@ async function getEffectiveBuildState(actor, draft) {
         ancestryFlaws: ancestry?.buildFlaws ?? [],
         backgroundBoosts: background?.buildBoosts ?? [],
         classBoost: effectiveClass?.selectedKeyAbility ?? null,
-        levelBoosts
+        levelBoosts,
     });
     return {
         ancestry,
@@ -27,7 +27,7 @@ async function getEffectiveBuildState(actor, draft) {
         class: effectiveClass,
         levelBoosts,
         allowedBoosts,
-        projectedAbilities
+        projectedAbilities,
     };
 }
 async function getEffectiveSingletonDocument(actor, draft, itemType) {
@@ -76,7 +76,7 @@ async function resolveSourceDocumentFromActorItem(actorItem, itemType) {
         itemType,
         featType: null,
         name: actorItem.name ?? "",
-        level: null
+        level: null,
     });
 }
 function toPlainDocument(document) {
@@ -96,20 +96,16 @@ function cloneData(value) {
 }
 function buildEffectiveAncestryState(document, boosts) {
     const boostEntries = Object.entries(document?.system?.boosts ?? {});
-    const committedMode = Array.isArray(document?.system?.alternateAncestryBoosts)
-        ? "alternate"
-        : "standard";
+    const committedMode = Array.isArray(document?.system?.alternateAncestryBoosts) ? "alternate" : "standard";
     const mode = boosts.ancestry.modeTouched ? boosts.ancestry.mode : committedMode;
     const selectedBoosts = Object.fromEntries(boostEntries.map(([key, boost]) => [key, boosts.ancestry.selectedBoosts[key] ?? normalizeAbility(boost?.selected)]));
     const lockedBoosts = boostEntries
-        .flatMap(([, boost]) => boost.value.length === 1 ? boost.value : [])
+        .flatMap(([, boost]) => (boost.value.length === 1 ? boost.value : []))
         .filter(isAbilityKey);
     const alternateBoosts = mode === "alternate"
         ? normalizeAbilityList(boosts.ancestry.modeTouched ? boosts.ancestry.alternateBoosts : document?.system?.alternateAncestryBoosts, 2)
         : [];
-    const voluntary = normalizeVoluntaryState(boosts.ancestry.voluntary.touched
-        ? boosts.ancestry.voluntary
-        : document?.system?.voluntary);
+    const voluntary = normalizeVoluntaryState(boosts.ancestry.voluntary.touched ? boosts.ancestry.voluntary : document?.system?.voluntary);
     const buildBoosts = mode === "alternate"
         ? [...alternateBoosts]
         : Object.values(selectedBoosts).filter((ability) => ability !== null);
@@ -124,16 +120,19 @@ function buildEffectiveAncestryState(document, boosts) {
         lockedBoosts,
         voluntary,
         buildBoosts,
-        buildFlaws: voluntary.enabled ? [...voluntary.flaws] : []
+        buildFlaws: voluntary.enabled ? [...voluntary.flaws] : [],
     };
 }
 function buildEffectiveBackgroundState(document, boosts) {
     const boostEntries = Object.entries(document?.system?.boosts ?? {});
-    const selectedBoosts = Object.fromEntries(boostEntries.map(([key, boost]) => [key, boosts.background.selectedBoosts[key] ?? normalizeAbility(boost?.selected)]));
+    const selectedBoosts = Object.fromEntries(boostEntries.map(([key, boost]) => [
+        key,
+        boosts.background.selectedBoosts[key] ?? normalizeAbility(boost?.selected),
+    ]));
     return {
         document,
         selectedBoosts,
-        buildBoosts: Object.values(selectedBoosts).filter((ability) => ability !== null)
+        buildBoosts: Object.values(selectedBoosts).filter((ability) => ability !== null),
     };
 }
 function buildEffectiveClassState(document, boosts) {
@@ -141,7 +140,7 @@ function buildEffectiveClassState(document, boosts) {
     return {
         document,
         keyAbilityOptions,
-        selectedKeyAbility: boosts.class.keyAbility ?? normalizeAbility(document?.system?.keyAbility?.selected)
+        selectedKeyAbility: boosts.class.keyAbility ?? normalizeAbility(document?.system?.keyAbility?.selected),
     };
 }
 function buildEffectiveLevelBoosts(actor, boosts) {
@@ -155,7 +154,7 @@ function buildEffectiveLevelBoosts(actor, boosts) {
 function buildAllowedBoosts(targetLevel) {
     return Object.fromEntries(BOOST_LEVELS.map((level) => [level, level <= targetLevel ? 4 : 0]));
 }
-function buildProjectedAbilities({ ancestryBoosts, ancestryFlaws, backgroundBoosts, classBoost, levelBoosts }) {
+function buildProjectedAbilities({ ancestryBoosts, ancestryFlaws, backgroundBoosts, classBoost, levelBoosts, }) {
     return Object.fromEntries(ABILITY_KEYS.map((key) => {
         const boostCount = countOccurrences(ancestryBoosts, key) +
             countOccurrences(backgroundBoosts, key) +
@@ -167,9 +166,7 @@ function buildProjectedAbilities({ ancestryBoosts, ancestryFlaws, backgroundBoos
             countOccurrences(levelBoosts[20], key);
         const flawCount = countOccurrences(ancestryFlaws, key);
         const netBoosts = boostCount - flawCount;
-        const modifier = netBoosts <= 4
-            ? netBoosts
-            : 4 + Math.floor((netBoosts - 4) / 2);
+        const modifier = netBoosts <= 4 ? netBoosts : 4 + Math.floor((netBoosts - 4) / 2);
         const partial = netBoosts >= 5 && netBoosts % 2 === 1;
         return [
             key,
@@ -178,8 +175,8 @@ function buildProjectedAbilities({ ancestryBoosts, ancestryFlaws, backgroundBoos
                 modifier,
                 partial,
                 boostCount,
-                flawCount
-            }
+                flawCount,
+            },
         ];
     }));
 }
@@ -194,22 +191,23 @@ function normalizeAbilityList(value, maxLength = 6) {
     if (!Array.isArray(value)) {
         return [];
     }
-    return Array.from(new Set(value
-        .map((entry) => normalizeAbility(entry))
-        .filter((entry) => entry !== null))).slice(0, maxLength);
+    return Array.from(new Set(value.map((entry) => normalizeAbility(entry)).filter((entry) => entry !== null))).slice(0, maxLength);
 }
 function normalizeVoluntaryState(value) {
-    const legacy = value?.legacy === true
-        || (typeof value?.legacy !== "boolean" && Object.prototype.hasOwnProperty.call(value ?? {}, "boost"));
+    const legacy = value?.legacy === true ||
+        (typeof value?.legacy !== "boolean" && Object.prototype.hasOwnProperty.call(value ?? {}, "boost"));
     const flaws = Array.isArray(value?.flaws)
-        ? value.flaws.map((entry) => normalizeAbility(entry)).filter((entry) => entry !== null).slice(0, legacy ? 2 : 6)
+        ? value.flaws
+            .map((entry) => normalizeAbility(entry))
+            .filter((entry) => entry !== null)
+            .slice(0, legacy ? 2 : 6)
         : [];
     const boost = normalizeAbility(value?.boost);
     return {
         enabled: value?.enabled === true || legacy || flaws.length > 0 || boost !== null,
         legacy,
         boost,
-        flaws
+        flaws,
     };
 }
 function isAbilityKey(value) {

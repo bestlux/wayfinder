@@ -12,34 +12,66 @@ export function buildPreviewDetails(document: any): DetailRow[] {
         row("Vision", formatSlug(system.vision)),
         row("Boosts", formatBoosts(system.boosts)),
         row("Flaw", formatFlaws(system.flaws)),
-        row("Languages", Array.isArray(system.languages?.value) ? system.languages.value.map((value: string) => formatSlug(value)).join(", ") : null)
+        row(
+          "Languages",
+          Array.isArray(system.languages?.value)
+            ? system.languages.value.map((value: string) => formatSlug(value)).join(", ")
+            : null
+        ),
       ].filter(Boolean) as DetailRow[];
     case "heritage":
       return [
         row("Ancestry", system.ancestry?.name ?? formatSlug(system.ancestry?.slug)),
-        row("Rarity", formatSlug(system.traits?.rarity))
+        row("Rarity", formatSlug(system.traits?.rarity)),
       ].filter(Boolean) as DetailRow[];
     case "background":
       return [
         row("Boosts", formatBoosts(system.boosts)),
-        row("Skills", Array.isArray(system.trainedSkills?.value) ? system.trainedSkills.value.map((value: string) => formatSlug(value)).join(", ") : null),
+        row(
+          "Skills",
+          Array.isArray(system.trainedSkills?.value)
+            ? system.trainedSkills.value.map((value: string) => formatSlug(value)).join(", ")
+            : null
+        ),
         row("Lore", Array.isArray(system.trainedSkills?.lore) ? system.trainedSkills.lore.join(", ") : null),
-        row("Granted Item", system.items ? Object.values(system.items).map((item: any) => item.name).join(", ") : null)
+        row(
+          "Granted Item",
+          system.items
+            ? Object.values(system.items)
+                .map((item: any) => item.name)
+                .join(", ")
+            : null
+        ),
       ].filter(Boolean) as DetailRow[];
     case "class":
       return [
         row("Hit Points", system.hp),
-        row("Key Ability", Array.isArray(system.keyAbility?.value) ? system.keyAbility.value.map((value: string) => value.toUpperCase()).join(" or ") : null),
+        row(
+          "Key Ability",
+          Array.isArray(system.keyAbility?.value)
+            ? system.keyAbility.value.map((value: string) => value.toUpperCase()).join(" or ")
+            : null
+        ),
         row("Perception", rankLabel(system.perception)),
         row("Saving Throws", formatSavingThrows(system.savingThrows)),
-        row("Skill Training", typeof system.trainedSkills?.additional === "number" ? `Trained in ${system.trainedSkills.additional} additional skills` : null)
+        row(
+          "Skill Training",
+          typeof system.trainedSkills?.additional === "number"
+            ? `Trained in ${system.trainedSkills.additional} additional skills`
+            : null
+        ),
       ].filter(Boolean) as DetailRow[];
     case "feat":
       return [
         row("Level", system.level?.value),
         row("Category", formatSlug(system.category ?? system.featType?.value ?? document.featType)),
         row("Actions", formatActions(system)),
-        row("Prerequisites", Array.isArray(system.prerequisites?.value) ? system.prerequisites.value.map((entry: any) => entry.value ?? entry).join(", ") : null)
+        row(
+          "Prerequisites",
+          Array.isArray(system.prerequisites?.value)
+            ? system.prerequisites.value.map((entry: any) => entry.value ?? entry).join(", ")
+            : null
+        ),
       ].filter(Boolean) as DetailRow[];
     default:
       return [row("Level", system.level?.value)].filter(Boolean) as DetailRow[];
@@ -82,7 +114,7 @@ export function formatBoosts(boosts: any): string {
   }
 
   const slots = Object.values(boosts)
-    .map((entry: any) => Array.isArray(entry?.value) ? entry.value as string[] : [])
+    .map((entry: any) => (Array.isArray(entry?.value) ? (entry.value as string[]) : []))
     .filter((values) => values.length > 0);
 
   return slots
@@ -99,7 +131,7 @@ export function formatFlaws(flaws: any): string {
   }
 
   return Object.values(flaws)
-    .flatMap((entry: any) => Array.isArray(entry?.value) ? entry.value : [])
+    .flatMap((entry: any) => (Array.isArray(entry?.value) ? entry.value : []))
     .map((value: string) => value.toUpperCase())
     .join(", ");
 }
@@ -112,19 +144,27 @@ export function formatSavingThrows(saves: any): string {
   return [
     saves.fortitude ? `Fort ${rankLabel(saves.fortitude)}` : null,
     saves.reflex ? `Ref ${rankLabel(saves.reflex)}` : null,
-    saves.will ? `Will ${rankLabel(saves.will)}` : null
-  ].filter(Boolean).join(" • ");
+    saves.will ? `Will ${rankLabel(saves.will)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
 }
 
 export function rankLabel(rank: unknown): string {
   const numeric = Number(rank);
   switch (numeric) {
-    case 0: return "Untrained";
-    case 1: return "Trained";
-    case 2: return "Expert";
-    case 3: return "Master";
-    case 4: return "Legendary";
-    default: return String(rank ?? "");
+    case 0:
+      return "Untrained";
+    case 1:
+      return "Trained";
+    case 2:
+      return "Expert";
+    case 3:
+      return "Master";
+    case 4:
+      return "Legendary";
+    default:
+      return String(rank ?? "");
   }
 }
 

@@ -4,14 +4,14 @@ export const DRAFT_FLAG = `flags.${MODULE_ID}.draft`;
 export const STATE_FLAG = `flags.${MODULE_ID}.state`;
 export const FLAG_KEYS = {
     draft: "draft",
-    state: "state"
+    state: "state",
 };
 export const SETTINGS = {
-    extraPacks: "additionalSourcePacks"
+    extraPacks: "additionalSourcePacks",
 };
 export const SETTINGS_KEYS = {
     includeOfficialSources: "includeOfficialSources",
-    additionalSourcePacks: SETTINGS.extraPacks
+    additionalSourcePacks: SETTINGS.extraPacks,
 };
 export const ABILITY_KEYS = ["str", "dex", "con", "int", "wis", "cha"];
 export const OFFICIAL_PACKS = {
@@ -20,7 +20,7 @@ export const OFFICIAL_PACKS = {
     background: ["pf2e.backgrounds"],
     class: ["pf2e.classes"],
     feat: ["pf2e.feats-srd"],
-    classFeature: ["pf2e.classfeatures"]
+    classFeature: ["pf2e.classfeatures"],
 };
 export const SKILL_LABELS = {
     acrobatics: "Acrobatics",
@@ -38,20 +38,20 @@ export const SKILL_LABELS = {
     society: "Society",
     stealth: "Stealth",
     survival: "Survival",
-    thievery: "Thievery"
+    thievery: "Thievery",
 };
 export const PROFICIENCY_LABELS = {
     0: "Untrained",
     1: "Trained",
     2: "Expert",
     3: "Master",
-    4: "Legendary"
+    4: "Legendary",
 };
 export const PROFICIENCY_CODES = {
     0: "U",
     1: "T",
     2: "E",
     3: "M",
-    4: "L"
+    4: "L",
 };
 //# sourceMappingURL=constants.js.map

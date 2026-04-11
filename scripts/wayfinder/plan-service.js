@@ -1,16 +1,16 @@
 import { SKILL_LABELS } from "../constants.js";
 import { buildProgressionPlan, sortPendingSteps } from "../progression.js";
 import { formatSlug } from "./formatting.js";
-import { isAncestryBoostSectionComplete, isBackgroundBoostSectionComplete, isClassBoostSectionComplete, remainingCreationBoostChoices } from "./panes/boost-pane.js";
+import { isAncestryBoostSectionComplete, isBackgroundBoostSectionComplete, isClassBoostSectionComplete, remainingCreationBoostChoices, } from "./panes/boost-pane.js";
 export async function buildWayfinderPlan(snapshot, draft, deps) {
     const plan = buildProgressionPlan(snapshot, draft.targetLevel);
     const [trainingSteps, branchSteps] = await Promise.all([
         deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
-        deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel)
+        deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
     ]);
     return {
         ...plan,
-        steps: sortPendingSteps([...plan.steps, ...trainingSteps, ...branchSteps])
+        steps: sortPendingSteps([...plan.steps, ...trainingSteps, ...branchSteps]),
     };
 }
 export async function resolveActiveStep(steps, activeStepId, isStepComplete) {
@@ -23,7 +23,7 @@ export async function resolveActiveStep(steps, activeStepId, isStepComplete) {
     }
     let nextIncomplete = null;
     for (const step of steps) {
-        if (!await isStepComplete(step)) {
+        if (!(await isStepComplete(step))) {
             nextIncomplete = step;
             break;
         }
@@ -48,13 +48,13 @@ export async function isWayfinderStepComplete(step, draft, effectiveBuildState, 
         return typeof draft.skillIncreases[step.slotId] === "string" && draft.skillIncreases[step.slotId].length > 0;
     }
     if (step.level === 1) {
-        return !!effectiveBuildState.ancestry
-            && !!effectiveBuildState.background
-            && !!effectiveBuildState.class
-            && isAncestryBoostSectionComplete(effectiveBuildState)
-            && isBackgroundBoostSectionComplete(effectiveBuildState)
-            && isClassBoostSectionComplete(effectiveBuildState)
-            && effectiveBuildState.levelBoosts[1].length === effectiveBuildState.allowedBoosts[1];
+        return (!!effectiveBuildState.ancestry &&
+            !!effectiveBuildState.background &&
+            !!effectiveBuildState.class &&
+            isAncestryBoostSectionComplete(effectiveBuildState) &&
+            isBackgroundBoostSectionComplete(effectiveBuildState) &&
+            isClassBoostSectionComplete(effectiveBuildState) &&
+            effectiveBuildState.levelBoosts[1].length === effectiveBuildState.allowedBoosts[1]);
     }
     const level = step.level;
     return effectiveBuildState.levelBoosts[level].length === effectiveBuildState.allowedBoosts[level];
@@ -84,9 +84,7 @@ export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedSte
             ? Object.values(training.ruleChoices).filter(Boolean).length + training.additional.length
             : 0;
         const total = (step.training?.choiceRules.length ?? 0) + (step.training?.additionalCount ?? 0);
-        return selectedCount >= total && total > 0
-            ? "Ready to apply"
-            : `${selectedCount}/${total} chosen`;
+        return selectedCount >= total && total > 0 ? "Ready to apply" : `${selectedCount}/${total} chosen`;
     }
     if (step.kind === "skill-increase") {
         if (recentlyInvalidatedStepIds.has(step.slotId) && !draft.skillIncreases[step.slotId]) {
@@ -95,15 +93,18 @@ export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedSte
         const slug = draft.skillIncreases[step.slotId];
         return slug ? `${SKILL_LABELS[slug] ?? formatSlug(slug)} selected` : "Choose one";
     }
-    if (recentlyInvalidatedStepIds.has(step.slotId) && !await isWayfinderStepComplete(step, draft, effectiveBuildState, deps)) {
+    if (recentlyInvalidatedStepIds.has(step.slotId) &&
+        !(await isWayfinderStepComplete(step, draft, effectiveBuildState, deps))) {
         return "Needs attention";
     }
-    if (step.level === 1 && (!effectiveBuildState.ancestry || !effectiveBuildState.background || !effectiveBuildState.class)) {
+    if (step.level === 1 &&
+        (!effectiveBuildState.ancestry || !effectiveBuildState.background || !effectiveBuildState.class)) {
         return "Choose ancestry, background, and class first";
     }
     const remaining = step.level === 1
         ? remainingCreationBoostChoices(effectiveBuildState)
-        : Math.max(0, effectiveBuildState.allowedBoosts[step.level] - effectiveBuildState.levelBoosts[step.level].length);
+        : Math.max(0, effectiveBuildState.allowedBoosts[step.level] -
+            effectiveBuildState.levelBoosts[step.level].length);
     return remaining === 0 ? "Ready to apply" : `${remaining} choice${remaining === 1 ? "" : "s"} remaining`;
 }
 export function modeLabel(kind) {

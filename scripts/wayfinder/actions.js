@@ -62,7 +62,7 @@ export function parseWayfinderAction(element) {
                     type: action,
                     stepId: element.dataset.stepId,
                     section: element.dataset.section,
-                    attribute: element.dataset.attribute
+                    attribute: element.dataset.attribute,
                 }
                 : null;
         case "toggle-voluntary-choice":
@@ -71,7 +71,7 @@ export function parseWayfinderAction(element) {
                     type: action,
                     stepId: element.dataset.stepId,
                     attribute: element.dataset.attribute,
-                    choiceKind: element.dataset.choiceKind
+                    choiceKind: element.dataset.choiceKind,
                 }
                 : null;
         case "select-skill-increase":

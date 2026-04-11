@@ -23,7 +23,7 @@
 .manual-header h4 {
   margin: 0;
   color: var(--wf-primary);
-  font: 600 1.15rem/1 var(--serif, "Signika", serif);
+  font: 600 1.15rem / 1 var(--serif, "Signika", serif);
 }
 
 .manual-header p {
@@ -48,14 +48,14 @@
 
 .manual-label {
   color: var(--wf-ink-soft);
-  font: 700 0.52rem/1.2 var(--sans-serif, sans-serif);
+  font: 700 0.52rem / 1.2 var(--sans-serif, sans-serif);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .manual-status strong {
   color: var(--wf-primary);
-  font: 600 0.88rem/1.2 var(--serif, serif);
+  font: 600 0.88rem / 1.2 var(--serif, serif);
 }
 
 .manual-check {
@@ -119,13 +119,13 @@
 .skill-increase-header h4 {
   margin: 0.08rem 0 0.18rem;
   color: var(--wf-primary);
-  font: 600 1.1rem/1.05 var(--serif, serif);
+  font: 600 1.1rem / 1.05 var(--serif, serif);
 }
 
 .skill-increase-header p:last-child {
   margin: 0;
   color: var(--wf-ink-soft);
-  font: 0.78rem/1.45 var(--sans-serif, sans-serif);
+  font: 0.78rem / 1.45 var(--sans-serif, sans-serif);
 }
 
 .skill-increase-cap {
@@ -138,14 +138,14 @@
 
 .skill-cap-label {
   color: var(--wf-ink-soft);
-  font: 700 0.54rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.54rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .skill-increase-cap strong {
   color: var(--wf-primary);
-  font: 600 0.88rem/1 var(--serif, serif);
+  font: 600 0.88rem / 1 var(--serif, serif);
 }
 
 .skill-increase-list {
@@ -229,7 +229,7 @@
   border-radius: var(--wf-radius);
   background: rgba(255, 255, 255, 0.5);
   color: var(--wf-primary);
-  font: 700 0.72rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.72rem / 1 var(--sans-serif, sans-serif);
   flex-shrink: 0;
   transition:
     background-color var(--wf-transition),
@@ -317,12 +317,12 @@
 
 .skill-increase-name {
   color: var(--wf-ink);
-  font: 600 0.98rem/1.1 var(--serif, serif);
+  font: 600 0.98rem / 1.1 var(--serif, serif);
 }
 
 .skill-increase-detail {
   color: var(--wf-ink-soft);
-  font: 0.72rem/1.3 var(--sans-serif, sans-serif);
+  font: 0.72rem / 1.3 var(--sans-serif, sans-serif);
 }
 
 .skill-increase-action {
@@ -335,7 +335,7 @@
   border-radius: var(--wf-radius);
   background: rgba(255, 255, 255, 0.46);
   color: var(--wf-primary);
-  font: 700 0.68rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.68rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -390,19 +390,19 @@
 .skill-training-header h4 {
   margin: 0.08rem 0 0.14rem;
   color: var(--wf-primary);
-  font: 600 1.1rem/1.05 var(--serif, serif);
+  font: 600 1.1rem / 1.05 var(--serif, serif);
 }
 
 .skill-training-block-header h5 {
   margin: 0.08rem 0 0.14rem;
   color: var(--wf-primary);
-  font: 600 1rem/1.05 var(--serif, serif);
+  font: 600 1rem / 1.05 var(--serif, serif);
 }
 
 .skill-training-header p:last-child {
   margin: 0;
   color: var(--wf-ink-soft);
-  font: 0.78rem/1.45 var(--sans-serif, sans-serif);
+  font: 0.78rem / 1.45 var(--sans-serif, sans-serif);
 }
 
 .skill-training-status {
@@ -415,7 +415,7 @@
 
 .skill-training-status strong {
   color: var(--wf-primary);
-  font: 600 0.88rem/1 var(--serif, serif);
+  font: 600 0.88rem / 1 var(--serif, serif);
 }
 
 .skill-training-block {
@@ -443,7 +443,7 @@
   border-radius: 999px;
   background: rgba(49, 75, 49, 0.06);
   color: var(--wf-green);
-  font: 700 0.62rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.62rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -507,12 +507,12 @@
 
 .skill-training-choice-name {
   color: var(--wf-ink);
-  font: 600 0.9rem/1.1 var(--serif, serif);
+  font: 600 0.9rem / 1.1 var(--serif, serif);
 }
 
 .skill-training-choice-action {
   color: var(--wf-primary);
-  font: 700 0.62rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.62rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -544,7 +544,7 @@
 .boost-summary-header h4 {
   margin: 0;
   color: var(--wf-primary);
-  font: 600 0.88rem/1.1 var(--serif, serif);
+  font: 600 0.88rem / 1.1 var(--serif, serif);
 }
 
 .boost-ability-grid {
@@ -566,7 +566,7 @@
 
 .boost-ability-card strong {
   color: var(--wf-primary);
-  font: 700 0.95rem/1 var(--serif, serif);
+  font: 700 0.95rem / 1 var(--serif, serif);
 }
 
 .boost-ability-card.partial {
@@ -577,7 +577,7 @@
 .boost-ability-note,
 .boost-remaining {
   color: var(--wf-ink-soft);
-  font: 700 0.5rem/1.2 var(--sans-serif, sans-serif);
+  font: 700 0.5rem / 1.2 var(--sans-serif, sans-serif);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -604,7 +604,7 @@
 .boost-section-header h4 {
   margin: 0.04rem 0 0;
   color: var(--wf-primary);
-  font: 600 0.9rem/1.05 var(--serif, serif);
+  font: 600 0.9rem / 1.05 var(--serif, serif);
 }
 
 .boost-section-tools,
@@ -662,14 +662,14 @@
 
 .boost-choice-code {
   color: var(--wf-accent-contrast);
-  font: 700 0.5rem/1.2 var(--sans-serif, sans-serif);
+  font: 700 0.5rem / 1.2 var(--sans-serif, sans-serif);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .boost-choice-label,
 .voluntary-label {
-  font: 600 0.78rem/1.15 var(--serif, serif);
+  font: 600 0.78rem / 1.15 var(--serif, serif);
 }
 
 .voluntary-list {
@@ -691,4 +691,3 @@
   padding-top: 0;
   border-top: 0;
 }
-

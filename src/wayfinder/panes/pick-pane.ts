@@ -15,7 +15,18 @@ export function buildPickItemPane(args: {
   modeLabel: string;
   previewValue: string;
 }): PickStepPane {
-  const { step, search, selectedValue, selectedLabel, visibleOptions, infoState, contextNote, preview, modeLabel, previewValue } = args;
+  const {
+    step,
+    search,
+    selectedValue,
+    selectedLabel,
+    visibleOptions,
+    infoState,
+    contextNote,
+    preview,
+    modeLabel,
+    previewValue,
+  } = args;
   return {
     kind: "pick-item",
     isPickItem: true,
@@ -39,9 +50,9 @@ export function buildPickItemPane(args: {
       ...option,
       selected: option.value === selectedValue,
       previewing: option.value === previewValue,
-      sourceLabel: option.source ?? "Unknown Source"
+      sourceLabel: option.source ?? "Unknown Source",
     })),
-    preview
+    preview,
   };
 }
 
@@ -58,7 +69,7 @@ export async function buildPreview(option: OptionRecord | null, selectedValue: s
     itemType: option.itemType,
     featType: option.featType,
     name: option.name,
-    level: option.level
+    level: option.level,
   });
 
   if (!document) {
@@ -72,7 +83,7 @@ export async function buildPreview(option: OptionRecord | null, selectedValue: s
       description: "",
       selected: option.value === selectedValue,
       selectedLabel: option.value === selectedValue ? "Selected" : "Choose for draft",
-      value: option.value
+      value: option.value,
     };
   }
 
@@ -87,14 +98,14 @@ export async function buildPreview(option: OptionRecord | null, selectedValue: s
     description: await TextEditor.enrichHTML(String(system.description?.value ?? ""), { async: true }),
     selected: option.value === selectedValue,
     selectedLabel: option.value === selectedValue ? "Selected" : "Choose for draft",
-    value: option.value
+    value: option.value,
   };
 }
 
 export function selectedSelection(step: PendingStep, draft: DraftState): SelectionRef | null {
   return step.kind === "class-branch"
-    ? draft.branchSelections[step.slotId] ?? null
-    : draft.selections[step.slotId] ?? null;
+    ? (draft.branchSelections[step.slotId] ?? null)
+    : (draft.selections[step.slotId] ?? null);
 }
 
 export function selectedValueFor(step: PendingStep, draft: DraftState): string {

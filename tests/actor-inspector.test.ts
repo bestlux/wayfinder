@@ -8,9 +8,9 @@ describe("actor-inspector", () => {
       system: {
         details: {
           level: {
-            value: 4
-          }
-        }
+            value: 4,
+          },
+        },
       },
       items: {
         contents: [
@@ -18,9 +18,9 @@ describe("actor-inspector", () => {
           featItem("class", undefined),
           featItem(undefined, "archetype"),
           featItem(undefined, "skill"),
-          featItem(undefined, "general")
-        ]
-      }
+          featItem(undefined, "general"),
+        ],
+      },
     });
 
     expect(snapshot.featCounts).toEqual({
@@ -28,7 +28,7 @@ describe("actor-inspector", () => {
       class: 1,
       archetype: 1,
       skill: 1,
-      general: 1
+      general: 1,
     });
   });
 });
@@ -38,7 +38,7 @@ function featItem(category?: string, featType?: string): any {
     type: "feat",
     system: {
       ...(category ? { category } : {}),
-      ...(featType ? { featType: { value: featType } } : {})
-    }
+      ...(featType ? { featType: { value: featType } } : {}),
+    },
   };
 }

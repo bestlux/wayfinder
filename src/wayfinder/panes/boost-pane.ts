@@ -1,5 +1,5 @@
-import { ABILITY_KEYS } from "../../constants.js";
 import type { EffectiveBuildState } from "../../build-state.js";
+import { ABILITY_KEYS } from "../../constants.js";
 import type { AbilityKey, BoostLevel, PendingStep } from "../../types.js";
 import type { BoostStepPane } from "../view-models.js";
 
@@ -17,12 +17,13 @@ export async function buildBoostPane(
   deps: BoostPaneDependencies
 ): Promise<BoostStepPane> {
   const isCreationStep = step.level === 1;
-  const blocked = isCreationStep && (!effectiveBuildState.ancestry || !effectiveBuildState.background || !effectiveBuildState.class);
+  const blocked =
+    isCreationStep && (!effectiveBuildState.ancestry || !effectiveBuildState.background || !effectiveBuildState.class);
   const abilitySummary = Object.values(effectiveBuildState.projectedAbilities).map((entry) => ({
     attribute: entry.key,
     label: deps.abilityLabel(entry.key),
     modifierLabel: `${entry.modifier >= 0 ? "+" : ""}${entry.modifier}`,
-    partial: entry.partial
+    partial: entry.partial,
   }));
 
   return {
@@ -40,23 +41,29 @@ export async function buildBoostPane(
     description: step.description,
     blocked,
     blockedTitle: blocked ? "Choose ancestry, background, and class first" : null,
-    blockedMessage: blocked ? "Wayfinder needs the drafted ancestry, background, and class before it can offer a legal creation-boost layout." : null,
+    blockedMessage: blocked
+      ? "Wayfinder needs the drafted ancestry, background, and class before it can offer a legal creation-boost layout."
+      : null,
     completed: await deps.isStepComplete(step, effectiveBuildState),
     selectedLabel: await deps.stepStatus(step, effectiveBuildState),
     abilitySummary,
-    ancestrySection: isCreationStep && effectiveBuildState.ancestry
-      ? buildAncestryBoostSection(effectiveBuildState, deps.abilityLabel)
-      : null,
-    voluntarySection: isCreationStep && effectiveBuildState.ancestry
-      ? buildVoluntaryFlawSection(effectiveBuildState, deps.abilityLabel)
-      : null,
-    backgroundSection: isCreationStep && effectiveBuildState.background
-      ? buildBackgroundBoostSection(effectiveBuildState, deps.abilityLabel)
-      : null,
-    classSection: isCreationStep && effectiveBuildState.class
-      ? buildClassBoostSection(effectiveBuildState, deps.abilityLabel)
-      : null,
-    levelSection: buildLevelBoostSection(step.level as BoostLevel, effectiveBuildState, deps.abilityLabel)
+    ancestrySection:
+      isCreationStep && effectiveBuildState.ancestry
+        ? buildAncestryBoostSection(effectiveBuildState, deps.abilityLabel)
+        : null,
+    voluntarySection:
+      isCreationStep && effectiveBuildState.ancestry
+        ? buildVoluntaryFlawSection(effectiveBuildState, deps.abilityLabel)
+        : null,
+    backgroundSection:
+      isCreationStep && effectiveBuildState.background
+        ? buildBackgroundBoostSection(effectiveBuildState, deps.abilityLabel)
+        : null,
+    classSection:
+      isCreationStep && effectiveBuildState.class
+        ? buildClassBoostSection(effectiveBuildState, deps.abilityLabel)
+        : null,
+    levelSection: buildLevelBoostSection(step.level as BoostLevel, effectiveBuildState, deps.abilityLabel),
   };
 }
 
@@ -78,8 +85,8 @@ function buildAncestryBoostSection(
         attribute,
         label: abilityLabel(attribute),
         selected: ancestry.alternateBoosts.includes(attribute),
-        disabled: !ancestry.alternateBoosts.includes(attribute) && ancestry.alternateBoosts.length >= 2
-      }))
+        disabled: !ancestry.alternateBoosts.includes(attribute) && ancestry.alternateBoosts.length >= 2,
+      })),
     };
   }
 
@@ -92,8 +99,10 @@ function buildAncestryBoostSection(
       attribute,
       label: abilityLabel(attribute),
       selected: selected.includes(attribute),
-      disabled: !selected.includes(attribute) && !canChooseFromSlotRecord(ancestry.document?.system?.boosts, ancestry.selectedBoosts, attribute)
-    }))
+      disabled:
+        !selected.includes(attribute) &&
+        !canChooseFromSlotRecord(ancestry.document?.system?.boosts, ancestry.selectedBoosts, attribute),
+    })),
   };
 }
 
@@ -124,15 +133,17 @@ function buildVoluntaryFlawSection(
         flawSelected,
         flawDisabled: !ancestry.voluntary.enabled || (!flawSelected && ancestry.voluntary.legacy && flawsComplete),
         secondFlawSelected: numFlaws > 1,
-        secondFlawDisabled: !ancestry.voluntary.enabled || !showSecondFlaw || !flawSelected || (numFlaws < 2 && flawsComplete),
+        secondFlawDisabled:
+          !ancestry.voluntary.enabled || !showSecondFlaw || !flawSelected || (numFlaws < 2 && flawsComplete),
         showSecondFlaw,
         boostSelected,
-        boostDisabled: !ancestry.voluntary.enabled
-          || !ancestry.voluntary.legacy
-          || (!boostSelected && (!flawsComplete || !!ancestry.voluntary.boost || netBoosted.includes(attribute))),
-        showBoost: ancestry.voluntary.legacy
+        boostDisabled:
+          !ancestry.voluntary.enabled ||
+          !ancestry.voluntary.legacy ||
+          (!boostSelected && (!flawsComplete || !!ancestry.voluntary.boost || netBoosted.includes(attribute))),
+        showBoost: ancestry.voluntary.legacy,
       };
-    })
+    }),
   };
 }
 
@@ -151,8 +162,10 @@ function buildBackgroundBoostSection(
       attribute,
       label: abilityLabel(attribute),
       selected: background.buildBoosts.includes(attribute),
-      disabled: !background.buildBoosts.includes(attribute) && !canChooseFromSlotRecord(background.document?.system?.boosts, background.selectedBoosts, attribute)
-    }))
+      disabled:
+        !background.buildBoosts.includes(attribute) &&
+        !canChooseFromSlotRecord(background.document?.system?.boosts, background.selectedBoosts, attribute),
+    })),
   };
 }
 
@@ -170,8 +183,8 @@ function buildClassBoostSection(
       attribute,
       label: abilityLabel(attribute),
       selected: classState.selectedKeyAbility === attribute,
-      disabled: false
-    }))
+      disabled: false,
+    })),
   };
 }
 
@@ -190,8 +203,8 @@ function buildLevelBoostSection(
       label: abilityLabel(attribute),
       selected: selected.includes(attribute),
       disabled: !selected.includes(attribute) && selected.length >= allowed,
-      partial: effectiveBuildState.projectedAbilities[attribute].partial && selected.includes(attribute)
-    }))
+      partial: effectiveBuildState.projectedAbilities[attribute].partial && selected.includes(attribute),
+    })),
   };
 }
 
@@ -206,8 +219,8 @@ export function toggleSlotRecordChoice(
     return;
   }
 
-  const candidate = Object.entries(record ?? {}).find(([slot, boost]) =>
-    !selectedBoosts[slot] && Array.isArray(boost?.value) && boost.value.includes(attribute)
+  const candidate = Object.entries(record ?? {}).find(
+    ([slot, boost]) => !selectedBoosts[slot] && Array.isArray(boost?.value) && boost.value.includes(attribute)
   );
   if (candidate) {
     selectedBoosts[candidate[0]] = attribute;
@@ -223,10 +236,11 @@ export function canChooseFromSlotRecord(
   selectedBoosts: Record<string, AbilityKey | null>,
   attribute: AbilityKey
 ): boolean {
-  return Object.entries(record ?? {}).some(([slot, boost]) =>
-    (!selectedBoosts[slot] || selectedBoosts[slot] === attribute)
-    && Array.isArray(boost?.value)
-    && boost.value.includes(attribute)
+  return Object.entries(record ?? {}).some(
+    ([slot, boost]) =>
+      (!selectedBoosts[slot] || selectedBoosts[slot] === attribute) &&
+      Array.isArray(boost?.value) &&
+      boost.value.includes(attribute)
   );
 }
 
@@ -238,7 +252,8 @@ export function isAncestryBoostSectionComplete(buildState: EffectiveBuildState):
 
   return ancestry.mode === "alternate"
     ? ancestry.alternateBoosts.length === 2
-    : Object.values(ancestry.selectedBoosts).filter((value) => value !== null).length === requiredBoostSlots(ancestry.document?.system?.boosts);
+    : Object.values(ancestry.selectedBoosts).filter((value) => value !== null).length ===
+        requiredBoostSlots(ancestry.document?.system?.boosts);
 }
 
 export function isBackgroundBoostSectionComplete(buildState: EffectiveBuildState): boolean {
@@ -258,10 +273,17 @@ export function remainingCreationBoostChoices(buildState: EffectiveBuildState): 
   const ancestryRemaining = buildState.ancestry
     ? buildState.ancestry.mode === "alternate"
       ? Math.max(0, 2 - buildState.ancestry.alternateBoosts.length)
-      : Math.max(0, requiredBoostSlots(buildState.ancestry.document?.system?.boosts) - Object.values(buildState.ancestry.selectedBoosts).filter((value) => value !== null).length)
+      : Math.max(
+          0,
+          requiredBoostSlots(buildState.ancestry.document?.system?.boosts) -
+            Object.values(buildState.ancestry.selectedBoosts).filter((value) => value !== null).length
+        )
     : 1;
   const backgroundRemaining = buildState.background
-    ? Math.max(0, requiredBoostSlots(buildState.background.document?.system?.boosts) - buildState.background.buildBoosts.length)
+    ? Math.max(
+        0,
+        requiredBoostSlots(buildState.background.document?.system?.boosts) - buildState.background.buildBoosts.length
+      )
     : 1;
   const classRemaining = buildState.class?.selectedKeyAbility ? 0 : 1;
   const levelRemaining = Math.max(0, buildState.allowedBoosts[1] - buildState.levelBoosts[1].length);

@@ -5,7 +5,7 @@ import { createEmptyDraft } from "../src/draft-service";
 describe("build-state", () => {
   beforeEach(() => {
     globalThis.game = {
-      packs: new Map()
+      packs: new Map(),
     } as any;
   });
 
@@ -18,8 +18,8 @@ describe("build-state", () => {
       system: {
         details: {
           level: {
-            value: 5
-          }
+            value: 5,
+          },
         },
         build: {
           attributes: {
@@ -28,14 +28,14 @@ describe("build-state", () => {
               5: ["wis", "cha"],
               10: [],
               15: [],
-              20: []
-            }
-          }
-        }
+              20: [],
+            },
+          },
+        },
       },
       items: {
-        contents: []
-      }
+        contents: [],
+      },
     };
 
     const draft = createEmptyDraft(5);
@@ -44,18 +44,18 @@ describe("build-state", () => {
     draft.selections["class-level-1"] = selection("pf2e.classes", "wizard", "Wizard", "class");
     draft.boosts.ancestry.selectedBoosts = {
       fixed: "con",
-      free: "wis"
+      free: "wis",
     };
     draft.boosts.ancestry.voluntary = {
       touched: true,
       enabled: true,
       legacy: true,
       boost: "cha",
-      flaws: ["str", "str"]
+      flaws: ["str", "str"],
     };
     draft.boosts.background.selectedBoosts = {
       restricted: "dex",
-      free: "int"
+      free: "int",
     };
     draft.boosts.class.keyAbility = "int";
     draft.boosts.levels["1"] = ["cha", "con", "dex", "int"];
@@ -69,7 +69,7 @@ describe("build-state", () => {
       enabled: true,
       legacy: true,
       boost: "cha",
-      flaws: ["str", "str"]
+      flaws: ["str", "str"],
     });
     expect(buildState.levelBoosts[1]).toEqual(["cha", "con", "dex", "int"]);
     expect(buildState.levelBoosts[5]).toEqual(["wis", "cha"]);
@@ -84,8 +84,8 @@ describe("build-state", () => {
       system: {
         details: {
           level: {
-            value: 1
-          }
+            value: 1,
+          },
         },
         build: {
           attributes: {
@@ -94,10 +94,10 @@ describe("build-state", () => {
               5: [],
               10: [],
               15: [],
-              20: []
-            }
-          }
-        }
+              20: [],
+            },
+          },
+        },
       },
       items: {
         contents: [
@@ -110,21 +110,21 @@ describe("build-state", () => {
               boosts: {
                 fixed: {
                   value: ["con"],
-                  selected: "con"
+                  selected: "con",
                 },
                 free: {
                   value: ["str", "dex", "con", "int", "wis", "cha"],
-                  selected: null
-                }
+                  selected: null,
+                },
               },
               voluntary: {
                 boost: "cha",
-                flaws: ["str", "str"]
-              }
-            }
-          }
-        ]
-      }
+                flaws: ["str", "str"],
+              },
+            },
+          },
+        ],
+      },
     };
 
     const buildState = await getEffectiveBuildState(actor, createEmptyDraft(1));
@@ -135,7 +135,7 @@ describe("build-state", () => {
       enabled: true,
       legacy: true,
       boost: "cha",
-      flaws: ["str", "str"]
+      flaws: ["str", "str"],
     });
   });
 });
@@ -145,7 +145,7 @@ function setPack(id: string, documents: Record<string, any>): void {
     metadata: { id },
     async getDocument(documentId: string) {
       return documents[documentId] ?? null;
-    }
+    },
   });
 }
 
@@ -153,8 +153,8 @@ function documentEntry(id: string, data: any): Record<string, any> {
   return {
     [id]: {
       ...data,
-      toObject: () => structuredClone(data)
-    }
+      toObject: () => structuredClone(data),
+    },
   };
 }
 
@@ -167,7 +167,7 @@ function selection(packId: string, documentId: string, name: string, itemType: s
     itemType,
     featType: null,
     name,
-    level: 1
+    level: 1,
   };
 }
 
@@ -179,19 +179,19 @@ function ancestryDocument(name: string): any {
       boosts: {
         fixed: {
           value: ["con"],
-          selected: null
+          selected: null,
         },
         free: {
           value: ["str", "dex", "con", "int", "wis", "cha"],
-          selected: null
-        }
+          selected: null,
+        },
       },
       flaws: {
         fixed: {
-          value: ["str"]
-        }
-      }
-    }
+          value: ["str"],
+        },
+      },
+    },
   };
 }
 
@@ -203,14 +203,14 @@ function backgroundDocument(name: string): any {
       boosts: {
         restricted: {
           value: ["str", "dex"],
-          selected: null
+          selected: null,
         },
         free: {
           value: ["str", "dex", "con", "int", "wis", "cha"],
-          selected: null
-        }
-      }
-    }
+          selected: null,
+        },
+      },
+    },
   };
 }
 
@@ -221,8 +221,8 @@ function classDocument(name: string): any {
     system: {
       keyAbility: {
         value: ["int", "wis"],
-        selected: null
-      }
-    }
+        selected: null,
+      },
+    },
   };
 }

@@ -4,14 +4,14 @@ export const DRAFT_FLAG = `flags.${MODULE_ID}.draft`;
 export const STATE_FLAG = `flags.${MODULE_ID}.state`;
 export const FLAG_KEYS = {
   draft: "draft",
-  state: "state"
+  state: "state",
 } as const;
 export const SETTINGS = {
-  extraPacks: "additionalSourcePacks"
+  extraPacks: "additionalSourcePacks",
 } as const;
 export const SETTINGS_KEYS = {
   includeOfficialSources: "includeOfficialSources",
-  additionalSourcePacks: SETTINGS.extraPacks
+  additionalSourcePacks: SETTINGS.extraPacks,
 } as const;
 export const ABILITY_KEYS = ["str", "dex", "con", "int", "wis", "cha"] as const;
 
@@ -21,7 +21,7 @@ export const OFFICIAL_PACKS = {
   background: ["pf2e.backgrounds"],
   class: ["pf2e.classes"],
   feat: ["pf2e.feats-srd"],
-  classFeature: ["pf2e.classfeatures"]
+  classFeature: ["pf2e.classfeatures"],
 } as const;
 
 export const SKILL_LABELS: Record<string, string> = {
@@ -40,7 +40,7 @@ export const SKILL_LABELS: Record<string, string> = {
   society: "Society",
   stealth: "Stealth",
   survival: "Survival",
-  thievery: "Thievery"
+  thievery: "Thievery",
 } as const;
 
 export const PROFICIENCY_LABELS: Record<number, string> = {
@@ -48,7 +48,7 @@ export const PROFICIENCY_LABELS: Record<number, string> = {
   1: "Trained",
   2: "Expert",
   3: "Master",
-  4: "Legendary"
+  4: "Legendary",
 } as const;
 
 export const PROFICIENCY_CODES: Record<number, string> = {
@@ -56,5 +56,5 @@ export const PROFICIENCY_CODES: Record<number, string> = {
   1: "T",
   2: "E",
   3: "M",
-  4: "L"
+  4: "L",
 } as const;

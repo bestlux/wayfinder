@@ -15,7 +15,7 @@
   border-radius: var(--wf-radius);
   background: transparent;
   color: var(--wf-ink-soft);
-  font: 600 0.68rem/1 var(--sans-serif, sans-serif);
+  font: 600 0.68rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;

@@ -47,38 +47,52 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
     return [];
   }
 
-  return [{
-    id: `skill-training-${classSlug}-level-1`,
-    level: 1,
-    kind: "skill-training",
-    slotKind: "skill-training",
-    title: `${classDocument.name} skill training`,
-    description: "Choose the class skill training decisions this class grants at 1st level.",
-    required: true,
-    slotId: `skill-training-${classSlug}-level-1`,
-    training: {
-      classSlug,
-      className: classDocument.name ?? "Class",
-      fixedSkills,
-      choiceRules,
-      additionalCount
-    }
-  }];
+  return [
+    {
+      id: `skill-training-${classSlug}-level-1`,
+      level: 1,
+      kind: "skill-training",
+      slotKind: "skill-training",
+      title: `${classDocument.name} skill training`,
+      description: "Choose the class skill training decisions this class grants at 1st level.",
+      required: true,
+      slotId: `skill-training-${classSlug}-level-1`,
+      training: {
+        classSlug,
+        className: classDocument.name ?? "Class",
+        fixedSkills,
+        choiceRules,
+        additionalCount,
+      },
+    },
+  ];
 }
 
 export async function buildClassBranchSteps(params: BuildClassBranchStepsParams): Promise<PendingStep[]> {
-  const { draft, effectiveClassDocument, targetLevel, fetchSelectionDocument, extractSlug, readExistingBranchSelection } = params;
+  const {
+    draft,
+    effectiveClassDocument,
+    targetLevel,
+    fetchSelectionDocument,
+    extractSlug,
+    readExistingBranchSelection,
+  } = params;
   if (!effectiveClassDocument) {
     return [];
   }
 
   const classSlug = extractSlug(effectiveClassDocument);
-  const items = Object.values(effectiveClassDocument?.system?.items ?? {}) as Array<{ level?: number; uuid?: string; name?: string }>;
+  const items = Object.values(effectiveClassDocument?.system?.items ?? {}) as Array<{
+    level?: number;
+    uuid?: string;
+    name?: string;
+  }>;
   const selectorSelections = items
-    .filter((entry) =>
-      typeof entry?.uuid === "string"
-      && entry.uuid.startsWith("Compendium.")
-      && Number(entry.level ?? 0) <= targetLevel
+    .filter(
+      (entry) =>
+        typeof entry?.uuid === "string" &&
+        entry.uuid.startsWith("Compendium.") &&
+        Number(entry.level ?? 0) <= targetLevel
     )
     .map((entry) => selectionFromCompendiumUuid(entry.uuid ?? "", entry.name ?? "", "feat"))
     .filter((entry): entry is SelectionRef => entry !== null);
@@ -112,9 +126,9 @@ export async function buildClassBranchSteps(params: BuildClassBranchStepsParams)
       filters: {
         itemType: "feat",
         featTypes: ["classfeature"],
-        maxLevel: selectorDocument?.system?.level?.value ?? 1
+        maxLevel: selectorDocument?.system?.level?.value ?? 1,
       },
-      branch
+      branch,
     });
   }
 
@@ -136,12 +150,18 @@ function toTrainingChoiceRule(
       const slug = String(choice.value).trim().toLowerCase();
       return {
         slug,
-        label: skillLabel(slug, typeof choice.label === "string" ? choice.label : undefined, localize)
+        label: skillLabel(slug, typeof choice.label === "string" ? choice.label : undefined, localize),
       };
     })
     .filter((choice): choice is { slug: string; label: string } => !!choice);
 
-  if (options.length === 0 || !looksLikeSkillChoiceRule(rule, options.map((option) => option.slug))) {
+  if (
+    options.length === 0 ||
+    !looksLikeSkillChoiceRule(
+      rule,
+      options.map((option) => option.slug)
+    )
+  ) {
     return null;
   }
 
@@ -149,7 +169,7 @@ function toTrainingChoiceRule(
     ruleIndex,
     flag: rule.flag,
     prompt: localize(String(rule.prompt ?? "Choose a skill")),
-    options
+    options,
   };
 }
 
@@ -192,7 +212,7 @@ function extractClassBranchMeta(
     flag: String(choiceRule.flag),
     optionTag,
     classSlug,
-    slotId: `class-branch-${selectorSlug}-level-${level}`
+    slotId: `class-branch-${selectorSlug}-level-${level}`,
   } as PendingStep["branch"];
 }
 
@@ -224,7 +244,7 @@ function selectionFromCompendiumUuid(uuid: string, name: string, itemType: strin
     itemType,
     featType: itemType === "feat" ? "classfeature" : null,
     name,
-    level: null
+    level: null,
   };
 }
 
@@ -260,8 +280,9 @@ function skillLabel(slug: string, label: string | undefined, localize: (value: s
 
   const configured = globalThis.CONFIG?.PF2E?.skills?.[slug];
   const configuredLabel = typeof configured === "string" ? configured : configured?.label;
-  const fallback = typeof configuredLabel === "string" && configuredLabel.length > 0
-    ? configuredLabel
-    : (SKILL_LABELS[slug] ?? formatSlug(slug));
+  const fallback =
+    typeof configuredLabel === "string" && configuredLabel.length > 0
+      ? configuredLabel
+      : (SKILL_LABELS[slug] ?? formatSlug(slug));
   return localize(fallback);
 }

@@ -7,23 +7,25 @@ describe("wayfinder actions", () => {
       dataset: {
         wayfinderAction: "select-option",
         stepId: "class-level-1",
-        value: "pf2e.classes:fighter"
-      }
+        value: "pf2e.classes:fighter",
+      },
     } as any);
 
     expect(action).toEqual({
       type: "select-option",
       stepId: "class-level-1",
-      value: "pf2e.classes:fighter"
+      value: "pf2e.classes:fighter",
     });
   });
 
   it("rejects incomplete action datasets", () => {
-    expect(parseWayfinderAction({
-      dataset: {
-        wayfinderAction: "toggle-boost-choice",
-        stepId: "ability-boosts-level-1"
-      }
-    } as any)).toBeNull();
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "toggle-boost-choice",
+          stepId: "ability-boosts-level-1",
+        },
+      } as any)
+    ).toBeNull();
   });
 });

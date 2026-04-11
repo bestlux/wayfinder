@@ -11,36 +11,39 @@ describe("class-choice-service", () => {
   it("emits a generalized class training step from supported skill choices", async () => {
     const fighterSelection = selection("pf2e.classes", "fighter", "Fighter", "class");
     const documents = new Map<string, any>([
-      [fighterSelection.uuid, {
-        name: "Fighter",
-        system: {
-          slug: "fighter",
-          trainedSkills: {
-            additional: 3,
-            value: ["athletics", "invalid-entry"]
-          },
-          rules: [
-            {
-              key: "ChoiceSet",
-              flag: "fighterSkill",
-              prompt: "Choose a class skill",
-              choices: [
-                { value: "acrobatics", label: "PF2E.Skill.Acrobatics" },
-                { value: "athletics", label: "PF2E.Skill.Athletics" }
-              ]
+      [
+        fighterSelection.uuid,
+        {
+          name: "Fighter",
+          system: {
+            slug: "fighter",
+            trainedSkills: {
+              additional: 3,
+              value: ["athletics", "invalid-entry"],
             },
-            {
-              key: "ChoiceSet",
-              flag: "battleStyle",
-              prompt: "Choose a battle style",
-              choices: [
-                { value: "archer", label: "Archer" },
-                { value: "guardian", label: "Guardian" }
-              ]
-            }
-          ]
-        }
-      }]
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "fighterSkill",
+                prompt: "Choose a class skill",
+                choices: [
+                  { value: "acrobatics", label: "PF2E.Skill.Acrobatics" },
+                  { value: "athletics", label: "PF2E.Skill.Athletics" },
+                ],
+              },
+              {
+                key: "ChoiceSet",
+                flag: "battleStyle",
+                prompt: "Choose a battle style",
+                choices: [
+                  { value: "archer", label: "Archer" },
+                  { value: "guardian", label: "Guardian" },
+                ],
+              },
+            ],
+          },
+        },
+      ],
     ]);
 
     const steps = await buildClassTrainingSteps({
@@ -48,7 +51,7 @@ describe("class-choice-service", () => {
       targetLevel: 3,
       fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: (document) => document?.system?.slug ?? null,
-      localize: (value) => value.replace(/^PF2E\.Skill\./, "")
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
     });
 
     expect(steps).toHaveLength(1);
@@ -60,41 +63,46 @@ describe("class-choice-service", () => {
         className: "Fighter",
         fixedSkills: ["athletics", "invalid-entry"],
         additionalCount: 3,
-        choiceRules: [{
-          flag: "fighterSkill",
-          prompt: "Choose a class skill",
-          options: [
-            { slug: "acrobatics", label: "Acrobatics" },
-            { slug: "athletics", label: "Athletics" }
-          ]
-        }]
-      }
+        choiceRules: [
+          {
+            flag: "fighterSkill",
+            prompt: "Choose a class skill",
+            options: [
+              { slug: "acrobatics", label: "Acrobatics" },
+              { slug: "athletics", label: "Athletics" },
+            ],
+          },
+        ],
+      },
     });
   });
 
   it("does not emit a class training step when the class only has unsupported non-skill choices", async () => {
     const classSelection = selection("pf2e.classes", "wizard", "Wizard", "class");
     const documents = new Map<string, any>([
-      [classSelection.uuid, {
-        name: "Wizard",
-        system: {
-          slug: "wizard",
-          trainedSkills: {
-            additional: 0,
-            value: []
+      [
+        classSelection.uuid,
+        {
+          name: "Wizard",
+          system: {
+            slug: "wizard",
+            trainedSkills: {
+              additional: 0,
+              value: [],
+            },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "arcaneSchool",
+                choices: [
+                  { value: "evocation", label: "Evocation" },
+                  { value: "illusion", label: "Illusion" },
+                ],
+              },
+            ],
           },
-          rules: [
-            {
-              key: "ChoiceSet",
-              flag: "arcaneSchool",
-              choices: [
-                { value: "evocation", label: "Evocation" },
-                { value: "illusion", label: "Illusion" }
-              ]
-            }
-          ]
-        }
-      }]
+        },
+      ],
     ]);
 
     const steps = await buildClassTrainingSteps({
@@ -102,7 +110,7 @@ describe("class-choice-service", () => {
       targetLevel: 1,
       fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: (document) => document?.system?.slug ?? null,
-      localize: (value) => value
+      localize: (value) => value,
     });
 
     expect(steps).toEqual([]);
@@ -113,34 +121,37 @@ describe("class-choice-service", () => {
       PF2E: {
         skills: {
           acrobatics: { label: "PF2E.Skill.Acrobatics" },
-          sailing: { label: "World.Skill.Sailing" }
-        }
-      }
+          sailing: { label: "World.Skill.Sailing" },
+        },
+      },
     } as any;
 
     const classSelection = selection("pf2e.classes", "swashbuckler", "Swashbuckler", "class");
     const documents = new Map<string, any>([
-      [classSelection.uuid, {
-        name: "Swashbuckler",
-        system: {
-          slug: "swashbuckler",
-          trainedSkills: {
-            additional: 0,
-            value: ["sailing"]
+      [
+        classSelection.uuid,
+        {
+          name: "Swashbuckler",
+          system: {
+            slug: "swashbuckler",
+            trainedSkills: {
+              additional: 0,
+              value: ["sailing"],
+            },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "classSkill",
+                prompt: "Choose a class skill",
+                choices: [
+                  { value: "acrobatics", label: "PF2E.Skill.Acrobatics" },
+                  { value: "sailing", label: "World.Skill.Sailing" },
+                ],
+              },
+            ],
           },
-          rules: [
-            {
-              key: "ChoiceSet",
-              flag: "classSkill",
-              prompt: "Choose a class skill",
-              choices: [
-                { value: "acrobatics", label: "PF2E.Skill.Acrobatics" },
-                { value: "sailing", label: "World.Skill.Sailing" }
-              ]
-            }
-          ]
-        }
-      }]
+        },
+      ],
     ]);
 
     const steps = await buildClassTrainingSteps({
@@ -148,13 +159,13 @@ describe("class-choice-service", () => {
       targetLevel: 1,
       fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: (document) => document?.system?.slug ?? null,
-      localize: (value) => value.replace(/^PF2E\.Skill\./, "").replace(/^World\.Skill\./, "")
+      localize: (value) => value.replace(/^PF2E\.Skill\./, "").replace(/^World\.Skill\./, ""),
     });
 
     expect(steps[0]?.training?.fixedSkills).toEqual(["sailing"]);
     expect(steps[0]?.training?.choiceRules[0]?.options).toEqual([
       { slug: "acrobatics", label: "Acrobatics" },
-      { slug: "sailing", label: "Sailing" }
+      { slug: "sailing", label: "Sailing" },
     ]);
   });
 
@@ -167,56 +178,62 @@ describe("class-choice-service", () => {
           one: {
             level: 1,
             uuid: "Compendium.pf2e.classfeatures.Item.racket-selector",
-            name: "Rogue's Racket"
+            name: "Rogue's Racket",
           },
           two: {
             level: 1,
             uuid: "Compendium.pf2e.classfeatures.Item.missing-selector",
-            name: "Ignore Me"
-          }
-        }
-      }
+            name: "Ignore Me",
+          },
+        },
+      },
     };
     const documents = new Map<string, any>([
-      ["Compendium.pf2e.classfeatures.Item.racket-selector", {
-        type: "feat",
-        name: "Rogue's Racket",
-        system: {
-          category: "classfeature",
-          level: { value: 1 },
-          rules: [
-            {
-              key: "ChoiceSet",
-              flag: "roguesRacket",
-              choices: {
-                filter: ["item:tag:rogue-racket"]
-              }
-            },
-            {
-              key: "GrantItem",
-              uuid: "{item|flags.pf2e.rulesSelections.roguesRacket}"
-            }
-          ]
-        }
-      }],
-      ["Compendium.pf2e.classfeatures.Item.missing-selector", {
-        type: "feat",
-        name: "Ignore Me",
-        system: {
-          slug: "ignore-me",
-          category: "classfeature",
-          level: { value: 1 },
-          rules: [
-            {
-              key: "ChoiceSet",
-              flag: "ignoredChoice",
-              choices: {
-                filter: ["item:tag:ignored-choice"]
-              }
-            }
-          ]
-        }
-      }]
+      [
+        "Compendium.pf2e.classfeatures.Item.racket-selector",
+        {
+          type: "feat",
+          name: "Rogue's Racket",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "roguesRacket",
+                choices: {
+                  filter: ["item:tag:rogue-racket"],
+                },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.pf2e.rulesSelections.roguesRacket}",
+              },
+            ],
+          },
+        },
+      ],
+      [
+        "Compendium.pf2e.classfeatures.Item.missing-selector",
+        {
+          type: "feat",
+          name: "Ignore Me",
+          system: {
+            slug: "ignore-me",
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "ignoredChoice",
+                choices: {
+                  filter: ["item:tag:ignored-choice"],
+                },
+              },
+            ],
+          },
+        },
+      ],
     ]);
 
     const steps = await buildClassBranchSteps({
@@ -225,7 +242,7 @@ describe("class-choice-service", () => {
       targetLevel: 1,
       fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: slugFromDocument,
-      readExistingBranchSelection: () => null
+      readExistingBranchSelection: () => null,
     });
 
     expect(steps).toHaveLength(1);
@@ -236,8 +253,8 @@ describe("class-choice-service", () => {
         selectorName: "Rogue's Racket",
         flag: "roguesRacket",
         optionTag: "rogue-racket",
-        classSlug: "rogue"
-      }
+        classSlug: "rogue",
+      },
     });
 
     const skipped = await buildClassBranchSteps({
@@ -246,7 +263,7 @@ describe("class-choice-service", () => {
       targetLevel: 1,
       fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: slugFromDocument,
-      readExistingBranchSelection: () => "Compendium.pf2e.classfeatures.Item.scoundrel"
+      readExistingBranchSelection: () => "Compendium.pf2e.classfeatures.Item.scoundrel",
     });
 
     expect(skipped).toEqual([]);
@@ -262,7 +279,7 @@ function selection(packId: string, documentId: string, name: string, itemType: s
     itemType,
     featType: itemType === "feat" ? "classfeature" : null,
     name,
-    level: 1
+    level: 1,
   };
 }
 
@@ -282,5 +299,10 @@ function slugFromDocument(document: any): string | null {
     return null;
   }
 
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || null;
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || null
+  );
 }

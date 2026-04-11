@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft, normalizeState } from "../src/draft-service";
+import {
+  buildDraftPatch,
+  createEmptyDraft,
+  createEmptyState,
+  normalizeDraft,
+  normalizeState,
+} from "../src/draft-service";
 
 describe("draft-service", () => {
   it("creates an empty draft", () => {
@@ -18,22 +24,22 @@ describe("draft-service", () => {
             enabled: false,
             legacy: false,
             boost: null,
-            flaws: []
-          }
+            flaws: [],
+          },
         },
         background: {
-          selectedBoosts: {}
+          selectedBoosts: {},
         },
         class: {
-          keyAbility: null
+          keyAbility: null,
         },
-        levels: {}
+        levels: {},
       },
       manual: {},
       skillIncreases: {},
       skillTrainings: {},
       branchSelections: {},
-      updatedAt: null
+      updatedAt: null,
     });
   });
 
@@ -42,95 +48,98 @@ describe("draft-service", () => {
       version: 1,
       lastAppliedAt: null,
       lastTargetLevel: null,
-      completedStepIds: []
+      completedStepIds: [],
     });
   });
 
   it("sanitizes malformed draft values", () => {
-    const draft = normalizeDraft({
-      targetLevel: 99,
-      selections: {
-        keep: {
-          packId: "pf2e.feats-srd",
-          documentId: "abc",
-          uuid: "Compendium.pf2e.feats-srd.abc",
-          itemType: "feat",
-          name: "Test Feat",
-          featType: "general",
-          level: 3
-        },
-        drop: {
-          packId: "pf2e.feats-srd"
-        }
-      },
-      manual: {
-        one: true,
-        two: false
-      },
-      skillIncreases: {
-        keep: "Acrobatics",
-        drop: "",
-        bad: 2
-      },
-      skillTrainings: {
-        fighter: {
-          ruleChoices: {
-            fighterSkill: "Athletics",
-            bad: 2
+    const draft = normalizeDraft(
+      {
+        targetLevel: 99,
+        selections: {
+          keep: {
+            packId: "pf2e.feats-srd",
+            documentId: "abc",
+            uuid: "Compendium.pf2e.feats-srd.abc",
+            itemType: "feat",
+            name: "Test Feat",
+            featType: "general",
+            level: 3,
           },
-          additional: ["Society", "", 3, "Medicine", "Society"]
-        }
-      },
-      boosts: {
-        ancestry: {
-          modeTouched: false,
-          mode: "alternate",
-          alternateBoosts: ["str", "dex", "dex", "bad"],
-          selectedBoosts: {
-            one: "int",
-            two: "bad"
+          drop: {
+            packId: "pf2e.feats-srd",
           },
-          voluntary: {
-            touched: false,
-            enabled: true,
-            legacy: true,
-            boost: "wis",
-            flaws: ["str", "str", "bad"]
-          }
         },
-        class: {
-          keyAbility: "con"
+        manual: {
+          one: true,
+          two: false,
         },
-        levels: {
-          1: ["str", "dex", "con", "wis", "cha"],
-          2: ["bad"]
-        }
-      }
-    }, 1);
+        skillIncreases: {
+          keep: "Acrobatics",
+          drop: "",
+          bad: 2,
+        },
+        skillTrainings: {
+          fighter: {
+            ruleChoices: {
+              fighterSkill: "Athletics",
+              bad: 2,
+            },
+            additional: ["Society", "", 3, "Medicine", "Society"],
+          },
+        },
+        boosts: {
+          ancestry: {
+            modeTouched: false,
+            mode: "alternate",
+            alternateBoosts: ["str", "dex", "dex", "bad"],
+            selectedBoosts: {
+              one: "int",
+              two: "bad",
+            },
+            voluntary: {
+              touched: false,
+              enabled: true,
+              legacy: true,
+              boost: "wis",
+              flaws: ["str", "str", "bad"],
+            },
+          },
+          class: {
+            keyAbility: "con",
+          },
+          levels: {
+            1: ["str", "dex", "con", "wis", "cha"],
+            2: ["bad"],
+          },
+        },
+      },
+      1
+    );
 
     expect(draft.targetLevel).toBe(20);
     expect(Object.keys(draft.selections)).toEqual(["keep"]);
     expect(draft.manual).toEqual({
       one: true,
-      two: false
+      two: false,
     });
     expect(draft.skillIncreases).toEqual({
-      keep: "acrobatics"
+      keep: "acrobatics",
     });
     expect(draft.skillTrainings).toEqual({
       fighter: {
         ruleChoices: {
-          fighterSkill: "athletics"
+          fighterSkill: "athletics",
         },
-        additional: ["society", "medicine"]
-      }
+        additional: ["society", "medicine"],
+      },
     });
     expect(draft.boosts).toEqual({
       ancestry: {
         modeTouched: false,
         mode: "alternate",
         selectedBoosts: {
-          one: "int"
+          one: "int",
         },
         alternateBoosts: ["str", "dex"],
         voluntary: {
@@ -138,18 +147,18 @@ describe("draft-service", () => {
           enabled: true,
           legacy: true,
           boost: "wis",
-          flaws: ["str", "str"]
-        }
+          flaws: ["str", "str"],
+        },
       },
       background: {
-        selectedBoosts: {}
+        selectedBoosts: {},
       },
       class: {
-        keyAbility: "con"
+        keyAbility: "con",
       },
       levels: {
-        1: ["str", "dex", "con", "wis"]
-      }
+        1: ["str", "dex", "con", "wis"],
+      },
     });
   });
 
@@ -160,15 +169,17 @@ describe("draft-service", () => {
   });
 
   it("sanitizes module state", () => {
-    expect(normalizeState({
-      lastAppliedAt: "2026-04-08T00:00:00.000Z",
-      lastTargetLevel: 24,
-      completedStepIds: ["a", 1, "b"]
-    })).toEqual({
+    expect(
+      normalizeState({
+        lastAppliedAt: "2026-04-08T00:00:00.000Z",
+        lastTargetLevel: 24,
+        completedStepIds: ["a", 1, "b"],
+      })
+    ).toEqual({
       version: 1,
       lastAppliedAt: "2026-04-08T00:00:00.000Z",
       lastTargetLevel: 20,
-      completedStepIds: ["a", "b"]
+      completedStepIds: ["a", "b"],
     });
   });
 });

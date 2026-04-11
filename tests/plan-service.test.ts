@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyDraft } from "../src/draft-service";
-import { getWayfinderStepStatus, modeLabel, resolveActiveStep } from "../src/wayfinder/plan-service";
 import type { EffectiveBuildState } from "../src/build-state";
+import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep } from "../src/types";
+import { getWayfinderStepStatus, modeLabel, resolveActiveStep } from "../src/wayfinder/plan-service";
 
 describe("wayfinder plan service", () => {
   it("falls back to the first incomplete step when no active step is pinned", async () => {
@@ -16,7 +16,7 @@ describe("wayfinder plan service", () => {
         description: "",
         required: true,
         slotId: "ancestry-level-1",
-        filters: { itemType: "ancestry" }
+        filters: { itemType: "ancestry" },
       },
       {
         id: "heritage-level-1",
@@ -27,8 +27,8 @@ describe("wayfinder plan service", () => {
         description: "",
         required: true,
         slotId: "heritage-level-1",
-        filters: { itemType: "heritage" }
-      }
+        filters: { itemType: "heritage" },
+      },
     ];
 
     const resolved = await resolveActiveStep(steps, null, async (step) => step.slotId === "ancestry-level-1");
@@ -45,7 +45,7 @@ describe("wayfinder plan service", () => {
       description: "",
       required: true,
       slotId: "heritage-level-1",
-      filters: { itemType: "heritage" }
+      filters: { itemType: "heritage" },
     };
 
     const status = await getWayfinderStepStatus(
@@ -54,7 +54,7 @@ describe("wayfinder plan service", () => {
       new Set(["heritage-level-1"]),
       {} as EffectiveBuildState,
       {
-        isTrainingStepComplete: () => false
+        isTrainingStepComplete: () => false,
       }
     );
 

@@ -1,15 +1,14 @@
-import { BOOST_LEVELS } from "../build-state.js";
+import type { inspectActor } from "../actor-inspector.js";
+import type { BOOST_LEVELS, EffectiveBuildState } from "../build-state.js";
 import { SKILL_LABELS } from "../constants.js";
-import { inspectActor } from "../actor-inspector.js";
 import { buildProgressionPlan, sortPendingSteps } from "../progression.js";
 import type { DraftState, PendingStep, StepKind } from "../types.js";
-import type { EffectiveBuildState } from "../build-state.js";
 import { formatSlug } from "./formatting.js";
 import {
   isAncestryBoostSectionComplete,
   isBackgroundBoostSectionComplete,
   isClassBoostSectionComplete,
-  remainingCreationBoostChoices
+  remainingCreationBoostChoices,
 } from "./panes/boost-pane.js";
 
 type ActorSnapshot = ReturnType<typeof inspectActor>;
@@ -31,12 +30,12 @@ export async function buildWayfinderPlan(
   const plan = buildProgressionPlan(snapshot, draft.targetLevel);
   const [trainingSteps, branchSteps] = await Promise.all([
     deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
-    deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel)
+    deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
   ]);
 
   return {
     ...plan,
-    steps: sortPendingSteps([...plan.steps, ...trainingSteps, ...branchSteps])
+    steps: sortPendingSteps([...plan.steps, ...trainingSteps, ...branchSteps]),
   };
 }
 
@@ -56,7 +55,7 @@ export async function resolveActiveStep(
 
   let nextIncomplete: PendingStep | null = null;
   for (const step of steps) {
-    if (!await isStepComplete(step)) {
+    if (!(await isStepComplete(step))) {
       nextIncomplete = step;
       break;
     }
@@ -93,16 +92,18 @@ export async function isWayfinderStepComplete(
   }
 
   if (step.level === 1) {
-    return !!effectiveBuildState.ancestry
-      && !!effectiveBuildState.background
-      && !!effectiveBuildState.class
-      && isAncestryBoostSectionComplete(effectiveBuildState)
-      && isBackgroundBoostSectionComplete(effectiveBuildState)
-      && isClassBoostSectionComplete(effectiveBuildState)
-      && effectiveBuildState.levelBoosts[1].length === effectiveBuildState.allowedBoosts[1];
+    return (
+      !!effectiveBuildState.ancestry &&
+      !!effectiveBuildState.background &&
+      !!effectiveBuildState.class &&
+      isAncestryBoostSectionComplete(effectiveBuildState) &&
+      isBackgroundBoostSectionComplete(effectiveBuildState) &&
+      isClassBoostSectionComplete(effectiveBuildState) &&
+      effectiveBuildState.levelBoosts[1].length === effectiveBuildState.allowedBoosts[1]
+    );
   }
 
-  const level = step.level as typeof BOOST_LEVELS[number];
+  const level = step.level as (typeof BOOST_LEVELS)[number];
   return effectiveBuildState.levelBoosts[level].length === effectiveBuildState.allowedBoosts[level];
 }
 
@@ -141,9 +142,7 @@ export async function getWayfinderStepStatus(
       ? Object.values(training.ruleChoices).filter(Boolean).length + training.additional.length
       : 0;
     const total = (step.training?.choiceRules.length ?? 0) + (step.training?.additionalCount ?? 0);
-    return selectedCount >= total && total > 0
-      ? "Ready to apply"
-      : `${selectedCount}/${total} chosen`;
+    return selectedCount >= total && total > 0 ? "Ready to apply" : `${selectedCount}/${total} chosen`;
   }
 
   if (step.kind === "skill-increase") {
@@ -155,17 +154,28 @@ export async function getWayfinderStepStatus(
     return slug ? `${SKILL_LABELS[slug] ?? formatSlug(slug)} selected` : "Choose one";
   }
 
-  if (recentlyInvalidatedStepIds.has(step.slotId) && !await isWayfinderStepComplete(step, draft, effectiveBuildState, deps)) {
+  if (
+    recentlyInvalidatedStepIds.has(step.slotId) &&
+    !(await isWayfinderStepComplete(step, draft, effectiveBuildState, deps))
+  ) {
     return "Needs attention";
   }
 
-  if (step.level === 1 && (!effectiveBuildState.ancestry || !effectiveBuildState.background || !effectiveBuildState.class)) {
+  if (
+    step.level === 1 &&
+    (!effectiveBuildState.ancestry || !effectiveBuildState.background || !effectiveBuildState.class)
+  ) {
     return "Choose ancestry, background, and class first";
   }
 
-  const remaining = step.level === 1
-    ? remainingCreationBoostChoices(effectiveBuildState)
-    : Math.max(0, effectiveBuildState.allowedBoosts[step.level as typeof BOOST_LEVELS[number]] - effectiveBuildState.levelBoosts[step.level as typeof BOOST_LEVELS[number]].length);
+  const remaining =
+    step.level === 1
+      ? remainingCreationBoostChoices(effectiveBuildState)
+      : Math.max(
+          0,
+          effectiveBuildState.allowedBoosts[step.level as (typeof BOOST_LEVELS)[number]] -
+            effectiveBuildState.levelBoosts[step.level as (typeof BOOST_LEVELS)[number]].length
+        );
 
   return remaining === 0 ? "Ready to apply" : `${remaining} choice${remaining === 1 ? "" : "s"} remaining`;
 }

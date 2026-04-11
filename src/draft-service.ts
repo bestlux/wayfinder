@@ -1,4 +1,4 @@
-import type { AbilityKey, BoostDraftState, DraftState, ModuleState, SelectionRef } from "./types.js";
+import type { AbilityKey, BoostDraftState, DraftState, ModuleState } from "./types.js";
 
 const DRAFT_VERSION = 3;
 const STATE_VERSION = 1;
@@ -13,7 +13,7 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     skillIncreases: {},
     skillTrainings: {},
     branchSelections: {},
-    updatedAt: null
+    updatedAt: null,
   };
 }
 
@@ -22,12 +22,12 @@ export function createEmptyState(): ModuleState {
     version: STATE_VERSION,
     lastAppliedAt: null,
     lastTargetLevel: null,
-    completedStepIds: []
+    completedStepIds: [],
   };
 }
 
 export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): DraftState {
-  const draft = isRecord(raw) ? raw as Partial<DraftState> : {};
+  const draft = isRecord(raw) ? (raw as Partial<DraftState>) : {};
 
   return {
     version: DRAFT_VERSION,
@@ -38,12 +38,12 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     skillIncreases: sanitizeSkillIncreases(draft.skillIncreases),
     skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
     branchSelections: sanitizeSelections(draft.branchSelections),
-    updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null
+    updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
   };
 }
 
 export function normalizeState(raw: unknown): ModuleState {
-  const state = isRecord(raw) ? raw as Partial<ModuleState> : {};
+  const state = isRecord(raw) ? (raw as Partial<ModuleState>) : {};
 
   return {
     version: STATE_VERSION,
@@ -51,7 +51,7 @@ export function normalizeState(raw: unknown): ModuleState {
     lastTargetLevel: typeof state.lastTargetLevel === "number" ? clampLevel(state.lastTargetLevel) : null,
     completedStepIds: Array.isArray(state.completedStepIds)
       ? state.completedStepIds.filter((value): value is string => typeof value === "string")
-      : []
+      : [],
   };
 }
 
@@ -59,7 +59,7 @@ export function buildDraftPatch(draft: DraftState): DraftState {
   return {
     ...draft,
     version: DRAFT_VERSION,
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -75,16 +75,16 @@ function createEmptyBoostDraft(): BoostDraftState {
         enabled: false,
         legacy: false,
         boost: null,
-        flaws: []
-      }
+        flaws: [],
+      },
     },
     background: {
-      selectedBoosts: {}
+      selectedBoosts: {},
     },
     class: {
-      keyAbility: null
+      keyAbility: null,
     },
-    levels: {}
+    levels: {},
   };
 }
 
@@ -106,7 +106,12 @@ function sanitizeSelections(raw: unknown): DraftState["selections"] {
     const uuid = selection.uuid;
     const name = selection.name;
 
-    if (typeof packId !== "string" || typeof documentId !== "string" || typeof uuid !== "string" || typeof name !== "string") {
+    if (
+      typeof packId !== "string" ||
+      typeof documentId !== "string" ||
+      typeof uuid !== "string" ||
+      typeof name !== "string"
+    ) {
       continue;
     }
 
@@ -118,7 +123,7 @@ function sanitizeSelections(raw: unknown): DraftState["selections"] {
       itemType: typeof selection.itemType === "string" ? selection.itemType : "",
       featType: typeof selection.featType === "string" ? selection.featType : null,
       name,
-      level: typeof selection.level === "number" ? clampLevel(selection.level) : null
+      level: typeof selection.level === "number" ? clampLevel(selection.level) : null,
     };
   }
 
@@ -165,7 +170,7 @@ function sanitizeSkillTrainings(raw: unknown): DraftState["skillTrainings"] {
 
     result[slotId] = {
       ruleChoices,
-      additional: Array.from(new Set(additional))
+      additional: Array.from(new Set(additional)),
     };
   }
 
@@ -208,16 +213,16 @@ function sanitizeBoosts(raw: unknown): DraftState["boosts"] {
         enabled: voluntary.enabled === true,
         legacy: voluntary.legacy === true,
         boost: sanitizeAbility(voluntary.boost),
-        flaws: sanitizeAbilitySequence(voluntary.flaws, voluntary.legacy === true ? 2 : 6)
-      }
+        flaws: sanitizeAbilitySequence(voluntary.flaws, voluntary.legacy === true ? 2 : 6),
+      },
     },
     background: {
-      selectedBoosts: sanitizeSelectedBoosts(background.selectedBoosts)
+      selectedBoosts: sanitizeSelectedBoosts(background.selectedBoosts),
     },
     class: {
-      keyAbility: sanitizeAbility(classBoosts.keyAbility)
+      keyAbility: sanitizeAbility(classBoosts.keyAbility),
     },
-    levels: sanitizeLevelBoosts(levels)
+    levels: sanitizeLevelBoosts(levels),
   };
 }
 
@@ -256,11 +261,9 @@ function sanitizeAbilitySet(raw: unknown, maxLength = 6): AbilityKey[] {
     return [];
   }
 
-  return Array.from(new Set(
-    raw
-      .map((value) => sanitizeAbility(value))
-      .filter((value): value is AbilityKey => value !== null)
-  )).slice(0, maxLength);
+  return Array.from(
+    new Set(raw.map((value) => sanitizeAbility(value)).filter((value): value is AbilityKey => value !== null))
+  ).slice(0, maxLength);
 }
 
 function sanitizeAbilitySequence(raw: unknown, maxLength = 6): AbilityKey[] {

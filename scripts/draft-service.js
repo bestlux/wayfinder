@@ -10,7 +10,7 @@ export function createEmptyDraft(targetLevel = 1) {
         skillIncreases: {},
         skillTrainings: {},
         branchSelections: {},
-        updatedAt: null
+        updatedAt: null,
     };
 }
 export function createEmptyState() {
@@ -18,7 +18,7 @@ export function createEmptyState() {
         version: STATE_VERSION,
         lastAppliedAt: null,
         lastTargetLevel: null,
-        completedStepIds: []
+        completedStepIds: [],
     };
 }
 export function normalizeDraft(raw, fallbackTargetLevel) {
@@ -32,7 +32,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
         skillIncreases: sanitizeSkillIncreases(draft.skillIncreases),
         skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
         branchSelections: sanitizeSelections(draft.branchSelections),
-        updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null
+        updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
     };
 }
 export function normalizeState(raw) {
@@ -43,14 +43,14 @@ export function normalizeState(raw) {
         lastTargetLevel: typeof state.lastTargetLevel === "number" ? clampLevel(state.lastTargetLevel) : null,
         completedStepIds: Array.isArray(state.completedStepIds)
             ? state.completedStepIds.filter((value) => typeof value === "string")
-            : []
+            : [],
     };
 }
 export function buildDraftPatch(draft) {
     return {
         ...draft,
         version: DRAFT_VERSION,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
     };
 }
 function createEmptyBoostDraft() {
@@ -65,16 +65,16 @@ function createEmptyBoostDraft() {
                 enabled: false,
                 legacy: false,
                 boost: null,
-                flaws: []
-            }
+                flaws: [],
+            },
         },
         background: {
-            selectedBoosts: {}
+            selectedBoosts: {},
         },
         class: {
-            keyAbility: null
+            keyAbility: null,
         },
-        levels: {}
+        levels: {},
     };
 }
 function sanitizeSelections(raw) {
@@ -92,7 +92,10 @@ function sanitizeSelections(raw) {
         const documentId = selection.documentId;
         const uuid = selection.uuid;
         const name = selection.name;
-        if (typeof packId !== "string" || typeof documentId !== "string" || typeof uuid !== "string" || typeof name !== "string") {
+        if (typeof packId !== "string" ||
+            typeof documentId !== "string" ||
+            typeof uuid !== "string" ||
+            typeof name !== "string") {
             continue;
         }
         result[slotId] = {
@@ -103,7 +106,7 @@ function sanitizeSelections(raw) {
             itemType: typeof selection.itemType === "string" ? selection.itemType : "",
             featType: typeof selection.featType === "string" ? selection.featType : null,
             name,
-            level: typeof selection.level === "number" ? clampLevel(selection.level) : null
+            level: typeof selection.level === "number" ? clampLevel(selection.level) : null,
         };
     }
     return result;
@@ -141,7 +144,7 @@ function sanitizeSkillTrainings(raw) {
             : [];
         result[slotId] = {
             ruleChoices,
-            additional: Array.from(new Set(additional))
+            additional: Array.from(new Set(additional)),
         };
     }
     return result;
@@ -178,16 +181,16 @@ function sanitizeBoosts(raw) {
                 enabled: voluntary.enabled === true,
                 legacy: voluntary.legacy === true,
                 boost: sanitizeAbility(voluntary.boost),
-                flaws: sanitizeAbilitySequence(voluntary.flaws, voluntary.legacy === true ? 2 : 6)
-            }
+                flaws: sanitizeAbilitySequence(voluntary.flaws, voluntary.legacy === true ? 2 : 6),
+            },
         },
         background: {
-            selectedBoosts: sanitizeSelectedBoosts(background.selectedBoosts)
+            selectedBoosts: sanitizeSelectedBoosts(background.selectedBoosts),
         },
         class: {
-            keyAbility: sanitizeAbility(classBoosts.keyAbility)
+            keyAbility: sanitizeAbility(classBoosts.keyAbility),
         },
-        levels: sanitizeLevelBoosts(levels)
+        levels: sanitizeLevelBoosts(levels),
     };
 }
 function sanitizeSelectedBoosts(raw) {
@@ -215,9 +218,7 @@ function sanitizeAbilitySet(raw, maxLength = 6) {
     if (!Array.isArray(raw)) {
         return [];
     }
-    return Array.from(new Set(raw
-        .map((value) => sanitizeAbility(value))
-        .filter((value) => value !== null))).slice(0, maxLength);
+    return Array.from(new Set(raw.map((value) => sanitizeAbility(value)).filter((value) => value !== null))).slice(0, maxLength);
 }
 function sanitizeAbilitySequence(raw, maxLength = 6) {
     if (!Array.isArray(raw)) {

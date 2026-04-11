@@ -60,7 +60,7 @@ async function getEffectiveBuildState(actor: any, draft: DraftState): Promise<Ef
     getEffectiveSingletonDocument(actor, draft, "ancestry"),
     getEffectiveSingletonDocument(actor, draft, "heritage"),
     getEffectiveSingletonDocument(actor, draft, "background"),
-    getEffectiveSingletonDocument(actor, draft, "class")
+    getEffectiveSingletonDocument(actor, draft, "class"),
   ]);
 
   const ancestry = ancestryDocument ? buildEffectiveAncestryState(ancestryDocument, draft.boosts) : null;
@@ -73,7 +73,7 @@ async function getEffectiveBuildState(actor: any, draft: DraftState): Promise<Ef
     ancestryFlaws: ancestry?.buildFlaws ?? [],
     backgroundBoosts: background?.buildBoosts ?? [],
     classBoost: effectiveClass?.selectedKeyAbility ?? null,
-    levelBoosts
+    levelBoosts,
   });
 
   return {
@@ -83,7 +83,7 @@ async function getEffectiveBuildState(actor: any, draft: DraftState): Promise<Ef
     class: effectiveClass,
     levelBoosts,
     allowedBoosts,
-    projectedAbilities
+    projectedAbilities,
   };
 }
 
@@ -152,7 +152,7 @@ async function resolveSourceDocumentFromActorItem(
     itemType,
     featType: null,
     name: actorItem.name ?? "",
-    level: null
+    level: null,
   });
 }
 
@@ -178,32 +178,30 @@ function cloneData<T>(value: T): T {
 
 function buildEffectiveAncestryState(document: any, boosts: BoostDraftState): EffectiveAncestryState {
   const boostEntries = Object.entries(document?.system?.boosts ?? {}) as Array<[string, EffectiveBoostRecord]>;
-  const committedMode = Array.isArray(document?.system?.alternateAncestryBoosts)
-    ? "alternate"
-    : "standard";
+  const committedMode = Array.isArray(document?.system?.alternateAncestryBoosts) ? "alternate" : "standard";
   const mode = boosts.ancestry.modeTouched ? boosts.ancestry.mode : committedMode;
   const selectedBoosts = Object.fromEntries(
     boostEntries.map(([key, boost]) => [key, boosts.ancestry.selectedBoosts[key] ?? normalizeAbility(boost?.selected)])
   ) as Record<string, AbilityKey | null>;
 
   const lockedBoosts = boostEntries
-    .flatMap(([, boost]) => boost.value.length === 1 ? boost.value : [])
+    .flatMap(([, boost]) => (boost.value.length === 1 ? boost.value : []))
     .filter(isAbilityKey);
-  const alternateBoosts = mode === "alternate"
-    ? normalizeAbilityList(
-        boosts.ancestry.modeTouched ? boosts.ancestry.alternateBoosts : document?.system?.alternateAncestryBoosts,
-        2
-      )
-    : [];
+  const alternateBoosts =
+    mode === "alternate"
+      ? normalizeAbilityList(
+          boosts.ancestry.modeTouched ? boosts.ancestry.alternateBoosts : document?.system?.alternateAncestryBoosts,
+          2
+        )
+      : [];
   const voluntary = normalizeVoluntaryState(
-    boosts.ancestry.voluntary.touched
-      ? boosts.ancestry.voluntary
-      : document?.system?.voluntary
+    boosts.ancestry.voluntary.touched ? boosts.ancestry.voluntary : document?.system?.voluntary
   );
 
-  const buildBoosts = mode === "alternate"
-    ? [...alternateBoosts]
-    : Object.values(selectedBoosts).filter((ability): ability is AbilityKey => ability !== null);
+  const buildBoosts =
+    mode === "alternate"
+      ? [...alternateBoosts]
+      : Object.values(selectedBoosts).filter((ability): ability is AbilityKey => ability !== null);
   if (voluntary.enabled && voluntary.legacy && voluntary.boost) {
     buildBoosts.push(voluntary.boost);
   }
@@ -216,20 +214,23 @@ function buildEffectiveAncestryState(document: any, boosts: BoostDraftState): Ef
     lockedBoosts,
     voluntary,
     buildBoosts,
-    buildFlaws: voluntary.enabled ? [...voluntary.flaws] : []
+    buildFlaws: voluntary.enabled ? [...voluntary.flaws] : [],
   };
 }
 
 function buildEffectiveBackgroundState(document: any, boosts: BoostDraftState): EffectiveBackgroundState {
   const boostEntries = Object.entries(document?.system?.boosts ?? {}) as Array<[string, EffectiveBoostRecord]>;
   const selectedBoosts = Object.fromEntries(
-    boostEntries.map(([key, boost]) => [key, boosts.background.selectedBoosts[key] ?? normalizeAbility(boost?.selected)])
+    boostEntries.map(([key, boost]) => [
+      key,
+      boosts.background.selectedBoosts[key] ?? normalizeAbility(boost?.selected),
+    ])
   ) as Record<string, AbilityKey | null>;
 
   return {
     document,
     selectedBoosts,
-    buildBoosts: Object.values(selectedBoosts).filter((ability): ability is AbilityKey => ability !== null)
+    buildBoosts: Object.values(selectedBoosts).filter((ability): ability is AbilityKey => ability !== null),
   };
 }
 
@@ -238,7 +239,7 @@ function buildEffectiveClassState(document: any, boosts: BoostDraftState): Effec
   return {
     document,
     keyAbilityOptions,
-    selectedKeyAbility: boosts.class.keyAbility ?? normalizeAbility(document?.system?.keyAbility?.selected)
+    selectedKeyAbility: boosts.class.keyAbility ?? normalizeAbility(document?.system?.keyAbility?.selected),
   };
 }
 
@@ -254,9 +255,10 @@ function buildEffectiveLevelBoosts(actor: any, boosts: BoostDraftState): Record<
 }
 
 function buildAllowedBoosts(targetLevel: number): Record<BoostLevel, number> {
-  return Object.fromEntries(
-    BOOST_LEVELS.map((level) => [level, level <= targetLevel ? 4 : 0])
-  ) as Record<BoostLevel, number>;
+  return Object.fromEntries(BOOST_LEVELS.map((level) => [level, level <= targetLevel ? 4 : 0])) as Record<
+    BoostLevel,
+    number
+  >;
 }
 
 function buildProjectedAbilities({
@@ -264,7 +266,7 @@ function buildProjectedAbilities({
   ancestryFlaws,
   backgroundBoosts,
   classBoost,
-  levelBoosts
+  levelBoosts,
 }: {
   ancestryBoosts: AbilityKey[];
   ancestryFlaws: AbilityKey[];
@@ -285,9 +287,7 @@ function buildProjectedAbilities({
         countOccurrences(levelBoosts[20], key);
       const flawCount = countOccurrences(ancestryFlaws, key);
       const netBoosts = boostCount - flawCount;
-      const modifier = netBoosts <= 4
-        ? netBoosts
-        : 4 + Math.floor((netBoosts - 4) / 2);
+      const modifier = netBoosts <= 4 ? netBoosts : 4 + Math.floor((netBoosts - 4) / 2);
       const partial = netBoosts >= 5 && netBoosts % 2 === 1;
 
       return [
@@ -297,8 +297,8 @@ function buildProjectedAbilities({
           modifier,
           partial,
           boostCount,
-          flawCount
-        }
+          flawCount,
+        },
       ];
     })
   ) as Record<AbilityKey, ProjectedAbilityState>;
@@ -318,25 +318,27 @@ function normalizeAbilityList(value: unknown, maxLength = 6): AbilityKey[] {
     return [];
   }
 
-  return Array.from(new Set(
-    value
-      .map((entry) => normalizeAbility(entry))
-      .filter((entry): entry is AbilityKey => entry !== null)
-  )).slice(0, maxLength);
+  return Array.from(
+    new Set(value.map((entry) => normalizeAbility(entry)).filter((entry): entry is AbilityKey => entry !== null))
+  ).slice(0, maxLength);
 }
 
 function normalizeVoluntaryState(value: BoostDraftState["ancestry"]["voluntary"]): EffectiveAncestryState["voluntary"] {
-  const legacy = value?.legacy === true
-    || (typeof value?.legacy !== "boolean" && Object.prototype.hasOwnProperty.call(value ?? {}, "boost"));
+  const legacy =
+    value?.legacy === true ||
+    (typeof value?.legacy !== "boolean" && Object.prototype.hasOwnProperty.call(value ?? {}, "boost"));
   const flaws = Array.isArray(value?.flaws)
-    ? value.flaws.map((entry) => normalizeAbility(entry)).filter((entry): entry is AbilityKey => entry !== null).slice(0, legacy ? 2 : 6)
+    ? value.flaws
+        .map((entry) => normalizeAbility(entry))
+        .filter((entry): entry is AbilityKey => entry !== null)
+        .slice(0, legacy ? 2 : 6)
     : [];
   const boost = normalizeAbility(value?.boost);
   return {
     enabled: value?.enabled === true || legacy || flaws.length > 0 || boost !== null,
     legacy,
     boost,
-    flaws
+    flaws,
   };
 }
 
@@ -344,10 +346,5 @@ function isAbilityKey(value: unknown): value is AbilityKey {
   return typeof value === "string" && ABILITY_KEYS.includes(value as AbilityKey);
 }
 
-export {
-  BOOST_LEVELS,
-  getEffectiveBuildState,
-  getEffectiveSingletonDocument,
-  listActorItems
-};
 export type { EffectiveBuildState, ProjectedAbilityState };
+export { BOOST_LEVELS, getEffectiveBuildState, getEffectiveSingletonDocument, listActorItems };

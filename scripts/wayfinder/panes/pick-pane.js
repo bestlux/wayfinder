@@ -1,7 +1,7 @@
 import { fetchSelectionDocument } from "../../pack-service.js";
 import { buildPreviewDetails, formatSlug } from "../formatting.js";
 export function buildPickItemPane(args) {
-    const { step, search, selectedValue, selectedLabel, visibleOptions, infoState, contextNote, preview, modeLabel, previewValue } = args;
+    const { step, search, selectedValue, selectedLabel, visibleOptions, infoState, contextNote, preview, modeLabel, previewValue, } = args;
     return {
         kind: "pick-item",
         isPickItem: true,
@@ -25,9 +25,9 @@ export function buildPickItemPane(args) {
             ...option,
             selected: option.value === selectedValue,
             previewing: option.value === previewValue,
-            sourceLabel: option.source ?? "Unknown Source"
+            sourceLabel: option.source ?? "Unknown Source",
         })),
-        preview
+        preview,
     };
 }
 export async function buildPreview(option, selectedValue) {
@@ -42,7 +42,7 @@ export async function buildPreview(option, selectedValue) {
         itemType: option.itemType,
         featType: option.featType,
         name: option.name,
-        level: option.level
+        level: option.level,
     });
     if (!document) {
         return {
@@ -55,7 +55,7 @@ export async function buildPreview(option, selectedValue) {
             description: "",
             selected: option.value === selectedValue,
             selectedLabel: option.value === selectedValue ? "Selected" : "Choose for draft",
-            value: option.value
+            value: option.value,
         };
     }
     const system = document.system ?? {};
@@ -69,13 +69,13 @@ export async function buildPreview(option, selectedValue) {
         description: await TextEditor.enrichHTML(String(system.description?.value ?? ""), { async: true }),
         selected: option.value === selectedValue,
         selectedLabel: option.value === selectedValue ? "Selected" : "Choose for draft",
-        value: option.value
+        value: option.value,
     };
 }
 export function selectedSelection(step, draft) {
     return step.kind === "class-branch"
-        ? draft.branchSelections[step.slotId] ?? null
-        : draft.selections[step.slotId] ?? null;
+        ? (draft.branchSelections[step.slotId] ?? null)
+        : (draft.selections[step.slotId] ?? null);
 }
 export function selectedValueFor(step, draft) {
     const selection = selectedSelection(step, draft);

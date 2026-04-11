@@ -7,53 +7,51 @@ const ABILITY_BOOST_LEVELS = [5, 10, 15, 20];
 export function buildProgressionPlan(snapshot, requestedTargetLevel) {
     const currentLevel = clampLevel(snapshot.level);
     const currentSteps = buildSteps(snapshot, currentLevel, currentLevel);
-    const recommendedTargetLevel = currentSteps.length > 0 || snapshot.isBlank
-        ? currentLevel
-        : Math.min(currentLevel + 1, 20);
+    const recommendedTargetLevel = currentSteps.length > 0 || snapshot.isBlank ? currentLevel : Math.min(currentLevel + 1, 20);
     const targetLevel = clampLevel(requestedTargetLevel ?? recommendedTargetLevel);
     return {
         recommendedTargetLevel,
         targetLevel,
-        steps: buildSteps(snapshot, currentLevel, targetLevel)
+        steps: buildSteps(snapshot, currentLevel, targetLevel),
     };
 }
 export function buildSteps(snapshot, currentLevel, targetLevel) {
     const steps = [];
     if (!snapshot.singletonSlots.ancestry) {
         steps.push(makePickStep("ancestry", 1, "Choose an ancestry", "Select the ancestry item that anchors this character's build.", {
-            itemType: "ancestry"
+            itemType: "ancestry",
         }));
     }
     if (!snapshot.singletonSlots.heritage) {
         steps.push(makePickStep("heritage", 1, "Choose a heritage", "Select a heritage after ancestry so PF2E can layer the heritage item onto the actor.", {
-            itemType: "heritage"
+            itemType: "heritage",
         }));
     }
     if (!snapshot.singletonSlots.background) {
         steps.push(makePickStep("background", 1, "Choose a background", "Select the background that supplies early trained skills and boosts.", {
-            itemType: "background"
+            itemType: "background",
         }));
     }
     if (!snapshot.singletonSlots.class) {
         steps.push(makePickStep("class", 1, "Choose a class", "Select the class item that defines class progression and downstream PF2E automation.", {
-            itemType: "class"
+            itemType: "class",
         }));
     }
     steps.push(...buildFeatSteps("ancestry-feat", "Level {level} ancestry feat", "Pick the ancestry feat unlocked at this milestone.", ANCESTRY_FEAT_LEVELS, snapshot.featCounts.ancestry, targetLevel, {
         itemType: "feat",
-        featTypes: ["ancestry"]
+        featTypes: ["ancestry"],
     }));
     steps.push(...buildFeatSteps("class-feat", "Level {level} class feat", "Pick a class or archetype feat unlocked at this milestone.", CLASS_FEAT_LEVELS, snapshot.featCounts.class + snapshot.featCounts.archetype, targetLevel, {
         itemType: "feat",
-        featTypes: ["class", "archetype"]
+        featTypes: ["class", "archetype"],
     }));
     steps.push(...buildFeatSteps("skill-feat", "Level {level} skill feat", "Pick the skill feat unlocked at this milestone.", SKILL_FEAT_LEVELS, snapshot.featCounts.skill, targetLevel, {
         itemType: "feat",
-        featTypes: ["skill"]
+        featTypes: ["skill"],
     }));
     steps.push(...buildFeatSteps("general-feat", "Level {level} general feat", "Pick the general feat unlocked at this milestone.", GENERAL_FEAT_LEVELS, snapshot.featCounts.general, targetLevel, {
         itemType: "feat",
-        featTypes: ["general"]
+        featTypes: ["general"],
     }));
     if (snapshot.isBlank || !allCreationAnchorsPresent(snapshot)) {
         steps.push(makeBoostStep("ability-boosts", 1, "Assign creation boosts", "Allocate ancestry, background, class, and free level 1 boosts inside Wayfinder before finalizing the draft."));
@@ -100,7 +98,7 @@ function buildFeatSteps(slotKind, titleTemplate, description, slotLevels, fulfil
         steps.push(makePickStep(slotKind, level, titleTemplate.replace("{level}", String(level)), description, {
             itemType: filters.itemType,
             featTypes: filters.featTypes,
-            maxLevel: level
+            maxLevel: level,
         }));
     }
     return steps;
@@ -116,7 +114,7 @@ function makePickStep(slotKind, level, title, description, filters) {
         description,
         required: true,
         slotId,
-        filters
+        filters,
     };
 }
 function makeSkillIncreaseStep(level) {
@@ -130,20 +128,7 @@ function makeSkillIncreaseStep(level) {
         title: `Level ${level} skill increase`,
         description: `Increase one skill's proficiency rank by one step (up to ${maxRankLabel} at this level).`,
         required: true,
-        slotId
-    };
-}
-function makeManualStep(slotKind, level, title, description) {
-    const slotId = `${slotKind}-level-${level}`;
-    return {
-        id: slotId,
-        level,
-        kind: "manual",
-        slotKind,
-        title,
-        description,
-        required: true,
-        slotId
+        slotId,
     };
 }
 function makeBoostStep(slotKind, level, title, description) {
@@ -156,14 +141,14 @@ function makeBoostStep(slotKind, level, title, description) {
         title,
         description,
         required: true,
-        slotId
+        slotId,
     };
 }
 function allCreationAnchorsPresent(snapshot) {
-    return snapshot.singletonSlots.ancestry
-        && snapshot.singletonSlots.heritage
-        && snapshot.singletonSlots.background
-        && snapshot.singletonSlots.class;
+    return (snapshot.singletonSlots.ancestry &&
+        snapshot.singletonSlots.heritage &&
+        snapshot.singletonSlots.background &&
+        snapshot.singletonSlots.class);
 }
 function clampLevel(level) {
     if (!Number.isFinite(level)) {

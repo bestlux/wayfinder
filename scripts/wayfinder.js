@@ -8,7 +8,7 @@ Hooks.once("init", () => {
         `modules/${MODULE_ID}/templates/wayfinder/boost-pane.hbs`,
         `modules/${MODULE_ID}/templates/wayfinder/skill-increase-pane.hbs`,
         `modules/${MODULE_ID}/templates/wayfinder/skill-training-pane.hbs`,
-        `modules/${MODULE_ID}/templates/wayfinder/pick-pane.hbs`
+        `modules/${MODULE_ID}/templates/wayfinder/pick-pane.hbs`,
     ]);
     registerSheetControls();
     console.log(`${MODULE_ID} | initialized`);

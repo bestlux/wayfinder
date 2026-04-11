@@ -34,7 +34,7 @@
 .browser-header h4 {
   margin: 0;
   color: var(--wf-primary);
-  font: 600 0.9rem/1.1 var(--serif, "Signika", serif);
+  font: 600 0.9rem / 1.1 var(--serif, "Signika", serif);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -42,7 +42,7 @@
 .context-note {
   margin: 0;
   color: #6f4f1a;
-  font: 600 0.68rem/1.25 var(--sans-serif, sans-serif);
+  font: 600 0.68rem / 1.25 var(--sans-serif, sans-serif);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -187,7 +187,7 @@
 
 .option-name {
   display: block;
-  font: 600 0.84rem/1.15 var(--serif, serif);
+  font: 600 0.84rem / 1.15 var(--serif, serif);
   white-space: normal;
   word-break: break-word;
 }
@@ -216,7 +216,7 @@
   background: var(--wf-rarity-common);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
   color: var(--text-light, #f4f1ea);
-  font: 700 0.5rem/1.2 var(--sans-serif, sans-serif);
+  font: 700 0.5rem / 1.2 var(--sans-serif, sans-serif);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -278,14 +278,13 @@
   align-items: start;
   padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--wf-rule);
-  background:
-    linear-gradient(180deg, rgba(236, 226, 207, 0.46) 0%, rgba(236, 226, 207, 0.14) 100%);
+  background: linear-gradient(180deg, rgba(236, 226, 207, 0.46) 0%, rgba(236, 226, 207, 0.14) 100%);
 }
 
 .preview-heading h4 {
   margin: 0;
   color: var(--wf-primary);
-  font: 600 1.45rem/1 var(--serif, "Signika", serif);
+  font: 600 1.45rem / 1 var(--serif, "Signika", serif);
 }
 
 .preview-tags {
@@ -324,7 +323,9 @@
   border-bottom: 1px solid rgba(95, 77, 57, 0.12);
   background: rgba(255, 251, 243, 0.7);
   cursor: default;
-  transition: background-color var(--wf-transition), box-shadow var(--wf-transition);
+  transition:
+    background-color var(--wf-transition),
+    box-shadow var(--wf-transition);
 }
 
 .detail-row:hover {
@@ -340,7 +341,7 @@
 
 .detail-row dt {
   color: var(--wf-primary);
-  font: 700 0.56rem/1.2 var(--sans-serif, sans-serif);
+  font: 700 0.56rem / 1.2 var(--sans-serif, sans-serif);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   flex-shrink: 0;
@@ -348,7 +349,7 @@
 
 .detail-row dd {
   color: var(--wf-ink);
-  font: 600 0.82rem/1.2 var(--serif, serif);
+  font: 600 0.82rem / 1.2 var(--serif, serif);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -405,7 +406,7 @@
 .picker-state h4 {
   margin: 0.08rem 0 0.18rem;
   color: var(--wf-primary);
-  font: 600 0.95rem/1.15 var(--serif, serif);
+  font: 600 0.95rem / 1.15 var(--serif, serif);
 }
 
 .picker-state p:last-child {

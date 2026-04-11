@@ -1,51 +1,57 @@
-import { DRAFT_FLAG, MODULE_ID, MODULE_TITLE, SKILL_LABELS, STATE_FLAG } from "../constants.js";
 import { inspectActor } from "../actor-inspector.js";
 import { applyDraftToActor } from "../actor-updater.js";
+import type { EffectiveBuildState } from "../build-state.js";
 import { getEffectiveBuildState, getEffectiveSingletonDocument, listActorItems } from "../build-state.js";
+import { DRAFT_FLAG, MODULE_ID, MODULE_TITLE, SKILL_LABELS, STATE_FLAG } from "../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../draft-service.js";
 import { fetchSelectionDocument, getOptionsForStep, getPickerInfoState, resolveSelection } from "../pack-service.js";
 import { canUseWayfinder } from "../permissions.js";
-import type { EffectiveBuildState } from "../build-state.js";
 import type { AbilityKey, BoostLevel, DraftState, OptionContext, PendingStep, SelectionRef } from "../types.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
 import { buildClassBranchSteps, buildClassTrainingSteps } from "./class-choice-service.js";
 import { formatSlug, sameMembers } from "./formatting.js";
+import { buildBoostPane, toggleSlotRecordChoice } from "./panes/boost-pane.js";
+import {
+  buildPickItemPane,
+  buildPreview,
+  matchesSearch,
+  resolvePreviewValue,
+  selectedSelection,
+  selectedValueFor,
+} from "./panes/pick-pane.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane, compareSkillIncreaseSlotIds } from "./panes/skill-pane.js";
 import {
-  buildBoostPane,
-  canChooseFromSlotRecord,
-  isAncestryBoostSectionComplete,
-  isBackgroundBoostSectionComplete,
-  isClassBoostSectionComplete,
-  remainingCreationBoostChoices,
-  requiredBoostSlots,
-  toggleSlotRecordChoice
-} from "./panes/boost-pane.js";
-import { buildPickItemPane, buildPreview, matchesSearch, resolvePreviewValue, selectedSelection, selectedValueFor } from "./panes/pick-pane.js";
-import { buildWayfinderPlan, getWayfinderStepStatus, isWayfinderStepComplete, modeLabel, resolveActiveStep } from "./plan-service.js";
+  buildWayfinderPlan,
+  getWayfinderStepStatus,
+  isWayfinderStepComplete,
+  modeLabel,
+  resolveActiveStep,
+} from "./plan-service.js";
 import type { ActivePane, ManualStepPane, StepNavRow, SummaryItem } from "./view-models.js";
 
-export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
+export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(
+  foundry.applications.api.ApplicationV2
+) {
   static DEFAULT_OPTIONS = {
     id: MODULE_ID,
     tag: "section",
     classes: ["wayfinder-app"],
     position: {
       width: 1240,
-      height: 820
+      height: 820,
     },
     window: {
       icon: "fa-solid fa-compass",
       title: "PF2E-WAYFINDER.App.Title",
-      contentClasses: ["standard-form"]
-    }
+      contentClasses: ["standard-form"],
+    },
   };
 
   static PARTS = {
     main: {
       template: `modules/${MODULE_ID}/templates/wayfinder-app.hbs`,
-      root: true
-    }
+      root: true,
+    },
   };
 
   actor: any;
@@ -75,7 +81,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   constructor(options: { actor: any }) {
     super({
-      uniqueId: `${MODULE_ID}-${options.actor.id}`
+      uniqueId: `${MODULE_ID}-${options.actor.id}`,
     });
     this.actor = options.actor;
     this.actor.apps[this.id] = this;
@@ -101,47 +107,54 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       getEffectiveSingletonDocument(this.actor, draft, "ancestry"),
       getEffectiveSingletonDocument(this.actor, draft, "heritage"),
       getEffectiveSingletonDocument(this.actor, draft, "background"),
-      getEffectiveSingletonDocument(this.actor, draft, "class")
+      getEffectiveSingletonDocument(this.actor, draft, "class"),
     ]);
     const summary: SummaryItem[] = [
       {
         label: "Ancestry",
         value: effectiveAncestry?.name ?? "Missing",
-        complete: !!effectiveAncestry
+        complete: !!effectiveAncestry,
       },
       {
         label: "Heritage",
         value: effectiveHeritage?.name ?? "Missing",
-        complete: !!effectiveHeritage
+        complete: !!effectiveHeritage,
       },
       {
         label: "Background",
         value: effectiveBackground?.name ?? "Missing",
-        complete: !!effectiveBackground
+        complete: !!effectiveBackground,
       },
       {
         label: "Class",
         value: effectiveClass?.name ?? "Missing",
-        complete: !!effectiveClass
-      }
+        complete: !!effectiveClass,
+      },
     ];
-    const dossierLine = summary
-      .filter((item) => item.complete)
-      .map((item) => item.value)
-      .filter(Boolean)
-      .join(" • ") || "Creation path in progress";
-    const stepStateRows = await Promise.all(plan.steps.map(async (step, index): Promise<StepNavRow> => ({
-      id: step.id,
-      index: index + 1,
-      level: step.level,
-      title: step.title,
-      active: step.id === activeStep?.id,
-      complete: await this.#isStepComplete(step, effectiveBuildState),
-      invalidated: this.#recentlyInvalidatedStepIds.has(step.slotId) && !await this.#isStepComplete(step, effectiveBuildState),
-      modeLabel: modeLabel(step.kind),
-      status: await this.#stepStatus(step, effectiveBuildState),
-      firstInLevel: index === 0 || plan.steps[index - 1].level !== step.level
-    })));
+    const dossierLine =
+      summary
+        .filter((item) => item.complete)
+        .map((item) => item.value)
+        .filter(Boolean)
+        .join(" • ") || "Creation path in progress";
+    const stepStateRows = await Promise.all(
+      plan.steps.map(
+        async (step, index): Promise<StepNavRow> => ({
+          id: step.id,
+          index: index + 1,
+          level: step.level,
+          title: step.title,
+          active: step.id === activeStep?.id,
+          complete: await this.#isStepComplete(step, effectiveBuildState),
+          invalidated:
+            this.#recentlyInvalidatedStepIds.has(step.slotId) &&
+            !(await this.#isStepComplete(step, effectiveBuildState)),
+          modeLabel: modeLabel(step.kind),
+          status: await this.#stepStatus(step, effectiveBuildState),
+          firstInLevel: index === 0 || plan.steps[index - 1].level !== step.level,
+        })
+      )
+    );
 
     return {
       actorName: this.actor.name,
@@ -149,7 +162,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       currentLevel: snapshot.level,
       targetLevel: plan.targetLevel,
       hasPendingSteps: plan.steps.length > 0,
-      guidance: "Review one decision at a time, keep the draft coherent, and let earlier choices narrow what comes next.",
+      guidance:
+        "Review one decision at a time, keep the draft coherent, and let earlier choices narrow what comes next.",
       summary,
       stepCount: plan.steps.length,
       completedCount: stepStateRows.filter((step) => step.complete).length,
@@ -158,7 +172,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       steps: stepStateRows,
       activePane,
       canGoPrevious: !!activeStep && plan.steps.findIndex((step) => step.id === activeStep.id) > 0,
-      canGoNext: !!activeStep && plan.steps.findIndex((step) => step.id === activeStep.id) < plan.steps.length - 1
+      canGoNext: !!activeStep && plan.steps.findIndex((step) => step.id === activeStep.id) < plan.steps.length - 1,
     };
   }
 
@@ -175,7 +189,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         onActionClick: this.#onActionClick,
         onSearchInput: this.#onSearchInput,
         onScrollableScroll: this.#onScrollableScroll,
-        onManualChange: this.#onManualChange
+        onManualChange: this.#onManualChange,
       },
       this.#scrollById,
       this.#pendingSearchFocus
@@ -226,10 +240,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         await this.#toggleVoluntaryLegacy();
         break;
       case "toggle-boost-choice":
-        this.#toggleBoostChoice(action.stepId, action.section, action.attribute);
+        await this.#toggleBoostChoice(action.stepId, action.section, action.attribute);
         break;
       case "toggle-voluntary-choice":
-        this.#toggleVoluntaryChoice(action.stepId, action.attribute, action.choiceKind);
+        await this.#toggleVoluntaryChoice(action.stepId, action.attribute, action.choiceKind);
         break;
       case "select-skill-increase":
         this.#selectSkillIncrease(action.stepId, action.slug);
@@ -312,21 +326,23 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   async #buildPlan(snapshot = inspectActor(this.actor), draft = this.#requireDraft()) {
     return buildWayfinderPlan(snapshot, draft, {
-      buildClassTrainingSteps: (_planSnapshot, _planDraft, targetLevel) => buildClassTrainingSteps({
-        draftClassSelection: this.#findDraftSelectionByType("class"),
-        targetLevel,
-        fetchSelectionDocument,
-        extractSlug: (document) => this.#extractSlug(document),
-        localize: (value) => game.i18n.localize(value)
-      }),
-      buildClassBranchSteps: async (_planSnapshot, planDraft, targetLevel) => buildClassBranchSteps({
-        draft: planDraft,
-        effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
-        targetLevel,
-        fetchSelectionDocument,
-        extractSlug: (document) => this.#extractSlug(document),
-        readExistingBranchSelection: (branch) => this.#readExistingBranchSelection(branch)
-      })
+      buildClassTrainingSteps: (_planSnapshot, _planDraft, targetLevel) =>
+        buildClassTrainingSteps({
+          draftClassSelection: this.#findDraftSelectionByType("class"),
+          targetLevel,
+          fetchSelectionDocument,
+          extractSlug: (document) => this.#extractSlug(document),
+          localize: (value) => game.i18n.localize(value),
+        }),
+      buildClassBranchSteps: async (_planSnapshot, planDraft, targetLevel) =>
+        buildClassBranchSteps({
+          draft: planDraft,
+          effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
+          targetLevel,
+          fetchSelectionDocument,
+          extractSlug: (document) => this.#extractSlug(document),
+          readExistingBranchSelection: (branch) => this.#readExistingBranchSelection(branch),
+        }),
     });
   }
 
@@ -336,11 +352,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return typeof rulesSelection === "string" && rulesSelection.length > 0 ? rulesSelection : null;
   }
 
-  async #resolveActiveStep(steps: PendingStep[], effectiveBuildState: EffectiveBuildState): Promise<PendingStep | null> {
-    const resolved = await resolveActiveStep(
-      steps,
-      this.#activeStepId,
-      (step) => this.#isStepComplete(step, effectiveBuildState)
+  async #resolveActiveStep(
+    steps: PendingStep[],
+    effectiveBuildState: EffectiveBuildState
+  ): Promise<PendingStep | null> {
+    const resolved = await resolveActiveStep(steps, this.#activeStepId, (step) =>
+      this.#isStepComplete(step, effectiveBuildState)
     );
     this.#activeStepId = resolved.activeStepId;
     return resolved.activeStep;
@@ -362,7 +379,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         title: step.title,
         description: step.description,
         completed: this.#requireDraft().manual[step.slotId] === true,
-        selectedLabel: await this.#stepStatus(step, effectiveBuildState)
+        selectedLabel: await this.#stepStatus(step, effectiveBuildState),
       };
       return pane;
     }
@@ -371,14 +388,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return buildBoostPane(step, effectiveBuildState, {
         isStepComplete: (paneStep, buildState) => this.#isStepComplete(paneStep, buildState),
         stepStatus: (paneStep, buildState) => this.#stepStatus(paneStep, buildState),
-        abilityLabel: (attribute) => this.#abilityLabel(attribute)
+        abilityLabel: (attribute) => this.#abilityLabel(attribute),
       });
     }
 
     if (step.kind === "skill-training") {
       const projectedRanks = await this.#projectSkillRanks(this.#requireDraft(), step.slotId);
       return buildSkillTrainingPane(step, this.#requireDraft(), projectedRanks, this.#getSkillList(projectedRanks), {
-        isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep)
+        isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep),
       });
     }
 
@@ -395,7 +412,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const visibleOptions = infoState?.tone === "blocked" ? [] : filteredOptions;
     const contextNote = await this.#buildContextNote(step, optionContext);
     const selectedValue = selectedValueFor(step, this.#requireDraft());
-    const previewValue = resolvePreviewValue(step.id, visibleOptions, options, selectedValue, this.#previewValueByStepId);
+    const previewValue = resolvePreviewValue(
+      step.id,
+      visibleOptions,
+      options,
+      selectedValue,
+      this.#previewValueByStepId
+    );
     const preview = previewValue
       ? await buildPreview(options.find((option) => option.value === previewValue) ?? null, selectedValue)
       : null;
@@ -409,7 +432,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       contextNote,
       preview,
       modeLabel: modeLabel(step.kind),
-      previewValue
+      previewValue,
     });
   }
 
@@ -430,16 +453,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     const duplicates = [
       ...Object.values(this.#requireDraft().selections),
-      ...Object.values(this.#requireDraft().branchSelections)
+      ...Object.values(this.#requireDraft().branchSelections),
     ].some((existing) => existing.uuid === selection.uuid && existing.slotId !== selection.slotId);
     if (duplicates) {
       ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.DuplicateSelections"));
       return;
     }
 
-    const previousSelection = step.kind === "class-branch"
-      ? this.#requireDraft().branchSelections[selection.slotId]
-      : this.#requireDraft().selections[selection.slotId];
+    const previousSelection =
+      step.kind === "class-branch"
+        ? this.#requireDraft().branchSelections[selection.slotId]
+        : this.#requireDraft().selections[selection.slotId];
     if (step.kind === "class-branch") {
       this.#requireDraft().branchSelections[selection.slotId] = selection;
     } else {
@@ -507,7 +531,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #invalidateDependentAncestrySelections(): string[] {
     return [
       ...this.#invalidateSelection("heritage-level-1"),
-      ...this.#invalidateSelectionsByPrefix("ancestry-feat-level-")
+      ...this.#invalidateSelectionsByPrefix("ancestry-feat-level-"),
     ];
   }
 
@@ -534,7 +558,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     this.#pendingSearchFocus = {
       stepId,
-      cursor: activeSearch.selectionStart ?? activeSearch.value.length
+      cursor: activeSearch.selectionStart ?? activeSearch.value.length,
     };
   }
 
@@ -543,7 +567,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#resolveDraftOrActorDocument("ancestry"),
       this.#resolveDraftOrActorDocument("heritage"),
       this.#resolveDraftOrActorDocument("class"),
-      this.#hasDedicationFeatInContext()
+      this.#hasDedicationFeatInContext(),
     ]);
 
     const ancestrySlug = this.#extractSlug(ancestryDocument);
@@ -552,7 +576,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       ancestryTraits: this.#extractContextTraits(ancestryDocument, ancestrySlug),
       heritageTraits: this.#extractContextTraits(heritageDocument),
       classSlug: this.#extractSlug(classDocument),
-      hasDedicationFeat
+      hasDedicationFeat,
     };
   }
 
@@ -598,9 +622,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           return `Showing ${className} options granted by ${selectorName}. Wayfinder will write the selector choice into PF2E's native class-feature data on apply.`;
         }
 
-        return className
-          ? `Showing class branch options keyed to ${className}.`
-          : null;
+        return className ? `Showing class branch options keyed to ${className}.` : null;
       }
       case "skill-feat":
         return "Showing baseline skill feats. Archetype-tagged skill feats stay hidden until Wayfinder tracks a specific archetype path.";
@@ -611,15 +633,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
   }
 
-  async #projectSkillRanks(
-    draft: DraftState,
-    upToSlotId: string
-  ): Promise<Record<string, number>> {
+  async #projectSkillRanks(draft: DraftState, upToSlotId: string): Promise<Record<string, number>> {
     const snapshot = inspectActor(this.actor);
     const projected = { ...snapshot.skillRanks };
     const [backgroundDocument, classDocument] = await Promise.all([
       this.#resolveDraftOrActorDocument("background"),
-      this.#resolveDraftOrActorDocument("class")
+      this.#resolveDraftOrActorDocument("class"),
     ]);
 
     for (const slug of this.#extractFixedTrainedSkills(backgroundDocument)) {
@@ -670,9 +689,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   #extractFixedTrainedSkills(document: any): string[] {
-    const skills = Array.isArray(document?.system?.trainedSkills?.value)
-      ? document.system.trainedSkills.value
-      : [];
+    const skills = Array.isArray(document?.system?.trainedSkills?.value) ? document.system.trainedSkills.value : [];
     return skills
       .filter((entry: unknown): entry is string => typeof entry === "string" && entry.length > 0)
       .map((entry) => entry.trim().toLowerCase());
@@ -708,9 +725,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   #skillLabel(slug: string, sourceLabel?: string): string {
-    const localized = typeof sourceLabel === "string" && sourceLabel.length > 0
-      ? game.i18n.localize(sourceLabel)
-      : "";
+    const localized = typeof sourceLabel === "string" && sourceLabel.length > 0 ? game.i18n.localize(sourceLabel) : "";
     if (localized && localized !== sourceLabel) {
       return localized;
     }
@@ -820,14 +835,22 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             ? current.filter((entry) => entry !== attribute)
             : [...current, attribute].slice(0, 2);
         } else {
-          toggleSlotRecordChoice(draft.boosts.ancestry.selectedBoosts, effectiveBuildState.ancestry.document?.system?.boosts, attribute);
+          toggleSlotRecordChoice(
+            draft.boosts.ancestry.selectedBoosts,
+            effectiveBuildState.ancestry.document?.system?.boosts,
+            attribute
+          );
         }
         break;
       case "background":
         if (!effectiveBuildState.background) {
           return;
         }
-        toggleSlotRecordChoice(draft.boosts.background.selectedBoosts, effectiveBuildState.background.document?.system?.boosts, attribute);
+        toggleSlotRecordChoice(
+          draft.boosts.background.selectedBoosts,
+          effectiveBuildState.background.document?.system?.boosts,
+          attribute
+        );
         break;
       case "class":
         draft.boosts.class.keyAbility = draft.boosts.class.keyAbility === attribute ? null : attribute;
@@ -838,7 +861,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       case "level-15":
       case "level-20": {
         const level = section.split("-")[1] ?? "";
-        const selected = draft.boosts.levels[level] ?? [...effectiveBuildState.levelBoosts[Number(level) as BoostLevel]];
+        const selected = draft.boosts.levels[level] ?? [
+          ...effectiveBuildState.levelBoosts[Number(level) as BoostLevel],
+        ];
         draft.boosts.levels[level] = selected.includes(attribute)
           ? selected.filter((entry) => entry !== attribute)
           : [...selected, attribute].slice(0, effectiveBuildState.allowedBoosts[Number(level) as BoostLevel]);
@@ -850,7 +875,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.render(false);
   }
 
-  async #toggleVoluntaryChoice(stepId: string, attribute: AbilityKey, choiceKind: "flaw" | "second-flaw" | "boost"): Promise<void> {
+  async #toggleVoluntaryChoice(
+    stepId: string,
+    attribute: AbilityKey,
+    choiceKind: "flaw" | "second-flaw" | "boost"
+  ): Promise<void> {
     this.#statusNote = null;
     const effectiveBuildState = await getEffectiveBuildState(this.actor, this.#requireDraft());
     const ancestry = effectiveBuildState.ancestry;
@@ -904,41 +933,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return Object.values(this.#requireDraft().selections).find((selection) => selection.itemType === itemType) ?? null;
   }
 
-  async #resolveSourceDocumentFromActorItem(actorItem: any, itemType: "ancestry" | "heritage" | "class"): Promise<any | null> {
-    const sourceId = actorItem?.flags?.core?.sourceId;
-    if (typeof sourceId !== "string" || !sourceId.startsWith("Compendium.")) {
-      return null;
-    }
-
-    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
-    const packId = match?.[1];
-    const documentId = match?.[2];
-    if (!packId || !documentId) {
-      return null;
-    }
-
-    return fetchSelectionDocument({
-      slotId: `${itemType}-level-1`,
-      packId,
-      documentId,
-      uuid: sourceId,
-      itemType,
-      featType: null,
-      name: actorItem.name ?? "",
-      level: null
-    });
-  }
-
-  #findActorItemByType(type: string): any | null {
-    return listActorItems(this.actor).find((item: any) => item?.type === type) ?? null;
-  }
-
   #findActorItemBySourceId(sourceId: string): any | null {
-    return listActorItems(this.actor).find((item: any) =>
-      item?.sourceId === sourceId
-      || item?.flags?.core?.sourceId === sourceId
-      || item?._stats?.compendiumSource === sourceId
-    ) ?? null;
+    return (
+      listActorItems(this.actor).find(
+        (item: any) =>
+          item?.sourceId === sourceId ||
+          item?.flags?.core?.sourceId === sourceId ||
+          item?._stats?.compendiumSource === sourceId
+      ) ?? null
+    );
   }
 
   #extractSlug(document: any): string | null {
@@ -957,16 +960,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return null;
     }
 
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || null;
+    return (
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || null
+    );
   }
 
   #extractContextTraits(document: any, fallbackSlug?: string | null): string[] {
-    const traits = Array.isArray(document?.system?.traits?.value)
-      ? document.system.traits.value
-      : [];
+    const traits = Array.isArray(document?.system?.traits?.value) ? document.system.traits.value : [];
     const normalized = new Set<string>(
       traits
         .filter((entry: unknown): entry is string => typeof entry === "string")
@@ -1001,19 +1004,23 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   async #hasDedicationFeatInContext(): Promise<boolean> {
-    const actorHasDedication = listActorItems(this.actor).some((item: any) =>
-      item?.type === "feat" && this.#extractContextTraits(item).includes("dedication")
+    const actorHasDedication = listActorItems(this.actor).some(
+      (item: any) => item?.type === "feat" && this.#extractContextTraits(item).includes("dedication")
     );
     if (actorHasDedication) {
       return true;
     }
 
-    const draftedFeatSelections = Object.values(this.#requireDraft().selections).filter((selection) => selection.itemType === "feat");
+    const draftedFeatSelections = Object.values(this.#requireDraft().selections).filter(
+      (selection) => selection.itemType === "feat"
+    );
     if (draftedFeatSelections.length === 0) {
       return false;
     }
 
-    const draftedFeatDocuments = await Promise.all(draftedFeatSelections.map((selection) => fetchSelectionDocument(selection)));
+    const draftedFeatDocuments = await Promise.all(
+      draftedFeatSelections.map((selection) => fetchSelectionDocument(selection))
+    );
     return draftedFeatDocuments.some((document) => this.#extractContextTraits(document).includes("dedication"));
   }
 
@@ -1066,45 +1073,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return 1;
   }
 
-  #clearSelectionsByPrefix(prefix: string): number {
-    let cleared = 0;
-    for (const slotId of Object.keys(this.#requireDraft().selections)) {
-      if (!slotId.startsWith(prefix)) {
-        continue;
-      }
-
-      cleared += this.#clearSelection(slotId);
-    }
-
-    return cleared;
-  }
-
-  #clearBranchSelectionsByPrefix(prefix: string): number {
-    let cleared = 0;
-    for (const slotId of Object.keys(this.#requireDraft().branchSelections)) {
-      if (!slotId.startsWith(prefix)) {
-        continue;
-      }
-
-      cleared += this.#clearSelection(slotId);
-    }
-
-    return cleared;
-  }
-
-  #clearTrainingSelectionsByPrefix(prefix: string): number {
-    let cleared = 0;
-    for (const slotId of Object.keys(this.#requireDraft().skillTrainings)) {
-      if (!slotId.startsWith(prefix)) {
-        continue;
-      }
-
-      cleared += this.#clearSelection(slotId);
-    }
-
-    return cleared;
-  }
-
   #invalidateSelection(slotId: string): string[] {
     if (this.#clearSelection(slotId) === 0) {
       return [];
@@ -1155,14 +1123,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   #resetAncestryBoostDraft(): boolean {
     const draft = this.#requireDraft().boosts.ancestry;
-    const hadValues = draft.mode !== "standard"
-      || draft.modeTouched
-      || Object.values(draft.selectedBoosts).some((value) => value !== null)
-      || draft.alternateBoosts.length > 0
-      || draft.voluntary.touched
-      || draft.voluntary.enabled
-      || draft.voluntary.flaws.length > 0
-      || !!draft.voluntary.boost;
+    const hadValues =
+      draft.mode !== "standard" ||
+      draft.modeTouched ||
+      Object.values(draft.selectedBoosts).some((value) => value !== null) ||
+      draft.alternateBoosts.length > 0 ||
+      draft.voluntary.touched ||
+      draft.voluntary.enabled ||
+      draft.voluntary.flaws.length > 0 ||
+      !!draft.voluntary.boost;
     draft.modeTouched = false;
     draft.mode = "standard";
     draft.selectedBoosts = {};
@@ -1172,7 +1141,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       enabled: false,
       legacy: false,
       boost: null,
-      flaws: []
+      flaws: [],
     };
     return hadValues;
   }
@@ -1193,17 +1162,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   async #isStepComplete(step: PendingStep, effectiveBuildState?: EffectiveBuildState): Promise<boolean> {
     const draft = this.#requireDraft();
-    const buildState = effectiveBuildState ?? await getEffectiveBuildState(this.actor, draft);
+    const buildState = effectiveBuildState ?? (await getEffectiveBuildState(this.actor, draft));
     return isWayfinderStepComplete(step, draft, buildState, {
-      isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep)
+      isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep),
     });
   }
 
   async #stepStatus(step: PendingStep, effectiveBuildState?: EffectiveBuildState): Promise<string> {
     const draft = this.#requireDraft();
-    const buildState = effectiveBuildState ?? await getEffectiveBuildState(this.actor, draft);
+    const buildState = effectiveBuildState ?? (await getEffectiveBuildState(this.actor, draft));
     return getWayfinderStepStatus(step, draft, this.#recentlyInvalidatedStepIds, buildState, {
-      isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep)
+      isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep),
     });
   }
 
@@ -1238,7 +1207,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   async #saveDraft(notify = true): Promise<void> {
     await this.actor.update({
-      [DRAFT_FLAG]: buildDraftPatch(this.#requireDraft())
+      [DRAFT_FLAG]: buildDraftPatch(this.#requireDraft()),
     });
 
     if (notify) {
@@ -1259,9 +1228,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
-    const confirmed = typeof globalThis.confirm === "function"
-      ? globalThis.confirm(`Apply ${plan.steps.length} Wayfinder step(s) to ${this.actor.name}?`)
-      : true;
+    const confirmed =
+      typeof globalThis.confirm === "function"
+        ? globalThis.confirm(`Apply ${plan.steps.length} Wayfinder step(s) to ${this.actor.name}?`)
+        : true;
     if (!confirmed) {
       ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.ApplyCancelled"));
       return;
@@ -1274,8 +1244,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         ...createEmptyState(),
         lastAppliedAt: new Date().toISOString(),
         lastTargetLevel: draft.targetLevel,
-        completedStepIds: plan.steps.map((step) => step.id)
-      }
+        completedStepIds: plan.steps.map((step) => step.id),
+      },
     });
 
     this.#draft = normalizeDraft(null, snapshot.level);
@@ -1292,7 +1262,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#previewValueByStepId.clear();
     this.#recentlyInvalidatedStepIds.clear();
     await this.actor.update({
-      [DRAFT_FLAG]: null
+      [DRAFT_FLAG]: null,
     });
     ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.ClearedDraft"));
     this.render(false);

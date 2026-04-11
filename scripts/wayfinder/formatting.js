@@ -10,34 +10,48 @@ export function buildPreviewDetails(document) {
                 row("Vision", formatSlug(system.vision)),
                 row("Boosts", formatBoosts(system.boosts)),
                 row("Flaw", formatFlaws(system.flaws)),
-                row("Languages", Array.isArray(system.languages?.value) ? system.languages.value.map((value) => formatSlug(value)).join(", ") : null)
+                row("Languages", Array.isArray(system.languages?.value)
+                    ? system.languages.value.map((value) => formatSlug(value)).join(", ")
+                    : null),
             ].filter(Boolean);
         case "heritage":
             return [
                 row("Ancestry", system.ancestry?.name ?? formatSlug(system.ancestry?.slug)),
-                row("Rarity", formatSlug(system.traits?.rarity))
+                row("Rarity", formatSlug(system.traits?.rarity)),
             ].filter(Boolean);
         case "background":
             return [
                 row("Boosts", formatBoosts(system.boosts)),
-                row("Skills", Array.isArray(system.trainedSkills?.value) ? system.trainedSkills.value.map((value) => formatSlug(value)).join(", ") : null),
+                row("Skills", Array.isArray(system.trainedSkills?.value)
+                    ? system.trainedSkills.value.map((value) => formatSlug(value)).join(", ")
+                    : null),
                 row("Lore", Array.isArray(system.trainedSkills?.lore) ? system.trainedSkills.lore.join(", ") : null),
-                row("Granted Item", system.items ? Object.values(system.items).map((item) => item.name).join(", ") : null)
+                row("Granted Item", system.items
+                    ? Object.values(system.items)
+                        .map((item) => item.name)
+                        .join(", ")
+                    : null),
             ].filter(Boolean);
         case "class":
             return [
                 row("Hit Points", system.hp),
-                row("Key Ability", Array.isArray(system.keyAbility?.value) ? system.keyAbility.value.map((value) => value.toUpperCase()).join(" or ") : null),
+                row("Key Ability", Array.isArray(system.keyAbility?.value)
+                    ? system.keyAbility.value.map((value) => value.toUpperCase()).join(" or ")
+                    : null),
                 row("Perception", rankLabel(system.perception)),
                 row("Saving Throws", formatSavingThrows(system.savingThrows)),
-                row("Skill Training", typeof system.trainedSkills?.additional === "number" ? `Trained in ${system.trainedSkills.additional} additional skills` : null)
+                row("Skill Training", typeof system.trainedSkills?.additional === "number"
+                    ? `Trained in ${system.trainedSkills.additional} additional skills`
+                    : null),
             ].filter(Boolean);
         case "feat":
             return [
                 row("Level", system.level?.value),
                 row("Category", formatSlug(system.category ?? system.featType?.value ?? document.featType)),
                 row("Actions", formatActions(system)),
-                row("Prerequisites", Array.isArray(system.prerequisites?.value) ? system.prerequisites.value.map((entry) => entry.value ?? entry).join(", ") : null)
+                row("Prerequisites", Array.isArray(system.prerequisites?.value)
+                    ? system.prerequisites.value.map((entry) => entry.value ?? entry).join(", ")
+                    : null),
             ].filter(Boolean);
         default:
             return [row("Level", system.level?.value)].filter(Boolean);
@@ -72,7 +86,7 @@ export function formatBoosts(boosts) {
         return "";
     }
     const slots = Object.values(boosts)
-        .map((entry) => Array.isArray(entry?.value) ? entry.value : [])
+        .map((entry) => (Array.isArray(entry?.value) ? entry.value : []))
         .filter((values) => values.length > 0);
     return slots
         .map((values) => {
@@ -87,7 +101,7 @@ export function formatFlaws(flaws) {
         return "";
     }
     return Object.values(flaws)
-        .flatMap((entry) => Array.isArray(entry?.value) ? entry.value : [])
+        .flatMap((entry) => (Array.isArray(entry?.value) ? entry.value : []))
         .map((value) => value.toUpperCase())
         .join(", ");
 }
@@ -98,18 +112,26 @@ export function formatSavingThrows(saves) {
     return [
         saves.fortitude ? `Fort ${rankLabel(saves.fortitude)}` : null,
         saves.reflex ? `Ref ${rankLabel(saves.reflex)}` : null,
-        saves.will ? `Will ${rankLabel(saves.will)}` : null
-    ].filter(Boolean).join(" • ");
+        saves.will ? `Will ${rankLabel(saves.will)}` : null,
+    ]
+        .filter(Boolean)
+        .join(" • ");
 }
 export function rankLabel(rank) {
     const numeric = Number(rank);
     switch (numeric) {
-        case 0: return "Untrained";
-        case 1: return "Trained";
-        case 2: return "Expert";
-        case 3: return "Master";
-        case 4: return "Legendary";
-        default: return String(rank ?? "");
+        case 0:
+            return "Untrained";
+        case 1:
+            return "Trained";
+        case 2:
+            return "Expert";
+        case 3:
+            return "Master";
+        case 4:
+            return "Legendary";
+        default:
+            return String(rank ?? "");
     }
 }
 export function formatActions(system) {

@@ -10,7 +10,12 @@ export type WayfinderAction =
   | { type: "toggle-voluntary-enabled"; stepId: string | null }
   | { type: "toggle-voluntary-legacy"; stepId: string | null }
   | { type: "toggle-boost-choice"; stepId: string; section: string; attribute: AbilityKey }
-  | { type: "toggle-voluntary-choice"; stepId: string; attribute: AbilityKey; choiceKind: "flaw" | "second-flaw" | "boost" }
+  | {
+      type: "toggle-voluntary-choice";
+      stepId: string;
+      attribute: AbilityKey;
+      choiceKind: "flaw" | "second-flaw" | "boost";
+    }
   | { type: "select-skill-increase"; stepId: string; slug: string }
   | { type: "select-training-rule"; stepId: string; flag: string; slug: string }
   | { type: "toggle-training-skill"; stepId: string; slug: string }
@@ -63,7 +68,9 @@ export function bindWayfinderInteractions(
   }
 
   if (pendingSearchFocus) {
-    const nextSearch = root.querySelector<HTMLInputElement>(`[data-wayfinder-search][data-step-id="${pendingSearchFocus.stepId}"]`);
+    const nextSearch = root.querySelector<HTMLInputElement>(
+      `[data-wayfinder-search][data-step-id="${pendingSearchFocus.stepId}"]`
+    );
     if (nextSearch) {
       nextSearch.focus();
       const caret = Math.min(pendingSearchFocus.cursor, nextSearch.value.length);
@@ -106,7 +113,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
             type: action,
             stepId: element.dataset.stepId,
             section: element.dataset.section,
-            attribute: element.dataset.attribute as AbilityKey
+            attribute: element.dataset.attribute as AbilityKey,
           }
         : null;
     case "toggle-voluntary-choice":
@@ -115,7 +122,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
             type: action,
             stepId: element.dataset.stepId,
             attribute: element.dataset.attribute as AbilityKey,
-            choiceKind: element.dataset.choiceKind as "flaw" | "second-flaw" | "boost"
+            choiceKind: element.dataset.choiceKind as "flaw" | "second-flaw" | "boost",
           }
         : null;
     case "select-skill-increase":

@@ -7,14 +7,14 @@ export function inspectActor(actor) {
         ancestry: false,
         heritage: false,
         background: false,
-        class: false
+        class: false,
     };
     const featCounts = {
         ancestry: 0,
         class: 0,
         archetype: 0,
         skill: 0,
-        general: 0
+        general: 0,
     };
     for (const item of items) {
         const type = String(item?.type ?? "");
@@ -47,7 +47,7 @@ export function inspectActor(actor) {
         featCounts,
         sourceIds: Array.from(sourceIds),
         namesByType,
-        skillRanks: extractSkillRanks(actor)
+        skillRanks: extractSkillRanks(actor),
     };
 }
 function extractSkillRanks(actor) {

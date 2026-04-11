@@ -1,7 +1,7 @@
 import { PROFICIENCY_CODES, PROFICIENCY_LABELS, SKILL_LABELS } from "../../constants.js";
 import type { DraftState, PendingStep } from "../../types.js";
-import type { SkillIncreaseStepPane, SkillTrainingStepPane } from "../view-models.js";
 import { formatSlug } from "../formatting.js";
+import type { SkillIncreaseStepPane, SkillTrainingStepPane } from "../view-models.js";
 
 interface SkillPaneDependencies {
   isTrainingStepComplete: (step: PendingStep) => boolean;
@@ -34,7 +34,7 @@ export function buildSkillIncreasePane(
       targetRankCode: PROFICIENCY_CODES[targetRank] ?? "T",
       selected: isSelected,
       disabled: atCap && !isSelected,
-      disabledReason: atCap ? `Already at ${PROFICIENCY_LABELS[currentRank]} (max for level ${step.level})` : null
+      disabledReason: atCap ? `Already at ${PROFICIENCY_LABELS[currentRank]} (max for level ${step.level})` : null,
     };
   });
 
@@ -58,7 +58,7 @@ export function buildSkillIncreasePane(
     completed: !!selectedSkill,
     selectedLabel,
     maxRankLabel,
-    skills
+    skills,
   };
 }
 
@@ -75,10 +75,7 @@ export function buildSkillTrainingPane(
     throw new Error(`Missing training metadata for step ${step.slotId}`);
   }
 
-  const reservedSkills = new Set<string>([
-    ...metadata.fixedSkills,
-    ...Object.values(training.ruleChoices)
-  ]);
+  const reservedSkills = new Set<string>([...metadata.fixedSkills, ...Object.values(training.ruleChoices)]);
 
   const additionalSkills = skillEntries
     .filter(({ slug }) => !reservedSkills.has(slug))
@@ -96,7 +93,7 @@ export function buildSkillTrainingPane(
         targetRankCode: "T",
         selected,
         disabled: currentRank >= 1 && !selected,
-        disabledReason: currentRank >= 1 ? "Already trained from another source" : null
+        disabledReason: currentRank >= 1 ? "Already trained from another source" : null,
       };
     });
 
@@ -109,15 +106,15 @@ export function buildSkillTrainingPane(
       selectedLabel: selectedSlug ? (SKILL_LABELS[selectedSlug] ?? formatSlug(selectedSlug)) : null,
       options: choiceRule.options.map((option) => ({
         ...option,
-        selected: option.slug === selectedSlug
-      }))
+        selected: option.slug === selectedSlug,
+      })),
     };
   });
 
   const fixedLabels = metadata.fixedSkills.map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug));
   const selectedLabels = [
     ...Object.values(training.ruleChoices).map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug)),
-    ...training.additional.map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug))
+    ...training.additional.map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug)),
   ];
 
   return {
@@ -134,15 +131,16 @@ export function buildSkillTrainingPane(
     title: step.title,
     description: step.description,
     completed: deps.isTrainingStepComplete(step),
-    selectedLabel: selectedLabels.length > 0
-      ? `${selectedLabels.length}/${metadata.choiceRules.length + metadata.additionalCount} chosen`
-      : "Choose class skill training",
+    selectedLabel:
+      selectedLabels.length > 0
+        ? `${selectedLabels.length}/${metadata.choiceRules.length + metadata.additionalCount} chosen`
+        : "Choose class skill training",
     className: metadata.className,
     fixedSkills: fixedLabels,
     choiceSections,
     additionalCount: metadata.additionalCount,
     additionalRemaining: Math.max(0, metadata.additionalCount - training.additional.length),
-    additionalSkills
+    additionalSkills,
   };
 }
 

@@ -6,8 +6,7 @@
   min-height: 0;
   flex: 1;
   border: 1px solid rgba(95, 77, 57, 0.22);
-  background:
-    linear-gradient(180deg, rgba(247, 240, 226, 0.99) 0%, rgba(241, 231, 212, 0.98) 100%);
+  background: linear-gradient(180deg, rgba(247, 240, 226, 0.99) 0%, rgba(241, 231, 212, 0.98) 100%);
   box-shadow:
     0 0 0 1px rgba(159, 114, 91, 0.25),
     0 0 0 2px rgba(233, 215, 161, 0.4),
@@ -21,8 +20,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background:
-    linear-gradient(180deg, rgba(236, 226, 204, 0.98) 0%, rgba(227, 212, 184, 0.98) 100%);
+  background: linear-gradient(180deg, rgba(236, 226, 204, 0.98) 0%, rgba(227, 212, 184, 0.98) 100%);
   border-right: 1px solid var(--wf-rule);
 }
 
@@ -42,7 +40,7 @@
 .eyebrow {
   margin: 0;
   color: var(--wf-accent-contrast);
-  font: 700 0.54rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.54rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.14em;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
   text-transform: uppercase;
@@ -51,7 +49,7 @@
 .rail-actor-name {
   margin: 0.12rem 0 0;
   color: var(--wf-primary);
-  font: 600 1.25rem/1 var(--serif, "Signika", serif);
+  font: 600 1.25rem / 1 var(--serif, "Signika", serif);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -60,7 +58,7 @@
 .rail-dossier-line {
   margin: 0.08rem 0 0;
   color: var(--wf-ink-soft);
-  font: 600 0.78rem/1.2 var(--serif, serif);
+  font: 600 0.78rem / 1.2 var(--serif, serif);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -97,12 +95,12 @@
 
 .level-badge strong {
   color: var(--text-light, #f4f1ea);
-  font: 600 0.88rem/1 var(--serif, serif);
+  font: 600 0.88rem / 1 var(--serif, serif);
 }
 
 .level-label {
   color: var(--wf-accent-dark);
-  font: 700 0.4rem/1.2 var(--sans-serif, sans-serif);
+  font: 700 0.4rem / 1.2 var(--sans-serif, sans-serif);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -185,7 +183,7 @@
 
 .progress-label {
   color: var(--wf-ink-soft);
-  font: 700 0.56rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.56rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
@@ -223,7 +221,7 @@
 
 .step-level-divider-label {
   color: var(--wf-accent-contrast);
-  font: 700 0.5rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.5rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -274,13 +272,11 @@
 }
 
 .step-link.active {
-  background:
-    linear-gradient(90deg, rgba(94, 0, 0, 0.1) 0%, rgba(94, 0, 0, 0.03) 62%, transparent 100%);
+  background: linear-gradient(90deg, rgba(94, 0, 0, 0.1) 0%, rgba(94, 0, 0, 0.03) 62%, transparent 100%);
 }
 
 .step-link.invalidated {
-  background:
-    linear-gradient(90deg, rgba(139, 90, 25, 0.12) 0%, rgba(139, 90, 25, 0.05) 62%, transparent 100%);
+  background: linear-gradient(90deg, rgba(139, 90, 25, 0.12) 0%, rgba(139, 90, 25, 0.05) 62%, transparent 100%);
 }
 
 /* Step index badge */
@@ -295,7 +291,7 @@
   border-radius: 999px;
   background: var(--wf-secondary);
   color: var(--text-light, #f4f1ea);
-  font: 700 0.55rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.55rem / 1 var(--sans-serif, sans-serif);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
 }
@@ -353,7 +349,7 @@
   -webkit-line-clamp: 2;
   min-width: 0;
   overflow: hidden;
-  font: 600 0.78rem/1.2 var(--serif, serif);
+  font: 600 0.78rem / 1.2 var(--serif, serif);
   white-space: normal;
   word-break: break-word;
 }
@@ -361,7 +357,7 @@
 .step-status {
   display: block;
   color: var(--wf-ink-soft);
-  font: 700 0.48rem/1.15 var(--sans-serif, sans-serif);
+  font: 700 0.48rem / 1.15 var(--sans-serif, sans-serif);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   overflow: hidden;
@@ -377,8 +373,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background:
-    linear-gradient(180deg, rgba(249, 243, 231, 0.99) 0%, rgba(244, 235, 219, 0.98) 100%);
+  background: linear-gradient(180deg, rgba(249, 243, 231, 0.99) 0%, rgba(244, 235, 219, 0.98) 100%);
 }
 
 /* ── Stage Bar (compact single-row header) ─────────────── */
@@ -390,8 +385,7 @@
   gap: 0.65rem;
   padding: 0.32rem 0.6rem;
   border-bottom: 1px solid var(--wf-rule);
-  background:
-    linear-gradient(180deg, rgba(240, 231, 214, 0.8) 0%, rgba(236, 226, 207, 0.3) 100%);
+  background: linear-gradient(180deg, rgba(240, 231, 214, 0.8) 0%, rgba(236, 226, 207, 0.3) 100%);
 }
 
 .stage-bar-copy {
@@ -404,7 +398,7 @@
 
 .stage-bar-step {
   color: var(--wf-ink-soft);
-  font: 700 0.54rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.54rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   flex-shrink: 0;
@@ -413,7 +407,7 @@
 .stage-bar h3 {
   margin: 0;
   color: var(--wf-primary);
-  font: 600 1.15rem/1 var(--serif, "Signika", serif);
+  font: 600 1.15rem / 1 var(--serif, "Signika", serif);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -422,7 +416,7 @@
 
 .step-badge {
   color: var(--wf-ink-soft);
-  font: 700 0.54rem/1 var(--sans-serif, sans-serif);
+  font: 700 0.54rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   flex-shrink: 0;
@@ -478,7 +472,7 @@
   border-bottom: 1px solid rgba(94, 0, 0, 0.15);
   background: rgba(94, 0, 0, 0.05);
   color: var(--wf-primary);
-  font: 700 0.64rem/1.3 var(--sans-serif, sans-serif);
+  font: 700 0.64rem / 1.3 var(--sans-serif, sans-serif);
   letter-spacing: 0.02em;
 }
 
@@ -554,4 +548,3 @@
   background: linear-gradient(180deg, rgba(94, 0, 0, 0.18) 0%, rgba(94, 0, 0, 0.08) 100%);
   border-color: rgba(94, 0, 0, 0.3);
 }
-

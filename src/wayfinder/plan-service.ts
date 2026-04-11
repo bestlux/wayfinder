@@ -179,7 +179,7 @@ export function modeLabel(kind: StepKind): string {
     case "skill-training":
       return "Training";
     case "class-branch":
-      return "Branch";
+      return "Class Path";
     case "boost":
       return "Boosts";
     default:

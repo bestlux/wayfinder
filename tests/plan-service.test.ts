@@ -59,6 +59,6 @@ describe("wayfinder plan service", () => {
     );
 
     expect(status).toBe("Needs attention");
-    expect(modeLabel("class-branch")).toBe("Branch");
+    expect(modeLabel("class-branch")).toBe("Class Path");
   });
 });

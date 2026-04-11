@@ -231,6 +231,79 @@
   color: var(--wf-primary);
   font: 700 0.72rem/1 var(--sans-serif, sans-serif);
   flex-shrink: 0;
+  transition:
+    background-color var(--wf-transition),
+    border-color var(--wf-transition),
+    color var(--wf-transition),
+    opacity var(--wf-transition);
+}
+
+/* ── Rank Chip — Current vs Target ─────────────────────── */
+
+.rank-chip.current {
+  opacity: 0.62;
+}
+
+.rank-chip.target {
+  font-weight: 800;
+  border-color: rgba(95, 77, 57, 0.3);
+}
+
+.skill-increase-option.selected .rank-chip.current {
+  opacity: 0.8;
+}
+
+.skill-increase-option.selected .rank-chip.target {
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(94, 0, 0, 0.12);
+}
+
+/* ── Rank Chip — Proficiency Semantic Colors ──────────── */
+
+.rank-chip.rank-U {
+  background: rgba(186, 169, 145, 0.2);
+  color: var(--wf-rule-strong);
+  border-color: rgba(95, 77, 57, 0.16);
+}
+
+.rank-chip.rank-T {
+  background: rgba(49, 75, 49, 0.1);
+  color: var(--wf-green);
+  border-color: rgba(49, 75, 49, 0.22);
+}
+
+.rank-chip.rank-E {
+  background: rgba(23, 31, 105, 0.09);
+  color: var(--wf-secondary);
+  border-color: rgba(23, 31, 105, 0.2);
+}
+
+.rank-chip.rank-M {
+  background: rgba(94, 0, 0, 0.09);
+  color: var(--wf-primary);
+  border-color: rgba(94, 0, 0, 0.22);
+}
+
+.rank-chip.rank-L {
+  background: rgba(139, 90, 25, 0.14);
+  color: var(--wf-accent-contrast);
+  border-color: rgba(139, 90, 25, 0.3);
+}
+
+/* ── Rank Arrow ──────────────────────────────────────── */
+
+.rank-arrow {
+  color: var(--wf-rule);
+  font-size: 0.58rem;
+  transition: color var(--wf-transition);
+}
+
+.skill-increase-option.selected .rank-arrow {
+  color: var(--wf-primary);
+}
+
+.skill-increase-option:disabled .rank-arrow {
+  opacity: 0.45;
 }
 
 .skill-increase-copy {
@@ -269,8 +342,15 @@
 }
 
 .skill-increase-option.selected .skill-increase-action {
-  border-color: rgba(94, 0, 0, 0.24);
-  background: rgba(94, 0, 0, 0.08);
+  border-color: rgba(94, 0, 0, 0.3);
+  background: linear-gradient(180deg, rgba(94, 0, 0, 0.12) 0%, rgba(94, 0, 0, 0.06) 100%);
+  color: var(--wf-primary);
+  font-weight: 800;
+}
+
+.skill-increase-option:not(:disabled):hover .skill-increase-action {
+  border-color: rgba(94, 0, 0, 0.18);
+  background: rgba(94, 0, 0, 0.04);
 }
 
 .skill-training-stage {
@@ -302,7 +382,17 @@
   gap: 0.9rem;
 }
 
-.skill-training-header h4,
+.skill-training-header {
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid rgba(95, 77, 57, 0.14);
+}
+
+.skill-training-header h4 {
+  margin: 0.08rem 0 0.14rem;
+  color: var(--wf-primary);
+  font: 600 1.1rem/1.05 var(--serif, serif);
+}
+
 .skill-training-block-header h5 {
   margin: 0.08rem 0 0.14rem;
   color: var(--wf-primary);
@@ -347,14 +437,23 @@
 .fixed-skill-chip {
   display: inline-flex;
   align-items: center;
+  gap: 0.3rem;
   padding: 0.24rem 0.45rem;
-  border: 1px solid rgba(95, 77, 57, 0.18);
+  border: 1px solid rgba(49, 75, 49, 0.2);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.42);
-  color: var(--wf-primary);
+  background: rgba(49, 75, 49, 0.06);
+  color: var(--wf-green);
   font: 700 0.62rem/1 var(--sans-serif, sans-serif);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.fixed-skill-chip::before {
+  content: "\f00c";
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  font-size: 0.48rem;
+  opacity: 0.6;
 }
 
 .skill-training-choice-list {
@@ -397,9 +496,13 @@
 }
 
 .skill-training-choice.selected {
-  border-color: rgba(94, 0, 0, 0.24);
+  border-color: rgba(94, 0, 0, 0.28);
   box-shadow: inset 3px 0 0 var(--wf-primary);
   background: linear-gradient(90deg, rgba(94, 0, 0, 0.1) 0%, rgba(94, 0, 0, 0.03) 62%, transparent 100%);
+}
+
+.skill-training-choice.selected .skill-training-choice-action {
+  font-weight: 800;
 }
 
 .skill-training-choice-name {
@@ -413,6 +516,7 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
+  transition: font-weight var(--wf-transition);
 }
 
 .boost-ledger,

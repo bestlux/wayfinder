@@ -69,9 +69,9 @@
             {{#if disabled}}disabled{{/if}}
           >
             <span class="skill-increase-ranks">
-              <span class="rank-chip current">{{currentRankCode}}</span>
-              <i class="fa-solid fa-arrow-right-long"></i>
-              <span class="rank-chip target">{{targetRankCode}}</span>
+              <span class="rank-chip current rank-{{currentRankCode}}">{{currentRankCode}}</span>
+              <i class="fa-solid fa-arrow-right-long rank-arrow"></i>
+              <span class="rank-chip target rank-{{targetRankCode}}">{{targetRankCode}}</span>
             </span>
             <span class="skill-increase-copy">
               <span class="skill-increase-name">{{label}}</span>

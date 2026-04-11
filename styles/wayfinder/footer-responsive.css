@@ -129,4 +129,26 @@
   .voluntary-tools {
     justify-content: flex-start;
   }
+
+  .skill-increase-header,
+  .skill-training-header {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .skill-increase-cap,
+  .skill-training-status {
+    align-items: flex-start;
+    flex-direction: row;
+    gap: 0.5rem;
+  }
+
+  .skill-training-choice-list {
+    flex-direction: column;
+  }
+
+  .skill-training-choice {
+    min-width: 0;
+    width: 100%;
+  }
 }

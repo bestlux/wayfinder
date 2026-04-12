@@ -268,6 +268,132 @@ describe("class-choice-service", () => {
 
     expect(skipped).toEqual([]);
   });
+
+  it("emits wizard arcane-school and arcane-thesis branch steps from the real selector shape", async () => {
+    const draft = createEmptyDraft(1);
+    const wizardClass = {
+      system: {
+        slug: "wizard",
+        items: {
+          school: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.arcane-school-selector",
+            name: "Arcane School",
+          },
+          thesis: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.arcane-thesis-selector",
+            name: "Arcane Thesis",
+          },
+          bond: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.arcane-bond",
+            name: "Arcane Bond",
+          },
+        },
+      },
+    };
+    const documents = new Map<string, any>([
+      [
+        "Compendium.pf2e.classfeatures.Item.arcane-school-selector",
+        {
+          type: "feat",
+          name: "Arcane School",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "arcaneSchool",
+                choices: {
+                  filter: ["item:tag:wizard-arcane-school"],
+                },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.arcaneSchool}",
+              },
+            ],
+          },
+        },
+      ],
+      [
+        "Compendium.pf2e.classfeatures.Item.arcane-thesis-selector",
+        {
+          type: "feat",
+          name: "Arcane Thesis",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "arcaneThesis",
+                choices: {
+                  filter: ["item:tag:wizard-arcane-thesis"],
+                },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.arcaneThesis}",
+              },
+            ],
+          },
+        },
+      ],
+      [
+        "Compendium.pf2e.classfeatures.Item.arcane-bond",
+        {
+          type: "feat",
+          name: "Arcane Bond",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "GrantItem",
+                uuid: "Compendium.pf2e.actionspf2e.Item.Drain Bonded Item",
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+
+    const steps = await buildClassBranchSteps({
+      draft,
+      effectiveClassDocument: wizardClass,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+      readExistingBranchSelection: () => null,
+    });
+
+    expect(steps).toHaveLength(2);
+    expect(steps).toMatchObject([
+      {
+        kind: "class-branch",
+        slotId: "class-branch-arcane-school-level-1",
+        branch: {
+          selectorName: "Arcane School",
+          flag: "arcaneSchool",
+          optionTag: "wizard-arcane-school",
+          classSlug: "wizard",
+        },
+      },
+      {
+        kind: "class-branch",
+        slotId: "class-branch-arcane-thesis-level-1",
+        branch: {
+          selectorName: "Arcane Thesis",
+          flag: "arcaneThesis",
+          optionTag: "wizard-arcane-thesis",
+          classSlug: "wizard",
+        },
+      },
+    ]);
+  });
 });
 
 function selection(packId: string, documentId: string, name: string, itemType: string): SelectionRef {

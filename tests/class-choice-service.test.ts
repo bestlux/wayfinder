@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import type { SelectionRef } from "../src/types";
-import { buildClassBranchSteps, buildClassTrainingSteps } from "../src/wayfinder/class-choice-service";
+import {
+  buildClassBranchSteps,
+  buildClassChoiceSteps,
+  buildClassGrantedItemSteps,
+  buildClassTrainingSteps,
+} from "../src/wayfinder/class-choice-service";
 
 describe("class-choice-service", () => {
   afterEach(() => {
@@ -393,6 +398,229 @@ describe("class-choice-service", () => {
         },
       },
     ]);
+  });
+
+  it("emits a deity step for cleric class features that grant a deity selection", async () => {
+    const draft = createEmptyDraft(1);
+    const clericClass = {
+      system: {
+        slug: "cleric",
+        items: {
+          deity: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
+            name: "Deity",
+          },
+        },
+      },
+    };
+    const documents = new Map<string, any>([
+      [
+        "Compendium.pf2e.classfeatures.Item.deity-cleric",
+        {
+          type: "feat",
+          name: "Deity",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "deity",
+                choices: {
+                  itemType: "deity",
+                },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.deity}",
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+
+    const steps = await buildClassGrantedItemSteps({
+      draft,
+      effectiveClassDocument: clericClass,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+      readExistingGrantedSelection: () => null,
+    });
+
+    expect(steps).toEqual([
+      expect.objectContaining({
+        kind: "pick-item",
+        slotKind: "deity",
+        slotId: "deity-level-1",
+        title: "Choose a deity",
+        grantSelection: expect.objectContaining({
+          flag: "deity",
+          itemType: "deity",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
+          classSlug: "cleric",
+        }),
+      }),
+    ]);
+  });
+
+  it("emits deity-aware cleric class choices and skips choices with no valid options", async () => {
+    const draft = createEmptyDraft(1);
+    const clericClass = {
+      system: {
+        slug: "cleric",
+        items: {
+          deity: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
+            name: "Deity",
+          },
+          font: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.divine-font",
+            name: "Divine Font",
+          },
+        },
+      },
+    };
+    const documents = new Map<string, any>([
+      [
+        "Compendium.pf2e.classfeatures.Item.deity-cleric",
+        {
+          type: "feat",
+          name: "Deity",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "sanctification",
+                choices: [
+                  {
+                    value: "holy",
+                    label: "Holy",
+                    predicate: "deity:primary:sanctification:can:holy",
+                  },
+                  {
+                    value: "unholy",
+                    label: "Unholy",
+                    predicate: "deity:primary:sanctification:can:unholy",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+      [
+        "Compendium.pf2e.classfeatures.Item.divine-font",
+        {
+          type: "feat",
+          name: "Divine Font",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "divineFont",
+                choices: [
+                  {
+                    value: "heal",
+                    label: "Heal",
+                    predicate: "deity:primary:font:heal",
+                  },
+                  {
+                    value: "harm",
+                    label: "Harm",
+                    predicate: "deity:primary:font:harm",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+    const gorum = {
+      system: {
+        font: ["heal", "harm"],
+        sanctification: {
+          modal: "can",
+          what: ["holy", "unholy"],
+        },
+      },
+    };
+    const pharasma = {
+      system: {
+        font: ["heal"],
+        sanctification: null,
+      },
+    };
+
+    const gorumSteps = await buildClassChoiceSteps({
+      draft,
+      effectiveClassDocument: clericClass,
+      effectiveDeityDocument: gorum,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+      localize: (value) => value,
+      readExistingClassChoiceSelection: () => null,
+    });
+
+    expect(gorumSteps).toMatchObject([
+      {
+        kind: "class-choice",
+        slotId: "class-choice-deity-sanctification-level-1",
+        classChoice: {
+          flag: "sanctification",
+          dependsOn: "deity",
+          options: [
+            { value: "holy", label: "Holy" },
+            { value: "unholy", label: "Unholy" },
+          ],
+        },
+      },
+      {
+        kind: "class-choice",
+        slotId: "class-choice-divine-font-divineFont-level-1",
+        classChoice: {
+          flag: "divineFont",
+          dependsOn: "deity",
+          options: [
+            { value: "heal", label: "Heal" },
+            { value: "harm", label: "Harm" },
+          ],
+        },
+      },
+    ]);
+
+    const pharasmaSteps = await buildClassChoiceSteps({
+      draft,
+      effectiveClassDocument: clericClass,
+      effectiveDeityDocument: pharasma,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+      localize: (value) => value,
+      readExistingClassChoiceSelection: () => null,
+    });
+
+    expect(pharasmaSteps).toMatchObject([
+      {
+        kind: "class-choice",
+        slotId: "class-choice-divine-font-divineFont-level-1",
+        classChoice: {
+          flag: "divineFont",
+          options: [{ value: "heal", label: "Heal" }],
+        },
+      },
+    ]);
+    expect(pharasmaSteps.some((step) => step.slotId === "class-choice-deity-sanctification-level-1")).toBe(false);
   });
 });
 

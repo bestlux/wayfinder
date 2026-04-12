@@ -1,5 +1,6 @@
 import { BOOST_LEVELS, getEffectiveBuildState, listActorItems } from "./build-state.js";
 import { applyClassBranchDraft, stripPreselectedClassBranchEntries } from "./class-branch-service.js";
+import { applyClassFeatureChoiceDraft, stripPreselectedClassFeatureEntries } from "./class-feature-choice-service.js";
 import { MODULE_ID } from "./constants.js";
 import { fetchSelectionDocument } from "./pack-service.js";
 const SINGLETON_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
@@ -10,6 +11,10 @@ export async function applyDraftToActor(actor, draft, steps) {
         await replaceSingletonItem(actor, selection, draft, steps);
     }
     const projectedTrainingRanks = await applyTrainingDraft(actor, draft, steps);
+    await applyClassFeatureChoiceDraft(actor, draft, steps, {
+        createEmbeddedSource,
+        fetchSelectionDocument,
+    });
     await applyClassBranchDraft(actor, draft, steps, {
         createEmbeddedSource,
         fetchSelectionDocument,
@@ -129,6 +134,7 @@ async function createEmbeddedSource(selection, draft, steps = []) {
     }
     const source = document.toObject();
     if (selection.itemType === "class" && draft) {
+        stripPreselectedClassFeatureEntries(source, draft, steps);
         stripPreselectedClassBranchEntries(source, draft, steps);
     }
     delete source._id;

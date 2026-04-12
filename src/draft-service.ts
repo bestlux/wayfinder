@@ -13,6 +13,7 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     skillIncreases: {},
     skillTrainings: {},
     branchSelections: {},
+    classChoices: {},
     updatedAt: null,
   };
 }
@@ -38,6 +39,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     skillIncreases: sanitizeSkillIncreases(draft.skillIncreases),
     skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
     branchSelections: sanitizeSelections(draft.branchSelections),
+    classChoices: sanitizeClassChoices(draft.classChoices),
     updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
   };
 }
@@ -142,6 +144,18 @@ function sanitizeSkillIncreases(raw: unknown): Record<string, string> {
     }
   }
   return result;
+}
+
+function sanitizeClassChoices(raw: unknown): Record<string, string> {
+  if (!isRecord(raw)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(raw)
+      .filter(([, value]) => typeof value === "string" && value.trim())
+      .map(([slotId, value]) => [slotId, String(value).trim()])
+  );
 }
 
 function normalizeCompendiumItemUuid(packId: string, documentId: string, uuid: string): string {

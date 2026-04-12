@@ -6,9 +6,11 @@ import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } f
 import { fetchSelectionDocument, getOptionsForStep, getPickerInfoState, resolveSelection } from "../pack-service.js";
 import { canUseWayfinder } from "../permissions.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
-import { buildClassBranchSteps, buildClassTrainingSteps } from "./class-choice-service.js";
+import { buildClassBranchSteps, buildClassChoiceSteps, buildClassGrantedItemSteps, buildClassTrainingSteps, } from "./class-choice-service.js";
+import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, } from "./existing-selection-service.js";
 import { formatSlug, sameMembers } from "./formatting.js";
 import { buildBoostPane, toggleSlotRecordChoice } from "./panes/boost-pane.js";
+import { buildClassChoicePane } from "./panes/class-choice-pane.js";
 import { buildPickItemPane, buildPreview, matchesSearch, resolvePreviewValue, selectedSelection, selectedValueFor, } from "./panes/pick-pane.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane, compareSkillIncreaseSlotIds } from "./panes/skill-pane.js";
 import { buildWayfinderPlan, getWayfinderStepStatus, isWayfinderStepComplete, modeLabel, resolveActiveStep, } from "./plan-service.js";
@@ -75,11 +77,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const activeStep = await this.#resolveActiveStep(plan.steps, effectiveBuildState);
         const activePane = activeStep ? await this.#buildActivePane(activeStep, effectiveBuildState) : null;
         const activeStepIndex = activeStep ? plan.steps.findIndex((step) => step.id === activeStep.id) : -1;
-        const [effectiveAncestry, effectiveHeritage, effectiveBackground, effectiveClass] = await Promise.all([
+        const [effectiveAncestry, effectiveHeritage, effectiveBackground, effectiveClass, effectiveDeity] = await Promise.all([
             getEffectiveSingletonDocument(this.actor, draft, "ancestry"),
             getEffectiveSingletonDocument(this.actor, draft, "heritage"),
             getEffectiveSingletonDocument(this.actor, draft, "background"),
             getEffectiveSingletonDocument(this.actor, draft, "class"),
+            getEffectiveSingletonDocument(this.actor, draft, "deity"),
         ]);
         const summary = [
             {
@@ -103,6 +106,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 complete: !!effectiveClass,
             },
         ];
+        if (effectiveClass?.name === "Cleric" || effectiveDeity) {
+            summary.push({
+                label: "Deity",
+                value: effectiveDeity?.name ?? "Missing",
+                complete: !!effectiveDeity,
+            });
+        }
         const dossierLine = summary
             .filter((item) => item.complete)
             .map((item) => item.value)
@@ -207,6 +217,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             case "toggle-training-skill":
                 await this.#toggleTrainingSkill(action.stepId, action.slug);
                 break;
+            case "select-class-choice":
+                this.#selectClassChoice(action.stepId, action.value);
+                break;
             case "clear-option":
                 this.#statusNote = null;
                 this.#clearSelection(action.stepId);
@@ -283,14 +296,27 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 targetLevel,
                 fetchSelectionDocument,
                 extractSlug: (document) => this.#extractSlug(document),
-                readExistingBranchSelection: (branch) => this.#readExistingBranchSelection(branch),
+                readExistingBranchSelection: (branch) => readExistingBranchSelection(this.actor, branch),
+            }),
+            buildClassGrantedItemSteps: async (_planSnapshot, planDraft, targetLevel) => buildClassGrantedItemSteps({
+                draft: planDraft,
+                effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
+                targetLevel,
+                fetchSelectionDocument,
+                extractSlug: (document) => this.#extractSlug(document),
+                readExistingGrantedSelection: (grant) => readExistingGrantedSelection(this.actor, grant),
+            }),
+            buildClassChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => buildClassChoiceSteps({
+                draft: planDraft,
+                effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
+                effectiveDeityDocument: await this.#resolveDraftOrActorDocument("deity"),
+                targetLevel,
+                fetchSelectionDocument,
+                extractSlug: (document) => this.#extractSlug(document),
+                localize: (value) => game.i18n.localize(value),
+                readExistingClassChoiceSelection: (choice) => readExistingClassChoiceSelection(this.actor, choice),
             }),
         });
-    }
-    #readExistingBranchSelection(branch) {
-        const selectorItem = this.#findActorItemBySourceId(branch.selectorUuid);
-        const rulesSelection = selectorItem?.flags?.pf2e?.rulesSelections?.[branch.flag];
-        return typeof rulesSelection === "string" && rulesSelection.length > 0 ? rulesSelection : null;
     }
     async #resolveActiveStep(steps, effectiveBuildState) {
         const resolved = await resolveActiveStep(steps, this.#activeStepId, (step) => this.#isStepComplete(step, effectiveBuildState));
@@ -306,6 +332,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 isBoost: false,
                 isSkillIncrease: false,
                 isSkillTraining: false,
+                isClassChoice: false,
                 stepId: step.id,
                 slotId: step.slotId,
                 level: step.level,
@@ -333,6 +360,21 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (step.kind === "skill-increase") {
             const projectedRanks = await this.#projectSkillRanks(this.#requireDraft(), step.slotId);
             return buildSkillIncreasePane(step, this.#requireDraft(), projectedRanks, this.#getSkillList(projectedRanks));
+        }
+        if (step.kind === "class-choice") {
+            const selectedValue = this.#requireDraft().classChoices[step.slotId] ?? null;
+            const choice = step.classChoice;
+            const blocked = choice?.dependsOn === "deity" && !(await this.#resolveDraftOrActorDocument("deity"));
+            return buildClassChoicePane({
+                step,
+                selectedValue,
+                selectedLabel: await this.#stepStatus(step, effectiveBuildState),
+                blocked,
+                blockedTitle: blocked ? "Choose a deity first" : null,
+                blockedMessage: blocked
+                    ? "This class choice depends on the drafted deity. Resolve the deity step before choosing this option."
+                    : null,
+            });
         }
         const optionContext = await this.#buildOptionContext();
         const options = await getOptionsForStep(step, optionContext);
@@ -428,16 +470,29 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             }
             if (previousClassSlug !== nextClassSlug) {
                 const invalidated = this.#invalidateSelectionsByPrefix("class-feat-level-");
+                const deityInvalidated = this.#invalidateSelectionsByPrefix("deity-level-");
                 const branchInvalidated = this.#invalidateBranchSelectionsByPrefix("class-branch-");
+                const classChoiceInvalidated = this.#invalidateClassChoicesByPrefix("class-choice-");
                 const trainingInvalidated = this.#invalidateTrainingSelectionsByPrefix("skill-training-");
-                if (invalidated.length > 0 || branchInvalidated.length > 0 || trainingInvalidated.length > 0 || boostReset) {
+                if (invalidated.length > 0 ||
+                    deityInvalidated.length > 0 ||
+                    branchInvalidated.length > 0 ||
+                    classChoiceInvalidated.length > 0 ||
+                    trainingInvalidated.length > 0 ||
+                    boostReset) {
                     this.#statusNote = boostReset
-                        ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted class training, class branches, and class feats for review."
-                        : "Class changed. Wayfinder marked drafted class training, class branches, and class feats for review.";
+                        ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, and class feat selections for review."
+                        : "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, and class feat selections for review.";
                 }
             }
             else if (boostReset) {
                 this.#statusNote = "Class changed. Wayfinder cleared the key-ability draft choice for review.";
+            }
+        }
+        if (step.slotKind === "deity" && previousSelection?.uuid !== selection.uuid) {
+            const invalidated = await this.#invalidateClassChoicesByDependency("deity");
+            if (invalidated.length > 0) {
+                this.#statusNote = "Deity changed. Wayfinder marked dependent class choices for review.";
             }
         }
         this.#previewValueByStepId.set(stepId, rawValue);
@@ -529,6 +584,24 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     return `Showing ${className} options granted by ${selectorName}. Wayfinder will write the selector choice into PF2E's native class-feature data on apply.`;
                 }
                 return className ? `Showing class branch options keyed to ${className}.` : null;
+            }
+            case "deity": {
+                const classDocument = await this.#resolveDraftOrActorDocument("class");
+                return classDocument?.name
+                    ? `Showing deity choices currently legal for ${classDocument.name}. Wayfinder will wire the selected deity into PF2E's native class-feature data on apply.`
+                    : null;
+            }
+            case "class-choice": {
+                if (step.classChoice?.dependsOn === "deity") {
+                    const deityDocument = await this.#resolveDraftOrActorDocument("deity");
+                    return deityDocument?.name
+                        ? `Showing choices unlocked by ${deityDocument.name}. Wayfinder will write this directly into the granting class feature on apply.`
+                        : "Resolve the deity step first so Wayfinder can narrow this class choice.";
+                }
+                const classDocument = await this.#resolveDraftOrActorDocument("class");
+                return classDocument?.name
+                    ? `Showing direct class-feature choices from ${classDocument.name}. Wayfinder will write this directly into the granting class feature on apply.`
+                    : null;
             }
             case "skill-feat":
                 return "Showing baseline skill feats. Archetype-tagged skill feats stay hidden until Wayfinder tracks a specific archetype path.";
@@ -642,6 +715,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const draft = this.#requireDraft();
         draft.skillTrainings[stepId] ??= { ruleChoices: {}, additional: [] };
         draft.skillTrainings[stepId].ruleChoices[flag] = slug;
+        this.render(false);
+    }
+    #selectClassChoice(stepId, value) {
+        this.#statusNote = null;
+        const draft = this.#requireDraft();
+        if (draft.classChoices[stepId] === value) {
+            delete draft.classChoices[stepId];
+        }
+        else {
+            draft.classChoices[stepId] = value;
+        }
+        this.#recentlyInvalidatedStepIds.delete(stepId);
         this.render(false);
     }
     async #toggleTrainingSkill(stepId, slug) {
@@ -795,11 +880,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #findDraftSelectionByType(itemType) {
         return Object.values(this.#requireDraft().selections).find((selection) => selection.itemType === itemType) ?? null;
     }
-    #findActorItemBySourceId(sourceId) {
-        return (listActorItems(this.actor).find((item) => item?.sourceId === sourceId ||
-            item?.flags?.core?.sourceId === sourceId ||
-            item?._stats?.compendiumSource === sourceId) ?? null);
-    }
     #extractSlug(document) {
         const systemSlug = document?.system?.slug;
         if (typeof systemSlug === "string" && systemSlug.trim()) {
@@ -872,13 +952,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const hasItemSelection = !!draft.selections[slotId];
         const hasBranchSelection = !!draft.branchSelections[slotId];
         const hasTrainingSelection = !!draft.skillTrainings[slotId];
-        if (!hasItemSelection && !hasBranchSelection && !hasTrainingSelection) {
+        const hasClassChoice = !!draft.classChoices[slotId];
+        if (!hasItemSelection && !hasBranchSelection && !hasTrainingSelection && !hasClassChoice) {
             this.#recentlyInvalidatedStepIds.delete(slotId);
             return 0;
         }
         delete draft.selections[slotId];
         delete draft.branchSelections[slotId];
         delete draft.skillTrainings[slotId];
+        delete draft.classChoices[slotId];
         if (slotId === "ancestry-level-1") {
             this.#resetAncestryBoostDraft();
             this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
@@ -887,9 +969,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             this.#resetBackgroundBoostDraft();
             this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
         }
+        else if (slotId === "deity-level-1") {
+            this.#invalidateClassChoicesByPrefix("class-choice-");
+        }
         else if (slotId === "class-level-1") {
             this.#resetClassBoostDraft();
+            this.#invalidateSelectionsByPrefix("deity-level-");
             this.#invalidateBranchSelectionsByPrefix("class-branch-");
+            this.#invalidateClassChoicesByPrefix("class-choice-");
             this.#invalidateTrainingSelectionsByPrefix("skill-training-");
             this.#invalidateSelectionsByPrefix("class-feat-level-");
             this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
@@ -927,6 +1014,27 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 continue;
             }
             invalidated.push(...this.#invalidateSelection(slotId));
+        }
+        return invalidated;
+    }
+    #invalidateClassChoicesByPrefix(prefix) {
+        const invalidated = [];
+        for (const slotId of Object.keys(this.#requireDraft().classChoices)) {
+            if (!slotId.startsWith(prefix)) {
+                continue;
+            }
+            invalidated.push(...this.#invalidateSelection(slotId));
+        }
+        return invalidated;
+    }
+    async #invalidateClassChoicesByDependency(dependency) {
+        const invalidated = [];
+        const plan = await this.#buildPlan();
+        for (const step of plan.steps) {
+            if (step.kind !== "class-choice" || step.classChoice?.dependsOn !== dependency) {
+                continue;
+            }
+            invalidated.push(...this.#invalidateSelection(step.slotId));
         }
         return invalidated;
     }

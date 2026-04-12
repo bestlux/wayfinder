@@ -50,17 +50,19 @@ interface EffectiveBuildState {
   heritage: any | null;
   background: EffectiveBackgroundState | null;
   class: EffectiveClassState | null;
+  deity: any | null;
   levelBoosts: Record<BoostLevel, AbilityKey[]>;
   allowedBoosts: Record<BoostLevel, number>;
   projectedAbilities: Record<AbilityKey, ProjectedAbilityState>;
 }
 
 async function getEffectiveBuildState(actor: any, draft: DraftState): Promise<EffectiveBuildState> {
-  const [ancestryDocument, heritageDocument, backgroundDocument, classDocument] = await Promise.all([
+  const [ancestryDocument, heritageDocument, backgroundDocument, classDocument, deityDocument] = await Promise.all([
     getEffectiveSingletonDocument(actor, draft, "ancestry"),
     getEffectiveSingletonDocument(actor, draft, "heritage"),
     getEffectiveSingletonDocument(actor, draft, "background"),
     getEffectiveSingletonDocument(actor, draft, "class"),
+    getEffectiveSingletonDocument(actor, draft, "deity"),
   ]);
 
   const ancestry = ancestryDocument ? buildEffectiveAncestryState(ancestryDocument, draft.boosts) : null;
@@ -81,6 +83,7 @@ async function getEffectiveBuildState(actor: any, draft: DraftState): Promise<Ef
     heritage: heritageDocument,
     background,
     class: effectiveClass,
+    deity: deityDocument,
     levelBoosts,
     allowedBoosts,
     projectedAbilities,
@@ -90,7 +93,7 @@ async function getEffectiveBuildState(actor: any, draft: DraftState): Promise<Ef
 async function getEffectiveSingletonDocument(
   actor: any,
   draft: DraftState,
-  itemType: "ancestry" | "heritage" | "background" | "class"
+  itemType: "ancestry" | "heritage" | "background" | "class" | "deity"
 ): Promise<any | null> {
   const draftSelection = findDraftSelectionByType(draft, itemType);
   if (draftSelection) {
@@ -111,7 +114,7 @@ async function getEffectiveSingletonDocument(
 
 function findDraftSelectionByType(
   draft: DraftState,
-  itemType: "ancestry" | "heritage" | "background" | "class"
+  itemType: "ancestry" | "heritage" | "background" | "class" | "deity"
 ): SelectionRef | null {
   return Object.values(draft.selections).find((selection) => selection.itemType === itemType) ?? null;
 }
@@ -130,7 +133,7 @@ function listActorItems(actor: any): any[] {
 
 async function resolveSourceDocumentFromActorItem(
   actorItem: any,
-  itemType: "ancestry" | "heritage" | "background" | "class"
+  itemType: "ancestry" | "heritage" | "background" | "class" | "deity"
 ): Promise<any | null> {
   const sourceId = actorItem?.flags?.core?.sourceId;
   if (typeof sourceId !== "string" || !sourceId.startsWith("Compendium.")) {

@@ -308,22 +308,26 @@ function sortWeight(kind: PendingStep["slotKind"]): number {
       return 2;
     case "class":
       return 3;
-    case "skill-training":
+    case "deity":
       return 4;
-    case "class-branch":
+    case "skill-training":
       return 5;
-    case "ancestry-feat":
+    case "class-branch":
       return 6;
-    case "class-feat":
+    case "class-choice":
       return 7;
-    case "skill-feat":
+    case "ancestry-feat":
       return 8;
-    case "general-feat":
+    case "class-feat":
       return 9;
-    case "ability-boosts":
+    case "skill-feat":
       return 10;
-    case "skill-increase":
+    case "general-feat":
       return 11;
+    case "ability-boosts":
+      return 12;
+    case "skill-increase":
+      return 13;
     default:
       return 99;
   }

@@ -99,6 +99,10 @@
             {{> "modules/pf2e-wayfinder/templates/wayfinder/skill-training-pane.hbs"}}
           {{/if}}
 
+          {{#if activePane.isClassChoice}}
+            {{> "modules/pf2e-wayfinder/templates/wayfinder/class-choice-pane.hbs"}}
+          {{/if}}
+
           {{#if activePane.isPickItem}}
             {{> "modules/pf2e-wayfinder/templates/wayfinder/pick-pane.hbs"}}
           {{/if}}

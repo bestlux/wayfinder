@@ -182,6 +182,16 @@ export function getPickerBlockedState(step: PendingStep, context: OptionContext)
             message:
               "Class branch options are pulled from the drafted class's selector features. Pick the class step before reviewing branch options.",
           };
+    case "deity":
+      return context.classSlug
+        ? null
+        : {
+            tone: "blocked",
+            eyebrow: "Prerequisite required",
+            title: "Choose a class first",
+            message:
+              "Wayfinder only offers deity choices when a drafted class grants them. Pick the class step before reviewing deity options.",
+          };
     default:
       return null;
   }
@@ -199,6 +209,8 @@ function resolvePackIds(slotKind: PendingStep["slotKind"]): string[] {
       return mergePackIds([...OFFICIAL_PACKS.background], extras);
     case "class":
       return mergePackIds([...OFFICIAL_PACKS.class], extras);
+    case "deity":
+      return mergePackIds([...OFFICIAL_PACKS.deity], extras);
     case "class-branch":
       return mergePackIds([...OFFICIAL_PACKS.classFeature], extras);
     default:

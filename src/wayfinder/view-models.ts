@@ -44,6 +44,7 @@ export interface PickStepPane {
   isBoost: false;
   isSkillIncrease: false;
   isSkillTraining: false;
+  isClassChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -67,6 +68,7 @@ export interface ManualStepPane {
   isBoost: false;
   isSkillIncrease: false;
   isSkillTraining: false;
+  isClassChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -112,6 +114,7 @@ export interface BoostStepPane {
   isBoost: true;
   isSkillIncrease: false;
   isSkillTraining: false;
+  isClassChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -170,6 +173,7 @@ export interface SkillIncreaseStepPane {
   isBoost: false;
   isSkillIncrease: true;
   isSkillTraining: false;
+  isClassChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -201,6 +205,7 @@ export interface SkillTrainingStepPane {
   isBoost: false;
   isSkillIncrease: false;
   isSkillTraining: true;
+  isClassChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -217,10 +222,41 @@ export interface SkillTrainingStepPane {
   additionalSkills: Array<SkillOption & { selected: boolean }>;
 }
 
+export interface ClassChoiceStepPane {
+  kind: "class-choice";
+  isPickItem: false;
+  isManual: false;
+  isBoost: false;
+  isSkillIncrease: false;
+  isSkillTraining: false;
+  isClassChoice: true;
+  stepId: string;
+  slotId: string;
+  level: number;
+  modeLabel: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  selectedLabel: string;
+  sourceName: string;
+  dependsOn: "class" | "deity";
+  blocked: boolean;
+  blockedTitle: string | null;
+  blockedMessage: string | null;
+  options: Array<{
+    value: string;
+    label: string;
+    img: string | null;
+    detail: string | null;
+    selected: boolean;
+  }>;
+}
+
 export type ActivePane =
   | PickStepPane
   | ManualStepPane
   | BoostStepPane
   | SkillIncreaseStepPane
   | SkillTrainingStepPane
+  | ClassChoiceStepPane
   | null;

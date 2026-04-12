@@ -3,8 +3,10 @@ export type SlotKind =
   | "heritage"
   | "background"
   | "class"
+  | "deity"
   | "skill-training"
   | "class-branch"
+  | "class-choice"
   | "ancestry-feat"
   | "class-feat"
   | "skill-feat"
@@ -12,7 +14,14 @@ export type SlotKind =
   | "ability-boosts"
   | "skill-increase";
 
-export type StepKind = "pick-item" | "manual" | "boost" | "skill-increase" | "class-branch" | "skill-training";
+export type StepKind =
+  | "pick-item"
+  | "manual"
+  | "boost"
+  | "skill-increase"
+  | "class-branch"
+  | "class-choice"
+  | "skill-training";
 export type AbilityKey = "str" | "dex" | "con" | "int" | "wis" | "cha";
 export type BoostLevel = 1 | 5 | 10 | 15 | 20;
 
@@ -61,6 +70,7 @@ export interface DraftState {
   skillIncreases: Record<string, string>;
   skillTrainings: Record<string, SkillTrainingDraft>;
   branchSelections: Record<string, SelectionRef>;
+  classChoices: Record<string, string>;
   updatedAt: string | null;
 }
 
@@ -80,7 +90,7 @@ export interface ActorSnapshot {
   actorId: string;
   level: number;
   isBlank: boolean;
-  singletonSlots: Record<"ancestry" | "heritage" | "background" | "class", boolean>;
+  singletonSlots: Record<"ancestry" | "heritage" | "background" | "class" | "deity", boolean>;
   featCounts: {
     ancestry: number;
     class: number;
@@ -111,6 +121,37 @@ export interface ClassBranchMeta {
   classSlug: string | null;
 }
 
+export interface ClassGrantMeta {
+  slotId: string;
+  selectorPackId: string;
+  selectorDocumentId: string;
+  selectorUuid: string;
+  selectorName: string;
+  selectorRuleIndex: number;
+  grantRuleIndex: number;
+  flag: string;
+  itemType: "deity";
+  classSlug: string | null;
+}
+
+export interface ClassChoiceMeta {
+  slotId: string;
+  sourcePackId: string;
+  sourceDocumentId: string;
+  sourceUuid: string;
+  sourceName: string;
+  sourceRuleIndex: number;
+  flag: string;
+  classSlug: string | null;
+  dependsOn: "class" | "deity";
+  options: Array<{
+    value: string;
+    label: string;
+    img: string | null;
+    detail: string | null;
+  }>;
+}
+
 export interface PendingStep {
   id: string;
   level: number;
@@ -122,6 +163,8 @@ export interface PendingStep {
   slotId: string;
   filters?: StepFilters;
   branch?: ClassBranchMeta;
+  grantSelection?: ClassGrantMeta;
+  classChoice?: ClassChoiceMeta;
   training?: {
     classSlug: string;
     className: string;
@@ -212,7 +255,9 @@ export interface WayfinderStep {
     | "heritage"
     | "background"
     | "class"
+    | "deity"
     | "class-branch"
+    | "class-choice"
     | "initial-ability-boosts"
     | "ability-boosts"
     | "ancestry-feat"

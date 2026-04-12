@@ -34,6 +34,7 @@ export function buildPickItemPane(args: {
     isBoost: false,
     isSkillIncrease: false,
     isSkillTraining: false,
+    isClassChoice: false,
     stepId: step.id,
     slotId: step.slotId,
     level: step.level,

@@ -10,6 +10,7 @@ export function createEmptyDraft(targetLevel = 1) {
         skillIncreases: {},
         skillTrainings: {},
         branchSelections: {},
+        classChoices: {},
         updatedAt: null,
     };
 }
@@ -32,6 +33,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
         skillIncreases: sanitizeSkillIncreases(draft.skillIncreases),
         skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
         branchSelections: sanitizeSelections(draft.branchSelections),
+        classChoices: sanitizeClassChoices(draft.classChoices),
         updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
     };
 }
@@ -122,6 +124,14 @@ function sanitizeSkillIncreases(raw) {
         }
     }
     return result;
+}
+function sanitizeClassChoices(raw) {
+    if (!isRecord(raw)) {
+        return {};
+    }
+    return Object.fromEntries(Object.entries(raw)
+        .filter(([, value]) => typeof value === "string" && value.trim())
+        .map(([slotId, value]) => [slotId, String(value).trim()]));
 }
 function normalizeCompendiumItemUuid(packId, documentId, uuid) {
     const canonicalUuid = `Compendium.${packId}.Item.${documentId}`;

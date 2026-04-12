@@ -39,6 +39,7 @@ describe("draft-service", () => {
       skillIncreases: {},
       skillTrainings: {},
       branchSelections: {},
+      classChoices: {},
       updatedAt: null,
     });
   });
@@ -135,6 +136,7 @@ describe("draft-service", () => {
         additional: ["society", "medicine"],
       },
     });
+    expect(draft.classChoices).toEqual({});
     expect(draft.boosts).toEqual({
       ancestry: {
         modeTouched: false,

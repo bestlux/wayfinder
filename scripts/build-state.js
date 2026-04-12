@@ -2,11 +2,12 @@ import { ABILITY_KEYS } from "./constants.js";
 import { fetchSelectionDocument } from "./pack-service.js";
 const BOOST_LEVELS = [1, 5, 10, 15, 20];
 async function getEffectiveBuildState(actor, draft) {
-    const [ancestryDocument, heritageDocument, backgroundDocument, classDocument] = await Promise.all([
+    const [ancestryDocument, heritageDocument, backgroundDocument, classDocument, deityDocument] = await Promise.all([
         getEffectiveSingletonDocument(actor, draft, "ancestry"),
         getEffectiveSingletonDocument(actor, draft, "heritage"),
         getEffectiveSingletonDocument(actor, draft, "background"),
         getEffectiveSingletonDocument(actor, draft, "class"),
+        getEffectiveSingletonDocument(actor, draft, "deity"),
     ]);
     const ancestry = ancestryDocument ? buildEffectiveAncestryState(ancestryDocument, draft.boosts) : null;
     const background = backgroundDocument ? buildEffectiveBackgroundState(backgroundDocument, draft.boosts) : null;
@@ -25,6 +26,7 @@ async function getEffectiveBuildState(actor, draft) {
         heritage: heritageDocument,
         background,
         class: effectiveClass,
+        deity: deityDocument,
         levelBoosts,
         allowedBoosts,
         projectedAbilities,

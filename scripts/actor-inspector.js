@@ -8,6 +8,7 @@ export function inspectActor(actor) {
         heritage: false,
         background: false,
         class: false,
+        deity: false,
     };
     const featCounts = {
         ancestry: 0,
@@ -78,6 +79,10 @@ function clampLevel(level) {
     return Math.max(1, Math.min(20, Math.floor(level)));
 }
 function hasAnySingleton(singletonSlots) {
-    return singletonSlots.ancestry || singletonSlots.heritage || singletonSlots.background || singletonSlots.class;
+    return (singletonSlots.ancestry ||
+        singletonSlots.heritage ||
+        singletonSlots.background ||
+        singletonSlots.class ||
+        singletonSlots.deity);
 }
 //# sourceMappingURL=actor-inspector.js.map

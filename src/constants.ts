@@ -20,6 +20,7 @@ export const OFFICIAL_PACKS = {
   heritage: ["pf2e.heritages"],
   background: ["pf2e.backgrounds"],
   class: ["pf2e.classes"],
+  deity: ["pf2e.deities"],
   feat: ["pf2e.feats-srd"],
   classFeature: ["pf2e.classfeatures"],
 } as const;

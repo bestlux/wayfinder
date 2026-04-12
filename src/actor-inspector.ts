@@ -10,6 +10,7 @@ export function inspectActor(actor: any): ActorSnapshot {
     heritage: false,
     background: false,
     class: false,
+    deity: false,
   };
   const featCounts = {
     ancestry: 0,
@@ -92,6 +93,14 @@ function clampLevel(level: number): number {
   return Math.max(1, Math.min(20, Math.floor(level)));
 }
 
-function hasAnySingleton(singletonSlots: Record<"ancestry" | "heritage" | "background" | "class", boolean>): boolean {
-  return singletonSlots.ancestry || singletonSlots.heritage || singletonSlots.background || singletonSlots.class;
+function hasAnySingleton(
+  singletonSlots: Record<"ancestry" | "heritage" | "background" | "class" | "deity", boolean>
+): boolean {
+  return (
+    singletonSlots.ancestry ||
+    singletonSlots.heritage ||
+    singletonSlots.background ||
+    singletonSlots.class ||
+    singletonSlots.deity
+  );
 }

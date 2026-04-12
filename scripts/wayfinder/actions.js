@@ -49,6 +49,7 @@ export function parseWayfinderAction(element) {
             return { type: action };
         case "preview-option":
         case "select-option":
+        case "select-class-choice":
             return element.dataset.stepId && element.dataset.value
                 ? { type: action, stepId: element.dataset.stepId, value: element.dataset.value }
                 : null;

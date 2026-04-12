@@ -1290,6 +1290,371 @@ describe("actor-updater", () => {
       createdItems.filter((item) => item?.sourceId === "Compendium.pf2e.classfeatures.Item.spell-blending")
     ).toHaveLength(1);
   });
+
+  it("preseeds cleric deity-driven class features during class creation", async () => {
+    const createdItems: any[] = [];
+    let idCounter = 0;
+    const createEmbeddedDocuments = vi.fn(async (_type: string, sources: any[]) => {
+      const created = sources.map((source) => {
+        const item = {
+          id: `created-${++idCounter}`,
+          type: source.type,
+          name: source.name,
+          sourceId: source.flags?.core?.sourceId ?? null,
+          flags: source.flags ?? {},
+          system: source.system ?? {},
+        };
+        createdItems.push(item);
+        actor.items.contents.push(item);
+        return item;
+      });
+      return created;
+    });
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 1,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [] as any[],
+      },
+      createEmbeddedDocuments,
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      update: vi.fn(async () => ({})),
+    };
+
+    globalThis.game = {
+      packs: new Map([
+        [
+          "pf2e.classes",
+          {
+            metadata: { id: "pf2e.classes" },
+            async getDocument(documentId: string) {
+              if (documentId !== "cleric") {
+                return null;
+              }
+
+              return {
+                id: documentId,
+                name: "Cleric",
+                toObject: () => ({
+                  name: "Cleric",
+                  type: "class",
+                  system: {
+                    items: {
+                      deity: {
+                        level: 1,
+                        uuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
+                        name: "Deity",
+                      },
+                      font: {
+                        level: 1,
+                        uuid: "Compendium.pf2e.classfeatures.Item.divine-font",
+                        name: "Divine Font",
+                      },
+                      spellcasting: {
+                        level: 1,
+                        uuid: "Compendium.pf2e.classfeatures.Item.cleric-spellcasting",
+                        name: "Cleric Spellcasting",
+                      },
+                    },
+                  },
+                }),
+              };
+            },
+          },
+        ],
+        [
+          "pf2e.classfeatures",
+          {
+            metadata: { id: "pf2e.classfeatures" },
+            async getDocument(documentId: string) {
+              switch (documentId) {
+                case "deity-cleric":
+                  return {
+                    id: documentId,
+                    name: "Deity",
+                    toObject: () => ({
+                      name: "Deity",
+                      type: "feat",
+                      system: {
+                        category: "classfeature",
+                        rules: [
+                          {
+                            key: "ChoiceSet",
+                            flag: "deity",
+                            choices: {
+                              itemType: "deity",
+                            },
+                          },
+                          {
+                            key: "GrantItem",
+                            uuid: "{item|flags.system.rulesSelections.deity}",
+                          },
+                          {
+                            key: "ChoiceSet",
+                            flag: "sanctification",
+                            choices: [
+                              { value: "holy", label: "Holy" },
+                              { value: "unholy", label: "Unholy" },
+                            ],
+                          },
+                        ],
+                      },
+                    }),
+                  };
+                case "divine-font":
+                  return {
+                    id: documentId,
+                    name: "Divine Font",
+                    toObject: () => ({
+                      name: "Divine Font",
+                      type: "feat",
+                      system: {
+                        category: "classfeature",
+                        rules: [
+                          {
+                            key: "ChoiceSet",
+                            flag: "divineFont",
+                            choices: [
+                              { value: "heal", label: "Heal" },
+                              { value: "harm", label: "Harm" },
+                            ],
+                          },
+                        ],
+                      },
+                    }),
+                  };
+                case "cleric-spellcasting":
+                  return {
+                    id: documentId,
+                    name: "Cleric Spellcasting",
+                    toObject: () => ({
+                      name: "Cleric Spellcasting",
+                      type: "feat",
+                      system: {
+                        category: "classfeature",
+                      },
+                    }),
+                  };
+                default:
+                  return null;
+              }
+            },
+          },
+        ],
+        [
+          "pf2e.deities",
+          {
+            metadata: { id: "pf2e.deities" },
+            async getDocument(documentId: string) {
+              if (documentId !== "gorum") {
+                return null;
+              }
+
+              return {
+                id: documentId,
+                name: "Gorum",
+                toObject: () => ({
+                  name: "Gorum",
+                  type: "deity",
+                  system: {
+                    sanctification: {
+                      modal: "can",
+                      what: ["holy", "unholy"],
+                    },
+                    font: ["heal", "harm"],
+                  },
+                }),
+              };
+            },
+          },
+        ],
+      ]),
+    } as any;
+
+    const draft = createEmptyDraft(1);
+    draft.selections["class-level-1"] = {
+      slotId: "class-level-1",
+      packId: "pf2e.classes",
+      documentId: "cleric",
+      uuid: "Compendium.pf2e.classes.Item.cleric",
+      itemType: "class",
+      featType: null,
+      name: "Cleric",
+      level: 1,
+    };
+    draft.selections["deity-level-1"] = {
+      slotId: "deity-level-1",
+      packId: "pf2e.deities",
+      documentId: "gorum",
+      uuid: "Compendium.pf2e.deities.Item.gorum",
+      itemType: "deity",
+      featType: null,
+      name: "Gorum",
+      level: 1,
+    };
+    draft.classChoices["class-choice-deity-sanctification-level-1"] = "holy";
+    draft.classChoices["class-choice-divine-font-divineFont-level-1"] = "harm";
+
+    await applyDraftToActor(actor as any, draft, [
+      {
+        id: "class-level-1",
+        level: 1,
+        kind: "pick-item",
+        slotKind: "class",
+        title: "Choose a class",
+        description: "",
+        required: true,
+        slotId: "class-level-1",
+        filters: { itemType: "class" },
+      },
+      {
+        id: "deity-level-1",
+        level: 1,
+        kind: "pick-item",
+        slotKind: "deity",
+        title: "Choose a deity",
+        description: "",
+        required: true,
+        slotId: "deity-level-1",
+        filters: { itemType: "deity" },
+        grantSelection: {
+          slotId: "deity-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "deity-cleric",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
+          selectorName: "Deity",
+          selectorRuleIndex: 0,
+          grantRuleIndex: 1,
+          flag: "deity",
+          itemType: "deity",
+          classSlug: "cleric",
+        },
+      },
+      {
+        id: "class-choice-deity-sanctification-level-1",
+        level: 1,
+        kind: "class-choice",
+        slotKind: "class-choice",
+        title: "Sanctification",
+        description: "",
+        required: true,
+        slotId: "class-choice-deity-sanctification-level-1",
+        classChoice: {
+          slotId: "class-choice-deity-sanctification-level-1",
+          sourcePackId: "pf2e.classfeatures",
+          sourceDocumentId: "deity-cleric",
+          sourceUuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
+          sourceName: "Deity",
+          sourceRuleIndex: 2,
+          flag: "sanctification",
+          classSlug: "cleric",
+          dependsOn: "deity",
+          options: [
+            { value: "holy", label: "Holy", img: null, detail: null },
+            { value: "unholy", label: "Unholy", img: null, detail: null },
+          ],
+        },
+      },
+      {
+        id: "class-choice-divine-font-divineFont-level-1",
+        level: 1,
+        kind: "class-choice",
+        slotKind: "class-choice",
+        title: "Divine Font",
+        description: "",
+        required: true,
+        slotId: "class-choice-divine-font-divineFont-level-1",
+        classChoice: {
+          slotId: "class-choice-divine-font-divineFont-level-1",
+          sourcePackId: "pf2e.classfeatures",
+          sourceDocumentId: "divine-font",
+          sourceUuid: "Compendium.pf2e.classfeatures.Item.divine-font",
+          sourceName: "Divine Font",
+          sourceRuleIndex: 0,
+          flag: "divineFont",
+          classSlug: "cleric",
+          dependsOn: "deity",
+          options: [
+            { value: "heal", label: "Heal", img: null, detail: null },
+            { value: "harm", label: "Harm", img: null, detail: null },
+          ],
+        },
+      },
+    ]);
+
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      {
+        name: "Cleric",
+        type: "class",
+        _stats: {
+          compendiumSource: "Compendium.pf2e.classes.Item.cleric",
+        },
+        system: {
+          items: {
+            spellcasting: {
+              level: 1,
+              uuid: "Compendium.pf2e.classfeatures.Item.cleric-spellcasting",
+              name: "Cleric Spellcasting",
+            },
+          },
+        },
+        flags: {
+          core: {
+            sourceId: "Compendium.pf2e.classes.Item.cleric",
+          },
+          "pf2e-wayfinder": {
+            importedBy: "pf2e-wayfinder",
+            slotId: "class-level-1",
+          },
+        },
+      },
+    ]);
+
+    const createdSources = createEmbeddedDocuments.mock.calls.flatMap((call) => call[1] as any[]);
+    const deityFeature = createdSources.find(
+      (source) => source?.flags?.core?.sourceId === "Compendium.pf2e.classfeatures.Item.deity-cleric"
+    );
+    const divineFontFeature = createdSources.find(
+      (source) => source?.flags?.core?.sourceId === "Compendium.pf2e.classfeatures.Item.divine-font"
+    );
+    const deityGrant = createdSources.find(
+      (source) => source?.flags?.core?.sourceId === "Compendium.pf2e.deities.Item.gorum"
+    );
+
+    expect(deityFeature).toBeTruthy();
+    expect(deityFeature.system.location).toBe("created-1");
+    expect(deityFeature.system.rules).toHaveLength(2);
+    expect(deityFeature.flags.pf2e.rulesSelections).toEqual({
+      deity: "Compendium.pf2e.deities.Item.gorum",
+      sanctification: "holy",
+    });
+
+    expect(divineFontFeature).toBeTruthy();
+    expect(divineFontFeature.system.location).toBe("created-1");
+    expect(divineFontFeature.flags.pf2e.rulesSelections).toEqual({
+      divineFont: "harm",
+    });
+
+    expect(deityGrant).toBeTruthy();
+    expect(createdItems.filter((item) => item?.sourceId === "Compendium.pf2e.deities.Item.gorum")).toHaveLength(1);
+  });
 });
 
 function ancestryItem(): any {

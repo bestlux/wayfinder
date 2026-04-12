@@ -1,5 +1,5 @@
 import { SKILL_LABELS } from "../constants.js";
-import type { DraftState, PendingStep, SelectionRef } from "../types.js";
+import type { ClassChoiceMeta, ClassGrantMeta, DraftState, PendingStep, SelectionRef } from "../types.js";
 import { formatSlug } from "./formatting.js";
 
 interface BuildClassTrainingStepsParams {
@@ -17,6 +17,37 @@ interface BuildClassBranchStepsParams {
   fetchSelectionDocument: (selection: SelectionRef) => Promise<any | null>;
   extractSlug: (document: any) => string | null;
   readExistingBranchSelection: (branch: NonNullable<PendingStep["branch"]>) => string | null;
+}
+
+interface BuildClassGrantedItemStepsParams {
+  draft: DraftState;
+  effectiveClassDocument: any | null;
+  targetLevel: number;
+  fetchSelectionDocument: (selection: SelectionRef) => Promise<any | null>;
+  extractSlug: (document: any) => string | null;
+  readExistingGrantedSelection: (grant: ClassGrantMeta) => string | null;
+}
+
+interface BuildClassChoiceStepsParams {
+  draft: DraftState;
+  effectiveClassDocument: any | null;
+  effectiveDeityDocument: any | null;
+  targetLevel: number;
+  fetchSelectionDocument: (selection: SelectionRef) => Promise<any | null>;
+  extractSlug: (document: any) => string | null;
+  localize: (value: string) => string;
+  readExistingClassChoiceSelection: (choice: ClassChoiceMeta) => string | null;
+}
+
+type ChoicePredicate =
+  | string
+  | { or?: ChoicePredicate[]; nor?: ChoicePredicate[]; not?: ChoicePredicate }
+  | ChoicePredicate[];
+
+interface ClassFeatureSelectionSource {
+  level: number;
+  selection: SelectionRef;
+  document: any | null;
 }
 
 export async function buildClassTrainingSteps(params: BuildClassTrainingStepsParams): Promise<PendingStep[]> {
@@ -81,29 +112,12 @@ export async function buildClassBranchSteps(params: BuildClassBranchStepsParams)
     return [];
   }
 
+  const classFeatures = await getClassFeatureSources(effectiveClassDocument, targetLevel, fetchSelectionDocument);
   const classSlug = extractSlug(effectiveClassDocument);
-  const items = Object.values(effectiveClassDocument?.system?.items ?? {}) as Array<{
-    level?: number;
-    uuid?: string;
-    name?: string;
-  }>;
-  const selectorSelections = items
-    .filter(
-      (entry) =>
-        typeof entry?.uuid === "string" &&
-        entry.uuid.startsWith("Compendium.") &&
-        Number(entry.level ?? 0) <= targetLevel
-    )
-    .map((entry) => selectionFromCompendiumUuid(entry.uuid ?? "", entry.name ?? "", "feat"))
-    .filter((entry): entry is SelectionRef => entry !== null);
-
-  const selectorDocuments = await Promise.all(selectorSelections.map((selection) => fetchSelectionDocument(selection)));
   const steps: PendingStep[] = [];
 
-  for (let index = 0; index < selectorSelections.length; index += 1) {
-    const selectorSelection = selectorSelections[index];
-    const selectorDocument = selectorDocuments[index];
-    const branch = extractClassBranchMeta(selectorDocument, selectorSelection, classSlug, extractSlug);
+  for (const feature of classFeatures) {
+    const branch = extractClassBranchMeta(feature.document, feature.selection, classSlug, extractSlug);
     if (!branch) {
       continue;
     }
@@ -116,7 +130,7 @@ export async function buildClassBranchSteps(params: BuildClassBranchStepsParams)
 
     steps.push({
       id: branch.slotId,
-      level: selectorDocument?.system?.level?.value ?? 1,
+      level: feature.level,
       kind: "class-branch",
       slotKind: "class-branch",
       title: branch.selectorName,
@@ -126,13 +140,176 @@ export async function buildClassBranchSteps(params: BuildClassBranchStepsParams)
       filters: {
         itemType: "feat",
         featTypes: ["classfeature"],
-        maxLevel: selectorDocument?.system?.level?.value ?? 1,
+        maxLevel: feature.level,
       },
       branch,
     });
   }
 
   return steps;
+}
+
+export async function buildClassGrantedItemSteps(params: BuildClassGrantedItemStepsParams): Promise<PendingStep[]> {
+  const {
+    draft,
+    effectiveClassDocument,
+    targetLevel,
+    fetchSelectionDocument,
+    extractSlug,
+    readExistingGrantedSelection,
+  } = params;
+  if (!effectiveClassDocument) {
+    return [];
+  }
+
+  const classFeatures = await getClassFeatureSources(effectiveClassDocument, targetLevel, fetchSelectionDocument);
+  const classSlug = extractSlug(effectiveClassDocument);
+  const steps: PendingStep[] = [];
+
+  for (const feature of classFeatures) {
+    const grant = extractGrantedItemMeta(feature.document, feature.selection, classSlug);
+    if (!grant) {
+      continue;
+    }
+
+    const actorSelection = readExistingGrantedSelection(grant);
+    const draftSelection = draft.selections[grant.slotId];
+    if (actorSelection && !draftSelection) {
+      continue;
+    }
+
+    steps.push({
+      id: grant.slotId,
+      level: feature.level,
+      kind: "pick-item",
+      slotKind: grant.itemType,
+      title: grant.itemType === "deity" ? "Choose a deity" : `Choose ${grant.selectorName.toLowerCase()}`,
+      description:
+        grant.itemType === "deity"
+          ? "Choose the deity that grants your divine skill, favored weapon, sanctification, and divine font."
+          : `Choose the ${grant.selectorName.toLowerCase()} this class feature grants.`,
+      required: true,
+      slotId: grant.slotId,
+      filters: {
+        itemType: grant.itemType,
+      },
+      grantSelection: grant,
+    });
+  }
+
+  return steps;
+}
+
+export async function buildClassChoiceSteps(params: BuildClassChoiceStepsParams): Promise<PendingStep[]> {
+  const {
+    draft,
+    effectiveClassDocument,
+    effectiveDeityDocument,
+    targetLevel,
+    fetchSelectionDocument,
+    extractSlug,
+    localize,
+    readExistingClassChoiceSelection,
+  } = params;
+  if (!effectiveClassDocument) {
+    return [];
+  }
+
+  const classFeatures = await getClassFeatureSources(effectiveClassDocument, targetLevel, fetchSelectionDocument);
+  const classSlug = extractSlug(effectiveClassDocument);
+  const rollOptions = buildChoiceRollOptions(effectiveDeityDocument);
+  const steps: PendingStep[] = [];
+
+  for (const feature of classFeatures) {
+    const choices = extractClassChoiceMeta(feature.document, feature.selection, {
+      classSlug,
+      extractSlug,
+      localize,
+      rollOptions,
+    });
+    for (const choice of choices) {
+      const actorSelection = readExistingClassChoiceSelection(choice);
+      const draftSelection = draft.classChoices[choice.slotId];
+      if (actorSelection && !draftSelection) {
+        continue;
+      }
+
+      steps.push({
+        id: choice.slotId,
+        level: feature.level,
+        kind: "class-choice",
+        slotKind: "class-choice",
+        title: choiceTitle(choice, localize),
+        description: buildClassChoiceDescription(choice),
+        required: true,
+        slotId: choice.slotId,
+        classChoice: choice,
+      });
+    }
+  }
+
+  return steps;
+}
+
+function choiceTitle(choice: ClassChoiceMeta, localize: (value: string) => string): string {
+  const localized = localize(choice.sourceName);
+  const flagLabel = formatSlug(choice.flag);
+  if (choice.flag === "sanctification") {
+    return "Sanctification";
+  }
+  if (choice.flag === "divineFont") {
+    return "Divine Font";
+  }
+  return localized && localized !== choice.sourceName ? `${localized}: ${flagLabel}` : flagLabel;
+}
+
+function buildClassChoiceDescription(choice: ClassChoiceMeta): string {
+  if (choice.flag === "sanctification") {
+    return "Choose the sanctification your deity allows for this cleric.";
+  }
+  if (choice.flag === "divineFont") {
+    return "Choose the divine font your deity grants for this cleric.";
+  }
+  return `Choose the ${formatSlug(choice.flag).toLowerCase()} this class feature grants.`;
+}
+
+async function getClassFeatureSources(
+  classDocument: any,
+  targetLevel: number,
+  fetchSelectionDocument: (selection: SelectionRef) => Promise<any | null>
+): Promise<ClassFeatureSelectionSource[]> {
+  const items = Object.values(classDocument?.system?.items ?? {}) as Array<{
+    level?: number;
+    uuid?: string;
+    name?: string;
+  }>;
+  const selections = items
+    .filter(
+      (entry) =>
+        typeof entry?.uuid === "string" &&
+        entry.uuid.startsWith("Compendium.") &&
+        Number(entry.level ?? 0) <= targetLevel
+    )
+    .map((entry) => {
+      const selection = selectionFromCompendiumUuid(entry.uuid ?? "", entry.name ?? "", "feat");
+      if (!selection) {
+        return null;
+      }
+
+      return {
+        level: Number(entry.level ?? 1) || 1,
+        selection,
+      };
+    })
+    .filter((entry): entry is { level: number; selection: SelectionRef } => entry !== null);
+
+  const documents = await Promise.all(selections.map((entry) => fetchSelectionDocument(entry.selection)));
+
+  return selections.map((entry, index) => ({
+    level: entry.level,
+    selection: entry.selection,
+    document: documents[index],
+  }));
 }
 
 function toTrainingChoiceRule(
@@ -213,7 +390,178 @@ function extractClassBranchMeta(
     optionTag,
     classSlug,
     slotId: `class-branch-${selectorSlug}-level-${level}`,
-  } as PendingStep["branch"];
+  };
+}
+
+function extractGrantedItemMeta(
+  selectorDocument: any,
+  selectorSelection: SelectionRef,
+  classSlug: string | null
+): ClassGrantMeta | null {
+  if (!selectorDocument || selectorDocument.type !== "feat" || selectorDocument?.system?.category !== "classfeature") {
+    return null;
+  }
+
+  const rules = Array.isArray(selectorDocument.system?.rules) ? selectorDocument.system.rules : [];
+  const choiceRuleIndex = rules.findIndex(
+    (rule: any) => rule?.key === "ChoiceSet" && typeof rule?.flag === "string" && rule?.choices?.itemType === "deity"
+  );
+  if (choiceRuleIndex === -1) {
+    return null;
+  }
+
+  const choiceRule = rules[choiceRuleIndex];
+  const choiceFlag = String(choiceRule.flag);
+  const grantRuleIndex = rules.findIndex(
+    (rule: any) =>
+      rule?.key === "GrantItem" && typeof rule?.uuid === "string" && rule.uuid.includes(`rulesSelections.${choiceFlag}`)
+  );
+  if (grantRuleIndex === -1) {
+    return null;
+  }
+
+  return {
+    slotId: `deity-level-${Number(selectorDocument?.system?.level?.value ?? 1) || 1}`,
+    selectorPackId: selectorSelection.packId,
+    selectorDocumentId: selectorSelection.documentId,
+    selectorUuid: selectorSelection.uuid,
+    selectorName: selectorDocument.name ?? selectorSelection.name,
+    selectorRuleIndex: choiceRuleIndex,
+    grantRuleIndex,
+    flag: choiceFlag,
+    itemType: "deity",
+    classSlug,
+  };
+}
+
+function extractClassChoiceMeta(
+  sourceDocument: any,
+  sourceSelection: SelectionRef,
+  args: {
+    classSlug: string | null;
+    extractSlug: (document: any) => string | null;
+    localize: (value: string) => string;
+    rollOptions: Set<string>;
+  }
+): ClassChoiceMeta[] {
+  if (!sourceDocument || sourceDocument.type !== "feat" || sourceDocument?.system?.category !== "classfeature") {
+    return [];
+  }
+
+  const rules = Array.isArray(sourceDocument.system?.rules) ? sourceDocument.system.rules : [];
+  const sourceSlug = args.extractSlug(sourceDocument) ?? sourceSelection.documentId;
+  const level = Number(sourceDocument?.system?.level?.value ?? 1) || 1;
+
+  return rules.flatMap((rule: any, ruleIndex: number) => {
+    if (rule?.key !== "ChoiceSet" || typeof rule?.flag !== "string" || !Array.isArray(rule?.choices)) {
+      return [];
+    }
+
+    const options = (
+      rule.choices as Array<{ label?: string; value?: string; img?: string; predicate?: ChoicePredicate }>
+    )
+      .filter((choice) => typeof choice?.value === "string" && choice.value.length > 0)
+      .filter((choice) => evaluatePredicate(choice.predicate, args.rollOptions))
+      .map((choice) => ({
+        value: String(choice.value),
+        label: resolveChoiceLabel(choice.label, String(choice.value), args.localize),
+        img: typeof choice.img === "string" && choice.img.length > 0 ? choice.img : null,
+        detail: null,
+      }));
+
+    const dependsOn = referencesDeity(rule) ? "deity" : "class";
+
+    if (options.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        slotId: `class-choice-${sourceSlug}-${String(rule.flag)}-level-${level}`,
+        sourcePackId: sourceSelection.packId,
+        sourceDocumentId: sourceSelection.documentId,
+        sourceUuid: sourceSelection.uuid,
+        sourceName: sourceDocument.name ?? sourceSelection.name,
+        sourceRuleIndex: ruleIndex,
+        flag: String(rule.flag),
+        classSlug: args.classSlug,
+        dependsOn,
+        options,
+      } satisfies ClassChoiceMeta,
+    ];
+  });
+}
+
+function buildChoiceRollOptions(deityDocument: any | null): Set<string> {
+  const options = new Set<string>();
+  if (!deityDocument) {
+    return options;
+  }
+
+  options.add("deity");
+  for (const font of Array.isArray(deityDocument?.system?.font) ? deityDocument.system.font : []) {
+    if (typeof font === "string" && font.trim()) {
+      options.add(`deity:primary:font:${font.trim().toLowerCase()}`);
+    }
+  }
+
+  const sanctification = deityDocument?.system?.sanctification;
+  if (sanctification && typeof sanctification === "object") {
+    const modal = typeof sanctification.modal === "string" ? sanctification.modal.trim().toLowerCase() : "";
+    const values = Array.isArray(sanctification.what) ? sanctification.what : [];
+    for (const value of values) {
+      if (modal && typeof value === "string" && value.trim()) {
+        options.add(`deity:primary:sanctification:${modal}:${value.trim().toLowerCase()}`);
+      }
+    }
+  }
+
+  return options;
+}
+
+function evaluatePredicate(predicate: ChoicePredicate | undefined, rollOptions: Set<string>): boolean {
+  if (!predicate) {
+    return true;
+  }
+
+  if (typeof predicate === "string") {
+    return rollOptions.has(predicate);
+  }
+
+  if (Array.isArray(predicate)) {
+    return predicate.every((entry) => evaluatePredicate(entry, rollOptions));
+  }
+
+  if (Array.isArray(predicate.or)) {
+    return predicate.or.some((entry) => evaluatePredicate(entry, rollOptions));
+  }
+
+  if (Array.isArray(predicate.nor)) {
+    return predicate.nor.every((entry) => !evaluatePredicate(entry, rollOptions));
+  }
+
+  if (predicate.not) {
+    return !evaluatePredicate(predicate.not, rollOptions);
+  }
+
+  return true;
+}
+
+function referencesDeity(rule: any): boolean {
+  const text = JSON.stringify(rule ?? {});
+  return text.includes("deity:primary:");
+}
+
+function resolveChoiceLabel(label: string | undefined, value: string, localize: (value: string) => string): string {
+  if (typeof label === "string" && label.length > 0) {
+    const localized = localize(label);
+    if (localized && localized !== label) {
+      return localized;
+    }
+    return label;
+  }
+
+  return formatSlug(value);
 }
 
 function extractChoiceTag(choiceRule: any, flag: string): string | null {

@@ -16,6 +16,12 @@ type ActorSnapshot = ReturnType<typeof inspectActor>;
 interface BuildPlanDependencies {
   buildClassTrainingSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
   buildClassBranchSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
+  buildClassGrantedItemSteps: (
+    snapshot: ActorSnapshot,
+    draft: DraftState,
+    targetLevel: number
+  ) => Promise<PendingStep[]>;
+  buildClassChoiceSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
 }
 
 interface StepEvaluationDependencies {
@@ -28,14 +34,22 @@ export async function buildWayfinderPlan(
   deps: BuildPlanDependencies
 ): Promise<ReturnType<typeof buildProgressionPlan>> {
   const plan = buildProgressionPlan(snapshot, draft.targetLevel);
-  const [trainingSteps, branchSteps] = await Promise.all([
+  const [trainingSteps, branchSteps, grantedItemSteps, classChoiceSteps] = await Promise.all([
     deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
     deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
+    deps.buildClassGrantedItemSteps(snapshot, draft, plan.targetLevel),
+    deps.buildClassChoiceSteps(snapshot, draft, plan.targetLevel),
   ]);
 
   return {
     ...plan,
-    steps: sortPendingSteps([...plan.steps, ...trainingSteps, ...branchSteps]),
+    steps: sortPendingSteps([
+      ...plan.steps,
+      ...grantedItemSteps,
+      ...trainingSteps,
+      ...branchSteps,
+      ...classChoiceSteps,
+    ]),
   };
 }
 
@@ -81,6 +95,10 @@ export async function isWayfinderStepComplete(
 
   if (step.kind === "class-branch") {
     return !!draft.branchSelections[step.slotId];
+  }
+
+  if (step.kind === "class-choice") {
+    return typeof draft.classChoices[step.slotId] === "string" && draft.classChoices[step.slotId].length > 0;
   }
 
   if (step.kind === "skill-training") {
@@ -130,6 +148,16 @@ export async function getWayfinderStepStatus(
       return "Needs attention";
     }
     return draft.branchSelections[step.slotId]?.name ?? "Choose one";
+  }
+
+  if (step.kind === "class-choice") {
+    if (recentlyInvalidatedStepIds.has(step.slotId) && !draft.classChoices[step.slotId]) {
+      return "Needs attention";
+    }
+
+    const selected = draft.classChoices[step.slotId];
+    const selectedOption = step.classChoice?.options.find((option) => option.value === selected);
+    return selectedOption?.label ?? "Choose one";
   }
 
   if (step.kind === "skill-training") {
@@ -190,6 +218,8 @@ export function modeLabel(kind: StepKind): string {
       return "Training";
     case "class-branch":
       return "Class Path";
+    case "class-choice":
+      return "Class Choice";
     case "boost":
       return "Boosts";
     default:

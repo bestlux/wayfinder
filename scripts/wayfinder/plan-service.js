@@ -4,13 +4,21 @@ import { formatSlug } from "./formatting.js";
 import { isAncestryBoostSectionComplete, isBackgroundBoostSectionComplete, isClassBoostSectionComplete, remainingCreationBoostChoices, } from "./panes/boost-pane.js";
 export async function buildWayfinderPlan(snapshot, draft, deps) {
     const plan = buildProgressionPlan(snapshot, draft.targetLevel);
-    const [trainingSteps, branchSteps] = await Promise.all([
+    const [trainingSteps, branchSteps, grantedItemSteps, classChoiceSteps] = await Promise.all([
         deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
         deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
+        deps.buildClassGrantedItemSteps(snapshot, draft, plan.targetLevel),
+        deps.buildClassChoiceSteps(snapshot, draft, plan.targetLevel),
     ]);
     return {
         ...plan,
-        steps: sortPendingSteps([...plan.steps, ...trainingSteps, ...branchSteps]),
+        steps: sortPendingSteps([
+            ...plan.steps,
+            ...grantedItemSteps,
+            ...trainingSteps,
+            ...branchSteps,
+            ...classChoiceSteps,
+        ]),
     };
 }
 export async function resolveActiveStep(steps, activeStepId, isStepComplete) {
@@ -40,6 +48,9 @@ export async function isWayfinderStepComplete(step, draft, effectiveBuildState, 
     }
     if (step.kind === "class-branch") {
         return !!draft.branchSelections[step.slotId];
+    }
+    if (step.kind === "class-choice") {
+        return typeof draft.classChoices[step.slotId] === "string" && draft.classChoices[step.slotId].length > 0;
     }
     if (step.kind === "skill-training") {
         return deps.isTrainingStepComplete(step);
@@ -74,6 +85,14 @@ export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedSte
             return "Needs attention";
         }
         return draft.branchSelections[step.slotId]?.name ?? "Choose one";
+    }
+    if (step.kind === "class-choice") {
+        if (recentlyInvalidatedStepIds.has(step.slotId) && !draft.classChoices[step.slotId]) {
+            return "Needs attention";
+        }
+        const selected = draft.classChoices[step.slotId];
+        const selectedOption = step.classChoice?.options.find((option) => option.value === selected);
+        return selectedOption?.label ?? "Choose one";
     }
     if (step.kind === "skill-training") {
         if (recentlyInvalidatedStepIds.has(step.slotId) && !deps.isTrainingStepComplete(step)) {
@@ -117,6 +136,8 @@ export function modeLabel(kind) {
             return "Training";
         case "class-branch":
             return "Class Path";
+        case "class-choice":
+            return "Class Choice";
         case "boost":
             return "Boosts";
         default:

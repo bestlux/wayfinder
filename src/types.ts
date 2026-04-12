@@ -99,6 +99,18 @@ export interface StepFilters {
   maxLevel?: number;
 }
 
+export interface ClassBranchMeta {
+  slotId: string;
+  selectorPackId: string;
+  selectorDocumentId: string;
+  selectorUuid: string;
+  selectorName: string;
+  selectorRuleIndex: number;
+  flag: string;
+  optionTag: string;
+  classSlug: string | null;
+}
+
 export interface PendingStep {
   id: string;
   level: number;
@@ -109,17 +121,7 @@ export interface PendingStep {
   required: boolean;
   slotId: string;
   filters?: StepFilters;
-  branch?: {
-    slotId: string;
-    selectorPackId: string;
-    selectorDocumentId: string;
-    selectorUuid: string;
-    selectorName: string;
-    selectorRuleIndex: number;
-    flag: string;
-    optionTag: string;
-    classSlug: string | null;
-  };
+  branch?: ClassBranchMeta;
   training?: {
     classSlug: string;
     className: string;

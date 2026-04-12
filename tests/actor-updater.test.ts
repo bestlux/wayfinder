@@ -521,6 +521,9 @@ describe("actor-updater", () => {
       {
         name: "Scoundrel",
         type: "feat",
+        _stats: {
+          compendiumSource: "Compendium.pf2e.classfeatures.Item.ZvfxtUMtfIOLYHyg",
+        },
         system: {
           category: "classfeature",
           level: { value: 1 },
@@ -575,6 +578,717 @@ describe("actor-updater", () => {
         "flags.pf2e-wayfinder.slotId": "class-branch-rogues-racket-level-1",
       },
     ]);
+  });
+
+  it("applies both wizard branch selections onto their selector features and granted items", async () => {
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    let grantedIndex = 0;
+    const createEmbeddedDocuments = vi.fn(async (_type: string, sources: any[]) =>
+      sources.map(() => ({ id: `wizard-branch-${++grantedIndex}` }))
+    );
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 1,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "selector-school",
+            type: "feat",
+            sourceId: "Compendium.pf2e.classfeatures.Item.arcane-school-selector",
+            flags: {
+              pf2e: {
+                rulesSelections: {},
+                itemGrants: {},
+              },
+            },
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "arcaneSchool",
+                },
+                {
+                  key: "GrantItem",
+                  uuid: "{item|flags.system.rulesSelections.arcaneSchool}",
+                },
+              ],
+            },
+          },
+          {
+            id: "selector-thesis",
+            type: "feat",
+            sourceId: "Compendium.pf2e.classfeatures.Item.arcane-thesis-selector",
+            flags: {
+              pf2e: {
+                rulesSelections: {},
+                itemGrants: {},
+              },
+            },
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "arcaneThesis",
+                },
+                {
+                  key: "GrantItem",
+                  uuid: "{item|flags.system.rulesSelections.arcaneThesis}",
+                },
+              ],
+            },
+          },
+        ],
+      },
+      createEmbeddedDocuments,
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments,
+      update: vi.fn(async () => ({})),
+    };
+
+    globalThis.game = {
+      packs: new Map([
+        [
+          "pf2e.classfeatures",
+          {
+            metadata: { id: "pf2e.classfeatures" },
+            async getDocument(documentId: string) {
+              if (documentId === "school-battle-magic") {
+                return {
+                  id: documentId,
+                  name: "School of Battle Magic",
+                  toObject: () => ({
+                    name: "School of Battle Magic",
+                    type: "feat",
+                    system: {
+                      category: "classfeature",
+                      level: { value: 1 },
+                    },
+                  }),
+                };
+              }
+
+              if (documentId === "spell-blending") {
+                return {
+                  id: documentId,
+                  name: "Spell Blending",
+                  toObject: () => ({
+                    name: "Spell Blending",
+                    type: "feat",
+                    system: {
+                      category: "classfeature",
+                      level: { value: 1 },
+                    },
+                  }),
+                };
+              }
+
+              return null;
+            },
+          },
+        ],
+      ]),
+    } as any;
+
+    const draft = createEmptyDraft(1);
+    draft.branchSelections["class-branch-arcane-school-level-1"] = {
+      slotId: "class-branch-arcane-school-level-1",
+      packId: "pf2e.classfeatures",
+      documentId: "school-battle-magic",
+      uuid: "Compendium.pf2e.classfeatures.Item.school-battle-magic",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "School of Battle Magic",
+      level: 1,
+    };
+    draft.branchSelections["class-branch-arcane-thesis-level-1"] = {
+      slotId: "class-branch-arcane-thesis-level-1",
+      packId: "pf2e.classfeatures",
+      documentId: "spell-blending",
+      uuid: "Compendium.pf2e.classfeatures.Item.spell-blending",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "Spell Blending",
+      level: 1,
+    };
+
+    await applyDraftToActor(actor as any, draft, [
+      {
+        id: "class-branch-arcane-school-level-1",
+        level: 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: "Arcane School",
+        description: "",
+        required: true,
+        slotId: "class-branch-arcane-school-level-1",
+        filters: {
+          itemType: "feat",
+          featTypes: ["classfeature"],
+          maxLevel: 1,
+        },
+        branch: {
+          slotId: "class-branch-arcane-school-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "arcane-school-selector",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.arcane-school-selector",
+          selectorName: "Arcane School",
+          selectorRuleIndex: 0,
+          flag: "arcaneSchool",
+          optionTag: "wizard-arcane-school",
+          classSlug: "wizard",
+        },
+      },
+      {
+        id: "class-branch-arcane-thesis-level-1",
+        level: 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: "Arcane Thesis",
+        description: "",
+        required: true,
+        slotId: "class-branch-arcane-thesis-level-1",
+        filters: {
+          itemType: "feat",
+          featTypes: ["classfeature"],
+          maxLevel: 1,
+        },
+        branch: {
+          slotId: "class-branch-arcane-thesis-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "arcane-thesis-selector",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.arcane-thesis-selector",
+          selectorName: "Arcane Thesis",
+          selectorRuleIndex: 0,
+          flag: "arcaneThesis",
+          optionTag: "wizard-arcane-thesis",
+          classSlug: "wizard",
+        },
+      },
+    ]);
+
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      {
+        name: "School of Battle Magic",
+        type: "feat",
+        _stats: {
+          compendiumSource: "Compendium.pf2e.classfeatures.Item.school-battle-magic",
+        },
+        system: {
+          category: "classfeature",
+          level: { value: 1 },
+        },
+        flags: {
+          core: {
+            sourceId: "Compendium.pf2e.classfeatures.Item.school-battle-magic",
+          },
+          pf2e: {
+            grantedBy: {
+              id: "selector-school",
+              onDelete: "cascade",
+            },
+          },
+          "pf2e-wayfinder": {
+            importedBy: "pf2e-wayfinder",
+            slotId: "class-branch-arcane-school-level-1",
+          },
+        },
+      },
+    ]);
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
+      {
+        name: "Spell Blending",
+        type: "feat",
+        _stats: {
+          compendiumSource: "Compendium.pf2e.classfeatures.Item.spell-blending",
+        },
+        system: {
+          category: "classfeature",
+          level: { value: 1 },
+        },
+        flags: {
+          core: {
+            sourceId: "Compendium.pf2e.classfeatures.Item.spell-blending",
+          },
+          pf2e: {
+            grantedBy: {
+              id: "selector-thesis",
+              onDelete: "cascade",
+            },
+          },
+          "pf2e-wayfinder": {
+            importedBy: "pf2e-wayfinder",
+            slotId: "class-branch-arcane-thesis-level-1",
+          },
+        },
+      },
+    ]);
+    expect(updateEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      {
+        _id: "selector-school",
+        "system.rules": [
+          {
+            key: "ChoiceSet",
+            flag: "arcaneSchool",
+            selection: "Compendium.pf2e.classfeatures.Item.school-battle-magic",
+          },
+          {
+            key: "GrantItem",
+            uuid: "{item|flags.system.rulesSelections.arcaneSchool}",
+          },
+        ],
+        "flags.pf2e.rulesSelections.arcaneSchool": "Compendium.pf2e.classfeatures.Item.school-battle-magic",
+        "flags.pf2e.itemGrants.arcaneSchool": {
+          id: "wizard-branch-1",
+          onDelete: "detach",
+          nested: null,
+        },
+        "flags.pf2e-wayfinder.slotId": "class-branch-arcane-school-level-1",
+      },
+      {
+        _id: "wizard-branch-1",
+        "flags.core.sourceId": "Compendium.pf2e.classfeatures.Item.school-battle-magic",
+        "flags.pf2e.grantedBy": {
+          id: "selector-school",
+          onDelete: "cascade",
+        },
+        "flags.pf2e-wayfinder.importedBy": "pf2e-wayfinder",
+        "flags.pf2e-wayfinder.slotId": "class-branch-arcane-school-level-1",
+      },
+    ]);
+    expect(updateEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
+      {
+        _id: "selector-thesis",
+        "system.rules": [
+          {
+            key: "ChoiceSet",
+            flag: "arcaneThesis",
+            selection: "Compendium.pf2e.classfeatures.Item.spell-blending",
+          },
+          {
+            key: "GrantItem",
+            uuid: "{item|flags.system.rulesSelections.arcaneThesis}",
+          },
+        ],
+        "flags.pf2e.rulesSelections.arcaneThesis": "Compendium.pf2e.classfeatures.Item.spell-blending",
+        "flags.pf2e.itemGrants.arcaneThesis": {
+          id: "wizard-branch-2",
+          onDelete: "detach",
+          nested: null,
+        },
+        "flags.pf2e-wayfinder.slotId": "class-branch-arcane-thesis-level-1",
+      },
+      {
+        _id: "wizard-branch-2",
+        "flags.core.sourceId": "Compendium.pf2e.classfeatures.Item.spell-blending",
+        "flags.pf2e.grantedBy": {
+          id: "selector-thesis",
+          onDelete: "cascade",
+        },
+        "flags.pf2e-wayfinder.importedBy": "pf2e-wayfinder",
+        "flags.pf2e-wayfinder.slotId": "class-branch-arcane-thesis-level-1",
+      },
+    ]);
+  });
+
+  it("preseeds wizard branch selectors during class creation so PF2E does not need to prompt", async () => {
+    const createdItems: any[] = [];
+    let idCounter = 0;
+    const createEmbeddedDocuments = vi.fn(async (_type: string, sources: any[]) => {
+      const created = sources.map((source) => {
+        const item = {
+          id: `created-${++idCounter}`,
+          type: source.type,
+          name: source.name,
+          sourceId: source.flags?.core?.sourceId ?? null,
+          flags: source.flags ?? {},
+          system: source.system ?? {},
+        };
+        createdItems.push(item);
+        return item;
+      });
+      actor.items.contents.push(...created);
+      return created;
+    });
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 1,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [] as any[],
+      },
+      createEmbeddedDocuments,
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      update: vi.fn(async () => ({})),
+    };
+
+    globalThis.game = {
+      packs: new Map([
+        [
+          "pf2e.classes",
+          {
+            metadata: { id: "pf2e.classes" },
+            async getDocument(documentId: string) {
+              if (documentId !== "wizard") {
+                return null;
+              }
+
+              return {
+                id: documentId,
+                name: "Wizard",
+                toObject: () => ({
+                  name: "Wizard",
+                  type: "class",
+                  system: {
+                    items: {
+                      school: {
+                        level: 1,
+                        uuid: "Compendium.pf2e.classfeatures.Item.arcane-school-selector",
+                        name: "Arcane School",
+                      },
+                      thesis: {
+                        level: 1,
+                        uuid: "Compendium.pf2e.classfeatures.Item.arcane-thesis-selector",
+                        name: "Arcane Thesis",
+                      },
+                      bond: {
+                        level: 1,
+                        uuid: "Compendium.pf2e.classfeatures.Item.arcane-bond",
+                        name: "Arcane Bond",
+                      },
+                    },
+                  },
+                }),
+              };
+            },
+          },
+        ],
+        [
+          "pf2e.classfeatures",
+          {
+            metadata: { id: "pf2e.classfeatures" },
+            async getDocument(documentId: string) {
+              switch (documentId) {
+                case "arcane-school-selector":
+                  return {
+                    id: documentId,
+                    name: "Arcane School",
+                    toObject: () => ({
+                      name: "Arcane School",
+                      type: "feat",
+                      system: {
+                        category: "classfeature",
+                        rules: [
+                          {
+                            key: "ChoiceSet",
+                            flag: "arcaneSchool",
+                          },
+                          {
+                            key: "GrantItem",
+                            uuid: "{item|flags.system.rulesSelections.arcaneSchool}",
+                          },
+                        ],
+                      },
+                    }),
+                  };
+                case "arcane-thesis-selector":
+                  return {
+                    id: documentId,
+                    name: "Arcane Thesis",
+                    toObject: () => ({
+                      name: "Arcane Thesis",
+                      type: "feat",
+                      system: {
+                        category: "classfeature",
+                        rules: [
+                          {
+                            key: "ChoiceSet",
+                            flag: "arcaneThesis",
+                          },
+                          {
+                            key: "GrantItem",
+                            uuid: "{item|flags.system.rulesSelections.arcaneThesis}",
+                          },
+                        ],
+                      },
+                    }),
+                  };
+                case "school-battle-magic":
+                  return {
+                    id: documentId,
+                    name: "School of Battle Magic",
+                    toObject: () => ({
+                      name: "School of Battle Magic",
+                      type: "feat",
+                      system: {
+                        category: "classfeature",
+                        level: { value: 1 },
+                      },
+                    }),
+                  };
+                case "spell-blending":
+                  return {
+                    id: documentId,
+                    name: "Spell Blending",
+                    toObject: () => ({
+                      name: "Spell Blending",
+                      type: "feat",
+                      system: {
+                        category: "classfeature",
+                        level: { value: 1 },
+                      },
+                    }),
+                  };
+                default:
+                  return null;
+              }
+            },
+          },
+        ],
+      ]),
+    } as any;
+
+    const draft = createEmptyDraft(1);
+    draft.selections["class-level-1"] = {
+      slotId: "class-level-1",
+      packId: "pf2e.classes",
+      documentId: "wizard",
+      uuid: "Compendium.pf2e.classes.Item.wizard",
+      itemType: "class",
+      featType: null,
+      name: "Wizard",
+      level: 1,
+    };
+    draft.branchSelections["class-branch-arcane-school-level-1"] = {
+      slotId: "class-branch-arcane-school-level-1",
+      packId: "pf2e.classfeatures",
+      documentId: "school-battle-magic",
+      uuid: "Compendium.pf2e.classfeatures.Item.school-battle-magic",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "School of Battle Magic",
+      level: 1,
+    };
+    draft.branchSelections["class-branch-arcane-thesis-level-1"] = {
+      slotId: "class-branch-arcane-thesis-level-1",
+      packId: "pf2e.classfeatures",
+      documentId: "spell-blending",
+      uuid: "Compendium.pf2e.classfeatures.Item.spell-blending",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "Spell Blending",
+      level: 1,
+    };
+
+    await applyDraftToActor(actor as any, draft, [
+      {
+        id: "class-level-1",
+        level: 1,
+        kind: "pick-item",
+        slotKind: "class",
+        title: "Choose a class",
+        description: "",
+        required: true,
+        slotId: "class-level-1",
+        filters: { itemType: "class" },
+      },
+      {
+        id: "class-branch-arcane-school-level-1",
+        level: 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: "Arcane School",
+        description: "",
+        required: true,
+        slotId: "class-branch-arcane-school-level-1",
+        filters: {
+          itemType: "feat",
+          featTypes: ["classfeature"],
+          maxLevel: 1,
+        },
+        branch: {
+          slotId: "class-branch-arcane-school-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "arcane-school-selector",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.arcane-school-selector",
+          selectorName: "Arcane School",
+          selectorRuleIndex: 0,
+          flag: "arcaneSchool",
+          optionTag: "wizard-arcane-school",
+          classSlug: "wizard",
+        },
+      },
+      {
+        id: "class-branch-arcane-thesis-level-1",
+        level: 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: "Arcane Thesis",
+        description: "",
+        required: true,
+        slotId: "class-branch-arcane-thesis-level-1",
+        filters: {
+          itemType: "feat",
+          featTypes: ["classfeature"],
+          maxLevel: 1,
+        },
+        branch: {
+          slotId: "class-branch-arcane-thesis-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "arcane-thesis-selector",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.arcane-thesis-selector",
+          selectorName: "Arcane Thesis",
+          selectorRuleIndex: 0,
+          flag: "arcaneThesis",
+          optionTag: "wizard-arcane-thesis",
+          classSlug: "wizard",
+        },
+      },
+    ]);
+
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      {
+        name: "Wizard",
+        type: "class",
+        _stats: {
+          compendiumSource: "Compendium.pf2e.classes.Item.wizard",
+        },
+        system: {
+          items: {
+            bond: {
+              level: 1,
+              uuid: "Compendium.pf2e.classfeatures.Item.arcane-bond",
+              name: "Arcane Bond",
+            },
+          },
+        },
+        flags: {
+          core: {
+            sourceId: "Compendium.pf2e.classes.Item.wizard",
+          },
+          "pf2e-wayfinder": {
+            importedBy: "pf2e-wayfinder",
+            slotId: "class-level-1",
+          },
+        },
+      },
+    ]);
+
+    const createdSources = createEmbeddedDocuments.mock.calls.flatMap((call) => call[1] as any[]);
+    const schoolSelectorCall = createdSources.find(
+      (source) => source?.flags?.core?.sourceId === "Compendium.pf2e.classfeatures.Item.arcane-school-selector"
+    );
+    const thesisSelectorCall = createdSources.find(
+      (source) => source?.flags?.core?.sourceId === "Compendium.pf2e.classfeatures.Item.arcane-thesis-selector"
+    );
+
+    expect(schoolSelectorCall).toBeTruthy();
+    expect(thesisSelectorCall).toBeTruthy();
+    expect(schoolSelectorCall.system.location).toBe("created-1");
+    expect(schoolSelectorCall.system.rules[0].selection).toBe("Compendium.pf2e.classfeatures.Item.school-battle-magic");
+    expect(schoolSelectorCall.system.rules).toHaveLength(1);
+    expect(schoolSelectorCall.flags.pf2e.rulesSelections.arcaneSchool).toBe(
+      "Compendium.pf2e.classfeatures.Item.school-battle-magic"
+    );
+    expect(thesisSelectorCall.system.location).toBe("created-1");
+    expect(thesisSelectorCall.system.rules[0].selection).toBe("Compendium.pf2e.classfeatures.Item.spell-blending");
+    expect(thesisSelectorCall.system.rules).toHaveLength(1);
+    expect(thesisSelectorCall.flags.pf2e.rulesSelections.arcaneThesis).toBe(
+      "Compendium.pf2e.classfeatures.Item.spell-blending"
+    );
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(3, "Item", [
+      {
+        name: "School of Battle Magic",
+        type: "feat",
+        _stats: {
+          compendiumSource: "Compendium.pf2e.classfeatures.Item.school-battle-magic",
+        },
+        system: {
+          category: "classfeature",
+          level: { value: 1 },
+        },
+        flags: {
+          core: {
+            sourceId: "Compendium.pf2e.classfeatures.Item.school-battle-magic",
+          },
+          pf2e: {
+            grantedBy: {
+              id: "created-2",
+              onDelete: "cascade",
+            },
+          },
+          "pf2e-wayfinder": {
+            importedBy: "pf2e-wayfinder",
+            slotId: "class-branch-arcane-school-level-1",
+          },
+        },
+      },
+    ]);
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(5, "Item", [
+      {
+        name: "Spell Blending",
+        type: "feat",
+        _stats: {
+          compendiumSource: "Compendium.pf2e.classfeatures.Item.spell-blending",
+        },
+        system: {
+          category: "classfeature",
+          level: { value: 1 },
+        },
+        flags: {
+          core: {
+            sourceId: "Compendium.pf2e.classfeatures.Item.spell-blending",
+          },
+          pf2e: {
+            grantedBy: {
+              id: "created-4",
+              onDelete: "cascade",
+            },
+          },
+          "pf2e-wayfinder": {
+            importedBy: "pf2e-wayfinder",
+            slotId: "class-branch-arcane-thesis-level-1",
+          },
+        },
+      },
+    ]);
+    expect(
+      createdItems.filter((item) => item?.sourceId === "Compendium.pf2e.classfeatures.Item.school-battle-magic")
+    ).toHaveLength(1);
+    expect(
+      createdItems.filter((item) => item?.sourceId === "Compendium.pf2e.classfeatures.Item.spell-blending")
+    ).toHaveLength(1);
   });
 });
 

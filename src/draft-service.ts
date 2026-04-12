@@ -119,7 +119,7 @@ function sanitizeSelections(raw: unknown): DraftState["selections"] {
       slotId,
       packId,
       documentId,
-      uuid,
+      uuid: normalizeCompendiumItemUuid(packId, documentId, uuid),
       itemType: typeof selection.itemType === "string" ? selection.itemType : "",
       featType: typeof selection.featType === "string" ? selection.featType : null,
       name,
@@ -142,6 +142,12 @@ function sanitizeSkillIncreases(raw: unknown): Record<string, string> {
     }
   }
   return result;
+}
+
+function normalizeCompendiumItemUuid(packId: string, documentId: string, uuid: string): string {
+  const canonicalUuid = `Compendium.${packId}.Item.${documentId}`;
+  const legacyUuid = `Compendium.${packId}.${documentId}`;
+  return uuid === legacyUuid ? canonicalUuid : uuid;
 }
 
 function sanitizeSkillTrainings(raw: unknown): DraftState["skillTrainings"] {

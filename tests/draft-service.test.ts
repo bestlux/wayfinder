@@ -119,6 +119,7 @@ describe("draft-service", () => {
 
     expect(draft.targetLevel).toBe(20);
     expect(Object.keys(draft.selections)).toEqual(["keep"]);
+    expect(draft.selections.keep.uuid).toBe("Compendium.pf2e.feats-srd.Item.abc");
     expect(draft.manual).toEqual({
       one: true,
       two: false,

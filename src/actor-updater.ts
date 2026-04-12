@@ -10,7 +10,7 @@ export async function applyDraftToActor(actor: any, draft: DraftState, steps: Pe
   const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
 
   for (const selection of selections.filter((entry) => SINGLETON_ITEM_TYPES.has(entry.itemType))) {
-    await replaceSingletonItem(actor, selection);
+    await replaceSingletonItem(actor, selection, draft, steps);
   }
 
   const projectedTrainingRanks = await applyTrainingDraft(actor, draft, steps);
@@ -49,7 +49,13 @@ async function applyBranchDraft(actor: any, draft: DraftState, steps: PendingSte
       continue;
     }
 
-    const selectorItem = findItemBySourceId(actor, branch.selectorUuid);
+    const selectorSelection = createBranchSelectorSelection(branch, step.slotId);
+    let selectorItem = findItemBySourceId(actor, branch.selectorUuid);
+    const createdSelector = !selectorItem?.id;
+    if (!selectorItem?.id) {
+      selectorItem = await createSelectedBranchSelector(actor, branch, selection, step.slotId);
+    }
+
     if (!selectorItem?.id) {
       continue;
     }
@@ -82,25 +88,33 @@ async function applyBranchDraft(actor: any, draft: DraftState, steps: PendingSte
       }
     }
 
-    const selectorRules = Array.isArray(selectorItem.system?.rules) ? cloneData(selectorItem.system.rules) : [];
+    const selectorDocument = createdSelector ? await fetchSelectionDocument(selectorSelection) : null;
+    const selectorRules = Array.isArray(selectorDocument?.system?.rules)
+      ? cloneData(selectorDocument.system.rules)
+      : Array.isArray(selectorItem.system?.rules)
+        ? cloneData(selectorItem.system.rules)
+        : [];
     const selectorRule = selectorRules[branch.selectorRuleIndex];
     if (selectorRule) {
       selectorRule.selection = selection.uuid;
     }
 
-    await actor.updateEmbeddedDocuments("Item", [
+    const updates: Record<string, unknown>[] = [
       {
         _id: selectorItem.id,
         "system.rules": selectorRules,
         [`flags.pf2e.rulesSelections.${branch.flag}`]: selection.uuid,
-        [`flags.pf2e.itemGrants.${branch.flag}`]: {
-          id: grantedItem.id,
-          onDelete: "detach",
-          nested: null,
-        },
         [`flags.${MODULE_ID}.slotId`]: step.slotId,
       },
-      {
+    ];
+
+    if (grantedItem?.id) {
+      updates[0][`flags.pf2e.itemGrants.${branch.flag}`] = {
+        id: grantedItem.id,
+        onDelete: "detach",
+        nested: null,
+      };
+      updates.push({
         _id: grantedItem.id,
         "flags.core.sourceId": selection.uuid,
         "flags.pf2e.grantedBy": {
@@ -109,8 +123,10 @@ async function applyBranchDraft(actor: any, draft: DraftState, steps: PendingSte
         },
         [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
         [`flags.${MODULE_ID}.slotId`]: step.slotId,
-      },
-    ]);
+      });
+    }
+
+    await actor.updateEmbeddedDocuments("Item", updates);
   }
 }
 
@@ -227,7 +243,12 @@ function skillIncreaseLevelFromSlotId(slotId: string): number {
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 }
 
-async function replaceSingletonItem(actor: any, selection: SelectionRef): Promise<void> {
+async function replaceSingletonItem(
+  actor: any,
+  selection: SelectionRef,
+  draft: DraftState,
+  steps: PendingStep[]
+): Promise<void> {
   const existing = Array.from(actor?.items ?? []).filter((item: any) => item.type === selection.itemType);
   if (existing.length > 0) {
     await actor.deleteEmbeddedDocuments(
@@ -236,20 +257,29 @@ async function replaceSingletonItem(actor: any, selection: SelectionRef): Promis
     );
   }
 
-  const source = await createEmbeddedSource(selection);
+  const source = await createEmbeddedSource(selection, draft, steps);
   if (source) {
     await actor.createEmbeddedDocuments("Item", [source]);
   }
 }
 
-async function createEmbeddedSource(selection: SelectionRef): Promise<any | null> {
+async function createEmbeddedSource(
+  selection: SelectionRef,
+  draft?: DraftState,
+  steps: PendingStep[] = []
+): Promise<any | null> {
   const document = await fetchSelectionDocument(selection);
   if (!document) {
     return null;
   }
 
   const source = document.toObject();
+  if (selection.itemType === "class" && draft) {
+    stripPreselectedClassBranchEntries(source, draft, steps);
+  }
   delete source._id;
+  source._stats ??= {};
+  source._stats.compendiumSource = selection.uuid;
   source.flags ??= {};
   source.flags.core ??= {};
   source.flags.core.sourceId = selection.uuid;
@@ -287,6 +317,60 @@ async function insertFeatSelection(actor: any, selection: SelectionRef, step: Pe
     }
   }
   await actor.createEmbeddedDocuments("Item", [source]);
+}
+
+async function createSelectedBranchSelector(
+  actor: any,
+  branch: NonNullable<PendingStep["branch"]>,
+  selection: SelectionRef,
+  slotId: string
+): Promise<any | null> {
+  const selectorSelection = createBranchSelectorSelection(branch, slotId);
+  const selectorSource = await createEmbeddedSource(selectorSelection);
+  if (!selectorSource) {
+    return null;
+  }
+
+  selectorSource.system ??= {};
+  selectorSource.system.rules = cloneData(
+    Array.isArray(selectorSource.system.rules) ? selectorSource.system.rules : []
+  );
+  const selectorRule = selectorSource.system.rules[branch.selectorRuleIndex];
+  if (selectorRule) {
+    selectorRule.selection = selection.uuid;
+  }
+  selectorSource.system.rules = selectorSource.system.rules.filter((rule: any) => rule?.key !== "GrantItem");
+
+  selectorSource.flags ??= {};
+  selectorSource.flags.pf2e ??= {};
+  selectorSource.flags.pf2e.rulesSelections ??= {};
+  selectorSource.flags.pf2e.rulesSelections[branch.flag] = selection.uuid;
+  selectorSource.flags[MODULE_ID] = {
+    ...(selectorSource.flags[MODULE_ID] ?? {}),
+    importedBy: MODULE_ID,
+    slotId,
+  };
+
+  const classItem = listActorItems(actor).find((item: any) => item?.type === "class");
+  if (classItem?.id) {
+    selectorSource.system.location = classItem.id;
+  }
+
+  const created = await actor.createEmbeddedDocuments("Item", [selectorSource]);
+  return Array.isArray(created) ? (created[0] ?? null) : null;
+}
+
+function createBranchSelectorSelection(branch: NonNullable<PendingStep["branch"]>, slotId: string): SelectionRef {
+  return {
+    slotId,
+    packId: branch.selectorPackId,
+    documentId: branch.selectorDocumentId,
+    uuid: branch.selectorUuid,
+    itemType: "feat",
+    featType: "classfeature",
+    name: branch.selectorName,
+    level: null,
+  };
 }
 
 function resolveFeatSlotData(
@@ -371,6 +455,53 @@ function orderSelections(draft: DraftState, steps: PendingStep[]): SelectionRef[
   return Object.values(draft.selections).sort((left, right) => {
     return (order.get(left.slotId) ?? 0) - (order.get(right.slotId) ?? 0);
   });
+}
+
+function stripPreselectedClassBranchEntries(classSource: any, draft: DraftState, steps: PendingStep[]): void {
+  const selectedSelectorRefs = steps
+    .filter((step) => step.kind === "class-branch" && step.branch && draft.branchSelections[step.slotId])
+    .map((step) => step.branch)
+    .filter((value): value is NonNullable<PendingStep["branch"]> => !!value);
+  if (
+    selectedSelectorRefs.length === 0 ||
+    !classSource?.system?.items ||
+    typeof classSource.system.items !== "object"
+  ) {
+    return;
+  }
+
+  const selectedSelectorUuids = new Set(
+    selectedSelectorRefs
+      .map((branch) => branch.selectorUuid)
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+  );
+  const selectedSelectorDocumentIds = new Set(
+    selectedSelectorRefs
+      .map((branch) => branch.selectorDocumentId.trim().toLowerCase())
+      .filter((value): value is string => value.length > 0)
+  );
+  const selectedSelectorNames = new Set(
+    selectedSelectorRefs
+      .map((branch) => branch.selectorName.trim().toLowerCase())
+      .filter((value): value is string => value.length > 0)
+  );
+
+  classSource.system.items = Object.fromEntries(
+    Object.entries(classSource.system.items).filter(([, entry]: [string, any]) => {
+      const uuid = typeof entry?.uuid === "string" ? entry.uuid : null;
+      const normalizedDocumentId =
+        typeof uuid === "string"
+          ? /^Compendium\.[^.]+\.[^.]+\.Item\.(.+)$/.exec(uuid)?.[1]?.trim().toLowerCase()
+          : null;
+      const normalizedName = typeof entry?.name === "string" ? entry.name.trim().toLowerCase() : null;
+
+      return !(
+        (uuid && selectedSelectorUuids.has(uuid)) ||
+        (normalizedDocumentId && selectedSelectorDocumentIds.has(normalizedDocumentId)) ||
+        (normalizedName && selectedSelectorNames.has(normalizedName))
+      );
+    })
+  );
 }
 
 function hasSourceId(actor: any, sourceId: string): boolean {

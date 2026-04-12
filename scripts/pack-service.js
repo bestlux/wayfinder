@@ -32,7 +32,7 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
             const slug = extractEntrySlug(entry);
             const traits = extractEntryTraits(entry);
             const documentId = String(entry._id);
-            const uuid = `Compendium.${pack.metadata.id}.${documentId}`;
+            const uuid = toCompendiumItemUuid(pack.metadata.id, documentId);
             const name = String(entry.name ?? "Unknown Option");
             results.push({
                 value: `${pack.metadata.id}:${documentId}`,
@@ -77,6 +77,9 @@ export async function fetchSelectionDocument(selection) {
         return null;
     }
     return pack.getDocument(selection.documentId);
+}
+function toCompendiumItemUuid(packId, documentId) {
+    return `Compendium.${packId}.Item.${documentId}`;
 }
 export function clearPackServiceCache() {
     indexCache.clear();

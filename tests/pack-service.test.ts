@@ -233,6 +233,101 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Ruffian", "Scoundrel"]);
   });
 
+  it("filters wizard branch choices separately for arcane school and arcane thesis", async () => {
+    setPack("pf2e.classfeatures", [
+      classFeatureEntry("school-of-battle-magic", "School of Battle Magic", ["wizard"], ["wizard-arcane-school"]),
+      classFeatureEntry(
+        "school-of-unified-magical-theory",
+        "School of Unified Magical Theory",
+        ["wizard"],
+        ["wizard-arcane-school"]
+      ),
+      classFeatureEntry("spell-blending", "Spell Blending", ["wizard"], ["wizard-arcane-thesis"]),
+      classFeatureEntry("staff-nexus", "Staff Nexus", ["wizard"], ["wizard-arcane-thesis"]),
+      classFeatureEntry("scoundrel", "Scoundrel", ["rogue"], ["rogue-racket"]),
+    ]);
+
+    const schoolOptions = await getOptionsForStep(
+      {
+        id: "class-branch-arcane-school-level-1",
+        level: 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: "Arcane School",
+        description: "Choose an arcane school.",
+        required: true,
+        slotId: "class-branch-arcane-school-level-1",
+        filters: {
+          itemType: "feat",
+          featTypes: ["classfeature"],
+          maxLevel: 1,
+        },
+        branch: {
+          slotId: "class-branch-arcane-school-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "school-selector",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.school-selector",
+          selectorName: "Arcane School",
+          selectorRuleIndex: 0,
+          flag: "arcaneSchool",
+          optionTag: "wizard-arcane-school",
+          classSlug: "wizard",
+        },
+      },
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "wizard",
+      }
+    );
+
+    const thesisOptions = await getOptionsForStep(
+      {
+        id: "class-branch-arcane-thesis-level-1",
+        level: 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: "Arcane Thesis",
+        description: "Choose an arcane thesis.",
+        required: true,
+        slotId: "class-branch-arcane-thesis-level-1",
+        filters: {
+          itemType: "feat",
+          featTypes: ["classfeature"],
+          maxLevel: 1,
+        },
+        branch: {
+          slotId: "class-branch-arcane-thesis-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "thesis-selector",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.thesis-selector",
+          selectorName: "Arcane Thesis",
+          selectorRuleIndex: 0,
+          flag: "arcaneThesis",
+          optionTag: "wizard-arcane-thesis",
+          classSlug: "wizard",
+        },
+      },
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "wizard",
+      }
+    );
+
+    expect(schoolOptions.map((option) => option.name)).toEqual([
+      "School of Battle Magic",
+      "School of Unified Magical Theory",
+    ]);
+    expect(thesisOptions.map((option) => option.name)).toEqual(["Spell Blending", "Staff Nexus"]);
+    expect(schoolOptions.map((option) => option.uuid)).toEqual([
+      "Compendium.pf2e.classfeatures.Item.school-of-battle-magic",
+      "Compendium.pf2e.classfeatures.Item.school-of-unified-magical-theory",
+    ]);
+    expect(thesisOptions.map((option) => option.uuid)).toEqual([
+      "Compendium.pf2e.classfeatures.Item.spell-blending",
+      "Compendium.pf2e.classfeatures.Item.staff-nexus",
+    ]);
+  });
+
   it("distinguishes blocked, empty-source, and search-empty picker states", () => {
     const heritageStep = makeStep("heritage", {
       itemType: "heritage",

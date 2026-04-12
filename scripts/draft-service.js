@@ -102,7 +102,7 @@ function sanitizeSelections(raw) {
             slotId,
             packId,
             documentId,
-            uuid,
+            uuid: normalizeCompendiumItemUuid(packId, documentId, uuid),
             itemType: typeof selection.itemType === "string" ? selection.itemType : "",
             featType: typeof selection.featType === "string" ? selection.featType : null,
             name,
@@ -122,6 +122,11 @@ function sanitizeSkillIncreases(raw) {
         }
     }
     return result;
+}
+function normalizeCompendiumItemUuid(packId, documentId, uuid) {
+    const canonicalUuid = `Compendium.${packId}.Item.${documentId}`;
+    const legacyUuid = `Compendium.${packId}.${documentId}`;
+    return uuid === legacyUuid ? canonicalUuid : uuid;
 }
 function sanitizeSkillTrainings(raw) {
     if (!isRecord(raw)) {

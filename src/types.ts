@@ -119,6 +119,7 @@ export interface ClassBranchMeta {
   flag: string;
   optionTag: string;
   classSlug: string | null;
+  dependsOn: "class" | "deity";
 }
 
 export interface ClassGrantMeta {
@@ -207,6 +208,8 @@ export interface OptionContext {
   ancestryTraits: string[];
   heritageTraits: string[];
   classSlug: string | null;
+  deitySelected?: boolean;
+  sanctification?: "holy" | "unholy" | "none" | null;
   hasDedicationFeat: boolean;
 }
 

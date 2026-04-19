@@ -4,7 +4,8 @@ import { formatSlug } from "./formatting.js";
 import { isAncestryBoostSectionComplete, isBackgroundBoostSectionComplete, isClassBoostSectionComplete, remainingCreationBoostChoices, } from "./panes/boost-pane.js";
 export async function buildWayfinderPlan(snapshot, draft, deps) {
     const plan = buildProgressionPlan(snapshot, draft.targetLevel);
-    const [trainingSteps, branchSteps, grantedItemSteps, classChoiceSteps] = await Promise.all([
+    const [classFeatSteps, trainingSteps, branchSteps, grantedItemSteps, classChoiceSteps] = await Promise.all([
+        deps.buildClassFeatSteps(snapshot, draft, plan.targetLevel),
         deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
         deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
         deps.buildClassGrantedItemSteps(snapshot, draft, plan.targetLevel),
@@ -14,6 +15,7 @@ export async function buildWayfinderPlan(snapshot, draft, deps) {
         ...plan,
         steps: sortPendingSteps([
             ...plan.steps,
+            ...classFeatSteps,
             ...grantedItemSteps,
             ...trainingSteps,
             ...branchSteps,

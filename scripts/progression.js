@@ -1,5 +1,4 @@
 const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
-const CLASS_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const SKILL_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const GENERAL_FEAT_LEVELS = [3, 7, 11, 15, 19];
 const SKILL_INCREASE_LEVELS = [3, 5, 7, 9, 11, 13, 15, 17, 19];
@@ -40,10 +39,6 @@ export function buildSteps(snapshot, currentLevel, targetLevel) {
     steps.push(...buildFeatSteps("ancestry-feat", "Level {level} ancestry feat", "Pick the ancestry feat unlocked at this milestone.", ANCESTRY_FEAT_LEVELS, snapshot.featCounts.ancestry, targetLevel, {
         itemType: "feat",
         featTypes: ["ancestry"],
-    }));
-    steps.push(...buildFeatSteps("class-feat", "Level {level} class feat", "Pick a class or archetype feat unlocked at this milestone.", CLASS_FEAT_LEVELS, snapshot.featCounts.class + snapshot.featCounts.archetype, targetLevel, {
-        itemType: "feat",
-        featTypes: ["class", "archetype"],
     }));
     steps.push(...buildFeatSteps("skill-feat", "Level {level} skill feat", "Pick the skill feat unlocked at this milestone.", SKILL_FEAT_LEVELS, snapshot.featCounts.skill, targetLevel, {
         itemType: "feat",
@@ -170,9 +165,9 @@ function sortWeight(kind) {
             return 4;
         case "skill-training":
             return 5;
-        case "class-branch":
-            return 6;
         case "class-choice":
+            return 6;
+        case "class-branch":
             return 7;
         case "ancestry-feat":
             return 8;

@@ -4,6 +4,7 @@ import type { SelectionRef } from "../src/types";
 import {
   buildClassBranchSteps,
   buildClassChoiceSteps,
+  buildClassFeatSteps,
   buildClassGrantedItemSteps,
   buildClassTrainingSteps,
 } from "../src/wayfinder/class-choice-service";
@@ -172,6 +173,22 @@ describe("class-choice-service", () => {
       { slug: "acrobatics", label: "Acrobatics" },
       { slug: "sailing", label: "Sailing" },
     ]);
+  });
+
+  it("derives class feat milestones from the effective class document", async () => {
+    const steps = await buildClassFeatSteps({
+      effectiveClassDocument: {
+        system: {
+          classFeatLevels: {
+            value: [1, 2, 4, 6],
+          },
+        },
+      },
+      targetLevel: 2,
+      fulfilledCount: 0,
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual(["class-feat-level-1", "class-feat-level-2"]);
   });
 
   it("emits branch steps from selector features and skips ones already chosen on the actor", async () => {
@@ -400,6 +417,70 @@ describe("class-choice-service", () => {
     ]);
   });
 
+  it("marks champion cause as a deity-dependent class branch", async () => {
+    const draft = createEmptyDraft(1);
+    const championClass = {
+      system: {
+        slug: "champion",
+        items: {
+          cause: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.cause",
+            name: "Cause",
+          },
+        },
+      },
+    };
+    const documents = new Map<string, any>([
+      [
+        "Compendium.pf2e.classfeatures.Item.cause",
+        {
+          type: "feat",
+          name: "Cause",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "cause",
+                choices: {
+                  filter: ["item:tag:champion-cause"],
+                },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.cause}",
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+
+    const steps = await buildClassBranchSteps({
+      draft,
+      effectiveClassDocument: championClass,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+      readExistingBranchSelection: () => null,
+    });
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({
+      kind: "class-branch",
+      slotId: "class-branch-cause-level-1",
+      branch: {
+        selectorName: "Cause",
+        flag: "cause",
+        optionTag: "champion-cause",
+        classSlug: "champion",
+        dependsOn: "deity",
+      },
+    });
+  });
+
   it("emits a deity step for cleric class features that grant a deity selection", async () => {
     const draft = createEmptyDraft(1);
     const clericClass = {
@@ -621,6 +702,112 @@ describe("class-choice-service", () => {
       },
     ]);
     expect(pharasmaSteps.some((step) => step.slotId === "class-choice-deity-sanctification-level-1")).toBe(false);
+  });
+
+  it("emits champion sanctification choices when the deity allows flexible sanctification", async () => {
+    const draft = createEmptyDraft(1);
+    const championClass = {
+      system: {
+        slug: "champion",
+        items: {
+          deity: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.deity-champion",
+            name: "Deity (Champion)",
+          },
+        },
+      },
+    };
+    const documents = new Map<string, any>([
+      [
+        "Compendium.pf2e.classfeatures.Item.deity-champion",
+        {
+          type: "feat",
+          name: "Deity (Champion)",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "deity",
+                choices: {
+                  itemType: "deity",
+                },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.deity}",
+              },
+              {
+                key: "ChoiceSet",
+                slug: "sanctification",
+                rollOption: "sanctification",
+                choices: [
+                  {
+                    value: "holy",
+                    label: "PF2E.TraitHoly",
+                    predicate: [
+                      { or: ["deity:primary:sanctification:can:holy", "deity:primary:sanctification:must:holy"] },
+                    ],
+                  },
+                  {
+                    value: "unholy",
+                    label: "PF2E.TraitUnholy",
+                    predicate: [
+                      { or: ["deity:primary:sanctification:can:unholy", "deity:primary:sanctification:must:unholy"] },
+                    ],
+                  },
+                  {
+                    value: "none",
+                    label: "PF2E.NoneOption",
+                    predicate: [
+                      { nor: ["deity:primary:sanctification:must:holy", "deity:primary:sanctification:must:unholy"] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+    const gorum = {
+      system: {
+        sanctification: {
+          modal: "can",
+          what: ["holy", "unholy"],
+        },
+      },
+    };
+
+    const steps = await buildClassChoiceSteps({
+      draft,
+      effectiveClassDocument: championClass,
+      effectiveDeityDocument: gorum,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+      localize: (value) => value,
+      readExistingClassChoiceSelection: () => null,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        kind: "class-choice",
+        slotId: "class-choice-deity-champion-sanctification-level-1",
+        classChoice: {
+          flag: "sanctification",
+          classSlug: "champion",
+          dependsOn: "deity",
+          options: [
+            { value: "holy", label: "PF2E.TraitHoly" },
+            { value: "unholy", label: "PF2E.TraitUnholy" },
+            { value: "none", label: "PF2E.NoneOption" },
+          ],
+        },
+      },
+    ]);
   });
 });
 

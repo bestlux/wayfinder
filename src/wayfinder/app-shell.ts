@@ -11,6 +11,7 @@ import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
 import {
   buildClassBranchSteps,
   buildClassChoiceSteps,
+  buildClassFeatSteps,
   buildClassGrantedItemSteps,
   buildClassTrainingSteps,
 } from "./class-choice-service.js";
@@ -275,7 +276,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         await this.#toggleTrainingSkill(action.stepId, action.slug);
         break;
       case "select-class-choice":
-        this.#selectClassChoice(action.stepId, action.value);
+        await this.#selectClassChoice(action.stepId, action.value);
         break;
       case "clear-option":
         this.#statusNote = null;
@@ -349,6 +350,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   async #buildPlan(snapshot = inspectActor(this.actor), draft = this.#requireDraft()) {
     return buildWayfinderPlan(snapshot, draft, {
+      buildClassFeatSteps: async (planSnapshot, _planDraft, targetLevel) =>
+        buildClassFeatSteps({
+          effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
+          targetLevel,
+          fulfilledCount: planSnapshot.featCounts.class + planSnapshot.featCounts.archetype,
+        }),
       buildClassTrainingSteps: (_planSnapshot, _planDraft, targetLevel) =>
         buildClassTrainingSteps({
           draftClassSelection: this.#findDraftSelectionByType("class"),
@@ -588,9 +595,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     if (step.slotKind === "deity" && previousSelection?.uuid !== selection.uuid) {
-      const invalidated = await this.#invalidateClassChoicesByDependency("deity");
-      if (invalidated.length > 0) {
-        this.#statusNote = "Deity changed. Wayfinder marked dependent class choices for review.";
+      const invalidatedChoices = await this.#invalidateClassChoicesByDependency("deity");
+      const invalidatedBranches = await this.#invalidateBranchSelectionsByDependency("deity");
+      if (invalidatedChoices.length > 0 || invalidatedBranches.length > 0) {
+        this.#statusNote = "Deity changed. Wayfinder marked dependent class choices and class paths for review.";
       }
     }
 
@@ -633,10 +641,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   async #buildOptionContext(): Promise<OptionContext> {
-    const [ancestryDocument, heritageDocument, classDocument, hasDedicationFeat] = await Promise.all([
+    const [ancestryDocument, heritageDocument, classDocument, deityDocument, hasDedicationFeat] = await Promise.all([
       this.#resolveDraftOrActorDocument("ancestry"),
       this.#resolveDraftOrActorDocument("heritage"),
       this.#resolveDraftOrActorDocument("class"),
+      this.#resolveDraftOrActorDocument("deity"),
       this.#hasDedicationFeatInContext(),
     ]);
 
@@ -646,6 +655,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       ancestryTraits: this.#extractContextTraits(ancestryDocument, ancestrySlug),
       heritageTraits: this.#extractContextTraits(heritageDocument),
       classSlug: this.#extractSlug(classDocument),
+      deitySelected: !!deityDocument,
+      sanctification: this.#resolveSanctificationChoice(deityDocument),
       hasDedicationFeat,
     };
   }
@@ -688,6 +699,24 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const classDocument = await this.#resolveDraftOrActorDocument("class");
         const className = classDocument?.name;
         const selectorName = step.branch?.selectorName;
+        if (step.branch?.optionTag === "champion-cause") {
+          if (!context.deitySelected) {
+            return "Resolve the deity step first so Wayfinder can narrow champion causes to the legal sanctification path.";
+          }
+
+          const sanctificationLabel =
+            context.sanctification === "holy"
+              ? "holy"
+              : context.sanctification === "unholy"
+                ? "unholy"
+                : context.sanctification === "none"
+                  ? "non-sanctified"
+                  : "currently unresolved";
+          return className
+            ? `Showing ${className} causes currently legal for the ${sanctificationLabel} sanctification state in this draft.`
+            : null;
+        }
+
         if (className && selectorName) {
           return `Showing ${className} options granted by ${selectorName}. Wayfinder will write the selector choice into PF2E's native class-feature data on apply.`;
         }
@@ -849,16 +878,35 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.render(false);
   }
 
-  #selectClassChoice(stepId: string, value: string): void {
+  async #selectClassChoice(stepId: string, value: string): Promise<void> {
     this.#statusNote = null;
     const draft = this.#requireDraft();
-    if (draft.classChoices[stepId] === value) {
+    const step = (await this.#buildPlan()).steps.find((entry) => entry.slotId === stepId);
+    const invalidatesDeityBranches = step?.classChoice?.flag === "sanctification";
+    const wasSelected = draft.classChoices[stepId] === value;
+    if (wasSelected) {
       delete draft.classChoices[stepId];
-    } else {
-      draft.classChoices[stepId] = value;
+      if (invalidatesDeityBranches) {
+        const invalidated = await this.#invalidateBranchSelectionsByDependency("deity");
+        if (invalidated.length > 0) {
+          this.#statusNote = "Sanctification changed. Wayfinder marked dependent class paths for review.";
+        }
+      }
+      this.#recentlyInvalidatedStepIds.delete(stepId);
+      this.render(false);
+      return;
+    }
+
+    const previousValue = draft.classChoices[stepId] ?? null;
+    draft.classChoices[stepId] = value;
+    if (invalidatesDeityBranches && previousValue !== value) {
+      const invalidated = await this.#invalidateBranchSelectionsByDependency("deity");
+      if (invalidated.length > 0) {
+        this.#statusNote = "Sanctification changed. Wayfinder marked dependent class paths for review.";
+      }
     }
     this.#recentlyInvalidatedStepIds.delete(stepId);
-    this.render(false);
+    await this.#moveStep(1);
   }
 
   async #toggleTrainingSkill(stepId: string, slug: string): Promise<void> {
@@ -1077,6 +1125,44 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return Array.from(normalized);
   }
 
+  #resolveSanctificationChoice(deityDocument: any | null): "holy" | "unholy" | "none" | null {
+    const drafted = Object.entries(this.#requireDraft().classChoices).find(([slotId]) =>
+      /^class-choice-.+-sanctification-level-\d+$/.test(slotId)
+    )?.[1];
+    if (drafted === "holy" || drafted === "unholy" || drafted === "none") {
+      return drafted;
+    }
+
+    const actorSelection =
+      listActorItems(this.actor)
+        .map((item: any) => item?.flags?.pf2e?.rulesSelections?.sanctification)
+        .find((value: unknown): value is string => typeof value === "string" && value.length > 0) ?? null;
+    if (actorSelection === "holy" || actorSelection === "unholy" || actorSelection === "none") {
+      return actorSelection;
+    }
+
+    const sanctification = deityDocument?.system?.sanctification;
+    if (!sanctification || typeof sanctification !== "object") {
+      return "none";
+    }
+
+    const modal = typeof sanctification.modal === "string" ? sanctification.modal.trim().toLowerCase() : "";
+    const values = Array.isArray(sanctification.what)
+      ? sanctification.what.filter((value: unknown): value is string => typeof value === "string")
+      : [];
+
+    if (modal === "must" && values.length === 1) {
+      const value = values[0]?.trim().toLowerCase();
+      return value === "holy" || value === "unholy" ? value : "none";
+    }
+
+    if (values.length === 0) {
+      return "none";
+    }
+
+    return null;
+  }
+
   async #resolveSelectionTraits(selection: SelectionRef | null): Promise<string[]> {
     if (!selection) {
       return [];
@@ -1201,6 +1287,20 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       }
 
       invalidated.push(...this.#invalidateSelection(slotId));
+    }
+
+    return invalidated;
+  }
+
+  async #invalidateBranchSelectionsByDependency(dependency: "class" | "deity"): Promise<string[]> {
+    const invalidated: string[] = [];
+    const plan = await this.#buildPlan();
+    for (const step of plan.steps) {
+      if (step.kind !== "class-branch" || step.branch?.dependsOn !== dependency) {
+        continue;
+      }
+
+      invalidated.push(...this.#invalidateSelection(step.slotId));
     }
 
     return invalidated;

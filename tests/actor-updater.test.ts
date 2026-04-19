@@ -513,6 +513,7 @@ describe("actor-updater", () => {
           flag: "roguesRacket",
           optionTag: "rogue-racket",
           classSlug: "rogue",
+          dependsOn: "class",
         },
       },
     ]);
@@ -752,6 +753,7 @@ describe("actor-updater", () => {
           flag: "arcaneSchool",
           optionTag: "wizard-arcane-school",
           classSlug: "wizard",
+          dependsOn: "class",
         },
       },
       {
@@ -778,6 +780,7 @@ describe("actor-updater", () => {
           flag: "arcaneThesis",
           optionTag: "wizard-arcane-thesis",
           classSlug: "wizard",
+          dependsOn: "class",
         },
       },
     ]);
@@ -1147,6 +1150,7 @@ describe("actor-updater", () => {
           flag: "arcaneSchool",
           optionTag: "wizard-arcane-school",
           classSlug: "wizard",
+          dependsOn: "class",
         },
       },
       {
@@ -1173,6 +1177,7 @@ describe("actor-updater", () => {
           flag: "arcaneThesis",
           optionTag: "wizard-arcane-thesis",
           classSlug: "wizard",
+          dependsOn: "class",
         },
       },
     ]);

@@ -64,7 +64,7 @@ describe("progression", () => {
     );
 
     expect(plan.recommendedTargetLevel).toBe(4);
-    expect(plan.steps.map((step) => step.slotKind)).toEqual(["class-feat", "skill-feat"]);
+    expect(plan.steps.map((step) => step.slotKind)).toEqual(["skill-feat"]);
   });
 
   it("includes later milestone steps up to a requested level", () => {

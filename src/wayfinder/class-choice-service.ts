@@ -10,6 +10,12 @@ interface BuildClassTrainingStepsParams {
   localize: (value: string) => string;
 }
 
+interface BuildClassFeatStepsParams {
+  effectiveClassDocument: any | null;
+  targetLevel: number;
+  fulfilledCount: number;
+}
+
 interface BuildClassBranchStepsParams {
   draft: DraftState;
   effectiveClassDocument: any | null;
@@ -97,6 +103,43 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
       },
     },
   ];
+}
+
+export async function buildClassFeatSteps(params: BuildClassFeatStepsParams): Promise<PendingStep[]> {
+  const { effectiveClassDocument, targetLevel, fulfilledCount } = params;
+  if (!effectiveClassDocument) {
+    return [];
+  }
+
+  const classFeatLevels: number[] = Array.isArray(effectiveClassDocument.system?.classFeatLevels?.value)
+    ? effectiveClassDocument.system.classFeatLevels.value
+        .map((value: unknown) => Number(value))
+        .filter((value): value is number => Number.isFinite(value) && value >= 1 && value <= targetLevel)
+        .map((value: number) => Math.floor(value))
+    : [];
+
+  if (classFeatLevels.length === 0) {
+    return [];
+  }
+
+  const milestones: number[] = Array.from(new Set(classFeatLevels)).sort((left, right) => left - right);
+  const startIndex = Math.min(Math.max(0, fulfilledCount), milestones.length);
+
+  return milestones.slice(startIndex).map((level) => ({
+    id: `class-feat-level-${level}`,
+    level,
+    kind: "pick-item",
+    slotKind: "class-feat",
+    title: `Level ${level} class feat`,
+    description: "Pick a class or archetype feat unlocked at this milestone.",
+    required: true,
+    slotId: `class-feat-level-${level}`,
+    filters: {
+      itemType: "feat",
+      featTypes: ["class", "archetype"],
+      maxLevel: level,
+    },
+  }));
 }
 
 export async function buildClassBranchSteps(params: BuildClassBranchStepsParams): Promise<PendingStep[]> {
@@ -264,11 +307,12 @@ function choiceTitle(choice: ClassChoiceMeta, localize: (value: string) => strin
 }
 
 function buildClassChoiceDescription(choice: ClassChoiceMeta): string {
+  const classLabel = choice.classSlug ? formatSlug(choice.classSlug).toLowerCase() : "class";
   if (choice.flag === "sanctification") {
-    return "Choose the sanctification your deity allows for this cleric.";
+    return `Choose the sanctification your deity allows for this ${classLabel}.`;
   }
   if (choice.flag === "divineFont") {
-    return "Choose the divine font your deity grants for this cleric.";
+    return `Choose the divine font your deity grants for this ${classLabel}.`;
   }
   return `Choose the ${formatSlug(choice.flag).toLowerCase()} this class feature grants.`;
 }
@@ -389,6 +433,7 @@ function extractClassBranchMeta(
     flag: String(choiceRule.flag),
     optionTag,
     classSlug,
+    dependsOn: referencesDeity(choiceRule) || optionTag === "champion-cause" ? "deity" : "class",
     slotId: `class-branch-${selectorSlug}-level-${level}`,
   };
 }
@@ -453,7 +498,8 @@ function extractClassChoiceMeta(
   const level = Number(sourceDocument?.system?.level?.value ?? 1) || 1;
 
   return rules.flatMap((rule: any, ruleIndex: number) => {
-    if (rule?.key !== "ChoiceSet" || typeof rule?.flag !== "string" || !Array.isArray(rule?.choices)) {
+    const selectionKey = extractClassChoiceKey(rule);
+    if (rule?.key !== "ChoiceSet" || !selectionKey || !Array.isArray(rule?.choices)) {
       return [];
     }
 
@@ -477,19 +523,30 @@ function extractClassChoiceMeta(
 
     return [
       {
-        slotId: `class-choice-${sourceSlug}-${String(rule.flag)}-level-${level}`,
+        slotId: `class-choice-${sourceSlug}-${selectionKey}-level-${level}`,
         sourcePackId: sourceSelection.packId,
         sourceDocumentId: sourceSelection.documentId,
         sourceUuid: sourceSelection.uuid,
         sourceName: sourceDocument.name ?? sourceSelection.name,
         sourceRuleIndex: ruleIndex,
-        flag: String(rule.flag),
+        flag: selectionKey,
         classSlug: args.classSlug,
         dependsOn,
         options,
       } satisfies ClassChoiceMeta,
     ];
   });
+}
+
+function extractClassChoiceKey(rule: any): string | null {
+  const candidates = [rule?.flag, rule?.slug, rule?.rollOption];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return null;
 }
 
 function buildChoiceRollOptions(deityDocument: any | null): Set<string> {

@@ -8,6 +8,8 @@ const EMPTY_OPTION_CONTEXT = {
     ancestryTraits: [],
     heritageTraits: [],
     classSlug: null,
+    deitySelected: false,
+    sanctification: null,
     hasDedicationFeat: false,
 };
 export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
@@ -138,6 +140,14 @@ export function getPickerBlockedState(step, context) {
                     message: "Class feat options are filtered from the drafted class. Pick the class step before reviewing class feats.",
                 };
         case "class-branch":
+            if (step.branch?.dependsOn === "deity" && !context.deitySelected) {
+                return {
+                    tone: "blocked",
+                    eyebrow: "Prerequisite required",
+                    title: "Choose a deity first",
+                    message: "This class path depends on the drafted deity and sanctification state. Resolve the deity step before reviewing these branch options.",
+                };
+            }
             return context.classSlug
                 ? null
                 : {
@@ -266,7 +276,10 @@ function extractEntrySlug(entry) {
     return stringOrNull(entry?.system?.slug) ?? stringOrNull(entry?.system?.ancestry?.slug) ?? slugifyName(entry?.name);
 }
 function extractEntryTraits(entry) {
-    return normalizeTraitList(entry?.system?.traits?.value);
+    return Array.from(new Set([
+        ...normalizeTraitList(entry?.system?.traits?.value),
+        ...normalizeTraitList(entry?.system?.traits?.otherTags),
+    ]));
 }
 function resolveFeatType(entry) {
     return stringOrNull(entry?.system?.featType?.value) ?? stringOrNull(entry?.system?.category);
@@ -332,6 +345,20 @@ function matchesClassBranchContext(entry, step, context) {
         return false;
     }
     const traits = extractEntryTraits(entry);
+    if (branch.optionTag === "champion-cause") {
+        const sanctification = context.sanctification ?? null;
+        const isHoly = traits.includes("holy");
+        const isUnholy = traits.includes("unholy");
+        if (sanctification === "holy" && isUnholy) {
+            return false;
+        }
+        if (sanctification === "unholy" && isHoly) {
+            return false;
+        }
+        if ((sanctification === null || sanctification === "none") && (isHoly || isUnholy)) {
+            return false;
+        }
+    }
     return !branch.classSlug || traits.length === 0 || traits.includes(branch.classSlug);
 }
 function normalizeTraitList(value) {

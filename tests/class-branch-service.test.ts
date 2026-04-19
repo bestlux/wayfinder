@@ -38,6 +38,7 @@ describe("class-branch-service", () => {
           flag: "arcaneSchool",
           optionTag: "wizard-arcane-school",
           classSlug: "wizard",
+          dependsOn: "class",
         },
       },
     ];
@@ -88,6 +89,7 @@ describe("class-branch-service", () => {
           flag: "arcaneThesis",
           optionTag: "wizard-arcane-thesis",
           classSlug: "wizard",
+          dependsOn: "class",
         },
         "class-branch-arcane-thesis-level-1"
       )
@@ -133,6 +135,7 @@ describe("class-branch-service", () => {
           flag: "arcaneSchool",
           optionTag: "wizard-arcane-school",
           classSlug: "wizard",
+          dependsOn: "class",
         },
       },
     ];

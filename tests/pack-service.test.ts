@@ -12,6 +12,8 @@ const EMPTY_CONTEXT: OptionContext = {
   ancestryTraits: [],
   heritageTraits: [],
   classSlug: null,
+  deitySelected: false,
+  sanctification: null,
   hasDedicationFeat: false,
 };
 
@@ -222,6 +224,7 @@ describe("pack-service dependency filtering", () => {
           flag: "roguesRacket",
           optionTag: "rogue-racket",
           classSlug: "rogue",
+          dependsOn: "class",
         },
       },
       {
@@ -272,6 +275,7 @@ describe("pack-service dependency filtering", () => {
           flag: "arcaneSchool",
           optionTag: "wizard-arcane-school",
           classSlug: "wizard",
+          dependsOn: "class",
         },
       },
       {
@@ -305,6 +309,7 @@ describe("pack-service dependency filtering", () => {
           flag: "arcaneThesis",
           optionTag: "wizard-arcane-thesis",
           classSlug: "wizard",
+          dependsOn: "class",
         },
       },
       {
@@ -326,6 +331,68 @@ describe("pack-service dependency filtering", () => {
       "Compendium.pf2e.classfeatures.Item.spell-blending",
       "Compendium.pf2e.classfeatures.Item.staff-nexus",
     ]);
+  });
+
+  it("filters champion causes by the effective sanctification state", async () => {
+    setPack("pf2e.classfeatures", [
+      classFeatureEntry("justice", "Justice", ["champion"], ["champion-cause"]),
+      classFeatureEntry("liberation", "Liberation", ["champion"], ["champion-cause"]),
+      classFeatureEntry("redemption", "Redemption", ["champion"], ["champion-cause", "holy"]),
+      classFeatureEntry("grandeur", "Grandeur", ["champion"], ["champion-cause", "holy"]),
+      classFeatureEntry("desecration", "Desecration", ["champion"], ["champion-cause", "unholy"]),
+      classFeatureEntry("iniquity", "Iniquity", ["champion"], ["champion-cause", "unholy"]),
+    ]);
+
+    const step: PendingStep = {
+      id: "class-branch-cause-level-1",
+      level: 1,
+      kind: "class-branch",
+      slotKind: "class-branch",
+      title: "Cause",
+      description: "Choose a cause.",
+      required: true,
+      slotId: "class-branch-cause-level-1",
+      filters: {
+        itemType: "feat",
+        featTypes: ["classfeature"],
+        maxLevel: 1,
+      },
+      branch: {
+        slotId: "class-branch-cause-level-1",
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "cause",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.cause",
+        selectorName: "Cause",
+        selectorRuleIndex: 0,
+        flag: "cause",
+        optionTag: "champion-cause",
+        classSlug: "champion",
+        dependsOn: "deity",
+      },
+    };
+
+    const unresolvedOptions = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "champion",
+      deitySelected: true,
+      sanctification: null,
+    });
+    const holyOptions = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "champion",
+      deitySelected: true,
+      sanctification: "holy",
+    });
+    const unholyOptions = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "champion",
+      deitySelected: true,
+      sanctification: "unholy",
+    });
+
+    expect(unresolvedOptions.map((option) => option.name)).toEqual(["Justice", "Liberation"]);
+    expect(holyOptions.map((option) => option.name)).toEqual(["Grandeur", "Justice", "Liberation", "Redemption"]);
+    expect(unholyOptions.map((option) => option.name)).toEqual(["Desecration", "Iniquity", "Justice", "Liberation"]);
   });
 
   it("distinguishes blocked, empty-source, and search-empty picker states", () => {
@@ -361,6 +428,43 @@ describe("pack-service dependency filtering", () => {
         "zzz"
       )?.tone
     ).toBe("search");
+  });
+
+  it("blocks deity-dependent class branches until a deity is chosen", () => {
+    const step: PendingStep = {
+      id: "class-branch-cause-level-1",
+      level: 1,
+      kind: "class-branch",
+      slotKind: "class-branch",
+      title: "Cause",
+      description: "Choose a cause.",
+      required: true,
+      slotId: "class-branch-cause-level-1",
+      filters: {
+        itemType: "feat",
+        featTypes: ["classfeature"],
+      },
+      branch: {
+        slotId: "class-branch-cause-level-1",
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "cause",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.cause",
+        selectorName: "Cause",
+        selectorRuleIndex: 0,
+        flag: "cause",
+        optionTag: "champion-cause",
+        classSlug: "champion",
+        dependsOn: "deity",
+      },
+    };
+
+    expect(
+      getPickerBlockedState(step, {
+        ...EMPTY_CONTEXT,
+        classSlug: "champion",
+        deitySelected: false,
+      })?.tone
+    ).toBe("blocked");
   });
 });
 

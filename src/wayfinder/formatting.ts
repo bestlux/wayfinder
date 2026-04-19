@@ -73,6 +73,29 @@ export function buildPreviewDetails(document: any): DetailRow[] {
             : null
         ),
       ].filter(Boolean) as DetailRow[];
+    case "spell":
+      return [
+        row(
+          "Rank",
+          Array.isArray(system.traits?.value) && system.traits.value.includes("cantrip")
+            ? "Cantrip"
+            : system.level?.value
+        ),
+        row(
+          "Traditions",
+          Array.isArray(system.traits?.traditions)
+            ? system.traits.traditions.map((value: string) => formatSlug(value)).join(", ")
+            : null
+        ),
+        row(
+          "Cast",
+          system.time?.value
+            ? formatActions({ actionType: { value: "action" }, actions: { value: system.time.value } })
+            : null
+        ),
+        row("Range", system.range?.value),
+        row("Duration", system.duration?.value),
+      ].filter(Boolean) as DetailRow[];
     default:
       return [row("Level", system.level?.value)].filter(Boolean) as DetailRow[];
   }

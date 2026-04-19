@@ -16,6 +16,7 @@ export async function buildBoostPane(step, effectiveBuildState, deps) {
         isSkillIncrease: false,
         isSkillTraining: false,
         isClassChoice: false,
+        isSpellChoice: false,
         stepId: step.id,
         slotId: step.slotId,
         level: step.level,

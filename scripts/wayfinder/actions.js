@@ -50,6 +50,7 @@ export function parseWayfinderAction(element) {
         case "preview-option":
         case "select-option":
         case "select-class-choice":
+        case "toggle-spell-choice":
             return element.dataset.stepId && element.dataset.value
                 ? { type: action, stepId: element.dataset.stepId, value: element.dataset.value }
                 : null;

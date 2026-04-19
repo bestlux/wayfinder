@@ -10,6 +10,7 @@ export function buildPickItemPane(args) {
         isSkillIncrease: false,
         isSkillTraining: false,
         isClassChoice: false,
+        isSpellChoice: false,
         stepId: step.id,
         slotId: step.slotId,
         level: step.level,

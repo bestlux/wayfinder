@@ -1,6 +1,6 @@
 import type { AbilityKey, BoostDraftState, DraftState, ModuleState } from "./types.js";
 
-const DRAFT_VERSION = 3;
+const DRAFT_VERSION = 4;
 const STATE_VERSION = 1;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
@@ -14,6 +14,7 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     skillTrainings: {},
     branchSelections: {},
     classChoices: {},
+    spellChoices: {},
     updatedAt: null,
   };
 }
@@ -40,6 +41,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
     branchSelections: sanitizeSelections(draft.branchSelections),
     classChoices: sanitizeClassChoices(draft.classChoices),
+    spellChoices: sanitizeSpellChoices(draft.spellChoices),
     updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
   };
 }
@@ -156,6 +158,74 @@ function sanitizeClassChoices(raw: unknown): Record<string, string> {
       .filter(([, value]) => typeof value === "string" && value.trim())
       .map(([slotId, value]) => [slotId, String(value).trim()])
   );
+}
+
+function sanitizeSpellChoices(raw: unknown): DraftState["spellChoices"] {
+  if (!isRecord(raw)) {
+    return {};
+  }
+
+  const result: DraftState["spellChoices"] = {};
+  for (const [slotId, value] of Object.entries(raw)) {
+    if (!Array.isArray(value)) {
+      continue;
+    }
+
+    const selections = value
+      .map((entry) => sanitizeSpellSelection(slotId, entry))
+      .filter((entry): entry is NonNullable<typeof entry> => !!entry);
+    if (selections.length > 0) {
+      result[slotId] = dedupeSelections(selections);
+    }
+  }
+
+  return result;
+}
+
+function sanitizeSpellSelection(slotId: string, value: unknown): DraftState["selections"][string] | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const selection = value as Record<string, unknown>;
+  const packId = selection.packId;
+  const documentId = selection.documentId;
+  const uuid = selection.uuid;
+  const name = selection.name;
+  if (
+    typeof packId !== "string" ||
+    typeof documentId !== "string" ||
+    typeof uuid !== "string" ||
+    typeof name !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    slotId,
+    packId,
+    documentId,
+    uuid: normalizeCompendiumItemUuid(packId, documentId, uuid),
+    itemType: typeof selection.itemType === "string" ? selection.itemType : "spell",
+    featType: typeof selection.featType === "string" ? selection.featType : null,
+    name,
+    level: typeof selection.level === "number" ? clampLevel(selection.level) : null,
+  };
+}
+
+function dedupeSelections<T extends DraftState["selections"][string]>(selections: T[]): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const selection of selections) {
+    if (seen.has(selection.uuid)) {
+      continue;
+    }
+
+    seen.add(selection.uuid);
+    result.push(selection);
+  }
+
+  return result;
 }
 
 function normalizeCompendiumItemUuid(packId: string, documentId: string, uuid: string): string {

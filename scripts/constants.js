@@ -22,6 +22,7 @@ export const OFFICIAL_PACKS = {
     deity: ["pf2e.deities"],
     feat: ["pf2e.feats-srd"],
     classFeature: ["pf2e.classfeatures"],
+    spell: ["pf2e.spells-srd"],
 };
 export const SKILL_LABELS = {
     acrobatics: "Acrobatics",

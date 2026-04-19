@@ -4,6 +4,7 @@ import { applyClassFeatureChoiceDraft, stripPreselectedClassFeatureEntries } fro
 import { MODULE_ID } from "./constants.js";
 import { fetchSelectionDocument } from "./pack-service.js";
 import type { DraftState, PendingStep, SelectionRef } from "./types.js";
+import { findSpellcastingEntryForChoice, wizardMaxSpellRank } from "./wayfinder/spell-choice-service.js";
 
 const SINGLETON_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 
@@ -34,6 +35,7 @@ export async function applyDraftToActor(actor: any, draft: DraftState, steps: Pe
     await insertFeatSelection(actor, selection, step ?? null);
   }
 
+  await applySpellChoiceDraft(actor, draft, steps);
   await applyBoostDraft(actor, draft);
   await applySkillIncreaseDraft(actor, draft, projectedTrainingRanks);
 
@@ -310,6 +312,277 @@ async function stampSelectionFlags(actor: any, items: any[], selection: Selectio
   }
 }
 
+async function applySpellChoiceDraft(actor: any, draft: DraftState, steps: PendingStep[]): Promise<void> {
+  const stepMap = new Map(steps.map((step) => [step.slotId, step]));
+
+  for (const [slotId, selections] of Object.entries(draft.spellChoices)) {
+    const step = stepMap.get(slotId);
+    if (step?.kind !== "spell-choice" || !step.spellChoice || selections.length === 0) {
+      continue;
+    }
+
+    const entry = await ensureSpellcastingEntry(actor, step, draft);
+    if (!entry?.id) {
+      continue;
+    }
+
+    await reconcileSpellChoiceSlot(actor, slotId, selections);
+
+    for (const selection of selections) {
+      if (hasSourceId(actor, selection.uuid)) {
+        continue;
+      }
+
+      const source = await createEmbeddedSource(selection);
+      if (!source) {
+        continue;
+      }
+
+      source.system ??= {};
+      source.system.location ??= {};
+      if (typeof source.system.location === "object" && source.system.location !== null) {
+        source.system.location.value = entry.id;
+      } else {
+        source.system.location = { value: entry.id };
+      }
+
+      const created = await actor.createEmbeddedDocuments("Item", [source]);
+      await stampSelectionFlags(actor, created, selection);
+    }
+  }
+}
+
+async function ensureSpellcastingEntry(actor: any, step: PendingStep, draft: DraftState): Promise<any | null> {
+  const spellChoice = step.spellChoice;
+  if (!spellChoice) {
+    return null;
+  }
+
+  const desiredSource = createSpellcastingEntrySource(spellChoice, actor, draft);
+  const existing = findSpellcastingEntryForChoice(actor, spellChoice);
+  if (existing?.id) {
+    await syncSpellcastingEntry(actor, existing, desiredSource);
+    return existing;
+  }
+
+  const [created] = await actor.createEmbeddedDocuments("Item", [desiredSource]);
+  return created ?? null;
+}
+
+function createSpellcastingEntrySource(
+  spellChoice: NonNullable<PendingStep["spellChoice"]>,
+  actor: any,
+  draft: DraftState
+): Record<string, unknown> {
+  return {
+    name: spellChoice.destination.entryName,
+    type: "spellcastingEntry",
+    img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
+    system: {
+      ability: {
+        value: spellChoice.destination.ability,
+      },
+      autoHeightenLevel: {
+        value: null,
+      },
+      description: {
+        value: "",
+      },
+      prepared: {
+        flexible: false,
+        value: spellChoice.destination.prepared,
+      },
+      proficiency: {
+        slug: "",
+        value: 1,
+      },
+      publication: {
+        license: "ORC",
+        remaster: true,
+        title: "",
+      },
+      rules: [],
+      showSlotlessLevels: {
+        value: true,
+      },
+      slots: buildSpellcastingEntrySlots(spellChoice, actor, draft),
+      slug: null,
+      spelldc: {
+        dc: 0,
+        value: 0,
+      },
+      tradition: {
+        value: spellChoice.destination.tradition,
+      },
+      traits: {},
+    },
+    flags: {
+      [MODULE_ID]: {
+        importedBy: MODULE_ID,
+        destinationKey: spellChoice.destination.key,
+      },
+    },
+  };
+}
+
+async function syncSpellcastingEntry(actor: any, entry: any, desiredSource: Record<string, unknown>): Promise<void> {
+  if (!entry?.id || typeof actor?.updateEmbeddedDocuments !== "function") {
+    return;
+  }
+
+  const desiredSystem = desiredSource.system as Record<string, any>;
+  const desiredFlags = desiredSource.flags as Record<string, any>;
+  const mergedSlots = mergeSpellcastingEntrySlots(entry?.system?.slots, desiredSystem.slots);
+  await actor.updateEmbeddedDocuments("Item", [
+    {
+      _id: entry.id,
+      "system.ability.value": desiredSystem.ability?.value ?? "",
+      "system.prepared.flexible": desiredSystem.prepared?.flexible ?? false,
+      "system.prepared.value": desiredSystem.prepared?.value ?? "",
+      "system.showSlotlessLevels.value": desiredSystem.showSlotlessLevels?.value ?? true,
+      "system.slots": mergedSlots,
+      "system.tradition.value": desiredSystem.tradition?.value ?? "",
+      [`flags.${MODULE_ID}.destinationKey`]: desiredFlags?.[MODULE_ID]?.destinationKey ?? null,
+      [`flags.${MODULE_ID}.importedBy`]: desiredFlags?.[MODULE_ID]?.importedBy ?? MODULE_ID,
+    },
+  ]);
+}
+
+function buildSpellcastingEntrySlots(
+  spellChoice: NonNullable<PendingStep["spellChoice"]>,
+  actor: any,
+  draft: DraftState
+): Record<string, { max: number; value: number; prepared: Array<{ id: string | null; expended: boolean }> }> {
+  if (spellChoice.destination.key === "wizard-arcane-prepared") {
+    return buildWizardSpellcastingSlots(actor, draft);
+  }
+
+  return {};
+}
+
+function buildWizardSpellcastingSlots(
+  actor: any,
+  draft: DraftState
+): Record<string, { max: number; value: number; prepared: Array<{ id: string | null; expended: boolean }> }> {
+  const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
+  const maxRank = wizardMaxSpellRank(currentLevel);
+  const schoolName = getEffectiveWizardSchoolName(actor, draft);
+  const hasCurriculum = !isUnifiedMagicalTheorySchool(schoolName);
+  const cantripSlots = hasCurriculum ? 6 : 5;
+  const rankSlots = hasCurriculum ? 3 : 2;
+  const slots: Record<
+    string,
+    {
+      max: number;
+      value: number;
+      prepared: Array<{ id: string | null; expended: boolean }>;
+    }
+  > = {};
+
+  slots.slot0 = makePreparedSlotGroup(cantripSlots);
+  for (let rank = 1; rank <= maxRank; rank += 1) {
+    slots[`slot${rank}`] = makePreparedSlotGroup(rankSlots);
+  }
+
+  return slots;
+}
+
+function makePreparedSlotGroup(count: number): {
+  max: number;
+  value: number;
+  prepared: Array<{ id: string | null; expended: boolean }>;
+} {
+  return {
+    max: count,
+    value: count,
+    prepared: Array.from({ length: count }, () => ({ id: null, expended: false })),
+  };
+}
+
+async function reconcileSpellChoiceSlot(actor: any, slotId: string, selections: SelectionRef[]): Promise<void> {
+  if (typeof actor?.deleteEmbeddedDocuments !== "function") {
+    return;
+  }
+
+  const desiredCounts = new Map<string, number>();
+  for (const selection of selections) {
+    desiredCounts.set(selection.uuid, (desiredCounts.get(selection.uuid) ?? 0) + 1);
+  }
+
+  const matchedCounts = new Map<string, number>();
+  const obsoleteIds: string[] = [];
+  for (const item of listActorItems(actor).filter(
+    (candidate: any) => candidate?.type === "spell" && candidate?.flags?.[MODULE_ID]?.slotId === slotId
+  )) {
+    if (!item?.id) {
+      continue;
+    }
+
+    const sourceId = itemSourceId(item);
+    if (!sourceId) {
+      obsoleteIds.push(item.id);
+      continue;
+    }
+
+    const desiredCount = desiredCounts.get(sourceId) ?? 0;
+    const matched = matchedCounts.get(sourceId) ?? 0;
+    if (matched >= desiredCount) {
+      obsoleteIds.push(item.id);
+      continue;
+    }
+
+    matchedCounts.set(sourceId, matched + 1);
+  }
+
+  if (obsoleteIds.length > 0) {
+    await actor.deleteEmbeddedDocuments("Item", obsoleteIds);
+  }
+}
+
+function mergeSpellcastingEntrySlots(
+  existingSlots: Record<string, any> | null | undefined,
+  desiredSlots: Record<string, any>
+) {
+  const merged: Record<string, any> = {};
+
+  for (const [slotKey, desiredGroup] of Object.entries(desiredSlots ?? {})) {
+    const desiredMax = Number(desiredGroup?.max ?? 0);
+    const existingGroup = existingSlots?.[slotKey];
+    const existingPrepared = Array.isArray(existingGroup?.prepared) ? existingGroup.prepared : [];
+    const desiredPrepared = Array.from({ length: desiredMax }, (_, index) => {
+      const slot = existingPrepared[index];
+      return {
+        id: typeof slot?.id === "string" || slot?.id === null ? slot.id : null,
+        expended: Boolean(slot?.expended),
+      };
+    });
+
+    merged[slotKey] = {
+      max: desiredMax,
+      value: Math.min(desiredMax, Math.max(0, Number(existingGroup?.value ?? desiredGroup?.value ?? desiredMax) || 0)),
+      prepared: desiredPrepared,
+    };
+  }
+
+  return merged;
+}
+
+function getEffectiveWizardSchoolName(actor: any, draft: DraftState): string | null {
+  const createdSchool = listActorItems(actor).find(
+    (item: any) => item?.flags?.[MODULE_ID]?.slotId === "class-branch-arcane-school-level-1"
+  );
+  if (typeof createdSchool?.name === "string" && createdSchool.name.trim()) {
+    return createdSchool.name;
+  }
+
+  const draftedSchool = draft.branchSelections["class-branch-arcane-school-level-1"];
+  return typeof draftedSchool?.name === "string" && draftedSchool.name.trim() ? draftedSchool.name : null;
+}
+
+function isUnifiedMagicalTheorySchool(name: string | null): boolean {
+  return slugifyName(name) === "school-of-unified-magical-theory";
+}
+
 function orderSelections(draft: DraftState, steps: PendingStep[]): SelectionRef[] {
   const order = new Map<string, number>();
   steps.forEach((step, index) => order.set(step.slotId, index));
@@ -324,11 +597,12 @@ function hasSourceId(actor: any, sourceId: string): boolean {
 }
 
 function itemMatchesSourceId(item: any, sourceId: string): boolean {
-  return (
-    item?.sourceId === sourceId ||
-    item?.flags?.core?.sourceId === sourceId ||
-    item?._stats?.compendiumSource === sourceId
-  );
+  return itemSourceId(item) === sourceId;
+}
+
+function itemSourceId(item: any): string | null {
+  const sourceId = item?.sourceId ?? item?.flags?.core?.sourceId ?? item?._stats?.compendiumSource ?? null;
+  return typeof sourceId === "string" && sourceId.length > 0 ? sourceId : null;
 }
 
 function cloneData<T>(value: T): T {
@@ -337,6 +611,19 @@ function cloneData<T>(value: T): T {
   }
 
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function slugifyName(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || null;
 }
 
 async function applyBoostDraft(actor: any, draft: DraftState): Promise<void> {

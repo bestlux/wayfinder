@@ -395,6 +395,61 @@ describe("pack-service dependency filtering", () => {
     expect(unholyOptions.map((option) => option.name)).toEqual(["Desecration", "Iniquity", "Justice", "Liberation"]);
   });
 
+  it("filters spell-choice options to legal arcane ranks and curriculum names", async () => {
+    setPack("pf2e.spells-srd", [
+      spellEntry("shield", "Shield", 1, ["arcane"], ["cantrip"]),
+      spellEntry("force-barrage", "Force Barrage", 1, ["arcane"], []),
+      spellEntry("mystic-armor", "Mystic Armor", 1, ["arcane"], []),
+      spellEntry("heal", "Heal", 1, ["divine"], []),
+      spellEntry("fireball", "Fireball", 3, ["arcane"], []),
+    ]);
+
+    const options = await getOptionsForStep(
+      {
+        id: "spell-choice-wizard-curriculum-rank-1-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Arcane school curriculum spells",
+        description: "",
+        required: true,
+        slotId: "spell-choice-wizard-curriculum-rank-1-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: {
+          slotId: "spell-choice-wizard-curriculum-rank-1-level-1",
+          sourcePackId: "pf2e.classfeatures",
+          sourceDocumentId: "school-of-battle-magic",
+          sourceUuid: "Compendium.pf2e.classfeatures.Item.school-of-battle-magic",
+          sourceName: "School of Battle Magic",
+          classSlug: "wizard",
+          dependsOn: "class-branch",
+          destination: {
+            type: "spellbook",
+            key: "wizard-arcane-prepared",
+            label: "Wizard spellbook",
+            entryName: "Arcane Prepared Spells",
+            tradition: "arcane",
+            ability: "int",
+            prepared: "prepared",
+          },
+          count: 2,
+          minRank: 1,
+          maxRank: 1,
+          cantrip: false,
+          curriculumSpellNames: ["Force Barrage", "Mystic Armor"],
+        },
+      },
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "wizard",
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Force Barrage", "Mystic Armor"]);
+  });
+
   it("distinguishes blocked, empty-source, and search-empty picker states", () => {
     const heritageStep = makeStep("heritage", {
       itemType: "heritage",
@@ -590,6 +645,29 @@ function classFeatureEntry(slug: string, name: string, traits: string[], otherTa
         rarity: "common",
         value: traits,
         otherTags,
+      },
+      publication: {
+        title: "Player Core",
+      },
+    },
+  };
+}
+
+function spellEntry(slug: string, name: string, level: number, traditions: string[], traits: string[]): any {
+  return {
+    _id: slug,
+    name,
+    img: `${slug}.webp`,
+    type: "spell",
+    system: {
+      slug,
+      level: {
+        value: level,
+      },
+      traits: {
+        rarity: "common",
+        traditions,
+        value: traits,
       },
       publication: {
         title: "Player Core",

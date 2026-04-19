@@ -4,12 +4,13 @@ import { formatSlug } from "./formatting.js";
 import { isAncestryBoostSectionComplete, isBackgroundBoostSectionComplete, isClassBoostSectionComplete, remainingCreationBoostChoices, } from "./panes/boost-pane.js";
 export async function buildWayfinderPlan(snapshot, draft, deps) {
     const plan = buildProgressionPlan(snapshot, draft.targetLevel);
-    const [classFeatSteps, trainingSteps, branchSteps, grantedItemSteps, classChoiceSteps] = await Promise.all([
+    const [classFeatSteps, trainingSteps, branchSteps, grantedItemSteps, classChoiceSteps, spellChoiceSteps] = await Promise.all([
         deps.buildClassFeatSteps(snapshot, draft, plan.targetLevel),
         deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
         deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
         deps.buildClassGrantedItemSteps(snapshot, draft, plan.targetLevel),
         deps.buildClassChoiceSteps(snapshot, draft, plan.targetLevel),
+        deps.buildSpellChoiceSteps(snapshot, draft, plan.targetLevel),
     ]);
     return {
         ...plan,
@@ -20,6 +21,7 @@ export async function buildWayfinderPlan(snapshot, draft, deps) {
             ...trainingSteps,
             ...branchSteps,
             ...classChoiceSteps,
+            ...spellChoiceSteps,
         ]),
     };
 }
@@ -53,6 +55,9 @@ export async function isWayfinderStepComplete(step, draft, effectiveBuildState, 
     }
     if (step.kind === "class-choice") {
         return typeof draft.classChoices[step.slotId] === "string" && draft.classChoices[step.slotId].length > 0;
+    }
+    if (step.kind === "spell-choice") {
+        return (draft.spellChoices[step.slotId]?.length ?? 0) >= (step.spellChoice?.count ?? 0);
     }
     if (step.kind === "skill-training") {
         return deps.isTrainingStepComplete(step);
@@ -95,6 +100,14 @@ export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedSte
         const selected = draft.classChoices[step.slotId];
         const selectedOption = step.classChoice?.options.find((option) => option.value === selected);
         return selectedOption?.label ?? "Choose one";
+    }
+    if (step.kind === "spell-choice") {
+        if (recentlyInvalidatedStepIds.has(step.slotId) && (draft.spellChoices[step.slotId]?.length ?? 0) === 0) {
+            return "Needs attention";
+        }
+        const selectedCount = draft.spellChoices[step.slotId]?.length ?? 0;
+        const total = step.spellChoice?.count ?? 0;
+        return selectedCount >= total && total > 0 ? "Ready to apply" : `${selectedCount}/${total} chosen`;
     }
     if (step.kind === "skill-training") {
         if (recentlyInvalidatedStepIds.has(step.slotId) && !deps.isTrainingStepComplete(step)) {
@@ -140,6 +153,8 @@ export function modeLabel(kind) {
             return "Class Path";
         case "class-choice":
             return "Class Choice";
+        case "spell-choice":
+            return "Spells";
         case "boost":
             return "Boosts";
         default:

@@ -7,6 +7,7 @@ export type SlotKind =
   | "skill-training"
   | "class-branch"
   | "class-choice"
+  | "spell-choice"
   | "ancestry-feat"
   | "class-feat"
   | "skill-feat"
@@ -21,6 +22,7 @@ export type StepKind =
   | "skill-increase"
   | "class-branch"
   | "class-choice"
+  | "spell-choice"
   | "skill-training";
 export type AbilityKey = "str" | "dex" | "con" | "int" | "wis" | "cha";
 export type BoostLevel = 1 | 5 | 10 | 15 | 20;
@@ -71,6 +73,7 @@ export interface DraftState {
   skillTrainings: Record<string, SkillTrainingDraft>;
   branchSelections: Record<string, SelectionRef>;
   classChoices: Record<string, string>;
+  spellChoices: Record<string, SelectionRef[]>;
   updatedAt: string | null;
 }
 
@@ -153,6 +156,32 @@ export interface ClassChoiceMeta {
   }>;
 }
 
+export interface SpellChoiceDestination {
+  type: "spellbook";
+  key: string;
+  label: string;
+  entryName: string;
+  tradition: string;
+  ability: string;
+  prepared: "prepared";
+}
+
+export interface SpellChoiceMeta {
+  slotId: string;
+  sourcePackId: string | null;
+  sourceDocumentId: string | null;
+  sourceUuid: string | null;
+  sourceName: string;
+  classSlug: string | null;
+  dependsOn: "class" | "class-branch";
+  destination: SpellChoiceDestination;
+  count: number;
+  minRank: number;
+  maxRank: number;
+  cantrip: boolean;
+  curriculumSpellNames: string[];
+}
+
 export interface PendingStep {
   id: string;
   level: number;
@@ -166,6 +195,7 @@ export interface PendingStep {
   branch?: ClassBranchMeta;
   grantSelection?: ClassGrantMeta;
   classChoice?: ClassChoiceMeta;
+  spellChoice?: SpellChoiceMeta;
   training?: {
     classSlug: string;
     className: string;

@@ -1660,6 +1660,825 @@ describe("actor-updater", () => {
     expect(deityGrant).toBeTruthy();
     expect(createdItems.filter((item) => item?.sourceId === "Compendium.pf2e.deities.Item.gorum")).toHaveLength(1);
   });
+
+  it("creates a wizard spellcasting entry and adds drafted spell choices without duplicates", async () => {
+    const createdItems: any[] = [];
+    let idCounter = 0;
+    const createEmbeddedDocuments = vi.fn(async (_type: string, sources: any[]) => {
+      const created = sources.map((source) => {
+        const item = {
+          id: `created-${++idCounter}`,
+          type: source.type,
+          name: source.name,
+          sourceId: source.flags?.core?.sourceId ?? null,
+          flags: source.flags ?? {},
+          system: source.system ?? {},
+          _stats: source._stats ?? {},
+        };
+        createdItems.push(item);
+        actor.items.contents.push(item);
+        return item;
+      });
+      return created;
+    });
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 1,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Wizard",
+            system: {
+              keyAbility: {
+                value: ["int"],
+                selected: "int",
+              },
+            },
+          },
+        ] as any[],
+      },
+      createEmbeddedDocuments,
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      update: vi.fn(async () => ({})),
+    };
+
+    globalThis.game = {
+      packs: new Map([
+        [
+          "pf2e.spells-srd",
+          {
+            metadata: { id: "pf2e.spells-srd" },
+            async getDocument(documentId: string) {
+              if (documentId !== "magic-missile" && documentId !== "shield") {
+                return null;
+              }
+
+              return {
+                id: documentId,
+                name: documentId === "magic-missile" ? "Magic Missile" : "Shield",
+                toObject: () => ({
+                  name: documentId === "magic-missile" ? "Magic Missile" : "Shield",
+                  type: "spell",
+                  system: {
+                    level: { value: documentId === "shield" ? 1 : 1 },
+                    traits: {
+                      traditions: ["arcane"],
+                      value: documentId === "shield" ? ["cantrip"] : [],
+                    },
+                  },
+                }),
+              };
+            },
+          },
+        ],
+      ]),
+    } as any;
+
+    const draft = createEmptyDraft(1);
+    draft.spellChoices["spell-choice-wizard-spellbook-cantrips-level-1"] = [
+      {
+        slotId: "spell-choice-wizard-spellbook-cantrips-level-1",
+        packId: "pf2e.spells-srd",
+        documentId: "shield",
+        uuid: "Compendium.pf2e.spells-srd.Item.shield",
+        itemType: "spell",
+        featType: null,
+        name: "Shield",
+        level: 1,
+      },
+    ];
+    draft.spellChoices["spell-choice-wizard-spellbook-rank-1-level-1"] = [
+      {
+        slotId: "spell-choice-wizard-spellbook-rank-1-level-1",
+        packId: "pf2e.spells-srd",
+        documentId: "magic-missile",
+        uuid: "Compendium.pf2e.spells-srd.Item.magic-missile",
+        itemType: "spell",
+        featType: null,
+        name: "Magic Missile",
+        level: 1,
+      },
+    ];
+
+    await applyDraftToActor(actor as any, draft, [
+      {
+        id: "spell-choice-wizard-spellbook-cantrips-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Wizard spellbook cantrips",
+        description: "",
+        required: true,
+        slotId: "spell-choice-wizard-spellbook-cantrips-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: wizardSpellChoice("spell-choice-wizard-spellbook-cantrips-level-1", 10, 0, 0, true),
+      },
+      {
+        id: "spell-choice-wizard-spellbook-rank-1-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Wizard spellbook spells",
+        description: "",
+        required: true,
+        slotId: "spell-choice-wizard-spellbook-rank-1-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: wizardSpellChoice("spell-choice-wizard-spellbook-rank-1-level-1", 5, 1, 1, false),
+      },
+    ]);
+
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      expect.objectContaining({
+        name: "Arcane Prepared Spells",
+        type: "spellcastingEntry",
+        system: expect.objectContaining({
+          showSlotlessLevels: {
+            value: true,
+          },
+          slots: expect.objectContaining({
+            slot0: expect.objectContaining({
+              max: 6,
+              prepared: Array.from({ length: 6 }, () => ({ id: null, expended: false })),
+              value: 6,
+            }),
+            slot1: expect.objectContaining({
+              max: 3,
+              prepared: Array.from({ length: 3 }, () => ({ id: null, expended: false })),
+              value: 3,
+            }),
+          }),
+        }),
+        flags: {
+          "pf2e-wayfinder": {
+            importedBy: "pf2e-wayfinder",
+            destinationKey: "wizard-arcane-prepared",
+          },
+        },
+      }),
+    ]);
+
+    const createdSpellSources = createEmbeddedDocuments.mock.calls
+      .slice(1)
+      .flatMap((call) => call[1] as any[])
+      .filter((source) => source.type === "spell");
+    expect(createdSpellSources).toHaveLength(2);
+    expect(createdSpellSources.map((source) => source.system.location.value)).toEqual(["created-1", "created-1"]);
+
+    await applyDraftToActor(actor as any, draft, [
+      {
+        id: "spell-choice-wizard-spellbook-cantrips-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Wizard spellbook cantrips",
+        description: "",
+        required: true,
+        slotId: "spell-choice-wizard-spellbook-cantrips-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: wizardSpellChoice("spell-choice-wizard-spellbook-cantrips-level-1", 10, 0, 0, true),
+      },
+      {
+        id: "spell-choice-wizard-spellbook-rank-1-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Wizard spellbook spells",
+        description: "",
+        required: true,
+        slotId: "spell-choice-wizard-spellbook-rank-1-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: wizardSpellChoice("spell-choice-wizard-spellbook-rank-1-level-1", 5, 1, 1, false),
+      },
+    ]);
+
+    expect(
+      createdItems.filter((item) => item?.sourceId === "Compendium.pf2e.spells-srd.Item.magic-missile")
+    ).toHaveLength(1);
+    expect(createdItems.filter((item) => item?.sourceId === "Compendium.pf2e.spells-srd.Item.shield")).toHaveLength(1);
+  });
+
+  it("preserves existing prepared spells when repairing a wizard spellcasting entry", async () => {
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 1,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Wizard",
+            system: {
+              keyAbility: {
+                value: ["int"],
+                selected: "int",
+              },
+            },
+          },
+          {
+            id: "entry-1",
+            type: "spellcastingEntry",
+            name: "Arcane Prepared Spells",
+            flags: {
+              "pf2e-wayfinder": {
+                destinationKey: "wizard-arcane-prepared",
+                importedBy: "pf2e-wayfinder",
+              },
+            },
+            system: {
+              ability: { value: "int" },
+              prepared: { value: "prepared", flexible: false },
+              tradition: { value: "arcane" },
+              showSlotlessLevels: { value: true },
+              slots: {
+                slot0: {
+                  max: 6,
+                  value: 6,
+                  prepared: Array.from({ length: 6 }, (_, index) => ({
+                    id: index === 0 ? "spell-cantrip-1" : null,
+                    expended: false,
+                  })),
+                },
+                slot1: {
+                  max: 3,
+                  value: 3,
+                  prepared: [
+                    { id: "spell-rank-1", expended: true },
+                    { id: null, expended: false },
+                    { id: null, expended: false },
+                  ],
+                },
+              },
+            },
+          },
+        ] as any[],
+      },
+      createEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments,
+      update: vi.fn(async () => ({})),
+    };
+
+    const draft = createEmptyDraft(1);
+    draft.spellChoices["spell-choice-wizard-spellbook-rank-1-level-1"] = [
+      {
+        slotId: "spell-choice-wizard-spellbook-rank-1-level-1",
+        packId: "pf2e.spells-srd",
+        documentId: "magic-missile",
+        uuid: "Compendium.pf2e.spells-srd.Item.magic-missile",
+        itemType: "spell",
+        featType: null,
+        name: "Magic Missile",
+        level: 1,
+      },
+    ];
+
+    await applyDraftToActor(actor as any, draft, [
+      {
+        id: "spell-choice-wizard-spellbook-rank-1-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Wizard spellbook spells",
+        description: "",
+        required: true,
+        slotId: "spell-choice-wizard-spellbook-rank-1-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: wizardSpellChoice("spell-choice-wizard-spellbook-rank-1-level-1", 5, 1, 1, false),
+      },
+    ]);
+
+    expect(updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      expect.objectContaining({
+        _id: "entry-1",
+        "system.slots": expect.objectContaining({
+          slot0: expect.objectContaining({
+            prepared: Array.from({ length: 6 }, (_, index) => ({
+              id: index === 0 ? "spell-cantrip-1" : null,
+              expended: false,
+            })),
+          }),
+          slot1: expect.objectContaining({
+            prepared: [
+              { id: "spell-rank-1", expended: true },
+              { id: null, expended: false },
+              { id: null, expended: false },
+            ],
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it("replaces obsolete spellbook imports for the same wayfinder slot on reapply", async () => {
+    const createEmbeddedDocuments = vi.fn(async (_type: string, sources: any[]) =>
+      sources.map((source, index) => ({
+        id: `created-${index + 10}`,
+        type: source.type,
+        sourceId: source.flags?.core?.sourceId ?? null,
+        flags: source.flags ?? {},
+        system: source.system ?? {},
+      }))
+    );
+    const deleteEmbeddedDocuments = vi.fn(async (_type: string, ids: string[]) => {
+      actor.items.contents = actor.items.contents.filter((item: any) => !ids.includes(item.id));
+      return [];
+    });
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 1,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Wizard",
+            system: {
+              keyAbility: {
+                value: ["int"],
+                selected: "int",
+              },
+            },
+          },
+          {
+            id: "entry-1",
+            type: "spellcastingEntry",
+            name: "Arcane Prepared Spells",
+            flags: {
+              "pf2e-wayfinder": {
+                destinationKey: "wizard-arcane-prepared",
+                importedBy: "pf2e-wayfinder",
+              },
+            },
+            system: {
+              ability: { value: "int" },
+              prepared: { value: "prepared", flexible: false },
+              tradition: { value: "arcane" },
+              showSlotlessLevels: { value: true },
+              slots: {
+                slot0: {
+                  max: 6,
+                  value: 6,
+                  prepared: Array.from({ length: 6 }, () => ({ id: null, expended: false })),
+                },
+                slot1: {
+                  max: 3,
+                  value: 3,
+                  prepared: Array.from({ length: 3 }, () => ({ id: null, expended: false })),
+                },
+              },
+            },
+          },
+          {
+            id: "old-spell-1",
+            type: "spell",
+            name: "Old Curriculum Spell",
+            sourceId: "Compendium.pf2e.spells-srd.Item.old-curriculum-spell",
+            flags: {
+              core: {
+                sourceId: "Compendium.pf2e.spells-srd.Item.old-curriculum-spell",
+              },
+              "pf2e-wayfinder": {
+                slotId: "spell-choice-wizard-curriculum-rank-1-level-1",
+              },
+            },
+            system: {
+              location: { value: "entry-1" },
+              level: { value: 1 },
+              traits: {
+                traditions: ["arcane"],
+                value: [],
+              },
+            },
+          },
+        ] as any[],
+      },
+      createEmbeddedDocuments,
+      deleteEmbeddedDocuments,
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      update: vi.fn(async () => ({})),
+    };
+
+    globalThis.game = {
+      packs: new Map([
+        [
+          "pf2e.spells-srd",
+          {
+            metadata: { id: "pf2e.spells-srd" },
+            async getDocument(documentId: string) {
+              if (documentId !== "new-curriculum-spell") {
+                return null;
+              }
+
+              return {
+                id: documentId,
+                name: "New Curriculum Spell",
+                toObject: () => ({
+                  name: "New Curriculum Spell",
+                  type: "spell",
+                  system: {
+                    level: { value: 1 },
+                    traits: {
+                      traditions: ["arcane"],
+                      value: [],
+                    },
+                  },
+                }),
+              };
+            },
+          },
+        ],
+      ]),
+    } as any;
+
+    const draft = createEmptyDraft(1);
+    draft.spellChoices["spell-choice-wizard-curriculum-rank-1-level-1"] = [
+      {
+        slotId: "spell-choice-wizard-curriculum-rank-1-level-1",
+        packId: "pf2e.spells-srd",
+        documentId: "new-curriculum-spell",
+        uuid: "Compendium.pf2e.spells-srd.Item.new-curriculum-spell",
+        itemType: "spell",
+        featType: null,
+        name: "New Curriculum Spell",
+        level: 1,
+      },
+    ];
+
+    await applyDraftToActor(actor as any, draft, [
+      {
+        id: "spell-choice-wizard-curriculum-rank-1-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Arcane school curriculum spells",
+        description: "",
+        required: true,
+        slotId: "spell-choice-wizard-curriculum-rank-1-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: {
+          ...wizardSpellChoice("spell-choice-wizard-curriculum-rank-1-level-1", 2, 1, 1, false),
+          dependsOn: "class-branch",
+          curriculumSpellNames: ["New Curriculum Spell"],
+        },
+      },
+    ]);
+
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["old-spell-1"]);
+    expect(createEmbeddedDocuments).toHaveBeenLastCalledWith("Item", [
+      expect.objectContaining({
+        name: "New Curriculum Spell",
+        type: "spell",
+      }),
+    ]);
+  });
+
+  it("creates unified-theory wizard spellcasting entries without curriculum slot bonuses", async () => {
+    const createdItems: any[] = [];
+    let idCounter = 0;
+    const createEmbeddedDocuments = vi.fn(async (_type: string, sources: any[]) => {
+      const created = sources.map((source) => {
+        const item = {
+          id: `created-${++idCounter}`,
+          type: source.type,
+          name: source.name,
+          sourceId: source.flags?.core?.sourceId ?? null,
+          flags: source.flags ?? {},
+          system: source.system ?? {},
+          _stats: source._stats ?? {},
+        };
+        createdItems.push(item);
+        actor.items.contents.push(item);
+        return item;
+      });
+      return created;
+    });
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 1,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Wizard",
+            system: {
+              keyAbility: {
+                value: ["int"],
+                selected: "int",
+              },
+            },
+          },
+        ] as any[],
+      },
+      createEmbeddedDocuments,
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      update: vi.fn(async () => ({})),
+    };
+
+    globalThis.game = {
+      packs: new Map([
+        [
+          "pf2e.spells-srd",
+          {
+            metadata: { id: "pf2e.spells-srd" },
+            async getDocument(documentId: string) {
+              if (documentId !== "magic-missile") {
+                return null;
+              }
+
+              return {
+                id: documentId,
+                name: "Magic Missile",
+                toObject: () => ({
+                  name: "Magic Missile",
+                  type: "spell",
+                  system: {
+                    level: { value: 1 },
+                    traits: {
+                      traditions: ["arcane"],
+                      value: [],
+                    },
+                  },
+                }),
+              };
+            },
+          },
+        ],
+      ]),
+    } as any;
+
+    const draft = createEmptyDraft(1);
+    draft.branchSelections["class-branch-arcane-school-level-1"] = {
+      slotId: "class-branch-arcane-school-level-1",
+      packId: "pf2e.classfeatures",
+      documentId: "xYYhJtGhFSWNifcO",
+      uuid: "Compendium.pf2e.classfeatures.Item.xYYhJtGhFSWNifcO",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "School of Unified Magical Theory",
+      level: 1,
+    };
+    draft.spellChoices["spell-choice-wizard-unified-rank-1-level-1"] = [
+      {
+        slotId: "spell-choice-wizard-unified-rank-1-level-1",
+        packId: "pf2e.spells-srd",
+        documentId: "magic-missile",
+        uuid: "Compendium.pf2e.spells-srd.Item.magic-missile",
+        itemType: "spell",
+        featType: null,
+        name: "Magic Missile",
+        level: 1,
+      },
+    ];
+
+    await applyDraftToActor(actor as any, draft, [
+      {
+        id: "spell-choice-wizard-unified-rank-1-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Unified theory bonus spell",
+        description: "",
+        required: true,
+        slotId: "spell-choice-wizard-unified-rank-1-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: wizardSpellChoice("spell-choice-wizard-unified-rank-1-level-1", 1, 1, 1, false),
+      },
+    ]);
+
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      expect.objectContaining({
+        name: "Arcane Prepared Spells",
+        type: "spellcastingEntry",
+        system: expect.objectContaining({
+          slots: expect.objectContaining({
+            slot0: expect.objectContaining({
+              max: 5,
+              prepared: Array.from({ length: 5 }, () => ({ id: null, expended: false })),
+              value: 5,
+            }),
+            slot1: expect.objectContaining({
+              max: 2,
+              prepared: Array.from({ length: 2 }, () => ({ id: null, expended: false })),
+              value: 2,
+            }),
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it("clamps existing spell slot values when wizard entry capacity shrinks", async () => {
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 1,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Wizard",
+            system: {
+              keyAbility: {
+                value: ["int"],
+                selected: "int",
+              },
+            },
+          },
+          {
+            id: "entry-1",
+            type: "spellcastingEntry",
+            name: "Arcane Prepared Spells",
+            flags: {
+              "pf2e-wayfinder": {
+                destinationKey: "wizard-arcane-prepared",
+                importedBy: "pf2e-wayfinder",
+              },
+            },
+            system: {
+              ability: { value: "int" },
+              prepared: { value: "prepared", flexible: false },
+              tradition: { value: "arcane" },
+              showSlotlessLevels: { value: true },
+              slots: {
+                slot0: {
+                  max: 6,
+                  value: 6,
+                  prepared: Array.from({ length: 6 }, () => ({ id: null, expended: false })),
+                },
+                slot1: {
+                  max: 3,
+                  value: 3,
+                  prepared: Array.from({ length: 3 }, () => ({ id: null, expended: false })),
+                },
+              },
+            },
+          },
+        ] as any[],
+      },
+      createEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments,
+      update: vi.fn(async () => ({})),
+    };
+
+    const draft = createEmptyDraft(1);
+    draft.branchSelections["class-branch-arcane-school-level-1"] = {
+      slotId: "class-branch-arcane-school-level-1",
+      packId: "pf2e.classfeatures",
+      documentId: "xYYhJtGhFSWNifcO",
+      uuid: "Compendium.pf2e.classfeatures.Item.xYYhJtGhFSWNifcO",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "School of Unified Magical Theory",
+      level: 1,
+    };
+    draft.spellChoices["spell-choice-wizard-unified-rank-1-level-1"] = [
+      {
+        slotId: "spell-choice-wizard-unified-rank-1-level-1",
+        packId: "pf2e.spells-srd",
+        documentId: "magic-missile",
+        uuid: "Compendium.pf2e.spells-srd.Item.magic-missile",
+        itemType: "spell",
+        featType: null,
+        name: "Magic Missile",
+        level: 1,
+      },
+    ];
+
+    await applyDraftToActor(actor as any, draft, [
+      {
+        id: "spell-choice-wizard-unified-rank-1-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Unified theory bonus spell",
+        description: "",
+        required: true,
+        slotId: "spell-choice-wizard-unified-rank-1-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: wizardSpellChoice("spell-choice-wizard-unified-rank-1-level-1", 1, 1, 1, false),
+      },
+    ]);
+
+    expect(updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      expect.objectContaining({
+        _id: "entry-1",
+        "system.slots": expect.objectContaining({
+          slot0: expect.objectContaining({
+            max: 5,
+            value: 5,
+          }),
+          slot1: expect.objectContaining({
+            max: 2,
+            value: 2,
+          }),
+        }),
+      }),
+    ]);
+  });
 });
 
 function ancestryItem(): any {
@@ -1716,5 +2535,31 @@ function classItem(): any {
         selected: null,
       },
     },
+  };
+}
+
+function wizardSpellChoice(slotId: string, count: number, minRank: number, maxRank: number, cantrip: boolean): any {
+  return {
+    slotId,
+    sourcePackId: "pf2e.classfeatures",
+    sourceDocumentId: "wizard-spellcasting",
+    sourceUuid: "Compendium.pf2e.classfeatures.Item.wizard-spellcasting",
+    sourceName: "Wizard Spellcasting",
+    classSlug: "wizard",
+    dependsOn: "class",
+    destination: {
+      type: "spellbook",
+      key: "wizard-arcane-prepared",
+      label: "Wizard spellbook",
+      entryName: "Arcane Prepared Spells",
+      tradition: "arcane",
+      ability: "int",
+      prepared: "prepared",
+    },
+    count,
+    minRank,
+    maxRank,
+    cantrip,
+    curriculumSpellNames: [],
   };
 }

@@ -103,6 +103,10 @@
             {{> "modules/pf2e-wayfinder/templates/wayfinder/class-choice-pane.hbs"}}
           {{/if}}
 
+          {{#if activePane.isSpellChoice}}
+            {{> "modules/pf2e-wayfinder/templates/wayfinder/spell-choice-pane.hbs"}}
+          {{/if}}
+
           {{#if activePane.isPickItem}}
             {{> "modules/pf2e-wayfinder/templates/wayfinder/pick-pane.hbs"}}
           {{/if}}

@@ -13,7 +13,7 @@ const EMPTY_OPTION_CONTEXT = {
     hasDedicationFeat: false,
 };
 export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
-    if ((step.kind !== "pick-item" && step.kind !== "class-branch") || !step.filters) {
+    if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {
         return [];
     }
     const packIds = resolvePackIds(step.slotKind);
@@ -165,6 +165,24 @@ export function getPickerBlockedState(step, context) {
                     title: "Choose a class first",
                     message: "Wayfinder only offers deity choices when a drafted class grants them. Pick the class step before reviewing deity options.",
                 };
+        case "spell-choice":
+            if (!context.classSlug) {
+                return {
+                    tone: "blocked",
+                    eyebrow: "Prerequisite required",
+                    title: "Choose a class first",
+                    message: "Wayfinder only offers spellbook choices after the drafted class defines the casting tradition and destination.",
+                };
+            }
+            if (step.spellChoice?.dependsOn === "class-branch" && step.spellChoice.curriculumSpellNames.length === 0) {
+                return {
+                    tone: "blocked",
+                    eyebrow: "Prerequisite required",
+                    title: "Choose an arcane school first",
+                    message: "This spell choice depends on the drafted arcane school. Resolve the school step before reviewing curriculum spells.",
+                };
+            }
+            return null;
         default:
             return null;
     }
@@ -184,6 +202,8 @@ function resolvePackIds(slotKind) {
             return mergePackIds([...OFFICIAL_PACKS.deity], extras);
         case "class-branch":
             return mergePackIds([...OFFICIAL_PACKS.classFeature], extras);
+        case "spell-choice":
+            return mergePackIds([...OFFICIAL_PACKS.spell], extras);
         default:
             return mergePackIds([...OFFICIAL_PACKS.feat], extras);
     }
@@ -202,6 +222,7 @@ async function getPackIndex(pack) {
             "system.ancestry.slug",
             "system.category",
             "system.traits.value",
+            "system.traits.traditions",
             "system.traits.otherTags",
             "system.traits.rarity",
             "system.publication.title",
@@ -239,6 +260,9 @@ function matchesFilters(entry, step, context, traitCatalog) {
     }
     if (step.slotKind === "class-branch") {
         return matchesClassBranchContext(entry, step, context);
+    }
+    if (step.slotKind === "spell-choice") {
+        return matchesSpellChoiceContext(entry, step);
     }
     if (step.slotKind === "ancestry-feat") {
         return matchesAncestryFeatContext(entry, context, traitCatalog);
@@ -361,6 +385,33 @@ function matchesClassBranchContext(entry, step, context) {
     }
     return !branch.classSlug || traits.length === 0 || traits.includes(branch.classSlug);
 }
+function matchesSpellChoiceContext(entry, step) {
+    const spellChoice = step.spellChoice;
+    if (!spellChoice) {
+        return false;
+    }
+    const traditions = Array.isArray(entry?.system?.traits?.traditions)
+        ? entry.system.traits.traditions
+            .filter((value) => typeof value === "string")
+            .map((value) => value.trim().toLowerCase())
+        : [];
+    if (!traditions.includes(spellChoice.destination.tradition)) {
+        return false;
+    }
+    const traits = extractEntryTraits(entry);
+    const isCantrip = traits.includes("cantrip");
+    if (spellChoice.cantrip !== isCantrip) {
+        return false;
+    }
+    const rank = spellChoice.cantrip ? 0 : numericOrNull(entry?.system?.level?.value);
+    if (rank === null || rank < spellChoice.minRank || rank > spellChoice.maxRank) {
+        return false;
+    }
+    if (spellChoice.curriculumSpellNames.length === 0) {
+        return true;
+    }
+    return spellChoice.curriculumSpellNames.some((name) => name.localeCompare(String(entry?.name ?? ""), undefined, { sensitivity: "accent" }) === 0);
+}
 function normalizeTraitList(value) {
     if (!Array.isArray(value)) {
         return [];
@@ -371,6 +422,9 @@ function normalizeTraitList(value) {
         .filter(Boolean)));
 }
 async function getTraitCatalog(slotKind) {
+    if (slotKind === "spell-choice") {
+        return new Set();
+    }
     const cacheKey = slotKind === "class-feat" ? "class" : "ancestry-heritage";
     const cached = traitCatalogCache.get(cacheKey);
     if (cached) {

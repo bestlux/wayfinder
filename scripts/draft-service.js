@@ -1,4 +1,4 @@
-const DRAFT_VERSION = 3;
+const DRAFT_VERSION = 4;
 const STATE_VERSION = 1;
 export function createEmptyDraft(targetLevel = 1) {
     return {
@@ -11,6 +11,7 @@ export function createEmptyDraft(targetLevel = 1) {
         skillTrainings: {},
         branchSelections: {},
         classChoices: {},
+        spellChoices: {},
         updatedAt: null,
     };
 }
@@ -34,6 +35,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
         skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
         branchSelections: sanitizeSelections(draft.branchSelections),
         classChoices: sanitizeClassChoices(draft.classChoices),
+        spellChoices: sanitizeSpellChoices(draft.spellChoices),
         updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
     };
 }
@@ -132,6 +134,62 @@ function sanitizeClassChoices(raw) {
     return Object.fromEntries(Object.entries(raw)
         .filter(([, value]) => typeof value === "string" && value.trim())
         .map(([slotId, value]) => [slotId, String(value).trim()]));
+}
+function sanitizeSpellChoices(raw) {
+    if (!isRecord(raw)) {
+        return {};
+    }
+    const result = {};
+    for (const [slotId, value] of Object.entries(raw)) {
+        if (!Array.isArray(value)) {
+            continue;
+        }
+        const selections = value
+            .map((entry) => sanitizeSpellSelection(slotId, entry))
+            .filter((entry) => !!entry);
+        if (selections.length > 0) {
+            result[slotId] = dedupeSelections(selections);
+        }
+    }
+    return result;
+}
+function sanitizeSpellSelection(slotId, value) {
+    if (!isRecord(value)) {
+        return null;
+    }
+    const selection = value;
+    const packId = selection.packId;
+    const documentId = selection.documentId;
+    const uuid = selection.uuid;
+    const name = selection.name;
+    if (typeof packId !== "string" ||
+        typeof documentId !== "string" ||
+        typeof uuid !== "string" ||
+        typeof name !== "string") {
+        return null;
+    }
+    return {
+        slotId,
+        packId,
+        documentId,
+        uuid: normalizeCompendiumItemUuid(packId, documentId, uuid),
+        itemType: typeof selection.itemType === "string" ? selection.itemType : "spell",
+        featType: typeof selection.featType === "string" ? selection.featType : null,
+        name,
+        level: typeof selection.level === "number" ? clampLevel(selection.level) : null,
+    };
+}
+function dedupeSelections(selections) {
+    const seen = new Set();
+    const result = [];
+    for (const selection of selections) {
+        if (seen.has(selection.uuid)) {
+            continue;
+        }
+        seen.add(selection.uuid);
+        result.push(selection);
+    }
+    return result;
 }
 function normalizeCompendiumItemUuid(packId, documentId, uuid) {
     const canonicalUuid = `Compendium.${packId}.Item.${documentId}`;

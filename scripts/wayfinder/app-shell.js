@@ -13,7 +13,9 @@ import { buildBoostPane, toggleSlotRecordChoice } from "./panes/boost-pane.js";
 import { buildClassChoicePane } from "./panes/class-choice-pane.js";
 import { buildPickItemPane, buildPreview, matchesSearch, resolvePreviewValue, selectedSelection, selectedValueFor, } from "./panes/pick-pane.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane, compareSkillIncreaseSlotIds } from "./panes/skill-pane.js";
+import { buildSpellChoicePane } from "./panes/spell-pane.js";
 import { buildWayfinderPlan, getWayfinderStepStatus, isWayfinderStepComplete, modeLabel, resolveActiveStep, } from "./plan-service.js";
+import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "./spell-choice-service.js";
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
     static DEFAULT_OPTIONS = {
         id: MODULE_ID,
@@ -220,6 +222,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             case "select-class-choice":
                 await this.#selectClassChoice(action.stepId, action.value);
                 break;
+            case "toggle-spell-choice":
+                await this.#toggleSpellChoice(action.stepId, action.value);
+                break;
             case "clear-option":
                 this.#statusNote = null;
                 this.#clearSelection(action.stepId);
@@ -321,6 +326,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 localize: (value) => game.i18n.localize(value),
                 readExistingClassChoiceSelection: (choice) => readExistingClassChoiceSelection(this.actor, choice),
             }),
+            buildSpellChoiceSteps: async (planSnapshot, planDraft, targetLevel) => buildSpellChoiceSteps({
+                draft: planDraft,
+                currentLevel: planSnapshot.level,
+                effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
+                effectiveSchoolDocument: await this.#resolveDraftOrActorArcaneSchoolDocument(),
+                targetLevel,
+                extractSlug: (document) => this.#extractSlug(document),
+                readExistingSpellChoiceSelections: (choice) => readExistingSpellChoiceSelections(this.actor, choice),
+            }),
         });
     }
     async #resolveActiveStep(steps, effectiveBuildState) {
@@ -338,6 +352,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 isSkillIncrease: false,
                 isSkillTraining: false,
                 isClassChoice: false,
+                isSpellChoice: false,
                 stepId: step.id,
                 slotId: step.slotId,
                 level: step.level,
@@ -379,6 +394,39 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 blockedMessage: blocked
                     ? "This class choice depends on the drafted deity. Resolve the deity step before choosing this option."
                     : null,
+            });
+        }
+        if (step.kind === "spell-choice") {
+            const optionContext = await this.#buildOptionContext();
+            const options = await getOptionsForStep(step, optionContext);
+            const search = this.#searchByStepId.get(step.id) ?? "";
+            const filteredOptions = options.filter((option) => matchesSearch(option, search));
+            const infoState = getPickerInfoState(step, optionContext, options.length, filteredOptions.length, search);
+            const visibleOptions = infoState?.tone === "blocked" ? [] : filteredOptions;
+            const contextNote = await this.#buildContextNote(step, optionContext);
+            const selectedSelections = this.#requireDraft().spellChoices[step.slotId] ?? [];
+            const selectedValues = selectedSelections.map((selection) => `${selection.packId}:${selection.documentId}`);
+            const previewValue = resolvePreviewValue(step.id, visibleOptions, options, selectedValues[0] ?? "", this.#previewValueByStepId);
+            const previewBase = previewValue
+                ? await buildPreview(options.find((option) => option.value === previewValue) ?? null, selectedValues.includes(previewValue) ? previewValue : "")
+                : null;
+            const preview = previewBase
+                ? {
+                    ...previewBase,
+                    selectedLabel: selectedValues.includes(previewValue) ? "Added to draft" : "Add to draft",
+                }
+                : null;
+            return buildSpellChoicePane({
+                step,
+                search,
+                selectedSelections,
+                selectedLabel: await this.#stepStatus(step, effectiveBuildState),
+                visibleOptions,
+                infoState,
+                contextNote,
+                preview,
+                modeLabel: modeLabel(step.kind),
+                previewValue,
             });
         }
         const optionContext = await this.#buildOptionContext();
@@ -479,15 +527,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 const branchInvalidated = this.#invalidateBranchSelectionsByPrefix("class-branch-");
                 const classChoiceInvalidated = this.#invalidateClassChoicesByPrefix("class-choice-");
                 const trainingInvalidated = this.#invalidateTrainingSelectionsByPrefix("skill-training-");
+                const spellInvalidated = this.#invalidateSpellChoicesByPrefix("spell-choice-");
                 if (invalidated.length > 0 ||
                     deityInvalidated.length > 0 ||
                     branchInvalidated.length > 0 ||
                     classChoiceInvalidated.length > 0 ||
                     trainingInvalidated.length > 0 ||
+                    spellInvalidated.length > 0 ||
                     boostReset) {
                     this.#statusNote = boostReset
-                        ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, and class feat selections for review."
-                        : "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, and class feat selections for review.";
+                        ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, spell, and class feat selections for review."
+                        : "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, spell, and class feat selections for review.";
                 }
             }
             else if (boostReset) {
@@ -499,6 +549,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             const invalidatedBranches = await this.#invalidateBranchSelectionsByDependency("deity");
             if (invalidatedChoices.length > 0 || invalidatedBranches.length > 0) {
                 this.#statusNote = "Deity changed. Wayfinder marked dependent class choices and class paths for review.";
+            }
+        }
+        if (step.kind === "class-branch" && previousSelection?.uuid !== selection.uuid) {
+            const invalidatedSpells = await this.#invalidateSpellChoicesByDependency("class-branch");
+            if (invalidatedSpells.length > 0 && step.branch?.flag === "arcaneSchool") {
+                this.#statusNote = "Arcane school changed. Wayfinder marked dependent curriculum spell choices for review.";
             }
         }
         this.#previewValueByStepId.set(stepId, rawValue);
@@ -626,6 +682,22 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 return classDocument?.name
                     ? `Showing direct class-feature choices from ${classDocument.name}. Wayfinder will write this directly into the granting class feature on apply.`
                     : null;
+            }
+            case "spell-choice": {
+                const spellChoice = step.spellChoice;
+                if (!spellChoice) {
+                    return null;
+                }
+                if (spellChoice.dependsOn === "class-branch" && spellChoice.curriculumSpellNames.length === 0) {
+                    return "Resolve the arcane school step first so Wayfinder can narrow this list to the chosen curriculum.";
+                }
+                const rankLabel = spellChoice.cantrip
+                    ? "arcane cantrips"
+                    : spellChoice.minRank === spellChoice.maxRank
+                        ? `rank ${spellChoice.maxRank} arcane spells`
+                        : `arcane spells of rank ${spellChoice.minRank} to ${spellChoice.maxRank}`;
+                const sourceLabel = spellChoice.sourceName || "Wizard Spellcasting";
+                return `Showing ${rankLabel} that will be added to the ${spellChoice.destination.label}. Source: ${sourceLabel}. Daily prepared loadouts remain on PF2E's character sheet.`;
             }
             case "skill-feat":
                 return "Showing baseline skill feats. Archetype-tagged skill feats stay hidden until Wayfinder tracks a specific archetype path.";
@@ -769,6 +841,58 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         this.#recentlyInvalidatedStepIds.delete(stepId);
         await this.#moveStep(1);
+    }
+    async #toggleSpellChoice(stepId, rawValue) {
+        this.#statusNote = null;
+        const draft = this.#requireDraft();
+        const plan = await this.#buildPlan();
+        const step = plan.steps.find((entry) => entry.slotId === stepId);
+        if (!step || step.kind !== "spell-choice") {
+            return;
+        }
+        const optionContext = await this.#buildOptionContext();
+        const selection = await resolveSelection(rawValue, step, optionContext);
+        if (!selection) {
+            return;
+        }
+        draft.spellChoices[stepId] ??= [];
+        const current = draft.spellChoices[stepId];
+        const existingIndex = current.findIndex((entry) => entry.uuid === selection.uuid);
+        if (existingIndex !== -1) {
+            current.splice(existingIndex, 1);
+            if (current.length === 0) {
+                delete draft.spellChoices[stepId];
+            }
+            this.#recentlyInvalidatedStepIds.delete(stepId);
+            this.render(false);
+            return;
+        }
+        const selectedElsewhere = Object.entries(draft.spellChoices).some(([slotId, selections]) => {
+            if (slotId === stepId) {
+                return false;
+            }
+            return selections.some((entry) => entry.uuid === selection.uuid);
+        });
+        const existsOnActor = listActorItems(this.actor).some((item) => {
+            const sourceId = item?.sourceId ?? item?.flags?.core?.sourceId ?? item?._stats?.compendiumSource;
+            return item?.type === "spell" && sourceId === selection.uuid;
+        });
+        if (selectedElsewhere || existsOnActor) {
+            ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.DuplicateSelections"));
+            return;
+        }
+        const requiredCount = step.spellChoice?.count ?? 0;
+        if (current.length >= requiredCount) {
+            ui.notifications.warn("This spell choice is already full. Remove one before adding another.");
+            return;
+        }
+        current.push(selection);
+        this.#recentlyInvalidatedStepIds.delete(stepId);
+        if (current.length >= requiredCount) {
+            await this.#moveStep(1);
+            return;
+        }
+        this.render(false);
     }
     async #toggleTrainingSkill(stepId, slug) {
         this.#statusNote = null;
@@ -918,6 +1042,19 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     async #resolveDraftOrActorDocument(itemType) {
         return getEffectiveSingletonDocument(this.actor, this.#requireDraft(), itemType);
     }
+    async #resolveDraftOrActorArcaneSchoolDocument() {
+        const draftSelection = Object.values(this.#requireDraft().branchSelections).find((selection) => /^class-branch-arcane-school-level-\d+$/.test(selection.slotId));
+        if (draftSelection) {
+            return fetchSelectionDocument(draftSelection);
+        }
+        return (listActorItems(this.actor).find((item) => {
+            if (item?.type !== "feat" || item?.system?.category !== "classfeature") {
+                return false;
+            }
+            const otherTags = Array.isArray(item?.system?.traits?.otherTags) ? item.system.traits.otherTags : [];
+            return otherTags.some((tag) => typeof tag === "string" && tag.trim().toLowerCase() === "wizard-arcane-school");
+        }) ?? null);
+    }
     #findDraftSelectionByType(itemType) {
         return Object.values(this.#requireDraft().selections).find((selection) => selection.itemType === itemType) ?? null;
     }
@@ -1022,7 +1159,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const hasBranchSelection = !!draft.branchSelections[slotId];
         const hasTrainingSelection = !!draft.skillTrainings[slotId];
         const hasClassChoice = !!draft.classChoices[slotId];
-        if (!hasItemSelection && !hasBranchSelection && !hasTrainingSelection && !hasClassChoice) {
+        const hasSpellChoices = (draft.spellChoices[slotId]?.length ?? 0) > 0;
+        if (!hasItemSelection && !hasBranchSelection && !hasTrainingSelection && !hasClassChoice && !hasSpellChoices) {
             this.#recentlyInvalidatedStepIds.delete(slotId);
             return 0;
         }
@@ -1030,6 +1168,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         delete draft.branchSelections[slotId];
         delete draft.skillTrainings[slotId];
         delete draft.classChoices[slotId];
+        delete draft.spellChoices[slotId];
         if (slotId === "ancestry-level-1") {
             this.#resetAncestryBoostDraft();
             this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
@@ -1047,6 +1186,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             this.#invalidateBranchSelectionsByPrefix("class-branch-");
             this.#invalidateClassChoicesByPrefix("class-choice-");
             this.#invalidateTrainingSelectionsByPrefix("skill-training-");
+            this.#invalidateSpellChoicesByPrefix("spell-choice-");
             this.#invalidateSelectionsByPrefix("class-feat-level-");
             this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
         }
@@ -1104,6 +1244,27 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 continue;
             }
             invalidated.push(...this.#invalidateSelection(slotId));
+        }
+        return invalidated;
+    }
+    #invalidateSpellChoicesByPrefix(prefix) {
+        const invalidated = [];
+        for (const slotId of Object.keys(this.#requireDraft().spellChoices)) {
+            if (!slotId.startsWith(prefix)) {
+                continue;
+            }
+            invalidated.push(...this.#invalidateSelection(slotId));
+        }
+        return invalidated;
+    }
+    async #invalidateSpellChoicesByDependency(dependency) {
+        const invalidated = [];
+        const plan = await this.#buildPlan();
+        for (const step of plan.steps) {
+            if (step.kind !== "spell-choice" || step.spellChoice?.dependsOn !== dependency) {
+                continue;
+            }
+            invalidated.push(...this.#invalidateSelection(step.slotId));
         }
         return invalidated;
     }

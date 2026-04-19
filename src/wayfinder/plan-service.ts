@@ -23,6 +23,7 @@ interface BuildPlanDependencies {
     targetLevel: number
   ) => Promise<PendingStep[]>;
   buildClassChoiceSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
+  buildSpellChoiceSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
 }
 
 interface StepEvaluationDependencies {
@@ -35,13 +36,15 @@ export async function buildWayfinderPlan(
   deps: BuildPlanDependencies
 ): Promise<ReturnType<typeof buildProgressionPlan>> {
   const plan = buildProgressionPlan(snapshot, draft.targetLevel);
-  const [classFeatSteps, trainingSteps, branchSteps, grantedItemSteps, classChoiceSteps] = await Promise.all([
-    deps.buildClassFeatSteps(snapshot, draft, plan.targetLevel),
-    deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
-    deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
-    deps.buildClassGrantedItemSteps(snapshot, draft, plan.targetLevel),
-    deps.buildClassChoiceSteps(snapshot, draft, plan.targetLevel),
-  ]);
+  const [classFeatSteps, trainingSteps, branchSteps, grantedItemSteps, classChoiceSteps, spellChoiceSteps] =
+    await Promise.all([
+      deps.buildClassFeatSteps(snapshot, draft, plan.targetLevel),
+      deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
+      deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
+      deps.buildClassGrantedItemSteps(snapshot, draft, plan.targetLevel),
+      deps.buildClassChoiceSteps(snapshot, draft, plan.targetLevel),
+      deps.buildSpellChoiceSteps(snapshot, draft, plan.targetLevel),
+    ]);
 
   return {
     ...plan,
@@ -52,6 +55,7 @@ export async function buildWayfinderPlan(
       ...trainingSteps,
       ...branchSteps,
       ...classChoiceSteps,
+      ...spellChoiceSteps,
     ]),
   };
 }
@@ -102,6 +106,10 @@ export async function isWayfinderStepComplete(
 
   if (step.kind === "class-choice") {
     return typeof draft.classChoices[step.slotId] === "string" && draft.classChoices[step.slotId].length > 0;
+  }
+
+  if (step.kind === "spell-choice") {
+    return (draft.spellChoices[step.slotId]?.length ?? 0) >= (step.spellChoice?.count ?? 0);
   }
 
   if (step.kind === "skill-training") {
@@ -161,6 +169,16 @@ export async function getWayfinderStepStatus(
     const selected = draft.classChoices[step.slotId];
     const selectedOption = step.classChoice?.options.find((option) => option.value === selected);
     return selectedOption?.label ?? "Choose one";
+  }
+
+  if (step.kind === "spell-choice") {
+    if (recentlyInvalidatedStepIds.has(step.slotId) && (draft.spellChoices[step.slotId]?.length ?? 0) === 0) {
+      return "Needs attention";
+    }
+
+    const selectedCount = draft.spellChoices[step.slotId]?.length ?? 0;
+    const total = step.spellChoice?.count ?? 0;
+    return selectedCount >= total && total > 0 ? "Ready to apply" : `${selectedCount}/${total} chosen`;
   }
 
   if (step.kind === "skill-training") {
@@ -223,6 +241,8 @@ export function modeLabel(kind: StepKind): string {
       return "Class Path";
     case "class-choice":
       return "Class Choice";
+    case "spell-choice":
+      return "Spells";
     case "boost":
       return "Boosts";
     default:

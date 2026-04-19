@@ -31,6 +31,10 @@
   gap: 0.5rem;
 }
 
+.spell-browser-header-row {
+  justify-content: space-between;
+}
+
 .browser-header h4 {
   margin: 0;
   color: var(--wf-primary);
@@ -47,6 +51,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+.spell-source-note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  color: var(--wf-ink-soft);
+  font-size: 0.68rem;
+  line-height: 1.25;
 }
 
 /* ── Search ────────────────────────────────────────────── */

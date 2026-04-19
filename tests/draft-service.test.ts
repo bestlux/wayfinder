@@ -10,7 +10,7 @@ import {
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 3,
+      version: 4,
       targetLevel: 4,
       selections: {},
       boosts: {
@@ -40,6 +40,7 @@ describe("draft-service", () => {
       skillTrainings: {},
       branchSelections: {},
       classChoices: {},
+      spellChoices: {},
       updatedAt: null,
     });
   });
@@ -89,6 +90,29 @@ describe("draft-service", () => {
             additional: ["Society", "", 3, "Medicine", "Society"],
           },
         },
+        spellChoices: {
+          wizard: [
+            {
+              packId: "pf2e.spells-srd",
+              documentId: "magic-missile",
+              uuid: "Compendium.pf2e.spells-srd.magic-missile",
+              itemType: "spell",
+              name: "Magic Missile",
+              level: 1,
+            },
+            {
+              packId: "pf2e.spells-srd",
+              documentId: "magic-missile",
+              uuid: "Compendium.pf2e.spells-srd.magic-missile",
+              itemType: "spell",
+              name: "Magic Missile",
+              level: 1,
+            },
+            {
+              packId: "pf2e.spells-srd",
+            },
+          ],
+        },
         boosts: {
           ancestry: {
             modeTouched: false,
@@ -137,6 +161,20 @@ describe("draft-service", () => {
       },
     });
     expect(draft.classChoices).toEqual({});
+    expect(draft.spellChoices).toEqual({
+      wizard: [
+        {
+          slotId: "wizard",
+          packId: "pf2e.spells-srd",
+          documentId: "magic-missile",
+          uuid: "Compendium.pf2e.spells-srd.Item.magic-missile",
+          itemType: "spell",
+          featType: null,
+          name: "Magic Missile",
+          level: 1,
+        },
+      ],
+    });
     expect(draft.boosts).toEqual({
       ancestry: {
         modeTouched: false,
@@ -167,7 +205,7 @@ describe("draft-service", () => {
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(3);
+    expect(patched.version).toBe(4);
     expect(patched.updatedAt).not.toBeNull();
   });
 

@@ -23,6 +23,7 @@ export function buildClassChoicePane(args: {
     isSkillIncrease: false,
     isSkillTraining: false,
     isClassChoice: true,
+    isSpellChoice: false,
     stepId: step.id,
     slotId: step.slotId,
     level: step.level,

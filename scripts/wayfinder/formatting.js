@@ -53,6 +53,20 @@ export function buildPreviewDetails(document) {
                     ? system.prerequisites.value.map((entry) => entry.value ?? entry).join(", ")
                     : null),
             ].filter(Boolean);
+        case "spell":
+            return [
+                row("Rank", Array.isArray(system.traits?.value) && system.traits.value.includes("cantrip")
+                    ? "Cantrip"
+                    : system.level?.value),
+                row("Traditions", Array.isArray(system.traits?.traditions)
+                    ? system.traits.traditions.map((value) => formatSlug(value)).join(", ")
+                    : null),
+                row("Cast", system.time?.value
+                    ? formatActions({ actionType: { value: "action" }, actions: { value: system.time.value } })
+                    : null),
+                row("Range", system.range?.value),
+                row("Duration", system.duration?.value),
+            ].filter(Boolean);
         default:
             return [row("Level", system.level?.value)].filter(Boolean);
     }

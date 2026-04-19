@@ -45,6 +45,7 @@ export interface PickStepPane {
   isSkillIncrease: false;
   isSkillTraining: false;
   isClassChoice: false;
+  isSpellChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -69,6 +70,7 @@ export interface ManualStepPane {
   isSkillIncrease: false;
   isSkillTraining: false;
   isClassChoice: false;
+  isSpellChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -115,6 +117,7 @@ export interface BoostStepPane {
   isSkillIncrease: false;
   isSkillTraining: false;
   isClassChoice: false;
+  isSpellChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -174,6 +177,7 @@ export interface SkillIncreaseStepPane {
   isSkillIncrease: true;
   isSkillTraining: false;
   isClassChoice: false;
+  isSpellChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -206,6 +210,7 @@ export interface SkillTrainingStepPane {
   isSkillIncrease: false;
   isSkillTraining: true;
   isClassChoice: false;
+  isSpellChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -230,6 +235,7 @@ export interface ClassChoiceStepPane {
   isSkillIncrease: false;
   isSkillTraining: false;
   isClassChoice: true;
+  isSpellChoice: false;
   stepId: string;
   slotId: string;
   level: number;
@@ -252,6 +258,36 @@ export interface ClassChoiceStepPane {
   }>;
 }
 
+export interface SpellChoiceStepPane {
+  kind: "spell-choice";
+  isPickItem: false;
+  isManual: false;
+  isBoost: false;
+  isSkillIncrease: false;
+  isSkillTraining: false;
+  isClassChoice: false;
+  isSpellChoice: true;
+  stepId: string;
+  slotId: string;
+  level: number;
+  modeLabel: string;
+  title: string;
+  description: string;
+  search: string;
+  selectedValues: string[];
+  selectedLabel: string | null;
+  selectedCount: number;
+  requiredCount: number;
+  remainingCount: number;
+  resultCount: number;
+  contextNote: string | null;
+  infoState: PickerInfoState | null;
+  destinationLabel: string;
+  sourceName: string;
+  options: Array<OptionRecord & { selected: boolean; previewing: boolean; sourceLabel: string }>;
+  preview: PreviewPane | null;
+}
+
 export type ActivePane =
   | PickStepPane
   | ManualStepPane
@@ -259,4 +295,5 @@ export type ActivePane =
   | SkillIncreaseStepPane
   | SkillTrainingStepPane
   | ClassChoiceStepPane
+  | SpellChoiceStepPane
   | null;

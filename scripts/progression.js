@@ -169,18 +169,20 @@ function sortWeight(kind) {
             return 6;
         case "class-branch":
             return 7;
-        case "ancestry-feat":
+        case "spell-choice":
             return 8;
-        case "class-feat":
+        case "ancestry-feat":
             return 9;
-        case "skill-feat":
+        case "class-feat":
             return 10;
-        case "general-feat":
+        case "skill-feat":
             return 11;
-        case "ability-boosts":
+        case "general-feat":
             return 12;
-        case "skill-increase":
+        case "ability-boosts":
             return 13;
+        case "skill-increase":
+            return 14;
         default:
             return 99;
     }

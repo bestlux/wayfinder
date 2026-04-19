@@ -8,13 +8,47 @@ const WIZARD_SPELLBOOK_DESTINATION = {
     ability: "int",
     prepared: "prepared",
 };
+const CLERIC_PREPARED_DESTINATION = {
+    type: "prepared",
+    key: "cleric-divine-prepared",
+    label: "Divine prepared spells",
+    entryName: "Divine Prepared Spells",
+    tradition: "divine",
+    ability: "wis",
+    prepared: "prepared",
+};
 export async function buildSpellChoiceSteps(params) {
-    const { draft, currentLevel, effectiveClassDocument, effectiveSchoolDocument, targetLevel, extractSlug, readExistingSpellChoiceSelections, } = params;
+    const { draft, currentLevel, effectiveClassDocument, effectiveDeityDocument, effectiveSchoolDocument, targetLevel, extractSlug, readExistingSpellChoiceSelections, } = params;
     if (!effectiveClassDocument) {
         return [];
     }
     const classSlug = extractSlug(effectiveClassDocument);
-    if (classSlug !== "wizard") {
+    if (classSlug === "wizard") {
+        return buildWizardSpellChoiceSteps({
+            draft,
+            currentLevel,
+            effectiveClassDocument,
+            effectiveSchoolDocument,
+            targetLevel,
+            extractSlug,
+            readExistingSpellChoiceSelections,
+            classSlug,
+        });
+    }
+    if (classSlug === "cleric") {
+        return buildClericSpellChoiceSteps({
+            draft,
+            effectiveClassDocument,
+            effectiveDeityDocument,
+            readExistingSpellChoiceSelections,
+            classSlug,
+        });
+    }
+    return [];
+}
+function buildWizardSpellChoiceSteps(params) {
+    const { draft, currentLevel, effectiveClassDocument, effectiveSchoolDocument, targetLevel, extractSlug, readExistingSpellChoiceSelections, classSlug, } = params;
+    if (!effectiveClassDocument) {
         return [];
     }
     const wizardSpellcastingSource = findClassFeatureSource(effectiveClassDocument, "Wizard Spellcasting");
@@ -45,6 +79,9 @@ export async function buildSpellChoiceSteps(params) {
         maxRank: 0,
         cantrip: true,
         curriculumSpellNames: [],
+        additionalAllowedSpellNames: [],
+        restrictToCommon: false,
+        destination: WIZARD_SPELLBOOK_DESTINATION,
     }));
     pushStep(makeSpellChoiceStep({
         slotId: "spell-choice-wizard-spellbook-rank-1-level-1",
@@ -59,6 +96,9 @@ export async function buildSpellChoiceSteps(params) {
         maxRank: 1,
         cantrip: false,
         curriculumSpellNames: [],
+        additionalAllowedSpellNames: [],
+        restrictToCommon: false,
+        destination: WIZARD_SPELLBOOK_DESTINATION,
     }));
     if (isUnifiedTheory) {
         pushStep(makeSpellChoiceStep({
@@ -79,6 +119,9 @@ export async function buildSpellChoiceSteps(params) {
             maxRank: 1,
             cantrip: false,
             curriculumSpellNames: [],
+            additionalAllowedSpellNames: [],
+            restrictToCommon: false,
+            destination: WIZARD_SPELLBOOK_DESTINATION,
         }));
     }
     else {
@@ -100,6 +143,9 @@ export async function buildSpellChoiceSteps(params) {
             maxRank: 1,
             cantrip: false,
             curriculumSpellNames: schoolCurriculum[1] ?? [],
+            additionalAllowedSpellNames: [],
+            restrictToCommon: false,
+            destination: WIZARD_SPELLBOOK_DESTINATION,
         }));
     }
     for (let level = Math.max(2, currentLevel + 1); level <= targetLevel; level += 1) {
@@ -117,6 +163,9 @@ export async function buildSpellChoiceSteps(params) {
             maxRank,
             cantrip: false,
             curriculumSpellNames: [],
+            additionalAllowedSpellNames: [],
+            restrictToCommon: false,
+            destination: WIZARD_SPELLBOOK_DESTINATION,
         }));
         if (!isUnifiedTheory && level >= 3 && level % 2 === 1) {
             pushStep(makeSpellChoiceStep({
@@ -137,9 +186,64 @@ export async function buildSpellChoiceSteps(params) {
                 maxRank,
                 cantrip: false,
                 curriculumSpellNames: schoolCurriculum[maxRank] ?? [],
+                additionalAllowedSpellNames: [],
+                restrictToCommon: false,
+                destination: WIZARD_SPELLBOOK_DESTINATION,
             }));
         }
     }
+    return steps;
+}
+function buildClericSpellChoiceSteps(params) {
+    const { draft, effectiveClassDocument, effectiveDeityDocument, readExistingSpellChoiceSelections, classSlug } = params;
+    if (!effectiveClassDocument) {
+        return [];
+    }
+    const clericSpellcastingSource = findClassFeatureSource(effectiveClassDocument, "Cleric Spellcasting");
+    const deityRankOneSpellNames = parseDeitySpellNames(effectiveDeityDocument, 1);
+    const steps = [];
+    const pushStep = (step) => {
+        const existingSelections = readExistingSpellChoiceSelections(step.spellChoice);
+        const draftedSelections = draft.spellChoices[step.slotId] ?? [];
+        if (existingSelections.length >= (step.spellChoice?.count ?? 0) && draftedSelections.length === 0) {
+            return;
+        }
+        steps.push(step);
+    };
+    pushStep(makeSpellChoiceStep({
+        slotId: "spell-choice-cleric-cantrips-level-1",
+        level: 1,
+        title: "Cleric prepared cantrips",
+        description: "Choose the five divine cantrips your cleric begins prepared with.",
+        source: clericSpellcastingSource,
+        classSlug,
+        dependsOn: "class",
+        count: 5,
+        minRank: 0,
+        maxRank: 0,
+        cantrip: true,
+        curriculumSpellNames: [],
+        additionalAllowedSpellNames: [],
+        restrictToCommon: true,
+        destination: CLERIC_PREPARED_DESTINATION,
+    }));
+    pushStep(makeSpellChoiceStep({
+        slotId: "spell-choice-cleric-rank-1-level-1",
+        level: 1,
+        title: "Cleric prepared spells",
+        description: "Choose the two 1st-rank divine spells your cleric begins prepared with.",
+        source: clericSpellcastingSource,
+        classSlug,
+        dependsOn: "class",
+        count: 2,
+        minRank: 1,
+        maxRank: 1,
+        cantrip: false,
+        curriculumSpellNames: [],
+        additionalAllowedSpellNames: deityRankOneSpellNames,
+        restrictToCommon: true,
+        destination: CLERIC_PREPARED_DESTINATION,
+    }));
     return steps;
 }
 export function readExistingSpellChoiceSelections(actor, choice) {
@@ -164,8 +268,9 @@ export function readExistingSpellChoiceSelections(actor, choice) {
     return dedupeSelections(eligible).slice(0, choice.count);
 }
 export function findSpellcastingEntryForChoice(actor, choice) {
-    return (listActorItems(actor).find((item) => itemMatchesSpellcastingEntry(item, choice)) ??
-        listActorItems(actor).find((item) => item?.type === "spellcastingEntry" && item?.flags?.["pf2e-wayfinder"]?.destinationKey === choice.destination.key) ??
+    return (listActorItems(actor).find((item) => item?.type === "spellcastingEntry" && item?.flags?.["pf2e-wayfinder"]?.destinationKey === choice.destination.key) ??
+        listActorItems(actor).find((item) => itemMatchesSpellcastingEntry(item, choice) && String(item?.name ?? "") === choice.destination.entryName) ??
+        listActorItems(actor).find((item) => itemMatchesSpellcastingEntry(item, choice)) ??
         null);
 }
 export function wizardMaxSpellRank(level) {
@@ -192,12 +297,14 @@ function makeSpellChoiceStep(args) {
             sourceName: args.source.sourceName,
             classSlug: args.classSlug,
             dependsOn: args.dependsOn,
-            destination: { ...WIZARD_SPELLBOOK_DESTINATION },
+            destination: { ...args.destination },
             count: args.count,
             minRank: args.minRank,
             maxRank: args.maxRank,
             cantrip: args.cantrip,
             curriculumSpellNames: args.curriculumSpellNames,
+            additionalAllowedSpellNames: args.additionalAllowedSpellNames,
+            restrictToCommon: args.restrictToCommon,
         },
     };
 }
@@ -325,10 +432,22 @@ function spellMatchesChoice(item, choice, entryId) {
     if (rank < choice.minRank || rank > choice.maxRank) {
         return false;
     }
+    const itemName = String(item?.name ?? "");
+    const additionalAllowedSpellNames = choice.additionalAllowedSpellNames ?? [];
+    const restrictToCommon = choice.restrictToCommon ?? false;
     if (choice.curriculumSpellNames.length === 0) {
-        return true;
+        if (additionalAllowedSpellNames.some((name) => namesMatch(name, itemName))) {
+            return true;
+        }
+        if (!restrictToCommon) {
+            return true;
+        }
+        const rarity = String(item?.system?.traits?.rarity ?? "")
+            .trim()
+            .toLowerCase();
+        return rarity === "" || rarity === "common";
     }
-    return choice.curriculumSpellNames.some((name) => name.localeCompare(String(item?.name ?? ""), undefined, { sensitivity: "accent" }) === 0);
+    return choice.curriculumSpellNames.some((name) => namesMatch(name, itemName));
 }
 function selectionFromActorItem(item, slotId) {
     const sourceUuid = sourceIdOf(item);
@@ -372,5 +491,32 @@ function dedupeSelections(selections) {
         result.push(selection);
     }
     return result;
+}
+function parseDeitySpellNames(document, rank) {
+    const value = document?.system?.spells?.[rank];
+    const rawValues = Array.isArray(value) ? value : value ? [value] : [];
+    const names = new Set();
+    for (const raw of rawValues) {
+        const name = spellNameFromDeityReference(raw);
+        if (name) {
+            names.add(name);
+        }
+    }
+    return Array.from(names);
+}
+function spellNameFromDeityReference(raw) {
+    if (typeof raw !== "string" || raw.trim().length === 0) {
+        return null;
+    }
+    const match = /\.Item\.(.+)$/.exec(raw.trim());
+    const name = match?.[1] ?? raw;
+    return name
+        .replace(/[-_]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+function namesMatch(left, right) {
+    return left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0;
 }
 //# sourceMappingURL=spell-choice-service.js.map

@@ -1661,6 +1661,565 @@ describe("actor-updater", () => {
     expect(createdItems.filter((item) => item?.sourceId === "Compendium.pf2e.deities.Item.gorum")).toHaveLength(1);
   });
 
+  it("creates cleric prepared and divine font spellcasting entries from chosen font state", async () => {
+    let idCounter = 0;
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    const createEmbeddedDocuments = vi.fn(async (_type: string, sources: any[]) => {
+      const created = sources.map((source) => {
+        const item = {
+          id: `created-${++idCounter}`,
+          type: source.type,
+          name: source.name,
+          sourceId: source.flags?.core?.sourceId ?? null,
+          flags: source.flags ?? {},
+          system: source.system ?? {},
+          _stats: source._stats ?? {},
+        };
+        actor.items.contents.push(item);
+        return item;
+      });
+      return created;
+    });
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 1,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Cleric",
+            system: {
+              keyAbility: {
+                value: ["wis"],
+                selected: "wis",
+              },
+            },
+          },
+          {
+            id: "deity-1",
+            type: "deity",
+            name: "Gorum",
+            system: {
+              font: ["heal", "harm"],
+            },
+          },
+        ] as any[],
+      },
+      createEmbeddedDocuments,
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments,
+      update: vi.fn(async () => ({})),
+    };
+
+    globalThis.game = {
+      packs: new Map([
+        [
+          "pf2e.spells-srd",
+          {
+            metadata: { id: "pf2e.spells-srd" },
+            async getDocument(documentId: string) {
+              if (documentId === "rfZpqmj0AIIdkVIs") {
+                return {
+                  id: documentId,
+                  name: "Heal",
+                  toObject: () => ({
+                    name: "Heal",
+                    type: "spell",
+                    system: {
+                      level: { value: 1 },
+                      traits: {
+                        traditions: ["divine"],
+                        value: [],
+                      },
+                    },
+                  }),
+                };
+              }
+
+              if (documentId === "wdA52JJnsuQWeyqz") {
+                return {
+                  id: documentId,
+                  name: "Harm",
+                  toObject: () => ({
+                    name: "Harm",
+                    type: "spell",
+                    system: {
+                      level: { value: 1 },
+                      traits: {
+                        traditions: ["divine"],
+                        value: [],
+                      },
+                    },
+                  }),
+                };
+              }
+
+              return null;
+            },
+          },
+        ],
+      ]),
+    } as any;
+
+    const draft = createEmptyDraft(1);
+    draft.classChoices["class-choice-divine-font-divineFont-level-1"] = "harm";
+
+    await applyDraftToActor(actor as any, draft, []);
+
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      expect.objectContaining({
+        name: "Divine Prepared Spells",
+        type: "spellcastingEntry",
+        flags: {
+          "pf2e-wayfinder": {
+            importedBy: "pf2e-wayfinder",
+            destinationKey: "cleric-divine-prepared",
+          },
+        },
+        system: expect.objectContaining({
+          slots: expect.objectContaining({
+            slot0: expect.objectContaining({
+              max: 5,
+              value: 5,
+              prepared: Array.from({ length: 5 }, () => ({ id: null, expended: false })),
+            }),
+            slot1: expect.objectContaining({
+              max: 2,
+              value: 2,
+              prepared: Array.from({ length: 2 }, () => ({ id: null, expended: false })),
+            }),
+          }),
+        }),
+      }),
+    ]);
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
+      expect.objectContaining({
+        name: "Divine Font (Harmful)",
+        type: "spellcastingEntry",
+        flags: {
+          "pf2e-wayfinder": {
+            importedBy: "pf2e-wayfinder",
+            destinationKey: "cleric-divine-font-harm",
+          },
+        },
+      }),
+    ]);
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(3, "Item", [
+      expect.objectContaining({
+        name: "Harm",
+        type: "spell",
+        system: expect.objectContaining({
+          location: {
+            value: "created-2",
+          },
+        }),
+      }),
+    ]);
+    expect(updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      expect.objectContaining({
+        _id: "created-2",
+        "system.slots": {
+          slot1: {
+            max: 4,
+            value: 4,
+            prepared: Array.from({ length: 4 }, () => ({ id: "created-3", expended: false })),
+          },
+        },
+      }),
+    ]);
+  });
+
+  it("repairs cleric entries without wiping prepared spells and scales divine font by level", async () => {
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 5,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Cleric",
+            system: {
+              keyAbility: {
+                value: ["wis"],
+                selected: "wis",
+              },
+            },
+          },
+          {
+            id: "deity-1",
+            type: "deity",
+            name: "Gorum",
+            system: {
+              font: ["heal", "harm"],
+            },
+          },
+          {
+            id: "entry-main",
+            type: "spellcastingEntry",
+            name: "Divine Prepared Spells",
+            system: {
+              ability: { value: "wis" },
+              prepared: { value: "prepared", flexible: false },
+              tradition: { value: "divine" },
+              showSlotlessLevels: { value: true },
+              slots: {
+                slot0: {
+                  max: 5,
+                  value: 5,
+                  prepared: [
+                    { id: "cantrip-1", expended: false },
+                    { id: null, expended: false },
+                    { id: null, expended: false },
+                    { id: null, expended: false },
+                    { id: null, expended: false },
+                  ],
+                },
+                slot1: {
+                  max: 3,
+                  value: 3,
+                  prepared: [
+                    { id: "spell-1", expended: true },
+                    { id: null, expended: false },
+                    { id: null, expended: false },
+                  ],
+                },
+                slot2: {
+                  max: 2,
+                  value: 2,
+                  prepared: [
+                    { id: "spell-2", expended: false },
+                    { id: null, expended: false },
+                  ],
+                },
+              },
+            },
+          },
+          {
+            id: "entry-font",
+            type: "spellcastingEntry",
+            name: "Divine Font (Healing)",
+            flags: {
+              "pf2e-wayfinder": {
+                importedBy: "pf2e-wayfinder",
+                destinationKey: "cleric-divine-font-heal",
+              },
+            },
+            system: {
+              ability: { value: "wis" },
+              prepared: { value: "prepared", flexible: false },
+              tradition: { value: "divine" },
+              showSlotlessLevels: { value: false },
+              slots: {
+                slot3: {
+                  max: 4,
+                  value: 4,
+                  prepared: [
+                    { id: "font-heal-1", expended: true },
+                    { id: "font-heal-1", expended: false },
+                    { id: "font-heal-1", expended: false },
+                    { id: "font-heal-1", expended: false },
+                  ],
+                },
+              },
+            },
+          },
+          {
+            id: "font-heal-1",
+            type: "spell",
+            name: "Heal",
+            sourceId: "Compendium.pf2e.spells-srd.Item.rfZpqmj0AIIdkVIs",
+            flags: {
+              core: {
+                sourceId: "Compendium.pf2e.spells-srd.Item.rfZpqmj0AIIdkVIs",
+              },
+            },
+            system: {
+              location: { value: "entry-font" },
+              level: { value: 1 },
+              traits: {
+                traditions: ["divine"],
+                value: [],
+              },
+            },
+          },
+        ] as any[],
+      },
+      createEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments,
+      update: vi.fn(async () => ({})),
+    };
+
+    const draft = createEmptyDraft(5);
+    draft.targetLevel = 5;
+    draft.classChoices["class-choice-divine-font-divineFont-level-1"] = "heal";
+
+    await applyDraftToActor(actor as any, draft, []);
+
+    expect(updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      expect.objectContaining({
+        _id: "entry-main",
+        "system.slots": expect.objectContaining({
+          slot0: expect.objectContaining({
+            prepared: [
+              { id: "cantrip-1", expended: false },
+              { id: null, expended: false },
+              { id: null, expended: false },
+              { id: null, expended: false },
+              { id: null, expended: false },
+            ],
+          }),
+          slot1: expect.objectContaining({
+            max: 3,
+            prepared: [
+              { id: "spell-1", expended: true },
+              { id: null, expended: false },
+              { id: null, expended: false },
+            ],
+          }),
+          slot2: expect.objectContaining({
+            max: 3,
+            prepared: [
+              { id: "spell-2", expended: false },
+              { id: null, expended: false },
+              { id: null, expended: false },
+            ],
+          }),
+          slot3: expect.objectContaining({
+            max: 2,
+            prepared: [
+              { id: null, expended: false },
+              { id: null, expended: false },
+            ],
+          }),
+        }),
+      }),
+    ]);
+    expect(updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      expect.objectContaining({
+        _id: "entry-font",
+        "system.slots": {
+          slot3: {
+            max: 5,
+            value: 5,
+            prepared: [
+              { id: "font-heal-1", expended: true },
+              { id: "font-heal-1", expended: false },
+              { id: "font-heal-1", expended: false },
+              { id: "font-heal-1", expended: false },
+              { id: "font-heal-1", expended: false },
+            ],
+          },
+        },
+      }),
+    ]);
+  });
+
+  it("assigns cleric spell choices into divine prepared slots", async () => {
+    const createdItems: any[] = [];
+    const createEmbeddedDocuments = vi.fn(async (_type: string, sources: any[]) => {
+      const created = sources.map((source, index) => {
+        const item = {
+          id: `created-${createdItems.length + index + 1}`,
+          type: source.type,
+          name: source.name,
+          sourceId: source.flags?.core?.sourceId ?? null,
+          flags: source.flags ?? {},
+          system: source.system ?? {},
+          _stats: source._stats ?? {},
+        };
+        createdItems.push(item);
+        actor.items.contents.push(item);
+        return item;
+      });
+      return created;
+    });
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      system: {
+        details: {
+          level: {
+            value: 1,
+          },
+        },
+        build: {
+          attributes: {
+            boosts: {
+              1: [],
+              5: [],
+              10: [],
+              15: [],
+              20: [],
+            },
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Cleric",
+            system: {
+              keyAbility: {
+                value: ["wis"],
+                selected: "wis",
+              },
+            },
+          },
+        ] as any[],
+      },
+      createEmbeddedDocuments,
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments,
+      update: vi.fn(async () => ({})),
+    };
+
+    globalThis.game = {
+      packs: new Map([
+        [
+          "pf2e.spells-srd",
+          {
+            metadata: { id: "pf2e.spells-srd" },
+            async getDocument(documentId: string) {
+              const spellDefinitions: Record<string, { name: string; cantrip: boolean }> = {
+                daze: { name: "Daze", cantrip: true },
+                guidance: { name: "Guidance", cantrip: true },
+                light: { name: "Light", cantrip: true },
+                "read-aura": { name: "Read Aura", cantrip: true },
+                "divine-lance": { name: "Divine Lance", cantrip: true },
+                bless: { name: "Bless", cantrip: false },
+                bane: { name: "Bane", cantrip: false },
+              };
+              const spell = spellDefinitions[documentId];
+              if (!spell) {
+                return null;
+              }
+
+              return {
+                id: documentId,
+                name: spell.name,
+                toObject: () => ({
+                  name: spell.name,
+                  type: "spell",
+                  system: {
+                    level: { value: 1 },
+                    traits: {
+                      traditions: ["divine"],
+                      value: spell.cantrip ? ["cantrip"] : [],
+                    },
+                  },
+                }),
+              };
+            },
+          },
+        ],
+      ]),
+    } as any;
+
+    const draft = createEmptyDraft(1);
+    draft.spellChoices["spell-choice-cleric-cantrips-level-1"] = [
+      spellSelection("spell-choice-cleric-cantrips-level-1", "daze", "Daze"),
+      spellSelection("spell-choice-cleric-cantrips-level-1", "guidance", "Guidance"),
+      spellSelection("spell-choice-cleric-cantrips-level-1", "light", "Light"),
+      spellSelection("spell-choice-cleric-cantrips-level-1", "read-aura", "Read Aura"),
+      spellSelection("spell-choice-cleric-cantrips-level-1", "divine-lance", "Divine Lance"),
+    ];
+    draft.spellChoices["spell-choice-cleric-rank-1-level-1"] = [
+      spellSelection("spell-choice-cleric-rank-1-level-1", "bless", "Bless"),
+      spellSelection("spell-choice-cleric-rank-1-level-1", "bane", "Bane"),
+    ];
+
+    await applyDraftToActor(actor as any, draft, [
+      {
+        id: "spell-choice-cleric-cantrips-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Cleric prepared cantrips",
+        description: "",
+        required: true,
+        slotId: "spell-choice-cleric-cantrips-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: clericSpellChoice("spell-choice-cleric-cantrips-level-1", 5, 0, 0, true),
+      },
+      {
+        id: "spell-choice-cleric-rank-1-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Cleric prepared spells",
+        description: "",
+        required: true,
+        slotId: "spell-choice-cleric-rank-1-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: clericSpellChoice("spell-choice-cleric-rank-1-level-1", 2, 1, 1, false),
+      },
+    ]);
+
+    expect(updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      expect.objectContaining({
+        _id: "created-1",
+        "system.slots": expect.objectContaining({
+          slot0: expect.objectContaining({
+            prepared: [
+              { id: "created-2", expended: false },
+              { id: "created-3", expended: false },
+              { id: "created-4", expended: false },
+              { id: "created-5", expended: false },
+              { id: "created-6", expended: false },
+            ],
+          }),
+          slot1: expect.objectContaining({
+            prepared: [
+              { id: "created-7", expended: false },
+              { id: "created-8", expended: false },
+            ],
+          }),
+        }),
+      }),
+    ]);
+  });
+
   it("creates a wizard spellcasting entry and adds drafted spell choices without duplicates", async () => {
     const createdItems: any[] = [];
     let idCounter = 0;
@@ -2561,5 +3120,48 @@ function wizardSpellChoice(slotId: string, count: number, minRank: number, maxRa
     maxRank,
     cantrip,
     curriculumSpellNames: [],
+    additionalAllowedSpellNames: [],
+    restrictToCommon: false,
+  };
+}
+
+function clericSpellChoice(slotId: string, count: number, minRank: number, maxRank: number, cantrip: boolean): any {
+  return {
+    slotId,
+    sourcePackId: "pf2e.classfeatures",
+    sourceDocumentId: "cleric-spellcasting",
+    sourceUuid: "Compendium.pf2e.classfeatures.Item.cleric-spellcasting",
+    sourceName: "Cleric Spellcasting",
+    classSlug: "cleric",
+    dependsOn: "class",
+    destination: {
+      type: "prepared",
+      key: "cleric-divine-prepared",
+      label: "Divine prepared spells",
+      entryName: "Divine Prepared Spells",
+      tradition: "divine",
+      ability: "wis",
+      prepared: "prepared",
+    },
+    count,
+    minRank,
+    maxRank,
+    cantrip,
+    curriculumSpellNames: [],
+    additionalAllowedSpellNames: [],
+    restrictToCommon: true,
+  };
+}
+
+function spellSelection(slotId: string, documentId: string, name: string): any {
+  return {
+    slotId,
+    packId: "pf2e.spells-srd",
+    documentId,
+    uuid: `Compendium.pf2e.spells-srd.Item.${documentId}`,
+    itemType: "spell",
+    featType: null,
+    name,
+    level: 1,
   };
 }

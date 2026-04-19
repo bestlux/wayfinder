@@ -23,6 +23,7 @@ describe("spell-choice-service", () => {
           },
         },
       },
+      effectiveDeityDocument: null,
       effectiveSchoolDocument: {
         name: "School of Battle Magic",
         flags: {
@@ -70,6 +71,7 @@ describe("spell-choice-service", () => {
           },
         },
       },
+      effectiveDeityDocument: null,
       effectiveSchoolDocument: {
         name: "School of the Boundary",
         flags: {
@@ -113,6 +115,7 @@ describe("spell-choice-service", () => {
           },
         },
       },
+      effectiveDeityDocument: null,
       effectiveSchoolDocument: {
         name: "School of Battle Magic",
         flags: {
@@ -162,6 +165,7 @@ describe("spell-choice-service", () => {
           },
         },
       },
+      effectiveDeityDocument: null,
       effectiveSchoolDocument: {
         name: "School of Unified Magical Theory",
         flags: {
@@ -184,6 +188,146 @@ describe("spell-choice-service", () => {
     expect(steps.map((step) => step.slotId)).toContain("spell-choice-wizard-unified-rank-1-level-1");
     expect(steps.map((step) => step.slotId)).not.toContain("spell-choice-wizard-curriculum-rank-1-level-1");
     expect(steps.map((step) => step.slotId)).not.toContain("spell-choice-wizard-curriculum-rank-2-level-3");
+  });
+
+  it("builds cleric initial preparation steps and carries deity spell access", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(1),
+      currentLevel: 1,
+      effectiveClassDocument: {
+        system: {
+          slug: "cleric",
+          items: {
+            spellcasting: {
+              name: "Cleric Spellcasting",
+              uuid: "Compendium.pf2e.classfeatures.Item.cleric-spellcasting",
+            },
+          },
+        },
+      },
+      effectiveSchoolDocument: null,
+      effectiveDeityDocument: {
+        name: "Sarenrae",
+        system: {
+          spells: {
+            1: "Compendium.pf2e.spells-srd.Item.burning-hands",
+          },
+        },
+      },
+      targetLevel: 1,
+      extractSlug: (document) => document?.system?.slug ?? null,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "spell-choice-cleric-cantrips-level-1",
+      "spell-choice-cleric-rank-1-level-1",
+    ]);
+    expect(steps[0]?.spellChoice).toMatchObject({
+      count: 5,
+      cantrip: true,
+      minRank: 0,
+      maxRank: 0,
+      destination: {
+        key: "cleric-divine-prepared",
+        tradition: "divine",
+        ability: "wis",
+        prepared: "prepared",
+      },
+    });
+    expect(steps[1]?.spellChoice).toMatchObject({
+      count: 2,
+      cantrip: false,
+      minRank: 1,
+      maxRank: 1,
+      additionalAllowedSpellNames: ["Burning Hands"],
+      restrictToCommon: true,
+    });
+  });
+
+  it("reads existing cleric prepared spell choices from the matching entry", () => {
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: "entry-1",
+            type: "spellcastingEntry",
+            name: "Divine Prepared Spells",
+            system: {
+              ability: { value: "wis" },
+              prepared: { value: "prepared" },
+              tradition: { value: "divine" },
+            },
+          },
+          spellItem("entry-1", "Compendium.pf2e.spells-srd.Item.daze", "Daze", 1, ["divine"], ["cantrip"]),
+          spellItem(
+            "entry-1",
+            "Compendium.pf2e.spells-srd.Item.divine-lance",
+            "Divine Lance",
+            1,
+            ["divine"],
+            ["cantrip"]
+          ),
+          spellItem("entry-1", "Compendium.pf2e.spells-srd.Item.bless", "Bless", 1, ["divine"]),
+          spellItem("entry-1", "Compendium.pf2e.spells-srd.Item.bane", "Bane", 1, ["divine"]),
+        ],
+      },
+    };
+
+    const cantrips = readExistingSpellChoiceSelections(actor as any, {
+      slotId: "spell-choice-cleric-cantrips-level-1",
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "cleric-spellcasting",
+      sourceUuid: "Compendium.pf2e.classfeatures.Item.cleric-spellcasting",
+      sourceName: "Cleric Spellcasting",
+      classSlug: "cleric",
+      dependsOn: "class",
+      destination: {
+        type: "prepared",
+        key: "cleric-divine-prepared",
+        label: "Divine prepared spells",
+        entryName: "Divine Prepared Spells",
+        tradition: "divine",
+        ability: "wis",
+        prepared: "prepared",
+      },
+      count: 5,
+      minRank: 0,
+      maxRank: 0,
+      cantrip: true,
+      curriculumSpellNames: [],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: true,
+    } satisfies SpellChoiceMeta);
+
+    const rankOne = readExistingSpellChoiceSelections(actor as any, {
+      slotId: "spell-choice-cleric-rank-1-level-1",
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "cleric-spellcasting",
+      sourceUuid: "Compendium.pf2e.classfeatures.Item.cleric-spellcasting",
+      sourceName: "Cleric Spellcasting",
+      classSlug: "cleric",
+      dependsOn: "class",
+      destination: {
+        type: "prepared",
+        key: "cleric-divine-prepared",
+        label: "Divine prepared spells",
+        entryName: "Divine Prepared Spells",
+        tradition: "divine",
+        ability: "wis",
+        prepared: "prepared",
+      },
+      count: 2,
+      minRank: 1,
+      maxRank: 1,
+      cantrip: false,
+      curriculumSpellNames: [],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: true,
+    } satisfies SpellChoiceMeta);
+
+    expect(cantrips.map((selection) => selection.name)).toEqual(["Daze", "Divine Lance"]);
+    expect(rankOne.map((selection) => selection.name)).toEqual(["Bless", "Bane"]);
   });
 
   it("reads existing spell choices from the matching spellbook entry", () => {
@@ -306,7 +450,14 @@ function selection(slotId: string, documentId: string, name: string): SelectionR
   };
 }
 
-function spellItem(entryId: string, sourceId: string, name: string, level: number, traditions = ["arcane"]): any {
+function spellItem(
+  entryId: string,
+  sourceId: string,
+  name: string,
+  level: number,
+  traditions = ["arcane"],
+  valueTraits: string[] = []
+): any {
   return {
     id: `${entryId}-${name}`,
     type: "spell",
@@ -317,7 +468,7 @@ function spellItem(entryId: string, sourceId: string, name: string, level: numbe
       location: { value: entryId },
       traits: {
         traditions,
-        value: [],
+        value: valueTraits,
       },
     },
   };

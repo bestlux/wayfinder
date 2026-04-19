@@ -407,10 +407,20 @@ function matchesSpellChoiceContext(entry, step) {
     if (rank === null || rank < spellChoice.minRank || rank > spellChoice.maxRank) {
         return false;
     }
-    if (spellChoice.curriculumSpellNames.length === 0) {
+    const entryName = String(entry?.name ?? "");
+    const additionalAllowedSpellNames = spellChoice.additionalAllowedSpellNames ?? [];
+    const restrictToCommon = spellChoice.restrictToCommon ?? false;
+    if (additionalAllowedSpellNames.some((name) => namesMatch(name, entryName))) {
         return true;
     }
-    return spellChoice.curriculumSpellNames.some((name) => name.localeCompare(String(entry?.name ?? ""), undefined, { sensitivity: "accent" }) === 0);
+    if (spellChoice.curriculumSpellNames.length === 0) {
+        if (!restrictToCommon) {
+            return true;
+        }
+        const rarity = stringOrNull(entry?.system?.traits?.rarity)?.trim().toLowerCase() ?? "";
+        return rarity === "" || rarity === "common";
+    }
+    return spellChoice.curriculumSpellNames.some((name) => namesMatch(name, entryName));
 }
 function normalizeTraitList(value) {
     if (!Array.isArray(value)) {
@@ -420,6 +430,9 @@ function normalizeTraitList(value) {
         .filter((entry) => typeof entry === "string")
         .map((entry) => entry.trim().toLowerCase())
         .filter(Boolean)));
+}
+function namesMatch(left, right) {
+    return left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0;
 }
 async function getTraitCatalog(slotKind) {
     if (slotKind === "spell-choice") {

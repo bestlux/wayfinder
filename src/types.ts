@@ -157,7 +157,7 @@ export interface ClassChoiceMeta {
 }
 
 export interface SpellChoiceDestination {
-  type: "spellbook";
+  type: "spellbook" | "prepared";
   key: string;
   label: string;
   entryName: string;
@@ -180,6 +180,8 @@ export interface SpellChoiceMeta {
   maxRank: number;
   cantrip: boolean;
   curriculumSpellNames: string[];
+  additionalAllowedSpellNames: string[];
+  restrictToCommon: boolean;
 }
 
 export interface PendingStep {

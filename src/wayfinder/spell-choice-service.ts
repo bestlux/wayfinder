@@ -5,6 +5,7 @@ interface BuildSpellChoiceStepsParams {
   draft: DraftState;
   currentLevel: number;
   effectiveClassDocument: any | null;
+  effectiveDeityDocument: any | null;
   effectiveSchoolDocument: any | null;
   targetLevel: number;
   extractSlug: (document: any) => string | null;
@@ -21,11 +22,22 @@ const WIZARD_SPELLBOOK_DESTINATION = {
   prepared: "prepared",
 } as const;
 
+const CLERIC_PREPARED_DESTINATION = {
+  type: "prepared",
+  key: "cleric-divine-prepared",
+  label: "Divine prepared spells",
+  entryName: "Divine Prepared Spells",
+  tradition: "divine",
+  ability: "wis",
+  prepared: "prepared",
+} as const;
+
 export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams): Promise<PendingStep[]> {
   const {
     draft,
     currentLevel,
     effectiveClassDocument,
+    effectiveDeityDocument,
     effectiveSchoolDocument,
     targetLevel,
     extractSlug,
@@ -36,7 +48,53 @@ export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams)
   }
 
   const classSlug = extractSlug(effectiveClassDocument);
-  if (classSlug !== "wizard") {
+  if (classSlug === "wizard") {
+    return buildWizardSpellChoiceSteps({
+      draft,
+      currentLevel,
+      effectiveClassDocument,
+      effectiveSchoolDocument,
+      targetLevel,
+      extractSlug,
+      readExistingSpellChoiceSelections,
+      classSlug,
+    });
+  }
+
+  if (classSlug === "cleric") {
+    return buildClericSpellChoiceSteps({
+      draft,
+      effectiveClassDocument,
+      effectiveDeityDocument,
+      readExistingSpellChoiceSelections,
+      classSlug,
+    });
+  }
+
+  return [];
+}
+
+function buildWizardSpellChoiceSteps(params: {
+  draft: DraftState;
+  currentLevel: number;
+  effectiveClassDocument: any;
+  effectiveSchoolDocument: any | null;
+  targetLevel: number;
+  extractSlug: (document: any) => string | null;
+  readExistingSpellChoiceSelections: (choice: SpellChoiceMeta) => SelectionRef[];
+  classSlug: string;
+}): PendingStep[] {
+  const {
+    draft,
+    currentLevel,
+    effectiveClassDocument,
+    effectiveSchoolDocument,
+    targetLevel,
+    extractSlug,
+    readExistingSpellChoiceSelections,
+    classSlug,
+  } = params;
+  if (!effectiveClassDocument) {
     return [];
   }
 
@@ -72,6 +130,9 @@ export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams)
       maxRank: 0,
       cantrip: true,
       curriculumSpellNames: [],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: false,
+      destination: WIZARD_SPELLBOOK_DESTINATION,
     })
   );
 
@@ -89,6 +150,9 @@ export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams)
       maxRank: 1,
       cantrip: false,
       curriculumSpellNames: [],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: false,
+      destination: WIZARD_SPELLBOOK_DESTINATION,
     })
   );
 
@@ -112,6 +176,9 @@ export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams)
         maxRank: 1,
         cantrip: false,
         curriculumSpellNames: [],
+        additionalAllowedSpellNames: [],
+        restrictToCommon: false,
+        destination: WIZARD_SPELLBOOK_DESTINATION,
       })
     );
   } else {
@@ -134,6 +201,9 @@ export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams)
         maxRank: 1,
         cantrip: false,
         curriculumSpellNames: schoolCurriculum[1] ?? [],
+        additionalAllowedSpellNames: [],
+        restrictToCommon: false,
+        destination: WIZARD_SPELLBOOK_DESTINATION,
       })
     );
   }
@@ -154,6 +224,9 @@ export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams)
         maxRank,
         cantrip: false,
         curriculumSpellNames: [],
+        additionalAllowedSpellNames: [],
+        restrictToCommon: false,
+        destination: WIZARD_SPELLBOOK_DESTINATION,
       })
     );
 
@@ -177,10 +250,82 @@ export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams)
           maxRank,
           cantrip: false,
           curriculumSpellNames: schoolCurriculum[maxRank] ?? [],
+          additionalAllowedSpellNames: [],
+          restrictToCommon: false,
+          destination: WIZARD_SPELLBOOK_DESTINATION,
         })
       );
     }
   }
+
+  return steps;
+}
+
+function buildClericSpellChoiceSteps(params: {
+  draft: DraftState;
+  effectiveClassDocument: any;
+  effectiveDeityDocument: any | null;
+  readExistingSpellChoiceSelections: (choice: SpellChoiceMeta) => SelectionRef[];
+  classSlug: string;
+}): PendingStep[] {
+  const { draft, effectiveClassDocument, effectiveDeityDocument, readExistingSpellChoiceSelections, classSlug } =
+    params;
+  if (!effectiveClassDocument) {
+    return [];
+  }
+
+  const clericSpellcastingSource = findClassFeatureSource(effectiveClassDocument, "Cleric Spellcasting");
+  const deityRankOneSpellNames = parseDeitySpellNames(effectiveDeityDocument, 1);
+  const steps: PendingStep[] = [];
+  const pushStep = (step: PendingStep): void => {
+    const existingSelections = readExistingSpellChoiceSelections(step.spellChoice!);
+    const draftedSelections = draft.spellChoices[step.slotId] ?? [];
+    if (existingSelections.length >= (step.spellChoice?.count ?? 0) && draftedSelections.length === 0) {
+      return;
+    }
+
+    steps.push(step);
+  };
+
+  pushStep(
+    makeSpellChoiceStep({
+      slotId: "spell-choice-cleric-cantrips-level-1",
+      level: 1,
+      title: "Cleric prepared cantrips",
+      description: "Choose the five divine cantrips your cleric begins prepared with.",
+      source: clericSpellcastingSource,
+      classSlug,
+      dependsOn: "class",
+      count: 5,
+      minRank: 0,
+      maxRank: 0,
+      cantrip: true,
+      curriculumSpellNames: [],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: true,
+      destination: CLERIC_PREPARED_DESTINATION,
+    })
+  );
+
+  pushStep(
+    makeSpellChoiceStep({
+      slotId: "spell-choice-cleric-rank-1-level-1",
+      level: 1,
+      title: "Cleric prepared spells",
+      description: "Choose the two 1st-rank divine spells your cleric begins prepared with.",
+      source: clericSpellcastingSource,
+      classSlug,
+      dependsOn: "class",
+      count: 2,
+      minRank: 1,
+      maxRank: 1,
+      cantrip: false,
+      curriculumSpellNames: [],
+      additionalAllowedSpellNames: deityRankOneSpellNames,
+      restrictToCommon: true,
+      destination: CLERIC_PREPARED_DESTINATION,
+    })
+  );
 
   return steps;
 }
@@ -216,11 +361,15 @@ export function readExistingSpellChoiceSelections(actor: any, choice: SpellChoic
 
 export function findSpellcastingEntryForChoice(actor: any, choice: SpellChoiceMeta): any | null {
   return (
-    listActorItems(actor).find((item: any) => itemMatchesSpellcastingEntry(item, choice)) ??
     listActorItems(actor).find(
       (item: any) =>
         item?.type === "spellcastingEntry" && item?.flags?.["pf2e-wayfinder"]?.destinationKey === choice.destination.key
     ) ??
+    listActorItems(actor).find(
+      (item: any) =>
+        itemMatchesSpellcastingEntry(item, choice) && String(item?.name ?? "") === choice.destination.entryName
+    ) ??
+    listActorItems(actor).find((item: any) => itemMatchesSpellcastingEntry(item, choice)) ??
     null
   );
 }
@@ -247,6 +396,9 @@ function makeSpellChoiceStep(args: {
   maxRank: number;
   cantrip: boolean;
   curriculumSpellNames: string[];
+  additionalAllowedSpellNames: string[];
+  restrictToCommon: boolean;
+  destination: SpellChoiceMeta["destination"];
 }): PendingStep {
   return {
     id: args.slotId,
@@ -268,12 +420,14 @@ function makeSpellChoiceStep(args: {
       sourceName: args.source.sourceName,
       classSlug: args.classSlug,
       dependsOn: args.dependsOn,
-      destination: { ...WIZARD_SPELLBOOK_DESTINATION },
+      destination: { ...args.destination },
       count: args.count,
       minRank: args.minRank,
       maxRank: args.maxRank,
       cantrip: args.cantrip,
       curriculumSpellNames: args.curriculumSpellNames,
+      additionalAllowedSpellNames: args.additionalAllowedSpellNames,
+      restrictToCommon: args.restrictToCommon,
     },
   };
 }
@@ -438,13 +592,25 @@ function spellMatchesChoice(item: any, choice: SpellChoiceMeta, entryId: string)
     return false;
   }
 
+  const itemName = String(item?.name ?? "");
+  const additionalAllowedSpellNames = choice.additionalAllowedSpellNames ?? [];
+  const restrictToCommon = choice.restrictToCommon ?? false;
   if (choice.curriculumSpellNames.length === 0) {
-    return true;
+    if (additionalAllowedSpellNames.some((name) => namesMatch(name, itemName))) {
+      return true;
+    }
+
+    if (!restrictToCommon) {
+      return true;
+    }
+
+    const rarity = String(item?.system?.traits?.rarity ?? "")
+      .trim()
+      .toLowerCase();
+    return rarity === "" || rarity === "common";
   }
 
-  return choice.curriculumSpellNames.some(
-    (name) => name.localeCompare(String(item?.name ?? ""), undefined, { sensitivity: "accent" }) === 0
-  );
+  return choice.curriculumSpellNames.some((name) => namesMatch(name, itemName));
 }
 
 function selectionFromActorItem(item: any, slotId: string): SelectionRef | null {
@@ -496,4 +662,36 @@ function dedupeSelections(selections: SelectionRef[]): SelectionRef[] {
   }
 
   return result;
+}
+
+function parseDeitySpellNames(document: any, rank: number): string[] {
+  const value = document?.system?.spells?.[rank];
+  const rawValues = Array.isArray(value) ? value : value ? [value] : [];
+  const names = new Set<string>();
+  for (const raw of rawValues) {
+    const name = spellNameFromDeityReference(raw);
+    if (name) {
+      names.add(name);
+    }
+  }
+
+  return Array.from(names);
+}
+
+function spellNameFromDeityReference(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return null;
+  }
+
+  const match = /\.Item\.(.+)$/.exec(raw.trim());
+  const name = match?.[1] ?? raw;
+  return name
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function namesMatch(left: string, right: string): boolean {
+  return left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0;
 }

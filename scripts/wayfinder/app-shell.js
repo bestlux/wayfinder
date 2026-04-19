@@ -330,6 +330,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 draft: planDraft,
                 currentLevel: planSnapshot.level,
                 effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
+                effectiveDeityDocument: await this.#resolveDraftOrActorDocument("deity"),
                 effectiveSchoolDocument: await this.#resolveDraftOrActorArcaneSchoolDocument(),
                 targetLevel,
                 extractSlug: (document) => this.#extractSlug(document),

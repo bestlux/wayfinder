@@ -497,13 +497,23 @@ function matchesSpellChoiceContext(entry: any, step: PendingStep): boolean {
     return false;
   }
 
-  if (spellChoice.curriculumSpellNames.length === 0) {
+  const entryName = String(entry?.name ?? "");
+  const additionalAllowedSpellNames = spellChoice.additionalAllowedSpellNames ?? [];
+  const restrictToCommon = spellChoice.restrictToCommon ?? false;
+  if (additionalAllowedSpellNames.some((name) => namesMatch(name, entryName))) {
     return true;
   }
 
-  return spellChoice.curriculumSpellNames.some(
-    (name) => name.localeCompare(String(entry?.name ?? ""), undefined, { sensitivity: "accent" }) === 0
-  );
+  if (spellChoice.curriculumSpellNames.length === 0) {
+    if (!restrictToCommon) {
+      return true;
+    }
+
+    const rarity = stringOrNull(entry?.system?.traits?.rarity)?.trim().toLowerCase() ?? "";
+    return rarity === "" || rarity === "common";
+  }
+
+  return spellChoice.curriculumSpellNames.some((name) => namesMatch(name, entryName));
 }
 
 function normalizeTraitList(value: unknown): string[] {
@@ -519,6 +529,10 @@ function normalizeTraitList(value: unknown): string[] {
         .filter(Boolean)
     )
   );
+}
+
+function namesMatch(left: string, right: string): boolean {
+  return left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0;
 }
 
 async function getTraitCatalog(slotKind: PendingStep["slotKind"]): Promise<Set<string>> {

@@ -14,16 +14,14 @@ import { adjustDraftTargetLevel, setManualStepComplete, setTrainingRuleSelection
 import { applyDraftLifecycle, buildSaveDraftUpdate, createClearedDraftResult, } from "./application/draft-lifecycle-service.js";
 import { buildContextNote, buildOptionContext, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
 import { chooseSelectionOption, selectClassChoiceValue, toggleSpellChoiceSelection, } from "./application/selection-command-service.js";
+import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
 import { buildWayfinderContext } from "./application/wayfinder-context-service.js";
-import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassTrainingSteps, } from "./class-choice-service.js";
-import { findDraftSelectionByType, hasDuplicateDraftSelection } from "./draft-decisions.js";
-import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, } from "./existing-selection-service.js";
-import { clearSelectionState, invalidateSelectionState, invalidateSelectionsByPrefix } from "./invalidation.js";
+import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
+import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
 import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
-import { buildWayfinderPlan, getWayfinderStepStatus, isWayfinderStepComplete, resolveActiveStep, } from "./plan-service.js";
-import { isWizardArcaneSchoolSlotId, SLOT_IDS, SLOT_PREFIXES } from "./slot-ids.js";
-import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "./spell-choice-service.js";
+import { getWayfinderStepStatus, isWayfinderStepComplete, resolveActiveStep } from "./plan-service.js";
+import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
     static DEFAULT_OPTIONS = {
         id: MODULE_ID,
@@ -189,7 +187,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 break;
             case "clear-option":
                 this.#statusNote = null;
-                this.#clearSelection(action.stepId);
+                this.#selectionInvalidationService().clearSelection(action.stepId);
                 this.render(false);
                 break;
             case "target-up":
@@ -251,56 +249,24 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         return this.#draft;
     }
     async #buildPlan(snapshot = inspectActor(this.actor), draft = this.#requireDraft()) {
-        return buildWayfinderPlan(snapshot, draft, {
-            buildClassFeatSteps: async (planSnapshot, _planDraft, targetLevel) => buildClassFeatSteps({
-                effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
-                targetLevel,
-                fulfilledCount: planSnapshot.featCounts.class + planSnapshot.featCounts.archetype,
-            }),
-            buildClassTrainingSteps: (_planSnapshot, _planDraft, targetLevel) => buildClassTrainingSteps({
-                draftClassSelection: findDraftSelectionByType(this.#requireDraft(), "class"),
-                targetLevel,
-                fetchSelectionDocument,
-                extractSlug: extractDocumentSlug,
-                localize: (value) => game.i18n.localize(value),
-            }),
-            buildClassBranchSteps: async (_planSnapshot, planDraft, targetLevel) => buildClassBranchSteps({
-                draft: planDraft,
-                effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
-                targetLevel,
-                fetchSelectionDocument,
-                extractSlug: extractDocumentSlug,
-                readExistingBranchSelection: (branch) => readExistingBranchSelection(this.actor, branch),
-            }),
-            buildClassGrantedItemSteps: async (_planSnapshot, planDraft, targetLevel) => buildClassGrantedItemSteps({
-                draft: planDraft,
-                effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
-                targetLevel,
-                fetchSelectionDocument,
-                extractSlug: extractDocumentSlug,
-                readExistingGrantedSelection: (grant) => readExistingGrantedSelection(this.actor, grant),
-            }),
-            buildClassChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => buildClassChoiceSteps({
-                draft: planDraft,
-                effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
-                effectiveDeityDocument: await this.#resolveDraftOrActorDocument("deity"),
-                targetLevel,
-                fetchSelectionDocument,
-                extractSlug: extractDocumentSlug,
-                localize: (value) => game.i18n.localize(value),
-                readExistingClassChoiceSelection: (choice) => readExistingClassChoiceSelection(this.actor, choice),
-            }),
-            buildSpellChoiceSteps: async (planSnapshot, planDraft, targetLevel) => buildSpellChoiceSteps({
-                draft: planDraft,
-                currentLevel: planSnapshot.level,
-                effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
-                effectiveDeityDocument: await this.#resolveDraftOrActorDocument("deity"),
-                effectiveSchoolDocument: await this.#resolveDraftOrActorArcaneSchoolDocument(),
-                targetLevel,
-                extractSlug: extractDocumentSlug,
-                readExistingSpellChoiceSelections: (choice) => readExistingSpellChoiceSelections(this.actor, choice),
-            }),
+        return buildWayfinderAppPlan({
+            actor: this.actor,
+            snapshot,
+            draft,
+            resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+            resolveArcaneSchoolDocument: () => this.#resolveDraftOrActorArcaneSchoolDocument(),
+            localize: (value) => game.i18n.localize(value),
         });
+    }
+    async #findPlanStepBySlotId(slotId, snapshot = inspectActor(this.actor), draft = this.#requireDraft()) {
+        return findPlanStepBySlotId({
+            actor: this.actor,
+            snapshot,
+            draft,
+            resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+            resolveArcaneSchoolDocument: () => this.#resolveDraftOrActorArcaneSchoolDocument(),
+            localize: (value) => game.i18n.localize(value),
+        }, slotId);
     }
     async #resolveActiveStep(steps, effectiveBuildState) {
         const resolved = await resolveActiveStep(steps, this.#activeStepId, (step) => this.#isStepComplete(step, effectiveBuildState));
@@ -378,6 +344,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const snapshot = inspectActor(this.actor);
         const draft = this.#requireDraft();
         const plan = await this.#buildPlan(snapshot, draft);
+        const invalidation = this.#selectionInvalidationService(draft);
         const step = plan.steps.find((entry) => entry.id === stepId);
         if (!step) {
             return;
@@ -402,11 +369,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 fetchSelectionDocument,
                 extractDocumentSlug,
             }),
-            invalidateSelection: (slotId) => this.#invalidateSelection(slotId),
-            invalidateSelectionsByPrefix: (prefix) => this.#invalidateSelectionsByPrefix(prefix),
-            invalidateClassChoicesByDependency: (dependency) => this.#invalidateClassChoicesByDependency(dependency),
-            invalidateBranchSelectionsByDependency: (dependency) => this.#invalidateBranchSelectionsByDependency(dependency),
-            invalidateSpellChoicesByDependency: (dependency) => this.#invalidateSpellChoicesByDependency(dependency),
+            invalidateSelection: invalidation.invalidateSelection,
+            invalidateSelectionsByPrefix: invalidation.invalidateSelectionsByPrefix,
+            invalidateClassChoicesByDependency: invalidation.invalidateClassChoicesByDependency,
+            invalidateBranchSelectionsByDependency: invalidation.invalidateBranchSelectionsByDependency,
+            invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,
             resetAncestryBoostDraft: () => this.#resetAncestryBoostDraft(),
             resetBackgroundBoostDraft: () => this.#resetBackgroundBoostDraft(),
             resetClassBoostDraft: () => this.#resetClassBoostDraft(),
@@ -450,17 +417,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     async #selectClassChoice(stepId, value) {
         this.#statusNote = null;
-        const step = (await this.#buildPlan()).steps.find((entry) => entry.slotId === stepId);
+        const invalidation = this.#selectionInvalidationService();
+        const step = await this.#findPlanStepBySlotId(stepId);
         const result = await selectClassChoiceValue(this.#selectionCommandState(), step ?? null, value, {
-            invalidateBranchSelectionsByDependency: (dependency) => this.#invalidateBranchSelectionsByDependency(dependency),
+            invalidateBranchSelectionsByDependency: invalidation.invalidateBranchSelectionsByDependency,
         });
         await this.#finalizeSelectionCommand(result);
     }
     async #toggleSpellChoice(stepId, rawValue) {
         this.#statusNote = null;
         const draft = this.#requireDraft();
-        const plan = await this.#buildPlan();
-        const step = plan.steps.find((entry) => entry.slotId === stepId);
+        const step = await this.#findPlanStepBySlotId(stepId, inspectActor(this.actor), draft);
         const result = await toggleSpellChoiceSelection(this.#selectionCommandState(draft), step ?? null, rawValue, {
             resolveSelection: async (value, selectionStep) => {
                 const optionContext = await buildOptionContext({
@@ -480,7 +447,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     async #toggleTrainingSkill(stepId, slug) {
         this.#statusNote = null;
-        const step = (await this.#buildPlan()).steps.find((entry) => entry.slotId === stepId);
+        const step = await this.#findPlanStepBySlotId(stepId);
         if (toggleTrainingSkillSelection(this.#draftAdjustmentState(), step ?? null, slug)) {
             this.render(false);
         }
@@ -549,89 +516,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#activeStepId = plan.steps[nextIndex]?.id ?? this.#activeStepId;
         this.render(false);
     }
-    #clearSelection(slotId) {
-        const cleared = clearSelectionState({
-            draft: this.#requireDraft(),
+    #selectionInvalidationService(draft = this.#requireDraft()) {
+        return createSelectionInvalidationService({
+            draft,
             previewValueByStepId: this.#previewValueByStepId,
             recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
             scrollById: this.#scrollById,
-        }, slotId, {
+        }, {
+            buildPlan: () => this.#buildPlan(inspectActor(this.actor), draft),
             resetAncestryBoostDraft: () => this.#resetAncestryBoostDraft(),
             resetBackgroundBoostDraft: () => this.#resetBackgroundBoostDraft(),
             resetClassBoostDraft: () => this.#resetClassBoostDraft(),
         });
-        if (cleared === 0) {
-            return 0;
-        }
-        if (slotId === SLOT_IDS.deity) {
-            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classChoice);
-        }
-        else if (slotId === SLOT_IDS.class) {
-            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.deity);
-            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch);
-            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classChoice);
-            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.skillTraining);
-            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.spellChoice);
-            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classFeat);
-        }
-        return cleared;
-    }
-    #invalidateSelection(slotId) {
-        return invalidateSelectionState({
-            draft: this.#requireDraft(),
-            previewValueByStepId: this.#previewValueByStepId,
-            recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
-            scrollById: this.#scrollById,
-        }, slotId, {
-            resetAncestryBoostDraft: () => this.#resetAncestryBoostDraft(),
-            resetBackgroundBoostDraft: () => this.#resetBackgroundBoostDraft(),
-            resetClassBoostDraft: () => this.#resetClassBoostDraft(),
-        });
-    }
-    #invalidateSelectionsByPrefix(prefix) {
-        return invalidateSelectionsByPrefix({
-            draft: this.#requireDraft(),
-            previewValueByStepId: this.#previewValueByStepId,
-            recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
-            scrollById: this.#scrollById,
-        }, prefix, {
-            resetAncestryBoostDraft: () => this.#resetAncestryBoostDraft(),
-            resetBackgroundBoostDraft: () => this.#resetBackgroundBoostDraft(),
-            resetClassBoostDraft: () => this.#resetClassBoostDraft(),
-        });
-    }
-    async #invalidateBranchSelectionsByDependency(dependency) {
-        const invalidated = [];
-        const plan = await this.#buildPlan();
-        for (const step of plan.steps) {
-            if (step.kind !== "class-branch" || step.branch?.dependsOn !== dependency) {
-                continue;
-            }
-            invalidated.push(...this.#invalidateSelection(step.slotId));
-        }
-        return invalidated;
-    }
-    async #invalidateSpellChoicesByDependency(dependency) {
-        const invalidated = [];
-        const plan = await this.#buildPlan();
-        for (const step of plan.steps) {
-            if (step.kind !== "spell-choice" || step.spellChoice?.dependsOn !== dependency) {
-                continue;
-            }
-            invalidated.push(...this.#invalidateSelection(step.slotId));
-        }
-        return invalidated;
-    }
-    async #invalidateClassChoicesByDependency(dependency) {
-        const invalidated = [];
-        const plan = await this.#buildPlan();
-        for (const step of plan.steps) {
-            if (step.kind !== "class-choice" || step.classChoice?.dependsOn !== dependency) {
-                continue;
-            }
-            invalidated.push(...this.#invalidateSelection(step.slotId));
-        }
-        return invalidated;
     }
     #resetAncestryBoostDraft() {
         const draft = this.#requireDraft().boosts.ancestry;

@@ -1,0 +1,310 @@
+import { describe, expect, it, vi } from "vitest";
+import { createEmptyDraft } from "../src/draft-service";
+import type {
+  ActorSnapshot,
+  ClassBranchMeta,
+  ClassChoiceMeta,
+  ClassGrantMeta,
+  PendingStep,
+  SelectionRef,
+  SpellChoiceMeta,
+} from "../src/types";
+import {
+  buildWayfinderAppPlan,
+  findPlanStepBySlotId,
+} from "../src/wayfinder/application/wayfinder-plan-builder-service";
+
+describe("wayfinder plan builder service", () => {
+  it("assembles the actor-facing plan builders with resolved documents and actor readers", async () => {
+    const actor = { id: "actor-1" };
+    const draft = createEmptyDraft(1);
+    draft.selections.class = selection("class-level-1", "class", "wizard", "Wizard");
+    const snapshot: ActorSnapshot = {
+      actorId: "actor-1",
+      level: 2,
+      isBlank: false,
+      singletonSlots: {
+        ancestry: false,
+        heritage: false,
+        background: false,
+        class: true,
+        deity: false,
+      },
+      featCounts: {
+        ancestry: 1,
+        class: 2,
+        archetype: 3,
+        skill: 0,
+        general: 0,
+      },
+      sourceIds: [],
+      namesByType: {},
+      skillRanks: {},
+    };
+    const classDocument = { name: "Wizard" };
+    const deityDocument = { name: "Nethys" };
+    const schoolDocument = { name: "Battle Magic" };
+    const resolveDocument = vi.fn(async (itemType: string) => {
+      if (itemType === "class") {
+        return classDocument;
+      }
+      if (itemType === "deity") {
+        return deityDocument;
+      }
+      return null;
+    });
+    const resolveArcaneSchoolDocument = vi.fn(async () => schoolDocument);
+
+    const readExistingBranchSelection = vi.fn((_actor: unknown, _branch: ClassBranchMeta) => "existing-branch");
+    const readExistingGrantedSelection = vi.fn((_actor: unknown, _grant: ClassGrantMeta) => "existing-grant");
+    const readExistingClassChoiceSelection = vi.fn((_actor: unknown, _choice: ClassChoiceMeta) => "holy");
+    const readExistingSpellChoiceSelections = vi.fn((_actor: unknown, _choice: SpellChoiceMeta) => [
+      selection("spell-choice-wizard-level-1", "spell", "magic-missile", "Magic Missile"),
+    ]);
+
+    const buildClassFeatSteps = vi.fn(async () => [step("class-feat-level-2")]);
+    const buildClassTrainingSteps = vi.fn(async (params) => {
+      expect(params.draftClassSelection).toEqual(draft.selections.class);
+      expect(params.targetLevel).toBe(4);
+      expect(params.localize("PF2E.Test")).toBe("loc:PF2E.Test");
+      return [step("skill-training-wizard-level-1")];
+    });
+    const buildClassBranchSteps = vi.fn(async (params) => {
+      expect(params.draft).toBe(draft);
+      expect(params.effectiveClassDocument).toBe(classDocument);
+      expect(params.targetLevel).toBe(4);
+      expect(await params.fetchSelectionDocument(selection("slot", "feat", "battle-magic", "Battle Magic"))).toEqual({
+        fetched: "battle-magic",
+      });
+      expect(params.extractSlug({ slug: "battle-magic" })).toBe("battle-magic");
+      expect(
+        params.readExistingBranchSelection({
+          slotId: "class-branch-arcane-school-level-1",
+          sourcePackId: "test.pack",
+          sourceDocumentId: "battle-magic",
+          sourceUuid: "Compendium.test.pack.Item.battle-magic",
+          sourceName: "Battle Magic",
+          selectorName: "Arcane School",
+          classSlug: "wizard",
+          dependsOn: "class",
+        })
+      ).toBe("existing-branch");
+      return [step("class-branch-arcane-school-level-1")];
+    });
+    const buildClassGrantedItemSteps = vi.fn(async (params) => {
+      expect(
+        params.readExistingGrantedSelection({
+          slotId: "deity-level-1",
+          itemType: "deity",
+          selectorName: "Deity",
+          sourcePackId: "test.pack",
+          sourceDocumentId: "grant",
+          sourceUuid: "Compendium.test.pack.Item.grant",
+          sourceName: "Grant",
+          classSlug: "wizard",
+        })
+      ).toBe("existing-grant");
+      return [step("deity-level-1")];
+    });
+    const buildClassChoiceSteps = vi.fn(async (params) => {
+      expect(params.effectiveClassDocument).toBe(classDocument);
+      expect(params.effectiveDeityDocument).toBe(deityDocument);
+      expect(
+        params.readExistingClassChoiceSelection({
+          slotId: "class-choice-wizard-thesis-level-1",
+          sourcePackId: "test.pack",
+          sourceDocumentId: "thesis",
+          sourceUuid: "Compendium.test.pack.Item.thesis",
+          sourceName: "Thesis",
+          sourceRuleIndex: 0,
+          flag: "thesis",
+          classSlug: "wizard",
+          dependsOn: "class",
+          options: [],
+        })
+      ).toBe("holy");
+      return [step("class-choice-wizard-thesis-level-1")];
+    });
+    const buildSpellChoiceSteps = vi.fn(async (params) => {
+      expect(params.draft).toBe(draft);
+      expect(params.currentLevel).toBe(snapshot.level);
+      expect(params.effectiveClassDocument).toBe(classDocument);
+      expect(params.effectiveDeityDocument).toBe(deityDocument);
+      expect(params.effectiveSchoolDocument).toBe(schoolDocument);
+      expect(
+        params.readExistingSpellChoiceSelections({
+          slotId: "spell-choice-wizard-level-1",
+          sourcePackId: "test.pack",
+          sourceDocumentId: "spellbook",
+          sourceUuid: "Compendium.test.pack.Item.spellbook",
+          sourceName: "Spellbook",
+          classSlug: "wizard",
+          dependsOn: "class",
+          destination: {
+            type: "spellbook",
+            key: "wizard-arcane-prepared",
+            label: "Wizard spellbook",
+            entryName: "Wizard spellbook",
+            tradition: "arcane",
+            ability: "int",
+            prepared: "prepared",
+          },
+          count: 1,
+          minRank: 1,
+          maxRank: 1,
+          cantrip: false,
+          curriculumSpellNames: [],
+          additionalAllowedSpellNames: [],
+          restrictToCommon: false,
+        })
+      ).toHaveLength(1);
+      return [step("spell-choice-wizard-level-1")];
+    });
+
+    const buildWayfinderPlan = vi.fn(async (receivedSnapshot, receivedDraft, deps) => {
+      expect(receivedSnapshot).toBe(snapshot);
+      expect(receivedDraft).toBe(draft);
+      const steps = [
+        ...(await deps.buildClassFeatSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildClassTrainingSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildClassBranchSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildClassGrantedItemSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildClassChoiceSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildSpellChoiceSteps(receivedSnapshot, receivedDraft, 4)),
+      ];
+      return {
+        recommendedTargetLevel: 4,
+        targetLevel: 4,
+        steps,
+      };
+    });
+
+    const plan = await buildWayfinderAppPlan(
+      {
+        actor,
+        snapshot,
+        draft,
+        resolveDocument,
+        resolveArcaneSchoolDocument,
+        localize: (value) => `loc:${value}`,
+      },
+      {
+        buildWayfinderPlan,
+        buildClassFeatSteps,
+        buildClassTrainingSteps,
+        buildClassBranchSteps,
+        buildClassGrantedItemSteps,
+        buildClassChoiceSteps,
+        buildSpellChoiceSteps,
+        findDraftSelectionByType: (_draft, itemType) => (itemType === "class" ? draft.selections.class : null),
+        readExistingBranchSelection,
+        readExistingGrantedSelection,
+        readExistingClassChoiceSelection,
+        readExistingSpellChoiceSelections,
+        fetchSelectionDocument: async (selectionRef) => ({ fetched: selectionRef.documentId }),
+        extractDocumentSlug: (document) => {
+          if (!document || typeof document !== "object" || !("slug" in document)) {
+            return null;
+          }
+          return typeof document.slug === "string" ? document.slug : null;
+        },
+      }
+    );
+
+    expect(plan.steps.map((entry) => entry.slotId)).toEqual([
+      "class-feat-level-2",
+      "skill-training-wizard-level-1",
+      "class-branch-arcane-school-level-1",
+      "deity-level-1",
+      "class-choice-wizard-thesis-level-1",
+      "spell-choice-wizard-level-1",
+    ]);
+    expect(resolveDocument).toHaveBeenCalledWith("class");
+    expect(resolveDocument).toHaveBeenCalledWith("deity");
+    expect(resolveArcaneSchoolDocument).toHaveBeenCalledTimes(1);
+    expect(buildClassFeatSteps).toHaveBeenCalledWith({
+      effectiveClassDocument: classDocument,
+      targetLevel: 4,
+      fulfilledCount: 5,
+    });
+  });
+
+  it("finds a step by slot id from the built plan", async () => {
+    const stepToFind = step("class-choice-cleric-doctrine-level-1");
+
+    const found = await findPlanStepBySlotId(
+      {
+        actor: { id: "actor-2" },
+        snapshot: {
+          actorId: "actor-2",
+          level: 1,
+          isBlank: false,
+          singletonSlots: {
+            ancestry: false,
+            heritage: false,
+            background: false,
+            class: false,
+            deity: false,
+          },
+          featCounts: { ancestry: 0, class: 0, archetype: 0, skill: 0, general: 0 },
+          sourceIds: [],
+          namesByType: {},
+          skillRanks: {},
+        },
+        draft: createEmptyDraft(1),
+        resolveDocument: async () => null,
+        resolveArcaneSchoolDocument: async () => null,
+        localize: (value) => value,
+      },
+      stepToFind.slotId,
+      {
+        buildWayfinderPlan: async () => ({
+          recommendedTargetLevel: 1,
+          targetLevel: 1,
+          steps: [step("ancestry-level-1"), stepToFind],
+        }),
+        buildClassFeatSteps: async () => [],
+        buildClassTrainingSteps: async () => [],
+        buildClassBranchSteps: async () => [],
+        buildClassGrantedItemSteps: async () => [],
+        buildClassChoiceSteps: async () => [],
+        buildSpellChoiceSteps: async () => [],
+        findDraftSelectionByType: () => null,
+        readExistingBranchSelection: () => null,
+        readExistingGrantedSelection: () => null,
+        readExistingClassChoiceSelection: () => null,
+        readExistingSpellChoiceSelections: () => [],
+        fetchSelectionDocument: async () => null,
+        extractDocumentSlug: () => null,
+      }
+    );
+
+    expect(found).toEqual(stepToFind);
+  });
+});
+
+function selection(slotId: string, itemType: string, documentId: string, name = documentId): SelectionRef {
+  return {
+    slotId,
+    packId: "test.pack",
+    documentId,
+    uuid: `Compendium.test.pack.Item.${documentId}`,
+    itemType,
+    featType: itemType === "feat" ? "classfeature" : null,
+    name,
+    level: 1,
+  };
+}
+
+function step(slotId: string): PendingStep {
+  return {
+    id: slotId,
+    level: 1,
+    kind: "manual",
+    slotKind: "class",
+    title: slotId,
+    description: "",
+    required: true,
+    slotId,
+  };
+}

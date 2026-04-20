@@ -100,6 +100,9 @@ async function pruneExtraClericFontEntries(actor, keepEntryId) {
     }
 }
 async function ensureClericFontSpell(actor, entry, divineFont) {
+    if (typeof entry.id !== "string") {
+        return null;
+    }
     const desiredSelection = divineFontSpellSelection(entry.id, divineFont);
     const desiredSourceId = desiredSelection.uuid;
     const entrySpells = listActorItems(actor).filter((item) => item?.type === "spell" && spellLocationId(item) === entry.id);
@@ -131,7 +134,7 @@ async function ensureClericFontSpell(actor, entry, divineFont) {
         importedBy: MODULE_ID,
         destinationKey: `cleric-divine-font-${divineFont}`,
     };
-    const [created] = await actor.createEmbeddedDocuments("Item", [source]);
+    const [created] = typeof actor.createEmbeddedDocuments === "function" ? await actor.createEmbeddedDocuments("Item", [source]) : [];
     return created ?? null;
 }
 function divineFontSpellSelection(entryId, divineFont) {

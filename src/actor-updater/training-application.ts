@@ -1,20 +1,22 @@
 import { listActorItems } from "../build-state.js";
+import type { ActorItemLike, ActorLike } from "../shared/actor-model.js";
 import { cloneData } from "../shared/cloning.js";
 import type { DraftState, PendingStep } from "../types.js";
 
 export async function applyTrainingDraft(
-  actor: any,
+  actor: ActorLike,
   draft: DraftState,
   steps: PendingStep[]
 ): Promise<Record<string, number>> {
   const projectedRanks: Record<string, number> = {};
   for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
-    const rank = Number((data as any)?.rank ?? 0);
+    const rank = Number((data as { rank?: unknown })?.rank ?? 0);
     projectedRanks[slug] = Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
   }
 
   const stepMap = new Map(steps.map((step) => [step.slotId, step]));
   const classUpdates: Record<string, unknown>[] = [];
+  const actorItems = listActorItems(actor) as ActorItemLike[];
 
   for (const [slotId, training] of Object.entries(draft.skillTrainings)) {
     const step = stepMap.get(slotId);
@@ -22,7 +24,7 @@ export async function applyTrainingDraft(
       continue;
     }
 
-    const classItem = listActorItems(actor).find((item: any) => item?.type === "class");
+    const classItem = actorItems.find((item) => item?.type === "class");
     if (classItem?.id && step.training.choiceRules.length > 0) {
       const classRules = cloneData(Array.isArray(classItem.system?.rules) ? classItem.system.rules : []);
       const classUpdate: Record<string, unknown> = { _id: classItem.id };
@@ -49,7 +51,7 @@ export async function applyTrainingDraft(
     }
   }
 
-  if (classUpdates.length > 0) {
+  if (classUpdates.length > 0 && typeof actor.updateEmbeddedDocuments === "function") {
     await actor.updateEmbeddedDocuments("Item", classUpdates);
   }
 
@@ -60,7 +62,7 @@ export async function applyTrainingDraft(
     })
     .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank] as const);
 
-  if (skillUpdates.length > 0) {
+  if (skillUpdates.length > 0 && typeof actor.update === "function") {
     await actor.update(Object.fromEntries(skillUpdates));
   }
 
@@ -68,14 +70,14 @@ export async function applyTrainingDraft(
 }
 
 export async function applySkillIncreaseDraft(
-  actor: any,
+  actor: ActorLike,
   draft: DraftState,
   baseRanks?: Record<string, number>
 ): Promise<void> {
   const projectedRanks: Record<string, number> = baseRanks ? { ...baseRanks } : {};
   if (!baseRanks) {
     for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
-      const rank = Number((data as any)?.rank ?? 0);
+      const rank = Number((data as { rank?: unknown })?.rank ?? 0);
       projectedRanks[slug] = Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
     }
   }
@@ -95,7 +97,7 @@ export async function applySkillIncreaseDraft(
 
   const updates = Object.entries(projectedRanks).map(([slug, rank]) => [`system.skills.${slug}.rank`, rank] as const);
 
-  if (updates.length > 0) {
+  if (updates.length > 0 && typeof actor.update === "function") {
     await actor.update(Object.fromEntries(updates));
   }
 }

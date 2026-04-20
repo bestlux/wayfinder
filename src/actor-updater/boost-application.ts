@@ -1,4 +1,5 @@
 import { BOOST_LEVELS, getEffectiveBuildState, listActorItems } from "../build-state.js";
+import type { ActorItemLike, ActorLike } from "../shared/actor-model.js";
 import type { DraftState } from "../types.js";
 
 interface BoostApplicationDependencies {
@@ -10,14 +11,15 @@ const DEFAULT_DEPS: BoostApplicationDependencies = {
 };
 
 export async function applyBoostDraft(
-  actor: any,
+  actor: ActorLike,
   draft: DraftState,
   deps: BoostApplicationDependencies = DEFAULT_DEPS
 ): Promise<void> {
   const buildState = await deps.getEffectiveBuildState(actor, draft);
-  const updates: any[] = [];
+  const updates: Record<string, unknown>[] = [];
+  const actorItems = listActorItems(actor) as ActorItemLike[];
 
-  const ancestryItem = listActorItems(actor).find((item: any) => item?.type === "ancestry");
+  const ancestryItem = actorItems.find((item) => item?.type === "ancestry");
   if (ancestryItem && buildState.ancestry) {
     const ancestryUpdate: Record<string, unknown> = { _id: ancestryItem.id };
     if (buildState.ancestry.mode === "alternate") {
@@ -42,7 +44,7 @@ export async function applyBoostDraft(
     updates.push(ancestryUpdate);
   }
 
-  const backgroundItem = listActorItems(actor).find((item: any) => item?.type === "background");
+  const backgroundItem = actorItems.find((item) => item?.type === "background");
   if (backgroundItem && buildState.background) {
     const backgroundUpdate: Record<string, unknown> = { _id: backgroundItem.id };
     for (const [slot, value] of Object.entries(buildState.background.selectedBoosts)) {
@@ -51,7 +53,7 @@ export async function applyBoostDraft(
     updates.push(backgroundUpdate);
   }
 
-  const classItem = listActorItems(actor).find((item: any) => item?.type === "class");
+  const classItem = actorItems.find((item) => item?.type === "class");
   if (classItem && buildState.class) {
     updates.push({
       _id: classItem.id,
@@ -59,12 +61,14 @@ export async function applyBoostDraft(
     });
   }
 
-  if (updates.length > 0) {
+  if (updates.length > 0 && typeof actor.updateEmbeddedDocuments === "function") {
     await actor.updateEmbeddedDocuments("Item", updates);
   }
 
   const actorBoostUpdate = Object.fromEntries(
     BOOST_LEVELS.map((level) => [`system.build.attributes.boosts.${level}`, buildState.levelBoosts[level]])
   );
-  await actor.update(actorBoostUpdate);
+  if (typeof actor.update === "function") {
+    await actor.update(actorBoostUpdate);
+  }
 }

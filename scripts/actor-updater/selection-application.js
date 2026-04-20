@@ -16,11 +16,12 @@ const DEFAULT_INSERT_DEPS = {
 };
 export async function replaceSingletonItem(actor, selection, draft, steps, deps = DEFAULT_CREATE_DEPS) {
     const existing = listActorItems(actor).filter((item) => item?.type === selection.itemType);
-    if (existing.length > 0) {
-        await actor.deleteEmbeddedDocuments("Item", existing.map((item) => item.id));
+    const existingIds = existing.map((item) => item.id).filter((id) => typeof id === "string");
+    if (existingIds.length > 0 && typeof actor.deleteEmbeddedDocuments === "function") {
+        await actor.deleteEmbeddedDocuments("Item", existingIds);
     }
     const source = await createEmbeddedSource(selection, draft, steps, deps);
-    if (source) {
+    if (source && typeof actor.createEmbeddedDocuments === "function") {
         await actor.createEmbeddedDocuments("Item", [source]);
     }
 }
@@ -69,14 +70,16 @@ export async function insertFeatSelection(actor, selection, step, deps = DEFAULT
             source.system.level.taken = step.level;
         }
     }
-    await actor.createEmbeddedDocuments("Item", [source]);
+    if (typeof actor.createEmbeddedDocuments === "function") {
+        await actor.createEmbeddedDocuments("Item", [source]);
+    }
 }
 function resolveFeatSlotData(actor, selection, step) {
     const groupId = resolveFeatGroupId(selection, step);
     if (!groupId) {
         return null;
     }
-    const group = typeof actor?.feats?.get === "function" ? actor.feats.get(groupId) : actor?.feats?.[groupId];
+    const group = (typeof actor?.feats?.get === "function" ? actor.feats.get(groupId) : actor?.feats?.[groupId]);
     const slots = Object.values(group?.slots ?? {});
     if (slots.length === 0) {
         return { groupId, slotId: null };

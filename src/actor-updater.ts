@@ -14,9 +14,10 @@ import { applySkillIncreaseDraft, applyTrainingDraft } from "./actor-updater/tra
 import { applyClassBranchDraft } from "./class-branch-service.js";
 import { applyClassFeatureChoiceDraft } from "./class-feature-choice-service.js";
 import { fetchSelectionDocument } from "./pack-service.js";
+import type { ActorLike } from "./shared/actor-model.js";
 import type { DraftState, PendingStep } from "./types.js";
 
-export async function applyDraftToActor(actor: any, draft: DraftState, steps: PendingStep[]): Promise<void> {
+export async function applyDraftToActor(actor: ActorLike, draft: DraftState, steps: PendingStep[]): Promise<void> {
   const selections = orderSelections(draft, steps);
   const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
 
@@ -49,7 +50,7 @@ export async function applyDraftToActor(actor: any, draft: DraftState, steps: Pe
   await applySkillIncreaseDraft(actor, draft, projectedTrainingRanks);
 
   const currentLevel = Number(actor?.system?.details?.level?.value ?? 1) || 1;
-  if (draft.targetLevel > currentLevel) {
+  if (draft.targetLevel > currentLevel && typeof actor.update === "function") {
     await actor.update({
       "system.details.level.value": draft.targetLevel,
     });

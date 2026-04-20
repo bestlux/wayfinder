@@ -8,12 +8,13 @@ export async function applyTrainingDraft(actor, draft, steps) {
     }
     const stepMap = new Map(steps.map((step) => [step.slotId, step]));
     const classUpdates = [];
+    const actorItems = listActorItems(actor);
     for (const [slotId, training] of Object.entries(draft.skillTrainings)) {
         const step = stepMap.get(slotId);
         if (step?.kind !== "skill-training" || !step.training) {
             continue;
         }
-        const classItem = listActorItems(actor).find((item) => item?.type === "class");
+        const classItem = actorItems.find((item) => item?.type === "class");
         if (classItem?.id && step.training.choiceRules.length > 0) {
             const classRules = cloneData(Array.isArray(classItem.system?.rules) ? classItem.system.rules : []);
             const classUpdate = { _id: classItem.id };
@@ -35,7 +36,7 @@ export async function applyTrainingDraft(actor, draft, steps) {
             projectedRanks[slug] = Math.max(projectedRanks[slug] ?? 0, 1);
         }
     }
-    if (classUpdates.length > 0) {
+    if (classUpdates.length > 0 && typeof actor.updateEmbeddedDocuments === "function") {
         await actor.updateEmbeddedDocuments("Item", classUpdates);
     }
     const skillUpdates = Object.entries(projectedRanks)
@@ -44,7 +45,7 @@ export async function applyTrainingDraft(actor, draft, steps) {
         return rank > current;
     })
         .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]);
-    if (skillUpdates.length > 0) {
+    if (skillUpdates.length > 0 && typeof actor.update === "function") {
         await actor.update(Object.fromEntries(skillUpdates));
     }
     return projectedRanks;
@@ -66,7 +67,7 @@ export async function applySkillIncreaseDraft(actor, draft, baseRanks) {
         projectedRanks[slug] = Math.min(4, currentRank + 1);
     }
     const updates = Object.entries(projectedRanks).map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]);
-    if (updates.length > 0) {
+    if (updates.length > 0 && typeof actor.update === "function") {
         await actor.update(Object.fromEntries(updates));
     }
 }

@@ -1,4 +1,11 @@
 import { vi } from "vitest";
+import type {
+  ActorItemLike,
+  ActorLike,
+  EmbeddedItemSource,
+  GameLike,
+  SelectionDocumentLike,
+} from "../../src/shared/actor-model";
 import type { PendingStep, SelectionRef, SpellChoiceMeta } from "../../src/types";
 
 type PackDocumentDefinition = {
@@ -19,18 +26,25 @@ type ChoiceOption = {
 
 type ActorHarnessOptions = {
   level?: number;
-  items?: any[];
+  items?: ActorItemLike[];
 };
 
-export const testGlobals = globalThis as typeof globalThis & { game: any };
+type HarnessActor = ActorLike & {
+  items: {
+    contents: ActorItemLike[];
+  };
+  createEmbeddedDocuments: ReturnType<typeof vi.fn>;
+  deleteEmbeddedDocuments: ReturnType<typeof vi.fn>;
+  updateEmbeddedDocuments: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+};
 
-export function buildActorHarness(options: ActorHarnessOptions = {}): {
-  actor: any;
-  createdItems: any[];
-} {
-  const createdItems: any[] = [];
+export const testGlobals = globalThis as typeof globalThis & { game: GameLike };
+
+export function buildActorHarness(options: ActorHarnessOptions = {}) {
+  const createdItems: ActorItemLike[] = [];
   let nextId = 1;
-  const actor = {
+  const actor: HarnessActor = {
     system: {
       details: {
         level: {
@@ -50,15 +64,15 @@ export function buildActorHarness(options: ActorHarnessOptions = {}): {
       },
     },
     items: {
-      contents: [...(options.items ?? [])],
+      contents: [...(options.items ?? [])] as ActorItemLike[],
     },
-    createEmbeddedDocuments: vi.fn(async (_type: string, sources: any[]) => {
+    createEmbeddedDocuments: vi.fn(async (_type: string, sources: EmbeddedItemSource[]) => {
       const created = sources.map((source) => {
-        const item = {
+        const item: ActorItemLike = {
           id: `created-${nextId++}`,
           type: source.type,
           name: source.name,
-          sourceId: source.flags?.core?.sourceId ?? null,
+          sourceId: typeof source.flags?.core?.sourceId === "string" ? source.flags.core.sourceId : null,
           flags: source.flags ?? {},
           system: source.system ?? {},
           _stats: source._stats ?? {},
@@ -70,7 +84,7 @@ export function buildActorHarness(options: ActorHarnessOptions = {}): {
       return created;
     }),
     deleteEmbeddedDocuments: vi.fn(async (_type: string, ids: string[]) => {
-      actor.items.contents = actor.items.contents.filter((item: any) => !ids.includes(item.id));
+      actor.items.contents = actor.items.contents.filter((item) => !item.id || !ids.includes(item.id));
       return [];
     }),
     updateEmbeddedDocuments: vi.fn(async () => []),
@@ -93,7 +107,7 @@ export function setGamePacks(packs: Record<string, Record<string, PackDocumentDe
               return null;
             }
 
-            return {
+            const selectionDocument: SelectionDocumentLike = {
               id: documentId,
               name: document.name,
               toObject: () => ({
@@ -105,11 +119,12 @@ export function setGamePacks(packs: Record<string, Record<string, PackDocumentDe
                 _stats: document._stats ?? {},
               }),
             };
+            return selectionDocument;
           },
         },
       ])
     ),
-  } as any;
+  };
 }
 
 export function selection(

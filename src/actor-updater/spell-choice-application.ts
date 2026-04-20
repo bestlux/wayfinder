@@ -1,12 +1,13 @@
 import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
+import type { ActorItemLike, ActorLike, PreparedSlotLike, SpellSlotGroupLike } from "../shared/actor-model.js";
 import { cloneData } from "../shared/cloning.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import type { DraftState, PendingStep, SelectionRef, SpellChoiceMeta } from "../types.js";
 import { createEmbeddedSource, hasSourceId, stampSelectionFlags } from "./selection-application.js";
 import { ensureSpellcastingEntry, spellLocationId } from "./spellcasting-entry-support.js";
 
-export async function applySpellChoiceDraft(actor: any, draft: DraftState, steps: PendingStep[]): Promise<void> {
+export async function applySpellChoiceDraft(actor: ActorLike, draft: DraftState, steps: PendingStep[]): Promise<void> {
   const stepMap = new Map(steps.map((step) => [step.slotId, step]));
 
   for (const [slotId, selections] of Object.entries(draft.spellChoices)) {
@@ -40,7 +41,10 @@ export async function applySpellChoiceDraft(actor: any, draft: DraftState, steps
         source.system.location = { value: entry.id };
       }
 
-      const created = await actor.createEmbeddedDocuments("Item", [source]);
+      const created =
+        typeof actor.createEmbeddedDocuments === "function"
+          ? await actor.createEmbeddedDocuments("Item", [source])
+          : [];
       await stampSelectionFlags(actor, created, selection);
     }
 
@@ -50,7 +54,7 @@ export async function applySpellChoiceDraft(actor: any, draft: DraftState, steps
   }
 }
 
-async function reconcileSpellChoiceSlot(actor: any, slotId: string, selections: SelectionRef[]): Promise<void> {
+async function reconcileSpellChoiceSlot(actor: ActorLike, slotId: string, selections: SelectionRef[]): Promise<void> {
   if (typeof actor?.deleteEmbeddedDocuments !== "function") {
     return;
   }
@@ -62,8 +66,8 @@ async function reconcileSpellChoiceSlot(actor: any, slotId: string, selections: 
 
   const matchedCounts = new Map<string, number>();
   const obsoleteIds: string[] = [];
-  for (const item of listActorItems(actor).filter(
-    (candidate: any) => candidate?.type === "spell" && candidate?.flags?.[MODULE_ID]?.slotId === slotId
+  for (const item of (listActorItems(actor) as ActorItemLike[]).filter(
+    (candidate) => candidate?.type === "spell" && candidate?.flags?.[MODULE_ID]?.slotId === slotId
   )) {
     if (!item?.id) {
       continue;
@@ -91,7 +95,7 @@ async function reconcileSpellChoiceSlot(actor: any, slotId: string, selections: 
 }
 
 async function syncPreparedSpellChoiceSelections(
-  actor: any,
+  actor: ActorLike,
   entryId: string,
   spellChoice: SpellChoiceMeta,
   slotId: string,
@@ -101,12 +105,12 @@ async function syncPreparedSpellChoiceSelections(
     return;
   }
 
-  const entry = listActorItems(actor).find((item: any) => item?.id === entryId);
+  const entry = (listActorItems(actor) as ActorItemLike[]).find((item) => item?.id === entryId);
   if (!entry?.id) {
     return;
   }
 
-  const currentSlots = cloneData(entry?.system?.slots ?? {});
+  const currentSlots = cloneData<Record<string, SpellSlotGroupLike>>(entry?.system?.slots ?? {});
   const assignedSpellIdsBySlotKey = collectPreparedSpellChoiceAssignments(
     actor,
     entryId,
@@ -123,7 +127,7 @@ async function syncPreparedSpellChoiceSelections(
     }
 
     const assignedIds = assignedSpellIdsBySlotKey.get(slotKey) ?? [];
-    group.prepared = group.prepared.map((slot: any, index: number) => {
+    group.prepared = group.prepared.map((slot: PreparedSlotLike, index: number) => {
       const desiredId = assignedIds[index] ?? null;
       const existingId = typeof slot?.id === "string" || slot?.id === null ? slot.id : null;
       return {
@@ -144,20 +148,20 @@ async function syncPreparedSpellChoiceSelections(
 }
 
 function collectPreparedSpellChoiceAssignments(
-  actor: any,
+  actor: ActorLike,
   entryId: string,
   spellChoice: SpellChoiceMeta,
   slotId: string,
   selections: SelectionRef[]
 ): Map<string, string[]> {
-  const entrySpells = listActorItems(actor).filter(
-    (item: any) =>
+  const entrySpells = (listActorItems(actor) as ActorItemLike[]).filter(
+    (item) =>
       item?.type === "spell" &&
       spellLocationId(item) === entryId &&
       item?.flags?.[MODULE_ID]?.slotId === slotId &&
       typeof item?.id === "string"
   );
-  const unusedBySource = new Map<string, any[]>();
+  const unusedBySource = new Map<string, ActorItemLike[]>();
   for (const item of entrySpells) {
     const sourceId = sourceIdOf(item);
     if (!sourceId) {

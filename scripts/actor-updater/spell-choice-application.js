@@ -32,7 +32,9 @@ export async function applySpellChoiceDraft(actor, draft, steps) {
             else {
                 source.system.location = { value: entry.id };
             }
-            const created = await actor.createEmbeddedDocuments("Item", [source]);
+            const created = typeof actor.createEmbeddedDocuments === "function"
+                ? await actor.createEmbeddedDocuments("Item", [source])
+                : [];
             await stampSelectionFlags(actor, created, selection);
         }
         if (step.spellChoice.destination.type === "prepared") {

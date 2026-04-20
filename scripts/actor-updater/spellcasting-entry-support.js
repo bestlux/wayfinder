@@ -16,7 +16,9 @@ export async function ensureSpellcastingEntry(actor, step, draft) {
         }
         return existing;
     }
-    const [created] = await actor.createEmbeddedDocuments("Item", [desiredSource]);
+    const [created] = typeof actor.createEmbeddedDocuments === "function"
+        ? await actor.createEmbeddedDocuments("Item", [desiredSource])
+        : [];
     return created ?? null;
 }
 export async function ensureSpellcastingEntryFromSource(actor, desiredSource, options) {
@@ -25,7 +27,9 @@ export async function ensureSpellcastingEntryFromSource(actor, desiredSource, op
         await syncSpellcastingEntry(actor, existing, desiredSource);
         return existing;
     }
-    const [created] = await actor.createEmbeddedDocuments("Item", [desiredSource]);
+    const [created] = typeof actor.createEmbeddedDocuments === "function"
+        ? await actor.createEmbeddedDocuments("Item", [desiredSource])
+        : [];
     return created ?? null;
 }
 export function createSpellcastingEntrySource(spellChoice, actor, draft) {
@@ -187,9 +191,9 @@ export async function syncSpellcastingEntry(actor, entry, desiredSource) {
     if (!entry?.id || typeof actor?.updateEmbeddedDocuments !== "function") {
         return;
     }
-    const desiredSystem = desiredSource.system;
-    const desiredFlags = desiredSource.flags;
-    const mergedSlots = mergeSpellcastingEntrySlots(entry?.system?.slots, desiredSystem.slots);
+    const desiredSystem = desiredSource.system ?? {};
+    const desiredFlags = desiredSource.flags ?? {};
+    const mergedSlots = mergeSpellcastingEntrySlots(entry?.system?.slots, desiredSystem.slots ?? {});
     await actor.updateEmbeddedDocuments("Item", [
         {
             _id: entry.id,
@@ -207,10 +211,11 @@ export async function syncSpellcastingEntry(actor, entry, desiredSource) {
     entry.system.slots = mergedSlots;
 }
 export function spellLocationId(item) {
-    const location = typeof item?.system?.location?.value === "string"
-        ? item.system.location.value
-        : typeof item?.system?.location === "string"
-            ? item.system.location
+    const locationSource = item?.system?.location;
+    const location = typeof locationSource === "object" && locationSource !== null && typeof locationSource.value === "string"
+        ? locationSource.value
+        : typeof locationSource === "string"
+            ? locationSource
             : null;
     return location && location.length > 0 ? location : null;
 }

@@ -105,7 +105,10 @@ export default tseslint.config(
   },
   {
     files: [
+      "src/actor-updater.ts",
+      "src/actor-updater/**/*.ts",
       "src/shared/**/*.ts",
+      "tests/support/**/*.ts",
       "src/wayfinder/application/**/*.ts",
       "src/wayfinder/domain/**/*.ts",
       "src/wayfinder/draft-decisions.ts",

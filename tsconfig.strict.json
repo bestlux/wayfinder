@@ -7,6 +7,8 @@
   },
   "include": [
     "src/**/*.d.ts",
+    "src/actor-updater.ts",
+    "src/actor-updater/**/*.ts",
     "src/shared/**/*.ts",
     "src/wayfinder/app-shell.ts",
     "src/wayfinder/application/**/*.ts",
@@ -14,7 +16,8 @@
     "src/wayfinder/draft-decisions.ts",
     "src/wayfinder/invalidation.ts",
     "src/wayfinder/panes/boost-pane.ts",
-    "src/wayfinder/slot-ids.ts"
+    "src/wayfinder/slot-ids.ts",
+    "tests/support/**/*.ts"
   ],
   "exclude": ["scripts", "node_modules"]
 }

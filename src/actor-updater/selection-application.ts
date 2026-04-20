@@ -3,24 +3,31 @@ import { stripPreselectedClassBranchEntries } from "../class-branch-service.js";
 import { stripPreselectedClassFeatureEntries } from "../class-feature-choice-service.js";
 import { MODULE_ID } from "../constants.js";
 import { fetchSelectionDocument } from "../pack-service.js";
+import type {
+  ActorItemLike,
+  ActorLike,
+  EmbeddedItemSource,
+  FeatSlotLike,
+  SelectionDocumentLike,
+} from "../shared/actor-model.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
 
 const SINGLETON_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 
 interface CreateEmbeddedSourceDependencies {
-  fetchSelectionDocument: (selection: SelectionRef) => Promise<any | null>;
-  stripPreselectedClassFeatureEntries: (source: Record<string, any>, draft: DraftState, steps: PendingStep[]) => void;
-  stripPreselectedClassBranchEntries: (source: Record<string, any>, draft: DraftState, steps: PendingStep[]) => void;
+  fetchSelectionDocument: (selection: SelectionRef) => Promise<SelectionDocumentLike | null>;
+  stripPreselectedClassFeatureEntries: (source: EmbeddedItemSource, draft: DraftState, steps: PendingStep[]) => void;
+  stripPreselectedClassBranchEntries: (source: EmbeddedItemSource, draft: DraftState, steps: PendingStep[]) => void;
 }
 
 interface InsertFeatSelectionDependencies {
-  fetchSelectionDocument: (selection: SelectionRef) => Promise<any | null>;
+  fetchSelectionDocument: (selection: SelectionRef) => Promise<SelectionDocumentLike | null>;
   createEmbeddedSource: (
     selection: SelectionRef,
     draft?: DraftState,
     steps?: PendingStep[]
-  ) => Promise<Record<string, any> | null>;
+  ) => Promise<EmbeddedItemSource | null>;
 }
 
 const DEFAULT_CREATE_DEPS: CreateEmbeddedSourceDependencies = {
@@ -35,22 +42,20 @@ const DEFAULT_INSERT_DEPS: InsertFeatSelectionDependencies = {
 };
 
 export async function replaceSingletonItem(
-  actor: any,
+  actor: ActorLike,
   selection: SelectionRef,
   draft: DraftState,
   steps: PendingStep[],
   deps: CreateEmbeddedSourceDependencies = DEFAULT_CREATE_DEPS
 ): Promise<void> {
-  const existing = listActorItems(actor).filter((item: any) => item?.type === selection.itemType);
-  if (existing.length > 0) {
-    await actor.deleteEmbeddedDocuments(
-      "Item",
-      existing.map((item: any) => item.id)
-    );
+  const existing = (listActorItems(actor) as ActorItemLike[]).filter((item) => item?.type === selection.itemType);
+  const existingIds = existing.map((item) => item.id).filter((id): id is string => typeof id === "string");
+  if (existingIds.length > 0 && typeof actor.deleteEmbeddedDocuments === "function") {
+    await actor.deleteEmbeddedDocuments("Item", existingIds);
   }
 
   const source = await createEmbeddedSource(selection, draft, steps, deps);
-  if (source) {
+  if (source && typeof actor.createEmbeddedDocuments === "function") {
     await actor.createEmbeddedDocuments("Item", [source]);
   }
 }
@@ -60,7 +65,7 @@ export async function createEmbeddedSource(
   draft?: DraftState,
   steps: PendingStep[] = [],
   deps: CreateEmbeddedSourceDependencies = DEFAULT_CREATE_DEPS
-): Promise<Record<string, any> | null> {
+): Promise<EmbeddedItemSource | null> {
   const document = await deps.fetchSelectionDocument(selection);
   if (!document) {
     return null;
@@ -86,7 +91,7 @@ export async function createEmbeddedSource(
 }
 
 export async function insertFeatSelection(
-  actor: any,
+  actor: ActorLike,
   selection: SelectionRef,
   step: PendingStep | null,
   deps: InsertFeatSelectionDependencies = DEFAULT_INSERT_DEPS
@@ -117,11 +122,13 @@ export async function insertFeatSelection(
     }
   }
 
-  await actor.createEmbeddedDocuments("Item", [source]);
+  if (typeof actor.createEmbeddedDocuments === "function") {
+    await actor.createEmbeddedDocuments("Item", [source]);
+  }
 }
 
 function resolveFeatSlotData(
-  actor: any,
+  actor: ActorLike,
   selection: SelectionRef,
   step: PendingStep | null
 ): { groupId: string; slotId: string | null } | null {
@@ -130,8 +137,11 @@ function resolveFeatSlotData(
     return null;
   }
 
-  const group = typeof actor?.feats?.get === "function" ? actor.feats.get(groupId) : actor?.feats?.[groupId];
-  const slots = Object.values(group?.slots ?? {}) as Array<{ id?: string; level?: number | null; feat?: unknown }>;
+  const group = (typeof actor?.feats?.get === "function" ? actor.feats.get(groupId) : actor?.feats?.[groupId]) as
+    | { slots?: Record<string, FeatSlotLike> }
+    | null
+    | undefined;
+  const slots = Object.values(group?.slots ?? {});
   if (slots.length === 0) {
     return { groupId, slotId: null };
   }
@@ -171,7 +181,11 @@ function resolveFeatGroupId(selection: SelectionRef, step: PendingStep | null): 
   }
 }
 
-export async function stampSelectionFlags(actor: any, items: any[], selection: SelectionRef): Promise<void> {
+export async function stampSelectionFlags(
+  actor: ActorLike,
+  items: ActorItemLike[],
+  selection: SelectionRef
+): Promise<void> {
   if (!Array.isArray(items) || items.length === 0 || typeof actor?.updateEmbeddedDocuments !== "function") {
     return;
   }
@@ -212,6 +226,6 @@ export function featSelections(selections: SelectionRef[]): SelectionRef[] {
   return selections.filter((entry) => entry.itemType === "feat");
 }
 
-export function hasSourceId(actor: any, sourceId: string): boolean {
-  return listActorItems(actor).some((item: any) => itemMatchesSourceId(item, sourceId));
+export function hasSourceId(actor: ActorLike, sourceId: string): boolean {
+  return (listActorItems(actor) as ActorItemLike[]).some((item) => itemMatchesSourceId(item, sourceId));
 }

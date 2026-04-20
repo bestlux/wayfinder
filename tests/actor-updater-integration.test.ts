@@ -345,7 +345,13 @@ describe("actor-updater integration", () => {
     expect(deityGrant).toBeTruthy();
     expect(preparedEntry).toBeTruthy();
     expect(fontEntry).toBeTruthy();
-    expect(fontSpell?.system?.location?.value).toBe(fontEntry?.id);
+    const fontSpellLocation =
+      typeof fontSpell?.system?.location === "object" &&
+      fontSpell.system.location !== null &&
+      "value" in fontSpell.system.location
+        ? fontSpell.system.location.value
+        : fontSpell?.system?.location;
+    expect(fontSpellLocation).toBe(fontEntry?.id);
   });
 
   it("raises actor level after apply when the draft target exceeds the current actor level", async () => {

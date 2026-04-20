@@ -5,7 +5,8 @@ const DEFAULT_DEPS = {
 export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS) {
     const buildState = await deps.getEffectiveBuildState(actor, draft);
     const updates = [];
-    const ancestryItem = listActorItems(actor).find((item) => item?.type === "ancestry");
+    const actorItems = listActorItems(actor);
+    const ancestryItem = actorItems.find((item) => item?.type === "ancestry");
     if (ancestryItem && buildState.ancestry) {
         const ancestryUpdate = { _id: ancestryItem.id };
         if (buildState.ancestry.mode === "alternate") {
@@ -28,7 +29,7 @@ export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS) {
         }
         updates.push(ancestryUpdate);
     }
-    const backgroundItem = listActorItems(actor).find((item) => item?.type === "background");
+    const backgroundItem = actorItems.find((item) => item?.type === "background");
     if (backgroundItem && buildState.background) {
         const backgroundUpdate = { _id: backgroundItem.id };
         for (const [slot, value] of Object.entries(buildState.background.selectedBoosts)) {
@@ -36,17 +37,19 @@ export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS) {
         }
         updates.push(backgroundUpdate);
     }
-    const classItem = listActorItems(actor).find((item) => item?.type === "class");
+    const classItem = actorItems.find((item) => item?.type === "class");
     if (classItem && buildState.class) {
         updates.push({
             _id: classItem.id,
             "system.keyAbility.selected": buildState.class.selectedKeyAbility ?? null,
         });
     }
-    if (updates.length > 0) {
+    if (updates.length > 0 && typeof actor.updateEmbeddedDocuments === "function") {
         await actor.updateEmbeddedDocuments("Item", updates);
     }
     const actorBoostUpdate = Object.fromEntries(BOOST_LEVELS.map((level) => [`system.build.attributes.boosts.${level}`, buildState.levelBoosts[level]]));
-    await actor.update(actorBoostUpdate);
+    if (typeof actor.update === "function") {
+        await actor.update(actorBoostUpdate);
+    }
 }
 //# sourceMappingURL=boost-application.js.map

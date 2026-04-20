@@ -33,7 +33,7 @@ export async function applyDraftToActor(actor, draft, steps) {
     await applyBoostDraft(actor, draft);
     await applySkillIncreaseDraft(actor, draft, projectedTrainingRanks);
     const currentLevel = Number(actor?.system?.details?.level?.value ?? 1) || 1;
-    if (draft.targetLevel > currentLevel) {
+    if (draft.targetLevel > currentLevel && typeof actor.update === "function") {
         await actor.update({
             "system.details.level.value": draft.targetLevel,
         });

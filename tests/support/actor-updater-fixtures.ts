@@ -1,0 +1,340 @@
+import { vi } from "vitest";
+import type { PendingStep, SelectionRef, SpellChoiceMeta } from "../../src/types";
+
+type PackDocumentDefinition = {
+  name: string;
+  type: string;
+  system?: Record<string, unknown>;
+  flags?: Record<string, unknown>;
+  img?: string;
+  _stats?: Record<string, unknown>;
+};
+
+type ChoiceOption = {
+  value: string;
+  label: string;
+  img: string | null;
+  detail: string | null;
+};
+
+type ActorHarnessOptions = {
+  level?: number;
+  items?: any[];
+};
+
+export const testGlobals = globalThis as typeof globalThis & { game: any };
+
+export function buildActorHarness(options: ActorHarnessOptions = {}): {
+  actor: any;
+  createdItems: any[];
+} {
+  const createdItems: any[] = [];
+  let nextId = 1;
+  const actor = {
+    system: {
+      details: {
+        level: {
+          value: options.level ?? 1,
+        },
+      },
+      build: {
+        attributes: {
+          boosts: {
+            1: [],
+            5: [],
+            10: [],
+            15: [],
+            20: [],
+          },
+        },
+      },
+    },
+    items: {
+      contents: [...(options.items ?? [])],
+    },
+    createEmbeddedDocuments: vi.fn(async (_type: string, sources: any[]) => {
+      const created = sources.map((source) => {
+        const item = {
+          id: `created-${nextId++}`,
+          type: source.type,
+          name: source.name,
+          sourceId: source.flags?.core?.sourceId ?? null,
+          flags: source.flags ?? {},
+          system: source.system ?? {},
+          _stats: source._stats ?? {},
+        };
+        createdItems.push(item);
+        actor.items.contents.push(item);
+        return item;
+      });
+      return created;
+    }),
+    deleteEmbeddedDocuments: vi.fn(async (_type: string, ids: string[]) => {
+      actor.items.contents = actor.items.contents.filter((item: any) => !ids.includes(item.id));
+      return [];
+    }),
+    updateEmbeddedDocuments: vi.fn(async () => []),
+    update: vi.fn(async () => ({})),
+  };
+
+  return { actor, createdItems };
+}
+
+export function setGamePacks(packs: Record<string, Record<string, PackDocumentDefinition>>): void {
+  testGlobals.game = {
+    packs: new Map(
+      Object.entries(packs).map(([packId, documents]) => [
+        packId,
+        {
+          metadata: { id: packId },
+          async getDocument(documentId: string) {
+            const document = documents[documentId];
+            if (!document) {
+              return null;
+            }
+
+            return {
+              id: documentId,
+              name: document.name,
+              toObject: () => ({
+                name: document.name,
+                type: document.type,
+                img: document.img,
+                system: document.system ?? {},
+                flags: document.flags ?? {},
+                _stats: document._stats ?? {},
+              }),
+            };
+          },
+        },
+      ])
+    ),
+  } as any;
+}
+
+export function selection(
+  slotId: string,
+  packId: string,
+  documentId: string,
+  itemType: string,
+  name: string,
+  featType: string | null = null,
+  level = 1
+): SelectionRef {
+  return {
+    slotId,
+    packId,
+    documentId,
+    uuid: `Compendium.${packId}.Item.${documentId}`,
+    itemType,
+    featType,
+    name,
+    level,
+  };
+}
+
+export function classSelectionStep(): PendingStep {
+  return {
+    id: "class-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "class",
+    title: "Choose a class",
+    description: "",
+    required: true,
+    slotId: "class-level-1",
+    filters: {
+      itemType: "class",
+    },
+  };
+}
+
+export function deitySelectionStep(): PendingStep {
+  return {
+    id: "deity-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "deity",
+    title: "Choose a deity",
+    description: "",
+    required: true,
+    slotId: "deity-level-1",
+    filters: {
+      itemType: "deity",
+    },
+    grantSelection: {
+      slotId: "deity-level-1",
+      selectorPackId: "pf2e.classfeatures",
+      selectorDocumentId: "deity-cleric",
+      selectorUuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
+      selectorName: "Deity",
+      selectorRuleIndex: 0,
+      grantRuleIndex: 1,
+      flag: "deity",
+      itemType: "deity",
+      classSlug: "cleric",
+    },
+  };
+}
+
+export function classBranchStep(args: {
+  slotId: string;
+  title: string;
+  selectorDocumentId: string;
+  selectorName: string;
+  flag: string;
+  optionTag: string;
+  classSlug: string;
+}): PendingStep {
+  return {
+    id: args.slotId,
+    level: 1,
+    kind: "class-branch",
+    slotKind: "class-branch",
+    title: args.title,
+    description: "",
+    required: true,
+    slotId: args.slotId,
+    filters: {
+      itemType: "feat",
+      featTypes: ["classfeature"],
+      maxLevel: 1,
+    },
+    branch: {
+      slotId: args.slotId,
+      selectorPackId: "pf2e.classfeatures",
+      selectorDocumentId: args.selectorDocumentId,
+      selectorUuid: `Compendium.pf2e.classfeatures.Item.${args.selectorDocumentId}`,
+      selectorName: args.selectorName,
+      selectorRuleIndex: 0,
+      flag: args.flag,
+      optionTag: args.optionTag,
+      classSlug: args.classSlug,
+      dependsOn: "class",
+    },
+  };
+}
+
+export function classChoiceStep(args: {
+  slotId: string;
+  title: string;
+  sourceDocumentId: string;
+  sourceName: string;
+  sourceRuleIndex: number;
+  flag: string;
+  classSlug: string;
+  dependsOn: "class" | "deity";
+  options: ChoiceOption[];
+}): PendingStep {
+  return {
+    id: args.slotId,
+    level: 1,
+    kind: "class-choice",
+    slotKind: "class-choice",
+    title: args.title,
+    description: "",
+    required: true,
+    slotId: args.slotId,
+    classChoice: {
+      slotId: args.slotId,
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: args.sourceDocumentId,
+      sourceUuid: `Compendium.pf2e.classfeatures.Item.${args.sourceDocumentId}`,
+      sourceName: args.sourceName,
+      sourceRuleIndex: args.sourceRuleIndex,
+      flag: args.flag,
+      classSlug: args.classSlug,
+      dependsOn: args.dependsOn,
+      options: args.options,
+    },
+  };
+}
+
+export function spellChoiceStep(slotId: string, spellChoice: SpellChoiceMeta, title = "Prepared spell"): PendingStep {
+  return {
+    id: slotId,
+    level: 1,
+    kind: "spell-choice",
+    slotKind: "spell-choice",
+    title,
+    description: "",
+    required: true,
+    slotId,
+    filters: {
+      itemType: "spell",
+    },
+    spellChoice,
+  };
+}
+
+export function clericSpellChoice(
+  slotId: string,
+  count: number,
+  minRank: number,
+  maxRank: number,
+  cantrip: boolean
+): SpellChoiceMeta {
+  return {
+    slotId,
+    sourcePackId: "pf2e.classfeatures",
+    sourceDocumentId: "cleric-spellcasting",
+    sourceUuid: "Compendium.pf2e.classfeatures.Item.cleric-spellcasting",
+    sourceName: "Cleric Spellcasting",
+    classSlug: "cleric",
+    dependsOn: "class",
+    destination: {
+      type: "prepared",
+      key: "cleric-divine-prepared",
+      label: "Divine prepared spells",
+      entryName: "Divine Prepared Spells",
+      tradition: "divine",
+      ability: "wis",
+      prepared: "prepared",
+    },
+    count,
+    minRank,
+    maxRank,
+    cantrip,
+    curriculumSpellNames: [],
+    additionalAllowedSpellNames: [],
+    restrictToCommon: true,
+  };
+}
+
+export function clericPreparedChoice(slotId: string): SpellChoiceMeta {
+  return clericSpellChoice(slotId, 1, 1, 1, false);
+}
+
+export function wizardSpellChoice(
+  slotId: string,
+  count: number,
+  minRank: number,
+  maxRank: number,
+  cantrip: boolean
+): SpellChoiceMeta {
+  return {
+    slotId,
+    sourcePackId: "pf2e.classfeatures",
+    sourceDocumentId: "wizard-spellcasting",
+    sourceUuid: "Compendium.pf2e.classfeatures.Item.wizard-spellcasting",
+    sourceName: "Wizard Spellcasting",
+    classSlug: "wizard",
+    dependsOn: "class",
+    destination: {
+      type: "spellbook",
+      key: "wizard-arcane-prepared",
+      label: "Wizard spellbook",
+      entryName: "Arcane Prepared Spells",
+      tradition: "arcane",
+      ability: "int",
+      prepared: "prepared",
+    },
+    count,
+    minRank,
+    maxRank,
+    cantrip,
+    curriculumSpellNames: [],
+    additionalAllowedSpellNames: [],
+    restrictToCommon: false,
+  };
+}

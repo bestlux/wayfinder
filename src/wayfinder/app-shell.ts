@@ -2,14 +2,29 @@ import { inspectActor } from "../actor-inspector.js";
 import { applyDraftToActor } from "../actor-updater.js";
 import type { EffectiveBuildState } from "../build-state.js";
 import { getEffectiveBuildState, getEffectiveSingletonDocument, listActorItems } from "../build-state.js";
-import { DRAFT_FLAG, MODULE_ID, MODULE_TITLE, SKILL_LABELS, STATE_FLAG } from "../constants.js";
+import { DRAFT_FLAG, MODULE_ID, MODULE_TITLE, STATE_FLAG } from "../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../draft-service.js";
 import { fetchSelectionDocument, getOptionsForStep, getPickerInfoState, resolveSelection } from "../pack-service.js";
 import { canUseWayfinder } from "../permissions.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
-import type { AbilityKey, BoostLevel, DraftState, OptionContext, PendingStep, SelectionRef } from "../types.js";
+import type { AbilityKey, BoostLevel, DraftState, PendingStep } from "../types.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
+import { buildSelectionPane } from "./application/build-selection-pane-service.js";
+import { buildSkillPane } from "./application/build-skill-pane-service.js";
+import {
+  buildContextNote,
+  buildOptionContext,
+  resolveSelectionSlug,
+  resolveSelectionTraits,
+} from "./application/option-context-service.js";
+import {
+  chooseSelectionOption,
+  type SelectionCommandResult,
+  type SelectionCommandState,
+  selectClassChoiceValue,
+  toggleSpellChoiceSelection,
+} from "./application/selection-command-service.js";
 import {
   buildClassBranchSteps,
   buildClassChoiceSteps,
@@ -17,26 +32,15 @@ import {
   buildClassGrantedItemSteps,
   buildClassTrainingSteps,
 } from "./class-choice-service.js";
-import { findDraftSelectionByType, hasDuplicateDraftSelection, writeDraftStepSelection } from "./draft-decisions.js";
+import { findDraftSelectionByType, hasDuplicateDraftSelection } from "./draft-decisions.js";
 import {
   readExistingBranchSelection,
   readExistingClassChoiceSelection,
   readExistingGrantedSelection,
 } from "./existing-selection-service.js";
-import { formatSlug, sameMembers } from "./formatting.js";
 import { clearSelectionState, invalidateSelectionState, invalidateSelectionsByPrefix } from "./invalidation.js";
 import { buildBoostPane, toggleSlotRecordChoice } from "./panes/boost-pane.js";
-import { buildClassChoicePane } from "./panes/class-choice-pane.js";
-import {
-  buildPickItemPane,
-  buildPreview,
-  matchesSearch,
-  resolvePreviewValue,
-  selectedSelection,
-  selectedValueFor,
-} from "./panes/pick-pane.js";
-import { buildSkillIncreasePane, buildSkillTrainingPane, compareSkillIncreaseSlotIds } from "./panes/skill-pane.js";
-import { buildSpellChoicePane } from "./panes/spell-pane.js";
+import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
 import {
   buildWayfinderPlan,
   getWayfinderStepStatus,
@@ -44,7 +48,7 @@ import {
   modeLabel,
   resolveActiveStep,
 } from "./plan-service.js";
-import { isSanctificationChoiceSlotId, isWizardArcaneSchoolSlotId, SLOT_IDS, SLOT_PREFIXES } from "./slot-ids.js";
+import { isWizardArcaneSchoolSlotId, SLOT_IDS, SLOT_PREFIXES } from "./slot-ids.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "./spell-choice-service.js";
 import type { ActivePane, ManualStepPane, StepNavRow, SummaryItem } from "./view-models.js";
 
@@ -459,221 +463,91 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       });
     }
 
-    if (step.kind === "skill-training") {
-      const projectedRanks = await this.#projectSkillRanks(this.#requireDraft(), step.slotId);
-      return buildSkillTrainingPane(step, this.#requireDraft(), projectedRanks, this.#getSkillList(projectedRanks), {
-        isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep),
-      });
-    }
-
-    if (step.kind === "skill-increase") {
-      const projectedRanks = await this.#projectSkillRanks(this.#requireDraft(), step.slotId);
-      return buildSkillIncreasePane(step, this.#requireDraft(), projectedRanks, this.#getSkillList(projectedRanks));
-    }
-
-    if (step.kind === "class-choice") {
-      const selectedValue = this.#requireDraft().classChoices[step.slotId] ?? null;
-      const choice = step.classChoice;
-      const blocked = choice?.dependsOn === "deity" && !(await this.#resolveDraftOrActorDocument("deity"));
-      return buildClassChoicePane({
-        step,
-        selectedValue,
-        selectedLabel: await this.#stepStatus(step, effectiveBuildState),
-        blocked,
-        blockedTitle: blocked ? "Choose a deity first" : null,
-        blockedMessage: blocked
-          ? "This class choice depends on the drafted deity. Resolve the deity step before choosing this option."
-          : null,
-      });
-    }
-
-    if (step.kind === "spell-choice") {
-      const optionContext = await this.#buildOptionContext();
-      const options = await getOptionsForStep(step, optionContext);
-      const search = this.#searchByStepId.get(step.id) ?? "";
-      const filteredOptions = options.filter((option) => matchesSearch(option, search));
-      const infoState = getPickerInfoState(step, optionContext, options.length, filteredOptions.length, search);
-      const visibleOptions = infoState?.tone === "blocked" ? [] : filteredOptions;
-      const contextNote = await this.#buildContextNote(step, optionContext);
-      const selectedSelections = this.#requireDraft().spellChoices[step.slotId] ?? [];
-      const selectedValues = selectedSelections.map((selection) => `${selection.packId}:${selection.documentId}`);
-      const previewValue = resolvePreviewValue(
-        step.id,
-        visibleOptions,
-        options,
-        selectedValues[0] ?? "",
-        this.#previewValueByStepId
-      );
-      const previewBase = previewValue
-        ? await buildPreview(
-            options.find((option) => option.value === previewValue) ?? null,
-            selectedValues.includes(previewValue) ? previewValue : ""
-          )
-        : null;
-      const preview = previewBase
-        ? {
-            ...previewBase,
-            selectedLabel: selectedValues.includes(previewValue) ? "Added to draft" : "Add to draft",
-          }
-        : null;
-
-      return buildSpellChoicePane({
-        step,
-        search,
-        selectedSelections,
-        selectedLabel: await this.#stepStatus(step, effectiveBuildState),
-        visibleOptions,
-        infoState,
-        contextNote,
-        preview,
-        modeLabel: modeLabel(step.kind),
-        previewValue,
-      });
-    }
-
-    const optionContext = await this.#buildOptionContext();
-    const options = await getOptionsForStep(step, optionContext);
-    const search = this.#searchByStepId.get(step.id) ?? "";
-    const filteredOptions = options.filter((option) => matchesSearch(option, search));
-    const infoState = getPickerInfoState(step, optionContext, options.length, filteredOptions.length, search);
-    const visibleOptions = infoState?.tone === "blocked" ? [] : filteredOptions;
-    const contextNote = await this.#buildContextNote(step, optionContext);
-    const selectedValue = selectedValueFor(step, this.#requireDraft());
-    const previewValue = resolvePreviewValue(
-      step.id,
-      visibleOptions,
-      options,
-      selectedValue,
-      this.#previewValueByStepId
-    );
-    const preview = previewValue
-      ? await buildPreview(options.find((option) => option.value === previewValue) ?? null, selectedValue)
-      : null;
-    return buildPickItemPane({
-      step,
-      search,
-      selectedValue,
-      selectedLabel: selectedSelection(step, this.#requireDraft())?.name ?? null,
-      visibleOptions,
-      infoState,
-      contextNote,
-      preview,
-      modeLabel: modeLabel(step.kind),
-      previewValue,
+    const skillPane = await buildSkillPane(step, this.#requireDraft(), {
+      baseSkillRanks: inspectActor(this.actor).skillRanks,
+      resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+      configSkills:
+        (globalThis as typeof globalThis & { CONFIG?: { PF2E?: { skills?: Record<string, unknown> } } }).CONFIG?.PF2E
+          ?.skills ?? null,
+      localize: (value) => game.i18n.localize(value),
+      isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep),
     });
+    if (skillPane) {
+      return skillPane;
+    }
+
+    const selectionPane = await buildSelectionPane(step, effectiveBuildState, {
+      draft: this.#requireDraft(),
+      searchByStepId: this.#searchByStepId,
+      previewValueByStepId: this.#previewValueByStepId,
+      resolveOptionContext: () =>
+        buildOptionContext({
+          draft: this.#requireDraft(),
+          resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+          listActorItems: () => listActorItems(this.actor),
+          fetchSelectionDocument,
+          extractDocumentSlug,
+        }),
+      resolveDeityDocument: () => this.#resolveDraftOrActorDocument("deity"),
+      buildContextNote: (paneStep, context) =>
+        buildContextNote(paneStep, context, {
+          resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+        }),
+      resolveStepStatus: (paneStep, buildState) => this.#stepStatus(paneStep, buildState),
+      getOptionsForStep,
+      getPickerInfoState,
+      buildPreview,
+      matchesSearch,
+    });
+    if (selectionPane) {
+      return selectionPane;
+    }
+
+    throw new Error(`Unsupported pane step kind: ${step.kind}`);
   }
 
   async #chooseOption(stepId: string, rawValue: string): Promise<void> {
     this.#statusNote = null;
     const snapshot = inspectActor(this.actor);
-    const plan = await this.#buildPlan(snapshot, this.#requireDraft());
+    const draft = this.#requireDraft();
+    const plan = await this.#buildPlan(snapshot, draft);
     const step = plan.steps.find((entry) => entry.id === stepId);
     if (!step) {
       return;
     }
 
-    const optionContext = await this.#buildOptionContext();
-    const selection = await resolveSelection(rawValue, step, optionContext);
-    if (!selection) {
-      return;
-    }
-
-    if (hasDuplicateDraftSelection(this.#requireDraft(), selection)) {
-      ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.DuplicateSelections"));
-      return;
-    }
-
-    const previousSelection = writeDraftStepSelection(this.#requireDraft(), step, selection);
-    this.#recentlyInvalidatedStepIds.delete(selection.slotId);
-
-    if (step.slotKind === "ancestry" && previousSelection?.uuid !== selection.uuid) {
-      const invalidated = this.#invalidateDependentAncestrySelections();
-      const boostReset = this.#resetAncestryBoostDraft();
-      if (boostReset) {
-        this.#recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);
-      }
-      if (invalidated.length > 0 || boostReset) {
-        this.#statusNote = boostReset
-          ? "Ancestry changed. Wayfinder cleared ancestry-specific boost draft choices and marked dependent heritage and ancestry-feat picks for review."
-          : "Ancestry changed. Wayfinder marked dependent heritage and ancestry-feat draft picks for review.";
-      }
-    }
-
-    if (step.slotKind === "heritage" && previousSelection?.uuid !== selection.uuid) {
-      const previousTraits = await this.#resolveSelectionTraits(previousSelection);
-      const nextTraits = await this.#resolveSelectionTraits(selection);
-      if (!sameMembers(previousTraits, nextTraits)) {
-        const invalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat);
-        if (invalidated.length > 0) {
-          this.#statusNote = "Heritage changed. Wayfinder marked ancestry-feat draft picks for review.";
-        }
-      }
-    }
-
-    if (step.slotKind === "background" && previousSelection?.uuid !== selection.uuid) {
-      const boostReset = this.#resetBackgroundBoostDraft();
-      if (boostReset) {
-        this.#recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);
-        this.#statusNote = "Background changed. Wayfinder cleared background boost draft choices for review.";
-      }
-    }
-
-    if (step.slotKind === "class" && previousSelection?.uuid !== selection.uuid) {
-      const previousClassSlug = await this.#resolveSelectionSlug(previousSelection);
-      const nextClassSlug = await this.#resolveSelectionSlug(selection);
-      const boostReset = this.#resetClassBoostDraft();
-      if (boostReset) {
-        this.#recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);
-      }
-      if (previousClassSlug !== nextClassSlug) {
-        const invalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classFeat);
-        const deityInvalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.deity);
-        const branchInvalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch);
-        const classChoiceInvalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classChoice);
-        const trainingInvalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.skillTraining);
-        const spellInvalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.spellChoice);
-        if (
-          invalidated.length > 0 ||
-          deityInvalidated.length > 0 ||
-          branchInvalidated.length > 0 ||
-          classChoiceInvalidated.length > 0 ||
-          trainingInvalidated.length > 0 ||
-          spellInvalidated.length > 0 ||
-          boostReset
-        ) {
-          this.#statusNote = boostReset
-            ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, spell, and class feat selections for review."
-            : "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, spell, and class feat selections for review.";
-        }
-      } else if (boostReset) {
-        this.#statusNote = "Class changed. Wayfinder cleared the key-ability draft choice for review.";
-      }
-    }
-
-    if (step.slotKind === "deity" && previousSelection?.uuid !== selection.uuid) {
-      const invalidatedChoices = await this.#invalidateClassChoicesByDependency("deity");
-      const invalidatedBranches = await this.#invalidateBranchSelectionsByDependency("deity");
-      if (invalidatedChoices.length > 0 || invalidatedBranches.length > 0) {
-        this.#statusNote = "Deity changed. Wayfinder marked dependent class choices and class paths for review.";
-      }
-    }
-
-    if (step.kind === "class-branch" && previousSelection?.uuid !== selection.uuid) {
-      const invalidatedSpells = await this.#invalidateSpellChoicesByDependency("class-branch");
-      if (invalidatedSpells.length > 0 && step.branch?.flag === "arcaneSchool") {
-        this.#statusNote = "Arcane school changed. Wayfinder marked dependent curriculum spell choices for review.";
-      }
-    }
-
-    this.#previewValueByStepId.set(stepId, rawValue);
-    await this.#moveStep(1);
-  }
-
-  #invalidateDependentAncestrySelections(): string[] {
-    return [
-      ...this.#invalidateSelection(SLOT_IDS.heritage),
-      ...this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat),
-    ];
+    const result = await chooseSelectionOption(this.#selectionCommandState(draft), step, rawValue, {
+      resolveSelection: async (value, selectionStep) => {
+        const optionContext = await buildOptionContext({
+          draft,
+          resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+          listActorItems: () => listActorItems(this.actor),
+          fetchSelectionDocument,
+          extractDocumentSlug,
+        });
+        return resolveSelection(value, selectionStep, optionContext);
+      },
+      hasDuplicateDraftSelection: (selection) => hasDuplicateDraftSelection(draft, selection),
+      resolveSelectionTraits: (selection) =>
+        resolveSelectionTraits(selection, {
+          fetchSelectionDocument,
+          extractDocumentSlug,
+        }),
+      resolveSelectionSlug: (selection) =>
+        resolveSelectionSlug(selection, {
+          fetchSelectionDocument,
+          extractDocumentSlug,
+        }),
+      invalidateSelection: (slotId) => this.#invalidateSelection(slotId),
+      invalidateSelectionsByPrefix: (prefix) => this.#invalidateSelectionsByPrefix(prefix),
+      invalidateClassChoicesByDependency: (dependency) => this.#invalidateClassChoicesByDependency(dependency),
+      invalidateBranchSelectionsByDependency: (dependency) => this.#invalidateBranchSelectionsByDependency(dependency),
+      invalidateSpellChoicesByDependency: (dependency) => this.#invalidateSpellChoicesByDependency(dependency),
+      resetAncestryBoostDraft: () => this.#resetAncestryBoostDraft(),
+      resetBackgroundBoostDraft: () => this.#resetBackgroundBoostDraft(),
+      resetClassBoostDraft: () => this.#resetClassBoostDraft(),
+    });
+    await this.#finalizeSelectionCommand(result);
   }
 
   #rememberInteractiveState(searchInput?: HTMLInputElement | null): void {
@@ -703,240 +577,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     };
   }
 
-  async #buildOptionContext(): Promise<OptionContext> {
-    const [ancestryDocument, heritageDocument, classDocument, deityDocument, hasDedicationFeat] = await Promise.all([
-      this.#resolveDraftOrActorDocument("ancestry"),
-      this.#resolveDraftOrActorDocument("heritage"),
-      this.#resolveDraftOrActorDocument("class"),
-      this.#resolveDraftOrActorDocument("deity"),
-      this.#hasDedicationFeatInContext(),
-    ]);
-
-    const ancestrySlug = extractDocumentSlug(ancestryDocument);
-    return {
-      ancestrySlug,
-      ancestryTraits: this.#extractContextTraits(ancestryDocument, ancestrySlug),
-      heritageTraits: this.#extractContextTraits(heritageDocument),
-      classSlug: extractDocumentSlug(classDocument),
-      deitySelected: !!deityDocument,
-      sanctification: this.#resolveSanctificationChoice(deityDocument),
-      hasDedicationFeat,
-    };
-  }
-
-  async #buildContextNote(step: PendingStep, context: OptionContext): Promise<string | null> {
-    switch (step.slotKind) {
-      case "heritage": {
-        const ancestryDocument = await this.#resolveDraftOrActorDocument("ancestry");
-        const ancestryName = ancestryDocument?.name;
-        return ancestryName
-          ? `Showing ${ancestryName} heritages and versatile heritage options that remain legal for this draft.`
-          : null;
-      }
-      case "ancestry-feat": {
-        const ancestryDocument = await this.#resolveDraftOrActorDocument("ancestry");
-        const heritageDocument = await this.#resolveDraftOrActorDocument("heritage");
-        const ancestryName = ancestryDocument?.name;
-        const isVersatile = heritageDocument?.system?.ancestry === null;
-        const heritageName = isVersatile ? heritageDocument?.name : null;
-        if (ancestryName && heritageName) {
-          return `Showing ancestry feats keyed to ${ancestryName} plus versatile-heritage feats unlocked by ${heritageName}. Shared ancestry feats stay visible when PF2E encodes their gate in prerequisite text instead of traits.`;
-        }
-        if (ancestryName) {
-          return `Showing ancestry feats keyed to ${ancestryName}. Shared ancestry feats stay visible when PF2E encodes their gate in prerequisite text instead of traits.`;
-        }
-        return null;
-      }
-      case "class-feat": {
-        const classDocument = await this.#resolveDraftOrActorDocument("class");
-        const className = classDocument?.name;
-        if (!className) {
-          return null;
-        }
-
-        return context.hasDedicationFeat
-          ? `Showing feats keyed to ${className} plus archetype follow-up feats unlocked by an existing dedication. Shared class feats that list ${className} also remain available.`
-          : `Showing feats keyed to ${className} plus dedication feats that can begin an archetype path. Shared class feats that list ${className} also remain available.`;
-      }
-      case "class-branch": {
-        const classDocument = await this.#resolveDraftOrActorDocument("class");
-        const className = classDocument?.name;
-        const selectorName = step.branch?.selectorName;
-        if (step.branch?.optionTag === "champion-cause") {
-          if (!context.deitySelected) {
-            return "Resolve the deity step first so Wayfinder can narrow champion causes to the legal sanctification path.";
-          }
-
-          const sanctificationLabel =
-            context.sanctification === "holy"
-              ? "holy"
-              : context.sanctification === "unholy"
-                ? "unholy"
-                : context.sanctification === "none"
-                  ? "non-sanctified"
-                  : "currently unresolved";
-          return className
-            ? `Showing ${className} causes currently legal for the ${sanctificationLabel} sanctification state in this draft.`
-            : null;
-        }
-
-        if (className && selectorName) {
-          return `Showing ${className} options granted by ${selectorName}. Wayfinder will write the selector choice into PF2E's native class-feature data on apply.`;
-        }
-
-        return className ? `Showing class branch options keyed to ${className}.` : null;
-      }
-      case "deity": {
-        const classDocument = await this.#resolveDraftOrActorDocument("class");
-        return classDocument?.name
-          ? `Showing deity choices currently legal for ${classDocument.name}. Wayfinder will wire the selected deity into PF2E's native class-feature data on apply.`
-          : null;
-      }
-      case "class-choice": {
-        if (step.classChoice?.dependsOn === "deity") {
-          const deityDocument = await this.#resolveDraftOrActorDocument("deity");
-          return deityDocument?.name
-            ? `Showing choices unlocked by ${deityDocument.name}. Wayfinder will write this directly into the granting class feature on apply.`
-            : "Resolve the deity step first so Wayfinder can narrow this class choice.";
-        }
-
-        const classDocument = await this.#resolveDraftOrActorDocument("class");
-        return classDocument?.name
-          ? `Showing direct class-feature choices from ${classDocument.name}. Wayfinder will write this directly into the granting class feature on apply.`
-          : null;
-      }
-      case "spell-choice": {
-        const spellChoice = step.spellChoice;
-        if (!spellChoice) {
-          return null;
-        }
-
-        if (spellChoice.dependsOn === "class-branch" && spellChoice.curriculumSpellNames.length === 0) {
-          return "Resolve the arcane school step first so Wayfinder can narrow this list to the chosen curriculum.";
-        }
-
-        const rankLabel = spellChoice.cantrip
-          ? "arcane cantrips"
-          : spellChoice.minRank === spellChoice.maxRank
-            ? `rank ${spellChoice.maxRank} arcane spells`
-            : `arcane spells of rank ${spellChoice.minRank} to ${spellChoice.maxRank}`;
-        const sourceLabel = spellChoice.sourceName || "Wizard Spellcasting";
-        return `Showing ${rankLabel} that will be added to the ${spellChoice.destination.label}. Source: ${sourceLabel}. Daily prepared loadouts remain on PF2E's character sheet.`;
-      }
-      case "skill-feat":
-        return "Showing baseline skill feats. Archetype-tagged skill feats stay hidden until Wayfinder tracks a specific archetype path.";
-      case "general-feat":
-        return "Showing the full general-feat pool from the enabled compendia. Wayfinder does not narrow this step by ancestry or class draft.";
-      default:
-        return null;
-    }
-  }
-
-  async #projectSkillRanks(draft: DraftState, upToSlotId: string): Promise<Record<string, number>> {
-    const snapshot = inspectActor(this.actor);
-    const projected = { ...snapshot.skillRanks };
-    const [backgroundDocument, classDocument] = await Promise.all([
-      this.#resolveDraftOrActorDocument("background"),
-      this.#resolveDraftOrActorDocument("class"),
-    ]);
-
-    for (const slug of this.#extractFixedTrainedSkills(backgroundDocument)) {
-      projected[slug] = Math.max(projected[slug] ?? 0, 1);
-    }
-
-    for (const slug of this.#extractFixedTrainedSkills(classDocument)) {
-      projected[slug] = Math.max(projected[slug] ?? 0, 1);
-    }
-
-    const sortedTrainingSlotIds = Object.keys(draft.skillTrainings).sort((left, right) => left.localeCompare(right));
-
-    for (const slotId of sortedTrainingSlotIds) {
-      if (slotId >= upToSlotId) {
-        break;
-      }
-
-      const training = draft.skillTrainings[slotId];
-      if (!training) {
-        continue;
-      }
-
-      for (const slug of [...Object.values(training.ruleChoices), ...training.additional]) {
-        if (!slug) {
-          continue;
-        }
-
-        projected[slug] = Math.max(projected[slug] ?? 0, 1);
-      }
-    }
-
-    const sortedSlotIds = Object.keys(draft.skillIncreases).sort(compareSkillIncreaseSlotIds);
-
-    for (const slotId of sortedSlotIds) {
-      if (slotId >= upToSlotId) {
-        break;
-      }
-
-      const slug = draft.skillIncreases[slotId];
-      if (slug && typeof projected[slug] === "number") {
-        projected[slug] = Math.min(4, projected[slug] + 1);
-      } else if (slug) {
-        projected[slug] = 1;
-      }
-    }
-
-    return projected;
-  }
-
-  #extractFixedTrainedSkills(document: any): string[] {
-    const skills = Array.isArray(document?.system?.trainedSkills?.value) ? document.system.trainedSkills.value : [];
-    return skills
-      .filter((entry: unknown): entry is string => typeof entry === "string" && entry.length > 0)
-      .map((entry) => entry.trim().toLowerCase());
-  }
-
-  #getSkillList(actorSkillRanks: Record<string, number>): Array<{ slug: string; label: string }> {
-    const configSkills = (globalThis as typeof globalThis & { CONFIG?: { PF2E?: any } }).CONFIG?.PF2E?.skills;
-    const result: Array<{ slug: string; label: string }> = [];
-    const seen = new Set<string>();
-
-    if (configSkills && typeof configSkills === "object") {
-      for (const slug of Object.keys(configSkills)) {
-        const entry = configSkills[slug];
-        const sourceLabel = typeof entry === "string" ? entry : entry?.label;
-        const label = this.#skillLabel(slug, sourceLabel);
-        result.push({ slug, label });
-        seen.add(slug);
-      }
-    } else {
-      for (const [slug, label] of Object.entries(SKILL_LABELS)) {
-        result.push({ slug, label: this.#skillLabel(slug, label) });
-        seen.add(slug);
-      }
-    }
-
-    for (const slug of Object.keys(actorSkillRanks)) {
-      if (!seen.has(slug)) {
-        result.push({ slug, label: this.#skillLabel(slug) });
-      }
-    }
-
-    return result.sort((a, b) => a.label.localeCompare(b.label));
-  }
-
-  #skillLabel(slug: string, sourceLabel?: string): string {
-    const localized = typeof sourceLabel === "string" && sourceLabel.length > 0 ? game.i18n.localize(sourceLabel) : "";
-    if (localized && localized !== sourceLabel) {
-      return localized;
-    }
-
-    const fallback = SKILL_LABELS[slug];
-    if (fallback) {
-      return game.i18n.localize(fallback);
-    }
-
-    return formatSlug(slug);
-  }
-
   #selectSkillIncrease(stepId: string, slug: string): void {
     this.#statusNote = null;
     const draft = this.#requireDraft();
@@ -961,33 +601,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   async #selectClassChoice(stepId: string, value: string): Promise<void> {
     this.#statusNote = null;
-    const draft = this.#requireDraft();
     const step = (await this.#buildPlan()).steps.find((entry) => entry.slotId === stepId);
-    const invalidatesDeityBranches = step?.classChoice?.flag === "sanctification";
-    const wasSelected = draft.classChoices[stepId] === value;
-    if (wasSelected) {
-      delete draft.classChoices[stepId];
-      if (invalidatesDeityBranches) {
-        const invalidated = await this.#invalidateBranchSelectionsByDependency("deity");
-        if (invalidated.length > 0) {
-          this.#statusNote = "Sanctification changed. Wayfinder marked dependent class paths for review.";
-        }
-      }
-      this.#recentlyInvalidatedStepIds.delete(stepId);
-      this.render(false);
-      return;
-    }
-
-    const previousValue = draft.classChoices[stepId] ?? null;
-    draft.classChoices[stepId] = value;
-    if (invalidatesDeityBranches && previousValue !== value) {
-      const invalidated = await this.#invalidateBranchSelectionsByDependency("deity");
-      if (invalidated.length > 0) {
-        this.#statusNote = "Sanctification changed. Wayfinder marked dependent class paths for review.";
-      }
-    }
-    this.#recentlyInvalidatedStepIds.delete(stepId);
-    await this.#moveStep(1);
+    const result = await selectClassChoiceValue(this.#selectionCommandState(), step ?? null, value, {
+      invalidateBranchSelectionsByDependency: (dependency) => this.#invalidateBranchSelectionsByDependency(dependency),
+    });
+    await this.#finalizeSelectionCommand(result);
   }
 
   async #toggleSpellChoice(stepId: string, rawValue: string): Promise<void> {
@@ -995,58 +613,24 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const draft = this.#requireDraft();
     const plan = await this.#buildPlan();
     const step = plan.steps.find((entry) => entry.slotId === stepId);
-    if (!step || step.kind !== "spell-choice") {
-      return;
-    }
-
-    const optionContext = await this.#buildOptionContext();
-    const selection = await resolveSelection(rawValue, step, optionContext);
-    if (!selection) {
-      return;
-    }
-
-    draft.spellChoices[stepId] ??= [];
-    const current = draft.spellChoices[stepId];
-    const existingIndex = current.findIndex((entry) => entry.uuid === selection.uuid);
-    if (existingIndex !== -1) {
-      current.splice(existingIndex, 1);
-      if (current.length === 0) {
-        delete draft.spellChoices[stepId];
-      }
-      this.#recentlyInvalidatedStepIds.delete(stepId);
-      this.render(false);
-      return;
-    }
-
-    const selectedElsewhere = Object.entries(draft.spellChoices).some(([slotId, selections]) => {
-      if (slotId === stepId) {
-        return false;
-      }
-
-      return selections.some((entry) => entry.uuid === selection.uuid);
+    const result = await toggleSpellChoiceSelection(this.#selectionCommandState(draft), step ?? null, rawValue, {
+      resolveSelection: async (value, selectionStep) => {
+        const optionContext = await buildOptionContext({
+          draft,
+          resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+          listActorItems: () => listActorItems(this.actor),
+          fetchSelectionDocument,
+          extractDocumentSlug,
+        });
+        return resolveSelection(value, selectionStep, optionContext);
+      },
+      selectionExistsOnActor: (selection) => {
+        return listActorItems(this.actor).some(
+          (item: any) => item?.type === "spell" && sourceIdOf(item) === selection.uuid
+        );
+      },
     });
-    const existsOnActor = listActorItems(this.actor).some((item: any) => {
-      return item?.type === "spell" && sourceIdOf(item) === selection.uuid;
-    });
-    if (selectedElsewhere || existsOnActor) {
-      ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.DuplicateSelections"));
-      return;
-    }
-
-    const requiredCount = step.spellChoice?.count ?? 0;
-    if (current.length >= requiredCount) {
-      ui.notifications.warn("This spell choice is already full. Remove one before adding another.");
-      return;
-    }
-
-    current.push(selection);
-    this.#recentlyInvalidatedStepIds.delete(stepId);
-    if (current.length >= requiredCount) {
-      await this.#moveStep(1);
-      return;
-    }
-
-    this.render(false);
+    await this.#finalizeSelectionCommand(result);
   }
 
   async #toggleTrainingSkill(stepId: string, slug: string): Promise<void> {
@@ -1243,100 +827,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     );
   }
 
-  #extractContextTraits(document: any, fallbackSlug?: string | null): string[] {
-    const traits = Array.isArray(document?.system?.traits?.value) ? document.system.traits.value : [];
-    const normalized = new Set<string>(
-      traits
-        .filter((entry: unknown): entry is string => typeof entry === "string")
-        .map((entry) => entry.trim().toLowerCase())
-        .filter(Boolean)
-    );
-
-    const slug = fallbackSlug ?? extractDocumentSlug(document);
-    if (slug) {
-      normalized.add(slug);
-    }
-
-    return Array.from(normalized);
-  }
-
-  #resolveSanctificationChoice(deityDocument: any | null): "holy" | "unholy" | "none" | null {
-    const drafted = Object.entries(this.#requireDraft().classChoices).find(([slotId]) =>
-      isSanctificationChoiceSlotId(slotId)
-    )?.[1];
-    if (drafted === "holy" || drafted === "unholy" || drafted === "none") {
-      return drafted;
-    }
-
-    const actorSelection =
-      listActorItems(this.actor)
-        .map((item: any) => item?.flags?.pf2e?.rulesSelections?.sanctification)
-        .find((value: unknown): value is string => typeof value === "string" && value.length > 0) ?? null;
-    if (actorSelection === "holy" || actorSelection === "unholy" || actorSelection === "none") {
-      return actorSelection;
-    }
-
-    const sanctification = deityDocument?.system?.sanctification;
-    if (!sanctification || typeof sanctification !== "object") {
-      return "none";
-    }
-
-    const modal = typeof sanctification.modal === "string" ? sanctification.modal.trim().toLowerCase() : "";
-    const values = Array.isArray(sanctification.what)
-      ? sanctification.what.filter((value: unknown): value is string => typeof value === "string")
-      : [];
-
-    if (modal === "must" && values.length === 1) {
-      const value = values[0]?.trim().toLowerCase();
-      return value === "holy" || value === "unholy" ? value : "none";
-    }
-
-    if (values.length === 0) {
-      return "none";
-    }
-
-    return null;
-  }
-
-  async #resolveSelectionTraits(selection: SelectionRef | null): Promise<string[]> {
-    if (!selection) {
-      return [];
-    }
-
-    const document = await fetchSelectionDocument(selection);
-    return this.#extractContextTraits(document);
-  }
-
-  async #resolveSelectionSlug(selection: SelectionRef | null): Promise<string | null> {
-    if (!selection) {
-      return null;
-    }
-
-    const document = await fetchSelectionDocument(selection);
-    return extractDocumentSlug(document);
-  }
-
-  async #hasDedicationFeatInContext(): Promise<boolean> {
-    const actorHasDedication = listActorItems(this.actor).some(
-      (item: any) => item?.type === "feat" && this.#extractContextTraits(item).includes("dedication")
-    );
-    if (actorHasDedication) {
-      return true;
-    }
-
-    const draftedFeatSelections = Object.values(this.#requireDraft().selections).filter(
-      (selection) => selection.itemType === "feat"
-    );
-    if (draftedFeatSelections.length === 0) {
-      return false;
-    }
-
-    const draftedFeatDocuments = await Promise.all(
-      draftedFeatSelections.map((selection) => fetchSelectionDocument(selection))
-    );
-    return draftedFeatDocuments.some((document) => this.#extractContextTraits(document).includes("dedication"));
-  }
-
   async #moveStep(delta: number): Promise<void> {
     const snapshot = inspectActor(this.actor);
     const plan = await this.#buildPlan(snapshot, this.#requireDraft());
@@ -1495,6 +985,39 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const hadValues = !!draft.keyAbility;
     draft.keyAbility = null;
     return hadValues;
+  }
+
+  #selectionCommandState(draft = this.#requireDraft()): SelectionCommandState {
+    return {
+      draft,
+      previewValueByStepId: this.#previewValueByStepId,
+      recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
+    };
+  }
+
+  async #finalizeSelectionCommand(result: SelectionCommandResult): Promise<void> {
+    if (result.kind === "warning") {
+      if (result.warning === "duplicate-selection") {
+        ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.DuplicateSelections"));
+      } else if (result.warning === "spell-choice-full") {
+        ui.notifications.warn("This spell choice is already full. Remove one before adding another.");
+      }
+      return;
+    }
+
+    if (result.kind !== "changed") {
+      return;
+    }
+
+    this.#statusNote = result.statusNote;
+    if (result.shouldAdvance) {
+      await this.#moveStep(1);
+      return;
+    }
+
+    if (result.shouldRender) {
+      this.render(false);
+    }
   }
 
   async #isStepComplete(step: PendingStep, effectiveBuildState?: EffectiveBuildState): Promise<boolean> {

@@ -78,7 +78,11 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
   const rules = Array.isArray(classDocument.system?.rules) ? classDocument.system.rules : [];
   const choiceRules = rules
     .map((rule: any, ruleIndex: number) => toTrainingChoiceRule(rule, ruleIndex, localize))
-    .filter((rule): rule is NonNullable<typeof rule> => !!rule);
+    .filter(
+      (
+        rule: NonNullable<PendingStep["training"]>["choiceRules"][number] | null
+      ): rule is NonNullable<PendingStep["training"]>["choiceRules"][number] => !!rule
+    );
 
   const additionalCount = Number(classDocument.system?.trainedSkills?.additional ?? 0);
   const fixedSkills = Array.isArray(classDocument.system?.trainedSkills?.value)
@@ -119,7 +123,7 @@ export async function buildClassFeatSteps(params: BuildClassFeatStepsParams): Pr
   const classFeatLevels: number[] = Array.isArray(effectiveClassDocument.system?.classFeatLevels?.value)
     ? effectiveClassDocument.system.classFeatLevels.value
         .map((value: unknown) => Number(value))
-        .filter((value): value is number => Number.isFinite(value) && value >= 1 && value <= targetLevel)
+        .filter((value: number): value is number => Number.isFinite(value) && value >= 1 && value <= targetLevel)
         .map((value: number) => Math.floor(value))
     : [];
 
@@ -608,8 +612,8 @@ function extractChoiceTag(choiceRule: any, flag: string): string | null {
   const filters = Array.isArray(choiceRule?.choices?.filter) ? choiceRule.choices.filter : [];
   const directTag = filters
     .filter((entry: unknown): entry is string => typeof entry === "string")
-    .map((entry) => /^item:tag:(.+)$/.exec(entry)?.[1] ?? null)
-    .find((entry): entry is string => typeof entry === "string" && entry.length > 0);
+    .map((entry: string) => /^item:tag:(.+)$/.exec(entry)?.[1] ?? null)
+    .find((entry: string | null): entry is string => typeof entry === "string" && entry.length > 0);
   if (directTag) {
     return directTag.trim().toLowerCase();
   }

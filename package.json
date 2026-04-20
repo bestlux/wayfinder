@@ -13,7 +13,7 @@
     "format:check": "biome check .",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "check": "npm run format:check && npm run lint && npm run build && npm test",
+    "check": "npm run format:check && npm run lint && npm run build && npm test && npm run check:strict",
     "test": "vitest run",
     "test:watch": "vitest"
   },

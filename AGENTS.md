@@ -17,6 +17,7 @@ Repo-local instructions for `D:\Source\foundryvtt\character-gen`.
   - `npm run lint`
   - `npm run build`
   - `npm test`
+  - `npm run check:strict`
 - If `src/` changes, make sure the generated `scripts/` output is updated in the same change.
 
 ## Tooling

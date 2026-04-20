@@ -106,6 +106,7 @@ export default tseslint.config(
   {
     files: [
       "src/shared/**/*.ts",
+      "src/wayfinder/application/**/*.ts",
       "src/wayfinder/domain/**/*.ts",
       "src/wayfinder/draft-decisions.ts",
       "src/wayfinder/invalidation.ts",

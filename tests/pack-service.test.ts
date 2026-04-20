@@ -5,7 +5,8 @@ import {
   getPickerBlockedState,
   getPickerInfoState,
 } from "../src/pack-service";
-import type { OptionContext, PendingStep } from "../src/types";
+import type { OptionContext, PendingStep, PickItemSlotKind } from "../src/types";
+import { createPickItemStep } from "../src/wayfinder/domain/step-types";
 
 const testGlobals = globalThis as typeof globalThis & { CONFIG: any; game: any };
 
@@ -569,18 +570,8 @@ describe("pack-service dependency filtering", () => {
   });
 });
 
-function makeStep(slotKind: PendingStep["slotKind"], filters: PendingStep["filters"]): PendingStep {
-  return {
-    id: `${slotKind}-level-1`,
-    level: 1,
-    kind: "pick-item",
-    slotKind,
-    title: "Test Step",
-    description: "Test description",
-    required: true,
-    slotId: `${slotKind}-level-1`,
-    filters,
-  };
+function makeStep(slotKind: PickItemSlotKind, filters: PendingStep["filters"]): PendingStep {
+  return createPickItemStep(slotKind, 1, "Test Step", "Test description", filters ?? { itemType: "feat" });
 }
 
 function setPack(id: string, entries: any[]): void {

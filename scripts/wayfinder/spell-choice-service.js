@@ -1,5 +1,6 @@
 import { listActorItems } from "../build-state.js";
 import { sourceIdOf } from "../shared/source-id.js";
+import { createSpellChoiceStep } from "./domain/step-types.js";
 const WIZARD_SPELLBOOK_DESTINATION = {
     type: "spellbook",
     key: "wizard-arcane-prepared",
@@ -278,36 +279,23 @@ export function wizardMaxSpellRank(level) {
     return Math.max(1, Math.min(9, Math.ceil(level / 2)));
 }
 function makeSpellChoiceStep(args) {
-    return {
-        id: args.slotId,
-        level: args.level,
-        kind: "spell-choice",
-        slotKind: "spell-choice",
-        title: args.title,
-        description: args.description,
-        required: true,
+    return createSpellChoiceStep(args.level, args.title, args.description, {
         slotId: args.slotId,
-        filters: {
-            itemType: "spell",
-        },
-        spellChoice: {
-            slotId: args.slotId,
-            sourcePackId: args.source.sourcePackId,
-            sourceDocumentId: args.source.sourceDocumentId,
-            sourceUuid: args.source.sourceUuid,
-            sourceName: args.source.sourceName,
-            classSlug: args.classSlug,
-            dependsOn: args.dependsOn,
-            destination: { ...args.destination },
-            count: args.count,
-            minRank: args.minRank,
-            maxRank: args.maxRank,
-            cantrip: args.cantrip,
-            curriculumSpellNames: args.curriculumSpellNames,
-            additionalAllowedSpellNames: args.additionalAllowedSpellNames,
-            restrictToCommon: args.restrictToCommon,
-        },
-    };
+        sourcePackId: args.source.sourcePackId,
+        sourceDocumentId: args.source.sourceDocumentId,
+        sourceUuid: args.source.sourceUuid,
+        sourceName: args.source.sourceName,
+        classSlug: args.classSlug,
+        dependsOn: args.dependsOn,
+        destination: { ...args.destination },
+        count: args.count,
+        minRank: args.minRank,
+        maxRank: args.maxRank,
+        cantrip: args.cantrip,
+        curriculumSpellNames: args.curriculumSpellNames,
+        additionalAllowedSpellNames: args.additionalAllowedSpellNames,
+        restrictToCommon: args.restrictToCommon,
+    });
 }
 function findClassFeatureSource(classDocument, featureName) {
     const classItems = Object.values(classDocument?.system?.items ?? {});

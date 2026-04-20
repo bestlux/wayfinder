@@ -1,5 +1,12 @@
 import { SKILL_LABELS } from "../constants.js";
 import type { ClassChoiceMeta, ClassGrantMeta, DraftState, PendingStep, SelectionRef } from "../types.js";
+import {
+  type ClassBranchMeta,
+  createClassBranchStep,
+  createClassChoiceStep,
+  createPickItemStep,
+  createSkillTrainingStep,
+} from "./domain/step-types.js";
 import { formatSlug } from "./formatting.js";
 
 interface BuildClassTrainingStepsParams {
@@ -22,7 +29,7 @@ interface BuildClassBranchStepsParams {
   targetLevel: number;
   fetchSelectionDocument: (selection: SelectionRef) => Promise<any | null>;
   extractSlug: (document: any) => string | null;
-  readExistingBranchSelection: (branch: NonNullable<PendingStep["branch"]>) => string | null;
+  readExistingBranchSelection: (branch: ClassBranchMeta) => string | null;
 }
 
 interface BuildClassGrantedItemStepsParams {
@@ -85,23 +92,21 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
   }
 
   return [
-    {
-      id: `skill-training-${classSlug}-level-1`,
-      level: 1,
-      kind: "skill-training",
-      slotKind: "skill-training",
-      title: `${classDocument.name} skill training`,
-      description: "Choose the class skill training decisions this class grants at 1st level.",
-      required: true,
-      slotId: `skill-training-${classSlug}-level-1`,
-      training: {
+    createSkillTrainingStep(
+      1,
+      `${classDocument.name} skill training`,
+      "Choose the class skill training decisions this class grants at 1st level.",
+      {
         classSlug,
         className: classDocument.name ?? "Class",
         fixedSkills,
         choiceRules,
         additionalCount,
       },
-    },
+      {
+        slotId: `skill-training-${classSlug}-level-1`,
+      }
+    ),
   ];
 }
 
@@ -125,21 +130,19 @@ export async function buildClassFeatSteps(params: BuildClassFeatStepsParams): Pr
   const milestones: number[] = Array.from(new Set(classFeatLevels)).sort((left, right) => left - right);
   const startIndex = Math.min(Math.max(0, fulfilledCount), milestones.length);
 
-  return milestones.slice(startIndex).map((level) => ({
-    id: `class-feat-level-${level}`,
-    level,
-    kind: "pick-item",
-    slotKind: "class-feat",
-    title: `Level ${level} class feat`,
-    description: "Pick a class or archetype feat unlocked at this milestone.",
-    required: true,
-    slotId: `class-feat-level-${level}`,
-    filters: {
-      itemType: "feat",
-      featTypes: ["class", "archetype"],
-      maxLevel: level,
-    },
-  }));
+  return milestones.slice(startIndex).map((level) =>
+    createPickItemStep(
+      "class-feat",
+      level,
+      `Level ${level} class feat`,
+      "Pick a class or archetype feat unlocked at this milestone.",
+      {
+        itemType: "feat",
+        featTypes: ["class", "archetype"],
+        maxLevel: level,
+      }
+    )
+  );
 }
 
 export async function buildClassBranchSteps(params: BuildClassBranchStepsParams): Promise<PendingStep[]> {
@@ -171,22 +174,7 @@ export async function buildClassBranchSteps(params: BuildClassBranchStepsParams)
       continue;
     }
 
-    steps.push({
-      id: branch.slotId,
-      level: feature.level,
-      kind: "class-branch",
-      slotKind: "class-branch",
-      title: branch.selectorName,
-      description: `Choose the ${branch.selectorName.toLowerCase()} option that defines this class path.`,
-      required: true,
-      slotId: branch.slotId,
-      filters: {
-        itemType: "feat",
-        featTypes: ["classfeature"],
-        maxLevel: feature.level,
-      },
-      branch,
-    });
+    steps.push(createClassBranchStep(feature.level, branch));
   }
 
   return steps;
@@ -221,23 +209,23 @@ export async function buildClassGrantedItemSteps(params: BuildClassGrantedItemSt
       continue;
     }
 
-    steps.push({
-      id: grant.slotId,
-      level: feature.level,
-      kind: "pick-item",
-      slotKind: grant.itemType,
-      title: grant.itemType === "deity" ? "Choose a deity" : `Choose ${grant.selectorName.toLowerCase()}`,
-      description:
+    steps.push(
+      createPickItemStep(
+        grant.itemType,
+        feature.level,
+        grant.itemType === "deity" ? "Choose a deity" : `Choose ${grant.selectorName.toLowerCase()}`,
         grant.itemType === "deity"
           ? "Choose the deity that grants your divine skill, favored weapon, sanctification, and divine font."
           : `Choose the ${grant.selectorName.toLowerCase()} this class feature grants.`,
-      required: true,
-      slotId: grant.slotId,
-      filters: {
-        itemType: grant.itemType,
-      },
-      grantSelection: grant,
-    });
+        {
+          itemType: grant.itemType,
+        },
+        {
+          slotId: grant.slotId,
+          grantSelection: grant,
+        }
+      )
+    );
   }
 
   return steps;
@@ -277,17 +265,12 @@ export async function buildClassChoiceSteps(params: BuildClassChoiceStepsParams)
         continue;
       }
 
-      steps.push({
-        id: choice.slotId,
-        level: feature.level,
-        kind: "class-choice",
-        slotKind: "class-choice",
-        title: choiceTitle(choice, localize),
-        description: buildClassChoiceDescription(choice),
-        required: true,
-        slotId: choice.slotId,
-        classChoice: choice,
-      });
+      steps.push(
+        createClassChoiceStep(feature.level, choice, {
+          title: choiceTitle(choice, localize),
+          description: buildClassChoiceDescription(choice),
+        })
+      );
     }
   }
 
@@ -399,7 +382,7 @@ function extractClassBranchMeta(
   selectorSelection: SelectionRef,
   classSlug: string | null,
   extractSlug: (document: any) => string | null
-): PendingStep["branch"] | null {
+): ClassBranchMeta | null {
   if (!selectorDocument || selectorDocument.type !== "feat" || selectorDocument?.system?.category !== "classfeature") {
     return null;
   }

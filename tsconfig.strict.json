@@ -6,9 +6,12 @@
     "noImplicitAny": true
   },
   "include": [
+    "src/**/*.d.ts",
     "src/shared/**/*.ts",
+    "src/wayfinder/domain/**/*.ts",
     "src/wayfinder/draft-decisions.ts",
     "src/wayfinder/invalidation.ts",
+    "src/wayfinder/panes/boost-pane.ts",
     "src/wayfinder/slot-ids.ts"
   ],
   "exclude": ["scripts", "node_modules"]

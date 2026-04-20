@@ -6,6 +6,7 @@ import {
 } from "../src/class-branch-service";
 import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep, SelectionRef } from "../src/types";
+import { createClassBranchStep } from "../src/wayfinder/domain/step-types";
 
 describe("class-branch-service", () => {
   it("strips preselected selector entries from a class source by UUID, document id, and name", () => {
@@ -19,16 +20,9 @@ describe("class-branch-service", () => {
     );
 
     const steps: PendingStep[] = [
-      {
-        id: "class-branch-wizard-school-level-1",
-        level: 1,
-        kind: "class-branch",
-        slotKind: "class-branch",
-        title: "Arcane School",
-        description: "",
-        required: true,
-        slotId: "class-branch-wizard-school-level-1",
-        branch: {
+      createClassBranchStep(
+        1,
+        {
           slotId: "class-branch-wizard-school-level-1",
           selectorPackId: "pf2e.classfeatures",
           selectorDocumentId: "7nbKDBGvwSx9T27G",
@@ -40,7 +34,11 @@ describe("class-branch-service", () => {
           classSlug: "wizard",
           dependsOn: "class",
         },
-      },
+        {
+          title: "Arcane School",
+          description: "",
+        }
+      ),
     ];
 
     const classSource = {
@@ -116,16 +114,9 @@ describe("class-branch-service", () => {
     );
 
     const steps: PendingStep[] = [
-      {
-        id: "class-branch-arcane-school-level-1",
-        level: 1,
-        kind: "class-branch",
-        slotKind: "class-branch",
-        title: "Arcane School",
-        description: "",
-        required: true,
-        slotId: "class-branch-arcane-school-level-1",
-        branch: {
+      createClassBranchStep(
+        1,
+        {
           slotId: "class-branch-arcane-school-level-1",
           selectorPackId: "pf2e.classfeatures",
           selectorDocumentId: "7nbKDBGvwSx9T27G",
@@ -137,7 +128,11 @@ describe("class-branch-service", () => {
           classSlug: "wizard",
           dependsOn: "class",
         },
-      },
+        {
+          title: "Arcane School",
+          description: "",
+        }
+      ),
     ];
 
     const createEmbeddedSource = vi.fn(async (selection: SelectionRef) => {

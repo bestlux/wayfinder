@@ -1,4 +1,10 @@
-import type { ActorSnapshot, PendingStep, ProgressionPlan } from "./types.js";
+import type { ActorSnapshot, PendingStep, PickItemSlotKind, ProgressionPlan, StepFilters } from "./types.js";
+import {
+  createBoostStep,
+  createPickItemStep,
+  createSkillIncreaseStep,
+  sortWeightForSlotKind,
+} from "./wayfinder/domain/step-types.js";
 
 const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
 const SKILL_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
@@ -164,7 +170,7 @@ export function sortPendingSteps(steps: PendingStep[]): PendingStep[] {
       return levelDelta;
     }
 
-    const kindDelta = sortWeight(left.slotKind) - sortWeight(right.slotKind);
+    const kindDelta = sortWeightForSlotKind(left.slotKind) - sortWeightForSlotKind(right.slotKind);
     if (kindDelta !== 0) {
       return kindDelta;
     }
@@ -199,7 +205,7 @@ function buildFeatSteps(
 
   for (const level of milestones.slice(startIndex)) {
     steps.push(
-      makePickStep(slotKind, level, titleTemplate.replace("{level}", String(level)), description, {
+      createPickItemStep(slotKind, level, titleTemplate.replace("{level}", String(level)), description, {
         itemType: filters.itemType,
         featTypes: filters.featTypes,
         maxLevel: level,
@@ -210,59 +216,13 @@ function buildFeatSteps(
   return steps;
 }
 
-function makePickStep(
-  slotKind: PendingStep["slotKind"],
-  level: number,
-  title: string,
-  description: string,
-  filters: PendingStep["filters"]
-): PendingStep {
-  const slotId = `${slotKind}-level-${level}`;
-  return {
-    id: slotId,
-    level,
-    kind: "pick-item",
-    slotKind,
-    title,
-    description,
-    required: true,
-    slotId,
-    filters,
-  };
-}
-
 function makeSkillIncreaseStep(level: number): PendingStep {
-  const slotId = `skill-increase-level-${level}`;
   const maxRankLabel = level >= 15 ? "Legendary" : level >= 7 ? "Master" : "Expert";
-  return {
-    id: slotId,
+  return createSkillIncreaseStep(
     level,
-    kind: "skill-increase",
-    slotKind: "skill-increase",
-    title: `Level ${level} skill increase`,
-    description: `Increase one skill's proficiency rank by one step (up to ${maxRankLabel} at this level).`,
-    required: true,
-    slotId,
-  };
-}
-
-function makeBoostStep(
-  slotKind: PendingStep["slotKind"],
-  level: number,
-  title: string,
-  description: string
-): PendingStep {
-  const slotId = `${slotKind}-level-${level}`;
-  return {
-    id: slotId,
-    level,
-    kind: "boost",
-    slotKind,
-    title,
-    description,
-    required: true,
-    slotId,
-  };
+    `Level ${level} skill increase`,
+    `Increase one skill's proficiency rank by one step (up to ${maxRankLabel} at this level).`
+  );
 }
 
 function allCreationAnchorsPresent(snapshot: ActorSnapshot): boolean {
@@ -282,39 +242,21 @@ function clampLevel(level: number): number {
   return Math.max(1, Math.min(20, Math.floor(level)));
 }
 
-function sortWeight(kind: PendingStep["slotKind"]): number {
-  switch (kind) {
-    case "ancestry":
-      return 0;
-    case "heritage":
-      return 1;
-    case "background":
-      return 2;
-    case "class":
-      return 3;
-    case "deity":
-      return 4;
-    case "skill-training":
-      return 5;
-    case "class-choice":
-      return 6;
-    case "class-branch":
-      return 7;
-    case "spell-choice":
-      return 8;
-    case "ancestry-feat":
-      return 9;
-    case "class-feat":
-      return 10;
-    case "skill-feat":
-      return 11;
-    case "general-feat":
-      return 12;
-    case "ability-boosts":
-      return 13;
-    case "skill-increase":
-      return 14;
-    default:
-      return 99;
-  }
+function makePickStep(
+  slotKind: PickItemSlotKind,
+  level: number,
+  title: string,
+  description: string,
+  filters: StepFilters
+): PendingStep {
+  return createPickItemStep(slotKind, level, title, description, filters);
+}
+
+function makeBoostStep(
+  _slotKind: PendingStep["slotKind"],
+  level: number,
+  title: string,
+  description: string
+): PendingStep {
+  return createBoostStep(level, title, description);
 }

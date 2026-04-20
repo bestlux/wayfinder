@@ -1,29 +1,29 @@
-export type SlotKind =
-  | "ancestry"
-  | "heritage"
-  | "background"
-  | "class"
-  | "deity"
-  | "skill-training"
-  | "class-branch"
-  | "class-choice"
-  | "spell-choice"
-  | "ancestry-feat"
-  | "class-feat"
-  | "skill-feat"
-  | "general-feat"
-  | "ability-boosts"
-  | "skill-increase";
+import type { SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
+import type { PendingStep } from "./wayfinder/domain/step-types.js";
 
-export type StepKind =
-  | "pick-item"
-  | "manual"
-  | "boost"
-  | "skill-increase"
-  | "class-branch"
-  | "class-choice"
-  | "spell-choice"
-  | "skill-training";
+export type { DraftDecision, SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
+export type {
+  BoostStep,
+  ClassBranchMeta,
+  ClassBranchStep,
+  ClassChoiceMeta,
+  ClassChoiceStep,
+  ClassGrantMeta,
+  ManualStep,
+  PendingStep,
+  PickItemSlotKind,
+  PickItemStep,
+  SelectionStep,
+  SkillIncreaseStep,
+  SkillTrainingMeta,
+  SkillTrainingStep,
+  SlotKind,
+  SpellChoiceDestination,
+  SpellChoiceMeta,
+  SpellChoiceStep,
+  StepFilters,
+  StepKind,
+} from "./wayfinder/domain/step-types.js";
 export type AbilityKey = "str" | "dex" | "con" | "int" | "wis" | "cha";
 export type BoostLevel = 1 | 5 | 10 | 15 | 20;
 
@@ -52,17 +52,6 @@ export interface BoostDraftState {
   levels: Record<string, AbilityKey[]>;
 }
 
-export interface SelectionRef {
-  slotId: string;
-  packId: string;
-  documentId: string;
-  uuid: string;
-  itemType: string;
-  featType: string | null;
-  name: string;
-  level: number | null;
-}
-
 export interface DraftState {
   version: number;
   targetLevel: number;
@@ -75,11 +64,6 @@ export interface DraftState {
   classChoices: Record<string, string>;
   spellChoices: Record<string, SelectionRef[]>;
   updatedAt: string | null;
-}
-
-export interface SkillTrainingDraft {
-  ruleChoices: Record<string, string>;
-  additional: string[];
 }
 
 export interface ModuleState {
@@ -104,112 +88,6 @@ export interface ActorSnapshot {
   sourceIds: string[];
   namesByType: Record<string, string[]>;
   skillRanks: Record<string, number>;
-}
-
-export interface StepFilters {
-  itemType: string;
-  featTypes?: string[];
-  maxLevel?: number;
-}
-
-export interface ClassBranchMeta {
-  slotId: string;
-  selectorPackId: string;
-  selectorDocumentId: string;
-  selectorUuid: string;
-  selectorName: string;
-  selectorRuleIndex: number;
-  flag: string;
-  optionTag: string;
-  classSlug: string | null;
-  dependsOn: "class" | "deity";
-}
-
-export interface ClassGrantMeta {
-  slotId: string;
-  selectorPackId: string;
-  selectorDocumentId: string;
-  selectorUuid: string;
-  selectorName: string;
-  selectorRuleIndex: number;
-  grantRuleIndex: number;
-  flag: string;
-  itemType: "deity";
-  classSlug: string | null;
-}
-
-export interface ClassChoiceMeta {
-  slotId: string;
-  sourcePackId: string;
-  sourceDocumentId: string;
-  sourceUuid: string;
-  sourceName: string;
-  sourceRuleIndex: number;
-  flag: string;
-  classSlug: string | null;
-  dependsOn: "class" | "deity";
-  options: Array<{
-    value: string;
-    label: string;
-    img: string | null;
-    detail: string | null;
-  }>;
-}
-
-export interface SpellChoiceDestination {
-  type: "spellbook" | "prepared";
-  key: string;
-  label: string;
-  entryName: string;
-  tradition: string;
-  ability: string;
-  prepared: "prepared";
-}
-
-export interface SpellChoiceMeta {
-  slotId: string;
-  sourcePackId: string | null;
-  sourceDocumentId: string | null;
-  sourceUuid: string | null;
-  sourceName: string;
-  classSlug: string | null;
-  dependsOn: "class" | "class-branch";
-  destination: SpellChoiceDestination;
-  count: number;
-  minRank: number;
-  maxRank: number;
-  cantrip: boolean;
-  curriculumSpellNames: string[];
-  additionalAllowedSpellNames: string[];
-  restrictToCommon: boolean;
-}
-
-export interface PendingStep {
-  id: string;
-  level: number;
-  kind: StepKind;
-  slotKind: SlotKind;
-  title: string;
-  description: string;
-  required: boolean;
-  slotId: string;
-  filters?: StepFilters;
-  branch?: ClassBranchMeta;
-  grantSelection?: ClassGrantMeta;
-  classChoice?: ClassChoiceMeta;
-  spellChoice?: SpellChoiceMeta;
-  training?: {
-    classSlug: string;
-    className: string;
-    fixedSkills: string[];
-    choiceRules: Array<{
-      ruleIndex: number;
-      flag: string;
-      prompt: string;
-      options: Array<{ slug: string; label: string }>;
-    }>;
-    additionalCount: number;
-  };
 }
 
 export interface ProgressionPlan {

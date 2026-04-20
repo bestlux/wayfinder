@@ -1,3 +1,4 @@
+import { createBoostStep, createPickItemStep, createSkillIncreaseStep, sortWeightForSlotKind, } from "./wayfinder/domain/step-types.js";
 const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
 const SKILL_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const GENERAL_FEAT_LEVELS = [3, 7, 11, 15, 19];
@@ -69,7 +70,7 @@ export function sortPendingSteps(steps) {
         if (levelDelta !== 0) {
             return levelDelta;
         }
-        const kindDelta = sortWeight(left.slotKind) - sortWeight(right.slotKind);
+        const kindDelta = sortWeightForSlotKind(left.slotKind) - sortWeightForSlotKind(right.slotKind);
         if (kindDelta !== 0) {
             return kindDelta;
         }
@@ -90,7 +91,7 @@ function buildFeatSteps(slotKind, titleTemplate, description, slotLevels, fulfil
     const milestones = slotLevels.filter((value) => value <= targetLevel);
     const startIndex = Math.min(Math.max(0, fulfilledCount), milestones.length);
     for (const level of milestones.slice(startIndex)) {
-        steps.push(makePickStep(slotKind, level, titleTemplate.replace("{level}", String(level)), description, {
+        steps.push(createPickItemStep(slotKind, level, titleTemplate.replace("{level}", String(level)), description, {
             itemType: filters.itemType,
             featTypes: filters.featTypes,
             maxLevel: level,
@@ -98,46 +99,9 @@ function buildFeatSteps(slotKind, titleTemplate, description, slotLevels, fulfil
     }
     return steps;
 }
-function makePickStep(slotKind, level, title, description, filters) {
-    const slotId = `${slotKind}-level-${level}`;
-    return {
-        id: slotId,
-        level,
-        kind: "pick-item",
-        slotKind,
-        title,
-        description,
-        required: true,
-        slotId,
-        filters,
-    };
-}
 function makeSkillIncreaseStep(level) {
-    const slotId = `skill-increase-level-${level}`;
     const maxRankLabel = level >= 15 ? "Legendary" : level >= 7 ? "Master" : "Expert";
-    return {
-        id: slotId,
-        level,
-        kind: "skill-increase",
-        slotKind: "skill-increase",
-        title: `Level ${level} skill increase`,
-        description: `Increase one skill's proficiency rank by one step (up to ${maxRankLabel} at this level).`,
-        required: true,
-        slotId,
-    };
-}
-function makeBoostStep(slotKind, level, title, description) {
-    const slotId = `${slotKind}-level-${level}`;
-    return {
-        id: slotId,
-        level,
-        kind: "boost",
-        slotKind,
-        title,
-        description,
-        required: true,
-        slotId,
-    };
+    return createSkillIncreaseStep(level, `Level ${level} skill increase`, `Increase one skill's proficiency rank by one step (up to ${maxRankLabel} at this level).`);
 }
 function allCreationAnchorsPresent(snapshot) {
     return (snapshot.singletonSlots.ancestry &&
@@ -151,40 +115,10 @@ function clampLevel(level) {
     }
     return Math.max(1, Math.min(20, Math.floor(level)));
 }
-function sortWeight(kind) {
-    switch (kind) {
-        case "ancestry":
-            return 0;
-        case "heritage":
-            return 1;
-        case "background":
-            return 2;
-        case "class":
-            return 3;
-        case "deity":
-            return 4;
-        case "skill-training":
-            return 5;
-        case "class-choice":
-            return 6;
-        case "class-branch":
-            return 7;
-        case "spell-choice":
-            return 8;
-        case "ancestry-feat":
-            return 9;
-        case "class-feat":
-            return 10;
-        case "skill-feat":
-            return 11;
-        case "general-feat":
-            return 12;
-        case "ability-boosts":
-            return 13;
-        case "skill-increase":
-            return 14;
-        default:
-            return 99;
-    }
+function makePickStep(slotKind, level, title, description, filters) {
+    return createPickItemStep(slotKind, level, title, description, filters);
+}
+function makeBoostStep(_slotKind, level, title, description) {
+    return createBoostStep(level, title, description);
 }
 //# sourceMappingURL=progression.js.map

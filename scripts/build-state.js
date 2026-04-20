@@ -1,6 +1,7 @@
 import { ABILITY_KEYS } from "./constants.js";
 import { fetchSelectionDocument } from "./pack-service.js";
 import { cloneData } from "./shared/cloning.js";
+import { findDraftSelectionByType } from "./wayfinder/draft-decisions.js";
 const BOOST_LEVELS = [1, 5, 10, 15, 20];
 async function getEffectiveBuildState(actor, draft) {
     const [ancestryDocument, heritageDocument, backgroundDocument, classDocument, deityDocument] = await Promise.all([
@@ -47,9 +48,6 @@ async function getEffectiveSingletonDocument(actor, draft, itemType) {
     }
     const sourceDocument = await resolveSourceDocumentFromActorItem(actorItem, itemType);
     return toPlainDocument(sourceDocument ?? actorItem);
-}
-function findDraftSelectionByType(draft, itemType) {
-    return Object.values(draft.selections).find((selection) => selection.itemType === itemType) ?? null;
 }
 function listActorItems(actor) {
     if (Array.isArray(actor?.items?.contents)) {

@@ -3,6 +3,7 @@ import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 import { sortPendingSteps } from "../src/progression";
 import type { PendingStep } from "../src/types";
+import { createClassBranchStep, createClassChoiceStep } from "../src/wayfinder/domain/step-types";
 import { getWayfinderStepStatus, modeLabel, resolveActiveStep } from "../src/wayfinder/plan-service";
 
 describe("wayfinder plan service", () => {
@@ -65,42 +66,41 @@ describe("wayfinder plan service", () => {
 
   it("orders class choices before dependent class branches at the same level", () => {
     const steps = sortPendingSteps([
-      {
-        id: "class-branch-cause-level-1",
-        level: 1,
-        kind: "class-branch",
-        slotKind: "class-branch",
-        title: "Cause",
-        description: "",
-        required: true,
-        slotId: "class-branch-cause-level-1",
-      },
-      {
-        id: "class-choice-deity-champion-sanctification-level-1",
-        level: 1,
-        kind: "class-choice",
-        slotKind: "class-choice",
-        title: "Sanctification",
-        description: "",
-        required: true,
-        slotId: "class-choice-deity-champion-sanctification-level-1",
-        classChoice: {
-          slotId: "class-choice-deity-champion-sanctification-level-1",
-          sourcePackId: "pf2e.classfeatures",
-          sourceDocumentId: "deity-champion",
-          sourceUuid: "Compendium.pf2e.classfeatures.Item.deity-champion",
-          sourceName: "Deity (Champion)",
-          sourceRuleIndex: 2,
-          flag: "sanctification",
+      createClassBranchStep(
+        1,
+        {
+          slotId: "class-branch-cause-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "cause",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.cause",
+          selectorName: "Cause",
+          selectorRuleIndex: 0,
+          flag: "cause",
+          optionTag: "champion-cause",
           classSlug: "champion",
           dependsOn: "deity",
-          options: [
-            { value: "holy", label: "Holy", img: null, detail: null },
-            { value: "unholy", label: "Unholy", img: null, detail: null },
-            { value: "none", label: "None", img: null, detail: null },
-          ],
         },
-      },
+        {
+          title: "Cause",
+          description: "",
+        }
+      ),
+      createClassChoiceStep(1, {
+        slotId: "class-choice-deity-champion-sanctification-level-1",
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "deity-champion",
+        sourceUuid: "Compendium.pf2e.classfeatures.Item.deity-champion",
+        sourceName: "Deity (Champion)",
+        sourceRuleIndex: 2,
+        flag: "sanctification",
+        classSlug: "champion",
+        dependsOn: "deity",
+        options: [
+          { value: "holy", label: "Holy", img: null, detail: null },
+          { value: "unholy", label: "Unholy", img: null, detail: null },
+          { value: "none", label: "None", img: null, detail: null },
+        ],
+      }),
     ]);
 
     expect(steps.map((step) => step.slotId)).toEqual([

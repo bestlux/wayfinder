@@ -1,7 +1,10 @@
 import { listActorItems } from "../build-state.js";
 import { sourceIdOf } from "../shared/source-id.js";
+import { findSpellcastingEntryForChoice, wizardMaxSpellRank } from "../shared/spellcasting.js";
 import type { DraftState, PendingStep, SelectionRef, SpellChoiceMeta } from "../types.js";
 import { createSpellChoiceStep } from "./domain/step-types.js";
+
+export { findSpellcastingEntryForChoice, wizardMaxSpellRank } from "../shared/spellcasting.js";
 
 interface BuildSpellChoiceStepsParams {
   draft: DraftState;
@@ -361,25 +364,6 @@ export function readExistingSpellChoiceSelections(actor: any, choice: SpellChoic
   return dedupeSelections(eligible).slice(0, choice.count);
 }
 
-export function findSpellcastingEntryForChoice(actor: any, choice: SpellChoiceMeta): any | null {
-  return (
-    listActorItems(actor).find(
-      (item: any) =>
-        item?.type === "spellcastingEntry" && item?.flags?.["pf2e-wayfinder"]?.destinationKey === choice.destination.key
-    ) ??
-    listActorItems(actor).find(
-      (item: any) =>
-        itemMatchesSpellcastingEntry(item, choice) && String(item?.name ?? "") === choice.destination.entryName
-    ) ??
-    listActorItems(actor).find((item: any) => itemMatchesSpellcastingEntry(item, choice)) ??
-    null
-  );
-}
-
-export function wizardMaxSpellRank(level: number): number {
-  return Math.max(1, Math.min(9, Math.ceil(level / 2)));
-}
-
 function makeSpellChoiceStep(args: {
   slotId: string;
   level: number;
@@ -528,21 +512,6 @@ function normalizeCurriculumSpellName(raw: string): string {
     .replace(/<[^>]+>/g, "")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function itemMatchesSpellcastingEntry(item: any, choice: SpellChoiceMeta): boolean {
-  return (
-    item?.type === "spellcastingEntry" &&
-    String(item?.system?.tradition?.value ?? "")
-      .trim()
-      .toLowerCase() === choice.destination.tradition &&
-    String(item?.system?.prepared?.value ?? "")
-      .trim()
-      .toLowerCase() === choice.destination.prepared &&
-    String(item?.system?.ability?.value ?? "")
-      .trim()
-      .toLowerCase() === choice.destination.ability
-  );
 }
 
 function spellMatchesChoice(item: any, choice: SpellChoiceMeta, entryId: string): boolean {

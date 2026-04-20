@@ -1,6 +1,8 @@
 import { listActorItems } from "../build-state.js";
 import { sourceIdOf } from "../shared/source-id.js";
+import { findSpellcastingEntryForChoice, wizardMaxSpellRank } from "../shared/spellcasting.js";
 import { createSpellChoiceStep } from "./domain/step-types.js";
+export { findSpellcastingEntryForChoice, wizardMaxSpellRank } from "../shared/spellcasting.js";
 const WIZARD_SPELLBOOK_DESTINATION = {
     type: "spellbook",
     key: "wizard-arcane-prepared",
@@ -269,15 +271,6 @@ export function readExistingSpellChoiceSelections(actor, choice) {
         .filter((selection) => !!selection);
     return dedupeSelections(eligible).slice(0, choice.count);
 }
-export function findSpellcastingEntryForChoice(actor, choice) {
-    return (listActorItems(actor).find((item) => item?.type === "spellcastingEntry" && item?.flags?.["pf2e-wayfinder"]?.destinationKey === choice.destination.key) ??
-        listActorItems(actor).find((item) => itemMatchesSpellcastingEntry(item, choice) && String(item?.name ?? "") === choice.destination.entryName) ??
-        listActorItems(actor).find((item) => itemMatchesSpellcastingEntry(item, choice)) ??
-        null);
-}
-export function wizardMaxSpellRank(level) {
-    return Math.max(1, Math.min(9, Math.ceil(level / 2)));
-}
 function makeSpellChoiceStep(args) {
     return createSpellChoiceStep(args.level, args.title, args.description, {
         slotId: args.slotId,
@@ -378,18 +371,6 @@ function normalizeCurriculumSpellName(raw) {
         .replace(/<[^>]+>/g, "")
         .replace(/\s+/g, " ")
         .trim();
-}
-function itemMatchesSpellcastingEntry(item, choice) {
-    return (item?.type === "spellcastingEntry" &&
-        String(item?.system?.tradition?.value ?? "")
-            .trim()
-            .toLowerCase() === choice.destination.tradition &&
-        String(item?.system?.prepared?.value ?? "")
-            .trim()
-            .toLowerCase() === choice.destination.prepared &&
-        String(item?.system?.ability?.value ?? "")
-            .trim()
-            .toLowerCase() === choice.destination.ability);
 }
 function spellMatchesChoice(item, choice, entryId) {
     if (item?.type !== "spell") {

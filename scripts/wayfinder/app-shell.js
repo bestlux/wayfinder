@@ -1,8 +1,8 @@
 import { inspectActor } from "../actor-inspector.js";
 import { applyDraftToActor } from "../actor-updater.js";
 import { getEffectiveBuildState, getEffectiveSingletonDocument, listActorItems } from "../build-state.js";
-import { DRAFT_FLAG, MODULE_ID, MODULE_TITLE, STATE_FLAG } from "../constants.js";
-import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../draft-service.js";
+import { MODULE_ID, MODULE_TITLE } from "../constants.js";
+import { createEmptyDraft, normalizeDraft } from "../draft-service.js";
 import { fetchSelectionDocument, getOptionsForStep, getPickerInfoState, resolveSelection } from "../pack-service.js";
 import { canUseWayfinder } from "../permissions.js";
 import { extractDocumentSlug } from "../shared/slug.js";
@@ -10,15 +10,18 @@ import { sourceIdOf } from "../shared/source-id.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
 import { buildSkillPane } from "./application/build-skill-pane-service.js";
+import { adjustDraftTargetLevel, setManualStepComplete, setTrainingRuleSelection, toggleAncestryMode, toggleBoostChoice, toggleSkillIncreaseSelection, toggleTrainingSkillSelection, toggleVoluntaryChoice, toggleVoluntaryEnabled, toggleVoluntaryLegacy, } from "./application/draft-adjustment-service.js";
+import { applyDraftLifecycle, buildSaveDraftUpdate, createClearedDraftResult, } from "./application/draft-lifecycle-service.js";
 import { buildContextNote, buildOptionContext, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
 import { chooseSelectionOption, selectClassChoiceValue, toggleSpellChoiceSelection, } from "./application/selection-command-service.js";
+import { buildWayfinderContext } from "./application/wayfinder-context-service.js";
 import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassTrainingSteps, } from "./class-choice-service.js";
 import { findDraftSelectionByType, hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, } from "./existing-selection-service.js";
 import { clearSelectionState, invalidateSelectionState, invalidateSelectionsByPrefix } from "./invalidation.js";
-import { buildBoostPane, toggleSlotRecordChoice } from "./panes/boost-pane.js";
+import { buildBoostPane } from "./panes/boost-pane.js";
 import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
-import { buildWayfinderPlan, getWayfinderStepStatus, isWayfinderStepComplete, modeLabel, resolveActiveStep, } from "./plan-service.js";
+import { buildWayfinderPlan, getWayfinderStepStatus, isWayfinderStepComplete, resolveActiveStep, } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId, SLOT_IDS, SLOT_PREFIXES } from "./slot-ids.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "./spell-choice-service.js";
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
@@ -83,7 +86,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
         const activeStep = await this.#resolveActiveStep(plan.steps, effectiveBuildState);
         const activePane = activeStep ? await this.#buildActivePane(activeStep, effectiveBuildState) : null;
-        const activeStepIndex = activeStep ? plan.steps.findIndex((step) => step.id === activeStep.id) : -1;
         const [effectiveAncestry, effectiveHeritage, effectiveBackground, effectiveClass, effectiveDeity] = await Promise.all([
             getEffectiveSingletonDocument(this.actor, draft, "ancestry"),
             getEffectiveSingletonDocument(this.actor, draft, "heritage"),
@@ -91,70 +93,25 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             getEffectiveSingletonDocument(this.actor, draft, "class"),
             getEffectiveSingletonDocument(this.actor, draft, "deity"),
         ]);
-        const summary = [
-            {
-                label: "Ancestry",
-                value: effectiveAncestry?.name ?? "Missing",
-                complete: !!effectiveAncestry,
-            },
-            {
-                label: "Heritage",
-                value: effectiveHeritage?.name ?? "Missing",
-                complete: !!effectiveHeritage,
-            },
-            {
-                label: "Background",
-                value: effectiveBackground?.name ?? "Missing",
-                complete: !!effectiveBackground,
-            },
-            {
-                label: "Class",
-                value: effectiveClass?.name ?? "Missing",
-                complete: !!effectiveClass,
-            },
-        ];
-        if (effectiveClass?.name === "Cleric" || effectiveDeity) {
-            summary.push({
-                label: "Deity",
-                value: effectiveDeity?.name ?? "Missing",
-                complete: !!effectiveDeity,
-            });
-        }
-        const dossierLine = summary
-            .filter((item) => item.complete)
-            .map((item) => item.value)
-            .filter(Boolean)
-            .join(" • ") || "Creation path in progress";
-        const stepStateRows = await Promise.all(plan.steps.map(async (step, index) => ({
-            id: step.id,
-            index: index + 1,
-            level: step.level,
-            title: step.title,
-            active: step.id === activeStep?.id,
-            complete: await this.#isStepComplete(step, effectiveBuildState),
-            invalidated: this.#recentlyInvalidatedStepIds.has(step.slotId) &&
-                !(await this.#isStepComplete(step, effectiveBuildState)),
-            modeLabel: modeLabel(step.kind),
-            status: await this.#stepStatus(step, effectiveBuildState),
-            firstInLevel: index === 0 || plan.steps[index - 1].level !== step.level,
-        })));
-        return {
+        return buildWayfinderContext({
             actorName: this.actor.name,
-            dossierLine,
             currentLevel: snapshot.level,
             targetLevel: plan.targetLevel,
-            hasPendingSteps: plan.steps.length > 0,
-            guidance: "Review one decision at a time, keep the draft coherent, and let earlier choices narrow what comes next.",
-            summary,
-            stepCount: plan.steps.length,
-            completedCount: stepStateRows.filter((step) => step.complete).length,
-            activeStepIndex: activeStepIndex + 1,
-            statusNote: this.#statusNote,
-            steps: stepStateRows,
+            steps: plan.steps,
+            activeStep,
             activePane,
-            canGoPrevious: !!activeStep && plan.steps.findIndex((step) => step.id === activeStep.id) > 0,
-            canGoNext: !!activeStep && plan.steps.findIndex((step) => step.id === activeStep.id) < plan.steps.length - 1,
-        };
+            statusNote: this.#statusNote,
+            recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
+            summaryDocuments: {
+                ancestry: effectiveAncestry,
+                heritage: effectiveHeritage,
+                background: effectiveBackground,
+                classDocument: effectiveClass,
+                deity: effectiveDeity,
+            },
+            isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
+            getStepStatus: (step) => this.#stepStatus(step, effectiveBuildState),
+        });
     }
     async _onRender(context, options) {
         await super._onRender(context, options);
@@ -276,8 +233,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (!stepId) {
             return;
         }
-        this.#requireDraft().manual[stepId] = input.checked;
-        this.render(false);
+        this.#statusNote = null;
+        if (setManualStepComplete(this.#draftAdjustmentState(), stepId, input.checked)) {
+            this.render(false);
+        }
     };
     #ensureDraft(defaultTargetLevel) {
         if (!this.#draft) {
@@ -479,22 +438,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     #selectSkillIncrease(stepId, slug) {
         this.#statusNote = null;
-        const draft = this.#requireDraft();
-        const slotId = stepId;
-        if (draft.skillIncreases[slotId] === slug) {
-            delete draft.skillIncreases[slotId];
+        if (toggleSkillIncreaseSelection(this.#draftAdjustmentState(), stepId, slug)) {
+            this.render(false);
         }
-        else {
-            draft.skillIncreases[slotId] = slug;
-        }
-        this.render(false);
     }
     #selectTrainingRule(stepId, flag, slug) {
         this.#statusNote = null;
-        const draft = this.#requireDraft();
-        draft.skillTrainings[stepId] ??= { ruleChoices: {}, additional: [] };
-        draft.skillTrainings[stepId].ruleChoices[flag] = slug;
-        this.render(false);
+        if (setTrainingRuleSelection(this.#draftAdjustmentState(), stepId, flag, slug)) {
+            this.render(false);
+        }
     }
     async #selectClassChoice(stepId, value) {
         this.#statusNote = null;
@@ -528,145 +480,43 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     async #toggleTrainingSkill(stepId, slug) {
         this.#statusNote = null;
-        const draft = this.#requireDraft();
         const step = (await this.#buildPlan()).steps.find((entry) => entry.slotId === stepId);
-        const additionalCount = step?.training?.additionalCount ?? 0;
-        draft.skillTrainings[stepId] ??= { ruleChoices: {}, additional: [] };
-        const current = draft.skillTrainings[stepId].additional;
-        draft.skillTrainings[stepId].additional = current.includes(slug)
-            ? current.filter((entry) => entry !== slug)
-            : [...current, slug].slice(0, additionalCount);
-        this.render(false);
+        if (toggleTrainingSkillSelection(this.#draftAdjustmentState(), step ?? null, slug)) {
+            this.render(false);
+        }
     }
     async #toggleAncestryMode() {
         const ancestry = (await getEffectiveBuildState(this.actor, this.#requireDraft())).ancestry;
-        if (!ancestry) {
-            return;
-        }
         this.#statusNote = null;
-        const draft = this.#requireDraft();
-        draft.boosts.ancestry.modeTouched = true;
-        draft.boosts.ancestry.mode = ancestry.mode === "alternate" ? "standard" : "alternate";
-        if (draft.boosts.ancestry.mode === "alternate") {
-            draft.boosts.ancestry.selectedBoosts = {};
+        if (toggleAncestryMode(this.#draftAdjustmentState(), ancestry?.mode ?? null)) {
+            this.render(false);
         }
-        else {
-            draft.boosts.ancestry.alternateBoosts = [];
-        }
-        this.render(false);
     }
     async #toggleVoluntaryEnabled() {
         this.#statusNote = null;
-        const voluntary = this.#requireDraft().boosts.ancestry.voluntary;
-        voluntary.touched = true;
-        voluntary.enabled = !voluntary.enabled;
-        if (!voluntary.enabled) {
-            voluntary.legacy = false;
-            voluntary.boost = null;
-            voluntary.flaws = [];
+        if (toggleVoluntaryEnabled(this.#draftAdjustmentState())) {
+            this.render(false);
         }
-        this.render(false);
     }
     async #toggleVoluntaryLegacy() {
         this.#statusNote = null;
-        const voluntary = this.#requireDraft().boosts.ancestry.voluntary;
-        voluntary.touched = true;
-        voluntary.enabled = true;
-        voluntary.legacy = !voluntary.legacy;
-        if (!voluntary.legacy) {
-            voluntary.boost = null;
-            voluntary.flaws = Array.from(new Set(voluntary.flaws));
+        if (toggleVoluntaryLegacy(this.#draftAdjustmentState())) {
+            this.render(false);
         }
-        else {
-            voluntary.flaws = voluntary.flaws.slice(0, 2);
-        }
-        this.render(false);
     }
     async #toggleBoostChoice(stepId, section, attribute) {
         this.#statusNote = null;
-        const draft = this.#requireDraft();
-        const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
-        switch (section) {
-            case "ancestry":
-                if (!effectiveBuildState.ancestry) {
-                    return;
-                }
-                if (effectiveBuildState.ancestry.mode === "alternate") {
-                    const current = draft.boosts.ancestry.alternateBoosts;
-                    draft.boosts.ancestry.alternateBoosts = current.includes(attribute)
-                        ? current.filter((entry) => entry !== attribute)
-                        : [...current, attribute].slice(0, 2);
-                }
-                else {
-                    toggleSlotRecordChoice(draft.boosts.ancestry.selectedBoosts, effectiveBuildState.ancestry.document?.system?.boosts, attribute);
-                }
-                break;
-            case "background":
-                if (!effectiveBuildState.background) {
-                    return;
-                }
-                toggleSlotRecordChoice(draft.boosts.background.selectedBoosts, effectiveBuildState.background.document?.system?.boosts, attribute);
-                break;
-            case "class":
-                draft.boosts.class.keyAbility = draft.boosts.class.keyAbility === attribute ? null : attribute;
-                break;
-            case "level-1":
-            case "level-5":
-            case "level-10":
-            case "level-15":
-            case "level-20": {
-                const level = section.split("-")[1] ?? "";
-                const selected = draft.boosts.levels[level] ?? [
-                    ...effectiveBuildState.levelBoosts[Number(level)],
-                ];
-                draft.boosts.levels[level] = selected.includes(attribute)
-                    ? selected.filter((entry) => entry !== attribute)
-                    : [...selected, attribute].slice(0, effectiveBuildState.allowedBoosts[Number(level)]);
-                break;
-            }
+        const effectiveBuildState = await getEffectiveBuildState(this.actor, this.#requireDraft());
+        if (toggleBoostChoice(this.#draftAdjustmentState(), effectiveBuildState, stepId, section, attribute)) {
+            this.render(false);
         }
-        this.#recentlyInvalidatedStepIds.delete(stepId);
-        this.render(false);
     }
     async #toggleVoluntaryChoice(stepId, attribute, choiceKind) {
         this.#statusNote = null;
         const effectiveBuildState = await getEffectiveBuildState(this.actor, this.#requireDraft());
-        const ancestry = effectiveBuildState.ancestry;
-        if (!ancestry) {
-            return;
+        if (toggleVoluntaryChoice(this.#draftAdjustmentState(), effectiveBuildState.ancestry, stepId, attribute, choiceKind)) {
+            this.render(false);
         }
-        const voluntary = this.#requireDraft().boosts.ancestry.voluntary;
-        if (!voluntary.enabled) {
-            return;
-        }
-        voluntary.touched = true;
-        const flaws = [...voluntary.flaws];
-        const numFlaws = flaws.filter((entry) => entry === attribute).length;
-        if (choiceKind === "flaw") {
-            if (numFlaws > 0) {
-                flaws.splice(flaws.indexOf(attribute), 1);
-            }
-            else if (!voluntary.legacy || flaws.length < 2) {
-                flaws.push(attribute);
-            }
-        }
-        else if (choiceKind === "second-flaw") {
-            if (!voluntary.legacy || !ancestry.lockedBoosts.includes(attribute) || numFlaws === 0) {
-                return;
-            }
-            if (numFlaws > 1) {
-                flaws.splice(flaws.lastIndexOf(attribute), 1);
-            }
-            else if (flaws.length < 2) {
-                flaws.push(attribute);
-            }
-        }
-        else if (choiceKind === "boost" && voluntary.legacy && flaws.length >= 2) {
-            voluntary.boost = voluntary.boost === attribute ? null : attribute;
-        }
-        voluntary.flaws = flaws;
-        this.#recentlyInvalidatedStepIds.delete(stepId);
-        this.render(false);
     }
     #abilityLabel(attribute) {
         const abilities = globalThis.CONFIG?.PF2E?.abilities;
@@ -825,6 +675,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
         };
     }
+    #draftAdjustmentState(draft = this.#requireDraft()) {
+        return {
+            draft,
+            recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
+        };
+    }
     async #finalizeSelectionCommand(result) {
         if (result.kind === "warning") {
             if (result.warning === "duplicate-selection") {
@@ -881,14 +737,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#statusNote = null;
         const snapshot = inspectActor(this.actor);
         const draft = this.#requireDraft();
-        draft.targetLevel = Math.min(20, Math.max(snapshot.level, draft.targetLevel + delta));
+        if (!adjustDraftTargetLevel(draft, snapshot.level, delta)) {
+            return;
+        }
         await this.#saveDraft(false);
         this.render(false);
     }
     async #saveDraft(notify = true) {
-        await this.actor.update({
-            [DRAFT_FLAG]: buildDraftPatch(this.#requireDraft()),
-        });
+        await this.actor.update(buildSaveDraftUpdate(this.#requireDraft()));
         if (notify) {
             ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.SavedDraft"));
         }
@@ -899,30 +755,25 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const draft = this.#requireDraft();
         const plan = await this.#buildPlan(snapshot, draft);
         const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
-        const completion = await Promise.all(plan.steps.map((step) => this.#isStepComplete(step, effectiveBuildState)));
-        const missing = completion.some((value) => !value);
-        if (missing) {
+        const result = await applyDraftLifecycle({
+            actorName: this.actor.name,
+            currentLevel: snapshot.level,
+            draft,
+            steps: plan.steps,
+            isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
+            confirmApply: typeof globalThis.confirm === "function" ? (message) => globalThis.confirm(message) : undefined,
+            applyDraftToActor: () => applyDraftToActor(this.actor, draft, plan.steps),
+            updateActor: (update) => this.actor.update(update),
+        });
+        if (result.kind === "warning") {
             ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.MissingSelections"));
             return;
         }
-        const confirmed = typeof globalThis.confirm === "function"
-            ? globalThis.confirm(`Apply ${plan.steps.length} Wayfinder step(s) to ${this.actor.name}?`)
-            : true;
-        if (!confirmed) {
+        if (result.kind === "cancelled") {
             ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.ApplyCancelled"));
             return;
         }
-        await applyDraftToActor(this.actor, draft, plan.steps);
-        await this.actor.update({
-            [DRAFT_FLAG]: null,
-            [STATE_FLAG]: {
-                ...createEmptyState(),
-                lastAppliedAt: new Date().toISOString(),
-                lastTargetLevel: draft.targetLevel,
-                completedStepIds: plan.steps.map((step) => step.id),
-            },
-        });
-        this.#draft = normalizeDraft(null, snapshot.level);
+        this.#draft = result.nextDraft;
         this.#recentlyInvalidatedStepIds.clear();
         ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.Applied"));
         this.render(false);
@@ -930,13 +781,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     async #clearDraft() {
         this.#statusNote = null;
         const snapshot = inspectActor(this.actor);
-        this.#draft = createEmptyDraft(snapshot.level);
+        const cleared = createClearedDraftResult(snapshot.level);
+        this.#draft = cleared.nextDraft;
         this.#searchByStepId.clear();
         this.#previewValueByStepId.clear();
         this.#recentlyInvalidatedStepIds.clear();
-        await this.actor.update({
-            [DRAFT_FLAG]: null,
-        });
+        await this.actor.update(cleared.actorUpdate);
         ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.ClearedDraft"));
         this.render(false);
     }

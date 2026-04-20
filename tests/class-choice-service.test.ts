@@ -9,9 +9,11 @@ import {
   buildClassTrainingSteps,
 } from "../src/wayfinder/class-choice-service";
 
+const testGlobals = globalThis as typeof globalThis & { CONFIG: any };
+
 describe("class-choice-service", () => {
   afterEach(() => {
-    delete (globalThis as any).CONFIG;
+    delete testGlobals.CONFIG;
   });
 
   it("emits a generalized class training step from supported skill choices", async () => {
@@ -123,7 +125,7 @@ describe("class-choice-service", () => {
   });
 
   it("keeps extended skill slugs when a class skill rule includes configured world skills", async () => {
-    globalThis.CONFIG = {
+    testGlobals.CONFIG = {
       PF2E: {
         skills: {
           acrobatics: { label: "PF2E.Skill.Acrobatics" },

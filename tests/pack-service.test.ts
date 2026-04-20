@@ -7,6 +7,8 @@ import {
 } from "../src/pack-service";
 import type { OptionContext, PendingStep } from "../src/types";
 
+const testGlobals = globalThis as typeof globalThis & { CONFIG: any; game: any };
+
 const EMPTY_CONTEXT: OptionContext = {
   ancestrySlug: null,
   ancestryTraits: [],
@@ -20,7 +22,7 @@ const EMPTY_CONTEXT: OptionContext = {
 describe("pack-service dependency filtering", () => {
   beforeEach(() => {
     clearPackServiceCache();
-    globalThis.CONFIG = {
+    testGlobals.CONFIG = {
       PF2E: {
         ancestryTraits: {
           human: "Human",
@@ -36,7 +38,7 @@ describe("pack-service dependency filtering", () => {
         },
       },
     } as any;
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map(),
       settings: {
         get: () => "",
@@ -93,6 +95,48 @@ describe("pack-service dependency filtering", () => {
     );
 
     expect(options.map((option) => option.name)).toEqual(["Cooperative Nature", "Fanged Blood", "Wilderness Born"]);
+  });
+
+  it("normalizes explicit ancestry slugs before building the trait catalog", async () => {
+    setPack("pf2e.ancestries", [
+      {
+        _id: "human",
+        name: "Human",
+        img: "human.webp",
+        type: "ancestry",
+        system: {
+          slug: " Human ",
+          traits: {
+            rarity: "common",
+            value: ["human"],
+          },
+          publication: {
+            title: "Player Core",
+          },
+        },
+      },
+    ]);
+    setPack("pf2e.feats-srd", [
+      featEntry("cooperative-nature", "Cooperative Nature", "ancestry", ["human"], false),
+      featEntry("bog-sprint", "Bog Sprint", "ancestry", ["grippli"], false),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("ancestry-feat", {
+        itemType: "feat",
+        featTypes: ["ancestry"],
+        maxLevel: 1,
+      }),
+      {
+        ancestrySlug: "human",
+        ancestryTraits: ["human"],
+        heritageTraits: [],
+        classSlug: null,
+        hasDedicationFeat: false,
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Cooperative Nature"]);
   });
 
   it("filters class feats to the drafted class plus dedication feats before the actor has a dedication", async () => {
@@ -439,6 +483,8 @@ describe("pack-service dependency filtering", () => {
           maxRank: 1,
           cantrip: false,
           curriculumSpellNames: ["Force Barrage", "Mystic Armor"],
+          additionalAllowedSpellNames: [],
+          restrictToCommon: false,
         },
       },
       {
@@ -538,7 +584,7 @@ function makeStep(slotKind: PendingStep["slotKind"], filters: PendingStep["filte
 }
 
 function setPack(id: string, entries: any[]): void {
-  globalThis.game.packs.set(id, {
+  testGlobals.game.packs.set(id, {
     metadata: { id },
     getIndex: async () => entries,
   });

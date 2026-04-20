@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "noImplicitAny": true
+  },
+  "include": [
+    "src/shared/**/*.ts",
+    "src/wayfinder/draft-decisions.ts",
+    "src/wayfinder/invalidation.ts",
+    "src/wayfinder/slot-ids.ts"
+  ],
+  "exclude": ["scripts", "node_modules"]
+}

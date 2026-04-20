@@ -1,4 +1,5 @@
 import { listActorItems } from "../build-state.js";
+import { sourceIdOf } from "../shared/source-id.js";
 import type { DraftState, PendingStep, SelectionRef, SpellChoiceMeta } from "../types.js";
 
 interface BuildSpellChoiceStepsParams {
@@ -630,11 +631,6 @@ function selectionFromActorItem(item: any, slotId: string): SelectionRef | null 
     name: String(item?.name ?? "Spell"),
     level: typeof item?.system?.level?.value === "number" ? item.system.level.value : null,
   };
-}
-
-function sourceIdOf(item: any): string | null {
-  const sourceId = item?.sourceId ?? item?.flags?.core?.sourceId ?? item?._stats?.compendiumSource ?? null;
-  return typeof sourceId === "string" && sourceId.length > 0 ? sourceId : null;
 }
 
 function parseCompendiumUuid(uuid: string): { packId: string; documentId: string } | null {

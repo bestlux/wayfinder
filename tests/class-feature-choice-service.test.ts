@@ -331,6 +331,130 @@ describe("class-feature-choice-service", () => {
       },
     ]);
   });
+
+  it("reconciles an existing granted deity before updating the selector feature", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["deity-level-1"] = selection("pf2e.deities", "iomedae", "Iomedae", "deity");
+
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Champion",
+            system: {},
+          },
+          {
+            id: "selector-1",
+            type: "feat",
+            flags: {
+              core: {
+                sourceId: "Compendium.pf2e.classfeatures.Item.deity-champion",
+              },
+              pf2e: {
+                rulesSelections: {
+                  deity: "Compendium.pf2e.deities.Item.iomedae",
+                },
+                itemGrants: {
+                  deity: {
+                    id: "deity-1",
+                  },
+                },
+              },
+            },
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "deity",
+                  choices: {
+                    itemType: "deity",
+                  },
+                },
+                {
+                  key: "GrantItem",
+                  uuid: "{item|flags.system.rulesSelections.deity}",
+                },
+                {
+                  key: "GrantItem",
+                  uuid: "Compendium.pf2e.classfeatures.Item.deific-weapon",
+                },
+              ],
+            },
+          },
+          {
+            id: "deity-1",
+            type: "deity",
+            flags: {
+              core: {
+                sourceId: "Compendium.pf2e.deities.Item.iomedae",
+              },
+              pf2e: {
+                grantedBy: {
+                  id: "selector-1",
+                  onDelete: "cascade",
+                },
+              },
+            },
+            system: {},
+          },
+        ] as any[],
+      },
+      createEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+    };
+
+    await applyClassFeatureChoiceDraft(actor as any, draft, [championDeityStep()], {
+      createEmbeddedSource: async () => null,
+      fetchSelectionDocument: async () => null,
+    });
+
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      {
+        _id: "deity-1",
+        "flags.core.sourceId": "Compendium.pf2e.deities.Item.iomedae",
+        "flags.pf2e.grantedBy": {
+          id: "selector-1",
+          onDelete: "cascade",
+        },
+        "flags.pf2e-wayfinder.importedBy": "pf2e-wayfinder",
+        "flags.pf2e-wayfinder.slotId": "deity-level-1",
+      },
+    ]);
+    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
+      {
+        _id: "selector-1",
+        "system.rules": [
+          {
+            key: "ChoiceSet",
+            flag: "deity",
+            choices: {
+              itemType: "deity",
+            },
+            selection: "Compendium.pf2e.deities.Item.iomedae",
+          },
+          {
+            key: "GrantItem",
+            uuid: "{item|flags.system.rulesSelections.deity}",
+          },
+          {
+            key: "GrantItem",
+            uuid: "Compendium.pf2e.classfeatures.Item.deific-weapon",
+          },
+        ],
+        "flags.pf2e.rulesSelections.deity": "Compendium.pf2e.deities.Item.iomedae",
+        "flags.pf2e.itemGrants.deity": {
+          id: "deity-1",
+          onDelete: "detach",
+          nested: null,
+        },
+        "flags.pf2e-wayfinder.slotId": "deity-level-1",
+      },
+    ]);
+  });
 });
 
 function deityStep(): PendingStep {

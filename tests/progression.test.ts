@@ -12,6 +12,7 @@ function makeSnapshot(partial: Partial<ActorSnapshot> = {}): ActorSnapshot {
       heritage: false,
       background: false,
       class: false,
+      deity: false,
     },
     featCounts: {
       ancestry: 0,
@@ -22,6 +23,7 @@ function makeSnapshot(partial: Partial<ActorSnapshot> = {}): ActorSnapshot {
     },
     sourceIds: [],
     namesByType: {},
+    skillRanks: {},
     ...partial,
   };
 }
@@ -52,6 +54,7 @@ describe("progression", () => {
           heritage: true,
           background: true,
           class: true,
+          deity: false,
         },
         featCounts: {
           ancestry: 1,
@@ -77,6 +80,7 @@ describe("progression", () => {
           heritage: true,
           background: true,
           class: true,
+          deity: false,
         },
         featCounts: {
           ancestry: 1,

@@ -1,0 +1,1 @@
+{"version":3,"file":"cloning.js","sourceRoot":"","sources":["../../src/shared/cloning.ts"],"names":[],"mappings":"AAAA,MAAM,UAAU,SAAS,CAAI,KAAQ;IACnC,IAAI,OAAO,UAAU,CAAC,eAAe,KAAK,UAAU,EAAE,CAAC;QACrD,OAAO,UAAU,CAAC,eAAe,CAAC,KAAK,CAAC,CAAC;IAC3C,CAAC;IAED,OAAO,IAAI,CAAC,KAAK,CAAC,IAAI,CAAC,SAAS,CAAC,KAAK,CAAC,CAAM,CAAC;AAChD,CAAC"}

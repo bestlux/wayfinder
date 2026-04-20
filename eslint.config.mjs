@@ -96,5 +96,22 @@ export default tseslint.config(
     rules: {
       "no-console": "off",
     },
+  },
+  {
+    files: ["**/*.d.ts"],
+    rules: {
+      "no-var": "off",
+    },
+  },
+  {
+    files: [
+      "src/shared/**/*.ts",
+      "src/wayfinder/draft-decisions.ts",
+      "src/wayfinder/invalidation.ts",
+      "src/wayfinder/slot-ids.ts",
+    ],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "error",
+    },
   }
 );

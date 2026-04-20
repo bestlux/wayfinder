@@ -3,6 +3,7 @@ agents/
 node_modules/
 coverage/
 dist/
+.worktrees/
 *.log
 *.tmp
 *.tsbuildinfo

@@ -1,5 +1,6 @@
 import { OFFICIAL_PACKS } from "./constants.js";
 import { getExtraPackSetting } from "./settings.js";
+import { extractDocumentSlug } from "./shared/slug.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
 import type { OptionContext, OptionRecord, PendingStep, PickerInfoState, SelectionRef } from "./types.js";
 
@@ -360,8 +361,8 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function extractEntrySlug(entry: any): string | null {
-  return stringOrNull(entry?.system?.slug) ?? stringOrNull(entry?.system?.ancestry?.slug) ?? slugifyName(entry?.name);
+function extractEntrySlug(entry: unknown): string | null {
+  return extractDocumentSlug(entry);
 }
 
 function extractEntryTraits(entry: any): string[] {
@@ -578,7 +579,7 @@ async function getTraitCatalog(slotKind: PendingStep["slotKind"]): Promise<Set<s
 }
 
 function getConfiguredTraitCatalog(kind: "class" | "ancestry-heritage"): Set<string> {
-  const pf2eConfig = globalThis.CONFIG?.PF2E;
+  const pf2eConfig = (globalThis as typeof globalThis & { CONFIG?: { PF2E?: any } }).CONFIG?.PF2E;
   const traitMap = kind === "class" ? pf2eConfig?.classTraits : pf2eConfig?.ancestryTraits;
 
   if (!traitMap || typeof traitMap !== "object") {
@@ -590,17 +591,4 @@ function getConfiguredTraitCatalog(kind: "class" | "ancestry-heritage"): Set<str
       .map((key) => key.trim().toLowerCase())
       .filter(Boolean)
   );
-}
-
-function slugifyName(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed) {
-    return null;
-  }
-
-  return trimmed.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || null;
 }

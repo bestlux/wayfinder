@@ -1,8 +1,3 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true
-  },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.ts", "vitest.config.ts"],
-  "exclude": ["scripts", "node_modules", "agents", ".claude"]
+  "extends": "./tsconfig.test.json"
 }

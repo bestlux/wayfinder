@@ -1,4 +1,5 @@
 import { listActorItems } from "../build-state.js";
+import { sourceIdOf } from "../shared/source-id.js";
 import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta } from "../types.js";
 
 export function readExistingBranchSelection(actor: any, branch: ClassBranchMeta): string | null {
@@ -39,9 +40,4 @@ export function readExistingClassChoiceSelection(actor: any, choice: ClassChoice
 
 function findActorItemBySourceId(actor: any, sourceId: string): any | null {
   return listActorItems(actor).find((item: any) => sourceIdOf(item) === sourceId) ?? null;
-}
-
-function sourceIdOf(item: any): string | null {
-  const sourceId = item?.sourceId ?? item?.flags?.core?.sourceId ?? item?._stats?.compendiumSource ?? null;
-  return typeof sourceId === "string" && sourceId.length > 0 ? sourceId : null;
 }

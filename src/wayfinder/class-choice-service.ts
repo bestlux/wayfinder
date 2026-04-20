@@ -673,7 +673,7 @@ function isConfiguredSkillSlug(value: string): boolean {
     return true;
   }
 
-  const configured = globalThis.CONFIG?.PF2E?.skills;
+  const configured = (globalThis as typeof globalThis & { CONFIG?: { PF2E?: any } }).CONFIG?.PF2E?.skills;
   return !!configured && typeof configured === "object" && Object.hasOwn(configured, slug);
 }
 
@@ -683,7 +683,7 @@ function skillLabel(slug: string, label: string | undefined, localize: (value: s
     return localized;
   }
 
-  const configured = globalThis.CONFIG?.PF2E?.skills?.[slug];
+  const configured = (globalThis as typeof globalThis & { CONFIG?: { PF2E?: any } }).CONFIG?.PF2E?.skills?.[slug];
   const configuredLabel = typeof configured === "string" ? configured : configured?.label;
   const fallback =
     typeof configuredLabel === "string" && configuredLabel.length > 0

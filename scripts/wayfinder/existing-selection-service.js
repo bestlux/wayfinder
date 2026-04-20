@@ -1,4 +1,5 @@
 import { listActorItems } from "../build-state.js";
+import { sourceIdOf } from "../shared/source-id.js";
 export function readExistingBranchSelection(actor, branch) {
     const selectorItem = findActorItemBySourceId(actor, branch.selectorUuid);
     const rulesSelection = selectorItem?.flags?.pf2e?.rulesSelections?.[branch.flag];
@@ -28,9 +29,5 @@ export function readExistingClassChoiceSelection(actor, choice) {
 }
 function findActorItemBySourceId(actor, sourceId) {
     return listActorItems(actor).find((item) => sourceIdOf(item) === sourceId) ?? null;
-}
-function sourceIdOf(item) {
-    const sourceId = item?.sourceId ?? item?.flags?.core?.sourceId ?? item?._stats?.compendiumSource ?? null;
-    return typeof sourceId === "string" && sourceId.length > 0 ? sourceId : null;
 }
 //# sourceMappingURL=existing-selection-service.js.map

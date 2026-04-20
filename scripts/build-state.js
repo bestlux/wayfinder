@@ -1,5 +1,6 @@
 import { ABILITY_KEYS } from "./constants.js";
 import { fetchSelectionDocument } from "./pack-service.js";
+import { cloneData } from "./shared/cloning.js";
 const BOOST_LEVELS = [1, 5, 10, 15, 20];
 async function getEffectiveBuildState(actor, draft) {
     const [ancestryDocument, heritageDocument, backgroundDocument, classDocument, deityDocument] = await Promise.all([
@@ -89,12 +90,6 @@ function toPlainDocument(document) {
         return cloneData(document.toObject());
     }
     return cloneData(document);
-}
-function cloneData(value) {
-    if (typeof globalThis.structuredClone === "function") {
-        return globalThis.structuredClone(value);
-    }
-    return JSON.parse(JSON.stringify(value));
 }
 function buildEffectiveAncestryState(document, boosts) {
     const boostEntries = Object.entries(document?.system?.boosts ?? {});

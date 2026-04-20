@@ -10,7 +10,7 @@ describe("boost pane helpers", () => {
       id: "ability-boosts-level-1",
       level: 1,
       kind: "boost",
-      slotKind: "boost",
+      slotKind: "ability-boosts",
       title: "Ability boosts",
       description: "Choose boosts",
       required: true,
@@ -96,6 +96,7 @@ function makeBuildState(overrides: Partial<EffectiveBuildState> = {}): Effective
       keyAbilityOptions: ["str", "dex"],
       selectedKeyAbility: null,
     },
+    deity: null,
     levelBoosts: {
       1: [],
       5: [],

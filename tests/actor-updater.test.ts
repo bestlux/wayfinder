@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { applyDraftToActor } from "../src/actor-updater";
 import { createEmptyDraft } from "../src/draft-service";
 
+const testGlobals = globalThis as typeof globalThis & { game: any };
+
 describe("actor-updater", () => {
   it("writes drafted boost state back to PF2E item and actor fields on apply", async () => {
     const updateEmbeddedDocuments = vi.fn(async () => []);
@@ -87,8 +89,10 @@ describe("actor-updater", () => {
 
   it("inserts drafted feats into PF2E feat slots instead of creating raw bonus feats", async () => {
     const updateEmbeddedDocuments = vi.fn(async () => []);
-    const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
-    globalThis.game = {
+    const insertFeat = vi.fn(async (_item: unknown, _options: { groupId: string; slotId: string }) => [
+      { id: "created-feat-1" },
+    ]);
+    testGlobals.game = {
       packs: new Map([
         [
           "pf2e.feats-srd",
@@ -447,7 +451,7 @@ describe("actor-updater", () => {
       update: vi.fn(async () => ({})),
     };
 
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map([
         [
           "pf2e.classfeatures",
@@ -662,7 +666,7 @@ describe("actor-updater", () => {
       update: vi.fn(async () => ({})),
     };
 
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map([
         [
           "pf2e.classfeatures",
@@ -956,7 +960,7 @@ describe("actor-updater", () => {
       update: vi.fn(async () => ({})),
     };
 
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map([
         [
           "pf2e.classes",
@@ -1343,7 +1347,7 @@ describe("actor-updater", () => {
       update: vi.fn(async () => ({})),
     };
 
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map([
         [
           "pf2e.classes",
@@ -1728,7 +1732,7 @@ describe("actor-updater", () => {
       update: vi.fn(async () => ({})),
     };
 
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map([
         [
           "pf2e.spells-srd",
@@ -2110,7 +2114,7 @@ describe("actor-updater", () => {
       update: vi.fn(async () => ({})),
     };
 
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map([
         [
           "pf2e.spells-srd",
@@ -2280,7 +2284,7 @@ describe("actor-updater", () => {
       update: vi.fn(async () => ({})),
     };
 
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map([
         [
           "pf2e.spells-srd",
@@ -2679,7 +2683,7 @@ describe("actor-updater", () => {
       update: vi.fn(async () => ({})),
     };
 
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map([
         [
           "pf2e.spells-srd",
@@ -2815,7 +2819,7 @@ describe("actor-updater", () => {
       update: vi.fn(async () => ({})),
     };
 
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map([
         [
           "pf2e.spells-srd",

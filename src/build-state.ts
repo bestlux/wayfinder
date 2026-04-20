@@ -1,5 +1,6 @@
 import { ABILITY_KEYS } from "./constants.js";
 import { fetchSelectionDocument } from "./pack-service.js";
+import { cloneData } from "./shared/cloning.js";
 import type { AbilityKey, BoostDraftState, BoostLevel, DraftState, SelectionRef } from "./types.js";
 
 const BOOST_LEVELS = [1, 5, 10, 15, 20] as const satisfies readonly BoostLevel[];
@@ -169,14 +170,6 @@ function toPlainDocument(document: any): any {
   }
 
   return cloneData(document);
-}
-
-function cloneData<T>(value: T): T {
-  if (typeof globalThis.structuredClone === "function") {
-    return globalThis.structuredClone(value);
-  }
-
-  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function buildEffectiveAncestryState(document: any, boosts: BoostDraftState): EffectiveAncestryState {

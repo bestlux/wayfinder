@@ -3,7 +3,11 @@ import { applyClassBranchDraft, stripPreselectedClassBranchEntries } from "./cla
 import { applyClassFeatureChoiceDraft, stripPreselectedClassFeatureEntries } from "./class-feature-choice-service.js";
 import { MODULE_ID } from "./constants.js";
 import { fetchSelectionDocument } from "./pack-service.js";
+import { cloneData } from "./shared/cloning.js";
+import { extractDocumentSlug, slugifyName } from "./shared/slug.js";
+import { itemMatchesSourceId, sourceIdOf } from "./shared/source-id.js";
 import type { DraftState, PendingStep, SelectionRef, SpellChoiceMeta } from "./types.js";
+import { SLOT_IDS } from "./wayfinder/slot-ids.js";
 import { findSpellcastingEntryForChoice, wizardMaxSpellRank } from "./wayfinder/spell-choice-service.js";
 
 const SINGLETON_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
@@ -767,7 +771,7 @@ async function reconcileSpellChoiceSlot(actor: any, slotId: string, selections: 
       continue;
     }
 
-    const sourceId = itemSourceId(item);
+    const sourceId = sourceIdOf(item);
     if (!sourceId) {
       obsoleteIds.push(item.id);
       continue;
@@ -857,7 +861,7 @@ function collectPreparedSpellChoiceAssignments(
   );
   const unusedBySource = new Map<string, any[]>();
   for (const item of entrySpells) {
-    const sourceId = itemSourceId(item);
+    const sourceId = sourceIdOf(item);
     if (!sourceId) {
       continue;
     }
@@ -951,8 +955,8 @@ function getCurrentClassSlug(actor: any, draft: DraftState): string | null {
     return actorSlug;
   }
 
-  const draftedClass = draft.selections["class-level-1"];
-  return slugifyName(draftedClass?.name ?? null);
+  const draftedClass = draft.selections[SLOT_IDS.class];
+  return extractDocumentSlug(draftedClass);
 }
 
 function resolveClericDivineFont(actor: any, draft: DraftState): "heal" | "harm" | null {
@@ -1085,25 +1089,15 @@ function spellLocationId(item: any): string | null {
   return location && location.length > 0 ? location : null;
 }
 
-function extractDocumentSlug(document: any): string | null {
-  const explicitSlug =
-    typeof document?.system?.slug === "string"
-      ? document.system.slug
-      : typeof document?.slug === "string"
-        ? document.slug
-        : null;
-  return explicitSlug ? slugifyName(explicitSlug) : slugifyName(document?.name ?? null);
-}
-
 function getEffectiveWizardSchoolName(actor: any, draft: DraftState): string | null {
   const createdSchool = listActorItems(actor).find(
-    (item: any) => item?.flags?.[MODULE_ID]?.slotId === "class-branch-arcane-school-level-1"
+    (item: any) => item?.flags?.[MODULE_ID]?.slotId === SLOT_IDS.wizardArcaneSchool
   );
   if (typeof createdSchool?.name === "string" && createdSchool.name.trim()) {
     return createdSchool.name;
   }
 
-  const draftedSchool = draft.branchSelections["class-branch-arcane-school-level-1"];
+  const draftedSchool = draft.branchSelections[SLOT_IDS.wizardArcaneSchool];
   return typeof draftedSchool?.name === "string" && draftedSchool.name.trim() ? draftedSchool.name : null;
 }
 
@@ -1122,36 +1116,6 @@ function orderSelections(draft: DraftState, steps: PendingStep[]): SelectionRef[
 
 function hasSourceId(actor: any, sourceId: string): boolean {
   return listActorItems(actor).some((item: any) => itemMatchesSourceId(item, sourceId));
-}
-
-function itemMatchesSourceId(item: any, sourceId: string): boolean {
-  return itemSourceId(item) === sourceId;
-}
-
-function itemSourceId(item: any): string | null {
-  const sourceId = item?.sourceId ?? item?.flags?.core?.sourceId ?? item?._stats?.compendiumSource ?? null;
-  return typeof sourceId === "string" && sourceId.length > 0 ? sourceId : null;
-}
-
-function cloneData<T>(value: T): T {
-  if (typeof globalThis.structuredClone === "function") {
-    return globalThis.structuredClone(value);
-  }
-
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function slugifyName(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed) {
-    return null;
-  }
-
-  return trimmed.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || null;
 }
 
 async function applyBoostDraft(actor: any, draft: DraftState): Promise<void> {

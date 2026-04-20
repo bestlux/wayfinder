@@ -1,87 +1,32 @@
-import { listActorItems } from "./build-state.js";
-import { MODULE_ID } from "./constants.js";
+import { applySelectorApplication, buildSelectorSelection, stripSelectedSelectorEntries, } from "./selector-application.js";
 export async function applyClassFeatureChoiceDraft(actor, draft, steps, deps) {
     const groups = collectFeatureGroups(draft, steps);
     for (const group of groups) {
-        let selectorItem = findItemBySourceId(actor, group.sourceSelection.uuid);
-        const createdSelector = !selectorItem?.id;
-        if (!selectorItem?.id) {
-            selectorItem = await createSelectedFeatureItem(actor, group, deps.createEmbeddedSource);
-        }
-        if (!selectorItem?.id) {
-            continue;
-        }
-        const updates = [];
-        const selectorDocument = createdSelector ? await deps.fetchSelectionDocument(group.sourceSelection) : null;
-        const selectorRules = Array.isArray(selectorDocument?.system?.rules)
-            ? cloneData(selectorDocument.system.rules)
-            : Array.isArray(selectorItem.system?.rules)
-                ? cloneData(selectorItem.system.rules)
-                : [];
-        for (const entry of group.choiceEntries) {
-            const rule = selectorRules[entry.meta.sourceRuleIndex];
-            if (rule) {
-                rule.selection = entry.value;
-            }
-        }
-        if (group.grantMeta && group.grantSelection) {
-            const rule = selectorRules[group.grantMeta.selectorRuleIndex];
-            if (rule) {
-                rule.selection = group.grantSelection.uuid;
-            }
-        }
-        const selectorUpdate = {
-            _id: selectorItem.id,
-            "system.rules": selectorRules,
+        const selectorSlotId = group.grantStep?.slotId ?? group.choiceEntries[0]?.step.slotId ?? null;
+        const plan = {
+            selectorSelection: group.sourceSelection,
+            slotId: selectorSlotId,
+            ruleSelections: group.choiceEntries.map((entry) => ({
+                flag: entry.meta.flag,
+                ruleIndex: entry.meta.sourceRuleIndex,
+                value: entry.value,
+            })),
+            grantPlan: group.grantMeta && group.grantSelection
+                ? {
+                    flag: group.grantMeta.flag,
+                    slotId: group.grantStep?.slotId ?? group.grantMeta.slotId,
+                    selection: group.grantSelection,
+                    selectorRuleIndex: group.grantMeta.selectorRuleIndex,
+                    createRulePolicy: [group.grantMeta.grantRuleIndex],
+                    updateExistingGrantImmediately: true,
+                }
+                : null,
         };
-        for (const entry of group.choiceEntries) {
-            selectorUpdate[`flags.pf2e.rulesSelections.${entry.meta.flag}`] = entry.value;
-        }
-        if (group.grantMeta && group.grantSelection) {
-            selectorUpdate[`flags.pf2e.rulesSelections.${group.grantMeta.flag}`] = group.grantSelection.uuid;
-        }
-        const selectorSlotId = group.grantStep?.slotId ?? group.choiceEntries[0]?.step.slotId;
-        if (selectorSlotId) {
-            selectorUpdate[`flags.${MODULE_ID}.slotId`] = selectorSlotId;
-        }
-        if (group.grantMeta && group.grantSelection) {
-            const grantedItem = await ensureGrantedItem(actor, selectorItem, group.grantStep?.slotId ?? group.grantMeta.slotId, group.grantSelection, deps.createEmbeddedSource);
-            if (grantedItem?.id) {
-                selectorUpdate[`flags.pf2e.itemGrants.${group.grantMeta.flag}`] = {
-                    id: grantedItem.id,
-                    onDelete: "detach",
-                    nested: null,
-                };
-            }
-        }
-        updates.push(selectorUpdate);
-        await actor.updateEmbeddedDocuments("Item", updates);
+        await applySelectorApplication(actor, plan, deps);
     }
 }
 export function stripPreselectedClassFeatureEntries(classSource, draft, steps) {
-    const selectedFeatures = collectSelectedFeatureRefs(draft, steps);
-    if (selectedFeatures.length === 0 || !classSource?.system?.items || typeof classSource.system.items !== "object") {
-        return;
-    }
-    const selectedUuids = new Set(selectedFeatures
-        .map((entry) => entry.uuid)
-        .filter((value) => typeof value === "string" && value.length > 0));
-    const selectedDocumentIds = new Set(selectedFeatures
-        .map((entry) => entry.documentId.trim().toLowerCase())
-        .filter((value) => value.length > 0));
-    const selectedNames = new Set(selectedFeatures
-        .map((entry) => entry.name.trim().toLowerCase())
-        .filter((value) => value.length > 0));
-    classSource.system.items = Object.fromEntries(Object.entries(classSource.system.items).filter(([, entry]) => {
-        const uuid = typeof entry?.uuid === "string" ? entry.uuid : null;
-        const normalizedDocumentId = typeof uuid === "string"
-            ? /^Compendium\.[^.]+\.[^.]+\.Item\.(.+)$/.exec(uuid)?.[1]?.trim().toLowerCase()
-            : null;
-        const normalizedName = typeof entry?.name === "string" ? entry.name.trim().toLowerCase() : null;
-        return !((uuid && selectedUuids.has(uuid)) ||
-            (normalizedDocumentId && selectedDocumentIds.has(normalizedDocumentId)) ||
-            (normalizedName && selectedNames.has(normalizedName)));
-    }));
+    stripSelectedSelectorEntries(classSource, collectSelectedFeatureRefs(draft, steps));
 }
 function collectFeatureGroups(draft, steps) {
     const groups = new Map();
@@ -144,106 +89,7 @@ function collectSelectedFeatureRefs(draft, steps) {
     }
     return Array.from(refs.values());
 }
-async function createSelectedFeatureItem(actor, group, createEmbeddedSource) {
-    const selectorSource = await createEmbeddedSource(group.sourceSelection);
-    if (!selectorSource) {
-        return null;
-    }
-    selectorSource.system ??= {};
-    selectorSource.system.rules = cloneData(Array.isArray(selectorSource.system.rules) ? selectorSource.system.rules : []);
-    for (const entry of group.choiceEntries) {
-        const rule = selectorSource.system.rules[entry.meta.sourceRuleIndex];
-        if (rule) {
-            rule.selection = entry.value;
-        }
-    }
-    if (group.grantMeta && group.grantSelection) {
-        const grantRule = selectorSource.system.rules[group.grantMeta.selectorRuleIndex];
-        if (grantRule) {
-            grantRule.selection = group.grantSelection.uuid;
-        }
-        selectorSource.system.rules = selectorSource.system.rules.filter((_rule, index) => index !== group.grantMeta?.grantRuleIndex);
-    }
-    selectorSource.flags ??= {};
-    selectorSource.flags.pf2e ??= {};
-    selectorSource.flags.pf2e.rulesSelections ??= {};
-    for (const entry of group.choiceEntries) {
-        selectorSource.flags.pf2e.rulesSelections[entry.meta.flag] = entry.value;
-    }
-    if (group.grantMeta && group.grantSelection) {
-        selectorSource.flags.pf2e.rulesSelections[group.grantMeta.flag] = group.grantSelection.uuid;
-    }
-    const selectorSlotId = group.grantStep?.slotId ?? group.choiceEntries[0]?.step.slotId;
-    selectorSource.flags[MODULE_ID] = {
-        ...(selectorSource.flags[MODULE_ID] ?? {}),
-        importedBy: MODULE_ID,
-        slotId: selectorSlotId,
-    };
-    const classItem = listActorItems(actor).find((item) => item?.type === "class");
-    if (classItem?.id) {
-        selectorSource.system.location = classItem.id;
-    }
-    const created = await actor.createEmbeddedDocuments("Item", [selectorSource]);
-    return Array.isArray(created) ? (created[0] ?? null) : null;
-}
-async function ensureGrantedItem(actor, selectorItem, slotId, selection, createEmbeddedSource) {
-    const existingGranted = listActorItems(actor).find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItem.id) ?? null;
-    const existingMatches = existingGranted && itemMatchesSourceId(existingGranted, selection.uuid);
-    if (existingGranted && !existingMatches) {
-        await actor.deleteEmbeddedDocuments("Item", [existingGranted.id]);
-    }
-    if (existingMatches) {
-        await actor.updateEmbeddedDocuments("Item", [
-            {
-                _id: existingGranted.id,
-                "flags.core.sourceId": selection.uuid,
-                "flags.pf2e.grantedBy": {
-                    id: selectorItem.id,
-                    onDelete: "cascade",
-                },
-                [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
-                [`flags.${MODULE_ID}.slotId`]: slotId,
-            },
-        ]);
-        return existingGranted;
-    }
-    const source = await createEmbeddedSource(selection);
-    if (!source) {
-        return null;
-    }
-    source.flags ??= {};
-    source.flags.pf2e ??= {};
-    source.flags.pf2e.grantedBy = {
-        id: selectorItem.id,
-        onDelete: "cascade",
-    };
-    const created = await actor.createEmbeddedDocuments("Item", [source]);
-    return Array.isArray(created) ? (created[0] ?? null) : null;
-}
 function createSourceSelection(meta, slotId) {
-    return {
-        slotId,
-        packId: "selectorPackId" in meta ? meta.selectorPackId : meta.sourcePackId,
-        documentId: "selectorDocumentId" in meta ? meta.selectorDocumentId : meta.sourceDocumentId,
-        uuid: "selectorUuid" in meta ? meta.selectorUuid : meta.sourceUuid,
-        itemType: "feat",
-        featType: "classfeature",
-        name: "selectorName" in meta ? meta.selectorName : meta.sourceName,
-        level: null,
-    };
-}
-function findItemBySourceId(actor, sourceId) {
-    return listActorItems(actor).find((item) => itemMatchesSourceId(item, sourceId)) ?? null;
-}
-function itemMatchesSourceId(item, sourceId) {
-    return (item?.sourceId === sourceId ||
-        item?.flags?.core?.sourceId === sourceId ||
-        item?._stats?.compendiumSource === sourceId);
-}
-function cloneData(value) {
-    if (typeof globalThis.structuredClone === "function") {
-        return globalThis.structuredClone(value);
-    }
-    return JSON.parse(JSON.stringify(value));
+    return buildSelectorSelection(slotId, "selectorPackId" in meta ? meta.selectorPackId : meta.sourcePackId, "selectorDocumentId" in meta ? meta.selectorDocumentId : meta.sourceDocumentId, "selectorUuid" in meta ? meta.selectorUuid : meta.sourceUuid, "selectorName" in meta ? meta.selectorName : meta.sourceName);
 }
 //# sourceMappingURL=class-feature-choice-service.js.map

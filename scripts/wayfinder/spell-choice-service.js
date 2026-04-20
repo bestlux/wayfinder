@@ -1,4 +1,5 @@
 import { listActorItems } from "../build-state.js";
+import { sourceIdOf } from "../shared/source-id.js";
 const WIZARD_SPELLBOOK_DESTINATION = {
     type: "spellbook",
     key: "wizard-arcane-prepared",
@@ -465,10 +466,6 @@ function selectionFromActorItem(item, slotId) {
         name: String(item?.name ?? "Spell"),
         level: typeof item?.system?.level?.value === "number" ? item.system.level.value : null,
     };
-}
-function sourceIdOf(item) {
-    const sourceId = item?.sourceId ?? item?.flags?.core?.sourceId ?? item?._stats?.compendiumSource ?? null;
-    return typeof sourceId === "string" && sourceId.length > 0 ? sourceId : null;
 }
 function parseCompendiumUuid(uuid) {
     const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(uuid);

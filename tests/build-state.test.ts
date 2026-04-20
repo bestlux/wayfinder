@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { getEffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 
+const testGlobals = globalThis as typeof globalThis & { game: any };
+
 describe("build-state", () => {
   beforeEach(() => {
-    globalThis.game = {
+    testGlobals.game = {
       packs: new Map(),
     } as any;
   });
@@ -141,7 +143,7 @@ describe("build-state", () => {
 });
 
 function setPack(id: string, documents: Record<string, any>): void {
-  globalThis.game.packs.set(id, {
+  testGlobals.game.packs.set(id, {
     metadata: { id },
     async getDocument(documentId: string) {
       return documents[documentId] ?? null;

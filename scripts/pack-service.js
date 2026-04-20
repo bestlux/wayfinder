@@ -1,5 +1,6 @@
 import { OFFICIAL_PACKS } from "./constants.js";
 import { getExtraPackSetting } from "./settings.js";
+import { extractDocumentSlug } from "./shared/slug.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
 const indexCache = new Map();
 const traitCatalogCache = new Map();
@@ -297,7 +298,7 @@ function stringOrNull(value) {
     return typeof value === "string" && value.length > 0 ? value : null;
 }
 function extractEntrySlug(entry) {
-    return stringOrNull(entry?.system?.slug) ?? stringOrNull(entry?.system?.ancestry?.slug) ?? slugifyName(entry?.name);
+    return extractDocumentSlug(entry);
 }
 function extractEntryTraits(entry) {
     return Array.from(new Set([
@@ -477,15 +478,5 @@ function getConfiguredTraitCatalog(kind) {
     return new Set(Object.keys(traitMap)
         .map((key) => key.trim().toLowerCase())
         .filter(Boolean));
-}
-function slugifyName(value) {
-    if (typeof value !== "string") {
-        return null;
-    }
-    const trimmed = value.trim().toLowerCase();
-    if (!trimmed) {
-        return null;
-    }
-    return trimmed.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || null;
 }
 //# sourceMappingURL=pack-service.js.map

@@ -372,6 +372,8 @@ describe("spell-choice-service", () => {
       maxRank: 1,
       cantrip: false,
       curriculumSpellNames: ["Force Barrage", "Mystic Armor"],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: false,
     } satisfies SpellChoiceMeta);
 
     expect(selections.map((selection) => selection.name)).toEqual(["Mystic Armor", "Force Barrage"]);
@@ -424,6 +426,8 @@ describe("spell-choice-service", () => {
       maxRank: 1,
       cantrip: false,
       curriculumSpellNames: ["Grim Tendrils", "Phantasmal Minion"],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: false,
     } satisfies SpellChoiceMeta);
 
     expect(selections).toEqual([]);

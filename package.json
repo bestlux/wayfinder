@@ -6,6 +6,9 @@
   "description": "A guided PF2E creation and level-up workflow module for Foundry VTT.",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "typecheck:strict": "tsc -p tsconfig.strict.json",
+    "check:strict": "npm run typecheck:test && npm run typecheck:strict",
     "format": "biome check --write .",
     "format:check": "biome check .",
     "lint": "eslint .",

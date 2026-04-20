@@ -5,16 +5,21 @@ import { DRAFT_FLAG, MODULE_ID, MODULE_TITLE, SKILL_LABELS, STATE_FLAG } from ".
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../draft-service.js";
 import { fetchSelectionDocument, getOptionsForStep, getPickerInfoState, resolveSelection } from "../pack-service.js";
 import { canUseWayfinder } from "../permissions.js";
+import { extractDocumentSlug } from "../shared/slug.js";
+import { sourceIdOf } from "../shared/source-id.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
 import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassTrainingSteps, } from "./class-choice-service.js";
+import { findDraftSelectionByType, hasDuplicateDraftSelection, writeDraftStepSelection } from "./draft-decisions.js";
 import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, } from "./existing-selection-service.js";
 import { formatSlug, sameMembers } from "./formatting.js";
+import { clearSelectionState, invalidateSelectionState, invalidateSelectionsByPrefix } from "./invalidation.js";
 import { buildBoostPane, toggleSlotRecordChoice } from "./panes/boost-pane.js";
 import { buildClassChoicePane } from "./panes/class-choice-pane.js";
 import { buildPickItemPane, buildPreview, matchesSearch, resolvePreviewValue, selectedSelection, selectedValueFor, } from "./panes/pick-pane.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane, compareSkillIncreaseSlotIds } from "./panes/skill-pane.js";
 import { buildSpellChoicePane } from "./panes/spell-pane.js";
 import { buildWayfinderPlan, getWayfinderStepStatus, isWayfinderStepComplete, modeLabel, resolveActiveStep, } from "./plan-service.js";
+import { isSanctificationChoiceSlotId, isWizardArcaneSchoolSlotId, SLOT_IDS, SLOT_PREFIXES } from "./slot-ids.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "./spell-choice-service.js";
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
     static DEFAULT_OPTIONS = {
@@ -294,10 +299,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 fulfilledCount: planSnapshot.featCounts.class + planSnapshot.featCounts.archetype,
             }),
             buildClassTrainingSteps: (_planSnapshot, _planDraft, targetLevel) => buildClassTrainingSteps({
-                draftClassSelection: this.#findDraftSelectionByType("class"),
+                draftClassSelection: findDraftSelectionByType(this.#requireDraft(), "class"),
                 targetLevel,
                 fetchSelectionDocument,
-                extractSlug: (document) => this.#extractSlug(document),
+                extractSlug: extractDocumentSlug,
                 localize: (value) => game.i18n.localize(value),
             }),
             buildClassBranchSteps: async (_planSnapshot, planDraft, targetLevel) => buildClassBranchSteps({
@@ -305,7 +310,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
                 targetLevel,
                 fetchSelectionDocument,
-                extractSlug: (document) => this.#extractSlug(document),
+                extractSlug: extractDocumentSlug,
                 readExistingBranchSelection: (branch) => readExistingBranchSelection(this.actor, branch),
             }),
             buildClassGrantedItemSteps: async (_planSnapshot, planDraft, targetLevel) => buildClassGrantedItemSteps({
@@ -313,7 +318,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 effectiveClassDocument: await this.#resolveDraftOrActorDocument("class"),
                 targetLevel,
                 fetchSelectionDocument,
-                extractSlug: (document) => this.#extractSlug(document),
+                extractSlug: extractDocumentSlug,
                 readExistingGrantedSelection: (grant) => readExistingGrantedSelection(this.actor, grant),
             }),
             buildClassChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => buildClassChoiceSteps({
@@ -322,7 +327,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 effectiveDeityDocument: await this.#resolveDraftOrActorDocument("deity"),
                 targetLevel,
                 fetchSelectionDocument,
-                extractSlug: (document) => this.#extractSlug(document),
+                extractSlug: extractDocumentSlug,
                 localize: (value) => game.i18n.localize(value),
                 readExistingClassChoiceSelection: (choice) => readExistingClassChoiceSelection(this.actor, choice),
             }),
@@ -333,7 +338,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 effectiveDeityDocument: await this.#resolveDraftOrActorDocument("deity"),
                 effectiveSchoolDocument: await this.#resolveDraftOrActorArcaneSchoolDocument(),
                 targetLevel,
-                extractSlug: (document) => this.#extractSlug(document),
+                extractSlug: extractDocumentSlug,
                 readExistingSpellChoiceSelections: (choice) => readExistingSpellChoiceSelections(this.actor, choice),
             }),
         });
@@ -468,29 +473,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (!selection) {
             return;
         }
-        const duplicates = [
-            ...Object.values(this.#requireDraft().selections),
-            ...Object.values(this.#requireDraft().branchSelections),
-        ].some((existing) => existing.uuid === selection.uuid && existing.slotId !== selection.slotId);
-        if (duplicates) {
+        if (hasDuplicateDraftSelection(this.#requireDraft(), selection)) {
             ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.DuplicateSelections"));
             return;
         }
-        const previousSelection = step.kind === "class-branch"
-            ? this.#requireDraft().branchSelections[selection.slotId]
-            : this.#requireDraft().selections[selection.slotId];
-        if (step.kind === "class-branch") {
-            this.#requireDraft().branchSelections[selection.slotId] = selection;
-        }
-        else {
-            this.#requireDraft().selections[selection.slotId] = selection;
-        }
+        const previousSelection = writeDraftStepSelection(this.#requireDraft(), step, selection);
         this.#recentlyInvalidatedStepIds.delete(selection.slotId);
         if (step.slotKind === "ancestry" && previousSelection?.uuid !== selection.uuid) {
             const invalidated = this.#invalidateDependentAncestrySelections();
             const boostReset = this.#resetAncestryBoostDraft();
             if (boostReset) {
-                this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
+                this.#recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);
             }
             if (invalidated.length > 0 || boostReset) {
                 this.#statusNote = boostReset
@@ -502,7 +495,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             const previousTraits = await this.#resolveSelectionTraits(previousSelection);
             const nextTraits = await this.#resolveSelectionTraits(selection);
             if (!sameMembers(previousTraits, nextTraits)) {
-                const invalidated = this.#invalidateSelectionsByPrefix("ancestry-feat-level-");
+                const invalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat);
                 if (invalidated.length > 0) {
                     this.#statusNote = "Heritage changed. Wayfinder marked ancestry-feat draft picks for review.";
                 }
@@ -511,7 +504,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (step.slotKind === "background" && previousSelection?.uuid !== selection.uuid) {
             const boostReset = this.#resetBackgroundBoostDraft();
             if (boostReset) {
-                this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
+                this.#recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);
                 this.#statusNote = "Background changed. Wayfinder cleared background boost draft choices for review.";
             }
         }
@@ -520,15 +513,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             const nextClassSlug = await this.#resolveSelectionSlug(selection);
             const boostReset = this.#resetClassBoostDraft();
             if (boostReset) {
-                this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
+                this.#recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);
             }
             if (previousClassSlug !== nextClassSlug) {
-                const invalidated = this.#invalidateSelectionsByPrefix("class-feat-level-");
-                const deityInvalidated = this.#invalidateSelectionsByPrefix("deity-level-");
-                const branchInvalidated = this.#invalidateBranchSelectionsByPrefix("class-branch-");
-                const classChoiceInvalidated = this.#invalidateClassChoicesByPrefix("class-choice-");
-                const trainingInvalidated = this.#invalidateTrainingSelectionsByPrefix("skill-training-");
-                const spellInvalidated = this.#invalidateSpellChoicesByPrefix("spell-choice-");
+                const invalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classFeat);
+                const deityInvalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.deity);
+                const branchInvalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch);
+                const classChoiceInvalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classChoice);
+                const trainingInvalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.skillTraining);
+                const spellInvalidated = this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.spellChoice);
                 if (invalidated.length > 0 ||
                     deityInvalidated.length > 0 ||
                     branchInvalidated.length > 0 ||
@@ -563,8 +556,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     #invalidateDependentAncestrySelections() {
         return [
-            ...this.#invalidateSelection("heritage-level-1"),
-            ...this.#invalidateSelectionsByPrefix("ancestry-feat-level-"),
+            ...this.#invalidateSelection(SLOT_IDS.heritage),
+            ...this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat),
         ];
     }
     #rememberInteractiveState(searchInput) {
@@ -598,12 +591,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             this.#resolveDraftOrActorDocument("deity"),
             this.#hasDedicationFeatInContext(),
         ]);
-        const ancestrySlug = this.#extractSlug(ancestryDocument);
+        const ancestrySlug = extractDocumentSlug(ancestryDocument);
         return {
             ancestrySlug,
             ancestryTraits: this.#extractContextTraits(ancestryDocument, ancestrySlug),
             heritageTraits: this.#extractContextTraits(heritageDocument),
-            classSlug: this.#extractSlug(classDocument),
+            classSlug: extractDocumentSlug(classDocument),
             deitySelected: !!deityDocument,
             sanctification: this.#resolveSanctificationChoice(deityDocument),
             hasDedicationFeat,
@@ -875,8 +868,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             return selections.some((entry) => entry.uuid === selection.uuid);
         });
         const existsOnActor = listActorItems(this.actor).some((item) => {
-            const sourceId = item?.sourceId ?? item?.flags?.core?.sourceId ?? item?._stats?.compendiumSource;
-            return item?.type === "spell" && sourceId === selection.uuid;
+            return item?.type === "spell" && sourceIdOf(item) === selection.uuid;
         });
         if (selectedElsewhere || existsOnActor) {
             ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.DuplicateSelections"));
@@ -1038,13 +1030,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.render(false);
     }
     #abilityLabel(attribute) {
-        return game.i18n.localize(globalThis.CONFIG?.PF2E?.abilities?.[attribute] ?? attribute.toUpperCase());
+        const abilities = globalThis.CONFIG?.PF2E?.abilities;
+        return game.i18n.localize(abilities?.[attribute] ?? attribute.toUpperCase());
     }
     async #resolveDraftOrActorDocument(itemType) {
         return getEffectiveSingletonDocument(this.actor, this.#requireDraft(), itemType);
     }
     async #resolveDraftOrActorArcaneSchoolDocument() {
-        const draftSelection = Object.values(this.#requireDraft().branchSelections).find((selection) => /^class-branch-arcane-school-level-\d+$/.test(selection.slotId));
+        const draftSelection = Object.values(this.#requireDraft().branchSelections).find((selection) => isWizardArcaneSchoolSlotId(selection.slotId));
         if (draftSelection) {
             return fetchSelectionDocument(draftSelection);
         }
@@ -1056,41 +1049,20 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             return otherTags.some((tag) => typeof tag === "string" && tag.trim().toLowerCase() === "wizard-arcane-school");
         }) ?? null);
     }
-    #findDraftSelectionByType(itemType) {
-        return Object.values(this.#requireDraft().selections).find((selection) => selection.itemType === itemType) ?? null;
-    }
-    #extractSlug(document) {
-        const systemSlug = document?.system?.slug;
-        if (typeof systemSlug === "string" && systemSlug.trim()) {
-            return systemSlug.trim();
-        }
-        const ancestrySlug = document?.system?.ancestry?.slug;
-        if (typeof ancestrySlug === "string" && ancestrySlug.trim()) {
-            return ancestrySlug.trim();
-        }
-        const name = typeof document?.name === "string" ? document.name.trim() : "";
-        if (!name) {
-            return null;
-        }
-        return (name
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "") || null);
-    }
     #extractContextTraits(document, fallbackSlug) {
         const traits = Array.isArray(document?.system?.traits?.value) ? document.system.traits.value : [];
         const normalized = new Set(traits
             .filter((entry) => typeof entry === "string")
             .map((entry) => entry.trim().toLowerCase())
             .filter(Boolean));
-        const slug = fallbackSlug ?? this.#extractSlug(document);
+        const slug = fallbackSlug ?? extractDocumentSlug(document);
         if (slug) {
             normalized.add(slug);
         }
         return Array.from(normalized);
     }
     #resolveSanctificationChoice(deityDocument) {
-        const drafted = Object.entries(this.#requireDraft().classChoices).find(([slotId]) => /^class-choice-.+-sanctification-level-\d+$/.test(slotId))?.[1];
+        const drafted = Object.entries(this.#requireDraft().classChoices).find(([slotId]) => isSanctificationChoiceSlotId(slotId))?.[1];
         if (drafted === "holy" || drafted === "unholy" || drafted === "none") {
             return drafted;
         }
@@ -1129,7 +1101,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             return null;
         }
         const document = await fetchSelectionDocument(selection);
-        return this.#extractSlug(document);
+        return extractDocumentSlug(document);
     }
     async #hasDedicationFeatInContext() {
         const actorHasDedication = listActorItems(this.actor).some((item) => item?.type === "feat" && this.#extractContextTraits(item).includes("dedication"));
@@ -1155,77 +1127,55 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.render(false);
     }
     #clearSelection(slotId) {
-        const draft = this.#requireDraft();
-        const hasItemSelection = !!draft.selections[slotId];
-        const hasBranchSelection = !!draft.branchSelections[slotId];
-        const hasTrainingSelection = !!draft.skillTrainings[slotId];
-        const hasClassChoice = !!draft.classChoices[slotId];
-        const hasSpellChoices = (draft.spellChoices[slotId]?.length ?? 0) > 0;
-        if (!hasItemSelection && !hasBranchSelection && !hasTrainingSelection && !hasClassChoice && !hasSpellChoices) {
-            this.#recentlyInvalidatedStepIds.delete(slotId);
+        const cleared = clearSelectionState({
+            draft: this.#requireDraft(),
+            previewValueByStepId: this.#previewValueByStepId,
+            recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
+            scrollById: this.#scrollById,
+        }, slotId, {
+            resetAncestryBoostDraft: () => this.#resetAncestryBoostDraft(),
+            resetBackgroundBoostDraft: () => this.#resetBackgroundBoostDraft(),
+            resetClassBoostDraft: () => this.#resetClassBoostDraft(),
+        });
+        if (cleared === 0) {
             return 0;
         }
-        delete draft.selections[slotId];
-        delete draft.branchSelections[slotId];
-        delete draft.skillTrainings[slotId];
-        delete draft.classChoices[slotId];
-        delete draft.spellChoices[slotId];
-        if (slotId === "ancestry-level-1") {
-            this.#resetAncestryBoostDraft();
-            this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
+        if (slotId === SLOT_IDS.deity) {
+            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classChoice);
         }
-        else if (slotId === "background-level-1") {
-            this.#resetBackgroundBoostDraft();
-            this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
+        else if (slotId === SLOT_IDS.class) {
+            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.deity);
+            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch);
+            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classChoice);
+            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.skillTraining);
+            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.spellChoice);
+            this.#invalidateSelectionsByPrefix(SLOT_PREFIXES.classFeat);
         }
-        else if (slotId === "deity-level-1") {
-            this.#invalidateClassChoicesByPrefix("class-choice-");
-        }
-        else if (slotId === "class-level-1") {
-            this.#resetClassBoostDraft();
-            this.#invalidateSelectionsByPrefix("deity-level-");
-            this.#invalidateBranchSelectionsByPrefix("class-branch-");
-            this.#invalidateClassChoicesByPrefix("class-choice-");
-            this.#invalidateTrainingSelectionsByPrefix("skill-training-");
-            this.#invalidateSpellChoicesByPrefix("spell-choice-");
-            this.#invalidateSelectionsByPrefix("class-feat-level-");
-            this.#recentlyInvalidatedStepIds.add("ability-boosts-level-1");
-        }
-        this.#previewValueByStepId.delete(slotId);
-        for (const key of [...this.#scrollById.keys()]) {
-            if (key === slotId || key.startsWith(`${slotId}:`)) {
-                this.#scrollById.delete(key);
-            }
-        }
-        this.#recentlyInvalidatedStepIds.delete(slotId);
-        return 1;
+        return cleared;
     }
     #invalidateSelection(slotId) {
-        if (this.#clearSelection(slotId) === 0) {
-            return [];
-        }
-        this.#recentlyInvalidatedStepIds.add(slotId);
-        return [slotId];
+        return invalidateSelectionState({
+            draft: this.#requireDraft(),
+            previewValueByStepId: this.#previewValueByStepId,
+            recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
+            scrollById: this.#scrollById,
+        }, slotId, {
+            resetAncestryBoostDraft: () => this.#resetAncestryBoostDraft(),
+            resetBackgroundBoostDraft: () => this.#resetBackgroundBoostDraft(),
+            resetClassBoostDraft: () => this.#resetClassBoostDraft(),
+        });
     }
     #invalidateSelectionsByPrefix(prefix) {
-        const invalidated = [];
-        for (const slotId of Object.keys(this.#requireDraft().selections)) {
-            if (!slotId.startsWith(prefix)) {
-                continue;
-            }
-            invalidated.push(...this.#invalidateSelection(slotId));
-        }
-        return invalidated;
-    }
-    #invalidateBranchSelectionsByPrefix(prefix) {
-        const invalidated = [];
-        for (const slotId of Object.keys(this.#requireDraft().branchSelections)) {
-            if (!slotId.startsWith(prefix)) {
-                continue;
-            }
-            invalidated.push(...this.#invalidateSelection(slotId));
-        }
-        return invalidated;
+        return invalidateSelectionsByPrefix({
+            draft: this.#requireDraft(),
+            previewValueByStepId: this.#previewValueByStepId,
+            recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
+            scrollById: this.#scrollById,
+        }, prefix, {
+            resetAncestryBoostDraft: () => this.#resetAncestryBoostDraft(),
+            resetBackgroundBoostDraft: () => this.#resetBackgroundBoostDraft(),
+            resetClassBoostDraft: () => this.#resetClassBoostDraft(),
+        });
     }
     async #invalidateBranchSelectionsByDependency(dependency) {
         const invalidated = [];
@@ -1235,26 +1185,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 continue;
             }
             invalidated.push(...this.#invalidateSelection(step.slotId));
-        }
-        return invalidated;
-    }
-    #invalidateClassChoicesByPrefix(prefix) {
-        const invalidated = [];
-        for (const slotId of Object.keys(this.#requireDraft().classChoices)) {
-            if (!slotId.startsWith(prefix)) {
-                continue;
-            }
-            invalidated.push(...this.#invalidateSelection(slotId));
-        }
-        return invalidated;
-    }
-    #invalidateSpellChoicesByPrefix(prefix) {
-        const invalidated = [];
-        for (const slotId of Object.keys(this.#requireDraft().spellChoices)) {
-            if (!slotId.startsWith(prefix)) {
-                continue;
-            }
-            invalidated.push(...this.#invalidateSelection(slotId));
         }
         return invalidated;
     }
@@ -1277,16 +1207,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 continue;
             }
             invalidated.push(...this.#invalidateSelection(step.slotId));
-        }
-        return invalidated;
-    }
-    #invalidateTrainingSelectionsByPrefix(prefix) {
-        const invalidated = [];
-        for (const slotId of Object.keys(this.#requireDraft().skillTrainings)) {
-            if (!slotId.startsWith(prefix)) {
-                continue;
-            }
-            invalidated.push(...this.#invalidateSelection(slotId));
         }
         return invalidated;
     }

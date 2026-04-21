@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { buildClassStepsFromRules } from "../src/wayfinder/class-choice/step-builders";
+import {
+  buildClassBranchStepsFromRules,
+  buildClassChoiceStepsFromRules,
+  buildClassGrantedItemStepsFromRules,
+  buildClassTrainingStepsFromRules,
+} from "../src/wayfinder/class-choice/step-builders";
 
 const testGlobals = globalThis as typeof globalThis & { CONFIG?: any };
 
@@ -8,7 +13,7 @@ describe("wayfinder class-choice step-builders", () => {
     delete testGlobals.CONFIG;
   });
 
-  it("builds training and branch steps from class rules without actor reads", async () => {
+  it("builds training steps from class rules without actor reads", async () => {
     const rogueClass = {
       name: "Rogue",
       system: {
@@ -64,17 +69,19 @@ describe("wayfinder class-choice step-builders", () => {
       ],
     ]);
 
-    const steps = await buildClassStepsFromRules({
+    const trainingSteps = buildClassTrainingStepsFromRules({
       effectiveClassDocument: rogueClass,
-      effectiveDeityDocument: null,
-      targetLevel: 1,
-      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: slugFromDocument,
       localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
     });
+    const branchSteps = await buildClassBranchStepsFromRules({
+      effectiveClassDocument: rogueClass,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+    });
 
-    expect(steps.map((step) => step.kind)).toEqual(["skill-training", "class-branch"]);
-    expect(steps).toMatchObject([
+    expect(trainingSteps).toMatchObject([
       {
         kind: "skill-training",
         slotId: "skill-training-rogue-level-1",
@@ -94,6 +101,8 @@ describe("wayfinder class-choice step-builders", () => {
           ],
         },
       },
+    ]);
+    expect(branchSteps).toMatchObject([
       {
         kind: "class-branch",
         slotId: "class-branch-rogue-s-racket-level-1",
@@ -117,7 +126,7 @@ describe("wayfinder class-choice step-builders", () => {
       },
     };
 
-    const steps = await buildClassStepsFromRules({
+    const steps = buildClassTrainingStepsFromRules({
       effectiveClassDocument: {
         name: "Swashbuckler",
         system: {
@@ -140,9 +149,6 @@ describe("wayfinder class-choice step-builders", () => {
           items: {},
         },
       },
-      effectiveDeityDocument: null,
-      targetLevel: 1,
-      fetchSelectionDocument: async () => null,
       extractSlug: slugFromDocument,
       localize: (value) => value.replace(/^PF2E\.Skill\./, "").replace(/^World\.Skill\./, ""),
     });
@@ -261,7 +267,13 @@ describe("wayfinder class-choice step-builders", () => {
       },
     };
 
-    const steps = await buildClassStepsFromRules({
+    const grantSteps = await buildClassGrantedItemStepsFromRules({
+      effectiveClassDocument: clericClass,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+    });
+    const choiceSteps = await buildClassChoiceStepsFromRules({
       effectiveClassDocument: clericClass,
       effectiveDeityDocument: deityDocument,
       targetLevel: 1,
@@ -270,7 +282,7 @@ describe("wayfinder class-choice step-builders", () => {
       localize: (value) => value,
     });
 
-    expect(steps).toMatchObject([
+    expect(grantSteps).toMatchObject([
       {
         kind: "pick-item",
         slotId: "deity-level-1",
@@ -279,6 +291,8 @@ describe("wayfinder class-choice step-builders", () => {
           selectorUuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
         },
       },
+    ]);
+    expect(choiceSteps).toMatchObject([
       {
         kind: "class-choice",
         slotId: "class-choice-divine-font-divineFont-level-1",
@@ -289,7 +303,7 @@ describe("wayfinder class-choice step-builders", () => {
         },
       },
     ]);
-    expect(steps.some((step) => step.slotId === "class-choice-deity-sanctification-level-1")).toBe(false);
+    expect(choiceSteps.some((step) => step.slotId === "class-choice-deity-sanctification-level-1")).toBe(false);
   });
 
   it("builds champion sanctification choices from the real predicate shape", async () => {
@@ -368,7 +382,7 @@ describe("wayfinder class-choice step-builders", () => {
       },
     };
 
-    const steps = await buildClassStepsFromRules({
+    const steps = await buildClassChoiceStepsFromRules({
       effectiveClassDocument: championClass,
       effectiveDeityDocument: deityDocument,
       targetLevel: 1,

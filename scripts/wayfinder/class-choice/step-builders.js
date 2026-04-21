@@ -45,25 +45,6 @@ export async function buildClassChoiceStepsFromRules(args) {
         localize: args.localize,
     });
 }
-export async function buildClassStepsFromRules(args) {
-    const trainingSteps = buildClassTrainingStepsFromRules(args);
-    const context = await loadClassFeatureContext(args);
-    if (!context) {
-        return trainingSteps;
-    }
-    return [
-        ...trainingSteps,
-        ...buildClassBranchStepsFromFeatures(context.classFeatures, context.classSlug, args.extractSlug),
-        ...buildClassGrantedItemStepsFromFeatures(context.classFeatures, context.classSlug),
-        ...buildClassChoiceStepsFromFeatures({
-            classFeatures: context.classFeatures,
-            classSlug: context.classSlug,
-            effectiveDeityDocument: args.effectiveDeityDocument,
-            extractSlug: args.extractSlug,
-            localize: args.localize,
-        }),
-    ];
-}
 async function loadClassFeatureContext(args) {
     const { effectiveClassDocument, targetLevel, fetchSelectionDocument, extractSlug } = args;
     if (!effectiveClassDocument) {

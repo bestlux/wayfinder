@@ -1,11 +1,4 @@
-import type {
-  ClassBranchStep,
-  ClassChoiceStep,
-  PendingStep,
-  PickItemStep,
-  SelectionRef,
-  SkillTrainingStep,
-} from "../../types.js";
+import type { ClassBranchStep, ClassChoiceStep, PickItemStep, SelectionRef, SkillTrainingStep } from "../../types.js";
 import {
   createClassBranchStep,
   createClassChoiceStep,
@@ -95,27 +88,6 @@ export async function buildClassChoiceStepsFromRules(args: BuildClassChoiceStepA
     extractSlug: args.extractSlug,
     localize: args.localize,
   });
-}
-
-export async function buildClassStepsFromRules(args: BuildClassChoiceStepArgs): Promise<PendingStep[]> {
-  const trainingSteps = buildClassTrainingStepsFromRules(args);
-  const context = await loadClassFeatureContext(args);
-  if (!context) {
-    return trainingSteps;
-  }
-
-  return [
-    ...trainingSteps,
-    ...buildClassBranchStepsFromFeatures(context.classFeatures, context.classSlug, args.extractSlug),
-    ...buildClassGrantedItemStepsFromFeatures(context.classFeatures, context.classSlug),
-    ...buildClassChoiceStepsFromFeatures({
-      classFeatures: context.classFeatures,
-      classSlug: context.classSlug,
-      effectiveDeityDocument: args.effectiveDeityDocument,
-      extractSlug: args.extractSlug,
-      localize: args.localize,
-    }),
-  ];
 }
 
 async function loadClassFeatureContext(

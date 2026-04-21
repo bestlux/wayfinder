@@ -141,6 +141,8 @@ describe("wayfinder class rule discovery", () => {
               rollOption: "divineFont",
               choices: [
                 { value: "heal", label: "Heal", predicate: "deity:primary:font:heal" },
+                { value: "mercy", label: "Mercy", predicate: { not: "deity:primary:font:harm" } },
+                { value: "denied", label: "Denied", predicate: { not: "deity:primary:font:heal" } },
                 { value: "harm", label: "Harm", predicate: "deity:primary:font:harm" },
               ],
             },
@@ -166,7 +168,10 @@ describe("wayfinder class rule discovery", () => {
       {
         flag: "divineFont",
         dependsOn: "deity",
-        options: [{ value: "heal", label: "Heal" }],
+        options: [
+          { value: "heal", label: "Heal" },
+          { value: "mercy", label: "Mercy" },
+        ],
       },
     ]);
   });

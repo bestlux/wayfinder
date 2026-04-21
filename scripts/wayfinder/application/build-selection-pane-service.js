@@ -1,6 +1,7 @@
 import { getStepModeLabel } from "../domain/step-types.js";
 import { buildClassChoicePane } from "../panes/class-choice-pane.js";
 import { buildPickItemPane, resolvePreviewValue, selectedSelection, selectedValueFor } from "../panes/pick-pane.js";
+import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
 export async function buildSelectionPane(step, effectiveBuildState, deps) {
     if (step.kind === "class-choice") {
@@ -16,6 +17,13 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
             blockedMessage: blocked
                 ? "This class choice depends on the drafted deity. Resolve the deity step before choosing this option."
                 : null,
+        });
+    }
+    if (step.kind === "singleton-choice") {
+        return buildSingletonChoicePane({
+            step,
+            selectedValue: deps.draft.singletonChoices[step.slotId] ?? null,
+            selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
         });
     }
     if (step.kind !== "spell-choice" && step.kind !== "pick-item" && step.kind !== "class-branch") {

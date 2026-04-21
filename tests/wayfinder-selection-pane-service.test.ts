@@ -119,6 +119,75 @@ describe("wayfinder selection pane service", () => {
     expect(pane.preview?.value).toBe("test.pack:wintertouched");
   });
 
+  it("builds a singleton-choice pane from drafted singleton selections", async () => {
+    const draft = createEmptyDraft(1);
+    draft.singletonChoices["singleton-choice-background-sponsored-by-family-academySkill-level-1"] = "society";
+    const step: PendingStep = {
+      id: "singleton-choice-background-sponsored-by-family-academySkill-level-1",
+      level: 1,
+      kind: "singleton-choice",
+      slotKind: "singleton-choice",
+      title: "Academy Skill",
+      description: "",
+      required: true,
+      slotId: "singleton-choice-background-sponsored-by-family-academySkill-level-1",
+      singletonChoice: {
+        slotId: "singleton-choice-background-sponsored-by-family-academySkill-level-1",
+        sourceItemType: "background",
+        sourcePackId: "pf2e.backgrounds",
+        sourceDocumentId: "sponsored-by-family",
+        sourceUuid: "Compendium.pf2e.backgrounds.Item.sponsored-by-family",
+        sourceName: "Sponsored by Family",
+        sourceRuleIndex: 0,
+        flag: "academySkill",
+        prompt: "Choose your trained skill",
+        options: [
+          { value: "diplomacy", label: "Diplomacy", img: null, detail: null },
+          { value: "society", label: "Society", img: null, detail: null },
+        ],
+      },
+    };
+
+    const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
+      draft,
+      searchByStepId: new Map(),
+      previewValueByStepId: new Map(),
+      resolveOptionContext: async () => {
+        throw new Error("Expected singleton-choice pane to skip option context resolution");
+      },
+      resolveDeityDocument: async () => null,
+      buildContextNote: async () => {
+        throw new Error("Expected singleton-choice pane to skip context note building");
+      },
+      resolveStepStatus: async () => "Society",
+      getOptionsForStep: async () => {
+        throw new Error("Expected singleton-choice pane to skip option loading");
+      },
+      getPickerInfoState: () => {
+        throw new Error("Expected singleton-choice pane to skip picker info state");
+      },
+      buildPreview: async () => {
+        throw new Error("Expected singleton-choice pane to skip preview building");
+      },
+      matchesSearch: () => {
+        throw new Error("Expected singleton-choice pane to skip search filtering");
+      },
+    });
+
+    expect(pane?.kind).toBe("singleton-choice");
+    if (!pane || pane.kind !== "singleton-choice") {
+      throw new Error("Expected a singleton-choice pane");
+    }
+    expect(pane.completed).toBe(true);
+    expect(pane.selectedLabel).toBe("Society");
+    expect(pane.sourceName).toBe("Sponsored by Family");
+    expect(pane.sourceItemType).toBe("background");
+    expect(pane.options).toEqual([
+      { value: "diplomacy", label: "Diplomacy", img: null, detail: null, selected: false },
+      { value: "society", label: "Society", img: null, detail: null, selected: true },
+    ]);
+  });
+
   it("builds a class-branch pane from branch selections instead of generic selections", async () => {
     const draft = createEmptyDraft(1);
     draft.branchSelections["class-branch-cause-level-1"] = {

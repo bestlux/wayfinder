@@ -5,6 +5,7 @@ import {
   chooseSelectionOption,
   type SelectionCommandState,
   selectClassChoiceValue,
+  selectSingletonChoiceValue,
   toggleSpellChoiceSelection,
 } from "../src/wayfinder/application/selection-command-service";
 import { SLOT_IDS, SLOT_PREFIXES } from "../src/wayfinder/slot-ids";
@@ -44,6 +45,7 @@ describe("wayfinder selection command service", () => {
         ]);
         return invalidatedPrefixes.has(prefix) ? [prefix] : [];
       },
+      invalidateSingletonChoicesBySource: async () => [],
       invalidateClassChoicesByDependency: async () => [],
       invalidateBranchSelectionsByDependency: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
@@ -62,7 +64,7 @@ describe("wayfinder selection command service", () => {
       shouldRender: false,
       warning: null,
       statusNote:
-        "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, spell, and class feat selections for review.",
+        "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, related singleton choices, spell, and class feat selections for review.",
     });
     expect(draft.selections["class-level-1"]?.documentId).toBe("champion");
     expect(draft.boosts.class.keyAbility).toBeNull();
@@ -94,6 +96,7 @@ describe("wayfinder selection command service", () => {
       resolveSelectionSlug: async () => null,
       invalidateSelection: () => [],
       invalidateSelectionsByPrefix: () => [],
+      invalidateSingletonChoicesBySource: async () => [],
       invalidateClassChoicesByDependency: async () => ["class-choice-champion-sanctification-level-1"],
       invalidateBranchSelectionsByDependency: async () => ["class-branch-cause-level-1"],
       invalidateSpellChoicesByDependency: async () => [],
@@ -105,9 +108,100 @@ describe("wayfinder selection command service", () => {
     expect(result).toMatchObject({
       kind: "changed",
       shouldAdvance: true,
-      statusNote: "Deity changed. Wayfinder marked dependent class choices and class paths for review.",
+      statusNote:
+        "Deity changed. Wayfinder marked dependent class choices, class paths, and deity-driven choices for review.",
     });
     expect(draft.selections["deity-level-1"]?.documentId).toBe("sarenrae");
+  });
+
+  it("invalidates heritage-driven singleton choices even when heritage traits stay the same", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["heritage-level-1"] = selection("heritage-level-1", "heritage", "wintertouched", "Wintertouched");
+    const state = commandState(draft);
+    const step: PendingStep = {
+      id: "heritage-level-1",
+      level: 1,
+      kind: "pick-item",
+      slotKind: "heritage",
+      title: "Heritage",
+      description: "",
+      required: true,
+      slotId: "heritage-level-1",
+      filters: { itemType: "heritage" },
+    };
+
+    const result = await chooseSelectionOption(state, step, "test.pack:arctic-elf", {
+      resolveSelection: async () => selection("heritage-level-1", "heritage", "arctic-elf", "Arctic Elf"),
+      hasDuplicateDraftSelection: () => false,
+      resolveSelectionTraits: async () => ["cold"],
+      resolveSelectionSlug: async () => null,
+      invalidateSelection: () => [],
+      invalidateSelectionsByPrefix: () => [],
+      invalidateSingletonChoicesBySource: async (sourceItemType) =>
+        sourceItemType === "heritage" ? ["singleton-choice-heritage-arctic-elf-language-level-1"] : [],
+      invalidateClassChoicesByDependency: async () => [],
+      invalidateBranchSelectionsByDependency: async () => [],
+      invalidateSpellChoicesByDependency: async () => [],
+      resetAncestryBoostDraft: () => false,
+      resetBackgroundBoostDraft: () => false,
+      resetClassBoostDraft: () => false,
+    });
+
+    expect(result).toMatchObject({
+      kind: "changed",
+      shouldAdvance: true,
+      statusNote:
+        "Heritage changed. Wayfinder marked heritage-driven choices and ancestry-feat draft picks for review.",
+    });
+    expect(draft.selections["heritage-level-1"]?.documentId).toBe("arctic-elf");
+  });
+
+  it("toggles a singleton choice value in the draft", async () => {
+    const draft = createEmptyDraft(1);
+    const state = commandState(draft, {
+      invalidatedSlotIds: ["singleton-choice-background-sponsored-by-family-academySkill-level-1"],
+    });
+    const step: PendingStep = {
+      id: "singleton-choice-background-sponsored-by-family-academySkill-level-1",
+      level: 1,
+      kind: "singleton-choice",
+      slotKind: "singleton-choice",
+      title: "Academy Skill",
+      description: "",
+      required: true,
+      slotId: "singleton-choice-background-sponsored-by-family-academySkill-level-1",
+      singletonChoice: {
+        slotId: "singleton-choice-background-sponsored-by-family-academySkill-level-1",
+        sourceItemType: "background",
+        sourcePackId: "pf2e.backgrounds",
+        sourceDocumentId: "sponsored-by-family",
+        sourceUuid: "Compendium.pf2e.backgrounds.Item.sponsored-by-family",
+        sourceName: "Sponsored by Family",
+        sourceRuleIndex: 0,
+        flag: "academySkill",
+        prompt: "Choose your trained skill",
+        options: [
+          { value: "diplomacy", label: "Diplomacy", img: null, detail: null },
+          { value: "society", label: "Society", img: null, detail: null },
+        ],
+      },
+    };
+
+    const selected = await selectSingletonChoiceValue(state, step, "society");
+    expect(selected).toMatchObject({
+      kind: "changed",
+      shouldAdvance: true,
+      shouldRender: false,
+    });
+    expect(draft.singletonChoices[step.slotId]).toBe("society");
+
+    const cleared = await selectSingletonChoiceValue(state, step, "society");
+    expect(cleared).toMatchObject({
+      kind: "changed",
+      shouldAdvance: false,
+      shouldRender: true,
+    });
+    expect(draft.singletonChoices[step.slotId]).toBeUndefined();
   });
 
   it("invalidates deity-dependent branches when sanctification changes", async () => {

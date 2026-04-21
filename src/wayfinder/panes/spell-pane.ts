@@ -35,6 +35,7 @@ export function buildSpellChoicePane(args: {
     isBoost: false,
     isSkillIncrease: false,
     isSkillTraining: false,
+    isSingletonChoice: false,
     isClassChoice: false,
     isSpellChoice: true,
     stepId: step.id,

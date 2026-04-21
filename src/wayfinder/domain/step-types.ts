@@ -4,6 +4,7 @@ export type SlotKind =
   | "background"
   | "class"
   | "deity"
+  | "singleton-choice"
   | "skill-training"
   | "class-branch"
   | "class-choice"
@@ -20,6 +21,7 @@ export type StepKind =
   | "manual"
   | "boost"
   | "skill-increase"
+  | "singleton-choice"
   | "class-branch"
   | "class-choice"
   | "spell-choice"
@@ -72,6 +74,24 @@ export interface ClassChoiceMeta {
   flag: string;
   classSlug: string | null;
   dependsOn: "class" | "deity";
+  options: Array<{
+    value: string;
+    label: string;
+    img: string | null;
+    detail: string | null;
+  }>;
+}
+
+export interface SingletonChoiceMeta {
+  slotId: string;
+  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity";
+  sourcePackId: string;
+  sourceDocumentId: string;
+  sourceUuid: string;
+  sourceName: string;
+  sourceRuleIndex: number;
+  flag: string;
+  prompt: string | null;
   options: Array<{
     value: string;
     label: string;
@@ -136,6 +156,7 @@ interface NoStepExtras {
   filters?: never;
   branch?: never;
   grantSelection?: never;
+  singletonChoice?: never;
   classChoice?: never;
   spellChoice?: never;
   training?: never;
@@ -163,6 +184,16 @@ export interface SkillTrainingStep extends BasePendingStep<"skill-training", "sk
   classChoice?: never;
   spellChoice?: never;
   training: SkillTrainingMeta;
+}
+
+export interface SingletonChoiceStep extends BasePendingStep<"singleton-choice", "singleton-choice"> {
+  filters?: never;
+  branch?: never;
+  grantSelection?: never;
+  singletonChoice: SingletonChoiceMeta;
+  classChoice?: never;
+  spellChoice?: never;
+  training?: never;
 }
 
 export interface ClassBranchStep extends BasePendingStep<"class-branch", "class-branch"> {
@@ -198,6 +229,7 @@ export type PendingStep =
   | BoostStep
   | SkillIncreaseStep
   | SkillTrainingStep
+  | SingletonChoiceStep
   | ClassBranchStep
   | ClassChoiceStep
   | SpellChoiceStep;
@@ -220,6 +252,11 @@ interface ClassBranchStepOptions extends StepOptions {
 }
 
 interface ClassChoiceStepOptions extends StepOptions {
+  title?: string;
+  description?: string;
+}
+
+interface SingletonChoiceStepOptions extends StepOptions {
   title?: string;
   description?: string;
 }
@@ -309,6 +346,27 @@ export function createSkillTrainingStep(
   };
 }
 
+export function createSingletonChoiceStep(
+  level: number,
+  singletonChoice: SingletonChoiceMeta,
+  options: SingletonChoiceStepOptions = {}
+): SingletonChoiceStep {
+  return {
+    ...createBaseStep(
+      "singleton-choice",
+      "singleton-choice",
+      level,
+      options.title ?? singletonChoice.sourceName,
+      options.description ?? singletonChoice.prompt ?? "",
+      {
+        ...options,
+        slotId: options.slotId ?? singletonChoice.slotId,
+      }
+    ),
+    singletonChoice,
+  };
+}
+
 export function createClassBranchStep(
   level: number,
   branch: ClassBranchMeta,
@@ -387,6 +445,10 @@ export function isClassChoiceStep(step: Pick<PendingStep, "kind">): step is Clas
   return step.kind === "class-choice";
 }
 
+export function isSingletonChoiceStep(step: Pick<PendingStep, "kind">): step is SingletonChoiceStep {
+  return step.kind === "singleton-choice";
+}
+
 export function isManualStep(step: Pick<PendingStep, "kind">): step is ManualStep {
   return step.kind === "manual";
 }
@@ -413,16 +475,17 @@ const SLOT_KIND_SORT_WEIGHTS: Record<SlotKind, number> = {
   background: 2,
   class: 3,
   deity: 4,
-  "skill-training": 5,
-  "class-choice": 6,
-  "class-branch": 7,
-  "spell-choice": 8,
-  "ancestry-feat": 9,
-  "class-feat": 10,
-  "skill-feat": 11,
-  "general-feat": 12,
-  "ability-boosts": 13,
-  "skill-increase": 14,
+  "singleton-choice": 5,
+  "skill-training": 6,
+  "class-choice": 7,
+  "class-branch": 8,
+  "spell-choice": 9,
+  "ancestry-feat": 10,
+  "class-feat": 11,
+  "skill-feat": 12,
+  "general-feat": 13,
+  "ability-boosts": 14,
+  "skill-increase": 15,
 };
 
 const STEP_MODE_LABELS: Record<StepKind, string> = {
@@ -430,6 +493,7 @@ const STEP_MODE_LABELS: Record<StepKind, string> = {
   manual: "Manual",
   boost: "Boosts",
   "skill-increase": "Skill",
+  "singleton-choice": "Choice",
   "class-branch": "Class Path",
   "class-choice": "Class Choice",
   "spell-choice": "Spells",

@@ -32,6 +32,12 @@ export interface ClassChoiceDecision {
   value: string;
 }
 
+export interface SingletonChoiceDecision {
+  kind: "singleton-choice";
+  slotId: string;
+  value: string;
+}
+
 export interface ManualDecision {
   kind: "manual";
   slotId: string;
@@ -59,6 +65,7 @@ export interface SpellChoiceDecision {
 export type DraftDecision =
   | ItemSelectionDecision
   | BranchSelectionDecision
+  | SingletonChoiceDecision
   | ClassChoiceDecision
   | ManualDecision
   | SkillIncreaseDecision

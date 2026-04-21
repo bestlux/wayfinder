@@ -1,7 +1,7 @@
 import type { BuildStateActorItem } from "../build-state/document-types.js";
 import { listActorItems } from "../build-state.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
-import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta } from "../types.js";
+import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta, SelectionRef, SingletonChoiceMeta } from "../types.js";
 
 interface ActorItemLike extends BuildStateActorItem {
   flags?: BuildStateActorItem["flags"] & {
@@ -35,6 +35,37 @@ export function readExistingGrantedSelection(actor: unknown, grant: ClassGrantMe
 
 export function readExistingClassChoiceSelection(actor: unknown, choice: ClassChoiceMeta): string | null {
   return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
+}
+
+export function readExistingSingletonChoiceSelection(actor: unknown, choice: SingletonChoiceMeta): string | null {
+  return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
+}
+
+export function readExistingSingletonSourceSelection(
+  actor: unknown,
+  itemType: "ancestry" | "heritage" | "background" | "class" | "deity"
+): SelectionRef | null {
+  const item = listTypedActorItems(actor).find((entry) => entry.type === itemType) ?? null;
+  const sourceId = sourceIdOf(item);
+  if (!item || !sourceId) {
+    return null;
+  }
+
+  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    slotId: `${itemType}-level-1`,
+    packId: match[1],
+    documentId: match[2],
+    uuid: sourceId,
+    itemType,
+    featType: null,
+    name: item.name ?? "",
+    level: 1,
+  };
 }
 
 function findActorItemBySourceId(actor: unknown, sourceId: string): ActorItemLike | null {

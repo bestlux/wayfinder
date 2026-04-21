@@ -37,6 +37,15 @@ export function createSkillTrainingStep(level, title, description, training, opt
         training,
     };
 }
+export function createSingletonChoiceStep(level, singletonChoice, options = {}) {
+    return {
+        ...createBaseStep("singleton-choice", "singleton-choice", level, options.title ?? singletonChoice.sourceName, options.description ?? singletonChoice.prompt ?? "", {
+            ...options,
+            slotId: options.slotId ?? singletonChoice.slotId,
+        }),
+        singletonChoice,
+    };
+}
 export function createClassBranchStep(level, branch, options = {}) {
     return {
         ...createBaseStep("class-branch", "class-branch", level, options.title ?? branch.selectorName, options.description ?? `Choose the ${branch.selectorName.toLowerCase()} option that defines this class path.`, {
@@ -81,6 +90,9 @@ export function isClassBranchStep(step) {
 export function isClassChoiceStep(step) {
     return step.kind === "class-choice";
 }
+export function isSingletonChoiceStep(step) {
+    return step.kind === "singleton-choice";
+}
 export function isManualStep(step) {
     return step.kind === "manual";
 }
@@ -102,22 +114,24 @@ const SLOT_KIND_SORT_WEIGHTS = {
     background: 2,
     class: 3,
     deity: 4,
-    "skill-training": 5,
-    "class-choice": 6,
-    "class-branch": 7,
-    "spell-choice": 8,
-    "ancestry-feat": 9,
-    "class-feat": 10,
-    "skill-feat": 11,
-    "general-feat": 12,
-    "ability-boosts": 13,
-    "skill-increase": 14,
+    "singleton-choice": 5,
+    "skill-training": 6,
+    "class-choice": 7,
+    "class-branch": 8,
+    "spell-choice": 9,
+    "ancestry-feat": 10,
+    "class-feat": 11,
+    "skill-feat": 12,
+    "general-feat": 13,
+    "ability-boosts": 14,
+    "skill-increase": 15,
 };
 const STEP_MODE_LABELS = {
     "pick-item": "Selection",
     manual: "Manual",
     boost: "Boosts",
     "skill-increase": "Skill",
+    "singleton-choice": "Choice",
     "class-branch": "Class Path",
     "class-choice": "Class Choice",
     "spell-choice": "Spells",

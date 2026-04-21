@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta } from "../src/types";
+import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta, SingletonChoiceMeta } from "../src/types";
 import {
   readExistingBranchSelection,
   readExistingClassChoiceSelection,
   readExistingGrantedSelection,
+  readExistingSingletonChoiceSelection,
+  readExistingSingletonSourceSelection,
 } from "../src/wayfinder/existing-selection-service";
 
 describe("existing-selection-service", () => {
@@ -57,6 +59,39 @@ describe("existing-selection-service", () => {
     };
 
     expect(readExistingClassChoiceSelection(actor, divineFontChoice())).toBe("heal");
+  });
+
+  it("reads a singleton choice selection from the owning singleton item rulesSelections", () => {
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: "background-1",
+            type: "background",
+            name: "Sponsored by Family",
+            flags: {
+              core: {
+                sourceId: "Compendium.pf2e.backgrounds.Item.sponsored-by-family",
+              },
+              pf2e: {
+                rulesSelections: {
+                  academySkill: "society",
+                },
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    expect(readExistingSingletonChoiceSelection(actor, academySkillChoice())).toBe("society");
+    expect(readExistingSingletonSourceSelection(actor, "background")).toMatchObject({
+      packId: "pf2e.backgrounds",
+      documentId: "sponsored-by-family",
+      uuid: "Compendium.pf2e.backgrounds.Item.sponsored-by-family",
+      itemType: "background",
+      name: "Sponsored by Family",
+    });
   });
 
   it("does not treat a loose deity item as proof that the granting feature is resolved", () => {
@@ -203,5 +238,20 @@ function clericDeityGrant(): ClassGrantMeta {
     flag: "deity",
     itemType: "deity",
     classSlug: "cleric",
+  };
+}
+
+function academySkillChoice(): SingletonChoiceMeta {
+  return {
+    slotId: "singleton-choice-background-sponsored-by-family-academySkill-level-1",
+    sourceItemType: "background",
+    sourcePackId: "pf2e.backgrounds",
+    sourceDocumentId: "sponsored-by-family",
+    sourceUuid: "Compendium.pf2e.backgrounds.Item.sponsored-by-family",
+    sourceName: "Sponsored by Family",
+    sourceRuleIndex: 0,
+    flag: "academySkill",
+    prompt: "Choose your trained skill",
+    options: [{ value: "society", label: "Society", img: null, detail: null }],
   };
 }

@@ -44,6 +44,7 @@ export interface PickStepPane {
   isBoost: false;
   isSkillIncrease: false;
   isSkillTraining: false;
+  isSingletonChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -69,6 +70,7 @@ export interface ManualStepPane {
   isBoost: false;
   isSkillIncrease: false;
   isSkillTraining: false;
+  isSingletonChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -116,6 +118,7 @@ export interface BoostStepPane {
   isBoost: true;
   isSkillIncrease: false;
   isSkillTraining: false;
+  isSingletonChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -176,6 +179,7 @@ export interface SkillIncreaseStepPane {
   isBoost: false;
   isSkillIncrease: true;
   isSkillTraining: false;
+  isSingletonChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -209,6 +213,7 @@ export interface SkillTrainingStepPane {
   isBoost: false;
   isSkillIncrease: false;
   isSkillTraining: true;
+  isSingletonChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -234,6 +239,7 @@ export interface ClassChoiceStepPane {
   isBoost: false;
   isSkillIncrease: false;
   isSkillTraining: false;
+  isSingletonChoice: false;
   isClassChoice: true;
   isSpellChoice: false;
   stepId: string;
@@ -258,6 +264,35 @@ export interface ClassChoiceStepPane {
   }>;
 }
 
+export interface SingletonChoiceStepPane {
+  kind: "singleton-choice";
+  isPickItem: false;
+  isManual: false;
+  isBoost: false;
+  isSkillIncrease: false;
+  isSkillTraining: false;
+  isSingletonChoice: true;
+  isClassChoice: false;
+  isSpellChoice: false;
+  stepId: string;
+  slotId: string;
+  level: number;
+  modeLabel: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  selectedLabel: string;
+  sourceName: string;
+  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity";
+  options: Array<{
+    value: string;
+    label: string;
+    img: string | null;
+    detail: string | null;
+    selected: boolean;
+  }>;
+}
+
 export interface SpellChoiceStepPane {
   kind: "spell-choice";
   isPickItem: false;
@@ -265,6 +300,7 @@ export interface SpellChoiceStepPane {
   isBoost: false;
   isSkillIncrease: false;
   isSkillTraining: false;
+  isSingletonChoice: false;
   isClassChoice: false;
   isSpellChoice: true;
   stepId: string;
@@ -294,6 +330,7 @@ export type ActivePane =
   | BoostStepPane
   | SkillIncreaseStepPane
   | SkillTrainingStepPane
+  | SingletonChoiceStepPane
   | ClassChoiceStepPane
   | SpellChoiceStepPane
   | null;

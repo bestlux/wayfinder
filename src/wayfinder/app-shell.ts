@@ -47,6 +47,7 @@ import {
   type SelectionCommandResult,
   type SelectionCommandState,
   selectClassChoiceValue,
+  selectSingletonChoiceValue,
   toggleSpellChoiceSelection,
 } from "./application/selection-command-service.js";
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
@@ -271,6 +272,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       case "toggle-training-skill":
         await this.#toggleTrainingSkill(action.stepId, action.slug);
         break;
+      case "select-singleton-choice":
+        await this.#selectSingletonChoice(action.stepId, action.value);
+        break;
       case "select-class-choice":
         await this.#selectClassChoice(action.stepId, action.value);
         break;
@@ -394,6 +398,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         isBoost: false,
         isSkillIncrease: false,
         isSkillTraining: false,
+        isSingletonChoice: false,
         isClassChoice: false,
         isSpellChoice: false,
         stepId: step.id,
@@ -492,6 +497,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }),
       invalidateSelection: invalidation.invalidateSelection,
       invalidateSelectionsByPrefix: invalidation.invalidateSelectionsByPrefix,
+      invalidateSingletonChoicesBySource: invalidation.invalidateSingletonChoicesBySource,
       invalidateClassChoicesByDependency: invalidation.invalidateClassChoicesByDependency,
       invalidateBranchSelectionsByDependency: invalidation.invalidateBranchSelectionsByDependency,
       invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,
@@ -541,6 +547,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (setTrainingRuleSelection(this.#draftAdjustmentState(), stepId, flag, slug)) {
       this.render(false);
     }
+  }
+
+  async #selectSingletonChoice(stepId: string, value: string): Promise<void> {
+    this.#statusNote = null;
+    const step = await this.#findPlanStepBySlotId(stepId);
+    const result = await selectSingletonChoiceValue(this.#selectionCommandState(), step ?? null, value);
+    await this.#finalizeSelectionCommand(result);
   }
 
   async #selectClassChoice(stepId: string, value: string): Promise<void> {

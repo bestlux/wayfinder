@@ -9,6 +9,7 @@ import {
   replaceSingletonItem,
   singletonSelections,
 } from "./actor-updater/selection-application.js";
+import { applySingletonChoiceDraft } from "./actor-updater/singleton-choice-application.js";
 import { applySpellChoiceDraft } from "./actor-updater/spell-choice-application.js";
 import { applySkillIncreaseDraft, applyTrainingDraft } from "./actor-updater/training-application.js";
 import { applyClassBranchDraft } from "./class-branch-service.js";
@@ -35,6 +36,7 @@ export async function applyDraftToActor(
     await replaceSingletonItem(actor, selection, draft, steps);
   }
 
+  await applySingletonChoiceDraft(actor, draft, steps);
   const projectedTrainingRanks = await applyTrainingDraft(actor, draft, steps);
   await applyClassFeatureChoiceDraft(actor, draft, steps, {
     createEmbeddedSource,

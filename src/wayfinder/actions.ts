@@ -19,6 +19,7 @@ export type WayfinderAction =
   | { type: "select-skill-increase"; stepId: string; slug: string }
   | { type: "select-training-rule"; stepId: string; flag: string; slug: string }
   | { type: "toggle-training-skill"; stepId: string; slug: string }
+  | { type: "select-singleton-choice"; stepId: string; value: string }
   | { type: "select-class-choice"; stepId: string; value: string }
   | { type: "toggle-spell-choice"; stepId: string; value: string }
   | { type: "clear-option"; stepId: string }
@@ -102,6 +103,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
       return { type: action };
     case "preview-option":
     case "select-option":
+    case "select-singleton-choice":
     case "select-class-choice":
     case "toggle-spell-choice":
       return element.dataset.stepId && element.dataset.value

@@ -14,6 +14,11 @@ type ActorSnapshot = ReturnType<typeof inspectActor>;
 interface BuildPlanDependencies {
   buildClassFeatSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
   buildClassTrainingSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
+  buildSingletonChoiceSteps: (
+    snapshot: ActorSnapshot,
+    draft: DraftState,
+    targetLevel: number
+  ) => Promise<PendingStep[]>;
   buildClassBranchSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
   buildClassGrantedItemSteps: (
     snapshot: ActorSnapshot,
@@ -30,15 +35,23 @@ export async function buildWayfinderPlan(
   deps: BuildPlanDependencies
 ): Promise<ReturnType<typeof buildProgressionPlan>> {
   const plan = buildProgressionPlan(snapshot, draft.targetLevel);
-  const [classFeatSteps, trainingSteps, branchSteps, grantedItemSteps, classChoiceSteps, spellChoiceSteps] =
-    await Promise.all([
-      deps.buildClassFeatSteps(snapshot, draft, plan.targetLevel),
-      deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
-      deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
-      deps.buildClassGrantedItemSteps(snapshot, draft, plan.targetLevel),
-      deps.buildClassChoiceSteps(snapshot, draft, plan.targetLevel),
-      deps.buildSpellChoiceSteps(snapshot, draft, plan.targetLevel),
-    ]);
+  const [
+    classFeatSteps,
+    trainingSteps,
+    singletonChoiceSteps,
+    branchSteps,
+    grantedItemSteps,
+    classChoiceSteps,
+    spellChoiceSteps,
+  ] = await Promise.all([
+    deps.buildClassFeatSteps(snapshot, draft, plan.targetLevel),
+    deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
+    deps.buildSingletonChoiceSteps(snapshot, draft, plan.targetLevel),
+    deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
+    deps.buildClassGrantedItemSteps(snapshot, draft, plan.targetLevel),
+    deps.buildClassChoiceSteps(snapshot, draft, plan.targetLevel),
+    deps.buildSpellChoiceSteps(snapshot, draft, plan.targetLevel),
+  ]);
 
   return {
     ...plan,
@@ -47,6 +60,7 @@ export async function buildWayfinderPlan(
       ...classFeatSteps,
       ...grantedItemSteps,
       ...trainingSteps,
+      ...singletonChoiceSteps,
       ...branchSteps,
       ...classChoiceSteps,
       ...spellChoiceSteps,

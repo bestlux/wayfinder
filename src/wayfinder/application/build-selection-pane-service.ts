@@ -3,10 +3,17 @@ import type { DraftState, OptionContext, OptionRecord, PendingStep, PickerInfoSt
 import { getStepModeLabel } from "../domain/step-types.js";
 import { buildClassChoicePane } from "../panes/class-choice-pane.js";
 import { buildPickItemPane, resolvePreviewValue, selectedSelection, selectedValueFor } from "../panes/pick-pane.js";
+import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
-import type { ClassChoiceStepPane, PickStepPane, PreviewPane, SpellChoiceStepPane } from "../view-models.js";
+import type {
+  ClassChoiceStepPane,
+  PickStepPane,
+  PreviewPane,
+  SingletonChoiceStepPane,
+  SpellChoiceStepPane,
+} from "../view-models.js";
 
-type SelectionPane = ClassChoiceStepPane | PickStepPane | SpellChoiceStepPane;
+type SelectionPane = ClassChoiceStepPane | PickStepPane | SingletonChoiceStepPane | SpellChoiceStepPane;
 
 interface BuildSelectionPaneDependencies {
   draft: DraftState;
@@ -46,6 +53,14 @@ export async function buildSelectionPane(
       blockedMessage: blocked
         ? "This class choice depends on the drafted deity. Resolve the deity step before choosing this option."
         : null,
+    });
+  }
+
+  if (step.kind === "singleton-choice") {
+    return buildSingletonChoicePane({
+      step,
+      selectedValue: deps.draft.singletonChoices[step.slotId] ?? null,
+      selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
     });
   }
 

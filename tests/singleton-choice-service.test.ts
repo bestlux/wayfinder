@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vitest";
+import { createEmptyDraft } from "../src/draft-service";
+import type { SelectionRef } from "../src/types";
+import { buildSingletonChoiceSteps } from "../src/wayfinder/singleton-choice-service";
+
+describe("singleton-choice-service", () => {
+  it("skips singleton-choice steps already resolved on the actor unless the draft overrides them", async () => {
+    const draft = createEmptyDraft(1);
+    const sources = [
+      {
+        sourceItemType: "background" as const,
+        sourceSelection: selection("background-level-1", "background", "sponsored-by-family", "Sponsored by Family"),
+        sourceDocument: {
+          name: "Sponsored by Family",
+          system: {
+            slug: "sponsored-by-family",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "academySkill",
+                choices: [
+                  { value: "diplomacy", label: "Diplomacy" },
+                  { value: "society", label: "Society" },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    const skipped = await buildSingletonChoiceSteps({
+      draft,
+      targetLevel: 1,
+      sources,
+      extractSlug: (document) => (document as { system?: { slug?: string } })?.system?.slug ?? null,
+      localize: (value) => value,
+      readExistingSingletonChoiceSelection: () => "society",
+    });
+
+    expect(skipped).toEqual([]);
+
+    draft.singletonChoices["singleton-choice-background-sponsored-by-family-academySkill-level-1"] = "diplomacy";
+
+    const retained = await buildSingletonChoiceSteps({
+      draft,
+      targetLevel: 1,
+      sources,
+      extractSlug: (document) => (document as { system?: { slug?: string } })?.system?.slug ?? null,
+      localize: (value) => value,
+      readExistingSingletonChoiceSelection: () => "society",
+    });
+
+    expect(retained).toHaveLength(1);
+    expect(retained[0]?.kind).toBe("singleton-choice");
+  });
+});
+
+function selection(slotId: string, itemType: string, documentId: string, name = documentId): SelectionRef {
+  return {
+    slotId,
+    packId: "test.pack",
+    documentId,
+    uuid: `Compendium.test.pack.Item.${documentId}`,
+    itemType,
+    featType: null,
+    name,
+    level: 1,
+  };
+}

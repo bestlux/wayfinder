@@ -1,6 +1,6 @@
 import type { AbilityKey, BoostDraftState, DraftState, ModuleState } from "./types.js";
 
-const DRAFT_VERSION = 4;
+const DRAFT_VERSION = 5;
 const STATE_VERSION = 1;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
@@ -13,6 +13,7 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     skillIncreases: {},
     skillTrainings: {},
     branchSelections: {},
+    singletonChoices: {},
     classChoices: {},
     spellChoices: {},
     updatedAt: null,
@@ -40,6 +41,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     skillIncreases: sanitizeSkillIncreases(draft.skillIncreases),
     skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
     branchSelections: sanitizeSelections(draft.branchSelections),
+    singletonChoices: sanitizeChoiceValues(draft.singletonChoices),
     classChoices: sanitizeClassChoices(draft.classChoices),
     spellChoices: sanitizeSpellChoices(draft.spellChoices),
     updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
@@ -149,6 +151,10 @@ function sanitizeSkillIncreases(raw: unknown): Record<string, string> {
 }
 
 function sanitizeClassChoices(raw: unknown): Record<string, string> {
+  return sanitizeChoiceValues(raw);
+}
+
+function sanitizeChoiceValues(raw: unknown): Record<string, string> {
   if (!isRecord(raw)) {
     return {};
   }

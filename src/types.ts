@@ -14,6 +14,8 @@ export type {
   PickItemSlotKind,
   PickItemStep,
   SelectionStep,
+  SingletonChoiceMeta,
+  SingletonChoiceStep,
   SkillIncreaseStep,
   SkillTrainingMeta,
   SkillTrainingStep,
@@ -61,6 +63,7 @@ export interface DraftState {
   skillIncreases: Record<string, string>;
   skillTrainings: Record<string, SkillTrainingDraft>;
   branchSelections: Record<string, SelectionRef>;
+  singletonChoices: Record<string, string>;
   classChoices: Record<string, string>;
   spellChoices: Record<string, SelectionRef[]>;
   updatedAt: string | null;

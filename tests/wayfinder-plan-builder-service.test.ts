@@ -7,6 +7,7 @@ import type {
   ClassGrantMeta,
   PendingStep,
   SelectionRef,
+  SingletonChoiceMeta,
   SpellChoiceMeta,
 } from "../src/types";
 import {
@@ -58,6 +59,7 @@ describe("wayfinder plan builder service", () => {
     const readExistingBranchSelection = vi.fn((_actor: unknown, _branch: ClassBranchMeta) => "existing-branch");
     const readExistingGrantedSelection = vi.fn((_actor: unknown, _grant: ClassGrantMeta) => "existing-grant");
     const readExistingClassChoiceSelection = vi.fn((_actor: unknown, _choice: ClassChoiceMeta) => "holy");
+    const readExistingSingletonChoiceSelection = vi.fn((_actor: unknown, _choice: SingletonChoiceMeta) => "society");
     const readExistingSpellChoiceSelections = vi.fn((_actor: unknown, _choice: SpellChoiceMeta) => [
       selection("spell-choice-wizard-level-1", "spell", "magic-missile", "Magic Missile"),
     ]);
@@ -68,6 +70,32 @@ describe("wayfinder plan builder service", () => {
       expect(params.targetLevel).toBe(4);
       expect(params.localize("PF2E.Test")).toBe("loc:PF2E.Test");
       return [step("skill-training-wizard-level-1")];
+    });
+    const buildSingletonChoiceSteps = vi.fn(async (params) => {
+      expect(params.draft).toBe(draft);
+      expect(params.targetLevel).toBe(4);
+      expect(params.sources).toMatchObject([
+        {
+          sourceItemType: "class",
+          sourceSelection: draft.selections.class,
+          sourceDocument: classDocument,
+        },
+      ]);
+      expect(
+        params.readExistingSingletonChoiceSelection({
+          slotId: "singleton-choice-class-wizard-academySkill-level-1",
+          sourceItemType: "class",
+          sourcePackId: "test.pack",
+          sourceDocumentId: "wizard",
+          sourceUuid: "Compendium.test.pack.Item.wizard",
+          sourceName: "Wizard",
+          sourceRuleIndex: 0,
+          flag: "academySkill",
+          prompt: "Choose your class option",
+          options: [],
+        })
+      ).toBe("society");
+      return [step("singleton-choice-class-wizard-academySkill-level-1")];
     });
     const buildClassBranchSteps = vi.fn(async (params) => {
       expect(params.draft).toBe(draft);
@@ -167,6 +195,7 @@ describe("wayfinder plan builder service", () => {
       const steps = [
         ...(await deps.buildClassFeatSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassTrainingSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildSingletonChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassBranchSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassGrantedItemSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassChoiceSteps(receivedSnapshot, receivedDraft, 4)),
@@ -192,14 +221,17 @@ describe("wayfinder plan builder service", () => {
         buildWayfinderPlan,
         buildClassFeatSteps,
         buildClassTrainingSteps,
+        buildSingletonChoiceSteps,
         buildClassBranchSteps,
         buildClassGrantedItemSteps,
         buildClassChoiceSteps,
         buildSpellChoiceSteps,
         findDraftSelectionByType: (_draft, itemType) => (itemType === "class" ? draft.selections.class : null),
+        readExistingSingletonSourceSelection: () => null,
         readExistingBranchSelection,
         readExistingGrantedSelection,
         readExistingClassChoiceSelection,
+        readExistingSingletonChoiceSelection,
         readExistingSpellChoiceSelections,
         fetchSelectionDocument: async (selectionRef) => ({ fetched: selectionRef.documentId }),
         extractDocumentSlug: (document) => {
@@ -214,6 +246,7 @@ describe("wayfinder plan builder service", () => {
     expect(plan.steps.map((entry) => entry.slotId)).toEqual([
       "class-feat-level-2",
       "skill-training-wizard-level-1",
+      "singleton-choice-class-wizard-academySkill-level-1",
       "class-branch-arcane-school-level-1",
       "deity-level-1",
       "class-choice-wizard-thesis-level-1",
@@ -266,14 +299,17 @@ describe("wayfinder plan builder service", () => {
         }),
         buildClassFeatSteps: async () => [],
         buildClassTrainingSteps: async () => [],
+        buildSingletonChoiceSteps: async () => [],
         buildClassBranchSteps: async () => [],
         buildClassGrantedItemSteps: async () => [],
         buildClassChoiceSteps: async () => [],
         buildSpellChoiceSteps: async () => [],
         findDraftSelectionByType: () => null,
+        readExistingSingletonSourceSelection: () => null,
         readExistingBranchSelection: () => null,
         readExistingGrantedSelection: () => null,
         readExistingClassChoiceSelection: () => null,
+        readExistingSingletonChoiceSelection: () => null,
         readExistingSpellChoiceSelections: () => [],
         fetchSelectionDocument: async () => null,
         extractDocumentSlug: () => null,

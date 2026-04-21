@@ -13,7 +13,7 @@ import { buildSkillPane } from "./application/build-skill-pane-service.js";
 import { adjustDraftTargetLevel, setManualStepComplete, setTrainingRuleSelection, toggleAncestryMode, toggleBoostChoice, toggleSkillIncreaseSelection, toggleTrainingSkillSelection, toggleVoluntaryChoice, toggleVoluntaryEnabled, toggleVoluntaryLegacy, } from "./application/draft-adjustment-service.js";
 import { applyDraftLifecycle, buildSaveDraftUpdate, createClearedDraftResult, } from "./application/draft-lifecycle-service.js";
 import { buildContextNote, buildOptionContext, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
-import { chooseSelectionOption, selectClassChoiceValue, toggleSpellChoiceSelection, } from "./application/selection-command-service.js";
+import { chooseSelectionOption, selectClassChoiceValue, selectSingletonChoiceValue, toggleSpellChoiceSelection, } from "./application/selection-command-service.js";
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
 import { buildWayfinderContext } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
@@ -179,6 +179,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             case "toggle-training-skill":
                 await this.#toggleTrainingSkill(action.stepId, action.slug);
                 break;
+            case "select-singleton-choice":
+                await this.#selectSingletonChoice(action.stepId, action.value);
+                break;
             case "select-class-choice":
                 await this.#selectClassChoice(action.stepId, action.value);
                 break;
@@ -282,6 +285,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 isBoost: false,
                 isSkillIncrease: false,
                 isSkillTraining: false,
+                isSingletonChoice: false,
                 isClassChoice: false,
                 isSpellChoice: false,
                 stepId: step.id,
@@ -370,6 +374,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             }),
             invalidateSelection: invalidation.invalidateSelection,
             invalidateSelectionsByPrefix: invalidation.invalidateSelectionsByPrefix,
+            invalidateSingletonChoicesBySource: invalidation.invalidateSingletonChoicesBySource,
             invalidateClassChoicesByDependency: invalidation.invalidateClassChoicesByDependency,
             invalidateBranchSelectionsByDependency: invalidation.invalidateBranchSelectionsByDependency,
             invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,
@@ -413,6 +418,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (setTrainingRuleSelection(this.#draftAdjustmentState(), stepId, flag, slug)) {
             this.render(false);
         }
+    }
+    async #selectSingletonChoice(stepId, value) {
+        this.#statusNote = null;
+        const step = await this.#findPlanStepBySlotId(stepId);
+        const result = await selectSingletonChoiceValue(this.#selectionCommandState(), step ?? null, value);
+        await this.#finalizeSelectionCommand(result);
     }
     async #selectClassChoice(stepId, value) {
         this.#statusNote = null;

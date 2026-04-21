@@ -10,7 +10,7 @@ import {
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 4,
+      version: 5,
       targetLevel: 4,
       selections: {},
       boosts: {
@@ -39,6 +39,7 @@ describe("draft-service", () => {
       skillIncreases: {},
       skillTrainings: {},
       branchSelections: {},
+      singletonChoices: {},
       classChoices: {},
       spellChoices: {},
       updatedAt: null,
@@ -160,6 +161,7 @@ describe("draft-service", () => {
         additional: ["society", "medicine"],
       },
     });
+    expect(draft.singletonChoices).toEqual({});
     expect(draft.classChoices).toEqual({});
     expect(draft.spellChoices).toEqual({
       wizard: [
@@ -205,7 +207,7 @@ describe("draft-service", () => {
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(4);
+    expect(patched.version).toBe(5);
     expect(patched.updatedAt).not.toBeNull();
   });
 

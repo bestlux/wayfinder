@@ -36,8 +36,16 @@ export function createSelectionInvalidationService(
         return 0;
       }
 
-      if (slotId === SLOT_IDS.deity) {
+      if (slotId === SLOT_IDS.ancestry) {
+        cleared += invalidateSingletonChoicesBySourceSync("ancestry").length;
+        cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
+      } else if (slotId === SLOT_IDS.heritage) {
+        cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
+      } else if (slotId === SLOT_IDS.background) {
+        cleared += invalidateSingletonChoicesBySourceSync("background").length;
+      } else if (slotId === SLOT_IDS.deity) {
         cleared += invalidateByPrefix(SLOT_PREFIXES.classChoice).length;
+        cleared += invalidateSingletonChoicesBySourceSync("deity").length;
       } else if (slotId === SLOT_IDS.class) {
         cleared += invalidateByPrefix(SLOT_PREFIXES.deity).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.classBranch).length;
@@ -45,6 +53,8 @@ export function createSelectionInvalidationService(
         cleared += invalidateByPrefix(SLOT_PREFIXES.skillTraining).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.spellChoice).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.classFeat).length;
+        cleared += invalidateSingletonChoicesBySourceSync("class").length;
+        cleared += invalidateSingletonChoicesBySourceSync("deity").length;
       }
 
       return cleared;
@@ -75,7 +85,30 @@ export function createSelectionInvalidationService(
         return step.kind === "class-choice" && step.classChoice?.dependsOn === dependency;
       });
     },
+
+    async invalidateSingletonChoicesBySource(
+      sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity"
+    ): Promise<string[]> {
+      return invalidateMatchingPlanSteps(await deps.buildPlan(), invalidate, (step) => {
+        return step.kind === "singleton-choice" && step.singletonChoice?.sourceItemType === sourceItemType;
+      });
+    },
   };
+
+  function invalidateSingletonChoicesBySourceSync(
+    sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity"
+  ): string[] {
+    const invalidated: string[] = [];
+    for (const slotId of Object.keys(state.draft.singletonChoices)) {
+      if (!slotId.startsWith(`singleton-choice-${sourceItemType}-`)) {
+        continue;
+      }
+
+      invalidated.push(...invalidate(slotId));
+    }
+
+    return invalidated;
+  }
 }
 
 function invalidateMatchingPlanSteps(

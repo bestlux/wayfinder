@@ -17,6 +17,30 @@ export function readExistingGrantedSelection(actor, grant) {
 export function readExistingClassChoiceSelection(actor, choice) {
     return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
 }
+export function readExistingSingletonChoiceSelection(actor, choice) {
+    return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
+}
+export function readExistingSingletonSourceSelection(actor, itemType) {
+    const item = listTypedActorItems(actor).find((entry) => entry.type === itemType) ?? null;
+    const sourceId = sourceIdOf(item);
+    if (!item || !sourceId) {
+        return null;
+    }
+    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
+    if (!match) {
+        return null;
+    }
+    return {
+        slotId: `${itemType}-level-1`,
+        packId: match[1],
+        documentId: match[2],
+        uuid: sourceId,
+        itemType,
+        featType: null,
+        name: item.name ?? "",
+        level: 1,
+    };
+}
 function findActorItemBySourceId(actor, sourceId) {
     return listTypedActorItems(actor).find((item) => itemMatchesSourceId(item, sourceId)) ?? null;
 }

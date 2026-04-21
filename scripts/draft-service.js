@@ -1,4 +1,4 @@
-const DRAFT_VERSION = 4;
+const DRAFT_VERSION = 5;
 const STATE_VERSION = 1;
 export function createEmptyDraft(targetLevel = 1) {
     return {
@@ -10,6 +10,7 @@ export function createEmptyDraft(targetLevel = 1) {
         skillIncreases: {},
         skillTrainings: {},
         branchSelections: {},
+        singletonChoices: {},
         classChoices: {},
         spellChoices: {},
         updatedAt: null,
@@ -34,6 +35,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
         skillIncreases: sanitizeSkillIncreases(draft.skillIncreases),
         skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
         branchSelections: sanitizeSelections(draft.branchSelections),
+        singletonChoices: sanitizeChoiceValues(draft.singletonChoices),
         classChoices: sanitizeClassChoices(draft.classChoices),
         spellChoices: sanitizeSpellChoices(draft.spellChoices),
         updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
@@ -128,6 +130,9 @@ function sanitizeSkillIncreases(raw) {
     return result;
 }
 function sanitizeClassChoices(raw) {
+    return sanitizeChoiceValues(raw);
+}
+function sanitizeChoiceValues(raw) {
     if (!isRecord(raw)) {
         return {};
     }

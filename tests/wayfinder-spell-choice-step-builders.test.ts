@@ -205,7 +205,7 @@ describe("wayfinder spell-choice step builders", () => {
     });
   });
 
-  it("falls back to the base contributor for unknown class slugs", async () => {
+  it("returns no steps for unknown class slugs", async () => {
     const steps = await buildSpellChoiceSteps({
       draft: createEmptyDraft(1),
       currentLevel: 1,

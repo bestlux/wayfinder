@@ -1,11 +1,12 @@
 import type { PendingStep } from "../../types.js";
-import { getClassContributor } from "../classes/registry.js";
+import { buildClericSpellChoiceSteps } from "./cleric-step-builder.js";
 import {
   asSpellChoiceClassDocument,
   asSpellChoiceDeityDocument,
   asSpellChoiceSchoolDocument,
   type BuildSpellChoiceStepsParams,
 } from "./types.js";
+import { buildWizardSpellChoiceSteps } from "./wizard-step-builder.js";
 
 export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams): Promise<PendingStep[]> {
   const effectiveClassDocument = asSpellChoiceClassDocument(params.effectiveClassDocument);
@@ -13,16 +14,29 @@ export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams)
     return [];
   }
 
-  return getClassContributor(params.extractSlug(effectiveClassDocument)).buildPlanSteps({
-    draft: params.draft,
-    currentLevel: params.currentLevel,
-    targetLevel: params.targetLevel,
-    effectiveClassDocument,
-    effectiveDeityDocument: asSpellChoiceDeityDocument(params.effectiveDeityDocument),
-    effectiveSchoolDocument: asSpellChoiceSchoolDocument(params.effectiveSchoolDocument),
-    deps: {
+  const classSlug = params.extractSlug(effectiveClassDocument);
+  if (classSlug === "wizard") {
+    return buildWizardSpellChoiceSteps({
+      draft: params.draft,
+      currentLevel: params.currentLevel,
+      effectiveClassDocument,
+      effectiveSchoolDocument: asSpellChoiceSchoolDocument(params.effectiveSchoolDocument),
+      targetLevel: params.targetLevel,
       extractSlug: params.extractSlug,
       readExistingSpellChoiceSelections: params.readExistingSpellChoiceSelections,
-    },
-  });
+      classSlug,
+    });
+  }
+
+  if (classSlug === "cleric") {
+    return buildClericSpellChoiceSteps({
+      draft: params.draft,
+      effectiveClassDocument,
+      effectiveDeityDocument: asSpellChoiceDeityDocument(params.effectiveDeityDocument),
+      readExistingSpellChoiceSelections: params.readExistingSpellChoiceSelections,
+      classSlug,
+    });
+  }
+
+  return [];
 }

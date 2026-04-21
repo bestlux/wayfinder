@@ -1,48 +1,80 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import { baseContributor } from "../src/wayfinder/classes/base-contributor";
 import { clericContributor } from "../src/wayfinder/classes/cleric-contributor";
-import type { BuildClassContributionArgs } from "../src/wayfinder/classes/types";
+import type { BuildClassSpellChoiceStepsArgs } from "../src/wayfinder/classes/types";
 import { wizardContributor } from "../src/wayfinder/classes/wizard-contributor";
 
+const { buildWizardSpellChoiceSteps, buildClericSpellChoiceSteps } = vi.hoisted(() => ({
+  buildWizardSpellChoiceSteps: vi.fn(),
+  buildClericSpellChoiceSteps: vi.fn(),
+}));
+
+vi.mock("../src/wayfinder/spell-choice/wizard-step-builder", () => ({
+  buildWizardSpellChoiceSteps,
+}));
+
+vi.mock("../src/wayfinder/spell-choice/cleric-step-builder", () => ({
+  buildClericSpellChoiceSteps,
+}));
+
 describe("wayfinder class contributors", () => {
-  it("keeps the base contributor as the no-op fallback", async () => {
-    expect(baseContributor.slug).toBe("base");
-    await expect(baseContributor.buildPlanSteps(baseArgs())).resolves.toEqual([]);
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("routes wizard spell-choice behavior through the contributor seam", async () => {
-    const steps = await wizardContributor.buildPlanSteps({
-      ...baseArgs(),
+  it("keeps the base contributor as the no-op fallback", () => {
+    expect(baseContributor.slug).toBe("base");
+    expect(baseContributor.buildSpellChoiceSteps).toBeUndefined();
+  });
+
+  it("delegates wizard spell-choice steps to the wizard spell-choice builder", async () => {
+    const delegatedSteps = [step("wizard-step")];
+    buildWizardSpellChoiceSteps.mockReturnValue(delegatedSteps);
+    const args: BuildClassSpellChoiceStepsArgs = {
+      ...spellChoiceArgs(),
       effectiveClassDocument: wizardClassDocument(),
       effectiveSchoolDocument: battleMagicSchoolDocument(),
-    });
+    };
 
     expect(wizardContributor.slug).toBe("wizard");
-    expect(steps.map((step) => step.slotId)).toEqual([
-      "spell-choice-wizard-spellbook-cantrips-level-1",
-      "spell-choice-wizard-spellbook-rank-1-level-1",
-      "spell-choice-wizard-curriculum-rank-1-level-1",
-    ]);
+    await expect(wizardContributor.buildSpellChoiceSteps?.(args)).resolves.toEqual(delegatedSteps);
+    expect(buildWizardSpellChoiceSteps).toHaveBeenCalledWith({
+      draft: args.draft,
+      currentLevel: args.currentLevel,
+      targetLevel: args.targetLevel,
+      effectiveClassDocument: args.effectiveClassDocument,
+      effectiveSchoolDocument: args.effectiveSchoolDocument,
+      extractSlug: args.extractSlug,
+      readExistingSpellChoiceSelections: args.readExistingSpellChoiceSelections,
+      classSlug: "wizard",
+    });
+    expect(buildClericSpellChoiceSteps).not.toHaveBeenCalled();
   });
 
-  it("routes cleric spell-choice behavior through the contributor seam", async () => {
-    const steps = await clericContributor.buildPlanSteps({
-      ...baseArgs(),
+  it("delegates cleric spell-choice steps to the cleric spell-choice builder", async () => {
+    const delegatedSteps = [step("cleric-step")];
+    buildClericSpellChoiceSteps.mockReturnValue(delegatedSteps);
+    const args: BuildClassSpellChoiceStepsArgs = {
+      ...spellChoiceArgs(),
       effectiveClassDocument: clericClassDocument(),
       effectiveDeityDocument: deityDocument(),
-    });
+    };
 
     expect(clericContributor.slug).toBe("cleric");
-    expect(steps.map((step) => step.slotId)).toEqual([
-      "spell-choice-cleric-cantrips-level-1",
-      "spell-choice-cleric-rank-1-level-1",
-    ]);
-    expect(steps[1]?.spellChoice?.additionalAllowedSpellNames).toEqual(["Burning Hands"]);
+    await expect(clericContributor.buildSpellChoiceSteps?.(args)).resolves.toEqual(delegatedSteps);
+    expect(buildClericSpellChoiceSteps).toHaveBeenCalledWith({
+      draft: args.draft,
+      effectiveClassDocument: args.effectiveClassDocument,
+      effectiveDeityDocument: args.effectiveDeityDocument,
+      readExistingSpellChoiceSelections: args.readExistingSpellChoiceSelections,
+      classSlug: "cleric",
+    });
+    expect(buildWizardSpellChoiceSteps).not.toHaveBeenCalled();
   });
 });
 
-function baseArgs(): BuildClassContributionArgs {
+function spellChoiceArgs(): BuildClassSpellChoiceStepsArgs {
   return {
     draft: createEmptyDraft(1),
     currentLevel: 1,
@@ -50,10 +82,8 @@ function baseArgs(): BuildClassContributionArgs {
     effectiveClassDocument: wizardClassDocument(),
     effectiveDeityDocument: null,
     effectiveSchoolDocument: null,
-    deps: {
-      extractSlug,
-      readExistingSpellChoiceSelections: () => [],
-    },
+    extractSlug,
+    readExistingSpellChoiceSelections: () => [],
   };
 }
 
@@ -115,5 +145,11 @@ function deityDocument() {
         1: "Compendium.pf2e.spells-srd.Item.burning-hands",
       },
     },
+  };
+}
+
+function step(slotId: string) {
+  return {
+    slotId,
   };
 }

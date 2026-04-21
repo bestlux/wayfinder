@@ -17,6 +17,8 @@ import {
   buildClassGrantedItemSteps,
   buildClassTrainingSteps,
 } from "../class-choice-service.js";
+import { getClassContributor } from "../classes/registry.js";
+import type { ClassContributor } from "../classes/types.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
 import {
   readExistingBranchSelection,
@@ -24,6 +26,11 @@ import {
   readExistingGrantedSelection,
 } from "../existing-selection-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
+import {
+  asSpellChoiceClassDocument,
+  asSpellChoiceDeityDocument,
+  asSpellChoiceSchoolDocument,
+} from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
 
 type ActorSnapshot = ReturnType<typeof inspectActor>;
@@ -55,6 +62,7 @@ interface BuildWayfinderAppPlanDependencies {
   readExistingSpellChoiceSelections: (actor: ActorLike, choice: SpellChoiceMeta) => SelectionRef[];
   fetchSelectionDocument: (selection: SelectionRef) => Promise<DocumentLike | null>;
   extractDocumentSlug: (document: DocumentLike) => string | null;
+  getClassContributor: (classSlug: string | null) => ClassContributor;
 }
 
 const DEFAULT_DEPS: BuildWayfinderAppPlanDependencies = {
@@ -72,6 +80,7 @@ const DEFAULT_DEPS: BuildWayfinderAppPlanDependencies = {
   readExistingSpellChoiceSelections,
   fetchSelectionDocument,
   extractDocumentSlug,
+  getClassContributor,
 };
 
 export async function buildWayfinderAppPlan(
@@ -122,17 +131,42 @@ export async function buildWayfinderAppPlan(
         localize: args.localize,
         readExistingClassChoiceSelection: (choice) => deps.readExistingClassChoiceSelection(args.actor, choice),
       }),
-    buildSpellChoiceSteps: async (planSnapshot, planDraft, targetLevel) =>
-      deps.buildSpellChoiceSteps({
+    buildSpellChoiceSteps: async (planSnapshot, planDraft, targetLevel) => {
+      const effectiveClassDocument = asSpellChoiceClassDocument(await args.resolveDocument("class"));
+      if (!effectiveClassDocument) {
+        return [];
+      }
+
+      const effectiveDeityDocument = asSpellChoiceDeityDocument(await args.resolveDocument("deity"));
+      const effectiveSchoolDocument = asSpellChoiceSchoolDocument(await args.resolveArcaneSchoolDocument());
+      const readExistingSelections = (choice: SpellChoiceMeta) =>
+        deps.readExistingSpellChoiceSelections(args.actor, choice);
+      const contributor = deps.getClassContributor(deps.extractDocumentSlug(effectiveClassDocument));
+
+      if (contributor.buildSpellChoiceSteps) {
+        return contributor.buildSpellChoiceSteps({
+          draft: planDraft,
+          currentLevel: planSnapshot.level,
+          targetLevel,
+          effectiveClassDocument,
+          effectiveDeityDocument,
+          effectiveSchoolDocument,
+          extractSlug: deps.extractDocumentSlug,
+          readExistingSpellChoiceSelections: readExistingSelections,
+        });
+      }
+
+      return deps.buildSpellChoiceSteps({
         draft: planDraft,
         currentLevel: planSnapshot.level,
-        effectiveClassDocument: await args.resolveDocument("class"),
-        effectiveDeityDocument: await args.resolveDocument("deity"),
-        effectiveSchoolDocument: await args.resolveArcaneSchoolDocument(),
+        effectiveClassDocument,
+        effectiveDeityDocument,
+        effectiveSchoolDocument,
         targetLevel,
         extractSlug: deps.extractDocumentSlug,
-        readExistingSpellChoiceSelections: (choice) => deps.readExistingSpellChoiceSelections(args.actor, choice),
-      }),
+        readExistingSpellChoiceSelections: readExistingSelections,
+      });
+    },
   });
 }
 

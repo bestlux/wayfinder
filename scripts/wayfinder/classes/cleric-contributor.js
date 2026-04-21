@@ -2,12 +2,12 @@ import { buildClericSpellChoiceSteps } from "../spell-choice/cleric-step-builder
 const CLERIC_CLASS_SLUG = "cleric";
 export const clericContributor = {
     slug: CLERIC_CLASS_SLUG,
-    async buildPlanSteps(args) {
+    async buildSpellChoiceSteps(args) {
         return buildClericSpellChoiceSteps({
             draft: args.draft,
             effectiveClassDocument: args.effectiveClassDocument,
             effectiveDeityDocument: args.effectiveDeityDocument,
-            readExistingSpellChoiceSelections: args.deps.readExistingSpellChoiceSelections,
+            readExistingSpellChoiceSelections: args.readExistingSpellChoiceSelections,
             classSlug: CLERIC_CLASS_SLUG,
         });
     },

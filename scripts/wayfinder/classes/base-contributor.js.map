@@ -1,1 +1,1 @@
-{"version":3,"file":"base-contributor.js","sourceRoot":"","sources":["../../../src/wayfinder/classes/base-contributor.ts"],"names":[],"mappings":"AAEA,MAAM,CAAC,MAAM,eAAe,GAAqB;IAC/C,IAAI,EAAE,MAAM;IACZ,KAAK,CAAC,cAAc;QAClB,OAAO,EAAE,CAAC;IACZ,CAAC;CACF,CAAC"}
+{"version":3,"file":"base-contributor.js","sourceRoot":"","sources":["../../../src/wayfinder/classes/base-contributor.ts"],"names":[],"mappings":"AAEA,MAAM,CAAC,MAAM,eAAe,GAAqB;IAC/C,IAAI,EAAE,MAAM;CACb,CAAC"}

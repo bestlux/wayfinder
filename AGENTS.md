@@ -12,6 +12,7 @@ Repo-local instructions for `D:\Source\foundryvtt\character-gen`.
 
 ## Validation
 
+- Prefer `npm run check` for a full pre-close validation pass.
 - Required before closing meaningful work:
   - `npm run format:check`
   - `npm run lint`
@@ -29,14 +30,19 @@ Repo-local instructions for `D:\Source\foundryvtt\character-gen`.
 ## Wayfinder Structure
 
 - `src/wayfinder-app.ts` is the public entrypoint. Keep it thin.
-- `src/wayfinder/app-shell.ts` owns Foundry lifecycle and actor-bound mutations.
+- `src/wayfinder/app-shell.ts` owns Foundry lifecycle and actor-bound mutations, but new workflow policy should usually land in `src/wayfinder/application/` or `src/wayfinder/domain/` first.
+- `src/wayfinder/domain/` owns typed step, decision, slot-id, boost, and invalidation rules.
+- `src/wayfinder/application/` owns actor-aware orchestration such as plan building, pane assembly, selection commands, invalidation, and draft lifecycle.
+- `src/actor-updater/` owns apply-side mutation modules. Keep `src/actor-updater.ts` as the orchestration entrypoint.
+- `src/build-state.ts` and `src/shared/` are the preferred seams for typed Foundry/PF2E document normalization and reusable helpers.
 - New pane view-model logic belongs in `src/wayfinder/panes/`.
-- Step evaluation and progression assembly belong in `src/wayfinder/plan-service.ts`.
+- `src/wayfinder/plan-service.ts` is the low-level progression/evaluation helper layer; app-facing plan assembly belongs in `src/wayfinder/application/wayfinder-plan-builder-service.ts`.
 - Formatting, action parsing, and other reusable app helpers belong in focused internal modules under `src/wayfinder/`.
 
 ## Editing Rules
 
 - Read generated and source files before editing either.
 - Prefer extending existing internal modules over adding more private methods to `app-shell`.
+- Prefer extracting new focused modules over growing `build-state.ts`, `class-choice-service.ts`, or `spell-choice-service.ts` when a responsibility starts to branch.
 - Preserve current UX unless the task explicitly includes UI changes.
 - Keep changes scoped; avoid unrelated cleanup while touching generated output.

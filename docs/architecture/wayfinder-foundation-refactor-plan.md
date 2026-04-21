@@ -1,5 +1,7 @@
 # Wayfinder Foundation Refactor Plan
 
+> Status: Stages 1-7 of this plan are complete on `master` as of 2026-04-20. Keep this document as the historical foundation roadmap; use `docs/architecture/wayfinder-post-foundation-plan.md` for follow-on slices and extension guidance.
+
 ## Goal
 
 Turn Wayfinder from a promising vertical slice into a maintainable, testable, and aggressively extensible module with clear boundaries between:

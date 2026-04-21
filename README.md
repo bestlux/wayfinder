@@ -13,6 +13,17 @@ This first implementation is a working vertical slice with:
 - Actor flag persistence for resumable drafts
 - Guided manual checkpoints for ability boosts and skill increases where the module intentionally defers to PF2E/native sheet workflows instead of forcing brittle automation
 
+## Architecture
+
+Wayfinder now has explicit seams for future growth:
+
+- `src/wayfinder/domain/` owns typed workflow rules such as step kinds, decisions, slot IDs, completion, and invalidation.
+- `src/wayfinder/application/` owns actor-aware orchestration such as plan building, pane assembly, selection commands, and draft lifecycle.
+- `src/actor-updater/` owns apply-side mutations and spellcasting synchronization.
+- `src/build-state.ts` plus `src/shared/` own effective document resolution and reusable Foundry/PF2E-neutral helpers.
+
+When extending the module, prefer adding new focused services and tests in those seams instead of pushing more policy into `src/wayfinder/app-shell.ts` or the large choice services.
+
 ## Development
 
 Install dependencies and build:

@@ -5,7 +5,6 @@ import { getClassContributor } from "../classes/registry.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
 import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, } from "../existing-selection-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
-import { asSpellChoiceClassDocument, asSpellChoiceDeityDocument, asSpellChoiceSchoolDocument, } from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
 const DEFAULT_DEPS = {
     buildWayfinderPlan,
@@ -65,26 +64,11 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             readExistingClassChoiceSelection: (choice) => deps.readExistingClassChoiceSelection(args.actor, choice),
         }),
         buildSpellChoiceSteps: async (planSnapshot, planDraft, targetLevel) => {
-            const effectiveClassDocument = asSpellChoiceClassDocument(await args.resolveDocument("class"));
-            if (!effectiveClassDocument) {
-                return [];
-            }
-            const effectiveDeityDocument = asSpellChoiceDeityDocument(await args.resolveDocument("deity"));
-            const effectiveSchoolDocument = asSpellChoiceSchoolDocument(await args.resolveArcaneSchoolDocument());
-            const readExistingSelections = (choice) => deps.readExistingSpellChoiceSelections(args.actor, choice);
+            const effectiveClassDocument = await args.resolveDocument("class");
+            const effectiveDeityDocument = await args.resolveDocument("deity");
+            const effectiveSchoolDocument = await args.resolveArcaneSchoolDocument();
             const contributor = deps.getClassContributor(deps.extractDocumentSlug(effectiveClassDocument));
-            if (contributor.buildSpellChoiceSteps) {
-                return contributor.buildSpellChoiceSteps({
-                    draft: planDraft,
-                    currentLevel: planSnapshot.level,
-                    targetLevel,
-                    effectiveClassDocument,
-                    effectiveDeityDocument,
-                    effectiveSchoolDocument,
-                    extractSlug: deps.extractDocumentSlug,
-                    readExistingSpellChoiceSelections: readExistingSelections,
-                });
-            }
+            const readExistingSelections = (choice) => deps.readExistingSpellChoiceSelections(args.actor, choice);
             return deps.buildSpellChoiceSteps({
                 draft: planDraft,
                 currentLevel: planSnapshot.level,
@@ -94,7 +78,7 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
                 targetLevel,
                 extractSlug: deps.extractDocumentSlug,
                 readExistingSpellChoiceSelections: readExistingSelections,
-            });
+            }, contributor);
         },
     });
 }

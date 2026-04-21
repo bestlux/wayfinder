@@ -26,11 +26,6 @@ import {
   readExistingGrantedSelection,
 } from "../existing-selection-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
-import {
-  asSpellChoiceClassDocument,
-  asSpellChoiceDeityDocument,
-  asSpellChoiceSchoolDocument,
-} from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
 
 type ActorSnapshot = ReturnType<typeof inspectActor>;
@@ -132,40 +127,26 @@ export async function buildWayfinderAppPlan(
         readExistingClassChoiceSelection: (choice) => deps.readExistingClassChoiceSelection(args.actor, choice),
       }),
     buildSpellChoiceSteps: async (planSnapshot, planDraft, targetLevel) => {
-      const effectiveClassDocument = asSpellChoiceClassDocument(await args.resolveDocument("class"));
-      if (!effectiveClassDocument) {
-        return [];
-      }
-
-      const effectiveDeityDocument = asSpellChoiceDeityDocument(await args.resolveDocument("deity"));
-      const effectiveSchoolDocument = asSpellChoiceSchoolDocument(await args.resolveArcaneSchoolDocument());
+      const effectiveClassDocument = await args.resolveDocument("class");
+      const effectiveDeityDocument = await args.resolveDocument("deity");
+      const effectiveSchoolDocument = await args.resolveArcaneSchoolDocument();
+      const contributor = deps.getClassContributor(deps.extractDocumentSlug(effectiveClassDocument));
       const readExistingSelections = (choice: SpellChoiceMeta) =>
         deps.readExistingSpellChoiceSelections(args.actor, choice);
-      const contributor = deps.getClassContributor(deps.extractDocumentSlug(effectiveClassDocument));
 
-      if (contributor.buildSpellChoiceSteps) {
-        return contributor.buildSpellChoiceSteps({
+      return deps.buildSpellChoiceSteps(
+        {
           draft: planDraft,
           currentLevel: planSnapshot.level,
-          targetLevel,
           effectiveClassDocument,
           effectiveDeityDocument,
           effectiveSchoolDocument,
+          targetLevel,
           extractSlug: deps.extractDocumentSlug,
           readExistingSpellChoiceSelections: readExistingSelections,
-        });
-      }
-
-      return deps.buildSpellChoiceSteps({
-        draft: planDraft,
-        currentLevel: planSnapshot.level,
-        effectiveClassDocument,
-        effectiveDeityDocument,
-        effectiveSchoolDocument,
-        targetLevel,
-        extractSlug: deps.extractDocumentSlug,
-        readExistingSpellChoiceSelections: readExistingSelections,
-      });
+        },
+        contributor
+      );
     },
   });
 }

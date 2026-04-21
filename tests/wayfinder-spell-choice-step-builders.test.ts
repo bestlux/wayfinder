@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import type { SelectionRef } from "../src/types";
+import { getClassContributor } from "../src/wayfinder/classes/registry";
 import { buildSpellChoiceSteps } from "../src/wayfinder/spell-choice/step-builders";
 import type { SpellChoiceDocumentLike } from "../src/wayfinder/spell-choice/types";
 
 describe("wayfinder spell-choice step builders", () => {
   it("builds wizard spellbook steps for initial choices and later spellbook growth", async () => {
-    const steps = await buildSpellChoiceSteps({
+    const steps = await buildClassSpellChoiceSteps({
       draft: createEmptyDraft(3),
       currentLevel: 1,
       effectiveClassDocument: wizardClassDocument(),
@@ -44,7 +45,7 @@ describe("wayfinder spell-choice step builders", () => {
   });
 
   it("parses curriculum spells from labeled compendium UUIDs", async () => {
-    const steps = await buildSpellChoiceSteps({
+    const steps = await buildClassSpellChoiceSteps({
       draft: createEmptyDraft(1),
       currentLevel: 1,
       effectiveClassDocument: wizardClassDocument(),
@@ -77,7 +78,7 @@ describe("wayfinder spell-choice step builders", () => {
   });
 
   it("suppresses resolved wizard spell-choice steps when actor state already covers them", async () => {
-    const steps = await buildSpellChoiceSteps({
+    const steps = await buildClassSpellChoiceSteps({
       draft: createEmptyDraft(1),
       currentLevel: 1,
       effectiveClassDocument: wizardClassDocument(),
@@ -108,7 +109,7 @@ describe("wayfinder spell-choice step builders", () => {
       selection("spell-choice-wizard-spellbook-cantrips-level-1", "drafted-cantrip", "Drafted Cantrip"),
     ];
 
-    const steps = await buildSpellChoiceSteps({
+    const steps = await buildClassSpellChoiceSteps({
       draft,
       currentLevel: 1,
       effectiveClassDocument: wizardClassDocument(),
@@ -131,7 +132,7 @@ describe("wayfinder spell-choice step builders", () => {
   });
 
   it("switches to the unified-theory bonus spell instead of curriculum spell steps", async () => {
-    const steps = await buildSpellChoiceSteps({
+    const steps = await buildClassSpellChoiceSteps({
       draft: createEmptyDraft(3),
       currentLevel: 1,
       effectiveClassDocument: wizardClassDocument(),
@@ -161,7 +162,7 @@ describe("wayfinder spell-choice step builders", () => {
   });
 
   it("builds cleric initial preparation steps and carries deity spell access", async () => {
-    const steps = await buildSpellChoiceSteps({
+    const steps = await buildClassSpellChoiceSteps({
       draft: createEmptyDraft(1),
       currentLevel: 1,
       effectiveClassDocument: clericClassDocument(),
@@ -206,7 +207,7 @@ describe("wayfinder spell-choice step builders", () => {
   });
 
   it("returns no steps for unknown class slugs", async () => {
-    const steps = await buildSpellChoiceSteps({
+    const steps = await buildClassSpellChoiceSteps({
       draft: createEmptyDraft(1),
       currentLevel: 1,
       effectiveClassDocument: {
@@ -225,6 +226,13 @@ describe("wayfinder spell-choice step builders", () => {
     expect(steps).toEqual([]);
   });
 });
+
+async function buildClassSpellChoiceSteps(params: Parameters<typeof buildSpellChoiceSteps>[0]) {
+  return buildSpellChoiceSteps(
+    params,
+    getClassContributor(extractSlug(params.effectiveClassDocument as SpellChoiceDocumentLike | null))
+  );
+}
 
 function extractSlug(document: SpellChoiceDocumentLike | null): string | null {
   return typeof document?.system?.slug === "string" ? document.system.slug : null;

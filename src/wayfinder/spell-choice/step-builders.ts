@@ -1,42 +1,31 @@
 import type { PendingStep } from "../../types.js";
-import { buildClericSpellChoiceSteps } from "./cleric-step-builder.js";
+import type { ClassContributor } from "../classes/types.js";
 import {
   asSpellChoiceClassDocument,
   asSpellChoiceDeityDocument,
   asSpellChoiceSchoolDocument,
   type BuildSpellChoiceStepsParams,
 } from "./types.js";
-import { buildWizardSpellChoiceSteps } from "./wizard-step-builder.js";
 
-export async function buildSpellChoiceSteps(params: BuildSpellChoiceStepsParams): Promise<PendingStep[]> {
+export async function buildSpellChoiceSteps(
+  params: BuildSpellChoiceStepsParams,
+  contributor?: ClassContributor
+): Promise<PendingStep[]> {
   const effectiveClassDocument = asSpellChoiceClassDocument(params.effectiveClassDocument);
   if (!effectiveClassDocument) {
     return [];
   }
 
-  const classSlug = params.extractSlug(effectiveClassDocument);
-  if (classSlug === "wizard") {
-    return buildWizardSpellChoiceSteps({
+  return (
+    (await contributor?.buildSpellChoiceSteps?.({
       draft: params.draft,
       currentLevel: params.currentLevel,
-      effectiveClassDocument,
-      effectiveSchoolDocument: asSpellChoiceSchoolDocument(params.effectiveSchoolDocument),
       targetLevel: params.targetLevel,
-      extractSlug: params.extractSlug,
-      readExistingSpellChoiceSelections: params.readExistingSpellChoiceSelections,
-      classSlug,
-    });
-  }
-
-  if (classSlug === "cleric") {
-    return buildClericSpellChoiceSteps({
-      draft: params.draft,
       effectiveClassDocument,
       effectiveDeityDocument: asSpellChoiceDeityDocument(params.effectiveDeityDocument),
+      effectiveSchoolDocument: asSpellChoiceSchoolDocument(params.effectiveSchoolDocument),
+      extractSlug: params.extractSlug,
       readExistingSpellChoiceSelections: params.readExistingSpellChoiceSelections,
-      classSlug,
-    });
-  }
-
-  return [];
+    })) ?? []
+  );
 }

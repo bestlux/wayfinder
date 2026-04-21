@@ -21,6 +21,7 @@ Wayfinder now has explicit seams for future growth:
 - `src/wayfinder/application/` owns actor-aware orchestration such as plan building, pane assembly, selection commands, and draft lifecycle.
 - `src/actor-updater/` owns apply-side mutations and spellcasting synchronization.
 - `src/build-state.ts` plus `src/shared/` own effective document resolution and reusable Foundry/PF2E-neutral helpers.
+- For new class-specific flows, see `docs/architecture/adding-a-class-flow.md`.
 
 When extending the module, prefer adding new focused services and tests in those seams instead of pushing more policy into `src/wayfinder/app-shell.ts` or the large choice services.
 

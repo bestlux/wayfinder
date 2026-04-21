@@ -59,6 +59,7 @@ describe("wayfinder class rule discovery", () => {
           level: { value: 1 },
           rules: [
             { key: "ChoiceSet", flag: "deity", choices: { itemType: "deity" } },
+            { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.domain}" },
             { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.deity}" },
           ],
         },
@@ -72,6 +73,7 @@ describe("wayfinder class rule discovery", () => {
       flag: "deity",
       classSlug: "cleric",
       slotId: "deity-level-1",
+      grantRuleIndex: 2,
     });
 
     expect(
@@ -82,7 +84,10 @@ describe("wayfinder class rule discovery", () => {
           system: {
             category: "classfeature",
             level: { value: 1 },
-            rules: [{ key: "ChoiceSet", flag: "deity", choices: { itemType: "deity" } }],
+            rules: [
+              { key: "ChoiceSet", flag: "deity", choices: { itemType: "deity" } },
+              { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.domain}" },
+            ],
           },
         },
         selectorSelection,
@@ -91,21 +96,52 @@ describe("wayfinder class rule discovery", () => {
     ).toBeNull();
   });
 
-  it("filters class-choice options by roll options", () => {
+  it("filters class-choice options by roll options and falls back through slug and rollOption keys", () => {
     const choiceMeta = discoverClassChoiceMeta({
       sourceDocument: {
         type: "feat",
-        name: "Sanctification",
+        name: "Champion's Deity",
         system: {
           category: "classfeature",
           level: { value: 1 },
           rules: [
             {
               key: "ChoiceSet",
-              flag: "sanctification",
+              slug: "sanctification",
               choices: [
-                { value: "holy", label: "Holy", predicate: "deity:primary:sanctification:can:holy" },
-                { value: "unholy", label: "Unholy", predicate: "deity:primary:sanctification:can:unholy" },
+                {
+                  value: "holy",
+                  label: "Holy",
+                  predicate: [
+                    { or: ["deity:primary:sanctification:can:holy", "deity:primary:sanctification:must:holy"] },
+                  ],
+                },
+                {
+                  value: "unholy",
+                  label: "Unholy",
+                  predicate: [
+                    {
+                      or: ["deity:primary:sanctification:can:unholy", "deity:primary:sanctification:must:unholy"],
+                    },
+                  ],
+                },
+                {
+                  value: "none",
+                  label: "None",
+                  predicate: [
+                    {
+                      nor: ["deity:primary:sanctification:must:holy", "deity:primary:sanctification:must:unholy"],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              key: "ChoiceSet",
+              rollOption: "divineFont",
+              choices: [
+                { value: "heal", label: "Heal", predicate: "deity:primary:font:heal" },
+                { value: "harm", label: "Harm", predicate: "deity:primary:font:harm" },
               ],
             },
           ],
@@ -115,14 +151,22 @@ describe("wayfinder class rule discovery", () => {
       classSlug: "cleric",
       extractSlug,
       localize: (value) => value,
-      rollOptions: new Set(["deity:primary:sanctification:can:holy"]),
+      rollOptions: new Set(["deity:primary:sanctification:can:holy", "deity:primary:font:heal"]),
     });
 
     expect(choiceMeta).toMatchObject([
       {
         flag: "sanctification",
         dependsOn: "deity",
-        options: [{ value: "holy", label: "Holy" }],
+        options: [
+          { value: "holy", label: "Holy" },
+          { value: "none", label: "None" },
+        ],
+      },
+      {
+        flag: "divineFont",
+        dependsOn: "deity",
+        options: [{ value: "heal", label: "Heal" }],
       },
     ]);
   });

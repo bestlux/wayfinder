@@ -13,7 +13,6 @@ import {
   buildWayfinderAppPlan,
   findPlanStepBySlotId,
 } from "../src/wayfinder/application/wayfinder-plan-builder-service";
-import type { ClassContributor } from "../src/wayfinder/classes/types";
 
 describe("wayfinder plan builder service", () => {
   it("assembles the actor-facing plan builders with resolved documents and actor readers", async () => {
@@ -126,54 +125,41 @@ describe("wayfinder plan builder service", () => {
       ).toBe("holy");
       return [step("class-choice-wizard-thesis-level-1")];
     });
-    const contributor: ClassContributor = {
-      slug: "wizard",
-      buildSpellChoiceSteps: vi.fn(async (params) => {
-        expect(params.draft).toBe(draft);
-        expect(params.currentLevel).toBe(snapshot.level);
-        expect(params.effectiveClassDocument).toBe(classDocument);
-        expect(params.effectiveDeityDocument).toBe(deityDocument);
-        expect(params.effectiveSchoolDocument).toBe(schoolDocument);
-        expect(
-          params.readExistingSpellChoiceSelections({
-            slotId: "spell-choice-wizard-level-1",
-            sourcePackId: "test.pack",
-            sourceDocumentId: "spellbook",
-            sourceUuid: "Compendium.test.pack.Item.spellbook",
-            sourceName: "Spellbook",
-            classSlug: "wizard",
-            dependsOn: "class",
-            destination: {
-              type: "spellbook",
-              key: "wizard-arcane-prepared",
-              label: "Wizard spellbook",
-              entryName: "Wizard spellbook",
-              tradition: "arcane",
-              ability: "int",
-              prepared: "prepared",
-            },
-            count: 1,
-            minRank: 1,
-            maxRank: 1,
-            cantrip: false,
-            curriculumSpellNames: [],
-            additionalAllowedSpellNames: [],
-            restrictToCommon: false,
-          })
-        ).toHaveLength(1);
-        return [step("spell-choice-wizard-level-1")];
-      }),
-    };
-    const buildSpellChoiceSteps = vi.fn(async (params, receivedContributor) => {
+    const buildSpellChoiceSteps = vi.fn(async (params) => {
       expect(params.draft).toBe(draft);
       expect(params.currentLevel).toBe(snapshot.level);
       expect(params.effectiveClassDocument).toBe(classDocument);
       expect(params.effectiveDeityDocument).toBe(deityDocument);
       expect(params.effectiveSchoolDocument).toBe(schoolDocument);
-      expect(receivedContributor).toBe(contributor);
-      return receivedContributor?.buildSpellChoiceSteps?.(params) ?? [];
+      expect(
+        params.readExistingSpellChoiceSelections({
+          slotId: "spell-choice-wizard-level-1",
+          sourcePackId: "test.pack",
+          sourceDocumentId: "spellbook",
+          sourceUuid: "Compendium.test.pack.Item.spellbook",
+          sourceName: "Spellbook",
+          classSlug: "wizard",
+          dependsOn: "class",
+          destination: {
+            type: "spellbook",
+            key: "wizard-arcane-prepared",
+            label: "Wizard spellbook",
+            entryName: "Wizard spellbook",
+            tradition: "arcane",
+            ability: "int",
+            prepared: "prepared",
+          },
+          count: 1,
+          minRank: 1,
+          maxRank: 1,
+          cantrip: false,
+          curriculumSpellNames: [],
+          additionalAllowedSpellNames: [],
+          restrictToCommon: false,
+        })
+      ).toHaveLength(1);
+      return [step("spell-choice-wizard-level-1")];
     });
-    const getClassContributor = vi.fn((_classSlug: string | null): ClassContributor => contributor);
 
     const buildWayfinderPlan = vi.fn(async (receivedSnapshot, receivedDraft, deps) => {
       expect(receivedSnapshot).toBe(snapshot);
@@ -222,7 +208,6 @@ describe("wayfinder plan builder service", () => {
           }
           return typeof document.slug === "string" ? document.slug : null;
         },
-        getClassContributor,
       }
     );
 
@@ -237,9 +222,7 @@ describe("wayfinder plan builder service", () => {
     expect(resolveDocument).toHaveBeenCalledWith("class");
     expect(resolveDocument).toHaveBeenCalledWith("deity");
     expect(resolveArcaneSchoolDocument).toHaveBeenCalledTimes(1);
-    expect(getClassContributor).toHaveBeenCalledWith("wizard");
     expect(buildSpellChoiceSteps).toHaveBeenCalledTimes(1);
-    expect(contributor.buildSpellChoiceSteps).toHaveBeenCalledTimes(1);
     expect(buildClassFeatSteps).toHaveBeenCalledWith({
       effectiveClassDocument: classDocument,
       targetLevel: 4,
@@ -294,7 +277,6 @@ describe("wayfinder plan builder service", () => {
         readExistingSpellChoiceSelections: () => [],
         fetchSelectionDocument: async () => null,
         extractDocumentSlug: () => null,
-        getClassContributor: () => ({ slug: "base" }),
       }
     );
 

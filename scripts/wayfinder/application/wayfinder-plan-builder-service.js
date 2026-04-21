@@ -1,7 +1,6 @@
 import { fetchSelectionDocument } from "../../pack-service.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassTrainingSteps, } from "../class-choice-service.js";
-import { getClassContributor } from "../classes/registry.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
 import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, } from "../existing-selection-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
@@ -21,7 +20,6 @@ const DEFAULT_DEPS = {
     readExistingSpellChoiceSelections,
     fetchSelectionDocument,
     extractDocumentSlug,
-    getClassContributor,
 };
 export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
     return deps.buildWayfinderPlan(args.snapshot, args.draft, {
@@ -67,7 +65,6 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             const effectiveClassDocument = await args.resolveDocument("class");
             const effectiveDeityDocument = await args.resolveDocument("deity");
             const effectiveSchoolDocument = await args.resolveArcaneSchoolDocument();
-            const contributor = deps.getClassContributor(deps.extractDocumentSlug(effectiveClassDocument));
             const readExistingSelections = (choice) => deps.readExistingSpellChoiceSelections(args.actor, choice);
             return deps.buildSpellChoiceSteps({
                 draft: planDraft,
@@ -78,7 +75,7 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
                 targetLevel,
                 extractSlug: deps.extractDocumentSlug,
                 readExistingSpellChoiceSelections: readExistingSelections,
-            }, contributor);
+            });
         },
     });
 }

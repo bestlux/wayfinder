@@ -17,8 +17,6 @@ import {
   buildClassGrantedItemSteps,
   buildClassTrainingSteps,
 } from "../class-choice-service.js";
-import { getClassContributor } from "../classes/registry.js";
-import type { ClassContributor } from "../classes/types.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
 import {
   readExistingBranchSelection,
@@ -57,7 +55,6 @@ interface BuildWayfinderAppPlanDependencies {
   readExistingSpellChoiceSelections: (actor: ActorLike, choice: SpellChoiceMeta) => SelectionRef[];
   fetchSelectionDocument: (selection: SelectionRef) => Promise<DocumentLike | null>;
   extractDocumentSlug: (document: DocumentLike) => string | null;
-  getClassContributor: (classSlug: string | null) => ClassContributor;
 }
 
 const DEFAULT_DEPS: BuildWayfinderAppPlanDependencies = {
@@ -75,7 +72,6 @@ const DEFAULT_DEPS: BuildWayfinderAppPlanDependencies = {
   readExistingSpellChoiceSelections,
   fetchSelectionDocument,
   extractDocumentSlug,
-  getClassContributor,
 };
 
 export async function buildWayfinderAppPlan(
@@ -130,23 +126,19 @@ export async function buildWayfinderAppPlan(
       const effectiveClassDocument = await args.resolveDocument("class");
       const effectiveDeityDocument = await args.resolveDocument("deity");
       const effectiveSchoolDocument = await args.resolveArcaneSchoolDocument();
-      const contributor = deps.getClassContributor(deps.extractDocumentSlug(effectiveClassDocument));
       const readExistingSelections = (choice: SpellChoiceMeta) =>
         deps.readExistingSpellChoiceSelections(args.actor, choice);
 
-      return deps.buildSpellChoiceSteps(
-        {
-          draft: planDraft,
-          currentLevel: planSnapshot.level,
-          effectiveClassDocument,
-          effectiveDeityDocument,
-          effectiveSchoolDocument,
-          targetLevel,
-          extractSlug: deps.extractDocumentSlug,
-          readExistingSpellChoiceSelections: readExistingSelections,
-        },
-        contributor
-      );
+      return deps.buildSpellChoiceSteps({
+        draft: planDraft,
+        currentLevel: planSnapshot.level,
+        effectiveClassDocument,
+        effectiveDeityDocument,
+        effectiveSchoolDocument,
+        targetLevel,
+        extractSlug: deps.extractDocumentSlug,
+        readExistingSpellChoiceSelections: readExistingSelections,
+      });
     },
   });
 }

@@ -7,7 +7,7 @@ import {
   type BuildSpellChoiceStepsParams,
 } from "./types.js";
 
-export async function buildSpellChoiceSteps(
+export async function buildSpellChoiceStepsForContributor(
   params: BuildSpellChoiceStepsParams,
   contributor?: ClassContributor
 ): Promise<PendingStep[]> {

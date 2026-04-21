@@ -1,5 +1,5 @@
 import { asSpellChoiceClassDocument, asSpellChoiceDeityDocument, asSpellChoiceSchoolDocument, } from "./types.js";
-export async function buildSpellChoiceSteps(params, contributor) {
+export async function buildSpellChoiceStepsForContributor(params, contributor) {
     const effectiveClassDocument = asSpellChoiceClassDocument(params.effectiveClassDocument);
     if (!effectiveClassDocument) {
         return [];

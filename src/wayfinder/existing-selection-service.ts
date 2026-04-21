@@ -1,11 +1,10 @@
+import type { BuildStateActorItem } from "../build-state/document-types.js";
 import { listActorItems } from "../build-state.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta } from "../types.js";
 
-interface ActorItemLike {
-  id?: unknown;
-  type?: unknown;
-  flags?: {
+interface ActorItemLike extends BuildStateActorItem {
+  flags?: BuildStateActorItem["flags"] & {
     pf2e?: {
       rulesSelections?: Record<string, unknown>;
       itemGrants?: Record<string, { id?: unknown }>;

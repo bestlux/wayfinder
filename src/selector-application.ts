@@ -258,17 +258,26 @@ async function ensureGrantedItem(
   grantPlan: SelectorGrantPlan,
   createEmbeddedSource: SelectorApplicationDependencies["createEmbeddedSource"]
 ): Promise<{ item: any | null; update: Record<string, unknown> | null; reusedExistingItem: boolean }> {
+  const selectorItemId = typeof selectorItem.id === "string" ? selectorItem.id : null;
+  if (!selectorItemId) {
+    return { item: null, update: null, reusedExistingItem: false };
+  }
+
   const existingGranted =
-    listActorItems(actor).find((item: any) => item?.flags?.pf2e?.grantedBy?.id === selectorItem.id) ?? null;
+    listActorItems(actor).find((item: any) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId) ?? null;
+  const existingGrantedId = typeof existingGranted?.id === "string" ? existingGranted.id : null;
+  if (existingGranted && !existingGrantedId) {
+    return { item: null, update: null, reusedExistingItem: false };
+  }
   const existingMatches = existingGranted && itemMatchesSourceId(existingGranted, grantPlan.selection.uuid);
   if (existingGranted && !existingMatches) {
-    await actor.deleteEmbeddedDocuments("Item", [existingGranted.id]);
+    await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
   }
 
   if (existingMatches) {
     return {
       item: existingGranted,
-      update: buildGrantedItemUpdate(existingGranted.id, selectorItem.id, grantPlan),
+      update: buildGrantedItemUpdate(existingGrantedId!, selectorItemId, grantPlan),
       reusedExistingItem: true,
     };
   }
@@ -283,7 +292,7 @@ async function ensureGrantedItem(
   source.flags.core.sourceId ??= grantPlan.selection.uuid;
   source.flags.pf2e ??= {};
   source.flags.pf2e.grantedBy = {
-    id: selectorItem.id,
+    id: selectorItemId,
     onDelete: "cascade",
   };
   source.flags[MODULE_ID] = {
@@ -300,7 +309,7 @@ async function ensureGrantedItem(
 
   return {
     item: createdItem,
-    update: grantPlan.updateCreatedGrant ? buildGrantedItemUpdate(createdItem.id, selectorItem.id, grantPlan) : null,
+    update: grantPlan.updateCreatedGrant ? buildGrantedItemUpdate(createdItem.id, selectorItemId, grantPlan) : null,
     reusedExistingItem: false,
   };
 }

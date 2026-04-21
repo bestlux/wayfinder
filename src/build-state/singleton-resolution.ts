@@ -32,7 +32,7 @@ export async function getEffectiveSingletonDocument(
   return toPlainDocument(sourceDocument ?? actorItem);
 }
 
-export function listActorItems(actor: unknown): any[] {
+export function listActorItems(actor: unknown): BuildStateActorItem[] {
   const items = (actor as BuildStateActor | null | undefined)?.items;
   if (Array.isArray(items)) {
     return items;

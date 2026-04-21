@@ -105,14 +105,21 @@ export default tseslint.config(
   },
   {
     files: [
+      "src/build-state.ts",
+      "src/build-state/**/*.ts",
       "src/actor-updater.ts",
       "src/actor-updater/**/*.ts",
       "src/shared/**/*.ts",
       "tests/support/**/*.ts",
       "src/wayfinder/application/**/*.ts",
+      "src/wayfinder/class-choice-service.ts",
+      "src/wayfinder/class-choice/**/*.ts",
       "src/wayfinder/domain/**/*.ts",
       "src/wayfinder/draft-decisions.ts",
       "src/wayfinder/invalidation.ts",
+      "src/wayfinder/existing-selection-service.ts",
+      "src/wayfinder/spell-choice-service.ts",
+      "src/wayfinder/spell-choice/**/*.ts",
       "src/wayfinder/slot-ids.ts",
     ],
     rules: {

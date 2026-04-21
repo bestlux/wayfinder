@@ -160,15 +160,23 @@ function pruneGrantRules(rules, policy) {
     return rules;
 }
 async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedSource) {
-    const existingGranted = listActorItems(actor).find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItem.id) ?? null;
+    const selectorItemId = typeof selectorItem.id === "string" ? selectorItem.id : null;
+    if (!selectorItemId) {
+        return { item: null, update: null, reusedExistingItem: false };
+    }
+    const existingGranted = listActorItems(actor).find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId) ?? null;
+    const existingGrantedId = typeof existingGranted?.id === "string" ? existingGranted.id : null;
+    if (existingGranted && !existingGrantedId) {
+        return { item: null, update: null, reusedExistingItem: false };
+    }
     const existingMatches = existingGranted && itemMatchesSourceId(existingGranted, grantPlan.selection.uuid);
     if (existingGranted && !existingMatches) {
-        await actor.deleteEmbeddedDocuments("Item", [existingGranted.id]);
+        await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
     }
     if (existingMatches) {
         return {
             item: existingGranted,
-            update: buildGrantedItemUpdate(existingGranted.id, selectorItem.id, grantPlan),
+            update: buildGrantedItemUpdate(existingGrantedId, selectorItemId, grantPlan),
             reusedExistingItem: true,
         };
     }
@@ -181,7 +189,7 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
     source.flags.core.sourceId ??= grantPlan.selection.uuid;
     source.flags.pf2e ??= {};
     source.flags.pf2e.grantedBy = {
-        id: selectorItem.id,
+        id: selectorItemId,
         onDelete: "cascade",
     };
     source.flags[MODULE_ID] = {
@@ -196,7 +204,7 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
     }
     return {
         item: createdItem,
-        update: grantPlan.updateCreatedGrant ? buildGrantedItemUpdate(createdItem.id, selectorItem.id, grantPlan) : null,
+        update: grantPlan.updateCreatedGrant ? buildGrantedItemUpdate(createdItem.id, selectorItemId, grantPlan) : null,
         reusedExistingItem: false,
     };
 }

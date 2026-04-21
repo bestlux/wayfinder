@@ -1,11 +1,17 @@
 import { inspectActor } from "../actor-inspector.js";
 import { applyDraftToActor } from "../actor-updater.js";
+import type {
+  BuildStateActorItem,
+  ResolvedBuildStateDocument,
+  SingletonItemType,
+} from "../build-state/document-types.js";
 import type { EffectiveBuildState } from "../build-state.js";
 import { getEffectiveBuildState, getEffectiveSingletonDocument, listActorItems } from "../build-state.js";
 import { MODULE_ID, MODULE_TITLE } from "../constants.js";
 import { createEmptyDraft, normalizeDraft } from "../draft-service.js";
 import { fetchSelectionDocument, getOptionsForStep, getPickerInfoState, resolveSelection } from "../pack-service.js";
 import { canUseWayfinder } from "../permissions.js";
+import type { SelectorActorLike } from "../selector-application.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import type { AbilityKey, DraftState, PendingStep } from "../types.js";
@@ -44,7 +50,7 @@ import {
   toggleSpellChoiceSelection,
 } from "./application/selection-command-service.js";
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
-import { buildWayfinderContext } from "./application/wayfinder-context-service.js";
+import { buildWayfinderContext, type WayfinderTemplateContext } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
 import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
@@ -52,6 +58,38 @@ import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
 import { getWayfinderStepStatus, isWayfinderStepComplete, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
 import type { ActivePane, ManualStepPane } from "./view-models.js";
+
+interface Pf2eConfigLike {
+  abilities?: Record<string, string>;
+  skills?: Record<string, unknown>;
+}
+
+interface WayfinderActorLike extends SelectorActorLike {
+  id: string;
+  name: string;
+  apps: Record<string, unknown>;
+  getFlag: (scope: string, key: string) => unknown;
+  update: (updates: Record<string, unknown>) => Promise<unknown>;
+}
+
+interface ArcaneSchoolDocumentLike {
+  type?: unknown;
+  system?: Record<string, unknown> & {
+    category?: unknown;
+    traits?: {
+      otherTags?: unknown;
+    };
+  };
+}
+
+type FetchedSelectionDocument = NonNullable<Awaited<ReturnType<typeof fetchSelectionDocument>>>;
+type ArcaneSchoolActorItemLike = BuildStateActorItem & ArcaneSchoolDocumentLike;
+type ArcaneSchoolSourceLike = FetchedSelectionDocument | ArcaneSchoolActorItemLike;
+type WayfinderGlobals = typeof globalThis & {
+  CONFIG?: {
+    PF2E?: Pf2eConfigLike;
+  };
+};
 
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(
   foundry.applications.api.ApplicationV2
@@ -78,7 +116,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     },
   };
 
-  actor: any;
+  actor: WayfinderActorLike;
   #draft: DraftState | null = null;
   #activeStepId: string | null = null;
   #searchByStepId = new Map<string, string>();
@@ -88,13 +126,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #recentlyInvalidatedStepIds = new Set<string>();
   #statusNote: string | null = null;
 
-  static open(actor: any): void {
+  static open(actor: WayfinderActorLike): void {
     if (!canUseWayfinder(actor)) {
       ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.OwnerOnly"));
       return;
     }
 
-    const existing = Object.values(actor.apps ?? {}).find((app: any) => app instanceof WayfinderApp);
+    const existing = Object.values(actor.apps).find((app): app is WayfinderApp => app instanceof WayfinderApp);
     if (existing) {
       existing.render(true);
       return;
@@ -103,7 +141,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     new WayfinderApp({ actor }).render(true);
   }
 
-  constructor(options: { actor: any }) {
+  constructor(options: { actor: WayfinderActorLike }) {
     super({
       uniqueId: `${MODULE_ID}-${options.actor.id}`,
     });
@@ -119,7 +157,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return `${MODULE_TITLE}: ${this.actor.name}`;
   }
 
-  async _prepareContext(): Promise<any> {
+  async _prepareContext(): Promise<WayfinderTemplateContext> {
     const snapshot = inspectActor(this.actor);
     const draft = this.#ensureDraft(snapshot.level);
     const plan = await this.#buildPlan(snapshot, draft);
@@ -155,7 +193,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     });
   }
 
-  async _onRender(context: any, options: any): Promise<void> {
+  async _onRender(context: unknown, options: unknown): Promise<void> {
     await super._onRender(context, options);
     const root = this.element;
     if (!(root instanceof HTMLElement)) {
@@ -175,7 +213,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     ).pendingSearchFocus;
   }
 
-  _tearDown(options: any): void {
+  _tearDown(options: unknown): void {
     super._tearDown(options);
     delete this.actor.apps[this.id];
   }
@@ -381,9 +419,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const skillPane = await buildSkillPane(step, this.#requireDraft(), {
       baseSkillRanks: inspectActor(this.actor).skillRanks,
       resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
-      configSkills:
-        (globalThis as typeof globalThis & { CONFIG?: { PF2E?: { skills?: Record<string, unknown> } } }).CONFIG?.PF2E
-          ?.skills ?? null,
+      configSkills: getPf2eConfig()?.skills ?? null,
       localize: (value) => game.i18n.localize(value),
       isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep),
     });
@@ -533,9 +569,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         return resolveSelection(value, selectionStep, optionContext);
       },
       selectionExistsOnActor: (selection) => {
-        return listActorItems(this.actor).some(
-          (item: any) => item?.type === "spell" && sourceIdOf(item) === selection.uuid
-        );
+        return listActorItems(this.actor).some((item) => item?.type === "spell" && sourceIdOf(item) === selection.uuid);
       },
     });
     await this.#finalizeSelectionCommand(result);
@@ -594,17 +628,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   #abilityLabel(attribute: AbilityKey): string {
-    const abilities = (globalThis as typeof globalThis & { CONFIG?: { PF2E?: any } }).CONFIG?.PF2E?.abilities;
+    const abilities = getPf2eConfig()?.abilities;
     return game.i18n.localize(abilities?.[attribute] ?? attribute.toUpperCase());
   }
 
-  async #resolveDraftOrActorDocument(
-    itemType: "ancestry" | "heritage" | "background" | "class" | "deity"
-  ): Promise<any | null> {
+  async #resolveDraftOrActorDocument(itemType: SingletonItemType): Promise<ResolvedBuildStateDocument | null> {
     return getEffectiveSingletonDocument(this.actor, this.#requireDraft(), itemType);
   }
 
-  async #resolveDraftOrActorArcaneSchoolDocument(): Promise<any | null> {
+  async #resolveDraftOrActorArcaneSchoolDocument(): Promise<ArcaneSchoolSourceLike | null> {
     const draftSelection = Object.values(this.#requireDraft().branchSelections).find((selection) =>
       isWizardArcaneSchoolSlotId(selection.slotId)
     );
@@ -612,18 +644,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return fetchSelectionDocument(draftSelection);
     }
 
-    return (
-      listActorItems(this.actor).find((item: any) => {
-        if (item?.type !== "feat" || item?.system?.category !== "classfeature") {
-          return false;
-        }
-
-        const otherTags = Array.isArray(item?.system?.traits?.otherTags) ? item.system.traits.otherTags : [];
-        return otherTags.some(
-          (tag: unknown) => typeof tag === "string" && tag.trim().toLowerCase() === "wizard-arcane-school"
-        );
-      }) ?? null
-    );
+    return listActorItems(this.actor).find(isWizardArcaneSchoolItem) ?? null;
   }
 
   async #moveStep(delta: number): Promise<void> {
@@ -804,7 +825,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
       confirmApply: typeof globalThis.confirm === "function" ? (message) => globalThis.confirm(message) : undefined,
       applyDraftToActor: () => applyDraftToActor(this.actor, draft, plan.steps),
-      updateActor: (update) => this.actor.update(update),
+      updateActor: async (update) => {
+        await this.actor.update(update);
+      },
     });
 
     if (result.kind === "warning") {
@@ -835,4 +858,20 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.ClearedDraft"));
     this.render(false);
   }
+}
+
+function getPf2eConfig(): Pf2eConfigLike | null {
+  return (globalThis as WayfinderGlobals).CONFIG?.PF2E ?? null;
+}
+
+function isWizardArcaneSchoolItem(item: BuildStateActorItem | null | undefined): item is ArcaneSchoolActorItemLike {
+  const candidate = item as ArcaneSchoolActorItemLike | null | undefined;
+  if (candidate?.type !== "feat" || candidate.system?.category !== "classfeature") {
+    return false;
+  }
+
+  const otherTags = Array.isArray(candidate.system?.traits?.otherTags) ? candidate.system.traits.otherTags : [];
+  return otherTags.some(
+    (tag: unknown) => typeof tag === "string" && tag.trim().toLowerCase() === "wizard-arcane-school"
+  );
 }

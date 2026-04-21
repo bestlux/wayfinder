@@ -1,8 +1,10 @@
 import {
   applySelectorApplication,
   buildSelectorSelection,
+  type SelectorActorLike,
   type SelectorApplicationDependencies,
   type SelectorApplicationPlan,
+  type SelectorClassSourceLike,
   stripSelectedSelectorEntries,
 } from "./selector-application.js";
 import type { ClassBranchMeta, DraftState, PendingStep, SelectionRef } from "./types.js";
@@ -10,7 +12,7 @@ import type { ClassBranchMeta, DraftState, PendingStep, SelectionRef } from "./t
 type ApplyClassBranchDraftDependencies = SelectorApplicationDependencies;
 
 export async function applyClassBranchDraft(
-  actor: any,
+  actor: SelectorActorLike,
   draft: DraftState,
   steps: PendingStep[],
   deps: ApplyClassBranchDraftDependencies
@@ -50,7 +52,11 @@ export async function applyClassBranchDraft(
   }
 }
 
-export function stripPreselectedClassBranchEntries(classSource: any, draft: DraftState, steps: PendingStep[]): void {
+export function stripPreselectedClassBranchEntries(
+  classSource: SelectorClassSourceLike,
+  draft: DraftState,
+  steps: PendingStep[]
+): void {
   stripSelectedSelectorEntries(
     classSource,
     getSelectedBranchSteps(draft, steps).map((step) => ({

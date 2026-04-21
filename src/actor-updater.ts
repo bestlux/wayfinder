@@ -14,10 +14,20 @@ import { applySkillIncreaseDraft, applyTrainingDraft } from "./actor-updater/tra
 import { applyClassBranchDraft } from "./class-branch-service.js";
 import { applyClassFeatureChoiceDraft } from "./class-feature-choice-service.js";
 import { fetchSelectionDocument } from "./pack-service.js";
+import type { SelectorActorLike } from "./selector-application.js";
 import type { ActorLike } from "./shared/actor-model.js";
 import type { DraftState, PendingStep } from "./types.js";
 
-export async function applyDraftToActor(actor: ActorLike, draft: DraftState, steps: PendingStep[]): Promise<void> {
+type DraftMutationActor = SelectorActorLike &
+  ActorLike & {
+    update?: ActorLike["update"];
+  };
+
+export async function applyDraftToActor(
+  actor: DraftMutationActor,
+  draft: DraftState,
+  steps: PendingStep[]
+): Promise<void> {
   const selections = orderSelections(draft, steps);
   const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
 

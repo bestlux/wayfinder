@@ -1,8 +1,10 @@
 import {
   applySelectorApplication,
   buildSelectorSelection,
+  type SelectorActorLike,
   type SelectorApplicationDependencies,
   type SelectorApplicationPlan,
+  type SelectorClassSourceLike,
   stripSelectedSelectorEntries,
 } from "./selector-application.js";
 import type { ClassChoiceMeta, ClassGrantMeta, DraftState, PendingStep, SelectionRef } from "./types.js";
@@ -22,7 +24,7 @@ interface PendingFeatureGroup {
 }
 
 export async function applyClassFeatureChoiceDraft(
-  actor: any,
+  actor: SelectorActorLike,
   draft: DraftState,
   steps: PendingStep[],
   deps: ApplyClassFeatureChoiceDependencies
@@ -56,7 +58,11 @@ export async function applyClassFeatureChoiceDraft(
   }
 }
 
-export function stripPreselectedClassFeatureEntries(classSource: any, draft: DraftState, steps: PendingStep[]): void {
+export function stripPreselectedClassFeatureEntries(
+  classSource: SelectorClassSourceLike,
+  draft: DraftState,
+  steps: PendingStep[]
+): void {
   stripSelectedSelectorEntries(classSource, collectSelectedFeatureRefs(draft, steps));
 }
 

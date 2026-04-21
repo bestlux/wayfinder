@@ -164,13 +164,17 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
     if (!selectorItemId) {
         return { item: null, update: null, reusedExistingItem: false };
     }
-    const existingGranted = listActorItems(actor).find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId) ?? null;
+    const existingGranted = listActorItems(actor).find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId) ??
+        null;
     const existingGrantedId = typeof existingGranted?.id === "string" ? existingGranted.id : null;
     if (existingGranted && !existingGrantedId) {
         return { item: null, update: null, reusedExistingItem: false };
     }
     const existingMatches = existingGranted && itemMatchesSourceId(existingGranted, grantPlan.selection.uuid);
     if (existingGranted && !existingMatches) {
+        if (!existingGrantedId) {
+            return { item: null, update: null, reusedExistingItem: false };
+        }
         await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
     }
     if (existingMatches) {

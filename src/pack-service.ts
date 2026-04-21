@@ -1,10 +1,100 @@
+import type { BuildStateDocument } from "./build-state/document-types.js";
 import { OFFICIAL_PACKS } from "./constants.js";
 import { getExtraPackSetting } from "./settings.js";
+import type { ItemSystemLike, LooseRecord, PackLike, SelectionDocumentLike } from "./shared/actor-model.js";
 import { extractDocumentSlug } from "./shared/slug.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
 import type { OptionContext, OptionRecord, PendingStep, PickerInfoState, SelectionRef } from "./types.js";
 
-const indexCache = new Map<string, any[]>();
+interface PackEntryTraitsLike {
+  rarity?: string;
+  traditions?: string[];
+  value?: string[];
+  otherTags?: string[];
+}
+
+interface PackEntrySystemLike {
+  slug?: unknown;
+  level?: {
+    value?: unknown;
+  };
+  featType?: {
+    value?: unknown;
+  };
+  rules?: LooseRecord[];
+  ancestry?: {
+    slug?: unknown;
+  } | null;
+  category?: unknown;
+  traits?: PackEntryTraitsLike;
+  publication?: {
+    title?: string;
+  };
+  description?: {
+    value?: string;
+  };
+}
+
+interface PackIndexEntry {
+  _id?: unknown;
+  name?: unknown;
+  img?: unknown;
+  type?: unknown;
+  system?: PackEntrySystemLike;
+}
+
+interface PackDocumentLike extends SelectionDocumentLike {
+  name: string;
+  img: string;
+  type?: string;
+  system?: PackDocumentSystemLike;
+}
+
+type PackDocumentSystemLike = NonNullable<BuildStateDocument["system"]> &
+  ItemSystemLike & {
+    slug?: unknown;
+    featType?: {
+      value?: unknown;
+    };
+    ancestry?: {
+      slug?: unknown;
+    } | null;
+    category?: unknown;
+    publication?: {
+      title?: string;
+    };
+    description?: {
+      value?: string;
+    };
+    traits?: NonNullable<ItemSystemLike["traits"]> & {
+      rarity?: string;
+      traditions?: string[];
+      value?: string[];
+      otherTags?: string[];
+    };
+    rules?: LooseRecord[];
+  };
+
+type GamePackLike = Omit<PackLike, "getDocument"> & {
+  getDocument(documentId: string): Promise<PackDocumentLike | null>;
+  getIndex(options: { fields: string[] }): Promise<Iterable<PackIndexEntry> | null | undefined>;
+};
+
+interface Pf2ePackConfigLike {
+  ancestryTraits?: Record<string, unknown>;
+  classTraits?: Record<string, unknown>;
+}
+
+type PackServiceGlobals = typeof globalThis & {
+  CONFIG?: {
+    PF2E?: Pf2ePackConfigLike;
+  };
+  game?: {
+    packs?: Map<string, GamePackLike>;
+  };
+};
+
+const indexCache = new Map<string, PackIndexEntry[]>();
 const traitCatalogCache = new Map<string, Set<string>>();
 const EMPTY_OPTION_CONTEXT: OptionContext = {
   ancestrySlug: null,
@@ -29,12 +119,12 @@ export async function getOptionsForStep(
   const results: OptionRecord[] = [];
 
   for (const packId of packIds) {
-    const pack = game.packs?.get(packId);
+    const pack = getGamePack(packId);
     if (!pack) {
       continue;
     }
 
-    const index = await getPackIndex(pack);
+    const index = await getPackIndex(pack, packId);
     for (const entry of index) {
       if (!matchesFilters(entry, step, context, traitCatalog)) {
         continue;
@@ -45,12 +135,12 @@ export async function getOptionsForStep(
       const slug = extractEntrySlug(entry);
       const traits = extractEntryTraits(entry);
       const documentId = String(entry._id);
-      const uuid = toCompendiumItemUuid(pack.metadata.id, documentId);
+      const uuid = toCompendiumItemUuid(packId, documentId);
       const name = String(entry.name ?? "Unknown Option");
 
       results.push({
-        value: `${pack.metadata.id}:${documentId}`,
-        packId: pack.metadata.id,
+        value: `${packId}:${documentId}`,
+        packId,
         documentId,
         uuid,
         img: String(entry.img ?? ""),
@@ -93,8 +183,8 @@ export async function resolveSelection(
   };
 }
 
-export async function fetchSelectionDocument(selection: SelectionRef): Promise<any | null> {
-  const pack = game.packs?.get(selection.packId);
+export async function fetchSelectionDocument(selection: SelectionRef): Promise<PackDocumentLike | null> {
+  const pack = getGamePack(selection.packId);
   if (!pack) {
     return null;
   }
@@ -255,9 +345,9 @@ function resolvePackIds(slotKind: PendingStep["slotKind"]): string[] {
   }
 }
 
-async function getPackIndex(pack: any): Promise<any[]> {
-  if (indexCache.has(pack.metadata.id)) {
-    return indexCache.get(pack.metadata.id) ?? [];
+async function getPackIndex(pack: GamePackLike, packId: string): Promise<PackIndexEntry[]> {
+  if (indexCache.has(packId)) {
+    return indexCache.get(packId) ?? [];
   }
 
   const index = await pack.getIndex({
@@ -278,11 +368,16 @@ async function getPackIndex(pack: any): Promise<any[]> {
   });
 
   const contents = Array.from(index ?? []);
-  indexCache.set(pack.metadata.id, contents);
+  indexCache.set(packId, contents);
   return contents;
 }
 
-function matchesFilters(entry: any, step: PendingStep, context: OptionContext, traitCatalog: Set<string>): boolean {
+function matchesFilters(
+  entry: PackIndexEntry,
+  step: PendingStep,
+  context: OptionContext,
+  traitCatalog: Set<string>
+): boolean {
   const filters = step.filters;
   if (!filters) {
     return true;
@@ -365,7 +460,7 @@ function extractEntrySlug(entry: unknown): string | null {
   return extractDocumentSlug(entry);
 }
 
-function extractEntryTraits(entry: any): string[] {
+function extractEntryTraits(entry: PackIndexEntry): string[] {
   return Array.from(
     new Set([
       ...normalizeTraitList(entry?.system?.traits?.value),
@@ -374,11 +469,11 @@ function extractEntryTraits(entry: any): string[] {
   );
 }
 
-function resolveFeatType(entry: any): string | null {
+function resolveFeatType(entry: PackIndexEntry): string | null {
   return stringOrNull(entry?.system?.featType?.value) ?? stringOrNull(entry?.system?.category);
 }
 
-function matchesAncestryFeatContext(entry: any, context: OptionContext, traitCatalog: Set<string>): boolean {
+function matchesAncestryFeatContext(entry: PackIndexEntry, context: OptionContext, traitCatalog: Set<string>): boolean {
   const category = stringOrNull(entry?.system?.category);
   if (category && category !== "ancestry") {
     return false;
@@ -399,7 +494,7 @@ function matchesAncestryFeatContext(entry: any, context: OptionContext, traitCat
   return ancestryOrHeritageNamedTraits.length === 0;
 }
 
-function matchesClassFeatContext(entry: any, context: OptionContext, _traitCatalog: Set<string>): boolean {
+function matchesClassFeatContext(entry: PackIndexEntry, context: OptionContext, _traitCatalog: Set<string>): boolean {
   const category = stringOrNull(entry?.system?.category);
   if (category && category !== "class") {
     return false;
@@ -423,7 +518,7 @@ function matchesClassFeatContext(entry: any, context: OptionContext, _traitCatal
   return false;
 }
 
-function matchesSkillFeatContext(entry: any): boolean {
+function matchesSkillFeatContext(entry: PackIndexEntry): boolean {
   const category = stringOrNull(entry?.system?.category);
   if (category && category !== "skill") {
     return false;
@@ -433,7 +528,7 @@ function matchesSkillFeatContext(entry: any): boolean {
   return !traits.includes("archetype") && !traits.includes("dedication");
 }
 
-function matchesClassBranchContext(entry: any, step: PendingStep, context: OptionContext): boolean {
+function matchesClassBranchContext(entry: PackIndexEntry, step: PendingStep, context: OptionContext): boolean {
   const branch = step.branch;
   if (!branch) {
     return false;
@@ -472,7 +567,7 @@ function matchesClassBranchContext(entry: any, step: PendingStep, context: Optio
   return !branch.classSlug || traits.length === 0 || traits.includes(branch.classSlug);
 }
 
-function matchesSpellChoiceContext(entry: any, step: PendingStep): boolean {
+function matchesSpellChoiceContext(entry: PackIndexEntry, step: PendingStep): boolean {
   const spellChoice = step.spellChoice;
   if (!spellChoice) {
     return false;
@@ -560,12 +655,12 @@ async function getTraitCatalog(slotKind: PendingStep["slotKind"]): Promise<Set<s
 
   const traits = new Set<string>();
   for (const packId of packIds) {
-    const pack = game.packs?.get(packId);
+    const pack = getGamePack(packId);
     if (!pack) {
       continue;
     }
 
-    const index = await getPackIndex(pack);
+    const index = await getPackIndex(pack, packId);
     for (const entry of index) {
       const slug = extractEntrySlug(entry);
       if (slug) {
@@ -579,7 +674,7 @@ async function getTraitCatalog(slotKind: PendingStep["slotKind"]): Promise<Set<s
 }
 
 function getConfiguredTraitCatalog(kind: "class" | "ancestry-heritage"): Set<string> {
-  const pf2eConfig = (globalThis as typeof globalThis & { CONFIG?: { PF2E?: any } }).CONFIG?.PF2E;
+  const pf2eConfig = (globalThis as PackServiceGlobals).CONFIG?.PF2E;
   const traitMap = kind === "class" ? pf2eConfig?.classTraits : pf2eConfig?.ancestryTraits;
 
   if (!traitMap || typeof traitMap !== "object") {
@@ -591,4 +686,8 @@ function getConfiguredTraitCatalog(kind: "class" | "ancestry-heritage"): Set<str
       .map((key) => key.trim().toLowerCase())
       .filter(Boolean)
   );
+}
+
+function getGamePack(packId: string): GamePackLike | null {
+  return (globalThis as PackServiceGlobals).game?.packs?.get(packId) ?? null;
 }

@@ -57,7 +57,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.OwnerOnly"));
             return;
         }
-        const existing = Object.values(actor.apps ?? {}).find((app) => app instanceof WayfinderApp);
+        const existing = Object.values(actor.apps).find((app) => app instanceof WayfinderApp);
         if (existing) {
             existing.render(true);
             return;
@@ -305,8 +305,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const skillPane = await buildSkillPane(step, this.#requireDraft(), {
             baseSkillRanks: inspectActor(this.actor).skillRanks,
             resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
-            configSkills: globalThis.CONFIG?.PF2E
-                ?.skills ?? null,
+            configSkills: getPf2eConfig()?.skills ?? null,
             localize: (value) => game.i18n.localize(value),
             isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep),
         });
@@ -486,7 +485,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
     }
     #abilityLabel(attribute) {
-        const abilities = globalThis.CONFIG?.PF2E?.abilities;
+        const abilities = getPf2eConfig()?.abilities;
         return game.i18n.localize(abilities?.[attribute] ?? attribute.toUpperCase());
     }
     async #resolveDraftOrActorDocument(itemType) {
@@ -497,13 +496,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (draftSelection) {
             return fetchSelectionDocument(draftSelection);
         }
-        return (listActorItems(this.actor).find((item) => {
-            if (item?.type !== "feat" || item?.system?.category !== "classfeature") {
-                return false;
-            }
-            const otherTags = Array.isArray(item?.system?.traits?.otherTags) ? item.system.traits.otherTags : [];
-            return otherTags.some((tag) => typeof tag === "string" && tag.trim().toLowerCase() === "wizard-arcane-school");
-        }) ?? null);
+        return listActorItems(this.actor).find(isWizardArcaneSchoolItem) ?? null;
     }
     async #moveStep(delta) {
         const snapshot = inspectActor(this.actor);
@@ -659,7 +652,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
             confirmApply: typeof globalThis.confirm === "function" ? (message) => globalThis.confirm(message) : undefined,
             applyDraftToActor: () => applyDraftToActor(this.actor, draft, plan.steps),
-            updateActor: (update) => this.actor.update(update),
+            updateActor: async (update) => {
+                await this.actor.update(update);
+            },
         });
         if (result.kind === "warning") {
             ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.MissingSelections"));
@@ -686,5 +681,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.ClearedDraft"));
         this.render(false);
     }
+}
+function getPf2eConfig() {
+    return globalThis.CONFIG?.PF2E ?? null;
+}
+function isWizardArcaneSchoolItem(item) {
+    const candidate = item;
+    if (candidate?.type !== "feat" || candidate.system?.category !== "classfeature") {
+        return false;
+    }
+    const otherTags = Array.isArray(candidate.system?.traits?.otherTags) ? candidate.system.traits.otherTags : [];
+    return otherTags.some((tag) => typeof tag === "string" && tag.trim().toLowerCase() === "wizard-arcane-school");
 }
 //# sourceMappingURL=app-shell.js.map

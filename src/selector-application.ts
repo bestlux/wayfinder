@@ -1,12 +1,17 @@
 import { listActorItems } from "./build-state.js";
 import { MODULE_ID } from "./constants.js";
+import type { ActorItemLike, ActorLike, EmbeddedItemSource, LooseRecord } from "./shared/actor-model.js";
 import { cloneData } from "./shared/cloning.js";
 import { itemMatchesSourceId } from "./shared/source-id.js";
 import type { DraftState, PendingStep, SelectionRef } from "./types.js";
 
 export interface SelectorApplicationDependencies {
-  createEmbeddedSource: (selection: SelectionRef, draft?: DraftState, steps?: PendingStep[]) => Promise<any | null>;
-  fetchSelectionDocument: (selection: SelectionRef) => Promise<any | null>;
+  createEmbeddedSource: (
+    selection: SelectionRef,
+    draft?: DraftState,
+    steps?: PendingStep[]
+  ) => Promise<EmbeddedItemSource | null>;
+  fetchSelectionDocument: (selection: SelectionRef) => Promise<SelectorRuleDocumentLike | null>;
 }
 
 export interface SelectorRuleSelection {
@@ -38,6 +43,30 @@ interface SelectorReference {
   name: string;
 }
 
+interface SelectorRuleDocumentLike {
+  system?: {
+    rules?: LooseRecord[];
+  };
+}
+
+interface SelectorClassSourceEntry {
+  uuid?: unknown;
+  name?: unknown;
+}
+
+export interface SelectorClassSourceLike extends EmbeddedItemSource {
+  system?: EmbeddedItemSource["system"] & {
+    items?: Record<string, SelectorClassSourceEntry>;
+  };
+}
+
+type SelectorItemLike = ActorItemLike;
+export type SelectorActorLike = ActorLike & {
+  createEmbeddedDocuments: NonNullable<ActorLike["createEmbeddedDocuments"]>;
+  deleteEmbeddedDocuments: NonNullable<ActorLike["deleteEmbeddedDocuments"]>;
+  updateEmbeddedDocuments: NonNullable<ActorLike["updateEmbeddedDocuments"]>;
+};
+
 export function buildSelectorSelection(
   slotId: string,
   packId: string,
@@ -58,7 +87,7 @@ export function buildSelectorSelection(
 }
 
 export async function applySelectorApplication(
-  actor: any,
+  actor: SelectorActorLike,
   plan: SelectorApplicationPlan,
   deps: SelectorApplicationDependencies
 ): Promise<void> {
@@ -122,7 +151,10 @@ export async function applySelectorApplication(
   await actor.updateEmbeddedDocuments("Item", updates);
 }
 
-export function stripSelectedSelectorEntries(classSource: any, selectedRefs: SelectorReference[]): void {
+export function stripSelectedSelectorEntries(
+  classSource: SelectorClassSourceLike,
+  selectedRefs: SelectorReference[]
+): void {
   if (selectedRefs.length === 0 || !classSource?.system?.items || typeof classSource.system.items !== "object") {
     return;
   }
@@ -142,7 +174,7 @@ export function stripSelectedSelectorEntries(classSource: any, selectedRefs: Sel
   );
 
   classSource.system.items = Object.fromEntries(
-    Object.entries(classSource.system.items).filter(([, entry]: [string, any]) => {
+    Object.entries(classSource.system.items).filter(([, entry]: [string, SelectorClassSourceEntry]) => {
       const uuid = typeof entry?.uuid === "string" ? entry.uuid : null;
       const normalizedDocumentId =
         typeof uuid === "string"
@@ -159,15 +191,15 @@ export function stripSelectedSelectorEntries(classSource: any, selectedRefs: Sel
   );
 }
 
-function findSelectorItemBySourceId(actor: any, sourceId: string): any | null {
-  return listActorItems(actor).find((item: any) => itemMatchesSourceId(item, sourceId)) ?? null;
+function findSelectorItemBySourceId(actor: SelectorActorLike, sourceId: string): SelectorItemLike | null {
+  return (listActorItems(actor) as SelectorItemLike[]).find((item) => itemMatchesSourceId(item, sourceId)) ?? null;
 }
 
 async function createSelectorItem(
-  actor: any,
+  actor: SelectorActorLike,
   plan: SelectorApplicationPlan,
   createEmbeddedSource: SelectorApplicationDependencies["createEmbeddedSource"]
-): Promise<any | null> {
+): Promise<SelectorItemLike | null> {
   const selectorSource = await createEmbeddedSource(plan.selectorSelection);
   if (!selectorSource) {
     return null;
@@ -207,21 +239,21 @@ async function createSelectorItem(
     ...(plan.slotId ? { slotId: plan.slotId } : {}),
   };
 
-  const classItem = listActorItems(actor).find((item: any) => item?.type === "class");
+  const classItem = (listActorItems(actor) as SelectorItemLike[]).find((item) => item?.type === "class");
   if (classItem?.id) {
     selectorSource.system.location = classItem.id;
   }
 
   const created = await actor.createEmbeddedDocuments("Item", [selectorSource]);
-  return Array.isArray(created) ? (created[0] ?? null) : null;
+  return Array.isArray(created) ? ((created[0] as SelectorItemLike | undefined) ?? null) : null;
 }
 
 async function loadSelectorRules(
-  selectorItem: any,
+  selectorItem: SelectorItemLike,
   selectorSelection: SelectionRef,
   createdSelector: boolean,
   deps: SelectorApplicationDependencies
-): Promise<any[]> {
+): Promise<LooseRecord[]> {
   const selectorDocument = createdSelector ? await deps.fetchSelectionDocument(selectorSelection) : null;
   if (Array.isArray(selectorDocument?.system?.rules)) {
     return cloneData(selectorDocument.system.rules);
@@ -232,7 +264,7 @@ async function loadSelectorRules(
   return [];
 }
 
-function applyRuleSelections(rules: any[], selections: SelectorRuleSelection[]): void {
+function applyRuleSelections(rules: LooseRecord[], selections: SelectorRuleSelection[]): void {
   for (const selection of selections) {
     const rule = rules[selection.ruleIndex];
     if (rule) {
@@ -241,36 +273,40 @@ function applyRuleSelections(rules: any[], selections: SelectorRuleSelection[]):
   }
 }
 
-function pruneGrantRules(rules: any[], policy: SelectorGrantPlan["createRulePolicy"]): any[] {
+function pruneGrantRules(rules: LooseRecord[], policy: SelectorGrantPlan["createRulePolicy"]): LooseRecord[] {
   if (policy === "remove-all-grant-items") {
-    return rules.filter((rule: any) => rule?.key !== "GrantItem");
+    return rules.filter((rule) => rule?.key !== "GrantItem");
   }
   if (Array.isArray(policy) && policy.length > 0) {
     const blockedIndexes = new Set(policy);
-    return rules.filter((_rule: any, index: number) => !blockedIndexes.has(index));
+    return rules.filter((_rule, index) => !blockedIndexes.has(index));
   }
   return rules;
 }
 
 async function ensureGrantedItem(
-  actor: any,
-  selectorItem: any,
+  actor: SelectorActorLike,
+  selectorItem: SelectorItemLike,
   grantPlan: SelectorGrantPlan,
   createEmbeddedSource: SelectorApplicationDependencies["createEmbeddedSource"]
-): Promise<{ item: any | null; update: Record<string, unknown> | null; reusedExistingItem: boolean }> {
+): Promise<{ item: SelectorItemLike | null; update: Record<string, unknown> | null; reusedExistingItem: boolean }> {
   const selectorItemId = typeof selectorItem.id === "string" ? selectorItem.id : null;
   if (!selectorItemId) {
     return { item: null, update: null, reusedExistingItem: false };
   }
 
   const existingGranted =
-    listActorItems(actor).find((item: any) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId) ?? null;
+    (listActorItems(actor) as SelectorItemLike[]).find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId) ??
+    null;
   const existingGrantedId = typeof existingGranted?.id === "string" ? existingGranted.id : null;
   if (existingGranted && !existingGrantedId) {
     return { item: null, update: null, reusedExistingItem: false };
   }
   const existingMatches = existingGranted && itemMatchesSourceId(existingGranted, grantPlan.selection.uuid);
   if (existingGranted && !existingMatches) {
+    if (!existingGrantedId) {
+      return { item: null, update: null, reusedExistingItem: false };
+    }
     await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
   }
 
@@ -302,7 +338,7 @@ async function ensureGrantedItem(
   };
 
   const created = await actor.createEmbeddedDocuments("Item", [source]);
-  const createdItem = Array.isArray(created) ? (created[0] ?? null) : null;
+  const createdItem = Array.isArray(created) ? ((created[0] as SelectorItemLike | undefined) ?? null) : null;
   if (!createdItem?.id) {
     return { item: createdItem, update: null, reusedExistingItem: false };
   }

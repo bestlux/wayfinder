@@ -21,11 +21,11 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
     const traitCatalog = await getTraitCatalog(step.slotKind);
     const results = [];
     for (const packId of packIds) {
-        const pack = game.packs?.get(packId);
+        const pack = getGamePack(packId);
         if (!pack) {
             continue;
         }
-        const index = await getPackIndex(pack);
+        const index = await getPackIndex(pack, packId);
         for (const entry of index) {
             if (!matchesFilters(entry, step, context, traitCatalog)) {
                 continue;
@@ -35,11 +35,11 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
             const slug = extractEntrySlug(entry);
             const traits = extractEntryTraits(entry);
             const documentId = String(entry._id);
-            const uuid = toCompendiumItemUuid(pack.metadata.id, documentId);
+            const uuid = toCompendiumItemUuid(packId, documentId);
             const name = String(entry.name ?? "Unknown Option");
             results.push({
-                value: `${pack.metadata.id}:${documentId}`,
-                packId: pack.metadata.id,
+                value: `${packId}:${documentId}`,
+                packId,
                 documentId,
                 uuid,
                 img: String(entry.img ?? ""),
@@ -75,7 +75,7 @@ export async function resolveSelection(rawValue, step, context = EMPTY_OPTION_CO
     };
 }
 export async function fetchSelectionDocument(selection) {
-    const pack = game.packs?.get(selection.packId);
+    const pack = getGamePack(selection.packId);
     if (!pack) {
         return null;
     }
@@ -209,9 +209,9 @@ function resolvePackIds(slotKind) {
             return mergePackIds([...OFFICIAL_PACKS.feat], extras);
     }
 }
-async function getPackIndex(pack) {
-    if (indexCache.has(pack.metadata.id)) {
-        return indexCache.get(pack.metadata.id) ?? [];
+async function getPackIndex(pack, packId) {
+    if (indexCache.has(packId)) {
+        return indexCache.get(packId) ?? [];
     }
     const index = await pack.getIndex({
         fields: [
@@ -230,7 +230,7 @@ async function getPackIndex(pack) {
         ],
     });
     const contents = Array.from(index ?? []);
-    indexCache.set(pack.metadata.id, contents);
+    indexCache.set(packId, contents);
     return contents;
 }
 function matchesFilters(entry, step, context, traitCatalog) {
@@ -454,11 +454,11 @@ async function getTraitCatalog(slotKind) {
         : mergePackIds(resolvePackIds("ancestry"), resolvePackIds("heritage"));
     const traits = new Set();
     for (const packId of packIds) {
-        const pack = game.packs?.get(packId);
+        const pack = getGamePack(packId);
         if (!pack) {
             continue;
         }
-        const index = await getPackIndex(pack);
+        const index = await getPackIndex(pack, packId);
         for (const entry of index) {
             const slug = extractEntrySlug(entry);
             if (slug) {
@@ -478,5 +478,8 @@ function getConfiguredTraitCatalog(kind) {
     return new Set(Object.keys(traitMap)
         .map((key) => key.trim().toLowerCase())
         .filter(Boolean));
+}
+function getGamePack(packId) {
+    return globalThis.game?.packs?.get(packId) ?? null;
 }
 //# sourceMappingURL=pack-service.js.map

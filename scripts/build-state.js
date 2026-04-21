@@ -1,7 +1,6 @@
+import { projectAbilities } from "./build-state/ability-projection.js";
+import { getEffectiveSingletonDocument, listActorItems } from "./build-state/singleton-resolution.js";
 import { ABILITY_KEYS } from "./constants.js";
-import { fetchSelectionDocument } from "./pack-service.js";
-import { cloneData } from "./shared/cloning.js";
-import { findDraftSelectionByType } from "./wayfinder/draft-decisions.js";
 const BOOST_LEVELS = [1, 5, 10, 15, 20];
 async function getEffectiveBuildState(actor, draft) {
     const [ancestryDocument, heritageDocument, backgroundDocument, classDocument, deityDocument] = await Promise.all([
@@ -16,7 +15,7 @@ async function getEffectiveBuildState(actor, draft) {
     const effectiveClass = classDocument ? buildEffectiveClassState(classDocument, draft.boosts) : null;
     const levelBoosts = buildEffectiveLevelBoosts(actor, draft.boosts);
     const allowedBoosts = buildAllowedBoosts(draft.targetLevel);
-    const projectedAbilities = buildProjectedAbilities({
+    const projectedAbilities = projectAbilities({
         ancestryBoosts: ancestry?.buildBoosts ?? [],
         ancestryFlaws: ancestry?.buildFlaws ?? [],
         backgroundBoosts: background?.buildBoosts ?? [],
@@ -33,61 +32,6 @@ async function getEffectiveBuildState(actor, draft) {
         allowedBoosts,
         projectedAbilities,
     };
-}
-async function getEffectiveSingletonDocument(actor, draft, itemType) {
-    const draftSelection = findDraftSelectionByType(draft, itemType);
-    if (draftSelection) {
-        const draftDocument = await fetchSelectionDocument(draftSelection);
-        if (draftDocument) {
-            return toPlainDocument(draftDocument);
-        }
-    }
-    const actorItem = listActorItems(actor).find((item) => item?.type === itemType);
-    if (!actorItem) {
-        return null;
-    }
-    const sourceDocument = await resolveSourceDocumentFromActorItem(actorItem, itemType);
-    return toPlainDocument(sourceDocument ?? actorItem);
-}
-function listActorItems(actor) {
-    if (Array.isArray(actor?.items?.contents)) {
-        return actor.items.contents;
-    }
-    if (Array.isArray(actor?.items)) {
-        return actor.items;
-    }
-    return [];
-}
-async function resolveSourceDocumentFromActorItem(actorItem, itemType) {
-    const sourceId = actorItem?.flags?.core?.sourceId;
-    if (typeof sourceId !== "string" || !sourceId.startsWith("Compendium.")) {
-        return null;
-    }
-    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
-    const packId = match?.[1];
-    const documentId = match?.[2];
-    if (!packId || !documentId) {
-        return null;
-    }
-    return fetchSelectionDocument({
-        slotId: `${itemType}-level-1`,
-        packId,
-        documentId,
-        uuid: sourceId,
-        itemType,
-        featType: null,
-        name: actorItem.name ?? "",
-        level: null,
-    });
-}
-function toPlainDocument(document) {
-    if (!document) {
-        return null;
-    }
-    if (typeof document.toObject === "function") {
-        return cloneData(document.toObject());
-    }
-    return cloneData(document);
 }
 function buildEffectiveAncestryState(document, boosts) {
     const boostEntries = Object.entries(document?.system?.boosts ?? {});
@@ -148,35 +92,6 @@ function buildEffectiveLevelBoosts(actor, boosts) {
 }
 function buildAllowedBoosts(targetLevel) {
     return Object.fromEntries(BOOST_LEVELS.map((level) => [level, level <= targetLevel ? 4 : 0]));
-}
-function buildProjectedAbilities({ ancestryBoosts, ancestryFlaws, backgroundBoosts, classBoost, levelBoosts, }) {
-    return Object.fromEntries(ABILITY_KEYS.map((key) => {
-        const boostCount = countOccurrences(ancestryBoosts, key) +
-            countOccurrences(backgroundBoosts, key) +
-            (classBoost === key ? 1 : 0) +
-            countOccurrences(levelBoosts[1], key) +
-            countOccurrences(levelBoosts[5], key) +
-            countOccurrences(levelBoosts[10], key) +
-            countOccurrences(levelBoosts[15], key) +
-            countOccurrences(levelBoosts[20], key);
-        const flawCount = countOccurrences(ancestryFlaws, key);
-        const netBoosts = boostCount - flawCount;
-        const modifier = netBoosts <= 4 ? netBoosts : 4 + Math.floor((netBoosts - 4) / 2);
-        const partial = netBoosts >= 5 && netBoosts % 2 === 1;
-        return [
-            key,
-            {
-                key,
-                modifier,
-                partial,
-                boostCount,
-                flawCount,
-            },
-        ];
-    }));
-}
-function countOccurrences(list, ability) {
-    return list.filter((entry) => entry === ability).length;
 }
 function normalizeAbility(value) {
     const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";

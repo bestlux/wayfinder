@@ -1,18 +1,13 @@
+import { type ProjectedAbilityState, projectAbilities } from "./build-state/ability-projection.js";
+import type { BuildStateActor, BuildStateDocument, EffectiveBoostRecord } from "./build-state/document-types.js";
+import { getEffectiveSingletonDocument, listActorItems } from "./build-state/singleton-resolution.js";
 import { ABILITY_KEYS } from "./constants.js";
-import { fetchSelectionDocument } from "./pack-service.js";
-import { cloneData } from "./shared/cloning.js";
 import type { AbilityKey, BoostDraftState, BoostLevel, DraftState } from "./types.js";
-import { findDraftSelectionByType } from "./wayfinder/draft-decisions.js";
 
 const BOOST_LEVELS = [1, 5, 10, 15, 20] as const satisfies readonly BoostLevel[];
 
-interface EffectiveBoostRecord {
-  value: AbilityKey[];
-  selected: AbilityKey | null;
-}
-
 interface EffectiveAncestryState {
-  document: any;
+  document: BuildStateDocument;
   mode: "standard" | "alternate";
   selectedBoosts: Record<string, AbilityKey | null>;
   alternateBoosts: AbilityKey[];
@@ -28,37 +23,29 @@ interface EffectiveAncestryState {
 }
 
 interface EffectiveBackgroundState {
-  document: any;
+  document: BuildStateDocument;
   selectedBoosts: Record<string, AbilityKey | null>;
   buildBoosts: AbilityKey[];
 }
 
 interface EffectiveClassState {
-  document: any;
+  document: BuildStateDocument;
   keyAbilityOptions: AbilityKey[];
   selectedKeyAbility: AbilityKey | null;
 }
 
-interface ProjectedAbilityState {
-  key: AbilityKey;
-  modifier: number;
-  partial: boolean;
-  boostCount: number;
-  flawCount: number;
-}
-
 interface EffectiveBuildState {
   ancestry: EffectiveAncestryState | null;
-  heritage: any | null;
+  heritage: BuildStateDocument | null;
   background: EffectiveBackgroundState | null;
   class: EffectiveClassState | null;
-  deity: any | null;
+  deity: BuildStateDocument | null;
   levelBoosts: Record<BoostLevel, AbilityKey[]>;
   allowedBoosts: Record<BoostLevel, number>;
   projectedAbilities: Record<AbilityKey, ProjectedAbilityState>;
 }
 
-async function getEffectiveBuildState(actor: any, draft: DraftState): Promise<EffectiveBuildState> {
+async function getEffectiveBuildState(actor: BuildStateActor, draft: DraftState): Promise<EffectiveBuildState> {
   const [ancestryDocument, heritageDocument, backgroundDocument, classDocument, deityDocument] = await Promise.all([
     getEffectiveSingletonDocument(actor, draft, "ancestry"),
     getEffectiveSingletonDocument(actor, draft, "heritage"),
@@ -72,7 +59,7 @@ async function getEffectiveBuildState(actor: any, draft: DraftState): Promise<Ef
   const effectiveClass = classDocument ? buildEffectiveClassState(classDocument, draft.boosts) : null;
   const levelBoosts = buildEffectiveLevelBoosts(actor, draft.boosts);
   const allowedBoosts = buildAllowedBoosts(draft.targetLevel);
-  const projectedAbilities = buildProjectedAbilities({
+  const projectedAbilities = projectAbilities({
     ancestryBoosts: ancestry?.buildBoosts ?? [],
     ancestryFlaws: ancestry?.buildFlaws ?? [],
     backgroundBoosts: background?.buildBoosts ?? [],
@@ -92,81 +79,7 @@ async function getEffectiveBuildState(actor: any, draft: DraftState): Promise<Ef
   };
 }
 
-async function getEffectiveSingletonDocument(
-  actor: any,
-  draft: DraftState,
-  itemType: "ancestry" | "heritage" | "background" | "class" | "deity"
-): Promise<any | null> {
-  const draftSelection = findDraftSelectionByType(draft, itemType);
-  if (draftSelection) {
-    const draftDocument = await fetchSelectionDocument(draftSelection);
-    if (draftDocument) {
-      return toPlainDocument(draftDocument);
-    }
-  }
-
-  const actorItem = listActorItems(actor).find((item: any) => item?.type === itemType);
-  if (!actorItem) {
-    return null;
-  }
-
-  const sourceDocument = await resolveSourceDocumentFromActorItem(actorItem, itemType);
-  return toPlainDocument(sourceDocument ?? actorItem);
-}
-
-function listActorItems(actor: any): any[] {
-  if (Array.isArray(actor?.items?.contents)) {
-    return actor.items.contents;
-  }
-
-  if (Array.isArray(actor?.items)) {
-    return actor.items;
-  }
-
-  return [];
-}
-
-async function resolveSourceDocumentFromActorItem(
-  actorItem: any,
-  itemType: "ancestry" | "heritage" | "background" | "class" | "deity"
-): Promise<any | null> {
-  const sourceId = actorItem?.flags?.core?.sourceId;
-  if (typeof sourceId !== "string" || !sourceId.startsWith("Compendium.")) {
-    return null;
-  }
-
-  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
-  const packId = match?.[1];
-  const documentId = match?.[2];
-  if (!packId || !documentId) {
-    return null;
-  }
-
-  return fetchSelectionDocument({
-    slotId: `${itemType}-level-1`,
-    packId,
-    documentId,
-    uuid: sourceId,
-    itemType,
-    featType: null,
-    name: actorItem.name ?? "",
-    level: null,
-  });
-}
-
-function toPlainDocument(document: any): any {
-  if (!document) {
-    return null;
-  }
-
-  if (typeof document.toObject === "function") {
-    return cloneData(document.toObject());
-  }
-
-  return cloneData(document);
-}
-
-function buildEffectiveAncestryState(document: any, boosts: BoostDraftState): EffectiveAncestryState {
+function buildEffectiveAncestryState(document: BuildStateDocument, boosts: BoostDraftState): EffectiveAncestryState {
   const boostEntries = Object.entries(document?.system?.boosts ?? {}) as Array<[string, EffectiveBoostRecord]>;
   const committedMode = Array.isArray(document?.system?.alternateAncestryBoosts) ? "alternate" : "standard";
   const mode = boosts.ancestry.modeTouched ? boosts.ancestry.mode : committedMode;
@@ -208,7 +121,10 @@ function buildEffectiveAncestryState(document: any, boosts: BoostDraftState): Ef
   };
 }
 
-function buildEffectiveBackgroundState(document: any, boosts: BoostDraftState): EffectiveBackgroundState {
+function buildEffectiveBackgroundState(
+  document: BuildStateDocument,
+  boosts: BoostDraftState
+): EffectiveBackgroundState {
   const boostEntries = Object.entries(document?.system?.boosts ?? {}) as Array<[string, EffectiveBoostRecord]>;
   const selectedBoosts = Object.fromEntries(
     boostEntries.map(([key, boost]) => [
@@ -224,7 +140,7 @@ function buildEffectiveBackgroundState(document: any, boosts: BoostDraftState): 
   };
 }
 
-function buildEffectiveClassState(document: any, boosts: BoostDraftState): EffectiveClassState {
+function buildEffectiveClassState(document: BuildStateDocument, boosts: BoostDraftState): EffectiveClassState {
   const keyAbilityOptions = normalizeAbilityList(document?.system?.keyAbility?.value, 6);
   return {
     document,
@@ -233,7 +149,7 @@ function buildEffectiveClassState(document: any, boosts: BoostDraftState): Effec
   };
 }
 
-function buildEffectiveLevelBoosts(actor: any, boosts: BoostDraftState): Record<BoostLevel, AbilityKey[]> {
+function buildEffectiveLevelBoosts(actor: BuildStateActor, boosts: BoostDraftState): Record<BoostLevel, AbilityKey[]> {
   const actorBuildBoosts = actor?.system?.build?.attributes?.boosts ?? {};
   return Object.fromEntries(
     BOOST_LEVELS.map((level) => {
@@ -251,53 +167,6 @@ function buildAllowedBoosts(targetLevel: number): Record<BoostLevel, number> {
   >;
 }
 
-function buildProjectedAbilities({
-  ancestryBoosts,
-  ancestryFlaws,
-  backgroundBoosts,
-  classBoost,
-  levelBoosts,
-}: {
-  ancestryBoosts: AbilityKey[];
-  ancestryFlaws: AbilityKey[];
-  backgroundBoosts: AbilityKey[];
-  classBoost: AbilityKey | null;
-  levelBoosts: Record<BoostLevel, AbilityKey[]>;
-}): Record<AbilityKey, ProjectedAbilityState> {
-  return Object.fromEntries(
-    ABILITY_KEYS.map((key) => {
-      const boostCount =
-        countOccurrences(ancestryBoosts, key) +
-        countOccurrences(backgroundBoosts, key) +
-        (classBoost === key ? 1 : 0) +
-        countOccurrences(levelBoosts[1], key) +
-        countOccurrences(levelBoosts[5], key) +
-        countOccurrences(levelBoosts[10], key) +
-        countOccurrences(levelBoosts[15], key) +
-        countOccurrences(levelBoosts[20], key);
-      const flawCount = countOccurrences(ancestryFlaws, key);
-      const netBoosts = boostCount - flawCount;
-      const modifier = netBoosts <= 4 ? netBoosts : 4 + Math.floor((netBoosts - 4) / 2);
-      const partial = netBoosts >= 5 && netBoosts % 2 === 1;
-
-      return [
-        key,
-        {
-          key,
-          modifier,
-          partial,
-          boostCount,
-          flawCount,
-        },
-      ];
-    })
-  ) as Record<AbilityKey, ProjectedAbilityState>;
-}
-
-function countOccurrences(list: AbilityKey[], ability: AbilityKey): number {
-  return list.filter((entry) => entry === ability).length;
-}
-
 function normalizeAbility(value: unknown): AbilityKey | null {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   return isAbilityKey(normalized) ? normalized : null;
@@ -313,7 +182,9 @@ function normalizeAbilityList(value: unknown, maxLength = 6): AbilityKey[] {
   ).slice(0, maxLength);
 }
 
-function normalizeVoluntaryState(value: BoostDraftState["ancestry"]["voluntary"]): EffectiveAncestryState["voluntary"] {
+function normalizeVoluntaryState(
+  value: Partial<BoostDraftState["ancestry"]["voluntary"]> | undefined
+): EffectiveAncestryState["voluntary"] {
   const legacy =
     value?.legacy === true ||
     (typeof value?.legacy !== "boolean" && Object.prototype.hasOwnProperty.call(value ?? {}, "boost"));

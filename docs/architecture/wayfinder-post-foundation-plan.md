@@ -1,5 +1,7 @@
 # Wayfinder Post-Foundation Hardening Plan
 
+> Status: Completed on `master` as of 2026-04-20. Keep this document as the completed hardening roadmap; use `docs/architecture/wayfinder-next-phase-plan.md` for the next extension-focused phase.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Finish the post-foundation hardening work so new class, spell, and rules-driven character creation flows can be added without re-centralizing policy in `app-shell.ts` or creating new service god objects.

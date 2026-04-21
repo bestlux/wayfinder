@@ -1,25 +1,24 @@
 import type { DraftState, PendingStep } from "../../types.js";
 import type {
-  buildClassBranchSteps,
-  buildClassChoiceSteps,
-  buildClassGrantedItemSteps,
-} from "../class-choice-service.js";
-import type { buildSpellChoiceSteps } from "../spell-choice-service.js";
+  ReadExistingSpellChoiceSelections,
+  SpellChoiceClassDocument,
+  SpellChoiceDeityDocument,
+  SpellChoiceDocumentLike,
+  SpellChoiceSchoolDocument,
+} from "../spell-choice/types.js";
 
 export interface BuildClassContributionDependencies {
-  buildClassBranchSteps: typeof buildClassBranchSteps;
-  buildClassGrantedItemSteps: typeof buildClassGrantedItemSteps;
-  buildClassChoiceSteps: typeof buildClassChoiceSteps;
-  buildSpellChoiceSteps: typeof buildSpellChoiceSteps;
+  extractSlug: (document: SpellChoiceDocumentLike | null) => string | null;
+  readExistingSpellChoiceSelections: ReadExistingSpellChoiceSelections;
 }
 
 export interface BuildClassContributionArgs {
   draft: DraftState;
   currentLevel: number;
   targetLevel: number;
-  effectiveClassDocument: unknown | null;
-  effectiveDeityDocument: unknown | null;
-  effectiveSchoolDocument: unknown | null;
+  effectiveClassDocument: SpellChoiceClassDocument;
+  effectiveDeityDocument: SpellChoiceDeityDocument | null;
+  effectiveSchoolDocument: SpellChoiceSchoolDocument | null;
   deps: BuildClassContributionDependencies;
 }
 

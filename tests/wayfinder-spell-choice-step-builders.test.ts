@@ -204,6 +204,26 @@ describe("wayfinder spell-choice step builders", () => {
       restrictToCommon: true,
     });
   });
+
+  it("falls back to the base contributor for unknown class slugs", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(1),
+      currentLevel: 1,
+      effectiveClassDocument: {
+        system: {
+          slug: "inventor",
+          items: {},
+        },
+      },
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      targetLevel: 1,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps).toEqual([]);
+  });
 });
 
 function extractSlug(document: SpellChoiceDocumentLike | null): string | null {

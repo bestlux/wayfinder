@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type { ActorLike } from "../src/shared/actor-model";
 import type { SpellChoiceMeta } from "../src/types";
 import { readExistingSpellChoiceSelections, wizardMaxSpellRank } from "../src/wayfinder/spell-choice-service";
 
 describe("spell-choice-service", () => {
   it("reads existing cleric prepared spell choices from the matching entry", () => {
-    const actor = {
+    const actor: ActorLike = {
       items: {
         contents: [
           {
@@ -32,7 +33,7 @@ describe("spell-choice-service", () => {
       },
     };
 
-    const cantrips = readExistingSpellChoiceSelections(actor as any, {
+    const cantrips = readExistingSpellChoiceSelections(actor, {
       slotId: "spell-choice-cleric-cantrips-level-1",
       sourcePackId: "pf2e.classfeatures",
       sourceDocumentId: "cleric-spellcasting",
@@ -58,7 +59,7 @@ describe("spell-choice-service", () => {
       restrictToCommon: true,
     } satisfies SpellChoiceMeta);
 
-    const rankOne = readExistingSpellChoiceSelections(actor as any, {
+    const rankOne = readExistingSpellChoiceSelections(actor, {
       slotId: "spell-choice-cleric-rank-1-level-1",
       sourcePackId: "pf2e.classfeatures",
       sourceDocumentId: "cleric-spellcasting",
@@ -89,7 +90,7 @@ describe("spell-choice-service", () => {
   });
 
   it("reads existing spell choices from the matching spellbook entry", () => {
-    const actor = {
+    const actor: ActorLike = {
       items: {
         contents: [
           {
@@ -108,7 +109,7 @@ describe("spell-choice-service", () => {
       },
     };
 
-    const selections = readExistingSpellChoiceSelections(actor as any, {
+    const selections = readExistingSpellChoiceSelections(actor, {
       slotId: "spell-choice-wizard-curriculum-rank-1-level-1",
       sourcePackId: "pf2e.classfeatures",
       sourceDocumentId: "school-of-battle-magic",
@@ -138,7 +139,7 @@ describe("spell-choice-service", () => {
   });
 
   it("ignores stale slot-tagged spells that no longer satisfy the current choice", () => {
-    const actor = {
+    const actor: ActorLike = {
       items: {
         contents: [
           {
@@ -162,7 +163,7 @@ describe("spell-choice-service", () => {
       },
     };
 
-    const selections = readExistingSpellChoiceSelections(actor as any, {
+    const selections = readExistingSpellChoiceSelections(actor, {
       slotId: "spell-choice-wizard-curriculum-rank-1-level-1",
       sourcePackId: "pf2e.classfeatures",
       sourceDocumentId: "school-of-boundary",
@@ -206,7 +207,7 @@ function spellItem(
   level: number,
   traditions = ["arcane"],
   valueTraits: string[] = []
-): any {
+) {
   return {
     id: `${entryId}-${name}`,
     type: "spell",

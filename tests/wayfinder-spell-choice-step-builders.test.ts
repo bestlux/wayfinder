@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import type { SelectionRef } from "../src/types";
 import { buildSpellChoiceSteps } from "../src/wayfinder/spell-choice/step-builders";
+import type { SpellChoiceDocumentLike } from "../src/wayfinder/spell-choice/types";
 
 describe("wayfinder spell-choice step builders", () => {
   it("builds wizard spellbook steps for initial choices and later spellbook growth", async () => {
@@ -205,11 +206,11 @@ describe("wayfinder spell-choice step builders", () => {
   });
 });
 
-function extractSlug(document: any): string | null {
-  return document?.system?.slug ?? null;
+function extractSlug(document: SpellChoiceDocumentLike | null): string | null {
+  return typeof document?.system?.slug === "string" ? document.system.slug : null;
 }
 
-function wizardClassDocument(): any {
+function wizardClassDocument() {
   return {
     system: {
       slug: "wizard",
@@ -223,7 +224,7 @@ function wizardClassDocument(): any {
   };
 }
 
-function clericClassDocument(): any {
+function clericClassDocument() {
   return {
     system: {
       slug: "cleric",
@@ -237,7 +238,7 @@ function clericClassDocument(): any {
   };
 }
 
-function battleMagicSchoolDocument(): any {
+function battleMagicSchoolDocument() {
   return {
     name: "School of Battle Magic",
     flags: {

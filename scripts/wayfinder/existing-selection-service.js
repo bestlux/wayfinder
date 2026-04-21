@@ -1,33 +1,41 @@
 import { listActorItems } from "../build-state.js";
-import { sourceIdOf } from "../shared/source-id.js";
+import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 export function readExistingBranchSelection(actor, branch) {
-    const selectorItem = findActorItemBySourceId(actor, branch.selectorUuid);
-    const rulesSelection = selectorItem?.flags?.pf2e?.rulesSelections?.[branch.flag];
-    return typeof rulesSelection === "string" && rulesSelection.length > 0 ? rulesSelection : null;
+    return readRulesSelection(findActorItemBySourceId(actor, branch.selectorUuid), branch.flag);
 }
 export function readExistingGrantedSelection(actor, grant) {
     const selectorItem = findActorItemBySourceId(actor, grant.selectorUuid);
-    if (!selectorItem?.id) {
+    if (!selectorItem) {
         return null;
     }
-    const rulesSelection = selectorItem?.flags?.pf2e?.rulesSelections?.[grant.flag];
-    if (typeof rulesSelection === "string" && rulesSelection.length > 0) {
+    const rulesSelection = readRulesSelection(selectorItem, grant.flag);
+    if (rulesSelection) {
         return rulesSelection;
     }
-    const grantedItemId = selectorItem?.flags?.pf2e?.itemGrants?.[grant.flag]?.id;
-    const grantedItem = (typeof grantedItemId === "string" && grantedItemId.length > 0
-        ? listActorItems(actor).find((item) => item?.id === grantedItemId)
-        : null) ??
-        listActorItems(actor).find((item) => item?.type === grant.itemType && item?.flags?.pf2e?.grantedBy?.id === selectorItem.id) ??
-        null;
-    return sourceIdOf(grantedItem);
+    return sourceIdOf(findGrantedActorItem(actor, selectorItem, grant));
 }
 export function readExistingClassChoiceSelection(actor, choice) {
-    const sourceItem = findActorItemBySourceId(actor, choice.sourceUuid);
-    const rulesSelection = sourceItem?.flags?.pf2e?.rulesSelections?.[choice.flag];
-    return typeof rulesSelection === "string" && rulesSelection.length > 0 ? rulesSelection : null;
+    return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
 }
 function findActorItemBySourceId(actor, sourceId) {
-    return listActorItems(actor).find((item) => sourceIdOf(item) === sourceId) ?? null;
+    return listTypedActorItems(actor).find((item) => itemMatchesSourceId(item, sourceId)) ?? null;
+}
+function findGrantedActorItem(actor, selectorItem, grant) {
+    const selectorId = typeof selectorItem.id === "string" ? selectorItem.id : null;
+    if (!selectorId) {
+        return null;
+    }
+    const grantedItemId = selectorItem.flags?.pf2e?.itemGrants?.[grant.flag]?.id;
+    if (typeof grantedItemId === "string" && grantedItemId.length > 0) {
+        return listTypedActorItems(actor).find((item) => item.id === grantedItemId) ?? null;
+    }
+    return (listTypedActorItems(actor).find((item) => item.type === grant.itemType && item.flags?.pf2e?.grantedBy?.id === selectorId) ?? null);
+}
+function readRulesSelection(item, flag) {
+    const selection = item?.flags?.pf2e?.rulesSelections?.[flag];
+    return typeof selection === "string" && selection.length > 0 ? selection : null;
+}
+function listTypedActorItems(actor) {
+    return listActorItems(actor).filter((item) => !!item && typeof item === "object");
 }
 //# sourceMappingURL=existing-selection-service.js.map

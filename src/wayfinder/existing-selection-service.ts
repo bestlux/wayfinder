@@ -1,43 +1,74 @@
 import { listActorItems } from "../build-state.js";
-import { sourceIdOf } from "../shared/source-id.js";
+import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta } from "../types.js";
 
-export function readExistingBranchSelection(actor: any, branch: ClassBranchMeta): string | null {
-  const selectorItem = findActorItemBySourceId(actor, branch.selectorUuid);
-  const rulesSelection = selectorItem?.flags?.pf2e?.rulesSelections?.[branch.flag];
-  return typeof rulesSelection === "string" && rulesSelection.length > 0 ? rulesSelection : null;
+interface ActorItemLike {
+  id?: unknown;
+  type?: unknown;
+  flags?: {
+    pf2e?: {
+      rulesSelections?: Record<string, unknown>;
+      itemGrants?: Record<string, { id?: unknown }>;
+      grantedBy?: {
+        id?: unknown;
+      };
+    };
+  };
 }
 
-export function readExistingGrantedSelection(actor: any, grant: ClassGrantMeta): string | null {
+export function readExistingBranchSelection(actor: unknown, branch: ClassBranchMeta): string | null {
+  return readRulesSelection(findActorItemBySourceId(actor, branch.selectorUuid), branch.flag);
+}
+
+export function readExistingGrantedSelection(actor: unknown, grant: ClassGrantMeta): string | null {
   const selectorItem = findActorItemBySourceId(actor, grant.selectorUuid);
-  if (!selectorItem?.id) {
+  if (!selectorItem) {
     return null;
   }
 
-  const rulesSelection = selectorItem?.flags?.pf2e?.rulesSelections?.[grant.flag];
-  if (typeof rulesSelection === "string" && rulesSelection.length > 0) {
+  const rulesSelection = readRulesSelection(selectorItem, grant.flag);
+  if (rulesSelection) {
     return rulesSelection;
   }
 
-  const grantedItemId = selectorItem?.flags?.pf2e?.itemGrants?.[grant.flag]?.id;
-  const grantedItem =
-    (typeof grantedItemId === "string" && grantedItemId.length > 0
-      ? listActorItems(actor).find((item: any) => item?.id === grantedItemId)
-      : null) ??
-    listActorItems(actor).find(
-      (item: any) => item?.type === grant.itemType && item?.flags?.pf2e?.grantedBy?.id === selectorItem.id
-    ) ??
-    null;
-
-  return sourceIdOf(grantedItem);
+  return sourceIdOf(findGrantedActorItem(actor, selectorItem, grant));
 }
 
-export function readExistingClassChoiceSelection(actor: any, choice: ClassChoiceMeta): string | null {
-  const sourceItem = findActorItemBySourceId(actor, choice.sourceUuid);
-  const rulesSelection = sourceItem?.flags?.pf2e?.rulesSelections?.[choice.flag];
-  return typeof rulesSelection === "string" && rulesSelection.length > 0 ? rulesSelection : null;
+export function readExistingClassChoiceSelection(actor: unknown, choice: ClassChoiceMeta): string | null {
+  return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
 }
 
-function findActorItemBySourceId(actor: any, sourceId: string): any | null {
-  return listActorItems(actor).find((item: any) => sourceIdOf(item) === sourceId) ?? null;
+function findActorItemBySourceId(actor: unknown, sourceId: string): ActorItemLike | null {
+  return listTypedActorItems(actor).find((item) => itemMatchesSourceId(item, sourceId)) ?? null;
+}
+
+function findGrantedActorItem(
+  actor: unknown,
+  selectorItem: ActorItemLike,
+  grant: ClassGrantMeta
+): ActorItemLike | null {
+  const selectorId = typeof selectorItem.id === "string" ? selectorItem.id : null;
+  if (!selectorId) {
+    return null;
+  }
+
+  const grantedItemId = selectorItem.flags?.pf2e?.itemGrants?.[grant.flag]?.id;
+  if (typeof grantedItemId === "string" && grantedItemId.length > 0) {
+    return listTypedActorItems(actor).find((item) => item.id === grantedItemId) ?? null;
+  }
+
+  return (
+    listTypedActorItems(actor).find(
+      (item) => item.type === grant.itemType && item.flags?.pf2e?.grantedBy?.id === selectorId
+    ) ?? null
+  );
+}
+
+function readRulesSelection(item: ActorItemLike | null, flag: string): string | null {
+  const selection = item?.flags?.pf2e?.rulesSelections?.[flag];
+  return typeof selection === "string" && selection.length > 0 ? selection : null;
+}
+
+function listTypedActorItems(actor: unknown): ActorItemLike[] {
+  return listActorItems(actor).filter((item): item is ActorItemLike => !!item && typeof item === "object");
 }

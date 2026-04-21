@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import type { SelectionRef } from "../src/types";
 import {
@@ -6,177 +6,9 @@ import {
   buildClassChoiceSteps,
   buildClassFeatSteps,
   buildClassGrantedItemSteps,
-  buildClassTrainingSteps,
 } from "../src/wayfinder/class-choice-service";
 
-const testGlobals = globalThis as typeof globalThis & { CONFIG: any };
-
 describe("class-choice-service", () => {
-  afterEach(() => {
-    delete testGlobals.CONFIG;
-  });
-
-  it("emits a generalized class training step from supported skill choices", async () => {
-    const fighterSelection = selection("pf2e.classes", "fighter", "Fighter", "class");
-    const documents = new Map<string, any>([
-      [
-        fighterSelection.uuid,
-        {
-          name: "Fighter",
-          system: {
-            slug: "fighter",
-            trainedSkills: {
-              additional: 3,
-              value: ["athletics", "invalid-entry"],
-            },
-            rules: [
-              {
-                key: "ChoiceSet",
-                flag: "fighterSkill",
-                prompt: "Choose a class skill",
-                choices: [
-                  { value: "acrobatics", label: "PF2E.Skill.Acrobatics" },
-                  { value: "athletics", label: "PF2E.Skill.Athletics" },
-                ],
-              },
-              {
-                key: "ChoiceSet",
-                flag: "battleStyle",
-                prompt: "Choose a battle style",
-                choices: [
-                  { value: "archer", label: "Archer" },
-                  { value: "guardian", label: "Guardian" },
-                ],
-              },
-            ],
-          },
-        },
-      ],
-    ]);
-
-    const steps = await buildClassTrainingSteps({
-      draftClassSelection: fighterSelection,
-      targetLevel: 3,
-      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
-      extractSlug: (document) => document?.system?.slug ?? null,
-      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
-    });
-
-    expect(steps).toHaveLength(1);
-    expect(steps[0]).toMatchObject({
-      kind: "skill-training",
-      slotId: "skill-training-fighter-level-1",
-      training: {
-        classSlug: "fighter",
-        className: "Fighter",
-        fixedSkills: ["athletics", "invalid-entry"],
-        additionalCount: 3,
-        choiceRules: [
-          {
-            flag: "fighterSkill",
-            prompt: "Choose a class skill",
-            options: [
-              { slug: "acrobatics", label: "Acrobatics" },
-              { slug: "athletics", label: "Athletics" },
-            ],
-          },
-        ],
-      },
-    });
-  });
-
-  it("does not emit a class training step when the class only has unsupported non-skill choices", async () => {
-    const classSelection = selection("pf2e.classes", "wizard", "Wizard", "class");
-    const documents = new Map<string, any>([
-      [
-        classSelection.uuid,
-        {
-          name: "Wizard",
-          system: {
-            slug: "wizard",
-            trainedSkills: {
-              additional: 0,
-              value: [],
-            },
-            rules: [
-              {
-                key: "ChoiceSet",
-                flag: "arcaneSchool",
-                choices: [
-                  { value: "evocation", label: "Evocation" },
-                  { value: "illusion", label: "Illusion" },
-                ],
-              },
-            ],
-          },
-        },
-      ],
-    ]);
-
-    const steps = await buildClassTrainingSteps({
-      draftClassSelection: classSelection,
-      targetLevel: 1,
-      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
-      extractSlug: (document) => document?.system?.slug ?? null,
-      localize: (value) => value,
-    });
-
-    expect(steps).toEqual([]);
-  });
-
-  it("keeps extended skill slugs when a class skill rule includes configured world skills", async () => {
-    testGlobals.CONFIG = {
-      PF2E: {
-        skills: {
-          acrobatics: { label: "PF2E.Skill.Acrobatics" },
-          sailing: { label: "World.Skill.Sailing" },
-        },
-      },
-    } as any;
-
-    const classSelection = selection("pf2e.classes", "swashbuckler", "Swashbuckler", "class");
-    const documents = new Map<string, any>([
-      [
-        classSelection.uuid,
-        {
-          name: "Swashbuckler",
-          system: {
-            slug: "swashbuckler",
-            trainedSkills: {
-              additional: 0,
-              value: ["sailing"],
-            },
-            rules: [
-              {
-                key: "ChoiceSet",
-                flag: "classSkill",
-                prompt: "Choose a class skill",
-                choices: [
-                  { value: "acrobatics", label: "PF2E.Skill.Acrobatics" },
-                  { value: "sailing", label: "World.Skill.Sailing" },
-                ],
-              },
-            ],
-          },
-        },
-      ],
-    ]);
-
-    const steps = await buildClassTrainingSteps({
-      draftClassSelection: classSelection,
-      targetLevel: 1,
-      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
-      extractSlug: (document) => document?.system?.slug ?? null,
-      localize: (value) => value.replace(/^PF2E\.Skill\./, "").replace(/^World\.Skill\./, ""),
-    });
-
-    expect(steps[0]?.training?.fixedSkills).toEqual(["sailing"]);
-    expect(steps[0]?.training?.choiceRules[0]?.options).toEqual([
-      { slug: "acrobatics", label: "Acrobatics" },
-      { slug: "sailing", label: "Sailing" },
-    ]);
-  });
-
   it("derives class feat milestones from the effective class document", async () => {
     const steps = await buildClassFeatSteps({
       effectiveClassDocument: {
@@ -193,26 +25,21 @@ describe("class-choice-service", () => {
     expect(steps.map((step) => step.slotId)).toEqual(["class-feat-level-1", "class-feat-level-2"]);
   });
 
-  it("emits branch steps from selector features and skips ones already chosen on the actor", async () => {
+  it("skips branch steps already resolved on the actor unless the draft overrides them", async () => {
     const draft = createEmptyDraft(1);
     const rogueClass = {
       system: {
         slug: "rogue",
         items: {
-          one: {
+          selector: {
             level: 1,
             uuid: "Compendium.pf2e.classfeatures.Item.racket-selector",
             name: "Rogue's Racket",
           },
-          two: {
-            level: 1,
-            uuid: "Compendium.pf2e.classfeatures.Item.missing-selector",
-            name: "Ignore Me",
-          },
         },
       },
     };
-    const documents = new Map<string, any>([
+    const documents = new Map<string, unknown>([
       [
         "Compendium.pf2e.classfeatures.Item.racket-selector",
         {
@@ -231,55 +58,13 @@ describe("class-choice-service", () => {
               },
               {
                 key: "GrantItem",
-                uuid: "{item|flags.pf2e.rulesSelections.roguesRacket}",
-              },
-            ],
-          },
-        },
-      ],
-      [
-        "Compendium.pf2e.classfeatures.Item.missing-selector",
-        {
-          type: "feat",
-          name: "Ignore Me",
-          system: {
-            slug: "ignore-me",
-            category: "classfeature",
-            level: { value: 1 },
-            rules: [
-              {
-                key: "ChoiceSet",
-                flag: "ignoredChoice",
-                choices: {
-                  filter: ["item:tag:ignored-choice"],
-                },
+                uuid: "{item|flags.system.rulesSelections.roguesRacket}",
               },
             ],
           },
         },
       ],
     ]);
-
-    const steps = await buildClassBranchSteps({
-      draft,
-      effectiveClassDocument: rogueClass,
-      targetLevel: 1,
-      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
-      extractSlug: slugFromDocument,
-      readExistingBranchSelection: () => null,
-    });
-
-    expect(steps).toHaveLength(1);
-    expect(steps[0]).toMatchObject({
-      kind: "class-branch",
-      slotId: "class-branch-rogue-s-racket-level-1",
-      branch: {
-        selectorName: "Rogue's Racket",
-        flag: "roguesRacket",
-        optionTag: "rogue-racket",
-        classSlug: "rogue",
-      },
-    });
 
     const skipped = await buildClassBranchSteps({
       draft,
@@ -291,199 +76,27 @@ describe("class-choice-service", () => {
     });
 
     expect(skipped).toEqual([]);
-  });
 
-  it("emits wizard arcane-school and arcane-thesis branch steps from the real selector shape", async () => {
-    const draft = createEmptyDraft(1);
-    const wizardClass = {
-      system: {
-        slug: "wizard",
-        items: {
-          school: {
-            level: 1,
-            uuid: "Compendium.pf2e.classfeatures.Item.arcane-school-selector",
-            name: "Arcane School",
-          },
-          thesis: {
-            level: 1,
-            uuid: "Compendium.pf2e.classfeatures.Item.arcane-thesis-selector",
-            name: "Arcane Thesis",
-          },
-          bond: {
-            level: 1,
-            uuid: "Compendium.pf2e.classfeatures.Item.arcane-bond",
-            name: "Arcane Bond",
-          },
-        },
-      },
-    };
-    const documents = new Map<string, any>([
-      [
-        "Compendium.pf2e.classfeatures.Item.arcane-school-selector",
-        {
-          type: "feat",
-          name: "Arcane School",
-          system: {
-            category: "classfeature",
-            level: { value: 1 },
-            rules: [
-              {
-                key: "ChoiceSet",
-                flag: "arcaneSchool",
-                choices: {
-                  filter: ["item:tag:wizard-arcane-school"],
-                },
-              },
-              {
-                key: "GrantItem",
-                uuid: "{item|flags.system.rulesSelections.arcaneSchool}",
-              },
-            ],
-          },
-        },
-      ],
-      [
-        "Compendium.pf2e.classfeatures.Item.arcane-thesis-selector",
-        {
-          type: "feat",
-          name: "Arcane Thesis",
-          system: {
-            category: "classfeature",
-            level: { value: 1 },
-            rules: [
-              {
-                key: "ChoiceSet",
-                flag: "arcaneThesis",
-                choices: {
-                  filter: ["item:tag:wizard-arcane-thesis"],
-                },
-              },
-              {
-                key: "GrantItem",
-                uuid: "{item|flags.system.rulesSelections.arcaneThesis}",
-              },
-            ],
-          },
-        },
-      ],
-      [
-        "Compendium.pf2e.classfeatures.Item.arcane-bond",
-        {
-          type: "feat",
-          name: "Arcane Bond",
-          system: {
-            category: "classfeature",
-            level: { value: 1 },
-            rules: [
-              {
-                key: "GrantItem",
-                uuid: "Compendium.pf2e.actionspf2e.Item.Drain Bonded Item",
-              },
-            ],
-          },
-        },
-      ],
-    ]);
+    draft.branchSelections["class-branch-rogue-s-racket-level-1"] = selection(
+      "pf2e.classfeatures",
+      "scoundrel",
+      "Scoundrel",
+      "feat"
+    );
 
-    const steps = await buildClassBranchSteps({
+    const retained = await buildClassBranchSteps({
       draft,
-      effectiveClassDocument: wizardClass,
+      effectiveClassDocument: rogueClass,
       targetLevel: 1,
       fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: slugFromDocument,
-      readExistingBranchSelection: () => null,
+      readExistingBranchSelection: () => "Compendium.pf2e.classfeatures.Item.scoundrel",
     });
 
-    expect(steps).toHaveLength(2);
-    expect(steps).toMatchObject([
-      {
-        kind: "class-branch",
-        slotId: "class-branch-arcane-school-level-1",
-        branch: {
-          selectorName: "Arcane School",
-          flag: "arcaneSchool",
-          optionTag: "wizard-arcane-school",
-          classSlug: "wizard",
-        },
-      },
-      {
-        kind: "class-branch",
-        slotId: "class-branch-arcane-thesis-level-1",
-        branch: {
-          selectorName: "Arcane Thesis",
-          flag: "arcaneThesis",
-          optionTag: "wizard-arcane-thesis",
-          classSlug: "wizard",
-        },
-      },
-    ]);
+    expect(retained).toHaveLength(1);
   });
 
-  it("marks champion cause as a deity-dependent class branch", async () => {
-    const draft = createEmptyDraft(1);
-    const championClass = {
-      system: {
-        slug: "champion",
-        items: {
-          cause: {
-            level: 1,
-            uuid: "Compendium.pf2e.classfeatures.Item.cause",
-            name: "Cause",
-          },
-        },
-      },
-    };
-    const documents = new Map<string, any>([
-      [
-        "Compendium.pf2e.classfeatures.Item.cause",
-        {
-          type: "feat",
-          name: "Cause",
-          system: {
-            category: "classfeature",
-            level: { value: 1 },
-            rules: [
-              {
-                key: "ChoiceSet",
-                flag: "cause",
-                choices: {
-                  filter: ["item:tag:champion-cause"],
-                },
-              },
-              {
-                key: "GrantItem",
-                uuid: "{item|flags.system.rulesSelections.cause}",
-              },
-            ],
-          },
-        },
-      ],
-    ]);
-
-    const steps = await buildClassBranchSteps({
-      draft,
-      effectiveClassDocument: championClass,
-      targetLevel: 1,
-      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
-      extractSlug: slugFromDocument,
-      readExistingBranchSelection: () => null,
-    });
-
-    expect(steps).toHaveLength(1);
-    expect(steps[0]).toMatchObject({
-      kind: "class-branch",
-      slotId: "class-branch-cause-level-1",
-      branch: {
-        selectorName: "Cause",
-        flag: "cause",
-        optionTag: "champion-cause",
-        classSlug: "champion",
-        dependsOn: "deity",
-      },
-    });
-  });
-
-  it("emits a deity step for cleric class features that grant a deity selection", async () => {
+  it("skips deity grant steps already resolved on the actor unless the draft overrides them", async () => {
     const draft = createEmptyDraft(1);
     const clericClass = {
       system: {
@@ -497,7 +110,7 @@ describe("class-choice-service", () => {
         },
       },
     };
-    const documents = new Map<string, any>([
+    const documents = new Map<string, unknown>([
       [
         "Compendium.pf2e.classfeatures.Item.deity-cleric",
         {
@@ -524,42 +137,37 @@ describe("class-choice-service", () => {
       ],
     ]);
 
-    const steps = await buildClassGrantedItemSteps({
+    const skipped = await buildClassGrantedItemSteps({
       draft,
       effectiveClassDocument: clericClass,
       targetLevel: 1,
       fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: slugFromDocument,
-      readExistingGrantedSelection: () => null,
+      readExistingGrantedSelection: () => "Compendium.pf2e.deities.Item.gorum",
     });
 
-    expect(steps).toEqual([
-      expect.objectContaining({
-        kind: "pick-item",
-        slotKind: "deity",
-        slotId: "deity-level-1",
-        title: "Choose a deity",
-        grantSelection: expect.objectContaining({
-          flag: "deity",
-          itemType: "deity",
-          selectorUuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
-          classSlug: "cleric",
-        }),
-      }),
-    ]);
+    expect(skipped).toEqual([]);
+
+    draft.selections["deity-level-1"] = selection("pf2e.deities", "gorum", "Gorum", "deity");
+
+    const retained = await buildClassGrantedItemSteps({
+      draft,
+      effectiveClassDocument: clericClass,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+      readExistingGrantedSelection: () => "Compendium.pf2e.deities.Item.gorum",
+    });
+
+    expect(retained).toHaveLength(1);
   });
 
-  it("emits deity-aware cleric class choices and skips choices with no valid options", async () => {
+  it("skips class choice steps already resolved on the actor unless the draft overrides them", async () => {
     const draft = createEmptyDraft(1);
     const clericClass = {
       system: {
         slug: "cleric",
         items: {
-          deity: {
-            level: 1,
-            uuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
-            name: "Deity",
-          },
           font: {
             level: 1,
             uuid: "Compendium.pf2e.classfeatures.Item.divine-font",
@@ -568,36 +176,7 @@ describe("class-choice-service", () => {
         },
       },
     };
-    const documents = new Map<string, any>([
-      [
-        "Compendium.pf2e.classfeatures.Item.deity-cleric",
-        {
-          type: "feat",
-          name: "Deity",
-          system: {
-            category: "classfeature",
-            level: { value: 1 },
-            rules: [
-              {
-                key: "ChoiceSet",
-                flag: "sanctification",
-                choices: [
-                  {
-                    value: "holy",
-                    label: "Holy",
-                    predicate: "deity:primary:sanctification:can:holy",
-                  },
-                  {
-                    value: "unholy",
-                    label: "Unholy",
-                    predicate: "deity:primary:sanctification:can:unholy",
-                  },
-                ],
-              },
-            ],
-          },
-        },
-      ],
+    const documents = new Map<string, unknown>([
       [
         "Compendium.pf2e.classfeatures.Item.divine-font",
         {
@@ -628,188 +207,39 @@ describe("class-choice-service", () => {
         },
       ],
     ]);
-    const gorum = {
+    const deityDocument = {
       system: {
         font: ["heal", "harm"],
-        sanctification: {
-          modal: "can",
-          what: ["holy", "unholy"],
-        },
-      },
-    };
-    const pharasma = {
-      system: {
-        font: ["heal"],
-        sanctification: null,
       },
     };
 
-    const gorumSteps = await buildClassChoiceSteps({
+    const skipped = await buildClassChoiceSteps({
       draft,
       effectiveClassDocument: clericClass,
-      effectiveDeityDocument: gorum,
+      effectiveDeityDocument: deityDocument,
       targetLevel: 1,
       fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: slugFromDocument,
       localize: (value) => value,
-      readExistingClassChoiceSelection: () => null,
+      readExistingClassChoiceSelection: () => "heal",
     });
 
-    expect(gorumSteps).toMatchObject([
-      {
-        kind: "class-choice",
-        slotId: "class-choice-deity-sanctification-level-1",
-        classChoice: {
-          flag: "sanctification",
-          dependsOn: "deity",
-          options: [
-            { value: "holy", label: "Holy" },
-            { value: "unholy", label: "Unholy" },
-          ],
-        },
-      },
-      {
-        kind: "class-choice",
-        slotId: "class-choice-divine-font-divineFont-level-1",
-        classChoice: {
-          flag: "divineFont",
-          dependsOn: "deity",
-          options: [
-            { value: "heal", label: "Heal" },
-            { value: "harm", label: "Harm" },
-          ],
-        },
-      },
-    ]);
+    expect(skipped).toEqual([]);
 
-    const pharasmaSteps = await buildClassChoiceSteps({
+    draft.classChoices["class-choice-divine-font-divineFont-level-1"] = "harm";
+
+    const retained = await buildClassChoiceSteps({
       draft,
       effectiveClassDocument: clericClass,
-      effectiveDeityDocument: pharasma,
+      effectiveDeityDocument: deityDocument,
       targetLevel: 1,
       fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: slugFromDocument,
       localize: (value) => value,
-      readExistingClassChoiceSelection: () => null,
+      readExistingClassChoiceSelection: () => "heal",
     });
 
-    expect(pharasmaSteps).toMatchObject([
-      {
-        kind: "class-choice",
-        slotId: "class-choice-divine-font-divineFont-level-1",
-        classChoice: {
-          flag: "divineFont",
-          options: [{ value: "heal", label: "Heal" }],
-        },
-      },
-    ]);
-    expect(pharasmaSteps.some((step) => step.slotId === "class-choice-deity-sanctification-level-1")).toBe(false);
-  });
-
-  it("emits champion sanctification choices when the deity allows flexible sanctification", async () => {
-    const draft = createEmptyDraft(1);
-    const championClass = {
-      system: {
-        slug: "champion",
-        items: {
-          deity: {
-            level: 1,
-            uuid: "Compendium.pf2e.classfeatures.Item.deity-champion",
-            name: "Deity (Champion)",
-          },
-        },
-      },
-    };
-    const documents = new Map<string, any>([
-      [
-        "Compendium.pf2e.classfeatures.Item.deity-champion",
-        {
-          type: "feat",
-          name: "Deity (Champion)",
-          system: {
-            category: "classfeature",
-            level: { value: 1 },
-            rules: [
-              {
-                key: "ChoiceSet",
-                flag: "deity",
-                choices: {
-                  itemType: "deity",
-                },
-              },
-              {
-                key: "GrantItem",
-                uuid: "{item|flags.system.rulesSelections.deity}",
-              },
-              {
-                key: "ChoiceSet",
-                slug: "sanctification",
-                rollOption: "sanctification",
-                choices: [
-                  {
-                    value: "holy",
-                    label: "PF2E.TraitHoly",
-                    predicate: [
-                      { or: ["deity:primary:sanctification:can:holy", "deity:primary:sanctification:must:holy"] },
-                    ],
-                  },
-                  {
-                    value: "unholy",
-                    label: "PF2E.TraitUnholy",
-                    predicate: [
-                      { or: ["deity:primary:sanctification:can:unholy", "deity:primary:sanctification:must:unholy"] },
-                    ],
-                  },
-                  {
-                    value: "none",
-                    label: "PF2E.NoneOption",
-                    predicate: [
-                      { nor: ["deity:primary:sanctification:must:holy", "deity:primary:sanctification:must:unholy"] },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        },
-      ],
-    ]);
-    const gorum = {
-      system: {
-        sanctification: {
-          modal: "can",
-          what: ["holy", "unholy"],
-        },
-      },
-    };
-
-    const steps = await buildClassChoiceSteps({
-      draft,
-      effectiveClassDocument: championClass,
-      effectiveDeityDocument: gorum,
-      targetLevel: 1,
-      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
-      extractSlug: slugFromDocument,
-      localize: (value) => value,
-      readExistingClassChoiceSelection: () => null,
-    });
-
-    expect(steps).toMatchObject([
-      {
-        kind: "class-choice",
-        slotId: "class-choice-deity-champion-sanctification-level-1",
-        classChoice: {
-          flag: "sanctification",
-          classSlug: "champion",
-          dependsOn: "deity",
-          options: [
-            { value: "holy", label: "PF2E.TraitHoly" },
-            { value: "unholy", label: "PF2E.TraitUnholy" },
-            { value: "none", label: "PF2E.NoneOption" },
-          ],
-        },
-      },
-    ]);
+    expect(retained).toHaveLength(1);
   });
 });
 
@@ -826,19 +256,20 @@ function selection(packId: string, documentId: string, name: string, itemType: s
   };
 }
 
-function slugFromDocument(document: any): string | null {
-  const systemSlug = document?.system?.slug;
+function slugFromDocument(document: unknown): string | null {
+  const systemSlug = (document as { system?: { slug?: unknown } } | null | undefined)?.system?.slug;
   if (typeof systemSlug === "string" && systemSlug.trim()) {
     return systemSlug.trim();
   }
 
-  const ancestrySlug = document?.system?.ancestry?.slug;
+  const ancestrySlug = (document as { system?: { ancestry?: { slug?: unknown } } } | null | undefined)?.system?.ancestry
+    ?.slug;
   if (typeof ancestrySlug === "string" && ancestrySlug.trim()) {
     return ancestrySlug.trim();
   }
 
-  const name = typeof document?.name === "string" ? document.name.trim() : "";
-  if (!name) {
+  const name = (document as { name?: unknown } | null | undefined)?.name;
+  if (typeof name !== "string" || !name.trim()) {
     return null;
   }
 

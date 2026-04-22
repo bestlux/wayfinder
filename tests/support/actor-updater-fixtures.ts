@@ -39,6 +39,14 @@ type HarnessActor = ActorLike & {
   update: ReturnType<typeof vi.fn>;
 };
 
+type TestSelectionDocumentLike = SelectionDocumentLike & {
+  type?: string;
+  img?: string;
+  system?: Record<string, unknown>;
+  flags?: Record<string, unknown>;
+  _stats?: Record<string, unknown>;
+};
+
 export const testGlobals = globalThis as typeof globalThis & { game: GameLike };
 
 export function buildActorHarness(options: ActorHarnessOptions = {}) {
@@ -87,11 +95,64 @@ export function buildActorHarness(options: ActorHarnessOptions = {}) {
       actor.items.contents = actor.items.contents.filter((item) => !item.id || !ids.includes(item.id));
       return [];
     }),
-    updateEmbeddedDocuments: vi.fn(async () => []),
-    update: vi.fn(async () => ({})),
+    updateEmbeddedDocuments: vi.fn(async (_type: string, updates: Array<Record<string, unknown>>) => {
+      for (const update of updates) {
+        const itemId = typeof update._id === "string" ? update._id : null;
+        if (!itemId) {
+          continue;
+        }
+
+        const item = actor.items.contents.find((entry) => entry.id === itemId);
+        if (!item) {
+          continue;
+        }
+
+        for (const [path, value] of Object.entries(update)) {
+          if (path === "_id") {
+            continue;
+          }
+
+          setByPath(item, path, cloneValue(value));
+        }
+      }
+
+      return [];
+    }),
+    update: vi.fn(async (updates: Record<string, unknown>) => {
+      for (const [path, value] of Object.entries(updates)) {
+        setByPath(actor, path, cloneValue(value));
+      }
+
+      return {};
+    }),
   };
 
   return { actor, createdItems };
+}
+
+function cloneValue<T>(value: T): T {
+  return value === undefined ? value : structuredClone(value);
+}
+
+function setByPath(target: Record<string, unknown>, path: string, value: unknown): void {
+  const segments = path.split(".");
+  let cursor: Record<string, unknown> = target;
+
+  for (const segment of segments.slice(0, -1)) {
+    const existing = cursor[segment];
+    if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+      cursor[segment] = {};
+    }
+
+    cursor = cursor[segment] as Record<string, unknown>;
+  }
+
+  const leaf = segments.at(-1);
+  if (!leaf) {
+    return;
+  }
+
+  cursor[leaf] = value;
 }
 
 export function setGamePacks(packs: Record<string, Record<string, PackDocumentDefinition>>): void {
@@ -107,16 +168,21 @@ export function setGamePacks(packs: Record<string, Record<string, PackDocumentDe
               return null;
             }
 
-            const selectionDocument: SelectionDocumentLike = {
+            const selectionDocument: TestSelectionDocumentLike = {
               id: documentId,
               name: document.name,
+              type: document.type,
+              img: document.img,
+              system: cloneValue(document.system ?? {}),
+              flags: cloneValue(document.flags ?? {}),
+              _stats: cloneValue(document._stats ?? {}),
               toObject: () => ({
                 name: document.name,
                 type: document.type,
                 img: document.img,
-                system: document.system ?? {},
-                flags: document.flags ?? {},
-                _stats: document._stats ?? {},
+                system: cloneValue(document.system ?? {}),
+                flags: cloneValue(document.flags ?? {}),
+                _stats: cloneValue(document._stats ?? {}),
               }),
             };
             return selectionDocument;

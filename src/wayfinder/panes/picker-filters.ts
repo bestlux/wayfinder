@@ -98,6 +98,15 @@ export function buildPickerFilterGroups(
       labels.set(value, optionFilterLabel(option, kind));
     }
 
+    for (const selectedValue of normalizedState[kind]) {
+      if (!counts.has(selectedValue)) {
+        counts.set(selectedValue, 0);
+      }
+      if (!labels.has(selectedValue)) {
+        labels.set(selectedValue, filterLabelFromValue(kind, selectedValue));
+      }
+    }
+
     const optionStates = [...counts.entries()]
       .sort(([leftValue], [rightValue]) => {
         const leftLabel = labels.get(leftValue) ?? leftValue;
@@ -147,6 +156,14 @@ function optionFilterLabel(option: OptionRecord, kind: PickerFilterKind): string
 
   const source = option.source?.trim();
   return source && source.length > 0 ? source : "Unknown Source";
+}
+
+function filterLabelFromValue(kind: PickerFilterKind, value: string): string {
+  if (kind === "rarity") {
+    return value === UNKNOWN_RARITY ? "Unspecified" : formatSlug(value);
+  }
+
+  return value === UNKNOWN_SOURCE ? "Unknown Source" : value;
 }
 
 const FILTER_KINDS: PickerFilterKind[] = ["rarity", "source"];

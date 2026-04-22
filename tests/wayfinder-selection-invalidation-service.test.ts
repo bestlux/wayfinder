@@ -80,6 +80,35 @@ describe("wayfinder selection invalidation service", () => {
     expect(draft.languageChoices[SLOT_IDS.languageChoice]).toBeUndefined();
   });
 
+  it("clears filter-only dependent class steps when the class selection is cleared", () => {
+    const draft = createEmptyDraft(1);
+    draft.selections[SLOT_IDS.class] = selection(SLOT_IDS.class, "class", "wizard");
+
+    const previewValueByStepId = new Map([["class-branch-arcane-school-level-1", "test.pack:battle-magic"]]);
+    const pickerFiltersByStepId = new Map([["class-branch-arcane-school-level-1", { rarity: ["common"], source: [] }]]);
+    const scrollById = new Map([["class-branch-arcane-school-level-1:options", 12]]);
+    const service = createSelectionInvalidationService(
+      {
+        draft,
+        previewValueByStepId,
+        pickerFiltersByStepId,
+        recentlyInvalidatedStepIds: new Set<string>(),
+        scrollById,
+      },
+      {
+        buildPlan: async () => ({ recommendedTargetLevel: 1, targetLevel: 1, steps: [] }),
+        resetAncestryBoostDraft: () => false,
+        resetBackgroundBoostDraft: () => false,
+        resetClassBoostDraft: () => false,
+      }
+    );
+
+    expect(service.clearSelection(SLOT_IDS.class)).toBe(2);
+    expect(previewValueByStepId.has("class-branch-arcane-school-level-1")).toBe(false);
+    expect(pickerFiltersByStepId.has("class-branch-arcane-school-level-1")).toBe(false);
+    expect(scrollById.has("class-branch-arcane-school-level-1:options")).toBe(false);
+  });
+
   it("invalidates only the dependency-matching steps from the current plan", async () => {
     const draft = createEmptyDraft(1);
     draft.branchSelections["class-branch-cause-level-1"] = selection("class-branch-cause-level-1", "feat", "paladin");

@@ -60,6 +60,14 @@ export function buildPickerFilterGroups(options, state) {
             counts.set(value, (counts.get(value) ?? 0) + 1);
             labels.set(value, optionFilterLabel(option, kind));
         }
+        for (const selectedValue of normalizedState[kind]) {
+            if (!counts.has(selectedValue)) {
+                counts.set(selectedValue, 0);
+            }
+            if (!labels.has(selectedValue)) {
+                labels.set(selectedValue, filterLabelFromValue(kind, selectedValue));
+            }
+        }
         const optionStates = [...counts.entries()]
             .sort(([leftValue], [rightValue]) => {
             const leftLabel = labels.get(leftValue) ?? leftValue;
@@ -100,6 +108,12 @@ function optionFilterLabel(option, kind) {
     }
     const source = option.source?.trim();
     return source && source.length > 0 ? source : "Unknown Source";
+}
+function filterLabelFromValue(kind, value) {
+    if (kind === "rarity") {
+        return value === UNKNOWN_RARITY ? "Unspecified" : formatSlug(value);
+    }
+    return value === UNKNOWN_SOURCE ? "Unknown Source" : value;
 }
 const FILTER_KINDS = ["rarity", "source"];
 //# sourceMappingURL=picker-filters.js.map

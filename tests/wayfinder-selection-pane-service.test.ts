@@ -141,6 +141,71 @@ describe("wayfinder selection pane service", () => {
     expect(pane.preview?.value).toBe("test.pack:wintertouched");
   });
 
+  it("keeps selected filter chips visible when active filters eliminate every searched option", async () => {
+    const draft = createEmptyDraft(1);
+    const step: PendingStep = {
+      id: "heritage-level-1",
+      level: 1,
+      kind: "pick-item",
+      slotKind: "heritage",
+      title: "Heritage",
+      description: "",
+      required: true,
+      slotId: "heritage-level-1",
+      filters: { itemType: "heritage" },
+    };
+    const options: OptionRecord[] = [
+      option("test.pack:wintertouched", "Wintertouched", "common", "Player Core"),
+      option("test.pack:winterwise", "Winterwise", "rare", "Lost Omens"),
+    ];
+
+    const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
+      draft,
+      searchByStepId: new Map([[step.id, "winter"]]),
+      pickerFiltersByStepId: new Map([[step.id, { rarity: ["common"], source: ["Lost Omens"] }]]),
+      previewValueByStepId: new Map(),
+      resolveOptionContext: async () => EMPTY_CONTEXT,
+      resolveDeityDocument: async () => null,
+      buildContextNote: async () => null,
+      resolveStepStatus: async () => "Choose one",
+      getOptionsForStep: async () => options,
+      getPickerInfoState: (_step, _context, optionCount, filteredCount, search, hasActiveFilters) => ({
+        tone: "empty",
+        eyebrow: `${filteredCount}/${optionCount}`,
+        title: hasActiveFilters ? "No options match these filters" : "No options match",
+        message: `Search ${search}`,
+      }),
+      buildPreview: async () => null,
+      matchesSearch: (entry, search) => entry.name.toLowerCase().includes(search),
+    });
+
+    expect(pane?.kind).toBe("pick-item");
+    if (!pane || pane.kind !== "pick-item") {
+      throw new Error("Expected a pick-item pane");
+    }
+    expect(pane.options).toEqual([]);
+    expect(pane.activeFilterCount).toBe(2);
+    expect(pane.filterGroups).toEqual([
+      {
+        key: "rarity",
+        label: "Rarity",
+        options: [
+          { value: "common", label: "Common", count: 0, selected: true },
+          { value: "rare", label: "Rare", count: 1, selected: false },
+        ],
+      },
+      {
+        key: "source",
+        label: "Source",
+        options: [
+          { value: "Lost Omens", label: "Lost Omens", count: 0, selected: true },
+          { value: "Player Core", label: "Player Core", count: 1, selected: false },
+        ],
+      },
+    ]);
+    expect(pane.infoState?.title).toBe("No options match these filters");
+  });
+
   it("builds a singleton-choice pane from drafted singleton selections", async () => {
     const draft = createEmptyDraft(1);
     draft.singletonChoices["singleton-choice-background-sponsored-by-family-academySkill-level-1"] = "society";

@@ -80,6 +80,51 @@ describe("wayfinder invalidation helpers", () => {
     ]);
     expect(draft.branchSelections["class-branch-arcane-school-level-1"]).toBeUndefined();
   });
+
+  it("invalidates filter-only dependent steps for a prefix", () => {
+    const draft = createEmptyDraft(1);
+    const previewValueByStepId = new Map<string, string>([["class-branch-cause-level-1", "test.pack:paladin"]]);
+    const pickerFiltersByStepId = new Map<string, { rarity: string[]; source: string[] }>([
+      ["class-branch-cause-level-1", { rarity: ["common"], source: ["Player Core"] }],
+    ]);
+    const recentlyInvalidatedStepIds = new Set<string>();
+    const scrollById = new Map<string, number>([["class-branch-cause-level-1:options", 24]]);
+    const state = { draft, previewValueByStepId, pickerFiltersByStepId, recentlyInvalidatedStepIds, scrollById };
+    const hooks = {
+      resetAncestryBoostDraft: () => false,
+      resetBackgroundBoostDraft: () => false,
+      resetClassBoostDraft: () => false,
+    };
+
+    expect(invalidateSelectionsByPrefix(state, SLOT_PREFIXES.classBranch, hooks)).toEqual([
+      "class-branch-cause-level-1",
+    ]);
+    expect(previewValueByStepId.has("class-branch-cause-level-1")).toBe(false);
+    expect(pickerFiltersByStepId.has("class-branch-cause-level-1")).toBe(false);
+    expect(scrollById.has("class-branch-cause-level-1:options")).toBe(false);
+  });
+
+  it("invalidates scroll-only dependent steps for a prefix", () => {
+    const draft = createEmptyDraft(1);
+    const previewValueByStepId = new Map<string, string>();
+    const pickerFiltersByStepId = new Map<string, { rarity: string[]; source: string[] }>();
+    const recentlyInvalidatedStepIds = new Set<string>();
+    const scrollById = new Map<string, number>([
+      ["class-branch-cause-level-1:options", 24],
+      ["class-branch-cause-level-1:preview", 6],
+    ]);
+    const state = { draft, previewValueByStepId, pickerFiltersByStepId, recentlyInvalidatedStepIds, scrollById };
+    const hooks = {
+      resetAncestryBoostDraft: () => false,
+      resetBackgroundBoostDraft: () => false,
+      resetClassBoostDraft: () => false,
+    };
+
+    expect(invalidateSelectionsByPrefix(state, SLOT_PREFIXES.classBranch, hooks)).toEqual([
+      "class-branch-cause-level-1",
+    ]);
+    expect(scrollById.size).toBe(0);
+  });
 });
 
 function selection(slotId: string, itemType: string, documentId: string) {

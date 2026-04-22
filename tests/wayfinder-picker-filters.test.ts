@@ -53,6 +53,35 @@ describe("wayfinder picker filters", () => {
       },
     ]);
   });
+
+  it("preserves selected filters when other active filters reduce their counts to zero", () => {
+    const groups = buildPickerFilterGroups(
+      [option("Force Barrage", "common", "Player Core"), option("Fireball", "rare", "Lost Omens")],
+      {
+        rarity: ["common"],
+        source: ["Lost Omens"],
+      }
+    );
+
+    expect(groups).toEqual([
+      {
+        key: "rarity",
+        label: "Rarity",
+        options: [
+          { value: "common", label: "Common", count: 0, selected: true },
+          { value: "rare", label: "Rare", count: 1, selected: false },
+        ],
+      },
+      {
+        key: "source",
+        label: "Source",
+        options: [
+          { value: "Lost Omens", label: "Lost Omens", count: 0, selected: true },
+          { value: "Player Core", label: "Player Core", count: 1, selected: false },
+        ],
+      },
+    ]);
+  });
 });
 
 function option(name: string, rarity: string | null, source: string | null): OptionRecord {

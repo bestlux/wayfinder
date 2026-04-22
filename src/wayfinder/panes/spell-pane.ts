@@ -4,8 +4,10 @@ import type { PreviewPane, SpellChoiceStepPane } from "../view-models.js";
 export function buildSpellChoicePane(args: {
   step: PendingStep;
   search: string;
+  activeFilterCount: number;
   selectedSelections: SelectionRef[];
   selectedLabel: string | null;
+  filterGroups: SpellChoiceStepPane["filterGroups"];
   visibleOptions: OptionRecord[];
   infoState: SpellChoiceStepPane["infoState"];
   contextNote: string | null;
@@ -16,8 +18,10 @@ export function buildSpellChoicePane(args: {
   const {
     step,
     search,
+    activeFilterCount,
     selectedSelections,
     selectedLabel,
+    filterGroups,
     visibleOptions,
     infoState,
     contextNote,
@@ -46,6 +50,7 @@ export function buildSpellChoicePane(args: {
     title: step.title,
     description: step.description,
     search,
+    activeFilterCount,
     selectedValues,
     selectedLabel,
     selectedCount: selectedValues.length,
@@ -56,6 +61,7 @@ export function buildSpellChoicePane(args: {
     infoState,
     destinationLabel: step.spellChoice?.destination.label ?? "Spell destination",
     sourceName: step.spellChoice?.sourceName ?? "Spell source",
+    filterGroups,
     options: visibleOptions.map((option) => ({
       ...option,
       selected: selectedValues.includes(option.value),

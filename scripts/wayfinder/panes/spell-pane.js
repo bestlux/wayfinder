@@ -1,5 +1,5 @@
 export function buildSpellChoicePane(args) {
-    const { step, search, selectedSelections, selectedLabel, visibleOptions, infoState, contextNote, preview, modeLabel, previewValue, } = args;
+    const { step, search, activeFilterCount, selectedSelections, selectedLabel, filterGroups, visibleOptions, infoState, contextNote, preview, modeLabel, previewValue, } = args;
     const selectedValues = selectedSelections.map((selection) => `${selection.packId}:${selection.documentId}`);
     const requiredCount = step.spellChoice?.count ?? 0;
     return {
@@ -20,6 +20,7 @@ export function buildSpellChoicePane(args) {
         title: step.title,
         description: step.description,
         search,
+        activeFilterCount,
         selectedValues,
         selectedLabel,
         selectedCount: selectedValues.length,
@@ -30,6 +31,7 @@ export function buildSpellChoicePane(args) {
         infoState,
         destinationLabel: step.spellChoice?.destination.label ?? "Spell destination",
         sourceName: step.spellChoice?.sourceName ?? "Spell source",
+        filterGroups,
         options: visibleOptions.map((option) => ({
             ...option,
             selected: selectedValues.includes(option.value),

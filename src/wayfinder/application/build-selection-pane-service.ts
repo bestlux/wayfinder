@@ -1,9 +1,22 @@
 import type { EffectiveBuildState } from "../../build-state.js";
-import type { DraftState, OptionContext, OptionRecord, PendingStep, PickerInfoState } from "../../types.js";
+import type {
+  DraftState,
+  OptionContext,
+  OptionRecord,
+  PendingStep,
+  PickerFilterState,
+  PickerInfoState,
+} from "../../types.js";
 import { getStepModeLabel } from "../domain/step-types.js";
 import { buildClassChoicePane } from "../panes/class-choice-pane.js";
 import { buildLanguageChoicePane } from "../panes/language-choice-pane.js";
 import { buildPickItemPane, resolvePreviewValue, selectedSelection, selectedValueFor } from "../panes/pick-pane.js";
+import {
+  activePickerFilterCount,
+  buildPickerFilterGroups,
+  matchesPickerFilters,
+  normalizePickerFilterState,
+} from "../panes/picker-filters.js";
 import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
 import type {
@@ -25,6 +38,7 @@ type SelectionPane =
 interface BuildSelectionPaneDependencies {
   draft: DraftState;
   searchByStepId: Map<string, string>;
+  pickerFiltersByStepId: Map<string, PickerFilterState>;
   previewValueByStepId: Map<string, string>;
   resolveOptionContext: () => Promise<OptionContext>;
   resolveDeityDocument: () => Promise<unknown | null>;
@@ -36,7 +50,8 @@ interface BuildSelectionPaneDependencies {
     context: OptionContext,
     optionCount: number,
     filteredCount: number,
-    search: string
+    search: string,
+    hasActiveFilters: boolean
   ) => PickerInfoState | null;
   buildPreview: (option: OptionRecord | null, selectedValue: string) => Promise<PreviewPane | null>;
   matchesSearch: (option: OptionRecord, search: string) => boolean;
@@ -86,8 +101,18 @@ export async function buildSelectionPane(
   const optionContext = await deps.resolveOptionContext();
   const options = await deps.getOptionsForStep(step, optionContext);
   const search = deps.searchByStepId.get(step.id) ?? "";
-  const filteredOptions = options.filter((option) => deps.matchesSearch(option, search));
-  const infoState = deps.getPickerInfoState(step, optionContext, options.length, filteredOptions.length, search);
+  const filterState = normalizePickerFilterState(deps.pickerFiltersByStepId.get(step.id));
+  const searchedOptions = options.filter((option) => deps.matchesSearch(option, search));
+  const filterGroups = buildPickerFilterGroups(searchedOptions, filterState);
+  const filteredOptions = searchedOptions.filter((option) => matchesPickerFilters(option, filterState));
+  const infoState = deps.getPickerInfoState(
+    step,
+    optionContext,
+    options.length,
+    filteredOptions.length,
+    search,
+    activePickerFilterCount(filterState) > 0
+  );
   const visibleOptions = infoState?.tone === "blocked" ? [] : filteredOptions;
   const contextNote = await deps.buildContextNote(step, optionContext);
 
@@ -117,8 +142,10 @@ export async function buildSelectionPane(
     return buildSpellChoicePane({
       step,
       search,
+      activeFilterCount: activePickerFilterCount(filterState),
       selectedSelections,
       selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+      filterGroups,
       visibleOptions,
       infoState,
       contextNote,
@@ -137,8 +164,10 @@ export async function buildSelectionPane(
   return buildPickItemPane({
     step,
     search,
+    activeFilterCount: activePickerFilterCount(filterState),
     selectedValue,
     selectedLabel: selectedSelection(step, deps.draft)?.name ?? null,
+    filterGroups,
     visibleOptions,
     infoState,
     contextNote,

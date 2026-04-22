@@ -6,8 +6,10 @@ import type { PickStepPane, PreviewPane } from "../view-models.js";
 export function buildPickItemPane(args: {
   step: PendingStep;
   search: string;
+  activeFilterCount: number;
   selectedValue: string;
   selectedLabel: string | null;
+  filterGroups: PickStepPane["filterGroups"];
   visibleOptions: OptionRecord[];
   infoState: PickStepPane["infoState"];
   contextNote: string | null;
@@ -18,8 +20,10 @@ export function buildPickItemPane(args: {
   const {
     step,
     search,
+    activeFilterCount,
     selectedValue,
     selectedLabel,
+    filterGroups,
     visibleOptions,
     infoState,
     contextNote,
@@ -45,11 +49,13 @@ export function buildPickItemPane(args: {
     title: step.title,
     description: step.description,
     search,
+    activeFilterCount,
     selectedValue,
     selectedLabel,
     resultCount: visibleOptions.length,
     contextNote,
     infoState,
+    filterGroups,
     options: visibleOptions.map((option) => ({
       ...option,
       selected: option.value === selectedValue,

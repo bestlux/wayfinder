@@ -135,3 +135,10 @@ export interface PickerInfoState {
   title: string;
   message: string;
 }
+
+export type PickerFilterKind = "rarity" | "source";
+
+export interface PickerFilterState {
+  rarity: string[];
+  source: string[];
+}

@@ -37,6 +37,17 @@ export interface PreviewPane {
   value: string;
 }
 
+export interface PickerFilterGroupPane {
+  key: "rarity" | "source";
+  label: string;
+  options: Array<{
+    value: string;
+    label: string;
+    count: number;
+    selected: boolean;
+  }>;
+}
+
 export interface PickStepPane {
   kind: "pick-item";
   isPickItem: true;
@@ -55,11 +66,13 @@ export interface PickStepPane {
   title: string;
   description: string;
   search: string;
+  activeFilterCount: number;
   selectedValue: string;
   selectedLabel: string | null;
   resultCount: number;
   contextNote: string | null;
   infoState: PickerInfoState | null;
+  filterGroups: PickerFilterGroupPane[];
   options: Array<OptionRecord & { selected: boolean; previewing: boolean; sourceLabel: string }>;
   preview: PreviewPane | null;
 }
@@ -350,6 +363,7 @@ export interface SpellChoiceStepPane {
   title: string;
   description: string;
   search: string;
+  activeFilterCount: number;
   selectedValues: string[];
   selectedLabel: string | null;
   selectedCount: number;
@@ -360,6 +374,7 @@ export interface SpellChoiceStepPane {
   infoState: PickerInfoState | null;
   destinationLabel: string;
   sourceName: string;
+  filterGroups: PickerFilterGroupPane[];
   options: Array<OptionRecord & { selected: boolean; previewing: boolean; sourceLabel: string }>;
   preview: PreviewPane | null;
 }

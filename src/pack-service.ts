@@ -206,7 +206,8 @@ export function getPickerInfoState(
   context: OptionContext,
   optionCount: number,
   filteredCount: number,
-  search: string
+  search: string,
+  hasActiveFilters = false
 ): PickerInfoState | null {
   const blocked = getPickerBlockedState(step, context);
   if (blocked) {
@@ -222,12 +223,23 @@ export function getPickerInfoState(
     };
   }
 
-  if (search.trim() && filteredCount === 0) {
+  if (filteredCount === 0 && (search.trim() || hasActiveFilters)) {
+    const searchActive = search.trim().length > 0;
     return {
       tone: "search",
-      eyebrow: "Search results",
-      title: "No choices match this search",
-      message: "Adjust the search terms to widen the list again.",
+      eyebrow: hasActiveFilters ? "Filters active" : "Search results",
+      title:
+        searchActive && hasActiveFilters
+          ? "No choices match this search and filters"
+          : hasActiveFilters
+            ? "No choices match current filters"
+            : "No choices match this search",
+      message:
+        searchActive && hasActiveFilters
+          ? "Adjust the search or remove a filter to widen the list again."
+          : hasActiveFilters
+            ? "Remove or change a filter to widen the list again."
+            : "Adjust the search terms to widen the list again.",
     };
   }
 

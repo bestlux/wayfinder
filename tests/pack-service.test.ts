@@ -530,6 +530,20 @@ describe("pack-service dependency filtering", () => {
         "zzz"
       )?.tone
     ).toBe("search");
+    expect(
+      getPickerInfoState(
+        heritageStep,
+        {
+          ...EMPTY_CONTEXT,
+          ancestrySlug: "elf",
+          ancestryTraits: ["elf"],
+        },
+        2,
+        0,
+        "",
+        true
+      )?.title
+    ).toBe("No choices match current filters");
   });
 
   it("blocks deity-dependent class branches until a deity is chosen", () => {

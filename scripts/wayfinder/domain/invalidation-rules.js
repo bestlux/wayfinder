@@ -18,6 +18,7 @@ export function clearSelectionState(state, slotId, hooks) {
         state.recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);
     }
     state.previewValueByStepId.delete(slotId);
+    state.pickerFiltersByStepId.delete(slotId);
     for (const key of [...state.scrollById.keys()]) {
         if (key === slotId || key.startsWith(`${slotId}:`)) {
             state.scrollById.delete(key);

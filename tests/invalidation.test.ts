@@ -14,6 +14,9 @@ describe("wayfinder invalidation helpers", () => {
     draft.boosts.ancestry.modeTouched = true;
 
     const previewValueByStepId = new Map<string, string>([[SLOT_IDS.ancestry, "human"]]);
+    const pickerFiltersByStepId = new Map<string, { rarity: string[]; source: string[] }>([
+      [SLOT_IDS.ancestry, { rarity: ["common"], source: [] }],
+    ]);
     const recentlyInvalidatedStepIds = new Set<string>();
     const scrollById = new Map<string, number>([
       [SLOT_IDS.ancestry, 5],
@@ -23,21 +26,26 @@ describe("wayfinder invalidation helpers", () => {
     let ancestryResetCount = 0;
 
     expect(
-      clearSelectionState({ draft, previewValueByStepId, recentlyInvalidatedStepIds, scrollById }, SLOT_IDS.ancestry, {
-        resetAncestryBoostDraft: () => {
-          ancestryResetCount += 1;
-          draft.boosts.ancestry.modeTouched = false;
-          return true;
-        },
-        resetBackgroundBoostDraft: () => false,
-        resetClassBoostDraft: () => false,
-      })
+      clearSelectionState(
+        { draft, previewValueByStepId, pickerFiltersByStepId, recentlyInvalidatedStepIds, scrollById },
+        SLOT_IDS.ancestry,
+        {
+          resetAncestryBoostDraft: () => {
+            ancestryResetCount += 1;
+            draft.boosts.ancestry.modeTouched = false;
+            return true;
+          },
+          resetBackgroundBoostDraft: () => false,
+          resetClassBoostDraft: () => false,
+        }
+      )
     ).toBe(1);
 
     expect(draft.selections[SLOT_IDS.ancestry]).toBeUndefined();
     expect(ancestryResetCount).toBe(1);
     expect(recentlyInvalidatedStepIds.has(SLOT_IDS.abilityBoostsLevel1)).toBe(true);
     expect(previewValueByStepId.has(SLOT_IDS.ancestry)).toBe(false);
+    expect(pickerFiltersByStepId.has(SLOT_IDS.ancestry)).toBe(false);
     expect(scrollById.size).toBe(0);
   });
 
@@ -52,9 +60,10 @@ describe("wayfinder invalidation helpers", () => {
     draft.classChoices["class-choice-wizard-thesis-level-1"] = "spell-substitution";
 
     const previewValueByStepId = new Map<string, string>();
+    const pickerFiltersByStepId = new Map<string, { rarity: string[]; source: string[] }>();
     const recentlyInvalidatedStepIds = new Set<string>();
     const scrollById = new Map<string, number>();
-    const state = { draft, previewValueByStepId, recentlyInvalidatedStepIds, scrollById };
+    const state = { draft, previewValueByStepId, pickerFiltersByStepId, recentlyInvalidatedStepIds, scrollById };
     const hooks = {
       resetAncestryBoostDraft: () => false,
       resetBackgroundBoostDraft: () => false,

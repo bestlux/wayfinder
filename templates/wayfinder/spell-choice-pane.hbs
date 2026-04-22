@@ -17,6 +17,30 @@
         <i class="fa-solid fa-magnifying-glass"></i>
         <input type="search" value="{{activePane.search}}" placeholder="Search name, source, rarity…" data-wayfinder-search data-step-id="{{activePane.stepId}}" />
       </label>
+
+      {{#if activePane.filterGroups.length}}
+        <div class="picker-filter-groups">
+          {{#each activePane.filterGroups}}
+            <section class="picker-filter-group">
+              <span class="picker-filter-label">{{label}}</span>
+              <div class="picker-filter-options">
+                {{#each options}}
+                  <button type="button" class="picker-filter-chip{{#if selected}} is-selected{{/if}}" data-wayfinder-action="toggle-picker-filter" data-step-id="{{../../activePane.stepId}}" data-filter-kind="{{../key}}" data-value="{{value}}">
+                    <span>{{label}}</span>
+                    <span class="picker-filter-count">{{count}}</span>
+                  </button>
+                {{/each}}
+              </div>
+            </section>
+          {{/each}}
+
+          {{#if activePane.activeFilterCount}}
+            <button type="button" class="secondary compact picker-filter-clear" data-wayfinder-action="clear-picker-filters" data-step-id="{{activePane.stepId}}">
+              Clear filters
+            </button>
+          {{/if}}
+        </div>
+      {{/if}}
     </header>
 
     {{#if activePane.options.length}}

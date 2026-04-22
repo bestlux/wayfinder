@@ -1,4 +1,4 @@
-import type { AbilityKey } from "../types.js";
+import type { AbilityKey, PickerFilterKind } from "../types.js";
 
 export type WayfinderAction =
   | { type: "select-step"; stepId: string }
@@ -6,6 +6,8 @@ export type WayfinderAction =
   | { type: "next-step" }
   | { type: "preview-option"; stepId: string; value: string }
   | { type: "select-option"; stepId: string; value: string }
+  | { type: "toggle-picker-filter"; stepId: string; filterKind: PickerFilterKind; value: string }
+  | { type: "clear-picker-filters"; stepId: string }
   | { type: "toggle-ancestry-mode"; stepId: string | null }
   | { type: "toggle-voluntary-enabled"; stepId: string | null }
   | { type: "toggle-voluntary-legacy"; stepId: string | null }
@@ -111,6 +113,17 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
       return element.dataset.stepId && element.dataset.value
         ? { type: action, stepId: element.dataset.stepId, value: element.dataset.value }
         : null;
+    case "toggle-picker-filter":
+      return element.dataset.stepId && element.dataset.filterKind && element.dataset.value
+        ? {
+            type: action,
+            stepId: element.dataset.stepId,
+            filterKind: element.dataset.filterKind as PickerFilterKind,
+            value: element.dataset.value,
+          }
+        : null;
+    case "clear-picker-filters":
+      return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
     case "toggle-ancestry-mode":
     case "toggle-voluntary-enabled":
     case "toggle-voluntary-legacy":

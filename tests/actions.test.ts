@@ -18,6 +18,24 @@ describe("wayfinder actions", () => {
     });
   });
 
+  it("parses picker filter actions", () => {
+    const action = parseWayfinderAction({
+      dataset: {
+        wayfinderAction: "toggle-picker-filter",
+        stepId: "class-feat-level-2",
+        filterKind: "source",
+        value: "Player Core",
+      },
+    } as any);
+
+    expect(action).toEqual({
+      type: "toggle-picker-filter",
+      stepId: "class-feat-level-2",
+      filterKind: "source",
+      value: "Player Core",
+    });
+  });
+
   it("rejects incomplete action datasets", () => {
     expect(
       parseWayfinderAction({

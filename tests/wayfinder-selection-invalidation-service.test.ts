@@ -27,6 +27,7 @@ describe("wayfinder selection invalidation service", () => {
       {
         draft,
         previewValueByStepId: new Map([[SLOT_IDS.class, "wizard"]]),
+        pickerFiltersByStepId: new Map([[SLOT_IDS.class, { rarity: ["common"], source: [] }]]),
         recentlyInvalidatedStepIds: new Set<string>(),
         scrollById: new Map([[SLOT_IDS.class, 4]]),
       },
@@ -62,6 +63,7 @@ describe("wayfinder selection invalidation service", () => {
       {
         draft,
         previewValueByStepId: new Map(),
+        pickerFiltersByStepId: new Map(),
         recentlyInvalidatedStepIds: new Set<string>(),
         scrollById: new Map(),
       },
@@ -90,6 +92,7 @@ describe("wayfinder selection invalidation service", () => {
       {
         draft,
         previewValueByStepId: new Map(),
+        pickerFiltersByStepId: new Map(),
         recentlyInvalidatedStepIds: new Set<string>(),
         scrollById: new Map(),
       },

@@ -5,6 +5,7 @@ import { SLOT_IDS } from "./slot-ids.js";
 export interface DraftInteractionState {
   draft: DraftState;
   previewValueByStepId: Map<string, string>;
+  pickerFiltersByStepId: Map<string, { rarity: string[]; source: string[] }>;
   recentlyInvalidatedStepIds: Set<string>;
   scrollById: Map<string, number>;
 }
@@ -33,6 +34,7 @@ export function clearSelectionState(state: DraftInteractionState, slotId: string
   }
 
   state.previewValueByStepId.delete(slotId);
+  state.pickerFiltersByStepId.delete(slotId);
   for (const key of [...state.scrollById.keys()]) {
     if (key === slotId || key.startsWith(`${slotId}:`)) {
       state.scrollById.delete(key);

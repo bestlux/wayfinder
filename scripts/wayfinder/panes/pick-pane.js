@@ -1,7 +1,7 @@
 import { fetchSelectionDocument } from "../../pack-service.js";
 import { buildPreviewDetails, formatSlug } from "../formatting.js";
 export function buildPickItemPane(args) {
-    const { step, search, selectedValue, selectedLabel, visibleOptions, infoState, contextNote, preview, modeLabel, previewValue, } = args;
+    const { step, search, activeFilterCount, selectedValue, selectedLabel, filterGroups, visibleOptions, infoState, contextNote, preview, modeLabel, previewValue, } = args;
     return {
         kind: "pick-item",
         isPickItem: true,
@@ -20,11 +20,13 @@ export function buildPickItemPane(args) {
         title: step.title,
         description: step.description,
         search,
+        activeFilterCount,
         selectedValue,
         selectedLabel,
         resultCount: visibleOptions.length,
         contextNote,
         infoState,
+        filterGroups,
         options: visibleOptions.map((option) => ({
             ...option,
             selected: option.value === selectedValue,

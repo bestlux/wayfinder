@@ -20,6 +20,7 @@ import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfi
 import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
 import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
+import { emptyPickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
 import { getWayfinderStepStatus, isWayfinderStepComplete, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
@@ -47,6 +48,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #draft = null;
     #activeStepId = null;
     #searchByStepId = new Map();
+    #pickerFiltersByStepId = new Map();
     #previewValueByStepId = new Map();
     #scrollById = new Map();
     #pendingSearchFocus = null;
@@ -154,6 +156,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 break;
             case "select-option":
                 await this.#chooseOption(action.stepId, action.value);
+                break;
+            case "toggle-picker-filter":
+                this.#togglePickerFilter(action.stepId, action.filterKind, action.value);
+                break;
+            case "clear-picker-filters":
+                this.#clearPickerFilters(action.stepId);
                 break;
             case "toggle-ancestry-mode":
                 await this.#toggleAncestryMode();
@@ -323,6 +331,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const selectionPane = await buildSelectionPane(step, effectiveBuildState, {
             draft: this.#requireDraft(),
             searchByStepId: this.#searchByStepId,
+            pickerFiltersByStepId: this.#pickerFiltersByStepId,
             previewValueByStepId: this.#previewValueByStepId,
             resolveOptionContext: () => buildOptionContext({
                 draft: this.#requireDraft(),
@@ -545,6 +554,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         return createSelectionInvalidationService({
             draft,
             previewValueByStepId: this.#previewValueByStepId,
+            pickerFiltersByStepId: this.#pickerFiltersByStepId,
             recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
             scrollById: this.#scrollById,
         }, {
@@ -710,11 +720,29 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const cleared = createClearedDraftResult(snapshot.level);
         this.#draft = cleared.nextDraft;
         this.#searchByStepId.clear();
+        this.#pickerFiltersByStepId.clear();
         this.#previewValueByStepId.clear();
         this.#recentlyInvalidatedStepIds.clear();
         await this.actor.update(cleared.actorUpdate);
         ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.ClearedDraft"));
         this.render(false);
+    }
+    #togglePickerFilter(stepId, filterKind, value) {
+        this.#statusNote = null;
+        const next = togglePickerFilterValue(this.#pickerFiltersByStepId.get(stepId) ?? emptyPickerFilterState(), filterKind, value);
+        if (next.rarity.length === 0 && next.source.length === 0) {
+            this.#pickerFiltersByStepId.delete(stepId);
+        }
+        else {
+            this.#pickerFiltersByStepId.set(stepId, next);
+        }
+        this.render(false);
+    }
+    #clearPickerFilters(stepId) {
+        this.#statusNote = null;
+        if (this.#pickerFiltersByStepId.delete(stepId)) {
+            this.render(false);
+        }
     }
 }
 function getPf2eConfig() {

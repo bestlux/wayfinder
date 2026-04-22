@@ -2,6 +2,7 @@ import { getStepModeLabel } from "../domain/step-types.js";
 import { buildClassChoicePane } from "../panes/class-choice-pane.js";
 import { buildLanguageChoicePane } from "../panes/language-choice-pane.js";
 import { buildPickItemPane, resolvePreviewValue, selectedSelection, selectedValueFor } from "../panes/pick-pane.js";
+import { activePickerFilterCount, buildPickerFilterGroups, matchesPickerFilters, normalizePickerFilterState, } from "../panes/picker-filters.js";
 import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
 export async function buildSelectionPane(step, effectiveBuildState, deps) {
@@ -40,8 +41,11 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
     const optionContext = await deps.resolveOptionContext();
     const options = await deps.getOptionsForStep(step, optionContext);
     const search = deps.searchByStepId.get(step.id) ?? "";
-    const filteredOptions = options.filter((option) => deps.matchesSearch(option, search));
-    const infoState = deps.getPickerInfoState(step, optionContext, options.length, filteredOptions.length, search);
+    const filterState = normalizePickerFilterState(deps.pickerFiltersByStepId.get(step.id));
+    const searchedOptions = options.filter((option) => deps.matchesSearch(option, search));
+    const filterGroups = buildPickerFilterGroups(searchedOptions, filterState);
+    const filteredOptions = searchedOptions.filter((option) => matchesPickerFilters(option, filterState));
+    const infoState = deps.getPickerInfoState(step, optionContext, options.length, filteredOptions.length, search, activePickerFilterCount(filterState) > 0);
     const visibleOptions = infoState?.tone === "blocked" ? [] : filteredOptions;
     const contextNote = await deps.buildContextNote(step, optionContext);
     if (step.kind === "spell-choice") {
@@ -60,8 +64,10 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
         return buildSpellChoicePane({
             step,
             search,
+            activeFilterCount: activePickerFilterCount(filterState),
             selectedSelections,
             selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+            filterGroups,
             visibleOptions,
             infoState,
             contextNote,
@@ -78,8 +84,10 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
     return buildPickItemPane({
         step,
         search,
+        activeFilterCount: activePickerFilterCount(filterState),
         selectedValue,
         selectedLabel: selectedSelection(step, deps.draft)?.name ?? null,
+        filterGroups,
         visibleOptions,
         infoState,
         contextNote,

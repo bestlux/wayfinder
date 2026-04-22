@@ -56,6 +56,17 @@ export function parseWayfinderAction(element) {
             return element.dataset.stepId && element.dataset.value
                 ? { type: action, stepId: element.dataset.stepId, value: element.dataset.value }
                 : null;
+        case "toggle-picker-filter":
+            return element.dataset.stepId && element.dataset.filterKind && element.dataset.value
+                ? {
+                    type: action,
+                    stepId: element.dataset.stepId,
+                    filterKind: element.dataset.filterKind,
+                    value: element.dataset.value,
+                }
+                : null;
+        case "clear-picker-filters":
+            return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
         case "toggle-ancestry-mode":
         case "toggle-voluntary-enabled":
         case "toggle-voluntary-legacy":

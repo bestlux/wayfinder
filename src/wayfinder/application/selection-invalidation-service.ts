@@ -5,6 +5,7 @@ import { SLOT_IDS, SLOT_PREFIXES } from "../slot-ids.js";
 export interface SelectionInvalidationState {
   draft: Parameters<typeof clearSelectionState>[0]["draft"];
   previewValueByStepId: Parameters<typeof clearSelectionState>[0]["previewValueByStepId"];
+  pickerFiltersByStepId: Parameters<typeof clearSelectionState>[0]["pickerFiltersByStepId"];
   recentlyInvalidatedStepIds: Parameters<typeof clearSelectionState>[0]["recentlyInvalidatedStepIds"];
   scrollById: Parameters<typeof clearSelectionState>[0]["scrollById"];
 }

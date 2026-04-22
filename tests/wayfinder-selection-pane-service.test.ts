@@ -46,6 +46,7 @@ describe("wayfinder selection pane service", () => {
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map(),
+      pickerFiltersByStepId: new Map(),
       previewValueByStepId: new Map(),
       resolveOptionContext: async () => EMPTY_CONTEXT,
       resolveDeityDocument: async () => null,
@@ -65,7 +66,7 @@ describe("wayfinder selection pane service", () => {
     expect(pane.blockedMessage).toContain("depends on the drafted deity");
   });
 
-  it("builds a pick-item pane with filtered options, selected value, and preview state", async () => {
+  it("builds a pick-item pane with composable search and picker filters", async () => {
     const draft = createEmptyDraft(1);
     draft.selections["heritage-level-1"] = selection("heritage-level-1", "heritage", "wintertouched");
     const step: PendingStep = {
@@ -80,13 +81,15 @@ describe("wayfinder selection pane service", () => {
       filters: { itemType: "heritage" },
     };
     const options: OptionRecord[] = [
-      option("test.pack:wintertouched", "Wintertouched"),
-      option("test.pack:aiuvarin", "Aiuvarin"),
+      option("test.pack:wintertouched", "Wintertouched", "common", "Player Core"),
+      option("test.pack:winterwise", "Winterwise", "rare", "Player Core"),
+      option("test.pack:winterbound", "Winterbound", "common", "Lost Omens"),
     ];
 
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map([[step.id, "winter"]]),
+      pickerFiltersByStepId: new Map([[step.id, { rarity: ["common"], source: ["Player Core"] }]]),
       previewValueByStepId: new Map([[step.id, "test.pack:wintertouched"]]),
       resolveOptionContext: async () => EMPTY_CONTEXT,
       resolveDeityDocument: async () => null,
@@ -116,6 +119,25 @@ describe("wayfinder selection pane service", () => {
     expect(pane.selectedValue).toBe("test.pack:wintertouched");
     expect(pane.contextNote).toBe("Filtered by ancestry context");
     expect(pane.options.map((entry) => entry.name)).toEqual(["Wintertouched"]);
+    expect(pane.activeFilterCount).toBe(2);
+    expect(pane.filterGroups).toEqual([
+      {
+        key: "rarity",
+        label: "Rarity",
+        options: [
+          { value: "common", label: "Common", count: 1, selected: true },
+          { value: "rare", label: "Rare", count: 1, selected: false },
+        ],
+      },
+      {
+        key: "source",
+        label: "Source",
+        options: [
+          { value: "Lost Omens", label: "Lost Omens", count: 1, selected: false },
+          { value: "Player Core", label: "Player Core", count: 1, selected: true },
+        ],
+      },
+    ]);
     expect(pane.preview?.value).toBe("test.pack:wintertouched");
   });
 
@@ -151,6 +173,7 @@ describe("wayfinder selection pane service", () => {
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map(),
+      pickerFiltersByStepId: new Map(),
       previewValueByStepId: new Map(),
       resolveOptionContext: async () => {
         throw new Error("Expected singleton-choice pane to skip option context resolution");
@@ -216,6 +239,7 @@ describe("wayfinder selection pane service", () => {
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map(),
+      pickerFiltersByStepId: new Map(),
       previewValueByStepId: new Map(),
       resolveOptionContext: async () => {
         throw new Error("Expected language-choice pane to skip option context resolution");
@@ -285,6 +309,7 @@ describe("wayfinder selection pane service", () => {
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map(),
+      pickerFiltersByStepId: new Map(),
       previewValueByStepId: new Map([[step.id, "test.pack:redeemer"]]),
       resolveOptionContext: async () => EMPTY_CONTEXT,
       resolveDeityDocument: async () => ({ name: "Iomedae" }),
@@ -364,6 +389,7 @@ describe("wayfinder selection pane service", () => {
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map(),
+      pickerFiltersByStepId: new Map(),
       previewValueByStepId: new Map([[step.id, "test.pack:heal"]]),
       resolveOptionContext: async () => EMPTY_CONTEXT,
       resolveDeityDocument: async () => null,
@@ -396,7 +422,7 @@ describe("wayfinder selection pane service", () => {
   });
 });
 
-function option(value: string, name: string): OptionRecord {
+function option(value: string, name: string, rarity = "common", source = "Player Core"): OptionRecord {
   return {
     value,
     packId: "test.pack",
@@ -409,8 +435,8 @@ function option(value: string, name: string): OptionRecord {
     level: 1,
     slug: name.toLowerCase(),
     traits: [],
-    rarity: "common",
-    source: "Player Core",
+    rarity,
+    source,
     label: name,
   };
 }

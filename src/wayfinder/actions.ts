@@ -6,6 +6,7 @@ export type WayfinderAction =
   | { type: "next-step" }
   | { type: "preview-option"; stepId: string; value: string }
   | { type: "select-option"; stepId: string; value: string }
+  | { type: "toggle-picker-filter-menu"; stepId: string; filterKind: PickerFilterKind }
   | { type: "toggle-picker-filter"; stepId: string; filterKind: PickerFilterKind; value: string }
   | { type: "clear-picker-filters"; stepId: string }
   | { type: "toggle-ancestry-mode"; stepId: string | null }
@@ -112,6 +113,14 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
     case "toggle-spell-choice":
       return element.dataset.stepId && element.dataset.value
         ? { type: action, stepId: element.dataset.stepId, value: element.dataset.value }
+        : null;
+    case "toggle-picker-filter-menu":
+      return element.dataset.stepId && element.dataset.filterKind
+        ? {
+            type: action,
+            stepId: element.dataset.stepId,
+            filterKind: element.dataset.filterKind as PickerFilterKind,
+          }
         : null;
     case "toggle-picker-filter":
       return element.dataset.stepId && element.dataset.filterKind && element.dataset.value

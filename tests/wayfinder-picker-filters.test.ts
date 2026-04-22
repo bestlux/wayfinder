@@ -38,6 +38,8 @@ describe("wayfinder picker filters", () => {
       {
         key: "rarity",
         label: "Rarity",
+        summaryLabel: "Common",
+        selectedCount: 1,
         options: [
           { value: "common", label: "Common", count: 2, selected: true },
           { value: "rare", label: "Rare", count: 1, selected: false },
@@ -46,6 +48,8 @@ describe("wayfinder picker filters", () => {
       {
         key: "source",
         label: "Source",
+        summaryLabel: "All",
+        selectedCount: 0,
         options: [
           { value: "Lost Omens", label: "Lost Omens", count: 1, selected: false },
           { value: "Player Core", label: "Player Core", count: 1, selected: false },
@@ -67,6 +71,8 @@ describe("wayfinder picker filters", () => {
       {
         key: "rarity",
         label: "Rarity",
+        summaryLabel: "Common",
+        selectedCount: 1,
         options: [
           { value: "common", label: "Common", count: 0, selected: true },
           { value: "rare", label: "Rare", count: 1, selected: false },
@@ -75,6 +81,8 @@ describe("wayfinder picker filters", () => {
       {
         key: "source",
         label: "Source",
+        summaryLabel: "Lost Omens",
+        selectedCount: 1,
         options: [
           { value: "Lost Omens", label: "Lost Omens", count: 0, selected: true },
           { value: "Player Core", label: "Player Core", count: 1, selected: false },

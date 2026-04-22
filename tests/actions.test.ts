@@ -36,6 +36,22 @@ describe("wayfinder actions", () => {
     });
   });
 
+  it("parses picker filter menu toggle actions", () => {
+    const action = parseWayfinderAction({
+      dataset: {
+        wayfinderAction: "toggle-picker-filter-menu",
+        stepId: "class-feat-level-2",
+        filterKind: "source",
+      },
+    } as any);
+
+    expect(action).toEqual({
+      type: "toggle-picker-filter-menu",
+      stepId: "class-feat-level-2",
+      filterKind: "source",
+    });
+  });
+
   it("rejects incomplete action datasets", () => {
     expect(
       parseWayfinderAction({

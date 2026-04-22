@@ -14,7 +14,7 @@ import { canUseWayfinder } from "../permissions.js";
 import type { SelectorActorLike } from "../selector-application.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
-import type { AbilityKey, DraftState, PendingStep } from "../types.js";
+import type { AbilityKey, DraftState, PendingStep, PickerFilterKind } from "../types.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
 import { buildSkillPane } from "./application/build-skill-pane-service.js";
@@ -125,6 +125,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #activeStepId: string | null = null;
   #searchByStepId = new Map<string, string>();
   #pickerFiltersByStepId = new Map<string, { rarity: string[]; source: string[] }>();
+  #openPickerFilterMenu: { stepId: string; filterKind: PickerFilterKind } | null = null;
   #previewValueByStepId = new Map<string, string>();
   #scrollById = new Map<string, number>();
   #pendingSearchFocus: { stepId: string; cursor: number } | null = null;
@@ -233,6 +234,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     event.preventDefault();
     event.stopPropagation();
     this.#rememberInteractiveState();
+    if (action.type !== "toggle-picker-filter" && action.type !== "toggle-picker-filter-menu") {
+      this.#openPickerFilterMenu = null;
+    }
 
     switch (action.type) {
       case "select-step":
@@ -251,6 +255,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         break;
       case "select-option":
         await this.#chooseOption(action.stepId, action.value);
+        break;
+      case "toggle-picker-filter-menu":
+        this.#togglePickerFilterMenu(action.stepId, action.filterKind);
         break;
       case "toggle-picker-filter":
         this.#togglePickerFilter(action.stepId, action.filterKind, action.value);
@@ -325,6 +332,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     this.#rememberInteractiveState(input);
+    this.#openPickerFilterMenu = null;
     this.#searchByStepId.set(stepId, input.value);
     this.render(false);
   };
@@ -347,6 +355,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     this.#statusNote = null;
+    this.#openPickerFilterMenu = null;
     if (setManualStepComplete(this.#draftAdjustmentState(), stepId, input.checked)) {
       this.render(false);
     }
@@ -450,6 +459,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       draft: this.#requireDraft(),
       searchByStepId: this.#searchByStepId,
       pickerFiltersByStepId: this.#pickerFiltersByStepId,
+      openPickerFilterMenu: this.#openPickerFilterMenu,
       previewValueByStepId: this.#previewValueByStepId,
       resolveOptionContext: () =>
         buildOptionContext({
@@ -903,10 +913,21 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#draft = cleared.nextDraft;
     this.#searchByStepId.clear();
     this.#pickerFiltersByStepId.clear();
+    this.#openPickerFilterMenu = null;
     this.#previewValueByStepId.clear();
     this.#recentlyInvalidatedStepIds.clear();
     await this.actor.update(cleared.actorUpdate);
     ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.ClearedDraft"));
+    this.render(false);
+  }
+
+  #togglePickerFilterMenu(stepId: string, filterKind: PickerFilterKind): void {
+    this.#statusNote = null;
+    if (this.#openPickerFilterMenu?.stepId === stepId && this.#openPickerFilterMenu.filterKind === filterKind) {
+      this.#openPickerFilterMenu = null;
+    } else {
+      this.#openPickerFilterMenu = { stepId, filterKind };
+    }
     this.render(false);
   }
 

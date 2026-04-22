@@ -90,6 +90,7 @@ describe("wayfinder selection pane service", () => {
       draft,
       searchByStepId: new Map([[step.id, "winter"]]),
       pickerFiltersByStepId: new Map([[step.id, { rarity: ["common"], source: ["Player Core"] }]]),
+      openPickerFilterMenu: { stepId: step.id, filterKind: "source" },
       previewValueByStepId: new Map([[step.id, "test.pack:wintertouched"]]),
       resolveOptionContext: async () => EMPTY_CONTEXT,
       resolveDeityDocument: async () => null,
@@ -124,6 +125,9 @@ describe("wayfinder selection pane service", () => {
       {
         key: "rarity",
         label: "Rarity",
+        summaryLabel: "Common",
+        selectedCount: 1,
+        isOpen: false,
         options: [
           { value: "common", label: "Common", count: 1, selected: true },
           { value: "rare", label: "Rare", count: 1, selected: false },
@@ -132,6 +136,9 @@ describe("wayfinder selection pane service", () => {
       {
         key: "source",
         label: "Source",
+        summaryLabel: "Player Core",
+        selectedCount: 1,
+        isOpen: true,
         options: [
           { value: "Lost Omens", label: "Lost Omens", count: 1, selected: false },
           { value: "Player Core", label: "Player Core", count: 1, selected: true },
@@ -163,6 +170,7 @@ describe("wayfinder selection pane service", () => {
       draft,
       searchByStepId: new Map([[step.id, "winter"]]),
       pickerFiltersByStepId: new Map([[step.id, { rarity: ["common"], source: ["Lost Omens"] }]]),
+      openPickerFilterMenu: { stepId: step.id, filterKind: "source" },
       previewValueByStepId: new Map(),
       resolveOptionContext: async () => EMPTY_CONTEXT,
       resolveDeityDocument: async () => null,
@@ -189,6 +197,9 @@ describe("wayfinder selection pane service", () => {
       {
         key: "rarity",
         label: "Rarity",
+        summaryLabel: "Common",
+        selectedCount: 1,
+        isOpen: false,
         options: [
           { value: "common", label: "Common", count: 0, selected: true },
           { value: "rare", label: "Rare", count: 1, selected: false },
@@ -197,6 +208,9 @@ describe("wayfinder selection pane service", () => {
       {
         key: "source",
         label: "Source",
+        summaryLabel: "Lost Omens",
+        selectedCount: 1,
+        isOpen: true,
         options: [
           { value: "Lost Omens", label: "Lost Omens", count: 0, selected: true },
           { value: "Player Core", label: "Player Core", count: 1, selected: false },

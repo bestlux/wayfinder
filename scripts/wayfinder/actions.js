@@ -56,6 +56,14 @@ export function parseWayfinderAction(element) {
             return element.dataset.stepId && element.dataset.value
                 ? { type: action, stepId: element.dataset.stepId, value: element.dataset.value }
                 : null;
+        case "toggle-picker-filter-menu":
+            return element.dataset.stepId && element.dataset.filterKind
+                ? {
+                    type: action,
+                    stepId: element.dataset.stepId,
+                    filterKind: element.dataset.filterKind,
+                }
+                : null;
         case "toggle-picker-filter":
             return element.dataset.stepId && element.dataset.filterKind && element.dataset.value
                 ? {

@@ -4,6 +4,7 @@ import type {
   OptionContext,
   OptionRecord,
   PendingStep,
+  PickerFilterKind,
   PickerFilterState,
   PickerInfoState,
 } from "../../types.js";
@@ -40,6 +41,7 @@ interface BuildSelectionPaneDependencies {
   searchByStepId: Map<string, string>;
   pickerFiltersByStepId: Map<string, PickerFilterState>;
   previewValueByStepId: Map<string, string>;
+  openPickerFilterMenu?: { stepId: string; filterKind: PickerFilterKind } | null;
   resolveOptionContext: () => Promise<OptionContext>;
   resolveDeityDocument: () => Promise<unknown | null>;
   buildContextNote: (step: PendingStep, context: OptionContext) => Promise<string | null>;
@@ -103,7 +105,11 @@ export async function buildSelectionPane(
   const search = deps.searchByStepId.get(step.id) ?? "";
   const filterState = normalizePickerFilterState(deps.pickerFiltersByStepId.get(step.id));
   const searchedOptions = options.filter((option) => deps.matchesSearch(option, search));
-  const filterGroups = buildPickerFilterGroups(searchedOptions, filterState);
+  const openFilterKind = deps.openPickerFilterMenu?.stepId === step.id ? deps.openPickerFilterMenu.filterKind : null;
+  const filterGroups = buildPickerFilterGroups(searchedOptions, filterState).map((group) => ({
+    ...group,
+    isOpen: group.key === openFilterKind,
+  }));
   const filteredOptions = searchedOptions.filter((option) => matchesPickerFilters(option, filterState));
   const infoState = deps.getPickerInfoState(
     step,

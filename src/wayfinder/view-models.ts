@@ -40,6 +40,9 @@ export interface PreviewPane {
 export interface PickerFilterGroupPane {
   key: "rarity" | "source";
   label: string;
+  summaryLabel: string;
+  selectedCount: number;
+  isOpen: boolean;
   options: Array<{
     value: string;
     label: string;

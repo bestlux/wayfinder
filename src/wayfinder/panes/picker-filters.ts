@@ -11,6 +11,8 @@ interface PickerFilterOptionState {
 export interface PickerFilterGroupState {
   key: PickerFilterKind;
   label: string;
+  summaryLabel: string;
+  selectedCount: number;
   options: PickerFilterOptionState[];
 }
 
@@ -119,10 +121,13 @@ export function buildPickerFilterGroups(
         count,
         selected: normalizedState[kind].includes(value),
       }));
+    const selectedOptions = optionStates.filter((option) => option.selected);
 
     return {
       key: kind,
       label: kind === "rarity" ? "Rarity" : "Source",
+      summaryLabel: pickerFilterSummaryLabel(selectedOptions),
+      selectedCount: selectedOptions.length,
       options: optionStates,
     };
   }).filter((group) => group.options.length > 0);
@@ -164,6 +169,23 @@ function filterLabelFromValue(kind: PickerFilterKind, value: string): string {
   }
 
   return value === UNKNOWN_SOURCE ? "Unknown Source" : value;
+}
+
+function pickerFilterSummaryLabel(selectedOptions: PickerFilterOptionState[]): string {
+  if (selectedOptions.length === 0) {
+    return "All";
+  }
+
+  if (selectedOptions.length > 1) {
+    return `${selectedOptions.length} selected`;
+  }
+
+  const [selected] = selectedOptions;
+  if (!selected) {
+    return "All";
+  }
+
+  return selected.label.length > 24 ? "1 selected" : selected.label;
 }
 
 const FILTER_KINDS: PickerFilterKind[] = ["rarity", "source"];

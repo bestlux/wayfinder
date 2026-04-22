@@ -19,18 +19,41 @@
       </label>
 
       {{#if activePane.filterGroups.length}}
-        <div class="picker-filter-groups">
+        <div class="picker-filter-bar">
           {{#each activePane.filterGroups}}
-            <section class="picker-filter-group">
-              <span class="picker-filter-label">{{label}}</span>
-              <div class="picker-filter-options">
-                {{#each options}}
-                  <button type="button" class="picker-filter-chip{{#if selected}} is-selected{{/if}}" data-wayfinder-action="toggle-picker-filter" data-step-id="{{../../activePane.stepId}}" data-filter-kind="{{../key}}" data-value="{{value}}">
-                    <span>{{label}}</span>
-                    <span class="picker-filter-count">{{count}}</span>
-                  </button>
-                {{/each}}
-              </div>
+            <section class="picker-filter-menu{{#if isOpen}} is-open{{/if}}" data-wayfinder-filter-menu data-step-id="{{../activePane.stepId}}" data-filter-kind="{{key}}">
+              <button type="button" class="picker-filter-trigger{{#if selectedCount}} is-active{{/if}}{{#if isOpen}} is-open{{/if}}" data-wayfinder-action="toggle-picker-filter-menu" data-step-id="{{../activePane.stepId}}" data-filter-kind="{{key}}" aria-expanded="{{#if isOpen}}true{{else}}false{{/if}}">
+                <span class="picker-filter-trigger-copy">
+                  <span class="picker-filter-label">{{label}}</span>
+                  <span class="picker-filter-summary">{{summaryLabel}}</span>
+                </span>
+
+                <span class="picker-filter-trigger-meta">
+                  {{#if selectedCount}}
+                    <span class="picker-filter-badge">{{selectedCount}}</span>
+                  {{/if}}
+                  <i class="fa-solid fa-chevron-down"></i>
+                </span>
+              </button>
+
+              {{#if isOpen}}
+                <div class="picker-filter-panel">
+                  <div class="picker-filter-panel-header">
+                    <span class="picker-filter-panel-title">{{label}}</span>
+                    <span class="picker-filter-panel-summary">{{summaryLabel}}</span>
+                  </div>
+
+                  <div class="picker-filter-options" data-wayfinder-scroll-id="{{../activePane.stepId}}:filter:{{key}}">
+                    {{#each options}}
+                      <button type="button" class="picker-filter-option{{#if selected}} is-selected{{/if}}" data-wayfinder-action="toggle-picker-filter" data-step-id="{{../../activePane.stepId}}" data-filter-kind="{{../key}}" data-value="{{value}}">
+                        <span class="picker-filter-check">{{#if selected}}<i class="fa-solid fa-check"></i>{{/if}}</span>
+                        <span class="picker-filter-option-label">{{label}}</span>
+                        <span class="picker-filter-count">{{count}}</span>
+                      </button>
+                    {{/each}}
+                  </div>
+                </div>
+              {{/if}}
             </section>
           {{/each}}
 

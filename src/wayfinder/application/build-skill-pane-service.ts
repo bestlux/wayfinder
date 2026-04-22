@@ -1,13 +1,18 @@
 import { SKILL_LABELS } from "../../constants.js";
+import { resolveSingletonChoiceSkillGrant } from "../../shared/singleton-choice-skill-grants.js";
+import { extractDocumentSlug } from "../../shared/slug.js";
 import type { DraftState, PendingStep } from "../../types.js";
 import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane, compareSkillIncreaseSlotIds } from "../panes/skill-pane.js";
+import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
 import type { SkillIncreaseStepPane, SkillTrainingStepPane } from "../view-models.js";
 
 type SkillPane = SkillIncreaseStepPane | SkillTrainingStepPane;
-type SkillDocumentType = "background" | "class";
+type SkillDocumentType = "ancestry" | "heritage" | "background" | "class";
 type LooseSkillDocument = {
   system?: {
+    slug?: unknown;
+    rules?: unknown;
     trainedSkills?: {
       value?: unknown[];
     } | null;
@@ -25,6 +30,7 @@ interface BuildSkillPaneDependencies {
 interface ProjectSkillRanksDependencies {
   baseSkillRanks: Record<string, number>;
   resolveDocument: (itemType: SkillDocumentType) => Promise<unknown | null>;
+  localize: (value: string) => string;
 }
 
 export async function buildSkillPane(
@@ -39,6 +45,7 @@ export async function buildSkillPane(
   const projectedRanks = await projectSkillRanks(draft, step.slotId, {
     baseSkillRanks: deps.baseSkillRanks,
     resolveDocument: deps.resolveDocument,
+    localize: deps.localize,
   });
   const skillEntries = buildSkillList(projectedRanks, {
     configSkills: deps.configSkills,
@@ -60,7 +67,9 @@ export async function projectSkillRanks(
   deps: ProjectSkillRanksDependencies
 ): Promise<Record<string, number>> {
   const projected = { ...deps.baseSkillRanks };
-  const [backgroundDocument, classDocument] = await Promise.all([
+  const [ancestryDocument, heritageDocument, backgroundDocument, classDocument] = await Promise.all([
+    deps.resolveDocument("ancestry"),
+    deps.resolveDocument("heritage"),
     deps.resolveDocument("background"),
     deps.resolveDocument("class"),
   ]);
@@ -70,6 +79,18 @@ export async function projectSkillRanks(
   }
 
   for (const slug of extractFixedTrainedSkills(classDocument)) {
+    projected[slug] = Math.max(projected[slug] ?? 0, 1);
+  }
+
+  for (const slug of extractDraftedSingletonSkillChoices(
+    draft,
+    [
+      { sourceItemType: "ancestry", document: ancestryDocument },
+      { sourceItemType: "heritage", document: heritageDocument },
+      { sourceItemType: "background", document: backgroundDocument },
+    ],
+    deps.localize
+  )) {
     projected[slug] = Math.max(projected[slug] ?? 0, 1);
   }
 
@@ -120,6 +141,43 @@ function extractFixedTrainedSkills(document: unknown): string[] {
   return skills
     .filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
     .map((entry) => entry.trim().toLowerCase());
+}
+
+function extractDraftedSingletonSkillChoices(
+  draft: DraftState,
+  sources: Array<{
+    sourceItemType: "ancestry" | "heritage" | "background";
+    document: unknown | null;
+  }>,
+  localize: (value: string) => string
+): string[] {
+  return sources.flatMap(({ sourceItemType, document }) => {
+    const sourceSlug = extractDocumentSlug(document);
+    const sourceRules = (document as LooseSkillDocument | null)?.system?.rules;
+    if (!document || !sourceSlug) {
+      return [];
+    }
+
+    return discoverSingletonChoiceSpecs({
+      sourceItemType,
+      sourceDocument: document,
+      sourceSlug,
+      localize,
+    })
+      .map((choice) => {
+        const selection = draft.singletonChoices[choice.slotId] ?? null;
+        if (!selection || !choice.options.some((option) => option.value === selection)) {
+          return null;
+        }
+
+        return resolveSingletonChoiceSkillGrant({
+          rules: sourceRules,
+          flag: choice.flag,
+          selection,
+        })?.skillSlug;
+      })
+      .filter((selection): selection is string => typeof selection === "string" && selection.length > 0);
+  });
 }
 
 function buildSkillList(

@@ -1,38 +1,48 @@
+import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, } from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
 export function discoverSingletonChoiceMeta(args) {
     const { sourceItemType, sourceDocument, sourceSelection, extractSlug, localize } = args;
     const document = sourceDocument;
-    const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
+    return discoverSingletonChoiceSpecs({
+        sourceItemType,
+        sourceDocument,
+        sourceSlug: extractSlug(sourceDocument) ?? sourceSelection.documentId,
+        localize,
+    }).map((choice) => ({
+        slotId: choice.slotId,
+        sourceItemType,
+        sourcePackId: sourceSelection.packId,
+        sourceDocumentId: sourceSelection.documentId,
+        sourceUuid: sourceSelection.uuid,
+        sourceName: toNonEmptyString(document?.name) ?? sourceSelection.name,
+        sourceRuleIndex: choice.sourceRuleIndex,
+        flag: choice.flag,
+        prompt: choice.prompt,
+        options: choice.options,
+    }));
+}
+export function discoverSingletonChoiceSpecs(args) {
+    const { sourceItemType, sourceDocument, sourceSlug, localize } = args;
+    const document = sourceDocument;
     const level = toFeatureLevel(document?.system?.level?.value);
-    return findRelevantRules(sourceDocument).flatMap((rule, ruleIndex) => {
+    const configuredSkills = getConfiguredSkills();
+    return findRelevantRules(sourceDocument).flatMap((rule, sourceRuleIndex) => {
         const flag = extractChoiceKey(rule);
-        if (rule.key !== "ChoiceSet" || !flag || !Array.isArray(rule.choices)) {
+        if (rule.key !== "ChoiceSet" || !flag) {
             return [];
         }
-        const options = rule.choices
-            .filter((choice) => isRecord(choice))
-            .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
-            .map((choice) => ({
-            value: String(choice.value),
-            label: resolveChoiceLabel(typeof choice.label === "string" ? choice.label : undefined, String(choice.value), localize),
-            img: typeof choice.img === "string" && choice.img.length > 0 ? choice.img : null,
-            detail: null,
-        }));
-        if (options.length === 0) {
+        const options = resolveChoiceOptions(rule, localize, configuredSkills);
+        if (!options || options.options.length === 0) {
             return [];
         }
         return [
             {
+                sourceRuleIndex,
                 slotId: `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`,
-                sourceItemType,
-                sourcePackId: sourceSelection.packId,
-                sourceDocumentId: sourceSelection.documentId,
-                sourceUuid: sourceSelection.uuid,
-                sourceName: toNonEmptyString(document?.name) ?? sourceSelection.name,
-                sourceRuleIndex: ruleIndex,
                 flag,
                 prompt: resolvePrompt(rule.prompt, localize),
-                options,
+                optionDomain: options.optionDomain,
+                options: options.options,
             },
         ];
     });
@@ -48,6 +58,52 @@ function extractChoiceKey(rule) {
         if (normalized) {
             return normalized;
         }
+    }
+    return null;
+}
+function resolveChoiceOptions(rule, localize, configuredSkills) {
+    if (Array.isArray(rule.choices)) {
+        const options = rule.choices
+            .filter((choice) => isRecord(choice))
+            .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
+            .map((choice) => {
+            const rawValue = String(choice.value).trim();
+            const normalizedSkillValue = rawValue.toLowerCase();
+            const skillChoice = isConfiguredSkillSlug(normalizedSkillValue, configuredSkills);
+            const value = skillChoice ? normalizedSkillValue : rawValue;
+            return {
+                value,
+                label: skillChoice
+                    ? resolveSkillLabel(normalizedSkillValue, typeof choice.label === "string" ? choice.label : undefined, localize, configuredSkills)
+                    : resolveChoiceLabel(typeof choice.label === "string" ? choice.label : undefined, value, localize),
+                img: typeof choice.img === "string" && choice.img.length > 0 ? choice.img : null,
+                detail: null,
+            };
+        });
+        if (options.length === 0) {
+            return null;
+        }
+        return {
+            optionDomain: options.every((choice) => isConfiguredSkillSlug(choice.value, configuredSkills))
+                ? "skill"
+                : "generic",
+            options,
+        };
+    }
+    const choiceConfig = isRecord(rule.choices) ? rule.choices : null;
+    if (choiceConfig?.config === "skills") {
+        const options = Object.entries(configuredSkills)
+            .map(([slug, entry]) => ({
+            value: slug,
+            label: resolveSkillLabel(slug, entry.label, localize, configuredSkills),
+            img: null,
+            detail: null,
+        }))
+            .sort((left, right) => left.label.localeCompare(right.label));
+        return {
+            optionDomain: "skill",
+            options,
+        };
     }
     return null;
 }

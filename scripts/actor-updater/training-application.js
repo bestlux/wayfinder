@@ -1,5 +1,7 @@
 import { listActorItems } from "../build-state.js";
 import { cloneData } from "../shared/cloning.js";
+import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
+import { itemMatchesSourceId } from "../shared/source-id.js";
 export async function applyTrainingDraft(actor, draft, steps) {
     const projectedRanks = {};
     for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
@@ -9,6 +11,20 @@ export async function applyTrainingDraft(actor, draft, steps) {
     const stepMap = new Map(steps.map((step) => [step.slotId, step]));
     const classUpdates = [];
     const actorItems = listActorItems(actor);
+    for (const [slotId, selection] of Object.entries(draft.singletonChoices)) {
+        const step = stepMap.get(slotId);
+        if (step?.kind !== "singleton-choice" || typeof selection !== "string" || selection.length === 0) {
+            continue;
+        }
+        if (!step.singletonChoice.options.some((option) => option.value === selection)) {
+            continue;
+        }
+        const grantedSkill = resolveSingletonChoiceGrantedSkill(actorItems, step, selection);
+        if (!grantedSkill) {
+            continue;
+        }
+        projectedRanks[grantedSkill.skillSlug] = Math.max(projectedRanks[grantedSkill.skillSlug] ?? 0, grantedSkill.rank);
+    }
     for (const [slotId, training] of Object.entries(draft.skillTrainings)) {
         const step = stepMap.get(slotId);
         if (step?.kind !== "skill-training" || !step.training) {
@@ -59,14 +75,22 @@ export async function applySkillIncreaseDraft(actor, draft, baseRanks) {
         }
     }
     const sortedEntries = Object.entries(draft.skillIncreases).sort(([left], [right]) => compareSkillIncreaseSlotIds(left, right));
+    const increasedSlugs = new Set();
     for (const [, slug] of sortedEntries) {
         if (typeof slug !== "string" || !slug) {
             continue;
         }
+        increasedSlugs.add(slug);
         const currentRank = projectedRanks[slug] ?? 0;
         projectedRanks[slug] = Math.min(4, currentRank + 1);
     }
-    const updates = Object.entries(projectedRanks).map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]);
+    const updates = Object.entries(projectedRanks)
+        .filter(([slug, rank]) => {
+        const currentRank = readActorSkillRank(actor, slug);
+        const baseline = baseRanks && !increasedSlugs.has(slug) ? Math.max(currentRank, baseRanks[slug] ?? currentRank) : currentRank;
+        return rank > baseline;
+    })
+        .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]);
     if (updates.length > 0 && typeof actor.update === "function") {
         await actor.update(Object.fromEntries(updates));
     }
@@ -82,5 +106,20 @@ function compareSkillIncreaseSlotIds(left, right) {
 function skillIncreaseLevelFromSlotId(slotId) {
     const match = /skill-increase-level-(\d+)/.exec(slotId);
     return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+function resolveSingletonChoiceGrantedSkill(actorItems, step, selection) {
+    if (step.kind !== "singleton-choice" || !step.singletonChoice?.sourceUuid) {
+        return null;
+    }
+    const sourceItem = actorItems.find((item) => itemMatchesSourceId(item, step.singletonChoice.sourceUuid));
+    return resolveSingletonChoiceSkillGrant({
+        rules: sourceItem?.system?.rules,
+        flag: step.singletonChoice.flag,
+        selection,
+    });
+}
+function readActorSkillRank(actor, slug) {
+    const rank = Number(actor?.system?.skills?.[slug]?.rank ?? 0);
+    return Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
 }
 //# sourceMappingURL=training-application.js.map

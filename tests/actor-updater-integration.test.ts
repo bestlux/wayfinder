@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyDraftToActor } from "../src/actor-updater";
 import { createEmptyDraft } from "../src/draft-service";
+import type { PendingStep } from "../src/types";
 import {
   buildActorHarness,
   classBranchStep,
@@ -364,4 +365,89 @@ describe("actor-updater integration", () => {
       "system.details.level.value": 3,
     });
   });
+
+  it("stacks later skill increases on top of singleton skill choices during apply", async () => {
+    const { actor } = buildActorHarness({
+      level: 1,
+      items: [
+        {
+          id: "heritage-1",
+          type: "heritage",
+          sourceId: "Compendium.pf2e.heritages.Item.skilled-human",
+          flags: {
+            core: {
+              sourceId: "Compendium.pf2e.heritages.Item.skilled-human",
+            },
+            pf2e: {
+              rulesSelections: {},
+            },
+          },
+          system: {
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "trainedSkill",
+                choices: {
+                  config: "skills",
+                },
+              },
+              {
+                key: "ActiveEffectLike",
+                path: "system.skills.{item|flags.pf2e.rulesSelections.trainedSkill}.rank",
+                value: 1,
+              },
+            ],
+          },
+        },
+      ],
+    });
+    actor.system = {
+      ...actor.system,
+      skills: {
+        arcana: { rank: 0 },
+      },
+    };
+
+    const draft = createEmptyDraft(3);
+    draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "arcana";
+    draft.skillIncreases["skill-increase-level-3"] = "arcana";
+
+    await applyDraftToActor(actor as any, draft, [heritageSingletonSkillChoiceStep()]);
+
+    const updateCalls = actor.update.mock.calls.map(([updates]) => updates as Record<string, unknown>);
+    expect(updateCalls).toContainEqual({
+      "system.skills.arcana.rank": 1,
+    });
+    expect(updateCalls).toContainEqual({
+      "system.skills.arcana.rank": 2,
+    });
+  });
 });
+
+function heritageSingletonSkillChoiceStep(): PendingStep {
+  return {
+    id: "singleton-choice-heritage-skilled-human-trainedSkill-level-1",
+    level: 1,
+    kind: "singleton-choice",
+    slotKind: "singleton-choice",
+    title: "Trained Skill",
+    description: "",
+    required: true,
+    slotId: "singleton-choice-heritage-skilled-human-trainedSkill-level-1",
+    singletonChoice: {
+      slotId: "singleton-choice-heritage-skilled-human-trainedSkill-level-1",
+      sourceItemType: "heritage",
+      sourcePackId: "pf2e.heritages",
+      sourceDocumentId: "skilled-human",
+      sourceUuid: "Compendium.pf2e.heritages.Item.skilled-human",
+      sourceName: "Skilled Human",
+      sourceRuleIndex: 0,
+      flag: "trainedSkill",
+      prompt: "Choose a skill",
+      options: [
+        { value: "arcana", label: "Arcana", img: null, detail: null },
+        { value: "society", label: "Society", img: null, detail: null },
+      ],
+    },
+  };
+}

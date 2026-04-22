@@ -1,4 +1,10 @@
 import type { SelectionRef, SingletonChoiceMeta } from "../../types.js";
+import {
+  getConfiguredSkills,
+  isConfiguredSkillSlug,
+  resolveSkillLabel,
+  type SkillConfigMap,
+} from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
 
 interface NamedDocumentLike {
@@ -12,6 +18,20 @@ interface NamedDocumentLike {
   };
 }
 
+export interface SingletonChoiceSpec {
+  sourceRuleIndex: number;
+  slotId: string;
+  flag: string;
+  prompt: string | null;
+  optionDomain: "generic" | "skill";
+  options: Array<{
+    value: string;
+    label: string;
+    img: string | null;
+    detail: string | null;
+  }>;
+}
+
 export function discoverSingletonChoiceMeta(args: {
   sourceItemType: SingletonChoiceMeta["sourceItemType"];
   sourceDocument: unknown;
@@ -21,46 +41,59 @@ export function discoverSingletonChoiceMeta(args: {
 }): SingletonChoiceMeta[] {
   const { sourceItemType, sourceDocument, sourceSelection, extractSlug, localize } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
-  const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
-  const level = toFeatureLevel(document?.system?.level?.value);
-
-  return findRelevantRules(sourceDocument).flatMap((rule, ruleIndex) => {
-    const flag = extractChoiceKey(rule);
-    if (rule.key !== "ChoiceSet" || !flag || !Array.isArray(rule.choices)) {
-      return [];
-    }
-
-    const options = rule.choices
-      .filter((choice): choice is { label?: unknown; value?: unknown; img?: unknown } => isRecord(choice))
-      .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
-      .map((choice) => ({
-        value: String(choice.value),
-        label: resolveChoiceLabel(
-          typeof choice.label === "string" ? choice.label : undefined,
-          String(choice.value),
-          localize
-        ),
-        img: typeof choice.img === "string" && choice.img.length > 0 ? choice.img : null,
-        detail: null,
-      }));
-
-    if (options.length === 0) {
-      return [];
-    }
-
-    return [
-      {
-        slotId: `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`,
+  return discoverSingletonChoiceSpecs({
+    sourceItemType,
+    sourceDocument,
+    sourceSlug: extractSlug(sourceDocument) ?? sourceSelection.documentId,
+    localize,
+  }).map(
+    (choice) =>
+      ({
+        slotId: choice.slotId,
         sourceItemType,
         sourcePackId: sourceSelection.packId,
         sourceDocumentId: sourceSelection.documentId,
         sourceUuid: sourceSelection.uuid,
         sourceName: toNonEmptyString(document?.name) ?? sourceSelection.name,
-        sourceRuleIndex: ruleIndex,
+        sourceRuleIndex: choice.sourceRuleIndex,
+        flag: choice.flag,
+        prompt: choice.prompt,
+        options: choice.options,
+      }) satisfies SingletonChoiceMeta
+  );
+}
+
+export function discoverSingletonChoiceSpecs(args: {
+  sourceItemType: SingletonChoiceMeta["sourceItemType"];
+  sourceDocument: unknown;
+  sourceSlug: string;
+  localize: (value: string) => string;
+}): SingletonChoiceSpec[] {
+  const { sourceItemType, sourceDocument, sourceSlug, localize } = args;
+  const document = sourceDocument as NamedDocumentLike | null | undefined;
+  const level = toFeatureLevel(document?.system?.level?.value);
+  const configuredSkills = getConfiguredSkills();
+
+  return findRelevantRules(sourceDocument).flatMap((rule, sourceRuleIndex) => {
+    const flag = extractChoiceKey(rule);
+    if (rule.key !== "ChoiceSet" || !flag) {
+      return [];
+    }
+
+    const options = resolveChoiceOptions(rule, localize, configuredSkills);
+    if (!options || options.options.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        sourceRuleIndex,
+        slotId: `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`,
         flag,
         prompt: resolvePrompt(rule.prompt, localize),
-        options,
-      } satisfies SingletonChoiceMeta,
+        optionDomain: options.optionDomain,
+        options: options.options,
+      } satisfies SingletonChoiceSpec,
     ];
   });
 }
@@ -77,6 +110,67 @@ function extractChoiceKey(rule: Record<string, unknown>): string | null {
     if (normalized) {
       return normalized;
     }
+  }
+
+  return null;
+}
+
+function resolveChoiceOptions(
+  rule: Record<string, unknown>,
+  localize: (value: string) => string,
+  configuredSkills: SkillConfigMap
+): { optionDomain: "generic" | "skill"; options: SingletonChoiceSpec["options"] } | null {
+  if (Array.isArray(rule.choices)) {
+    const options = rule.choices
+      .filter((choice): choice is { label?: unknown; value?: unknown; img?: unknown } => isRecord(choice))
+      .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
+      .map((choice) => {
+        const rawValue = String(choice.value).trim();
+        const normalizedSkillValue = rawValue.toLowerCase();
+        const skillChoice = isConfiguredSkillSlug(normalizedSkillValue, configuredSkills);
+        const value = skillChoice ? normalizedSkillValue : rawValue;
+        return {
+          value,
+          label: skillChoice
+            ? resolveSkillLabel(
+                normalizedSkillValue,
+                typeof choice.label === "string" ? choice.label : undefined,
+                localize,
+                configuredSkills
+              )
+            : resolveChoiceLabel(typeof choice.label === "string" ? choice.label : undefined, value, localize),
+          img: typeof choice.img === "string" && choice.img.length > 0 ? choice.img : null,
+          detail: null,
+        };
+      });
+
+    if (options.length === 0) {
+      return null;
+    }
+
+    return {
+      optionDomain: options.every((choice) => isConfiguredSkillSlug(choice.value, configuredSkills))
+        ? "skill"
+        : "generic",
+      options,
+    };
+  }
+
+  const choiceConfig = isRecord(rule.choices) ? rule.choices : null;
+  if (choiceConfig?.config === "skills") {
+    const options = Object.entries(configuredSkills)
+      .map(([slug, entry]) => ({
+        value: slug,
+        label: resolveSkillLabel(slug, entry.label, localize, configuredSkills),
+        img: null,
+        detail: null,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+
+    return {
+      optionDomain: "skill",
+      options,
+    };
   }
 
   return null;

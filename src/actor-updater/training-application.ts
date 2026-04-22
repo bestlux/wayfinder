@@ -1,6 +1,8 @@
 import { listActorItems } from "../build-state.js";
 import type { ActorItemLike, ActorLike } from "../shared/actor-model.js";
 import { cloneData } from "../shared/cloning.js";
+import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
+import { itemMatchesSourceId } from "../shared/source-id.js";
 import type { DraftState, PendingStep } from "../types.js";
 
 export async function applyTrainingDraft(
@@ -17,6 +19,24 @@ export async function applyTrainingDraft(
   const stepMap = new Map(steps.map((step) => [step.slotId, step]));
   const classUpdates: Record<string, unknown>[] = [];
   const actorItems = listActorItems(actor) as ActorItemLike[];
+
+  for (const [slotId, selection] of Object.entries(draft.singletonChoices)) {
+    const step = stepMap.get(slotId);
+    if (step?.kind !== "singleton-choice" || typeof selection !== "string" || selection.length === 0) {
+      continue;
+    }
+
+    if (!step.singletonChoice.options.some((option) => option.value === selection)) {
+      continue;
+    }
+
+    const grantedSkill = resolveSingletonChoiceGrantedSkill(actorItems, step, selection);
+    if (!grantedSkill) {
+      continue;
+    }
+
+    projectedRanks[grantedSkill.skillSlug] = Math.max(projectedRanks[grantedSkill.skillSlug] ?? 0, grantedSkill.rank);
+  }
 
   for (const [slotId, training] of Object.entries(draft.skillTrainings)) {
     const step = stepMap.get(slotId);
@@ -85,17 +105,26 @@ export async function applySkillIncreaseDraft(
   const sortedEntries = Object.entries(draft.skillIncreases).sort(([left], [right]) =>
     compareSkillIncreaseSlotIds(left, right)
   );
+  const increasedSlugs = new Set<string>();
 
   for (const [, slug] of sortedEntries) {
     if (typeof slug !== "string" || !slug) {
       continue;
     }
 
+    increasedSlugs.add(slug);
     const currentRank = projectedRanks[slug] ?? 0;
     projectedRanks[slug] = Math.min(4, currentRank + 1);
   }
 
-  const updates = Object.entries(projectedRanks).map(([slug, rank]) => [`system.skills.${slug}.rank`, rank] as const);
+  const updates = Object.entries(projectedRanks)
+    .filter(([slug, rank]) => {
+      const currentRank = readActorSkillRank(actor, slug);
+      const baseline =
+        baseRanks && !increasedSlugs.has(slug) ? Math.max(currentRank, baseRanks[slug] ?? currentRank) : currentRank;
+      return rank > baseline;
+    })
+    .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank] as const);
 
   if (updates.length > 0 && typeof actor.update === "function") {
     await actor.update(Object.fromEntries(updates));
@@ -115,4 +144,26 @@ function compareSkillIncreaseSlotIds(left: string, right: string): number {
 function skillIncreaseLevelFromSlotId(slotId: string): number {
   const match = /skill-increase-level-(\d+)/.exec(slotId);
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function resolveSingletonChoiceGrantedSkill(
+  actorItems: ActorItemLike[],
+  step: PendingStep,
+  selection: string
+): { skillSlug: string; rank: number } | null {
+  if (step.kind !== "singleton-choice" || !step.singletonChoice?.sourceUuid) {
+    return null;
+  }
+
+  const sourceItem = actorItems.find((item) => itemMatchesSourceId(item, step.singletonChoice.sourceUuid));
+  return resolveSingletonChoiceSkillGrant({
+    rules: sourceItem?.system?.rules,
+    flag: step.singletonChoice.flag,
+    selection,
+  });
+}
+
+function readActorSkillRank(actor: ActorLike, slug: string): number {
+  const rank = Number(actor?.system?.skills?.[slug]?.rank ?? 0);
+  return Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
 }

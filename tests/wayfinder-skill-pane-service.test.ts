@@ -6,6 +6,14 @@ import { buildSkillPane, projectSkillRanks } from "../src/wayfinder/application/
 describe("wayfinder skill pane service", () => {
   it("projects fixed skills and prior draft choices before the active slot", async () => {
     const draft = createEmptyDraft(5);
+    const globals = globalThis as typeof globalThis & {
+      CONFIG?: {
+        PF2E?: {
+          skills?: Record<string, { label: string }>;
+        };
+      };
+    };
+    const originalConfig = globals.CONFIG;
     draft.skillTrainings["skill-training-wizard-level-1"] = trainingDraft(
       {
         arcana: "arcana",
@@ -15,31 +23,158 @@ describe("wayfinder skill pane service", () => {
     draft.skillTrainings["skill-training-wizard-level-7"] = trainingDraft({}, ["society"]);
     draft.skillIncreases["skill-increase-level-2"] = "arcana";
     draft.skillIncreases["skill-increase-level-6"] = "nature";
+    draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "society";
+    draft.singletonChoices["singleton-choice-background-sponsored-by-family-academySkill-level-1"] = "nature";
+    globals.CONFIG = {
+      ...(originalConfig ?? {}),
+      PF2E: {
+        ...(originalConfig?.PF2E ?? {}),
+        skills: {
+          arcana: { label: "PF2E.Skill.Arcana" },
+          athletics: { label: "PF2E.Skill.Athletics" },
+          nature: { label: "PF2E.Skill.Nature" },
+          occultism: { label: "PF2E.Skill.Occultism" },
+          society: { label: "PF2E.Skill.Society" },
+        },
+      },
+    };
 
-    const projected = await projectSkillRanks(draft, "skill-increase-level-4", {
-      baseSkillRanks: {
+    try {
+      const projected = await projectSkillRanks(draft, "skill-increase-level-4", {
+        baseSkillRanks: {
+          acrobatics: 1,
+        },
+        resolveDocument: async (itemType) => {
+          if (itemType === "heritage") {
+            return {
+              system: {
+                slug: "skilled-human",
+                rules: [
+                  {
+                    key: "ChoiceSet",
+                    flag: "trainedSkill",
+                    choices: {
+                      config: "skills",
+                    },
+                  },
+                  {
+                    key: "ActiveEffectLike",
+                    path: "system.skills.{item|flags.pf2e.rulesSelections.trainedSkill}.rank",
+                    value: 1,
+                  },
+                ],
+              },
+            };
+          }
+          if (itemType === "background") {
+            return {
+              system: {
+                slug: "sponsored-by-family",
+                trainedSkills: { value: ["athletics"] },
+                rules: [
+                  {
+                    key: "ChoiceSet",
+                    flag: "academySkill",
+                    choices: [
+                      { value: "nature", label: "PF2E.Skill.Nature" },
+                      {
+                        value: "Compendium.pf2e.classfeatures.Item.GenealogyLore",
+                        label: "Genealogy Lore",
+                      },
+                    ],
+                  },
+                  {
+                    key: "ActiveEffectLike",
+                    path: "system.skills.{item|flags.pf2e.rulesSelections.academySkill}.rank",
+                    value: 1,
+                  },
+                  {
+                    key: "ChoiceSet",
+                    flag: "familyLore",
+                    choices: [
+                      {
+                        value: "Compendium.pf2e.classfeatures.Item.GenealogyLore",
+                        label: "Genealogy Lore",
+                      },
+                    ],
+                  },
+                ],
+              },
+            };
+          }
+          if (itemType === "class") {
+            return { system: { trainedSkills: { value: ["occultism"] } } };
+          }
+          return null;
+        },
+        localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      });
+
+      expect(projected).toMatchObject({
         acrobatics: 1,
-      },
-      resolveDocument: async (itemType) => {
-        if (itemType === "background") {
-          return { system: { trainedSkills: { value: ["athletics"] } } };
-        }
-        if (itemType === "class") {
-          return { system: { trainedSkills: { value: ["occultism"] } } };
-        }
-        return null;
-      },
-    });
+        athletics: 1,
+        occultism: 1,
+        arcana: 1,
+        nature: 1,
+        society: 1,
+      });
+      expect(projected.stealth).toBeUndefined();
+    } finally {
+      globals.CONFIG = originalConfig;
+    }
+  });
 
-    expect(projected).toMatchObject({
-      acrobatics: 1,
-      athletics: 1,
-      occultism: 1,
-      arcana: 1,
-    });
-    expect(projected.stealth).toBeUndefined();
-    expect(projected.society).toBeUndefined();
-    expect(projected.nature).toBeUndefined();
+  it("does not project singleton skill selections without a matching rank-granting rule", async () => {
+    const draft = createEmptyDraft(1);
+    draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "society";
+    const globals = globalThis as typeof globalThis & {
+      CONFIG?: {
+        PF2E?: {
+          skills?: Record<string, { label: string }>;
+        };
+      };
+    };
+    const originalConfig = globals.CONFIG;
+    globals.CONFIG = {
+      ...(originalConfig ?? {}),
+      PF2E: {
+        ...(originalConfig?.PF2E ?? {}),
+        skills: {
+          society: { label: "PF2E.Skill.Society" },
+        },
+      },
+    };
+
+    try {
+      const projected = await projectSkillRanks(draft, "skill-increase-level-4", {
+        baseSkillRanks: {},
+        resolveDocument: async (itemType) => {
+          if (itemType !== "heritage") {
+            return null;
+          }
+
+          return {
+            system: {
+              slug: "skilled-human",
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "trainedSkill",
+                  choices: {
+                    config: "skills",
+                  },
+                },
+              ],
+            },
+          };
+        },
+        localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      });
+
+      expect(projected.society).toBeUndefined();
+    } finally {
+      globals.CONFIG = originalConfig;
+    }
   });
 
   it("builds a skill-training pane with reserved skills removed from additional choices", async () => {

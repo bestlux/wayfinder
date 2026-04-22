@@ -1,6 +1,9 @@
 import { SKILL_LABELS } from "../../constants.js";
+import { resolveSingletonChoiceSkillGrant } from "../../shared/singleton-choice-skill-grants.js";
+import { extractDocumentSlug } from "../../shared/slug.js";
 import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane, compareSkillIncreaseSlotIds } from "../panes/skill-pane.js";
+import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
 export async function buildSkillPane(step, draft, deps) {
     if (step.kind !== "skill-training" && step.kind !== "skill-increase") {
         return null;
@@ -8,6 +11,7 @@ export async function buildSkillPane(step, draft, deps) {
     const projectedRanks = await projectSkillRanks(draft, step.slotId, {
         baseSkillRanks: deps.baseSkillRanks,
         resolveDocument: deps.resolveDocument,
+        localize: deps.localize,
     });
     const skillEntries = buildSkillList(projectedRanks, {
         configSkills: deps.configSkills,
@@ -22,7 +26,9 @@ export async function buildSkillPane(step, draft, deps) {
 }
 export async function projectSkillRanks(draft, upToSlotId, deps) {
     const projected = { ...deps.baseSkillRanks };
-    const [backgroundDocument, classDocument] = await Promise.all([
+    const [ancestryDocument, heritageDocument, backgroundDocument, classDocument] = await Promise.all([
+        deps.resolveDocument("ancestry"),
+        deps.resolveDocument("heritage"),
         deps.resolveDocument("background"),
         deps.resolveDocument("class"),
     ]);
@@ -30,6 +36,13 @@ export async function projectSkillRanks(draft, upToSlotId, deps) {
         projected[slug] = Math.max(projected[slug] ?? 0, 1);
     }
     for (const slug of extractFixedTrainedSkills(classDocument)) {
+        projected[slug] = Math.max(projected[slug] ?? 0, 1);
+    }
+    for (const slug of extractDraftedSingletonSkillChoices(draft, [
+        { sourceItemType: "ancestry", document: ancestryDocument },
+        { sourceItemType: "heritage", document: heritageDocument },
+        { sourceItemType: "background", document: backgroundDocument },
+    ], deps.localize)) {
         projected[slug] = Math.max(projected[slug] ?? 0, 1);
     }
     const sortedTrainingSlotIds = Object.keys(draft.skillTrainings).sort((left, right) => left.localeCompare(right));
@@ -71,6 +84,33 @@ function extractFixedTrainedSkills(document) {
     return skills
         .filter((entry) => typeof entry === "string" && entry.length > 0)
         .map((entry) => entry.trim().toLowerCase());
+}
+function extractDraftedSingletonSkillChoices(draft, sources, localize) {
+    return sources.flatMap(({ sourceItemType, document }) => {
+        const sourceSlug = extractDocumentSlug(document);
+        const sourceRules = document?.system?.rules;
+        if (!document || !sourceSlug) {
+            return [];
+        }
+        return discoverSingletonChoiceSpecs({
+            sourceItemType,
+            sourceDocument: document,
+            sourceSlug,
+            localize,
+        })
+            .map((choice) => {
+            const selection = draft.singletonChoices[choice.slotId] ?? null;
+            if (!selection || !choice.options.some((option) => option.value === selection)) {
+                return null;
+            }
+            return resolveSingletonChoiceSkillGrant({
+                rules: sourceRules,
+                flag: choice.flag,
+                selection,
+            })?.skillSlug;
+        })
+            .filter((selection) => typeof selection === "string" && selection.length > 0);
+    });
 }
 function buildSkillList(actorSkillRanks, deps) {
     const result = [];

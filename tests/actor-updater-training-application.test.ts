@@ -112,7 +112,115 @@ describe("actor-updater training application", () => {
 
     expect(update).toHaveBeenCalledWith({
       "system.skills.acrobatics.rank": 3,
-      "system.skills.arcana.rank": 0,
+    });
+  });
+
+  it("projects singleton skill choices when the owning item rule grants a skill rank", async () => {
+    const update = vi.fn(async () => ({}));
+    const actor = {
+      system: {
+        skills: {
+          arcana: { rank: 0 },
+          society: { rank: 0 },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "heritage-1",
+            type: "heritage",
+            sourceId: "Compendium.pf2e.heritages.Item.skilled-human",
+            flags: {
+              core: {
+                sourceId: "Compendium.pf2e.heritages.Item.skilled-human",
+              },
+            },
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "trainedSkill",
+                  choices: {
+                    config: "skills",
+                  },
+                },
+                {
+                  key: "ActiveEffectLike",
+                  path: "system.skills.{item|flags.pf2e.rulesSelections.trainedSkill}.rank",
+                  value: 1,
+                },
+              ],
+            },
+          },
+        ],
+      },
+      update,
+    };
+    const draft = createEmptyDraft(3);
+    draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "society";
+
+    const projectedRanks = await applyTrainingDraft(actor, draft, [
+      singletonSkillChoiceStep("singleton-choice-heritage-skilled-human-trainedSkill-level-1"),
+    ]);
+
+    expect(update).toHaveBeenCalledWith({
+      "system.skills.society.rank": 1,
+    });
+    expect(projectedRanks).toMatchObject({
+      society: 1,
+      arcana: 0,
+    });
+  });
+
+  it("does not project singleton choices that do not drive skill-rank rules", async () => {
+    const update = vi.fn(async () => ({}));
+    const actor = {
+      system: {
+        skills: {
+          society: { rank: 0 },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "background-1",
+            type: "background",
+            sourceId: "Compendium.pf2e.backgrounds.Item.sponsored-by-family",
+            flags: {
+              core: {
+                sourceId: "Compendium.pf2e.backgrounds.Item.sponsored-by-family",
+              },
+            },
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "academySkill",
+                  choices: [{ value: "society", label: "Society" }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+      update,
+    };
+    const draft = createEmptyDraft(1);
+    draft.singletonChoices["singleton-choice-background-sponsored-by-family-academySkill-level-1"] = "society";
+
+    const projectedRanks = await applyTrainingDraft(actor, draft, [
+      singletonSkillChoiceStep(
+        "singleton-choice-background-sponsored-by-family-academySkill-level-1",
+        "background",
+        "Compendium.pf2e.backgrounds.Item.sponsored-by-family",
+        "academySkill",
+        [{ value: "society", label: "Society", img: null, detail: null }]
+      ),
+    ]);
+
+    expect(update).not.toHaveBeenCalled();
+    expect(projectedRanks).toMatchObject({
+      society: 0,
     });
   });
 });
@@ -143,6 +251,40 @@ function skillTrainingStep(slotId: string, classSlug: string, flag: string, addi
         },
       ],
       additionalCount,
+    },
+  };
+}
+
+function singletonSkillChoiceStep(
+  slotId: string,
+  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity" = "heritage",
+  sourceUuid = "Compendium.pf2e.heritages.Item.skilled-human",
+  flag = "trainedSkill",
+  options = [
+    { value: "arcana", label: "Arcana", img: null, detail: null },
+    { value: "society", label: "Society", img: null, detail: null },
+  ]
+): PendingStep {
+  return {
+    id: slotId,
+    level: 1,
+    kind: "singleton-choice",
+    slotKind: "singleton-choice",
+    title: "Trained Skill",
+    description: "",
+    required: true,
+    slotId,
+    singletonChoice: {
+      slotId,
+      sourceItemType,
+      sourcePackId: sourceItemType === "background" ? "pf2e.backgrounds" : "pf2e.heritages",
+      sourceDocumentId: sourceItemType === "background" ? "sponsored-by-family" : "skilled-human",
+      sourceUuid,
+      sourceName: sourceItemType === "background" ? "Sponsored by Family" : "Skilled Human",
+      sourceRuleIndex: 0,
+      flag,
+      prompt: "Choose a skill",
+      options,
     },
   };
 }

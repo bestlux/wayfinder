@@ -16,7 +16,47 @@ const sourceSelection: SelectionRef = {
 };
 
 describe("wayfinder singleton rule discovery", () => {
-  it("discovers singleton choice metadata from direct-document ChoiceSet rules", () => {
+  it("discovers generic singleton choice metadata from direct-document ChoiceSet rules", () => {
+    const choices = discoverSingletonChoiceMeta({
+      sourceItemType: "background",
+      sourceDocument: {
+        name: "Sponsored by Family",
+        system: {
+          slug: "sponsored-by-family",
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "familyKeepsake",
+              prompt: "Choose your family keepsake",
+              choices: [
+                { value: "ring", label: "Ancestor's Ring" },
+                { value: "crest", label: "Family Crest" },
+              ],
+            },
+          ],
+        },
+      },
+      sourceSelection,
+      extractSlug,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(choices).toMatchObject([
+      {
+        slotId: "singleton-choice-background-sponsored-by-family-familyKeepsake-level-1",
+        sourceItemType: "background",
+        flag: "familyKeepsake",
+        prompt: "Choose your family keepsake",
+        options: [
+          { value: "ring", label: "Ancestor's Ring" },
+          { value: "crest", label: "Family Crest" },
+        ],
+      },
+    ]);
+  });
+
+  it("skips background skill and lore ChoiceSet rules so skill training owns them", () => {
     const choices = discoverSingletonChoiceMeta({
       sourceItemType: "background",
       sourceDocument: {
@@ -56,36 +96,10 @@ describe("wayfinder singleton rule discovery", () => {
       localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
     });
 
-    expect(choices).toMatchObject([
-      {
-        slotId: "singleton-choice-background-sponsored-by-family-academySkill-level-1",
-        sourceItemType: "background",
-        flag: "academySkill",
-        prompt: "Choose your trained skill",
-        options: [
-          { value: "diplomacy", label: "Diplomacy" },
-          { value: "society", label: "Society" },
-        ],
-      },
-      {
-        slotId: "singleton-choice-background-sponsored-by-family-familyLore-level-1",
-        sourceItemType: "background",
-        flag: "familyLore",
-        options: [
-          {
-            value: "Compendium.pf2e.classfeatures.Item.GenealogyLore",
-            label: "Genealogy Lore",
-          },
-          {
-            value: "Compendium.pf2e.classfeatures.Item.MagaambyaLore",
-            label: "Magaambya Lore",
-          },
-        ],
-      },
-    ]);
+    expect(choices).toEqual([]);
   });
 
-  it("discovers configured skill choices from singleton ChoiceSet config rules", () => {
+  it("skips configured skill choices from singleton ChoiceSet config rules", () => {
     const globals = globalThis as typeof globalThis & {
       CONFIG?: {
         PF2E?: {
@@ -138,23 +152,13 @@ describe("wayfinder singleton rule discovery", () => {
         localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
       });
 
-      expect(choices).toMatchObject([
-        {
-          slotId: "singleton-choice-heritage-skilled-human-trainedSkill-level-1",
-          flag: "trainedSkill",
-          prompt: "PF2E.SpecificRule.Prompt.Skill",
-          options: [
-            { value: "arcana", label: "Arcana" },
-            { value: "athletics", label: "Athletics" },
-          ],
-        },
-      ]);
+      expect(choices).toEqual([]);
     } finally {
       globals.CONFIG = originalConfig;
     }
   });
 
-  it("preserves explicit custom labels for array-backed skill choices", () => {
+  it("preserves explicit custom labels for generic array-backed choices", () => {
     const choices = discoverSingletonChoiceMeta({
       sourceItemType: "background",
       sourceDocument: {
@@ -165,8 +169,8 @@ describe("wayfinder singleton rule discovery", () => {
           rules: [
             {
               key: "ChoiceSet",
-              flag: "courtSkill",
-              choices: [{ value: "diplomacy", label: "Courtly Etiquette" }],
+              flag: "courtFavor",
+              choices: [{ value: "letter-of-introduction", label: "Letter of Introduction" }],
             },
           ],
         },
@@ -183,8 +187,8 @@ describe("wayfinder singleton rule discovery", () => {
 
     expect(choices).toMatchObject([
       {
-        slotId: "singleton-choice-background-court-sponsor-courtSkill-level-1",
-        options: [{ value: "diplomacy", label: "Courtly Etiquette" }],
+        slotId: "singleton-choice-background-court-sponsor-courtFavor-level-1",
+        options: [{ value: "letter-of-introduction", label: "Letter of Introduction" }],
       },
     ]);
   });

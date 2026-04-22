@@ -215,13 +215,29 @@ export interface SkillIncreaseStepPane {
 }
 
 export interface SkillTrainingRuleChoicePane {
-  flag: string;
+  key: string;
   prompt: string;
+  sourceLabel: string;
   selectedSlug: string | null;
   selectedLabel: string | null;
   options: Array<{
     slug: string;
     label: string;
+    selected: boolean;
+    disabled: boolean;
+    disabledReason: string | null;
+  }>;
+}
+
+export interface SkillTrainingLoreChoicePane {
+  key: string;
+  prompt: string;
+  sourceLabel: string;
+  value: string;
+  placeholder: string;
+  allowCustom: boolean;
+  suggestions: Array<{
+    value: string;
     selected: boolean;
   }>;
 }
@@ -247,7 +263,9 @@ export interface SkillTrainingStepPane {
   selectedLabel: string;
   className: string;
   fixedSkills: string[];
+  fixedLores: string[];
   choiceSections: SkillTrainingRuleChoicePane[];
+  loreSections: SkillTrainingLoreChoicePane[];
   additionalCount: number;
   additionalRemaining: number;
   additionalSkills: Array<SkillOption & { selected: boolean }>;

@@ -48,9 +48,10 @@ describe("actor-updater training application", () => {
     const draft = createEmptyDraft(1);
     draft.skillTrainings["skill-training-fighter-level-1"] = {
       ruleChoices: {
-        fighterSkill: "athletics",
+        "class:fighterskill": "athletics",
       },
       additional: ["crafting", "medicine", "society"],
+      loreChoices: {},
     };
 
     const projectedRanks = await applyTrainingDraft(actor, draft, [
@@ -239,17 +240,27 @@ function skillTrainingStep(slotId: string, classSlug: string, flag: string, addi
       classSlug,
       className: classSlug,
       fixedSkills: [],
+      fixedLores: [],
       choiceRules: [
         {
-          ruleIndex: 0,
+          key: `class:${flag.toLowerCase()}`,
           flag,
           prompt: "Choose a skill",
+          sourceLabel: classSlug,
           options: [
             { slug: "acrobatics", label: "Acrobatics" },
             { slug: "athletics", label: "Athletics" },
           ],
+          persistence: {
+            sourceItemType: "class",
+            sourcePackId: "test.pack",
+            sourceDocumentId: classSlug,
+            sourceUuid: `Compendium.test.pack.Item.${classSlug}`,
+            sourceRuleIndex: 0,
+          },
         },
       ],
+      loreChoices: [],
       additionalCount,
     },
   };

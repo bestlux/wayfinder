@@ -50,9 +50,9 @@ export function discoverSingletonChoiceSpecs(args) {
     });
 }
 function shouldSkipSingletonChoice(sourceItemType, optionDomain) {
-    // Class-owned skill choices belong to the class training workflow so they
-    // stay in one draft store and do not reappear as a second selectable step.
-    return sourceItemType === "class" && optionDomain === "skill";
+    // Starting skill and lore choices belong to the skill training workflow so
+    // they stay in one draft store and do not reappear as separate singleton steps.
+    return ["ancestry", "heritage", "background", "class"].includes(sourceItemType) && optionDomain !== "generic";
 }
 function findRelevantRules(document) {
     const rules = document?.system?.rules;
@@ -90,10 +90,10 @@ function resolveChoiceOptions(rule, localize, configuredSkills) {
         if (options.length === 0) {
             return null;
         }
+        const everySkill = options.every((choice) => isConfiguredSkillSlug(choice.value, configuredSkills));
+        const everyLore = options.every((choice) => /\blore\b/i.test(choice.label));
         return {
-            optionDomain: options.every((choice) => isConfiguredSkillSlug(choice.value, configuredSkills))
-                ? "skill"
-                : "generic",
+            optionDomain: everySkill ? "skill" : everyLore ? "lore" : "generic",
             options,
         };
     }

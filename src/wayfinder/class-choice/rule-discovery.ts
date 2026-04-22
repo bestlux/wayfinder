@@ -46,15 +46,19 @@ export function findRelevantClassRules(document: unknown): Array<Record<string, 
 
 export function discoverSkillTrainingMeta(args: {
   classDocument: unknown;
+  classSelection: SelectionRef | null;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
   intelligenceModifier: number;
 }): SkillTrainingMeta | null {
-  const { classDocument, extractSlug, localize, intelligenceModifier } = args;
+  const { classDocument, classSelection, extractSlug, localize, intelligenceModifier } = args;
   const document = classDocument as NamedDocumentLike | null | undefined;
   const configuredSkills = getConfiguredSkills();
+  const className = toNonEmptyString(document?.name) ?? "Class";
   const choiceRules = findRelevantClassRules(classDocument)
-    .map((rule, ruleIndex) => toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills))
+    .map((rule, ruleIndex) =>
+      toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection)
+    )
     .filter(
       (rule: SkillTrainingMeta["choiceRules"][number] | null): rule is SkillTrainingMeta["choiceRules"][number] =>
         rule !== null
@@ -72,9 +76,11 @@ export function discoverSkillTrainingMeta(args: {
 
   return {
     classSlug: extractSlug(classDocument) ?? "class",
-    className: toNonEmptyString(document?.name) ?? "Class",
+    className,
     fixedSkills,
+    fixedLores: [],
     choiceRules,
+    loreChoices: [],
     additionalCount,
   };
 }
@@ -297,7 +303,9 @@ function toTrainingChoiceRule(
   rule: Record<string, unknown>,
   ruleIndex: number,
   localize: (value: string) => string,
-  configuredSkills: SkillConfigMap
+  configuredSkills: SkillConfigMap,
+  className: string,
+  classSelection: SelectionRef | null
 ): SkillTrainingMeta["choiceRules"][number] | null {
   if (rule.key !== "ChoiceSet" || !Array.isArray(rule.choices) || typeof rule.flag !== "string") {
     return null;
@@ -331,10 +339,20 @@ function toTrainingChoiceRule(
   }
 
   return {
-    ruleIndex,
+    key: `class:${String(rule.flag).trim().toLowerCase()}`,
     flag: rule.flag,
     prompt: localize(typeof rule.prompt === "string" ? rule.prompt : "Choose a skill"),
+    sourceLabel: className,
     options,
+    persistence: classSelection
+      ? {
+          sourceItemType: "class",
+          sourcePackId: classSelection.packId,
+          sourceDocumentId: classSelection.documentId,
+          sourceUuid: classSelection.uuid,
+          sourceRuleIndex: ruleIndex,
+        }
+      : null,
   };
 }
 

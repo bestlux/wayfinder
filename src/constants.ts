@@ -45,6 +45,25 @@ export const SKILL_LABELS: Record<string, string> = {
   thievery: "Thievery",
 } as const;
 
+export const SKILL_ABILITIES: Record<string, string> = {
+  acrobatics: "dex",
+  arcana: "int",
+  athletics: "str",
+  crafting: "int",
+  deception: "cha",
+  diplomacy: "cha",
+  intimidation: "cha",
+  medicine: "wis",
+  nature: "wis",
+  occultism: "int",
+  performance: "cha",
+  religion: "wis",
+  society: "int",
+  stealth: "dex",
+  survival: "wis",
+  thievery: "dex",
+} as const;
+
 export const PROFICIENCY_LABELS: Record<number, string> = {
   0: "Untrained",
   1: "Trained",

@@ -21,6 +21,9 @@ export function bindWayfinderInteractions(root, handlers, scrollById, pendingSea
     if (manual) {
         manual.addEventListener("change", handlers.onManualChange);
     }
+    for (const loreInput of root.querySelectorAll("[data-wayfinder-training-lore]")) {
+        loreInput.addEventListener("change", handlers.onLoreInputChange);
+    }
     if (pendingSearchFocus) {
         const nextSearch = root.querySelector(`[data-wayfinder-search][data-step-id="${pendingSearchFocus.stepId}"]`);
         if (nextSearch) {
@@ -101,9 +104,13 @@ export function parseWayfinderAction(element) {
             return element.dataset.stepId && element.dataset.slug
                 ? { type: action, stepId: element.dataset.stepId, slug: element.dataset.slug }
                 : null;
+        case "select-training-lore-suggestion":
+            return element.dataset.stepId && element.dataset.key && element.dataset.value
+                ? { type: action, stepId: element.dataset.stepId, key: element.dataset.key, value: element.dataset.value }
+                : null;
         case "select-training-rule":
-            return element.dataset.stepId && element.dataset.flag && element.dataset.slug
-                ? { type: action, stepId: element.dataset.stepId, flag: element.dataset.flag, slug: element.dataset.slug }
+            return element.dataset.stepId && element.dataset.key && element.dataset.slug
+                ? { type: action, stepId: element.dataset.stepId, key: element.dataset.key, slug: element.dataset.slug }
                 : null;
         case "toggle-training-skill":
             return element.dataset.stepId && element.dataset.slug

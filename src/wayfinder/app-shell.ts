@@ -22,6 +22,7 @@ import {
   adjustDraftTargetLevel,
   type DraftAdjustmentState,
   setManualStepComplete,
+  setTrainingLoreSelection,
   setTrainingRuleSelection,
   syncLanguageChoiceSelections,
   syncSkillTrainingSelections,
@@ -214,6 +215,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         onSearchInput: this.#onSearchInput,
         onScrollableScroll: this.#onScrollableScroll,
         onManualChange: this.#onManualChange,
+        onLoreInputChange: this.#onLoreInputChange,
       },
       this.#scrollById,
       this.#pendingSearchFocus
@@ -285,10 +287,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#selectSkillIncrease(action.stepId, action.slug);
         break;
       case "select-training-rule":
-        this.#selectTrainingRule(action.stepId, action.flag, action.slug);
+        this.#selectTrainingRule(action.stepId, action.key, action.slug);
         break;
       case "toggle-training-skill":
         await this.#toggleTrainingSkill(action.stepId, action.slug);
+        break;
+      case "select-training-lore-suggestion":
+        await this.#setTrainingLore(action.stepId, action.key, action.value);
         break;
       case "toggle-language-choice":
         await this.#toggleLanguageChoice(action.stepId, action.value);
@@ -360,6 +365,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (setManualStepComplete(this.#draftAdjustmentState(), stepId, input.checked)) {
       this.render(false);
     }
+  };
+
+  #onLoreInputChange = async (event: Event): Promise<void> => {
+    const input = event.currentTarget as HTMLInputElement | null;
+    const stepId = input?.dataset.stepId;
+    const key = input?.dataset.key;
+    if (!stepId || !key) {
+      return;
+    }
+
+    await this.#setTrainingLore(stepId, key, input.value);
   };
 
   #ensureDraft(defaultTargetLevel: number): DraftState {
@@ -568,9 +584,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
   }
 
-  #selectTrainingRule(stepId: string, flag: string, slug: string): void {
+  #selectTrainingRule(stepId: string, key: string, slug: string): void {
     this.#statusNote = null;
-    if (setTrainingRuleSelection(this.#draftAdjustmentState(), stepId, flag, slug)) {
+    if (setTrainingRuleSelection(this.#draftAdjustmentState(), stepId, key, slug)) {
+      this.render(false);
+    }
+  }
+
+  async #setTrainingLore(stepId: string, key: string, value: string): Promise<void> {
+    this.#statusNote = null;
+    const step = await this.#findPlanStepBySlotId(stepId);
+    if (setTrainingLoreSelection(this.#draftAdjustmentState(), step ?? null, key, value)) {
       this.render(false);
     }
   }
@@ -855,12 +879,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     const choiceComplete = training.choiceRules.every((rule) => {
-      const selection = draftTraining.ruleChoices[rule.flag];
+      const selection = draftTraining.ruleChoices[rule.key];
       return typeof selection === "string" && selection.length > 0;
     });
 
     const additionalComplete = draftTraining.additional.length === training.additionalCount;
-    return choiceComplete && additionalComplete;
+    const loreComplete = training.loreChoices.every((choice) => {
+      const selection = draftTraining.loreChoices[choice.key];
+      return typeof selection === "string" && selection.trim().length > 0;
+    });
+    return choiceComplete && additionalComplete && loreComplete;
   }
 
   async #adjustTargetLevel(delta: number): Promise<void> {

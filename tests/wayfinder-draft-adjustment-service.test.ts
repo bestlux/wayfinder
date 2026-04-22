@@ -45,7 +45,9 @@ describe("wayfinder draft adjustment service", () => {
         classSlug: "wizard",
         className: "Wizard",
         fixedSkills: [],
+        fixedLores: [],
         choiceRules: [],
+        loreChoices: [],
         additionalCount: 1,
       },
     };
@@ -194,6 +196,7 @@ describe("wayfinder draft adjustment service", () => {
     draft.skillTrainings["skill-training-wizard-level-1"] = {
       ruleChoices: {},
       additional: ["arcana", "nature"],
+      loreChoices: {},
     };
     const state = adjustmentState(draft);
     const steps: PendingStep[] = [
@@ -210,7 +213,9 @@ describe("wayfinder draft adjustment service", () => {
           classSlug: "wizard",
           className: "Wizard",
           fixedSkills: [],
+          fixedLores: [],
           choiceRules: [],
+          loreChoices: [],
           additionalCount: 1,
         },
       },
@@ -232,6 +237,7 @@ describe("wayfinder draft adjustment service", () => {
     expect(draft.skillTrainings["skill-training-wizard-level-1"]).toEqual({
       ruleChoices: { arcana: "arcana" },
       additional: [],
+      loreChoices: {},
     });
 
     expect(adjustDraftTargetLevel(draft, 2, 5)).toBe(true);

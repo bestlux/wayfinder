@@ -399,6 +399,14 @@
   font: 600 1rem / 1.05 var(--serif, serif);
 }
 
+.skill-training-source-label {
+  color: var(--wf-ink-soft);
+  font: 700 0.58rem / 1.15 var(--sans-serif, sans-serif);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: right;
+}
+
 .skill-training-header p:last-child {
   margin: 0;
   color: var(--wf-ink-soft);
@@ -456,6 +464,12 @@
   opacity: 0.6;
 }
 
+.fixed-skill-chip.lore-chip {
+  border-color: rgba(23, 31, 105, 0.18);
+  background: rgba(23, 31, 105, 0.05);
+  color: var(--wf-secondary);
+}
+
 .skill-training-choice-list {
   display: flex;
   flex-wrap: wrap;
@@ -501,6 +515,18 @@
   background: linear-gradient(90deg, rgba(94, 0, 0, 0.1) 0%, rgba(94, 0, 0, 0.03) 62%, transparent 100%);
 }
 
+.skill-training-choice:disabled {
+  opacity: 0.72;
+  cursor: default;
+}
+
+.skill-training-choice-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
 .skill-training-choice.selected .skill-training-choice-action {
   font-weight: 800;
 }
@@ -517,6 +543,39 @@
   text-transform: uppercase;
   white-space: nowrap;
   transition: font-weight var(--wf-transition);
+}
+
+.lore-suggestion-list {
+  margin-bottom: 0.15rem;
+}
+
+.skill-training-lore-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.skill-training-lore-label {
+  color: var(--wf-ink-soft);
+  font: 700 0.56rem / 1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.skill-training-lore-field input {
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.38rem 0.5rem;
+  border: 1px solid rgba(95, 77, 57, 0.2);
+  border-radius: var(--wf-radius);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--wf-ink);
+}
+
+.skill-training-lore-field input:focus {
+  outline: none;
+  border-color: rgba(23, 31, 105, 0.44);
+  box-shadow: 0 0 0 1px rgba(23, 31, 105, 0.12);
 }
 
 .boost-ledger,

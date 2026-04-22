@@ -1,4 +1,4 @@
-const DRAFT_VERSION = 6;
+const DRAFT_VERSION = 7;
 const STATE_VERSION = 1;
 export function createEmptyDraft(targetLevel = 1) {
     return {
@@ -240,9 +240,15 @@ function sanitizeSkillTrainings(raw) {
                 .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
                 .map((entry) => entry.trim().toLowerCase())
             : [];
+        const loreChoices = isRecord(value.loreChoices)
+            ? Object.fromEntries(Object.entries(value.loreChoices)
+                .filter(([, selection]) => typeof selection === "string" && selection.trim())
+                .map(([key, selection]) => [key, String(selection).trim()]))
+            : {};
         result[slotId] = {
             ruleChoices,
             additional: Array.from(new Set(additional)),
+            loreChoices,
         };
     }
     return result;

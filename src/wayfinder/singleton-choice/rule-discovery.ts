@@ -23,7 +23,7 @@ export interface SingletonChoiceSpec {
   slotId: string;
   flag: string;
   prompt: string | null;
-  optionDomain: "generic" | "skill";
+  optionDomain: "generic" | "skill" | "lore";
   options: Array<{
     value: string;
     label: string;
@@ -104,11 +104,11 @@ export function discoverSingletonChoiceSpecs(args: {
 
 function shouldSkipSingletonChoice(
   sourceItemType: SingletonChoiceMeta["sourceItemType"],
-  optionDomain: "generic" | "skill"
+  optionDomain: "generic" | "skill" | "lore"
 ): boolean {
-  // Class-owned skill choices belong to the class training workflow so they
-  // stay in one draft store and do not reappear as a second selectable step.
-  return sourceItemType === "class" && optionDomain === "skill";
+  // Starting skill and lore choices belong to the skill training workflow so
+  // they stay in one draft store and do not reappear as separate singleton steps.
+  return ["ancestry", "heritage", "background", "class"].includes(sourceItemType) && optionDomain !== "generic";
 }
 
 function findRelevantRules(document: unknown): Array<Record<string, unknown>> {
@@ -132,7 +132,7 @@ function resolveChoiceOptions(
   rule: Record<string, unknown>,
   localize: (value: string) => string,
   configuredSkills: SkillConfigMap
-): { optionDomain: "generic" | "skill"; options: SingletonChoiceSpec["options"] } | null {
+): { optionDomain: "generic" | "skill" | "lore"; options: SingletonChoiceSpec["options"] } | null {
   if (Array.isArray(rule.choices)) {
     const options = rule.choices
       .filter((choice): choice is { label?: unknown; value?: unknown; img?: unknown } => isRecord(choice))
@@ -161,10 +161,10 @@ function resolveChoiceOptions(
       return null;
     }
 
+    const everySkill = options.every((choice) => isConfiguredSkillSlug(choice.value, configuredSkills));
+    const everyLore = options.every((choice) => /\blore\b/i.test(choice.label));
     return {
-      optionDomain: options.every((choice) => isConfiguredSkillSlug(choice.value, configuredSkills))
-        ? "skill"
-        : "generic",
+      optionDomain: everySkill ? "skill" : everyLore ? "lore" : "generic",
       options,
     };
   }

@@ -1,8 +1,9 @@
 import { buildClassBranchStepsFromRules, buildClassChoiceStepsFromRules, buildClassGrantedItemStepsFromRules, buildClassTrainingStepsFromRules, } from "./class-choice/step-builders.js";
 import { remainingCreationBoostChoices } from "./domain/boost-rules.js";
 import { createPickItemStep } from "./domain/step-types.js";
+import { discoverSourceSkillTrainingMeta } from "./skill-training/source-discovery.js";
 export async function buildClassTrainingSteps(params) {
-    const { draftClassSelection, targetLevel, effectiveBuildState, fetchSelectionDocument, extractSlug, localize } = params;
+    const { draftClassSelection, sourceSelections = [], targetLevel, effectiveBuildState, fetchSelectionDocument, extractSlug, localize, } = params;
     if (!draftClassSelection || targetLevel < 1) {
         return [];
     }
@@ -13,12 +14,27 @@ export async function buildClassTrainingSteps(params) {
         return [];
     }
     const effectiveClassDocument = await fetchSelectionDocument(draftClassSelection);
-    return buildClassTrainingStepsFromRules({
+    const steps = buildClassTrainingStepsFromRules({
         effectiveClassDocument,
+        classSelection: draftClassSelection,
         extractSlug,
         localize,
         intelligenceModifier: effectiveBuildState.projectedAbilities.int.modifier,
     });
+    const sourceTraining = discoverSourceSkillTrainingMeta({
+        sources: sourceSelections,
+        localize,
+    });
+    return steps.map((step) => ({
+        ...step,
+        training: {
+            ...step.training,
+            fixedSkills: Array.from(new Set([...step.training.fixedSkills, ...sourceTraining.fixedSkills])),
+            fixedLores: Array.from(new Set([...step.training.fixedLores, ...sourceTraining.fixedLores])),
+            choiceRules: [...step.training.choiceRules, ...sourceTraining.choiceRules],
+            loreChoices: [...step.training.loreChoices, ...sourceTraining.loreChoices],
+        },
+    }));
 }
 export async function buildClassFeatSteps(params) {
     const { effectiveClassDocument, targetLevel, fulfilledCount } = params;

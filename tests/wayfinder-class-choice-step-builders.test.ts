@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { SelectionRef } from "../src/types";
 import {
   buildClassBranchStepsFromRules,
   buildClassChoiceStepsFromRules,
@@ -7,6 +8,7 @@ import {
 } from "../src/wayfinder/class-choice/step-builders";
 
 const testGlobals = globalThis as typeof globalThis & { CONFIG?: any };
+const classSelection = selection("class-level-1", "class", "class-document", "Class");
 
 describe("wayfinder class-choice step-builders", () => {
   afterEach(() => {
@@ -71,6 +73,7 @@ describe("wayfinder class-choice step-builders", () => {
 
     const trainingSteps = buildClassTrainingStepsFromRules({
       effectiveClassDocument: rogueClass,
+      classSelection,
       extractSlug: slugFromDocument,
       localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
       intelligenceModifier: 3,
@@ -150,6 +153,7 @@ describe("wayfinder class-choice step-builders", () => {
           items: {},
         },
       },
+      classSelection,
       extractSlug: slugFromDocument,
       localize: (value) => value.replace(/^PF2E\.Skill\./, "").replace(/^World\.Skill\./, ""),
       intelligenceModifier: 0,
@@ -437,4 +441,17 @@ function slugFromDocument(document: unknown): string | null {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || null
   );
+}
+
+function selection(slotId: string, itemType: string, documentId: string, name = documentId): SelectionRef {
+  return {
+    slotId,
+    packId: "test.pack",
+    documentId,
+    uuid: `Compendium.test.pack.Item.${documentId}`,
+    itemType,
+    featType: null,
+    name,
+    level: 1,
+  };
 }

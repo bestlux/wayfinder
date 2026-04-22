@@ -20,6 +20,17 @@ const selectorSelection: SelectionRef = {
   level: 1,
 };
 
+const classSelection: SelectionRef = {
+  slotId: "class-level-1",
+  packId: "pf2e.classes",
+  documentId: "rogue",
+  uuid: "Compendium.pf2e.classes.Item.rogue",
+  itemType: "class",
+  featType: null,
+  name: "Rogue",
+  level: 1,
+};
+
 describe("wayfinder class rule discovery", () => {
   it("discovers branch metadata from selector-style class features", () => {
     const branchMeta = discoverClassBranchMeta({
@@ -199,6 +210,7 @@ describe("wayfinder class rule discovery", () => {
           ],
         },
       },
+      classSelection,
       extractSlug,
       localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
       intelligenceModifier: 0,

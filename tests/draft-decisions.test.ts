@@ -58,6 +58,7 @@ describe("draft-decisions", () => {
     draft.skillTrainings["skill-training-wizard-level-1"] = {
       ruleChoices: { wizardSkill: "arcana" },
       additional: ["society"],
+      loreChoices: {},
     };
     draft.spellChoices["spell-choice-wizard-spellbook-rank-1-level-1"] = [
       selection("spell-choice-wizard-spellbook-rank-1-level-1", "spell", "magic-missile"),

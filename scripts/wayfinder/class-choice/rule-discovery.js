@@ -5,11 +5,12 @@ export function findRelevantClassRules(document) {
     return Array.isArray(rules) ? rules.filter(isRecord) : [];
 }
 export function discoverSkillTrainingMeta(args) {
-    const { classDocument, extractSlug, localize, intelligenceModifier } = args;
+    const { classDocument, classSelection, extractSlug, localize, intelligenceModifier } = args;
     const document = classDocument;
     const configuredSkills = getConfiguredSkills();
+    const className = toNonEmptyString(document?.name) ?? "Class";
     const choiceRules = findRelevantClassRules(classDocument)
-        .map((rule, ruleIndex) => toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills))
+        .map((rule, ruleIndex) => toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection))
         .filter((rule) => rule !== null);
     const additionalCount = Math.max(0, toNonNegativeNumber(document?.system?.trainedSkills?.additional) + Math.trunc(intelligenceModifier));
     const fixedSkills = toStringArray(document?.system?.trainedSkills?.value).map((entry) => entry.toLowerCase());
@@ -18,9 +19,11 @@ export function discoverSkillTrainingMeta(args) {
     }
     return {
         classSlug: extractSlug(classDocument) ?? "class",
-        className: toNonEmptyString(document?.name) ?? "Class",
+        className,
         fixedSkills,
+        fixedLores: [],
         choiceRules,
+        loreChoices: [],
         additionalCount,
     };
 }
@@ -181,7 +184,7 @@ export function buildChoiceRollOptions(deityDocument) {
     }
     return options;
 }
-function toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills) {
+function toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection) {
     if (rule.key !== "ChoiceSet" || !Array.isArray(rule.choices) || typeof rule.flag !== "string") {
         return null;
     }
@@ -200,10 +203,20 @@ function toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills) {
         return null;
     }
     return {
-        ruleIndex,
+        key: `class:${String(rule.flag).trim().toLowerCase()}`,
         flag: rule.flag,
         prompt: localize(typeof rule.prompt === "string" ? rule.prompt : "Choose a skill"),
+        sourceLabel: className,
         options,
+        persistence: classSelection
+            ? {
+                sourceItemType: "class",
+                sourcePackId: classSelection.packId,
+                sourceDocumentId: classSelection.documentId,
+                sourceUuid: classSelection.uuid,
+                sourceRuleIndex: ruleIndex,
+            }
+            : null,
     };
 }
 function extractClassChoiceKey(rule) {

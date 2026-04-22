@@ -3,7 +3,7 @@ import type { SelectionRef } from "../src/types";
 import { buildSingletonChoiceStepsFromRules } from "../src/wayfinder/singleton-choice/step-builders";
 
 describe("wayfinder singleton-choice step-builders", () => {
-  it("builds singleton-choice steps from singleton document rules", () => {
+  it("builds singleton-choice steps from generic ChoiceSet rules", () => {
     const steps = buildSingletonChoiceStepsFromRules({
       sourceItemType: "background",
       effectiveSourceDocument: {
@@ -14,11 +14,11 @@ describe("wayfinder singleton-choice step-builders", () => {
           rules: [
             {
               key: "ChoiceSet",
-              flag: "academySkill",
-              prompt: "Choose your trained skill",
+              flag: "familyKeepsake",
+              prompt: "Choose your family keepsake",
               choices: [
-                { value: "diplomacy", label: "PF2E.Skill.Diplomacy" },
-                { value: "society", label: "PF2E.Skill.Society" },
+                { value: "ring", label: "Ancestor's Ring" },
+                { value: "crest", label: "Family Crest" },
               ],
             },
           ],
@@ -32,16 +32,16 @@ describe("wayfinder singleton-choice step-builders", () => {
     expect(steps).toMatchObject([
       {
         kind: "singleton-choice",
-        slotId: "singleton-choice-background-sponsored-by-family-academySkill-level-1",
-        title: "Academy Skill",
-        description: "Choose your trained skill",
+        slotId: "singleton-choice-background-sponsored-by-family-familyKeepsake-level-1",
+        title: "Family Keepsake",
+        description: "Choose your family keepsake",
         singletonChoice: {
           sourceName: "Sponsored by Family",
           sourceItemType: "background",
-          flag: "academySkill",
+          flag: "familyKeepsake",
           options: [
-            { value: "diplomacy", label: "Diplomacy" },
-            { value: "society", label: "Society" },
+            { value: "ring", label: "Ancestor's Ring" },
+            { value: "crest", label: "Family Crest" },
           ],
         },
       },
@@ -59,16 +59,10 @@ describe("wayfinder singleton-choice step-builders", () => {
           rules: [
             {
               key: "ChoiceSet",
-              flag: "familyLore",
+              flag: "familyKeepsake",
               choices: [
-                {
-                  value: "Compendium.pf2e.classfeatures.Item.GenealogyLore",
-                  label: "Genealogy Lore",
-                },
-                {
-                  value: "Compendium.pf2e.classfeatures.Item.MagaambyaLore",
-                  label: "Magaambya Lore",
-                },
+                { value: "Compendium.pf2e.equipment-srd.Item.ancestors-ring", label: "Ancestor's Ring" },
+                { value: "Compendium.pf2e.equipment-srd.Item.family-crest", label: "Family Crest" },
               ],
             },
           ],
@@ -82,25 +76,19 @@ describe("wayfinder singleton-choice step-builders", () => {
     expect(steps).toMatchObject([
       {
         kind: "singleton-choice",
-        slotId: "singleton-choice-background-sponsored-by-family-familyLore-level-1",
+        slotId: "singleton-choice-background-sponsored-by-family-familyKeepsake-level-1",
         singletonChoice: {
-          flag: "familyLore",
+          flag: "familyKeepsake",
           options: [
-            {
-              value: "Compendium.pf2e.classfeatures.Item.GenealogyLore",
-              label: "Genealogy Lore",
-            },
-            {
-              value: "Compendium.pf2e.classfeatures.Item.MagaambyaLore",
-              label: "Magaambya Lore",
-            },
+            { value: "Compendium.pf2e.equipment-srd.Item.ancestors-ring", label: "Ancestor's Ring" },
+            { value: "Compendium.pf2e.equipment-srd.Item.family-crest", label: "Family Crest" },
           ],
         },
       },
     ]);
   });
 
-  it("preserves explicit custom labels for array-backed skill choices", () => {
+  it("preserves explicit custom labels for generic array-backed choices", () => {
     const steps = buildSingletonChoiceStepsFromRules({
       sourceItemType: "background",
       effectiveSourceDocument: {
@@ -111,8 +99,8 @@ describe("wayfinder singleton-choice step-builders", () => {
           rules: [
             {
               key: "ChoiceSet",
-              flag: "courtSkill",
-              choices: [{ value: "diplomacy", label: "Courtly Etiquette" }],
+              flag: "courtFavor",
+              choices: [{ value: "letter-of-introduction", label: "Letter of Introduction" }],
             },
           ],
         },
@@ -125,16 +113,46 @@ describe("wayfinder singleton-choice step-builders", () => {
     expect(steps).toMatchObject([
       {
         kind: "singleton-choice",
-        slotId: "singleton-choice-background-court-sponsor-courtSkill-level-1",
+        slotId: "singleton-choice-background-court-sponsor-courtFavor-level-1",
         singletonChoice: {
-          flag: "courtSkill",
-          options: [{ value: "diplomacy", label: "Courtly Etiquette" }],
+          flag: "courtFavor",
+          options: [{ value: "letter-of-introduction", label: "Letter of Introduction" }],
         },
       },
     ]);
   });
 
-  it("builds singleton-choice steps from configured skill ChoiceSet rules", () => {
+  it("skips heritage and background skill-or-lore choices so skill training owns them", () => {
+    const backgroundSteps = buildSingletonChoiceStepsFromRules({
+      sourceItemType: "background",
+      effectiveSourceDocument: {
+        name: "Sponsored by Family",
+        system: {
+          slug: "sponsored-by-family",
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "academySkill",
+              prompt: "Choose your trained skill",
+              choices: [
+                { value: "diplomacy", label: "PF2E.Skill.Diplomacy" },
+                { value: "society", label: "PF2E.Skill.Society" },
+              ],
+            },
+            {
+              key: "ChoiceSet",
+              flag: "familyLore",
+              choices: [{ value: "Compendium.pf2e.classfeatures.Item.GenealogyLore", label: "Genealogy Lore" }],
+            },
+          ],
+        },
+      },
+      sourceSelection: selection("background-level-1", "background", "sponsored-by-family", "Sponsored by Family"),
+      extractSlug: (document) => (document as { system?: { slug?: string } })?.system?.slug ?? null,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
     const globals = globalThis as typeof globalThis & {
       CONFIG?: {
         PF2E?: {
@@ -155,7 +173,7 @@ describe("wayfinder singleton-choice step-builders", () => {
     };
 
     try {
-      const steps = buildSingletonChoiceStepsFromRules({
+      const heritageSteps = buildSingletonChoiceStepsFromRules({
         sourceItemType: "heritage",
         effectiveSourceDocument: {
           name: "Skilled Human",
@@ -179,21 +197,8 @@ describe("wayfinder singleton-choice step-builders", () => {
         localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
       });
 
-      expect(steps).toMatchObject([
-        {
-          kind: "singleton-choice",
-          slotId: "singleton-choice-heritage-skilled-human-trainedSkill-level-1",
-          title: "Trained Skill",
-          singletonChoice: {
-            sourceItemType: "heritage",
-            flag: "trainedSkill",
-            options: [
-              { value: "arcana", label: "Arcana" },
-              { value: "athletics", label: "Athletics" },
-            ],
-          },
-        },
-      ]);
+      expect(backgroundSteps).toEqual([]);
+      expect(heritageSteps).toEqual([]);
     } finally {
       globals.CONFIG = originalConfig;
     }

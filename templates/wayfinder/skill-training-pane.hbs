@@ -29,8 +29,11 @@
     {{#each activePane.choiceSections}}
       <section class="skill-training-block">
         <header class="skill-training-block-header">
-          <p class="eyebrow">Class Choice</p>
-          <h5>{{prompt}}</h5>
+          <div>
+            <p class="eyebrow">Skill Choice</p>
+            <h5>{{prompt}}</h5>
+          </div>
+          <span class="skill-training-source-label">{{sourceLabel}}</span>
         </header>
         <div class="skill-training-choice-list">
           {{#each options}}
@@ -39,14 +42,78 @@
               class="skill-training-choice{{#if selected}} selected{{/if}}"
               data-wayfinder-action="select-training-rule"
               data-step-id="{{../../activePane.stepId}}"
-              data-flag="{{../flag}}"
+              data-key="{{../key}}"
               data-slug="{{slug}}"
+              {{#if disabled}}disabled{{/if}}
             >
-              <span class="skill-training-choice-name">{{label}}</span>
+              <span class="skill-training-choice-copy">
+                <span class="skill-training-choice-name">{{label}}</span>
+                {{#if disabledReason}}
+                  <span class="skill-increase-detail">{{disabledReason}}</span>
+                {{/if}}
+              </span>
               <span class="skill-training-choice-action">{{#if selected}}Chosen{{else}}Choose{{/if}}</span>
             </button>
           {{/each}}
         </div>
+      </section>
+    {{/each}}
+
+    {{#if activePane.fixedLores.length}}
+      <section class="skill-training-block">
+        <header class="skill-training-block-header">
+          <p class="eyebrow">Lore Training</p>
+          <h5>Already granted lore</h5>
+        </header>
+        <div class="skill-training-fixed-list">
+          {{#each activePane.fixedLores}}
+            <span class="fixed-skill-chip lore-chip">{{this}}</span>
+          {{/each}}
+        </div>
+      </section>
+    {{/if}}
+
+    {{#each activePane.loreSections}}
+      <section class="skill-training-block">
+        <header class="skill-training-block-header">
+          <div>
+            <p class="eyebrow">Lore Choice</p>
+            <h5>{{prompt}}</h5>
+          </div>
+          <span class="skill-training-source-label">{{sourceLabel}}</span>
+        </header>
+
+        {{#if suggestions.length}}
+          <div class="skill-training-choice-list lore-suggestion-list">
+            {{#each suggestions}}
+              <button
+                type="button"
+                class="skill-training-choice lore-suggestion{{#if selected}} selected{{/if}}"
+                data-wayfinder-action="select-training-lore-suggestion"
+                data-step-id="{{../../activePane.stepId}}"
+                data-key="{{../key}}"
+                data-value="{{value}}"
+              >
+                <span class="skill-training-choice-name">{{value}}</span>
+                <span class="skill-training-choice-action">{{#if selected}}Chosen{{else}}Use{{/if}}</span>
+              </button>
+            {{/each}}
+          </div>
+        {{/if}}
+
+        {{#if allowCustom}}
+          <label class="skill-training-lore-field">
+            <span class="skill-training-lore-label">Lore name</span>
+            <input
+              type="text"
+              value="{{value}}"
+              placeholder="{{placeholder}}"
+              data-wayfinder-training-lore
+              data-step-id="{{../activePane.stepId}}"
+              data-key="{{key}}"
+            />
+          </label>
+        {{/if}}
       </section>
     {{/each}}
 

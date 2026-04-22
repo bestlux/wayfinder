@@ -20,6 +20,13 @@ describe("wayfinder plan builder service", () => {
     const actor = {};
     const draft = createEmptyDraft(1);
     draft.selections.class = selection("class-level-1", "class", "wizard", "Wizard");
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      "feat",
+      "elven-lore",
+      "Elven Lore",
+      "ancestry"
+    );
     const snapshot: ActorSnapshot = {
       actorId: "actor-1",
       level: 2,
@@ -70,6 +77,15 @@ describe("wayfinder plan builder service", () => {
       expect(params.draftClassSelection).toEqual(draft.selections.class);
       expect(params.targetLevel).toBe(4);
       expect(params.localize("PF2E.Test")).toBe("loc:PF2E.Test");
+      expect(params.sourceSelections).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceItemType: "feat",
+            sourceSelection: draft.selections["ancestry-feat-level-1"],
+            sourceDocument: { fetched: "elven-lore" },
+          }),
+        ])
+      );
       return [step("skill-training-wizard-level-1")];
     });
     const buildSingletonChoiceSteps = vi.fn(async (params) => {
@@ -312,14 +328,20 @@ describe("wayfinder plan builder service", () => {
   });
 });
 
-function selection(slotId: string, itemType: string, documentId: string, name = documentId): SelectionRef {
+function selection(
+  slotId: string,
+  itemType: string,
+  documentId: string,
+  name = documentId,
+  featType: string | null = itemType === "feat" ? "classfeature" : null
+): SelectionRef {
   return {
     slotId,
     packId: "test.pack",
     documentId,
     uuid: `Compendium.test.pack.Item.${documentId}`,
     itemType,
-    featType: itemType === "feat" ? "classfeature" : null,
+    featType,
     name,
     level: 1,
   };

@@ -10,7 +10,7 @@ import { sourceIdOf } from "../shared/source-id.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
 import { buildSkillPane } from "./application/build-skill-pane-service.js";
-import { adjustDraftTargetLevel, setManualStepComplete, setTrainingRuleSelection, syncLanguageChoiceSelections, syncSkillTrainingSelections, toggleAncestryMode, toggleBoostChoice, toggleSkillIncreaseSelection, toggleTrainingSkillSelection, toggleVoluntaryChoice, toggleVoluntaryEnabled, toggleVoluntaryLegacy, } from "./application/draft-adjustment-service.js";
+import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection, setTrainingRuleSelection, syncLanguageChoiceSelections, syncSkillTrainingSelections, toggleAncestryMode, toggleBoostChoice, toggleSkillIncreaseSelection, toggleTrainingSkillSelection, toggleVoluntaryChoice, toggleVoluntaryEnabled, toggleVoluntaryLegacy, } from "./application/draft-adjustment-service.js";
 import { applyDraftLifecycle, buildSaveDraftUpdate, createClearedDraftResult, } from "./application/draft-lifecycle-service.js";
 import { buildContextNote, buildOptionContext, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
 import { chooseSelectionOption, selectClassChoiceValue, selectSingletonChoiceValue, toggleLanguageChoiceValue, toggleSpellChoiceSelection, } from "./application/selection-command-service.js";
@@ -125,6 +125,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             onSearchInput: this.#onSearchInput,
             onScrollableScroll: this.#onScrollableScroll,
             onManualChange: this.#onManualChange,
+            onLoreInputChange: this.#onLoreInputChange,
         }, this.#scrollById, this.#pendingSearchFocus).pendingSearchFocus;
     }
     _tearDown(options) {
@@ -189,10 +190,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 this.#selectSkillIncrease(action.stepId, action.slug);
                 break;
             case "select-training-rule":
-                this.#selectTrainingRule(action.stepId, action.flag, action.slug);
+                this.#selectTrainingRule(action.stepId, action.key, action.slug);
                 break;
             case "toggle-training-skill":
                 await this.#toggleTrainingSkill(action.stepId, action.slug);
+                break;
+            case "select-training-lore-suggestion":
+                await this.#setTrainingLore(action.stepId, action.key, action.value);
                 break;
             case "toggle-language-choice":
                 await this.#toggleLanguageChoice(action.stepId, action.value);
@@ -258,6 +262,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (setManualStepComplete(this.#draftAdjustmentState(), stepId, input.checked)) {
             this.render(false);
         }
+    };
+    #onLoreInputChange = async (event) => {
+        const input = event.currentTarget;
+        const stepId = input?.dataset.stepId;
+        const key = input?.dataset.key;
+        if (!stepId || !key) {
+            return;
+        }
+        await this.#setTrainingLore(stepId, key, input.value);
     };
     #ensureDraft(defaultTargetLevel) {
         if (!this.#draft) {
@@ -436,9 +449,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             this.render(false);
         }
     }
-    #selectTrainingRule(stepId, flag, slug) {
+    #selectTrainingRule(stepId, key, slug) {
         this.#statusNote = null;
-        if (setTrainingRuleSelection(this.#draftAdjustmentState(), stepId, flag, slug)) {
+        if (setTrainingRuleSelection(this.#draftAdjustmentState(), stepId, key, slug)) {
+            this.render(false);
+        }
+    }
+    async #setTrainingLore(stepId, key, value) {
+        this.#statusNote = null;
+        const step = await this.#findPlanStepBySlotId(stepId);
+        if (setTrainingLoreSelection(this.#draftAdjustmentState(), step ?? null, key, value)) {
             this.render(false);
         }
     }
@@ -682,11 +702,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             return false;
         }
         const choiceComplete = training.choiceRules.every((rule) => {
-            const selection = draftTraining.ruleChoices[rule.flag];
+            const selection = draftTraining.ruleChoices[rule.key];
             return typeof selection === "string" && selection.length > 0;
         });
         const additionalComplete = draftTraining.additional.length === training.additionalCount;
-        return choiceComplete && additionalComplete;
+        const loreComplete = training.loreChoices.every((choice) => {
+            const selection = draftTraining.loreChoices[choice.key];
+            return typeof selection === "string" && selection.trim().length > 0;
+        });
+        return choiceComplete && additionalComplete && loreComplete;
     }
     async #adjustTargetLevel(delta) {
         this.#statusNote = null;

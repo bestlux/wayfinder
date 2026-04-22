@@ -12,6 +12,7 @@ export interface SelectionRef {
 export interface SkillTrainingDraft {
   ruleChoices: Record<string, string>;
   additional: string[];
+  loreChoices: Record<string, string>;
 }
 
 export interface ItemSelectionDecision {

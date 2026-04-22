@@ -1,4 +1,4 @@
-import { SKILL_LABELS } from "../../constants.js";
+import { SKILL_ABILITIES, SKILL_LABELS } from "../../constants.js";
 import { formatSlug } from "../formatting.js";
 export function getConfiguredSkills() {
     const configured = globalThis.CONFIG?.PF2E?.skills;
@@ -11,7 +11,10 @@ export function getConfiguredSkills() {
             return [];
         }
         const configuredLabel = typeof value === "string" ? value : typeof value?.label === "string" ? value.label : formatSlug(slug);
-        return [[normalizedSlug, { label: configuredLabel }]];
+        const configuredAttribute = typeof value === "object" && typeof value?.attribute === "string"
+            ? value.attribute.trim().toLowerCase()
+            : SKILL_ABILITIES[normalizedSlug];
+        return [[normalizedSlug, { label: configuredLabel, attribute: configuredAttribute }]];
     }));
 }
 export function isConfiguredSkillSlug(value, configuredSkills = getConfiguredSkills()) {
@@ -32,6 +35,17 @@ export function resolveSkillLabel(slug, label, localize, configuredSkills = getC
     const configuredLabel = configuredSkills[slug]?.label;
     const fallback = configuredLabel && configuredLabel.length > 0 ? configuredLabel : (SKILL_LABELS[slug] ?? formatSlug(slug));
     return localize(fallback);
+}
+export function getSkillAbility(slug, configuredSkills = getConfiguredSkills()) {
+    const normalizedSlug = normalizeSkillSlug(slug);
+    if (!normalizedSlug) {
+        return null;
+    }
+    const configuredAbility = configuredSkills[normalizedSlug]?.attribute;
+    if (typeof configuredAbility === "string" && configuredAbility.length > 0) {
+        return configuredAbility;
+    }
+    return SKILL_ABILITIES[normalizedSlug] ?? null;
 }
 function looksLikeLocalizationKey(value) {
     return /^[A-Z0-9_]+(?:\.[A-Z0-9_]+)+$/i.test(value);

@@ -1,8 +1,10 @@
 import type { inspectActor } from "../../actor-inspector.js";
 import type { BuildStateActor } from "../../build-state/document-types.js";
-import { getEffectiveBuildState } from "../../build-state.js";
+import { getEffectiveBuildState, listActorItems } from "../../build-state.js";
+import { MODULE_ID } from "../../constants.js";
 import { fetchSelectionDocument } from "../../pack-service.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
+import { sourceIdOf } from "../../shared/source-id.js";
 import type {
   ClassBranchMeta,
   ClassChoiceMeta,
@@ -32,6 +34,7 @@ import {
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { buildSingletonChoiceSteps, type SingletonChoiceSourceContext } from "../singleton-choice-service.js";
+import type { SkillTrainingSourceContext } from "../skill-training/source-discovery.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
 
 type ActorSnapshot = ReturnType<typeof inspectActor>;
@@ -103,15 +106,41 @@ export async function buildWayfinderAppPlan(
         targetLevel,
         fulfilledCount: planSnapshot.featCounts.class + planSnapshot.featCounts.archetype,
       }),
-    buildClassTrainingSteps: async (_planSnapshot, planDraft, targetLevel) =>
-      deps.buildClassTrainingSteps({
+    buildClassTrainingSteps: async (_planSnapshot, planDraft, targetLevel) => {
+      const effectiveBuildState = await getEffectiveBuildState(args.actor, planDraft);
+      return deps.buildClassTrainingSteps({
         draftClassSelection: deps.findDraftSelectionByType(planDraft, "class"),
+        sourceSelections: [
+          {
+            sourceItemType: "ancestry",
+            sourceSelection:
+              deps.findDraftSelectionByType(planDraft, "ancestry") ??
+              deps.readExistingSingletonSourceSelection(args.actor, "ancestry"),
+            sourceDocument: effectiveBuildState.ancestry?.document ?? null,
+          },
+          {
+            sourceItemType: "heritage",
+            sourceSelection:
+              deps.findDraftSelectionByType(planDraft, "heritage") ??
+              deps.readExistingSingletonSourceSelection(args.actor, "heritage"),
+            sourceDocument: effectiveBuildState.heritage,
+          },
+          {
+            sourceItemType: "background",
+            sourceSelection:
+              deps.findDraftSelectionByType(planDraft, "background") ??
+              deps.readExistingSingletonSourceSelection(args.actor, "background"),
+            sourceDocument: effectiveBuildState.background?.document ?? null,
+          },
+          ...(await resolveSkillTrainingFeatSources(planDraft, args, deps)),
+        ],
         targetLevel,
-        effectiveBuildState: await getEffectiveBuildState(args.actor, planDraft),
+        effectiveBuildState,
         fetchSelectionDocument: deps.fetchSelectionDocument,
         extractSlug: deps.extractDocumentSlug,
         localize: args.localize,
-      }),
+      });
+    },
     buildSingletonChoiceSteps: async (_planSnapshot, planDraft, targetLevel) =>
       deps.buildSingletonChoiceSteps({
         draft: planDraft,
@@ -236,4 +265,111 @@ async function resolveSingletonChoiceSources(
       } satisfies SingletonChoiceSourceContext;
     })
     .filter((entry) => !!entry.sourceSelection && !!entry.sourceDocument);
+}
+
+async function resolveSkillTrainingFeatSources(
+  draft: DraftState,
+  args: BuildWayfinderAppPlanArgs,
+  deps: BuildWayfinderAppPlanDependencies
+): Promise<SkillTrainingSourceContext[]> {
+  const featSelections = dedupeSelectionsByUuid([
+    ...Object.values(draft.selections).filter(isAncestryFeatSelection),
+    ...readExistingAncestryFeatSelections(args.actor),
+  ]);
+  const documents = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+
+  return featSelections.flatMap((sourceSelection, index) => {
+    const sourceDocument = documents[index];
+    return sourceDocument
+      ? [
+          {
+            sourceItemType: "feat",
+            sourceSelection,
+            sourceDocument,
+          } satisfies SkillTrainingSourceContext,
+        ]
+      : [];
+  });
+}
+
+function isAncestryFeatSelection(selection: SelectionRef): boolean {
+  return selection.itemType === "feat" && selection.featType === "ancestry";
+}
+
+function readExistingAncestryFeatSelections(actor: ActorLike): SelectionRef[] {
+  return listActorItems(actor)
+    .map((item) => selectionFromAncestryFeatItem(item))
+    .filter((selection): selection is SelectionRef => selection !== null);
+}
+
+function selectionFromAncestryFeatItem(item: unknown): SelectionRef | null {
+  const typedItem = item as {
+    type?: unknown;
+    name?: unknown;
+    system?: {
+      featType?: { value?: unknown };
+      category?: unknown;
+      level?: { value?: unknown };
+    };
+    flags?: {
+      [MODULE_ID]?: {
+        slotId?: unknown;
+      };
+    };
+  } | null;
+  if (!typedItem || typedItem.type !== "feat") {
+    return null;
+  }
+
+  const featType = typedItem.system?.featType?.value ?? typedItem.system?.category;
+  if (featType !== "ancestry") {
+    return null;
+  }
+
+  const sourceId = sourceIdOf(typedItem);
+  if (!sourceId) {
+    return null;
+  }
+
+  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
+  if (!match) {
+    return null;
+  }
+
+  const level = toPositiveInteger(typedItem.system?.level?.value) ?? 1;
+  const slotId =
+    typeof typedItem.flags?.[MODULE_ID]?.slotId === "string" && typedItem.flags[MODULE_ID].slotId.length > 0
+      ? typedItem.flags[MODULE_ID].slotId
+      : `ancestry-feat-level-${level}`;
+
+  return {
+    slotId,
+    packId: match[1],
+    documentId: match[2],
+    uuid: sourceId,
+    itemType: "feat",
+    featType: "ancestry",
+    name: typeof typedItem.name === "string" ? typedItem.name : "",
+    level,
+  };
+}
+
+function dedupeSelectionsByUuid(selections: SelectionRef[]): SelectionRef[] {
+  const seen = new Set<string>();
+  const result: SelectionRef[] = [];
+  for (const selection of selections) {
+    if (seen.has(selection.uuid)) {
+      continue;
+    }
+
+    seen.add(selection.uuid);
+    result.push(selection);
+  }
+
+  return result;
+}
+
+function toPositiveInteger(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 1 ? Math.floor(numeric) : null;
 }

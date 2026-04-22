@@ -27,11 +27,11 @@ export function toggleSkillIncreaseSelection(state: DraftAdjustmentState, stepId
 export function setTrainingRuleSelection(
   state: DraftAdjustmentState,
   stepId: string,
-  flag: string,
+  key: string,
   slug: string
 ): boolean {
-  state.draft.skillTrainings[stepId] ??= { ruleChoices: {}, additional: [] };
-  state.draft.skillTrainings[stepId].ruleChoices[flag] = slug;
+  state.draft.skillTrainings[stepId] ??= emptyTrainingDraft();
+  state.draft.skillTrainings[stepId].ruleChoices[key] = slug;
   return true;
 }
 
@@ -46,11 +46,41 @@ export function toggleTrainingSkillSelection(
   }
 
   const additionalCount = step.training?.additionalCount ?? 0;
-  state.draft.skillTrainings[stepId] ??= { ruleChoices: {}, additional: [] };
+  state.draft.skillTrainings[stepId] ??= emptyTrainingDraft();
   const current = state.draft.skillTrainings[stepId].additional;
   state.draft.skillTrainings[stepId].additional = current.includes(slug)
     ? current.filter((entry) => entry !== slug)
     : [...current, slug].slice(0, additionalCount);
+  return true;
+}
+
+export function setTrainingLoreSelection(
+  state: DraftAdjustmentState,
+  step: PendingStep | null,
+  key: string,
+  rawValue: string
+): boolean {
+  const stepId = step?.slotId;
+  const loreMeta =
+    step?.kind === "skill-training" ? step.training?.loreChoices.find((entry) => entry.key === key) : null;
+  if (!stepId || !loreMeta) {
+    return false;
+  }
+
+  state.draft.skillTrainings[stepId] ??= emptyTrainingDraft();
+  const normalized = normalizeLoreDraftValue(
+    rawValue,
+    loreMeta.placeholder,
+    loreMeta.allowCustom,
+    loreMeta.suggestions
+  );
+
+  if (!normalized) {
+    delete state.draft.skillTrainings[stepId].loreChoices[key];
+    return true;
+  }
+
+  state.draft.skillTrainings[stepId].loreChoices[key] = normalized;
   return true;
 }
 
@@ -246,17 +276,95 @@ export function syncSkillTrainingSelections(state: DraftAdjustmentState, steps: 
       continue;
     }
 
-    const current = state.draft.skillTrainings[step.slotId]?.additional;
-    if (!current || current.length <= step.training.additionalCount) {
+    const current = state.draft.skillTrainings[step.slotId];
+    if (!current) {
       continue;
     }
 
-    state.draft.skillTrainings[step.slotId].additional = current.slice(0, step.training.additionalCount);
-    state.recentlyInvalidatedStepIds.add(step.slotId);
-    changed = true;
+    let nextChanged = false;
+    if (current.additional.length > step.training.additionalCount) {
+      current.additional = current.additional.slice(0, step.training.additionalCount);
+      nextChanged = true;
+    }
+
+    const allowedRuleKeys = new Set(step.training.choiceRules.map((choice) => choice.key));
+    const validRuleChoices = Object.fromEntries(
+      Object.entries(current.ruleChoices).filter(([key, value]) => {
+        if (!allowedRuleKeys.has(key) || typeof value !== "string" || value.length === 0) {
+          return false;
+        }
+
+        const choice = step.training.choiceRules.find((entry) => entry.key === key);
+        return !!choice?.options.some((option) => option.slug === value);
+      })
+    );
+    if (Object.keys(validRuleChoices).length !== Object.keys(current.ruleChoices).length) {
+      current.ruleChoices = validRuleChoices;
+      nextChanged = true;
+    }
+
+    const allowedLoreKeys = new Set(step.training.loreChoices.map((choice) => choice.key));
+    const validLoreChoices = Object.fromEntries(
+      Object.entries(current.loreChoices).filter(([key, value]) => {
+        if (!allowedLoreKeys.has(key) || typeof value !== "string" || value.trim().length === 0) {
+          return false;
+        }
+
+        const choice = step.training.loreChoices.find((entry) => entry.key === key);
+        return (
+          !!choice && (choice.allowCustom || choice.suggestions.some((suggestion) => sameLoreValue(suggestion, value)))
+        );
+      })
+    );
+    if (Object.keys(validLoreChoices).length !== Object.keys(current.loreChoices).length) {
+      current.loreChoices = validLoreChoices;
+      nextChanged = true;
+    }
+
+    if (nextChanged) {
+      state.recentlyInvalidatedStepIds.add(step.slotId);
+      changed = true;
+    }
   }
 
   return changed;
+}
+
+function emptyTrainingDraft() {
+  return { ruleChoices: {}, additional: [], loreChoices: {} };
+}
+
+function normalizeLoreDraftValue(
+  value: string,
+  placeholder: string,
+  allowCustom: boolean,
+  suggestions: string[]
+): string | null {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (!trimmed) {
+    return null;
+  }
+
+  const matchingSuggestion = suggestions.find((suggestion) => sameLoreValue(suggestion, trimmed));
+  if (matchingSuggestion) {
+    return matchingSuggestion;
+  }
+
+  if (!allowCustom) {
+    return null;
+  }
+
+  const fallback = /\blore\b$/i.test(trimmed) ? trimmed : `${trimmed} Lore`;
+  const normalizedPlaceholder = placeholder.trim();
+  if (!normalizedPlaceholder) {
+    return fallback;
+  }
+
+  return sameLoreValue(fallback, normalizedPlaceholder) ? normalizedPlaceholder : fallback;
+}
+
+function sameLoreValue(left: string, right: string): boolean {
+  return left.trim().replace(/\s+/g, " ").toLowerCase() === right.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function toggleSlotRecordChoice(

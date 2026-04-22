@@ -127,7 +127,9 @@ describe("wayfinder plan service", () => {
           classSlug: "wizard",
           className: "Wizard",
           fixedSkills: ["arcana"],
+          fixedLores: [],
           choiceRules: [],
+          loreChoices: [],
           additionalCount: 5,
         },
         {

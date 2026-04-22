@@ -10,7 +10,7 @@ import {
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 6,
+      version: 7,
       targetLevel: 4,
       selections: {},
       boosts: {
@@ -163,6 +163,7 @@ describe("draft-service", () => {
           fighterSkill: "athletics",
         },
         additional: ["society", "medicine"],
+        loreChoices: {},
       },
     });
     expect(draft.singletonChoices).toEqual({});
@@ -214,7 +215,7 @@ describe("draft-service", () => {
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(6);
+    expect(patched.version).toBe(7);
     expect(patched.updatedAt).not.toBeNull();
   });
 

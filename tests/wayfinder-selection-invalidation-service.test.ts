@@ -16,7 +16,11 @@ describe("wayfinder selection invalidation service", () => {
       "battle-magic"
     );
     draft.classChoices["class-choice-wizard-thesis-level-1"] = "spell-substitution";
-    draft.skillTrainings["skill-training-wizard-level-1"] = { ruleChoices: {}, additional: ["arcana"] };
+    draft.skillTrainings["skill-training-wizard-level-1"] = {
+      ruleChoices: {},
+      additional: ["arcana"],
+      loreChoices: {},
+    };
     draft.spellChoices["spell-choice-wizard-level-1"] = [
       selection("spell-choice-wizard-level-1", "spell", "magic-missile"),
     ];

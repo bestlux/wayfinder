@@ -18,10 +18,10 @@ describe("singleton-choice-service", () => {
             rules: [
               {
                 key: "ChoiceSet",
-                flag: "academySkill",
+                flag: "familyKeepsake",
                 choices: [
-                  { value: "diplomacy", label: "Diplomacy" },
-                  { value: "society", label: "Society" },
+                  { value: "ring", label: "Ancestor's Ring" },
+                  { value: "crest", label: "Family Crest" },
                 ],
               },
             ],
@@ -36,12 +36,12 @@ describe("singleton-choice-service", () => {
       sources,
       extractSlug: (document) => (document as { system?: { slug?: string } })?.system?.slug ?? null,
       localize: (value) => value,
-      readExistingSingletonChoiceSelection: () => "society",
+      readExistingSingletonChoiceSelection: () => "crest",
     });
 
     expect(skipped).toEqual([]);
 
-    draft.singletonChoices["singleton-choice-background-sponsored-by-family-academySkill-level-1"] = "diplomacy";
+    draft.singletonChoices["singleton-choice-background-sponsored-by-family-familyKeepsake-level-1"] = "ring";
 
     const retained = await buildSingletonChoiceSteps({
       draft,
@@ -49,7 +49,7 @@ describe("singleton-choice-service", () => {
       sources,
       extractSlug: (document) => (document as { system?: { slug?: string } })?.system?.slug ?? null,
       localize: (value) => value,
-      readExistingSingletonChoiceSelection: () => "society",
+      readExistingSingletonChoiceSelection: () => "crest",
     });
 
     expect(retained).toHaveLength(1);

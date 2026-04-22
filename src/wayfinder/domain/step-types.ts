@@ -148,16 +148,41 @@ export interface SpellChoiceMeta {
   restrictToCommon: boolean;
 }
 
+export interface SkillTrainingPersistenceMeta {
+  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "feat";
+  sourcePackId: string;
+  sourceDocumentId: string;
+  sourceUuid: string;
+  sourceRuleIndex: number;
+}
+
+export interface SkillTrainingChoiceMeta {
+  key: string;
+  flag: string;
+  prompt: string;
+  sourceLabel: string;
+  options: Array<{ slug: string; label: string }>;
+  persistence: SkillTrainingPersistenceMeta | null;
+}
+
+export interface SkillTrainingLoreChoiceMeta {
+  key: string;
+  flag: string;
+  prompt: string;
+  sourceLabel: string;
+  placeholder: string;
+  suggestions: string[];
+  allowCustom: boolean;
+  persistence: SkillTrainingPersistenceMeta | null;
+}
+
 export interface SkillTrainingMeta {
   classSlug: string;
   className: string;
   fixedSkills: string[];
-  choiceRules: Array<{
-    ruleIndex: number;
-    flag: string;
-    prompt: string;
-    options: Array<{ slug: string; label: string }>;
-  }>;
+  fixedLores: string[];
+  choiceRules: SkillTrainingChoiceMeta[];
+  loreChoices: SkillTrainingLoreChoiceMeta[];
   additionalCount: number;
 }
 

@@ -1,9 +1,9 @@
-import { SKILL_LABELS } from "../../constants.js";
+import { SKILL_ABILITIES, SKILL_LABELS } from "../../constants.js";
 import { formatSlug } from "../formatting.js";
 
-type ConfiguredSkillRecord = Record<string, string | { label?: unknown }>;
+type ConfiguredSkillRecord = Record<string, string | { label?: unknown; attribute?: unknown }>;
 
-export type SkillConfigMap = Record<string, { label: string }>;
+export type SkillConfigMap = Record<string, { label: string; attribute?: string }>;
 
 export function getConfiguredSkills(): SkillConfigMap {
   const configured = (
@@ -29,8 +29,12 @@ export function getConfiguredSkills(): SkillConfigMap {
 
       const configuredLabel =
         typeof value === "string" ? value : typeof value?.label === "string" ? value.label : formatSlug(slug);
+      const configuredAttribute =
+        typeof value === "object" && typeof value?.attribute === "string"
+          ? value.attribute.trim().toLowerCase()
+          : SKILL_ABILITIES[normalizedSlug];
 
-      return [[normalizedSlug, { label: configuredLabel }]];
+      return [[normalizedSlug, { label: configuredLabel, attribute: configuredAttribute }]];
     })
   );
 }
@@ -65,6 +69,20 @@ export function resolveSkillLabel(
   const fallback =
     configuredLabel && configuredLabel.length > 0 ? configuredLabel : (SKILL_LABELS[slug] ?? formatSlug(slug));
   return localize(fallback);
+}
+
+export function getSkillAbility(slug: string, configuredSkills: SkillConfigMap = getConfiguredSkills()): string | null {
+  const normalizedSlug = normalizeSkillSlug(slug);
+  if (!normalizedSlug) {
+    return null;
+  }
+
+  const configuredAbility = configuredSkills[normalizedSlug]?.attribute;
+  if (typeof configuredAbility === "string" && configuredAbility.length > 0) {
+    return configuredAbility;
+  }
+
+  return SKILL_ABILITIES[normalizedSlug] ?? null;
 }
 
 function looksLikeLocalizationKey(value: string): boolean {

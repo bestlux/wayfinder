@@ -2,12 +2,13 @@ import { createClassBranchStep, createClassChoiceStep, createPickItemStep, creat
 import { formatSlug } from "../formatting.js";
 import { buildChoiceRollOptions, discoverClassBranchMeta, discoverClassChoiceMeta, discoverGrantedItemMeta, discoverSkillTrainingMeta, getClassFeatureSources, } from "./rule-discovery.js";
 export function buildClassTrainingStepsFromRules(args) {
-    const { effectiveClassDocument, extractSlug, localize, intelligenceModifier } = args;
+    const { effectiveClassDocument, classSelection, extractSlug, localize, intelligenceModifier } = args;
     if (!effectiveClassDocument) {
         return [];
     }
     const training = discoverSkillTrainingMeta({
         classDocument: effectiveClassDocument,
+        classSelection,
         extractSlug,
         localize,
         intelligenceModifier,

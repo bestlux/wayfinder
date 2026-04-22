@@ -73,13 +73,19 @@ export function buildSkillTrainingPane(
   skillEntries: Array<{ slug: string; label: string }>,
   deps: SkillPaneDependencies
 ): SkillTrainingStepPane {
-  const training = draft.skillTrainings[step.slotId] ?? { ruleChoices: {}, additional: [] };
+  const training = draft.skillTrainings[step.slotId] ?? emptyTrainingDraft();
   const metadata = step.training;
   if (!metadata) {
     throw new Error(`Missing training metadata for step ${step.slotId}`);
   }
 
-  const reservedSkills = new Set<string>([...metadata.fixedSkills, ...Object.values(training.ruleChoices)]);
+  const selectedRuleChoices = Object.fromEntries(
+    metadata.choiceRules.map((choiceRule) => [choiceRule.key, training.ruleChoices[choiceRule.key] ?? null])
+  );
+  const reservedSkills = new Set<string>([
+    ...metadata.fixedSkills,
+    ...Object.values(selectedRuleChoices).filter((slug): slug is string => typeof slug === "string" && slug.length > 0),
+  ]);
 
   const additionalSkills = skillEntries
     .filter(({ slug }) => !reservedSkills.has(slug))
@@ -102,24 +108,63 @@ export function buildSkillTrainingPane(
     });
 
   const choiceSections = metadata.choiceRules.map((choiceRule) => {
-    const selectedSlug = training.ruleChoices[choiceRule.flag] ?? null;
+    const selectedSlug = selectedRuleChoices[choiceRule.key];
+    const reservedByOtherChoices = new Set<string>([
+      ...metadata.fixedSkills,
+      ...training.additional,
+      ...Object.entries(selectedRuleChoices)
+        .filter(([key, slug]) => key !== choiceRule.key && typeof slug === "string" && slug.length > 0)
+        .map(([, slug]) => slug as string),
+    ]);
     return {
-      flag: choiceRule.flag,
+      key: choiceRule.key,
       prompt: choiceRule.prompt,
+      sourceLabel: choiceRule.sourceLabel,
       selectedSlug,
       selectedLabel: selectedSlug ? (SKILL_LABELS[selectedSlug] ?? formatSlug(selectedSlug)) : null,
       options: choiceRule.options.map((option) => ({
         ...option,
         selected: option.slug === selectedSlug,
+        disabled:
+          option.slug !== selectedSlug &&
+          (reservedByOtherChoices.has(option.slug) || (projectedRanks[option.slug] ?? 0) >= 1),
+        disabledReason: reservedByOtherChoices.has(option.slug)
+          ? "Already chosen elsewhere in this step"
+          : (projectedRanks[option.slug] ?? 0) >= 1
+            ? "Already trained from another source"
+            : null,
+      })),
+    };
+  });
+
+  const loreSections = metadata.loreChoices.map((choice) => {
+    const value = training.loreChoices[choice.key] ?? "";
+    return {
+      key: choice.key,
+      prompt: choice.prompt,
+      sourceLabel: choice.sourceLabel,
+      value,
+      placeholder: choice.placeholder,
+      allowCustom: choice.allowCustom,
+      suggestions: choice.suggestions.map((suggestion) => ({
+        value: suggestion,
+        selected: normalizeLoreValue(suggestion) === normalizeLoreValue(value),
       })),
     };
   });
 
   const fixedLabels = metadata.fixedSkills.map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug));
+  const fixedLoreLabels = metadata.fixedLores;
   const selectedLabels = [
-    ...Object.values(training.ruleChoices).map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug)),
+    ...Object.values(selectedRuleChoices)
+      .filter((slug): slug is string => typeof slug === "string" && slug.length > 0)
+      .map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug)),
     ...training.additional.map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug)),
+    ...Object.values(training.loreChoices)
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim()),
   ];
+  const totalChoiceCount = metadata.choiceRules.length + metadata.additionalCount + metadata.loreChoices.length;
 
   return {
     kind: "skill-training",
@@ -141,15 +186,25 @@ export function buildSkillTrainingPane(
     completed: deps.isTrainingStepComplete(step),
     selectedLabel:
       selectedLabels.length > 0
-        ? `${selectedLabels.length}/${metadata.choiceRules.length + metadata.additionalCount} chosen`
-        : "Choose class skill training",
+        ? `${selectedLabels.length}/${totalChoiceCount} chosen`
+        : "Choose starting skill training",
     className: metadata.className,
     fixedSkills: fixedLabels,
+    fixedLores: fixedLoreLabels,
     choiceSections,
+    loreSections,
     additionalCount: metadata.additionalCount,
     additionalRemaining: Math.max(0, metadata.additionalCount - training.additional.length),
     additionalSkills,
   };
+}
+
+function emptyTrainingDraft() {
+  return { ruleChoices: {}, additional: [], loreChoices: {} };
+}
+
+function normalizeLoreValue(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 export function compareSkillIncreaseSlotIds(left: string, right: string): number {

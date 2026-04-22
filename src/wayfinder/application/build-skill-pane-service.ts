@@ -78,6 +78,14 @@ export async function projectSkillRanks(
     projected[slug] = Math.max(projected[slug] ?? 0, 1);
   }
 
+  for (const slug of extractFixedTrainedSkills(ancestryDocument)) {
+    projected[slug] = Math.max(projected[slug] ?? 0, 1);
+  }
+
+  for (const slug of extractFixedTrainedSkills(heritageDocument)) {
+    projected[slug] = Math.max(projected[slug] ?? 0, 1);
+  }
+
   for (const slug of extractFixedTrainedSkills(classDocument)) {
     projected[slug] = Math.max(projected[slug] ?? 0, 1);
   }

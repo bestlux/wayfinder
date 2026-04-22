@@ -30,17 +30,19 @@ interface BuildClassChoiceStepArgs extends BuildClassFeatureStepArgs {
 
 export function buildClassTrainingStepsFromRules(args: {
   effectiveClassDocument: unknown | null;
+  classSelection: SelectionRef | null;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
   intelligenceModifier: number;
 }): SkillTrainingStep[] {
-  const { effectiveClassDocument, extractSlug, localize, intelligenceModifier } = args;
+  const { effectiveClassDocument, classSelection, extractSlug, localize, intelligenceModifier } = args;
   if (!effectiveClassDocument) {
     return [];
   }
 
   const training = discoverSkillTrainingMeta({
     classDocument: effectiveClassDocument,
+    classSelection,
     extractSlug,
     localize,
     intelligenceModifier,

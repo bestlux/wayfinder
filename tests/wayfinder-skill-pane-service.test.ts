@@ -16,15 +16,15 @@ describe("wayfinder skill pane service", () => {
     const originalConfig = globals.CONFIG;
     draft.skillTrainings["skill-training-wizard-level-1"] = trainingDraft(
       {
-        arcana: "arcana",
+        "class:arcana": "arcana",
+        "heritage:trainedSkill": "society",
+        "background:academySkill": "nature",
       },
       ["stealth"]
     );
     draft.skillTrainings["skill-training-wizard-level-7"] = trainingDraft({}, ["society"]);
     draft.skillIncreases["skill-increase-level-2"] = "arcana";
     draft.skillIncreases["skill-increase-level-6"] = "nature";
-    draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "society";
-    draft.singletonChoices["singleton-choice-background-sponsored-by-family-academySkill-level-1"] = "nature";
     globals.CONFIG = {
       ...(originalConfig ?? {}),
       PF2E: {
@@ -40,7 +40,7 @@ describe("wayfinder skill pane service", () => {
     };
 
     try {
-      const projected = await projectSkillRanks(draft, "skill-increase-level-4", {
+      const projected = await projectSkillRanks(draft, "skill-training-wizard-level-7", {
         baseSkillRanks: {
           acrobatics: 1,
         },
@@ -114,11 +114,11 @@ describe("wayfinder skill pane service", () => {
         acrobatics: 1,
         athletics: 1,
         occultism: 1,
-        arcana: 1,
-        nature: 1,
+        arcana: 2,
+        nature: 2,
         society: 1,
       });
-      expect(projected.stealth).toBeUndefined();
+      expect(projected.stealth).toBe(1);
     } finally {
       globals.CONFIG = originalConfig;
     }
@@ -179,7 +179,7 @@ describe("wayfinder skill pane service", () => {
 
   it("builds a skill-training pane with reserved skills removed from additional choices", async () => {
     const draft = createEmptyDraft(1);
-    draft.skillTrainings["skill-training-wizard-level-1"] = trainingDraft({ arcana: "arcana" }, ["stealth"]);
+    draft.skillTrainings["skill-training-wizard-level-1"] = trainingDraft({ "class:arcana": "arcana" }, ["stealth"]);
     const step: PendingStep = {
       id: "skill-training-wizard-level-1",
       level: 1,
@@ -193,17 +193,21 @@ describe("wayfinder skill pane service", () => {
         classSlug: "wizard",
         className: "Wizard",
         fixedSkills: ["occultism"],
+        fixedLores: [],
         choiceRules: [
           {
-            ruleIndex: 0,
+            key: "class:arcana",
             flag: "arcana",
             prompt: "Choose a school skill",
+            sourceLabel: "Wizard",
             options: [
               { slug: "arcana", label: "Arcana" },
               { slug: "nature", label: "Nature" },
             ],
+            persistence: null,
           },
         ],
+        loreChoices: [],
         additionalCount: 1,
       },
     };
@@ -273,5 +277,6 @@ function trainingDraft(ruleChoices: Record<string, string>, additional: string[]
   return {
     ruleChoices,
     additional,
+    loreChoices: {},
   };
 }

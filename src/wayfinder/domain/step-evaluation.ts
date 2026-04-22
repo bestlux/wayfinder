@@ -144,9 +144,12 @@ export async function getWayfinderStepStatus(
 
     const training = draft.skillTrainings[step.slotId];
     const selectedCount = training
-      ? Object.values(training.ruleChoices).filter(Boolean).length + training.additional.length
+      ? Object.values(training.ruleChoices).filter(Boolean).length +
+        training.additional.length +
+        Object.values(training.loreChoices).filter((value) => typeof value === "string" && value.trim().length > 0)
+          .length
       : 0;
-    const total = step.training.choiceRules.length + step.training.additionalCount;
+    const total = step.training.choiceRules.length + step.training.additionalCount + step.training.loreChoices.length;
     return selectedCount >= total && total > 0 ? "Ready to apply" : `${selectedCount}/${total} chosen`;
   }
 

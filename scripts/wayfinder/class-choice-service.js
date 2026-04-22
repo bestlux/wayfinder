@@ -1,8 +1,15 @@
 import { buildClassBranchStepsFromRules, buildClassChoiceStepsFromRules, buildClassGrantedItemStepsFromRules, buildClassTrainingStepsFromRules, } from "./class-choice/step-builders.js";
+import { remainingCreationBoostChoices } from "./domain/boost-rules.js";
 import { createPickItemStep } from "./domain/step-types.js";
 export async function buildClassTrainingSteps(params) {
-    const { draftClassSelection, targetLevel, fetchSelectionDocument, extractSlug, localize } = params;
+    const { draftClassSelection, targetLevel, effectiveBuildState, fetchSelectionDocument, extractSlug, localize } = params;
     if (!draftClassSelection || targetLevel < 1) {
+        return [];
+    }
+    if (!effectiveBuildState.ancestry ||
+        !effectiveBuildState.background ||
+        !effectiveBuildState.class ||
+        remainingCreationBoostChoices(effectiveBuildState) > 0) {
         return [];
     }
     const effectiveClassDocument = await fetchSelectionDocument(draftClassSelection);
@@ -10,6 +17,7 @@ export async function buildClassTrainingSteps(params) {
         effectiveClassDocument,
         extractSlug,
         localize,
+        intelligenceModifier: effectiveBuildState.projectedAbilities.int.modifier,
     });
 }
 export async function buildClassFeatSteps(params) {

@@ -48,8 +48,9 @@ export function discoverSkillTrainingMeta(args: {
   classDocument: unknown;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
+  intelligenceModifier: number;
 }): SkillTrainingMeta | null {
-  const { classDocument, extractSlug, localize } = args;
+  const { classDocument, extractSlug, localize, intelligenceModifier } = args;
   const document = classDocument as NamedDocumentLike | null | undefined;
   const configuredSkills = getConfiguredSkills();
   const choiceRules = findRelevantClassRules(classDocument)
@@ -59,7 +60,10 @@ export function discoverSkillTrainingMeta(args: {
         rule !== null
     );
 
-  const additionalCount = toNonNegativeNumber(document?.system?.trainedSkills?.additional);
+  const additionalCount = Math.max(
+    0,
+    toNonNegativeNumber(document?.system?.trainedSkills?.additional) + Math.trunc(intelligenceModifier)
+  );
   const fixedSkills = toStringArray(document?.system?.trainedSkills?.value).map((entry) => entry.toLowerCase());
 
   if (choiceRules.length === 0 && additionalCount <= 0) {

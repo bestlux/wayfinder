@@ -37,9 +37,9 @@ describe("progression", () => {
     expect(plan.steps.map((step) => step.slotKind)).toEqual([
       "ancestry",
       "heritage",
+      "ancestry-feat",
       "background",
       "class",
-      "ancestry-feat",
       "ability-boosts",
     ]);
   });

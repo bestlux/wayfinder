@@ -107,6 +107,7 @@ export async function buildWayfinderAppPlan(
       deps.buildClassTrainingSteps({
         draftClassSelection: deps.findDraftSelectionByType(planDraft, "class"),
         targetLevel,
+        effectiveBuildState: await getEffectiveBuildState(args.actor, planDraft),
         fetchSelectionDocument: deps.fetchSelectionDocument,
         extractSlug: deps.extractDocumentSlug,
         localize: args.localize,

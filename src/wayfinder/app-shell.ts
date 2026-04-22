@@ -24,6 +24,7 @@ import {
   setManualStepComplete,
   setTrainingRuleSelection,
   syncLanguageChoiceSelections,
+  syncSkillTrainingSelections,
   toggleAncestryMode,
   toggleBoostChoice,
   toggleSkillIncreaseSelection,
@@ -632,7 +633,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const effectiveBuildState = await getEffectiveBuildState(this.actor, this.#requireDraft());
     this.#statusNote = null;
     if (toggleAncestryMode(this.#draftAdjustmentState(), effectiveBuildState.ancestry?.mode ?? null)) {
-      await this.#syncLanguageChoicesAfterBuildChange();
+      await this.#syncDependentChoicesAfterBuildChange();
       this.render(false);
     }
   }
@@ -640,7 +641,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   async #toggleVoluntaryEnabled(): Promise<void> {
     this.#statusNote = null;
     if (toggleVoluntaryEnabled(this.#draftAdjustmentState())) {
-      await this.#syncLanguageChoicesAfterBuildChange();
+      await this.#syncDependentChoicesAfterBuildChange();
       this.render(false);
     }
   }
@@ -648,7 +649,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   async #toggleVoluntaryLegacy(): Promise<void> {
     this.#statusNote = null;
     if (toggleVoluntaryLegacy(this.#draftAdjustmentState())) {
-      await this.#syncLanguageChoicesAfterBuildChange();
+      await this.#syncDependentChoicesAfterBuildChange();
       this.render(false);
     }
   }
@@ -657,7 +658,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#statusNote = null;
     const effectiveBuildState = await getEffectiveBuildState(this.actor, this.#requireDraft());
     if (toggleBoostChoice(this.#draftAdjustmentState(), effectiveBuildState, stepId, section, attribute)) {
-      await this.#syncLanguageChoicesAfterBuildChange();
+      await this.#syncDependentChoicesAfterBuildChange();
       this.render(false);
     }
   }
@@ -672,14 +673,24 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (
       toggleVoluntaryChoice(this.#draftAdjustmentState(), effectiveBuildState.ancestry, stepId, attribute, choiceKind)
     ) {
-      await this.#syncLanguageChoicesAfterBuildChange();
+      await this.#syncDependentChoicesAfterBuildChange();
       this.render(false);
     }
   }
 
-  async #syncLanguageChoicesAfterBuildChange(): Promise<void> {
+  async #syncDependentChoicesAfterBuildChange(): Promise<void> {
     const effectiveBuildState = await getEffectiveBuildState(this.actor, this.#requireDraft());
-    if (syncLanguageChoiceSelections(this.#draftAdjustmentState(), effectiveBuildState)) {
+    const plan = await this.#buildPlan();
+    const trainingChanged = syncSkillTrainingSelections(this.#draftAdjustmentState(), plan.steps);
+    const languageChanged = syncLanguageChoiceSelections(this.#draftAdjustmentState(), effectiveBuildState);
+
+    if (trainingChanged && languageChanged) {
+      this.#statusNote =
+        "Wayfinder marked drafted skill training and language choices for review after the projected build changed.";
+    } else if (trainingChanged) {
+      this.#statusNote =
+        "Wayfinder marked drafted skill training choices for review after the projected build changed.";
+    } else if (languageChanged) {
       this.#statusNote = "Wayfinder marked drafted language choices for review after the projected build changed.";
     }
   }

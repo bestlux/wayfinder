@@ -179,6 +179,22 @@ export function syncLanguageChoiceSelections(state, effectiveBuildState) {
     state.recentlyInvalidatedStepIds.add(SLOT_IDS.languageChoice);
     return true;
 }
+export function syncSkillTrainingSelections(state, steps) {
+    let changed = false;
+    for (const step of steps) {
+        if (step.kind !== "skill-training") {
+            continue;
+        }
+        const current = state.draft.skillTrainings[step.slotId]?.additional;
+        if (!current || current.length <= step.training.additionalCount) {
+            continue;
+        }
+        state.draft.skillTrainings[step.slotId].additional = current.slice(0, step.training.additionalCount);
+        state.recentlyInvalidatedStepIds.add(step.slotId);
+        changed = true;
+    }
+    return changed;
+}
 function toggleSlotRecordChoice(selectedBoosts, record, attribute) {
     const selectedEntry = Object.entries(selectedBoosts).find(([, value]) => value === attribute);
     if (selectedEntry) {

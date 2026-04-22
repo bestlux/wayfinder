@@ -82,21 +82,7 @@ describe("wayfinder plan builder service", () => {
           sourceDocument: classDocument,
         },
       ]);
-      expect(
-        params.readExistingSingletonChoiceSelection({
-          slotId: "singleton-choice-class-wizard-academySkill-level-1",
-          sourceItemType: "class",
-          sourcePackId: "test.pack",
-          sourceDocumentId: "wizard",
-          sourceUuid: "Compendium.test.pack.Item.wizard",
-          sourceName: "Wizard",
-          sourceRuleIndex: 0,
-          flag: "academySkill",
-          prompt: "Choose your class option",
-          options: [],
-        })
-      ).toBe("society");
-      return [step("singleton-choice-class-wizard-academySkill-level-1")];
+      return [];
     });
     const buildLanguageChoiceSteps = vi.fn(async () => []);
     const buildClassBranchSteps = vi.fn(async (params) => {
@@ -251,7 +237,6 @@ describe("wayfinder plan builder service", () => {
     expect(plan.steps.map((entry) => entry.slotId)).toEqual([
       "class-feat-level-2",
       "skill-training-wizard-level-1",
-      "singleton-choice-class-wizard-academySkill-level-1",
       "class-branch-arcane-school-level-1",
       "deity-level-1",
       "class-choice-wizard-thesis-level-1",

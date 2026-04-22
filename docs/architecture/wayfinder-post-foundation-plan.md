@@ -8,7 +8,7 @@
 
 **Architecture:** Keep workflow rules in `src/wayfinder/domain/`, actor-aware orchestration in `src/wayfinder/application/`, apply-side mutations in `src/actor-updater/`, and Foundry/PF2E document normalization in `src/build-state.ts` plus `src/shared/`. The next slices should peel typed adapters and read models out of `build-state.ts`, `class-choice-service.ts`, and `spell-choice-service.ts`, then extend the strict-analysis ratchet to those seams.
 
-**Tech Stack:** TypeScript 6, Vitest, ESLint, Biome, Foundry VTT 13, PF2E 7.10.1
+**Tech Stack:** TypeScript 6, Vitest, ESLint, Biome, Foundry VTT 14.360, PF2E 8.0.3
 
 ---
 

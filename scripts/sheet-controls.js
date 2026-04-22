@@ -34,7 +34,6 @@ export function registerSheetControls() {
         }
     };
     Hooks.on("renderActorSheet", inject);
-    Hooks.on("renderCharacterSheetPF2e", inject);
 }
 function getRootElement(html, application) {
     if (html instanceof HTMLElement) {

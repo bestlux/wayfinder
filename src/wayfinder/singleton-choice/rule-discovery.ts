@@ -81,7 +81,11 @@ export function discoverSingletonChoiceSpecs(args: {
     }
 
     const options = resolveChoiceOptions(rule, localize, configuredSkills);
-    if (!options || options.options.length === 0) {
+    if (
+      !options ||
+      options.options.length === 0 ||
+      shouldSkipSingletonChoice(args.sourceItemType, options.optionDomain)
+    ) {
       return [];
     }
 
@@ -96,6 +100,15 @@ export function discoverSingletonChoiceSpecs(args: {
       } satisfies SingletonChoiceSpec,
     ];
   });
+}
+
+function shouldSkipSingletonChoice(
+  sourceItemType: SingletonChoiceMeta["sourceItemType"],
+  optionDomain: "generic" | "skill"
+): boolean {
+  // Class-owned skill choices belong to the class training workflow so they
+  // stay in one draft store and do not reappear as a second selectable step.
+  return sourceItemType === "class" && optionDomain === "skill";
 }
 
 function findRelevantRules(document: unknown): Array<Record<string, unknown>> {

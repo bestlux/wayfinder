@@ -1,3 +1,4 @@
+import type { EffectiveBuildState } from "../build-state.js";
 import type {
   ClassBranchMeta,
   ClassChoiceMeta,
@@ -12,11 +13,13 @@ import {
   buildClassGrantedItemStepsFromRules,
   buildClassTrainingStepsFromRules,
 } from "./class-choice/step-builders.js";
+import { remainingCreationBoostChoices } from "./domain/boost-rules.js";
 import { createPickItemStep } from "./domain/step-types.js";
 
 interface BuildClassTrainingStepsParams {
   draftClassSelection: SelectionRef | null;
   targetLevel: number;
+  effectiveBuildState: EffectiveBuildState;
   fetchSelectionDocument: (selection: SelectionRef) => Promise<unknown | null>;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
@@ -66,8 +69,18 @@ interface ClassDocumentLike {
 }
 
 export async function buildClassTrainingSteps(params: BuildClassTrainingStepsParams): Promise<PendingStep[]> {
-  const { draftClassSelection, targetLevel, fetchSelectionDocument, extractSlug, localize } = params;
+  const { draftClassSelection, targetLevel, effectiveBuildState, fetchSelectionDocument, extractSlug, localize } =
+    params;
   if (!draftClassSelection || targetLevel < 1) {
+    return [];
+  }
+
+  if (
+    !effectiveBuildState.ancestry ||
+    !effectiveBuildState.background ||
+    !effectiveBuildState.class ||
+    remainingCreationBoostChoices(effectiveBuildState) > 0
+  ) {
     return [];
   }
 
@@ -76,6 +89,7 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
     effectiveClassDocument,
     extractSlug,
     localize,
+    intelligenceModifier: effectiveBuildState.projectedAbilities.int.modifier,
   });
 }
 

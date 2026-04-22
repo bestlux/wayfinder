@@ -201,6 +201,7 @@ describe("wayfinder class rule discovery", () => {
       },
       extractSlug,
       localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      intelligenceModifier: 0,
     });
 
     expect(trainingMeta).toMatchObject({

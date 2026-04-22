@@ -73,6 +73,7 @@ describe("wayfinder class-choice step-builders", () => {
       effectiveClassDocument: rogueClass,
       extractSlug: slugFromDocument,
       localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      intelligenceModifier: 3,
     });
     const branchSteps = await buildClassBranchStepsFromRules({
       effectiveClassDocument: rogueClass,
@@ -89,7 +90,7 @@ describe("wayfinder class-choice step-builders", () => {
           classSlug: "rogue",
           className: "Rogue",
           fixedSkills: ["athletics"],
-          additionalCount: 2,
+          additionalCount: 5,
           choiceRules: [
             {
               flag: "classSkill",
@@ -151,6 +152,7 @@ describe("wayfinder class-choice step-builders", () => {
       },
       extractSlug: slugFromDocument,
       localize: (value) => value.replace(/^PF2E\.Skill\./, "").replace(/^World\.Skill\./, ""),
+      intelligenceModifier: 0,
     });
 
     expect(steps).toMatchObject([

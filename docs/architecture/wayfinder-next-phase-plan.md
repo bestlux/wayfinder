@@ -6,7 +6,7 @@
 
 **Architecture:** Introduce a class-contributor registry that lets each class own its own planning/apply additions, add direct tests around the remaining class-discovery hotspot, harden the remaining high-value typed boundaries, and document the extension path so future feature work lands in the right seams by default.
 
-**Tech Stack:** TypeScript 6, Vitest, ESLint, Biome, Foundry VTT 13, PF2E 7.10.1
+**Tech Stack:** TypeScript 6, Vitest, ESLint, Biome, Foundry VTT 14.360, PF2E 8.0.3
 
 ---
 

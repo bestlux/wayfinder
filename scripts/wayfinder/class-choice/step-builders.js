@@ -2,7 +2,7 @@ import { createClassBranchStep, createClassChoiceStep, createPickItemStep, creat
 import { formatSlug } from "../formatting.js";
 import { buildChoiceRollOptions, discoverClassBranchMeta, discoverClassChoiceMeta, discoverGrantedItemMeta, discoverSkillTrainingMeta, getClassFeatureSources, } from "./rule-discovery.js";
 export function buildClassTrainingStepsFromRules(args) {
-    const { effectiveClassDocument, extractSlug, localize } = args;
+    const { effectiveClassDocument, extractSlug, localize, intelligenceModifier } = args;
     if (!effectiveClassDocument) {
         return [];
     }
@@ -10,6 +10,7 @@ export function buildClassTrainingStepsFromRules(args) {
         classDocument: effectiveClassDocument,
         extractSlug,
         localize,
+        intelligenceModifier,
     });
     if (!training) {
         return [];

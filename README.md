@@ -6,7 +6,7 @@ Wayfinder is a Foundry VTT module for Pathfinder 2e that guides players through 
 
 This first implementation is a working vertical slice with:
 
-- PF2E-only support on Foundry VTT 13 / PF2E 7.10.1
+- PF2E-only support on Foundry VTT 14.360 / PF2E 8.0.3
 - An actor-sheet header action for owned PF2E character actors
 - Draft-based guided selection for ancestry, heritage, background, class, common feat milestones, and level-1 creation boosts
 - Generic singleton-item `ChoiceSet` support for supported ancestry, heritage, background, class, and deity-owned decisions

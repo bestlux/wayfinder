@@ -22,9 +22,9 @@
     }
   ],
   "compatibility": {
-    "minimum": "13.351",
-    "verified": "13.351",
-    "maximum": 13
+    "minimum": "14.360",
+    "verified": "14.360",
+    "maximum": "14"
   },
   "relationships": {
     "systems": [
@@ -32,8 +32,8 @@
         "id": "pf2e",
         "type": "system",
         "compatibility": {
-          "minimum": "7.10.1",
-          "verified": "7.10.1"
+          "minimum": "8.0.3",
+          "verified": "8.0.3"
         }
       }
     ]

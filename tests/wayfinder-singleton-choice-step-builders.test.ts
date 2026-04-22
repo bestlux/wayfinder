@@ -198,6 +198,35 @@ describe("wayfinder singleton-choice step-builders", () => {
       globals.CONFIG = originalConfig;
     }
   });
+
+  it("skips class-owned skill choices so they do not duplicate class training", () => {
+    const steps = buildSingletonChoiceStepsFromRules({
+      sourceItemType: "class",
+      effectiveSourceDocument: {
+        name: "Fighter",
+        system: {
+          slug: "fighter",
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "fighterSkill",
+              prompt: "Choose a skill",
+              choices: [
+                { value: "athletics", label: "PF2E.Skill.Athletics" },
+                { value: "acrobatics", label: "PF2E.Skill.Acrobatics" },
+              ],
+            },
+          ],
+        },
+      },
+      sourceSelection: selection("class-level-1", "class", "fighter", "Fighter"),
+      extractSlug: (document) => (document as { system?: { slug?: string } })?.system?.slug ?? null,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(steps).toEqual([]);
+  });
 });
 
 function selection(slotId: string, itemType: string, documentId: string, name = documentId): SelectionRef {

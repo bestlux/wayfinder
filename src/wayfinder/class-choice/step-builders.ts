@@ -32,8 +32,9 @@ export function buildClassTrainingStepsFromRules(args: {
   effectiveClassDocument: unknown | null;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
+  intelligenceModifier: number;
 }): SkillTrainingStep[] {
-  const { effectiveClassDocument, extractSlug, localize } = args;
+  const { effectiveClassDocument, extractSlug, localize, intelligenceModifier } = args;
   if (!effectiveClassDocument) {
     return [];
   }
@@ -42,6 +43,7 @@ export function buildClassTrainingStepsFromRules(args: {
     classDocument: effectiveClassDocument,
     extractSlug,
     localize,
+    intelligenceModifier,
   });
   if (!training) {
     return [];

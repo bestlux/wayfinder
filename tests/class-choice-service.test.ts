@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 import type { SelectionRef } from "../src/types";
 import {
@@ -6,6 +7,7 @@ import {
   buildClassChoiceSteps,
   buildClassFeatSteps,
   buildClassGrantedItemSteps,
+  buildClassTrainingSteps,
 } from "../src/wayfinder/class-choice-service";
 
 describe("class-choice-service", () => {
@@ -23,6 +25,79 @@ describe("class-choice-service", () => {
     });
 
     expect(steps.map((step) => step.slotId)).toEqual(["class-feat-level-1", "class-feat-level-2"]);
+  });
+
+  it("builds class training after creation boosts using the projected Intelligence modifier", async () => {
+    const steps = await buildClassTrainingSteps({
+      draftClassSelection: selection("pf2e.classes", "wizard", "Wizard", "class"),
+      targetLevel: 1,
+      effectiveBuildState: buildState({
+        projectedAbilities: {
+          str: { key: "str", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+          dex: { key: "dex", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+          con: { key: "con", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+          int: { key: "int", modifier: 3, partial: false, boostCount: 0, flawCount: 0 },
+          wis: { key: "wis", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+          cha: { key: "cha", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        },
+      }),
+      fetchSelectionDocument: async () => ({
+        name: "Wizard",
+        system: {
+          slug: "wizard",
+          trainedSkills: {
+            additional: 2,
+            value: ["arcana"],
+          },
+          rules: [],
+        },
+      }),
+      extractSlug: slugFromDocument,
+      localize: (value) => value,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        kind: "skill-training",
+        slotId: "skill-training-wizard-level-1",
+        training: {
+          classSlug: "wizard",
+          fixedSkills: ["arcana"],
+          additionalCount: 5,
+        },
+      },
+    ]);
+  });
+
+  it("skips class training until creation boosts are finished", async () => {
+    const steps = await buildClassTrainingSteps({
+      draftClassSelection: selection("pf2e.classes", "wizard", "Wizard", "class"),
+      targetLevel: 1,
+      effectiveBuildState: buildState({
+        levelBoosts: {
+          1: ["str", "dex", "con"],
+          5: [],
+          10: [],
+          15: [],
+          20: [],
+        },
+      }),
+      fetchSelectionDocument: async () => ({
+        name: "Wizard",
+        system: {
+          slug: "wizard",
+          trainedSkills: {
+            additional: 2,
+            value: ["arcana"],
+          },
+          rules: [],
+        },
+      }),
+      extractSlug: slugFromDocument,
+      localize: (value) => value,
+    });
+
+    expect(steps).toEqual([]);
   });
 
   it("skips branch steps already resolved on the actor unless the draft overrides them", async () => {
@@ -279,4 +354,60 @@ function slugFromDocument(document: unknown): string | null {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || null
   );
+}
+
+function buildState(overrides: Partial<EffectiveBuildState> = {}): EffectiveBuildState {
+  return {
+    ancestry: {
+      document: { name: "Human", system: { boosts: {} } },
+      mode: "standard",
+      selectedBoosts: {},
+      alternateBoosts: [],
+      lockedBoosts: [],
+      voluntary: {
+        enabled: false,
+        legacy: false,
+        boost: null,
+        flaws: [],
+      },
+      buildBoosts: [],
+      buildFlaws: [],
+    },
+    heritage: null,
+    background: {
+      document: { system: { boosts: {} } },
+      selectedBoosts: {},
+      buildBoosts: [],
+    },
+    class: {
+      document: {},
+      keyAbilityOptions: ["int"],
+      selectedKeyAbility: "int",
+    },
+    deity: null,
+    languages: null,
+    levelBoosts: {
+      1: ["str", "dex", "con", "int"],
+      5: [],
+      10: [],
+      15: [],
+      20: [],
+    },
+    allowedBoosts: {
+      1: 4,
+      5: 0,
+      10: 0,
+      15: 0,
+      20: 0,
+    },
+    projectedAbilities: {
+      str: { key: "str", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+      dex: { key: "dex", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+      con: { key: "con", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+      int: { key: "int", modifier: 1, partial: false, boostCount: 0, flawCount: 0 },
+      wis: { key: "wis", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+      cha: { key: "cha", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+    },
+    ...overrides,
+  };
 }

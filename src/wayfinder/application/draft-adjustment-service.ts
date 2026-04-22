@@ -238,6 +238,27 @@ export function syncLanguageChoiceSelections(
   return true;
 }
 
+export function syncSkillTrainingSelections(state: DraftAdjustmentState, steps: PendingStep[]): boolean {
+  let changed = false;
+
+  for (const step of steps) {
+    if (step.kind !== "skill-training") {
+      continue;
+    }
+
+    const current = state.draft.skillTrainings[step.slotId]?.additional;
+    if (!current || current.length <= step.training.additionalCount) {
+      continue;
+    }
+
+    state.draft.skillTrainings[step.slotId].additional = current.slice(0, step.training.additionalCount);
+    state.recentlyInvalidatedStepIds.add(step.slotId);
+    changed = true;
+  }
+
+  return changed;
+}
+
 function toggleSlotRecordChoice(
   selectedBoosts: Record<string, AbilityKey | null>,
   record: BoostRecord | undefined,

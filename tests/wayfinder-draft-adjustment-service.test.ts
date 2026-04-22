@@ -8,6 +8,7 @@ import {
   setManualStepComplete,
   setTrainingRuleSelection,
   syncLanguageChoiceSelections,
+  syncSkillTrainingSelections,
   toggleAncestryMode,
   toggleBoostChoice,
   toggleSkillIncreaseSelection,
@@ -186,6 +187,38 @@ describe("wayfinder draft adjustment service", () => {
     expect(syncLanguageChoiceSelections(state, buildState)).toBe(true);
     expect(draft.languageChoices["language-choice-level-1"]).toEqual(["draconic"]);
     expect(state.recentlyInvalidatedStepIds.has("language-choice-level-1")).toBe(true);
+  });
+
+  it("trims drafted class training picks when the projected build lowers the allowance", () => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-wizard-level-1"] = {
+      ruleChoices: {},
+      additional: ["arcana", "nature"],
+    };
+    const state = adjustmentState(draft);
+    const steps: PendingStep[] = [
+      {
+        id: "skill-training-wizard-level-1",
+        level: 1,
+        kind: "skill-training",
+        slotKind: "skill-training",
+        title: "Wizard training",
+        description: "",
+        required: true,
+        slotId: "skill-training-wizard-level-1",
+        training: {
+          classSlug: "wizard",
+          className: "Wizard",
+          fixedSkills: [],
+          choiceRules: [],
+          additionalCount: 1,
+        },
+      },
+    ];
+
+    expect(syncSkillTrainingSelections(state, steps)).toBe(true);
+    expect(draft.skillTrainings["skill-training-wizard-level-1"]?.additional).toEqual(["arcana"]);
+    expect(state.recentlyInvalidatedStepIds.has("skill-training-wizard-level-1")).toBe(true);
   });
 
   it("updates manual completion and training rule choices, and clamps target level changes", () => {

@@ -5,13 +5,13 @@ export function findRelevantClassRules(document) {
     return Array.isArray(rules) ? rules.filter(isRecord) : [];
 }
 export function discoverSkillTrainingMeta(args) {
-    const { classDocument, extractSlug, localize } = args;
+    const { classDocument, extractSlug, localize, intelligenceModifier } = args;
     const document = classDocument;
     const configuredSkills = getConfiguredSkills();
     const choiceRules = findRelevantClassRules(classDocument)
         .map((rule, ruleIndex) => toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills))
         .filter((rule) => rule !== null);
-    const additionalCount = toNonNegativeNumber(document?.system?.trainedSkills?.additional);
+    const additionalCount = Math.max(0, toNonNegativeNumber(document?.system?.trainedSkills?.additional) + Math.trunc(intelligenceModifier));
     const fixedSkills = toStringArray(document?.system?.trainedSkills?.value).map((entry) => entry.toLowerCase());
     if (choiceRules.length === 0 && additionalCount <= 0) {
         return null;

@@ -55,6 +55,43 @@ describe("singleton-choice-service", () => {
     expect(retained).toHaveLength(1);
     expect(retained[0]?.kind).toBe("singleton-choice");
   });
+
+  it("does not build singleton-choice steps for class-owned skill choices", async () => {
+    const draft = createEmptyDraft(1);
+
+    const steps = await buildSingletonChoiceSteps({
+      draft,
+      targetLevel: 1,
+      sources: [
+        {
+          sourceItemType: "class" as const,
+          sourceSelection: selection("class-level-1", "class", "fighter", "Fighter"),
+          sourceDocument: {
+            name: "Fighter",
+            system: {
+              slug: "fighter",
+              level: { value: 1 },
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "fighterSkill",
+                  choices: [
+                    { value: "athletics", label: "Athletics" },
+                    { value: "acrobatics", label: "Acrobatics" },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+      extractSlug: (document) => (document as { system?: { slug?: string } })?.system?.slug ?? null,
+      localize: (value) => value,
+      readExistingSingletonChoiceSelection: () => null,
+    });
+
+    expect(steps).toEqual([]);
+  });
 });
 
 function selection(slotId: string, itemType: string, documentId: string, name = documentId): SelectionRef {

@@ -3,7 +3,15 @@ import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 import { sortPendingSteps } from "../src/progression";
 import type { PendingStep } from "../src/types";
-import { createClassBranchStep, createClassChoiceStep } from "../src/wayfinder/domain/step-types";
+import {
+  createBoostStep,
+  createClassBranchStep,
+  createClassChoiceStep,
+  createLanguageChoiceStep,
+  createPickItemStep,
+  createSkillTrainingStep,
+  createSpellChoiceStep,
+} from "../src/wayfinder/domain/step-types";
 import { getWayfinderStepStatus, modeLabel, resolveActiveStep } from "../src/wayfinder/plan-service";
 
 describe("wayfinder plan service", () => {
@@ -106,6 +114,96 @@ describe("wayfinder plan service", () => {
     expect(steps.map((step) => step.slotId)).toEqual([
       "class-choice-deity-champion-sanctification-level-1",
       "class-branch-cause-level-1",
+    ]);
+  });
+
+  it("orders level 1 boosts, training, languages, and class details in rules-aligned sequence", () => {
+    const steps = sortPendingSteps([
+      createSkillTrainingStep(
+        1,
+        "Wizard training",
+        "",
+        {
+          classSlug: "wizard",
+          className: "Wizard",
+          fixedSkills: ["arcana"],
+          choiceRules: [],
+          additionalCount: 5,
+        },
+        {
+          slotId: "skill-training-wizard-level-1",
+        }
+      ),
+      createLanguageChoiceStep(
+        1,
+        {
+          slotId: "language-choice-level-1",
+          sourceItemType: "ancestry",
+          sourceName: "Human",
+          grantedLanguages: ["common"],
+          count: 2,
+          options: [
+            { value: "draconic", label: "Draconic" },
+            { value: "dwarven", label: "Dwarven" },
+          ],
+        },
+        {
+          title: "Bonus languages",
+          description: "",
+        }
+      ),
+      createSpellChoiceStep(1, "Wizard spell choice", "", {
+        slotId: "spell-choice-wizard-school-level-1",
+        classSlug: "wizard",
+        sourceName: "Arcane School",
+        sourceUuid: "Compendium.pf2e.classfeatures.Item.arcane-school",
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "arcane-school",
+        dependsOn: "class",
+        destination: {
+          type: "spellbook",
+          key: "wizard-spellbook",
+          label: "Spellbook",
+          entryName: "Wizard Spellbook",
+          tradition: "arcane",
+          ability: "int",
+          prepared: "prepared",
+        },
+        count: 1,
+        minRank: 1,
+        maxRank: 1,
+        cantrip: false,
+        curriculumSpellNames: [],
+        additionalAllowedSpellNames: [],
+        restrictToCommon: true,
+      }),
+      createPickItemStep("class-feat", 1, "Level 1 class feat", "", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 1,
+      }),
+      createClassChoiceStep(1, {
+        slotId: "class-choice-wizard-thesis-level-1",
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "arcane-thesis",
+        sourceUuid: "Compendium.pf2e.classfeatures.Item.arcane-thesis",
+        sourceName: "Arcane Thesis",
+        sourceRuleIndex: 0,
+        flag: "arcaneThesis",
+        classSlug: "wizard",
+        dependsOn: "class",
+        options: [{ value: "staff-nexus", label: "Staff Nexus", img: null, detail: null }],
+      }),
+      createBoostStep(1, "Assign creation boosts", ""),
+    ]);
+
+    expect(steps.map((step) => step.slotKind)).toEqual([
+      "ability-boosts",
+      "class-choice",
+      "skill-training",
+      "language-choice",
+      "spell-choice",
+      "class-feat",
     ]);
   });
 });

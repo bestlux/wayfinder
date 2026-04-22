@@ -188,4 +188,41 @@ describe("wayfinder singleton rule discovery", () => {
       },
     ]);
   });
+
+  it("skips class-owned skill ChoiceSet rules so class training owns them", () => {
+    const choices = discoverSingletonChoiceMeta({
+      sourceItemType: "class",
+      sourceDocument: {
+        name: "Fighter",
+        system: {
+          slug: "fighter",
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "fighterSkill",
+              prompt: "Choose a skill",
+              choices: [
+                { value: "athletics", label: "PF2E.Skill.Athletics" },
+                { value: "acrobatics", label: "PF2E.Skill.Acrobatics" },
+              ],
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        ...sourceSelection,
+        slotId: "class-level-1",
+        packId: "pf2e.classes",
+        documentId: "fighter",
+        uuid: "Compendium.pf2e.classes.Item.fighter",
+        itemType: "class",
+        name: "Fighter",
+      },
+      extractSlug,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(choices).toEqual([]);
+  });
 });

@@ -41,6 +41,16 @@ export function readExistingSingletonChoiceSelection(actor: unknown, choice: Sin
   return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
 }
 
+export function readExistingLanguageSelections(actor: unknown): string[] {
+  const sourceLanguages =
+    readLanguageValues(
+      (actor as { _source?: { system?: { details?: { languages?: { value?: unknown } } } } } | null | undefined)
+        ?._source
+    ) ?? readLanguageValues(actor as { system?: { details?: { languages?: { value?: unknown } } } } | null | undefined);
+
+  return sourceLanguages ?? [];
+}
+
 export function readExistingSingletonSourceSelection(
   actor: unknown,
   itemType: "ancestry" | "heritage" | "background" | "class" | "deity"
@@ -97,6 +107,31 @@ function findGrantedActorItem(
 function readRulesSelection(item: ActorItemLike | null, flag: string): string | null {
   const selection = item?.flags?.pf2e?.rulesSelections?.[flag];
   return typeof selection === "string" && selection.length > 0 ? selection : null;
+}
+
+function readLanguageValues(
+  source:
+    | { _source?: never; system?: { details?: { languages?: { value?: unknown } } } }
+    | { details?: { languages?: { value?: unknown } } }
+    | null
+    | undefined
+): string[] | null {
+  const detailsHolder =
+    source && typeof source === "object" && "system" in source
+      ? (source as { system?: { details?: { languages?: { value?: unknown } } } }).system
+      : (source as { details?: { languages?: { value?: unknown } } } | null | undefined);
+  const value = detailsHolder?.details?.languages?.value;
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+        .filter((entry) => entry.length > 0)
+    )
+  );
 }
 
 function listTypedActorItems(actor: unknown): ActorItemLike[] {

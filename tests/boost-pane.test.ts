@@ -97,6 +97,7 @@ function makeBuildState(overrides: Partial<EffectiveBuildState> = {}): Effective
       selectedKeyAbility: null,
     },
     deity: null,
+    languages: null,
     levelBoosts: {
       1: [],
       5: [],

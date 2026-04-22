@@ -4,6 +4,7 @@ import {
   readExistingBranchSelection,
   readExistingClassChoiceSelection,
   readExistingGrantedSelection,
+  readExistingLanguageSelections,
   readExistingSingletonChoiceSelection,
   readExistingSingletonSourceSelection,
 } from "../src/wayfinder/existing-selection-service";
@@ -92,6 +93,32 @@ describe("existing-selection-service", () => {
       itemType: "background",
       name: "Sponsored by Family",
     });
+  });
+
+  it("prefers source language selections from actor _source data", () => {
+    const actor = {
+      _source: {
+        system: {
+          details: {
+            languages: {
+              value: ["Draconic", "Dwarven"],
+            },
+          },
+        },
+      },
+      system: {
+        details: {
+          languages: {
+            value: ["common", "draconic", "dwarven"],
+          },
+        },
+      },
+      items: {
+        contents: [],
+      },
+    };
+
+    expect(readExistingLanguageSelections(actor)).toEqual(["draconic", "dwarven"]);
   });
 
   it("does not treat a loose deity item as proof that the granting feature is resolved", () => {

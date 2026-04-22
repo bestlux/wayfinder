@@ -10,7 +10,7 @@ import {
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 5,
+      version: 6,
       targetLevel: 4,
       selections: {},
       boosts: {
@@ -40,6 +40,7 @@ describe("draft-service", () => {
       skillTrainings: {},
       branchSelections: {},
       singletonChoices: {},
+      languageChoices: {},
       classChoices: {},
       spellChoices: {},
       updatedAt: null,
@@ -114,6 +115,9 @@ describe("draft-service", () => {
             },
           ],
         },
+        languageChoices: {
+          keep: ["Draconic", "", "draconic", 2, "Goblin"],
+        },
         boosts: {
           ancestry: {
             modeTouched: false,
@@ -162,6 +166,9 @@ describe("draft-service", () => {
       },
     });
     expect(draft.singletonChoices).toEqual({});
+    expect(draft.languageChoices).toEqual({
+      keep: ["draconic", "goblin"],
+    });
     expect(draft.classChoices).toEqual({});
     expect(draft.spellChoices).toEqual({
       wizard: [
@@ -207,7 +214,7 @@ describe("draft-service", () => {
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(5);
+    expect(patched.version).toBe(6);
     expect(patched.updatedAt).not.toBeNull();
   });
 

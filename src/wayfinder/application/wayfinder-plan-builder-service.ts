@@ -1,4 +1,6 @@
 import type { inspectActor } from "../../actor-inspector.js";
+import type { BuildStateActor } from "../../build-state/document-types.js";
+import { getEffectiveBuildState } from "../../build-state.js";
 import { fetchSelectionDocument } from "../../pack-service.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import type {
@@ -23,16 +25,18 @@ import {
   readExistingBranchSelection,
   readExistingClassChoiceSelection,
   readExistingGrantedSelection,
+  readExistingLanguageSelections,
   readExistingSingletonChoiceSelection,
   readExistingSingletonSourceSelection,
 } from "../existing-selection-service.js";
+import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { buildSingletonChoiceSteps, type SingletonChoiceSourceContext } from "../singleton-choice-service.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
 
 type ActorSnapshot = ReturnType<typeof inspectActor>;
 type SingletonItemType = "ancestry" | "heritage" | "background" | "class" | "deity";
-type ActorLike = unknown;
+type ActorLike = BuildStateActor;
 type DocumentLike = unknown;
 
 export interface BuildWayfinderAppPlanArgs {
@@ -49,6 +53,7 @@ interface BuildWayfinderAppPlanDependencies {
   buildClassFeatSteps: typeof buildClassFeatSteps;
   buildClassTrainingSteps: typeof buildClassTrainingSteps;
   buildSingletonChoiceSteps: typeof buildSingletonChoiceSteps;
+  buildLanguageChoiceSteps: typeof buildLanguageChoiceSteps;
   buildClassBranchSteps: typeof buildClassBranchSteps;
   buildClassGrantedItemSteps: typeof buildClassGrantedItemSteps;
   buildClassChoiceSteps: typeof buildClassChoiceSteps;
@@ -57,6 +62,7 @@ interface BuildWayfinderAppPlanDependencies {
   readExistingSingletonSourceSelection: (actor: ActorLike, itemType: SingletonItemType) => SelectionRef | null;
   readExistingBranchSelection: (actor: ActorLike, branch: ClassBranchMeta) => string | null;
   readExistingGrantedSelection: (actor: ActorLike, grant: ClassGrantMeta) => string | null;
+  readExistingLanguageSelections: (actor: ActorLike) => string[];
   readExistingClassChoiceSelection: (actor: ActorLike, choice: ClassChoiceMeta) => string | null;
   readExistingSingletonChoiceSelection: (actor: ActorLike, choice: SingletonChoiceMeta) => string | null;
   readExistingSpellChoiceSelections: (actor: ActorLike, choice: SpellChoiceMeta) => SelectionRef[];
@@ -69,6 +75,7 @@ const DEFAULT_DEPS: BuildWayfinderAppPlanDependencies = {
   buildClassFeatSteps,
   buildClassTrainingSteps,
   buildSingletonChoiceSteps,
+  buildLanguageChoiceSteps,
   buildClassBranchSteps,
   buildClassGrantedItemSteps,
   buildClassChoiceSteps,
@@ -77,6 +84,7 @@ const DEFAULT_DEPS: BuildWayfinderAppPlanDependencies = {
   readExistingSingletonSourceSelection,
   readExistingBranchSelection,
   readExistingGrantedSelection,
+  readExistingLanguageSelections,
   readExistingClassChoiceSelection,
   readExistingSingletonChoiceSelection,
   readExistingSpellChoiceSelections,
@@ -111,6 +119,15 @@ export async function buildWayfinderAppPlan(
         extractSlug: deps.extractDocumentSlug,
         localize: args.localize,
         readExistingSingletonChoiceSelection: (choice) => deps.readExistingSingletonChoiceSelection(args.actor, choice),
+      }),
+    buildLanguageChoiceSteps: async (planSnapshot, planDraft, targetLevel) =>
+      deps.buildLanguageChoiceSteps({
+        snapshot: planSnapshot,
+        targetLevel,
+        draft: planDraft,
+        effectiveBuildState: await getEffectiveBuildState(args.actor, planDraft),
+        readExistingLanguageSelections: () => deps.readExistingLanguageSelections(args.actor),
+        localizeLanguage: (slug) => localizeLanguageLabel(slug),
       }),
     buildClassBranchSteps: async (_planSnapshot, planDraft, targetLevel) =>
       deps.buildClassBranchSteps({
@@ -160,6 +177,27 @@ export async function buildWayfinderAppPlan(
       });
     },
   });
+}
+
+function localizeLanguageLabel(slug: string): string {
+  const globals = globalThis as typeof globalThis & {
+    CONFIG?: {
+      PF2E?: {
+        languages?: Record<string, string | undefined>;
+      };
+    };
+  };
+  const configLanguages = globals.CONFIG?.PF2E?.languages ?? {};
+  const languageKey = configLanguages[slug];
+  if (typeof languageKey === "string" && languageKey.length > 0) {
+    return game.i18n.localize(languageKey);
+  }
+
+  return slug
+    .split(/[-_ ]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export async function findPlanStepBySlotId(

@@ -7,6 +7,7 @@ export const SLOT_IDS = {
   class: "class-level-1",
   deity: "deity-level-1",
   heritage: "heritage-level-1",
+  languageChoice: "language-choice-level-1",
   wizardArcaneSchool: "class-branch-arcane-school-level-1",
 } as const;
 
@@ -16,6 +17,7 @@ export const SLOT_PREFIXES = {
   classChoice: "class-choice-",
   classFeat: "class-feat-level-",
   deity: "deity-level-",
+  languageChoice: "language-choice-level-",
   skillTraining: "skill-training-",
   singletonChoice: "singleton-choice-",
   spellChoice: "spell-choice-",
@@ -30,6 +32,7 @@ const SLOT_KIND_PREFIXES: Array<{ kind: SlotKind; prefix: string }> = [
   { kind: "class-feat", prefix: SLOT_PREFIXES.classFeat },
   { kind: "deity", prefix: SLOT_PREFIXES.deity },
   { kind: "general-feat", prefix: "general-feat-level-" },
+  { kind: "language-choice", prefix: SLOT_PREFIXES.languageChoice },
   { kind: "skill-feat", prefix: "skill-feat-level-" },
   { kind: "skill-increase", prefix: "skill-increase-level-" },
   { kind: "skill-training", prefix: SLOT_PREFIXES.skillTraining },

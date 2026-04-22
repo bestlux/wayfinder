@@ -1,4 +1,5 @@
 import { applyBoostDraft } from "./actor-updater/boost-application.js";
+import { applyLanguageChoiceDraft } from "./actor-updater/language-choice-application.js";
 import { syncNativeClassSpellcasting } from "./actor-updater/native-spellcasting-application.js";
 import {
   createEmbeddedSource,
@@ -37,6 +38,7 @@ export async function applyDraftToActor(
   }
 
   await applySingletonChoiceDraft(actor, draft, steps);
+  await applyLanguageChoiceDraft(actor, draft, steps);
   const projectedTrainingRanks = await applyTrainingDraft(actor, draft, steps);
   await applyClassFeatureChoiceDraft(actor, draft, steps, {
     createEmbeddedSource,

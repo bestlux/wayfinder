@@ -1,8 +1,10 @@
+import { getEffectiveBuildState } from "../../build-state.js";
 import { fetchSelectionDocument } from "../../pack-service.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassTrainingSteps, } from "../class-choice-service.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
-import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, readExistingSingletonChoiceSelection, readExistingSingletonSourceSelection, } from "../existing-selection-service.js";
+import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, readExistingLanguageSelections, readExistingSingletonChoiceSelection, readExistingSingletonSourceSelection, } from "../existing-selection-service.js";
+import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { buildSingletonChoiceSteps } from "../singleton-choice-service.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
@@ -11,6 +13,7 @@ const DEFAULT_DEPS = {
     buildClassFeatSteps,
     buildClassTrainingSteps,
     buildSingletonChoiceSteps,
+    buildLanguageChoiceSteps,
     buildClassBranchSteps,
     buildClassGrantedItemSteps,
     buildClassChoiceSteps,
@@ -19,6 +22,7 @@ const DEFAULT_DEPS = {
     readExistingSingletonSourceSelection,
     readExistingBranchSelection,
     readExistingGrantedSelection,
+    readExistingLanguageSelections,
     readExistingClassChoiceSelection,
     readExistingSingletonChoiceSelection,
     readExistingSpellChoiceSelections,
@@ -46,6 +50,14 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             extractSlug: deps.extractDocumentSlug,
             localize: args.localize,
             readExistingSingletonChoiceSelection: (choice) => deps.readExistingSingletonChoiceSelection(args.actor, choice),
+        }),
+        buildLanguageChoiceSteps: async (planSnapshot, planDraft, targetLevel) => deps.buildLanguageChoiceSteps({
+            snapshot: planSnapshot,
+            targetLevel,
+            draft: planDraft,
+            effectiveBuildState: await getEffectiveBuildState(args.actor, planDraft),
+            readExistingLanguageSelections: () => deps.readExistingLanguageSelections(args.actor),
+            localizeLanguage: (slug) => localizeLanguageLabel(slug),
         }),
         buildClassBranchSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildClassBranchSteps({
             draft: planDraft,
@@ -90,6 +102,19 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             });
         },
     });
+}
+function localizeLanguageLabel(slug) {
+    const globals = globalThis;
+    const configLanguages = globals.CONFIG?.PF2E?.languages ?? {};
+    const languageKey = configLanguages[slug];
+    if (typeof languageKey === "string" && languageKey.length > 0) {
+        return game.i18n.localize(languageKey);
+    }
+    return slug
+        .split(/[-_ ]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
 }
 export async function findPlanStepBySlotId(args, slotId, deps = DEFAULT_DEPS) {
     const plan = await buildWayfinderAppPlan(args, deps);

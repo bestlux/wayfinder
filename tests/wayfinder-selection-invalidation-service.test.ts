@@ -8,6 +8,7 @@ describe("wayfinder selection invalidation service", () => {
   it("clears a class selection and invalidates dependent draft prefixes", () => {
     const draft = createEmptyDraft(1);
     draft.selections[SLOT_IDS.class] = selection(SLOT_IDS.class, "class", "wizard");
+    draft.languageChoices[SLOT_IDS.languageChoice] = ["draconic"];
     draft.selections[SLOT_IDS.deity] = selection(SLOT_IDS.deity, "deity", "nethys");
     draft.branchSelections["class-branch-arcane-school-level-1"] = selection(
       "class-branch-arcane-school-level-1",
@@ -50,6 +51,31 @@ describe("wayfinder selection invalidation service", () => {
     expect(draft.spellChoices["spell-choice-wizard-level-1"]).toBeUndefined();
     expect(draft.selections["class-feat-level-2"]).toBeUndefined();
     expect(draft.boosts.class.keyAbility).toBeNull();
+  });
+
+  it("clears drafted language choices when the ancestry selection is cleared", () => {
+    const draft = createEmptyDraft(1);
+    draft.selections[SLOT_IDS.ancestry] = selection(SLOT_IDS.ancestry, "ancestry", "human");
+    draft.languageChoices[SLOT_IDS.languageChoice] = ["draconic"];
+
+    const service = createSelectionInvalidationService(
+      {
+        draft,
+        previewValueByStepId: new Map(),
+        recentlyInvalidatedStepIds: new Set<string>(),
+        scrollById: new Map(),
+      },
+      {
+        buildPlan: async () => ({ recommendedTargetLevel: 1, targetLevel: 1, steps: [] }),
+        resetAncestryBoostDraft: () => false,
+        resetBackgroundBoostDraft: () => false,
+        resetClassBoostDraft: () => false,
+      }
+    );
+
+    expect(service.clearSelection(SLOT_IDS.ancestry)).toBe(2);
+    expect(draft.selections[SLOT_IDS.ancestry]).toBeUndefined();
+    expect(draft.languageChoices[SLOT_IDS.languageChoice]).toBeUndefined();
   });
 
   it("invalidates only the dependency-matching steps from the current plan", async () => {

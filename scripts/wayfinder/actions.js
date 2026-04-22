@@ -49,6 +49,7 @@ export function parseWayfinderAction(element) {
             return { type: action };
         case "preview-option":
         case "select-option":
+        case "toggle-language-choice":
         case "select-singleton-choice":
         case "select-class-choice":
         case "toggle-spell-choice":

@@ -17,6 +17,7 @@ export function createSelectionInvalidationService(state, deps) {
             if (slotId === SLOT_IDS.ancestry) {
                 cleared += invalidateSingletonChoicesBySourceSync("ancestry").length;
                 cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
+                cleared += invalidateByPrefix(SLOT_PREFIXES.languageChoice).length;
             }
             else if (slotId === SLOT_IDS.heritage) {
                 cleared += invalidateSingletonChoicesBySourceSync("heritage").length;

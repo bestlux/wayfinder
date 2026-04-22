@@ -73,6 +73,7 @@ describe("actor-updater boost application", () => {
         selectedKeyAbility: "wis",
       },
       deity: null,
+      languages: null,
       levelBoosts: {
         1: ["str", "dex", "con", "wis"],
         5: ["str", "dex", "int", "cha"],

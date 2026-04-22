@@ -35,6 +35,7 @@ export function buildPickItemPane(args: {
     isSkillIncrease: false,
     isSkillTraining: false,
     isSingletonChoice: false,
+    isLanguageChoice: false,
     isClassChoice: false,
     isSpellChoice: false,
     stepId: step.id,

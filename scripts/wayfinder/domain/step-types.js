@@ -46,6 +46,15 @@ export function createSingletonChoiceStep(level, singletonChoice, options = {}) 
         singletonChoice,
     };
 }
+export function createLanguageChoiceStep(level, languageChoice, options = {}) {
+    return {
+        ...createBaseStep("language-choice", "language-choice", level, options.title ?? "Bonus languages", options.description ?? "Choose the additional languages this character knows at 1st level.", {
+            ...options,
+            slotId: options.slotId ?? languageChoice.slotId,
+        }),
+        languageChoice,
+    };
+}
 export function createClassBranchStep(level, branch, options = {}) {
     return {
         ...createBaseStep("class-branch", "class-branch", level, options.title ?? branch.selectorName, options.description ?? `Choose the ${branch.selectorName.toLowerCase()} option that defines this class path.`, {
@@ -93,6 +102,9 @@ export function isClassChoiceStep(step) {
 export function isSingletonChoiceStep(step) {
     return step.kind === "singleton-choice";
 }
+export function isLanguageChoiceStep(step) {
+    return step.kind === "language-choice";
+}
 export function isManualStep(step) {
     return step.kind === "manual";
 }
@@ -124,7 +136,8 @@ const SLOT_KIND_SORT_WEIGHTS = {
     "skill-feat": 12,
     "general-feat": 13,
     "ability-boosts": 14,
-    "skill-increase": 15,
+    "language-choice": 15,
+    "skill-increase": 16,
 };
 const STEP_MODE_LABELS = {
     "pick-item": "Selection",
@@ -132,6 +145,7 @@ const STEP_MODE_LABELS = {
     boost: "Boosts",
     "skill-increase": "Skill",
     "singleton-choice": "Choice",
+    "language-choice": "Languages",
     "class-branch": "Class Path",
     "class-choice": "Class Choice",
     "spell-choice": "Spells",

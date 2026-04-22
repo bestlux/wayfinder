@@ -6,6 +6,7 @@ import {
   type SelectionCommandState,
   selectClassChoiceValue,
   selectSingletonChoiceValue,
+  toggleLanguageChoiceValue,
   toggleSpellChoiceSelection,
 } from "../src/wayfinder/application/selection-command-service";
 import { SLOT_IDS, SLOT_PREFIXES } from "../src/wayfinder/slot-ids";
@@ -202,6 +203,54 @@ describe("wayfinder selection command service", () => {
       shouldRender: true,
     });
     expect(draft.singletonChoices[step.slotId]).toBeUndefined();
+  });
+
+  it("toggles language choices and warns when the step is full", async () => {
+    const draft = createEmptyDraft(1);
+    const state = commandState(draft);
+    const step: PendingStep = {
+      id: "language-choice-level-1",
+      level: 1,
+      kind: "language-choice",
+      slotKind: "language-choice",
+      title: "Bonus languages",
+      description: "",
+      required: true,
+      slotId: "language-choice-level-1",
+      languageChoice: {
+        slotId: "language-choice-level-1",
+        sourceItemType: "ancestry",
+        sourceName: "Human",
+        grantedLanguages: ["common"],
+        count: 1,
+        options: [
+          { value: "draconic", label: "Draconic" },
+          { value: "dwarven", label: "Dwarven" },
+        ],
+      },
+    };
+
+    const selected = await toggleLanguageChoiceValue(state, step, "draconic");
+    expect(selected).toMatchObject({
+      kind: "changed",
+      shouldAdvance: true,
+      shouldRender: false,
+    });
+    expect(draft.languageChoices[step.slotId]).toEqual(["draconic"]);
+
+    const warning = await toggleLanguageChoiceValue(state, step, "dwarven");
+    expect(warning).toMatchObject({
+      kind: "warning",
+      warning: "language-choice-full",
+    });
+
+    const cleared = await toggleLanguageChoiceValue(state, step, "draconic");
+    expect(cleared).toMatchObject({
+      kind: "changed",
+      shouldAdvance: false,
+      shouldRender: true,
+    });
+    expect(draft.languageChoices[step.slotId]).toBeUndefined();
   });
 
   it("invalidates deity-dependent branches when sanctification changes", async () => {

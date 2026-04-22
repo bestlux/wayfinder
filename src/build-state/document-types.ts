@@ -21,8 +21,17 @@ export interface BuildStateDocument {
   type?: string;
   toObject?: () => unknown;
   system?: {
+    additionalLanguages?: {
+      count?: number;
+      value?: string[];
+      custom?: string;
+    };
     boosts?: Record<string, BuildStateBoostRecord>;
     alternateAncestryBoosts?: unknown;
+    languages?: {
+      value?: string[];
+      custom?: string;
+    };
     voluntary?: BuildStateVoluntaryRecord;
     keyAbility?: {
       value?: AbilityKey[];
@@ -50,6 +59,15 @@ export interface BuildStateActorItem {
 export interface BuildStateActor {
   items?: { contents?: BuildStateActorItem[] } | BuildStateActorItem[];
   system?: {
+    details?: {
+      level?: {
+        value?: unknown;
+      };
+      languages?: {
+        value?: string[];
+        details?: string;
+      };
+    };
     build?: {
       attributes?: {
         boosts?: Record<number, unknown>;

@@ -188,6 +188,70 @@ describe("wayfinder selection pane service", () => {
     ]);
   });
 
+  it("builds a language-choice pane from drafted language selections", async () => {
+    const draft = createEmptyDraft(1);
+    draft.languageChoices["language-choice-level-1"] = ["draconic"];
+    const step: PendingStep = {
+      id: "language-choice-level-1",
+      level: 1,
+      kind: "language-choice",
+      slotKind: "language-choice",
+      title: "Bonus languages",
+      description: "",
+      required: true,
+      slotId: "language-choice-level-1",
+      languageChoice: {
+        slotId: "language-choice-level-1",
+        sourceItemType: "ancestry",
+        sourceName: "Human",
+        grantedLanguages: ["Common"],
+        count: 2,
+        options: [
+          { value: "draconic", label: "Draconic" },
+          { value: "dwarven", label: "Dwarven" },
+        ],
+      },
+    };
+
+    const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
+      draft,
+      searchByStepId: new Map(),
+      previewValueByStepId: new Map(),
+      resolveOptionContext: async () => {
+        throw new Error("Expected language-choice pane to skip option context resolution");
+      },
+      resolveDeityDocument: async () => null,
+      buildContextNote: async () => {
+        throw new Error("Expected language-choice pane to skip context note building");
+      },
+      resolveStepStatus: async () => "1/2 chosen",
+      getOptionsForStep: async () => {
+        throw new Error("Expected language-choice pane to skip option loading");
+      },
+      getPickerInfoState: () => {
+        throw new Error("Expected language-choice pane to skip picker info state");
+      },
+      buildPreview: async () => {
+        throw new Error("Expected language-choice pane to skip preview building");
+      },
+      matchesSearch: () => {
+        throw new Error("Expected language-choice pane to skip search filtering");
+      },
+    });
+
+    expect(pane?.kind).toBe("language-choice");
+    if (!pane || pane.kind !== "language-choice") {
+      throw new Error("Expected a language-choice pane");
+    }
+    expect(pane.selectedValues).toEqual(["draconic"]);
+    expect(pane.grantedLanguages).toEqual(["Common"]);
+    expect(pane.requiredCount).toBe(2);
+    expect(pane.options).toEqual([
+      { value: "draconic", label: "Draconic", selected: true },
+      { value: "dwarven", label: "Dwarven", selected: false },
+    ]);
+  });
+
   it("builds a class-branch pane from branch selections instead of generic selections", async () => {
     const draft = createEmptyDraft(1);
     draft.branchSelections["class-branch-cause-level-1"] = {

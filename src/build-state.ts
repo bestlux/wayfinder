@@ -34,12 +34,20 @@ interface EffectiveClassState {
   selectedKeyAbility: AbilityKey | null;
 }
 
+interface EffectiveLanguageState {
+  sourceLanguages: string[];
+  grantedLanguages: string[];
+  selectableLanguages: string[];
+  maxSelections: number;
+}
+
 interface EffectiveBuildState {
   ancestry: EffectiveAncestryState | null;
   heritage: BuildStateDocument | null;
   background: EffectiveBackgroundState | null;
   class: EffectiveClassState | null;
   deity: BuildStateDocument | null;
+  languages: EffectiveLanguageState | null;
   levelBoosts: Record<BoostLevel, AbilityKey[]>;
   allowedBoosts: Record<BoostLevel, number>;
   projectedAbilities: Record<AbilityKey, ProjectedAbilityState>;
@@ -66,6 +74,9 @@ async function getEffectiveBuildState(actor: BuildStateActor, draft: DraftState)
     classBoost: effectiveClass?.selectedKeyAbility ?? null,
     levelBoosts,
   });
+  const languages = ancestryDocument
+    ? buildEffectiveLanguageState(actor, ancestryDocument, projectedAbilities.int.modifier)
+    : null;
 
   return {
     ancestry,
@@ -73,6 +84,7 @@ async function getEffectiveBuildState(actor: BuildStateActor, draft: DraftState)
     background,
     class: effectiveClass,
     deity: deityDocument,
+    languages,
     levelBoosts,
     allowedBoosts,
     projectedAbilities,
@@ -149,6 +161,28 @@ function buildEffectiveClassState(document: BuildStateDocument, boosts: BoostDra
   };
 }
 
+function buildEffectiveLanguageState(
+  actor: BuildStateActor,
+  ancestryDocument: BuildStateDocument,
+  intelligenceModifier: number
+): EffectiveLanguageState {
+  const grantedLanguages = normalizeStringList(ancestryDocument?.system?.languages?.value);
+  const selectableLanguages = normalizeStringList(ancestryDocument?.system?.additionalLanguages?.value).filter(
+    (slug) => !grantedLanguages.includes(slug)
+  );
+  const additionalCount = toNonNegativeNumber(ancestryDocument?.system?.additionalLanguages?.count);
+  const sourceLanguages = normalizeStringList(actor?.system?.details?.languages?.value).filter(
+    (slug) => !grantedLanguages.includes(slug)
+  );
+
+  return {
+    sourceLanguages,
+    grantedLanguages,
+    selectableLanguages,
+    maxSelections: additionalCount + Math.max(intelligenceModifier, 0),
+  };
+}
+
 function buildEffectiveLevelBoosts(actor: BuildStateActor, boosts: BoostDraftState): Record<BoostLevel, AbilityKey[]> {
   const actorBuildBoosts = actor?.system?.build?.attributes?.boosts ?? {};
   return Object.fromEntries(
@@ -182,6 +216,20 @@ function normalizeAbilityList(value: unknown, maxLength = 6): AbilityKey[] {
   ).slice(0, maxLength);
 }
 
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+        .filter((entry) => entry.length > 0)
+    )
+  );
+}
+
 function normalizeVoluntaryState(
   value: Partial<BoostDraftState["ancestry"]["voluntary"]> | undefined
 ): EffectiveAncestryState["voluntary"] {
@@ -205,6 +253,11 @@ function normalizeVoluntaryState(
 
 function isAbilityKey(value: unknown): value is AbilityKey {
   return typeof value === "string" && ABILITY_KEYS.includes(value as AbilityKey);
+}
+
+function toNonNegativeNumber(value: unknown): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : 0;
 }
 
 export type { EffectiveBuildState, ProjectedAbilityState };

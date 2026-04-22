@@ -45,6 +45,7 @@ export interface PickStepPane {
   isSkillIncrease: false;
   isSkillTraining: false;
   isSingletonChoice: false;
+  isLanguageChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -71,6 +72,7 @@ export interface ManualStepPane {
   isSkillIncrease: false;
   isSkillTraining: false;
   isSingletonChoice: false;
+  isLanguageChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -119,6 +121,7 @@ export interface BoostStepPane {
   isSkillIncrease: false;
   isSkillTraining: false;
   isSingletonChoice: false;
+  isLanguageChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -180,6 +183,7 @@ export interface SkillIncreaseStepPane {
   isSkillIncrease: true;
   isSkillTraining: false;
   isSingletonChoice: false;
+  isLanguageChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -214,6 +218,7 @@ export interface SkillTrainingStepPane {
   isSkillIncrease: false;
   isSkillTraining: true;
   isSingletonChoice: false;
+  isLanguageChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -240,6 +245,7 @@ export interface ClassChoiceStepPane {
   isSkillIncrease: false;
   isSkillTraining: false;
   isSingletonChoice: false;
+  isLanguageChoice: false;
   isClassChoice: true;
   isSpellChoice: false;
   stepId: string;
@@ -272,6 +278,7 @@ export interface SingletonChoiceStepPane {
   isSkillIncrease: false;
   isSkillTraining: false;
   isSingletonChoice: true;
+  isLanguageChoice: false;
   isClassChoice: false;
   isSpellChoice: false;
   stepId: string;
@@ -293,6 +300,38 @@ export interface SingletonChoiceStepPane {
   }>;
 }
 
+export interface LanguageChoiceStepPane {
+  kind: "language-choice";
+  isPickItem: false;
+  isManual: false;
+  isBoost: false;
+  isSkillIncrease: false;
+  isSkillTraining: false;
+  isSingletonChoice: false;
+  isLanguageChoice: true;
+  isClassChoice: false;
+  isSpellChoice: false;
+  stepId: string;
+  slotId: string;
+  level: number;
+  modeLabel: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  selectedLabel: string | null;
+  selectedValues: string[];
+  selectedCount: number;
+  requiredCount: number;
+  remainingCount: number;
+  sourceName: string;
+  grantedLanguages: string[];
+  options: Array<{
+    value: string;
+    label: string;
+    selected: boolean;
+  }>;
+}
+
 export interface SpellChoiceStepPane {
   kind: "spell-choice";
   isPickItem: false;
@@ -301,6 +340,7 @@ export interface SpellChoiceStepPane {
   isSkillIncrease: false;
   isSkillTraining: false;
   isSingletonChoice: false;
+  isLanguageChoice: false;
   isClassChoice: false;
   isSpellChoice: true;
   stepId: string;
@@ -331,6 +371,7 @@ export type ActivePane =
   | SkillIncreaseStepPane
   | SkillTrainingStepPane
   | SingletonChoiceStepPane
+  | LanguageChoiceStepPane
   | ClassChoiceStepPane
   | SpellChoiceStepPane
   | null;

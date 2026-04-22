@@ -103,6 +103,10 @@
             {{> "modules/pf2e-wayfinder/templates/wayfinder/singleton-choice-pane.hbs"}}
           {{/if}}
 
+          {{#if activePane.isLanguageChoice}}
+            {{> "modules/pf2e-wayfinder/templates/wayfinder/language-choice-pane.hbs"}}
+          {{/if}}
+
           {{#if activePane.isClassChoice}}
             {{> "modules/pf2e-wayfinder/templates/wayfinder/class-choice-pane.hbs"}}
           {{/if}}

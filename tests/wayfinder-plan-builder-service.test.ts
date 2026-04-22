@@ -17,7 +17,7 @@ import {
 
 describe("wayfinder plan builder service", () => {
   it("assembles the actor-facing plan builders with resolved documents and actor readers", async () => {
-    const actor = { id: "actor-1" };
+    const actor = {};
     const draft = createEmptyDraft(1);
     draft.selections.class = selection("class-level-1", "class", "wizard", "Wizard");
     const snapshot: ActorSnapshot = {
@@ -58,6 +58,7 @@ describe("wayfinder plan builder service", () => {
 
     const readExistingBranchSelection = vi.fn((_actor: unknown, _branch: ClassBranchMeta) => "existing-branch");
     const readExistingGrantedSelection = vi.fn((_actor: unknown, _grant: ClassGrantMeta) => "existing-grant");
+    const readExistingLanguageSelections = vi.fn((_actor: unknown) => []);
     const readExistingClassChoiceSelection = vi.fn((_actor: unknown, _choice: ClassChoiceMeta) => "holy");
     const readExistingSingletonChoiceSelection = vi.fn((_actor: unknown, _choice: SingletonChoiceMeta) => "society");
     const readExistingSpellChoiceSelections = vi.fn((_actor: unknown, _choice: SpellChoiceMeta) => [
@@ -97,6 +98,7 @@ describe("wayfinder plan builder service", () => {
       ).toBe("society");
       return [step("singleton-choice-class-wizard-academySkill-level-1")];
     });
+    const buildLanguageChoiceSteps = vi.fn(async () => []);
     const buildClassBranchSteps = vi.fn(async (params) => {
       expect(params.draft).toBe(draft);
       expect(params.effectiveClassDocument).toBe(classDocument);
@@ -196,6 +198,7 @@ describe("wayfinder plan builder service", () => {
         ...(await deps.buildClassFeatSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassTrainingSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildSingletonChoiceSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildLanguageChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassBranchSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassGrantedItemSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassChoiceSteps(receivedSnapshot, receivedDraft, 4)),
@@ -222,6 +225,7 @@ describe("wayfinder plan builder service", () => {
         buildClassFeatSteps,
         buildClassTrainingSteps,
         buildSingletonChoiceSteps,
+        buildLanguageChoiceSteps,
         buildClassBranchSteps,
         buildClassGrantedItemSteps,
         buildClassChoiceSteps,
@@ -230,6 +234,7 @@ describe("wayfinder plan builder service", () => {
         readExistingSingletonSourceSelection: () => null,
         readExistingBranchSelection,
         readExistingGrantedSelection,
+        readExistingLanguageSelections,
         readExistingClassChoiceSelection,
         readExistingSingletonChoiceSelection,
         readExistingSpellChoiceSelections,
@@ -268,7 +273,7 @@ describe("wayfinder plan builder service", () => {
 
     const found = await findPlanStepBySlotId(
       {
-        actor: { id: "actor-2" },
+        actor: {},
         snapshot: {
           actorId: "actor-2",
           level: 1,
@@ -300,6 +305,7 @@ describe("wayfinder plan builder service", () => {
         buildClassFeatSteps: async () => [],
         buildClassTrainingSteps: async () => [],
         buildSingletonChoiceSteps: async () => [],
+        buildLanguageChoiceSteps: async () => [],
         buildClassBranchSteps: async () => [],
         buildClassGrantedItemSteps: async () => [],
         buildClassChoiceSteps: async () => [],
@@ -308,6 +314,7 @@ describe("wayfinder plan builder service", () => {
         readExistingSingletonSourceSelection: () => null,
         readExistingBranchSelection: () => null,
         readExistingGrantedSelection: () => null,
+        readExistingLanguageSelections: () => [],
         readExistingClassChoiceSelection: () => null,
         readExistingSingletonChoiceSelection: () => null,
         readExistingSpellChoiceSelections: () => [],

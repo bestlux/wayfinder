@@ -22,12 +22,16 @@ async function getEffectiveBuildState(actor, draft) {
         classBoost: effectiveClass?.selectedKeyAbility ?? null,
         levelBoosts,
     });
+    const languages = ancestryDocument
+        ? buildEffectiveLanguageState(actor, ancestryDocument, projectedAbilities.int.modifier)
+        : null;
     return {
         ancestry,
         heritage: heritageDocument,
         background,
         class: effectiveClass,
         deity: deityDocument,
+        languages,
         levelBoosts,
         allowedBoosts,
         projectedAbilities,
@@ -82,6 +86,18 @@ function buildEffectiveClassState(document, boosts) {
         selectedKeyAbility: boosts.class.keyAbility ?? normalizeAbility(document?.system?.keyAbility?.selected),
     };
 }
+function buildEffectiveLanguageState(actor, ancestryDocument, intelligenceModifier) {
+    const grantedLanguages = normalizeStringList(ancestryDocument?.system?.languages?.value);
+    const selectableLanguages = normalizeStringList(ancestryDocument?.system?.additionalLanguages?.value).filter((slug) => !grantedLanguages.includes(slug));
+    const additionalCount = toNonNegativeNumber(ancestryDocument?.system?.additionalLanguages?.count);
+    const sourceLanguages = normalizeStringList(actor?.system?.details?.languages?.value).filter((slug) => !grantedLanguages.includes(slug));
+    return {
+        sourceLanguages,
+        grantedLanguages,
+        selectableLanguages,
+        maxSelections: additionalCount + Math.max(intelligenceModifier, 0),
+    };
+}
 function buildEffectiveLevelBoosts(actor, boosts) {
     const actorBuildBoosts = actor?.system?.build?.attributes?.boosts ?? {};
     return Object.fromEntries(BOOST_LEVELS.map((level) => {
@@ -103,6 +119,14 @@ function normalizeAbilityList(value, maxLength = 6) {
     }
     return Array.from(new Set(value.map((entry) => normalizeAbility(entry)).filter((entry) => entry !== null))).slice(0, maxLength);
 }
+function normalizeStringList(value) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return Array.from(new Set(value
+        .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+        .filter((entry) => entry.length > 0)));
+}
 function normalizeVoluntaryState(value) {
     const legacy = value?.legacy === true ||
         (typeof value?.legacy !== "boolean" && Object.prototype.hasOwnProperty.call(value ?? {}, "boost"));
@@ -122,6 +146,10 @@ function normalizeVoluntaryState(value) {
 }
 function isAbilityKey(value) {
     return typeof value === "string" && ABILITY_KEYS.includes(value);
+}
+function toNonNegativeNumber(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : 0;
 }
 export { BOOST_LEVELS, getEffectiveBuildState, getEffectiveSingletonDocument, listActorItems };
 //# sourceMappingURL=build-state.js.map

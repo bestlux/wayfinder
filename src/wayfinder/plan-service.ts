@@ -19,6 +19,7 @@ interface BuildPlanDependencies {
     draft: DraftState,
     targetLevel: number
   ) => Promise<PendingStep[]>;
+  buildLanguageChoiceSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
   buildClassBranchSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
   buildClassGrantedItemSteps: (
     snapshot: ActorSnapshot,
@@ -39,6 +40,7 @@ export async function buildWayfinderPlan(
     classFeatSteps,
     trainingSteps,
     singletonChoiceSteps,
+    languageChoiceSteps,
     branchSteps,
     grantedItemSteps,
     classChoiceSteps,
@@ -47,6 +49,7 @@ export async function buildWayfinderPlan(
     deps.buildClassFeatSteps(snapshot, draft, plan.targetLevel),
     deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
     deps.buildSingletonChoiceSteps(snapshot, draft, plan.targetLevel),
+    deps.buildLanguageChoiceSteps(snapshot, draft, plan.targetLevel),
     deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
     deps.buildClassGrantedItemSteps(snapshot, draft, plan.targetLevel),
     deps.buildClassChoiceSteps(snapshot, draft, plan.targetLevel),
@@ -61,6 +64,7 @@ export async function buildWayfinderPlan(
       ...grantedItemSteps,
       ...trainingSteps,
       ...singletonChoiceSteps,
+      ...languageChoiceSteps,
       ...branchSteps,
       ...classChoiceSteps,
       ...spellChoiceSteps,

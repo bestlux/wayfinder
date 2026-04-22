@@ -40,6 +40,10 @@ export async function isWayfinderStepComplete(
     return typeof draft.singletonChoices[step.slotId] === "string" && draft.singletonChoices[step.slotId].length > 0;
   }
 
+  if (step.kind === "language-choice") {
+    return (draft.languageChoices[step.slotId]?.length ?? 0) === step.languageChoice.count;
+  }
+
   if (step.kind === "spell-choice") {
     return (draft.spellChoices[step.slotId]?.length ?? 0) >= step.spellChoice.count;
   }
@@ -111,6 +115,16 @@ export async function getWayfinderStepStatus(
     const selected = draft.singletonChoices[step.slotId];
     const selectedOption = step.singletonChoice.options.find((option) => option.value === selected);
     return selectedOption?.label ?? "Choose one";
+  }
+
+  if (step.kind === "language-choice") {
+    const selectedCount = draft.languageChoices[step.slotId]?.length ?? 0;
+    const total = step.languageChoice.count;
+    if (recentlyInvalidatedStepIds.has(step.slotId) && selectedCount !== total) {
+      return "Needs attention";
+    }
+
+    return selectedCount === total && total > 0 ? "Ready to apply" : `${selectedCount}/${total} chosen`;
   }
 
   if (step.kind === "spell-choice") {

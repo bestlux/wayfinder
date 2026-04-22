@@ -1,5 +1,6 @@
 import { getStepModeLabel } from "../domain/step-types.js";
 import { buildClassChoicePane } from "../panes/class-choice-pane.js";
+import { buildLanguageChoicePane } from "../panes/language-choice-pane.js";
 import { buildPickItemPane, resolvePreviewValue, selectedSelection, selectedValueFor } from "../panes/pick-pane.js";
 import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
@@ -23,6 +24,13 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
         return buildSingletonChoicePane({
             step,
             selectedValue: deps.draft.singletonChoices[step.slotId] ?? null,
+            selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+        });
+    }
+    if (step.kind === "language-choice") {
+        return buildLanguageChoicePane({
+            step,
+            selectedValues: deps.draft.languageChoices[step.slotId] ?? [],
             selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
         });
     }

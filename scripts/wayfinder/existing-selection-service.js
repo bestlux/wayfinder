@@ -20,6 +20,11 @@ export function readExistingClassChoiceSelection(actor, choice) {
 export function readExistingSingletonChoiceSelection(actor, choice) {
     return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
 }
+export function readExistingLanguageSelections(actor) {
+    const sourceLanguages = readLanguageValues(actor
+        ?._source) ?? readLanguageValues(actor);
+    return sourceLanguages ?? [];
+}
 export function readExistingSingletonSourceSelection(actor, itemType) {
     const item = listTypedActorItems(actor).find((entry) => entry.type === itemType) ?? null;
     const sourceId = sourceIdOf(item);
@@ -58,6 +63,18 @@ function findGrantedActorItem(actor, selectorItem, grant) {
 function readRulesSelection(item, flag) {
     const selection = item?.flags?.pf2e?.rulesSelections?.[flag];
     return typeof selection === "string" && selection.length > 0 ? selection : null;
+}
+function readLanguageValues(source) {
+    const detailsHolder = source && typeof source === "object" && "system" in source
+        ? source.system
+        : source;
+    const value = detailsHolder?.details?.languages?.value;
+    if (!Array.isArray(value)) {
+        return null;
+    }
+    return Array.from(new Set(value
+        .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+        .filter((entry) => entry.length > 0)));
 }
 function listTypedActorItems(actor) {
     return listActorItems(actor).filter((item) => !!item && typeof item === "object");

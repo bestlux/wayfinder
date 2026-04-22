@@ -2,18 +2,25 @@ import type { EffectiveBuildState } from "../../build-state.js";
 import type { DraftState, OptionContext, OptionRecord, PendingStep, PickerInfoState } from "../../types.js";
 import { getStepModeLabel } from "../domain/step-types.js";
 import { buildClassChoicePane } from "../panes/class-choice-pane.js";
+import { buildLanguageChoicePane } from "../panes/language-choice-pane.js";
 import { buildPickItemPane, resolvePreviewValue, selectedSelection, selectedValueFor } from "../panes/pick-pane.js";
 import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
 import type {
   ClassChoiceStepPane,
+  LanguageChoiceStepPane,
   PickStepPane,
   PreviewPane,
   SingletonChoiceStepPane,
   SpellChoiceStepPane,
 } from "../view-models.js";
 
-type SelectionPane = ClassChoiceStepPane | PickStepPane | SingletonChoiceStepPane | SpellChoiceStepPane;
+type SelectionPane =
+  | ClassChoiceStepPane
+  | LanguageChoiceStepPane
+  | PickStepPane
+  | SingletonChoiceStepPane
+  | SpellChoiceStepPane;
 
 interface BuildSelectionPaneDependencies {
   draft: DraftState;
@@ -60,6 +67,14 @@ export async function buildSelectionPane(
     return buildSingletonChoicePane({
       step,
       selectedValue: deps.draft.singletonChoices[step.slotId] ?? null,
+      selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+    });
+  }
+
+  if (step.kind === "language-choice") {
+    return buildLanguageChoicePane({
+      step,
+      selectedValues: deps.draft.languageChoices[step.slotId] ?? [],
       selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
     });
   }

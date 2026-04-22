@@ -5,6 +5,7 @@ export type SlotKind =
   | "class"
   | "deity"
   | "singleton-choice"
+  | "language-choice"
   | "skill-training"
   | "class-branch"
   | "class-choice"
@@ -22,6 +23,7 @@ export type StepKind =
   | "boost"
   | "skill-increase"
   | "singleton-choice"
+  | "language-choice"
   | "class-branch"
   | "class-choice"
   | "spell-choice"
@@ -29,7 +31,13 @@ export type StepKind =
 
 export type PickItemSlotKind = Exclude<
   SlotKind,
-  "ability-boosts" | "class-branch" | "class-choice" | "skill-increase" | "skill-training" | "spell-choice"
+  | "ability-boosts"
+  | "class-branch"
+  | "class-choice"
+  | "language-choice"
+  | "skill-increase"
+  | "skill-training"
+  | "spell-choice"
 >;
 
 export interface StepFilters {
@@ -100,6 +108,18 @@ export interface SingletonChoiceMeta {
   }>;
 }
 
+export interface LanguageChoiceMeta {
+  slotId: string;
+  sourceItemType: "ancestry";
+  sourceName: string;
+  grantedLanguages: string[];
+  count: number;
+  options: Array<{
+    value: string;
+    label: string;
+  }>;
+}
+
 export interface SpellChoiceDestination {
   type: "spellbook" | "prepared";
   key: string;
@@ -157,6 +177,7 @@ interface NoStepExtras {
   branch?: never;
   grantSelection?: never;
   singletonChoice?: never;
+  languageChoice?: never;
   classChoice?: never;
   spellChoice?: never;
   training?: never;
@@ -196,6 +217,17 @@ export interface SingletonChoiceStep extends BasePendingStep<"singleton-choice",
   training?: never;
 }
 
+export interface LanguageChoiceStep extends BasePendingStep<"language-choice", "language-choice"> {
+  filters?: never;
+  branch?: never;
+  grantSelection?: never;
+  singletonChoice?: never;
+  languageChoice: LanguageChoiceMeta;
+  classChoice?: never;
+  spellChoice?: never;
+  training?: never;
+}
+
 export interface ClassBranchStep extends BasePendingStep<"class-branch", "class-branch"> {
   filters: StepFilters;
   branch: ClassBranchMeta;
@@ -230,6 +262,7 @@ export type PendingStep =
   | SkillIncreaseStep
   | SkillTrainingStep
   | SingletonChoiceStep
+  | LanguageChoiceStep
   | ClassBranchStep
   | ClassChoiceStep
   | SpellChoiceStep;
@@ -257,6 +290,11 @@ interface ClassChoiceStepOptions extends StepOptions {
 }
 
 interface SingletonChoiceStepOptions extends StepOptions {
+  title?: string;
+  description?: string;
+}
+
+interface LanguageChoiceStepOptions extends StepOptions {
   title?: string;
   description?: string;
 }
@@ -367,6 +405,27 @@ export function createSingletonChoiceStep(
   };
 }
 
+export function createLanguageChoiceStep(
+  level: number,
+  languageChoice: LanguageChoiceMeta,
+  options: LanguageChoiceStepOptions = {}
+): LanguageChoiceStep {
+  return {
+    ...createBaseStep(
+      "language-choice",
+      "language-choice",
+      level,
+      options.title ?? "Bonus languages",
+      options.description ?? "Choose the additional languages this character knows at 1st level.",
+      {
+        ...options,
+        slotId: options.slotId ?? languageChoice.slotId,
+      }
+    ),
+    languageChoice,
+  };
+}
+
 export function createClassBranchStep(
   level: number,
   branch: ClassBranchMeta,
@@ -449,6 +508,10 @@ export function isSingletonChoiceStep(step: Pick<PendingStep, "kind">): step is 
   return step.kind === "singleton-choice";
 }
 
+export function isLanguageChoiceStep(step: Pick<PendingStep, "kind">): step is LanguageChoiceStep {
+  return step.kind === "language-choice";
+}
+
 export function isManualStep(step: Pick<PendingStep, "kind">): step is ManualStep {
   return step.kind === "manual";
 }
@@ -485,7 +548,8 @@ const SLOT_KIND_SORT_WEIGHTS: Record<SlotKind, number> = {
   "skill-feat": 12,
   "general-feat": 13,
   "ability-boosts": 14,
-  "skill-increase": 15,
+  "language-choice": 15,
+  "skill-increase": 16,
 };
 
 const STEP_MODE_LABELS: Record<StepKind, string> = {
@@ -494,6 +558,7 @@ const STEP_MODE_LABELS: Record<StepKind, string> = {
   boost: "Boosts",
   "skill-increase": "Skill",
   "singleton-choice": "Choice",
+  "language-choice": "Languages",
   "class-branch": "Class Path",
   "class-choice": "Class Choice",
   "spell-choice": "Spells",

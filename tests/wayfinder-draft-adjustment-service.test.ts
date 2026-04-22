@@ -7,6 +7,7 @@ import {
   type DraftAdjustmentState,
   setManualStepComplete,
   setTrainingRuleSelection,
+  syncLanguageChoiceSelections,
   toggleAncestryMode,
   toggleBoostChoice,
   toggleSkillIncreaseSelection,
@@ -112,6 +113,7 @@ describe("wayfinder draft adjustment service", () => {
       background: null,
       class: null,
       deity: null,
+      languages: null,
       levelBoosts: {
         1: [],
         5: ["str"],
@@ -139,6 +141,51 @@ describe("wayfinder draft adjustment service", () => {
     expect(toggleBoostChoice(state, buildState, "ability-boosts-level-5", "level-5", "dex")).toBe(true);
     expect(draft.boosts.levels["5"]).toEqual(["str", "dex"]);
     expect(state.recentlyInvalidatedStepIds.has("ability-boosts-level-5")).toBe(false);
+  });
+
+  it("trims drafted language choices when the projected build lowers the allowance", () => {
+    const draft = createEmptyDraft(1);
+    draft.languageChoices["language-choice-level-1"] = ["draconic", "dwarven"];
+    const state = adjustmentState(draft);
+    const buildState = {
+      ancestry: null,
+      heritage: null,
+      background: null,
+      class: null,
+      deity: null,
+      languages: {
+        sourceLanguages: [],
+        grantedLanguages: ["common"],
+        selectableLanguages: ["draconic"],
+        maxSelections: 1,
+      },
+      levelBoosts: {
+        1: [],
+        5: [],
+        10: [],
+        15: [],
+        20: [],
+      },
+      allowedBoosts: {
+        1: 4,
+        5: 0,
+        10: 0,
+        15: 0,
+        20: 0,
+      },
+      projectedAbilities: {
+        str: { key: "str", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        dex: { key: "dex", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        con: { key: "con", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        int: { key: "int", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        wis: { key: "wis", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        cha: { key: "cha", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+      },
+    } satisfies EffectiveBuildState;
+
+    expect(syncLanguageChoiceSelections(state, buildState)).toBe(true);
+    expect(draft.languageChoices["language-choice-level-1"]).toEqual(["draconic"]);
+    expect(state.recentlyInvalidatedStepIds.has("language-choice-level-1")).toBe(true);
   });
 
   it("updates manual completion and training rule choices, and clamps target level changes", () => {

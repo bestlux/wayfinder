@@ -1,4 +1,4 @@
-const DRAFT_VERSION = 5;
+const DRAFT_VERSION = 6;
 const STATE_VERSION = 1;
 export function createEmptyDraft(targetLevel = 1) {
     return {
@@ -11,6 +11,7 @@ export function createEmptyDraft(targetLevel = 1) {
         skillTrainings: {},
         branchSelections: {},
         singletonChoices: {},
+        languageChoices: {},
         classChoices: {},
         spellChoices: {},
         updatedAt: null,
@@ -36,6 +37,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
         skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
         branchSelections: sanitizeSelections(draft.branchSelections),
         singletonChoices: sanitizeChoiceValues(draft.singletonChoices),
+        languageChoices: sanitizeChoiceListValues(draft.languageChoices),
         classChoices: sanitizeClassChoices(draft.classChoices),
         spellChoices: sanitizeSpellChoices(draft.spellChoices),
         updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
@@ -139,6 +141,24 @@ function sanitizeChoiceValues(raw) {
     return Object.fromEntries(Object.entries(raw)
         .filter(([, value]) => typeof value === "string" && value.trim())
         .map(([slotId, value]) => [slotId, String(value).trim()]));
+}
+function sanitizeChoiceListValues(raw) {
+    if (!isRecord(raw)) {
+        return {};
+    }
+    const result = {};
+    for (const [slotId, value] of Object.entries(raw)) {
+        if (!Array.isArray(value)) {
+            continue;
+        }
+        const selections = Array.from(new Set(value
+            .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+            .filter((entry) => entry.length > 0)));
+        if (selections.length > 0) {
+            result[slotId] = selections;
+        }
+    }
+    return result;
 }
 function sanitizeSpellChoices(raw) {
     if (!isRecord(raw)) {

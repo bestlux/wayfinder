@@ -79,6 +79,12 @@ describe("build-state", () => {
     expect(buildState.projectedAbilities.str.flawCount).toBe(2);
     expect(buildState.projectedAbilities.int.modifier).toBe(3);
     expect(buildState.projectedAbilities.cha.modifier).toBe(3);
+    expect(buildState.languages).toEqual({
+      sourceLanguages: [],
+      grantedLanguages: ["common"],
+      selectableLanguages: ["draconic", "dwarven"],
+      maxSelections: 3,
+    });
   });
 
   it("falls back to committed ancestry boost mode and voluntary state until the draft touches them", async () => {
@@ -192,6 +198,13 @@ function ancestryDocument(name: string): any {
         fixed: {
           value: ["str"],
         },
+      },
+      languages: {
+        value: ["common"],
+      },
+      additionalLanguages: {
+        count: 0,
+        value: ["draconic", "dwarven"],
       },
     },
   };

@@ -9,11 +9,12 @@ const DECISION_KIND_ORDER: Record<DraftDecision["kind"], number> = {
   selection: 0,
   "class-branch": 1,
   "singleton-choice": 2,
-  "class-choice": 3,
-  manual: 4,
-  "skill-increase": 5,
-  "skill-training": 6,
-  "spell-choice": 7,
+  "language-choice": 3,
+  "class-choice": 4,
+  manual: 5,
+  "skill-increase": 6,
+  "skill-training": 7,
+  "spell-choice": 8,
 };
 
 export function clearDraftSlotDecisions(draft: DraftState, slotId: string): boolean {
@@ -21,6 +22,7 @@ export function clearDraftSlotDecisions(draft: DraftState, slotId: string): bool
   const hasBranchSelection = !!draft.branchSelections[slotId];
   const hasTrainingSelection = !!draft.skillTrainings[slotId];
   const hasSingletonChoice = Object.prototype.hasOwnProperty.call(draft.singletonChoices, slotId);
+  const hasLanguageChoices = (draft.languageChoices[slotId]?.length ?? 0) > 0;
   const hasClassChoice = Object.prototype.hasOwnProperty.call(draft.classChoices, slotId);
   const hasManualDecision = Object.prototype.hasOwnProperty.call(draft.manual, slotId);
   const hasSkillIncrease = Object.prototype.hasOwnProperty.call(draft.skillIncreases, slotId);
@@ -31,6 +33,7 @@ export function clearDraftSlotDecisions(draft: DraftState, slotId: string): bool
     !hasBranchSelection &&
     !hasTrainingSelection &&
     !hasSingletonChoice &&
+    !hasLanguageChoices &&
     !hasClassChoice &&
     !hasManualDecision &&
     !hasSkillIncrease &&
@@ -43,6 +46,7 @@ export function clearDraftSlotDecisions(draft: DraftState, slotId: string): bool
   delete draft.branchSelections[slotId];
   delete draft.skillTrainings[slotId];
   delete draft.singletonChoices[slotId];
+  delete draft.languageChoices[slotId];
   delete draft.classChoices[slotId];
   delete draft.manual[slotId];
   delete draft.skillIncreases[slotId];
@@ -73,6 +77,10 @@ export function listDraftDecisions(draft: DraftState): DraftDecision[] {
 
   for (const [slotId, value] of Object.entries(draft.singletonChoices)) {
     decisions.push({ kind: "singleton-choice", slotId, value });
+  }
+
+  for (const [slotId, selections] of Object.entries(draft.languageChoices)) {
+    decisions.push({ kind: "language-choice", slotId, selections });
   }
 
   for (const [slotId, value] of Object.entries(draft.classChoices)) {
@@ -124,6 +132,10 @@ export function readDraftStepDecision(draft: DraftState, step: DraftDecisionStep
     case "singleton-choice": {
       const value = draft.singletonChoices[slotId];
       return typeof value === "string" && value.length > 0 ? { kind: "singleton-choice", slotId, value } : null;
+    }
+    case "language-choice": {
+      const selections = draft.languageChoices[slotId];
+      return selections && selections.length > 0 ? { kind: "language-choice", slotId, selections } : null;
     }
     case "class-choice": {
       const value = draft.classChoices[slotId];

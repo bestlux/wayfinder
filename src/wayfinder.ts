@@ -10,6 +10,7 @@ Hooks.once("init", () => {
     `modules/${MODULE_ID}/templates/wayfinder/skill-increase-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/skill-training-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/singleton-choice-pane.hbs`,
+    `modules/${MODULE_ID}/templates/wayfinder/language-choice-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/class-choice-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/spell-choice-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/pick-pane.hbs`,

@@ -1,3 +1,4 @@
+import { SLOT_IDS } from "../slot-ids.js";
 export function setManualStepComplete(state, stepId, complete) {
     state.draft.manual[stepId] = complete;
     return true;
@@ -155,6 +156,27 @@ export function adjustDraftTargetLevel(draft, currentLevel, delta) {
         return false;
     }
     draft.targetLevel = nextTargetLevel;
+    return true;
+}
+export function syncLanguageChoiceSelections(state, effectiveBuildState) {
+    const languageState = effectiveBuildState.languages;
+    const current = state.draft.languageChoices[SLOT_IDS.languageChoice] ?? [];
+    if (current.length === 0) {
+        return false;
+    }
+    const allowed = new Set(languageState?.selectableLanguages ?? []);
+    const maxSelections = languageState?.maxSelections ?? 0;
+    const next = current.filter((slug) => allowed.has(slug)).slice(0, maxSelections);
+    if (next.length === current.length && next.every((slug, index) => slug === current[index])) {
+        return false;
+    }
+    if (next.length > 0) {
+        state.draft.languageChoices[SLOT_IDS.languageChoice] = next;
+    }
+    else {
+        delete state.draft.languageChoices[SLOT_IDS.languageChoice];
+    }
+    state.recentlyInvalidatedStepIds.add(SLOT_IDS.languageChoice);
     return true;
 }
 function toggleSlotRecordChoice(selectedBoosts, record, attribute) {

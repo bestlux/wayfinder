@@ -1,6 +1,6 @@
 import type { AbilityKey, BoostDraftState, DraftState, ModuleState } from "./types.js";
 
-const DRAFT_VERSION = 5;
+const DRAFT_VERSION = 6;
 const STATE_VERSION = 1;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
@@ -14,6 +14,7 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     skillTrainings: {},
     branchSelections: {},
     singletonChoices: {},
+    languageChoices: {},
     classChoices: {},
     spellChoices: {},
     updatedAt: null,
@@ -42,6 +43,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
     branchSelections: sanitizeSelections(draft.branchSelections),
     singletonChoices: sanitizeChoiceValues(draft.singletonChoices),
+    languageChoices: sanitizeChoiceListValues(draft.languageChoices),
     classChoices: sanitizeClassChoices(draft.classChoices),
     spellChoices: sanitizeSpellChoices(draft.spellChoices),
     updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
@@ -164,6 +166,32 @@ function sanitizeChoiceValues(raw: unknown): Record<string, string> {
       .filter(([, value]) => typeof value === "string" && value.trim())
       .map(([slotId, value]) => [slotId, String(value).trim()])
   );
+}
+
+function sanitizeChoiceListValues(raw: unknown): Record<string, string[]> {
+  if (!isRecord(raw)) {
+    return {};
+  }
+
+  const result: Record<string, string[]> = {};
+  for (const [slotId, value] of Object.entries(raw)) {
+    if (!Array.isArray(value)) {
+      continue;
+    }
+
+    const selections = Array.from(
+      new Set(
+        value
+          .map((entry) => (typeof entry === "string" ? entry.trim().toLowerCase() : ""))
+          .filter((entry) => entry.length > 0)
+      )
+    );
+    if (selections.length > 0) {
+      result[slotId] = selections;
+    }
+  }
+
+  return result;
 }
 
 function sanitizeSpellChoices(raw: unknown): DraftState["spellChoices"] {

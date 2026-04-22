@@ -1,5 +1,6 @@
 import type { EffectiveBuildState } from "../../build-state.js";
 import type { AbilityKey, BoostLevel, DraftState, PendingStep } from "../../types.js";
+import { SLOT_IDS } from "../slot-ids.js";
 
 type BoostRecord = Record<string, { value: AbilityKey[]; selected: AbilityKey | null }>;
 
@@ -208,6 +209,32 @@ export function adjustDraftTargetLevel(draft: DraftState, currentLevel: number, 
   }
 
   draft.targetLevel = nextTargetLevel;
+  return true;
+}
+
+export function syncLanguageChoiceSelections(
+  state: DraftAdjustmentState,
+  effectiveBuildState: EffectiveBuildState
+): boolean {
+  const languageState = effectiveBuildState.languages;
+  const current = state.draft.languageChoices[SLOT_IDS.languageChoice] ?? [];
+  if (current.length === 0) {
+    return false;
+  }
+
+  const allowed = new Set(languageState?.selectableLanguages ?? []);
+  const maxSelections = languageState?.maxSelections ?? 0;
+  const next = current.filter((slug) => allowed.has(slug)).slice(0, maxSelections);
+  if (next.length === current.length && next.every((slug, index) => slug === current[index])) {
+    return false;
+  }
+
+  if (next.length > 0) {
+    state.draft.languageChoices[SLOT_IDS.languageChoice] = next;
+  } else {
+    delete state.draft.languageChoices[SLOT_IDS.languageChoice];
+  }
+  state.recentlyInvalidatedStepIds.add(SLOT_IDS.languageChoice);
   return true;
 }
 

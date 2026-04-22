@@ -20,6 +20,7 @@ export function buildSingletonChoicePane(args: {
     isSkillIncrease: false,
     isSkillTraining: false,
     isSingletonChoice: true,
+    isLanguageChoice: false,
     isClassChoice: false,
     isSpellChoice: false,
     stepId: step.id,

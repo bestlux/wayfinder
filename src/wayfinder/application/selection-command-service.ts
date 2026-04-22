@@ -9,7 +9,7 @@ export interface SelectionCommandState {
   recentlyInvalidatedStepIds: Set<string>;
 }
 
-export type SelectionCommandWarning = "duplicate-selection" | "spell-choice-full";
+export type SelectionCommandWarning = "duplicate-selection" | "language-choice-full" | "spell-choice-full";
 
 export interface SelectionCommandResult {
   kind: "noop" | "warning" | "changed";
@@ -87,6 +87,7 @@ export async function chooseSelectionOption(
       ...deps.invalidateSelection(SLOT_IDS.heritage),
       ...(await deps.invalidateSingletonChoicesBySource("ancestry")),
       ...(await deps.invalidateSingletonChoicesBySource("heritage")),
+      ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.languageChoice),
       ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat),
     ];
     const boostReset = deps.resetAncestryBoostDraft();
@@ -95,8 +96,8 @@ export async function chooseSelectionOption(
     }
     if (invalidated.length > 0 || boostReset) {
       statusNote = boostReset
-        ? "Ancestry changed. Wayfinder cleared ancestry-specific boost draft choices and marked dependent heritage, ancestry choice, and ancestry-feat picks for review."
-        : "Ancestry changed. Wayfinder marked dependent heritage, ancestry choice, and ancestry-feat draft picks for review.";
+        ? "Ancestry changed. Wayfinder cleared ancestry-specific boost draft choices and marked dependent heritage, ancestry choice, language, and ancestry-feat picks for review."
+        : "Ancestry changed. Wayfinder marked dependent heritage, ancestry choice, language, and ancestry-feat draft picks for review.";
     }
   }
 
@@ -204,6 +205,38 @@ export async function selectSingletonChoiceValue(
   state.draft.singletonChoices[stepId] = value;
   state.recentlyInvalidatedStepIds.delete(stepId);
   return changedResult({ shouldAdvance: true });
+}
+
+export async function toggleLanguageChoiceValue(
+  state: SelectionCommandState,
+  step: PendingStep | null,
+  value: string
+): Promise<SelectionCommandResult> {
+  if (!step || step.kind !== "language-choice") {
+    return NOOP_RESULT;
+  }
+
+  const current = state.draft.languageChoices[step.slotId] ?? [];
+  if (current.includes(value)) {
+    const next = current.filter((entry) => entry !== value);
+    if (next.length > 0) {
+      state.draft.languageChoices[step.slotId] = next;
+    } else {
+      delete state.draft.languageChoices[step.slotId];
+    }
+    state.recentlyInvalidatedStepIds.delete(step.slotId);
+    return changedResult({ shouldRender: true });
+  }
+
+  if (current.length >= step.languageChoice.count) {
+    return warningResult("language-choice-full");
+  }
+
+  state.draft.languageChoices[step.slotId] = [...current, value];
+  state.recentlyInvalidatedStepIds.delete(step.slotId);
+  return current.length + 1 >= step.languageChoice.count
+    ? changedResult({ shouldAdvance: true })
+    : changedResult({ shouldRender: true });
 }
 
 export async function selectClassChoiceValue(

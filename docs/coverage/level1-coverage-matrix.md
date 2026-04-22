@@ -4,6 +4,8 @@ This document tracks what Wayfinder currently guides at level 1, what is only pa
 
 It is meant to stay grounded in the current repo, not to describe aspirational future behavior.
 
+For a deeper repo-plus-compendium audit of what is still missing under the local PF2E 8.0.3 install, see [Level 1 Default-Rules Gap Audit](./level1-default-rules-gap-audit.md).
+
 ## Status Legend
 
 - `Guided`: Wayfinder plans, renders, drafts, invalidates, and applies this flow today.

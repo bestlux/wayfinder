@@ -6,6 +6,7 @@ import { sourceIdOf } from "../../shared/source-id.js";
 import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassTrainingSteps, } from "../class-choice-service.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
 import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, readExistingLanguageSelections, readExistingSingletonChoiceSelection, readExistingSingletonSourceSelection, } from "../existing-selection-service.js";
+import { buildGrantChoiceSteps } from "../grant-choice-service.js";
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { buildSingletonChoiceSteps } from "../singleton-choice-service.js";
@@ -14,6 +15,7 @@ const DEFAULT_DEPS = {
     buildWayfinderPlan,
     buildClassFeatSteps,
     buildClassTrainingSteps,
+    buildGrantChoiceSteps,
     buildSingletonChoiceSteps,
     buildLanguageChoiceSteps,
     buildClassBranchSteps,
@@ -70,6 +72,17 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
                 localize: args.localize,
             });
         },
+        buildGrantChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildGrantChoiceSteps({
+            draft: planDraft,
+            targetLevel,
+            hasClassSelection: !!(deps.findDraftSelectionByType(planDraft, "class") ??
+                deps.readExistingSingletonSourceSelection(args.actor, "class")),
+            hasDeitySelection: !!(deps.findDraftSelectionByType(planDraft, "deity") ??
+                deps.readExistingSingletonSourceSelection(args.actor, "deity")),
+            sources: await resolveGrantChoiceSources(planDraft, args, deps),
+            extractSlug: deps.extractDocumentSlug,
+            readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
+        }),
         buildSingletonChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildSingletonChoiceSteps({
             draft: planDraft,
             targetLevel,
@@ -156,7 +169,7 @@ async function resolveSingletonChoiceSources(draft, args, deps) {
         "deity",
     ];
     const documents = await Promise.all(itemTypes.map((itemType) => args.resolveDocument(itemType)));
-    return itemTypes
+    const singletonItemSources = itemTypes
         .map((itemType, index) => {
         const sourceSelection = deps.findDraftSelectionByType(draft, itemType) ??
             deps.readExistingSingletonSourceSelection(args.actor, itemType);
@@ -167,11 +180,31 @@ async function resolveSingletonChoiceSources(draft, args, deps) {
         };
     })
         .filter((entry) => !!entry.sourceSelection && !!entry.sourceDocument);
+    const featSelections = dedupeSelectionsByUuid([
+        ...Object.values(draft.selections).filter(isSingletonChoiceFeatSelection),
+        ...readExistingSkillTrainingFeatSelections(args.actor),
+    ]);
+    const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+    return [
+        ...singletonItemSources,
+        ...featSelections.flatMap((sourceSelection, index) => {
+            const sourceDocument = featDocuments[index];
+            return sourceDocument
+                ? [
+                    {
+                        sourceItemType: "feat",
+                        sourceSelection,
+                        sourceDocument,
+                    },
+                ]
+                : [];
+        }),
+    ];
 }
 async function resolveSkillTrainingFeatSources(draft, args, deps) {
     const featSelections = dedupeSelectionsByUuid([
-        ...Object.values(draft.selections).filter(isAncestryFeatSelection),
-        ...readExistingAncestryFeatSelections(args.actor),
+        ...Object.values(draft.selections).filter(isSkillTrainingFeatSelection),
+        ...readExistingSkillTrainingFeatSelections(args.actor),
     ]);
     const documents = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     return featSelections.flatMap((sourceSelection, index) => {
@@ -187,21 +220,71 @@ async function resolveSkillTrainingFeatSources(draft, args, deps) {
             : [];
     });
 }
+async function resolveGrantChoiceSources(draft, args, deps) {
+    const sourceItemTypes = ["ancestry", "heritage", "background"];
+    const sourceDocuments = await Promise.all(sourceItemTypes.map((itemType) => args.resolveDocument(itemType)));
+    const featSelections = dedupeSelectionsByUuid([
+        ...Object.values(draft.selections).filter(isAncestryFeatSelection),
+        ...readExistingSkillTrainingFeatSelections(args.actor).filter(isAncestryFeatSelection),
+    ]);
+    const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+    return [
+        ...sourceItemTypes.flatMap((sourceItemType, index) => {
+            const sourceSelection = deps.findDraftSelectionByType(draft, sourceItemType) ??
+                deps.readExistingSingletonSourceSelection(args.actor, sourceItemType);
+            const sourceDocument = sourceDocuments[index];
+            return sourceSelection && sourceDocument
+                ? [
+                    {
+                        sourceItemType,
+                        sourceSelection,
+                        sourceDocument,
+                    },
+                ]
+                : [];
+        }),
+        ...featSelections.flatMap((sourceSelection, index) => {
+            const sourceDocument = featDocuments[index];
+            return sourceDocument
+                ? [
+                    {
+                        sourceItemType: "feat",
+                        sourceSelection,
+                        sourceDocument,
+                    },
+                ]
+                : [];
+        }),
+    ];
+}
 function isAncestryFeatSelection(selection) {
     return selection.itemType === "feat" && selection.featType === "ancestry";
 }
-function readExistingAncestryFeatSelections(actor) {
+function isGrantChoiceFeatSelection(selection) {
+    return selection.itemType === "feat" && selection.slotId.startsWith("grant-choice-");
+}
+function isSkillTrainingFeatSelection(selection) {
+    return isAncestryFeatSelection(selection) || isGrantChoiceFeatSelection(selection);
+}
+function isSingletonChoiceFeatSelection(selection) {
+    return isGrantChoiceFeatSelection(selection);
+}
+function readExistingSkillTrainingFeatSelections(actor) {
     return listActorItems(actor)
-        .map((item) => selectionFromAncestryFeatItem(item))
+        .map((item) => selectionFromSkillTrainingFeatItem(item))
         .filter((selection) => selection !== null);
 }
-function selectionFromAncestryFeatItem(item) {
+function selectionFromSkillTrainingFeatItem(item) {
     const typedItem = item;
     if (!typedItem || typedItem.type !== "feat") {
         return null;
     }
     const featType = typedItem.system?.featType?.value ?? typedItem.system?.category;
-    if (featType !== "ancestry") {
+    const existingSlotId = typeof typedItem.flags?.[MODULE_ID]?.slotId === "string" && typedItem.flags[MODULE_ID].slotId.length > 0
+        ? typedItem.flags[MODULE_ID].slotId
+        : null;
+    const isSupportedFeat = featType === "ancestry" || !!existingSlotId?.startsWith("grant-choice-");
+    if (!isSupportedFeat) {
         return null;
     }
     const sourceId = sourceIdOf(typedItem);
@@ -213,9 +296,7 @@ function selectionFromAncestryFeatItem(item) {
         return null;
     }
     const level = toPositiveInteger(typedItem.system?.level?.value) ?? 1;
-    const slotId = typeof typedItem.flags?.[MODULE_ID]?.slotId === "string" && typedItem.flags[MODULE_ID].slotId.length > 0
-        ? typedItem.flags[MODULE_ID].slotId
-        : `ancestry-feat-level-${level}`;
+    const slotId = existingSlotId ?? `ancestry-feat-level-${level}`;
     return {
         slotId,
         packId: match[1],

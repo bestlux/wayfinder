@@ -245,6 +245,7 @@ export function deitySelectionStep(): PendingStep {
     },
     grantSelection: {
       slotId: "deity-level-1",
+      sourceItemType: "classfeature",
       selectorPackId: "pf2e.classfeatures",
       selectorDocumentId: "deity-cleric",
       selectorUuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
@@ -254,6 +255,10 @@ export function deitySelectionStep(): PendingStep {
       flag: "deity",
       itemType: "deity",
       classSlug: "cleric",
+      dependsOn: "class",
+      filters: {
+        itemType: "deity",
+      },
     },
   };
 }

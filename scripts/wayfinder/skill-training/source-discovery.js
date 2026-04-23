@@ -115,6 +115,14 @@ function discoverDescriptionTrainingMeta(args) {
     const fixedLores = [...additionalLoreGrants.fixedLores];
     loreChoices.push(...additionalLoreGrants.loreChoices);
     const hasConditionalFallbackSkillChoice = /\bif you would automatically become trained in one of those skills\b/i.test(descriptionText);
+    choiceRules.push(...discoverDedicationSkillChoices({
+        descriptionText,
+        sourceItemType: args.source.sourceItemType,
+        sourceSlug: args.sourceSlug,
+        sourceLabel: args.sourceName,
+        localize: args.localize,
+        configuredSkills: args.configuredSkills,
+    }));
     const loreSkillAndOtherSkillMatch = /\bone lore skill and one other intelligence- or wisdom-based skill of your choice\b/i.exec(descriptionText);
     if (loreSkillAndOtherSkillMatch) {
         loreChoices.push(createLoreChoice({
@@ -227,6 +235,8 @@ function createSkillChoice(args) {
         prompt: args.prompt,
         sourceLabel: args.sourceLabel,
         options: args.options,
+        ...(args.fallbackPrompt ? { fallbackPrompt: args.fallbackPrompt } : {}),
+        ...(args.fallbackOptions && args.fallbackOptions.length > 0 ? { fallbackOptions: args.fallbackOptions } : {}),
         persistence: null,
     };
 }
@@ -251,6 +261,96 @@ function buildFilteredSkillOptions(localize, configuredSkills, allowedAbilities)
         label: resolveSkillLabel(slug, configuredSkills[slug]?.label, localize, configuredSkills),
     }))
         .sort((left, right) => left.label.localeCompare(right.label));
+}
+function discoverDedicationSkillChoices(args) {
+    const allSkillOptions = buildFilteredSkillOptions(args.localize, args.configuredSkills, []);
+    const choiceBetweenSpecificSkills = Array.from(args.descriptionText.matchAll(/\btrained in (?:your choice of )?([A-Za-z][A-Za-z' -]+?) or ([A-Za-z][A-Za-z' -]+?)(?: plus one skill of your choice)?; if you (?:are|were) already trained in both(?: of these skills| [A-Za-z][A-Za-z' -]+ and [A-Za-z][A-Za-z' -]+)?[,]? you (?:instead )?become trained in (?:an? )?(?:additional |another )?skill of your choice\b/gi));
+    if (choiceBetweenSpecificSkills.length > 0) {
+        const rules = choiceBetweenSpecificSkills.flatMap((match, index) => {
+            const firstSkill = skillSlugFromLabel(match[1], args.configuredSkills, args.localize);
+            const secondSkill = skillSlugFromLabel(match[2], args.configuredSkills, args.localize);
+            if (!firstSkill || !secondSkill) {
+                return [];
+            }
+            const preferredOptions = dedupeSkillOptions([firstSkill, secondSkill].map((slug) => ({
+                slug,
+                label: resolveSkillOptionLabel(slug, args.configuredSkills, args.localize),
+            })));
+            const results = [
+                createSkillChoice({
+                    key: `${args.sourceItemType}:${args.sourceSlug}:dedication-skill-${index + 1}`,
+                    sourceLabel: args.sourceLabel,
+                    prompt: `Choose ${preferredOptions[0]?.label ?? "a skill"} or ${preferredOptions[1]?.label ?? "a skill"}`,
+                    options: preferredOptions,
+                    fallbackPrompt: "Choose a skill",
+                    fallbackOptions: allSkillOptions,
+                }),
+            ];
+            if (/\bplus one skill of your choice\b/i.test(match[0] ?? "")) {
+                results.push(createSkillChoice({
+                    key: `${args.sourceItemType}:${args.sourceSlug}:dedication-bonus-skill-${index + 1}`,
+                    sourceLabel: args.sourceLabel,
+                    prompt: "Choose a skill",
+                    options: allSkillOptions,
+                }));
+            }
+            return results;
+        });
+        if (rules.length > 0) {
+            return rules;
+        }
+    }
+    const fixedSkillFallbackMatch = /\btrained in ([A-Za-z][A-Za-z' -]+?); if you (?:were|are) already trained in [^.;]+?, you instead become trained in (?:an? )?(?:additional |another )?skill of your choice\b/i.exec(args.descriptionText);
+    if (fixedSkillFallbackMatch) {
+        const skillSlug = skillSlugFromLabel(fixedSkillFallbackMatch[1], args.configuredSkills, args.localize);
+        if (skillSlug) {
+            return [
+                createSkillChoice({
+                    key: `${args.sourceItemType}:${args.sourceSlug}:dedication-skill-1`,
+                    sourceLabel: args.sourceLabel,
+                    prompt: `Choose ${resolveSkillOptionLabel(skillSlug, args.configuredSkills, args.localize)}`,
+                    options: [
+                        {
+                            slug: skillSlug,
+                            label: resolveSkillOptionLabel(skillSlug, args.configuredSkills, args.localize),
+                        },
+                    ],
+                    fallbackPrompt: "Choose a skill",
+                    fallbackOptions: allSkillOptions,
+                }),
+            ];
+        }
+    }
+    return [];
+}
+function resolveSkillOptionLabel(slug, configuredSkills, localize) {
+    return resolveSkillLabel(slug, configuredSkills[slug]?.label, localize, configuredSkills);
+}
+function skillSlugFromLabel(label, configuredSkills, localize) {
+    const normalizedLabel = normalizeSkillLabel(label);
+    const skillEntries = Object.keys(configuredSkills).length > 0 ? Object.keys(configuredSkills) : Object.keys(SKILL_LABELS);
+    for (const slug of skillEntries) {
+        const resolved = normalizeSkillLabel(resolveSkillOptionLabel(slug, configuredSkills, localize));
+        if (resolved === normalizedLabel) {
+            return slug;
+        }
+    }
+    return null;
+}
+function normalizeSkillLabel(value) {
+    return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+function dedupeSkillOptions(options) {
+    const seen = new Set();
+    const result = [];
+    for (const option of options) {
+        if (seen.has(option.slug)) {
+            continue;
+        }
+        seen.add(option.slug);
+        result.push(option);
+    }
+    return result;
 }
 function looksLikeLoreOptions(labels) {
     return labels.length > 0 && labels.every((label) => /\blore\b/i.test(label));

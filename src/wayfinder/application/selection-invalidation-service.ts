@@ -1,6 +1,6 @@
 import type { PendingStep } from "../../types.js";
 import { clearSelectionState, invalidateSelectionState, invalidateSelectionsByPrefix } from "../invalidation.js";
-import { SLOT_IDS, SLOT_PREFIXES } from "../slot-ids.js";
+import { getSlotIdKind, SLOT_IDS, SLOT_PREFIXES } from "../slot-ids.js";
 
 export interface SelectionInvalidationState {
   draft: Parameters<typeof clearSelectionState>[0]["draft"];
@@ -40,14 +40,19 @@ export function createSelectionInvalidationService(
       if (slotId === SLOT_IDS.ancestry) {
         cleared += invalidateSingletonChoicesBySourceSync("ancestry").length;
         cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
+        cleared += invalidateGrantSelectionsBySourceSync("ancestry").length;
+        cleared += invalidateGrantSelectionsBySourceSync("heritage").length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.languageChoice).length;
       } else if (slotId === SLOT_IDS.heritage) {
         cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
+        cleared += invalidateGrantSelectionsBySourceSync("heritage").length;
       } else if (slotId === SLOT_IDS.background) {
         cleared += invalidateSingletonChoicesBySourceSync("background").length;
+        cleared += invalidateGrantSelectionsBySourceSync("background").length;
       } else if (slotId === SLOT_IDS.deity) {
         cleared += invalidateByPrefix(SLOT_PREFIXES.classChoice).length;
         cleared += invalidateSingletonChoicesBySourceSync("deity").length;
+        cleared += invalidateGrantSelectionsByDependencySync("deity").length;
       } else if (slotId === SLOT_IDS.class) {
         cleared += invalidateByPrefix(SLOT_PREFIXES.deity).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.classBranch).length;
@@ -57,6 +62,9 @@ export function createSelectionInvalidationService(
         cleared += invalidateByPrefix(SLOT_PREFIXES.classFeat).length;
         cleared += invalidateSingletonChoicesBySourceSync("class").length;
         cleared += invalidateSingletonChoicesBySourceSync("deity").length;
+        cleared += invalidateGrantSelectionsByDependencySync("class").length;
+      } else if (getSlotIdKind(slotId) === "ancestry-feat") {
+        cleared += invalidateGrantSelectionsBySourceSync("feat").length;
       }
 
       return cleared;
@@ -95,6 +103,16 @@ export function createSelectionInvalidationService(
         return step.kind === "singleton-choice" && step.singletonChoice?.sourceItemType === sourceItemType;
       });
     },
+
+    async invalidateGrantSelectionsBySource(
+      sourceItemType: "ancestry" | "heritage" | "background" | "feat"
+    ): Promise<string[]> {
+      return invalidateGrantSelectionsBySourceSync(sourceItemType);
+    },
+
+    async invalidateGrantSelectionsByDependency(dependency: "class" | "deity"): Promise<string[]> {
+      return invalidateGrantSelectionsByDependencySync(dependency);
+    },
   };
 
   function invalidateSingletonChoicesBySourceSync(
@@ -110,6 +128,45 @@ export function createSelectionInvalidationService(
     }
 
     return invalidated;
+  }
+
+  function invalidateGrantSelectionsBySourceSync(
+    sourceItemType: "ancestry" | "heritage" | "background" | "feat"
+  ): string[] {
+    const invalidated: string[] = [];
+    for (const slotId of candidateGrantChoiceSlotIds()) {
+      if (!isGrantChoiceSlotIdForSource(slotId, sourceItemType)) {
+        continue;
+      }
+
+      invalidated.push(...invalidate(slotId));
+    }
+
+    return invalidated;
+  }
+
+  function invalidateGrantSelectionsByDependencySync(dependency: "class" | "deity"): string[] {
+    const invalidated: string[] = [];
+    for (const slotId of candidateGrantChoiceSlotIds()) {
+      if (!isGrantChoiceSlotIdForDependency(slotId, dependency)) {
+        continue;
+      }
+
+      invalidated.push(...invalidate(slotId));
+    }
+
+    return invalidated;
+  }
+
+  function candidateGrantChoiceSlotIds(): string[] {
+    return Array.from(
+      new Set([
+        ...Object.keys(state.draft.selections),
+        ...state.previewValueByStepId.keys(),
+        ...state.pickerFiltersByStepId.keys(),
+        ...[...state.scrollById.keys()].map((key) => key.split(":")[0] ?? key),
+      ])
+    );
   }
 }
 
@@ -128,4 +185,15 @@ function invalidateMatchingPlanSteps(
   }
 
   return invalidated;
+}
+
+function isGrantChoiceSlotIdForSource(
+  slotId: string,
+  sourceItemType: "ancestry" | "heritage" | "background" | "feat"
+): boolean {
+  return new RegExp(`^grant-choice-(?:class|deity|none)-${sourceItemType}-`).test(slotId);
+}
+
+function isGrantChoiceSlotIdForDependency(slotId: string, dependency: "class" | "deity"): boolean {
+  return slotId.startsWith(`grant-choice-${dependency}-`);
 }

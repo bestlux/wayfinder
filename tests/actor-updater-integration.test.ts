@@ -366,6 +366,107 @@ describe("actor-updater integration", () => {
     });
   });
 
+  it("preseeds singleton grant selections before creating an Ancient Elf heritage item", async () => {
+    const { actor, createdItems } = buildActorHarness();
+
+    setGamePacks({
+      "pf2e.classes": {
+        wizard: {
+          name: "Wizard",
+          type: "class",
+          system: {
+            items: {},
+          },
+        },
+      },
+      "pf2e.heritages": {
+        "ancient-elf": {
+          name: "Ancient Elf",
+          type: "heritage",
+          system: {
+            slug: "ancient-elf",
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "ancientElf",
+                choices: {
+                  itemType: "feat",
+                  filter: ["item:category:class", "item:trait:dedication", "item:trait:multiclass"],
+                },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.ancientElf}",
+              },
+            ],
+          },
+        },
+      },
+      "pf2e.feats-srd": {
+        "fighter-dedication": {
+          name: "Fighter Dedication",
+          type: "feat",
+          system: {
+            category: "class",
+            featType: { value: "class" },
+            level: { value: 2 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "attribute",
+                choices: [
+                  { value: "str", label: "Strength" },
+                  { value: "dex", label: "Dexterity" },
+                ],
+              },
+            ],
+            traits: { value: ["archetype", "dedication", "multiclass"] },
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(1);
+    draft.selections["class-level-1"] = selection("class-level-1", "pf2e.classes", "wizard", "class", "Wizard");
+    draft.selections["heritage-level-1"] = selection(
+      "heritage-level-1",
+      "pf2e.heritages",
+      "ancient-elf",
+      "heritage",
+      "Ancient Elf"
+    );
+    draft.selections["grant-choice-class-heritage-ancient-elf-ancientElf-level-1"] = selection(
+      "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+      "pf2e.feats-srd",
+      "fighter-dedication",
+      "feat",
+      "Fighter Dedication",
+      "class"
+    );
+    draft.singletonChoices["singleton-choice-feat-fighter-dedication-attribute-level-1"] = "str";
+
+    await applyDraftToActor(actor as any, draft, [
+      classSelectionStep(),
+      heritageSelectionStep(),
+      ancientElfDedicationStep(),
+      fighterDedicationAttributeStep(),
+    ]);
+
+    const heritage = createdItems.find((item) => item?.sourceId === "Compendium.pf2e.heritages.Item.ancient-elf");
+    const dedication = createdItems.find(
+      (item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.fighter-dedication"
+    );
+
+    expect(heritage?.flags?.pf2e?.rulesSelections?.ancientElf).toBe(
+      "Compendium.pf2e.feats-srd.Item.fighter-dedication"
+    );
+    expect((heritage?.system?.rules as Array<Record<string, unknown>> | undefined)?.[0]?.selection).toBe(
+      "Compendium.pf2e.feats-srd.Item.fighter-dedication"
+    );
+    expect(dedication).toBeTruthy();
+    expect(dedication?.flags?.pf2e?.rulesSelections?.attribute).toBe("str");
+  });
+
   it("stacks later skill increases on top of singleton skill choices during apply", async () => {
     const { actor } = buildActorHarness({
       level: 1,
@@ -447,6 +548,83 @@ function heritageSingletonSkillChoiceStep(): PendingStep {
       options: [
         { value: "arcana", label: "Arcana", img: null, detail: null },
         { value: "society", label: "Society", img: null, detail: null },
+      ],
+    },
+  };
+}
+
+function heritageSelectionStep(): PendingStep {
+  return {
+    id: "heritage-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "heritage",
+    title: "Choose a heritage",
+    description: "",
+    required: true,
+    slotId: "heritage-level-1",
+    filters: {
+      itemType: "heritage",
+    },
+  };
+}
+
+function ancientElfDedicationStep(): PendingStep {
+  return {
+    id: "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "grant-choice",
+    title: "Ancient Elf feat grant",
+    description: "",
+    required: true,
+    slotId: "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+    filters: {
+      itemType: "feat",
+    },
+    grantSelection: {
+      slotId: "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+      sourceItemType: "heritage",
+      selectorPackId: "pf2e.heritages",
+      selectorDocumentId: "ancient-elf",
+      selectorUuid: "Compendium.pf2e.heritages.Item.ancient-elf",
+      selectorName: "Ancient Elf",
+      selectorRuleIndex: 0,
+      grantRuleIndex: 1,
+      flag: "ancientElf",
+      itemType: "feat",
+      classSlug: null,
+      dependsOn: "class",
+      filters: {
+        itemType: "feat",
+      },
+    },
+  };
+}
+
+function fighterDedicationAttributeStep(): PendingStep {
+  return {
+    id: "singleton-choice-feat-fighter-dedication-attribute-level-1",
+    level: 1,
+    kind: "singleton-choice",
+    slotKind: "singleton-choice",
+    title: "Attribute",
+    description: "Select the class DC's key attribute.",
+    required: true,
+    slotId: "singleton-choice-feat-fighter-dedication-attribute-level-1",
+    singletonChoice: {
+      slotId: "singleton-choice-feat-fighter-dedication-attribute-level-1",
+      sourceItemType: "feat",
+      sourcePackId: "pf2e.feats-srd",
+      sourceDocumentId: "fighter-dedication",
+      sourceUuid: "Compendium.pf2e.feats-srd.Item.fighter-dedication",
+      sourceName: "Fighter Dedication",
+      sourceRuleIndex: 0,
+      flag: "attribute",
+      prompt: "Select the class DC's key attribute.",
+      options: [
+        { value: "str", label: "Strength", img: null, detail: null },
+        { value: "dex", label: "Dexterity", img: null, detail: null },
       ],
     },
   };

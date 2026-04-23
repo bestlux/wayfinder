@@ -31,6 +31,8 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
             ...deps.invalidateSelection(SLOT_IDS.heritage),
             ...(await deps.invalidateSingletonChoicesBySource("ancestry")),
             ...(await deps.invalidateSingletonChoicesBySource("heritage")),
+            ...(await deps.invalidateGrantSelectionsBySource("ancestry")),
+            ...(await deps.invalidateGrantSelectionsBySource("heritage")),
             ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.languageChoice),
             ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat),
         ];
@@ -49,6 +51,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
         const nextTraits = await deps.resolveSelectionTraits(selection);
         const invalidated = [
             ...(await deps.invalidateSingletonChoicesBySource("heritage")),
+            ...(await deps.invalidateGrantSelectionsBySource("heritage")),
             ...(!sameMembers(previousTraits, nextTraits)
                 ? deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat)
                 : []),
@@ -59,7 +62,10 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
         }
     }
     if (step.slotKind === "background" && previousSelection?.uuid !== selection.uuid) {
-        const invalidated = await deps.invalidateSingletonChoicesBySource("background");
+        const invalidated = [
+            ...(await deps.invalidateSingletonChoicesBySource("background")),
+            ...(await deps.invalidateGrantSelectionsBySource("background")),
+        ];
         const boostReset = deps.resetBackgroundBoostDraft();
         if (boostReset || invalidated.length > 0) {
             state.recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);
@@ -86,6 +92,10 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
                 ...(await deps.invalidateSingletonChoicesBySource("class")),
                 ...(await deps.invalidateSingletonChoicesBySource("deity")),
             ];
+            const grantInvalidated = [
+                ...(await deps.invalidateGrantSelectionsByDependency("class")),
+                ...(await deps.invalidateGrantSelectionsByDependency("deity")),
+            ];
             if (invalidated.length > 0 ||
                 deityInvalidated.length > 0 ||
                 branchInvalidated.length > 0 ||
@@ -93,6 +103,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
                 trainingInvalidated.length > 0 ||
                 spellInvalidated.length > 0 ||
                 singletonInvalidated.length > 0 ||
+                grantInvalidated.length > 0 ||
                 boostReset) {
                 statusNote = boostReset
                     ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, related singleton choices, spell, and class feat selections for review."
@@ -105,11 +116,21 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
     }
     if (step.slotKind === "deity" && previousSelection?.uuid !== selection.uuid) {
         const invalidatedSingletonChoices = await deps.invalidateSingletonChoicesBySource("deity");
+        const invalidatedGrantChoices = await deps.invalidateGrantSelectionsByDependency("deity");
         const invalidatedChoices = await deps.invalidateClassChoicesByDependency("deity");
         const invalidatedBranches = await deps.invalidateBranchSelectionsByDependency("deity");
-        if (invalidatedChoices.length > 0 || invalidatedBranches.length > 0 || invalidatedSingletonChoices.length > 0) {
+        if (invalidatedChoices.length > 0 ||
+            invalidatedBranches.length > 0 ||
+            invalidatedSingletonChoices.length > 0 ||
+            invalidatedGrantChoices.length > 0) {
             statusNote =
                 "Deity changed. Wayfinder marked dependent class choices, class paths, and deity-driven choices for review.";
+        }
+    }
+    if (step.slotKind === "ancestry-feat" && previousSelection?.uuid !== selection.uuid) {
+        const invalidated = await deps.invalidateGrantSelectionsBySource("feat");
+        if (invalidated.length > 0) {
+            statusNote = "Ancestry feat changed. Wayfinder marked dependent granted feat choices for review.";
         }
     }
     if (step.kind === "class-branch" && previousSelection?.uuid !== selection.uuid) {

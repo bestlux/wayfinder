@@ -256,6 +256,7 @@ function divineFontChoice(): ClassChoiceMeta {
 function clericDeityGrant(): ClassGrantMeta {
   return {
     slotId: "deity-level-1",
+    sourceItemType: "classfeature",
     selectorPackId: "pf2e.classfeatures",
     selectorDocumentId: "deity-cleric",
     selectorUuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
@@ -265,6 +266,10 @@ function clericDeityGrant(): ClassGrantMeta {
     flag: "deity",
     itemType: "deity",
     classSlug: "cleric",
+    dependsOn: "class",
+    filters: {
+      itemType: "deity",
+    },
   };
 }
 

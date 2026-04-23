@@ -72,15 +72,17 @@ export function buildSelectorSelection(
   packId: string,
   documentId: string,
   uuid: string,
-  name: string
+  name: string,
+  itemType = "feat",
+  featType: string | null = "classfeature"
 ): SelectionRef {
   return {
     slotId,
     packId,
     documentId,
     uuid,
-    itemType: "feat",
-    featType: "classfeature",
+    itemType,
+    featType,
     name,
     level: null,
   };
@@ -125,9 +127,18 @@ export async function applySelectorApplication(
     selectorUpdate[`flags.pf2e.rulesSelections.${selection.flag}`] = selection.value;
   }
 
-  let grantedItemUpdate: Record<string, unknown> | null = null;
   if (plan.grantPlan) {
     selectorUpdate[`flags.pf2e.rulesSelections.${plan.grantPlan.flag}`] = plan.grantPlan.selection.uuid;
+  }
+
+  if (plan.grantPlan && !createdSelector) {
+    // Existing actor-owned ChoiceSet sources must persist their selection before any granted item is created,
+    // otherwise PF2E can still surface the native prompt during the grant creation update.
+    await actor.updateEmbeddedDocuments("Item", [cloneData(selectorUpdate)]);
+  }
+
+  let grantedItemUpdate: Record<string, unknown> | null = null;
+  if (plan.grantPlan) {
     const grantedItemResult = await ensureGrantedItem(actor, selectorItem, plan.grantPlan, deps.createEmbeddedSource);
     if (grantedItemResult.item?.id) {
       selectorUpdate[`flags.pf2e.itemGrants.${plan.grantPlan.flag}`] = {

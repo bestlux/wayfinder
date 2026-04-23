@@ -414,6 +414,31 @@ describe("class-feature-choice-service", () => {
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
     expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
       {
+        _id: "selector-1",
+        "system.rules": [
+          {
+            key: "ChoiceSet",
+            flag: "deity",
+            choices: {
+              itemType: "deity",
+            },
+            selection: "Compendium.pf2e.deities.Item.iomedae",
+          },
+          {
+            key: "GrantItem",
+            uuid: "{item|flags.system.rulesSelections.deity}",
+          },
+          {
+            key: "GrantItem",
+            uuid: "Compendium.pf2e.classfeatures.Item.deific-weapon",
+          },
+        ],
+        "flags.pf2e.rulesSelections.deity": "Compendium.pf2e.deities.Item.iomedae",
+        "flags.pf2e-wayfinder.slotId": "deity-level-1",
+      },
+    ]);
+    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
+      {
         _id: "deity-1",
         "flags.core.sourceId": "Compendium.pf2e.deities.Item.iomedae",
         "flags.pf2e.grantedBy": {
@@ -424,7 +449,7 @@ describe("class-feature-choice-service", () => {
         "flags.pf2e-wayfinder.slotId": "deity-level-1",
       },
     ]);
-    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
+    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(3, "Item", [
       {
         _id: "selector-1",
         "system.rules": [
@@ -455,6 +480,159 @@ describe("class-feature-choice-service", () => {
       },
     ]);
   });
+
+  it("persists an existing heritage grant selection before creating the granted feat", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["grant-choice-class-heritage-ancient-elf-ancientElf-level-1"] = selection(
+      "pf2e.feats-srd",
+      "fighter-dedication",
+      "Fighter Dedication",
+      "feat"
+    );
+
+    let idCounter = 0;
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Wizard",
+            system: {},
+          },
+          {
+            id: "heritage-1",
+            type: "heritage",
+            name: "Ancient Elf",
+            flags: {
+              core: {
+                sourceId: "Compendium.pf2e.heritages.Item.ancient-elf",
+              },
+              pf2e: {
+                rulesSelections: {},
+              },
+            },
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "ancientElf",
+                  choices: {
+                    itemType: "feat",
+                    filter: [
+                      "item:level:1",
+                      "item:category:class",
+                      "item:trait:multiclass",
+                      {
+                        not: "{actor|system.details.class.trait}",
+                      },
+                    ],
+                  },
+                },
+                {
+                  key: "GrantItem",
+                  uuid: "{item|flags.system.rulesSelections.ancientElf}",
+                },
+              ],
+            },
+          },
+        ] as any[],
+      },
+      createEmbeddedDocuments: vi.fn(async (_type: string, sources: any[]) => {
+        const created = sources.map((source) => {
+          const item = {
+            id: `created-${++idCounter}`,
+            type: source.type,
+            name: source.name,
+            sourceId: source.flags?.core?.sourceId ?? null,
+            flags: source.flags ?? {},
+            system: source.system ?? {},
+            _stats: source._stats ?? {},
+          };
+          actor.items.contents.push(item);
+          return item;
+        });
+        return created;
+      }),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+    };
+
+    const sources = new Map<string, any>([
+      [
+        "Compendium.pf2e.feats-srd.Item.fighter-dedication",
+        featureSource("Fighter Dedication", "Compendium.pf2e.feats-srd.Item.fighter-dedication", {
+          featType: { value: "class" },
+          level: { value: 1 },
+          traits: { value: ["archetype", "multiclass"] },
+        }),
+      ],
+    ]);
+
+    await applyClassFeatureChoiceDraft(actor as any, draft, [ancientElfDedicationStep()], {
+      createEmbeddedSource: async (selection) => {
+        const source = sources.get(selection.uuid);
+        return source ? structuredClone(source) : null;
+      },
+      fetchSelectionDocument: async () => null,
+    });
+
+    expect(actor.updateEmbeddedDocuments.mock.invocationCallOrder[0]).toBeLessThan(
+      actor.createEmbeddedDocuments.mock.invocationCallOrder[0]
+    );
+    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      {
+        _id: "heritage-1",
+        "system.rules": [
+          {
+            key: "ChoiceSet",
+            flag: "ancientElf",
+            choices: {
+              itemType: "feat",
+              filter: [
+                "item:level:1",
+                "item:category:class",
+                "item:trait:multiclass",
+                {
+                  not: "{actor|system.details.class.trait}",
+                },
+              ],
+            },
+            selection: "Compendium.pf2e.feats-srd.Item.fighter-dedication",
+          },
+          {
+            key: "GrantItem",
+            uuid: "{item|flags.system.rulesSelections.ancientElf}",
+          },
+        ],
+        "flags.pf2e.rulesSelections.ancientElf": "Compendium.pf2e.feats-srd.Item.fighter-dedication",
+        "flags.pf2e-wayfinder.slotId": "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+      },
+    ]);
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      expect.objectContaining({
+        name: "Fighter Dedication",
+        flags: expect.objectContaining({
+          pf2e: expect.objectContaining({
+            grantedBy: {
+              id: "heritage-1",
+              onDelete: "cascade",
+            },
+          }),
+        }),
+      }),
+    ]);
+    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
+      expect.objectContaining({
+        _id: "heritage-1",
+        "flags.pf2e.itemGrants.ancientElf": {
+          id: "created-1",
+          onDelete: "detach",
+          nested: null,
+        },
+      }),
+    ]);
+  });
 });
 
 function deityStep(): PendingStep {
@@ -470,6 +648,7 @@ function deityStep(): PendingStep {
     filters: { itemType: "deity" },
     grantSelection: {
       slotId: "deity-level-1",
+      sourceItemType: "classfeature",
       selectorPackId: "pf2e.classfeatures",
       selectorDocumentId: "deity-cleric",
       selectorUuid: "Compendium.pf2e.classfeatures.Item.deity-cleric",
@@ -479,6 +658,10 @@ function deityStep(): PendingStep {
       flag: "deity",
       itemType: "deity",
       classSlug: "cleric",
+      dependsOn: "class",
+      filters: {
+        itemType: "deity",
+      },
     },
   };
 }
@@ -496,6 +679,7 @@ function championDeityStep(): PendingStep {
     filters: { itemType: "deity" },
     grantSelection: {
       slotId: "deity-level-1",
+      sourceItemType: "classfeature",
       selectorPackId: "pf2e.classfeatures",
       selectorDocumentId: "deity-champion",
       selectorUuid: "Compendium.pf2e.classfeatures.Item.deity-champion",
@@ -505,6 +689,43 @@ function championDeityStep(): PendingStep {
       flag: "deity",
       itemType: "deity",
       classSlug: "champion",
+      dependsOn: "class",
+      filters: {
+        itemType: "deity",
+      },
+    },
+  };
+}
+
+function ancientElfDedicationStep(): PendingStep {
+  return {
+    id: "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "grant-choice",
+    title: "Ancient Elf feat grant",
+    description: "",
+    required: true,
+    slotId: "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+    filters: {
+      itemType: "feat",
+    },
+    grantSelection: {
+      slotId: "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+      sourceItemType: "heritage",
+      selectorPackId: "pf2e.heritages",
+      selectorDocumentId: "ancient-elf",
+      selectorUuid: "Compendium.pf2e.heritages.Item.ancient-elf",
+      selectorName: "Ancient Elf",
+      selectorRuleIndex: 0,
+      grantRuleIndex: 1,
+      flag: "ancientElf",
+      itemType: "feat",
+      classSlug: null,
+      dependsOn: "class",
+      filters: {
+        itemType: "feat",
+      },
     },
   };
 }

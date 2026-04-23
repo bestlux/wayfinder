@@ -1,12 +1,13 @@
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, } from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
 export function discoverSingletonChoiceMeta(args) {
-    const { sourceItemType, sourceDocument, sourceSelection, extractSlug, localize } = args;
+    const { sourceItemType, sourceDocument, sourceSelection, sourceLevel, extractSlug, localize } = args;
     const document = sourceDocument;
     return discoverSingletonChoiceSpecs({
         sourceItemType,
         sourceDocument,
         sourceSlug: extractSlug(sourceDocument) ?? sourceSelection.documentId,
+        sourceLevel,
         localize,
     }).map((choice) => ({
         slotId: choice.slotId,
@@ -22,9 +23,9 @@ export function discoverSingletonChoiceMeta(args) {
     }));
 }
 export function discoverSingletonChoiceSpecs(args) {
-    const { sourceItemType, sourceDocument, sourceSlug, localize } = args;
+    const { sourceItemType, sourceDocument, sourceSlug, sourceLevel, localize } = args;
     const document = sourceDocument;
-    const level = toFeatureLevel(document?.system?.level?.value);
+    const level = sourceLevel ?? toFeatureLevel(document?.system?.level?.value);
     const configuredSkills = getConfiguredSkills();
     return findRelevantRules(sourceDocument).flatMap((rule, sourceRuleIndex) => {
         const flag = extractChoiceKey(rule);
@@ -52,7 +53,7 @@ export function discoverSingletonChoiceSpecs(args) {
 function shouldSkipSingletonChoice(sourceItemType, optionDomain) {
     // Starting skill and lore choices belong to the skill training workflow so
     // they stay in one draft store and do not reappear as separate singleton steps.
-    return ["ancestry", "heritage", "background", "class"].includes(sourceItemType) && optionDomain !== "generic";
+    return ["ancestry", "heritage", "background", "class", "feat"].includes(sourceItemType) && optionDomain !== "generic";
 }
 function findRelevantRules(document) {
     const rules = document?.system?.rules;

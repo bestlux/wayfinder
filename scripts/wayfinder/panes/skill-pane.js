@@ -88,13 +88,22 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
                 .filter(([key, slug]) => key !== choiceRule.key && typeof slug === "string" && slug.length > 0)
                 .map(([, slug]) => slug),
         ]);
+        const fallbackOptions = Array.isArray(choiceRule.fallbackOptions) && choiceRule.fallbackOptions.length > 0
+            ? choiceRule.fallbackOptions
+            : [];
+        const selectedIsPrimary = !!selectedSlug && choiceRule.options.some((option) => option.slug === selectedSlug);
+        const selectedIsFallbackOnly = !!selectedSlug && !selectedIsPrimary && fallbackOptions.some((option) => option.slug === selectedSlug);
+        const useFallbackOptions = fallbackOptions.length > 0 &&
+            (primaryOptionsFullyUnavailable(choiceRule.options, reservedByOtherChoices, projectedRanks, selectedSlug) ||
+                selectedIsFallbackOnly);
+        const visibleOptions = useFallbackOptions ? fallbackOptions : choiceRule.options;
         return {
             key: choiceRule.key,
-            prompt: choiceRule.prompt,
+            prompt: useFallbackOptions ? (choiceRule.fallbackPrompt ?? choiceRule.prompt) : choiceRule.prompt,
             sourceLabel: choiceRule.sourceLabel,
             selectedSlug,
             selectedLabel: selectedSlug ? (SKILL_LABELS[selectedSlug] ?? formatSlug(selectedSlug)) : null,
-            options: choiceRule.options.map((option) => ({
+            options: visibleOptions.map((option) => ({
                 ...option,
                 selected: option.slug === selectedSlug,
                 disabled: option.slug !== selectedSlug &&
@@ -164,6 +173,14 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
         additionalRemaining: Math.max(0, metadata.additionalCount - training.additional.length),
         additionalSkills,
     };
+}
+function primaryOptionsFullyUnavailable(options, reservedByOtherChoices, projectedRanks, selectedSlug) {
+    return options.every((option) => {
+        if (option.slug === selectedSlug) {
+            return false;
+        }
+        return reservedByOtherChoices.has(option.slug) || (projectedRanks[option.slug] ?? 0) >= 1;
+    });
 }
 function emptyTrainingDraft() {
     return { ruleChoices: {}, additional: [], loreChoices: {} };

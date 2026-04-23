@@ -35,6 +35,9 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
         deps.stripPreselectedClassFeatureEntries(source, draft, steps);
         deps.stripPreselectedClassBranchEntries(source, draft, steps);
     }
+    if (draft && SINGLETON_ITEM_TYPES.has(selection.itemType)) {
+        applyPendingGrantChoiceSelections(source, selection, draft, steps);
+    }
     delete source._id;
     source._stats ??= {};
     source._stats.compendiumSource = selection.uuid;
@@ -46,6 +49,29 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
         slotId: selection.slotId,
     };
     return source;
+}
+function applyPendingGrantChoiceSelections(source, selection, draft, steps) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    if (rules.length === 0) {
+        return;
+    }
+    source.flags ??= {};
+    source.flags.pf2e ??= {};
+    source.flags.pf2e.rulesSelections ??= {};
+    for (const step of steps) {
+        if (step.kind !== "pick-item" || !step.grantSelection || step.grantSelection.selectorUuid !== selection.uuid) {
+            continue;
+        }
+        const grantedSelection = draft.selections[step.slotId];
+        if (!grantedSelection) {
+            continue;
+        }
+        const rule = rules[step.grantSelection.selectorRuleIndex];
+        if (rule && typeof rule === "object") {
+            rule.selection = grantedSelection.uuid;
+        }
+        source.flags.pf2e.rulesSelections[step.grantSelection.flag] = grantedSelection.uuid;
+    }
 }
 export async function insertFeatSelection(actor, selection, step, deps = DEFAULT_INSERT_DEPS) {
     const document = await deps.fetchSelectionDocument(selection);

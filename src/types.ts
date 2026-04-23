@@ -4,11 +4,13 @@ import type { PendingStep } from "./wayfinder/domain/step-types.js";
 export type { DraftDecision, SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
 export type {
   BoostStep,
+  ChoicePredicate,
   ClassBranchMeta,
   ClassBranchStep,
   ClassChoiceMeta,
   ClassChoiceStep,
   ClassGrantMeta,
+  GrantSelectionMeta,
   LanguageChoiceMeta,
   LanguageChoiceStep,
   ManualStep,

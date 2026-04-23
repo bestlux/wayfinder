@@ -1,10 +1,10 @@
-import type { SelectionRef, SingletonChoiceStep } from "../../types.js";
+import type { SelectionRef, SingletonChoiceMeta, SingletonChoiceStep } from "../../types.js";
 import { createSingletonChoiceStep } from "../domain/step-types.js";
 import { formatSlug } from "../formatting.js";
 import { discoverSingletonChoiceMeta } from "./rule-discovery.js";
 
 export function buildSingletonChoiceStepsFromRules(args: {
-  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity";
+  sourceItemType: SingletonChoiceMeta["sourceItemType"];
   effectiveSourceDocument: unknown | null;
   sourceSelection: SelectionRef | null;
   extractSlug: (document: unknown) => string | null;
@@ -15,14 +15,16 @@ export function buildSingletonChoiceStepsFromRules(args: {
     return [];
   }
 
+  const sourceLevel = choiceSourceLevel(sourceSelection, effectiveSourceDocument);
   return discoverSingletonChoiceMeta({
     sourceItemType,
     sourceDocument: effectiveSourceDocument,
     sourceSelection,
+    sourceLevel,
     extractSlug,
     localize,
   }).map((choice) =>
-    createSingletonChoiceStep(choiceSourceLevel(effectiveSourceDocument), choice, {
+    createSingletonChoiceStep(sourceLevel, choice, {
       title: formatChoiceFlag(choice.flag),
       description:
         choice.prompt ?? `Choose the ${formatChoiceFlag(choice.flag).toLowerCase()} this ${sourceItemType} grants.`,
@@ -30,7 +32,12 @@ export function buildSingletonChoiceStepsFromRules(args: {
   );
 }
 
-function choiceSourceLevel(document: unknown): number {
+function choiceSourceLevel(selection: SelectionRef, document: unknown): number {
+  const slotLevel = /-level-(\d+)$/.exec(selection.slotId)?.[1];
+  if (slotLevel) {
+    return Math.max(1, Number(slotLevel));
+  }
+
   const value = (document as { system?: { level?: { value?: unknown } } } | null | undefined)?.system?.level?.value;
   const number = Number(value);
   return Number.isFinite(number) && number >= 1 ? Math.floor(number) : 1;

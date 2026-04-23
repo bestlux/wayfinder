@@ -262,6 +262,14 @@ function matchesFilters(entry, step, context, traitCatalog) {
             return false;
         }
     }
+    if (Array.isArray(filters.predicate) && filters.predicate.length > 0) {
+        if (!matchesChoicePredicate(filters.predicate, entry, context)) {
+            return false;
+        }
+        if (matchesCurrentClassMulticlassDedication(entry, filters.predicate, context)) {
+            return false;
+        }
+    }
     if (step.slotKind === "heritage" && context.ancestrySlug) {
         const heritageAncestrySlug = stringOrNull(entry?.system?.ancestry?.slug);
         if (heritageAncestrySlug && heritageAncestrySlug !== context.ancestrySlug) {
@@ -431,6 +439,89 @@ function matchesSpellChoiceContext(entry, step) {
         return rarity === "" || rarity === "common";
     }
     return spellChoice.curriculumSpellNames.some((name) => namesMatch(name, entryName));
+}
+function matchesChoicePredicate(predicate, entry, context) {
+    if (typeof predicate === "string") {
+        return matchesChoicePredicateString(predicate, entry, context);
+    }
+    if (Array.isArray(predicate)) {
+        return predicate.every((entryPredicate) => matchesChoicePredicate(entryPredicate, entry, context));
+    }
+    if (Array.isArray(predicate.or)) {
+        return predicate.or.some((entryPredicate) => matchesChoicePredicate(entryPredicate, entry, context));
+    }
+    if (Array.isArray(predicate.nor)) {
+        return predicate.nor.every((entryPredicate) => !matchesChoicePredicate(entryPredicate, entry, context));
+    }
+    if (predicate.not) {
+        return !matchesChoicePredicate(predicate.not, entry, context);
+    }
+    return true;
+}
+function matchesChoicePredicateString(statement, entry, context) {
+    const resolved = resolveInjectedPredicateString(statement, context);
+    if (!resolved) {
+        return false;
+    }
+    const itemSlug = extractEntrySlug(entry);
+    const itemTraits = extractEntryTraits(entry);
+    if (resolved.startsWith("item:level:")) {
+        const expectedLevel = Number(resolved.slice("item:level:".length));
+        const level = numericOrNull(entry?.system?.level?.value);
+        return Number.isFinite(expectedLevel) && level === expectedLevel;
+    }
+    if (resolved.startsWith("item:category:")) {
+        const expectedCategory = resolved.slice("item:category:".length).trim().toLowerCase();
+        const category = stringOrNull(entry?.system?.category)?.trim().toLowerCase();
+        const featType = resolveFeatType(entry)?.trim().toLowerCase();
+        return category === expectedCategory || featType === expectedCategory;
+    }
+    if (resolved.startsWith("item:trait:")) {
+        const expectedTrait = resolved.slice("item:trait:".length).trim().toLowerCase();
+        return itemTraits.includes(expectedTrait);
+    }
+    if (resolved.startsWith("item:")) {
+        const expectedSlug = resolved.slice("item:".length).trim().toLowerCase();
+        return itemSlug === expectedSlug;
+    }
+    if (resolved.startsWith("feature:")) {
+        return false;
+    }
+    return false;
+}
+function resolveInjectedPredicateString(statement, context) {
+    const trimmed = statement.trim();
+    if (!trimmed) {
+        return null;
+    }
+    return trimmed.replace(/\{actor\|([^}]+)\}/g, (_, path) => {
+        switch (path.trim()) {
+            case "system.details.class.trait":
+                return context.classSlug ?? "";
+            case "system.details.ancestry.trait":
+                return context.ancestrySlug ?? "";
+            default:
+                return "";
+        }
+    });
+}
+function matchesCurrentClassMulticlassDedication(entry, predicate, context) {
+    const classSlug = context.classSlug?.trim().toLowerCase();
+    if (!classSlug || !predicateIncludesString(predicate, "item:trait:multiclass")) {
+        return false;
+    }
+    return extractEntryTraits(entry).includes(classSlug);
+}
+function predicateIncludesString(predicate, target) {
+    if (typeof predicate === "string") {
+        return predicate.includes(target);
+    }
+    if (Array.isArray(predicate)) {
+        return predicate.some((entry) => predicateIncludesString(entry, target));
+    }
+    return ((Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
+        (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
+        (!!predicate.not && predicateIncludesString(predicate.not, target)));
 }
 function normalizeTraitList(value) {
     if (!Array.isArray(value)) {

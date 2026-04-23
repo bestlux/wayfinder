@@ -1,4 +1,4 @@
-import type { AbilityKey, BoostLevel, OptionRecord, PickerInfoState } from "../types.js";
+import type { AbilityKey, BoostLevel, OptionRecord, PickerInfoState, SingletonChoiceMeta } from "../types.js";
 
 export interface StepNavRow {
   id: string;
@@ -324,7 +324,7 @@ export interface SingletonChoiceStepPane {
   completed: boolean;
   selectedLabel: string;
   sourceName: string;
-  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity";
+  sourceItemType: SingletonChoiceMeta["sourceItemType"];
   options: Array<{
     value: string;
     label: string;

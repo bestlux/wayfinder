@@ -47,6 +47,8 @@ describe("wayfinder selection command service", () => {
         return invalidatedPrefixes.has(prefix) ? [prefix] : [];
       },
       invalidateSingletonChoicesBySource: async () => [],
+      invalidateGrantSelectionsBySource: async () => [],
+      invalidateGrantSelectionsByDependency: async () => [],
       invalidateClassChoicesByDependency: async () => [],
       invalidateBranchSelectionsByDependency: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
@@ -98,6 +100,8 @@ describe("wayfinder selection command service", () => {
       invalidateSelection: () => [],
       invalidateSelectionsByPrefix: () => [],
       invalidateSingletonChoicesBySource: async () => [],
+      invalidateGrantSelectionsBySource: async () => [],
+      invalidateGrantSelectionsByDependency: async () => [],
       invalidateClassChoicesByDependency: async () => ["class-choice-champion-sanctification-level-1"],
       invalidateBranchSelectionsByDependency: async () => ["class-branch-cause-level-1"],
       invalidateSpellChoicesByDependency: async () => [],
@@ -140,6 +144,8 @@ describe("wayfinder selection command service", () => {
       invalidateSelectionsByPrefix: () => [],
       invalidateSingletonChoicesBySource: async (sourceItemType) =>
         sourceItemType === "heritage" ? ["singleton-choice-heritage-arctic-elf-language-level-1"] : [],
+      invalidateGrantSelectionsBySource: async () => [],
+      invalidateGrantSelectionsByDependency: async () => [],
       invalidateClassChoicesByDependency: async () => [],
       invalidateBranchSelectionsByDependency: async () => [],
       invalidateSpellChoicesByDependency: async () => [],

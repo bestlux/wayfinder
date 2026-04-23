@@ -36,15 +36,17 @@ export function discoverSingletonChoiceMeta(args: {
   sourceItemType: SingletonChoiceMeta["sourceItemType"];
   sourceDocument: unknown;
   sourceSelection: SelectionRef;
+  sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
 }): SingletonChoiceMeta[] {
-  const { sourceItemType, sourceDocument, sourceSelection, extractSlug, localize } = args;
+  const { sourceItemType, sourceDocument, sourceSelection, sourceLevel, extractSlug, localize } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
   return discoverSingletonChoiceSpecs({
     sourceItemType,
     sourceDocument,
     sourceSlug: extractSlug(sourceDocument) ?? sourceSelection.documentId,
+    sourceLevel,
     localize,
   }).map(
     (choice) =>
@@ -67,11 +69,12 @@ export function discoverSingletonChoiceSpecs(args: {
   sourceItemType: SingletonChoiceMeta["sourceItemType"];
   sourceDocument: unknown;
   sourceSlug: string;
+  sourceLevel?: number;
   localize: (value: string) => string;
 }): SingletonChoiceSpec[] {
-  const { sourceItemType, sourceDocument, sourceSlug, localize } = args;
+  const { sourceItemType, sourceDocument, sourceSlug, sourceLevel, localize } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
-  const level = toFeatureLevel(document?.system?.level?.value);
+  const level = sourceLevel ?? toFeatureLevel(document?.system?.level?.value);
   const configuredSkills = getConfiguredSkills();
 
   return findRelevantRules(sourceDocument).flatMap((rule, sourceRuleIndex) => {
@@ -108,7 +111,7 @@ function shouldSkipSingletonChoice(
 ): boolean {
   // Starting skill and lore choices belong to the skill training workflow so
   // they stay in one draft store and do not reappear as separate singleton steps.
-  return ["ancestry", "heritage", "background", "class"].includes(sourceItemType) && optionDomain !== "generic";
+  return ["ancestry", "heritage", "background", "class", "feat"].includes(sourceItemType) && optionDomain !== "generic";
 }
 
 function findRelevantRules(document: unknown): Array<Record<string, unknown>> {

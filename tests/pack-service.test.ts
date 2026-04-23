@@ -218,6 +218,45 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Combat Flexibility"]);
   });
 
+  it("filters grant-choice feat options from raw ChoiceSet predicates", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("incredible-initiative", "Incredible Initiative", "general", ["general"]),
+      featEntry("battle-medicine", "Battle Medicine", "skill", ["healing"]),
+      featEntry("fleet", "Fleet", "general", ["general"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("grant-choice", {
+        itemType: "feat",
+        predicate: ["item:level:1", "item:trait:general"],
+      }),
+      EMPTY_CONTEXT
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Fleet", "Incredible Initiative"]);
+  });
+
+  it("excludes the actor's own class from multiclass dedication grant choices", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("fighter-dedication", "Fighter Dedication", "class", ["fighter", "dedication", "multiclass"]),
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["wizard", "dedication", "multiclass"]),
+      featEntry("rogue-dedication", "Rogue Dedication", "class", ["rogue", "dedication", "multiclass"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("grant-choice", {
+        itemType: "feat",
+        predicate: ["item:category:class", "item:trait:dedication", "item:trait:multiclass"],
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "wizard",
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Fighter Dedication", "Rogue Dedication"]);
+  });
+
   it("hides archetype-tagged skill feats from generic skill-feat steps", async () => {
     setPack("pf2e.feats-srd", [
       featEntry("battle-medicine", "Battle Medicine", "skill", ["healing"]),

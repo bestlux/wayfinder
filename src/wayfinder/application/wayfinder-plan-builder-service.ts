@@ -31,6 +31,7 @@ import {
   readExistingSingletonChoiceSelection,
   readExistingSingletonSourceSelection,
 } from "../existing-selection-service.js";
+import { buildGrantChoiceSteps, type GrantChoiceSourceContext } from "../grant-choice-service.js";
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { buildSingletonChoiceSteps, type SingletonChoiceSourceContext } from "../singleton-choice-service.js";
@@ -55,6 +56,7 @@ interface BuildWayfinderAppPlanDependencies {
   buildWayfinderPlan: typeof buildWayfinderPlan;
   buildClassFeatSteps: typeof buildClassFeatSteps;
   buildClassTrainingSteps: typeof buildClassTrainingSteps;
+  buildGrantChoiceSteps: typeof buildGrantChoiceSteps;
   buildSingletonChoiceSteps: typeof buildSingletonChoiceSteps;
   buildLanguageChoiceSteps: typeof buildLanguageChoiceSteps;
   buildClassBranchSteps: typeof buildClassBranchSteps;
@@ -77,6 +79,7 @@ const DEFAULT_DEPS: BuildWayfinderAppPlanDependencies = {
   buildWayfinderPlan,
   buildClassFeatSteps,
   buildClassTrainingSteps,
+  buildGrantChoiceSteps,
   buildSingletonChoiceSteps,
   buildLanguageChoiceSteps,
   buildClassBranchSteps,
@@ -141,6 +144,22 @@ export async function buildWayfinderAppPlan(
         localize: args.localize,
       });
     },
+    buildGrantChoiceSteps: async (_planSnapshot, planDraft, targetLevel) =>
+      deps.buildGrantChoiceSteps({
+        draft: planDraft,
+        targetLevel,
+        hasClassSelection: !!(
+          deps.findDraftSelectionByType(planDraft, "class") ??
+          deps.readExistingSingletonSourceSelection(args.actor, "class")
+        ),
+        hasDeitySelection: !!(
+          deps.findDraftSelectionByType(planDraft, "deity") ??
+          deps.readExistingSingletonSourceSelection(args.actor, "deity")
+        ),
+        sources: await resolveGrantChoiceSources(planDraft, args, deps),
+        extractSlug: deps.extractDocumentSlug,
+        readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
+      }),
     buildSingletonChoiceSteps: async (_planSnapshot, planDraft, targetLevel) =>
       deps.buildSingletonChoiceSteps({
         draft: planDraft,
@@ -253,7 +272,7 @@ async function resolveSingletonChoiceSources(
   ] as const satisfies readonly SingletonItemType[];
   const documents = await Promise.all(itemTypes.map((itemType) => args.resolveDocument(itemType)));
 
-  return itemTypes
+  const singletonItemSources = itemTypes
     .map((itemType, index) => {
       const sourceSelection =
         deps.findDraftSelectionByType(draft, itemType) ??
@@ -265,6 +284,27 @@ async function resolveSingletonChoiceSources(
       } satisfies SingletonChoiceSourceContext;
     })
     .filter((entry) => !!entry.sourceSelection && !!entry.sourceDocument);
+  const featSelections = dedupeSelectionsByUuid([
+    ...Object.values(draft.selections).filter(isSingletonChoiceFeatSelection),
+    ...readExistingSkillTrainingFeatSelections(args.actor),
+  ]);
+  const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+
+  return [
+    ...singletonItemSources,
+    ...featSelections.flatMap((sourceSelection, index) => {
+      const sourceDocument = featDocuments[index];
+      return sourceDocument
+        ? [
+            {
+              sourceItemType: "feat",
+              sourceSelection,
+              sourceDocument,
+            } satisfies SingletonChoiceSourceContext,
+          ]
+        : [];
+    }),
+  ];
 }
 
 async function resolveSkillTrainingFeatSources(
@@ -273,8 +313,8 @@ async function resolveSkillTrainingFeatSources(
   deps: BuildWayfinderAppPlanDependencies
 ): Promise<SkillTrainingSourceContext[]> {
   const featSelections = dedupeSelectionsByUuid([
-    ...Object.values(draft.selections).filter(isAncestryFeatSelection),
-    ...readExistingAncestryFeatSelections(args.actor),
+    ...Object.values(draft.selections).filter(isSkillTrainingFeatSelection),
+    ...readExistingSkillTrainingFeatSelections(args.actor),
   ]);
   const documents = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
 
@@ -292,17 +332,73 @@ async function resolveSkillTrainingFeatSources(
   });
 }
 
+async function resolveGrantChoiceSources(
+  draft: DraftState,
+  args: BuildWayfinderAppPlanArgs,
+  deps: BuildWayfinderAppPlanDependencies
+): Promise<GrantChoiceSourceContext[]> {
+  const sourceItemTypes = ["ancestry", "heritage", "background"] as const;
+  const sourceDocuments = await Promise.all(sourceItemTypes.map((itemType) => args.resolveDocument(itemType)));
+  const featSelections = dedupeSelectionsByUuid([
+    ...Object.values(draft.selections).filter(isAncestryFeatSelection),
+    ...readExistingSkillTrainingFeatSelections(args.actor).filter(isAncestryFeatSelection),
+  ]);
+  const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+
+  return [
+    ...sourceItemTypes.flatMap((sourceItemType, index) => {
+      const sourceSelection =
+        deps.findDraftSelectionByType(draft, sourceItemType) ??
+        deps.readExistingSingletonSourceSelection(args.actor, sourceItemType);
+      const sourceDocument = sourceDocuments[index];
+      return sourceSelection && sourceDocument
+        ? [
+            {
+              sourceItemType,
+              sourceSelection,
+              sourceDocument,
+            } satisfies GrantChoiceSourceContext,
+          ]
+        : [];
+    }),
+    ...featSelections.flatMap((sourceSelection, index) => {
+      const sourceDocument = featDocuments[index];
+      return sourceDocument
+        ? [
+            {
+              sourceItemType: "feat",
+              sourceSelection,
+              sourceDocument,
+            } satisfies GrantChoiceSourceContext,
+          ]
+        : [];
+    }),
+  ];
+}
+
 function isAncestryFeatSelection(selection: SelectionRef): boolean {
   return selection.itemType === "feat" && selection.featType === "ancestry";
 }
 
-function readExistingAncestryFeatSelections(actor: ActorLike): SelectionRef[] {
+function isGrantChoiceFeatSelection(selection: SelectionRef): boolean {
+  return selection.itemType === "feat" && selection.slotId.startsWith("grant-choice-");
+}
+
+function isSkillTrainingFeatSelection(selection: SelectionRef): boolean {
+  return isAncestryFeatSelection(selection) || isGrantChoiceFeatSelection(selection);
+}
+
+function isSingletonChoiceFeatSelection(selection: SelectionRef): boolean {
+  return isGrantChoiceFeatSelection(selection);
+}
+
+function readExistingSkillTrainingFeatSelections(actor: ActorLike): SelectionRef[] {
   return listActorItems(actor)
-    .map((item) => selectionFromAncestryFeatItem(item))
+    .map((item) => selectionFromSkillTrainingFeatItem(item))
     .filter((selection): selection is SelectionRef => selection !== null);
 }
 
-function selectionFromAncestryFeatItem(item: unknown): SelectionRef | null {
+function selectionFromSkillTrainingFeatItem(item: unknown): SelectionRef | null {
   const typedItem = item as {
     type?: unknown;
     name?: unknown;
@@ -322,7 +418,12 @@ function selectionFromAncestryFeatItem(item: unknown): SelectionRef | null {
   }
 
   const featType = typedItem.system?.featType?.value ?? typedItem.system?.category;
-  if (featType !== "ancestry") {
+  const existingSlotId =
+    typeof typedItem.flags?.[MODULE_ID]?.slotId === "string" && typedItem.flags[MODULE_ID].slotId.length > 0
+      ? typedItem.flags[MODULE_ID].slotId
+      : null;
+  const isSupportedFeat = featType === "ancestry" || !!existingSlotId?.startsWith("grant-choice-");
+  if (!isSupportedFeat) {
     return null;
   }
 
@@ -337,10 +438,7 @@ function selectionFromAncestryFeatItem(item: unknown): SelectionRef | null {
   }
 
   const level = toPositiveInteger(typedItem.system?.level?.value) ?? 1;
-  const slotId =
-    typeof typedItem.flags?.[MODULE_ID]?.slotId === "string" && typedItem.flags[MODULE_ID].slotId.length > 0
-      ? typedItem.flags[MODULE_ID].slotId
-      : `ancestry-feat-level-${level}`;
+  const slotId = existingSlotId ?? `ancestry-feat-level-${level}`;
 
   return {
     slotId,

@@ -2,7 +2,7 @@ import type { DraftState, PendingStep, SelectionRef, SingletonChoiceMeta } from 
 import { buildSingletonChoiceStepsFromRules } from "./singleton-choice/step-builders.js";
 
 export interface SingletonChoiceSourceContext {
-  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity";
+  sourceItemType: SingletonChoiceMeta["sourceItemType"];
   sourceSelection: SelectionRef | null;
   sourceDocument: unknown | null;
 }

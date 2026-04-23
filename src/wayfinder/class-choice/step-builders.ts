@@ -150,15 +150,13 @@ function buildClassGrantedItemStepsFromFeatures(
 
     steps.push(
       createPickItemStep(
-        grant.itemType,
+        grant.itemType === "deity" ? "deity" : "grant-choice",
         feature.level,
         grant.itemType === "deity" ? "Choose a deity" : `Choose ${grant.selectorName.toLowerCase()}`,
         grant.itemType === "deity"
           ? "Choose the deity that grants your divine skill, favored weapon, sanctification, and divine font."
           : `Choose the ${grant.selectorName.toLowerCase()} this class feature grants.`,
-        {
-          itemType: grant.itemType,
-        },
+        grant.filters,
         {
           slotId: grant.slotId,
           grantSelection: grant,

@@ -232,6 +232,71 @@ describe("wayfinder singleton-choice step-builders", () => {
 
     expect(steps).toEqual([]);
   });
+
+  it("builds feat-owned generic choices while leaving feat skill choices to skill training", () => {
+    const steps = buildSingletonChoiceStepsFromRules({
+      sourceItemType: "feat",
+      effectiveSourceDocument: {
+        name: "Fighter Dedication",
+        system: {
+          slug: "fighter-dedication",
+          level: { value: 2 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "attribute",
+              prompt: "PF2E.SpecificRule.Prompt.ClassDCAbilityScore",
+              choices: [
+                { value: "str", label: "PF2E.AbilityStr" },
+                { value: "dex", label: "PF2E.AbilityDex" },
+              ],
+            },
+            {
+              key: "ChoiceSet",
+              flag: "skill",
+              prompt: "PF2E.SpecificRule.Prompt.Skill",
+              choices: [
+                { value: "acrobatics", label: "PF2E.Skill.Acrobatics" },
+                { value: "athletics", label: "PF2E.Skill.Athletics" },
+              ],
+            },
+          ],
+        },
+      },
+      sourceSelection: selection(
+        "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+        "feat",
+        "fighter-dedication",
+        "Fighter Dedication"
+      ),
+      extractSlug: (document) => (document as { system?: { slug?: string } })?.system?.slug ?? null,
+      localize: (value) =>
+        value
+          .replace("PF2E.SpecificRule.Prompt.ClassDCAbilityScore", "Select the class DC's key attribute.")
+          .replace("PF2E.AbilityStr", "Strength")
+          .replace("PF2E.AbilityDex", "Dexterity")
+          .replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(steps).toMatchObject([
+      {
+        kind: "singleton-choice",
+        level: 1,
+        slotId: "singleton-choice-feat-fighter-dedication-attribute-level-1",
+        title: "Attribute",
+        description: "Select the class DC's key attribute.",
+        singletonChoice: {
+          sourceName: "Fighter Dedication",
+          sourceItemType: "feat",
+          flag: "attribute",
+          options: [
+            { value: "str", label: "Strength" },
+            { value: "dex", label: "Dexterity" },
+          ],
+        },
+      },
+    ]);
+  });
 });
 
 function selection(slotId: string, itemType: string, documentId: string, name = documentId): SelectionRef {

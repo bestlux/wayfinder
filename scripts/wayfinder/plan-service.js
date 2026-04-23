@@ -3,9 +3,10 @@ import { getWayfinderStepStatus as getDomainStepStatus, isWayfinderStepComplete 
 import { getStepModeLabel } from "./domain/step-types.js";
 export async function buildWayfinderPlan(snapshot, draft, deps) {
     const plan = buildProgressionPlan(snapshot, draft.targetLevel);
-    const [classFeatSteps, trainingSteps, singletonChoiceSteps, languageChoiceSteps, branchSteps, grantedItemSteps, classChoiceSteps, spellChoiceSteps,] = await Promise.all([
+    const [classFeatSteps, trainingSteps, grantChoiceSteps, singletonChoiceSteps, languageChoiceSteps, branchSteps, grantedItemSteps, classChoiceSteps, spellChoiceSteps,] = await Promise.all([
         deps.buildClassFeatSteps(snapshot, draft, plan.targetLevel),
         deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
+        deps.buildGrantChoiceSteps(snapshot, draft, plan.targetLevel),
         deps.buildSingletonChoiceSteps(snapshot, draft, plan.targetLevel),
         deps.buildLanguageChoiceSteps(snapshot, draft, plan.targetLevel),
         deps.buildClassBranchSteps(snapshot, draft, plan.targetLevel),
@@ -20,6 +21,7 @@ export async function buildWayfinderPlan(snapshot, draft, deps) {
             ...classFeatSteps,
             ...grantedItemSteps,
             ...trainingSteps,
+            ...grantChoiceSteps,
             ...singletonChoiceSteps,
             ...languageChoiceSteps,
             ...branchSteps,

@@ -59,6 +59,7 @@ export async function applyDraftToActor(
     await insertFeatSelection(actor, selection, step ?? null);
   }
 
+  await applySingletonChoiceDraft(actor, draft, steps);
   await applySpellChoiceDraft(actor, draft, steps);
   await applyBoostDraft(actor, draft);
   await applySkillIncreaseDraft(actor, draft, projectedTrainingRanks);

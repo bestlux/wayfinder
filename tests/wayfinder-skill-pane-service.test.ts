@@ -235,6 +235,142 @@ describe("wayfinder skill pane service", () => {
     expect(pane.additionalSkills.map((entry) => entry.slug)).toEqual(["nature", "stealth"]);
   });
 
+  it("falls back to broad skill options when a conditional dedication choice's preferred skills are already trained", async () => {
+    const draft = createEmptyDraft(1);
+    const step: PendingStep = {
+      id: "skill-training-wizard-level-1",
+      level: 1,
+      kind: "skill-training",
+      slotKind: "skill-training",
+      title: "Wizard training",
+      description: "",
+      required: true,
+      slotId: "skill-training-wizard-level-1",
+      training: {
+        classSlug: "wizard",
+        className: "Wizard",
+        fixedSkills: ["acrobatics", "athletics"],
+        fixedLores: [],
+        choiceRules: [
+          {
+            key: "feat:fighter-dedication:skill",
+            flag: "feat:fighter-dedication:skill",
+            prompt: "Choose Acrobatics or Athletics",
+            sourceLabel: "Fighter Dedication",
+            options: [
+              { slug: "acrobatics", label: "Acrobatics" },
+              { slug: "athletics", label: "Athletics" },
+            ],
+            fallbackPrompt: "Choose a skill",
+            fallbackOptions: [
+              { slug: "arcana", label: "Arcana" },
+              { slug: "occultism", label: "Occultism" },
+              { slug: "stealth", label: "Stealth" },
+            ],
+            persistence: null,
+          },
+        ],
+        loreChoices: [],
+        additionalCount: 0,
+      },
+    };
+
+    const pane = await buildSkillPane(step, draft, {
+      baseSkillRanks: {
+        acrobatics: 1,
+        athletics: 1,
+      },
+      resolveDocument: async () => null,
+      configSkills: {
+        acrobatics: { label: "Acrobatics" },
+        arcana: { label: "Arcana" },
+        athletics: { label: "Athletics" },
+        occultism: { label: "Occultism" },
+        stealth: { label: "Stealth" },
+      },
+      localize: (value) => value,
+      isTrainingStepComplete: () => false,
+    });
+
+    expect(pane?.kind).toBe("skill-training");
+    if (!pane || pane.kind !== "skill-training") {
+      throw new Error("Expected a skill-training pane");
+    }
+
+    expect(pane.choiceSections[0]?.prompt).toBe("Choose a skill");
+    expect(pane.choiceSections[0]?.options.map((option) => option.slug)).toEqual(["arcana", "occultism", "stealth"]);
+  });
+
+  it("keeps conditional dedication choices narrow after selecting one preferred skill", async () => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-wizard-level-1"] = trainingDraft(
+      { "feat:fighter-dedication:skill": "athletics" },
+      []
+    );
+    const step: PendingStep = {
+      id: "skill-training-wizard-level-1",
+      level: 1,
+      kind: "skill-training",
+      slotKind: "skill-training",
+      title: "Wizard training",
+      description: "",
+      required: true,
+      slotId: "skill-training-wizard-level-1",
+      training: {
+        classSlug: "wizard",
+        className: "Wizard",
+        fixedSkills: [],
+        fixedLores: [],
+        choiceRules: [
+          {
+            key: "feat:fighter-dedication:skill",
+            flag: "feat:fighter-dedication:skill",
+            prompt: "Choose Acrobatics or Athletics",
+            sourceLabel: "Fighter Dedication",
+            options: [
+              { slug: "acrobatics", label: "Acrobatics" },
+              { slug: "athletics", label: "Athletics" },
+            ],
+            fallbackPrompt: "Choose a skill",
+            fallbackOptions: [
+              { slug: "acrobatics", label: "Acrobatics" },
+              { slug: "arcana", label: "Arcana" },
+              { slug: "athletics", label: "Athletics" },
+              { slug: "occultism", label: "Occultism" },
+              { slug: "stealth", label: "Stealth" },
+            ],
+            persistence: null,
+          },
+        ],
+        loreChoices: [],
+        additionalCount: 0,
+      },
+    };
+
+    const pane = await buildSkillPane(step, draft, {
+      baseSkillRanks: {},
+      resolveDocument: async () => null,
+      configSkills: {
+        acrobatics: { label: "Acrobatics" },
+        arcana: { label: "Arcana" },
+        athletics: { label: "Athletics" },
+        occultism: { label: "Occultism" },
+        stealth: { label: "Stealth" },
+      },
+      localize: (value) => value,
+      isTrainingStepComplete: () => false,
+    });
+
+    expect(pane?.kind).toBe("skill-training");
+    if (!pane || pane.kind !== "skill-training") {
+      throw new Error("Expected a skill-training pane");
+    }
+
+    expect(pane.choiceSections[0]?.prompt).toBe("Choose Acrobatics or Athletics");
+    expect(pane.choiceSections[0]?.options.map((option) => option.slug)).toEqual(["acrobatics", "athletics"]);
+    expect(pane.choiceSections[0]?.options.find((option) => option.slug === "athletics")?.selected).toBe(true);
+  });
+
   it("builds a skill-increase pane with localized labels and level cap handling", async () => {
     const draft = createEmptyDraft(3);
     draft.skillIncreases["skill-increase-level-3"] = "arcana";

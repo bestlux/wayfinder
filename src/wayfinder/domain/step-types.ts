@@ -4,6 +4,7 @@ export type SlotKind =
   | "background"
   | "class"
   | "deity"
+  | "grant-choice"
   | "singleton-choice"
   | "language-choice"
   | "skill-training"
@@ -40,10 +41,16 @@ export type PickItemSlotKind = Exclude<
   | "spell-choice"
 >;
 
+export type ChoicePredicate =
+  | string
+  | { or?: ChoicePredicate[]; nor?: ChoicePredicate[]; not?: ChoicePredicate }
+  | ChoicePredicate[];
+
 export interface StepFilters {
   itemType: string;
   featTypes?: string[];
   maxLevel?: number;
+  predicate?: ChoicePredicate[];
 }
 
 export interface ClassBranchMeta {
@@ -59,8 +66,12 @@ export interface ClassBranchMeta {
   dependsOn: "class" | "deity";
 }
 
-export interface ClassGrantMeta {
+export type GrantSelectionSourceItemType = "classfeature" | "ancestry" | "heritage" | "background" | "feat";
+export type GrantSelectionDependency = "class" | "deity" | null;
+
+export interface GrantSelectionMeta {
   slotId: string;
+  sourceItemType: GrantSelectionSourceItemType;
   selectorPackId: string;
   selectorDocumentId: string;
   selectorUuid: string;
@@ -68,9 +79,13 @@ export interface ClassGrantMeta {
   selectorRuleIndex: number;
   grantRuleIndex: number;
   flag: string;
-  itemType: "deity";
+  itemType: string;
   classSlug: string | null;
+  dependsOn: GrantSelectionDependency;
+  filters: StepFilters;
 }
+
+export type ClassGrantMeta = GrantSelectionMeta;
 
 export interface ClassChoiceMeta {
   slotId: string;
@@ -92,7 +107,7 @@ export interface ClassChoiceMeta {
 
 export interface SingletonChoiceMeta {
   slotId: string;
-  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity";
+  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity" | "feat";
   sourcePackId: string;
   sourceDocumentId: string;
   sourceUuid: string;
@@ -162,6 +177,8 @@ export interface SkillTrainingChoiceMeta {
   prompt: string;
   sourceLabel: string;
   options: Array<{ slug: string; label: string }>;
+  fallbackPrompt?: string;
+  fallbackOptions?: Array<{ slug: string; label: string }>;
   persistence: SkillTrainingPersistenceMeta | null;
 }
 
@@ -211,7 +228,7 @@ interface NoStepExtras {
 export interface PickItemStep extends BasePendingStep<"pick-item", PickItemSlotKind> {
   filters: StepFilters;
   branch?: never;
-  grantSelection?: ClassGrantMeta;
+  grantSelection?: GrantSelectionMeta;
   classChoice?: never;
   spellChoice?: never;
   training?: never;
@@ -300,7 +317,7 @@ interface StepOptions {
 }
 
 interface PickItemStepOptions extends StepOptions {
-  grantSelection?: ClassGrantMeta;
+  grantSelection?: GrantSelectionMeta;
 }
 
 interface ClassBranchStepOptions extends StepOptions {
@@ -564,17 +581,18 @@ const SLOT_KIND_SORT_WEIGHTS: Record<SlotKind, number> = {
   background: 3,
   class: 4,
   "ability-boosts": 5,
-  deity: 6,
-  "singleton-choice": 7,
-  "class-choice": 8,
-  "class-branch": 9,
-  "skill-training": 10,
-  "language-choice": 11,
-  "spell-choice": 12,
-  "class-feat": 13,
-  "skill-feat": 14,
-  "general-feat": 15,
-  "skill-increase": 16,
+  "grant-choice": 6,
+  deity: 7,
+  "singleton-choice": 8,
+  "class-choice": 9,
+  "class-branch": 10,
+  "skill-training": 11,
+  "language-choice": 12,
+  "spell-choice": 13,
+  "class-feat": 14,
+  "skill-feat": 15,
+  "general-feat": 16,
+  "skill-increase": 17,
 };
 
 const STEP_MODE_LABELS: Record<StepKind, string> = {

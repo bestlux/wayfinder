@@ -90,6 +90,8 @@ function collectSelectedFeatureRefs(draft, steps) {
     return Array.from(refs.values());
 }
 function createSourceSelection(meta, slotId) {
-    return buildSelectorSelection(slotId, "selectorPackId" in meta ? meta.selectorPackId : meta.sourcePackId, "selectorDocumentId" in meta ? meta.selectorDocumentId : meta.sourceDocumentId, "selectorUuid" in meta ? meta.selectorUuid : meta.sourceUuid, "selectorName" in meta ? meta.selectorName : meta.sourceName);
+    const itemType = "sourceItemType" in meta ? meta.sourceItemType : "feat";
+    const featType = itemType === "feat" || itemType === "classfeature" ? "classfeature" : null;
+    return buildSelectorSelection(slotId, "selectorPackId" in meta ? meta.selectorPackId : meta.sourcePackId, "selectorDocumentId" in meta ? meta.selectorDocumentId : meta.sourceDocumentId, "selectorUuid" in meta ? meta.selectorUuid : meta.sourceUuid, "selectorName" in meta ? meta.selectorName : meta.sourceName, itemType === "classfeature" ? "feat" : itemType, featType);
 }
 //# sourceMappingURL=class-feature-choice-service.js.map

@@ -27,6 +27,13 @@ describe("wayfinder plan builder service", () => {
       "Elven Lore",
       "ancestry"
     );
+    draft.selections["grant-choice-class-heritage-ancient-elf-ancientElf-level-1"] = selection(
+      "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+      "feat",
+      "fighter-dedication",
+      "Fighter Dedication",
+      "class"
+    );
     const snapshot: ActorSnapshot = {
       actorId: "actor-1",
       level: 2,
@@ -84,6 +91,11 @@ describe("wayfinder plan builder service", () => {
             sourceSelection: draft.selections["ancestry-feat-level-1"],
             sourceDocument: { fetched: "elven-lore" },
           }),
+          expect.objectContaining({
+            sourceItemType: "feat",
+            sourceSelection: draft.selections["grant-choice-class-heritage-ancient-elf-ancientElf-level-1"],
+            sourceDocument: { fetched: "fighter-dedication" },
+          }),
         ])
       );
       return [step("skill-training-wizard-level-1")];
@@ -97,7 +109,26 @@ describe("wayfinder plan builder service", () => {
           sourceSelection: draft.selections.class,
           sourceDocument: classDocument,
         },
+        {
+          sourceItemType: "feat",
+          sourceSelection: draft.selections["grant-choice-class-heritage-ancient-elf-ancientElf-level-1"],
+          sourceDocument: { fetched: "fighter-dedication" },
+        },
       ]);
+      return [];
+    });
+    const buildGrantChoiceSteps = vi.fn(async (params) => {
+      expect(params.targetLevel).toBe(4);
+      expect(params.hasClassSelection).toBe(true);
+      expect(params.sources).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceItemType: "feat",
+            sourceSelection: draft.selections["ancestry-feat-level-1"],
+            sourceDocument: { fetched: "elven-lore" },
+          }),
+        ])
+      );
       return [];
     });
     const buildLanguageChoiceSteps = vi.fn(async () => []);
@@ -127,13 +158,20 @@ describe("wayfinder plan builder service", () => {
       expect(
         params.readExistingGrantedSelection({
           slotId: "deity-level-1",
+          sourceItemType: "classfeature",
           itemType: "deity",
+          selectorPackId: "test.pack",
+          selectorDocumentId: "grant",
+          selectorUuid: "Compendium.test.pack.Item.grant",
           selectorName: "Deity",
-          sourcePackId: "test.pack",
-          sourceDocumentId: "grant",
-          sourceUuid: "Compendium.test.pack.Item.grant",
-          sourceName: "Grant",
+          selectorRuleIndex: 0,
+          grantRuleIndex: 1,
+          flag: "deity",
           classSlug: "wizard",
+          dependsOn: "class",
+          filters: {
+            itemType: "deity",
+          },
         })
       ).toBe("existing-grant");
       return [step("deity-level-1")];
@@ -199,6 +237,7 @@ describe("wayfinder plan builder service", () => {
       const steps = [
         ...(await deps.buildClassFeatSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassTrainingSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildGrantChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildSingletonChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildLanguageChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassBranchSteps(receivedSnapshot, receivedDraft, 4)),
@@ -226,6 +265,7 @@ describe("wayfinder plan builder service", () => {
         buildWayfinderPlan,
         buildClassFeatSteps,
         buildClassTrainingSteps,
+        buildGrantChoiceSteps,
         buildSingletonChoiceSteps,
         buildLanguageChoiceSteps,
         buildClassBranchSteps,
@@ -305,6 +345,7 @@ describe("wayfinder plan builder service", () => {
         }),
         buildClassFeatSteps: async () => [],
         buildClassTrainingSteps: async () => [],
+        buildGrantChoiceSteps: async () => [],
         buildSingletonChoiceSteps: async () => [],
         buildLanguageChoiceSteps: async () => [],
         buildClassBranchSteps: async () => [],

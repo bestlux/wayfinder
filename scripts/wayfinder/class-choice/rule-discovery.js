@@ -113,6 +113,7 @@ export function discoverGrantedItemMeta(args) {
     }
     return {
         slotId: `deity-level-${toFeatureLevel(document.system?.level?.value)}`,
+        sourceItemType: "classfeature",
         selectorPackId: selectorSelection.packId,
         selectorDocumentId: selectorSelection.documentId,
         selectorUuid: selectorSelection.uuid,
@@ -122,6 +123,10 @@ export function discoverGrantedItemMeta(args) {
         flag: choiceFlag,
         itemType: "deity",
         classSlug,
+        dependsOn: "class",
+        filters: {
+            itemType: "deity",
+        },
     };
 }
 export function discoverClassChoiceMeta(args) {

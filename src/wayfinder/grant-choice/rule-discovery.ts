@@ -1,0 +1,178 @@
+import type { ChoicePredicate, GrantSelectionMeta, SelectionRef, StepFilters } from "../../types.js";
+
+interface NamedDocumentLike {
+  name?: unknown;
+  system?: {
+    slug?: unknown;
+    level?: {
+      value?: unknown;
+    };
+    rules?: unknown;
+  };
+}
+
+type GrantChoiceSourceItemType = Extract<
+  GrantSelectionMeta["sourceItemType"],
+  "ancestry" | "heritage" | "background" | "feat"
+>;
+
+export function discoverGrantSelectionMeta(args: {
+  sourceItemType: GrantChoiceSourceItemType;
+  sourceDocument: unknown;
+  sourceSelection: SelectionRef;
+  extractSlug: (document: unknown) => string | null;
+}): GrantSelectionMeta[] {
+  const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;
+  const document = sourceDocument as NamedDocumentLike | null | undefined;
+  const sourceName = toNonEmptyString(document?.name) ?? sourceSelection.name;
+  const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
+  const level = toFeatureLevel(document?.system?.level?.value);
+  const rules = findRelevantRules(sourceDocument);
+
+  return rules.flatMap((rule, sourceRuleIndex) => {
+    const flag = extractChoiceKey(rule);
+    if (rule.key !== "ChoiceSet" || !flag) {
+      return [];
+    }
+
+    const filters = resolveChoiceFilters(rule);
+    if (!filters) {
+      return [];
+    }
+
+    const grantRuleIndex = rules.findIndex(
+      (entry) =>
+        entry.key === "GrantItem" && typeof entry.uuid === "string" && entry.uuid.includes(`rulesSelections.${flag}`)
+    );
+    if (grantRuleIndex === -1) {
+      return [];
+    }
+
+    const dependsOn = resolveGrantDependency(filters.predicate ?? []);
+    const dependencyKey = dependsOn ?? "none";
+    return [
+      {
+        slotId: `grant-choice-${dependencyKey}-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`,
+        sourceItemType,
+        selectorPackId: sourceSelection.packId,
+        selectorDocumentId: sourceSelection.documentId,
+        selectorUuid: sourceSelection.uuid,
+        selectorName: sourceName,
+        selectorRuleIndex: sourceRuleIndex,
+        grantRuleIndex,
+        flag,
+        itemType: filters.itemType,
+        classSlug: null,
+        dependsOn,
+        filters,
+      } satisfies GrantSelectionMeta,
+    ];
+  });
+
+  function resolveChoiceFilters(rule: Record<string, unknown>): StepFilters | null {
+    const choices = isRecord(rule.choices) ? rule.choices : null;
+    const itemType = toNonEmptyString(choices?.itemType);
+    const predicate = Array.isArray(choices?.filter) ? choices.filter.filter(isChoicePredicate) : [];
+    if (!itemType || predicate.length === 0) {
+      return null;
+    }
+
+    return {
+      itemType,
+      predicate,
+    };
+  }
+}
+
+function findRelevantRules(document: unknown): Array<Record<string, unknown>> {
+  const rules = (document as NamedDocumentLike | null | undefined)?.system?.rules;
+  return Array.isArray(rules) ? rules.filter(isRecord) : [];
+}
+
+function extractChoiceKey(rule: Record<string, unknown>): string | null {
+  const candidates = [rule.flag, rule.rollOption, rule.slug];
+  for (const candidate of candidates) {
+    const normalized = toNonEmptyString(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+function resolveGrantDependency(predicate: ChoicePredicate[]): GrantSelectionMeta["dependsOn"] {
+  if (
+    predicateIncludesString(predicate, "{actor|system.details.class.trait}") ||
+    predicateIncludesString(predicate, "item:trait:multiclass")
+  ) {
+    return "class";
+  }
+
+  if (predicateIncludesString(predicate, "deity:primary:")) {
+    return "deity";
+  }
+
+  return null;
+}
+
+function predicateIncludesString(predicate: ChoicePredicate, target: string): boolean {
+  if (typeof predicate === "string") {
+    return predicate.includes(target);
+  }
+
+  if (Array.isArray(predicate)) {
+    return predicate.some((entry) => predicateIncludesString(entry, target));
+  }
+
+  if (!isRecord(predicate)) {
+    return false;
+  }
+
+  return (
+    (Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
+    (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
+    (!!predicate.not && predicateIncludesString(predicate.not, target))
+  );
+}
+
+function toFeatureLevel(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 1 ? Math.floor(number) : 1;
+}
+
+function toNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isChoicePredicate(value: unknown): value is ChoicePredicate {
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((entry) => isChoicePredicate(entry));
+  }
+
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if ("or" in value && value.or !== undefined && (!Array.isArray(value.or) || !value.or.every(isChoicePredicate))) {
+    return false;
+  }
+
+  if ("nor" in value && value.nor !== undefined && (!Array.isArray(value.nor) || !value.nor.every(isChoicePredicate))) {
+    return false;
+  }
+
+  if ("not" in value && value.not !== undefined && !isChoicePredicate(value.not)) {
+    return false;
+  }
+
+  return true;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object";
+}

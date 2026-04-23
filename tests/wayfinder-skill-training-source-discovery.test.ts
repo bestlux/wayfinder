@@ -281,6 +281,118 @@ describe("wayfinder skill training source discovery", () => {
 
     expect(training.fixedLores).toEqual(["Incarnation Lore"]);
   });
+
+  it("discovers conditional multiclass dedication skill choices like Fighter Dedication", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: selection(
+            "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+            "fighter-dedication"
+          ),
+          sourceDocument: {
+            name: "Fighter Dedication",
+            system: {
+              slug: "fighter-dedication",
+              description: {
+                value:
+                  "<p>You become trained in martial weapons. You become trained in your choice of Acrobatics or Athletics; if you are already trained in both of these skills, you instead become trained in a skill of your choice. You become trained in fighter class DC.</p>",
+              },
+              rules: [],
+            },
+          },
+        },
+      ],
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(training.choiceRules).toMatchObject([
+      {
+        sourceLabel: "Fighter Dedication",
+        prompt: "Choose Acrobatics or Athletics",
+        options: [
+          { slug: "acrobatics", label: "Acrobatics" },
+          { slug: "athletics", label: "Athletics" },
+        ],
+        fallbackPrompt: "Choose a skill",
+      },
+    ]);
+    expect(training.choiceRules[0]?.fallbackOptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slug: "acrobatics" }),
+        expect.objectContaining({ slug: "athletics" }),
+        expect.objectContaining({ slug: "arcana" }),
+      ])
+    );
+  });
+
+  it("discovers mixed specific and open multiclass dedication choices like Rogue Dedication", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: selection("grant-choice-class-heritage-ancient-elf-ancientElf-level-1", "rogue-dedication"),
+          sourceDocument: {
+            name: "Rogue Dedication",
+            system: {
+              slug: "rogue-dedication",
+              description: {
+                value:
+                  "<p>You become trained in Stealth or Thievery plus one skill of your choice; if you are already trained in both Stealth and Thievery, you become trained in an additional skill of your choice.</p>",
+              },
+              rules: [],
+            },
+          },
+        },
+      ],
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(training.choiceRules).toHaveLength(2);
+    expect(training.choiceRules[0]).toMatchObject({
+      prompt: "Choose Stealth or Thievery",
+      options: [
+        { slug: "stealth", label: "Stealth" },
+        { slug: "thievery", label: "Thievery" },
+      ],
+      fallbackPrompt: "Choose a skill",
+    });
+    expect(training.choiceRules[1]).toMatchObject({
+      prompt: "Choose a skill",
+    });
+  });
+
+  it("discovers fixed-or-fallback multiclass dedication skill choices like Ranger Dedication", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: selection("grant-choice-class-heritage-ancient-elf-ancientElf-level-1", "ranger-dedication"),
+          sourceDocument: {
+            name: "Ranger Dedication",
+            system: {
+              slug: "ranger-dedication",
+              description: {
+                value:
+                  "<p>You become trained in Survival; if you were already trained in Survival, you instead become trained in another skill of your choice.</p>",
+              },
+              rules: [],
+            },
+          },
+        },
+      ],
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(training.choiceRules).toMatchObject([
+      {
+        prompt: "Choose Survival",
+        options: [{ slug: "survival", label: "Survival" }],
+        fallbackPrompt: "Choose a skill",
+      },
+    ]);
+  });
 });
 
 function selection(slotId: string, documentId: string, name = documentId): SelectionRef {

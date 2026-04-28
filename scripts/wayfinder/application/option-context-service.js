@@ -181,9 +181,11 @@ export async function buildContextNote(step, context, deps) {
                 return "Resolve the arcane school step first so Wayfinder can narrow this list to the chosen curriculum.";
             }
             const rankLabel = spellChoice.cantrip
-                ? spellChoice.excludedTraditions?.length
-                    ? "cantrips outside your class tradition"
-                    : "arcane cantrips"
+                ? spellChoice.destination.type === "innate"
+                    ? `${spellChoice.destination.tradition} cantrips`
+                    : spellChoice.excludedTraditions?.length
+                        ? "cantrips outside your class tradition"
+                        : "arcane cantrips"
                 : spellChoice.minRank === spellChoice.maxRank
                     ? `rank ${spellChoice.maxRank} arcane spells`
                     : `arcane spells of rank ${spellChoice.minRank} to ${spellChoice.maxRank}`;

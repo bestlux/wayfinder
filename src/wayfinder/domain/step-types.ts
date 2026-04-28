@@ -138,13 +138,13 @@ export interface LanguageChoiceMeta {
 }
 
 export interface SpellChoiceDestination {
-  type: "spellbook" | "prepared";
+  type: "spellbook" | "prepared" | "innate";
   key: string;
   label: string;
   entryName: string;
   tradition: string;
   ability: string;
-  prepared: "prepared";
+  prepared: "prepared" | "innate";
 }
 
 export interface SpellChoiceMeta {
@@ -154,12 +154,13 @@ export interface SpellChoiceMeta {
   sourceUuid: string | null;
   sourceName: string;
   classSlug: string | null;
-  dependsOn: "class" | "class-branch";
+  dependsOn: "class" | "class-branch" | null;
   destination: SpellChoiceDestination;
   count: number;
   minRank: number;
   maxRank: number;
   cantrip: boolean;
+  allowedSpellSlugs?: string[];
   excludedTraditions?: string[];
   curriculumSpellNames: string[];
   additionalAllowedSpellNames: string[];

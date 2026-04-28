@@ -64,6 +64,40 @@ describe("wayfinder feat spell-choice step builder", () => {
 
     expect(steps).toEqual([]);
   });
+
+  it("builds an innate arcane cantrip choice from feat spell ChoiceSet rules", () => {
+    const steps = buildFeatSpellChoiceSteps({
+      draft: createEmptyDraft(1),
+      effectiveClassDocument: null,
+      featSources: [
+        {
+          sourceSelection: selection("ancestry-feat-level-1", "arcane-tattoos", "Arcane Tattoos", "ancestry"),
+          sourceDocument: arcaneTattoosDocument(),
+        },
+      ],
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({
+      kind: "spell-choice",
+      slotId: "spell-choice-feat-arcane-tattoos-cantrip-level-1",
+      spellChoice: {
+        count: 1,
+        cantrip: true,
+        classSlug: null,
+        dependsOn: null,
+        allowedSpellSlugs: ["shield", "tanglevine", "daze"],
+        destination: {
+          type: "innate",
+          key: "feat-arcane-tattoos-innate-arcane",
+          tradition: "arcane",
+          prepared: "innate",
+        },
+      },
+    });
+  });
 });
 
 function adaptedCantripDocument(): unknown {
@@ -75,6 +109,28 @@ function adaptedCantripDocument(): unknown {
         value:
           "<p>Choose one cantrip from a magical tradition other than your own. You can cast this cantrip as a spell of your class's tradition.</p>",
       },
+    },
+  };
+}
+
+function arcaneTattoosDocument(): unknown {
+  return {
+    name: "Arcane Tattoos",
+    system: {
+      slug: "arcane-tattoos",
+      description: {
+        value: "<p>You can cast the associated cantrip as an innate arcane spell at will.</p>",
+      },
+      rules: [
+        {
+          key: "ChoiceSet",
+          choices: {
+            itemType: "spell",
+            slugsAsValues: true,
+            filter: [{ or: ["item:slug:shield", "item:slug:tanglevine", "item:slug:daze"] }],
+          },
+        },
+      ],
     },
   };
 }

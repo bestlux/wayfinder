@@ -663,6 +663,60 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Guidance"]);
   });
 
+  it("filters feat-owned innate cantrip choices to explicit spell slugs", async () => {
+    setPack("pf2e.spells-srd", [
+      spellEntry("shield", "Shield", 1, ["arcane"], ["cantrip"]),
+      spellEntry("daze", "Daze", 1, ["divine", "occult"], ["cantrip"]),
+      spellEntry("guidance", "Guidance", 1, ["divine", "occult", "primal"], ["cantrip"]),
+      spellEntry("heal", "Heal", 1, ["divine", "primal"], []),
+    ]);
+
+    const options = await getOptionsForStep(
+      {
+        id: "spell-choice-feat-arcane-tattoos-cantrip-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Arcane Tattoos",
+        description: "",
+        required: true,
+        slotId: "spell-choice-feat-arcane-tattoos-cantrip-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: {
+          slotId: "spell-choice-feat-arcane-tattoos-cantrip-level-1",
+          sourcePackId: "pf2e.feats-srd",
+          sourceDocumentId: "arcane-tattoos",
+          sourceUuid: "Compendium.pf2e.feats-srd.Item.arcane-tattoos",
+          sourceName: "Arcane Tattoos",
+          classSlug: null,
+          dependsOn: null,
+          destination: {
+            type: "innate",
+            key: "feat-arcane-tattoos-innate-arcane",
+            label: "Innate arcane spells",
+            entryName: "Innate Arcane Spells",
+            tradition: "arcane",
+            ability: "cha",
+            prepared: "innate",
+          },
+          count: 1,
+          minRank: 0,
+          maxRank: 0,
+          cantrip: true,
+          allowedSpellSlugs: ["shield", "daze"],
+          curriculumSpellNames: [],
+          additionalAllowedSpellNames: [],
+          restrictToCommon: true,
+        },
+      },
+      EMPTY_CONTEXT
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Daze", "Shield"]);
+  });
+
   it("distinguishes blocked, empty-source, and search-empty picker states", () => {
     const heritageStep = makeStep("heritage", {
       itemType: "heritage",

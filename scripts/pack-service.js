@@ -185,7 +185,7 @@ export function getPickerBlockedState(step, context) {
                     message: "Wayfinder only offers deity choices when a drafted class grants them. Pick the class step before reviewing deity options.",
                 };
         case "spell-choice":
-            if (!context.classSlug) {
+            if (step.spellChoice?.dependsOn === "class" && !context.classSlug) {
                 return {
                     tone: "blocked",
                     eyebrow: "Prerequisite required",
@@ -443,14 +443,11 @@ function matchesSpellChoiceContext(entry, step) {
             .map((value) => value.trim().toLowerCase())
         : [];
     const excludedTraditions = spellChoice.excludedTraditions ?? [];
-    if (excludedTraditions.length > 0) {
-        if (traditions.some((tradition) => excludedTraditions.includes(tradition))) {
-            return false;
-        }
-    }
-    else if (!traditions.includes(spellChoice.destination.tradition)) {
-        return false;
-    }
+    const entrySlug = extractEntrySlug(entry);
+    const allowedSpellSlugs = spellChoice.allowedSpellSlugs ?? [];
+    const isExplicitlyAllowed = !!entrySlug && allowedSpellSlugs.includes(entrySlug);
+    const entryName = String(entry?.name ?? "");
+    const additionalAllowedSpellNames = spellChoice.additionalAllowedSpellNames ?? [];
     const traits = extractEntryTraits(entry);
     const isCantrip = traits.includes("cantrip");
     if (spellChoice.cantrip !== isCantrip) {
@@ -460,12 +457,21 @@ function matchesSpellChoiceContext(entry, step) {
     if (rank === null || rank < spellChoice.minRank || rank > spellChoice.maxRank) {
         return false;
     }
-    const entryName = String(entry?.name ?? "");
-    const additionalAllowedSpellNames = spellChoice.additionalAllowedSpellNames ?? [];
-    const restrictToCommon = spellChoice.restrictToCommon ?? false;
+    if (isExplicitlyAllowed) {
+        return true;
+    }
     if (additionalAllowedSpellNames.some((name) => namesMatch(name, entryName))) {
         return true;
     }
+    if (excludedTraditions.length > 0) {
+        if (traditions.some((tradition) => excludedTraditions.includes(tradition))) {
+            return false;
+        }
+    }
+    else if (!traditions.includes(spellChoice.destination.tradition)) {
+        return false;
+    }
+    const restrictToCommon = spellChoice.restrictToCommon ?? false;
     if (spellChoice.curriculumSpellNames.length === 0) {
         if (!restrictToCommon) {
             return true;

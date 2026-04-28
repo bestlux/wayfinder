@@ -9,11 +9,12 @@ interface CreateSpellChoiceStepArgs {
   description: string;
   source: SourceRef;
   classSlug: string | null;
-  dependsOn: "class" | "class-branch";
+  dependsOn: "class" | "class-branch" | null;
   count: number;
   minRank: number;
   maxRank: number;
   cantrip: boolean;
+  allowedSpellSlugs?: string[];
   excludedTraditions?: string[];
   curriculumSpellNames: string[];
   additionalAllowedSpellNames: string[];
@@ -46,6 +47,7 @@ export function makeSpellChoiceStep(args: CreateSpellChoiceStepArgs): PendingSte
     minRank: args.minRank,
     maxRank: args.maxRank,
     cantrip: args.cantrip,
+    ...(args.allowedSpellSlugs ? { allowedSpellSlugs: args.allowedSpellSlugs } : {}),
     ...(args.excludedTraditions ? { excludedTraditions: args.excludedTraditions } : {}),
     curriculumSpellNames: args.curriculumSpellNames,
     additionalAllowedSpellNames: args.additionalAllowedSpellNames,

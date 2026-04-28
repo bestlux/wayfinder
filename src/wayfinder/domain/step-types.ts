@@ -160,6 +160,7 @@ export interface SpellChoiceMeta {
   minRank: number;
   maxRank: number;
   cantrip: boolean;
+  excludedTraditions?: string[];
   curriculumSpellNames: string[];
   additionalAllowedSpellNames: string[];
   restrictToCommon: boolean;

@@ -573,6 +573,59 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Force Barrage", "Mystic Armor"]);
   });
 
+  it("filters adapted cantrip choices away from the class tradition", async () => {
+    setPack("pf2e.spells-srd", [
+      spellEntry("shield", "Shield", 1, ["arcane"], ["cantrip"]),
+      spellEntry("guidance", "Guidance", 1, ["divine", "occult", "primal"], ["cantrip"]),
+      spellEntry("heal", "Heal", 1, ["divine", "primal"], []),
+    ]);
+
+    const options = await getOptionsForStep(
+      {
+        id: "spell-choice-feat-adapted-cantrip-cantrip-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Adapted cantrip",
+        description: "",
+        required: true,
+        slotId: "spell-choice-feat-adapted-cantrip-cantrip-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: {
+          slotId: "spell-choice-feat-adapted-cantrip-cantrip-level-1",
+          sourcePackId: "pf2e.feats-srd",
+          sourceDocumentId: "adapted-cantrip",
+          sourceUuid: "Compendium.pf2e.feats-srd.Item.adapted-cantrip",
+          sourceName: "Adapted Cantrip",
+          classSlug: "wizard",
+          dependsOn: "class",
+          destination: {
+            type: "spellbook",
+            key: "wizard-arcane-prepared",
+            label: "Wizard spellbook",
+            entryName: "Wizard spellbook",
+            tradition: "arcane",
+            ability: "int",
+            prepared: "prepared",
+          },
+          count: 1,
+          minRank: 0,
+          maxRank: 0,
+          cantrip: true,
+          excludedTraditions: ["arcane"],
+          curriculumSpellNames: [],
+          additionalAllowedSpellNames: [],
+          restrictToCommon: true,
+        },
+      },
+      EMPTY_CONTEXT
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Guidance"]);
+  });
+
   it("distinguishes blocked, empty-source, and search-empty picker states", () => {
     const heritageStep = makeStep("heritage", {
       itemType: "heritage",

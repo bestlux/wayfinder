@@ -607,7 +607,12 @@ function matchesSpellChoiceContext(entry: PackIndexEntry, step: PendingStep): bo
         .filter((value: unknown): value is string => typeof value === "string")
         .map((value: string) => value.trim().toLowerCase())
     : [];
-  if (!traditions.includes(spellChoice.destination.tradition)) {
+  const excludedTraditions = spellChoice.excludedTraditions ?? [];
+  if (excludedTraditions.length > 0) {
+    if (traditions.some((tradition) => excludedTraditions.includes(tradition))) {
+      return false;
+    }
+  } else if (!traditions.includes(spellChoice.destination.tradition)) {
     return false;
   }
 

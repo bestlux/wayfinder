@@ -292,6 +292,19 @@ function discoverDescriptionTrainingMeta(args: {
     );
   }
 
+  if (/\bchoose a lore skill subcategory\b/i.test(descriptionText)) {
+    loreChoices.push(
+      createLoreChoice({
+        key: `${args.source.sourceItemType}:${args.sourceSlug}:derived-lore-subcategory-1`,
+        sourceLabel: args.sourceName,
+        prompt: "Choose a Lore skill",
+        placeholder: "Custom Lore",
+        suggestions: [],
+        allowCustom: true,
+      })
+    );
+  }
+
   const fixedLoreAlternatives = Array.from(
     descriptionText.matchAll(/\b([A-Za-z][A-Za-z' -]+ Lore)\b\s+or\s+\b([A-Za-z][A-Za-z' -]+ Lore)\b/gi)
   );

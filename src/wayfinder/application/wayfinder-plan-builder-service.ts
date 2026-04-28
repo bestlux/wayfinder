@@ -36,6 +36,8 @@ import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { buildSingletonChoiceSteps, type SingletonChoiceSourceContext } from "../singleton-choice-service.js";
 import type { SkillTrainingSourceContext } from "../skill-training/source-discovery.js";
+import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
+import { asSpellChoiceClassDocument } from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
 
 type ActorSnapshot = ReturnType<typeof inspectActor>;
@@ -214,16 +216,25 @@ export async function buildWayfinderAppPlan(
       const readExistingSelections = (choice: SpellChoiceMeta) =>
         deps.readExistingSpellChoiceSelections(args.actor, choice);
 
-      return deps.buildSpellChoiceSteps({
-        draft: planDraft,
-        currentLevel: planSnapshot.level,
-        effectiveClassDocument,
-        effectiveDeityDocument,
-        effectiveSchoolDocument,
-        targetLevel,
-        extractSlug: deps.extractDocumentSlug,
-        readExistingSpellChoiceSelections: readExistingSelections,
-      });
+      return [
+        ...(await deps.buildSpellChoiceSteps({
+          draft: planDraft,
+          currentLevel: planSnapshot.level,
+          effectiveClassDocument,
+          effectiveDeityDocument,
+          effectiveSchoolDocument,
+          targetLevel,
+          extractSlug: deps.extractDocumentSlug,
+          readExistingSpellChoiceSelections: readExistingSelections,
+        })),
+        ...buildFeatSpellChoiceSteps({
+          draft: planDraft,
+          effectiveClassDocument: asSpellChoiceClassDocument(effectiveClassDocument),
+          featSources: await resolveSpellChoiceFeatSources(planDraft, args, deps),
+          extractSlug: deps.extractDocumentSlug,
+          readExistingSpellChoiceSelections: readExistingSelections,
+        }),
+      ];
     },
   });
 }
@@ -390,6 +401,23 @@ function isSkillTrainingFeatSelection(selection: SelectionRef): boolean {
 
 function isSingletonChoiceFeatSelection(selection: SelectionRef): boolean {
   return isGrantChoiceFeatSelection(selection);
+}
+
+async function resolveSpellChoiceFeatSources(
+  draft: DraftState,
+  args: BuildWayfinderAppPlanArgs,
+  deps: BuildWayfinderAppPlanDependencies
+) {
+  const featSelections = dedupeSelectionsByUuid([
+    ...Object.values(draft.selections).filter(isAncestryFeatSelection),
+    ...readExistingSkillTrainingFeatSelections(args.actor).filter(isAncestryFeatSelection),
+  ]);
+  const documents = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+
+  return featSelections.flatMap((sourceSelection, index) => {
+    const sourceDocument = documents[index];
+    return sourceDocument ? [{ sourceSelection, sourceDocument }] : [];
+  });
 }
 
 function readExistingSkillTrainingFeatSelections(actor: ActorLike): SelectionRef[] {

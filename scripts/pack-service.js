@@ -413,7 +413,13 @@ function matchesSpellChoiceContext(entry, step) {
             .filter((value) => typeof value === "string")
             .map((value) => value.trim().toLowerCase())
         : [];
-    if (!traditions.includes(spellChoice.destination.tradition)) {
+    const excludedTraditions = spellChoice.excludedTraditions ?? [];
+    if (excludedTraditions.length > 0) {
+        if (traditions.some((tradition) => excludedTraditions.includes(tradition))) {
+            return false;
+        }
+    }
+    else if (!traditions.includes(spellChoice.destination.tradition)) {
         return false;
     }
     const traits = extractEntryTraits(entry);

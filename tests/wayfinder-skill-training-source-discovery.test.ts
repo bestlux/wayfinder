@@ -317,6 +317,43 @@ describe("wayfinder skill training source discovery", () => {
     expect(training.fixedLores).toEqual(["Incarnation Lore"]);
   });
 
+  it("treats the selected Additional Lore feat as a custom lore choice", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: selection(
+            "grant-choice-none-feat-general-training-feat-level-1",
+            "additional-lore",
+            "Additional Lore"
+          ),
+          sourceDocument: {
+            name: "Additional Lore",
+            system: {
+              slug: "additional-lore",
+              description: {
+                value:
+                  "<p>Your knowledge has expanded to encompass a new field. Choose a Lore skill subcategory. You become trained in it.</p>",
+              },
+              rules: [],
+            },
+          },
+        },
+      ],
+      localize: (value) => value,
+    });
+
+    expect(training.fixedLores).toEqual([]);
+    expect(training.loreChoices).toMatchObject([
+      {
+        sourceLabel: "Additional Lore",
+        allowCustom: true,
+        placeholder: "Custom Lore",
+        suggestions: [],
+      },
+    ]);
+  });
+
   it("discovers conditional multiclass dedication skill choices like Fighter Dedication", () => {
     const training = discoverSourceSkillTrainingMeta({
       sources: [

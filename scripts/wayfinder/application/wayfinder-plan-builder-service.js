@@ -10,6 +10,8 @@ import { buildGrantChoiceSteps } from "../grant-choice-service.js";
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { buildSingletonChoiceSteps } from "../singleton-choice-service.js";
+import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
+import { asSpellChoiceClassDocument } from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
 const DEFAULT_DEPS = {
     buildWayfinderPlan,
@@ -130,16 +132,25 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             const effectiveDeityDocument = await args.resolveDocument("deity");
             const effectiveSchoolDocument = await args.resolveArcaneSchoolDocument();
             const readExistingSelections = (choice) => deps.readExistingSpellChoiceSelections(args.actor, choice);
-            return deps.buildSpellChoiceSteps({
-                draft: planDraft,
-                currentLevel: planSnapshot.level,
-                effectiveClassDocument,
-                effectiveDeityDocument,
-                effectiveSchoolDocument,
-                targetLevel,
-                extractSlug: deps.extractDocumentSlug,
-                readExistingSpellChoiceSelections: readExistingSelections,
-            });
+            return [
+                ...(await deps.buildSpellChoiceSteps({
+                    draft: planDraft,
+                    currentLevel: planSnapshot.level,
+                    effectiveClassDocument,
+                    effectiveDeityDocument,
+                    effectiveSchoolDocument,
+                    targetLevel,
+                    extractSlug: deps.extractDocumentSlug,
+                    readExistingSpellChoiceSelections: readExistingSelections,
+                })),
+                ...buildFeatSpellChoiceSteps({
+                    draft: planDraft,
+                    effectiveClassDocument: asSpellChoiceClassDocument(effectiveClassDocument),
+                    featSources: await resolveSpellChoiceFeatSources(planDraft, args, deps),
+                    extractSlug: deps.extractDocumentSlug,
+                    readExistingSpellChoiceSelections: readExistingSelections,
+                }),
+            ];
         },
     });
 }
@@ -268,6 +279,17 @@ function isSkillTrainingFeatSelection(selection) {
 }
 function isSingletonChoiceFeatSelection(selection) {
     return isGrantChoiceFeatSelection(selection);
+}
+async function resolveSpellChoiceFeatSources(draft, args, deps) {
+    const featSelections = dedupeSelectionsByUuid([
+        ...Object.values(draft.selections).filter(isAncestryFeatSelection),
+        ...readExistingSkillTrainingFeatSelections(args.actor).filter(isAncestryFeatSelection),
+    ]);
+    const documents = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+    return featSelections.flatMap((sourceSelection, index) => {
+        const sourceDocument = documents[index];
+        return sourceDocument ? [{ sourceSelection, sourceDocument }] : [];
+    });
 }
 function readExistingSkillTrainingFeatSelections(actor) {
     return listActorItems(actor)

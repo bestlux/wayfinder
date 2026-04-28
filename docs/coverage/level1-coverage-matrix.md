@@ -28,7 +28,8 @@ For a deeper repo-plus-compendium audit of what is still missing under the local
 | Class branches | Guided when PF2E rule data is structured | Branch-discovery and branch-selection steps | Works when the class exposes selector-style branch rules cleanly. |
 | Class-owned granted selections | Guided when PF2E rule data is structured | Granted-item and class-choice steps | Includes flows like deity-linked or class-linked granted selections when discoverable from rules. |
 | Class-owned spell choices | Guided, with deeper support for wizard and cleric | Shared spell-choice engine plus class contributors | Wizard and cleric are the deepest contributors today; other classes rely on the shared path. |
-| Singleton `ChoiceSet` decisions from ancestry, heritage, background, class, or deity | Guided when PF2E rule data is structured | Generic singleton-choice workflow | Supports planning, draft storage, invalidation, and apply-side persistence for supported `ChoiceSet` rules. |
+| Singleton `ChoiceSet` decisions from ancestry, heritage, background, class, deity, or selected feat sources | Guided when PF2E rule data is structured | Generic singleton-choice workflow | Supports planning, draft storage, invalidation, and apply-side persistence for supported `ChoiceSet` rules. |
+| Non-class filtered feat grants | Guided when PF2E rule data is structured | Grant-choice workflow | Covers filtered `ChoiceSet` plus `GrantItem` paths such as Ancient Elf, Versatile Human, Nascent, General Training, and Natural Ambition. |
 | Bonus languages after creation boosts | Guided | Dedicated language-choice step | Uses effective post-boost state, so the final Intelligence modifier can affect count. |
 | Background or ancestry lore choices | Guided when PF2E rule data is structured | Generic singleton-choice workflow | Works when PF2E expresses the choice as a supported singleton `ChoiceSet`. |
 | Background or ancestry free-skill choices | Guided when PF2E rule data is structured | Generic singleton-choice workflow plus training projection where a skill-rank rule exists | Some choices only persist the rules selection; they do not always imply a skill rank by themselves. |
@@ -39,20 +40,23 @@ For a deeper repo-plus-compendium audit of what is still missing under the local
 
 ## Coverage Strengths
 
-- The level-1 plan no longer stops at the bare progression skeleton. The app-facing planner layers singleton choices, languages, class branches, class-owned choices, and spell choices on top of the base progression steps.
+- The level-1 plan no longer stops at the bare progression skeleton. The app-facing planner layers singleton choices, grant choices, languages, class branches, class-owned choices, and spell choices on top of the base progression steps.
 - Generic singleton `ChoiceSet` support is now real infrastructure instead of one-off UI logic. That makes ancestry, heritage, background, class, and deity-owned singleton choices extensible without pushing policy back into `app-shell.ts`.
+- Non-class grant-choice support now covers the first filtered feat-grant shape instead of forcing PF2E-native popups for every such decision.
 - Wizard and cleric have the strongest class-specific support because they already use the contributor seam under `src/wayfinder/classes/`.
 - Level-1 picker usability is materially better than the original proof of concept because rarity and source filters are now first-class pane state instead of just richer text search.
 
 ## Known Partial Areas
 
-- Some level-1 choices are only as good as the PF2E rule data that drives them. If a background, ancestry, heritage, or class does not expose a supported `ChoiceSet` or selector shape, Wayfinder cannot infer a guided step for it automatically.
+- Some level-1 choices are only as good as the PF2E rule data that drives them. If a background, ancestry, heritage, feat, or class does not expose a supported `ChoiceSet`, grant-choice, or selector shape, Wayfinder cannot infer a guided step for it automatically.
 - Background or ancestry singleton choices do not always project a trained skill rank. Wayfinder only projects training when the owning item rules actually drive a skill-rank effect.
+- Predicate-gated singleton follow-up chains are supported when predicates are driven by earlier singleton roll-option selections. Broader actor-roll-option predicates still need content-driven audit before being called broadly covered.
 - The base progression layer still looks smaller than the true feature set because the richer level-1 steps are composed later by `src/wayfinder/application/wayfinder-plan-builder-service.ts`.
 - Class coverage is structurally extensible now, but not all classes are equally deep. The contributor seam exists; only wizard and cleric currently push beyond the shared generic behavior.
 
 ## Highest-Value Follow-Ups
 
-1. Keep expanding level-1 coverage through the existing singleton-choice and contributor seams rather than adding special cases to `app-shell.ts`.
-2. Add a few full-flow integration tests that exercise representative level-1 builds across martial, divine, singleton-choice, and language-sensitive paths.
-3. Pick the next class that deserves deeper contributor-backed guidance once the remaining level-1 gaps are better mapped.
+1. Smoke-test the new non-class grant-choice workflow against nearby cases such as `Versatile Human`, `General Training`, `Natural Ambition`, and `Nascent`.
+2. Live smoke-test the `Magical Experiment` predicate chain, grant-choice targets, and `Wisp Fetchling` fallback guard in Foundry.
+3. Re-audit AP and side-book backgrounds after smoke validation.
+4. Add full-flow integration tests that exercise representative martial, divine, singleton-choice, grant-choice, and language-sensitive paths.

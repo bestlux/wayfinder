@@ -284,6 +284,8 @@ function academySkillChoice(): SingletonChoiceMeta {
     sourceRuleIndex: 0,
     flag: "academySkill",
     prompt: "Choose your trained skill",
+    predicate: [],
+    rollOption: null,
     options: [{ value: "society", label: "Society", img: null, detail: null }],
   };
 }

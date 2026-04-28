@@ -10,6 +10,8 @@ This first implementation is a working vertical slice with:
 - An actor-sheet header action for owned PF2E character actors
 - Draft-based guided selection for ancestry, heritage, background, class, common feat milestones, and level-1 creation boosts
 - Generic singleton-item `ChoiceSet` support for supported ancestry, heritage, background, class, and deity-owned decisions
+- Non-class grant-choice support for structured filtered feat grants such as Ancient Elf and similar PF2E rule shapes
+- Consolidated skill-training guidance that accounts for class, background, ancestry, heritage, selected feat, and lore grants
 - Guided bonus-language selection after creation boosts so the step can use final effective Intelligence
 - Contributor-backed class spell-choice support, with the deepest guided coverage currently living in wizard and cleric flows
 - Rarity and source filtering in the selection panes so large compendium choice sets stay usable
@@ -29,6 +31,7 @@ Wayfinder now has explicit seams for future growth:
 - `src/build-state.ts` plus `src/shared/` own effective document resolution and reusable Foundry/PF2E-neutral helpers.
 - For new class-specific flows, see [the class-flow guide](docs/architecture/adding-a-class-flow.md).
 - For current level-1 scope and remaining gaps, see [the level-1 coverage matrix](docs/coverage/level1-coverage-matrix.md).
+- For special-case default rules and optional-rule sequencing, see [the variant rules and special-cases plan](docs/architecture/wayfinder-variant-rules-and-special-cases-plan.md).
 
 When extending the module, prefer adding new focused services and tests in those seams instead of pushing more policy into `src/wayfinder/app-shell.ts` or the large choice services.
 

@@ -545,6 +545,8 @@ function heritageSingletonSkillChoiceStep(): PendingStep {
       sourceRuleIndex: 0,
       flag: "trainedSkill",
       prompt: "Choose a skill",
+      predicate: [],
+      rollOption: null,
       options: [
         { value: "arcana", label: "Arcana", img: null, detail: null },
         { value: "society", label: "Society", img: null, detail: null },
@@ -622,6 +624,8 @@ function fighterDedicationAttributeStep(): PendingStep {
       sourceRuleIndex: 0,
       flag: "attribute",
       prompt: "Select the class DC's key attribute.",
+      predicate: [],
+      rollOption: null,
       options: [
         { value: "str", label: "Strength", img: null, detail: null },
         { value: "dex", label: "Dexterity", img: null, detail: null },

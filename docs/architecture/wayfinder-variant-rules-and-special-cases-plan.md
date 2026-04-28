@@ -61,7 +61,7 @@ It would likely require custom Wayfinder support for:
 
 Conclusion: Dual-Class should be treated as a separate design project, not the next incremental variant-rule slice.
 
-### 3. The default-rules special cases and Free Archetype want the same foundation in different degrees
+### 3. The shared grant-choice foundation is now partially in place
 
 The highest-value special cases already identified:
 
@@ -71,17 +71,21 @@ The highest-value special cases already identified:
 - `Natural Ambition`
 - `Nascent`
 
-All of these rely on a missing capability:
+These all rely on the same broad capability:
 
 - non-class sources that grant a filtered item-backed feat choice and then `GrantItem` the result
 
-Free Archetype is not identical, but it benefits from the same general confidence area:
+That capability now exists for the first proving case. Ancient Elf can guide the dedication choice, carry the selected dedication into follow-up decisions, and preseed the apply-side PF2E grant dialog.
+
+The next risk is not "can this architecture exist?" It is whether nearby compendium shapes fit the same workflow without narrow one-off fixes.
+
+Free Archetype is not identical, but it still benefits from the same general confidence area:
 
 - stronger feat-slot planning
 - better feat-path ownership
 - safer handling of archetype-only feat selection
 
-Conclusion: the next default-rules seam should land before Free Archetype, not after it.
+Conclusion: the new default-rules seam should be re-audited and hardened before Free Archetype, not replaced or bypassed.
 
 ### 4. Other PF2E-native variants exist, but they are lower-value for Wayfinder creation flow
 
@@ -103,35 +107,50 @@ Conclusion: they are worth keeping in mind, but they should not displace the spe
 
 ## Recommended Order
 
-### Priority 1: Non-class feat-grant choice workflow
+### Priority 1: Smoke-test non-class grant-choice special cases
 
-This is the direct follow-on from the default-rules audit.
+This is the direct follow-on from the merged Ancient Elf grant-choice work and the focused PF2E v14 source re-audit.
 
-It should cover:
+The static audit now shows the target cases use the same supported filtered `ChoiceSet` plus `GrantItem` shape:
 
-- `ChoiceSet` rules with filtered item-backed feat selection
-- `GrantItem` follow-through from ancestry, heritage, or ancestry-feat sources
-- prerequisite-aware timing when the granted feat can legally be chosen later in creation
-
-This is the seam needed for:
-
-- `Ancient Elf`
 - `Versatile Human`
 - `General Training`
 - `Natural Ambition`
 - `Nascent`
 
-Recommended first consumer: `Ancient Elf`
+The remaining validation should happen in Foundry:
 
-Why first:
+- each path renders at the right time
+- class- and ancestry-dependent predicates filter correctly
+- apply-side preseeding suppresses duplicate PF2E-native grant prompts
 
-- it is a user-visible gap already called out explicitly
-- it is mechanically rich enough to prove the seam
-- it exercises class-aware prerequisite timing, which is the hardest part
+Ancient Elf should remain the regression path, not the only supported path.
 
-### Priority 2: Free Archetype support
+### Priority 2: Live-smoke the default-rule hardening paths
 
-Once the special-case feat-grant seam is in place, Free Archetype becomes a much more contained follow-up.
+The grant-choice, singleton-predicate, and fixed-skill fallback guardrails now have unit coverage. They still need live Foundry smoke coverage.
+
+Expected shape:
+
+- verify grant-choice rendering and apply preseeding for the nearby default-rule targets
+- verify `Magical Experiment` renders only the selected follow-up branch
+- verify `Wisp Fetchling` grants Acrobatics without adding an unconditional free skill choice
+
+### Priority 3: Broaden singleton predicate vocabulary only when content proves it is needed
+
+Basic singleton roll-option chains are now supported, including a `Magical Experiment`-style path.
+
+Do not widen the predicate engine speculatively. The next useful work here is auditing real AP and side-book backgrounds after fallback training lands.
+
+Expected shape:
+
+- identify predicates that depend on non-singleton actor roll options
+- add only the predicate vocabulary needed by real creation-time blockers
+- keep invalidation scoped to hidden follow-up choices
+
+### Priority 4: Free Archetype support
+
+Once the default-rule special cases are hardened, Free Archetype becomes a more contained follow-up.
 
 Expected shape:
 
@@ -148,23 +167,7 @@ not:
 
 - “Wayfinder invents its own archetype variant model”
 
-### Priority 3: Re-check special-case ancestry and heritage exceptions after Priority 1
-
-Once `Ancient Elf` and the feat-grant seam are in place, re-check nearby level-1 exceptions such as:
-
-- `Versatile Human`
-- `General Training`
-- `Natural Ambition`
-- `Nascent`
-
-At that point the likely question will no longer be “can we support these?”
-
-It will be:
-
-- which of these fall out of the same generic feat-grant workflow cleanly
-- and which still need narrow hardening
-
-### Priority 4: Dual-Class only as a deliberate separate design project
+### Priority 5: Dual-Class only as a deliberate separate design project
 
 Dual-Class should not be the next “just another option.”
 
@@ -178,24 +181,43 @@ If pursued, it deserves its own design document and probably its own checkpoint 
 
 ## Suggested Implementation Shape
 
-### Slice A: Special-case feat-grant platform
+### Slice A: Grant-choice smoke validation and hardening
 
 Goal:
 
-- support level-1 non-class feat grants without pretending they are generic singleton text choices
+- prove the merged grant-choice platform in the live Foundry workflow against nearby level-1 special cases
 
 Likely seams:
 
-- extend the singleton or adjacent non-class choice workflow to support filtered item-backed feat selection
-- add prerequisite-aware scheduling or deferred eligibility handling
-- add apply-side support for the granted feat path
+- live smoke paths for `Versatile Human`, `General Training`, `Natural Ambition`, and `Nascent`
+- apply-side regression coverage for selected grant choices
+- targeted patches only if live behavior diverges from the static audit
 
 Done when:
 
-- `Ancient Elf` works
-- at least one human heritage or ancestry-feat grant works
+- Ancient Elf remains green
+- each target has a known smoke result
+- any small generic fixes discovered during smoke testing are implemented
 
-### Slice B: Free Archetype variant
+### Slice B: Live smoke validation
+
+Goal:
+
+- prove the newly hardened default-rule paths in the live Foundry workflow
+
+Likely seams:
+
+- smoke paths for the grant-choice targets
+- smoke path for `Magical Experiment`
+- smoke path for `Wisp Fetchling`
+- targeted fixes only where live behavior diverges from unit-covered expectations
+
+Done when:
+
+- each path has a known smoke result
+- any defects discovered during smoke testing are patched or explicitly recorded
+
+### Slice C: Free Archetype variant
 
 Goal:
 
@@ -215,7 +237,7 @@ Done when:
 ## What Not To Do
 
 - Do not start with Dual-Class.
-- Do not solve `Ancient Elf` with a one-off bespoke pane if the same seam should power `Natural Ambition` and `General Training`.
+- Do not regress `Ancient Elf` into a one-off bespoke pane now that the shared grant-choice seam exists.
 - Do not fork Wayfinder’s own variant model away from PF2E’s native Free Archetype setting if the system already exposes it cleanly.
 - Do not reopen `app-shell.ts` for these behaviors unless a seam truly cannot be placed elsewhere.
 
@@ -225,8 +247,10 @@ The next move is not another broad cleanup pass.
 
 The right order is:
 
-1. build the non-class feat-grant workflow and use `Ancient Elf` as the first proving case
-2. extend the planner to respect PF2E’s Free Archetype setting
-3. only then decide whether a larger project like Dual-Class is worth the cost
+1. smoke-test and harden the merged non-class grant-choice workflow
+2. smoke-test singleton predicate and fixed-skill fallback behavior
+3. broaden singleton predicate vocabulary only if the AP/background re-audit proves it is needed
+4. extend the planner to respect PF2E’s Free Archetype setting
+5. only then decide whether a larger project like Dual-Class is worth the cost
 
 That order closes real player-facing gaps first, stays aligned with PF2E’s native variant support where it exists, and avoids dragging Wayfinder into a much larger custom character-build model too early.

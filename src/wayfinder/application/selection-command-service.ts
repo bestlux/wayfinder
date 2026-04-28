@@ -45,6 +45,10 @@ interface SelectClassChoiceDependencies {
   invalidateBranchSelectionsByDependency: (dependency: "class" | "deity") => Promise<string[]>;
 }
 
+interface SelectSingletonChoiceDependencies {
+  buildPlan: () => Promise<{ steps: PendingStep[] }>;
+}
+
 const SINGLETON_CHOICE_NOOP_RESULT: SelectionCommandResult = {
   kind: "noop",
   warning: null,
@@ -216,7 +220,8 @@ export async function chooseSelectionOption(
 export async function selectSingletonChoiceValue(
   state: SelectionCommandState,
   step: PendingStep | null,
-  value: string
+  value: string,
+  deps?: SelectSingletonChoiceDependencies
 ): Promise<SelectionCommandResult> {
   const stepId = step?.slotId ?? "";
   if (!stepId) {
@@ -232,7 +237,49 @@ export async function selectSingletonChoiceValue(
 
   state.draft.singletonChoices[stepId] = value;
   state.recentlyInvalidatedStepIds.delete(stepId);
+  if (step?.kind === "singleton-choice" && deps) {
+    await clearHiddenSingletonFollowUps(state, step, deps);
+  }
   return changedResult({ shouldAdvance: true });
+}
+
+async function clearHiddenSingletonFollowUps(
+  state: SelectionCommandState,
+  changedStep: Extract<PendingStep, { kind: "singleton-choice" }>,
+  deps: SelectSingletonChoiceDependencies
+): Promise<void> {
+  const plan = await deps.buildPlan();
+  const visibleSlotIds = new Set(
+    plan.steps.filter((step) => step.kind === "singleton-choice").map((step) => step.slotId)
+  );
+  const sourceUuid = changedStep.singletonChoice.sourceUuid;
+  const sourceSlotPrefix = singletonChoiceSourceSlotPrefix(changedStep);
+
+  for (const slotId of Object.keys(state.draft.singletonChoices)) {
+    if (slotId === changedStep.slotId || visibleSlotIds.has(slotId)) {
+      continue;
+    }
+
+    if (!sourceSlotPrefix || !slotId.startsWith(`${sourceSlotPrefix}-`)) {
+      continue;
+    }
+
+    delete state.draft.singletonChoices[slotId];
+    state.recentlyInvalidatedStepIds.add(slotId);
+  }
+
+  for (const visibleStep of plan.steps) {
+    if (visibleStep.kind !== "singleton-choice" || visibleStep.singletonChoice.sourceUuid !== sourceUuid) {
+      continue;
+    }
+
+    state.recentlyInvalidatedStepIds.delete(visibleStep.slotId);
+  }
+}
+
+function singletonChoiceSourceSlotPrefix(step: Extract<PendingStep, { kind: "singleton-choice" }>): string | null {
+  const suffix = `-${step.singletonChoice.flag}-level-${step.level}`;
+  return step.slotId.endsWith(suffix) ? step.slotId.slice(0, -suffix.length) : null;
 }
 
 export async function toggleLanguageChoiceValue(

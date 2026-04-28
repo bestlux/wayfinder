@@ -83,6 +83,8 @@ function backgroundChoiceStep(): PendingStep {
       sourceRuleIndex: 0,
       flag: "academySkill",
       prompt: "Choose your trained skill",
+      predicate: [],
+      rollOption: null,
       options: [
         { value: "diplomacy", label: "Diplomacy", img: null, detail: null },
         { value: "society", label: "Society", img: null, detail: null },

@@ -142,7 +142,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
     state.previewValueByStepId.set(step.id, rawValue);
     return changedResult({ statusNote, shouldAdvance: true });
 }
-export async function selectSingletonChoiceValue(state, step, value) {
+export async function selectSingletonChoiceValue(state, step, value, deps) {
     const stepId = step?.slotId ?? "";
     if (!stepId) {
         return SINGLETON_CHOICE_NOOP_RESULT;
@@ -155,7 +155,36 @@ export async function selectSingletonChoiceValue(state, step, value) {
     }
     state.draft.singletonChoices[stepId] = value;
     state.recentlyInvalidatedStepIds.delete(stepId);
+    if (step?.kind === "singleton-choice" && deps) {
+        await clearHiddenSingletonFollowUps(state, step, deps);
+    }
     return changedResult({ shouldAdvance: true });
+}
+async function clearHiddenSingletonFollowUps(state, changedStep, deps) {
+    const plan = await deps.buildPlan();
+    const visibleSlotIds = new Set(plan.steps.filter((step) => step.kind === "singleton-choice").map((step) => step.slotId));
+    const sourceUuid = changedStep.singletonChoice.sourceUuid;
+    const sourceSlotPrefix = singletonChoiceSourceSlotPrefix(changedStep);
+    for (const slotId of Object.keys(state.draft.singletonChoices)) {
+        if (slotId === changedStep.slotId || visibleSlotIds.has(slotId)) {
+            continue;
+        }
+        if (!sourceSlotPrefix || !slotId.startsWith(`${sourceSlotPrefix}-`)) {
+            continue;
+        }
+        delete state.draft.singletonChoices[slotId];
+        state.recentlyInvalidatedStepIds.add(slotId);
+    }
+    for (const visibleStep of plan.steps) {
+        if (visibleStep.kind !== "singleton-choice" || visibleStep.singletonChoice.sourceUuid !== sourceUuid) {
+            continue;
+        }
+        state.recentlyInvalidatedStepIds.delete(visibleStep.slotId);
+    }
+}
+function singletonChoiceSourceSlotPrefix(step) {
+    const suffix = `-${step.singletonChoice.flag}-level-${step.level}`;
+    return step.slotId.endsWith(suffix) ? step.slotId.slice(0, -suffix.length) : null;
 }
 export async function toggleLanguageChoiceValue(state, step, value) {
     if (!step || step.kind !== "language-choice") {

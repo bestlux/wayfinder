@@ -19,6 +19,8 @@ export function discoverSingletonChoiceMeta(args) {
         sourceRuleIndex: choice.sourceRuleIndex,
         flag: choice.flag,
         prompt: choice.prompt,
+        predicate: choice.predicate,
+        rollOption: choice.rollOption,
         options: choice.options,
     }));
 }
@@ -44,6 +46,8 @@ export function discoverSingletonChoiceSpecs(args) {
                 slotId: `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`,
                 flag,
                 prompt: resolvePrompt(rule.prompt, localize),
+                predicate: extractPredicate(rule.predicate),
+                rollOption: toNonEmptyString(rule.rollOption),
                 optionDomain: options.optionDomain,
                 options: options.options,
             },
@@ -68,6 +72,9 @@ function extractChoiceKey(rule) {
         }
     }
     return null;
+}
+function extractPredicate(value) {
+    return Array.isArray(value) ? value.filter(isChoicePredicate) : [];
 }
 function resolveChoiceOptions(rule, localize, configuredSkills) {
     if (Array.isArray(rule.choices)) {
@@ -137,6 +144,27 @@ function toFeatureLevel(value) {
 }
 function toNonEmptyString(value) {
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+function isChoicePredicate(value) {
+    if (typeof value === "string") {
+        return value.trim().length > 0;
+    }
+    if (Array.isArray(value)) {
+        return value.every((entry) => isChoicePredicate(entry));
+    }
+    if (!isRecord(value)) {
+        return false;
+    }
+    if ("or" in value && value.or !== undefined && (!Array.isArray(value.or) || !value.or.every(isChoicePredicate))) {
+        return false;
+    }
+    if ("nor" in value && value.nor !== undefined && (!Array.isArray(value.nor) || !value.nor.every(isChoicePredicate))) {
+        return false;
+    }
+    if ("not" in value && value.not !== undefined && !isChoicePredicate(value.not)) {
+        return false;
+    }
+    return true;
 }
 function isRecord(value) {
     return !!value && typeof value === "object";

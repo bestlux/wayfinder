@@ -115,6 +115,8 @@ export interface SingletonChoiceMeta {
   sourceRuleIndex: number;
   flag: string;
   prompt: string | null;
+  predicate: ChoicePredicate[];
+  rollOption: string | null;
   options: Array<{
     value: string;
     label: string;

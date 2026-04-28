@@ -467,7 +467,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     async #selectSingletonChoice(stepId, value) {
         this.#statusNote = null;
         const step = await this.#findPlanStepBySlotId(stepId);
-        const result = await selectSingletonChoiceValue(this.#selectionCommandState(), step ?? null, value);
+        const result = await selectSingletonChoiceValue(this.#selectionCommandState(), step ?? null, value, {
+            buildPlan: () => this.#buildPlan(),
+        });
         await this.#finalizeSelectionCommand(result);
     }
     async #toggleLanguageChoice(stepId, value) {

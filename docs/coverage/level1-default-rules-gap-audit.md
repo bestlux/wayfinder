@@ -21,12 +21,13 @@ Practical conclusion: the live audit surface is PF2E core system data plus Wayfi
 
 ## Current Support Boundaries
 
-Wayfinder now covers most level-1 decisions through four distinct seams:
+Wayfinder now covers most level-1 decisions through five distinct seams:
 
 1. Base progression and pick-item steps
 2. Class-driven steps
 3. Singleton-source `ChoiceSet` steps
 4. Skill-training and lore discovery
+5. Non-class grant-choice steps for filtered feat grants
 
 That architecture is good enough for further level-1 expansion, but the remaining gaps are concentrated in a few specific PF2E rule shapes.
 
@@ -39,65 +40,70 @@ That architecture is good enough for further level-1 expansion, but the remainin
 | Context-shaped lore or “custom lore” text inferred from descriptions | `Partial but working` | This works today, but it depends on text heuristics instead of robust structured rule discovery. | `Inlander`, `Working Student`, `Born of Item`, `Banished Celestial` |
 | Generic singleton choices from ancestry, heritage, background, class, or deity with direct choice arrays | `Covered` | Good for flat static choices. | `Mottle-Coat Centaur`, `Magical Experiment` first-choice layer |
 | Class-owned branches, deity grants, class choices, and spell choices | `Covered when PF2E uses supported class shapes` | This is already materially deeper than the rest of the app. | wizard, cleric, rogue, champion-like paths |
-| Non-class `ChoiceSet` rules backed by item filters and `GrantItem` | `Missing` | This is the biggest default-rules hole now. | `Ancient Elf`, `Versatile Human`, `Nascent`, `General Training`, `Natural Ambition` |
-| Predicate-gated follow-on singleton choices on non-class sources | `Partial / fragile` | The current singleton path does not evaluate top-level singleton rule predicates, so chained follow-up choices can over-render. | `Magical Experiment` |
-| Conditional fallback training text such as “if you would already be trained, choose another skill” | `Fragile` | Some phrasings are handled; others can still become unconditional free choices. | `Wisp Fetchling` |
+| Non-class `ChoiceSet` rules backed by item filters and `GrantItem` | `Covered when PF2E rule data is structured` | The grant-choice workflow supports filtered feat grants, dependency-aware timing, and apply-side preseeding. The focused PF2E v14 source re-audit found the nearby default-rule targets still use this supported shape. | `Ancient Elf`, `Versatile Human`, `Nascent`, `General Training`, `Natural Ambition` |
+| Feat-owned singleton follow-up choices from selected grant-choice feats | `Covered when PF2E rule data is structured; needs breadth validation` | Non-skill, non-lore singleton choices on selected grant-choice feats can now surface as follow-up decisions. Skill and lore effects still flow into skill training. | Fighter Dedication class DC ability choice |
+| Predicate-gated follow-on singleton choices driven by earlier singleton choices | `Covered for supported singleton roll-option chains` | Singleton steps now evaluate rule predicates against drafted or actor-existing singleton selections and clear stale hidden follow-up choices when the upstream choice changes. | `Magical Experiment` |
+| Conditional fallback training text such as “if you would already be trained, choose another skill” | `Partial but hardened` | Common multiclass fallback shapes are modeled, and fixed-skill fallback wording no longer becomes an unconditional free choice. Rich duplicate-triggered fallback for fixed non-feat grants is still a future refinement. | `Fighter Dedication`, `Ranger Dedication`, `Wisp Fetchling` |
 
 ## Confirmed Gaps
 
-### 1. Heritage or ancestry choices that grant another feat are still outside the supported flow
+### 1. The grant-choice workflow has landed, and the first focused re-audit is clean
 
-The current singleton workflow only supports:
+Wayfinder now has a dedicated non-class grant-choice workflow for the important filtered feat-grant shape:
 
-- direct array choices
-- `config: "skills"`
+- filtered item-backed `ChoiceSet` rules
+- matching `GrantItem` follow-through
+- ancestry, heritage, background, and selected ancestry-feat sources
+- apply-side preseeding so PF2E-native dialogs do not re-ask for the same grant choice
 
-It does not currently discover non-class `ChoiceSet` rules shaped as filtered item selections with `GrantItem`.
+The Ancient Elf path has been verified as the first proving case, including its selected dedication and dedication-owned skill choice.
 
-That leaves several real level-1 PF2E cases outside the guided flow:
+The first focused re-audit checked PF2E v14 source data for these nearby cases and found they all still fit the same supported filtered `ChoiceSet` plus `GrantItem` shape:
 
-- `Ancient Elf`: choose another class and gain its multiclass dedication feat
 - `Versatile Human`: choose a 1st-level general feat
 - `Nascent`: choose a 1st-level ancestry feat
 - `General Training`: choose a 1st-level general feat
 - `Natural Ambition`: choose a 1st-level class feat
 
-This is the single highest-value default-rules gap because these are core player-facing options, not fringe content.
+This reduces the grant-choice risk from platform work to ordinary regression coverage and smoke testing.
 
-### 2. Feat-granted level-1 follow-up choices are still narrowly wired
+### 2. Feat-granted level-1 follow-up choices now have a generic first layer, but need breadth validation
 
 The skill-training plan already merges selected ancestry-feat documents for skill and lore discovery, which is why `Elven Lore` now shows up correctly.
 
-But that support is narrow:
+The grant-choice work also added a generic path for feat-owned singleton follow-up choices that are not skill or lore choices. That covers cases like a selected dedication asking for a class DC ability.
 
-- it is focused on skill and lore effects
-- it does not provide a generic follow-up choice platform for ancestry feats that grant other feats or item selections
+The remaining risk is content breadth:
 
-That is why `Elven Lore` works while `General Training` and `Natural Ambition` do not.
+- selected feat sources may expose nested rules with predicates Wayfinder does not yet evaluate
+- some selected feats may grant additional item choices instead of simple singleton choices
+- skill and lore effects still need to remain centralized in skill training instead of becoming duplicate panes
 
-### 3. Predicate-gated singleton chains on non-class sources are not modeled strongly enough
+### 3. Predicate-gated singleton chains are now modeled for supported singleton roll-option chains
 
-The current singleton rule discovery does not evaluate top-level singleton predicates for ancestry, heritage, background, or deity sources.
+The singleton workflow now evaluates top-level singleton rule predicates when those predicates are driven by earlier singleton `ChoiceSet` selections on the same source.
 
 That matters for backgrounds like `Magical Experiment`, where one initial choice is meant to unlock a second dependent choice:
 
 - choose the experiment result
 - only then choose the matching sense or resistance details
 
-Today the generic singleton path is structurally capable of rendering multiple steps, but it is not yet doing enough dependency evaluation to make those chains trustworthy.
+The supported path now handles both drafted and actor-existing upstream selections, and changing the upstream singleton choice clears stale hidden follow-up choices from the draft.
 
-### 4. Description-driven fallback training is still brittle
+The remaining caveat is broader predicate vocabulary. Predicates that depend on non-singleton actor roll options may still need dedicated support when real content exposes them as guided creation blockers.
+
+### 4. Description-driven fallback training is safer, but not fully expressive
 
 Wayfinder’s text inference for non-class training is materially better than before, but it is still inference.
 
-A confirmed example is `Wisp Fetchling`:
+The confirmed `Wisp Fetchling` issue has been hardened:
 
 - PF2E text: gain Acrobatics; only if that training would duplicate another source, choose a different skill instead
-- current parser behavior: this still resolves into an unconditional “choose a skill” rule
+- current parser behavior: Acrobatics remains a fixed grant, and the fallback sentence no longer resolves into an unconditional “choose a skill” rule
 
-That means the current heuristics are good enough to cover many backgrounds and feats, but not yet safe enough to treat all conditional fallback wording as solved.
+That means the current heuristics are safer, but still not fully expressive. Rich fallback that appears only when the fixed grant duplicates another source remains a useful future refinement.
 
-### 5. Some AP-style backgrounds will remain only partly trusted until predicate-aware singleton evaluation improves
+### 5. Some AP-style backgrounds will remain only partly trusted until broader predicate vocabulary is audited
 
 The installed PF2E packs include many AP and side-book backgrounds whose choices use:
 
@@ -111,7 +117,7 @@ Examples include:
 - `Magical Experiment`
 - several `Strength of Thousands`, `Season of Ghosts`, and other AP backgrounds
 
-These are not the first targets to implement, but they are good canaries for whether the generic singleton engine is truly robust.
+These are not the first targets to implement, but they are good canaries for whether the generic singleton engine needs more predicate vocabulary beyond singleton-selection roll options.
 
 ## What Looks Solid Now
 
@@ -126,45 +132,37 @@ The repo is now missing narrower rule-shape support, not broad architecture.
 
 ## Priority Order For Default-Rules Follow-Up
 
-### Priority 1: Add a generic feat-grant choice workflow for non-class sources
+### Priority 1: Smoke-test the non-class grant-choice targets in Foundry
 
-This should cover:
+The static re-audit and unit coverage now say these paths should flow through the generic grant-choice workflow:
 
-- filtered item-backed `ChoiceSet` rules
-- `GrantItem` follow-through
-- prerequisite-aware timing when the granted choice can legally be selected later in character creation
-
-This is the right seam for:
-
-- `Ancient Elf`
 - `Versatile Human`
 - `General Training`
 - `Natural Ambition`
 - `Nascent`
 
-### Priority 2: Make singleton discovery predicate-aware for non-class follow-up chains
+The next useful validation is in-app smoke testing that confirms:
 
-This should include:
+- each path renders at the right time
+- option filtering matches the selected ancestry or class context
+- apply-side preseeding prevents duplicate PF2E-native grant dialogs
 
-- top-level predicate evaluation for singleton rules
-- dependency-aware invalidation between singleton choices from the same source
-- protection against rendering downstream choices before upstream selections exist
+### Priority 2: Live-smoke grant-choice, singleton predicate, and fallback-training paths
 
-This is the main hardening needed for backgrounds like `Magical Experiment`.
+The highest-value remaining validation is in Foundry, not another broad parser expansion.
 
-### Priority 3: Harden conditional fallback training parsing
+Smoke paths should include:
 
-This should focus on:
+- `Versatile Human`
+- `General Training`
+- `Natural Ambition`
+- `Nascent`
+- `Magical Experiment`
+- `Wisp Fetchling`
 
-- “if you would already be trained…” wording
-- “if you are already trained…” wording
-- “for each skill already trained, choose another…” wording
+### Priority 3: Re-audit AP and side-book backgrounds after smoke validation
 
-The goal is not to parse every sentence ever written in PF2E. The goal is to stop turning conditional fallback text into unconditional free choices.
-
-### Priority 4: Re-audit AP and side-book backgrounds after the first three slices land
-
-Once the feat-grant and predicate-aware singleton work is in place, re-check the more exotic backgrounds and heritages.
+Once the grant-choice, singleton predicate, and fallback-training work is in place, re-check the more exotic backgrounds and heritages.
 
 That second pass should decide whether the remaining misses deserve:
 
@@ -176,16 +174,17 @@ That second pass should decide whether the remaining misses deserve:
 These are real future areas, but they should come after the default-rules gaps above:
 
 - Free Archetype
-- Dual-Class
 - other optional campaign rules
 - broader post-level-1 archetype and feat recursion
 
-Those options will be much easier to reason about once the core default-rule feat-grant and predicate-chain seams are solid.
+Dual-Class remains intentionally out of scope unless it becomes a deliberate separate design project.
+
+Those options will be much easier to reason about once the core default-rule grant-choice, singleton-predicate, and fallback-training seams are solid.
 
 ## Readiness Verdict
 
-Wayfinder is now in a credible state for level-1 default rules, but it is not yet complete.
+Wayfinder is now in a stronger and more credible state for level-1 default rules, but it is not yet complete.
 
-The highest-value remaining work is no longer more lore or free-skill plumbing. It is the missing platform for non-class filtered feat grants plus stronger predicate-aware singleton evaluation.
+The highest-value remaining work is no longer building the first non-class filtered feat-grant platform, basic predicate-aware singleton chains, or the first fixed-skill fallback guard. Those foundations exist. The next work is live smoke testing, followed by a broader AP and side-book re-audit.
 
-If those two slices land cleanly, the next pass on optional rules and special cases like `Ancient Elf` will happen on a much stronger foundation.
+If those slices land cleanly, the next pass on optional rules such as Free Archetype will happen on a much stronger foundation.

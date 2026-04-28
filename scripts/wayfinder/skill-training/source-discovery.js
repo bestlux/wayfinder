@@ -114,7 +114,7 @@ function discoverDescriptionTrainingMeta(args) {
     });
     const fixedLores = [...additionalLoreGrants.fixedLores];
     loreChoices.push(...additionalLoreGrants.loreChoices);
-    const hasConditionalFallbackSkillChoice = /\bif you would automatically become trained in one of those skills\b/i.test(descriptionText);
+    const hasConditionalFallbackSkillChoice = hasConditionalFallbackSkillTrainingText(descriptionText);
     choiceRules.push(...discoverDedicationSkillChoices({
         descriptionText,
         sourceItemType: args.source.sourceItemType,
@@ -239,6 +239,10 @@ function createSkillChoice(args) {
         ...(args.fallbackOptions && args.fallbackOptions.length > 0 ? { fallbackOptions: args.fallbackOptions } : {}),
         persistence: null,
     };
+}
+function hasConditionalFallbackSkillTrainingText(descriptionText) {
+    return (/\bif you would automatically become trained in (?:one of those skills|[A-Za-z][A-Za-z' -]+)\b/i.test(descriptionText) &&
+        /\byou instead become trained in (?:an? )?(?:additional |another )?skill of your choice\b/i.test(descriptionText));
 }
 function createLoreChoice(args) {
     return {

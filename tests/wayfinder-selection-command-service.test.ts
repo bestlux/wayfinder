@@ -187,6 +187,8 @@ describe("wayfinder selection command service", () => {
         sourceRuleIndex: 0,
         flag: "academySkill",
         prompt: "Choose your trained skill",
+        predicate: [],
+        rollOption: null,
         options: [
           { value: "diplomacy", label: "Diplomacy", img: null, detail: null },
           { value: "society", label: "Society", img: null, detail: null },
@@ -209,6 +211,35 @@ describe("wayfinder selection command service", () => {
       shouldRender: true,
     });
     expect(draft.singletonChoices[step.slotId]).toBeUndefined();
+  });
+
+  it("clears singleton follow-up choices that are no longer visible after an upstream singleton choice changes", async () => {
+    const draft = createEmptyDraft(1);
+    draft.singletonChoices["singleton-choice-background-magical-experiment-magicalExperiment-level-1"] =
+      "resistant-skin";
+    draft.singletonChoices["singleton-choice-background-magical-experiment-energy1-level-1"] = "acid";
+    draft.singletonChoices["singleton-choice-background-other-source-detail-level-1"] = "keep-me";
+    const state = commandState(draft);
+    const step = magicalExperimentChoiceStep();
+
+    const result = await selectSingletonChoiceValue(state, step, "enhanced-senses", {
+      buildPlan: async () => ({
+        steps: [step, magicalExperimentSenseStep()],
+      }),
+    });
+
+    expect(result).toMatchObject({
+      kind: "changed",
+      shouldAdvance: true,
+    });
+    expect(draft.singletonChoices["singleton-choice-background-magical-experiment-magicalExperiment-level-1"]).toBe(
+      "enhanced-senses"
+    );
+    expect(draft.singletonChoices["singleton-choice-background-magical-experiment-energy1-level-1"]).toBeUndefined();
+    expect(draft.singletonChoices["singleton-choice-background-other-source-detail-level-1"]).toBe("keep-me");
+    expect(state.recentlyInvalidatedStepIds.has("singleton-choice-background-magical-experiment-energy1-level-1")).toBe(
+      true
+    );
   });
 
   it("toggles language choices and warns when the step is full", async () => {
@@ -440,5 +471,62 @@ function selection(slotId: string, itemType: string, documentId: string, name = 
     featType: itemType === "feat" ? "class" : null,
     name,
     level: 1,
+  };
+}
+
+function magicalExperimentChoiceStep(): PendingStep {
+  return {
+    id: "singleton-choice-background-magical-experiment-magicalExperiment-level-1",
+    level: 1,
+    kind: "singleton-choice",
+    slotKind: "singleton-choice",
+    title: "Magical Experiment",
+    description: "",
+    required: true,
+    slotId: "singleton-choice-background-magical-experiment-magicalExperiment-level-1",
+    singletonChoice: {
+      slotId: "singleton-choice-background-magical-experiment-magicalExperiment-level-1",
+      sourceItemType: "background",
+      sourcePackId: "pf2e.backgrounds",
+      sourceDocumentId: "magical-experiment",
+      sourceUuid: "Compendium.pf2e.backgrounds.Item.magical-experiment",
+      sourceName: "Magical Experiment",
+      sourceRuleIndex: 0,
+      flag: "magicalExperiment",
+      prompt: null,
+      predicate: [],
+      rollOption: "background:magical-experiment",
+      options: [
+        { value: "enhanced-senses", label: "Enhanced Senses", img: null, detail: null },
+        { value: "resistant-skin", label: "Resistant Skin", img: null, detail: null },
+      ],
+    },
+  };
+}
+
+function magicalExperimentSenseStep(): PendingStep {
+  return {
+    id: "singleton-choice-background-magical-experiment-background:magical-experiment:enhanced-senses-level-1",
+    level: 1,
+    kind: "singleton-choice",
+    slotKind: "singleton-choice",
+    title: "Sense",
+    description: "",
+    required: true,
+    slotId: "singleton-choice-background-magical-experiment-background:magical-experiment:enhanced-senses-level-1",
+    singletonChoice: {
+      slotId: "singleton-choice-background-magical-experiment-background:magical-experiment:enhanced-senses-level-1",
+      sourceItemType: "background",
+      sourcePackId: "pf2e.backgrounds",
+      sourceDocumentId: "magical-experiment",
+      sourceUuid: "Compendium.pf2e.backgrounds.Item.magical-experiment",
+      sourceName: "Magical Experiment",
+      sourceRuleIndex: 3,
+      flag: "background:magical-experiment:enhanced-senses",
+      prompt: null,
+      predicate: ["background:magical-experiment:enhanced-senses"],
+      rollOption: "background:magical-experiment:enhanced-senses",
+      options: [{ value: "scent", label: "Scent", img: null, detail: null }],
+    },
   };
 }

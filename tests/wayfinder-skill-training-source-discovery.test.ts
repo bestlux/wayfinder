@@ -50,6 +50,41 @@ describe("wayfinder skill training source discovery", () => {
     });
   });
 
+  it("does not turn fixed-skill conditional fallback text into an unconditional free skill choice", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "heritage",
+          sourceSelection: selection("heritage-level-1", "wisp-fetchling", "Wisp Fetchling"),
+          sourceDocument: {
+            name: "Wisp Fetchling",
+            system: {
+              slug: "wisp-fetchling",
+              description: {
+                value:
+                  "<p>You gain the trained proficiency rank in Acrobatics. If you would automatically become trained in Acrobatics (from your background or class, for example), you instead become trained in a skill of your choice.</p>",
+              },
+              rules: [
+                {
+                  key: "ActiveEffectLike",
+                  mode: "upgrade",
+                  path: "system.skills.acrobatics.rank",
+                  value: 1,
+                },
+              ],
+            },
+          },
+        },
+      ],
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(training).toMatchObject({
+      fixedSkills: ["acrobatics"],
+      choiceRules: [],
+    });
+  });
+
   it("normalizes explicit UUID labels when deriving Additional Lore grants", () => {
     const training = discoverSourceSkillTrainingMeta({
       sources: [

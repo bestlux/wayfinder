@@ -257,6 +257,43 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Fighter Dedication", "Rogue Dedication"]);
   });
 
+  it("filters class-dependent grant-choice options from injected PF2E predicates", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("reactive-strike", "Reactive Strike", "class", ["fighter"]),
+      featEntry("sudden-charge", "Sudden Charge", "class", ["barbarian", "fighter"]),
+      featEntry("trap-finder", "Trap Finder", "class", ["rogue"]),
+      featEntry("animal-companion", "Animal Companion", "class", ["fighter"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("grant-choice", {
+        itemType: "feat",
+        predicate: [
+          "item:level:1",
+          "item:category:class",
+          "item:trait:{actor|system.details.class.trait}",
+          {
+            or: [
+              "feature:dragon-instinct",
+              {
+                not: "item:draconic-arrogance",
+              },
+            ],
+          },
+          {
+            nor: ["item:animal-companion"],
+          },
+        ],
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "fighter",
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Reactive Strike", "Sudden Charge"]);
+  });
+
   it("hides archetype-tagged skill feats from generic skill-feat steps", async () => {
     setPack("pf2e.feats-srd", [
       featEntry("battle-medicine", "Battle Medicine", "skill", ["healing"]),

@@ -1,4 +1,4 @@
-import type { SelectionRef, SingletonChoiceMeta } from "../../types.js";
+import type { ChoicePredicate, SelectionRef, SingletonChoiceMeta } from "../../types.js";
 import {
   getConfiguredSkills,
   isConfiguredSkillSlug,
@@ -23,6 +23,8 @@ export interface SingletonChoiceSpec {
   slotId: string;
   flag: string;
   prompt: string | null;
+  predicate: ChoicePredicate[];
+  rollOption: string | null;
   optionDomain: "generic" | "skill" | "lore";
   options: Array<{
     value: string;
@@ -60,6 +62,8 @@ export function discoverSingletonChoiceMeta(args: {
         sourceRuleIndex: choice.sourceRuleIndex,
         flag: choice.flag,
         prompt: choice.prompt,
+        predicate: choice.predicate,
+        rollOption: choice.rollOption,
         options: choice.options,
       }) satisfies SingletonChoiceMeta
   );
@@ -98,6 +102,8 @@ export function discoverSingletonChoiceSpecs(args: {
         slotId: `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`,
         flag,
         prompt: resolvePrompt(rule.prompt, localize),
+        predicate: extractPredicate(rule.predicate),
+        rollOption: toNonEmptyString(rule.rollOption),
         optionDomain: options.optionDomain,
         options: options.options,
       } satisfies SingletonChoiceSpec,
@@ -129,6 +135,10 @@ function extractChoiceKey(rule: Record<string, unknown>): string | null {
   }
 
   return null;
+}
+
+function extractPredicate(value: unknown): ChoicePredicate[] {
+  return Array.isArray(value) ? value.filter(isChoicePredicate) : [];
 }
 
 function resolveChoiceOptions(
@@ -223,6 +233,34 @@ function toFeatureLevel(value: unknown): number {
 
 function toNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isChoicePredicate(value: unknown): value is ChoicePredicate {
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((entry) => isChoicePredicate(entry));
+  }
+
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if ("or" in value && value.or !== undefined && (!Array.isArray(value.or) || !value.or.every(isChoicePredicate))) {
+    return false;
+  }
+
+  if ("nor" in value && value.nor !== undefined && (!Array.isArray(value.nor) || !value.nor.every(isChoicePredicate))) {
+    return false;
+  }
+
+  if ("not" in value && value.not !== undefined && !isChoicePredicate(value.not)) {
+    return false;
+  }
+
+  return true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

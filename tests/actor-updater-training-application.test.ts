@@ -295,6 +295,8 @@ function singletonSkillChoiceStep(
       sourceRuleIndex: 0,
       flag,
       prompt: "Choose a skill",
+      predicate: [],
+      rollOption: null,
       options,
     },
   };

@@ -5,7 +5,7 @@ This audit maps Wayfinder's current level-1 support against the actual default P
 It is intentionally narrower than a full future roadmap:
 
 - in scope: default level-1 rules and the PF2E compendium content currently installed in the local Foundry instance
-- out of scope: optional campaign rules such as Free Archetype or Dual-Class
+- out of scope: optional campaign rules such as Free Archetype
 
 ## Environment Audited
 
@@ -176,8 +176,6 @@ These are real future areas, but they should come after the default-rules gaps a
 - Free Archetype
 - other optional campaign rules
 - broader post-level-1 archetype and feat recursion
-
-Dual-Class remains intentionally out of scope unless it becomes a deliberate separate design project.
 
 Those options will be much easier to reason about once the core default-rule grant-choice, singleton-predicate, and fallback-training seams are solid.
 

@@ -42,26 +42,7 @@ What Wayfinder is still missing is the planner-side variant hook:
 
 Conclusion: Free Archetype is not trivial, but it is the next variant rule with the best implementation leverage.
 
-### 2. Dual-Class does not appear to have comparable first-class PF2E system support
-
-In the current PF2E `8.0.3` repo scan:
-
-- Free Archetype is explicit in settings and feat grouping
-- Dual-Class does not appear as a comparable system setting or character-feat scaffold
-
-That matters because Dual-Class is not just “more feat slots.”
-
-It would likely require custom Wayfinder support for:
-
-- two class anchors instead of one
-- combined key-ability and proficiency rules
-- overlapping class-feature and class-feat tracks
-- two spellcasting or class-feature ecosystems where applicable
-- substantial apply-side and derived-state complexity
-
-Conclusion: Dual-Class should be treated as a separate design project, not the next incremental variant-rule slice.
-
-### 3. The shared grant-choice foundation is now partially in place
+### 2. The shared grant-choice foundation is now partially in place
 
 The highest-value special cases already identified:
 
@@ -87,7 +68,7 @@ Free Archetype is not identical, but it still benefits from the same general con
 
 Conclusion: the new default-rules seam should be re-audited and hardened before Free Archetype, not replaced or bypassed.
 
-### 4. Other PF2E-native variants exist, but they are lower-value for Wayfinder creation flow
+### 3. Other PF2E-native variants exist, but they are lower-value for Wayfinder creation flow
 
 PF2E `8.0.3` exposes other variant settings such as:
 
@@ -167,18 +148,6 @@ not:
 
 - “Wayfinder invents its own archetype variant model”
 
-### Priority 5: Dual-Class only as a deliberate separate design project
-
-Dual-Class should not be the next “just another option.”
-
-It should only move forward if we explicitly want to absorb:
-
-- a second class anchor in plan building
-- much broader build-state changes
-- larger apply-side and UI consequences
-
-If pursued, it deserves its own design document and probably its own checkpoint branch series.
-
 ## Suggested Implementation Shape
 
 ### Slice A: Grant-choice smoke validation and hardening
@@ -236,7 +205,6 @@ Done when:
 
 ## What Not To Do
 
-- Do not start with Dual-Class.
 - Do not regress `Ancient Elf` into a one-off bespoke pane now that the shared grant-choice seam exists.
 - Do not fork Wayfinder’s own variant model away from PF2E’s native Free Archetype setting if the system already exposes it cleanly.
 - Do not reopen `app-shell.ts` for these behaviors unless a seam truly cannot be placed elsewhere.
@@ -251,6 +219,5 @@ The right order is:
 2. smoke-test singleton predicate and fixed-skill fallback behavior
 3. broaden singleton predicate vocabulary only if the AP/background re-audit proves it is needed
 4. extend the planner to respect PF2E’s Free Archetype setting
-5. only then decide whether a larger project like Dual-Class is worth the cost
 
 That order closes real player-facing gaps first, stays aligned with PF2E’s native variant support where it exists, and avoids dragging Wayfinder into a much larger custom character-build model too early.

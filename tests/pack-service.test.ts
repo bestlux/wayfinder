@@ -15,6 +15,7 @@ const EMPTY_CONTEXT: OptionContext = {
   ancestryTraits: [],
   heritageTraits: [],
   classSlug: null,
+  classHasSpellcasting: false,
   deitySelected: false,
   sanctification: null,
   hasDedicationFeat: false,
@@ -91,11 +92,46 @@ describe("pack-service dependency filtering", () => {
         ancestryTraits: ["human"],
         heritageTraits: ["dhampir"],
         classSlug: null,
+        classHasSpellcasting: false,
         hasDedicationFeat: false,
       }
     );
 
     expect(options.map((option) => option.name)).toEqual(["Cooperative Nature", "Fanged Blood", "Wilderness Born"]);
+  });
+
+  it("filters ancestry feat spellcasting prerequisites against the drafted class", async () => {
+    setPack("pf2e.ancestries", [ancestryEntry("human", "Human", false)]);
+    setPack("pf2e.feats-srd", [
+      featEntry("cooperative-nature", "Cooperative Nature", "ancestry", ["human"], false),
+      featEntry("adapted-cantrip", "Adapted Cantrip", "ancestry", ["human"], false, {
+        prerequisites: {
+          value: [{ value: "spellcasting class feature" }],
+        },
+      }),
+    ]);
+
+    const step = makeStep("ancestry-feat", {
+      itemType: "feat",
+      featTypes: ["ancestry"],
+      maxLevel: 1,
+    });
+    const fighterOptions = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      ancestrySlug: "human",
+      ancestryTraits: ["human"],
+      classSlug: "fighter",
+    });
+    const wizardOptions = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      ancestrySlug: "human",
+      ancestryTraits: ["human"],
+      classSlug: "wizard",
+      classHasSpellcasting: true,
+    });
+
+    expect(fighterOptions.map((option) => option.name)).toEqual(["Cooperative Nature"]);
+    expect(wizardOptions.map((option) => option.name)).toEqual(["Adapted Cantrip", "Cooperative Nature"]);
   });
 
   it("normalizes explicit ancestry slugs before building the trait catalog", async () => {
@@ -133,6 +169,7 @@ describe("pack-service dependency filtering", () => {
         ancestryTraits: ["human"],
         heritageTraits: [],
         classSlug: null,
+        classHasSpellcasting: false,
         hasDedicationFeat: false,
       }
     );
@@ -778,7 +815,14 @@ function classEntry(slug: string, name: string): any {
   };
 }
 
-function featEntry(slug: string, name: string, featType: string, traits: string[], includeFeatType = true): any {
+function featEntry(
+  slug: string,
+  name: string,
+  featType: string,
+  traits: string[],
+  includeFeatType = true,
+  systemOverrides: Record<string, unknown> = {}
+): any {
   const category = featType === "ancestry" || featType === "class" || featType === "skill" ? featType : "class";
   return {
     _id: slug,
@@ -805,6 +849,7 @@ function featEntry(slug: string, name: string, featType: string, traits: string[
       publication: {
         title: "Player Core",
       },
+      ...systemOverrides,
     },
   };
 }

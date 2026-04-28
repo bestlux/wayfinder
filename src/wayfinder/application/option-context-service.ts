@@ -13,6 +13,7 @@ type LooseDocument = {
     traits?: {
       value?: unknown[];
     } | null;
+    spellcasting?: unknown;
   } | null;
 };
 type LooseItem = {
@@ -173,6 +174,7 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
     ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
     heritageTraits: extractContextTraits(heritageDocument, deps.extractDocumentSlug),
     classSlug: deps.extractDocumentSlug(classDocument),
+    classHasSpellcasting: classDocumentHasSpellcasting(classDocument),
     deitySelected: !!deityDocument,
     sanctification: resolveSanctificationChoice({
       draft: deps.draft,
@@ -181,6 +183,11 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
     }),
     hasDedicationFeat,
   };
+}
+
+function classDocumentHasSpellcasting(document: unknown): boolean {
+  const value = (document as LooseDocument | null)?.system?.spellcasting;
+  return Number(value) > 0;
 }
 
 export async function buildContextNote(
@@ -206,10 +213,10 @@ export async function buildContextNote(
       const isVersatile = heritage?.system?.ancestry === null;
       const heritageName = isVersatile ? heritage?.name : null;
       if (ancestryName && heritageName) {
-        return `Showing ancestry feats keyed to ${ancestryName} plus versatile-heritage feats unlocked by ${heritageName}. Shared ancestry feats stay visible when PF2E encodes their gate in prerequisite text instead of traits.`;
+        return `Showing ancestry feats keyed to ${ancestryName} plus versatile-heritage feats unlocked by ${heritageName}. Class-dependent feats are filtered against the drafted class.`;
       }
       if (ancestryName) {
-        return `Showing ancestry feats keyed to ${ancestryName}. Shared ancestry feats stay visible when PF2E encodes their gate in prerequisite text instead of traits.`;
+        return `Showing ancestry feats keyed to ${ancestryName}. Class-dependent feats are filtered against the drafted class.`;
       }
       return null;
     }

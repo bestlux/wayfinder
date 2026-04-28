@@ -9,6 +9,7 @@ const EMPTY_CONTEXT: OptionContext = {
   ancestryTraits: [],
   heritageTraits: [],
   classSlug: "champion",
+  classHasSpellcasting: false,
   deitySelected: false,
   sanctification: null,
   hasDedicationFeat: false,

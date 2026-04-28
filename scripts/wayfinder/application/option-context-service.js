@@ -82,6 +82,7 @@ export async function buildOptionContext(deps) {
         ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
         heritageTraits: extractContextTraits(heritageDocument, deps.extractDocumentSlug),
         classSlug: deps.extractDocumentSlug(classDocument),
+        classHasSpellcasting: classDocumentHasSpellcasting(classDocument),
         deitySelected: !!deityDocument,
         sanctification: resolveSanctificationChoice({
             draft: deps.draft,
@@ -90,6 +91,10 @@ export async function buildOptionContext(deps) {
         }),
         hasDedicationFeat,
     };
+}
+function classDocumentHasSpellcasting(document) {
+    const value = document?.system?.spellcasting;
+    return Number(value) > 0;
 }
 export async function buildContextNote(step, context, deps) {
     switch (step.slotKind) {
@@ -110,10 +115,10 @@ export async function buildContextNote(step, context, deps) {
             const isVersatile = heritage?.system?.ancestry === null;
             const heritageName = isVersatile ? heritage?.name : null;
             if (ancestryName && heritageName) {
-                return `Showing ancestry feats keyed to ${ancestryName} plus versatile-heritage feats unlocked by ${heritageName}. Shared ancestry feats stay visible when PF2E encodes their gate in prerequisite text instead of traits.`;
+                return `Showing ancestry feats keyed to ${ancestryName} plus versatile-heritage feats unlocked by ${heritageName}. Class-dependent feats are filtered against the drafted class.`;
             }
             if (ancestryName) {
-                return `Showing ancestry feats keyed to ${ancestryName}. Shared ancestry feats stay visible when PF2E encodes their gate in prerequisite text instead of traits.`;
+                return `Showing ancestry feats keyed to ${ancestryName}. Class-dependent feats are filtered against the drafted class.`;
             }
             return null;
         }

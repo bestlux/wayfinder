@@ -9,6 +9,7 @@ const EMPTY_OPTION_CONTEXT = {
     ancestryTraits: [],
     heritageTraits: [],
     classSlug: null,
+    classHasSpellcasting: false,
     deitySelected: false,
     sanctification: null,
     hasDedicationFeat: false,
@@ -132,13 +133,21 @@ export function getPickerBlockedState(step, context) {
                     message: "Wayfinder filters heritages from the drafted ancestry. Pick the ancestry step before reviewing heritage options.",
                 };
         case "ancestry-feat":
-            return context.ancestryTraits.length > 0
-                ? null
-                : {
+            if (context.ancestryTraits.length === 0) {
+                return {
                     tone: "blocked",
                     eyebrow: "Prerequisite required",
                     title: "Choose an ancestry before ancestry feats",
                     message: "Ancestry feats are filtered from the drafted ancestry and any versatile heritage tags.",
+                };
+            }
+            return context.classSlug
+                ? null
+                : {
+                    tone: "blocked",
+                    eyebrow: "Prerequisite required",
+                    title: "Choose a class before ancestry feats",
+                    message: "Some ancestry feats depend on class features such as spellcasting. Pick the class step before reviewing ancestry feat options.",
                 };
         case "class-feat":
             return context.classSlug
@@ -226,11 +235,13 @@ async function getPackIndex(pack, packId) {
         fields: [
             "img",
             "type",
+            "system.description.value",
             "system.slug",
             "system.level.value",
             "system.featType.value",
             "system.ancestry.slug",
             "system.category",
+            "system.prerequisites.value",
             "system.traits.value",
             "system.traits.traditions",
             "system.traits.otherTags",
@@ -331,6 +342,9 @@ function matchesAncestryFeatContext(entry, context, traitCatalog) {
     if (category && category !== "ancestry") {
         return false;
     }
+    if (requiresSpellcastingClassFeature(entry) && !context.classHasSpellcasting) {
+        return false;
+    }
     const traits = extractEntryTraits(entry);
     const dependencyTraits = new Set([...context.ancestryTraits, ...context.heritageTraits]);
     if (dependencyTraits.size === 0) {
@@ -342,6 +356,21 @@ function matchesAncestryFeatContext(entry, context, traitCatalog) {
     }
     const ancestryOrHeritageNamedTraits = traits.filter((trait) => traitCatalog.has(trait));
     return ancestryOrHeritageNamedTraits.length === 0;
+}
+function requiresSpellcastingClassFeature(entry) {
+    return [...extractPrerequisiteText(entry), stringOrNull(entry?.system?.description?.value) ?? ""].some((text) => /\bspellcasting class feature\b/i.test(text));
+}
+function extractPrerequisiteText(entry) {
+    const values = entry?.system?.prerequisites?.value;
+    return Array.isArray(values)
+        ? values.flatMap((value) => {
+            if (typeof value === "string") {
+                return [value];
+            }
+            const text = value?.value;
+            return typeof text === "string" ? [text] : [];
+        })
+        : [];
 }
 function matchesClassFeatContext(entry, context, _traitCatalog) {
     const category = stringOrNull(entry?.system?.category);

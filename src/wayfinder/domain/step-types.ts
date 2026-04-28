@@ -580,9 +580,9 @@ export function isSpellChoiceStep(step: Pick<PendingStep, "kind">): step is Spel
 const SLOT_KIND_SORT_WEIGHTS: Record<SlotKind, number> = {
   ancestry: 0,
   heritage: 1,
-  "ancestry-feat": 2,
-  background: 3,
-  class: 4,
+  background: 2,
+  class: 3,
+  "ancestry-feat": 4,
   "ability-boosts": 5,
   "grant-choice": 6,
   deity: 7,

@@ -52,9 +52,29 @@ describe("wayfinder option context service", () => {
       ancestryTraits: ["humanoid", "human"],
       heritageTraits: ["elf"],
       classSlug: "champion",
+      classHasSpellcasting: false,
       deitySelected: true,
       sanctification: "holy",
       hasDedicationFeat: true,
+    });
+  });
+
+  it("marks class context as spellcasting when the resolved class has spellcasting progression", async () => {
+    const context = await buildOptionContext({
+      draft: createEmptyDraft(1),
+      resolveDocument: async (itemType) =>
+        itemType === "class" ? { name: "Wizard", system: { slug: "wizard", spellcasting: 1 } } : null,
+      listActorItems: () => [],
+      fetchSelectionDocument: async () => null,
+      extractDocumentSlug: (document) => {
+        const typedDocument = document as { system?: { slug?: unknown } } | null;
+        return typeof typedDocument?.system?.slug === "string" ? typedDocument.system.slug.trim().toLowerCase() : null;
+      },
+    });
+
+    expect(context).toMatchObject({
+      classSlug: "wizard",
+      classHasSpellcasting: true,
     });
   });
 
@@ -158,6 +178,7 @@ describe("wayfinder option context service", () => {
           ancestryTraits: [],
           heritageTraits: [],
           classSlug: "champion",
+          classHasSpellcasting: false,
           deitySelected: false,
           sanctification: null,
           hasDedicationFeat: false,

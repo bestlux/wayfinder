@@ -129,6 +129,7 @@ export interface OptionContext {
   ancestryTraits: string[];
   heritageTraits: string[];
   classSlug: string | null;
+  classHasSpellcasting: boolean;
   deitySelected?: boolean;
   sanctification?: "holy" | "unholy" | "none" | null;
   hasDedicationFeat: boolean;

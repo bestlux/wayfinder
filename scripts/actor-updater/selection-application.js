@@ -36,6 +36,7 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
         deps.stripPreselectedClassBranchEntries(source, draft, steps);
     }
     if (draft && SINGLETON_ITEM_TYPES.has(selection.itemType)) {
+        applyPendingSingletonChoices(source, selection, draft, steps);
         applyPendingGrantChoiceSelections(source, selection, draft, steps);
         applyPendingTrainingSelections(source, selection, draft, steps);
     }
@@ -50,6 +51,24 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
         slotId: selection.slotId,
     };
     return source;
+}
+function applyPendingSingletonChoices(source, selection, draft, steps) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    if (rules.length === 0) {
+        return;
+    }
+    for (const step of steps) {
+        if (step.kind !== "singleton-choice" ||
+            !step.singletonChoice ||
+            step.singletonChoice.sourceUuid !== selection.uuid) {
+            continue;
+        }
+        const value = draft.singletonChoices[step.slotId];
+        if (typeof value !== "string" || value.length === 0) {
+            continue;
+        }
+        applyRuleSelection(source, step.singletonChoice.sourceRuleIndex, step.singletonChoice.flag, value);
+    }
 }
 function applyPendingTrainingSelections(source, selection, draft, steps) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
@@ -82,9 +101,12 @@ function applyTrainingRuleSelection(source, selection, persistence, flag, value)
     if (!persistence || persistence.sourceUuid !== selection.uuid) {
         return;
     }
+    applyRuleSelection(source, persistence.sourceRuleIndex, flag, value);
+}
+function applyRuleSelection(source, sourceRuleIndex, flag, value) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
-    if (rules[persistence.sourceRuleIndex]) {
-        rules[persistence.sourceRuleIndex].selection = value;
+    if (rules[sourceRuleIndex]) {
+        rules[sourceRuleIndex].selection = value;
     }
     source.flags ??= {};
     source.flags.pf2e ??= {};

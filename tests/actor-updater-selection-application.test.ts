@@ -172,6 +172,77 @@ describe("actor-updater selection application", () => {
     });
   });
 
+  it("preselects drafted singleton choices before creating the owning item", async () => {
+    const draft = createEmptyDraft(1);
+    draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "society";
+    const steps: PendingStep[] = [
+      {
+        id: "singleton-choice-heritage-skilled-human-trainedSkill-level-1",
+        level: 1,
+        kind: "singleton-choice",
+        slotKind: "singleton-choice",
+        title: "Trained Skill",
+        description: "",
+        required: true,
+        slotId: "singleton-choice-heritage-skilled-human-trainedSkill-level-1",
+        singletonChoice: {
+          slotId: "singleton-choice-heritage-skilled-human-trainedSkill-level-1",
+          sourceItemType: "heritage",
+          sourcePackId: "test.pack",
+          sourceDocumentId: "skilled-human",
+          sourceUuid: "Compendium.test.pack.Item.skilled-human",
+          sourceName: "Skilled Human",
+          sourceRuleIndex: 0,
+          flag: "trainedSkill",
+          prompt: "Choose a skill",
+          predicate: [],
+          rollOption: null,
+          options: [
+            { value: "arcana", label: "Arcana", img: null, detail: null },
+            { value: "society", label: "Society", img: null, detail: null },
+          ],
+        },
+      },
+    ];
+
+    const source = await createEmbeddedSource(
+      selectionRef("heritage-level-1", "heritage", "skilled-human", "Skilled Human"),
+      draft,
+      steps,
+      {
+        fetchSelectionDocument: async () => ({
+          toObject: () => ({
+            _id: "heritage-compendium",
+            name: "Skilled Human",
+            type: "heritage",
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "trainedSkill",
+                  choices: {
+                    config: "skills",
+                  },
+                },
+              ],
+            },
+          }),
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      }
+    );
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "trainedSkill",
+      selection: "society",
+    });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({
+      trainedSkill: "society",
+    });
+  });
+
   it("inserts feats through PF2E slots and stamps source flags on the created items", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
     const actor = {

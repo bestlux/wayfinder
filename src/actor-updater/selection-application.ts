@@ -78,6 +78,7 @@ export async function createEmbeddedSource(
     deps.stripPreselectedClassBranchEntries(source, draft, steps);
   }
   if (draft && SINGLETON_ITEM_TYPES.has(selection.itemType)) {
+    applyPendingSingletonChoices(source, selection, draft, steps);
     applyPendingGrantChoiceSelections(source, selection, draft, steps);
     applyPendingTrainingSelections(source, selection, draft, steps);
   }
@@ -93,6 +94,35 @@ export async function createEmbeddedSource(
     slotId: selection.slotId,
   };
   return source;
+}
+
+function applyPendingSingletonChoices(
+  source: EmbeddedItemSource,
+  selection: SelectionRef,
+  draft: DraftState,
+  steps: PendingStep[]
+): void {
+  const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+  if (rules.length === 0) {
+    return;
+  }
+
+  for (const step of steps) {
+    if (
+      step.kind !== "singleton-choice" ||
+      !step.singletonChoice ||
+      step.singletonChoice.sourceUuid !== selection.uuid
+    ) {
+      continue;
+    }
+
+    const value = draft.singletonChoices[step.slotId];
+    if (typeof value !== "string" || value.length === 0) {
+      continue;
+    }
+
+    applyRuleSelection(source, step.singletonChoice.sourceRuleIndex, step.singletonChoice.flag, value);
+  }
 }
 
 function applyPendingTrainingSelections(
@@ -143,9 +173,13 @@ function applyTrainingRuleSelection(
     return;
   }
 
+  applyRuleSelection(source, persistence.sourceRuleIndex, flag, value);
+}
+
+function applyRuleSelection(source: EmbeddedItemSource, sourceRuleIndex: number, flag: string, value: string): void {
   const rules = Array.isArray(source.system?.rules) ? (source.system.rules as LooseRecord[]) : [];
-  if (rules[persistence.sourceRuleIndex]) {
-    rules[persistence.sourceRuleIndex].selection = value;
+  if (rules[sourceRuleIndex]) {
+    rules[sourceRuleIndex].selection = value;
   }
 
   source.flags ??= {};

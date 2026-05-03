@@ -3,6 +3,7 @@ import { stripPreselectedClassBranchEntries } from "../class-branch-service.js";
 import { stripPreselectedClassFeatureEntries } from "../class-feature-choice-service.js";
 import { MODULE_ID } from "../constants.js";
 import { fetchSelectionDocument } from "../pack-service.js";
+import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 const SINGLETON_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 const DEFAULT_CREATE_DEPS = {
@@ -39,6 +40,9 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
         applyPendingSingletonChoices(source, selection, draft, steps);
         applyPendingGrantChoiceSelections(source, selection, draft, steps);
         applyPendingTrainingSelections(source, selection, draft, steps);
+    }
+    if (draft && selection.itemType === "feat") {
+        await applyPendingFeatSpellChoices(source, selection, draft, steps, deps);
     }
     delete source._id;
     source._stats ??= {};
@@ -136,18 +140,18 @@ function applyPendingGrantChoiceSelections(source, selection, draft, steps) {
         source.flags.pf2e.rulesSelections[step.grantSelection.flag] = grantedSelection.uuid;
     }
 }
-export async function insertFeatSelection(actor, selection, step, deps = DEFAULT_INSERT_DEPS) {
+export async function insertFeatSelection(actor, selection, step, deps = DEFAULT_INSERT_DEPS, draft, steps = []) {
     const document = await deps.fetchSelectionDocument(selection);
     if (!document) {
         return;
     }
     const slotData = resolveFeatSlotData(actor, selection, step);
+    const source = await deps.createEmbeddedSource(selection, draft, steps);
     if (typeof actor?.feats?.insertFeat === "function") {
-        const inserted = await actor.feats.insertFeat(document, slotData);
+        const inserted = await actor.feats.insertFeat(source ? withEmbeddedSource(document, source) : document, slotData);
         await stampSelectionFlags(actor, inserted, selection);
         return;
     }
-    const source = await deps.createEmbeddedSource(selection);
     if (!source) {
         return;
     }
@@ -162,6 +166,42 @@ export async function insertFeatSelection(actor, selection, step, deps = DEFAULT
     if (typeof actor.createEmbeddedDocuments === "function") {
         await actor.createEmbeddedDocuments("Item", [source]);
     }
+}
+async function applyPendingFeatSpellChoices(source, selection, draft, steps, deps) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    if (rules.length === 0) {
+        return;
+    }
+    for (const step of steps) {
+        if (step.kind !== "spell-choice" || !step.spellChoice || step.spellChoice.sourceUuid !== selection.uuid) {
+            continue;
+        }
+        const spellSelection = draft.spellChoices[step.slotId]?.[0];
+        if (!spellSelection) {
+            continue;
+        }
+        const spellDocument = await deps.fetchSelectionDocument(spellSelection);
+        const spellSlug = extractDocumentSlug(spellDocument) ??
+            extractDocumentSlug(spellDocument?.toObject()) ??
+            slugifyName(spellSelection.name) ??
+            spellSelection.documentId;
+        const ruleIndex = rules.findIndex((rule) => isSpellChoiceRule(rule));
+        const rule = ruleIndex >= 0 ? rules[ruleIndex] : null;
+        const flag = typeof rule?.flag === "string" ? rule.flag : null;
+        if (!flag) {
+            continue;
+        }
+        applyRuleSelection(source, ruleIndex, flag, spellSlug);
+    }
+}
+function isSpellChoiceRule(rule) {
+    const choices = rule.choices;
+    return rule.key === "ChoiceSet" && typeof rule.flag === "string" && choices?.itemType === "spell";
+}
+function withEmbeddedSource(document, source) {
+    return Object.assign(Object.create(document), document, {
+        toObject: () => source,
+    });
 }
 function resolveFeatSlotData(actor, selection, step) {
     const groupId = resolveFeatGroupId(selection, step);

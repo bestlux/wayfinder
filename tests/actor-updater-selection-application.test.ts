@@ -243,6 +243,101 @@ describe("actor-updater selection application", () => {
     });
   });
 
+  it("preselects drafted feat-owned spell choices before creating the feat item", async () => {
+    const draft = createEmptyDraft(1);
+    draft.spellChoices["spell-choice-feat-arcane-tattoos-cantrip-level-1"] = [
+      selectionRef("spell-choice-feat-arcane-tattoos-cantrip-level-1", "spell", "shield", "Shield"),
+    ];
+    const steps: PendingStep[] = [
+      {
+        id: "spell-choice-feat-arcane-tattoos-cantrip-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Arcane Tattoos",
+        description: "",
+        required: true,
+        slotId: "spell-choice-feat-arcane-tattoos-cantrip-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: {
+          slotId: "spell-choice-feat-arcane-tattoos-cantrip-level-1",
+          sourcePackId: "test.pack",
+          sourceDocumentId: "arcane-tattoos",
+          sourceUuid: "Compendium.test.pack.Item.arcane-tattoos",
+          sourceName: "Arcane Tattoos",
+          classSlug: null,
+          dependsOn: null,
+          destination: {
+            type: "innate",
+            key: "feat-arcane-tattoos-innate-arcane",
+            label: "Innate arcane spells",
+            entryName: "Innate Arcane Spells",
+            tradition: "arcane",
+            ability: "cha",
+            prepared: "innate",
+          },
+          count: 1,
+          minRank: 0,
+          maxRank: 0,
+          cantrip: true,
+          allowedSpellSlugs: ["daze", "shield"],
+          curriculumSpellNames: [],
+          additionalAllowedSpellNames: [],
+          restrictToCommon: true,
+        },
+      },
+    ];
+
+    const source = await createEmbeddedSource(
+      selectionRef("ancestry-feat-level-1", "feat", "arcane-tattoos", "Arcane Tattoos", "ancestry"),
+      draft,
+      steps,
+      {
+        fetchSelectionDocument: async (selection) => ({
+          toObject: () =>
+            selection.itemType === "spell"
+              ? {
+                  name: "Shield",
+                  type: "spell",
+                  system: {
+                    slug: "shield",
+                  },
+                }
+              : {
+                  _id: "feat-compendium",
+                  name: "Arcane Tattoos",
+                  type: "feat",
+                  system: {
+                    rules: [
+                      {
+                        key: "ChoiceSet",
+                        flag: "arcaneTattoos",
+                        choices: {
+                          itemType: "spell",
+                          slugsAsValues: true,
+                        },
+                      },
+                    ],
+                  },
+                },
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      }
+    );
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "arcaneTattoos",
+      selection: "shield",
+    });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({
+      arcaneTattoos: "shield",
+    });
+  });
+
   it("inserts feats through PF2E slots and stamps source flags on the created items", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
     const actor = {
@@ -292,6 +387,65 @@ describe("actor-updater selection application", () => {
         [`flags.${MODULE_ID}.slotId`]: selection.slotId,
       },
     ]);
+  });
+
+  it("passes preselected feat sources through PF2E slot insertion", async () => {
+    const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
+    const actor = {
+      feats: {
+        get(groupId: string) {
+          if (groupId !== "ancestry") {
+            return null;
+          }
+
+          return {
+            slots: {
+              "ancestry-1": {
+                id: "ancestry-1",
+                level: 1,
+                feat: null,
+              },
+            },
+          };
+        },
+        insertFeat,
+      },
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const draft = createEmptyDraft(1);
+    draft.spellChoices["spell-choice-feat-arcane-tattoos-cantrip-level-1"] = [
+      selectionRef("spell-choice-feat-arcane-tattoos-cantrip-level-1", "spell", "shield", "Shield"),
+    ];
+    const selection = selectionRef("ancestry-feat-level-1", "feat", "arcane-tattoos", "Arcane Tattoos", "ancestry");
+    const step = featStep("ancestry-feat-level-1", "ancestry-feat", 1, ["ancestry"]);
+    const steps = [step, arcaneTattoosSpellStep()];
+
+    await insertFeatSelection(
+      actor,
+      selection,
+      step,
+      {
+        fetchSelectionDocument,
+        createEmbeddedSource: (selection, draft, steps) =>
+          createEmbeddedSource(selection, draft, steps, {
+            fetchSelectionDocument,
+            stripPreselectedClassFeatureEntries: vi.fn(),
+            stripPreselectedClassBranchEntries: vi.fn(),
+          }),
+      },
+      draft,
+      steps
+    );
+
+    const insertedDocument = (insertFeat.mock.calls as unknown[][])[0]?.[0] as {
+      toObject: () => { system?: { rules?: unknown[] } };
+    };
+    expect(insertedDocument.toObject().system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "arcaneTattoos",
+      selection: "shield",
+    });
   });
 
   it("falls back to raw feat creation when PF2E slot insertion is unavailable", async () => {
@@ -403,5 +557,80 @@ function featStep(
       featTypes,
       maxLevel: level,
     },
+  };
+}
+
+function arcaneTattoosSpellStep(): PendingStep {
+  return {
+    id: "spell-choice-feat-arcane-tattoos-cantrip-level-1",
+    level: 1,
+    kind: "spell-choice",
+    slotKind: "spell-choice",
+    title: "Arcane Tattoos",
+    description: "",
+    required: true,
+    slotId: "spell-choice-feat-arcane-tattoos-cantrip-level-1",
+    filters: {
+      itemType: "spell",
+    },
+    spellChoice: {
+      slotId: "spell-choice-feat-arcane-tattoos-cantrip-level-1",
+      sourcePackId: "test.pack",
+      sourceDocumentId: "arcane-tattoos",
+      sourceUuid: "Compendium.test.pack.Item.arcane-tattoos",
+      sourceName: "Arcane Tattoos",
+      classSlug: null,
+      dependsOn: null,
+      destination: {
+        type: "innate",
+        key: "feat-arcane-tattoos-innate-arcane",
+        label: "Innate arcane spells",
+        entryName: "Innate Arcane Spells",
+        tradition: "arcane",
+        ability: "cha",
+        prepared: "innate",
+      },
+      count: 1,
+      minRank: 0,
+      maxRank: 0,
+      cantrip: true,
+      allowedSpellSlugs: ["daze", "shield"],
+      curriculumSpellNames: [],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: true,
+    },
+  };
+}
+
+async function fetchSelectionDocument(selection: SelectionRef) {
+  return {
+    id: selection.documentId,
+    name: selection.name,
+    toObject: () =>
+      selection.itemType === "spell"
+        ? {
+            name: "Shield",
+            type: "spell",
+            system: {
+              slug: "shield",
+            },
+          }
+        : {
+            _id: "feat-compendium",
+            name: "Arcane Tattoos",
+            type: "feat",
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "arcaneTattoos",
+                  choices: {
+                    itemType: "spell",
+                    slugsAsValues: true,
+                  },
+                },
+              ],
+            },
+          },
   };
 }

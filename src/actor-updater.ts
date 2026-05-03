@@ -56,7 +56,7 @@ export async function applyDraftToActor(
     }
 
     const step = stepsBySlotId.get(selection.slotId);
-    await insertFeatSelection(actor, selection, step ?? null);
+    await insertFeatSelection(actor, selection, step ?? null, undefined, draft, steps);
   }
 
   await applySingletonChoiceDraft(actor, draft, steps);

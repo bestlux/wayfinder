@@ -75,8 +75,9 @@ export function discoverSingletonChoiceSpecs(args: {
   sourceSlug: string;
   sourceLevel?: number;
   localize: (value: string) => string;
+  includeTrainingChoices?: boolean;
 }): SingletonChoiceSpec[] {
-  const { sourceItemType, sourceDocument, sourceSlug, sourceLevel, localize } = args;
+  const { sourceItemType, sourceDocument, sourceSlug, sourceLevel, localize, includeTrainingChoices = false } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
   const level = sourceLevel ?? toFeatureLevel(document?.system?.level?.value);
   const configuredSkills = getConfiguredSkills();
@@ -91,7 +92,7 @@ export function discoverSingletonChoiceSpecs(args: {
     if (
       !options ||
       options.options.length === 0 ||
-      shouldSkipSingletonChoice(args.sourceItemType, options.optionDomain)
+      (!includeTrainingChoices && shouldSkipSingletonChoice(args.sourceItemType, options.optionDomain))
     ) {
       return [];
     }

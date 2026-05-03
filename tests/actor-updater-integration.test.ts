@@ -523,6 +523,66 @@ describe("actor-updater integration", () => {
       "system.skills.arcana.rank": 2,
     });
   });
+
+  it("preseeds heritage skill-training choices before creating the heritage item", async () => {
+    const { actor, createdItems } = buildActorHarness();
+    setGamePacks({
+      "pf2e.heritages": {
+        "skilled-human": {
+          name: "Skilled Human",
+          type: "heritage",
+          system: {
+            slug: "skilled-human",
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "trainedSkill",
+                choices: {
+                  config: "skills",
+                },
+              },
+              {
+                key: "ActiveEffectLike",
+                path: "system.skills.{item|flags.pf2e.rulesSelections.trainedSkill}.rank",
+                value: 1,
+              },
+            ],
+          },
+        },
+      },
+    });
+    actor.system = {
+      ...actor.system,
+      skills: {
+        society: { rank: 0 },
+      },
+    };
+
+    const draft = createEmptyDraft(1);
+    draft.selections["heritage-level-1"] = selection(
+      "heritage-level-1",
+      "pf2e.heritages",
+      "skilled-human",
+      "heritage",
+      "Skilled Human"
+    );
+    draft.skillTrainings["skill-training-wizard-level-1"] = {
+      ruleChoices: {
+        "heritage:skilled-human:trainedSkill": "society",
+      },
+      additional: [],
+      loreChoices: {},
+    };
+
+    await applyDraftToActor(actor as any, draft, [
+      heritageSelectionStep(),
+      skilledHumanTrainingStep("skill-training-wizard-level-1"),
+    ]);
+
+    const heritage = createdItems.find((item) => item?.sourceId === "Compendium.pf2e.heritages.Item.skilled-human");
+    expect(heritage?.flags?.pf2e?.rulesSelections?.trainedSkill).toBe("society");
+    expect((heritage?.system?.rules as Array<Record<string, unknown>> | undefined)?.[0]?.selection).toBe("society");
+  });
 });
 
 function heritageSingletonSkillChoiceStep(): PendingStep {
@@ -567,6 +627,46 @@ function heritageSelectionStep(): PendingStep {
     slotId: "heritage-level-1",
     filters: {
       itemType: "heritage",
+    },
+  };
+}
+
+function skilledHumanTrainingStep(slotId: string): PendingStep {
+  return {
+    id: slotId,
+    level: 1,
+    kind: "skill-training",
+    slotKind: "skill-training",
+    title: "Wizard training",
+    description: "",
+    required: true,
+    slotId,
+    training: {
+      classSlug: "wizard",
+      className: "Wizard",
+      fixedSkills: [],
+      fixedLores: [],
+      choiceRules: [
+        {
+          key: "heritage:skilled-human:trainedSkill",
+          flag: "trainedSkill",
+          prompt: "Choose a skill",
+          sourceLabel: "Skilled Human",
+          options: [
+            { slug: "arcana", label: "Arcana" },
+            { slug: "society", label: "Society" },
+          ],
+          persistence: {
+            sourceItemType: "heritage",
+            sourcePackId: "pf2e.heritages",
+            sourceDocumentId: "skilled-human",
+            sourceUuid: "Compendium.pf2e.heritages.Item.skilled-human",
+            sourceRuleIndex: 0,
+          },
+        },
+      ],
+      loreChoices: [],
+      additionalCount: 0,
     },
   };
 }

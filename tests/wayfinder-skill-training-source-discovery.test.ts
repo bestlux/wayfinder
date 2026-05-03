@@ -3,6 +3,75 @@ import type { SelectionRef } from "../src/types";
 import { discoverSourceSkillTrainingMeta } from "../src/wayfinder/skill-training/source-discovery";
 
 describe("wayfinder skill training source discovery", () => {
+  it("discovers heritage skill ChoiceSets as persisted skill-training choices", () => {
+    const globals = globalThis as typeof globalThis & {
+      CONFIG?: {
+        PF2E?: {
+          skills?: Record<string, { label: string }>;
+        };
+      };
+    };
+    const originalConfig = globals.CONFIG;
+    globals.CONFIG = {
+      ...(originalConfig ?? {}),
+      PF2E: {
+        ...(originalConfig?.PF2E ?? {}),
+        skills: {
+          arcana: { label: "PF2E.Skill.Arcana" },
+          society: { label: "PF2E.Skill.Society" },
+        },
+      },
+    };
+
+    try {
+      const training = discoverSourceSkillTrainingMeta({
+        sources: [
+          {
+            sourceItemType: "heritage",
+            sourceSelection: selection("heritage-level-1", "skilled-human", "Skilled Human", "heritage"),
+            sourceDocument: {
+              name: "Skilled Human",
+              system: {
+                slug: "skilled-human",
+                rules: [
+                  {
+                    key: "ChoiceSet",
+                    flag: "trainedSkill",
+                    choices: {
+                      config: "skills",
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        ],
+        localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      });
+
+      expect(training.choiceRules).toMatchObject([
+        {
+          key: "heritage:skilled-human:trainedSkill",
+          flag: "trainedSkill",
+          sourceLabel: "Skilled Human",
+          options: [
+            { slug: "arcana", label: "Arcana" },
+            { slug: "society", label: "Society" },
+          ],
+          persistence: {
+            sourceItemType: "heritage",
+            sourcePackId: "pf2e.heritages",
+            sourceDocumentId: "skilled-human",
+            sourceUuid: "Compendium.pf2e.heritages.Item.skilled-human",
+            sourceRuleIndex: 0,
+          },
+        },
+      ]);
+    } finally {
+      globals.CONFIG = originalConfig;
+    }
+  });
+
   it("discovers fixed feat-granted skills and lore from ancestry feats like Elven Lore", () => {
     const training = discoverSourceSkillTrainingMeta({
       sources: [
@@ -467,14 +536,15 @@ describe("wayfinder skill training source discovery", () => {
   });
 });
 
-function selection(slotId: string, documentId: string, name = documentId): SelectionRef {
+function selection(slotId: string, documentId: string, name = documentId, itemType = "feat"): SelectionRef {
+  const packId = itemType === "heritage" ? "pf2e.heritages" : "pf2e.feats-srd";
   return {
     slotId,
-    packId: "pf2e.feats-srd",
+    packId,
     documentId,
-    uuid: `Compendium.pf2e.feats-srd.Item.${documentId}`,
-    itemType: "feat",
-    featType: "ancestry",
+    uuid: `Compendium.${packId}.Item.${documentId}`,
+    itemType,
+    featType: itemType === "feat" ? "ancestry" : null,
     name,
     level: 1,
   };

@@ -24,6 +24,7 @@ export function discoverSourceSkillTrainingMeta(args) {
                 sourceDocument: document,
                 sourceSlug,
                 localize: args.localize,
+                includeTrainingChoices: true,
             })) {
                 const persistence = selectionPersistence(source, spec.sourceRuleIndex);
                 if (spec.optionDomain === "skill") {

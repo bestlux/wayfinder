@@ -25,7 +25,7 @@ export function discoverSingletonChoiceMeta(args) {
     }));
 }
 export function discoverSingletonChoiceSpecs(args) {
-    const { sourceItemType, sourceDocument, sourceSlug, sourceLevel, localize } = args;
+    const { sourceItemType, sourceDocument, sourceSlug, sourceLevel, localize, includeTrainingChoices = false } = args;
     const document = sourceDocument;
     const level = sourceLevel ?? toFeatureLevel(document?.system?.level?.value);
     const configuredSkills = getConfiguredSkills();
@@ -37,7 +37,7 @@ export function discoverSingletonChoiceSpecs(args) {
         const options = resolveChoiceOptions(rule, localize, configuredSkills);
         if (!options ||
             options.options.length === 0 ||
-            shouldSkipSingletonChoice(args.sourceItemType, options.optionDomain)) {
+            (!includeTrainingChoices && shouldSkipSingletonChoice(args.sourceItemType, options.optionDomain))) {
             return [];
         }
         return [

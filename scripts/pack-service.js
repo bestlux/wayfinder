@@ -457,6 +457,9 @@ function matchesSpellChoiceContext(entry, step) {
     if (rank === null || rank < spellChoice.minRank || rank > spellChoice.maxRank) {
         return false;
     }
+    if (allowedSpellSlugs.length > 0) {
+        return isExplicitlyAllowed;
+    }
     if (isExplicitlyAllowed) {
         return true;
     }

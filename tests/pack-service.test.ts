@@ -667,6 +667,7 @@ describe("pack-service dependency filtering", () => {
     setPack("pf2e.spells-srd", [
       spellEntry("shield", "Shield", 1, ["arcane"], ["cantrip"]),
       spellEntry("daze", "Daze", 1, ["divine", "occult"], ["cantrip"]),
+      spellEntry("electric-arc", "Electric Arc", 1, ["arcane", "primal"], ["cantrip"]),
       spellEntry("guidance", "Guidance", 1, ["divine", "occult", "primal"], ["cantrip"]),
       spellEntry("heal", "Heal", 1, ["divine", "primal"], []),
     ]);

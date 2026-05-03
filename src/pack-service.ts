@@ -664,6 +664,10 @@ function matchesSpellChoiceContext(entry: PackIndexEntry, step: PendingStep): bo
     return false;
   }
 
+  if (allowedSpellSlugs.length > 0) {
+    return isExplicitlyAllowed;
+  }
+
   if (isExplicitlyAllowed) {
     return true;
   }

@@ -37,6 +37,7 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
     }
     if (draft && SINGLETON_ITEM_TYPES.has(selection.itemType)) {
         applyPendingGrantChoiceSelections(source, selection, draft, steps);
+        applyPendingTrainingSelections(source, selection, draft, steps);
     }
     delete source._id;
     source._stats ??= {};
@@ -49,6 +50,46 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
         slotId: selection.slotId,
     };
     return source;
+}
+function applyPendingTrainingSelections(source, selection, draft, steps) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    if (rules.length === 0) {
+        return;
+    }
+    for (const step of steps) {
+        if (step.kind !== "skill-training" || !step.training) {
+            continue;
+        }
+        const training = draft.skillTrainings[step.slotId];
+        if (!training) {
+            continue;
+        }
+        for (const choiceRule of step.training.choiceRules) {
+            const choice = training.ruleChoices[choiceRule.key];
+            if (choice) {
+                applyTrainingRuleSelection(source, selection, choiceRule.persistence, choiceRule.flag, choice);
+            }
+        }
+        for (const loreChoice of step.training.loreChoices) {
+            const choice = training.loreChoices[loreChoice.key];
+            if (choice) {
+                applyTrainingRuleSelection(source, selection, loreChoice.persistence, loreChoice.flag, choice);
+            }
+        }
+    }
+}
+function applyTrainingRuleSelection(source, selection, persistence, flag, value) {
+    if (!persistence || persistence.sourceUuid !== selection.uuid) {
+        return;
+    }
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    if (rules[persistence.sourceRuleIndex]) {
+        rules[persistence.sourceRuleIndex].selection = value;
+    }
+    source.flags ??= {};
+    source.flags.pf2e ??= {};
+    source.flags.pf2e.rulesSelections ??= {};
+    source.flags.pf2e.rulesSelections[flag] = value;
 }
 function applyPendingGrantChoiceSelections(source, selection, draft, steps) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];

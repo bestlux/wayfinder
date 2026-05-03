@@ -8,6 +8,7 @@ import type {
   ActorLike,
   EmbeddedItemSource,
   FeatSlotLike,
+  LooseRecord,
   SelectionDocumentLike,
 } from "../shared/actor-model.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
@@ -78,6 +79,7 @@ export async function createEmbeddedSource(
   }
   if (draft && SINGLETON_ITEM_TYPES.has(selection.itemType)) {
     applyPendingGrantChoiceSelections(source, selection, draft, steps);
+    applyPendingTrainingSelections(source, selection, draft, steps);
   }
 
   delete source._id;
@@ -91,6 +93,65 @@ export async function createEmbeddedSource(
     slotId: selection.slotId,
   };
   return source;
+}
+
+function applyPendingTrainingSelections(
+  source: EmbeddedItemSource,
+  selection: SelectionRef,
+  draft: DraftState,
+  steps: PendingStep[]
+): void {
+  const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+  if (rules.length === 0) {
+    return;
+  }
+
+  for (const step of steps) {
+    if (step.kind !== "skill-training" || !step.training) {
+      continue;
+    }
+
+    const training = draft.skillTrainings[step.slotId];
+    if (!training) {
+      continue;
+    }
+
+    for (const choiceRule of step.training.choiceRules) {
+      const choice = training.ruleChoices[choiceRule.key];
+      if (choice) {
+        applyTrainingRuleSelection(source, selection, choiceRule.persistence, choiceRule.flag, choice);
+      }
+    }
+
+    for (const loreChoice of step.training.loreChoices) {
+      const choice = training.loreChoices[loreChoice.key];
+      if (choice) {
+        applyTrainingRuleSelection(source, selection, loreChoice.persistence, loreChoice.flag, choice);
+      }
+    }
+  }
+}
+
+function applyTrainingRuleSelection(
+  source: EmbeddedItemSource,
+  selection: SelectionRef,
+  persistence: { sourceUuid: string; sourceRuleIndex: number } | null,
+  flag: string,
+  value: string
+): void {
+  if (!persistence || persistence.sourceUuid !== selection.uuid) {
+    return;
+  }
+
+  const rules = Array.isArray(source.system?.rules) ? (source.system.rules as LooseRecord[]) : [];
+  if (rules[persistence.sourceRuleIndex]) {
+    rules[persistence.sourceRuleIndex].selection = value;
+  }
+
+  source.flags ??= {};
+  source.flags.pf2e ??= {};
+  source.flags.pf2e.rulesSelections ??= {};
+  source.flags.pf2e.rulesSelections[flag] = value;
 }
 
 function applyPendingGrantChoiceSelections(

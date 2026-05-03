@@ -84,6 +84,94 @@ describe("actor-updater selection application", () => {
     expect(stripPreselectedClassBranchEntries).toHaveBeenCalledWith(source, draft, steps);
   });
 
+  it("preselects drafted class skill-training choices before creating the class item", async () => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-fighter-level-1"] = {
+      ruleChoices: {
+        "class:fighterskill": "athletics",
+      },
+      additional: ["crafting", "medicine", "society"],
+      loreChoices: {},
+    };
+    const steps: PendingStep[] = [
+      {
+        id: "skill-training-fighter-level-1",
+        level: 1,
+        kind: "skill-training",
+        slotKind: "skill-training",
+        title: "Training",
+        description: "",
+        required: true,
+        slotId: "skill-training-fighter-level-1",
+        training: {
+          classSlug: "fighter",
+          className: "Fighter",
+          fixedSkills: [],
+          fixedLores: [],
+          choiceRules: [
+            {
+              key: "class:fighterskill",
+              flag: "fighterSkill",
+              prompt: "Choose a skill",
+              sourceLabel: "Fighter",
+              options: [
+                { slug: "acrobatics", label: "Acrobatics" },
+                { slug: "athletics", label: "Athletics" },
+              ],
+              persistence: {
+                sourceItemType: "class",
+                sourcePackId: "test.pack",
+                sourceDocumentId: "fighter",
+                sourceUuid: "Compendium.test.pack.Item.fighter",
+                sourceRuleIndex: 0,
+              },
+            },
+          ],
+          loreChoices: [],
+          additionalCount: 3,
+        },
+      },
+    ];
+
+    const source = await createEmbeddedSource(
+      selectionRef("class-level-1", "class", "fighter", "Fighter"),
+      draft,
+      steps,
+      {
+        fetchSelectionDocument: async () => ({
+          toObject: () => ({
+            _id: "class-compendium",
+            name: "Fighter",
+            type: "class",
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "fighterSkill",
+                  choices: [
+                    { value: "acrobatics", label: "Acrobatics" },
+                    { value: "athletics", label: "Athletics" },
+                  ],
+                },
+              ],
+            },
+          }),
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      }
+    );
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "fighterSkill",
+      selection: "athletics",
+    });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({
+      fighterSkill: "athletics",
+    });
+  });
+
   it("inserts feats through PF2E slots and stamps source flags on the created items", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
     const actor = {

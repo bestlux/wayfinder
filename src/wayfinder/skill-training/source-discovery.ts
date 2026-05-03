@@ -68,6 +68,7 @@ export function discoverSourceSkillTrainingMeta(args: {
     fixedSkills.push(...extractFixedRuleGrantedSkills(document));
     fixedLores.push(...extractFixedLores(document));
 
+    let hasRuleSkillChoice = false;
     if (source.sourceItemType !== "feat") {
       for (const spec of discoverSingletonChoiceSpecs({
         sourceItemType: source.sourceItemType,
@@ -78,6 +79,7 @@ export function discoverSourceSkillTrainingMeta(args: {
       })) {
         const persistence = selectionPersistence(source, spec.sourceRuleIndex);
         if (spec.optionDomain === "skill") {
+          hasRuleSkillChoice = true;
           choiceRules.push({
             key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
             flag: spec.flag,
@@ -108,6 +110,7 @@ export function discoverSourceSkillTrainingMeta(args: {
       source,
       sourceName,
       sourceSlug,
+      hasRuleSkillChoice,
       localize: args.localize,
       configuredSkills,
     });
@@ -166,6 +169,7 @@ function discoverDescriptionTrainingMeta(args: {
   source: SkillTrainingSourceContext;
   sourceName: string;
   sourceSlug: string;
+  hasRuleSkillChoice: boolean;
   localize: (value: string) => string;
   configuredSkills: SkillConfigMap;
 }): DerivedTrainingMeta {
@@ -226,7 +230,7 @@ function discoverDescriptionTrainingMeta(args: {
     );
   }
 
-  if (choiceRules.length === 0) {
+  if (choiceRules.length === 0 && !args.hasRuleSkillChoice) {
     const genericSkillMatches = Array.from(
       descriptionText.matchAll(
         /\b(?:(one|two)\s+)?(?:other\s+)?((?:intelligence|wisdom|charisma|dexterity|strength|constitution)(?:-\s*or\s*(?:intelligence|wisdom|charisma|dexterity|strength|constitution))?)-based skill(?:s)? of your choice\b/gi
@@ -263,6 +267,7 @@ function discoverDescriptionTrainingMeta(args: {
 
   if (
     choiceRules.length === 0 &&
+    !args.hasRuleSkillChoice &&
     !hasConditionalFallbackSkillChoice &&
     /\b(?:one|a)\s+(?:other\s+)?skill of your choice\b/i.test(descriptionText)
   ) {

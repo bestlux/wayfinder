@@ -33,6 +33,9 @@ describe("wayfinder skill training source discovery", () => {
               name: "Skilled Human",
               system: {
                 slug: "skilled-human",
+                description: {
+                  value: "<p>Your ingenuity allows you to train in one skill of your choice.</p>",
+                },
                 rules: [
                   {
                     key: "ChoiceSet",
@@ -49,6 +52,7 @@ describe("wayfinder skill training source discovery", () => {
         localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
       });
 
+      expect(training.choiceRules).toHaveLength(1);
       expect(training.choiceRules).toMatchObject([
         {
           key: "heritage:skilled-human:trainedSkill",

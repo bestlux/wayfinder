@@ -18,6 +18,7 @@ export function discoverSourceSkillTrainingMeta(args) {
         fixedSkills.push(...extractFixedTrainedSkills(document));
         fixedSkills.push(...extractFixedRuleGrantedSkills(document));
         fixedLores.push(...extractFixedLores(document));
+        let hasRuleSkillChoice = false;
         if (source.sourceItemType !== "feat") {
             for (const spec of discoverSingletonChoiceSpecs({
                 sourceItemType: source.sourceItemType,
@@ -28,6 +29,7 @@ export function discoverSourceSkillTrainingMeta(args) {
             })) {
                 const persistence = selectionPersistence(source, spec.sourceRuleIndex);
                 if (spec.optionDomain === "skill") {
+                    hasRuleSkillChoice = true;
                     choiceRules.push({
                         key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
                         flag: spec.flag,
@@ -56,6 +58,7 @@ export function discoverSourceSkillTrainingMeta(args) {
             source,
             sourceName,
             sourceSlug,
+            hasRuleSkillChoice,
             localize: args.localize,
             configuredSkills,
         });
@@ -141,7 +144,7 @@ function discoverDescriptionTrainingMeta(args) {
             options: buildFilteredSkillOptions(args.localize, args.configuredSkills, ["int", "wis"]),
         }));
     }
-    if (choiceRules.length === 0) {
+    if (choiceRules.length === 0 && !args.hasRuleSkillChoice) {
         const genericSkillMatches = Array.from(descriptionText.matchAll(/\b(?:(one|two)\s+)?(?:other\s+)?((?:intelligence|wisdom|charisma|dexterity|strength|constitution)(?:-\s*or\s*(?:intelligence|wisdom|charisma|dexterity|strength|constitution))?)-based skill(?:s)? of your choice\b/gi));
         for (const [index, match] of genericSkillMatches.entries()) {
             const count = numberFromWord(match[1]);
@@ -165,6 +168,7 @@ function discoverDescriptionTrainingMeta(args) {
         }
     }
     if (choiceRules.length === 0 &&
+        !args.hasRuleSkillChoice &&
         !hasConditionalFallbackSkillChoice &&
         /\b(?:one|a)\s+(?:other\s+)?skill of your choice\b/i.test(descriptionText)) {
         choiceRules.push(createSkillChoice({

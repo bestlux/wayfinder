@@ -532,6 +532,55 @@ describe("actor-updater selection application", () => {
     });
   });
 
+  it("wraps PF2E feat documents without copying readonly document properties", async () => {
+    const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
+    const actor = {
+      feats: {
+        get: () => ({
+          slots: {
+            "ancestry-1": {
+              id: "ancestry-1",
+              level: 1,
+              feat: null,
+            },
+          },
+        }),
+        insertFeat,
+      },
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const document = {
+      id: "general-training",
+      name: "General Training",
+      toObject: () => ({ name: "General Training", type: "feat", system: {} }),
+    };
+    Object.defineProperty(document, "effects", {
+      value: [],
+      writable: false,
+      configurable: false,
+    });
+    const selection = selectionRef("ancestry-feat-level-1", "feat", "general-training", "General Training", "ancestry");
+    const step = featStep("ancestry-feat-level-1", "ancestry-feat", 1, ["ancestry"]);
+
+    await insertFeatSelection(actor, selection, step, {
+      fetchSelectionDocument: async () => document,
+      createEmbeddedSource: async () => ({
+        name: "General Training",
+        type: "feat",
+        system: {},
+        flags: {},
+      }),
+    });
+
+    const insertedDocument = (insertFeat.mock.calls as unknown[][])[0]?.[0] as {
+      effects?: unknown[];
+      toObject: () => { name?: string };
+    };
+    expect(insertedDocument.effects).toEqual([]);
+    expect(insertedDocument.toObject()).toMatchObject({ name: "General Training" });
+  });
+
   it("falls back to raw feat creation when PF2E slot insertion is unavailable", async () => {
     const actor = {
       feats: undefined,

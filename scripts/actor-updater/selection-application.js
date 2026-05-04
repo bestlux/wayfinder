@@ -259,7 +259,7 @@ function isSpellChoiceRule(rule) {
     return rule.key === "ChoiceSet" && typeof rule.flag === "string" && choices?.itemType === "spell";
 }
 function withEmbeddedSource(document, source) {
-    return Object.assign(Object.create(document), document, {
+    return Object.assign(Object.create(document), {
         toObject: () => source,
     });
 }

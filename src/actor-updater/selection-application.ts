@@ -388,7 +388,7 @@ function isSpellChoiceRule(rule: LooseRecord): boolean {
 }
 
 function withEmbeddedSource(document: SelectionDocumentLike, source: EmbeddedItemSource): SelectionDocumentLike {
-  return Object.assign(Object.create(document), document, {
+  return Object.assign(Object.create(document), {
     toObject: () => source,
   });
 }

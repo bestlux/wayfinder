@@ -422,7 +422,7 @@ describe("actor-updater selection application", () => {
     });
   });
 
-  it("inserts feats through PF2E slots and stamps source flags on the created items", async () => {
+  it("creates slotted feat sources and stamps source flags on the created items", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
     const actor = {
       feats: {
@@ -444,7 +444,7 @@ describe("actor-updater selection application", () => {
         insertFeat,
       },
       updateEmbeddedDocuments: vi.fn(async () => []),
-      createEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => [{ id: "created-feat-1" }]),
     };
     const selection = selectionRef("ancestry-feat-level-1", "feat", "adapted-cantrip", "Adapted Cantrip", "ancestry");
     const step = featStep("ancestry-feat-level-1", "ancestry-feat", 1, ["ancestry"]);
@@ -455,14 +455,28 @@ describe("actor-updater selection application", () => {
         name: "Adapted Cantrip",
         toObject: () => ({ name: "Adapted Cantrip", type: "feat", system: {} }),
       }),
-      createEmbeddedSource: async () => null,
+      createEmbeddedSource: async () => ({
+        name: "Adapted Cantrip",
+        type: "feat",
+        system: {},
+        flags: {},
+      }),
     });
 
-    expect(insertFeat).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "adapted-cantrip", name: "Adapted Cantrip" }),
-      { groupId: "ancestry", slotId: "ancestry-1" }
-    );
-    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(insertFeat).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        name: "Adapted Cantrip",
+        type: "feat",
+        system: {
+          location: "ancestry-1",
+          level: {
+            taken: 1,
+          },
+        },
+        flags: {},
+      },
+    ]);
     expect(actor.updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
       {
         _id: "created-feat-1",
@@ -473,7 +487,7 @@ describe("actor-updater selection application", () => {
     ]);
   });
 
-  it("passes preselected feat sources through PF2E slot insertion", async () => {
+  it("preserves preselected feat sources during slotted feat creation", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
     const actor = {
       feats: {
@@ -495,7 +509,7 @@ describe("actor-updater selection application", () => {
         insertFeat,
       },
       updateEmbeddedDocuments: vi.fn(async () => []),
-      createEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => [{ id: "created-feat-1" }]),
     };
     const draft = createEmptyDraft(1);
     draft.spellChoices["spell-choice-feat-arcane-tattoos-cantrip-level-1"] = [
@@ -522,18 +536,22 @@ describe("actor-updater selection application", () => {
       steps
     );
 
-    const insertedDocument = (insertFeat.mock.calls as unknown[][])[0]?.[0] as {
-      toObject: () => { system?: { rules?: unknown[] } };
+    expect(insertFeat).not.toHaveBeenCalled();
+    const createdSource = (actor.createEmbeddedDocuments.mock.calls as unknown[][])[0]?.[1]?.[0] as {
+      system?: { rules?: unknown[] };
     };
-    expect(insertedDocument.toObject().system?.rules?.[0]).toMatchObject({
+    expect(createdSource.system?.rules?.[0]).toMatchObject({
       key: "ChoiceSet",
       flag: "arcaneTattoos",
       selection: "shield",
     });
   });
 
-  it("wraps PF2E feat documents without copying readonly document properties", async () => {
+  it("creates prebuilt feat sources without copying readonly document properties", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
+    const fetchSelectionDocument = vi.fn(async () => {
+      throw new Error("direct feat source creation should not fetch or wrap the original document");
+    });
     const actor = {
       feats: {
         get: () => ({
@@ -548,23 +566,13 @@ describe("actor-updater selection application", () => {
         insertFeat,
       },
       updateEmbeddedDocuments: vi.fn(async () => []),
-      createEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => [{ id: "created-feat-1" }]),
     };
-    const document = {
-      id: "general-training",
-      name: "General Training",
-      toObject: () => ({ name: "General Training", type: "feat", system: {} }),
-    };
-    Object.defineProperty(document, "effects", {
-      value: [],
-      writable: false,
-      configurable: false,
-    });
     const selection = selectionRef("ancestry-feat-level-1", "feat", "general-training", "General Training", "ancestry");
     const step = featStep("ancestry-feat-level-1", "ancestry-feat", 1, ["ancestry"]);
 
     await insertFeatSelection(actor, selection, step, {
-      fetchSelectionDocument: async () => document,
+      fetchSelectionDocument,
       createEmbeddedSource: async () => ({
         name: "General Training",
         type: "feat",
@@ -573,16 +581,21 @@ describe("actor-updater selection application", () => {
       }),
     });
 
-    const insertedDocument = (insertFeat.mock.calls as unknown[][])[0]?.[0] as {
-      id?: string;
-      name?: string;
-      effects?: unknown[];
-      toObject: () => { name?: string };
-    };
-    expect(insertedDocument.id).toBe("general-training");
-    expect(insertedDocument.name).toBe("General Training");
-    expect(insertedDocument.effects).toEqual([]);
-    expect(insertedDocument.toObject()).toMatchObject({ name: "General Training" });
+    expect(fetchSelectionDocument).not.toHaveBeenCalled();
+    expect(insertFeat).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        name: "General Training",
+        type: "feat",
+        system: {
+          location: "ancestry-1",
+          level: {
+            taken: 1,
+          },
+        },
+        flags: {},
+      },
+    ]);
   });
 
   it("falls back to raw feat creation when PF2E slot insertion is unavailable", async () => {

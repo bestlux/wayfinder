@@ -56,7 +56,16 @@ These all rely on the same broad capability:
 
 - non-class sources that grant a filtered item-backed feat choice and then `GrantItem` the result
 
-That capability now exists for the first proving case. Ancient Elf can guide the dedication choice, carry the selected dedication into follow-up decisions, and preseed the apply-side PF2E grant dialog.
+That capability is now in place for the first proving cases. Ancient Elf can guide the dedication choice, carry the selected dedication into follow-up decisions, and preseed the apply-side PF2E grant dialog.
+
+The May 2026 apply-side hardening pass also established the durable boundary for feat-owned grants:
+
+- Wayfinder builds an embedded feat source with the intended PF2E feat location and creates it directly through Foundry item creation.
+- Wayfinder does not wrap PF2E compendium documents for `actor.feats.insertFeat`.
+- Wayfinder does not remove feat-owned `GrantItem` rules or manually create feat-owned granted feat items.
+- When a granted feat has downstream choices already collected in the draft, Wayfinder writes those values to the parent `GrantItem.preselectChoices` map and lets PF2E create the granted item natively.
+
+This matches PF2E `8.1.0` runtime behavior: feat slotting is represented by `system.location`, and `GrantItemRuleElement` applies `preselectChoices` to the granted item before that item is queued for creation.
 
 The next risk is not "can this architecture exist?" It is whether nearby compendium shapes fit the same workflow without narrow one-off fixes.
 
@@ -161,6 +170,7 @@ Likely seams:
 - live smoke paths for `Versatile Human`, `General Training`, `Natural Ambition`, and `Nascent`
 - apply-side regression coverage for selected grant choices
 - targeted patches only if live behavior diverges from the static audit
+- preserve PF2E-native `GrantItem` ownership for granted feats; add draft preselections through `preselectChoices` instead of hand-creating granted feats
 
 Done when:
 

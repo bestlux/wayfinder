@@ -29,7 +29,8 @@
       "SavedDraft": "Wayfinder draft saved.",
       "ClearedDraft": "Wayfinder draft cleared.",
       "Applied": "Wayfinder changes applied.",
-      "ApplyCancelled": "Wayfinder apply cancelled."
+      "ApplyCancelled": "Wayfinder apply cancelled.",
+      "ApplyFailed": "Wayfinder could not apply changes. The draft was kept for review."
     }
   }
 }

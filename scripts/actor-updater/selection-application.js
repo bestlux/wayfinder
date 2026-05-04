@@ -38,7 +38,7 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
     }
     if (draft) {
         applyPendingSingletonChoices(source, selection, draft, steps);
-        applyPendingGrantChoiceSelections(source, selection, draft, steps);
+        await applyPendingGrantChoiceSelections(source, selection, draft, steps, deps);
         applyPendingTrainingSelections(source, selection, draft, steps);
     }
     if (draft && selection.itemType === "feat") {
@@ -117,7 +117,7 @@ function applyRuleSelection(source, sourceRuleIndex, flag, value) {
     source.flags.pf2e.rulesSelections ??= {};
     source.flags.pf2e.rulesSelections[flag] = value;
 }
-function applyPendingGrantChoiceSelections(source, selection, draft, steps) {
+async function applyPendingGrantChoiceSelections(source, selection, draft, steps, deps) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
     if (rules.length === 0) {
         return;
@@ -138,125 +138,96 @@ function applyPendingGrantChoiceSelections(source, selection, draft, steps) {
             rule.selection = grantedSelection.uuid;
         }
         source.flags.pf2e.rulesSelections[step.grantSelection.flag] = grantedSelection.uuid;
-        if (step.grantSelection.sourceItemType === "feat" &&
-            shouldManuallyCreateFeatGrant(grantedSelection, draft, steps)) {
-            source.system.rules = rules.filter((_rule, index) => index !== step.grantSelection?.grantRuleIndex);
+        const grantRule = rules[step.grantSelection.grantRuleIndex];
+        if (grantRule && typeof grantRule === "object") {
+            const preselectChoices = await collectGrantedItemPreselectChoices(grantedSelection, draft, steps, deps);
+            if (Object.keys(preselectChoices).length > 0) {
+                const ruleRecord = grantRule;
+                ruleRecord.preselectChoices = {
+                    ...(isLooseRecord(ruleRecord.preselectChoices) ? ruleRecord.preselectChoices : {}),
+                    ...preselectChoices,
+                };
+            }
         }
     }
 }
 export async function insertFeatSelection(actor, selection, step, deps = DEFAULT_INSERT_DEPS, draft, steps = []) {
-    const document = await deps.fetchSelectionDocument(selection);
-    if (!document) {
-        return;
-    }
-    const slotData = resolveFeatSlotData(actor, selection, step);
     const source = await deps.createEmbeddedSource(selection, draft, steps);
-    if (typeof actor?.feats?.insertFeat === "function") {
-        const inserted = await actor.feats.insertFeat(source ? withEmbeddedSource(document, source) : document, slotData);
-        await stampSelectionFlags(actor, inserted, selection);
-        await createPendingFeatGrantSelections(actor, inserted, selection, draft, steps, deps);
-        return;
-    }
     if (!source) {
         return;
     }
+    const slotData = resolveFeatSlotData(actor, selection, step);
     if (slotData) {
-        source.system ??= {};
-        source.system.location = slotData.slotId ?? slotData.groupId;
-        source.system.level ??= {};
-        if (typeof step?.level === "number") {
-            source.system.level.taken = step.level;
-        }
+        applyFeatSlotData(source, slotData, step);
     }
     if (typeof actor.createEmbeddedDocuments === "function") {
         const inserted = await actor.createEmbeddedDocuments("Item", [source]);
-        await createPendingFeatGrantSelections(actor, inserted, selection, draft, steps, deps);
+        await stampSelectionFlags(actor, inserted, selection);
     }
 }
-async function createPendingFeatGrantSelections(actor, selectorItems, selectorSelection, draft, steps, deps) {
-    if (!draft || !Array.isArray(selectorItems) || selectorItems.length === 0) {
-        return;
-    }
-    const selectorItem = selectorItems.find((item) => typeof item?.id === "string");
-    const selectorItemId = selectorItem?.id;
-    if (!selectorItemId) {
-        return;
-    }
-    for (const step of steps) {
-        if (step.kind !== "pick-item" ||
-            step.slotKind !== "grant-choice" ||
-            !step.grantSelection ||
-            step.grantSelection.sourceItemType !== "feat" ||
-            step.grantSelection.selectorUuid !== selectorSelection.uuid) {
-            continue;
-        }
-        const grantedSelection = draft.selections[step.slotId];
-        if (!grantedSelection || hasSourceId(actor, grantedSelection.uuid)) {
-            continue;
-        }
-        if (!shouldManuallyCreateFeatGrant(grantedSelection, draft, steps)) {
-            continue;
-        }
-        const grantedSource = await deps.createEmbeddedSource(grantedSelection, draft, steps);
-        if (!grantedSource || typeof actor.createEmbeddedDocuments !== "function") {
-            continue;
-        }
-        grantedSource.flags ??= {};
-        grantedSource.flags.core ??= {};
-        grantedSource.flags.core.sourceId ??= grantedSelection.uuid;
-        grantedSource.flags.pf2e ??= {};
-        grantedSource.flags.pf2e.grantedBy = {
-            id: selectorItemId,
-            onDelete: "cascade",
-        };
-        grantedSource.flags[MODULE_ID] = {
-            ...(grantedSource.flags[MODULE_ID] ?? {}),
-            importedBy: MODULE_ID,
-            slotId: grantedSelection.slotId,
-        };
-        const created = await actor.createEmbeddedDocuments("Item", [grantedSource]);
-        const createdItem = Array.isArray(created) ? created.find((item) => typeof item?.id === "string") : null;
-        if (!createdItem?.id || typeof actor.updateEmbeddedDocuments !== "function") {
-            continue;
-        }
-        await actor.updateEmbeddedDocuments("Item", [
-            {
-                _id: selectorItemId,
-                [`flags.pf2e.itemGrants.${step.grantSelection.flag}`]: {
-                    id: createdItem.id,
-                    onDelete: "detach",
-                    nested: null,
-                },
-            },
-        ]);
+function applyFeatSlotData(source, slotData, step) {
+    source.system ??= {};
+    source.system.location = slotData.slotId ?? slotData.groupId;
+    source.system.level ??= {};
+    if (typeof step?.level === "number") {
+        source.system.level.taken = step.level;
     }
 }
-function shouldManuallyCreateFeatGrant(grantedSelection, draft, steps) {
+async function collectGrantedItemPreselectChoices(grantedSelection, draft, steps, deps) {
+    const preselectChoices = {};
     for (const step of steps) {
         if (step.kind === "skill-training" && step.training && draft.skillTrainings[step.slotId]) {
-            const choiceRules = [...step.training.choiceRules, ...step.training.loreChoices];
-            if (choiceRules.some((choice) => choice.persistence?.sourceUuid === grantedSelection.uuid)) {
-                return true;
+            const training = draft.skillTrainings[step.slotId];
+            for (const choiceRule of step.training.choiceRules) {
+                const value = training.ruleChoices[choiceRule.key];
+                if (choiceRule.persistence?.sourceUuid === grantedSelection.uuid && value) {
+                    preselectChoices[choiceRule.flag] = value;
+                }
+            }
+            for (const loreChoice of step.training.loreChoices) {
+                const value = training.loreChoices[loreChoice.key];
+                if (loreChoice.persistence?.sourceUuid === grantedSelection.uuid && value) {
+                    preselectChoices[loreChoice.flag] = value;
+                }
             }
         }
         if (step.kind === "spell-choice" && step.spellChoice?.sourceUuid === grantedSelection.uuid) {
             const spellSelections = draft.spellChoices[step.slotId] ?? [];
-            if (spellSelections.length > 0) {
-                return true;
+            const spellSelection = spellSelections[0];
+            if (spellSelection) {
+                const flag = await resolveGrantedSpellChoiceFlag(grantedSelection, deps);
+                if (flag) {
+                    preselectChoices[flag] = await resolveSpellChoiceSelectionValue(spellSelection, deps);
+                }
             }
         }
         if (step.kind === "singleton-choice" && step.singletonChoice?.sourceUuid === grantedSelection.uuid) {
-            if (typeof draft.singletonChoices[step.slotId] === "string") {
-                return true;
+            const value = draft.singletonChoices[step.slotId];
+            if (typeof value === "string" && value.length > 0) {
+                preselectChoices[step.singletonChoice.flag] = value;
             }
         }
         if (step.kind === "pick-item" && step.grantSelection?.selectorUuid === grantedSelection.uuid) {
-            if (draft.selections[step.slotId]) {
-                return true;
+            const nestedSelection = draft.selections[step.slotId];
+            if (nestedSelection) {
+                preselectChoices[step.grantSelection.flag] = nestedSelection.uuid;
+            }
+        }
+        if (step.kind === "class-choice" && step.classChoice?.sourceUuid === grantedSelection.uuid) {
+            const value = draft.classChoices[step.slotId];
+            if (typeof value === "string" && value.length > 0) {
+                preselectChoices[step.classChoice.flag] = value;
             }
         }
     }
-    return false;
+    return preselectChoices;
+}
+async function resolveGrantedSpellChoiceFlag(grantedSelection, deps) {
+    const document = await deps.fetchSelectionDocument(grantedSelection);
+    const source = document?.toObject();
+    const rules = Array.isArray(source?.system?.rules) ? source.system.rules : [];
+    const rule = rules.find((entry) => isSpellChoiceRule(entry));
+    return typeof rule?.flag === "string" ? rule.flag : null;
 }
 async function applyPendingFeatSpellChoices(source, selection, draft, steps, deps) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
@@ -271,33 +242,29 @@ async function applyPendingFeatSpellChoices(source, selection, draft, steps, dep
         if (!spellSelection) {
             continue;
         }
-        const spellDocument = await deps.fetchSelectionDocument(spellSelection);
-        const spellSlug = extractDocumentSlug(spellDocument) ??
-            extractDocumentSlug(spellDocument?.toObject()) ??
-            slugifyName(spellSelection.name) ??
-            spellSelection.documentId;
         const ruleIndex = rules.findIndex((rule) => isSpellChoiceRule(rule));
         const rule = ruleIndex >= 0 ? rules[ruleIndex] : null;
         const flag = typeof rule?.flag === "string" ? rule.flag : null;
         if (!flag) {
             continue;
         }
+        const spellSlug = await resolveSpellChoiceSelectionValue(spellSelection, deps);
         applyRuleSelection(source, ruleIndex, flag, spellSlug);
     }
+}
+async function resolveSpellChoiceSelectionValue(spellSelection, deps) {
+    const spellDocument = await deps.fetchSelectionDocument(spellSelection);
+    return (extractDocumentSlug(spellDocument) ??
+        extractDocumentSlug(spellDocument?.toObject()) ??
+        slugifyName(spellSelection.name) ??
+        spellSelection.documentId);
 }
 function isSpellChoiceRule(rule) {
     const choices = rule.choices;
     return rule.key === "ChoiceSet" && typeof rule.flag === "string" && choices?.itemType === "spell";
 }
-function withEmbeddedSource(document, source) {
-    return new Proxy(document, {
-        get(target, property, receiver) {
-            if (property === "toObject") {
-                return () => source;
-            }
-            return Reflect.get(target, property, receiver);
-        },
-    });
+function isLooseRecord(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
 }
 function resolveFeatSlotData(actor, selection, step) {
     const groupId = resolveFeatGroupId(selection, step);

@@ -14,9 +14,8 @@ import {
 
 describe("actor-updater integration", () => {
   it("refreshes PF2E actor data before slotting drafted feats", async () => {
-    const { actor } = buildActorHarness();
+    const { actor, createdItems } = buildActorHarness();
     let slotsReady = false;
-    const inserted: Array<{ name?: string; slotData: unknown }> = [];
     actor.prepareData = vi.fn(() => {
       slotsReady = true;
     });
@@ -34,10 +33,6 @@ describe("actor-updater integration", () => {
             : {},
         };
       },
-      insertFeat: vi.fn(async (document: { name?: string }, slotData: unknown) => {
-        inserted.push({ name: document.name, slotData });
-        return [{ id: `created-${inserted.length}` }];
-      }),
     };
 
     setGamePacks({
@@ -109,13 +104,17 @@ describe("actor-updater integration", () => {
     ]);
 
     expect(actor.prepareData).toHaveBeenCalled();
-    expect(inserted.map((entry) => entry.slotData)).toEqual([
-      { groupId: "ancestry", slotId: "ancestry-1" },
-      { groupId: "class", slotId: "class-1" },
+    expect(
+      createdItems
+        .filter((item) => item?.type === "feat")
+        .map((item) => ({ name: item.name, location: item.system?.location }))
+    ).toEqual([
+      { name: "General Training", location: "ancestry-1" },
+      { name: "Combat Assessment", location: "class-1" },
     ]);
   });
 
-  it("creates feat-owned grant choices as nested granted items with their own choices preseeded", async () => {
+  it("preseeds feat-owned grant choices for PF2E native GrantItem creation", async () => {
     const { actor, createdItems } = buildActorHarness();
     actor.feats = {
       get(groupId: string) {
@@ -129,18 +128,6 @@ describe("actor-updater integration", () => {
           },
         };
       },
-      insertFeat: vi.fn(async (document: { toObject: () => Record<string, any> }, slotData: any) => {
-        const source = document.toObject();
-        return actor.createEmbeddedDocuments("Item", [
-          {
-            ...source,
-            system: {
-              ...(source.system ?? {}),
-              location: slotData?.slotId ?? slotData?.groupId ?? null,
-            },
-          },
-        ]);
-      }),
     };
 
     setGamePacks({
@@ -220,10 +207,12 @@ describe("actor-updater integration", () => {
     const generalTraining = createdItems.find(
       (item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.general-training"
     );
-    const additionalLore = createdItems.find(
-      (item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.additional-lore"
-    );
 
+    expect(createdItems.filter((item) => item?.type === "feat")).toHaveLength(1);
+    expect(createdItems.some((item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.additional-lore")).toBe(
+      false
+    );
+    expect(createdItems.find((item) => item?.type === "lore")?.name).toBe("engineering Lore");
     expect(generalTraining?.system?.location).toBe("ancestry-1");
     expect(generalTraining?.system?.rules).toEqual([
       expect.objectContaining({
@@ -231,19 +220,15 @@ describe("actor-updater integration", () => {
         flag: "generalTraining",
         selection: "Compendium.pf2e.feats-srd.Item.additional-lore",
       }),
+      expect.objectContaining({
+        key: "GrantItem",
+        uuid: "{item|flags.system.rulesSelections.generalTraining}",
+        preselectChoices: {
+          lore: "engineering",
+        },
+      }),
     ]);
-    expect(generalTraining?.flags?.pf2e?.itemGrants?.generalTraining).toMatchObject({
-      id: additionalLore?.id,
-      onDelete: "detach",
-    });
-    expect(additionalLore?.flags?.pf2e?.grantedBy).toMatchObject({
-      id: generalTraining?.id,
-      onDelete: "cascade",
-    });
-    expect(additionalLore?.flags?.pf2e?.rulesSelections?.lore).toBe("engineering");
-    expect((additionalLore?.system?.rules as Array<Record<string, unknown>> | undefined)?.[0]?.selection).toBe(
-      "engineering"
-    );
+    expect(generalTraining?.flags?.pf2e?.itemGrants).toBeUndefined();
   });
 
   it("leaves simple feat-owned grants to PF2E native GrantItem application", async () => {
@@ -260,18 +245,6 @@ describe("actor-updater integration", () => {
           },
         };
       },
-      insertFeat: vi.fn(async (document: { toObject: () => Record<string, any> }, slotData: any) => {
-        const source = document.toObject();
-        return actor.createEmbeddedDocuments("Item", [
-          {
-            ...source,
-            system: {
-              ...(source.system ?? {}),
-              location: slotData?.slotId ?? slotData?.groupId ?? null,
-            },
-          },
-        ]);
-      }),
     };
 
     setGamePacks({

@@ -35,6 +35,7 @@ import {
   toggleVoluntaryLegacy,
 } from "./application/draft-adjustment-service.js";
 import {
+  type ApplyDraftLifecycleResult,
   applyDraftLifecycle,
   buildSaveDraftUpdate,
   createClearedDraftResult,
@@ -920,18 +921,28 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const draft = this.#requireDraft();
     const plan = await this.#buildPlan(snapshot, draft);
     const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
-    const result = await applyDraftLifecycle({
-      actorName: this.actor.name,
-      currentLevel: snapshot.level,
-      draft,
-      steps: plan.steps,
-      isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
-      confirmApply: typeof globalThis.confirm === "function" ? (message) => globalThis.confirm(message) : undefined,
-      applyDraftToActor: () => applyDraftToActor(this.actor, draft, plan.steps),
-      updateActor: async (update) => {
-        await this.actor.update(update);
-      },
-    });
+    let result: ApplyDraftLifecycleResult;
+    try {
+      result = await applyDraftLifecycle({
+        actorName: this.actor.name,
+        currentLevel: snapshot.level,
+        draft,
+        steps: plan.steps,
+        isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
+        confirmApply: typeof globalThis.confirm === "function" ? (message) => globalThis.confirm(message) : undefined,
+        applyDraftToActor: () => applyDraftToActor(this.actor, draft, plan.steps),
+        updateActor: async (update) => {
+          await this.actor.update(update);
+        },
+      });
+    } catch (error) {
+      console.error("PF2E Wayfinder failed to apply draft", error);
+      this.#statusNote =
+        "Wayfinder could not apply this draft. The draft was kept for review; details are in the console.";
+      ui.notifications.error(game.i18n.localize("PF2E-WAYFINDER.Notifications.ApplyFailed"));
+      this.render(false);
+      return;
+    }
 
     if (result.kind === "warning") {
       ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.MissingSelections"));

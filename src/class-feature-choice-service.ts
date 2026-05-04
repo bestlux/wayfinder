@@ -71,6 +71,10 @@ function collectFeatureGroups(draft: DraftState, steps: PendingStep[]): PendingF
 
   for (const step of steps) {
     if (step.kind === "pick-item" && step.grantSelection) {
+      if (isFeatOwnedGrantSelection(step)) {
+        continue;
+      }
+
       const selection = draft.selections[step.slotId];
       if (!selection) {
         continue;
@@ -121,6 +125,10 @@ function collectSelectedFeatureRefs(
 
   for (const step of steps) {
     if (step.kind === "pick-item" && step.grantSelection && draft.selections[step.slotId]) {
+      if (isFeatOwnedGrantSelection(step)) {
+        continue;
+      }
+
       refs.set(step.grantSelection.selectorUuid, {
         uuid: step.grantSelection.selectorUuid,
         documentId: step.grantSelection.selectorDocumentId,
@@ -152,4 +160,8 @@ function createSourceSelection(meta: ClassGrantMeta | ClassChoiceMeta, slotId: s
     itemType === "classfeature" ? "feat" : itemType,
     featType
   );
+}
+
+function isFeatOwnedGrantSelection(step: PendingStep): boolean {
+  return step.kind === "pick-item" && step.grantSelection?.sourceItemType === "feat";
 }

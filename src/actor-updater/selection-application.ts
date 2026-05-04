@@ -78,7 +78,7 @@ export async function createEmbeddedSource(
     deps.stripPreselectedClassFeatureEntries(source, draft, steps);
     deps.stripPreselectedClassBranchEntries(source, draft, steps);
   }
-  if (draft && SINGLETON_ITEM_TYPES.has(selection.itemType)) {
+  if (draft) {
     applyPendingSingletonChoices(source, selection, draft, steps);
     applyPendingGrantChoiceSelections(source, selection, draft, steps);
     applyPendingTrainingSelections(source, selection, draft, steps);
@@ -223,6 +223,10 @@ function applyPendingGrantChoiceSelections(
     }
 
     source.flags.pf2e.rulesSelections[step.grantSelection.flag] = grantedSelection.uuid;
+
+    if (step.grantSelection.sourceItemType === "feat") {
+      source.system!.rules = rules.filter((_rule, index) => index !== step.grantSelection?.grantRuleIndex);
+    }
   }
 }
 
@@ -244,6 +248,7 @@ export async function insertFeatSelection(
   if (typeof actor?.feats?.insertFeat === "function") {
     const inserted = await actor.feats.insertFeat(source ? withEmbeddedSource(document, source) : document, slotData);
     await stampSelectionFlags(actor, inserted, selection);
+    await createPendingFeatGrantSelections(actor, inserted, selection, draft, steps, deps);
     return;
   }
 
@@ -261,7 +266,80 @@ export async function insertFeatSelection(
   }
 
   if (typeof actor.createEmbeddedDocuments === "function") {
-    await actor.createEmbeddedDocuments("Item", [source]);
+    const inserted = await actor.createEmbeddedDocuments("Item", [source]);
+    await createPendingFeatGrantSelections(actor, inserted, selection, draft, steps, deps);
+  }
+}
+
+async function createPendingFeatGrantSelections(
+  actor: ActorLike,
+  selectorItems: ActorItemLike[],
+  selectorSelection: SelectionRef,
+  draft: DraftState | undefined,
+  steps: PendingStep[],
+  deps: InsertFeatSelectionDependencies
+): Promise<void> {
+  if (!draft || !Array.isArray(selectorItems) || selectorItems.length === 0) {
+    return;
+  }
+
+  const selectorItem = selectorItems.find((item) => typeof item?.id === "string");
+  const selectorItemId = selectorItem?.id;
+  if (!selectorItemId) {
+    return;
+  }
+
+  for (const step of steps) {
+    if (
+      step.kind !== "pick-item" ||
+      step.slotKind !== "grant-choice" ||
+      !step.grantSelection ||
+      step.grantSelection.sourceItemType !== "feat" ||
+      step.grantSelection.selectorUuid !== selectorSelection.uuid
+    ) {
+      continue;
+    }
+
+    const grantedSelection = draft.selections[step.slotId];
+    if (!grantedSelection || hasSourceId(actor, grantedSelection.uuid)) {
+      continue;
+    }
+
+    const grantedSource = await deps.createEmbeddedSource(grantedSelection, draft, steps);
+    if (!grantedSource || typeof actor.createEmbeddedDocuments !== "function") {
+      continue;
+    }
+
+    grantedSource.flags ??= {};
+    grantedSource.flags.core ??= {};
+    grantedSource.flags.core.sourceId ??= grantedSelection.uuid;
+    grantedSource.flags.pf2e ??= {};
+    grantedSource.flags.pf2e.grantedBy = {
+      id: selectorItemId,
+      onDelete: "cascade",
+    };
+    grantedSource.flags[MODULE_ID] = {
+      ...(grantedSource.flags[MODULE_ID] ?? {}),
+      importedBy: MODULE_ID,
+      slotId: grantedSelection.slotId,
+    };
+
+    const created = await actor.createEmbeddedDocuments("Item", [grantedSource]);
+    const createdItem = Array.isArray(created) ? created.find((item) => typeof item?.id === "string") : null;
+    if (!createdItem?.id || typeof actor.updateEmbeddedDocuments !== "function") {
+      continue;
+    }
+
+    await actor.updateEmbeddedDocuments("Item", [
+      {
+        _id: selectorItemId,
+        [`flags.pf2e.itemGrants.${step.grantSelection.flag}`]: {
+          id: createdItem.id,
+          onDelete: "detach",
+          nested: null,
+        },
+      },
+    ]);
   }
 }
 

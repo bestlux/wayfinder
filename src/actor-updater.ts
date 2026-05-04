@@ -36,6 +36,7 @@ export async function applyDraftToActor(
   for (const selection of singletonSelections(selections)) {
     await replaceSingletonItem(actor, selection, draft, steps);
   }
+  actor.prepareData?.();
 
   await applySingletonChoiceDraft(actor, draft, steps);
   await applyLanguageChoiceDraft(actor, draft, steps);
@@ -51,11 +52,14 @@ export async function applyDraftToActor(
   await syncNativeClassSpellcasting(actor, draft);
 
   for (const selection of featSelections(selections)) {
+    const step = stepsBySlotId.get(selection.slotId);
+    if (step?.slotKind === "grant-choice" && step.grantSelection?.sourceItemType === "feat") {
+      continue;
+    }
     if (hasSourceId(actor, selection.uuid)) {
       continue;
     }
 
-    const step = stepsBySlotId.get(selection.slotId);
     await insertFeatSelection(actor, selection, step ?? null, undefined, draft, steps);
   }
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { applyDraftToActor } from "../src/actor-updater";
 import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep } from "../src/types";
@@ -13,6 +13,239 @@ import {
 } from "./support/actor-updater-fixtures";
 
 describe("actor-updater integration", () => {
+  it("refreshes PF2E actor data before slotting drafted feats", async () => {
+    const { actor } = buildActorHarness();
+    let slotsReady = false;
+    const inserted: Array<{ name?: string; slotData: unknown }> = [];
+    actor.prepareData = vi.fn(() => {
+      slotsReady = true;
+    });
+    actor.feats = {
+      get(groupId: string) {
+        return {
+          slots: slotsReady
+            ? {
+                [`${groupId}-1`]: {
+                  id: `${groupId}-1`,
+                  level: 1,
+                  feat: null,
+                },
+              }
+            : {},
+        };
+      },
+      insertFeat: vi.fn(async (document: { name?: string }, slotData: unknown) => {
+        inserted.push({ name: document.name, slotData });
+        return [{ id: `created-${inserted.length}` }];
+      }),
+    };
+
+    setGamePacks({
+      "pf2e.ancestries": {
+        human: {
+          name: "Human",
+          type: "ancestry",
+          system: {},
+        },
+      },
+      "pf2e.classes": {
+        fighter: {
+          name: "Fighter",
+          type: "class",
+          system: {},
+        },
+      },
+      "pf2e.feats-srd": {
+        "general-training": {
+          name: "General Training",
+          type: "feat",
+          system: {
+            category: "ancestry",
+            level: { value: 1 },
+          },
+        },
+        "combat-assessment": {
+          name: "Combat Assessment",
+          type: "feat",
+          system: {
+            category: "class",
+            level: { value: 1 },
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(1);
+    draft.selections["ancestry-level-1"] = selection(
+      "ancestry-level-1",
+      "pf2e.ancestries",
+      "human",
+      "ancestry",
+      "Human"
+    );
+    draft.selections["class-level-1"] = selection("class-level-1", "pf2e.classes", "fighter", "class", "Fighter");
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      "pf2e.feats-srd",
+      "general-training",
+      "feat",
+      "General Training",
+      "ancestry"
+    );
+    draft.selections["class-feat-level-1"] = selection(
+      "class-feat-level-1",
+      "pf2e.feats-srd",
+      "combat-assessment",
+      "feat",
+      "Combat Assessment",
+      "class"
+    );
+
+    await applyDraftToActor(actor as any, draft, [
+      ancestrySelectionStep(),
+      classSelectionStep(),
+      ancestryFeatStep(),
+      classFeatStep(),
+    ]);
+
+    expect(actor.prepareData).toHaveBeenCalled();
+    expect(inserted.map((entry) => entry.slotData)).toEqual([
+      { groupId: "ancestry", slotId: "ancestry-1" },
+      { groupId: "class", slotId: "class-1" },
+    ]);
+  });
+
+  it("creates feat-owned grant choices as nested granted items with their own choices preseeded", async () => {
+    const { actor, createdItems } = buildActorHarness();
+    actor.feats = {
+      get(groupId: string) {
+        return {
+          slots: {
+            [`${groupId}-1`]: {
+              id: `${groupId}-1`,
+              level: 1,
+              feat: null,
+            },
+          },
+        };
+      },
+      insertFeat: vi.fn(async (document: { toObject: () => Record<string, any> }, slotData: any) => {
+        const source = document.toObject();
+        return actor.createEmbeddedDocuments("Item", [
+          {
+            ...source,
+            system: {
+              ...(source.system ?? {}),
+              location: slotData?.slotId ?? slotData?.groupId ?? null,
+            },
+          },
+        ]);
+      }),
+    };
+
+    setGamePacks({
+      "pf2e.feats-srd": {
+        "general-training": {
+          name: "General Training",
+          type: "feat",
+          system: {
+            category: "ancestry",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "generalTraining",
+                choices: {
+                  itemType: "feat",
+                },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.generalTraining}",
+              },
+            ],
+          },
+        },
+        "additional-lore": {
+          name: "Additional Lore",
+          type: "feat",
+          system: {
+            category: "general",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "lore",
+                choices: {
+                  config: "lore",
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(1);
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      "pf2e.feats-srd",
+      "general-training",
+      "feat",
+      "General Training",
+      "ancestry"
+    );
+    draft.selections["grant-choice-general-feat-general-training-generalTraining-level-1"] = selection(
+      "grant-choice-general-feat-general-training-generalTraining-level-1",
+      "pf2e.feats-srd",
+      "additional-lore",
+      "feat",
+      "Additional Lore",
+      "general"
+    );
+    draft.skillTrainings["skill-training-fighter-level-1"] = {
+      ruleChoices: {},
+      additional: [],
+      loreChoices: {
+        "feat:additional-lore:lore": "engineering",
+      },
+    };
+
+    await applyDraftToActor(actor as any, draft, [
+      ancestryFeatStep(),
+      generalTrainingGrantStep(),
+      additionalLoreTrainingStep(),
+    ]);
+
+    const generalTraining = createdItems.find(
+      (item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.general-training"
+    );
+    const additionalLore = createdItems.find(
+      (item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.additional-lore"
+    );
+
+    expect(generalTraining?.system?.location).toBe("ancestry-1");
+    expect(generalTraining?.system?.rules).toEqual([
+      expect.objectContaining({
+        key: "ChoiceSet",
+        flag: "generalTraining",
+        selection: "Compendium.pf2e.feats-srd.Item.additional-lore",
+      }),
+    ]);
+    expect(generalTraining?.flags?.pf2e?.itemGrants?.generalTraining).toMatchObject({
+      id: additionalLore?.id,
+      onDelete: "detach",
+    });
+    expect(additionalLore?.flags?.pf2e?.grantedBy).toMatchObject({
+      id: generalTraining?.id,
+      onDelete: "cascade",
+    });
+    expect(additionalLore?.flags?.pf2e?.rulesSelections?.lore).toBe("engineering");
+    expect((additionalLore?.system?.rules as Array<Record<string, unknown>> | undefined)?.[0]?.selection).toBe(
+      "engineering"
+    );
+  });
+
   it("imports a selected wizard class and preseeds drafted branch selectors plus granted items", async () => {
     const { actor, createdItems } = buildActorHarness();
 
@@ -631,6 +864,58 @@ function heritageSelectionStep(): PendingStep {
   };
 }
 
+function ancestrySelectionStep(): PendingStep {
+  return {
+    id: "ancestry-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "ancestry",
+    title: "Choose an ancestry",
+    description: "",
+    required: true,
+    slotId: "ancestry-level-1",
+    filters: {
+      itemType: "ancestry",
+    },
+  };
+}
+
+function ancestryFeatStep(): PendingStep {
+  return {
+    id: "ancestry-feat-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "ancestry-feat",
+    title: "Level 1 ancestry feat",
+    description: "",
+    required: true,
+    slotId: "ancestry-feat-level-1",
+    filters: {
+      itemType: "feat",
+      featTypes: ["ancestry"],
+      maxLevel: 1,
+    },
+  };
+}
+
+function classFeatStep(): PendingStep {
+  return {
+    id: "class-feat-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "class-feat",
+    title: "Level 1 class feat",
+    description: "",
+    required: true,
+    slotId: "class-feat-level-1",
+    filters: {
+      itemType: "feat",
+      featTypes: ["class"],
+      maxLevel: 1,
+    },
+  };
+}
+
 function skilledHumanTrainingStep(slotId: string): PendingStep {
   return {
     id: slotId,
@@ -666,6 +951,78 @@ function skilledHumanTrainingStep(slotId: string): PendingStep {
         },
       ],
       loreChoices: [],
+      additionalCount: 0,
+    },
+  };
+}
+
+function generalTrainingGrantStep(): PendingStep {
+  return {
+    id: "grant-choice-general-feat-general-training-generalTraining-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "grant-choice",
+    title: "General Training feat grant",
+    description: "",
+    required: true,
+    slotId: "grant-choice-general-feat-general-training-generalTraining-level-1",
+    filters: {
+      itemType: "feat",
+    },
+    grantSelection: {
+      slotId: "grant-choice-general-feat-general-training-generalTraining-level-1",
+      sourceItemType: "feat",
+      selectorPackId: "pf2e.feats-srd",
+      selectorDocumentId: "general-training",
+      selectorUuid: "Compendium.pf2e.feats-srd.Item.general-training",
+      selectorName: "General Training",
+      selectorRuleIndex: 0,
+      grantRuleIndex: 1,
+      flag: "generalTraining",
+      itemType: "feat",
+      classSlug: null,
+      dependsOn: null,
+      filters: {
+        itemType: "feat",
+      },
+    },
+  };
+}
+
+function additionalLoreTrainingStep(): PendingStep {
+  return {
+    id: "skill-training-fighter-level-1",
+    level: 1,
+    kind: "skill-training",
+    slotKind: "skill-training",
+    title: "Fighter training",
+    description: "",
+    required: true,
+    slotId: "skill-training-fighter-level-1",
+    training: {
+      classSlug: "fighter",
+      className: "Fighter",
+      fixedSkills: [],
+      fixedLores: [],
+      choiceRules: [],
+      loreChoices: [
+        {
+          key: "feat:additional-lore:lore",
+          flag: "lore",
+          prompt: "Choose a Lore",
+          sourceLabel: "Additional Lore",
+          placeholder: "Lore",
+          suggestions: [],
+          allowCustom: true,
+          persistence: {
+            sourceItemType: "feat",
+            sourcePackId: "pf2e.feats-srd",
+            sourceDocumentId: "additional-lore",
+            sourceUuid: "Compendium.pf2e.feats-srd.Item.additional-lore",
+            sourceRuleIndex: 0,
+          },
+        },
+      ],
       additionalCount: 0,
     },
   };

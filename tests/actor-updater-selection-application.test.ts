@@ -338,6 +338,90 @@ describe("actor-updater selection application", () => {
     });
   });
 
+  it("preselects drafted feat-owned grant choices before creating the feat item", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["grant-choice-general-feat-general-training-generalTraining-level-1"] = selectionRef(
+      "grant-choice-general-feat-general-training-generalTraining-level-1",
+      "feat",
+      "additional-lore",
+      "Additional Lore",
+      "general"
+    );
+    const steps: PendingStep[] = [
+      {
+        id: "grant-choice-general-feat-general-training-generalTraining-level-1",
+        level: 1,
+        kind: "pick-item",
+        slotKind: "grant-choice",
+        title: "General Training feat grant",
+        description: "",
+        required: true,
+        slotId: "grant-choice-general-feat-general-training-generalTraining-level-1",
+        filters: {
+          itemType: "feat",
+        },
+        grantSelection: {
+          slotId: "grant-choice-general-feat-general-training-generalTraining-level-1",
+          sourceItemType: "feat",
+          selectorPackId: "test.pack",
+          selectorDocumentId: "general-training",
+          selectorUuid: "Compendium.test.pack.Item.general-training",
+          selectorName: "General Training",
+          selectorRuleIndex: 0,
+          grantRuleIndex: 1,
+          flag: "generalTraining",
+          itemType: "feat",
+          classSlug: null,
+          dependsOn: null,
+          filters: {
+            itemType: "feat",
+          },
+        },
+      },
+    ];
+
+    const source = await createEmbeddedSource(
+      selectionRef("ancestry-feat-level-1", "feat", "general-training", "General Training", "ancestry"),
+      draft,
+      steps,
+      {
+        fetchSelectionDocument: async () => ({
+          toObject: () => ({
+            _id: "feat-compendium",
+            name: "General Training",
+            type: "feat",
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "generalTraining",
+                  choices: {
+                    itemType: "feat",
+                  },
+                },
+                {
+                  key: "GrantItem",
+                  uuid: "{item|flags.system.rulesSelections.generalTraining}",
+                },
+              ],
+            },
+          }),
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      }
+    );
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "generalTraining",
+      selection: "Compendium.test.pack.Item.additional-lore",
+    });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({
+      generalTraining: "Compendium.test.pack.Item.additional-lore",
+    });
+  });
+
   it("inserts feats through PF2E slots and stamps source flags on the created items", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
     const actor = {

@@ -32,6 +32,9 @@ function collectFeatureGroups(draft, steps) {
     const groups = new Map();
     for (const step of steps) {
         if (step.kind === "pick-item" && step.grantSelection) {
+            if (isFeatOwnedGrantSelection(step)) {
+                continue;
+            }
             const selection = draft.selections[step.slotId];
             if (!selection) {
                 continue;
@@ -73,6 +76,9 @@ function collectSelectedFeatureRefs(draft, steps) {
     const refs = new Map();
     for (const step of steps) {
         if (step.kind === "pick-item" && step.grantSelection && draft.selections[step.slotId]) {
+            if (isFeatOwnedGrantSelection(step)) {
+                continue;
+            }
             refs.set(step.grantSelection.selectorUuid, {
                 uuid: step.grantSelection.selectorUuid,
                 documentId: step.grantSelection.selectorDocumentId,
@@ -93,5 +99,8 @@ function createSourceSelection(meta, slotId) {
     const itemType = "sourceItemType" in meta ? meta.sourceItemType : "feat";
     const featType = itemType === "feat" || itemType === "classfeature" ? "classfeature" : null;
     return buildSelectorSelection(slotId, "selectorPackId" in meta ? meta.selectorPackId : meta.sourcePackId, "selectorDocumentId" in meta ? meta.selectorDocumentId : meta.sourceDocumentId, "selectorUuid" in meta ? meta.selectorUuid : meta.sourceUuid, "selectorName" in meta ? meta.selectorName : meta.sourceName, itemType === "classfeature" ? "feat" : itemType, featType);
+}
+function isFeatOwnedGrantSelection(step) {
+    return step.kind === "pick-item" && step.grantSelection?.sourceItemType === "feat";
 }
 //# sourceMappingURL=class-feature-choice-service.js.map

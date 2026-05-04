@@ -290,8 +290,13 @@ function isSpellChoiceRule(rule) {
     return rule.key === "ChoiceSet" && typeof rule.flag === "string" && choices?.itemType === "spell";
 }
 function withEmbeddedSource(document, source) {
-    return Object.assign(Object.create(document), {
-        toObject: () => source,
+    return new Proxy(document, {
+        get(target, property, receiver) {
+            if (property === "toObject") {
+                return () => source;
+            }
+            return Reflect.get(target, property, receiver);
+        },
     });
 }
 function resolveFeatSlotData(actor, selection, step) {

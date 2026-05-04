@@ -574,9 +574,13 @@ describe("actor-updater selection application", () => {
     });
 
     const insertedDocument = (insertFeat.mock.calls as unknown[][])[0]?.[0] as {
+      id?: string;
+      name?: string;
       effects?: unknown[];
       toObject: () => { name?: string };
     };
+    expect(insertedDocument.id).toBe("general-training");
+    expect(insertedDocument.name).toBe("General Training");
     expect(insertedDocument.effects).toEqual([]);
     expect(insertedDocument.toObject()).toMatchObject({ name: "General Training" });
   });

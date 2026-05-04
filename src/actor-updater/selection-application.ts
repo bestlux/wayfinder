@@ -430,8 +430,14 @@ function isSpellChoiceRule(rule: LooseRecord): boolean {
 }
 
 function withEmbeddedSource(document: SelectionDocumentLike, source: EmbeddedItemSource): SelectionDocumentLike {
-  return Object.assign(Object.create(document), {
-    toObject: () => source,
+  return new Proxy(document, {
+    get(target, property, receiver) {
+      if (property === "toObject") {
+        return () => source;
+      }
+
+      return Reflect.get(target, property, receiver);
+    },
   });
 }
 

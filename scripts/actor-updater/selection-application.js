@@ -138,7 +138,8 @@ function applyPendingGrantChoiceSelections(source, selection, draft, steps) {
             rule.selection = grantedSelection.uuid;
         }
         source.flags.pf2e.rulesSelections[step.grantSelection.flag] = grantedSelection.uuid;
-        if (step.grantSelection.sourceItemType === "feat") {
+        if (step.grantSelection.sourceItemType === "feat" &&
+            shouldManuallyCreateFeatGrant(grantedSelection, draft, steps)) {
             source.system.rules = rules.filter((_rule, index) => index !== step.grantSelection?.grantRuleIndex);
         }
     }
@@ -193,6 +194,9 @@ async function createPendingFeatGrantSelections(actor, selectorItems, selectorSe
         if (!grantedSelection || hasSourceId(actor, grantedSelection.uuid)) {
             continue;
         }
+        if (!shouldManuallyCreateFeatGrant(grantedSelection, draft, steps)) {
+            continue;
+        }
         const grantedSource = await deps.createEmbeddedSource(grantedSelection, draft, steps);
         if (!grantedSource || typeof actor.createEmbeddedDocuments !== "function") {
             continue;
@@ -226,6 +230,33 @@ async function createPendingFeatGrantSelections(actor, selectorItems, selectorSe
             },
         ]);
     }
+}
+function shouldManuallyCreateFeatGrant(grantedSelection, draft, steps) {
+    for (const step of steps) {
+        if (step.kind === "skill-training" && step.training && draft.skillTrainings[step.slotId]) {
+            const choiceRules = [...step.training.choiceRules, ...step.training.loreChoices];
+            if (choiceRules.some((choice) => choice.persistence?.sourceUuid === grantedSelection.uuid)) {
+                return true;
+            }
+        }
+        if (step.kind === "spell-choice" && step.spellChoice?.sourceUuid === grantedSelection.uuid) {
+            const spellSelections = draft.spellChoices[step.slotId] ?? [];
+            if (spellSelections.length > 0) {
+                return true;
+            }
+        }
+        if (step.kind === "singleton-choice" && step.singletonChoice?.sourceUuid === grantedSelection.uuid) {
+            if (typeof draft.singletonChoices[step.slotId] === "string") {
+                return true;
+            }
+        }
+        if (step.kind === "pick-item" && step.grantSelection?.selectorUuid === grantedSelection.uuid) {
+            if (draft.selections[step.slotId]) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 async function applyPendingFeatSpellChoices(source, selection, draft, steps, deps) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];

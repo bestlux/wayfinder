@@ -246,6 +246,109 @@ describe("actor-updater integration", () => {
     );
   });
 
+  it("leaves simple feat-owned grants to PF2E native GrantItem application", async () => {
+    const { actor, createdItems } = buildActorHarness();
+    actor.feats = {
+      get(groupId: string) {
+        return {
+          slots: {
+            [`${groupId}-1`]: {
+              id: `${groupId}-1`,
+              level: 1,
+              feat: null,
+            },
+          },
+        };
+      },
+      insertFeat: vi.fn(async (document: { toObject: () => Record<string, any> }, slotData: any) => {
+        const source = document.toObject();
+        return actor.createEmbeddedDocuments("Item", [
+          {
+            ...source,
+            system: {
+              ...(source.system ?? {}),
+              location: slotData?.slotId ?? slotData?.groupId ?? null,
+            },
+          },
+        ]);
+      }),
+    };
+
+    setGamePacks({
+      "pf2e.feats-srd": {
+        "general-training": {
+          name: "General Training",
+          type: "feat",
+          system: {
+            category: "ancestry",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "generalTraining",
+                choices: {
+                  itemType: "feat",
+                },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.generalTraining}",
+              },
+            ],
+          },
+        },
+        forager: {
+          name: "Forager",
+          type: "feat",
+          system: {
+            category: "skill",
+            level: { value: 1 },
+            rules: [],
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(1);
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      "pf2e.feats-srd",
+      "general-training",
+      "feat",
+      "General Training",
+      "ancestry"
+    );
+    draft.selections["grant-choice-general-feat-general-training-generalTraining-level-1"] = selection(
+      "grant-choice-general-feat-general-training-generalTraining-level-1",
+      "pf2e.feats-srd",
+      "forager",
+      "feat",
+      "Forager",
+      "skill"
+    );
+
+    await applyDraftToActor(actor as any, draft, [ancestryFeatStep(), generalTrainingGrantStep()]);
+
+    const generalTraining = createdItems.find(
+      (item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.general-training"
+    );
+
+    expect(createdItems).toHaveLength(1);
+    expect(generalTraining?.system?.location).toBe("ancestry-1");
+    expect(generalTraining?.system?.rules).toEqual([
+      expect.objectContaining({
+        key: "ChoiceSet",
+        flag: "generalTraining",
+        selection: "Compendium.pf2e.feats-srd.Item.forager",
+      }),
+      expect.objectContaining({
+        key: "GrantItem",
+        uuid: "{item|flags.system.rulesSelections.generalTraining}",
+      }),
+    ]);
+    expect(generalTraining?.flags?.pf2e?.itemGrants).toBeUndefined();
+  });
+
   it("imports a selected wizard class and preseeds drafted branch selectors plus granted items", async () => {
     const { actor, createdItems } = buildActorHarness();
 

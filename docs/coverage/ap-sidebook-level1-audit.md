@@ -102,7 +102,6 @@ These should not be pulled into Wayfinder yet:
 3. Add item-pack support for non-feat static grants only after an equipment/class-feature grant acceptance test proves the apply path.
 4. Build side-book class contributors one class at a time, starting with the class whose level-1 choices are most structurally regular.
 5. Revisit the 42 multiple-`ChoiceSet` canaries after predicate-aware grant choices and side-book class contributors exist.
-6. Clean up Foundry v13 deprecation warnings observed during smoke (`loadTemplates`, global `TextEditor`, and legacy forced-deletion update keys) in a separate compatibility slice.
 
 ## Validation
 

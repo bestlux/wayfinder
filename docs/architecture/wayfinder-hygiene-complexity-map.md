@@ -240,21 +240,24 @@ Done when:
 - skill-training assembly reads parser results instead of parsing every shape inline
 - existing Additional Lore and Skilled Human smoke-tested paths stay covered
 
-### 5. Foundry compatibility cleanup
+### Foundry compatibility cleanup
 
 Problem:
 
 Recent live smoke found compatibility warnings around legacy template loading, global text editor access, and forced-deletion update keys.
 
-Recommended goal:
+Current status:
 
-Make a compatibility-only slice for Foundry v13/v14-facing APIs. Do not combine it with rule-support changes.
+Completed in the compatibility slice after the selection-application split. Runtime calls now use `src/shared/foundry-compat.ts` for Foundry v14 template loading, HTML enrichment, UUID resolution, and forced-deletion operators.
 
-Done when:
+Coverage:
 
-- deprecated API calls are replaced or wrapped behind compatibility helpers
-- behavior remains unchanged under the current local Foundry install
-- live smoke confirms Wayfinder still opens, applies, and closes
+- `tests/foundry-compat.test.ts`
+- `tests/actor-updater-boost-application.test.ts`
+
+Live validation:
+
+After the final build, a hard reload of the local Foundry tab showed no recent warning or error logs for Wayfinder compatibility warnings.
 
 ## Guardrails For Future Refactors
 

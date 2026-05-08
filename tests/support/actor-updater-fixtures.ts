@@ -48,6 +48,15 @@ type TestSelectionDocumentLike = SelectionDocumentLike & {
 };
 
 export const testGlobals = globalThis as typeof globalThis & { game: GameLike };
+const foundryTestGlobals = globalThis as typeof globalThis & {
+  foundry?: {
+    data?: {
+      operators?: {
+        ForcedDeletion?: new () => unknown;
+      };
+    };
+  };
+};
 
 export function buildActorHarness(options: ActorHarnessOptions = {}) {
   const createdItems: ActorItemLike[] = [];
@@ -112,7 +121,7 @@ export function buildActorHarness(options: ActorHarnessOptions = {}) {
             continue;
           }
 
-          setByPath(item, path, cloneValue(value));
+          setByPath(item, path, value);
         }
       }
 
@@ -120,7 +129,7 @@ export function buildActorHarness(options: ActorHarnessOptions = {}) {
     }),
     update: vi.fn(async (updates: Record<string, unknown>) => {
       for (const [path, value] of Object.entries(updates)) {
-        setByPath(actor, path, cloneValue(value));
+        setByPath(actor, path, value);
       }
 
       return {};
@@ -152,7 +161,17 @@ function setByPath(target: Record<string, unknown>, path: string, value: unknown
     return;
   }
 
-  cursor[leaf] = value;
+  if (isFoundryForcedDeletion(value)) {
+    delete cursor[leaf];
+    return;
+  }
+
+  cursor[leaf] = cloneValue(value);
+}
+
+function isFoundryForcedDeletion(value: unknown): boolean {
+  const ForcedDeletion = foundryTestGlobals.foundry?.data?.operators?.ForcedDeletion;
+  return typeof ForcedDeletion === "function" && value instanceof ForcedDeletion;
 }
 
 export function setGamePacks(packs: Record<string, Record<string, PackDocumentDefinition>>): void {

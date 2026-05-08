@@ -1,4 +1,5 @@
 import { fetchSelectionDocument } from "../../pack-service.js";
+import { enrichHtml } from "../../shared/foundry-compat.js";
 import type { DraftState, OptionRecord, PendingStep, SelectionRef } from "../../types.js";
 import { buildPreviewDetails, formatSlug } from "../formatting.js";
 import type { PickStepPane, PreviewPane } from "../view-models.js";
@@ -105,7 +106,7 @@ export async function buildPreview(option: OptionRecord | null, selectedValue: s
     rarity: system.traits?.rarity ?? option.rarity,
     tags: Array.isArray(system.traits?.value) ? system.traits.value.map((trait: string) => formatSlug(trait)) : [],
     details: buildPreviewDetails(document),
-    description: await TextEditor.enrichHTML(String(system.description?.value ?? ""), { async: true }),
+    description: await enrichHtml(String(system.description?.value ?? ""), { async: true }),
     selected: option.value === selectedValue,
     selectedLabel: option.value === selectedValue ? "Selected" : "Choose for draft",
     value: option.value,

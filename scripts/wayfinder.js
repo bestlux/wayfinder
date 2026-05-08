@@ -1,9 +1,10 @@
 import { MODULE_ID } from "./constants.js";
 import { registerSettings } from "./settings.js";
+import { preloadHandlebarsTemplates } from "./shared/foundry-compat.js";
 import { registerSheetControls } from "./sheet-controls.js";
 Hooks.once("init", () => {
     registerSettings();
-    void loadTemplates([
+    void preloadHandlebarsTemplates([
         `modules/${MODULE_ID}/templates/wayfinder/manual-pane.hbs`,
         `modules/${MODULE_ID}/templates/wayfinder/boost-pane.hbs`,
         `modules/${MODULE_ID}/templates/wayfinder/skill-increase-pane.hbs`,

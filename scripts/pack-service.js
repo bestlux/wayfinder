@@ -1,6 +1,7 @@
 import { OFFICIAL_PACKS } from "./constants.js";
 import { getExtraPackSetting } from "./settings.js";
 import { toCompendiumItemUuid } from "./shared/compendium.js";
+import { resolveUuid } from "./shared/foundry-compat.js";
 import { extractDocumentSlug } from "./shared/slug.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
 import { matchesChoicePredicate as matchesChoicePredicateTree, predicateIncludesString, } from "./wayfinder/rule-data.js";
@@ -91,8 +92,7 @@ export async function fetchSelectionDocument(selection) {
     if (document) {
         return document;
     }
-    const fromUuid = globalThis.fromUuid;
-    return typeof fromUuid === "function" ? fromUuid(selection.uuid) : null;
+    return resolveUuid(selection.uuid);
 }
 export function clearPackServiceCache() {
     indexCache.clear();

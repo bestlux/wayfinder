@@ -3,6 +3,7 @@ import { OFFICIAL_PACKS } from "./constants.js";
 import { getExtraPackSetting } from "./settings.js";
 import type { ItemSystemLike, LooseRecord, PackLike, SelectionDocumentLike } from "./shared/actor-model.js";
 import { toCompendiumItemUuid } from "./shared/compendium.js";
+import { resolveUuid } from "./shared/foundry-compat.js";
 import { extractDocumentSlug } from "./shared/slug.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
 import type {
@@ -105,7 +106,6 @@ type PackServiceGlobals = typeof globalThis & {
   CONFIG?: {
     PF2E?: Pf2ePackConfigLike;
   };
-  fromUuid?: (uuid: string) => Promise<PackDocumentLike | null>;
   game?: {
     packs?: Map<string, GamePackLike>;
   };
@@ -220,8 +220,7 @@ export async function fetchSelectionDocument(selection: SelectionRef): Promise<P
     return document;
   }
 
-  const fromUuid = (globalThis as PackServiceGlobals).fromUuid;
-  return typeof fromUuid === "function" ? fromUuid(selection.uuid) : null;
+  return resolveUuid<PackDocumentLike>(selection.uuid);
 }
 
 export function clearPackServiceCache(): void {

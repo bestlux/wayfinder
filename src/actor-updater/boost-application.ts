@@ -1,6 +1,7 @@
 import { BOOST_LEVELS, type EffectiveBuildState, getEffectiveBuildState, listActorItems } from "../build-state.js";
 import type { ActorItemLike, ActorLike, LooseRecord } from "../shared/actor-model.js";
 import { cloneData } from "../shared/cloning.js";
+import { foundryDeleteValue } from "../shared/foundry-compat.js";
 import type { DraftState } from "../types.js";
 
 interface BoostApplicationDependencies {
@@ -35,7 +36,7 @@ export async function applyBoostDraft(
     if (buildState.ancestry.mode === "alternate") {
       ancestryUpdate["system.alternateAncestryBoosts"] = buildState.ancestry.alternateBoosts;
     } else {
-      ancestryUpdate["system.-=alternateAncestryBoosts"] = null;
+      ancestryUpdate["system.alternateAncestryBoosts"] = foundryDeleteValue();
     }
 
     for (const [slot, value] of Object.entries(buildState.ancestry.selectedBoosts)) {
@@ -48,7 +49,7 @@ export async function applyBoostDraft(
     if (buildState.ancestry.voluntary.enabled && buildState.ancestry.voluntary.legacy) {
       ancestryUpdate["system.voluntary.boost"] = buildState.ancestry.voluntary.boost;
     } else {
-      ancestryUpdate["system.voluntary.-=boost"] = null;
+      ancestryUpdate["system.voluntary.boost"] = foundryDeleteValue();
     }
 
     updates.push(ancestryUpdate);

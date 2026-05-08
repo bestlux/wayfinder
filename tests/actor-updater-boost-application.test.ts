@@ -4,8 +4,100 @@ import type { getEffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 
 type EffectiveBuildState = Awaited<ReturnType<typeof getEffectiveBuildState>>;
+const testGlobals = globalThis as typeof globalThis & {
+  foundry?: {
+    data?: {
+      operators?: {
+        ForcedDeletion?: new () => unknown;
+      };
+    };
+  };
+};
 
 describe("actor-updater boost application", () => {
+  it("uses the Foundry v14 forced-deletion operator instead of legacy deletion keys", async () => {
+    class TestForcedDeletion {}
+    testGlobals.foundry ??= {};
+    testGlobals.foundry.data ??= {};
+    testGlobals.foundry.data.operators ??= {};
+    testGlobals.foundry.data.operators.ForcedDeletion = TestForcedDeletion;
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      items: {
+        contents: [{ id: "ancestry-1", type: "ancestry" }],
+      },
+      updateEmbeddedDocuments,
+    };
+    const draft = createEmptyDraft(1);
+    const effectiveBuildState: EffectiveBuildState = {
+      ancestry: {
+        document: null,
+        mode: "standard",
+        alternateBoosts: [],
+        selectedBoosts: {},
+        lockedBoosts: [],
+        voluntary: {
+          enabled: false,
+          legacy: false,
+          boost: null,
+          flaws: [],
+        },
+        buildBoosts: [],
+        buildFlaws: [],
+      },
+      heritage: null,
+      background: null,
+      class: null,
+      deity: null,
+      languages: null,
+      levelBoosts: {
+        1: [],
+        5: [],
+        10: [],
+        15: [],
+        20: [],
+      },
+      allowedBoosts: {
+        1: 4,
+        5: 4,
+        10: 4,
+        15: 4,
+        20: 4,
+      },
+      projectedAbilities: {
+        str: { key: "str", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        dex: { key: "dex", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        con: { key: "con", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        int: { key: "int", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        wis: { key: "wis", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        cha: { key: "cha", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+      },
+    };
+
+    await applyBoostDraft(
+      actor,
+      draft,
+      {
+        getEffectiveBuildState: async () => effectiveBuildState,
+      },
+      { persistActorUpdate: false }
+    );
+
+    expect(updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        _id: "ancestry-1",
+        "system.alternateAncestryBoosts": expect.any(TestForcedDeletion),
+        "system.voluntary.flaws": [],
+        "system.voluntary.boost": expect.any(TestForcedDeletion),
+      },
+    ]);
+    const calls = updateEmbeddedDocuments.mock.calls as unknown as Array<[string, Array<Record<string, unknown>>]>;
+    const ancestryUpdate = calls[0]?.[1]?.[0] ?? {};
+    expect(Object.keys(ancestryUpdate).some((key) => key.includes("-="))).toBe(false);
+    expect(ancestryUpdate["system.alternateAncestryBoosts"]).toBeInstanceOf(TestForcedDeletion);
+    expect(ancestryUpdate["system.voluntary.boost"]).toBeInstanceOf(TestForcedDeletion);
+  });
+
   it("writes effective ancestry, background, class, and actor boost values", async () => {
     const updateEmbeddedDocuments = vi.fn(async () => []);
     const update = vi.fn(async (_updates: Record<string, unknown>) => ({}));

@@ -1,5 +1,6 @@
 import { BOOST_LEVELS, getEffectiveBuildState, listActorItems } from "../build-state.js";
 import { cloneData } from "../shared/cloning.js";
+import { foundryDeleteValue } from "../shared/foundry-compat.js";
 const DEFAULT_DEPS = {
     getEffectiveBuildState,
 };
@@ -14,7 +15,7 @@ export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS, options
             ancestryUpdate["system.alternateAncestryBoosts"] = buildState.ancestry.alternateBoosts;
         }
         else {
-            ancestryUpdate["system.-=alternateAncestryBoosts"] = null;
+            ancestryUpdate["system.alternateAncestryBoosts"] = foundryDeleteValue();
         }
         for (const [slot, value] of Object.entries(buildState.ancestry.selectedBoosts)) {
             ancestryUpdate[`system.boosts.${slot}.selected`] = value;
@@ -26,7 +27,7 @@ export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS, options
             ancestryUpdate["system.voluntary.boost"] = buildState.ancestry.voluntary.boost;
         }
         else {
-            ancestryUpdate["system.voluntary.-=boost"] = null;
+            ancestryUpdate["system.voluntary.boost"] = foundryDeleteValue();
         }
         updates.push(ancestryUpdate);
     }

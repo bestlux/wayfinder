@@ -1,4 +1,5 @@
 import { fetchSelectionDocument } from "../../pack-service.js";
+import { enrichHtml } from "../../shared/foundry-compat.js";
 import { buildPreviewDetails, formatSlug } from "../formatting.js";
 export function buildPickItemPane(args) {
     const { step, search, activeFilterCount, selectedValue, selectedLabel, filterGroups, visibleOptions, infoState, contextNote, preview, modeLabel, previewValue, } = args;
@@ -72,7 +73,7 @@ export async function buildPreview(option, selectedValue) {
         rarity: system.traits?.rarity ?? option.rarity,
         tags: Array.isArray(system.traits?.value) ? system.traits.value.map((trait) => formatSlug(trait)) : [],
         details: buildPreviewDetails(document),
-        description: await TextEditor.enrichHTML(String(system.description?.value ?? ""), { async: true }),
+        description: await enrichHtml(String(system.description?.value ?? ""), { async: true }),
         selected: option.value === selectedValue,
         selectedLabel: option.value === selectedValue ? "Selected" : "Choose for draft",
         value: option.value,

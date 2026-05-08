@@ -160,11 +160,11 @@ Smoke paths should include:
 - `Magical Experiment`
 - `Wisp Fetchling`
 
-### Priority 3: Re-audit AP and side-book backgrounds after smoke validation
+### Priority 3: AP and side-book audit follow-up
 
-Once the grant-choice, singleton predicate, and fallback-training work is in place, re-check the more exotic backgrounds and heritages.
+The broader AP and side-book pass now lives in [AP And Side-Book Level 1 Audit](./ap-sidebook-level1-audit.md).
 
-That second pass should decide whether the remaining misses deserve:
+That pass decides whether the remaining misses deserve:
 
 - more generic support
 - or narrow content-specific hardening

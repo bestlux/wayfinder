@@ -273,6 +273,32 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Fleet", "Incredible Initiative"]);
   });
 
+  it("filters grant-choice options to explicit static UUID allowlists", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("dubious-knowledge-id", "Dubious Knowledge", "skill", ["skill"]),
+      featEntry("quick-identification-id", "Quick Identification", "skill", ["skill"]),
+      featEntry("fleet", "Fleet", "general", ["general"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("grant-choice", {
+        itemType: "feat",
+        packIds: ["pf2e.feats-srd"],
+        uuids: [
+          "Compendium.pf2e.feats-srd.Item.Dubious Knowledge",
+          "Compendium.pf2e.feats-srd.Item.Quick Identification",
+        ],
+      }),
+      EMPTY_CONTEXT
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Dubious Knowledge", "Quick Identification"]);
+    expect(options.map((option) => option.uuid)).toEqual([
+      "Compendium.pf2e.feats-srd.Item.dubious-knowledge-id",
+      "Compendium.pf2e.feats-srd.Item.quick-identification-id",
+    ]);
+  });
+
   it("hides choices already selected in a different draft slot", async () => {
     setPack("pf2e.feats-srd", [
       featEntry("community-knowledge", "Community Knowledge", "ancestry", ["kashrishi"]),

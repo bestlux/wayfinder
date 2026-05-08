@@ -99,6 +99,44 @@ describe("wayfinder singleton rule discovery", () => {
     expect(choices).toEqual([]);
   });
 
+  it("skips ChoiceSet rules that are grant selectors", () => {
+    const choices = discoverSingletonChoiceMeta({
+      sourceItemType: "background",
+      sourceDocument: {
+        name: "Wanderlust",
+        system: {
+          slug: "wanderlust",
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "feat",
+              prompt: "PF2E.SpecificRule.Prompt.SkillFeat",
+              choices: [
+                { value: "Compendium.pf2e.feats-srd.Item.Overclock Senses" },
+                { value: "Compendium.pf2e.feats-srd.Item.Titan Swing" },
+              ],
+            },
+            {
+              key: "GrantItem",
+              uuid: "{item|flags.system.rulesSelections.feat}",
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        ...sourceSelection,
+        documentId: "wanderlust",
+        uuid: "Compendium.pf2e.backgrounds.Item.wanderlust",
+        name: "Wanderlust",
+      },
+      extractSlug,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(choices).toEqual([]);
+  });
+
   it("skips configured skill choices from singleton ChoiceSet config rules", () => {
     const globals = globalThis as typeof globalThis & {
       CONFIG?: {

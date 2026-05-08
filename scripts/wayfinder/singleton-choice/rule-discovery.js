@@ -29,9 +29,13 @@ export function discoverSingletonChoiceSpecs(args) {
     const document = sourceDocument;
     const level = sourceLevel ?? toFeatureLevel(document?.system?.level?.value);
     const configuredSkills = getConfiguredSkills();
-    return findRelevantRules(sourceDocument).flatMap((rule, sourceRuleIndex) => {
+    const rules = findRelevantRules(sourceDocument);
+    return rules.flatMap((rule, sourceRuleIndex) => {
         const flag = extractChoiceKey(rule);
         if (rule.key !== "ChoiceSet" || !flag) {
+            return [];
+        }
+        if (isGrantSelectorChoice(rules, flag)) {
             return [];
         }
         const options = resolveChoiceOptions(rule, localize, configuredSkills);
@@ -53,6 +57,9 @@ export function discoverSingletonChoiceSpecs(args) {
             },
         ];
     });
+}
+function isGrantSelectorChoice(rules, flag) {
+    return rules.some((entry) => entry.key === "GrantItem" && typeof entry.uuid === "string" && entry.uuid.includes(`rulesSelections.${flag}`));
 }
 function shouldSkipSingletonChoice(sourceItemType, optionDomain) {
     // Starting skill and lore choices belong to the skill training workflow so

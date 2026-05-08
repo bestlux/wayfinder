@@ -81,10 +81,14 @@ export function discoverSingletonChoiceSpecs(args: {
   const document = sourceDocument as NamedDocumentLike | null | undefined;
   const level = sourceLevel ?? toFeatureLevel(document?.system?.level?.value);
   const configuredSkills = getConfiguredSkills();
+  const rules = findRelevantRules(sourceDocument);
 
-  return findRelevantRules(sourceDocument).flatMap((rule, sourceRuleIndex) => {
+  return rules.flatMap((rule, sourceRuleIndex) => {
     const flag = extractChoiceKey(rule);
     if (rule.key !== "ChoiceSet" || !flag) {
+      return [];
+    }
+    if (isGrantSelectorChoice(rules, flag)) {
       return [];
     }
 
@@ -110,6 +114,13 @@ export function discoverSingletonChoiceSpecs(args: {
       } satisfies SingletonChoiceSpec,
     ];
   });
+}
+
+function isGrantSelectorChoice(rules: Array<Record<string, unknown>>, flag: string): boolean {
+  return rules.some(
+    (entry) =>
+      entry.key === "GrantItem" && typeof entry.uuid === "string" && entry.uuid.includes(`rulesSelections.${flag}`)
+  );
 }
 
 function shouldSkipSingletonChoice(

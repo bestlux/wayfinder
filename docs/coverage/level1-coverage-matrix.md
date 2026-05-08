@@ -4,7 +4,7 @@ This document tracks what Wayfinder currently guides at level 1, what is only pa
 
 It is meant to stay grounded in the current repo, not to describe aspirational future behavior.
 
-For a deeper repo-plus-compendium audit of what is still missing under the local PF2E 8.0.3 install, see [Level 1 Default-Rules Gap Audit](./level1-default-rules-gap-audit.md).
+For deeper repo-plus-compendium audits, see [Level 1 Default-Rules Gap Audit](./level1-default-rules-gap-audit.md) and [AP And Side-Book Level 1 Audit](./ap-sidebook-level1-audit.md).
 
 ## Status Legend
 
@@ -30,6 +30,7 @@ For a deeper repo-plus-compendium audit of what is still missing under the local
 | Class-owned spell choices | Guided, with deeper support for wizard and cleric | Shared spell-choice engine plus class contributors | Wizard and cleric are the deepest contributors today; other classes rely on the shared path. |
 | Singleton `ChoiceSet` decisions from ancestry, heritage, background, class, deity, or selected feat sources | Guided when PF2E rule data is structured | Generic singleton-choice workflow | Supports planning, draft storage, invalidation, and apply-side persistence for supported `ChoiceSet` rules. |
 | Non-class filtered feat grants | Guided when PF2E rule data is structured | Grant-choice workflow | Covers filtered `ChoiceSet` plus `GrantItem` paths such as Ancient Elf, Versatile Human, Nascent, General Training, and Natural Ambition. |
+| Static UUID-backed grants | Guided when PF2E rule data is a non-predicate UUID list | Grant-choice workflow with explicit UUID allowlists | Covers AP/player-guide background feat pairs, side-book heritage feat pairs, and selected class-feature branch lists that use static compendium UUID choices. |
 | Bonus languages after creation boosts | Guided | Dedicated language-choice step | Uses effective post-boost state, so the final Intelligence modifier can affect count. |
 | Background or ancestry lore choices | Guided when PF2E rule data is structured | Generic singleton-choice workflow | Works when PF2E expresses the choice as a supported singleton `ChoiceSet`. |
 | Background or ancestry free-skill choices | Guided when PF2E rule data is structured | Generic singleton-choice workflow plus training projection where a skill-rank rule exists | Some choices only persist the rules selection; they do not always imply a skill rank by themselves. |
@@ -58,5 +59,5 @@ For a deeper repo-plus-compendium audit of what is still missing under the local
 
 1. Smoke-test the new non-class grant-choice workflow against nearby cases such as `Versatile Human`, `General Training`, `Natural Ambition`, and `Nascent`.
 2. Live smoke-test the `Magical Experiment` predicate chain, grant-choice targets, and `Wisp Fetchling` fallback guard in Foundry.
-3. Re-audit AP and side-book backgrounds after smoke validation.
+3. Live-smoke representative AP and side-book static UUID grants from the AP/side-book audit.
 4. Add full-flow integration tests that exercise representative martial, divine, singleton-choice, grant-choice, and language-sensitive paths.

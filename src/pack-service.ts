@@ -11,6 +11,7 @@ import type {
   PendingStep,
   PickerInfoState,
   SelectionRef,
+  StepFilters,
 } from "./types.js";
 
 interface PackEntryTraitsLike {
@@ -126,7 +127,7 @@ export async function getOptionsForStep(
     return [];
   }
 
-  const packIds = resolvePackIds(step.slotKind);
+  const packIds = resolvePackIds(step.slotKind, step.filters);
   const traitCatalog = await getTraitCatalog(step.slotKind);
   const results: OptionRecord[] = [];
 
@@ -380,8 +381,11 @@ function requiresResolvedCurriculum(step: PendingStep): boolean {
   );
 }
 
-function resolvePackIds(slotKind: PendingStep["slotKind"]): string[] {
+function resolvePackIds(slotKind: PendingStep["slotKind"], filters?: StepFilters | null): string[] {
   const extras = parseCompendiumAllowlist(getExtraPackSetting());
+  if (filters?.packIds?.length) {
+    return mergePackIds(filters.packIds, extras);
+  }
 
   switch (slotKind) {
     case "ancestry":
@@ -445,6 +449,10 @@ function matchesFilters(
   }
 
   if (String(entry?.type ?? "") !== filters.itemType) {
+    return false;
+  }
+
+  if (filters.uuids?.length && !matchesUuidAllowlist(entry, packId, filters.uuids)) {
     return false;
   }
 
@@ -756,6 +764,37 @@ function matchesChoicePredicate(predicate: ChoicePredicate, entry: PackIndexEntr
   }
 
   return true;
+}
+
+function matchesUuidAllowlist(entry: PackIndexEntry, packId: string, allowedUuids: string[]): boolean {
+  const allowed = new Set(allowedUuids.map(normalizeUuid).filter(Boolean));
+  if (allowed.size === 0) {
+    return true;
+  }
+
+  return entryUuidCandidates(entry, packId).some((candidate) => allowed.has(normalizeUuid(candidate)));
+}
+
+function entryUuidCandidates(entry: PackIndexEntry, packId: string): string[] {
+  const candidates: string[] = [];
+  const documentId = stringOrNull(entry._id);
+  const name = stringOrNull(entry.name);
+  const slug = extractEntrySlug(entry);
+  if (documentId) {
+    candidates.push(toCompendiumItemUuid(packId, documentId));
+  }
+  if (name) {
+    candidates.push(toCompendiumItemUuid(packId, name));
+  }
+  if (slug) {
+    candidates.push(toCompendiumItemUuid(packId, slug));
+  }
+
+  return candidates;
+}
+
+function normalizeUuid(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function matchesChoicePredicateString(statement: string, entry: PackIndexEntry, context: OptionContext): boolean {

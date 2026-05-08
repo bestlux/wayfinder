@@ -107,6 +107,163 @@ describe("wayfinder grant choice step builders", () => {
     ]);
   });
 
+  it("builds a static UUID feat grant step from AP background rule shapes", () => {
+    const steps = buildGrantChoiceStepsFromRules({
+      sourceItemType: "background",
+      effectiveSourceDocument: {
+        name: "Wanderlust",
+        system: {
+          slug: "wanderlust",
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "feat",
+              choices: [
+                { value: "Compendium.pf2e.feats-srd.Item.Overclock Senses" },
+                { value: "Compendium.pf2e.feats-srd.Item.Titan Swing" },
+              ],
+            },
+            {
+              key: "GrantItem",
+              uuid: "{item|flags.system.rulesSelections.feat}",
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        slotId: "background-level-1",
+        packId: "pf2e.backgrounds",
+        documentId: "wanderlust",
+        uuid: "Compendium.pf2e.backgrounds.Item.wanderlust",
+        itemType: "background",
+        featType: null,
+        name: "Wanderlust",
+        level: 1,
+      },
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        slotId: "grant-choice-none-background-wanderlust-feat-level-1",
+        filters: {
+          itemType: "feat",
+          packIds: ["pf2e.feats-srd"],
+          uuids: ["Compendium.pf2e.feats-srd.Item.Overclock Senses", "Compendium.pf2e.feats-srd.Item.Titan Swing"],
+        },
+        grantSelection: {
+          sourceItemType: "background",
+          dependsOn: null,
+          flag: "feat",
+        },
+      },
+    ]);
+  });
+
+  it("skips static UUID feat grants with choice-level predicates", () => {
+    const steps = buildGrantChoiceStepsFromRules({
+      sourceItemType: "feat",
+      effectiveSourceDocument: {
+        name: "Molten Wit",
+        system: {
+          slug: "molten-wit",
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "feat",
+              choices: [
+                {
+                  predicate: ["molten-wit:deception"],
+                  value: "Compendium.pf2e.feats-srd.Item.Charming Liar",
+                },
+                {
+                  predicate: ["molten-wit:diplomacy"],
+                  value: "Compendium.pf2e.feats-srd.Item.Group Impression",
+                },
+              ],
+            },
+            {
+              key: "GrantItem",
+              uuid: "{item|flags.system.rulesSelections.feat}",
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        slotId: "ancestry-feat-level-1",
+        packId: "pf2e.feats-srd",
+        documentId: "molten-wit",
+        uuid: "Compendium.pf2e.feats-srd.Item.molten-wit",
+        itemType: "feat",
+        featType: "ancestry",
+        name: "Molten Wit",
+        level: 1,
+      },
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+    });
+
+    expect(steps).toEqual([]);
+  });
+
+  it("builds a static UUID class-feature grant step from selected class features", () => {
+    const steps = buildGrantChoiceStepsFromRules({
+      sourceItemType: "classfeature",
+      effectiveSourceDocument: {
+        name: "School of Rooted Wisdom",
+        system: {
+          slug: "school-of-rooted-wisdom",
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "branch",
+              choices: [
+                { value: "Compendium.pf2e.classfeatures.Item.Cascade Bearers" },
+                { value: "Compendium.pf2e.classfeatures.Item.Emerald Boughs" },
+              ],
+            },
+            {
+              key: "GrantItem",
+              uuid: "{item|flags.system.rulesSelections.branch}",
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        slotId: "class-branch-arcane-school-level-1",
+        packId: "pf2e.classfeatures",
+        documentId: "school-of-rooted-wisdom",
+        uuid: "Compendium.pf2e.classfeatures.Item.school-of-rooted-wisdom",
+        itemType: "feat",
+        featType: "classfeature",
+        name: "School of Rooted Wisdom",
+        level: 1,
+      },
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        slotId: "grant-choice-class-classfeature-school-of-rooted-wisdom-branch-level-1",
+        filters: {
+          itemType: "feat",
+          packIds: ["pf2e.classfeatures"],
+          uuids: [
+            "Compendium.pf2e.classfeatures.Item.Cascade Bearers",
+            "Compendium.pf2e.classfeatures.Item.Emerald Boughs",
+          ],
+        },
+        grantSelection: {
+          sourceItemType: "classfeature",
+          dependsOn: "class",
+          flag: "branch",
+        },
+      },
+    ]);
+  });
+
   it.each([
     {
       sourceItemType: "heritage" as const,

@@ -1,3 +1,8 @@
+const STATIC_UUID_PACK_ITEM_TYPES = new Map([
+    ["pf2e.feats-srd", "feat"],
+    ["pf2e.classfeatures", "feat"],
+    ["pf2e.deities", "deity"],
+]);
 export function discoverGrantSelectionMeta(args) {
     const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;
     const document = sourceDocument;
@@ -39,17 +44,50 @@ export function discoverGrantSelectionMeta(args) {
         ];
     });
     function resolveChoiceFilters(rule) {
-        const choices = isRecord(rule.choices) ? rule.choices : null;
-        const predicate = Array.isArray(choices?.filter) ? choices.filter.filter(isChoicePredicate) : [];
-        const itemType = toNonEmptyString(choices?.itemType) ?? inferItemTypeFromPredicate(predicate);
-        if (!itemType || predicate.length === 0) {
-            return null;
+        const choices = isRecord(rule.choices) && !Array.isArray(rule.choices) ? rule.choices : null;
+        if (choices) {
+            const predicate = Array.isArray(choices.filter) ? choices.filter.filter(isChoicePredicate) : [];
+            const itemType = toNonEmptyString(choices.itemType) ?? inferItemTypeFromPredicate(predicate);
+            if (!itemType || predicate.length === 0) {
+                return null;
+            }
+            return {
+                itemType,
+                predicate,
+            };
         }
-        return {
-            itemType,
-            predicate,
-        };
+        return resolveStaticUuidChoiceFilters(rule);
     }
+}
+function resolveStaticUuidChoiceFilters(rule) {
+    if (!Array.isArray(rule.choices) || rule.predicate !== undefined) {
+        return null;
+    }
+    const choices = rule.choices.filter(isRecord);
+    if (choices.length === 0 || choices.length !== rule.choices.length || choices.some((choice) => choice.predicate)) {
+        return null;
+    }
+    const uuids = choices.map((choice) => toNonEmptyString(choice.value));
+    if (uuids.some((uuid) => !uuid || !parseCompendiumItemUuid(uuid))) {
+        return null;
+    }
+    const packIds = Array.from(new Set(uuids.flatMap((uuid) => {
+        const parsed = uuid ? parseCompendiumItemUuid(uuid) : null;
+        return parsed ? [parsed.packId] : [];
+    })));
+    const itemTypes = Array.from(new Set(packIds.flatMap((packId) => STATIC_UUID_PACK_ITEM_TYPES.get(packId) ?? [])));
+    if (packIds.length === 0 || itemTypes.length !== 1 || itemTypes[0] === undefined) {
+        return null;
+    }
+    return {
+        itemType: itemTypes[0],
+        packIds,
+        uuids: uuids.filter((uuid) => !!uuid),
+    };
+}
+function parseCompendiumItemUuid(uuid) {
+    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(uuid.trim());
+    return match ? { packId: match[1], documentId: match[2] } : null;
 }
 function inferItemTypeFromPredicate(predicate) {
     for (const entry of predicate) {

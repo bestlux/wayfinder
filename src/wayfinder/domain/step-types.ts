@@ -48,6 +48,8 @@ export type ChoicePredicate =
 
 export interface StepFilters {
   itemType: string;
+  packIds?: string[];
+  uuids?: string[];
   featTypes?: string[];
   maxLevel?: number;
   predicate?: ChoicePredicate[];

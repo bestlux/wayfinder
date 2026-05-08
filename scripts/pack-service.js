@@ -18,7 +18,7 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
     if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {
         return [];
     }
-    const packIds = resolvePackIds(step.slotKind);
+    const packIds = resolvePackIds(step.slotKind, step.filters);
     const traitCatalog = await getTraitCatalog(step.slotKind);
     const results = [];
     for (const packId of packIds) {
@@ -223,8 +223,11 @@ function requiresResolvedCurriculum(step) {
         spellChoice.curriculumSpellNames.length === 0 &&
         spellChoice.requiresCurriculum !== false);
 }
-function resolvePackIds(slotKind) {
+function resolvePackIds(slotKind, filters) {
     const extras = parseCompendiumAllowlist(getExtraPackSetting());
+    if (filters?.packIds?.length) {
+        return mergePackIds(filters.packIds, extras);
+    }
     switch (slotKind) {
         case "ancestry":
             return mergePackIds([...OFFICIAL_PACKS.ancestry], extras);
@@ -276,6 +279,9 @@ function matchesFilters(entry, packId, step, context, traitCatalog) {
         return true;
     }
     if (String(entry?.type ?? "") !== filters.itemType) {
+        return false;
+    }
+    if (filters.uuids?.length && !matchesUuidAllowlist(entry, packId, filters.uuids)) {
         return false;
     }
     if (filters.featTypes?.length) {
@@ -525,6 +531,32 @@ function matchesChoicePredicate(predicate, entry, context) {
         return !matchesChoicePredicate(predicate.not, entry, context);
     }
     return true;
+}
+function matchesUuidAllowlist(entry, packId, allowedUuids) {
+    const allowed = new Set(allowedUuids.map(normalizeUuid).filter(Boolean));
+    if (allowed.size === 0) {
+        return true;
+    }
+    return entryUuidCandidates(entry, packId).some((candidate) => allowed.has(normalizeUuid(candidate)));
+}
+function entryUuidCandidates(entry, packId) {
+    const candidates = [];
+    const documentId = stringOrNull(entry._id);
+    const name = stringOrNull(entry.name);
+    const slug = extractEntrySlug(entry);
+    if (documentId) {
+        candidates.push(toCompendiumItemUuid(packId, documentId));
+    }
+    if (name) {
+        candidates.push(toCompendiumItemUuid(packId, name));
+    }
+    if (slug) {
+        candidates.push(toCompendiumItemUuid(packId, slug));
+    }
+    return candidates;
+}
+function normalizeUuid(value) {
+    return value.trim().toLowerCase();
 }
 function matchesChoicePredicateString(statement, entry, context) {
     const resolved = resolveInjectedPredicateString(statement, context);

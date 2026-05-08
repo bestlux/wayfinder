@@ -158,6 +158,13 @@ describe("wayfinder spell-choice step builders", () => {
     expect(steps.map((step) => step.slotId)).toContain("spell-choice-wizard-unified-rank-1-level-1");
     expect(steps.map((step) => step.slotId)).not.toContain("spell-choice-wizard-curriculum-rank-1-level-1");
     expect(steps.map((step) => step.slotId)).not.toContain("spell-choice-wizard-curriculum-rank-2-level-3");
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-wizard-unified-rank-1-level-1")?.spellChoice
+    ).toMatchObject({
+      dependsOn: "class-branch",
+      curriculumSpellNames: [],
+      requiresCurriculum: false,
+    });
   });
 
   it("builds cleric initial preparation steps and carries deity spell access", async () => {
@@ -170,7 +177,7 @@ describe("wayfinder spell-choice step builders", () => {
         name: "Sarenrae",
         system: {
           spells: {
-            1: "Compendium.pf2e.spells-srd.Item.burning-hands",
+            1: ["Compendium.pf2e.spells-srd.Item.burning-hands", "Compendium.pf2e.spells-srd.Item.y6rAdMK6EFlV6U0t"],
           },
         },
       },
@@ -201,6 +208,10 @@ describe("wayfinder spell-choice step builders", () => {
       minRank: 1,
       maxRank: 1,
       additionalAllowedSpellNames: ["Burning Hands"],
+      additionalAllowedSpellUuids: [
+        "Compendium.pf2e.spells-srd.Item.burning-hands",
+        "Compendium.pf2e.spells-srd.Item.y6rAdMK6EFlV6U0t",
+      ],
       restrictToCommon: true,
     });
   });

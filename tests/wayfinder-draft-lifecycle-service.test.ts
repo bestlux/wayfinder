@@ -68,10 +68,26 @@ describe("wayfinder draft lifecycle service", () => {
     const order: string[] = [];
     const applyDraftToActor = vi.fn(async () => {
       order.push("apply");
+      return {
+        "system.build": {
+          attributes: {
+            boosts: {
+              1: ["dex", "con", "int", "wis"],
+            },
+          },
+        },
+      };
     });
     const updateActor = vi.fn(async (update: Record<string, unknown>) => {
       order.push("update");
       expect(update).toEqual({
+        "system.build": {
+          attributes: {
+            boosts: {
+              1: ["dex", "con", "int", "wis"],
+            },
+          },
+        },
         [DRAFT_FLAG]: null,
         [STATE_FLAG]: {
           ...createEmptyState(),

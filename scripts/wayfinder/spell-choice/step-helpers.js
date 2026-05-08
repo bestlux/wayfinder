@@ -21,7 +21,9 @@ export function makeSpellChoiceStep(args) {
         ...(args.allowedSpellSlugs ? { allowedSpellSlugs: args.allowedSpellSlugs } : {}),
         ...(args.excludedTraditions ? { excludedTraditions: args.excludedTraditions } : {}),
         curriculumSpellNames: args.curriculumSpellNames,
+        ...(args.requiresCurriculum !== undefined ? { requiresCurriculum: args.requiresCurriculum } : {}),
         additionalAllowedSpellNames: args.additionalAllowedSpellNames,
+        ...(args.additionalAllowedSpellUuids ? { additionalAllowedSpellUuids: args.additionalAllowedSpellUuids } : {}),
         restrictToCommon: args.restrictToCommon,
     });
 }

@@ -114,6 +114,147 @@ describe("actor-updater integration", () => {
     ]);
   });
 
+  it("does not insert stale feat selections whose steps are no longer in the active plan", async () => {
+    const { actor, createdItems } = buildActorHarness();
+    setGamePacks({
+      "pf2e.classes": {
+        fighter: {
+          name: "Fighter",
+          type: "class",
+          system: {},
+        },
+      },
+      "pf2e.feats-srd": {
+        counterspell: {
+          name: "Counterspell",
+          type: "feat",
+          system: {
+            category: "class",
+            level: { value: 1 },
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(1);
+    draft.selections["class-level-1"] = selection("class-level-1", "pf2e.classes", "fighter", "class", "Fighter");
+    draft.selections["grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1"] = selection(
+      "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1",
+      "pf2e.feats-srd",
+      "counterspell",
+      "feat",
+      "Counterspell",
+      "class"
+    );
+
+    await applyDraftToActor(actor as any, draft, [classSelectionStep()]);
+
+    expect(createdItems.filter((item) => item.type === "feat")).toEqual([]);
+  });
+
+  it("does not manually prepare an already-prepared PF2E actor", async () => {
+    const { actor, createdItems } = buildActorHarness();
+    const flags: Record<string, unknown> = {};
+    actor.flags = flags;
+    Object.defineProperty(flags, "system", {
+      get: () => flags.pf2e,
+    });
+    actor.prepareData = vi.fn(() => {
+      throw new TypeError("Cannot redefine property: system");
+    });
+    actor.feats = {
+      get(groupId: string) {
+        return {
+          slots: {
+            [`${groupId}-1`]: {
+              id: `${groupId}-1`,
+              level: 1,
+              feat: null,
+            },
+          },
+        };
+      },
+    };
+
+    setGamePacks({
+      "pf2e.ancestries": {
+        human: {
+          name: "Human",
+          type: "ancestry",
+          system: {},
+        },
+      },
+      "pf2e.classes": {
+        fighter: {
+          name: "Fighter",
+          type: "class",
+          system: {},
+        },
+      },
+      "pf2e.feats-srd": {
+        "general-training": {
+          name: "General Training",
+          type: "feat",
+          system: {
+            category: "ancestry",
+            level: { value: 1 },
+          },
+        },
+        "combat-assessment": {
+          name: "Combat Assessment",
+          type: "feat",
+          system: {
+            category: "class",
+            level: { value: 1 },
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(1);
+    draft.selections["ancestry-level-1"] = selection(
+      "ancestry-level-1",
+      "pf2e.ancestries",
+      "human",
+      "ancestry",
+      "Human"
+    );
+    draft.selections["class-level-1"] = selection("class-level-1", "pf2e.classes", "fighter", "class", "Fighter");
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      "pf2e.feats-srd",
+      "general-training",
+      "feat",
+      "General Training",
+      "ancestry"
+    );
+    draft.selections["class-feat-level-1"] = selection(
+      "class-feat-level-1",
+      "pf2e.feats-srd",
+      "combat-assessment",
+      "feat",
+      "Combat Assessment",
+      "class"
+    );
+
+    await applyDraftToActor(actor as any, draft, [
+      ancestrySelectionStep(),
+      classSelectionStep(),
+      ancestryFeatStep(),
+      classFeatStep(),
+    ]);
+
+    expect(actor.prepareData).not.toHaveBeenCalled();
+    expect(
+      createdItems
+        .filter((item) => item?.type === "feat")
+        .map((item) => ({ name: item.name, location: item.system?.location }))
+    ).toEqual([
+      { name: "General Training", location: "ancestry-1" },
+      { name: "Combat Assessment", location: "class-1" },
+    ]);
+  });
+
   it("preseeds feat-owned grant choices for PF2E native GrantItem creation", async () => {
     const { actor, createdItems } = buildActorHarness();
     actor.feats = {
@@ -467,6 +608,114 @@ describe("actor-updater integration", () => {
     ).toHaveLength(1);
   });
 
+  it("nests Unified Magical Theory under Arcane School before applying its selected feat grant", async () => {
+    const { actor } = buildActorHarness();
+
+    setGamePacks({
+      "pf2e.classes": {
+        wizard: {
+          name: "Wizard",
+          type: "class",
+          system: {},
+        },
+      },
+      "pf2e.classfeatures": {
+        "arcane-school-selector": {
+          name: "Arcane School",
+          type: "feat",
+          system: {
+            category: "classfeature",
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "arcaneSchool",
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.arcaneSchool}",
+              },
+            ],
+          },
+        },
+        "school-of-unified-magical-theory": {
+          name: "School of Unified Magical Theory",
+          type: "feat",
+          system: {
+            category: "classfeature",
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "feat",
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.feat}",
+              },
+            ],
+          },
+        },
+      },
+      "pf2e.feats-srd": {
+        counterspell: {
+          name: "Counterspell",
+          type: "feat",
+          system: {
+            category: "class",
+            level: { value: 1 },
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(1);
+    draft.selections["class-level-1"] = selection("class-level-1", "pf2e.classes", "wizard", "class", "Wizard");
+    draft.branchSelections["class-branch-arcane-school-level-1"] = selection(
+      "class-branch-arcane-school-level-1",
+      "pf2e.classfeatures",
+      "school-of-unified-magical-theory",
+      "feat",
+      "School of Unified Magical Theory",
+      "classfeature"
+    );
+    draft.selections["grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1"] = selection(
+      "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1",
+      "pf2e.feats-srd",
+      "counterspell",
+      "feat",
+      "Counterspell",
+      "class"
+    );
+
+    await applyDraftToActor(actor as any, draft, [
+      classSelectionStep(),
+      classBranchStep({
+        slotId: "class-branch-arcane-school-level-1",
+        title: "Arcane School",
+        selectorDocumentId: "arcane-school-selector",
+        selectorName: "Arcane School",
+        flag: "arcaneSchool",
+        optionTag: "wizard-arcane-school",
+        classSlug: "wizard",
+      }),
+      unifiedMagicalTheoryGrantStep(),
+    ]);
+
+    const arcaneSchool = actor.items.contents.find(
+      (item) => item?.sourceId === "Compendium.pf2e.classfeatures.Item.arcane-school-selector"
+    );
+    const unifiedFeatures = actor.items.contents.filter(
+      (item) => item?.sourceId === "Compendium.pf2e.classfeatures.Item.school-of-unified-magical-theory"
+    );
+    const counterspell = actor.items.contents.find(
+      (item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.counterspell"
+    );
+
+    expect(unifiedFeatures).toHaveLength(1);
+    expect(unifiedFeatures[0]?.flags?.pf2e?.grantedBy?.id).toBe(arcaneSchool?.id);
+    expect(unifiedFeatures[0]?.flags?.pf2e?.rulesSelections?.feat).toBe("Compendium.pf2e.feats-srd.Item.counterspell");
+    expect(counterspell?.flags?.pf2e?.grantedBy?.id).toBe(unifiedFeatures[0]?.id);
+  });
+
   it("imports a selected cleric class and preseeds deity-driven class features from the draft", async () => {
     const { actor, createdItems } = buildActorHarness();
 
@@ -675,6 +924,100 @@ describe("actor-updater integration", () => {
     });
   });
 
+  it("can defer actor-level build updates for lifecycle finalization", async () => {
+    const { actor } = buildActorHarness();
+    setGamePacks({
+      "pf2e.ancestries": {
+        dwarf: {
+          name: "Dwarf",
+          type: "ancestry",
+          system: {
+            boosts: {
+              con: { value: ["con"], selected: null },
+              wis: { value: ["wis"], selected: null },
+              free: { value: ["str", "dex", "con", "int", "wis", "cha"], selected: null },
+            },
+          },
+        },
+      },
+      "pf2e.backgrounds": {
+        acolyte: {
+          name: "Acolyte",
+          type: "background",
+          system: {
+            boosts: {
+              restricted: { value: ["int", "wis"], selected: null },
+              free: { value: ["str", "dex", "con", "int", "wis", "cha"], selected: null },
+            },
+          },
+        },
+      },
+      "pf2e.classes": {
+        wizard: {
+          name: "Wizard",
+          type: "class",
+          system: {
+            keyAbility: {
+              value: ["int"],
+              selected: null,
+            },
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(1);
+    draft.selections["ancestry-level-1"] = selection(
+      "ancestry-level-1",
+      "pf2e.ancestries",
+      "dwarf",
+      "ancestry",
+      "Dwarf"
+    );
+    draft.selections["background-level-1"] = selection(
+      "background-level-1",
+      "pf2e.backgrounds",
+      "acolyte",
+      "background",
+      "Acolyte"
+    );
+    draft.selections["class-level-1"] = selection("class-level-1", "pf2e.classes", "wizard", "class", "Wizard");
+    draft.boosts.ancestry.selectedBoosts = {
+      con: "con",
+      wis: "wis",
+      free: "int",
+    };
+    draft.boosts.background.selectedBoosts = {
+      restricted: "wis",
+      free: "int",
+    };
+    draft.boosts.class.keyAbility = "int";
+    draft.boosts.levels["1"] = ["dex", "con", "int", "wis"];
+
+    const actorUpdate = await applyDraftToActor(
+      actor as any,
+      draft,
+      [ancestrySelectionStep(), backgroundSelectionStep(), classSelectionStep()],
+      { deferActorUpdate: true }
+    );
+
+    expect(actor.update).not.toHaveBeenCalled();
+    expect(actorUpdate).toMatchObject({
+      "system.build": {
+        attributes: {
+          boosts: {
+            1: ["dex", "con", "int", "wis"],
+            5: [],
+            10: [],
+            15: [],
+            20: [],
+          },
+        },
+      },
+      "system.details.keyability.value": "int",
+    });
+  });
+
   it("preseeds singleton grant selections before creating an Ancient Elf heritage item", async () => {
     const { actor, createdItems } = buildActorHarness();
 
@@ -728,6 +1071,20 @@ describe("actor-updater integration", () => {
                   { value: "dex", label: "Dexterity" },
                 ],
               },
+              {
+                key: "ChoiceSet",
+                flag: "skill",
+                choices: [
+                  { value: "acrobatics", label: "Acrobatics" },
+                  { value: "athletics", label: "Athletics" },
+                ],
+              },
+              {
+                key: "ActiveEffectLike",
+                mode: "upgrade",
+                path: "system.skills.{item|flags.system.rulesSelections.skill}.rank",
+                value: 1,
+              },
             ],
             traits: { value: ["archetype", "dedication", "multiclass"] },
           },
@@ -753,12 +1110,20 @@ describe("actor-updater integration", () => {
       "class"
     );
     draft.singletonChoices["singleton-choice-feat-fighter-dedication-attribute-level-1"] = "str";
+    draft.skillTrainings["skill-training-wizard-level-1"] = {
+      ruleChoices: {
+        "feat:fighter-dedication:skill": "athletics",
+      },
+      additional: [],
+      loreChoices: {},
+    };
 
     await applyDraftToActor(actor as any, draft, [
       classSelectionStep(),
       heritageSelectionStep(),
       ancientElfDedicationStep(),
       fighterDedicationAttributeStep(),
+      fighterDedicationTrainingStep(),
     ]);
 
     const heritage = createdItems.find((item) => item?.sourceId === "Compendium.pf2e.heritages.Item.ancient-elf");
@@ -772,8 +1137,21 @@ describe("actor-updater integration", () => {
     expect((heritage?.system?.rules as Array<Record<string, unknown>> | undefined)?.[0]?.selection).toBe(
       "Compendium.pf2e.feats-srd.Item.fighter-dedication"
     );
+    expect(
+      (heritage?.system?.rules as Array<Record<string, unknown>> | undefined)?.some((rule) => rule.key === "GrantItem")
+    ).toBe(false);
+    expect(heritage?.flags?.pf2e?.itemGrants?.ancientElf).toEqual({
+      id: dedication?.id,
+      onDelete: "detach",
+      nested: null,
+    });
     expect(dedication).toBeTruthy();
+    expect(dedication?.flags?.pf2e?.grantedBy).toEqual({
+      id: heritage?.id,
+      onDelete: "cascade",
+    });
     expect(dedication?.flags?.pf2e?.rulesSelections?.attribute).toBe("str");
+    expect(dedication?.flags?.pf2e?.rulesSelections?.skill).toBe("athletics");
   });
 
   it("stacks later skill increases on top of singleton skill choices during apply", async () => {
@@ -956,6 +1334,22 @@ function ancestrySelectionStep(): PendingStep {
   };
 }
 
+function backgroundSelectionStep(): PendingStep {
+  return {
+    id: "background-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "background",
+    title: "Choose a background",
+    description: "",
+    required: true,
+    slotId: "background-level-1",
+    filters: {
+      itemType: "background",
+    },
+  };
+}
+
 function ancestryFeatStep(): PendingStep {
   return {
     id: "ancestry-feat-level-1",
@@ -1065,6 +1459,39 @@ function generalTrainingGrantStep(): PendingStep {
   };
 }
 
+function unifiedMagicalTheoryGrantStep(): PendingStep {
+  return {
+    id: "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "grant-choice",
+    title: "School of Unified Magical Theory feat grant",
+    description: "",
+    required: true,
+    slotId: "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1",
+    filters: {
+      itemType: "feat",
+    },
+    grantSelection: {
+      slotId: "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1",
+      sourceItemType: "classfeature",
+      selectorPackId: "pf2e.classfeatures",
+      selectorDocumentId: "school-of-unified-magical-theory",
+      selectorUuid: "Compendium.pf2e.classfeatures.Item.school-of-unified-magical-theory",
+      selectorName: "School of Unified Magical Theory",
+      selectorRuleIndex: 0,
+      grantRuleIndex: 1,
+      flag: "feat",
+      itemType: "feat",
+      classSlug: "wizard",
+      dependsOn: "class",
+      filters: {
+        itemType: "feat",
+      },
+    },
+  };
+}
+
 function additionalLoreTrainingStep(): PendingStep {
   return {
     id: "skill-training-fighter-level-1",
@@ -1163,6 +1590,46 @@ function fighterDedicationAttributeStep(): PendingStep {
         { value: "str", label: "Strength", img: null, detail: null },
         { value: "dex", label: "Dexterity", img: null, detail: null },
       ],
+    },
+  };
+}
+
+function fighterDedicationTrainingStep(): PendingStep {
+  return {
+    id: "skill-training-wizard-level-1",
+    level: 1,
+    kind: "skill-training",
+    slotKind: "skill-training",
+    title: "Wizard skill training",
+    description: "",
+    required: true,
+    slotId: "skill-training-wizard-level-1",
+    training: {
+      classSlug: "wizard",
+      className: "Wizard",
+      fixedSkills: [],
+      fixedLores: [],
+      choiceRules: [
+        {
+          key: "feat:fighter-dedication:skill",
+          flag: "skill",
+          prompt: "Choose Acrobatics or Athletics",
+          sourceLabel: "Fighter Dedication",
+          options: [
+            { slug: "acrobatics", label: "Acrobatics" },
+            { slug: "athletics", label: "Athletics" },
+          ],
+          persistence: {
+            sourceItemType: "feat",
+            sourcePackId: "pf2e.feats-srd",
+            sourceDocumentId: "fighter-dedication",
+            sourceUuid: "Compendium.pf2e.feats-srd.Item.fighter-dedication",
+            sourceRuleIndex: 1,
+          },
+        },
+      ],
+      loreChoices: [],
+      additionalCount: 0,
     },
   };
 }

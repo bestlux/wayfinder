@@ -54,7 +54,11 @@ export async function applyClassFeatureChoiceDraft(
           : null,
     };
 
-    await applySelectorApplication(actor, plan, deps);
+    await applySelectorApplication(actor, plan, {
+      ...deps,
+      createEmbeddedSource: (selection, sourceDraft, sourceSteps) =>
+        deps.createEmbeddedSource(selection, sourceDraft ?? draft, sourceSteps ?? steps),
+    });
   }
 }
 

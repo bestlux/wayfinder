@@ -17,7 +17,9 @@ interface CreateSpellChoiceStepArgs {
   allowedSpellSlugs?: string[];
   excludedTraditions?: string[];
   curriculumSpellNames: string[];
+  requiresCurriculum?: boolean;
   additionalAllowedSpellNames: string[];
+  additionalAllowedSpellUuids?: string[];
   restrictToCommon: boolean;
   destination: SpellChoiceMeta["destination"];
 }
@@ -50,7 +52,9 @@ export function makeSpellChoiceStep(args: CreateSpellChoiceStepArgs): PendingSte
     ...(args.allowedSpellSlugs ? { allowedSpellSlugs: args.allowedSpellSlugs } : {}),
     ...(args.excludedTraditions ? { excludedTraditions: args.excludedTraditions } : {}),
     curriculumSpellNames: args.curriculumSpellNames,
+    ...(args.requiresCurriculum !== undefined ? { requiresCurriculum: args.requiresCurriculum } : {}),
     additionalAllowedSpellNames: args.additionalAllowedSpellNames,
+    ...(args.additionalAllowedSpellUuids ? { additionalAllowedSpellUuids: args.additionalAllowedSpellUuids } : {}),
     restrictToCommon: args.restrictToCommon,
   });
 }

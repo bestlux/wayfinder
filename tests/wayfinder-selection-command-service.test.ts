@@ -76,6 +76,66 @@ describe("wayfinder selection command service", () => {
     expect(state.recentlyInvalidatedStepIds.has(SLOT_IDS.abilityBoostsLevel1)).toBe(true);
   });
 
+  it("invalidates class-feature grant choices when the chosen class changes", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["class-level-1"] = selection("class-level-1", "class", "wizard", "Wizard");
+    draft.selections["grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1"] = selection(
+      "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1",
+      "feat",
+      "counterspell",
+      "Counterspell"
+    );
+    const state = commandState(draft);
+    const grantSourceCalls: string[] = [];
+    const step: PendingStep = {
+      id: "class-level-1",
+      level: 1,
+      kind: "pick-item",
+      slotKind: "class",
+      title: "Class",
+      description: "",
+      required: true,
+      slotId: "class-level-1",
+      filters: { itemType: "class" },
+    };
+
+    const result = await chooseSelectionOption(state, step, "test.pack:fighter", {
+      resolveSelection: async () => selection("class-level-1", "class", "fighter", "Fighter"),
+      hasDuplicateDraftSelection: () => false,
+      resolveSelectionTraits: async () => [],
+      resolveSelectionSlug: async (selectionRef) => selectionRef?.documentId ?? null,
+      invalidateSelection: () => [],
+      invalidateSelectionsByPrefix: () => [],
+      invalidateSingletonChoicesBySource: async () => [],
+      invalidateGrantSelectionsBySource: async (sourceItemType) => {
+        grantSourceCalls.push(sourceItemType);
+        if (sourceItemType !== "classfeature") {
+          return [];
+        }
+
+        delete draft.selections["grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1"];
+        return ["grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1"];
+      },
+      invalidateGrantSelectionsByDependency: async () => [],
+      invalidateClassChoicesByDependency: async () => [],
+      invalidateBranchSelectionsByDependency: async () => [],
+      invalidateSpellChoicesByDependency: async () => [],
+      resetAncestryBoostDraft: () => false,
+      resetBackgroundBoostDraft: () => false,
+      resetClassBoostDraft: () => false,
+    });
+
+    expect(result).toMatchObject({
+      kind: "changed",
+      statusNote:
+        "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, related singleton choices, spell, and class feat selections for review.",
+    });
+    expect(grantSourceCalls).toContain("classfeature");
+    expect(
+      draft.selections["grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1"]
+    ).toBeUndefined();
+  });
+
   it("invalidates dependent class choices and branches when the deity changes", async () => {
     const draft = createEmptyDraft(1);
     draft.selections["deity-level-1"] = selection("deity-level-1", "deity", "iomedae", "Iomedae");

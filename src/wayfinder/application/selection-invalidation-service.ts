@@ -65,6 +65,7 @@ export function createSelectionInvalidationService(
         cleared += invalidateGrantSelectionsByDependencySync("class").length;
       } else if (getSlotIdKind(slotId) === "ancestry-feat") {
         cleared += invalidateGrantSelectionsBySourceSync("feat").length;
+        cleared += invalidateGrantSelectionsBySourceSync("classfeature").length;
       }
 
       return cleared;
@@ -105,7 +106,7 @@ export function createSelectionInvalidationService(
     },
 
     async invalidateGrantSelectionsBySource(
-      sourceItemType: "ancestry" | "heritage" | "background" | "feat"
+      sourceItemType: "ancestry" | "heritage" | "background" | "feat" | "classfeature"
     ): Promise<string[]> {
       return invalidateGrantSelectionsBySourceSync(sourceItemType);
     },
@@ -131,7 +132,7 @@ export function createSelectionInvalidationService(
   }
 
   function invalidateGrantSelectionsBySourceSync(
-    sourceItemType: "ancestry" | "heritage" | "background" | "feat"
+    sourceItemType: "ancestry" | "heritage" | "background" | "feat" | "classfeature"
   ): string[] {
     const invalidated: string[] = [];
     for (const slotId of candidateGrantChoiceSlotIds()) {
@@ -189,7 +190,7 @@ function invalidateMatchingPlanSteps(
 
 function isGrantChoiceSlotIdForSource(
   slotId: string,
-  sourceItemType: "ancestry" | "heritage" | "background" | "feat"
+  sourceItemType: "ancestry" | "heritage" | "background" | "feat" | "classfeature"
 ): boolean {
   return new RegExp(`^grant-choice-(?:class|deity|none)-${sourceItemType}-`).test(slotId);
 }

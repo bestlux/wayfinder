@@ -28,7 +28,7 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
         }
         const index = await getPackIndex(pack, packId);
         for (const entry of index) {
-            if (!matchesFilters(entry, step, context, traitCatalog)) {
+            if (!matchesFilters(entry, packId, step, context, traitCatalog)) {
                 continue;
             }
             const level = numericOrNull(entry?.system?.level?.value);
@@ -37,6 +37,9 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
             const traits = extractEntryTraits(entry);
             const documentId = String(entry._id);
             const uuid = toCompendiumItemUuid(packId, documentId);
+            if (isSelectedInDifferentDraftSlot(step, uuid, context)) {
+                continue;
+            }
             const name = String(entry.name ?? "Unknown Option");
             results.push({
                 value: `${packId}:${documentId}`,
@@ -58,6 +61,11 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
     }
     return dedupeAndSort(results);
 }
+function isSelectedInDifferentDraftSlot(step, uuid, context) {
+    const selectedUuidsBySlotId = context.selectedUuidsBySlotId ?? {};
+    const normalizedUuid = uuid.trim().toLowerCase();
+    return Object.entries(selectedUuidsBySlotId).some(([slotId, selectedUuid]) => slotId !== step.slotId && selectedUuid.trim().toLowerCase() === normalizedUuid);
+}
 export async function resolveSelection(rawValue, step, context = EMPTY_OPTION_CONTEXT) {
     const options = await getOptionsForStep(step, context);
     const selected = options.find((option) => option.value === rawValue);
@@ -77,10 +85,12 @@ export async function resolveSelection(rawValue, step, context = EMPTY_OPTION_CO
 }
 export async function fetchSelectionDocument(selection) {
     const pack = getGamePack(selection.packId);
-    if (!pack) {
-        return null;
+    const document = pack ? await pack.getDocument(selection.documentId) : null;
+    if (document) {
+        return document;
     }
-    return pack.getDocument(selection.documentId);
+    const fromUuid = globalThis.fromUuid;
+    return typeof fromUuid === "function" ? fromUuid(selection.uuid) : null;
 }
 function toCompendiumItemUuid(packId, documentId) {
     return `Compendium.${packId}.Item.${documentId}`;
@@ -193,7 +203,7 @@ export function getPickerBlockedState(step, context) {
                     message: "Wayfinder only offers spellbook choices after the drafted class defines the casting tradition and destination.",
                 };
             }
-            if (step.spellChoice?.dependsOn === "class-branch" && step.spellChoice.curriculumSpellNames.length === 0) {
+            if (requiresResolvedCurriculum(step)) {
                 return {
                     tone: "blocked",
                     eyebrow: "Prerequisite required",
@@ -205,6 +215,13 @@ export function getPickerBlockedState(step, context) {
         default:
             return null;
     }
+}
+function requiresResolvedCurriculum(step) {
+    const spellChoice = step.spellChoice;
+    return (!!spellChoice &&
+        spellChoice.dependsOn === "class-branch" &&
+        spellChoice.curriculumSpellNames.length === 0 &&
+        spellChoice.requiresCurriculum !== false);
 }
 function resolvePackIds(slotKind) {
     const extras = parseCompendiumAllowlist(getExtraPackSetting());
@@ -253,7 +270,7 @@ async function getPackIndex(pack, packId) {
     indexCache.set(packId, contents);
     return contents;
 }
-function matchesFilters(entry, step, context, traitCatalog) {
+function matchesFilters(entry, packId, step, context, traitCatalog) {
     const filters = step.filters;
     if (!filters) {
         return true;
@@ -291,7 +308,7 @@ function matchesFilters(entry, step, context, traitCatalog) {
         return matchesClassBranchContext(entry, step, context);
     }
     if (step.slotKind === "spell-choice") {
-        return matchesSpellChoiceContext(entry, step);
+        return matchesSpellChoiceContext(entry, packId, step);
     }
     if (step.slotKind === "ancestry-feat") {
         return matchesAncestryFeatContext(entry, context, traitCatalog);
@@ -432,7 +449,7 @@ function matchesClassBranchContext(entry, step, context) {
     }
     return !branch.classSlug || traits.length === 0 || traits.includes(branch.classSlug);
 }
-function matchesSpellChoiceContext(entry, step) {
+function matchesSpellChoiceContext(entry, packId, step) {
     const spellChoice = step.spellChoice;
     if (!spellChoice) {
         return false;
@@ -446,8 +463,12 @@ function matchesSpellChoiceContext(entry, step) {
     const entrySlug = extractEntrySlug(entry);
     const allowedSpellSlugs = spellChoice.allowedSpellSlugs ?? [];
     const isExplicitlyAllowed = !!entrySlug && allowedSpellSlugs.includes(entrySlug);
+    const documentId = String(entry._id ?? "");
+    const entryUuid = documentId ? toCompendiumItemUuid(packId, documentId) : "";
     const entryName = String(entry?.name ?? "");
     const additionalAllowedSpellNames = spellChoice.additionalAllowedSpellNames ?? [];
+    const additionalAllowedSpellUuids = new Set((spellChoice.additionalAllowedSpellUuids ?? []).map((uuid) => uuid.trim().toLowerCase()).filter(Boolean));
+    const isAdditionallyAllowedByUuid = additionalAllowedSpellUuids.has(entryUuid.toLowerCase());
     const traits = extractEntryTraits(entry);
     const isCantrip = traits.includes("cantrip");
     if (spellChoice.cantrip !== isCantrip) {
@@ -461,6 +482,9 @@ function matchesSpellChoiceContext(entry, step) {
         return isExplicitlyAllowed;
     }
     if (isExplicitlyAllowed) {
+        return true;
+    }
+    if (isAdditionallyAllowedByUuid) {
         return true;
     }
     if (additionalAllowedSpellNames.some((name) => namesMatch(name, entryName))) {
@@ -513,6 +537,12 @@ function matchesChoicePredicateString(statement, entry, context) {
         const expectedLevel = Number(resolved.slice("item:level:".length));
         const level = numericOrNull(entry?.system?.level?.value);
         return Number.isFinite(expectedLevel) && level === expectedLevel;
+    }
+    if (resolved.startsWith("item:type:")) {
+        const expectedType = resolved.slice("item:type:".length).trim().toLowerCase();
+        return (String(entry?.type ?? "")
+            .trim()
+            .toLowerCase() === expectedType);
     }
     if (resolved.startsWith("item:category:")) {
         const expectedCategory = resolved.slice("item:category:".length).trim().toLowerCase();

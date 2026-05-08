@@ -1,8 +1,9 @@
 import { BOOST_LEVELS, getEffectiveBuildState, listActorItems } from "../build-state.js";
+import { cloneData } from "../shared/cloning.js";
 const DEFAULT_DEPS = {
     getEffectiveBuildState,
 };
-export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS) {
+export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS, options = {}) {
     const buildState = await deps.getEffectiveBuildState(actor, draft);
     const updates = [];
     const actorItems = listActorItems(actor);
@@ -47,9 +48,30 @@ export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS) {
     if (updates.length > 0 && typeof actor.updateEmbeddedDocuments === "function") {
         await actor.updateEmbeddedDocuments("Item", updates);
     }
-    const actorBoostUpdate = Object.fromEntries(BOOST_LEVELS.map((level) => [`system.build.attributes.boosts.${level}`, buildState.levelBoosts[level]]));
-    if (typeof actor.update === "function") {
-        await actor.update(actorBoostUpdate);
+    const actorUpdate = {
+        "system.build": buildActorBuildUpdate(actor, buildState.levelBoosts),
+    };
+    if (buildState.class?.selectedKeyAbility) {
+        actorUpdate["system.details.keyability.value"] = buildState.class.selectedKeyAbility;
     }
+    if (options.persistActorUpdate !== false && typeof actor.update === "function") {
+        await actor.update(actorUpdate);
+    }
+    return { actorUpdate };
+}
+function buildActorBuildUpdate(actor, levelBoosts) {
+    const sourceActor = actor;
+    const sourceBuild = sourceActor.toObject?.().system?.build ?? sourceActor._source?.system?.build ?? actor.system?.build ?? {};
+    const build = cloneData(sourceBuild);
+    const attributes = cloneData(build.attributes && typeof build.attributes === "object" ? build.attributes : {});
+    const boosts = attributes.boosts && typeof attributes.boosts === "object"
+        ? cloneData(attributes.boosts)
+        : {};
+    for (const level of BOOST_LEVELS) {
+        boosts[level] = levelBoosts[level];
+    }
+    attributes.boosts = boosts;
+    build.attributes = attributes;
+    return build;
 }
 //# sourceMappingURL=boost-application.js.map

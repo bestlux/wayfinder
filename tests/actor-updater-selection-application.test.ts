@@ -1,13 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createEmbeddedSource,
+  createSingletonGrantItems,
+  createSingletonSystemGrantItems,
   hasSourceId,
   insertFeatSelection,
   orderSelections,
   replaceSingletonItem,
+  replaceSingletonItems,
+  restoreSingletonSourceSlotFlags,
 } from "../src/actor-updater/selection-application";
 import { MODULE_ID } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
+import type { ActorLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import type { PendingStep, SelectionRef } from "../src/types";
 
 describe("actor-updater selection application", () => {
@@ -50,6 +55,202 @@ describe("actor-updater selection application", () => {
             importedBy: MODULE_ID,
             slotId: selection.slotId,
           },
+        },
+      },
+    ]);
+  });
+
+  it("batches multiple singleton replacements into one embedded create operation", async () => {
+    const actor = {
+      items: [
+        { id: "old-ancestry", type: "ancestry" },
+        { id: "old-heritage", type: "heritage" },
+        { id: "kept-feat", type: "feat" },
+      ],
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async (_type: "Item", sources: EmbeddedItemSource[]) => sources),
+    };
+    const selections = [
+      selectionRef("ancestry-level-1", "ancestry", "elf", "Elf"),
+      selectionRef("heritage-level-1", "heritage", "ancient-elf", "Ancient Elf"),
+      selectionRef("background-level-1", "background", "acolyte", "Acolyte"),
+      selectionRef("class-level-1", "class", "rogue", "Rogue"),
+    ];
+
+    await replaceSingletonItems(actor, selections, createEmptyDraft(1), [], {
+      fetchSelectionDocument: async (selection) => ({
+        toObject: () => ({
+          _id: `compendium-${selection.documentId}`,
+          name: selection.name,
+          type: selection.itemType,
+        }),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+
+    expect(actor.deleteEmbeddedDocuments).toHaveBeenCalledTimes(1);
+    expect(actor.deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["old-ancestry", "old-heritage"]);
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledTimes(1);
+    const createdSources = actor.createEmbeddedDocuments.mock.calls[0]?.[1];
+    expect(createdSources?.map((source) => source.name)).toEqual(["Elf", "Ancient Elf", "Acolyte", "Rogue"]);
+  });
+
+  it("preselects singleton boost and key ability data before embedded item creation", async () => {
+    const actor = {
+      items: [],
+      createEmbeddedDocuments: vi.fn(async (_type: "Item", sources: EmbeddedItemSource[]) => sources),
+    };
+    const draft = createEmptyDraft(1);
+    draft.boosts.ancestry.selectedBoosts = {
+      "0": "con",
+      "1": "wis",
+      "2": "int",
+    };
+    draft.boosts.background.selectedBoosts = {
+      "0": "int",
+      "1": "wis",
+    };
+    draft.boosts.class.keyAbility = "int";
+    const selections = [
+      selectionRef("ancestry-level-1", "ancestry", "dwarf", "Dwarf"),
+      selectionRef("background-level-1", "background", "acolyte", "Acolyte"),
+      selectionRef("class-level-1", "class", "wizard", "Wizard"),
+    ];
+
+    await replaceSingletonItems(actor, selections, draft, [], {
+      fetchSelectionDocument: async (selection) => ({
+        toObject: () => ({
+          _id: `compendium-${selection.documentId}`,
+          name: selection.name,
+          type: selection.itemType,
+          system:
+            selection.itemType === "class"
+              ? { keyAbility: { value: ["int"], selected: null } }
+              : {
+                  boosts: {
+                    "0": { value: ["con", "int", "wis"], selected: null },
+                    "1": { value: ["str", "dex", "con", "int", "wis", "cha"], selected: null },
+                    "2": { value: ["str", "dex", "con", "int", "wis", "cha"], selected: null },
+                  },
+                },
+        }),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+
+    const createdSources = actor.createEmbeddedDocuments.mock.calls[0]?.[1];
+    expect(createdSources?.find((source) => source.type === "ancestry")?.system?.boosts).toMatchObject({
+      "0": { selected: "con" },
+      "1": { selected: "wis" },
+      "2": { selected: "int" },
+    });
+    expect(createdSources?.find((source) => source.type === "background")?.system?.boosts).toMatchObject({
+      "0": { selected: "int" },
+      "1": { selected: "wis" },
+    });
+    expect(createdSources?.find((source) => source.type === "class")?.system?.keyAbility?.selected).toBe("int");
+  });
+
+  it("preselects stripped singleton system item grants before PF2E can prompt for them", async () => {
+    const draft = createEmptyDraft(1);
+    const selection = selectionRef("ancestry-level-1", "ancestry", "dwarf", "Dwarf");
+
+    const ancestrySource = await createEmbeddedSource(selection, draft, [], {
+      fetchSelectionDocument: async () => ({
+        toObject: () => ({
+          name: "Dwarf",
+          type: "ancestry",
+          system: {
+            items: {
+              clan: {
+                name: "Clan Dagger",
+                uuid: "Compendium.pf2e.ancestryfeatures.Item.Clan Dagger",
+              },
+            },
+          },
+        }),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+
+    expect(ancestrySource?.system?.items).toEqual({});
+    expect(ancestrySource?.flags?.[MODULE_ID]?.manualSystemItemGrants).toEqual([
+      {
+        key: "clan",
+        uuid: "Compendium.pf2e.ancestryfeatures.Item.Clan Dagger",
+        name: "Clan Dagger",
+        defaultChoices: {
+          clanWeapon: "clan-dagger",
+        },
+      },
+    ]);
+
+    const actor = {
+      items: [{ ...ancestrySource, id: "ancestry-id" }],
+      createEmbeddedDocuments: vi.fn(async (_type: "Item", sources: EmbeddedItemSource[]) =>
+        sources.map((source) => ({ ...source, id: "clan-dagger-id" }))
+      ),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+    } satisfies ActorLike;
+    await createSingletonSystemGrantItems(actor, draft, [], {
+      fetchSelectionDocument: async () => null,
+      createEmbeddedSource: async () => ({
+        name: "Clan Dagger",
+        type: "feat",
+        system: {
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "clanWeapon",
+            },
+          ],
+        },
+      }),
+    });
+
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        name: "Clan Dagger",
+        type: "feat",
+        system: {
+          location: "ancestry-id",
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "clanWeapon",
+              selection: "clan-dagger",
+            },
+          ],
+        },
+        flags: {
+          core: {
+            sourceId: "Compendium.pf2e.ancestryfeatures.Item.Clan Dagger",
+          },
+          pf2e: {
+            grantedBy: {
+              id: "ancestry-id",
+              onDelete: "cascade",
+            },
+            rulesSelections: {
+              clanWeapon: "clan-dagger",
+            },
+          },
+          [MODULE_ID]: {
+            importedBy: MODULE_ID,
+            slotId: "system-grant-clan-dagger",
+          },
+        },
+      },
+    ]);
+    expect(actor.updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        _id: "ancestry-id",
+        "flags.pf2e.itemGrants.clan": {
+          id: "clan-dagger-id",
+          onDelete: "detach",
         },
       },
     ]);
@@ -422,6 +623,101 @@ describe("actor-updater selection application", () => {
     });
   });
 
+  it("preselects drafted class-feature grant choices before creating the class feature item", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1"] = selectionRef(
+      "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1",
+      "feat",
+      "counterspell-prepared",
+      "Counterspell (Prepared)",
+      "class"
+    );
+    const steps: PendingStep[] = [
+      {
+        id: "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1",
+        level: 1,
+        kind: "pick-item",
+        slotKind: "grant-choice",
+        title: "School of Unified Magical Theory feat grant",
+        description: "",
+        required: true,
+        slotId: "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1",
+        filters: {
+          itemType: "feat",
+        },
+        grantSelection: {
+          slotId: "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1",
+          sourceItemType: "classfeature",
+          selectorPackId: "test.pack",
+          selectorDocumentId: "school-of-unified-magical-theory",
+          selectorUuid: "Compendium.test.pack.Item.school-of-unified-magical-theory",
+          selectorName: "School of Unified Magical Theory",
+          selectorRuleIndex: 0,
+          grantRuleIndex: 1,
+          flag: "feat",
+          itemType: "feat",
+          classSlug: "wizard",
+          dependsOn: null,
+          filters: {
+            itemType: "feat",
+          },
+        },
+      },
+    ];
+
+    const source = await createEmbeddedSource(
+      selectionRef(
+        "class-branch-arcane-school-level-1",
+        "feat",
+        "school-of-unified-magical-theory",
+        "School of Unified Magical Theory",
+        "classfeature"
+      ),
+      draft,
+      steps,
+      {
+        fetchSelectionDocument: async () => ({
+          toObject: () => ({
+            _id: "class-feature-compendium",
+            name: "School of Unified Magical Theory",
+            type: "feat",
+            system: {
+              category: "classfeature",
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "feat",
+                  choices: {
+                    filter: ["item:type:feat", "item:trait:wizard", "item:level:1"],
+                  },
+                },
+                {
+                  key: "GrantItem",
+                  uuid: "{item|flags.system.rulesSelections.feat}",
+                },
+              ],
+            },
+          }),
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      }
+    );
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "feat",
+      selection: "Compendium.test.pack.Item.counterspell-prepared",
+    });
+    expect(source?.system?.rules?.[1]).toMatchObject({
+      key: "GrantItem",
+      uuid: "{item|flags.system.rulesSelections.feat}",
+    });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({
+      feat: "Compendium.test.pack.Item.counterspell-prepared",
+    });
+  });
+
   it("creates slotted feat sources and stamps source flags on the created items", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
     const actor = {
@@ -545,6 +841,266 @@ describe("actor-updater selection application", () => {
       flag: "arcaneTattoos",
       selection: "shield",
     });
+  });
+
+  it("does not stamp PF2E grant children as the selected parent feat", async () => {
+    const actor = {
+      feats: {
+        get: () => ({
+          slots: {
+            "ancestry-1": {
+              id: "ancestry-1",
+              level: 1,
+              feat: null,
+            },
+          },
+        }),
+      },
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => [
+        { id: "created-parent-feat" },
+        {
+          id: "native-granted-child",
+          flags: {
+            core: {
+              sourceId: "Compendium.pf2e.feats-srd.Item.forager",
+            },
+            pf2e: {
+              grantedBy: {
+                id: "created-parent-feat",
+                onDelete: "cascade",
+              },
+            },
+          },
+        },
+      ]),
+    };
+    const selection = selectionRef("ancestry-feat-level-1", "feat", "general-training", "General Training", "ancestry");
+    const step = featStep("ancestry-feat-level-1", "ancestry-feat", 1, ["ancestry"]);
+
+    await insertFeatSelection(actor, selection, step, {
+      fetchSelectionDocument,
+      createEmbeddedSource: async () => ({
+        name: "General Training",
+        type: "feat",
+        system: {},
+        flags: {},
+      }),
+    });
+
+    expect(actor.updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        _id: "created-parent-feat",
+        "flags.core.sourceId": selection.uuid,
+        [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
+        [`flags.${MODULE_ID}.slotId`]: selection.slotId,
+      },
+    ]);
+  });
+
+  it("does not stamp returned items from unrelated sources", async () => {
+    const actor = {
+      feats: {
+        get: () => ({
+          slots: {
+            "ancestry-1": {
+              id: "ancestry-1",
+              level: 1,
+              feat: null,
+            },
+          },
+        }),
+      },
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => [
+        {
+          id: "created-granted-feat",
+          type: "feat",
+          flags: {
+            core: {
+              sourceId: "Compendium.test.pack.Item.community-knowledge",
+            },
+          },
+        },
+        {
+          id: "returned-granter",
+          type: "heritage",
+          flags: {
+            core: {
+              sourceId: "Compendium.test.pack.Item.nascent",
+            },
+            [MODULE_ID]: {
+              slotId: "heritage-level-1",
+            },
+          },
+        },
+      ]),
+    };
+    const selection = selectionRef(
+      "grant-choice-none-heritage-nascent-nascent-level-1",
+      "feat",
+      "community-knowledge",
+      "Community Knowledge",
+      "ancestry"
+    );
+    const step = featStep("grant-choice-none-heritage-nascent-nascent-level-1", "grant-choice", 1, ["ancestry"]);
+
+    await insertFeatSelection(actor, selection, step, {
+      fetchSelectionDocument,
+      createEmbeddedSource: async () => ({
+        name: "Community Knowledge",
+        type: "feat",
+        system: {},
+        flags: {},
+      }),
+    });
+
+    expect(actor.updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        _id: "created-granted-feat",
+        "flags.core.sourceId": selection.uuid,
+        [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
+        [`flags.${MODULE_ID}.slotId`]: selection.slotId,
+      },
+    ]);
+  });
+
+  it("restores singleton source slot flags when linking explicit grant items", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["heritage-level-1"] = selectionRef("heritage-level-1", "heritage", "nascent", "Nascent");
+    draft.selections["grant-choice-none-heritage-nascent-nascent-level-1"] = selectionRef(
+      "grant-choice-none-heritage-nascent-nascent-level-1",
+      "feat",
+      "community-knowledge",
+      "Community Knowledge",
+      "ancestry"
+    );
+    const step: PendingStep = {
+      id: "grant-choice-none-heritage-nascent-nascent-level-1",
+      level: 1,
+      kind: "pick-item",
+      slotKind: "grant-choice",
+      title: "Nascent feat grant",
+      description: "",
+      required: true,
+      slotId: "grant-choice-none-heritage-nascent-nascent-level-1",
+      filters: {
+        itemType: "feat",
+      },
+      grantSelection: {
+        slotId: "grant-choice-none-heritage-nascent-nascent-level-1",
+        sourceItemType: "heritage",
+        selectorPackId: "test.pack",
+        selectorDocumentId: "nascent",
+        selectorUuid: "Compendium.test.pack.Item.nascent",
+        selectorName: "Nascent",
+        selectorRuleIndex: 0,
+        grantRuleIndex: 1,
+        flag: "nascent",
+        itemType: "feat",
+        classSlug: null,
+        dependsOn: null,
+        filters: {
+          itemType: "feat",
+        },
+      },
+    };
+    const actor = {
+      items: [
+        {
+          id: "heritage-id",
+          type: "heritage",
+          name: "Nascent",
+          flags: {
+            core: {
+              sourceId: "Compendium.test.pack.Item.nascent",
+            },
+            [MODULE_ID]: {
+              importedBy: MODULE_ID,
+              slotId: "grant-choice-none-heritage-nascent-nascent-level-1",
+            },
+          },
+        },
+      ],
+      createEmbeddedDocuments: vi.fn(async () => [{ id: "created-community-knowledge" }]),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+    };
+
+    await createSingletonGrantItems(actor, draft, [step], {
+      fetchSelectionDocument: async () => null,
+      createEmbeddedSource: async () => ({
+        name: "Community Knowledge",
+        type: "feat",
+        system: {},
+        flags: {},
+      }),
+    });
+
+    expect(actor.updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        _id: "heritage-id",
+        [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
+        [`flags.${MODULE_ID}.slotId`]: "heritage-level-1",
+        "flags.pf2e.itemGrants.nascent": {
+          id: "created-community-knowledge",
+          onDelete: "detach",
+          nested: null,
+        },
+      },
+    ]);
+  });
+
+  it("reconciles singleton source slot flags after later item updates", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["heritage-level-1"] = selectionRef("heritage-level-1", "heritage", "nascent", "Nascent");
+    draft.selections["grant-choice-none-heritage-nascent-nascent-level-1"] = selectionRef(
+      "grant-choice-none-heritage-nascent-nascent-level-1",
+      "feat",
+      "community-knowledge",
+      "Community Knowledge",
+      "ancestry"
+    );
+    const actor = {
+      items: [
+        {
+          id: "heritage-id",
+          type: "heritage",
+          flags: {
+            core: {
+              sourceId: "Compendium.test.pack.Item.nascent",
+            },
+            [MODULE_ID]: {
+              importedBy: MODULE_ID,
+              slotId: "grant-choice-none-heritage-nascent-nascent-level-1",
+            },
+          },
+        },
+        {
+          id: "granted-feat-id",
+          type: "feat",
+          flags: {
+            core: {
+              sourceId: "Compendium.test.pack.Item.community-knowledge",
+            },
+            [MODULE_ID]: {
+              importedBy: MODULE_ID,
+              slotId: "grant-choice-none-heritage-nascent-nascent-level-1",
+            },
+          },
+        },
+      ],
+      updateEmbeddedDocuments: vi.fn(async () => []),
+    };
+
+    await restoreSingletonSourceSlotFlags(actor, draft);
+
+    expect(actor.updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        _id: "heritage-id",
+        [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
+        [`flags.${MODULE_ID}.slotId`]: "heritage-level-1",
+      },
+    ]);
   });
 
   it("creates prebuilt feat sources without copying readonly document properties", async () => {

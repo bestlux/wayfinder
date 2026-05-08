@@ -472,6 +472,69 @@ describe("wayfinder skill training source discovery", () => {
     );
   });
 
+  it("prefers persisted rule choices for multiclass dedication skills when PF2E provides them", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: selection(
+            "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+            "fighter-dedication"
+          ),
+          sourceDocument: {
+            name: "Fighter Dedication",
+            system: {
+              slug: "fighter-dedication",
+              description: {
+                value:
+                  "<p>You become trained in martial weapons. You become trained in your choice of Acrobatics or Athletics; if you are already trained in both of these skills, you instead become trained in a skill of your choice. You become trained in fighter class DC.</p>",
+              },
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "skill",
+                  prompt: "PF2E.SpecificRule.Prompt.Skill",
+                  choices: [
+                    { value: "acrobatics", label: "PF2E.Skill.Acrobatics" },
+                    { value: "athletics", label: "PF2E.Skill.Athletics" },
+                  ],
+                },
+                {
+                  key: "ActiveEffectLike",
+                  mode: "upgrade",
+                  path: "system.skills.{item|flags.system.rulesSelections.skill}.rank",
+                  value: 1,
+                },
+              ],
+            },
+          },
+        },
+      ],
+      localize: (value) =>
+        value.replace("PF2E.SpecificRule.Prompt.Skill", "Select a skill.").replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(training.choiceRules).toHaveLength(1);
+    expect(training.choiceRules[0]).toMatchObject({
+      key: "feat:fighter-dedication:skill",
+      flag: "skill",
+      sourceLabel: "Fighter Dedication",
+      prompt: "Select a skill.",
+      options: [
+        { slug: "acrobatics", label: "Acrobatics" },
+        { slug: "athletics", label: "Athletics" },
+      ],
+      persistence: {
+        sourceItemType: "feat",
+        sourcePackId: "pf2e.feats-srd",
+        sourceDocumentId: "fighter-dedication",
+        sourceUuid: "Compendium.pf2e.feats-srd.Item.fighter-dedication",
+        sourceRuleIndex: 0,
+      },
+    });
+    expect(training.choiceRules[0]?.fallbackPrompt).toBeUndefined();
+  });
+
   it("discovers mixed specific and open multiclass dedication choices like Rogue Dedication", () => {
     const training = discoverSourceSkillTrainingMeta({
       sources: [
@@ -502,6 +565,51 @@ describe("wayfinder skill training source discovery", () => {
         { slug: "thievery", label: "Thievery" },
       ],
       fallbackPrompt: "Choose a skill",
+    });
+    expect(training.choiceRules[1]).toMatchObject({
+      prompt: "Choose a skill",
+    });
+  });
+
+  it("keeps mixed open dedication skill choices when the specific choice is rule-backed", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: selection("grant-choice-class-heritage-ancient-elf-ancientElf-level-1", "rogue-dedication"),
+          sourceDocument: {
+            name: "Rogue Dedication",
+            system: {
+              slug: "rogue-dedication",
+              description: {
+                value:
+                  "<p>You become trained in Stealth or Thievery plus one skill of your choice; if you are already trained in both Stealth and Thievery, you become trained in an additional skill of your choice.</p>",
+              },
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "skill",
+                  prompt: "Choose Stealth or Thievery",
+                  choices: [
+                    { value: "stealth", label: "Stealth" },
+                    { value: "thievery", label: "Thievery" },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(training.choiceRules).toHaveLength(2);
+    expect(training.choiceRules[0]).toMatchObject({
+      prompt: "Choose Stealth or Thievery",
+      options: [
+        { slug: "stealth", label: "Stealth" },
+        { slug: "thievery", label: "Thievery" },
+      ],
     });
     expect(training.choiceRules[1]).toMatchObject({
       prompt: "Choose a skill",

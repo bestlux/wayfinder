@@ -14,8 +14,9 @@ export async function applyDraftLifecycle(args) {
             kind: "cancelled",
         };
     }
-    await args.applyDraftToActor();
+    const actorUpdate = (await args.applyDraftToActor()) ?? {};
     await args.updateActor({
+        ...actorUpdate,
         [DRAFT_FLAG]: null,
         [STATE_FLAG]: {
             ...createEmptyState(),

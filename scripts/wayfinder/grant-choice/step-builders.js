@@ -28,7 +28,11 @@ function buildGrantChoiceTitle(grant) {
     return grant.selectorName;
 }
 function buildGrantChoiceDescription(grant) {
-    const sourceLabel = grant.sourceItemType === "feat" ? "selected feat" : grant.sourceItemType;
+    const sourceLabel = grant.sourceItemType === "feat"
+        ? "selected feat"
+        : grant.sourceItemType === "classfeature"
+            ? "selected class feature"
+            : grant.sourceItemType;
     if (grant.itemType === "feat") {
         return `Choose the feat this ${sourceLabel} grants.`;
     }

@@ -74,6 +74,63 @@ describe("class-branch-service", () => {
     });
   });
 
+  it("strips a selected branch selector referenced by name-based UUID without an entry name", () => {
+    const draft = createEmptyDraft(1);
+    draft.branchSelections["class-branch-wizard-school-level-1"] = selection(
+      "class-branch-wizard-school-level-1",
+      "pf2e.classfeatures",
+      "xYYhJtGhFSWNifcO",
+      "Compendium.pf2e.classfeatures.Item.xYYhJtGhFSWNifcO",
+      "School of Unified Magical Theory"
+    );
+
+    const steps: PendingStep[] = [
+      createClassBranchStep(
+        1,
+        {
+          slotId: "class-branch-wizard-school-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "7nbKDBGvwSx9T27G",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.7nbKDBGvwSx9T27G",
+          selectorName: "Arcane School",
+          selectorRuleIndex: 0,
+          flag: "arcaneSchool",
+          optionTag: "wizard-arcane-school",
+          classSlug: "wizard",
+          dependsOn: "class",
+        },
+        {
+          title: "Arcane School",
+          description: "",
+        }
+      ),
+    ];
+
+    const classSource = {
+      system: {
+        items: {
+          school: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.Arcane School",
+          },
+          bond: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.Arcane Bond",
+          },
+        },
+      },
+    };
+
+    stripPreselectedClassBranchEntries(classSource, draft, steps);
+
+    expect(classSource.system.items).toEqual({
+      bond: {
+        level: 1,
+        uuid: "Compendium.pf2e.classfeatures.Item.Arcane Bond",
+      },
+    });
+  });
+
   it("creates canonical selector selections from branch metadata", () => {
     expect(
       createBranchSelectorSelection(
@@ -210,13 +267,7 @@ describe("class-branch-service", () => {
             },
           },
           system: {
-            rules: [
-              {
-                key: "ChoiceSet",
-                flag: "arcaneSchool",
-                selection: "Compendium.pf2e.classfeatures.Item.ZpFCZnVzIfZLfNii",
-              },
-            ],
+            rules: [],
           },
         },
       ])
@@ -267,13 +318,7 @@ describe("class-branch-service", () => {
         name: "Arcane School",
         system: {
           location: "class-1",
-          rules: [
-            {
-              key: "ChoiceSet",
-              flag: "arcaneSchool",
-              selection: "Compendium.pf2e.classfeatures.Item.ZpFCZnVzIfZLfNii",
-            },
-          ],
+          rules: [],
         },
       }),
     ]);
@@ -326,6 +371,116 @@ describe("class-branch-service", () => {
         "flags.pf2e-wayfinder.slotId": "class-branch-arcane-school-level-1",
       },
     ]);
+  });
+
+  it("passes draft context when creating selected branch features with nested choices", async () => {
+    const draft = createEmptyDraft(1);
+    const branchSlotId = "class-branch-arcane-school-level-1";
+    const grantSlotId = "grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1";
+    const unifiedTheorySelection = selection(
+      branchSlotId,
+      "pf2e.classfeatures",
+      "xYYhJtGhFSWNifcO",
+      "Compendium.pf2e.classfeatures.Item.xYYhJtGhFSWNifcO",
+      "School of Unified Magical Theory"
+    );
+    draft.branchSelections[branchSlotId] = unifiedTheorySelection;
+    draft.selections[grantSlotId] = selection(
+      grantSlotId,
+      "pf2e.feats-srd",
+      "EpBG4CFMNSZQx7vI",
+      "Compendium.pf2e.feats-srd.Item.EpBG4CFMNSZQx7vI",
+      "Counterspell (Prepared)"
+    );
+
+    const steps: PendingStep[] = [
+      createClassBranchStep(
+        1,
+        {
+          slotId: branchSlotId,
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "7nbKDBGvwSx9T27G",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.7nbKDBGvwSx9T27G",
+          selectorName: "Arcane School",
+          selectorRuleIndex: 0,
+          flag: "arcaneSchool",
+          optionTag: "wizard-arcane-school",
+          classSlug: "wizard",
+          dependsOn: "class",
+        },
+        {
+          title: "Arcane School",
+          description: "",
+        }
+      ),
+      {
+        id: grantSlotId,
+        level: 1,
+        kind: "pick-item",
+        slotKind: "grant-choice",
+        title: "School of Unified Magical Theory feat grant",
+        description: "",
+        required: true,
+        slotId: grantSlotId,
+        filters: {
+          itemType: "feat",
+        },
+        grantSelection: {
+          slotId: grantSlotId,
+          sourceItemType: "classfeature",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "xYYhJtGhFSWNifcO",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.xYYhJtGhFSWNifcO",
+          selectorName: "School of Unified Magical Theory",
+          selectorRuleIndex: 0,
+          grantRuleIndex: 1,
+          flag: "feat",
+          itemType: "feat",
+          classSlug: "wizard",
+          dependsOn: "class",
+          filters: {
+            itemType: "feat",
+          },
+        },
+      },
+    ];
+
+    const createEmbeddedSource = vi.fn(async (selection: SelectionRef) => ({
+      name: selection.name,
+      type: "feat",
+      system: {
+        category: "classfeature",
+        rules: selection.uuid === "Compendium.pf2e.classfeatures.Item.7nbKDBGvwSx9T27G" ? [] : [],
+      },
+      flags: {
+        core: {
+          sourceId: selection.uuid,
+        },
+      },
+    }));
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+          },
+        ],
+      },
+      createEmbeddedDocuments: vi
+        .fn()
+        .mockResolvedValueOnce([{ id: "selector-1", type: "feat", flags: {}, system: {} }])
+        .mockResolvedValueOnce([{ id: "unified-theory-1", type: "feat", flags: {}, system: {} }]),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+    };
+
+    await applyClassBranchDraft(actor as any, draft, steps, {
+      createEmbeddedSource,
+      fetchSelectionDocument: vi.fn(async () => null),
+    });
+
+    expect(createEmbeddedSource).toHaveBeenCalledWith(unifiedTheorySelection, draft, steps);
   });
 });
 

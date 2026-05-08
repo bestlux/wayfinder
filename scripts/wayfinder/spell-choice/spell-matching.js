@@ -6,10 +6,6 @@ export function spellMatchesChoice(item, choice, entryId) {
     if (itemEntryId !== entryId) {
         return false;
     }
-    const traditions = readNormalizedStringList(item.system?.traits?.traditions);
-    if (!traditions.includes(choice.destination.tradition)) {
-        return false;
-    }
     const traits = readNormalizedStringList(item.system?.traits?.value);
     const isCantrip = traits.includes("cantrip");
     if (choice.cantrip !== isCantrip) {
@@ -22,10 +18,16 @@ export function spellMatchesChoice(item, choice, entryId) {
     }
     const itemName = String(item.name ?? "");
     const additionalAllowedSpellNames = choice.additionalAllowedSpellNames ?? [];
+    const additionalAllowedSpellUuids = new Set((choice.additionalAllowedSpellUuids ?? []).map((uuid) => uuid.trim().toLowerCase()).filter(Boolean));
     const restrictToCommon = choice.restrictToCommon ?? false;
     if (choice.curriculumSpellNames.length === 0) {
-        if (additionalAllowedSpellNames.some((name) => namesMatch(name, itemName))) {
+        if (additionalAllowedSpellNames.some((name) => namesMatch(name, itemName)) ||
+            readSourceIds(item).some((sourceId) => additionalAllowedSpellUuids.has(sourceId.trim().toLowerCase()))) {
             return true;
+        }
+        const traditions = readNormalizedStringList(item.system?.traits?.traditions);
+        if (!traditions.includes(choice.destination.tradition)) {
+            return false;
         }
         if (!restrictToCommon) {
             return true;
@@ -51,5 +53,9 @@ function readLocationId(item) {
         return location;
     }
     return typeof location?.value === "string" ? location.value : null;
+}
+function readSourceIds(item) {
+    const stats = item._stats;
+    return [item.sourceId, item.flags?.core?.sourceId, stats?.compendiumSource].filter((value) => typeof value === "string" && value.trim().length > 0);
 }
 //# sourceMappingURL=spell-matching.js.map

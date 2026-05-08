@@ -19,39 +19,37 @@ export function discoverSourceSkillTrainingMeta(args) {
         fixedSkills.push(...extractFixedRuleGrantedSkills(document));
         fixedLores.push(...extractFixedLores(document));
         let hasRuleSkillChoice = false;
-        if (source.sourceItemType !== "feat") {
-            for (const spec of discoverSingletonChoiceSpecs({
-                sourceItemType: source.sourceItemType,
-                sourceDocument: document,
-                sourceSlug,
-                localize: args.localize,
-                includeTrainingChoices: true,
-            })) {
-                const persistence = selectionPersistence(source, spec.sourceRuleIndex);
-                if (spec.optionDomain === "skill") {
-                    hasRuleSkillChoice = true;
-                    choiceRules.push({
-                        key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
-                        flag: spec.flag,
-                        prompt: spec.prompt ?? `Choose the skill ${sourceName} grants.`,
-                        sourceLabel: sourceName,
-                        options: spec.options.map((option) => ({ slug: option.value, label: option.label })),
-                        persistence,
-                    });
-                    continue;
-                }
-                if (looksLikeLoreOptions(spec.options.map((option) => option.label))) {
-                    loreChoices.push({
-                        key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
-                        flag: spec.flag,
-                        prompt: spec.prompt ?? `Choose the Lore skill ${sourceName} grants.`,
-                        sourceLabel: sourceName,
-                        placeholder: normalizeLorePlaceholder(spec.options[0]?.label ?? "Custom Lore"),
-                        suggestions: dedupeLabels(spec.options.map((option) => normalizeLoreLabel(option.label))),
-                        allowCustom: false,
-                        persistence,
-                    });
-                }
+        for (const spec of discoverSingletonChoiceSpecs({
+            sourceItemType: source.sourceItemType,
+            sourceDocument: document,
+            sourceSlug,
+            localize: args.localize,
+            includeTrainingChoices: true,
+        })) {
+            const persistence = selectionPersistence(source, spec.sourceRuleIndex);
+            if (spec.optionDomain === "skill") {
+                hasRuleSkillChoice = true;
+                choiceRules.push({
+                    key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
+                    flag: spec.flag,
+                    prompt: spec.prompt ?? `Choose the skill ${sourceName} grants.`,
+                    sourceLabel: sourceName,
+                    options: spec.options.map((option) => ({ slug: option.value, label: option.label })),
+                    persistence,
+                });
+                continue;
+            }
+            if (looksLikeLoreOptions(spec.options.map((option) => option.label))) {
+                loreChoices.push({
+                    key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
+                    flag: spec.flag,
+                    prompt: spec.prompt ?? `Choose the Lore skill ${sourceName} grants.`,
+                    sourceLabel: sourceName,
+                    placeholder: normalizeLorePlaceholder(spec.options[0]?.label ?? "Custom Lore"),
+                    suggestions: dedupeLabels(spec.options.map((option) => normalizeLoreLabel(option.label))),
+                    allowCustom: false,
+                    persistence,
+                });
             }
         }
         const derived = discoverDescriptionTrainingMeta({
@@ -119,14 +117,15 @@ function discoverDescriptionTrainingMeta(args) {
     const fixedLores = [...additionalLoreGrants.fixedLores];
     loreChoices.push(...additionalLoreGrants.loreChoices);
     const hasConditionalFallbackSkillChoice = hasConditionalFallbackSkillTrainingText(descriptionText);
-    choiceRules.push(...discoverDedicationSkillChoices({
+    const dedicationSkillChoices = discoverDedicationSkillChoices({
         descriptionText,
         sourceItemType: args.source.sourceItemType,
         sourceSlug: args.sourceSlug,
         sourceLabel: args.sourceName,
         localize: args.localize,
         configuredSkills: args.configuredSkills,
-    }));
+    });
+    choiceRules.push(...(args.hasRuleSkillChoice ? dedicationSkillChoices.filter(isOpenBonusSkillChoice) : dedicationSkillChoices));
     const loreSkillAndOtherSkillMatch = /\bone lore skill and one other intelligence- or wisdom-based skill of your choice\b/i.exec(descriptionText);
     if (loreSkillAndOtherSkillMatch) {
         loreChoices.push(createLoreChoice({
@@ -542,6 +541,9 @@ function additionalLorePlaceholder(clause, loreLabels) {
 }
 function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function isOpenBonusSkillChoice(choice) {
+    return choice.prompt === "Choose a skill" && !choice.fallbackPrompt;
 }
 function extractFixedRuleGrantedSkills(document) {
     const rules = Array.isArray(document.system?.rules) ? document.system.rules : [];

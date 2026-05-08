@@ -1,9 +1,18 @@
-import { BOOST_LEVELS, getEffectiveBuildState, listActorItems } from "../build-state.js";
-import type { ActorItemLike, ActorLike } from "../shared/actor-model.js";
+import { BOOST_LEVELS, type EffectiveBuildState, getEffectiveBuildState, listActorItems } from "../build-state.js";
+import type { ActorItemLike, ActorLike, LooseRecord } from "../shared/actor-model.js";
+import { cloneData } from "../shared/cloning.js";
 import type { DraftState } from "../types.js";
 
 interface BoostApplicationDependencies {
   getEffectiveBuildState: typeof getEffectiveBuildState;
+}
+
+interface BoostApplicationOptions {
+  persistActorUpdate?: boolean;
+}
+
+interface BoostApplicationResult {
+  actorUpdate: Record<string, unknown>;
 }
 
 const DEFAULT_DEPS: BoostApplicationDependencies = {
@@ -13,8 +22,9 @@ const DEFAULT_DEPS: BoostApplicationDependencies = {
 export async function applyBoostDraft(
   actor: ActorLike,
   draft: DraftState,
-  deps: BoostApplicationDependencies = DEFAULT_DEPS
-): Promise<void> {
+  deps: BoostApplicationDependencies = DEFAULT_DEPS,
+  options: BoostApplicationOptions = {}
+): Promise<BoostApplicationResult> {
   const buildState = await deps.getEffectiveBuildState(actor, draft);
   const updates: Record<string, unknown>[] = [];
   const actorItems = listActorItems(actor) as ActorItemLike[];
@@ -65,10 +75,54 @@ export async function applyBoostDraft(
     await actor.updateEmbeddedDocuments("Item", updates);
   }
 
-  const actorBoostUpdate = Object.fromEntries(
-    BOOST_LEVELS.map((level) => [`system.build.attributes.boosts.${level}`, buildState.levelBoosts[level]])
-  );
-  if (typeof actor.update === "function") {
-    await actor.update(actorBoostUpdate);
+  const actorUpdate: Record<string, unknown> = {
+    "system.build": buildActorBuildUpdate(actor, buildState.levelBoosts),
+  };
+  if (buildState.class?.selectedKeyAbility) {
+    actorUpdate["system.details.keyability.value"] = buildState.class.selectedKeyAbility;
   }
+
+  if (options.persistActorUpdate !== false && typeof actor.update === "function") {
+    await actor.update(actorUpdate);
+  }
+
+  return { actorUpdate };
+}
+
+type ActorWithSourceBuild = ActorLike & {
+  _source?: {
+    system?: {
+      build?: unknown;
+    };
+  };
+  toObject?: () => {
+    system?: {
+      build?: unknown;
+    };
+  };
+};
+
+function buildActorBuildUpdate(
+  actor: ActorLike,
+  levelBoosts: EffectiveBuildState["levelBoosts"]
+): Record<string, unknown> {
+  const sourceActor = actor as ActorWithSourceBuild;
+  const sourceBuild =
+    sourceActor.toObject?.().system?.build ?? sourceActor._source?.system?.build ?? actor.system?.build ?? {};
+  const build = cloneData(sourceBuild) as Record<string, unknown>;
+  const attributes = cloneData(
+    build.attributes && typeof build.attributes === "object" ? build.attributes : {}
+  ) as LooseRecord;
+  const boosts =
+    attributes.boosts && typeof attributes.boosts === "object"
+      ? (cloneData(attributes.boosts) as Record<string, unknown>)
+      : {};
+
+  for (const level of BOOST_LEVELS) {
+    boosts[level] = levelBoosts[level];
+  }
+
+  attributes.boosts = boosts;
+  build.attributes = attributes;
+  return build;
 }

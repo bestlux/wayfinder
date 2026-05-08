@@ -9,7 +9,7 @@ export interface ApplyDraftLifecycleArgs {
   steps: PendingStep[];
   isStepComplete: (step: PendingStep) => Promise<boolean>;
   confirmApply?: (message: string) => boolean;
-  applyDraftToActor: () => Promise<void>;
+  applyDraftToActor: () => Promise<Record<string, unknown> | void>;
   updateActor: (update: Record<string, unknown>) => Promise<void>;
   now?: () => string;
 }
@@ -35,8 +35,9 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
     };
   }
 
-  await args.applyDraftToActor();
+  const actorUpdate = (await args.applyDraftToActor()) ?? {};
   await args.updateActor({
+    ...actorUpdate,
     [DRAFT_FLAG]: null,
     [STATE_FLAG]: {
       ...createEmptyState(),

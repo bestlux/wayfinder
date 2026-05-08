@@ -930,7 +930,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         steps: plan.steps,
         isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
         confirmApply: typeof globalThis.confirm === "function" ? (message) => globalThis.confirm(message) : undefined,
-        applyDraftToActor: () => applyDraftToActor(this.actor, draft, plan.steps),
+        applyDraftToActor: () =>
+          applyDraftToActor(this.actor, draft, plan.steps, {
+            deferActorUpdate: true,
+          }),
         updateActor: async (update) => {
           await this.actor.update(update);
         },
@@ -957,7 +960,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#draft = result.nextDraft;
     this.#recentlyInvalidatedStepIds.clear();
     ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.Applied"));
-    this.render(false);
+    await this.close({ animate: false });
   }
 
   async #clearDraft(): Promise<void> {

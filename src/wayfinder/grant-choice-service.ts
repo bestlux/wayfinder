@@ -2,7 +2,7 @@ import type { DraftState, GrantSelectionMeta, PendingStep, SelectionRef } from "
 import { buildGrantChoiceStepsFromRules } from "./grant-choice/step-builders.js";
 
 export interface GrantChoiceSourceContext {
-  sourceItemType: Extract<GrantSelectionMeta["sourceItemType"], "ancestry" | "heritage" | "background" | "feat">;
+  sourceItemType: GrantSelectionMeta["sourceItemType"];
   sourceSelection: SelectionRef | null;
   sourceDocument: unknown | null;
 }

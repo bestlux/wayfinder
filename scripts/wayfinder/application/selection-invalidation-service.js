@@ -47,6 +47,7 @@ export function createSelectionInvalidationService(state, deps) {
             }
             else if (getSlotIdKind(slotId) === "ancestry-feat") {
                 cleared += invalidateGrantSelectionsBySourceSync("feat").length;
+                cleared += invalidateGrantSelectionsBySourceSync("classfeature").length;
             }
             return cleared;
         },

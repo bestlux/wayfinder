@@ -93,6 +93,7 @@ export function stripSelectedSelectorEntries(classSource, selectedRefs) {
         const normalizedName = typeof entry?.name === "string" ? entry.name.trim().toLowerCase() : null;
         return !((uuid && selectedUuids.has(uuid)) ||
             (normalizedDocumentId && selectedDocumentIds.has(normalizedDocumentId)) ||
+            (normalizedDocumentId && selectedNames.has(normalizedDocumentId)) ||
             (normalizedName && selectedNames.has(normalizedName)));
     }));
 }
@@ -105,18 +106,17 @@ async function createSelectorItem(actor, plan, createEmbeddedSource) {
         return null;
     }
     selectorSource.system ??= {};
-    selectorSource.system.rules = cloneData(Array.isArray(selectorSource.system.rules) ? selectorSource.system.rules : []);
-    applyRuleSelections(selectorSource.system.rules, plan.ruleSelections);
+    const selectorRules = cloneData(Array.isArray(selectorSource.system.rules) ? selectorSource.system.rules : []);
+    const initialSelections = [...plan.ruleSelections];
     if (plan.grantPlan) {
-        applyRuleSelections(selectorSource.system.rules, [
-            {
-                flag: plan.grantPlan.flag,
-                ruleIndex: plan.grantPlan.selectorRuleIndex,
-                value: plan.grantPlan.selection.uuid,
-            },
-        ]);
-        selectorSource.system.rules = pruneGrantRules(selectorSource.system.rules, plan.grantPlan.createRulePolicy);
+        initialSelections.push({
+            flag: plan.grantPlan.flag,
+            ruleIndex: plan.grantPlan.selectorRuleIndex,
+            value: plan.grantPlan.selection.uuid,
+        });
     }
+    applyRuleSelections(selectorRules, initialSelections);
+    selectorSource.system.rules = pruneCreationRules(selectorRules, plan.omitSelectedRulesOnCreate ? new Set(initialSelections.map((selection) => selection.ruleIndex)) : new Set(), plan.grantPlan?.createRulePolicy ?? null);
     selectorSource.flags ??= {};
     selectorSource.flags.pf2e ??= {};
     selectorSource.flags.pf2e.rulesSelections ??= {};
@@ -156,15 +156,20 @@ function applyRuleSelections(rules, selections) {
         }
     }
 }
-function pruneGrantRules(rules, policy) {
-    if (policy === "remove-all-grant-items") {
-        return rules.filter((rule) => rule?.key !== "GrantItem");
-    }
-    if (Array.isArray(policy) && policy.length > 0) {
-        const blockedIndexes = new Set(policy);
-        return rules.filter((_rule, index) => !blockedIndexes.has(index));
-    }
-    return rules;
+function pruneCreationRules(rules, selectedRuleIndexes, policy) {
+    const blockedGrantIndexes = Array.isArray(policy) ? new Set(policy) : null;
+    return rules.filter((rule, index) => {
+        if (selectedRuleIndexes.has(index)) {
+            return false;
+        }
+        if (policy === "remove-all-grant-items" && rule?.key === "GrantItem") {
+            return false;
+        }
+        if (blockedGrantIndexes?.has(index)) {
+            return false;
+        }
+        return true;
+    });
 }
 async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedSource) {
     const selectorItemId = typeof selectorItem.id === "string" ? selectorItem.id : null;

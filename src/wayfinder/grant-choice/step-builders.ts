@@ -3,10 +3,7 @@ import { createPickItemStep } from "../domain/step-types.js";
 import { formatSlug } from "../formatting.js";
 import { discoverGrantSelectionMeta } from "./rule-discovery.js";
 
-type GrantChoiceSourceItemType = Extract<
-  GrantSelectionMeta["sourceItemType"],
-  "ancestry" | "heritage" | "background" | "feat"
->;
+type GrantChoiceSourceItemType = GrantSelectionMeta["sourceItemType"];
 
 export function buildGrantChoiceStepsFromRules(args: {
   sourceItemType: GrantChoiceSourceItemType;
@@ -54,7 +51,12 @@ function buildGrantChoiceTitle(grant: GrantSelectionMeta): string {
 }
 
 function buildGrantChoiceDescription(grant: GrantSelectionMeta): string {
-  const sourceLabel = grant.sourceItemType === "feat" ? "selected feat" : grant.sourceItemType;
+  const sourceLabel =
+    grant.sourceItemType === "feat"
+      ? "selected feat"
+      : grant.sourceItemType === "classfeature"
+        ? "selected class feature"
+        : grant.sourceItemType;
   if (grant.itemType === "feat") {
     return `Choose the feat this ${sourceLabel} grants.`;
   }

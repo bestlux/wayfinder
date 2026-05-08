@@ -273,6 +273,63 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Fleet", "Incredible Initiative"]);
   });
 
+  it("hides choices already selected in a different draft slot", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("community-knowledge", "Community Knowledge", "ancestry", ["kashrishi"]),
+      featEntry("puncturing-horn", "Puncturing Horn", "ancestry", ["kashrishi"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("grant-choice", {
+        itemType: "feat",
+        predicate: ["item:level:1", "item:category:ancestry", "item:trait:kashrishi"],
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        selectedUuidsBySlotId: {
+          "ancestry-feat-level-1": "Compendium.pf2e.feats-srd.Item.puncturing-horn",
+        },
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Community Knowledge"]);
+  });
+
+  it("keeps the current draft slot's selected choice visible", async () => {
+    setPack("pf2e.feats-srd", [featEntry("puncturing-horn", "Puncturing Horn", "ancestry", ["kashrishi"])]);
+
+    const step = makeStep("grant-choice", {
+      itemType: "feat",
+      predicate: ["item:level:1", "item:category:ancestry", "item:trait:kashrishi"],
+    });
+    const options = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      selectedUuidsBySlotId: {
+        [step.slotId]: "Compendium.pf2e.feats-srd.Item.puncturing-horn",
+      },
+    });
+
+    expect(options.map((option) => option.name)).toEqual(["Puncturing Horn"]);
+  });
+
+  it("honors item type predicates from PF2E grant ChoiceSets", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("counterspell-prepared", "Counterspell (Prepared)", "class", ["wizard"]),
+      featEntry("reach-spell", "Reach Spell", "class", ["wizard"]),
+      featEntry("reactive-shield", "Reactive Shield", "class", ["fighter"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("grant-choice", {
+        itemType: "feat",
+        predicate: ["item:type:feat", "item:trait:wizard", "item:level:1"],
+      }),
+      EMPTY_CONTEXT
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Counterspell (Prepared)", "Reach Spell"]);
+  });
+
   it("excludes the actor's own class from multiclass dedication grant choices", async () => {
     setPack("pf2e.feats-srd", [
       featEntry("fighter-dedication", "Fighter Dedication", "class", ["fighter", "dedication", "multiclass"]),
@@ -610,6 +667,66 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Force Barrage", "Mystic Armor"]);
   });
 
+  it("keeps unified-theory wizard bonus spell choices unblocked without a curriculum list", async () => {
+    setPack("pf2e.spells-srd", [
+      spellEntry("shield", "Shield", 1, ["arcane"], ["cantrip"]),
+      spellEntry("force-barrage", "Force Barrage", 1, ["arcane"], []),
+      spellEntry("heal", "Heal", 1, ["divine"], []),
+      spellEntry("fireball", "Fireball", 3, ["arcane"], []),
+    ]);
+
+    const step: PendingStep = {
+      id: "spell-choice-wizard-unified-rank-1-level-1",
+      level: 1,
+      kind: "spell-choice",
+      slotKind: "spell-choice",
+      title: "Unified theory bonus spell",
+      description: "",
+      required: true,
+      slotId: "spell-choice-wizard-unified-rank-1-level-1",
+      filters: {
+        itemType: "spell",
+      },
+      spellChoice: {
+        slotId: "spell-choice-wizard-unified-rank-1-level-1",
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "school-of-unified-magical-theory",
+        sourceUuid: "Compendium.pf2e.classfeatures.Item.school-of-unified-magical-theory",
+        sourceName: "School of Unified Magical Theory",
+        classSlug: "wizard",
+        dependsOn: "class-branch",
+        destination: {
+          type: "spellbook",
+          key: "wizard-arcane-prepared",
+          label: "Wizard spellbook",
+          entryName: "Arcane Prepared Spells",
+          tradition: "arcane",
+          ability: "int",
+          prepared: "prepared",
+        },
+        count: 1,
+        minRank: 1,
+        maxRank: 1,
+        cantrip: false,
+        curriculumSpellNames: [],
+        requiresCurriculum: false,
+        additionalAllowedSpellNames: [],
+        restrictToCommon: false,
+      },
+    };
+
+    const context = {
+      ...EMPTY_CONTEXT,
+      classSlug: "wizard",
+    };
+
+    const options = await getOptionsForStep(step, context);
+
+    expect(options.map((option) => option.name)).toEqual(["Force Barrage"]);
+    expect(getPickerBlockedState(step, context)).toBeNull();
+    expect(getPickerInfoState(step, context, options.length, options.length, "")).toBeNull();
+  });
+
   it("filters adapted cantrip choices away from the class tradition", async () => {
     setPack("pf2e.spells-srd", [
       spellEntry("shield", "Shield", 1, ["arcane"], ["cantrip"]),
@@ -661,6 +778,59 @@ describe("pack-service dependency filtering", () => {
     );
 
     expect(options.map((option) => option.name)).toEqual(["Guidance"]);
+  });
+
+  it("includes deity spell UUID allowances even when the spell is outside the class tradition", async () => {
+    setPack("pf2e.spells-srd", [
+      spellEntry("heal", "Heal", 1, ["divine"], []),
+      spellEntry("y6rAdMK6EFlV6U0t", "Breathe Fire", 1, ["arcane", "primal"], []),
+      spellEntry("fireball", "Fireball", 3, ["arcane", "primal"], []),
+    ]);
+
+    const options = await getOptionsForStep(
+      {
+        id: "spell-choice-cleric-rank-1-level-1",
+        level: 1,
+        kind: "spell-choice",
+        slotKind: "spell-choice",
+        title: "Cleric prepared spells",
+        description: "",
+        required: true,
+        slotId: "spell-choice-cleric-rank-1-level-1",
+        filters: {
+          itemType: "spell",
+        },
+        spellChoice: {
+          slotId: "spell-choice-cleric-rank-1-level-1",
+          sourcePackId: "pf2e.classfeatures",
+          sourceDocumentId: "cleric-spellcasting",
+          sourceUuid: "Compendium.pf2e.classfeatures.Item.cleric-spellcasting",
+          sourceName: "Cleric Spellcasting",
+          classSlug: "cleric",
+          dependsOn: "class",
+          destination: {
+            type: "prepared",
+            key: "cleric-divine-prepared",
+            label: "Divine prepared spells",
+            entryName: "Divine Prepared Spells",
+            tradition: "divine",
+            ability: "wis",
+            prepared: "prepared",
+          },
+          count: 2,
+          minRank: 1,
+          maxRank: 1,
+          cantrip: false,
+          curriculumSpellNames: [],
+          additionalAllowedSpellNames: [],
+          additionalAllowedSpellUuids: ["Compendium.pf2e.spells-srd.Item.y6rAdMK6EFlV6U0t"],
+          restrictToCommon: true,
+        },
+      },
+      EMPTY_CONTEXT
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Breathe Fire", "Heal"]);
   });
 
   it("filters feat-owned innate cantrip choices to explicit spell slugs", async () => {

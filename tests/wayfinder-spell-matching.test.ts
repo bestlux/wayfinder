@@ -21,6 +21,34 @@ describe("wayfinder spell matching", () => {
     ).toBe(true);
   });
 
+  it("allows additional spell UUIDs even when the spell is outside the class tradition", () => {
+    const choice = spellChoice({
+      destination: {
+        type: "prepared",
+        key: "cleric-divine-prepared",
+        label: "Divine prepared spells",
+        entryName: "Divine Prepared Spells",
+        tradition: "divine",
+        ability: "wis",
+        prepared: "prepared",
+      },
+      additionalAllowedSpellUuids: ["Compendium.pf2e.spells-srd.Item.y6rAdMK6EFlV6U0t"],
+      restrictToCommon: true,
+    });
+
+    expect(
+      spellMatchesChoice(
+        spellItem("entry-1", "Breathe Fire", 1, {
+          sourceId: "Compendium.pf2e.spells-srd.Item.y6rAdMK6EFlV6U0t",
+          traditions: ["arcane", "primal"],
+          rarity: "uncommon",
+        }),
+        choice,
+        "entry-1"
+      )
+    ).toBe(true);
+  });
+
   it("rejects non-curriculum spells when curriculum names are specified", () => {
     const choice = spellChoice({
       curriculumSpellNames: ["Force Barrage", "Mystic Armor"],
@@ -101,6 +129,7 @@ function spellItem(
   options: {
     traditions: string[];
     rarity?: string;
+    sourceId?: string;
     valueTraits?: string[];
   }
 ) {
@@ -108,6 +137,7 @@ function spellItem(
     id: `${entryId}-${name}`,
     type: "spell" as const,
     name,
+    flags: options.sourceId ? { core: { sourceId: options.sourceId } } : {},
     system: {
       level: { value: level },
       location: { value: entryId },

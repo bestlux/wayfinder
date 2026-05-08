@@ -163,7 +163,9 @@ export interface SpellChoiceMeta {
   allowedSpellSlugs?: string[];
   excludedTraditions?: string[];
   curriculumSpellNames: string[];
+  requiresCurriculum?: boolean;
   additionalAllowedSpellNames: string[];
+  additionalAllowedSpellUuids?: string[];
   restrictToCommon: boolean;
 }
 

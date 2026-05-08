@@ -15,7 +15,11 @@ export async function buildLanguageChoiceSteps(params) {
         return [];
     }
     const languageState = params.effectiveBuildState.languages;
-    if (!languageState || languageState.maxSelections <= 0 || languageState.selectableLanguages.length === 0) {
+    if (!languageState || languageState.maxSelections <= 0) {
+        return [];
+    }
+    const selectableLanguages = resolveSelectableLanguages(languageState, params.availableLanguageSlugs ?? []);
+    if (selectableLanguages.length === 0) {
         return [];
     }
     const draftSelections = params.draft.languageChoices[SLOT_IDS.languageChoice] ?? [];
@@ -31,7 +35,7 @@ export async function buildLanguageChoiceSteps(params) {
             sourceName: ancestryName,
             grantedLanguages: languageState.grantedLanguages,
             count: languageState.maxSelections,
-            options: languageState.selectableLanguages.map((slug) => ({
+            options: selectableLanguages.map((slug) => ({
                 value: slug,
                 label: params.localizeLanguage(slug),
             })),
@@ -44,5 +48,10 @@ export async function buildLanguageChoiceSteps(params) {
 function buildLanguageChoiceDescription(sourceName, count) {
     const label = count === 1 ? "1 additional language" : `${count} additional languages`;
     return `Choose ${label} from ${formatSlug(sourceName).toLowerCase()} and Intelligence-based language options.`;
+}
+function resolveSelectableLanguages(languageState, availableLanguageSlugs) {
+    const source = languageState.selectableLanguages.length > 0 ? languageState.selectableLanguages : availableLanguageSlugs;
+    const granted = new Set(languageState.grantedLanguages);
+    return Array.from(new Set(source.map((slug) => slug.trim().toLowerCase()).filter(Boolean))).filter((slug) => !granted.has(slug));
 }
 //# sourceMappingURL=language-choice-service.js.map

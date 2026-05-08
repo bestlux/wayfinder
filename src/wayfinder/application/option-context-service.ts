@@ -169,6 +169,7 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
   ]);
 
   const ancestrySlug = deps.extractDocumentSlug(ancestryDocument);
+  const selectedUuidsBySlotId = buildSelectedUuidsBySlotId(deps.draft);
   return {
     ancestrySlug,
     ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
@@ -182,7 +183,15 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
       deityDocument,
     }),
     hasDedicationFeat,
+    ...(Object.keys(selectedUuidsBySlotId).length > 0 ? { selectedUuidsBySlotId } : {}),
   };
+}
+
+function buildSelectedUuidsBySlotId(draft: DraftState): Record<string, string> {
+  const entries = [...Object.entries(draft.selections), ...Object.entries(draft.branchSelections)]
+    .map(([slotId, selection]) => [slotId, selection.uuid] as const)
+    .filter(([, uuid]) => typeof uuid === "string" && uuid.length > 0);
+  return Object.fromEntries(entries);
 }
 
 function classDocumentHasSpellcasting(document: unknown): boolean {
@@ -282,19 +291,24 @@ export async function buildContextNote(
         return null;
       }
 
-      if (spellChoice.dependsOn === "class-branch" && spellChoice.curriculumSpellNames.length === 0) {
+      if (
+        spellChoice.dependsOn === "class-branch" &&
+        spellChoice.curriculumSpellNames.length === 0 &&
+        spellChoice.requiresCurriculum !== false
+      ) {
         return "Resolve the arcane school step first so Wayfinder can narrow this list to the chosen curriculum.";
       }
 
+      const tradition = spellChoice.destination.tradition;
       const rankLabel = spellChoice.cantrip
         ? spellChoice.destination.type === "innate"
-          ? `${spellChoice.destination.tradition} cantrips`
+          ? `${tradition} cantrips`
           : spellChoice.excludedTraditions?.length
             ? "cantrips outside your class tradition"
-            : "arcane cantrips"
+            : `${tradition} cantrips`
         : spellChoice.minRank === spellChoice.maxRank
-          ? `rank ${spellChoice.maxRank} arcane spells`
-          : `arcane spells of rank ${spellChoice.minRank} to ${spellChoice.maxRank}`;
+          ? `rank ${spellChoice.maxRank} ${tradition} spells`
+          : `${tradition} spells of rank ${spellChoice.minRank} to ${spellChoice.maxRank}`;
       const sourceLabel = spellChoice.sourceName || "Wizard Spellcasting";
       return `Showing ${rankLabel} that will be added to the ${spellChoice.destination.label}. Source: ${sourceLabel}. Daily prepared loadouts remain on PF2E's character sheet.`;
     }

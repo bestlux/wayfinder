@@ -35,6 +35,7 @@ export interface SelectorApplicationPlan {
   slotId: string | null;
   ruleSelections: SelectorRuleSelection[];
   grantPlan?: SelectorGrantPlan | null;
+  omitSelectedRulesOnCreate?: boolean;
 }
 
 interface SelectorReference {
@@ -196,6 +197,7 @@ export function stripSelectedSelectorEntries(
       return !(
         (uuid && selectedUuids.has(uuid)) ||
         (normalizedDocumentId && selectedDocumentIds.has(normalizedDocumentId)) ||
+        (normalizedDocumentId && selectedNames.has(normalizedDocumentId)) ||
         (normalizedName && selectedNames.has(normalizedName))
       );
     })
@@ -217,21 +219,22 @@ async function createSelectorItem(
   }
 
   selectorSource.system ??= {};
-  selectorSource.system.rules = cloneData(
-    Array.isArray(selectorSource.system.rules) ? selectorSource.system.rules : []
-  );
+  const selectorRules = cloneData(Array.isArray(selectorSource.system.rules) ? selectorSource.system.rules : []);
 
-  applyRuleSelections(selectorSource.system.rules, plan.ruleSelections);
+  const initialSelections = [...plan.ruleSelections];
   if (plan.grantPlan) {
-    applyRuleSelections(selectorSource.system.rules, [
-      {
-        flag: plan.grantPlan.flag,
-        ruleIndex: plan.grantPlan.selectorRuleIndex,
-        value: plan.grantPlan.selection.uuid,
-      },
-    ]);
-    selectorSource.system.rules = pruneGrantRules(selectorSource.system.rules, plan.grantPlan.createRulePolicy);
+    initialSelections.push({
+      flag: plan.grantPlan.flag,
+      ruleIndex: plan.grantPlan.selectorRuleIndex,
+      value: plan.grantPlan.selection.uuid,
+    });
   }
+  applyRuleSelections(selectorRules, initialSelections);
+  selectorSource.system.rules = pruneCreationRules(
+    selectorRules,
+    plan.omitSelectedRulesOnCreate ? new Set(initialSelections.map((selection) => selection.ruleIndex)) : new Set(),
+    plan.grantPlan?.createRulePolicy ?? null
+  );
 
   selectorSource.flags ??= {};
   selectorSource.flags.pf2e ??= {};
@@ -284,15 +287,24 @@ function applyRuleSelections(rules: LooseRecord[], selections: SelectorRuleSelec
   }
 }
 
-function pruneGrantRules(rules: LooseRecord[], policy: SelectorGrantPlan["createRulePolicy"]): LooseRecord[] {
-  if (policy === "remove-all-grant-items") {
-    return rules.filter((rule) => rule?.key !== "GrantItem");
-  }
-  if (Array.isArray(policy) && policy.length > 0) {
-    const blockedIndexes = new Set(policy);
-    return rules.filter((_rule, index) => !blockedIndexes.has(index));
-  }
-  return rules;
+function pruneCreationRules(
+  rules: LooseRecord[],
+  selectedRuleIndexes: Set<number>,
+  policy: SelectorGrantPlan["createRulePolicy"]
+): LooseRecord[] {
+  const blockedGrantIndexes = Array.isArray(policy) ? new Set(policy) : null;
+  return rules.filter((rule, index) => {
+    if (selectedRuleIndexes.has(index)) {
+      return false;
+    }
+    if (policy === "remove-all-grant-items" && rule?.key === "GrantItem") {
+      return false;
+    }
+    if (blockedGrantIndexes?.has(index)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 async function ensureGrantedItem(

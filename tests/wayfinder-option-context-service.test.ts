@@ -191,6 +191,69 @@ describe("wayfinder option context service", () => {
       "Resolve the deity step first so Wayfinder can narrow champion causes to the legal sanctification path."
     );
   });
+
+  it("describes unified-theory wizard bonus spells as available arcane choices", async () => {
+    const step: PendingStep = {
+      id: "spell-choice-wizard-unified-rank-1-level-1",
+      level: 1,
+      kind: "spell-choice",
+      slotKind: "spell-choice",
+      title: "Unified theory bonus spell",
+      description: "",
+      required: true,
+      slotId: "spell-choice-wizard-unified-rank-1-level-1",
+      filters: {
+        itemType: "spell",
+      },
+      spellChoice: {
+        slotId: "spell-choice-wizard-unified-rank-1-level-1",
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "school-of-unified-magical-theory",
+        sourceUuid: "Compendium.pf2e.classfeatures.Item.school-of-unified-magical-theory",
+        sourceName: "School of Unified Magical Theory",
+        classSlug: "wizard",
+        dependsOn: "class-branch",
+        destination: {
+          type: "spellbook",
+          key: "wizard-arcane-prepared",
+          label: "Wizard spellbook",
+          entryName: "Arcane Prepared Spells",
+          tradition: "arcane",
+          ability: "int",
+          prepared: "prepared",
+        },
+        count: 1,
+        minRank: 1,
+        maxRank: 1,
+        cantrip: false,
+        curriculumSpellNames: [],
+        requiresCurriculum: false,
+        additionalAllowedSpellNames: [],
+        restrictToCommon: false,
+      },
+    };
+
+    await expect(
+      buildContextNote(
+        step,
+        {
+          ancestrySlug: null,
+          ancestryTraits: [],
+          heritageTraits: [],
+          classSlug: "wizard",
+          classHasSpellcasting: true,
+          deitySelected: false,
+          sanctification: null,
+          hasDedicationFeat: false,
+        },
+        {
+          resolveDocument: async () => ({ name: "Wizard" }),
+        }
+      )
+    ).resolves.toBe(
+      "Showing rank 1 arcane spells that will be added to the Wizard spellbook. Source: School of Unified Magical Theory. Daily prepared loadouts remain on PF2E's character sheet."
+    );
+  });
 });
 
 function selection(slotId: string, itemType: string, documentId: string): SelectionRef {

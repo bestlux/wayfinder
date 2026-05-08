@@ -9,6 +9,7 @@ import { buildWayfinderAppPlan } from "../src/wayfinder/application/wayfinder-pl
 import { buildActorHarness, selection, setGamePacks } from "./support/actor-updater-fixtures";
 
 const ALL_ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
+const testGlobals = globalThis as typeof globalThis & { CONFIG?: any };
 
 describe("wayfinder golden path integration", () => {
   beforeEach(() => {
@@ -87,6 +88,71 @@ describe("wayfinder golden path integration", () => {
         expect.objectContaining({ type: "class", name: "Fighter" }),
       ])
     );
+  });
+
+  it("prompts for Human open language slots from the PF2E language config", async () => {
+    const originalConfig = testGlobals.CONFIG;
+    testGlobals.CONFIG = {
+      PF2E: {
+        languages: {
+          common: "",
+          draconic: "",
+          dwarven: "",
+          gnomish: "",
+        },
+      },
+    };
+
+    try {
+      const packs = buildGoldenPathPacks();
+      packs["pf2e.ancestries"].human.system.additionalLanguages = {
+        count: 1,
+        value: [],
+      };
+      setGamePacks(packs);
+
+      const { actor } = buildActorHarness();
+      primeActorSystem(actor);
+
+      const draft = createEmptyDraft(1);
+      draft.selections["ancestry-level-1"] = selection(
+        "ancestry-level-1",
+        "pf2e.ancestries",
+        "human",
+        "ancestry",
+        "Human"
+      );
+      draft.selections["background-level-1"] = selection(
+        "background-level-1",
+        "pf2e.backgrounds",
+        "acolyte",
+        "background",
+        "Acolyte"
+      );
+      draft.selections["class-level-1"] = selection("class-level-1", "pf2e.classes", "fighter", "class", "Fighter");
+      draft.boosts.ancestry.selectedBoosts = {
+        free1: "str",
+        free2: "dex",
+      };
+      draft.boosts.background.selectedBoosts = {
+        fixed: "int",
+        free: "wis",
+      };
+      draft.boosts.class.keyAbility = "str";
+      draft.boosts.levels["1"] = ["str", "dex", "con", "wis"];
+
+      const plan = await buildPlan(actor, draft);
+      const languageStep = expectLanguageStep(plan);
+
+      expect(languageStep.languageChoice).toMatchObject({
+        sourceName: "Human",
+        grantedLanguages: ["common"],
+        count: 2,
+        options: [{ value: "draconic" }, { value: "dwarven" }, { value: "gnomish" }],
+      });
+    } finally {
+      testGlobals.CONFIG = originalConfig;
+    }
   });
 
   it("covers the elf elven-lore wizard path through training, languages, and spellbook import", async () => {

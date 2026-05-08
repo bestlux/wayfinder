@@ -1,4 +1,4 @@
-import { parseDeitySpellNames } from "./metadata-parsing.js";
+import { parseDeitySpellAccess } from "./metadata-parsing.js";
 import { findClassFeatureSource } from "./source-utils.js";
 import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helpers.js";
 const CLERIC_PREPARED_DESTINATION = {
@@ -13,7 +13,7 @@ const CLERIC_PREPARED_DESTINATION = {
 export function buildClericSpellChoiceSteps(params) {
     const { draft, effectiveClassDocument, effectiveDeityDocument, readExistingSpellChoiceSelections, classSlug } = params;
     const clericSpellcastingSource = findClassFeatureSource(effectiveClassDocument, "Cleric Spellcasting");
-    const deityRankOneSpellNames = parseDeitySpellNames(effectiveDeityDocument, 1);
+    const deityRankOneSpellAccess = parseDeitySpellAccess(effectiveDeityDocument, 1);
     const steps = [];
     const addStep = (step) => appendPendingSpellChoiceStep(steps, step, draft, readExistingSpellChoiceSelections);
     addStep(makeSpellChoiceStep({
@@ -46,7 +46,8 @@ export function buildClericSpellChoiceSteps(params) {
         maxRank: 1,
         cantrip: false,
         curriculumSpellNames: [],
-        additionalAllowedSpellNames: deityRankOneSpellNames,
+        additionalAllowedSpellNames: deityRankOneSpellAccess.names,
+        additionalAllowedSpellUuids: deityRankOneSpellAccess.uuids,
         restrictToCommon: true,
         destination: CLERIC_PREPARED_DESTINATION,
     }));

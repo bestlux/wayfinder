@@ -99,6 +99,7 @@ type PackServiceGlobals = typeof globalThis & {
   CONFIG?: {
     PF2E?: Pf2ePackConfigLike;
   };
+  fromUuid?: (uuid: string) => Promise<PackDocumentLike | null>;
   game?: {
     packs?: Map<string, GamePackLike>;
   };
@@ -137,7 +138,7 @@ export async function getOptionsForStep(
 
     const index = await getPackIndex(pack, packId);
     for (const entry of index) {
-      if (!matchesFilters(entry, step, context, traitCatalog)) {
+      if (!matchesFilters(entry, packId, step, context, traitCatalog)) {
         continue;
       }
 
@@ -147,6 +148,10 @@ export async function getOptionsForStep(
       const traits = extractEntryTraits(entry);
       const documentId = String(entry._id);
       const uuid = toCompendiumItemUuid(packId, documentId);
+      if (isSelectedInDifferentDraftSlot(step, uuid, context)) {
+        continue;
+      }
+
       const name = String(entry.name ?? "Unknown Option");
 
       results.push({
@@ -169,6 +174,14 @@ export async function getOptionsForStep(
   }
 
   return dedupeAndSort(results);
+}
+
+function isSelectedInDifferentDraftSlot(step: PendingStep, uuid: string, context: OptionContext): boolean {
+  const selectedUuidsBySlotId = context.selectedUuidsBySlotId ?? {};
+  const normalizedUuid = uuid.trim().toLowerCase();
+  return Object.entries(selectedUuidsBySlotId).some(
+    ([slotId, selectedUuid]) => slotId !== step.slotId && selectedUuid.trim().toLowerCase() === normalizedUuid
+  );
 }
 
 export async function resolveSelection(
@@ -196,11 +209,13 @@ export async function resolveSelection(
 
 export async function fetchSelectionDocument(selection: SelectionRef): Promise<PackDocumentLike | null> {
   const pack = getGamePack(selection.packId);
-  if (!pack) {
-    return null;
+  const document = pack ? await pack.getDocument(selection.documentId) : null;
+  if (document) {
+    return document;
   }
 
-  return pack.getDocument(selection.documentId);
+  const fromUuid = (globalThis as PackServiceGlobals).fromUuid;
+  return typeof fromUuid === "function" ? fromUuid(selection.uuid) : null;
 }
 
 function toCompendiumItemUuid(packId: string, documentId: string): string {
@@ -339,7 +354,7 @@ export function getPickerBlockedState(step: PendingStep, context: OptionContext)
         };
       }
 
-      if (step.spellChoice?.dependsOn === "class-branch" && step.spellChoice.curriculumSpellNames.length === 0) {
+      if (requiresResolvedCurriculum(step)) {
         return {
           tone: "blocked",
           eyebrow: "Prerequisite required",
@@ -353,6 +368,16 @@ export function getPickerBlockedState(step: PendingStep, context: OptionContext)
     default:
       return null;
   }
+}
+
+function requiresResolvedCurriculum(step: PendingStep): boolean {
+  const spellChoice = step.spellChoice;
+  return (
+    !!spellChoice &&
+    spellChoice.dependsOn === "class-branch" &&
+    spellChoice.curriculumSpellNames.length === 0 &&
+    spellChoice.requiresCurriculum !== false
+  );
 }
 
 function resolvePackIds(slotKind: PendingStep["slotKind"]): string[] {
@@ -409,6 +434,7 @@ async function getPackIndex(pack: GamePackLike, packId: string): Promise<PackInd
 
 function matchesFilters(
   entry: PackIndexEntry,
+  packId: string,
   step: PendingStep,
   context: OptionContext,
   traitCatalog: Set<string>
@@ -458,7 +484,7 @@ function matchesFilters(
   }
 
   if (step.slotKind === "spell-choice") {
-    return matchesSpellChoiceContext(entry, step);
+    return matchesSpellChoiceContext(entry, packId, step);
   }
 
   if (step.slotKind === "ancestry-feat") {
@@ -636,7 +662,7 @@ function matchesClassBranchContext(entry: PackIndexEntry, step: PendingStep, con
   return !branch.classSlug || traits.length === 0 || traits.includes(branch.classSlug);
 }
 
-function matchesSpellChoiceContext(entry: PackIndexEntry, step: PendingStep): boolean {
+function matchesSpellChoiceContext(entry: PackIndexEntry, packId: string, step: PendingStep): boolean {
   const spellChoice = step.spellChoice;
   if (!spellChoice) {
     return false;
@@ -651,8 +677,14 @@ function matchesSpellChoiceContext(entry: PackIndexEntry, step: PendingStep): bo
   const entrySlug = extractEntrySlug(entry);
   const allowedSpellSlugs = spellChoice.allowedSpellSlugs ?? [];
   const isExplicitlyAllowed = !!entrySlug && allowedSpellSlugs.includes(entrySlug);
+  const documentId = String(entry._id ?? "");
+  const entryUuid = documentId ? toCompendiumItemUuid(packId, documentId) : "";
   const entryName = String(entry?.name ?? "");
   const additionalAllowedSpellNames = spellChoice.additionalAllowedSpellNames ?? [];
+  const additionalAllowedSpellUuids = new Set(
+    (spellChoice.additionalAllowedSpellUuids ?? []).map((uuid) => uuid.trim().toLowerCase()).filter(Boolean)
+  );
+  const isAdditionallyAllowedByUuid = additionalAllowedSpellUuids.has(entryUuid.toLowerCase());
   const traits = extractEntryTraits(entry);
   const isCantrip = traits.includes("cantrip");
   if (spellChoice.cantrip !== isCantrip) {
@@ -669,6 +701,10 @@ function matchesSpellChoiceContext(entry: PackIndexEntry, step: PendingStep): bo
   }
 
   if (isExplicitlyAllowed) {
+    return true;
+  }
+
+  if (isAdditionallyAllowedByUuid) {
     return true;
   }
 
@@ -734,6 +770,15 @@ function matchesChoicePredicateString(statement: string, entry: PackIndexEntry, 
     const expectedLevel = Number(resolved.slice("item:level:".length));
     const level = numericOrNull(entry?.system?.level?.value);
     return Number.isFinite(expectedLevel) && level === expectedLevel;
+  }
+
+  if (resolved.startsWith("item:type:")) {
+    const expectedType = resolved.slice("item:type:".length).trim().toLowerCase();
+    return (
+      String(entry?.type ?? "")
+        .trim()
+        .toLowerCase() === expectedType
+    );
   }
 
   if (resolved.startsWith("item:category:")) {

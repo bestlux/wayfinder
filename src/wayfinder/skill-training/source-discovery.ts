@@ -69,40 +69,38 @@ export function discoverSourceSkillTrainingMeta(args: {
     fixedLores.push(...extractFixedLores(document));
 
     let hasRuleSkillChoice = false;
-    if (source.sourceItemType !== "feat") {
-      for (const spec of discoverSingletonChoiceSpecs({
-        sourceItemType: source.sourceItemType,
-        sourceDocument: document,
-        sourceSlug,
-        localize: args.localize,
-        includeTrainingChoices: true,
-      })) {
-        const persistence = selectionPersistence(source, spec.sourceRuleIndex);
-        if (spec.optionDomain === "skill") {
-          hasRuleSkillChoice = true;
-          choiceRules.push({
-            key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
-            flag: spec.flag,
-            prompt: spec.prompt ?? `Choose the skill ${sourceName} grants.`,
-            sourceLabel: sourceName,
-            options: spec.options.map((option) => ({ slug: option.value, label: option.label })),
-            persistence,
-          });
-          continue;
-        }
+    for (const spec of discoverSingletonChoiceSpecs({
+      sourceItemType: source.sourceItemType,
+      sourceDocument: document,
+      sourceSlug,
+      localize: args.localize,
+      includeTrainingChoices: true,
+    })) {
+      const persistence = selectionPersistence(source, spec.sourceRuleIndex);
+      if (spec.optionDomain === "skill") {
+        hasRuleSkillChoice = true;
+        choiceRules.push({
+          key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
+          flag: spec.flag,
+          prompt: spec.prompt ?? `Choose the skill ${sourceName} grants.`,
+          sourceLabel: sourceName,
+          options: spec.options.map((option) => ({ slug: option.value, label: option.label })),
+          persistence,
+        });
+        continue;
+      }
 
-        if (looksLikeLoreOptions(spec.options.map((option) => option.label))) {
-          loreChoices.push({
-            key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
-            flag: spec.flag,
-            prompt: spec.prompt ?? `Choose the Lore skill ${sourceName} grants.`,
-            sourceLabel: sourceName,
-            placeholder: normalizeLorePlaceholder(spec.options[0]?.label ?? "Custom Lore"),
-            suggestions: dedupeLabels(spec.options.map((option) => normalizeLoreLabel(option.label))),
-            allowCustom: false,
-            persistence,
-          });
-        }
+      if (looksLikeLoreOptions(spec.options.map((option) => option.label))) {
+        loreChoices.push({
+          key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
+          flag: spec.flag,
+          prompt: spec.prompt ?? `Choose the Lore skill ${sourceName} grants.`,
+          sourceLabel: sourceName,
+          placeholder: normalizeLorePlaceholder(spec.options[0]?.label ?? "Custom Lore"),
+          suggestions: dedupeLabels(spec.options.map((option) => normalizeLoreLabel(option.label))),
+          allowCustom: false,
+          persistence,
+        });
       }
     }
 
@@ -196,15 +194,16 @@ function discoverDescriptionTrainingMeta(args: {
   loreChoices.push(...additionalLoreGrants.loreChoices);
   const hasConditionalFallbackSkillChoice = hasConditionalFallbackSkillTrainingText(descriptionText);
 
+  const dedicationSkillChoices = discoverDedicationSkillChoices({
+    descriptionText,
+    sourceItemType: args.source.sourceItemType,
+    sourceSlug: args.sourceSlug,
+    sourceLabel: args.sourceName,
+    localize: args.localize,
+    configuredSkills: args.configuredSkills,
+  });
   choiceRules.push(
-    ...discoverDedicationSkillChoices({
-      descriptionText,
-      sourceItemType: args.source.sourceItemType,
-      sourceSlug: args.sourceSlug,
-      sourceLabel: args.sourceName,
-      localize: args.localize,
-      configuredSkills: args.configuredSkills,
-    })
+    ...(args.hasRuleSkillChoice ? dedicationSkillChoices.filter(isOpenBonusSkillChoice) : dedicationSkillChoices)
   );
 
   const loreSkillAndOtherSkillMatch =
@@ -797,6 +796,10 @@ function additionalLorePlaceholder(clause: string, loreLabels: string[]): string
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isOpenBonusSkillChoice(choice: SkillTrainingChoiceMeta): boolean {
+  return choice.prompt === "Choose a skill" && !choice.fallbackPrompt;
 }
 
 function extractFixedRuleGrantedSkills(document: TrainingSourceDocumentLike): string[] {

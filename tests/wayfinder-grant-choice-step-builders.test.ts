@@ -153,6 +153,19 @@ describe("wayfinder grant choice step builders", () => {
       expectedSlotId: "grant-choice-class-feat-natural-ambition-naturalAmbition-level-1",
       expectedDependsOn: "class" as const,
     },
+    {
+      sourceItemType: "classfeature" as const,
+      sourceName: "School of Unified Magical Theory",
+      sourceSlug: "school-of-unified-magical-theory",
+      sourceDocumentId: "school-of-unified-magical-theory",
+      sourcePackId: "pf2e.classfeatures",
+      sourceSlotId: "class-branch-arcane-school-level-1",
+      sourceSelectionItemType: "feat",
+      flag: "feat",
+      filter: ["item:type:feat", "item:trait:wizard", "item:level:1"],
+      expectedSlotId: "grant-choice-class-classfeature-school-of-unified-magical-theory-feat-level-1",
+      expectedDependsOn: "class" as const,
+    },
   ])("builds a grant-choice step from the real $sourceName rule shape", (testCase) => {
     const steps = buildGrantChoiceStepsFromRules({
       sourceItemType: testCase.sourceItemType,
@@ -184,7 +197,12 @@ describe("wayfinder grant choice step builders", () => {
         documentId: testCase.sourceDocumentId,
         uuid: `Compendium.${testCase.sourcePackId}.Item.${testCase.sourceDocumentId}`,
         itemType: testCase.sourceSelectionItemType,
-        featType: testCase.sourceItemType === "feat" ? "ancestry" : null,
+        featType:
+          testCase.sourceSelectionItemType === "feat"
+            ? testCase.sourceItemType === "classfeature"
+              ? "classfeature"
+              : "ancestry"
+            : null,
         name: testCase.sourceName,
         level: 1,
       },

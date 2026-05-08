@@ -12,8 +12,8 @@ import type {
   SelectionDocumentLike,
 } from "../shared/actor-model.js";
 import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
-import { itemMatchesSourceId } from "../shared/source-id.js";
-import type { DraftState, PendingStep, SelectionRef } from "../types.js";
+import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
+import type { AbilityKey, DraftState, PendingStep, SelectionRef } from "../types.js";
 
 const SINGLETON_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 
@@ -43,6 +43,20 @@ const DEFAULT_INSERT_DEPS: InsertFeatSelectionDependencies = {
   createEmbeddedSource: (selection, draft, steps) => createEmbeddedSource(selection, draft, steps),
 };
 
+const EXPLICIT_GRANT_SOURCE_ITEM_TYPES = new Set(["ancestry", "heritage", "background"]);
+const CLAN_DAGGER_FEATURE_UUID = "Compendium.pf2e.ancestryfeatures.Item.Clan Dagger";
+const CLAN_DAGGER_FEATURE_SOURCE_IDS = new Set([
+  CLAN_DAGGER_FEATURE_UUID,
+  "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
+]);
+
+interface ManualSystemItemGrant {
+  key: string;
+  uuid: string;
+  name: string;
+  defaultChoices: Record<string, string>;
+}
+
 export async function replaceSingletonItem(
   actor: ActorLike,
   selection: SelectionRef,
@@ -59,6 +73,34 @@ export async function replaceSingletonItem(
   const source = await createEmbeddedSource(selection, draft, steps, deps);
   if (source && typeof actor.createEmbeddedDocuments === "function") {
     await actor.createEmbeddedDocuments("Item", [source]);
+  }
+}
+
+export async function replaceSingletonItems(
+  actor: ActorLike,
+  selections: SelectionRef[],
+  draft: DraftState,
+  steps: PendingStep[],
+  deps: CreateEmbeddedSourceDependencies = DEFAULT_CREATE_DEPS
+): Promise<void> {
+  const singletonSelections = selections.filter((selection) => SINGLETON_ITEM_TYPES.has(selection.itemType));
+  if (singletonSelections.length === 0) {
+    return;
+  }
+
+  const selectedTypes = new Set(singletonSelections.map((selection) => selection.itemType));
+  const sources = (
+    await Promise.all(singletonSelections.map((selection) => createEmbeddedSource(selection, draft, steps, deps)))
+  ).filter((source): source is EmbeddedItemSource => !!source);
+
+  const existing = (listActorItems(actor) as ActorItemLike[]).filter((item) => selectedTypes.has(item?.type ?? ""));
+  const existingIds = existing.map((item) => item.id).filter((id): id is string => typeof id === "string");
+  if (existingIds.length > 0 && typeof actor.deleteEmbeddedDocuments === "function") {
+    await actor.deleteEmbeddedDocuments("Item", existingIds);
+  }
+
+  if (sources.length > 0 && typeof actor.createEmbeddedDocuments === "function") {
+    await actor.createEmbeddedDocuments("Item", sources);
   }
 }
 
@@ -79,7 +121,9 @@ export async function createEmbeddedSource(
     deps.stripPreselectedClassBranchEntries(source, draft, steps);
   }
   if (draft) {
+    stripManualSystemItemGrants(source);
     applyPendingSingletonChoices(source, selection, draft, steps);
+    applyPendingBoostSelections(source, selection, draft);
     await applyPendingGrantChoiceSelections(source, selection, draft, steps, deps);
     applyPendingTrainingSelections(source, selection, draft, steps);
   }
@@ -94,10 +138,139 @@ export async function createEmbeddedSource(
   source.flags.core ??= {};
   source.flags.core.sourceId = selection.uuid;
   source.flags[MODULE_ID] = {
+    ...(source.flags[MODULE_ID] ?? {}),
     importedBy: MODULE_ID,
     slotId: selection.slotId,
   };
   return source;
+}
+
+function applyPendingBoostSelections(source: EmbeddedItemSource, selection: SelectionRef, draft: DraftState): void {
+  if (!["ancestry", "background", "class"].includes(selection.itemType)) {
+    return;
+  }
+
+  if (selection.itemType === "ancestry") {
+    const ancestryBoosts = draft.boosts.ancestry;
+    if (
+      !ancestryBoosts.modeTouched &&
+      Object.keys(ancestryBoosts.selectedBoosts).length === 0 &&
+      !ancestryBoosts.voluntary.touched &&
+      !ancestryBoosts.voluntary.enabled
+    ) {
+      return;
+    }
+
+    source.system ??= {};
+    if (ancestryBoosts.mode === "alternate") {
+      source.system.alternateAncestryBoosts = [...ancestryBoosts.alternateBoosts];
+    } else if (ancestryBoosts.modeTouched) {
+      delete source.system.alternateAncestryBoosts;
+    }
+
+    applySelectedBoosts(source, ancestryBoosts.selectedBoosts);
+
+    source.system.voluntary ??= {};
+    source.system.voluntary.flaws = ancestryBoosts.voluntary.enabled ? [...ancestryBoosts.voluntary.flaws] : [];
+    if (ancestryBoosts.voluntary.enabled && ancestryBoosts.voluntary.legacy) {
+      source.system.voluntary.boost = ancestryBoosts.voluntary.boost;
+    } else {
+      delete source.system.voluntary.boost;
+    }
+    return;
+  }
+
+  if (selection.itemType === "background") {
+    if (Object.keys(draft.boosts.background.selectedBoosts).length === 0) {
+      return;
+    }
+    source.system ??= {};
+    applySelectedBoosts(source, draft.boosts.background.selectedBoosts);
+    return;
+  }
+
+  if (selection.itemType === "class") {
+    if (!draft.boosts.class.keyAbility) {
+      return;
+    }
+    source.system ??= {};
+    source.system.keyAbility ??= {};
+    source.system.keyAbility.selected = draft.boosts.class.keyAbility;
+  }
+}
+
+function applySelectedBoosts(source: EmbeddedItemSource, selectedBoosts: Record<string, AbilityKey | null>): void {
+  source.system ??= {};
+  source.system.boosts ??= {};
+  for (const [slot, selected] of Object.entries(selectedBoosts)) {
+    const boost = source.system.boosts[slot];
+    if (boost && typeof boost === "object") {
+      boost.selected = selected;
+    }
+  }
+}
+
+export async function createSingletonSystemGrantItems(
+  actor: ActorLike,
+  draft: DraftState,
+  steps: PendingStep[],
+  deps: InsertFeatSelectionDependencies = DEFAULT_INSERT_DEPS
+): Promise<void> {
+  if (typeof actor.createEmbeddedDocuments !== "function") {
+    return;
+  }
+
+  const actorItems = listActorItems(actor) as ActorItemLike[];
+  for (const granter of actorItems) {
+    const grants = readManualSystemItemGrants(granter);
+    if (!grants.length || !granter.id) {
+      continue;
+    }
+
+    for (const grant of grants) {
+      if (actorItems.some((item) => grantSourceMatches(item, grant.uuid))) {
+        continue;
+      }
+
+      const selection = selectionFromSystemGrant(grant);
+      const source = await deps.createEmbeddedSource(selection, draft, steps);
+      if (!source) {
+        continue;
+      }
+
+      source.system ??= {};
+      source.system.location = granter.id;
+      source.flags ??= {};
+      source.flags.core ??= {};
+      source.flags.core.sourceId = grant.uuid;
+      source.flags.pf2e ??= {};
+      source.flags.pf2e.grantedBy = {
+        id: granter.id,
+        onDelete: "cascade",
+      };
+      source.flags[MODULE_ID] = {
+        ...(source.flags[MODULE_ID] ?? {}),
+        importedBy: MODULE_ID,
+        slotId: selection.slotId,
+      };
+      applyManualGrantChoices(source, grant.defaultChoices);
+      const created = await actor.createEmbeddedDocuments("Item", [source]);
+      const createdItem = Array.isArray(created) ? ((created[0] as ActorItemLike | undefined) ?? null) : null;
+      if (!createdItem?.id || typeof actor.updateEmbeddedDocuments !== "function") {
+        continue;
+      }
+
+      await actor.updateEmbeddedDocuments("Item", [
+        {
+          _id: granter.id,
+          [`flags.pf2e.itemGrants.${grant.key}`]: {
+            id: createdItem.id,
+            onDelete: "detach",
+          },
+        },
+      ]);
+    }
+  }
 }
 
 function applyPendingSingletonChoices(
@@ -192,6 +365,106 @@ function applyRuleSelection(source: EmbeddedItemSource, sourceRuleIndex: number,
   source.flags.pf2e.rulesSelections[flag] = value;
 }
 
+function stripManualSystemItemGrants(source: EmbeddedItemSource): void {
+  const systemItems = source.system?.items;
+  if (!isLooseRecord(systemItems)) {
+    return;
+  }
+
+  const manualGrants: ManualSystemItemGrant[] = [];
+  for (const [key, value] of Object.entries(systemItems)) {
+    if (!isLooseRecord(value) || !isClanDaggerSystemItemGrant(value)) {
+      continue;
+    }
+
+    const uuid = typeof value.uuid === "string" ? value.uuid : CLAN_DAGGER_FEATURE_UUID;
+    manualGrants.push({
+      key,
+      uuid,
+      name: typeof value.name === "string" && value.name.trim().length > 0 ? value.name : "Clan Dagger",
+      defaultChoices: {
+        clanWeapon: "clan-dagger",
+      },
+    });
+    delete systemItems[key];
+  }
+
+  if (manualGrants.length === 0) {
+    return;
+  }
+
+  source.flags ??= {};
+  source.flags[MODULE_ID] = {
+    ...(source.flags[MODULE_ID] ?? {}),
+    manualSystemItemGrants: manualGrants,
+  };
+}
+
+function isClanDaggerSystemItemGrant(value: LooseRecord): boolean {
+  const name = typeof value.name === "string" ? value.name.trim().toLowerCase() : "";
+  const uuid = typeof value.uuid === "string" ? value.uuid.trim() : "";
+  return name === "clan dagger" || CLAN_DAGGER_FEATURE_SOURCE_IDS.has(uuid);
+}
+
+function readManualSystemItemGrants(item: ActorItemLike): ManualSystemItemGrant[] {
+  const grants = item.flags?.[MODULE_ID]?.manualSystemItemGrants;
+  if (!Array.isArray(grants)) {
+    return [];
+  }
+
+  return grants.flatMap((grant): ManualSystemItemGrant[] => {
+    if (!isLooseRecord(grant) || typeof grant.uuid !== "string" || typeof grant.name !== "string") {
+      return [];
+    }
+
+    return [
+      {
+        key:
+          typeof grant.key === "string" && grant.key.trim().length > 0
+            ? grant.key.trim()
+            : (slugifyName(grant.name) ?? "grant"),
+        uuid: grant.uuid,
+        name: grant.name,
+        defaultChoices: isLooseRecord(grant.defaultChoices)
+          ? Object.fromEntries(
+              Object.entries(grant.defaultChoices).filter(
+                (entry): entry is [string, string] => typeof entry[1] === "string"
+              )
+            )
+          : {},
+      },
+    ];
+  });
+}
+
+function selectionFromSystemGrant(grant: ManualSystemItemGrant): SelectionRef {
+  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(grant.uuid);
+  return {
+    slotId: `system-grant-${slugifyName(grant.name) ?? "item"}`,
+    packId: match?.[1] ?? "pf2e.feats-srd",
+    documentId: match?.[2] ?? grant.name,
+    uuid: grant.uuid,
+    itemType: "feat",
+    featType: "ancestryfeature",
+    name: grant.name,
+    level: null,
+  };
+}
+
+function grantSourceMatches(item: ActorItemLike, uuid: string): boolean {
+  return itemMatchesSourceId(item, uuid) || (CLAN_DAGGER_FEATURE_SOURCE_IDS.has(uuid) && item.name === "Clan Dagger");
+}
+
+function applyManualGrantChoices(source: EmbeddedItemSource, choices: Record<string, string>): void {
+  const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+  for (const [flag, value] of Object.entries(choices)) {
+    const ruleIndex = rules.findIndex((rule) => isLooseRecord(rule) && rule.key === "ChoiceSet" && rule.flag === flag);
+    if (ruleIndex >= 0) {
+      applyRuleSelection(source, ruleIndex, flag, value);
+    }
+  }
+}
+
 async function applyPendingGrantChoiceSelections(
   source: EmbeddedItemSource,
   selection: SelectionRef,
@@ -208,6 +481,7 @@ async function applyPendingGrantChoiceSelections(
   source.flags.pf2e ??= {};
   source.flags.pf2e.rulesSelections ??= {};
 
+  const grantRuleIndexesToRemove = new Set<number>();
   for (const step of steps) {
     if (step.kind !== "pick-item" || !step.grantSelection || step.grantSelection.selectorUuid !== selection.uuid) {
       continue;
@@ -236,6 +510,115 @@ async function applyPendingGrantChoiceSelections(
         };
       }
     }
+
+    if (EXPLICIT_GRANT_SOURCE_ITEM_TYPES.has(step.grantSelection.sourceItemType)) {
+      grantRuleIndexesToRemove.add(step.grantSelection.grantRuleIndex);
+    }
+  }
+
+  if (grantRuleIndexesToRemove.size > 0) {
+    source.system ??= {};
+    source.system.rules = rules.filter((_rule, index) => !grantRuleIndexesToRemove.has(index));
+  }
+}
+
+export async function createSingletonGrantItems(
+  actor: ActorLike,
+  draft: DraftState,
+  steps: PendingStep[],
+  deps: InsertFeatSelectionDependencies = DEFAULT_INSERT_DEPS
+): Promise<void> {
+  if (typeof actor.createEmbeddedDocuments !== "function") {
+    return;
+  }
+
+  for (const step of steps) {
+    if (
+      step.kind !== "pick-item" ||
+      !step.grantSelection ||
+      !EXPLICIT_GRANT_SOURCE_ITEM_TYPES.has(step.grantSelection.sourceItemType)
+    ) {
+      continue;
+    }
+
+    const grantedSelection = draft.selections[step.slotId];
+    if (!grantedSelection) {
+      continue;
+    }
+
+    const actorItems = listActorItems(actor) as ActorItemLike[];
+    const granter = actorItems.find((item) => itemMatchesSourceId(item, step.grantSelection!.selectorUuid));
+    if (!granter?.id) {
+      continue;
+    }
+
+    if (actorItems.some((item) => itemMatchesSourceId(item, grantedSelection.uuid))) {
+      continue;
+    }
+
+    const source = await deps.createEmbeddedSource(grantedSelection, draft, steps);
+    if (!source) {
+      continue;
+    }
+
+    source.flags ??= {};
+    source.flags.core ??= {};
+    source.flags.core.sourceId = grantedSelection.uuid;
+    source.flags.pf2e ??= {};
+    source.flags.pf2e.grantedBy = {
+      id: granter.id,
+      onDelete: "cascade",
+    };
+    source.flags[MODULE_ID] = {
+      ...(source.flags[MODULE_ID] ?? {}),
+      importedBy: MODULE_ID,
+      slotId: step.slotId,
+    };
+
+    const created = await actor.createEmbeddedDocuments("Item", [source]);
+    const createdItem = Array.isArray(created) ? ((created[0] as ActorItemLike | undefined) ?? null) : null;
+    if (!createdItem?.id || typeof actor.updateEmbeddedDocuments !== "function") {
+      continue;
+    }
+
+    const granterSlotId = resolveExplicitGrantSourceSlotId(step.grantSelection.sourceItemType, draft, granter);
+    await actor.updateEmbeddedDocuments("Item", [
+      {
+        _id: granter.id,
+        ...(granterSlotId
+          ? {
+              [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
+              [`flags.${MODULE_ID}.slotId`]: granterSlotId,
+            }
+          : {}),
+        [`flags.pf2e.itemGrants.${step.grantSelection.flag}`]: {
+          id: createdItem.id,
+          onDelete: "detach",
+          nested: null,
+        },
+      },
+    ]);
+  }
+}
+
+function resolveExplicitGrantSourceSlotId(
+  sourceItemType: string,
+  draft: DraftState,
+  granter: ActorItemLike
+): string | null {
+  const draftSlotId =
+    Object.values(draft.selections).find((selection) => selection.uuid === sourceIdOf(granter))?.slotId ?? null;
+  if (draftSlotId) {
+    return draftSlotId;
+  }
+
+  switch (sourceItemType) {
+    case "ancestry":
+    case "heritage":
+    case "background":
+      return `${sourceItemType}-level-1`;
+    default:
+      return null;
   }
 }
 
@@ -470,7 +853,12 @@ export async function stampSelectionFlags(
 
   const updates: Record<string, unknown>[] = [];
   for (const item of items) {
-    if (!item?.id) {
+    if (
+      !item?.id ||
+      hasConflictingItemType(item, selection) ||
+      isPf2eGrantedChildItem(item) ||
+      hasConflictingSourceId(item, selection.uuid)
+    ) {
       continue;
     }
 
@@ -485,6 +873,20 @@ export async function stampSelectionFlags(
   if (updates.length > 0) {
     await actor.updateEmbeddedDocuments("Item", updates);
   }
+}
+
+function isPf2eGrantedChildItem(item: ActorItemLike): boolean {
+  const grantedBy = item.flags?.pf2e?.grantedBy;
+  return !!grantedBy && typeof grantedBy === "object";
+}
+
+function hasConflictingItemType(item: ActorItemLike, selection: SelectionRef): boolean {
+  return typeof item.type === "string" && item.type.length > 0 && item.type !== selection.itemType;
+}
+
+function hasConflictingSourceId(item: ActorItemLike, sourceId: string): boolean {
+  const itemSourceId = sourceIdOf(item);
+  return !!itemSourceId && itemSourceId !== sourceId;
 }
 
 export function orderSelections(draft: DraftState, steps: PendingStep[]): SelectionRef[] {
@@ -506,4 +908,33 @@ export function featSelections(selections: SelectionRef[]): SelectionRef[] {
 
 export function hasSourceId(actor: ActorLike, sourceId: string): boolean {
   return (listActorItems(actor) as ActorItemLike[]).some((item) => itemMatchesSourceId(item, sourceId));
+}
+
+export async function restoreSingletonSourceSlotFlags(actor: ActorLike, draft: DraftState): Promise<void> {
+  if (typeof actor.updateEmbeddedDocuments !== "function") {
+    return;
+  }
+
+  const actorItems = listActorItems(actor) as ActorItemLike[];
+  const updates: Record<string, unknown>[] = [];
+  for (const selection of Object.values(draft.selections)) {
+    if (!SINGLETON_ITEM_TYPES.has(selection.itemType)) {
+      continue;
+    }
+
+    const item = actorItems.find((entry) => itemMatchesSourceId(entry, selection.uuid));
+    if (!item?.id || item.flags?.[MODULE_ID]?.slotId === selection.slotId) {
+      continue;
+    }
+
+    updates.push({
+      _id: item.id,
+      [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
+      [`flags.${MODULE_ID}.slotId`]: selection.slotId,
+    });
+  }
+
+  if (updates.length > 0) {
+    await actor.updateEmbeddedDocuments("Item", updates);
+  }
 }

@@ -38,6 +38,7 @@ export async function applyClassBranchDraft(
           value: selection.uuid,
         },
       ],
+      omitSelectedRulesOnCreate: true,
       grantPlan: {
         flag: branch.flag,
         slotId: step.slotId,
@@ -48,7 +49,11 @@ export async function applyClassBranchDraft(
       },
     };
 
-    await applySelectorApplication(actor, plan, deps);
+    await applySelectorApplication(actor, plan, {
+      ...deps,
+      createEmbeddedSource: (selection, sourceDraft, sourceSteps) =>
+        deps.createEmbeddedSource(selection, sourceDraft ?? draft, sourceSteps ?? steps),
+    });
   }
 }
 

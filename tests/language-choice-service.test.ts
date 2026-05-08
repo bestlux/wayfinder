@@ -59,6 +59,60 @@ describe("language-choice service", () => {
     });
   });
 
+  it("uses the campaign language list when ancestry grants open language slots", async () => {
+    const draft = createEmptyDraft(1);
+    const steps = await buildLanguageChoiceSteps({
+      snapshot: {
+        actorId: "actor-1",
+        level: 1,
+        isBlank: true,
+        singletonSlots: {
+          ancestry: true,
+          heritage: false,
+          background: true,
+          class: true,
+          deity: false,
+        },
+        featCounts: {
+          ancestry: 0,
+          class: 0,
+          archetype: 0,
+          skill: 0,
+          general: 0,
+        },
+        sourceIds: [],
+        namesByType: {},
+        skillRanks: {},
+      },
+      targetLevel: 1,
+      draft,
+      effectiveBuildState: buildState({
+        languages: {
+          sourceLanguages: [],
+          grantedLanguages: ["common"],
+          selectableLanguages: [],
+          maxSelections: 2,
+        },
+      }),
+      availableLanguageSlugs: ["common", "draconic", "dwarven"],
+      readExistingLanguageSelections: () => [],
+      localizeLanguage: (slug) => slug[0].toUpperCase() + slug.slice(1),
+    });
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({
+      kind: "language-choice",
+      slotId: "language-choice-level-1",
+      languageChoice: {
+        count: 2,
+        options: [
+          { value: "draconic", label: "Draconic" },
+          { value: "dwarven", label: "Dwarven" },
+        ],
+      },
+    });
+  });
+
   it("skips the step until creation boosts are finished", async () => {
     const steps = await buildLanguageChoiceSteps({
       snapshot: {

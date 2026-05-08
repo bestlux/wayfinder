@@ -8,7 +8,7 @@ type EffectiveBuildState = Awaited<ReturnType<typeof getEffectiveBuildState>>;
 describe("actor-updater boost application", () => {
   it("writes effective ancestry, background, class, and actor boost values", async () => {
     const updateEmbeddedDocuments = vi.fn(async () => []);
-    const update = vi.fn(async () => ({}));
+    const update = vi.fn(async (_updates: Record<string, unknown>) => ({}));
     const actor = {
       items: {
         contents: [
@@ -25,6 +25,7 @@ describe("actor-updater boost application", () => {
         },
         build: {
           attributes: {
+            manual: false,
             boosts: {
               1: ["str", "dex", "con", "wis"],
               5: [],
@@ -37,6 +38,17 @@ describe("actor-updater boost application", () => {
       },
       updateEmbeddedDocuments,
       update,
+      toObject: () => ({
+        system: {
+          build: {
+            attributes: {
+              boosts: {
+                1: ["str"],
+              },
+            },
+          },
+        },
+      }),
     };
     const draft = createEmptyDraft(5);
     const effectiveBuildState: EffectiveBuildState = {
@@ -98,7 +110,7 @@ describe("actor-updater boost application", () => {
       },
     };
 
-    await applyBoostDraft(actor, draft, {
+    const result = await applyBoostDraft(actor, draft, {
       getEffectiveBuildState: async () => effectiveBuildState,
     });
 
@@ -122,11 +134,19 @@ describe("actor-updater boost application", () => {
       },
     ]);
     expect(update).toHaveBeenCalledWith({
-      "system.build.attributes.boosts.1": ["str", "dex", "con", "wis"],
-      "system.build.attributes.boosts.5": ["str", "dex", "int", "cha"],
-      "system.build.attributes.boosts.10": [],
-      "system.build.attributes.boosts.15": [],
-      "system.build.attributes.boosts.20": [],
+      "system.build": {
+        attributes: {
+          boosts: {
+            1: ["str", "dex", "con", "wis"],
+            5: ["str", "dex", "int", "cha"],
+            10: [],
+            15: [],
+            20: [],
+          },
+        },
+      },
+      "system.details.keyability.value": "wis",
     });
+    expect(result.actorUpdate).toEqual(update.mock.calls[0]?.[0]);
   });
 });

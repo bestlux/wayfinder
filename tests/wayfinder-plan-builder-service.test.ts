@@ -34,6 +34,13 @@ describe("wayfinder plan builder service", () => {
       "Fighter Dedication",
       "class"
     );
+    draft.branchSelections["class-branch-arcane-school-level-1"] = selection(
+      "class-branch-arcane-school-level-1",
+      "feat",
+      "school-of-unified-magical-theory",
+      "School of Unified Magical Theory",
+      "classfeature"
+    );
     const snapshot: ActorSnapshot = {
       actorId: "actor-1",
       level: 2,
@@ -126,6 +133,11 @@ describe("wayfinder plan builder service", () => {
             sourceItemType: "feat",
             sourceSelection: draft.selections["ancestry-feat-level-1"],
             sourceDocument: { fetched: "elven-lore" },
+          }),
+          expect.objectContaining({
+            sourceItemType: "classfeature",
+            sourceSelection: draft.branchSelections["class-branch-arcane-school-level-1"],
+            sourceDocument: { fetched: "school-of-unified-magical-theory" },
           }),
         ])
       );

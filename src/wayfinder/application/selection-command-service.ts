@@ -30,7 +30,7 @@ interface ChooseSelectionOptionDependencies {
     sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity"
   ) => Promise<string[]>;
   invalidateGrantSelectionsBySource: (
-    sourceItemType: "ancestry" | "heritage" | "background" | "feat"
+    sourceItemType: "ancestry" | "heritage" | "background" | "feat" | "classfeature"
   ) => Promise<string[]>;
   invalidateGrantSelectionsByDependency: (dependency: "class" | "deity") => Promise<string[]>;
   invalidateClassChoicesByDependency: (dependency: "class" | "deity") => Promise<string[]>;
@@ -162,6 +162,7 @@ export async function chooseSelectionOption(
       const grantInvalidated = [
         ...(await deps.invalidateGrantSelectionsByDependency("class")),
         ...(await deps.invalidateGrantSelectionsByDependency("deity")),
+        ...(await deps.invalidateGrantSelectionsBySource("classfeature")),
       ];
       if (
         invalidated.length > 0 ||
@@ -208,8 +209,9 @@ export async function chooseSelectionOption(
 
   if (step.kind === "class-branch" && previousSelection?.uuid !== selection.uuid) {
     const invalidatedSpells = await deps.invalidateSpellChoicesByDependency("class-branch");
-    if (invalidatedSpells.length > 0 && step.branch?.flag === "arcaneSchool") {
-      statusNote = "Arcane school changed. Wayfinder marked dependent curriculum spell choices for review.";
+    const invalidatedGrantChoices = await deps.invalidateGrantSelectionsBySource("classfeature");
+    if ((invalidatedSpells.length > 0 || invalidatedGrantChoices.length > 0) && step.branch?.flag === "arcaneSchool") {
+      statusNote = "Arcane school changed. Wayfinder marked dependent school choices for review.";
     }
   }
 

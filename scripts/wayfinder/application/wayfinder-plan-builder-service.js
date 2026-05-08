@@ -98,6 +98,7 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             targetLevel,
             draft: planDraft,
             effectiveBuildState: await getEffectiveBuildState(args.actor, planDraft),
+            availableLanguageSlugs: listAvailableLanguageSlugs(),
             readExistingLanguageSelections: () => deps.readExistingLanguageSelections(args.actor),
             localizeLanguage: (slug) => localizeLanguageLabel(slug),
         }),
@@ -166,6 +167,22 @@ function localizeLanguageLabel(slug) {
         .filter(Boolean)
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
+}
+function listAvailableLanguageSlugs() {
+    const globals = globalThis;
+    const unavailable = normalizeLanguageSet(globals.game?.pf2e?.settings?.campaign?.languages?.unavailable);
+    return Object.keys(globals.CONFIG?.PF2E?.languages ?? {})
+        .map((slug) => slug.trim().toLowerCase())
+        .filter((slug) => slug.length > 0 && !unavailable.has(slug));
+}
+function normalizeLanguageSet(value) {
+    if (value instanceof Set) {
+        return new Set(Array.from(value).filter((slug) => typeof slug === "string"));
+    }
+    if (Array.isArray(value)) {
+        return new Set(value.filter((slug) => typeof slug === "string"));
+    }
+    return new Set();
 }
 export async function findPlanStepBySlotId(args, slotId, deps = DEFAULT_DEPS) {
     const plan = await buildWayfinderAppPlan(args, deps);
@@ -239,6 +256,8 @@ async function resolveGrantChoiceSources(draft, args, deps) {
         ...readExistingSkillTrainingFeatSelections(args.actor).filter(isAncestryFeatSelection),
     ]);
     const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+    const classFeatureSelections = dedupeSelectionsByUuid(Object.values(draft.branchSelections));
+    const classFeatureDocuments = await Promise.all(classFeatureSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     return [
         ...sourceItemTypes.flatMap((sourceItemType, index) => {
             const sourceSelection = deps.findDraftSelectionByType(draft, sourceItemType) ??
@@ -260,6 +279,18 @@ async function resolveGrantChoiceSources(draft, args, deps) {
                 ? [
                     {
                         sourceItemType: "feat",
+                        sourceSelection,
+                        sourceDocument,
+                    },
+                ]
+                : [];
+        }),
+        ...classFeatureSelections.flatMap((sourceSelection, index) => {
+            const sourceDocument = classFeatureDocuments[index];
+            return sourceDocument
+                ? [
+                    {
+                        sourceItemType: "classfeature",
                         sourceSelection,
                         sourceDocument,
                     },

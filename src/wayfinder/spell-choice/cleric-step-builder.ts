@@ -1,5 +1,5 @@
 import type { PendingStep } from "../../types.js";
-import { parseDeitySpellNames } from "./metadata-parsing.js";
+import { parseDeitySpellAccess } from "./metadata-parsing.js";
 import { findClassFeatureSource } from "./source-utils.js";
 import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helpers.js";
 import type { BuildClericSpellChoiceStepsParams } from "./types.js";
@@ -18,7 +18,7 @@ export function buildClericSpellChoiceSteps(params: BuildClericSpellChoiceStepsP
   const { draft, effectiveClassDocument, effectiveDeityDocument, readExistingSpellChoiceSelections, classSlug } =
     params;
   const clericSpellcastingSource = findClassFeatureSource(effectiveClassDocument, "Cleric Spellcasting");
-  const deityRankOneSpellNames = parseDeitySpellNames(effectiveDeityDocument, 1);
+  const deityRankOneSpellAccess = parseDeitySpellAccess(effectiveDeityDocument, 1);
   const steps: PendingStep[] = [];
 
   const addStep = (step: PendingStep): void =>
@@ -58,7 +58,8 @@ export function buildClericSpellChoiceSteps(params: BuildClericSpellChoiceStepsP
       maxRank: 1,
       cantrip: false,
       curriculumSpellNames: [],
-      additionalAllowedSpellNames: deityRankOneSpellNames,
+      additionalAllowedSpellNames: deityRankOneSpellAccess.names,
+      additionalAllowedSpellUuids: deityRankOneSpellAccess.uuids,
       restrictToCommon: true,
       destination: CLERIC_PREPARED_DESTINATION,
     })

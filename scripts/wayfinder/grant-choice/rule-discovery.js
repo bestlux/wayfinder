@@ -18,7 +18,7 @@ export function discoverGrantSelectionMeta(args) {
         if (grantRuleIndex === -1) {
             return [];
         }
-        const dependsOn = resolveGrantDependency(filters.predicate ?? []);
+        const dependsOn = resolveGrantDependency(sourceItemType, filters.predicate ?? []);
         const dependencyKey = dependsOn ?? "none";
         return [
             {
@@ -40,8 +40,8 @@ export function discoverGrantSelectionMeta(args) {
     });
     function resolveChoiceFilters(rule) {
         const choices = isRecord(rule.choices) ? rule.choices : null;
-        const itemType = toNonEmptyString(choices?.itemType);
         const predicate = Array.isArray(choices?.filter) ? choices.filter.filter(isChoicePredicate) : [];
+        const itemType = toNonEmptyString(choices?.itemType) ?? inferItemTypeFromPredicate(predicate);
         if (!itemType || predicate.length === 0) {
             return null;
         }
@@ -50,6 +50,32 @@ export function discoverGrantSelectionMeta(args) {
             predicate,
         };
     }
+}
+function inferItemTypeFromPredicate(predicate) {
+    for (const entry of predicate) {
+        const inferred = inferItemTypeFromPredicateEntry(entry);
+        if (inferred) {
+            return inferred;
+        }
+    }
+    return null;
+}
+function inferItemTypeFromPredicateEntry(predicate) {
+    if (typeof predicate === "string") {
+        const match = /^item:type:([^:]+)$/.exec(predicate);
+        return match?.[1] ?? null;
+    }
+    if (Array.isArray(predicate)) {
+        return inferItemTypeFromPredicate(predicate);
+    }
+    if (!isRecord(predicate)) {
+        return null;
+    }
+    const branches = [predicate.or, predicate.nor].filter(Array.isArray).flat();
+    if (predicate.not) {
+        branches.push(predicate.not);
+    }
+    return inferItemTypeFromPredicate(branches);
 }
 function findRelevantRules(document) {
     const rules = document?.system?.rules;
@@ -65,7 +91,10 @@ function extractChoiceKey(rule) {
     }
     return null;
 }
-function resolveGrantDependency(predicate) {
+function resolveGrantDependency(sourceItemType, predicate) {
+    if (sourceItemType === "classfeature") {
+        return "class";
+    }
     if (predicateIncludesString(predicate, "{actor|system.details.class.trait}") ||
         predicateIncludesString(predicate, "item:trait:multiclass")) {
         return "class";

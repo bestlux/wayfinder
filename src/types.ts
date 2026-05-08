@@ -133,6 +133,7 @@ export interface OptionContext {
   deitySelected?: boolean;
   sanctification?: "holy" | "unholy" | "none" | null;
   hasDedicationFeat: boolean;
+  selectedUuidsBySlotId?: Record<string, string>;
 }
 
 export interface PickerInfoState {

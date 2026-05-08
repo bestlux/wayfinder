@@ -76,6 +76,46 @@ describe("wayfinder spell-choice step builders", () => {
     ]);
   });
 
+  it("merges selected static class-feature grant curriculum into wizard school spell choices", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(1),
+      currentLevel: 1,
+      effectiveClassDocument: wizardClassDocument(),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: {
+        name: "School of Rooted Wisdom",
+        flags: {
+          core: {
+            sourceId: "Compendium.pf2e.classfeatures.Item.school-of-rooted-wisdom",
+          },
+        },
+        system: {
+          slug: "school-of-rooted-wisdom",
+          description: {
+            value:
+              "<ul><li><strong>cantrips:</strong> @UUID[Compendium.pf2e.spells-srd.Item.Detect Magic]</li><li><strong>1st:</strong> @UUID[Compendium.pf2e.spells-srd.Item.Alarm]</li></ul>",
+          },
+        },
+      },
+      effectiveClassFeatureDocuments: [
+        {
+          name: "Cascade Bearers",
+          system: {
+            description: {
+              value:
+                "<p><strong>Additional Curriculum</strong></p><ul><li><strong>cantrips:</strong> @UUID[Compendium.pf2e.spells-srd.Item.Telekinetic Projectile]</li><li><strong>1st:</strong> @UUID[Compendium.pf2e.spells-srd.Item.Force Barrage], @UUID[Compendium.pf2e.spells-srd.Item.Mystic Armor]</li></ul>",
+            },
+          },
+        },
+      ],
+      targetLevel: 1,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps[2]?.spellChoice?.curriculumSpellNames).toEqual(["Alarm", "Force Barrage", "Mystic Armor"]);
+  });
+
   it("suppresses resolved wizard spell-choice steps when actor state already covers them", async () => {
     const steps = await buildSpellChoiceSteps({
       draft: createEmptyDraft(1),

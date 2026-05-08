@@ -18,6 +18,7 @@ export interface BuildClassSpellChoiceStepsArgs extends BuildClassContributionDe
   effectiveClassDocument: SpellChoiceClassDocument;
   effectiveDeityDocument: SpellChoiceDeityDocument | null;
   effectiveSchoolDocument: SpellChoiceSchoolDocument | null;
+  effectiveClassFeatureDocuments?: SpellChoiceSchoolDocument[];
   readExistingSpellChoiceSelections: ReadExistingSpellChoiceSelections;
 }
 

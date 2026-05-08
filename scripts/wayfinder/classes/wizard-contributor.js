@@ -8,6 +8,7 @@ export const wizardContributor = {
             currentLevel: args.currentLevel,
             effectiveClassDocument: args.effectiveClassDocument,
             effectiveSchoolDocument: args.effectiveSchoolDocument,
+            effectiveClassFeatureDocuments: args.effectiveClassFeatureDocuments ?? [],
             targetLevel: args.targetLevel,
             extractSlug: args.extractSlug,
             readExistingSpellChoiceSelections: args.readExistingSpellChoiceSelections,

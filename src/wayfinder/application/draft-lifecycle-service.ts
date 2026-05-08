@@ -8,7 +8,7 @@ export interface ApplyDraftLifecycleArgs {
   draft: DraftState;
   steps: PendingStep[];
   isStepComplete: (step: PendingStep) => Promise<boolean>;
-  confirmApply?: (message: string) => boolean;
+  confirmApply?: (message: string) => boolean | Promise<boolean>;
   applyDraftToActor: () => Promise<Record<string, unknown> | void>;
   updateActor: (update: Record<string, unknown>) => Promise<void>;
   now?: () => string;
@@ -28,7 +28,8 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
     };
   }
 
-  const confirmed = args.confirmApply?.(buildApplyConfirmationMessage(args.actorName, args.steps.length)) ?? true;
+  const confirmed =
+    (await args.confirmApply?.(buildApplyConfirmationMessage(args.actorName, args.steps.length))) ?? true;
   if (!confirmed) {
     return {
       kind: "cancelled",

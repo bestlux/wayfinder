@@ -463,6 +463,82 @@ describe("actor-updater integration", () => {
     expect(generalTraining?.flags?.pf2e?.itemGrants).toBeUndefined();
   });
 
+  it("leaves static UUID singleton grants to PF2E native GrantItem application", async () => {
+    const { actor, createdItems } = buildActorHarness();
+    setGamePacks({
+      "pf2e.backgrounds": {
+        wanderlust: {
+          name: "Wanderlust",
+          type: "background",
+          system: {
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "feat",
+                choices: [
+                  { value: "Compendium.pf2e.feats-srd.Item.titan-swing" },
+                  { value: "Compendium.pf2e.feats-srd.Item.overclock-senses" },
+                ],
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.feat}",
+              },
+            ],
+          },
+        },
+      },
+      "pf2e.feats-srd": {
+        "titan-swing": {
+          name: "Titan Swing",
+          type: "feat",
+          system: {
+            category: "class",
+            level: { value: 2 },
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(1);
+    draft.selections["background-level-1"] = selection(
+      "background-level-1",
+      "pf2e.backgrounds",
+      "wanderlust",
+      "background",
+      "Wanderlust"
+    );
+    draft.selections["grant-choice-none-background-wanderlust-feat-level-1"] = selection(
+      "grant-choice-none-background-wanderlust-feat-level-1",
+      "pf2e.feats-srd",
+      "titan-swing",
+      "feat",
+      "Titan Swing",
+      "class",
+      2
+    );
+
+    await applyDraftToActor(actor as any, draft, [backgroundSelectionStep(), wanderlustStaticGrantStep()]);
+
+    const wanderlust = createdItems.find((item) => item?.sourceId === "Compendium.pf2e.backgrounds.Item.wanderlust");
+    expect(createdItems.map((item) => item.name)).toEqual(["Wanderlust"]);
+    expect(wanderlust?.system?.rules).toEqual([
+      expect.objectContaining({
+        key: "ChoiceSet",
+        flag: "feat",
+        selection: "Compendium.pf2e.feats-srd.Item.titan-swing",
+      }),
+      expect.objectContaining({
+        key: "GrantItem",
+        uuid: "{item|flags.system.rulesSelections.feat}",
+      }),
+    ]);
+    expect(wanderlust?.flags?.pf2e?.rulesSelections).toEqual({
+      feat: "Compendium.pf2e.feats-srd.Item.titan-swing",
+    });
+    expect(wanderlust?.flags?.pf2e?.itemGrants).toBeUndefined();
+  });
+
   it("imports a selected wizard class and preseeds drafted branch selectors plus granted items", async () => {
     const { actor, createdItems } = buildActorHarness();
 
@@ -1454,6 +1530,41 @@ function generalTrainingGrantStep(): PendingStep {
       dependsOn: null,
       filters: {
         itemType: "feat",
+      },
+    },
+  };
+}
+
+function wanderlustStaticGrantStep(): PendingStep {
+  return {
+    id: "grant-choice-none-background-wanderlust-feat-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "grant-choice",
+    title: "Wanderlust feat grant",
+    description: "",
+    required: true,
+    slotId: "grant-choice-none-background-wanderlust-feat-level-1",
+    filters: {
+      itemType: "feat",
+      uuids: ["Compendium.pf2e.feats-srd.Item.titan-swing", "Compendium.pf2e.feats-srd.Item.overclock-senses"],
+    },
+    grantSelection: {
+      slotId: "grant-choice-none-background-wanderlust-feat-level-1",
+      sourceItemType: "background",
+      selectorPackId: "pf2e.backgrounds",
+      selectorDocumentId: "wanderlust",
+      selectorUuid: "Compendium.pf2e.backgrounds.Item.wanderlust",
+      selectorName: "Wanderlust",
+      selectorRuleIndex: 0,
+      grantRuleIndex: 1,
+      flag: "feat",
+      itemType: "feat",
+      classSlug: null,
+      dependsOn: null,
+      filters: {
+        itemType: "feat",
+        uuids: ["Compendium.pf2e.feats-srd.Item.titan-swing", "Compendium.pf2e.feats-srd.Item.overclock-senses"],
       },
     },
   };

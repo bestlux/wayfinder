@@ -12,12 +12,15 @@ const WIZARD_SPELLBOOK_DESTINATION = {
     prepared: "prepared",
 };
 export function buildWizardSpellChoiceSteps(params) {
-    const { draft, currentLevel, effectiveClassDocument, effectiveSchoolDocument, targetLevel, extractSlug, readExistingSpellChoiceSelections, classSlug, } = params;
+    const { draft, currentLevel, effectiveClassDocument, effectiveSchoolDocument, effectiveClassFeatureDocuments = [], targetLevel, extractSlug, readExistingSpellChoiceSelections, classSlug, } = params;
     const wizardSpellcastingSource = findClassFeatureSource(effectiveClassDocument, "Wizard Spellcasting");
     const schoolName = String(effectiveSchoolDocument?.name ?? "Arcane School");
     const schoolSource = sourceRefFromDocument(effectiveSchoolDocument) ?? fallbackSourceRef(schoolName);
     const schoolSlug = extractSlug(effectiveSchoolDocument);
-    const schoolCurriculum = parseCurriculumSpells(effectiveSchoolDocument?.system?.description?.value);
+    const schoolCurriculum = mergeCurriculumSpells([
+        parseCurriculumSpells(effectiveSchoolDocument?.system?.description?.value),
+        ...effectiveClassFeatureDocuments.map((document) => parseCurriculumSpells(document.system?.description?.value)),
+    ]);
     const isUnifiedTheory = schoolSlug === "school-of-unified-magical-theory";
     const steps = [];
     const addStep = (step) => appendPendingSpellChoiceStep(steps, step, draft, readExistingSpellChoiceSelections);
@@ -136,5 +139,19 @@ export function buildWizardSpellChoiceSteps(params) {
         }
     }
     return steps;
+}
+function mergeCurriculumSpells(curricula) {
+    const merged = {};
+    for (const curriculum of curricula) {
+        for (const [rankKey, names] of Object.entries(curriculum)) {
+            const rank = Number(rankKey);
+            if (!Number.isInteger(rank)) {
+                continue;
+            }
+            const existing = merged[rank] ?? [];
+            merged[rank] = [...existing, ...names.filter((name) => !existing.includes(name))];
+        }
+    }
+    return merged;
 }
 //# sourceMappingURL=wizard-step-builder.js.map

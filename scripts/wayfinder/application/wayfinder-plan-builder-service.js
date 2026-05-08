@@ -140,6 +140,7 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
                     effectiveClassDocument,
                     effectiveDeityDocument,
                     effectiveSchoolDocument,
+                    effectiveClassFeatureDocuments: await resolveSpellChoiceClassFeatureDocuments(planDraft, deps),
                     targetLevel,
                     extractSlug: deps.extractDocumentSlug,
                     readExistingSpellChoiceSelections: readExistingSelections,
@@ -303,7 +304,17 @@ function isAncestryFeatSelection(selection) {
     return selection.itemType === "feat" && selection.featType === "ancestry";
 }
 function isGrantChoiceFeatSelection(selection) {
-    return selection.itemType === "feat" && selection.slotId.startsWith("grant-choice-");
+    return (selection.itemType === "feat" &&
+        selection.slotId.startsWith("grant-choice-") &&
+        !isGrantChoiceClassFeatureSelection(selection));
+}
+async function resolveSpellChoiceClassFeatureDocuments(draft, deps) {
+    const selections = dedupeSelectionsByUuid(Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection)));
+    const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
+    return documents.filter((document) => document !== null);
+}
+function isGrantChoiceClassFeatureSelection(selection) {
+    return selection.slotId.startsWith("grant-choice-") && selection.packId === "pf2e.classfeatures";
 }
 function isSkillTrainingFeatSelection(selection) {
     return isAncestryFeatSelection(selection) || isGrantChoiceFeatSelection(selection);

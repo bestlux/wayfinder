@@ -11,6 +11,7 @@ import type {
   LooseRecord,
   SelectionDocumentLike,
 } from "../shared/actor-model.js";
+import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
 import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 import type { AbilityKey, DraftState, PendingStep, SelectionRef } from "../types.js";
@@ -511,7 +512,10 @@ async function applyPendingGrantChoiceSelections(
       }
     }
 
-    if (EXPLICIT_GRANT_SOURCE_ITEM_TYPES.has(step.grantSelection.sourceItemType)) {
+    if (
+      EXPLICIT_GRANT_SOURCE_ITEM_TYPES.has(step.grantSelection.sourceItemType) &&
+      !usesNativeGrantItemCreation(step)
+    ) {
       grantRuleIndexesToRemove.add(step.grantSelection.grantRuleIndex);
     }
   }
@@ -536,7 +540,8 @@ export async function createSingletonGrantItems(
     if (
       step.kind !== "pick-item" ||
       !step.grantSelection ||
-      !EXPLICIT_GRANT_SOURCE_ITEM_TYPES.has(step.grantSelection.sourceItemType)
+      !EXPLICIT_GRANT_SOURCE_ITEM_TYPES.has(step.grantSelection.sourceItemType) ||
+      usesNativeGrantItemCreation(step)
     ) {
       continue;
     }

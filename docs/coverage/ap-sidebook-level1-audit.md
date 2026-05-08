@@ -58,6 +58,21 @@ Covered by this new path:
 | Lost Omens heritages | `Old-Blood Vishkanya`, `Steadfast Tanuki` | Explicit skill or ancestry feat pair |
 | Lost Omens class features | `School of Rooted Wisdom`, `School of Thassilonian Rune Magic` | Explicit class-feature branch lists |
 
+## Live Static UUID Grant Smoke
+
+Live smoke was run in Foundry on 2026-05-08 after rebuilding the module.
+
+| Case | Actor | Flow | Expected grant options | Result | Placement / close evidence |
+| --- | --- | --- | --- | --- | --- |
+| AP / player-guide background | `WF Static 002` | Human / Aiuvarin / `Wanderlust` / Fighter | `Overclock Senses`, `Titan Swing` | Pass | Selected `Titan Swing`; PF2E placed the granted deviant feat under bonus feats with its nested grants, normal ancestry/class/skill feats landed in their sheet sections, Wayfinder closed after Foundry `DialogV2` confirmation, and no PF2E-native choice popup appeared. |
+| Lost Omens heritage | `WF Static 001` | Tanuki / `Steadfast Tanuki` / Acolyte / Fighter | `Everyday Form`, `Teakettle Form` | Pass | Selected `Everyday Form`; `Tanuki Lore`, `Sudden Charge`, `Student of the Canon`, and `Everyday Form` appeared on the Feats tab in the expected sections, Wayfinder closed, and no PF2E-native choice popup appeared. |
+| Lost Omens class-feature branch | `WF Static 003` | Human / Aiuvarin / Acolyte / Wizard / `School of Rooted Wisdom` | `Cascade Bearers`, `Emerald Boughs`, `Rain-Scribes`, `Tempest-Sun Mages`, `Uzunjati` | Pass after small fix | Selected `Cascade Bearers`; the branch fed the curriculum spell step with `Alarm`, `Force Barrage`, and `Mystic Armor`, then applied cleanly. The sheet nested `Cascade Bearers` under `School of Rooted Wisdom` in Class Features, and Wayfinder closed without a PF2E-native choice popup. |
+
+Live smoke also exposed two audit-sized regressions that are now covered:
+
+- Native `window.confirm` blocked browser-driven smoke at apply time. Wayfinder now uses Foundry `DialogV2.confirm` when available, with an async lifecycle test.
+- Static class-feature grant selections need to be available as planning context before PF2E creates the native granted item. Wayfinder now feeds drafted class-feature grant documents into spell-step construction without treating them as ordinary feat sources.
+
 ## Reasonable But Not Audit-Sized
 
 These shapes are supportable, but they need a larger design slice than this audit should absorb.
@@ -82,12 +97,12 @@ These should not be pulled into Wayfinder yet:
 
 ## Prioritized Follow-Up List
 
-1. Live-smoke static UUID grants in Foundry: `Wanderlust`, `Sponsored by a Stranger`, `Old-Blood Vishkanya`, and one Rival Academies school branch.
-2. Add predicate-aware option filtering for static grant choices, then cover `Molten Wit` before touching larger class-feature chains.
-3. Add a generic config catalog resolver if `Samsaran Weapon Memory` is worth bringing into guided scope.
-4. Add item-pack support for non-feat static grants only after an equipment/class-feature grant acceptance test proves the apply path.
-5. Build side-book class contributors one class at a time, starting with the class whose level-1 choices are most structurally regular.
-6. Revisit the 42 multiple-`ChoiceSet` canaries after predicate-aware grant choices and side-book class contributors exist.
+1. Add predicate-aware option filtering for static grant choices, then cover `Molten Wit` before touching larger class-feature chains.
+2. Add a generic config catalog resolver if `Samsaran Weapon Memory` is worth bringing into guided scope.
+3. Add item-pack support for non-feat static grants only after an equipment/class-feature grant acceptance test proves the apply path.
+4. Build side-book class contributors one class at a time, starting with the class whose level-1 choices are most structurally regular.
+5. Revisit the 42 multiple-`ChoiceSet` canaries after predicate-aware grant choices and side-book class contributors exist.
+6. Clean up Foundry v13 deprecation warnings observed during smoke (`loadTemplates`, global `TextEditor`, and legacy forced-deletion update keys) in a separate compatibility slice.
 
 ## Validation
 
@@ -96,5 +111,9 @@ Targeted checks added with this audit:
 - `tests/wayfinder-grant-choice-step-builders.test.ts` covers AP static UUID feat grants, static UUID class-feature grants, and skips predicate-gated static UUID grants.
 - `tests/pack-service.test.ts` covers explicit UUID allowlist filtering against Foundry-style ID UUIDs and PF2E source-data name UUIDs.
 - `tests/wayfinder-singleton-rule-discovery.test.ts` covers skipping grant selector `ChoiceSet`s so grant-choice owns them.
+- `tests/actor-updater-integration.test.ts` covers leaving static UUID feat grants to PF2E native `GrantItem` creation.
+- `tests/wayfinder-draft-lifecycle-service.test.ts` covers async Foundry confirmation before apply-side mutation.
+- `tests/wayfinder-spell-choice-step-builders.test.ts` covers merging static class-feature branch curriculum into wizard spell-choice steps.
+- `tests/wayfinder-plan-builder-service.test.ts` covers passing drafted static class-feature grant documents into spell planning.
 
-The default level-1 regression gate still needs to pass before this audit is complete.
+Full gate passed after the live-smoke fixes: `npm run check`.

@@ -3,6 +3,7 @@ import { stripPreselectedClassBranchEntries } from "../class-branch-service.js";
 import { stripPreselectedClassFeatureEntries } from "../class-feature-choice-service.js";
 import { MODULE_ID } from "../constants.js";
 import { fetchSelectionDocument } from "../pack-service.js";
+import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
 import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 const SINGLETON_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
@@ -367,7 +368,8 @@ async function applyPendingGrantChoiceSelections(source, selection, draft, steps
                 };
             }
         }
-        if (EXPLICIT_GRANT_SOURCE_ITEM_TYPES.has(step.grantSelection.sourceItemType)) {
+        if (EXPLICIT_GRANT_SOURCE_ITEM_TYPES.has(step.grantSelection.sourceItemType) &&
+            !usesNativeGrantItemCreation(step)) {
             grantRuleIndexesToRemove.add(step.grantSelection.grantRuleIndex);
         }
     }
@@ -383,7 +385,8 @@ export async function createSingletonGrantItems(actor, draft, steps, deps = DEFA
     for (const step of steps) {
         if (step.kind !== "pick-item" ||
             !step.grantSelection ||
-            !EXPLICIT_GRANT_SOURCE_ITEM_TYPES.has(step.grantSelection.sourceItemType)) {
+            !EXPLICIT_GRANT_SOURCE_ITEM_TYPES.has(step.grantSelection.sourceItemType) ||
+            usesNativeGrantItemCreation(step)) {
             continue;
         }
         const grantedSelection = draft.selections[step.slotId];

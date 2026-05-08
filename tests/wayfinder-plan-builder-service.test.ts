@@ -41,6 +41,16 @@ describe("wayfinder plan builder service", () => {
       "School of Unified Magical Theory",
       "classfeature"
     );
+    draft.selections["grant-choice-class-classfeature-school-of-rooted-wisdom-branch-level-1"] = {
+      slotId: "grant-choice-class-classfeature-school-of-rooted-wisdom-branch-level-1",
+      packId: "pf2e.classfeatures",
+      documentId: "cascade-bearers",
+      uuid: "Compendium.pf2e.classfeatures.Item.cascade-bearers",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "Cascade Bearers",
+      level: 1,
+    };
     const snapshot: ActorSnapshot = {
       actorId: "actor-1",
       level: 2,
@@ -213,6 +223,7 @@ describe("wayfinder plan builder service", () => {
       expect(params.effectiveClassDocument).toBe(classDocument);
       expect(params.effectiveDeityDocument).toBe(deityDocument);
       expect(params.effectiveSchoolDocument).toBe(schoolDocument);
+      expect(params.effectiveClassFeatureDocuments).toEqual([{ fetched: "cascade-bearers" }]);
       expect(
         params.readExistingSpellChoiceSelections({
           slotId: "spell-choice-wizard-level-1",

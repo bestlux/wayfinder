@@ -45,6 +45,7 @@ describe("wayfinder class contributors", () => {
       targetLevel: args.targetLevel,
       effectiveClassDocument: args.effectiveClassDocument,
       effectiveSchoolDocument: args.effectiveSchoolDocument,
+      effectiveClassFeatureDocuments: [],
       extractSlug: args.extractSlug,
       readExistingSpellChoiceSelections: args.readExistingSpellChoiceSelections,
       classSlug: "wizard",

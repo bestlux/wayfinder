@@ -21,6 +21,7 @@ export function buildWizardSpellChoiceSteps(params: BuildWizardSpellChoiceStepsP
     currentLevel,
     effectiveClassDocument,
     effectiveSchoolDocument,
+    effectiveClassFeatureDocuments = [],
     targetLevel,
     extractSlug,
     readExistingSpellChoiceSelections,
@@ -30,7 +31,10 @@ export function buildWizardSpellChoiceSteps(params: BuildWizardSpellChoiceStepsP
   const schoolName = String(effectiveSchoolDocument?.name ?? "Arcane School");
   const schoolSource = sourceRefFromDocument(effectiveSchoolDocument) ?? fallbackSourceRef(schoolName);
   const schoolSlug = extractSlug(effectiveSchoolDocument);
-  const schoolCurriculum = parseCurriculumSpells(effectiveSchoolDocument?.system?.description?.value);
+  const schoolCurriculum = mergeCurriculumSpells([
+    parseCurriculumSpells(effectiveSchoolDocument?.system?.description?.value),
+    ...effectiveClassFeatureDocuments.map((document) => parseCurriculumSpells(document.system?.description?.value)),
+  ]);
   const isUnifiedTheory = schoolSlug === "school-of-unified-magical-theory";
   const steps: PendingStep[] = [];
 
@@ -169,4 +173,21 @@ export function buildWizardSpellChoiceSteps(params: BuildWizardSpellChoiceStepsP
   }
 
   return steps;
+}
+
+function mergeCurriculumSpells(curricula: Record<number, string[]>[]): Record<number, string[]> {
+  const merged: Record<number, string[]> = {};
+  for (const curriculum of curricula) {
+    for (const [rankKey, names] of Object.entries(curriculum)) {
+      const rank = Number(rankKey);
+      if (!Number.isInteger(rank)) {
+        continue;
+      }
+
+      const existing = merged[rank] ?? [];
+      merged[rank] = [...existing, ...names.filter((name) => !existing.includes(name))];
+    }
+  }
+
+  return merged;
 }

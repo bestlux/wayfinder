@@ -1,4 +1,5 @@
 import { applySelectorApplication, buildSelectorSelection, stripSelectedSelectorEntries, } from "./selector-application.js";
+import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
 export async function applyClassFeatureChoiceDraft(actor, draft, steps, deps) {
     const groups = collectFeatureGroups(draft, steps);
     for (const group of groups) {
@@ -35,7 +36,7 @@ function collectFeatureGroups(draft, steps) {
     const groups = new Map();
     for (const step of steps) {
         if (step.kind === "pick-item" && step.grantSelection) {
-            if (isFeatOwnedGrantSelection(step)) {
+            if (usesNativeGrantItemCreation(step)) {
                 continue;
             }
             const selection = draft.selections[step.slotId];
@@ -79,7 +80,7 @@ function collectSelectedFeatureRefs(draft, steps) {
     const refs = new Map();
     for (const step of steps) {
         if (step.kind === "pick-item" && step.grantSelection && draft.selections[step.slotId]) {
-            if (isFeatOwnedGrantSelection(step)) {
+            if (usesNativeGrantItemCreation(step)) {
                 continue;
             }
             refs.set(step.grantSelection.selectorUuid, {
@@ -102,8 +103,5 @@ function createSourceSelection(meta, slotId) {
     const itemType = "sourceItemType" in meta ? meta.sourceItemType : "feat";
     const featType = itemType === "feat" || itemType === "classfeature" ? "classfeature" : null;
     return buildSelectorSelection(slotId, "selectorPackId" in meta ? meta.selectorPackId : meta.sourcePackId, "selectorDocumentId" in meta ? meta.selectorDocumentId : meta.sourceDocumentId, "selectorUuid" in meta ? meta.selectorUuid : meta.sourceUuid, "selectorName" in meta ? meta.selectorName : meta.sourceName, itemType === "classfeature" ? "feat" : itemType, featType);
-}
-function isFeatOwnedGrantSelection(step) {
-    return step.kind === "pick-item" && step.grantSelection?.sourceItemType === "feat";
 }
 //# sourceMappingURL=class-feature-choice-service.js.map

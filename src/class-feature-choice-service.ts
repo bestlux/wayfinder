@@ -7,6 +7,7 @@ import {
   type SelectorClassSourceLike,
   stripSelectedSelectorEntries,
 } from "./selector-application.js";
+import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
 import type { ClassChoiceMeta, ClassGrantMeta, DraftState, PendingStep, SelectionRef } from "./types.js";
 
 type ApplyClassFeatureChoiceDependencies = SelectorApplicationDependencies;
@@ -75,7 +76,7 @@ function collectFeatureGroups(draft: DraftState, steps: PendingStep[]): PendingF
 
   for (const step of steps) {
     if (step.kind === "pick-item" && step.grantSelection) {
-      if (isFeatOwnedGrantSelection(step)) {
+      if (usesNativeGrantItemCreation(step)) {
         continue;
       }
 
@@ -129,7 +130,7 @@ function collectSelectedFeatureRefs(
 
   for (const step of steps) {
     if (step.kind === "pick-item" && step.grantSelection && draft.selections[step.slotId]) {
-      if (isFeatOwnedGrantSelection(step)) {
+      if (usesNativeGrantItemCreation(step)) {
         continue;
       }
 
@@ -164,8 +165,4 @@ function createSourceSelection(meta: ClassGrantMeta | ClassChoiceMeta, slotId: s
     itemType === "classfeature" ? "feat" : itemType,
     featType
   );
-}
-
-function isFeatOwnedGrantSelection(step: PendingStep): boolean {
-  return step.kind === "pick-item" && step.grantSelection?.sourceItemType === "feat";
 }

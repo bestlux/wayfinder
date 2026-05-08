@@ -98,6 +98,27 @@ type WayfinderGlobals = typeof globalThis & {
   };
 };
 
+interface DialogV2Like {
+  confirm: (config: {
+    content: string;
+    modal?: boolean;
+    window?: { title: string };
+    yes?: { default?: boolean; icon?: string; label: string };
+    no?: { default?: boolean; icon?: string; label: string };
+  }) => Promise<unknown>;
+}
+
+interface FoundryDialogApiLike {
+  applications?: {
+    api?: {
+      DialogV2?: DialogV2Like;
+    };
+  };
+  utils?: {
+    escapeHTML?: (value: string) => string;
+  };
+}
+
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(
   foundry.applications.api.ApplicationV2
 ) {
@@ -929,7 +950,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         draft,
         steps: plan.steps,
         isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
-        confirmApply: typeof globalThis.confirm === "function" ? (message) => globalThis.confirm(message) : undefined,
+        confirmApply: confirmWayfinderApply,
         applyDraftToActor: () =>
           applyDraftToActor(this.actor, draft, plan.steps, {
             deferActorUpdate: true,
@@ -1013,6 +1034,41 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
 function getPf2eConfig(): Pf2eConfigLike | null {
   return (globalThis as WayfinderGlobals).CONFIG?.PF2E ?? null;
+}
+
+async function confirmWayfinderApply(message: string): Promise<boolean> {
+  const foundryApi = foundry as unknown as FoundryDialogApiLike;
+  const dialog = foundryApi.applications?.api?.DialogV2;
+  if (dialog) {
+    const escapeHTML = foundryApi.utils?.escapeHTML ?? fallbackEscapeHtml;
+    const result = await dialog.confirm({
+      window: { title: "PF2E-WAYFINDER.App.ApplyConfirmTitle" },
+      content: `<p>${escapeHTML(message)}</p>`,
+      modal: true,
+      yes: { label: "PF2E-WAYFINDER.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
+      no: { label: "PF2E-WAYFINDER.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
+    });
+    return result === true;
+  }
+
+  return typeof globalThis.confirm === "function" ? globalThis.confirm(message) : true;
+}
+
+function fallbackEscapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
 }
 
 function isWizardArcaneSchoolItem(item: BuildStateActorItem | null | undefined): item is ArcaneSchoolActorItemLike {

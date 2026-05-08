@@ -746,7 +746,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 draft,
                 steps: plan.steps,
                 isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
-                confirmApply: typeof globalThis.confirm === "function" ? (message) => globalThis.confirm(message) : undefined,
+                confirmApply: confirmWayfinderApply,
                 applyDraftToActor: () => applyDraftToActor(this.actor, draft, plan.steps, {
                     deferActorUpdate: true,
                 }),
@@ -820,6 +820,38 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 }
 function getPf2eConfig() {
     return globalThis.CONFIG?.PF2E ?? null;
+}
+async function confirmWayfinderApply(message) {
+    const foundryApi = foundry;
+    const dialog = foundryApi.applications?.api?.DialogV2;
+    if (dialog) {
+        const escapeHTML = foundryApi.utils?.escapeHTML ?? fallbackEscapeHtml;
+        const result = await dialog.confirm({
+            window: { title: "PF2E-WAYFINDER.App.ApplyConfirmTitle" },
+            content: `<p>${escapeHTML(message)}</p>`,
+            modal: true,
+            yes: { label: "PF2E-WAYFINDER.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
+            no: { label: "PF2E-WAYFINDER.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
+        });
+        return result === true;
+    }
+    return typeof globalThis.confirm === "function" ? globalThis.confirm(message) : true;
+}
+function fallbackEscapeHtml(value) {
+    return value.replace(/[&<>"']/g, (character) => {
+        switch (character) {
+            case "&":
+                return "&amp;";
+            case "<":
+                return "&lt;";
+            case ">":
+                return "&gt;";
+            case '"':
+                return "&quot;";
+            default:
+                return "&#39;";
+        }
+    });
 }
 function isWizardArcaneSchoolItem(item) {
     const candidate = item;

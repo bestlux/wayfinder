@@ -21,6 +21,7 @@ import { applyClassFeatureChoiceDraft } from "./class-feature-choice-service.js"
 import { fetchSelectionDocument } from "./pack-service.js";
 import type { SelectorActorLike } from "./selector-application.js";
 import type { ActorLike } from "./shared/actor-model.js";
+import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
 import type { DraftState, PendingStep } from "./types.js";
 
 type DraftMutationActor = SelectorActorLike &
@@ -65,7 +66,7 @@ export async function applyDraftToActor(
     if (!step) {
       continue;
     }
-    if (step?.slotKind === "grant-choice" && step.grantSelection?.sourceItemType === "feat") {
+    if (usesNativeGrantItemCreation(step)) {
       continue;
     }
     if (hasSourceId(actor, selection.uuid)) {

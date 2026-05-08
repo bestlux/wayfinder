@@ -8,7 +8,7 @@ export async function applyDraftLifecycle(args) {
             warning: "missing-selections",
         };
     }
-    const confirmed = args.confirmApply?.(buildApplyConfirmationMessage(args.actorName, args.steps.length)) ?? true;
+    const confirmed = (await args.confirmApply?.(buildApplyConfirmationMessage(args.actorName, args.steps.length))) ?? true;
     if (!confirmed) {
         return {
             kind: "cancelled",

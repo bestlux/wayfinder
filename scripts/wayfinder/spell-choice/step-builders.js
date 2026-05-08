@@ -11,6 +11,9 @@ export async function buildSpellChoiceStepsForContributor(params, contributor) {
         effectiveClassDocument,
         effectiveDeityDocument: asSpellChoiceDeityDocument(params.effectiveDeityDocument),
         effectiveSchoolDocument: asSpellChoiceSchoolDocument(params.effectiveSchoolDocument),
+        effectiveClassFeatureDocuments: (params.effectiveClassFeatureDocuments ?? [])
+            .map((document) => asSpellChoiceSchoolDocument(document))
+            .filter((document) => document !== null),
         extractSlug: params.extractSlug,
         readExistingSpellChoiceSelections: params.readExistingSpellChoiceSelections,
     })) ?? []);

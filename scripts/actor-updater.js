@@ -8,6 +8,7 @@ import { applySkillIncreaseDraft, applyTrainingDraft } from "./actor-updater/tra
 import { applyClassBranchDraft } from "./class-branch-service.js";
 import { applyClassFeatureChoiceDraft } from "./class-feature-choice-service.js";
 import { fetchSelectionDocument } from "./pack-service.js";
+import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
 export async function applyDraftToActor(actor, draft, steps, options = {}) {
     const selections = orderSelections(draft, steps);
     const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
@@ -33,7 +34,7 @@ export async function applyDraftToActor(actor, draft, steps, options = {}) {
         if (!step) {
             continue;
         }
-        if (step?.slotKind === "grant-choice" && step.grantSelection?.sourceItemType === "feat") {
+        if (usesNativeGrantItemCreation(step)) {
             continue;
         }
         if (hasSourceId(actor, selection.uuid)) {

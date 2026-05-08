@@ -58,6 +58,7 @@ export interface BuildSpellChoiceStepsParams {
   effectiveClassDocument: unknown | null;
   effectiveDeityDocument: unknown | null;
   effectiveSchoolDocument: unknown | null;
+  effectiveClassFeatureDocuments?: unknown[];
   targetLevel: number;
   extractSlug: (document: SpellChoiceDocumentLike | null) => string | null;
   readExistingSpellChoiceSelections: ReadExistingSpellChoiceSelections;
@@ -68,6 +69,7 @@ export interface BuildWizardSpellChoiceStepsParams {
   currentLevel: number;
   effectiveClassDocument: SpellChoiceClassDocument;
   effectiveSchoolDocument: SpellChoiceSchoolDocument | null;
+  effectiveClassFeatureDocuments: SpellChoiceSchoolDocument[];
   targetLevel: number;
   extractSlug: (document: SpellChoiceDocumentLike | null) => string | null;
   readExistingSpellChoiceSelections: ReadExistingSpellChoiceSelections;

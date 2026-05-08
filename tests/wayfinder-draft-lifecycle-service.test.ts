@@ -122,6 +122,37 @@ describe("wayfinder draft lifecycle service", () => {
     expect(result.nextDraft.classChoices).toEqual({});
   });
 
+  it("waits for asynchronous apply confirmation before mutating the actor", async () => {
+    const draft = createEmptyDraft(2);
+    const order: string[] = [];
+    const confirmApply = vi.fn(async () => {
+      order.push("confirm");
+      return true;
+    });
+    const applyDraftToActor = vi.fn(async () => {
+      order.push("apply");
+      return undefined;
+    });
+    const updateActor = vi.fn(async () => {
+      order.push("update");
+    });
+
+    const result = await applyDraftLifecycle({
+      actorName: "Ezren",
+      currentLevel: 1,
+      draft,
+      steps: [step("ancestry-level-1")],
+      isStepComplete: async () => true,
+      confirmApply,
+      applyDraftToActor,
+      updateActor,
+    });
+
+    expect(result.kind).toBe("applied");
+    expect(confirmApply).toHaveBeenCalledWith("Apply 1 Wayfinder step(s) to Ezren?");
+    expect(order).toEqual(["confirm", "apply", "update"]);
+  });
+
   it("builds the persisted draft patch and cleared draft state", () => {
     const draft = createEmptyDraft(6);
     draft.manual["manual-level-1"] = true;

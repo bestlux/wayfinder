@@ -33,16 +33,16 @@ Largest source files after this pass:
 
 | Lines | File | Current pressure |
 | ---: | --- | --- |
-| 984 | `src/wayfinder/app-shell.ts` | UI shell still owns too much lifecycle, command routing, apply flow, and status handling. |
-| 813 | `src/pack-service.ts` | Pack access, filter evaluation, option shaping, and picker state remain mixed. |
-| 786 | `src/actor-updater/selection-application.ts` | Multiple apply-side behaviors share one large mutation module. |
-| 765 | `src/wayfinder/skill-training/source-discovery.ts` | Several PF2E skill/lore rule shapes are parsed in one file. |
-| 562 | `src/wayfinder/domain/step-types.ts` | The step union is explicit but large and still carries many factory helpers. |
-| 537 | `src/wayfinder/application/wayfinder-plan-builder-service.ts` | Plan assembly coordinates many source families directly. |
-| 417 | `src/wayfinder/class-choice/rule-discovery.ts` | Class-feature selectors, skill training, deity choices, and branch choices share a rule parser. |
-| 398 | `src/actor-updater/spellcasting-entry-support.ts` | Spellcasting entry creation and reconciliation is specialized and Foundry-heavy. |
-| 392 | `src/wayfinder/view-models.ts` | Pane/view model shaping still has wide switch pressure. |
-| 383 | `src/wayfinder/application/selection-command-service.ts` | Selection commands, dependency clearing, and active-step transitions are closely coupled. |
+| 1084 | `src/wayfinder/app-shell.ts` | UI shell still owns too much lifecycle, command routing, apply flow, and status handling. |
+| 937 | `src/pack-service.ts` | Pack access, filter evaluation, option shaping, and picker state remain mixed. |
+| 856 | `src/wayfinder/skill-training/source-discovery.ts` | Several PF2E skill/lore rule shapes are parsed in one file. |
+| 625 | `src/wayfinder/domain/step-types.ts` | The step union is explicit but large and still carries many factory helpers. |
+| 576 | `src/wayfinder/application/wayfinder-plan-builder-service.ts` | Plan assembly coordinates many source families directly. |
+| 471 | `src/wayfinder/class-choice/rule-discovery.ts` | Class-feature selectors, skill training, deity choices, and branch choices share a rule parser. |
+| 430 | `src/wayfinder/application/selection-command-service.ts` | Selection commands, dependency clearing, and active-step transitions are closely coupled. |
+| 428 | `src/actor-updater/spellcasting-entry-support.ts` | Spellcasting entry creation and reconciliation is specialized and Foundry-heavy. |
+| 426 | `src/draft-service.ts` | Draft persistence, migration, and state normalization are concentrated in one service. |
+| 413 | `src/wayfinder/view-models.ts` | Pane/view model shaping still has wide switch pressure. |
 
 File size is not automatically a defect, but these files are the places where new level-1 and later-level behavior is most likely to become brittle.
 
@@ -134,17 +134,41 @@ Coverage:
 
 This keeps the predicate tree semantics in one place while letting each caller own its string-level predicate vocabulary.
 
+### Selection application responsibility split
+
+Updated facade:
+
+- `src/actor-updater/selection-application.ts`
+
+New focused modules:
+
+- `src/actor-updater/selection-source-application.ts`
+- `src/actor-updater/explicit-grant-application.ts`
+- `src/actor-updater/singleton-system-grant-application.ts`
+- `src/actor-updater/feat-selection-application.ts`
+- `src/actor-updater/selection-flags.ts`
+- `src/actor-updater/selection-queries.ts`
+- `src/actor-updater/manual-system-item-grants.ts`
+
+Coverage:
+
+- `tests/actor-updater-selection-application.test.ts`
+- `tests/actor-updater-integration.test.ts`
+- existing singleton-choice, training, and shared item-source tests
+
+This turns the former large public selection-application module into a stable export facade and splits apply-side responsibilities by mutation family.
+
 ## Prioritized Implementation Goals
 
 ### 1. Apply-side operation model
 
 Problem:
 
-`src/actor-updater/selection-application.ts` still handles ordinary selections, singleton grants, native grant-choice preseeding, manual grant creation, and skill-linked grants in one flow.
+Apply-side selection behavior is now split into focused modules, but ordinary selections, singleton grants, native grant-choice preseeding, manual grant creation, and skill-linked grants still flow through implicit orchestration rather than a named operation model.
 
 Current status:
 
-The repeated PF2E item-source policy is now shared. The remaining duplication is orchestration-level, not helper-level.
+The repeated PF2E item-source policy is shared, and `src/actor-updater/selection-application.ts` is now a facade. The remaining duplication is orchestration-level, not helper-level.
 
 Recommended goal:
 

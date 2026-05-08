@@ -1,0 +1,53 @@
+import { listActorItems } from "../build-state.js";
+import type { ActorItemLike, ActorLike, EmbeddedItemSource } from "../shared/actor-model.js";
+import type { DraftState, PendingStep, SelectionRef } from "../types.js";
+import { SINGLETON_ITEM_TYPES } from "./selection-constants.js";
+import type { CreateEmbeddedSourceDependencies } from "./selection-dependencies.js";
+import { createEmbeddedSource } from "./selection-source-application.js";
+
+export async function replaceSingletonItem(
+  actor: ActorLike,
+  selection: SelectionRef,
+  draft: DraftState,
+  steps: PendingStep[],
+  deps?: CreateEmbeddedSourceDependencies
+): Promise<void> {
+  const existing = (listActorItems(actor) as ActorItemLike[]).filter((item) => item?.type === selection.itemType);
+  const existingIds = existing.map((item) => item.id).filter((id): id is string => typeof id === "string");
+  if (existingIds.length > 0 && typeof actor.deleteEmbeddedDocuments === "function") {
+    await actor.deleteEmbeddedDocuments("Item", existingIds);
+  }
+
+  const source = await createEmbeddedSource(selection, draft, steps, deps);
+  if (source && typeof actor.createEmbeddedDocuments === "function") {
+    await actor.createEmbeddedDocuments("Item", [source]);
+  }
+}
+
+export async function replaceSingletonItems(
+  actor: ActorLike,
+  selections: SelectionRef[],
+  draft: DraftState,
+  steps: PendingStep[],
+  deps?: CreateEmbeddedSourceDependencies
+): Promise<void> {
+  const singletonSelections = selections.filter((selection) => SINGLETON_ITEM_TYPES.has(selection.itemType));
+  if (singletonSelections.length === 0) {
+    return;
+  }
+
+  const selectedTypes = new Set(singletonSelections.map((selection) => selection.itemType));
+  const sources = (
+    await Promise.all(singletonSelections.map((selection) => createEmbeddedSource(selection, draft, steps, deps)))
+  ).filter((source): source is EmbeddedItemSource => !!source);
+
+  const existing = (listActorItems(actor) as ActorItemLike[]).filter((item) => selectedTypes.has(item?.type ?? ""));
+  const existingIds = existing.map((item) => item.id).filter((id): id is string => typeof id === "string");
+  if (existingIds.length > 0 && typeof actor.deleteEmbeddedDocuments === "function") {
+    await actor.deleteEmbeddedDocuments("Item", existingIds);
+  }
+
+  if (sources.length > 0 && typeof actor.createEmbeddedDocuments === "function") {
+    await actor.createEmbeddedDocuments("Item", sources);
+  }
+}

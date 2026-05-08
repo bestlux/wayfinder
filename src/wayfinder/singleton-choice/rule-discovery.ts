@@ -6,16 +6,17 @@ import {
   type SkillConfigMap,
 } from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
+import {
+  documentFeatureLevel,
+  extractChoiceKey,
+  getDocumentRules,
+  isChoicePredicate,
+  isRecord,
+  toNonEmptyString,
+} from "../rule-data.js";
 
 interface NamedDocumentLike {
   name?: unknown;
-  system?: {
-    slug?: unknown;
-    level?: {
-      value?: unknown;
-    };
-    rules?: unknown;
-  };
 }
 
 export interface SingletonChoiceSpec {
@@ -78,10 +79,9 @@ export function discoverSingletonChoiceSpecs(args: {
   includeTrainingChoices?: boolean;
 }): SingletonChoiceSpec[] {
   const { sourceItemType, sourceDocument, sourceSlug, sourceLevel, localize, includeTrainingChoices = false } = args;
-  const document = sourceDocument as NamedDocumentLike | null | undefined;
-  const level = sourceLevel ?? toFeatureLevel(document?.system?.level?.value);
+  const level = sourceLevel ?? documentFeatureLevel(sourceDocument);
   const configuredSkills = getConfiguredSkills();
-  const rules = findRelevantRules(sourceDocument);
+  const rules = getDocumentRules(sourceDocument);
 
   return rules.flatMap((rule, sourceRuleIndex) => {
     const flag = extractChoiceKey(rule);
@@ -130,23 +130,6 @@ function shouldSkipSingletonChoice(
   // Starting skill and lore choices belong to the skill training workflow so
   // they stay in one draft store and do not reappear as separate singleton steps.
   return ["ancestry", "heritage", "background", "class", "feat"].includes(sourceItemType) && optionDomain !== "generic";
-}
-
-function findRelevantRules(document: unknown): Array<Record<string, unknown>> {
-  const rules = (document as NamedDocumentLike | null | undefined)?.system?.rules;
-  return Array.isArray(rules) ? rules.filter(isRecord) : [];
-}
-
-function extractChoiceKey(rule: Record<string, unknown>): string | null {
-  const candidates = [rule.flag, rule.rollOption, rule.slug];
-  for (const candidate of candidates) {
-    const normalized = toNonEmptyString(candidate);
-    if (normalized) {
-      return normalized;
-    }
-  }
-
-  return null;
 }
 
 function extractPredicate(value: unknown): ChoicePredicate[] {
@@ -236,45 +219,4 @@ function resolveChoiceLabel(
 
   const localized = localize(trimmed);
   return localized && localized !== trimmed ? localized : trimmed;
-}
-
-function toFeatureLevel(value: unknown): number {
-  const number = Number(value);
-  return Number.isFinite(number) && number >= 1 ? Math.floor(number) : 1;
-}
-
-function toNonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function isChoicePredicate(value: unknown): value is ChoicePredicate {
-  if (typeof value === "string") {
-    return value.trim().length > 0;
-  }
-
-  if (Array.isArray(value)) {
-    return value.every((entry) => isChoicePredicate(entry));
-  }
-
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if ("or" in value && value.or !== undefined && (!Array.isArray(value.or) || !value.or.every(isChoicePredicate))) {
-    return false;
-  }
-
-  if ("nor" in value && value.nor !== undefined && (!Array.isArray(value.nor) || !value.nor.every(isChoicePredicate))) {
-    return false;
-  }
-
-  if ("not" in value && value.not !== undefined && !isChoicePredicate(value.not)) {
-    return false;
-  }
-
-  return true;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object";
 }

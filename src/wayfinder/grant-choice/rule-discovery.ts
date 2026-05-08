@@ -1,14 +1,16 @@
+import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import type { ChoicePredicate, GrantSelectionMeta, SelectionRef, StepFilters } from "../../types.js";
+import {
+  documentFeatureLevel,
+  extractChoiceKey,
+  getDocumentRules,
+  isChoicePredicate,
+  isRecord,
+  toNonEmptyString,
+} from "../rule-data.js";
 
 interface NamedDocumentLike {
   name?: unknown;
-  system?: {
-    slug?: unknown;
-    level?: {
-      value?: unknown;
-    };
-    rules?: unknown;
-  };
 }
 
 type GrantChoiceSourceItemType = GrantSelectionMeta["sourceItemType"];
@@ -29,8 +31,8 @@ export function discoverGrantSelectionMeta(args: {
   const document = sourceDocument as NamedDocumentLike | null | undefined;
   const sourceName = toNonEmptyString(document?.name) ?? sourceSelection.name;
   const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
-  const level = toFeatureLevel(document?.system?.level?.value);
-  const rules = findRelevantRules(sourceDocument);
+  const level = documentFeatureLevel(sourceDocument);
+  const rules = getDocumentRules(sourceDocument);
 
   return rules.flatMap((rule, sourceRuleIndex) => {
     const flag = extractChoiceKey(rule);
@@ -126,11 +128,6 @@ function resolveStaticUuidChoiceFilters(rule: Record<string, unknown>): StepFilt
   };
 }
 
-function parseCompendiumItemUuid(uuid: string): { packId: string; documentId: string } | null {
-  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(uuid.trim());
-  return match ? { packId: match[1], documentId: match[2] } : null;
-}
-
 function inferItemTypeFromPredicate(predicate: ChoicePredicate[]): string | null {
   for (const entry of predicate) {
     const inferred = inferItemTypeFromPredicateEntry(entry);
@@ -162,23 +159,6 @@ function inferItemTypeFromPredicateEntry(predicate: ChoicePredicate): string | n
   }
 
   return inferItemTypeFromPredicate(branches);
-}
-
-function findRelevantRules(document: unknown): Array<Record<string, unknown>> {
-  const rules = (document as NamedDocumentLike | null | undefined)?.system?.rules;
-  return Array.isArray(rules) ? rules.filter(isRecord) : [];
-}
-
-function extractChoiceKey(rule: Record<string, unknown>): string | null {
-  const candidates = [rule.flag, rule.rollOption, rule.slug];
-  for (const candidate of candidates) {
-    const normalized = toNonEmptyString(candidate);
-    if (normalized) {
-      return normalized;
-    }
-  }
-
-  return null;
 }
 
 function resolveGrantDependency(
@@ -221,45 +201,4 @@ function predicateIncludesString(predicate: ChoicePredicate, target: string): bo
     (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
     (!!predicate.not && predicateIncludesString(predicate.not, target))
   );
-}
-
-function toFeatureLevel(value: unknown): number {
-  const number = Number(value);
-  return Number.isFinite(number) && number >= 1 ? Math.floor(number) : 1;
-}
-
-function toNonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function isChoicePredicate(value: unknown): value is ChoicePredicate {
-  if (typeof value === "string") {
-    return value.trim().length > 0;
-  }
-
-  if (Array.isArray(value)) {
-    return value.every((entry) => isChoicePredicate(entry));
-  }
-
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if ("or" in value && value.or !== undefined && (!Array.isArray(value.or) || !value.or.every(isChoicePredicate))) {
-    return false;
-  }
-
-  if ("nor" in value && value.nor !== undefined && (!Array.isArray(value.nor) || !value.nor.every(isChoicePredicate))) {
-    return false;
-  }
-
-  if ("not" in value && value.not !== undefined && !isChoicePredicate(value.not)) {
-    return false;
-  }
-
-  return true;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object";
 }

@@ -1,3 +1,4 @@
+import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta, SelectionRef, SkillTrainingMeta } from "../../types.js";
 import { formatSlug } from "../formatting.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, type SkillConfigMap } from "./skill-config.js";
@@ -435,15 +436,15 @@ function extractChoiceTag(choiceRule: Record<string, unknown>, flag: string): st
 }
 
 function selectionFromCompendiumUuid(uuid: string, name: string, itemType: string): SelectionRef | null {
-  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(uuid);
-  if (!match) {
+  const parsed = parseCompendiumItemUuid(uuid);
+  if (!parsed) {
     return null;
   }
 
   return {
     slotId: "",
-    packId: match[1],
-    documentId: match[2],
+    packId: parsed.packId,
+    documentId: parsed.documentId,
     uuid,
     itemType,
     featType: itemType === "feat" ? "classfeature" : null,

@@ -1,3 +1,4 @@
+import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { formatSlug } from "../formatting.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel } from "./skill-config.js";
 export function findRelevantClassRules(document) {
@@ -283,14 +284,14 @@ function extractChoiceTag(choiceRule, flag) {
     return uuid.includes(`rulesSelections.${flag}`) ? flag.trim().toLowerCase() : null;
 }
 function selectionFromCompendiumUuid(uuid, name, itemType) {
-    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(uuid);
-    if (!match) {
+    const parsed = parseCompendiumItemUuid(uuid);
+    if (!parsed) {
         return null;
     }
     return {
         slotId: "",
-        packId: match[1],
-        documentId: match[2],
+        packId: parsed.packId,
+        documentId: parsed.documentId,
         uuid,
         itemType,
         featType: itemType === "feat" ? "classfeature" : null,

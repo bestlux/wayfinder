@@ -1,3 +1,4 @@
+import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import type { SelectionRef } from "../../types.js";
 import type {
@@ -11,7 +12,7 @@ import type {
 export function findClassFeatureSource(classDocument: SpellChoiceClassDocument, featureName: string): SourceRef {
   const classItems = Object.values(classDocument.system?.items ?? {}) as SpellChoiceFeatureReference[];
   const entry = classItems.find((item) => item.name === featureName && typeof item.uuid === "string");
-  const parsed = typeof entry?.uuid === "string" ? parseCompendiumUuid(entry.uuid) : null;
+  const parsed = typeof entry?.uuid === "string" ? parseCompendiumItemUuid(entry.uuid) : null;
 
   return {
     sourcePackId: parsed?.packId ?? null,
@@ -27,7 +28,7 @@ export function sourceRefFromDocument(document: SpellChoiceDocumentLike | null):
   }
 
   const sourceUuid = sourceIdOf(document);
-  const parsed = sourceUuid ? parseCompendiumUuid(sourceUuid) : null;
+  const parsed = sourceUuid ? parseCompendiumItemUuid(sourceUuid) : null;
   return {
     sourcePackId: parsed?.packId ?? null,
     sourceDocumentId: parsed?.documentId ?? null,
@@ -47,7 +48,7 @@ export function fallbackSourceRef(sourceName: string): SourceRef {
 
 export function selectionFromActorItem(item: SpellChoiceItem, slotId: string): SelectionRef | null {
   const sourceUuid = sourceIdOf(item);
-  const parsed = sourceUuid ? parseCompendiumUuid(sourceUuid) : null;
+  const parsed = sourceUuid ? parseCompendiumItemUuid(sourceUuid) : null;
   if (!parsed || !sourceUuid) {
     return null;
   }
@@ -80,14 +81,4 @@ export function dedupeSelections(selections: SelectionRef[]): SelectionRef[] {
   return result;
 }
 
-export function parseCompendiumUuid(uuid: string): { packId: string; documentId: string } | null {
-  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(uuid);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    packId: match[1],
-    documentId: match[2],
-  };
-}
+export const parseCompendiumUuid = parseCompendiumItemUuid;

@@ -1,3 +1,5 @@
+import { parseCompendiumItemUuid } from "../../shared/compendium.js";
+import { documentFeatureLevel, extractChoiceKey, getDocumentRules, isChoicePredicate, isRecord, toNonEmptyString, } from "../rule-data.js";
 const STATIC_UUID_PACK_ITEM_TYPES = new Map([
     ["pf2e.feats-srd", "feat"],
     ["pf2e.classfeatures", "feat"],
@@ -8,8 +10,8 @@ export function discoverGrantSelectionMeta(args) {
     const document = sourceDocument;
     const sourceName = toNonEmptyString(document?.name) ?? sourceSelection.name;
     const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
-    const level = toFeatureLevel(document?.system?.level?.value);
-    const rules = findRelevantRules(sourceDocument);
+    const level = documentFeatureLevel(sourceDocument);
+    const rules = getDocumentRules(sourceDocument);
     return rules.flatMap((rule, sourceRuleIndex) => {
         const flag = extractChoiceKey(rule);
         if (rule.key !== "ChoiceSet" || !flag) {
@@ -85,10 +87,6 @@ function resolveStaticUuidChoiceFilters(rule) {
         uuids: uuids.filter((uuid) => !!uuid),
     };
 }
-function parseCompendiumItemUuid(uuid) {
-    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(uuid.trim());
-    return match ? { packId: match[1], documentId: match[2] } : null;
-}
 function inferItemTypeFromPredicate(predicate) {
     for (const entry of predicate) {
         const inferred = inferItemTypeFromPredicateEntry(entry);
@@ -114,20 +112,6 @@ function inferItemTypeFromPredicateEntry(predicate) {
         branches.push(predicate.not);
     }
     return inferItemTypeFromPredicate(branches);
-}
-function findRelevantRules(document) {
-    const rules = document?.system?.rules;
-    return Array.isArray(rules) ? rules.filter(isRecord) : [];
-}
-function extractChoiceKey(rule) {
-    const candidates = [rule.flag, rule.rollOption, rule.slug];
-    for (const candidate of candidates) {
-        const normalized = toNonEmptyString(candidate);
-        if (normalized) {
-            return normalized;
-        }
-    }
-    return null;
 }
 function resolveGrantDependency(sourceItemType, predicate) {
     if (sourceItemType === "classfeature") {
@@ -155,36 +139,5 @@ function predicateIncludesString(predicate, target) {
     return ((Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
         (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
         (!!predicate.not && predicateIncludesString(predicate.not, target)));
-}
-function toFeatureLevel(value) {
-    const number = Number(value);
-    return Number.isFinite(number) && number >= 1 ? Math.floor(number) : 1;
-}
-function toNonEmptyString(value) {
-    return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-function isChoicePredicate(value) {
-    if (typeof value === "string") {
-        return value.trim().length > 0;
-    }
-    if (Array.isArray(value)) {
-        return value.every((entry) => isChoicePredicate(entry));
-    }
-    if (!isRecord(value)) {
-        return false;
-    }
-    if ("or" in value && value.or !== undefined && (!Array.isArray(value.or) || !value.or.every(isChoicePredicate))) {
-        return false;
-    }
-    if ("nor" in value && value.nor !== undefined && (!Array.isArray(value.nor) || !value.nor.every(isChoicePredicate))) {
-        return false;
-    }
-    if ("not" in value && value.not !== undefined && !isChoicePredicate(value.not)) {
-        return false;
-    }
-    return true;
-}
-function isRecord(value) {
-    return !!value && typeof value === "object";
 }
 //# sourceMappingURL=rule-discovery.js.map

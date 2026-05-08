@@ -259,6 +259,73 @@ describe("actor-updater spell choice application", () => {
     expect(createdItems.filter((item) => item?.sourceId === "Compendium.pf2e.spells-srd.Item.shield")).toHaveLength(1);
   });
 
+  it("imports an Adapted Cantrip choice into the wizard spellbook", async () => {
+    const { actor, createdItems } = buildActorHarness({
+      items: [
+        {
+          id: "class-1",
+          type: "class",
+          name: "Wizard",
+          system: {
+            keyAbility: {
+              value: ["int"],
+              selected: "int",
+            },
+          },
+        },
+      ],
+    });
+
+    setGamePacks({
+      "pf2e.spells-srd": {
+        guidance: {
+          name: "Guidance",
+          type: "spell",
+          system: {
+            level: { value: 1 },
+            traits: {
+              traditions: ["divine"],
+              value: ["cantrip"],
+            },
+          },
+        },
+      },
+    });
+
+    const slotId = "spell-choice-feat-adapted-cantrip-cantrip-level-1";
+    const draft = createEmptyDraft(1);
+    draft.spellChoices[slotId] = [selection(slotId, "pf2e.spells-srd", "guidance", "spell", "Guidance")];
+
+    await applySpellChoiceDraft(actor as any, draft, [
+      spellChoiceStep(slotId, wizardSpellChoice(slotId, 1, 0, 0, true), "Adapted cantrip"),
+    ]);
+
+    const spellbookEntry = createdItems.find((item) => item.type === "spellcastingEntry");
+    const guidance = createdItems.find((item) => item.name === "Guidance");
+
+    expect(spellbookEntry).toMatchObject({
+      name: "Arcane Prepared Spells",
+      flags: {
+        "pf2e-wayfinder": {
+          destinationKey: "wizard-arcane-prepared",
+        },
+      },
+    });
+    expect(guidance).toMatchObject({
+      sourceId: "Compendium.pf2e.spells-srd.Item.guidance",
+      flags: {
+        "pf2e-wayfinder": {
+          slotId,
+        },
+      },
+      system: {
+        location: {
+          value: spellbookEntry?.id,
+        },
+      },
+    });
+  });
+
   it("preserves existing prepared spells when repairing a wizard spellcasting entry", async () => {
     const updateEmbeddedDocuments = vi.fn(async () => []);
     const { actor } = buildActorHarness({

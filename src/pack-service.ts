@@ -2,6 +2,7 @@ import type { BuildStateDocument } from "./build-state/document-types.js";
 import { OFFICIAL_PACKS } from "./constants.js";
 import { getExtraPackSetting } from "./settings.js";
 import type { ItemSystemLike, LooseRecord, PackLike, SelectionDocumentLike } from "./shared/actor-model.js";
+import { toCompendiumItemUuid } from "./shared/compendium.js";
 import { extractDocumentSlug } from "./shared/slug.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
 import type {
@@ -13,6 +14,10 @@ import type {
   SelectionRef,
   StepFilters,
 } from "./types.js";
+import {
+  matchesChoicePredicate as matchesChoicePredicateTree,
+  predicateIncludesString,
+} from "./wayfinder/rule-data.js";
 
 interface PackEntryTraitsLike {
   rarity?: string;
@@ -217,10 +222,6 @@ export async function fetchSelectionDocument(selection: SelectionRef): Promise<P
 
   const fromUuid = (globalThis as PackServiceGlobals).fromUuid;
   return typeof fromUuid === "function" ? fromUuid(selection.uuid) : null;
-}
-
-function toCompendiumItemUuid(packId: string, documentId: string): string {
-  return `Compendium.${packId}.Item.${documentId}`;
 }
 
 export function clearPackServiceCache(): void {
@@ -743,27 +744,7 @@ function matchesSpellChoiceContext(entry: PackIndexEntry, packId: string, step: 
 }
 
 function matchesChoicePredicate(predicate: ChoicePredicate, entry: PackIndexEntry, context: OptionContext): boolean {
-  if (typeof predicate === "string") {
-    return matchesChoicePredicateString(predicate, entry, context);
-  }
-
-  if (Array.isArray(predicate)) {
-    return predicate.every((entryPredicate) => matchesChoicePredicate(entryPredicate, entry, context));
-  }
-
-  if (Array.isArray(predicate.or)) {
-    return predicate.or.some((entryPredicate) => matchesChoicePredicate(entryPredicate, entry, context));
-  }
-
-  if (Array.isArray(predicate.nor)) {
-    return predicate.nor.every((entryPredicate) => !matchesChoicePredicate(entryPredicate, entry, context));
-  }
-
-  if (predicate.not) {
-    return !matchesChoicePredicate(predicate.not, entry, context);
-  }
-
-  return true;
+  return matchesChoicePredicateTree(predicate, (statement) => matchesChoicePredicateString(statement, entry, context));
 }
 
 function matchesUuidAllowlist(entry: PackIndexEntry, packId: string, allowedUuids: string[]): boolean {
@@ -873,22 +854,6 @@ function matchesCurrentClassMulticlassDedication(
   }
 
   return extractEntryTraits(entry).includes(classSlug);
-}
-
-function predicateIncludesString(predicate: ChoicePredicate, target: string): boolean {
-  if (typeof predicate === "string") {
-    return predicate.includes(target);
-  }
-
-  if (Array.isArray(predicate)) {
-    return predicate.some((entry) => predicateIncludesString(entry, target));
-  }
-
-  return (
-    (Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
-    (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
-    (!!predicate.not && predicateIncludesString(predicate.not, target))
-  );
 }
 
 function normalizeTraitList(value: unknown): string[] {

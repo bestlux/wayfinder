@@ -1,5 +1,6 @@
 import { fetchSelectionDocument } from "../pack-service.js";
 import { cloneData } from "../shared/cloning.js";
+import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { findDraftSelectionByType } from "../wayfinder/draft-decisions.js";
 export async function getEffectiveSingletonDocument(actor, draft, itemType) {
     const draftSelection = findDraftSelectionByType(draft, itemType);
@@ -31,16 +32,14 @@ async function resolveSourceDocumentFromActorItem(actorItem, itemType) {
     if (typeof sourceId !== "string" || !sourceId.startsWith("Compendium.")) {
         return null;
     }
-    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
-    const packId = match?.[1];
-    const documentId = match?.[2];
-    if (!packId || !documentId) {
+    const parsed = parseCompendiumItemUuid(sourceId);
+    if (!parsed) {
         return null;
     }
     return fetchSelectionDocument({
         slotId: `${itemType}-level-1`,
-        packId,
-        documentId,
+        packId: parsed.packId,
+        documentId: parsed.documentId,
         uuid: sourceId,
         itemType,
         featType: null,

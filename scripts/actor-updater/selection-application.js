@@ -3,7 +3,9 @@ import { stripPreselectedClassBranchEntries } from "../class-branch-service.js";
 import { stripPreselectedClassFeatureEntries } from "../class-feature-choice-service.js";
 import { MODULE_ID } from "../constants.js";
 import { fetchSelectionDocument } from "../pack-service.js";
+import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
+import { applyRuleSelectionToSource, buildItemGrantRecord, ensureRuleSelections, stampGrantedItemSource, stampImportedItemSource, } from "../shared/pf2e-item-source.js";
 import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 const SINGLETON_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
@@ -69,17 +71,7 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
     if (draft && selection.itemType === "feat") {
         await applyPendingFeatSpellChoices(source, selection, draft, steps, deps);
     }
-    delete source._id;
-    source._stats ??= {};
-    source._stats.compendiumSource = selection.uuid;
-    source.flags ??= {};
-    source.flags.core ??= {};
-    source.flags.core.sourceId = selection.uuid;
-    source.flags[MODULE_ID] = {
-        ...(source.flags[MODULE_ID] ?? {}),
-        importedBy: MODULE_ID,
-        slotId: selection.slotId,
-    };
+    stampImportedItemSource(source, { sourceId: selection.uuid, slotId: selection.slotId });
     return source;
 }
 function applyPendingBoostSelections(source, selection, draft) {
@@ -160,19 +152,7 @@ export async function createSingletonSystemGrantItems(actor, draft, steps, deps 
             }
             source.system ??= {};
             source.system.location = granter.id;
-            source.flags ??= {};
-            source.flags.core ??= {};
-            source.flags.core.sourceId = grant.uuid;
-            source.flags.pf2e ??= {};
-            source.flags.pf2e.grantedBy = {
-                id: granter.id,
-                onDelete: "cascade",
-            };
-            source.flags[MODULE_ID] = {
-                ...(source.flags[MODULE_ID] ?? {}),
-                importedBy: MODULE_ID,
-                slotId: selection.slotId,
-            };
+            stampGrantedItemSource(source, { sourceId: grant.uuid, slotId: selection.slotId, granterId: granter.id });
             applyManualGrantChoices(source, grant.defaultChoices);
             const created = await actor.createEmbeddedDocuments("Item", [source]);
             const createdItem = Array.isArray(created) ? (created[0] ?? null) : null;
@@ -182,10 +162,7 @@ export async function createSingletonSystemGrantItems(actor, draft, steps, deps 
             await actor.updateEmbeddedDocuments("Item", [
                 {
                     _id: granter.id,
-                    [`flags.pf2e.itemGrants.${grant.key}`]: {
-                        id: createdItem.id,
-                        onDelete: "detach",
-                    },
+                    [`flags.pf2e.itemGrants.${grant.key}`]: buildItemGrantRecord(createdItem.id),
                 },
             ]);
         }
@@ -243,14 +220,7 @@ function applyTrainingRuleSelection(source, selection, persistence, flag, value)
     applyRuleSelection(source, persistence.sourceRuleIndex, flag, value);
 }
 function applyRuleSelection(source, sourceRuleIndex, flag, value) {
-    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
-    if (rules[sourceRuleIndex]) {
-        rules[sourceRuleIndex].selection = value;
-    }
-    source.flags ??= {};
-    source.flags.pf2e ??= {};
-    source.flags.pf2e.rulesSelections ??= {};
-    source.flags.pf2e.rulesSelections[flag] = value;
+    applyRuleSelectionToSource(source, sourceRuleIndex, flag, value);
 }
 function stripManualSystemItemGrants(source) {
     const systemItems = source.system?.items;
@@ -311,11 +281,11 @@ function readManualSystemItemGrants(item) {
     });
 }
 function selectionFromSystemGrant(grant) {
-    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(grant.uuid);
+    const parsed = parseCompendiumItemUuid(grant.uuid);
     return {
         slotId: `system-grant-${slugifyName(grant.name) ?? "item"}`,
-        packId: match?.[1] ?? "pf2e.feats-srd",
-        documentId: match?.[2] ?? grant.name,
+        packId: parsed?.packId ?? "pf2e.feats-srd",
+        documentId: parsed?.documentId ?? grant.name,
         uuid: grant.uuid,
         itemType: "feat",
         featType: "ancestryfeature",
@@ -340,9 +310,7 @@ async function applyPendingGrantChoiceSelections(source, selection, draft, steps
     if (rules.length === 0) {
         return;
     }
-    source.flags ??= {};
-    source.flags.pf2e ??= {};
-    source.flags.pf2e.rulesSelections ??= {};
+    ensureRuleSelections(source);
     const grantRuleIndexesToRemove = new Set();
     for (const step of steps) {
         if (step.kind !== "pick-item" || !step.grantSelection || step.grantSelection.selectorUuid !== selection.uuid) {
@@ -352,11 +320,7 @@ async function applyPendingGrantChoiceSelections(source, selection, draft, steps
         if (!grantedSelection) {
             continue;
         }
-        const rule = rules[step.grantSelection.selectorRuleIndex];
-        if (rule && typeof rule === "object") {
-            rule.selection = grantedSelection.uuid;
-        }
-        source.flags.pf2e.rulesSelections[step.grantSelection.flag] = grantedSelection.uuid;
+        applyRuleSelection(source, step.grantSelection.selectorRuleIndex, step.grantSelection.flag, grantedSelection.uuid);
         const grantRule = rules[step.grantSelection.grantRuleIndex];
         if (grantRule && typeof grantRule === "object") {
             const preselectChoices = await collectGrantedItemPreselectChoices(grantedSelection, draft, steps, deps);
@@ -405,19 +369,11 @@ export async function createSingletonGrantItems(actor, draft, steps, deps = DEFA
         if (!source) {
             continue;
         }
-        source.flags ??= {};
-        source.flags.core ??= {};
-        source.flags.core.sourceId = grantedSelection.uuid;
-        source.flags.pf2e ??= {};
-        source.flags.pf2e.grantedBy = {
-            id: granter.id,
-            onDelete: "cascade",
-        };
-        source.flags[MODULE_ID] = {
-            ...(source.flags[MODULE_ID] ?? {}),
-            importedBy: MODULE_ID,
+        stampGrantedItemSource(source, {
+            sourceId: grantedSelection.uuid,
             slotId: step.slotId,
-        };
+            granterId: granter.id,
+        });
         const created = await actor.createEmbeddedDocuments("Item", [source]);
         const createdItem = Array.isArray(created) ? (created[0] ?? null) : null;
         if (!createdItem?.id || typeof actor.updateEmbeddedDocuments !== "function") {
@@ -433,11 +389,7 @@ export async function createSingletonGrantItems(actor, draft, steps, deps = DEFA
                         [`flags.${MODULE_ID}.slotId`]: granterSlotId,
                     }
                     : {}),
-                [`flags.pf2e.itemGrants.${step.grantSelection.flag}`]: {
-                    id: createdItem.id,
-                    onDelete: "detach",
-                    nested: null,
-                },
+                [`flags.pf2e.itemGrants.${step.grantSelection.flag}`]: buildItemGrantRecord(createdItem.id, { nested: null }),
             },
         ]);
     }

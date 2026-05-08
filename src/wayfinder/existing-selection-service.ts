@@ -1,5 +1,6 @@
 import type { BuildStateActorItem } from "../build-state/document-types.js";
 import { listActorItems } from "../build-state.js";
+import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta, SelectionRef, SingletonChoiceMeta } from "../types.js";
 
@@ -61,15 +62,15 @@ export function readExistingSingletonSourceSelection(
     return null;
   }
 
-  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
-  if (!match) {
+  const parsed = parseCompendiumItemUuid(sourceId);
+  if (!parsed) {
     return null;
   }
 
   return {
     slotId: `${itemType}-level-1`,
-    packId: match[1],
-    documentId: match[2],
+    packId: parsed.packId,
+    documentId: parsed.documentId,
     uuid: sourceId,
     itemType,
     featType: null,

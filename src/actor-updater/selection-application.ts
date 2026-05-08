@@ -11,7 +11,15 @@ import type {
   LooseRecord,
   SelectionDocumentLike,
 } from "../shared/actor-model.js";
+import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
+import {
+  applyRuleSelectionToSource,
+  buildItemGrantRecord,
+  ensureRuleSelections,
+  stampGrantedItemSource,
+  stampImportedItemSource,
+} from "../shared/pf2e-item-source.js";
 import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 import type { AbilityKey, DraftState, PendingStep, SelectionRef } from "../types.js";
@@ -132,17 +140,7 @@ export async function createEmbeddedSource(
     await applyPendingFeatSpellChoices(source, selection, draft, steps, deps);
   }
 
-  delete source._id;
-  source._stats ??= {};
-  source._stats.compendiumSource = selection.uuid;
-  source.flags ??= {};
-  source.flags.core ??= {};
-  source.flags.core.sourceId = selection.uuid;
-  source.flags[MODULE_ID] = {
-    ...(source.flags[MODULE_ID] ?? {}),
-    importedBy: MODULE_ID,
-    slotId: selection.slotId,
-  };
+  stampImportedItemSource(source, { sourceId: selection.uuid, slotId: selection.slotId });
   return source;
 }
 
@@ -241,19 +239,7 @@ export async function createSingletonSystemGrantItems(
 
       source.system ??= {};
       source.system.location = granter.id;
-      source.flags ??= {};
-      source.flags.core ??= {};
-      source.flags.core.sourceId = grant.uuid;
-      source.flags.pf2e ??= {};
-      source.flags.pf2e.grantedBy = {
-        id: granter.id,
-        onDelete: "cascade",
-      };
-      source.flags[MODULE_ID] = {
-        ...(source.flags[MODULE_ID] ?? {}),
-        importedBy: MODULE_ID,
-        slotId: selection.slotId,
-      };
+      stampGrantedItemSource(source, { sourceId: grant.uuid, slotId: selection.slotId, granterId: granter.id });
       applyManualGrantChoices(source, grant.defaultChoices);
       const created = await actor.createEmbeddedDocuments("Item", [source]);
       const createdItem = Array.isArray(created) ? ((created[0] as ActorItemLike | undefined) ?? null) : null;
@@ -264,10 +250,7 @@ export async function createSingletonSystemGrantItems(
       await actor.updateEmbeddedDocuments("Item", [
         {
           _id: granter.id,
-          [`flags.pf2e.itemGrants.${grant.key}`]: {
-            id: createdItem.id,
-            onDelete: "detach",
-          },
+          [`flags.pf2e.itemGrants.${grant.key}`]: buildItemGrantRecord(createdItem.id),
         },
       ]);
     }
@@ -355,15 +338,7 @@ function applyTrainingRuleSelection(
 }
 
 function applyRuleSelection(source: EmbeddedItemSource, sourceRuleIndex: number, flag: string, value: string): void {
-  const rules = Array.isArray(source.system?.rules) ? (source.system.rules as LooseRecord[]) : [];
-  if (rules[sourceRuleIndex]) {
-    rules[sourceRuleIndex].selection = value;
-  }
-
-  source.flags ??= {};
-  source.flags.pf2e ??= {};
-  source.flags.pf2e.rulesSelections ??= {};
-  source.flags.pf2e.rulesSelections[flag] = value;
+  applyRuleSelectionToSource(source, sourceRuleIndex, flag, value);
 }
 
 function stripManualSystemItemGrants(source: EmbeddedItemSource): void {
@@ -439,11 +414,11 @@ function readManualSystemItemGrants(item: ActorItemLike): ManualSystemItemGrant[
 }
 
 function selectionFromSystemGrant(grant: ManualSystemItemGrant): SelectionRef {
-  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(grant.uuid);
+  const parsed = parseCompendiumItemUuid(grant.uuid);
   return {
     slotId: `system-grant-${slugifyName(grant.name) ?? "item"}`,
-    packId: match?.[1] ?? "pf2e.feats-srd",
-    documentId: match?.[2] ?? grant.name,
+    packId: parsed?.packId ?? "pf2e.feats-srd",
+    documentId: parsed?.documentId ?? grant.name,
     uuid: grant.uuid,
     itemType: "feat",
     featType: "ancestryfeature",
@@ -478,9 +453,7 @@ async function applyPendingGrantChoiceSelections(
     return;
   }
 
-  source.flags ??= {};
-  source.flags.pf2e ??= {};
-  source.flags.pf2e.rulesSelections ??= {};
+  ensureRuleSelections(source);
 
   const grantRuleIndexesToRemove = new Set<number>();
   for (const step of steps) {
@@ -493,12 +466,7 @@ async function applyPendingGrantChoiceSelections(
       continue;
     }
 
-    const rule = rules[step.grantSelection.selectorRuleIndex];
-    if (rule && typeof rule === "object") {
-      (rule as Record<string, unknown>).selection = grantedSelection.uuid;
-    }
-
-    source.flags.pf2e.rulesSelections[step.grantSelection.flag] = grantedSelection.uuid;
+    applyRuleSelection(source, step.grantSelection.selectorRuleIndex, step.grantSelection.flag, grantedSelection.uuid);
 
     const grantRule = rules[step.grantSelection.grantRuleIndex];
     if (grantRule && typeof grantRule === "object") {
@@ -566,19 +534,11 @@ export async function createSingletonGrantItems(
       continue;
     }
 
-    source.flags ??= {};
-    source.flags.core ??= {};
-    source.flags.core.sourceId = grantedSelection.uuid;
-    source.flags.pf2e ??= {};
-    source.flags.pf2e.grantedBy = {
-      id: granter.id,
-      onDelete: "cascade",
-    };
-    source.flags[MODULE_ID] = {
-      ...(source.flags[MODULE_ID] ?? {}),
-      importedBy: MODULE_ID,
+    stampGrantedItemSource(source, {
+      sourceId: grantedSelection.uuid,
       slotId: step.slotId,
-    };
+      granterId: granter.id,
+    });
 
     const created = await actor.createEmbeddedDocuments("Item", [source]);
     const createdItem = Array.isArray(created) ? ((created[0] as ActorItemLike | undefined) ?? null) : null;
@@ -596,11 +556,7 @@ export async function createSingletonGrantItems(
               [`flags.${MODULE_ID}.slotId`]: granterSlotId,
             }
           : {}),
-        [`flags.pf2e.itemGrants.${step.grantSelection.flag}`]: {
-          id: createdItem.id,
-          onDelete: "detach",
-          nested: null,
-        },
+        [`flags.pf2e.itemGrants.${step.grantSelection.flag}`]: buildItemGrantRecord(createdItem.id, { nested: null }),
       },
     ]);
   }

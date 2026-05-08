@@ -1,5 +1,6 @@
 import { fetchSelectionDocument } from "../pack-service.js";
 import { cloneData } from "../shared/cloning.js";
+import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import type { DraftState } from "../types.js";
 import { findDraftSelectionByType } from "../wayfinder/draft-decisions.js";
 import type {
@@ -54,17 +55,15 @@ async function resolveSourceDocumentFromActorItem(
     return null;
   }
 
-  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
-  const packId = match?.[1];
-  const documentId = match?.[2];
-  if (!packId || !documentId) {
+  const parsed = parseCompendiumItemUuid(sourceId);
+  if (!parsed) {
     return null;
   }
 
   return fetchSelectionDocument({
     slotId: `${itemType}-level-1`,
-    packId,
-    documentId,
+    packId: parsed.packId,
+    documentId: parsed.documentId,
     uuid: sourceId,
     itemType,
     featType: null,

@@ -1,6 +1,8 @@
 import { listActorItems } from "./build-state.js";
 import { MODULE_ID } from "./constants.js";
 import { cloneData } from "./shared/cloning.js";
+import { parseCompendiumItemUuid } from "./shared/compendium.js";
+import { buildGrantedItemUpdate as buildGrantedItemSourceUpdate, buildItemGrantRecord, stampGrantedItemSource, } from "./shared/pf2e-item-source.js";
 import { itemMatchesSourceId } from "./shared/source-id.js";
 export function buildSelectorSelection(slotId, packId, documentId, uuid, name, itemType = "feat", featType = "classfeature") {
     return {
@@ -56,11 +58,9 @@ export async function applySelectorApplication(actor, plan, deps) {
     if (plan.grantPlan) {
         const grantedItemResult = await ensureGrantedItem(actor, selectorItem, plan.grantPlan, deps.createEmbeddedSource);
         if (grantedItemResult.item?.id) {
-            selectorUpdate[`flags.pf2e.itemGrants.${plan.grantPlan.flag}`] = {
-                id: grantedItemResult.item.id,
-                onDelete: "detach",
+            selectorUpdate[`flags.pf2e.itemGrants.${plan.grantPlan.flag}`] = buildItemGrantRecord(grantedItemResult.item.id, {
                 nested: null,
-            };
+            });
         }
         if (grantedItemResult.reusedExistingItem &&
             grantedItemResult.update &&
@@ -87,9 +87,7 @@ export function stripSelectedSelectorEntries(classSource, selectedRefs) {
     const selectedNames = new Set(selectedRefs.map((entry) => entry.name.trim().toLowerCase()).filter((value) => value.length > 0));
     classSource.system.items = Object.fromEntries(Object.entries(classSource.system.items).filter(([, entry]) => {
         const uuid = typeof entry?.uuid === "string" ? entry.uuid : null;
-        const normalizedDocumentId = typeof uuid === "string"
-            ? /^Compendium\.[^.]+\.[^.]+\.Item\.(.+)$/.exec(uuid)?.[1]?.trim().toLowerCase()
-            : null;
+        const normalizedDocumentId = typeof uuid === "string" ? parseCompendiumItemUuid(uuid)?.documentId.trim().toLowerCase() : null;
         const normalizedName = typeof entry?.name === "string" ? entry.name.trim().toLowerCase() : null;
         return !((uuid && selectedUuids.has(uuid)) ||
             (normalizedDocumentId && selectedDocumentIds.has(normalizedDocumentId)) ||
@@ -200,19 +198,11 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
     if (!source) {
         return { item: null, update: null, reusedExistingItem: false };
     }
-    source.flags ??= {};
-    source.flags.core ??= {};
-    source.flags.core.sourceId ??= grantPlan.selection.uuid;
-    source.flags.pf2e ??= {};
-    source.flags.pf2e.grantedBy = {
-        id: selectorItemId,
-        onDelete: "cascade",
-    };
-    source.flags[MODULE_ID] = {
-        ...(source.flags[MODULE_ID] ?? {}),
-        importedBy: MODULE_ID,
+    stampGrantedItemSource(source, {
+        sourceId: grantPlan.selection.uuid,
         slotId: grantPlan.slotId,
-    };
+        granterId: selectorItemId,
+    });
     const created = await actor.createEmbeddedDocuments("Item", [source]);
     const createdItem = Array.isArray(created) ? (created[0] ?? null) : null;
     if (!createdItem?.id) {
@@ -225,15 +215,10 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
     };
 }
 function buildGrantedItemUpdate(itemId, selectorItemId, grantPlan) {
-    return {
-        _id: itemId,
-        "flags.core.sourceId": grantPlan.selection.uuid,
-        "flags.pf2e.grantedBy": {
-            id: selectorItemId,
-            onDelete: "cascade",
-        },
-        [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
-        [`flags.${MODULE_ID}.slotId`]: grantPlan.slotId,
-    };
+    return buildGrantedItemSourceUpdate(itemId, {
+        sourceId: grantPlan.selection.uuid,
+        slotId: grantPlan.slotId,
+        granterId: selectorItemId,
+    });
 }
 //# sourceMappingURL=selector-application.js.map

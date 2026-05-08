@@ -6,6 +6,7 @@ import {
   getDocumentRules,
   isChoicePredicate,
   isRecord,
+  predicateIncludesString,
   toNonEmptyString,
 } from "../rule-data.js";
 
@@ -181,24 +182,4 @@ function resolveGrantDependency(
   }
 
   return null;
-}
-
-function predicateIncludesString(predicate: ChoicePredicate, target: string): boolean {
-  if (typeof predicate === "string") {
-    return predicate.includes(target);
-  }
-
-  if (Array.isArray(predicate)) {
-    return predicate.some((entry) => predicateIncludesString(entry, target));
-  }
-
-  if (!isRecord(predicate)) {
-    return false;
-  }
-
-  return (
-    (Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
-    (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
-    (!!predicate.not && predicateIncludesString(predicate.not, target))
-  );
 }

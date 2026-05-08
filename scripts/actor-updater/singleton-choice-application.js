@@ -1,5 +1,5 @@
 import { listActorItems } from "../build-state.js";
-import { cloneData } from "../shared/cloning.js";
+import { queueRuleSelectionUpdate } from "../shared/pf2e-item-source.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 export async function applySingletonChoiceDraft(actor, draft, steps) {
     if (typeof actor?.updateEmbeddedDocuments !== "function") {
@@ -17,17 +17,7 @@ export async function applySingletonChoiceDraft(actor, draft, steps) {
         if (!item?.id) {
             continue;
         }
-        const update = updatesByItemId.get(item.id) ??
-            {
-                _id: item.id,
-                "system.rules": cloneData(Array.isArray(item.system?.rules) ? item.system.rules : []),
-            };
-        const rules = update["system.rules"];
-        if (rules[step.singletonChoice.sourceRuleIndex]) {
-            rules[step.singletonChoice.sourceRuleIndex].selection = value;
-        }
-        update[`flags.pf2e.rulesSelections.${step.singletonChoice.flag}`] = value;
-        updatesByItemId.set(item.id, update);
+        queueRuleSelectionUpdate(updatesByItemId, item, step.singletonChoice.sourceRuleIndex, step.singletonChoice.flag, value);
     }
     const updates = Array.from(updatesByItemId.values());
     if (updates.length > 0) {

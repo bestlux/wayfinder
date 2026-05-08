@@ -1,4 +1,5 @@
 import type { ChoicePredicate, DraftState, PendingStep, SelectionRef, SingletonChoiceMeta } from "../types.js";
+import { matchesChoicePredicateList } from "./rule-data.js";
 import { buildSingletonChoiceStepsFromRules } from "./singleton-choice/step-builders.js";
 
 export interface SingletonChoiceSourceContext {
@@ -79,29 +80,5 @@ function buildActiveRollOptions(
 }
 
 function matchesPredicate(predicate: ChoicePredicate[], activeRollOptions: Set<string>): boolean {
-  return predicate.every((entry) => matchesPredicateEntry(entry, activeRollOptions));
-}
-
-function matchesPredicateEntry(predicate: ChoicePredicate, activeRollOptions: Set<string>): boolean {
-  if (typeof predicate === "string") {
-    return activeRollOptions.has(predicate);
-  }
-
-  if (Array.isArray(predicate)) {
-    return predicate.every((entry) => matchesPredicateEntry(entry, activeRollOptions));
-  }
-
-  if (Array.isArray(predicate.or)) {
-    return predicate.or.some((entry) => matchesPredicateEntry(entry, activeRollOptions));
-  }
-
-  if (Array.isArray(predicate.nor)) {
-    return predicate.nor.every((entry) => !matchesPredicateEntry(entry, activeRollOptions));
-  }
-
-  if (predicate.not) {
-    return !matchesPredicateEntry(predicate.not, activeRollOptions);
-  }
-
-  return true;
+  return matchesChoicePredicateList(predicate, (statement) => activeRollOptions.has(statement));
 }

@@ -1,6 +1,7 @@
 import { SKILL_LABELS } from "../../constants.js";
 import { getConfiguredSkills, getSkillAbility, resolveSkillLabel, } from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
+import { toNonEmptyString } from "../rule-data.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
 export function discoverSourceSkillTrainingMeta(args) {
     const configuredSkills = getConfiguredSkills();
@@ -444,9 +445,6 @@ function normalizeLoreLabel(value) {
         return "";
     }
     return /\blore\b$/i.test(trimmed) ? trimmed : `${trimmed} Lore`;
-}
-function toNonEmptyString(value) {
-    return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 function discoverAdditionalLoreGrantMeta(args) {
     const fixedLores = [];

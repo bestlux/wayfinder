@@ -1,6 +1,7 @@
 import { getEffectiveBuildState, listActorItems } from "../../build-state.js";
 import { MODULE_ID } from "../../constants.js";
 import { fetchSelectionDocument } from "../../pack-service.js";
+import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassTrainingSteps, } from "../class-choice-service.js";
@@ -355,16 +356,16 @@ function selectionFromSkillTrainingFeatItem(item) {
     if (!sourceId) {
         return null;
     }
-    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
-    if (!match) {
+    const parsed = parseCompendiumItemUuid(sourceId);
+    if (!parsed) {
         return null;
     }
     const level = toPositiveInteger(typedItem.system?.level?.value) ?? 1;
     const slotId = existingSlotId ?? `ancestry-feat-level-${level}`;
     return {
         slotId,
-        packId: match[1],
-        documentId: match[2],
+        packId: parsed.packId,
+        documentId: parsed.documentId,
         uuid: sourceId,
         itemType: "feat",
         featType: "ancestry",

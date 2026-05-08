@@ -1,6 +1,6 @@
 import { listActorItems } from "../build-state.js";
-import type { ActorItemLike, ActorLike, LooseRecord } from "../shared/actor-model.js";
-import { cloneData } from "../shared/cloning.js";
+import type { ActorItemLike, ActorLike } from "../shared/actor-model.js";
+import { queueRuleSelectionUpdate } from "../shared/pf2e-item-source.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 import type { DraftState, PendingStep } from "../types.js";
 
@@ -28,19 +28,13 @@ export async function applySingletonChoiceDraft(
       continue;
     }
 
-    const update =
-      updatesByItemId.get(item.id) ??
-      ({
-        _id: item.id,
-        "system.rules": cloneData(Array.isArray(item.system?.rules) ? item.system.rules : []),
-      } satisfies Record<string, unknown>);
-
-    const rules = update["system.rules"] as LooseRecord[];
-    if (rules[step.singletonChoice.sourceRuleIndex]) {
-      rules[step.singletonChoice.sourceRuleIndex].selection = value;
-    }
-    update[`flags.pf2e.rulesSelections.${step.singletonChoice.flag}`] = value;
-    updatesByItemId.set(item.id, update);
+    queueRuleSelectionUpdate(
+      updatesByItemId,
+      item,
+      step.singletonChoice.sourceRuleIndex,
+      step.singletonChoice.flag,
+      value
+    );
   }
 
   const updates = Array.from(updatesByItemId.values());

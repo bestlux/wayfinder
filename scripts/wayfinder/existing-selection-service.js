@@ -1,4 +1,5 @@
 import { listActorItems } from "../build-state.js";
+import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 export function readExistingBranchSelection(actor, branch) {
     return readRulesSelection(findActorItemBySourceId(actor, branch.selectorUuid), branch.flag);
@@ -31,14 +32,14 @@ export function readExistingSingletonSourceSelection(actor, itemType) {
     if (!item || !sourceId) {
         return null;
     }
-    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(sourceId);
-    if (!match) {
+    const parsed = parseCompendiumItemUuid(sourceId);
+    if (!parsed) {
         return null;
     }
     return {
         slotId: `${itemType}-level-1`,
-        packId: match[1],
-        documentId: match[2],
+        packId: parsed.packId,
+        documentId: parsed.documentId,
         uuid: sourceId,
         itemType,
         featType: null,

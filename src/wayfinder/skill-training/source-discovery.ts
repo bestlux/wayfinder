@@ -13,6 +13,7 @@ import {
   type SkillConfigMap,
 } from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
+import { toNonEmptyString } from "../rule-data.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
 
 type TrainingSourceItemType = "ancestry" | "heritage" | "background" | "feat";
@@ -660,10 +661,6 @@ function normalizeLoreLabel(value: string): string {
   }
 
   return /\blore\b$/i.test(trimmed) ? trimmed : `${trimmed} Lore`;
-}
-
-function toNonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
 function discoverAdditionalLoreGrantMeta(args: {

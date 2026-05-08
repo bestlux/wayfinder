@@ -7,3 +7,7 @@ export function parseCompendiumItemUuid(uuid: string): CompendiumItemUuidParts |
   const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/.exec(uuid.trim());
   return match ? { packId: match[1], documentId: match[2] } : null;
 }
+
+export function toCompendiumItemUuid(packId: string, documentId: string): string {
+  return `Compendium.${packId}.Item.${documentId}`;
+}

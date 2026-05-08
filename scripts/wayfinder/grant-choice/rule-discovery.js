@@ -1,5 +1,5 @@
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
-import { documentFeatureLevel, extractChoiceKey, getDocumentRules, isChoicePredicate, isRecord, toNonEmptyString, } from "../rule-data.js";
+import { documentFeatureLevel, extractChoiceKey, getDocumentRules, isChoicePredicate, isRecord, predicateIncludesString, toNonEmptyString, } from "../rule-data.js";
 const STATIC_UUID_PACK_ITEM_TYPES = new Map([
     ["pf2e.feats-srd", "feat"],
     ["pf2e.classfeatures", "feat"],
@@ -125,19 +125,5 @@ function resolveGrantDependency(sourceItemType, predicate) {
         return "deity";
     }
     return null;
-}
-function predicateIncludesString(predicate, target) {
-    if (typeof predicate === "string") {
-        return predicate.includes(target);
-    }
-    if (Array.isArray(predicate)) {
-        return predicate.some((entry) => predicateIncludesString(entry, target));
-    }
-    if (!isRecord(predicate)) {
-        return false;
-    }
-    return ((Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
-        (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
-        (!!predicate.not && predicateIncludesString(predicate.not, target)));
 }
 //# sourceMappingURL=rule-discovery.js.map

@@ -1,6 +1,6 @@
 import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
-import { cloneData } from "../shared/cloning.js";
+import { queueRuleSelectionUpdate } from "../shared/pf2e-item-source.js";
 import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 export async function applyTrainingDraft(actor, draft, steps) {
@@ -148,17 +148,7 @@ function queueTrainingRuleSelectionUpdate(actorItems, updatesByItemId, persisten
     if (!item?.id) {
         return;
     }
-    const update = updatesByItemId.get(item.id) ??
-        {
-            _id: item.id,
-            "system.rules": cloneData(Array.isArray(item.system?.rules) ? item.system.rules : []),
-        };
-    const rules = update["system.rules"];
-    if (rules[persistence.sourceRuleIndex]) {
-        rules[persistence.sourceRuleIndex].selection = selection;
-    }
-    update[`flags.pf2e.rulesSelections.${flag}`] = selection;
-    updatesByItemId.set(item.id, update);
+    queueRuleSelectionUpdate(updatesByItemId, item, persistence.sourceRuleIndex, flag, selection);
 }
 async function reconcileTrainingLore(actor, actorItems, desiredEntries) {
     const desiredByName = new Map();

@@ -43,6 +43,41 @@ export function isChoicePredicate(value) {
     }
     return true;
 }
+export function matchesChoicePredicateList(predicate, matchesString) {
+    return predicate.every((entry) => matchesChoicePredicate(entry, matchesString));
+}
+export function matchesChoicePredicate(predicate, matchesString) {
+    if (typeof predicate === "string") {
+        return matchesString(predicate);
+    }
+    if (Array.isArray(predicate)) {
+        return matchesChoicePredicateList(predicate, matchesString);
+    }
+    if (Array.isArray(predicate.or)) {
+        return predicate.or.some((entry) => matchesChoicePredicate(entry, matchesString));
+    }
+    if (Array.isArray(predicate.nor)) {
+        return predicate.nor.every((entry) => !matchesChoicePredicate(entry, matchesString));
+    }
+    if (predicate.not) {
+        return !matchesChoicePredicate(predicate.not, matchesString);
+    }
+    return true;
+}
+export function predicateIncludesString(predicate, target) {
+    if (typeof predicate === "string") {
+        return predicate.includes(target);
+    }
+    if (Array.isArray(predicate)) {
+        return predicate.some((entry) => predicateIncludesString(entry, target));
+    }
+    if (!isRecord(predicate)) {
+        return false;
+    }
+    return ((Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
+        (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
+        (!!predicate.not && predicateIncludesString(predicate.not, target)));
+}
 export function isRecord(value) {
     return !!value && typeof value === "object";
 }

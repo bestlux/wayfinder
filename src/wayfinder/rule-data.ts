@@ -67,6 +67,60 @@ export function isChoicePredicate(value: unknown): value is ChoicePredicate {
   return true;
 }
 
+export function matchesChoicePredicateList(
+  predicate: ChoicePredicate[],
+  matchesString: (statement: string) => boolean
+): boolean {
+  return predicate.every((entry) => matchesChoicePredicate(entry, matchesString));
+}
+
+export function matchesChoicePredicate(
+  predicate: ChoicePredicate,
+  matchesString: (statement: string) => boolean
+): boolean {
+  if (typeof predicate === "string") {
+    return matchesString(predicate);
+  }
+
+  if (Array.isArray(predicate)) {
+    return matchesChoicePredicateList(predicate, matchesString);
+  }
+
+  if (Array.isArray(predicate.or)) {
+    return predicate.or.some((entry) => matchesChoicePredicate(entry, matchesString));
+  }
+
+  if (Array.isArray(predicate.nor)) {
+    return predicate.nor.every((entry) => !matchesChoicePredicate(entry, matchesString));
+  }
+
+  if (predicate.not) {
+    return !matchesChoicePredicate(predicate.not, matchesString);
+  }
+
+  return true;
+}
+
+export function predicateIncludesString(predicate: ChoicePredicate, target: string): boolean {
+  if (typeof predicate === "string") {
+    return predicate.includes(target);
+  }
+
+  if (Array.isArray(predicate)) {
+    return predicate.some((entry) => predicateIncludesString(entry, target));
+  }
+
+  if (!isRecord(predicate)) {
+    return false;
+  }
+
+  return (
+    (Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
+    (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
+    (!!predicate.not && predicateIncludesString(predicate.not, target))
+  );
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object";
 }

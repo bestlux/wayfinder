@@ -1,12 +1,15 @@
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
-import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta, SelectionRef, SkillTrainingMeta } from "../../types.js";
+import type {
+  ChoicePredicate,
+  ClassBranchMeta,
+  ClassChoiceMeta,
+  ClassGrantMeta,
+  SelectionRef,
+  SkillTrainingMeta,
+} from "../../types.js";
 import { formatSlug } from "../formatting.js";
+import { isRecord, matchesChoicePredicate, toNonEmptyString } from "../rule-data.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, type SkillConfigMap } from "./skill-config.js";
-
-export type ChoicePredicate =
-  | string
-  | { or?: ChoicePredicate[]; nor?: ChoicePredicate[]; not?: ChoicePredicate }
-  | ChoicePredicate[];
 
 export interface ClassFeatureSelectionSource {
   level: number;
@@ -375,31 +378,7 @@ function extractClassChoiceKey(rule: Record<string, unknown>): string | null {
 }
 
 function evaluatePredicate(predicate: ChoicePredicate | undefined, rollOptions: Set<string>): boolean {
-  if (!predicate) {
-    return true;
-  }
-
-  if (typeof predicate === "string") {
-    return rollOptions.has(predicate);
-  }
-
-  if (Array.isArray(predicate)) {
-    return predicate.every((entry) => evaluatePredicate(entry, rollOptions));
-  }
-
-  if (Array.isArray(predicate.or)) {
-    return predicate.or.some((entry) => evaluatePredicate(entry, rollOptions));
-  }
-
-  if (Array.isArray(predicate.nor)) {
-    return predicate.nor.every((entry) => !evaluatePredicate(entry, rollOptions));
-  }
-
-  if (predicate.not) {
-    return !evaluatePredicate(predicate.not, rollOptions);
-  }
-
-  return true;
+  return !predicate || matchesChoicePredicate(predicate, (statement) => rollOptions.has(statement));
 }
 
 function referencesDeity(rule: Record<string, unknown>): boolean {
@@ -489,12 +468,4 @@ function toStringArray(value: unknown): string[] {
     .filter((entry): entry is string => typeof entry === "string")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
-}
-
-function toNonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object";
 }

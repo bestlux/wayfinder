@@ -4,6 +4,9 @@ import {
   extractChoiceKey,
   getDocumentRules,
   isChoicePredicate,
+  matchesChoicePredicate,
+  matchesChoicePredicateList,
+  predicateIncludesString,
   toNonEmptyString,
 } from "../src/wayfinder/rule-data";
 
@@ -26,5 +29,25 @@ describe("wayfinder rule data helpers", () => {
     expect(toNonEmptyString(" ")).toBeNull();
     expect(isChoicePredicate(["item:level:1", { or: ["item:type:feat", { not: "item:rarity:rare" }] }])).toBe(true);
     expect(isChoicePredicate([{ nor: ["item:level:1", 2] }])).toBe(false);
+  });
+
+  it("evaluates shared predicate trees with caller-owned string matching", () => {
+    const active = new Set(["deity:primary:font:heal", "item:type:feat"]);
+    const matches = (statement: string) => active.has(statement);
+
+    expect(matchesChoicePredicateList(["item:type:feat", { not: "item:rarity:rare" }], matches)).toBe(true);
+    expect(matchesChoicePredicate({ or: ["item:rarity:rare", "deity:primary:font:heal"] }, matches)).toBe(true);
+    expect(matchesChoicePredicate({ nor: ["item:rarity:rare", "item:type:spell"] }, matches)).toBe(true);
+    expect(matchesChoicePredicate(["item:type:feat", "item:rarity:rare"], matches)).toBe(false);
+  });
+
+  it("finds predicate string fragments inside nested branches", () => {
+    expect(
+      predicateIncludesString(
+        ["item:level:1", { or: ["item:trait:general", { not: "item:trait:{actor|system.details.class.trait}" }] }],
+        "{actor|system.details.class.trait}"
+      )
+    ).toBe(true);
+    expect(predicateIncludesString({ nor: ["item:level:2"] }, "{actor|system.details.class.trait}")).toBe(false);
   });
 });

@@ -1,7 +1,9 @@
 import { OFFICIAL_PACKS } from "./constants.js";
 import { getExtraPackSetting } from "./settings.js";
+import { toCompendiumItemUuid } from "./shared/compendium.js";
 import { extractDocumentSlug } from "./shared/slug.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
+import { matchesChoicePredicate as matchesChoicePredicateTree, predicateIncludesString, } from "./wayfinder/rule-data.js";
 const indexCache = new Map();
 const traitCatalogCache = new Map();
 const EMPTY_OPTION_CONTEXT = {
@@ -91,9 +93,6 @@ export async function fetchSelectionDocument(selection) {
     }
     const fromUuid = globalThis.fromUuid;
     return typeof fromUuid === "function" ? fromUuid(selection.uuid) : null;
-}
-function toCompendiumItemUuid(packId, documentId) {
-    return `Compendium.${packId}.Item.${documentId}`;
 }
 export function clearPackServiceCache() {
     indexCache.clear();
@@ -515,22 +514,7 @@ function matchesSpellChoiceContext(entry, packId, step) {
     return spellChoice.curriculumSpellNames.some((name) => namesMatch(name, entryName));
 }
 function matchesChoicePredicate(predicate, entry, context) {
-    if (typeof predicate === "string") {
-        return matchesChoicePredicateString(predicate, entry, context);
-    }
-    if (Array.isArray(predicate)) {
-        return predicate.every((entryPredicate) => matchesChoicePredicate(entryPredicate, entry, context));
-    }
-    if (Array.isArray(predicate.or)) {
-        return predicate.or.some((entryPredicate) => matchesChoicePredicate(entryPredicate, entry, context));
-    }
-    if (Array.isArray(predicate.nor)) {
-        return predicate.nor.every((entryPredicate) => !matchesChoicePredicate(entryPredicate, entry, context));
-    }
-    if (predicate.not) {
-        return !matchesChoicePredicate(predicate.not, entry, context);
-    }
-    return true;
+    return matchesChoicePredicateTree(predicate, (statement) => matchesChoicePredicateString(statement, entry, context));
 }
 function matchesUuidAllowlist(entry, packId, allowedUuids) {
     const allowed = new Set(allowedUuids.map(normalizeUuid).filter(Boolean));
@@ -617,17 +601,6 @@ function matchesCurrentClassMulticlassDedication(entry, predicate, context) {
         return false;
     }
     return extractEntryTraits(entry).includes(classSlug);
-}
-function predicateIncludesString(predicate, target) {
-    if (typeof predicate === "string") {
-        return predicate.includes(target);
-    }
-    if (Array.isArray(predicate)) {
-        return predicate.some((entry) => predicateIncludesString(entry, target));
-    }
-    return ((Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
-        (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
-        (!!predicate.not && predicateIncludesString(predicate.not, target)));
 }
 function normalizeTraitList(value) {
     if (!Array.isArray(value)) {

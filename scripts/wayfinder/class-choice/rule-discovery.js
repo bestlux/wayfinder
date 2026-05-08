@@ -1,5 +1,6 @@
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { formatSlug } from "../formatting.js";
+import { isRecord, matchesChoicePredicate, toNonEmptyString } from "../rule-data.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel } from "./skill-config.js";
 export function findRelevantClassRules(document) {
     const rules = document?.system?.rules;
@@ -236,25 +237,7 @@ function extractClassChoiceKey(rule) {
     return null;
 }
 function evaluatePredicate(predicate, rollOptions) {
-    if (!predicate) {
-        return true;
-    }
-    if (typeof predicate === "string") {
-        return rollOptions.has(predicate);
-    }
-    if (Array.isArray(predicate)) {
-        return predicate.every((entry) => evaluatePredicate(entry, rollOptions));
-    }
-    if (Array.isArray(predicate.or)) {
-        return predicate.or.some((entry) => evaluatePredicate(entry, rollOptions));
-    }
-    if (Array.isArray(predicate.nor)) {
-        return predicate.nor.every((entry) => !evaluatePredicate(entry, rollOptions));
-    }
-    if (predicate.not) {
-        return !evaluatePredicate(predicate.not, rollOptions);
-    }
-    return true;
+    return !predicate || matchesChoicePredicate(predicate, (statement) => rollOptions.has(statement));
 }
 function referencesDeity(rule) {
     return JSON.stringify(rule).includes("deity:primary:");
@@ -325,11 +308,5 @@ function toStringArray(value) {
         .filter((entry) => typeof entry === "string")
         .map((entry) => entry.trim())
         .filter((entry) => entry.length > 0);
-}
-function toNonEmptyString(value) {
-    return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-function isRecord(value) {
-    return !!value && typeof value === "object";
 }
 //# sourceMappingURL=rule-discovery.js.map

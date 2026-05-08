@@ -31,7 +31,16 @@ const vitestGlobals = {
 
 export default tseslint.config(
   {
-    ignores: ["agents/**", ".claude/**", "lang/**", "node_modules/**", "scripts/**", "styles/**", "templates/**"],
+    ignores: [
+      "agents/**",
+      ".claude/**",
+      "dist/**",
+      "lang/**",
+      "node_modules/**",
+      "scripts/**",
+      "styles/**",
+      "templates/**",
+    ],
   },
   {
     files: ["**/*.{js,mjs,cjs}"],

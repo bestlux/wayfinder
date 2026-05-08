@@ -5,7 +5,8 @@
   "version": "0.1.0",
   "authors": [
     {
-      "name": "Codex + iomancer"
+      "name": "iomancer",
+      "url": "https://github.com/bestlux"
     }
   ],
   "esmodules": ["scripts/wayfinder.js"],
@@ -23,8 +24,7 @@
   ],
   "compatibility": {
     "minimum": "14.360",
-    "verified": "14.360",
-    "maximum": "14"
+    "verified": "14.360"
   },
   "relationships": {
     "systems": [
@@ -38,7 +38,9 @@
       }
     ]
   },
-  "manifest": "",
-  "download": "",
-  "url": ""
+  "url": "https://github.com/bestlux/wayfinder",
+  "manifest": "https://github.com/bestlux/wayfinder/releases/latest/download/module.json",
+  "readme": "https://github.com/bestlux/wayfinder#readme",
+  "bugs": "https://github.com/bestlux/wayfinder/issues",
+  "changelog": "https://github.com/bestlux/wayfinder/releases"
 }

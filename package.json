@@ -13,6 +13,8 @@
     "format:check": "biome check .",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "package": "npm run check && node tools/release/prepare-package.mjs",
+    "package:artifact": "node tools/release/prepare-package.mjs",
     "check": "npm run format:check && npm run lint && npm run build && npm test && npm run check:strict",
     "test": "vitest run",
     "test:watch": "vitest"

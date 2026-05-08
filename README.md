@@ -54,6 +54,50 @@ For local Foundry development, the repo is intended to be linked into:
 
 `C:\Users\iomancer\AppData\Local\FoundryVTT\Data\modules\pf2e-wayfinder`
 
+## Installation
+
+Once a GitHub release exists, install Wayfinder in Foundry from this manifest URL:
+
+```text
+https://github.com/bestlux/wayfinder/releases/latest/download/module.json
+```
+
+That stable URL is also the update URL stored in release manifests. Each released manifest points its `download` field at the matching version-specific `module.zip`, so existing users can update through Foundry's package updater and older releases remain installable from their own release pages.
+
+## Release Packaging
+
+The checked-in `module.json` is the source manifest for local development. The release package step patches it into an installable Foundry manifest with a version-specific `download` URL.
+
+Create a local package:
+
+```powershell
+npm run package
+```
+
+For CI or release dry runs after validation has already passed:
+
+```powershell
+node tools/release/prepare-package.mjs --version 0.1.0 --tag v0.1.0 --repo bestlux/wayfinder
+```
+
+Package outputs are written to `dist/release/`:
+
+- `module.json` is the release manifest to upload to GitHub Releases and register with Foundry package admin for that exact version.
+- `module.zip` is the Foundry-installable archive.
+- `package-manifest.json` records the emitted URLs, zip SHA-256, and exact archive entries for inspection.
+
+The archive intentionally includes only installable module assets: `module.json`, generated `scripts/`, `styles/`, `templates/`, `lang/`, and optional top-level release docs such as this README. It excludes `src/`, `tests/`, `node_modules/`, source maps, build config, workflow files, and other development-only content.
+
+To publish through GitHub, bump `package.json` and `module.json` to the same version, run `npm run check`, tag the commit as `vX.Y.Z`, and push the tag. `.github/workflows/release.yml` validates the repo, builds the package, and attaches the release manifest and zip to the GitHub Release.
+
+For Foundry's package listing, register the version-specific manifest URL, not the `/latest/` URL:
+
+```text
+https://github.com/bestlux/wayfinder/releases/download/vX.Y.Z/module.json
+```
+
+Foundry's Package Release API requires a private package token. Keep that token in repository secrets if automation is added later; do not hardcode it into this repository.
+
 ## Notes
 
 Wayfinder deliberately reuses PF2E compendium data and actor item application where possible. It does not attempt to replace PF2E's full rules engine, and some guided flows still depend on PF2E item rules exposing supported selector or `ChoiceSet` shapes.

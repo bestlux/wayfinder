@@ -1,103 +1,86 @@
 # Wayfinder
 
-Wayfinder is a Foundry VTT module for Pathfinder 2e that guides players through initial character creation and later level-up milestones from inside the character sheet.
+A guided Pathfinder 2e character builder for Foundry VTT.
 
-## Current Scope
+Wayfinder takes the parts of PF2E character building that fragment your attention — class tables, compendium browsing, feat slots, boosts, spell choices, variant exceptions — and turns them into a single guided flow you open from the character sheet. Think Pathbuilder, but living inside your game world: it knows which sources your GM enabled, which variant rules are on, and writes its output straight to the actor. No JSON export, no re-import, no "why is my sheet wrong."
 
-This first implementation is a working vertical slice with:
+> **Status:** early access. Wayfinder is being built slice-by-slice, class by class. Some flows are deeply guided; others hand you back to the PF2E sheet on purpose. The [level-1 coverage matrix](docs/coverage/level1-coverage-matrix.md) is the honest answer to "does it support my class yet."
 
-- PF2E-only support on Foundry VTT 14.360 / PF2E 8.0.3
-- An actor-sheet header action for owned PF2E character actors
-- Draft-based guided selection for ancestry, heritage, background, class, common feat milestones, and level-1 creation boosts
-- Generic singleton-item `ChoiceSet` support for supported ancestry, heritage, background, class, and deity-owned decisions
-- Non-class grant-choice support for structured filtered feat grants such as Ancient Elf and similar PF2E rule shapes
-- Consolidated skill-training guidance that accounts for class, background, ancestry, heritage, selected feat, and lore grants
-- Guided bonus-language selection after creation boosts so the step can use final effective Intelligence
-- Contributor-backed class spell-choice support, with the deepest guided coverage currently living in wizard and cleric flows
-- Rarity and source filtering in the selection panes so large compendium choice sets stay usable
-- Configurable extra compendium allowlisting beyond official PF2E packs
-- Actor flag persistence for resumable drafts
-- Guided manual checkpoints for ability boosts and skill increases where the module intentionally defers to PF2E/native sheet workflows instead of forcing brittle automation
+## Why use it
 
-For a grounded snapshot of what is and is not currently guided at level 1, see [the level-1 coverage matrix](docs/coverage/level1-coverage-matrix.md).
+- **You're new to PF2E.** It explains what each choice does before you commit and keeps the next step visible without hiding the rules.
+- **You've built characters before.** Search, pick, next. Earlier picks filter later ones, so you stop scrolling past feats you can't take anyway.
+- **You're a GM onboarding friends.** Wayfinder respects your enabled sources and variants, so what players see in the planner matches what's legal at your table.
 
-## Architecture
+It is not a replacement for the PF2E system. It is a planning layer on top of it. The actor and items remain the source of truth; Wayfinder's job is to get you to a clean, valid state without making you click through twelve places to do it.
 
-Wayfinder now has explicit seams for future growth:
+## What's working today
 
-- `src/wayfinder/domain/` owns typed workflow rules such as step kinds, decisions, slot IDs, completion, and invalidation.
-- `src/wayfinder/application/` owns actor-aware orchestration such as plan building, pane assembly, selection commands, and draft lifecycle.
-- `src/actor-updater/` owns apply-side mutations and spellcasting synchronization.
-- `src/build-state.ts` plus `src/shared/` own effective document resolution and reusable Foundry/PF2E-neutral helpers.
-- For new class-specific flows, see [the class-flow guide](docs/architecture/adding-a-class-flow.md).
-- For current level-1 scope and remaining gaps, see [the level-1 coverage matrix](docs/coverage/level1-coverage-matrix.md).
-- For special-case default rules and optional-rule sequencing, see [the variant rules and special-cases plan](docs/architecture/wayfinder-variant-rules-and-special-cases-plan.md).
+The first vertical slice covers level-1 creation and level-up milestones, with:
 
-When extending the module, prefer adding new focused services and tests in those seams instead of pushing more policy into `src/wayfinder/app-shell.ts` or the large choice services.
+- Ancestry, heritage, background, and class selection
+- Class branch and grant-driven choices for the classes that have a flow built (see the coverage matrix)
+- Common feat milestones and level-1 creation boosts
+- Skill training reconciled across class, background, ancestry, heritage, and feat grants
+- Bonus-language selection that uses your final effective Intelligence
+- Spell-choice flows for the casters with built-in support — wizard and cleric are deepest right now
+- Rarity and source filtering on every picker, with optional GM allowlists for non-official packs
+- Resumable drafts persisted on the actor, so you can leave and come back
 
-## Development
+Where Wayfinder can't model a choice confidently, it says so and points you at the right native PF2E control. No silent omissions.
 
-Install dependencies and build:
+## Install
 
-```powershell
-npm install
-npm run build
-```
-
-Run tests:
-
-```powershell
-npm test
-```
-
-For local Foundry development, the repo is intended to be linked into:
-
-`C:\Users\iomancer\AppData\Local\FoundryVTT\Data\modules\pf2e-wayfinder`
-
-## Installation
-
-Once a GitHub release exists, install Wayfinder in Foundry from this manifest URL:
+Paste this manifest URL into Foundry's package installer:
 
 ```text
 https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 ```
 
-That stable URL is also the update URL stored in release manifests. Each released manifest points its `download` field at the matching version-specific `module.zip`, so existing users can update through Foundry's package updater and older releases remain installable from their own release pages.
+Foundry's package updater will follow it for future versions. Older releases stay installable from their own release pages.
 
-## Release Packaging
+**Compatibility:** Foundry VTT 14.360 with the PF2E system 8.0.3.
 
-The checked-in `module.json` is the source manifest for local development. The release package step patches it into an installable Foundry manifest with a version-specific `download` URL.
+## Use it
 
-Create a local package:
+1. Open an owned PF2E character actor.
+2. Click the Wayfinder action in the sheet header.
+3. Walk the steps. Save drafts as you go.
+4. Apply when you're ready — Wayfinder writes the changes back to the actor.
+
+## Develop
 
 ```powershell
-npm run package
+npm install
+npm run build
+npm test
 ```
 
-For CI or release dry runs after validation has already passed:
-
-```powershell
-node tools/release/prepare-package.mjs --version 0.1.0 --tag v0.1.0 --repo bestlux/wayfinder
-```
-
-Package outputs are written to `dist/release/`:
-
-- `module.json` is the release manifest to upload to GitHub Releases and register with Foundry package admin for that exact version.
-- `module.zip` is the Foundry-installable archive.
-- `package-manifest.json` records the emitted URLs, zip SHA-256, and exact archive entries for inspection.
-
-The archive intentionally includes only installable module assets: `module.json`, generated `scripts/`, `styles/`, `templates/`, `lang/`, and optional top-level release docs such as this README. It excludes `src/`, `tests/`, `node_modules/`, source maps, build config, workflow files, and other development-only content.
-
-To publish through GitHub, bump `package.json` and `module.json` to the same version, run `npm run check`, tag the commit as `vX.Y.Z`, and push the tag. `.github/workflows/release.yml` validates the repo, builds the package, and attaches the release manifest and zip to the GitHub Release.
-
-For Foundry's package listing, register the version-specific manifest URL, not the `/latest/` URL:
+For local Foundry testing, link the repo into:
 
 ```text
-https://github.com/bestlux/wayfinder/releases/download/vX.Y.Z/module.json
+C:\Users\<you>\AppData\Local\FoundryVTT\Data\modules\pf2e-wayfinder
 ```
 
-Foundry's Package Release API requires a private package token. Keep that token in repository secrets if automation is added later; do not hardcode it into this repository.
+Before closing meaningful work, run `npm run check` — it covers formatting, lint, build, tests, and strict typecheck in one pass.
 
-## Notes
+## Architecture
 
-Wayfinder deliberately reuses PF2E compendium data and actor item application where possible. It does not attempt to replace PF2E's full rules engine, and some guided flows still depend on PF2E item rules exposing supported selector or `ChoiceSet` shapes.
+The codebase is organized so new features land in focused seams instead of growing the app shell:
+
+- `src/wayfinder/domain/` — typed workflow rules: step kinds, decisions, slot IDs, completion, invalidation.
+- `src/wayfinder/application/` — actor-aware orchestration: plan building, pane assembly, selection commands, draft lifecycle.
+- `src/actor-updater/` — apply-side mutations and spellcasting sync.
+- `src/build-state.ts` and `src/shared/` — effective document resolution and reusable helpers.
+
+When you're adding a new class flow, start with [the class-flow guide](docs/architecture/adding-a-class-flow.md). For variant rules and special-case sequencing, see [the variant rules plan](docs/architecture/wayfinder-variant-rules-and-special-cases-plan.md). When in doubt, prefer extending one of those modules over adding more responsibility to `app-shell.ts` or the large choice services.
+
+## Release & packaging
+
+Maintainer-only. The checked-in `module.json` is the development manifest; release builds patch in version-specific URLs. See [docs/release-packaging.md](docs/release-packaging.md) for the full procedure.
+
+## License & credits
+
+Wayfinder reuses PF2E compendium data and the PF2E system's actor/item application paths wherever it can. It does not attempt to replace the PF2E rules engine, and it depends on the system's rule shapes (`ChoiceSet`, selectors, grant items) being well-formed for the content it guides.
+
+Issues and feedback: <https://github.com/bestlux/wayfinder/issues>

@@ -18,22 +18,22 @@ export function buildProgressionPlan(snapshot, requestedTargetLevel) {
 export function buildSteps(snapshot, currentLevel, targetLevel) {
     const steps = [];
     if (!snapshot.singletonSlots.ancestry) {
-        steps.push(makePickStep("ancestry", 1, "Choose an ancestry", "Select the ancestry item that anchors this character's build.", {
+        steps.push(makePickStep("ancestry", 1, "Choose an ancestry", "Pick the ancestry your character was born into. Lineage, traits, and a few starting boosts come from here.", {
             itemType: "ancestry",
         }));
     }
     if (!snapshot.singletonSlots.heritage) {
-        steps.push(makePickStep("heritage", 1, "Choose a heritage", "Select a heritage after ancestry so PF2E can layer the heritage item onto the actor.", {
+        steps.push(makePickStep("heritage", 1, "Choose a heritage", "Heritages refine your ancestry — a sub-lineage with its own twist on the lineup.", {
             itemType: "heritage",
         }));
     }
     if (!snapshot.singletonSlots.background) {
-        steps.push(makePickStep("background", 1, "Choose a background", "Select the background that supplies early trained skills and boosts.", {
+        steps.push(makePickStep("background", 1, "Choose a background", "Backgrounds set who your character was before adventuring — a starting boost and a couple of trained skills.", {
             itemType: "background",
         }));
     }
     if (!snapshot.singletonSlots.class) {
-        steps.push(makePickStep("class", 1, "Choose a class", "Select the class item that defines class progression and downstream PF2E automation.", {
+        steps.push(makePickStep("class", 1, "Choose a class", "Your class is the spine of the build — fighter, wizard, rogue, cleric. Almost everything else hangs off this choice.", {
             itemType: "class",
         }));
     }
@@ -54,7 +54,7 @@ export function buildSteps(snapshot, currentLevel, targetLevel) {
     }
     for (const level of ABILITY_BOOST_LEVELS) {
         if (level > currentLevel && level <= targetLevel) {
-            steps.push(makeBoostStep("ability-boosts", level, `Level ${level} ability boosts`, "Allocate this level's four free boosts directly in Wayfinder and keep the draft coherent before applying."));
+            steps.push(makeBoostStep("ability-boosts", level, `Level ${level} ability boosts`, "Spend this level's four free ability boosts. Pick four different abilities — no doubling up."));
         }
     }
     for (const level of SKILL_INCREASE_LEVELS) {

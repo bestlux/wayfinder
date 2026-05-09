@@ -246,7 +246,7 @@ export function getPickerInfoState(
       tone: "empty",
       eyebrow: "No matching sources",
       title: "No valid options are available",
-      message: "The enabled compendia do not currently provide any choices that fit this step.",
+      message: "Nothing in your enabled sources matches this step. Ask your GM if more content can be allowlisted.",
     };
   }
 
@@ -283,7 +283,7 @@ export function getPickerBlockedState(step: PendingStep, context: OptionContext)
             eyebrow: "Prerequisite required",
             title: "Choose an ancestry first",
             message:
-              "Wayfinder filters heritages from the drafted ancestry. Pick the ancestry step before reviewing heritage options.",
+              "Pick an ancestry first — heritages depend on it, and your options will show up here once that's set.",
           };
     case "ancestry-feat":
       if (context.ancestryTraits.length === 0) {
@@ -332,7 +332,7 @@ export function getPickerBlockedState(step: PendingStep, context: OptionContext)
             eyebrow: "Prerequisite required",
             title: "Choose a class first",
             message:
-              "Class branch options are pulled from the drafted class's selector features. Pick the class step before reviewing branch options.",
+              "Pick a class first. Each class has its own branch — domain, doctrine, racket, and so on — and we'll show those once we know which class you're playing.",
           };
     case "deity":
       return context.classSlug
@@ -350,8 +350,7 @@ export function getPickerBlockedState(step: PendingStep, context: OptionContext)
           tone: "blocked",
           eyebrow: "Prerequisite required",
           title: "Choose a class first",
-          message:
-            "Wayfinder only offers spellbook choices after the drafted class defines the casting tradition and destination.",
+          message: "Pick a class first. Spell options depend on what tradition you'll be casting from.",
         };
       }
 

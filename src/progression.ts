@@ -35,7 +35,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
         "ancestry",
         1,
         "Choose an ancestry",
-        "Select the ancestry item that anchors this character's build.",
+        "Pick the ancestry your character was born into. Lineage, traits, and a few starting boosts come from here.",
         {
           itemType: "ancestry",
         }
@@ -49,7 +49,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
         "heritage",
         1,
         "Choose a heritage",
-        "Select a heritage after ancestry so PF2E can layer the heritage item onto the actor.",
+        "Heritages refine your ancestry — a sub-lineage with its own twist on the lineup.",
         {
           itemType: "heritage",
         }
@@ -63,7 +63,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
         "background",
         1,
         "Choose a background",
-        "Select the background that supplies early trained skills and boosts.",
+        "Backgrounds set who your character was before adventuring — a starting boost and a couple of trained skills.",
         {
           itemType: "background",
         }
@@ -77,7 +77,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
         "class",
         1,
         "Choose a class",
-        "Select the class item that defines class progression and downstream PF2E automation.",
+        "Your class is the spine of the build — fighter, wizard, rogue, cleric. Almost everything else hangs off this choice.",
         {
           itemType: "class",
         }
@@ -148,7 +148,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
           "ability-boosts",
           level,
           `Level ${level} ability boosts`,
-          "Allocate this level's four free boosts directly in Wayfinder and keep the draft coherent before applying."
+          "Spend this level's four free ability boosts. Pick four different abilities — no doubling up."
         )
       );
     }

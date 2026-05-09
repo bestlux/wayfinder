@@ -8,7 +8,7 @@
       "Subtitle": "Guided PF2E creation and level-up",
       "TargetLevel": "Target Level",
       "CurrentLevel": "Current Level",
-      "NoPending": "No pending Wayfinder steps were detected for this actor.",
+      "NoPending": "Nothing pending. This character is up to date.",
       "SaveDraft": "Save Draft",
       "Apply": "Apply Changes",
       "ApplyConfirmTitle": "Apply Wayfinder Changes",
@@ -17,7 +17,7 @@
       "ClearDraft": "Clear Draft",
       "IncreaseTarget": "Increase target level",
       "DecreaseTarget": "Decrease target level",
-      "Guidance": "Wayfinder automates compendium-backed item choices and actor level changes. Ability boosts and skill increases remain guided checkpoints in this first cut."
+      "Guidance": "Wayfinder handles the picks — ancestry, feats, class branches, spells. Ability boosts and skill increases are walked through here too. Anything Wayfinder can't model cleanly hands off to your character sheet."
     },
     "Settings": {
       "ExtraPacks": {
@@ -26,14 +26,14 @@
       }
     },
     "Notifications": {
-      "OwnerOnly": "You must own this character to use Wayfinder.",
-      "MissingSelections": "Complete all required Wayfinder selections before applying changes.",
-      "DuplicateSelections": "The same compendium choice cannot fill multiple Wayfinder slots in the same draft.",
+      "OwnerOnly": "Only the character's owner can use Wayfinder on this sheet.",
+      "MissingSelections": "Finish the remaining steps before applying.",
+      "DuplicateSelections": "You can't pick the same option twice in one draft.",
       "SavedDraft": "Wayfinder draft saved.",
       "ClearedDraft": "Wayfinder draft cleared.",
       "Applied": "Wayfinder changes applied.",
-      "ApplyCancelled": "Wayfinder apply cancelled.",
-      "ApplyFailed": "Wayfinder could not apply changes. The draft was kept for review."
+      "ApplyCancelled": "Apply cancelled — your draft is still here.",
+      "ApplyFailed": "Couldn't apply the changes. Your draft is intact — review and try again."
     }
   }
 }

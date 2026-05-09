@@ -73,7 +73,7 @@ The codebase is organized so new features land in focused seams instead of growi
 - `src/actor-updater/` — apply-side mutations and spellcasting sync.
 - `src/build-state.ts` and `src/shared/` — effective document resolution and reusable helpers.
 
-When you're adding a new class flow, start with [the class-flow guide](docs/architecture/adding-a-class-flow.md). For variant rules and special-case sequencing, see [the variant rules plan](docs/architecture/wayfinder-variant-rules-and-special-cases-plan.md). When in doubt, prefer extending one of those modules over adding more responsibility to `app-shell.ts` or the large choice services.
+When you're adding a new class flow, start with [the class-flow guide](docs/architecture/adding-a-class-flow.md). For current ownership boundaries and cleanup guardrails, see [the architecture maintenance notes](docs/architecture/maintenance.md). When in doubt, prefer extending one of those seams over adding more responsibility to `app-shell.ts` or the large choice services.
 
 ## Release & packaging
 

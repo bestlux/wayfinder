@@ -4,7 +4,7 @@ This document tracks what Wayfinder currently guides at level 1, what is only pa
 
 It is meant to stay grounded in the current repo, not to describe aspirational future behavior.
 
-For deeper repo-plus-compendium audits, see [Level 1 Default-Rules Gap Audit](./level1-default-rules-gap-audit.md) and [AP And Side-Book Level 1 Audit](./ap-sidebook-level1-audit.md).
+For the current repo-plus-compendium side-book audit, see [AP And Side-Book Level 1 Audit](./ap-sidebook-level1-audit.md).
 
 ## Status Legend
 
@@ -57,7 +57,8 @@ For deeper repo-plus-compendium audits, see [Level 1 Default-Rules Gap Audit](./
 
 ## Highest-Value Follow-Ups
 
-1. Smoke-test the new non-class grant-choice workflow against nearby cases such as `Versatile Human`, `General Training`, `Natural Ambition`, and `Nascent`.
-2. Live smoke-test the `Magical Experiment` predicate chain, grant-choice targets, and `Wisp Fetchling` fallback guard in Foundry.
-3. Live-smoke representative AP and side-book static UUID grants from the AP/side-book audit.
-4. Add full-flow integration tests that exercise representative martial, divine, singleton-choice, grant-choice, and language-sensitive paths.
+1. Add predicate-aware option filtering for static grant choices before widening support to predicate-gated examples such as `Molten Wit`.
+2. Add a generic config catalog resolver only if a real creation blocker such as `Samsaran Weapon Memory` is worth guiding.
+3. Add non-feat static grant support only after an equipment or class-feature grant acceptance test proves the apply path.
+4. Build side-book class contributors one class at a time, starting with the most structurally regular level-1 choices.
+5. Add broader full-flow integration tests for representative martial, divine, singleton-choice, grant-choice, static UUID grant, and language-sensitive paths.

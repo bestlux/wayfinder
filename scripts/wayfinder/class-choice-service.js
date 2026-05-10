@@ -37,27 +37,33 @@ export async function buildClassTrainingSteps(params) {
     }));
 }
 export async function buildClassFeatSteps(params) {
-    const { effectiveClassDocument, targetLevel, fulfilledCount } = params;
-    if (!effectiveClassDocument) {
-        return [];
-    }
-    const classFeatLevelValues = effectiveClassDocument.system?.classFeatLevels?.value;
-    const classFeatLevels = Array.isArray(classFeatLevelValues)
-        ? classFeatLevelValues
-            .map((value) => Number(value))
-            .filter((value) => Number.isFinite(value) && value >= 1 && value <= targetLevel)
-            .map((value) => Math.floor(value))
-        : [];
-    if (classFeatLevels.length === 0) {
-        return [];
-    }
-    const milestones = Array.from(new Set(classFeatLevels)).sort((left, right) => left - right);
-    const startIndex = Math.min(Math.max(0, fulfilledCount), milestones.length);
-    return milestones.slice(startIndex).map((level) => createPickItemStep("class-feat", level, `Level ${level} class feat`, "Pick a class or archetype feat unlocked at this milestone.", {
-        itemType: "feat",
-        featTypes: ["class", "archetype"],
-        maxLevel: level,
-    }));
+    return buildFeatStepsFromClassLevels({
+        ...params,
+        levelField: "classFeatLevels",
+        slotKind: "class-feat",
+        title: (level) => `Level ${level} class feat`,
+        description: "Pick a class or archetype feat unlocked at this milestone.",
+        filters: (level) => ({
+            itemType: "feat",
+            featTypes: ["class", "archetype"],
+            maxLevel: level,
+        }),
+    });
+}
+export async function buildClassSkillFeatSteps(params) {
+    const initialSteps = await buildFeatStepsFromClassLevels({
+        ...params,
+        levelField: "skillFeatLevels",
+        slotKind: "skill-feat",
+        title: (level) => `Level ${level} skill feat`,
+        description: "Pick the skill feat unlocked at this class milestone.",
+        filters: (level) => ({
+            itemType: "feat",
+            featTypes: ["skill"],
+            maxLevel: level,
+        }),
+    });
+    return initialSteps.filter((step) => step.level === 1);
 }
 export async function buildClassBranchSteps(params) {
     const steps = await buildClassBranchStepsFromRules(params);
@@ -74,5 +80,26 @@ export async function buildClassChoiceSteps(params) {
 }
 function shouldSkipExistingStep(draftSelection, actorSelection) {
     return !!actorSelection && !draftSelection;
+}
+function buildFeatStepsFromClassLevels(args) {
+    const { effectiveClassDocument, levelField, slotKind, targetLevel, fulfilledCount } = args;
+    if (!effectiveClassDocument) {
+        return [];
+    }
+    const rawLevels = effectiveClassDocument.system?.[levelField]?.value;
+    const levels = Array.isArray(rawLevels)
+        ? rawLevels
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value >= 1 && value <= targetLevel)
+            .map((value) => Math.floor(value))
+        : [];
+    if (levels.length === 0) {
+        return [];
+    }
+    const milestones = Array.from(new Set(levels)).sort((left, right) => left - right);
+    const startIndex = Math.min(Math.max(0, fulfilledCount), milestones.length);
+    return milestones
+        .slice(startIndex)
+        .map((level) => createPickItemStep(slotKind, level, args.title(level), args.description, args.filters(level)));
 }
 //# sourceMappingURL=class-choice-service.js.map

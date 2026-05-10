@@ -255,6 +255,56 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Combat Flexibility"]);
   });
 
+  it("filters skill feat prerequisites against projected trained skills and lores", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("additional-lore", "Additional Lore", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [] },
+      }),
+      featEntry("assurance", "Assurance", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [{ value: "trained in at least one skill" }] },
+      }),
+      featEntry("battle-medicine", "Battle Medicine", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [{ value: "trained in Medicine" }] },
+      }),
+      featEntry("cat-fall", "Cat Fall", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [{ value: "trained in Acrobatics" }] },
+      }),
+      featEntry("dubious-knowledge", "Dubious Knowledge", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [{ value: "trained in a skill with the Recall Knowledge action" }] },
+      }),
+      featEntry("armor-assist", "Armor Assist", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [{ value: "trained in Athletics or Warfare Lore" }] },
+      }),
+      featEntry("seasoned", "Seasoned", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [{ value: "trained in Alcohol Lore, Cooking Lore, or Crafting" }] },
+      }),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("skill-feat", {
+        itemType: "feat",
+        featTypes: ["skill"],
+        maxLevel: 1,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        skillRanks: {
+          acrobatics: 1,
+          medicine: 0,
+          "warfare-lore": 1,
+        },
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual([
+      "Additional Lore",
+      "Armor Assist",
+      "Assurance",
+      "Cat Fall",
+      "Dubious Knowledge",
+    ]);
+  });
+
   it("filters grant-choice feat options from raw ChoiceSet predicates", async () => {
     setPack("pf2e.feats-srd", [
       featEntry("incredible-initiative", "Incredible Initiative", "general", ["general"]),
@@ -297,6 +347,59 @@ describe("pack-service dependency filtering", () => {
       "Compendium.pf2e.feats-srd.Item.dubious-knowledge-id",
       "Compendium.pf2e.feats-srd.Item.quick-identification-id",
     ]);
+  });
+
+  it("filters static UUID grant choices by choice-level predicates", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("charming-liar-id", "Charming Liar", "skill", ["skill"]),
+      featEntry("group-impression-id", "Group Impression", "skill", ["skill"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("grant-choice", {
+        itemType: "feat",
+        packIds: ["pf2e.feats-srd"],
+        uuids: ["Compendium.pf2e.feats-srd.Item.Charming Liar", "Compendium.pf2e.feats-srd.Item.Group Impression"],
+        uuidPredicates: {
+          "Compendium.pf2e.feats-srd.Item.Charming Liar": ["molten-wit:deception"],
+          "Compendium.pf2e.feats-srd.Item.Group Impression": ["molten-wit:diplomacy"],
+        },
+      } as any),
+      {
+        ...EMPTY_CONTEXT,
+        rollOptions: ["molten-wit:deception"],
+      } as any
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Charming Liar"]);
+  });
+
+  it("evaluates static UUID grant predicates against actor skill ranks", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("charming-liar-id", "Charming Liar", "skill", ["skill"]),
+      featEntry("group-impression-id", "Group Impression", "skill", ["skill"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("grant-choice", {
+        itemType: "feat",
+        packIds: ["pf2e.feats-srd"],
+        uuids: ["Compendium.pf2e.feats-srd.Item.Charming Liar", "Compendium.pf2e.feats-srd.Item.Group Impression"],
+        uuidPredicates: {
+          "Compendium.pf2e.feats-srd.Item.Charming Liar": ["skill:deception:rank:0"],
+          "Compendium.pf2e.feats-srd.Item.Group Impression": ["skill:diplomacy:rank:0"],
+        },
+      } as any),
+      {
+        ...EMPTY_CONTEXT,
+        skillRanks: {
+          deception: 1,
+          diplomacy: 0,
+        },
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Group Impression"]);
   });
 
   it("hides choices already selected in a different draft slot", async () => {

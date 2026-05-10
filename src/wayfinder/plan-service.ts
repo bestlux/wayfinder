@@ -13,6 +13,7 @@ type ActorSnapshot = ReturnType<typeof inspectActor>;
 
 interface BuildPlanDependencies {
   buildClassFeatSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
+  buildClassSkillFeatSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
   buildClassTrainingSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
   buildGrantChoiceSteps: (snapshot: ActorSnapshot, draft: DraftState, targetLevel: number) => Promise<PendingStep[]>;
   buildSingletonChoiceSteps: (
@@ -39,6 +40,7 @@ export async function buildWayfinderPlan(
   const plan = buildProgressionPlan(snapshot, draft.targetLevel);
   const [
     classFeatSteps,
+    classSkillFeatSteps,
     trainingSteps,
     grantChoiceSteps,
     singletonChoiceSteps,
@@ -49,6 +51,7 @@ export async function buildWayfinderPlan(
     spellChoiceSteps,
   ] = await Promise.all([
     deps.buildClassFeatSteps(snapshot, draft, plan.targetLevel),
+    deps.buildClassSkillFeatSteps(snapshot, draft, plan.targetLevel),
     deps.buildClassTrainingSteps(snapshot, draft, plan.targetLevel),
     deps.buildGrantChoiceSteps(snapshot, draft, plan.targetLevel),
     deps.buildSingletonChoiceSteps(snapshot, draft, plan.targetLevel),
@@ -64,6 +67,7 @@ export async function buildWayfinderPlan(
     steps: sortPendingSteps([
       ...plan.steps,
       ...classFeatSteps,
+      ...classSkillFeatSteps,
       ...grantedItemSteps,
       ...trainingSteps,
       ...grantChoiceSteps,

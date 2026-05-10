@@ -50,6 +50,8 @@ export interface StepFilters {
   itemType: string;
   packIds?: string[];
   uuids?: string[];
+  uuidPredicates?: Record<string, ChoicePredicate[]>;
+  contextPredicate?: ChoicePredicate[];
   featTypes?: string[];
   maxLevel?: number;
   predicate?: ChoicePredicate[];
@@ -182,6 +184,7 @@ export interface SkillTrainingPersistenceMeta {
 export interface SkillTrainingChoiceMeta {
   key: string;
   flag: string;
+  rollOption?: string | null;
   prompt: string;
   sourceLabel: string;
   options: Array<{ slug: string; label: string }>;

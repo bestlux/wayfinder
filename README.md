@@ -2,7 +2,7 @@
 
 A guided Pathfinder 2e character builder for Foundry VTT.
 
-Wayfinder takes the parts of PF2E character building that fragment your attention — class tables, compendium browsing, feat slots, boosts, spell choices, variant exceptions — and turns them into a single guided flow you open from the character sheet. Think Pathbuilder, but living inside your game world: it knows which sources your GM enabled, which variant rules are on, and writes its output straight to the actor. No JSON export, no re-import, no "why is my sheet wrong."
+Wayfinder takes the parts of PF2E character building that fragment your attention — class tables, compendium browsing, feat slots, boosts, spell choices, and source exceptions — and turns them into a single guided flow you open from the character sheet. Think Pathbuilder, but living inside your game world: it knows which sources your GM enabled, applies the supported rule shapes it can prove, and writes its output straight to the actor. No JSON export, no re-import, no "why is my sheet wrong."
 
 > **Status:** early access. Wayfinder is being built slice-by-slice, class by class. Some flows are deeply guided; others hand you back to the PF2E sheet on purpose. The [level-1 coverage matrix](docs/coverage/level1-coverage-matrix.md) is the honest answer to "does it support my class yet."
 
@@ -10,7 +10,7 @@ Wayfinder takes the parts of PF2E character building that fragment your attentio
 
 - **You're new to PF2E.** It explains what each choice does before you commit and keeps the next step visible without hiding the rules.
 - **You've built characters before.** Search, pick, next. Earlier picks filter later ones, so you stop scrolling past feats you can't take anyway.
-- **You're a GM onboarding friends.** Wayfinder respects your enabled sources and variants, so what players see in the planner matches what's legal at your table.
+- **You're a GM onboarding friends.** Wayfinder respects your enabled sources where it has support, and clearly hands off optional variants it cannot yet model.
 
 It is not a replacement for the PF2E system. It is a planning layer on top of it. The actor and items remain the source of truth; Wayfinder's job is to get you to a clean, valid state without making you click through twelve places to do it.
 

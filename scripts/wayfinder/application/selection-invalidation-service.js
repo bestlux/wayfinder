@@ -83,6 +83,15 @@ export function createSelectionInvalidationService(state, deps) {
         async invalidateGrantSelectionsByDependency(dependency) {
             return invalidateGrantSelectionsByDependencySync(dependency);
         },
+        async invalidateGrantSelectionsBySourceUuid(sourceUuid) {
+            const normalizedSourceUuid = normalizeUuid(sourceUuid);
+            if (!normalizedSourceUuid) {
+                return [];
+            }
+            return invalidateMatchingPlanSteps(await deps.buildPlan(), invalidate, (step) => {
+                return step.kind === "pick-item" && normalizeUuid(step.grantSelection?.selectorUuid) === normalizedSourceUuid;
+            });
+        },
     };
     function invalidateSingletonChoicesBySourceSync(sourceItemType) {
         const invalidated = [];
@@ -138,5 +147,8 @@ function isGrantChoiceSlotIdForSource(slotId, sourceItemType) {
 }
 function isGrantChoiceSlotIdForDependency(slotId, dependency) {
     return slotId.startsWith(`grant-choice-${dependency}-`);
+}
+function normalizeUuid(value) {
+    return typeof value === "string" && value.trim().length > 0 ? value.trim().toLowerCase() : null;
 }
 //# sourceMappingURL=selection-invalidation-service.js.map

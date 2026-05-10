@@ -1,4 +1,4 @@
-import { OFFICIAL_PACKS } from "./constants.js";
+import { OFFICIAL_PACKS, SKILL_LABELS } from "./constants.js";
 import { getExtraPackSetting } from "./settings.js";
 import { toCompendiumItemUuid } from "./shared/compendium.js";
 import { resolveUuid } from "./shared/foundry-compat.js";
@@ -280,7 +280,15 @@ function matchesFilters(entry, packId, step, context, traitCatalog) {
     if (String(entry?.type ?? "") !== filters.itemType) {
         return false;
     }
+    if (Array.isArray(filters.contextPredicate) && filters.contextPredicate.length > 0) {
+        if (!matchesStaticPredicate(filters.contextPredicate, entry, context)) {
+            return false;
+        }
+    }
     if (filters.uuids?.length && !matchesUuidAllowlist(entry, packId, filters.uuids)) {
+        return false;
+    }
+    if (filters.uuidPredicates && !matchesUuidChoicePredicate(entry, packId, filters.uuidPredicates, context)) {
         return false;
     }
     if (filters.featTypes?.length) {
@@ -322,7 +330,7 @@ function matchesFilters(entry, packId, step, context, traitCatalog) {
         return matchesClassFeatContext(entry, context, traitCatalog);
     }
     if (step.slotKind === "skill-feat") {
-        return matchesSkillFeatContext(entry);
+        return matchesSkillFeatContext(entry, context);
     }
     return true;
 }
@@ -413,13 +421,95 @@ function matchesClassFeatContext(entry, context, _traitCatalog) {
     }
     return false;
 }
-function matchesSkillFeatContext(entry) {
+function matchesSkillFeatContext(entry, context) {
     const category = stringOrNull(entry?.system?.category);
     if (category && category !== "skill") {
         return false;
     }
     const traits = extractEntryTraits(entry);
-    return !traits.includes("archetype") && !traits.includes("dedication");
+    if (traits.includes("archetype") || traits.includes("dedication")) {
+        return false;
+    }
+    return matchesSkillFeatTrainingPrerequisites(entry, context);
+}
+const RECALL_KNOWLEDGE_SKILLS = new Set([
+    "arcana",
+    "crafting",
+    "medicine",
+    "nature",
+    "occultism",
+    "religion",
+    "society",
+]);
+function matchesSkillFeatTrainingPrerequisites(entry, context) {
+    const requirements = extractSkillTrainingRequirements(extractPrerequisiteText(entry));
+    if (requirements.length === 0) {
+        return true;
+    }
+    const skillRanks = context.skillRanks ?? {};
+    return requirements.every((requirement) => matchesSkillTrainingRequirement(requirement, skillRanks));
+}
+function extractSkillTrainingRequirements(prerequisites) {
+    return prerequisites.flatMap((prerequisite) => {
+        const text = prerequisite.trim().toLowerCase();
+        if (!/\btrained in\b/.test(text)) {
+            return [];
+        }
+        if (/\btrained in at least one skill\b/.test(text)) {
+            return [{ kind: "any-skill" }];
+        }
+        if (/\btrained in a skill with the recall knowledge action\b/.test(text)) {
+            return [{ kind: "recall-knowledge" }];
+        }
+        if (/\btrained in lore\b/.test(text)) {
+            return [{ kind: "any-lore" }];
+        }
+        const slugs = extractNamedSkillSlugs(text);
+        return slugs.length > 0 ? [{ kind: "one-of", slugs }] : [];
+    });
+}
+function extractNamedSkillSlugs(text) {
+    const slugs = new Set();
+    for (const [slug, label] of Object.entries(SKILL_LABELS)) {
+        if (text.includes(label.toLowerCase())) {
+            slugs.add(slug);
+        }
+    }
+    const trainedText = text.split(/\btrained in\b/).at(-1) ?? text;
+    const parts = trainedText.split(/[,;]|\bor\b|\band\b/);
+    for (const part of parts) {
+        const match = part.trim().match(/^([a-z][a-z -]*?) lore\b/);
+        if (match?.[1]) {
+            const loreSlug = normalizeSkillSlug(`${match[1]} lore`);
+            if (loreSlug) {
+                slugs.add(loreSlug);
+            }
+        }
+    }
+    return Array.from(slugs);
+}
+function matchesSkillTrainingRequirement(requirement, skillRanks) {
+    switch (requirement.kind) {
+        case "any-skill":
+            return Object.values(skillRanks).some((rank) => rank >= 1);
+        case "any-lore":
+            return Object.entries(skillRanks).some(([slug, rank]) => rank >= 1 && isLoreSkillSlug(slug));
+        case "recall-knowledge":
+            return Object.entries(skillRanks).some(([slug, rank]) => rank >= 1 && (RECALL_KNOWLEDGE_SKILLS.has(slug) || isLoreSkillSlug(slug)));
+        case "one-of":
+            return requirement.slugs.some((slug) => (skillRanks[slug] ?? 0) >= 1);
+    }
+}
+function isLoreSkillSlug(slug) {
+    return slug === "lore" || slug.endsWith("-lore");
+}
+function normalizeSkillSlug(value) {
+    const normalized = value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    return normalized.length > 0 ? normalized : null;
 }
 function matchesClassBranchContext(entry, step, context) {
     const branch = step.branch;
@@ -523,6 +613,16 @@ function matchesUuidAllowlist(entry, packId, allowedUuids) {
     }
     return entryUuidCandidates(entry, packId).some((candidate) => allowed.has(normalizeUuid(candidate)));
 }
+function matchesUuidChoicePredicate(entry, packId, uuidPredicates, context) {
+    const predicatesByUuid = new Map(Object.entries(uuidPredicates).map(([uuid, predicate]) => [normalizeUuid(uuid), predicate]));
+    for (const candidate of entryUuidCandidates(entry, packId)) {
+        const predicate = predicatesByUuid.get(normalizeUuid(candidate));
+        if (predicate) {
+            return matchesStaticPredicate(predicate, entry, context);
+        }
+    }
+    return true;
+}
 function entryUuidCandidates(entry, packId) {
     const candidates = [];
     const documentId = stringOrNull(entry._id);
@@ -578,6 +678,79 @@ function matchesChoicePredicateString(statement, entry, context) {
         return false;
     }
     return false;
+}
+function matchesStaticPredicate(predicate, entry, context) {
+    return evaluateStaticPredicate(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
+}
+function evaluateStaticPredicate(predicate, evaluateString) {
+    if (typeof predicate === "string") {
+        return evaluateString(predicate) === true;
+    }
+    if (Array.isArray(predicate)) {
+        return predicate.every((entry) => evaluateStaticPredicate(entry, evaluateString));
+    }
+    if (Array.isArray(predicate.or)) {
+        return predicate.or.some((entry) => evaluateStaticPredicate(entry, evaluateString));
+    }
+    if (Array.isArray(predicate.nor)) {
+        return predicate.nor.every((entry) => evaluateStringOrTree(entry, evaluateString) === false);
+    }
+    if (predicate.not) {
+        return evaluateStringOrTree(predicate.not, evaluateString) === false;
+    }
+    return true;
+}
+function evaluateStringOrTree(predicate, evaluateString) {
+    if (typeof predicate === "string") {
+        return evaluateString(predicate);
+    }
+    if (Array.isArray(predicate)) {
+        return predicate.every((entry) => evaluateStringOrTree(entry, evaluateString) === true) ? true : "unknown";
+    }
+    if (Array.isArray(predicate.or)) {
+        if (predicate.or.some((entry) => evaluateStringOrTree(entry, evaluateString) === true)) {
+            return true;
+        }
+        return predicate.or.every((entry) => evaluateStringOrTree(entry, evaluateString) === false) ? false : "unknown";
+    }
+    if (Array.isArray(predicate.nor)) {
+        if (predicate.nor.some((entry) => evaluateStringOrTree(entry, evaluateString) === true)) {
+            return false;
+        }
+        return predicate.nor.every((entry) => evaluateStringOrTree(entry, evaluateString) === false) ? true : "unknown";
+    }
+    if (predicate.not) {
+        const value = evaluateStringOrTree(predicate.not, evaluateString);
+        return value === "unknown" ? "unknown" : !value;
+    }
+    return true;
+}
+function evaluateStaticPredicateString(statement, entry, context) {
+    const trimmed = statement.trim().toLowerCase();
+    if (!trimmed) {
+        return "unknown";
+    }
+    const activeRollOptions = new Set((context.rollOptions ?? []).map((option) => option.trim().toLowerCase()));
+    if (activeRollOptions.has(trimmed)) {
+        return true;
+    }
+    if (trimmed.startsWith("class:")) {
+        return context.classSlug?.trim().toLowerCase() === trimmed.slice("class:".length);
+    }
+    if (trimmed.startsWith("ancestry:")) {
+        return context.ancestrySlug?.trim().toLowerCase() === trimmed.slice("ancestry:".length);
+    }
+    const skillRankMatch = /^skill:([^:]+):rank:(\d+)$/.exec(trimmed);
+    if (skillRankMatch) {
+        const skillSlug = skillRankMatch[1] ?? "";
+        const expectedRank = Number(skillRankMatch[2]);
+        const rank = context.skillRanks?.[skillSlug] ?? 0;
+        return Number.isFinite(expectedRank) && rank === expectedRank;
+    }
+    if (trimmed.startsWith("item:")) {
+        return matchesChoicePredicateString(statement, entry, context);
+    }
+    return "unknown";
 }
 function resolveInjectedPredicateString(statement, context) {
     const trimmed = statement.trim();

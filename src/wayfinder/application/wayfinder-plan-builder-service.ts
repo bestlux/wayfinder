@@ -21,6 +21,7 @@ import {
   buildClassChoiceSteps,
   buildClassFeatSteps,
   buildClassGrantedItemSteps,
+  buildClassSkillFeatSteps,
   buildClassTrainingSteps,
 } from "../class-choice-service.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
@@ -58,6 +59,7 @@ export interface BuildWayfinderAppPlanArgs {
 interface BuildWayfinderAppPlanDependencies {
   buildWayfinderPlan: typeof buildWayfinderPlan;
   buildClassFeatSteps: typeof buildClassFeatSteps;
+  buildClassSkillFeatSteps: typeof buildClassSkillFeatSteps;
   buildClassTrainingSteps: typeof buildClassTrainingSteps;
   buildGrantChoiceSteps: typeof buildGrantChoiceSteps;
   buildSingletonChoiceSteps: typeof buildSingletonChoiceSteps;
@@ -81,6 +83,7 @@ interface BuildWayfinderAppPlanDependencies {
 const DEFAULT_DEPS: BuildWayfinderAppPlanDependencies = {
   buildWayfinderPlan,
   buildClassFeatSteps,
+  buildClassSkillFeatSteps,
   buildClassTrainingSteps,
   buildGrantChoiceSteps,
   buildSingletonChoiceSteps,
@@ -111,6 +114,12 @@ export async function buildWayfinderAppPlan(
         effectiveClassDocument: await args.resolveDocument("class"),
         targetLevel,
         fulfilledCount: planSnapshot.featCounts.class + planSnapshot.featCounts.archetype,
+      }),
+    buildClassSkillFeatSteps: async (planSnapshot, _planDraft, targetLevel) =>
+      deps.buildClassSkillFeatSteps({
+        effectiveClassDocument: await args.resolveDocument("class"),
+        targetLevel,
+        fulfilledCount: countAppliedWayfinderSlotSelections(args.actor, "skill-feat"),
       }),
     buildClassTrainingSteps: async (_planSnapshot, planDraft, targetLevel) => {
       const effectiveBuildState = await getEffectiveBuildState(args.actor, planDraft);
@@ -499,6 +508,27 @@ function readExistingSkillTrainingFeatSelections(actor: ActorLike): SelectionRef
   return listActorItems(actor)
     .map((item) => selectionFromSkillTrainingFeatItem(item))
     .filter((selection): selection is SelectionRef => selection !== null);
+}
+
+function countAppliedWayfinderSlotSelections(actor: ActorLike, slotKind: string): number {
+  const slotPrefix = `${slotKind}-level-`;
+  const slotIds = new Set<string>();
+  for (const item of listActorItems(actor)) {
+    const typedItem = item as {
+      type?: unknown;
+      flags?: {
+        [MODULE_ID]?: {
+          slotId?: unknown;
+        };
+      };
+    } | null;
+    const slotId = typedItem?.flags?.[MODULE_ID]?.slotId;
+    if (typedItem?.type === "feat" && typeof slotId === "string" && slotId.startsWith(slotPrefix)) {
+      slotIds.add(slotId);
+    }
+  }
+
+  return slotIds.size;
 }
 
 function selectionFromSkillTrainingFeatItem(item: unknown): SelectionRef | null {

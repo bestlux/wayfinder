@@ -4,7 +4,7 @@ import { fetchSelectionDocument } from "../../pack-service.js";
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
-import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassTrainingSteps, } from "../class-choice-service.js";
+import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassSkillFeatSteps, buildClassTrainingSteps, } from "../class-choice-service.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
 import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, readExistingLanguageSelections, readExistingSingletonChoiceSelection, readExistingSingletonSourceSelection, } from "../existing-selection-service.js";
 import { buildGrantChoiceSteps } from "../grant-choice-service.js";
@@ -17,6 +17,7 @@ import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spe
 const DEFAULT_DEPS = {
     buildWayfinderPlan,
     buildClassFeatSteps,
+    buildClassSkillFeatSteps,
     buildClassTrainingSteps,
     buildGrantChoiceSteps,
     buildSingletonChoiceSteps,
@@ -42,6 +43,11 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             effectiveClassDocument: await args.resolveDocument("class"),
             targetLevel,
             fulfilledCount: planSnapshot.featCounts.class + planSnapshot.featCounts.archetype,
+        }),
+        buildClassSkillFeatSteps: async (planSnapshot, _planDraft, targetLevel) => deps.buildClassSkillFeatSteps({
+            effectiveClassDocument: await args.resolveDocument("class"),
+            targetLevel,
+            fulfilledCount: countAppliedWayfinderSlotSelections(args.actor, "skill-feat"),
         }),
         buildClassTrainingSteps: async (_planSnapshot, planDraft, targetLevel) => {
             const effectiveBuildState = await getEffectiveBuildState(args.actor, planDraft);
@@ -338,6 +344,18 @@ function readExistingSkillTrainingFeatSelections(actor) {
     return listActorItems(actor)
         .map((item) => selectionFromSkillTrainingFeatItem(item))
         .filter((selection) => selection !== null);
+}
+function countAppliedWayfinderSlotSelections(actor, slotKind) {
+    const slotPrefix = `${slotKind}-level-`;
+    const slotIds = new Set();
+    for (const item of listActorItems(actor)) {
+        const typedItem = item;
+        const slotId = typedItem?.flags?.[MODULE_ID]?.slotId;
+        if (typedItem?.type === "feat" && typeof slotId === "string" && slotId.startsWith(slotPrefix)) {
+            slotIds.add(slotId);
+        }
+    }
+    return slotIds.size;
 }
 function selectionFromSkillTrainingFeatItem(item) {
     const typedItem = item;

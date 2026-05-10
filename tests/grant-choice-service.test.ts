@@ -123,4 +123,163 @@ describe("grant-choice-service", () => {
 
     expect(steps).toEqual([]);
   });
+
+  it("holds predicate-gated static grants until the source roll-option choice is drafted", async () => {
+    const draft = createEmptyDraft(1);
+    const sourceSelection = {
+      slotId: "ancestry-feat-level-1",
+      packId: "pf2e.feats-srd",
+      documentId: "molten-wit",
+      uuid: "Compendium.pf2e.feats-srd.Item.molten-wit",
+      itemType: "feat",
+      featType: "ancestry",
+      name: "Molten Wit",
+      level: 1,
+    };
+    const sourceDocument = {
+      name: "Molten Wit",
+      system: {
+        slug: "molten-wit",
+        level: { value: 1 },
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "skill",
+            rollOption: "molten-wit",
+            choices: [
+              { value: "deception", predicate: ["skill:deception:rank:0"] },
+              { value: "diplomacy", predicate: ["skill:diplomacy:rank:0"] },
+            ],
+          },
+          {
+            key: "ActiveEffectLike",
+            path: "system.skills.{item|flags.system.rulesSelections.skill}.rank",
+            predicate: [{ or: ["molten-wit:deception", "molten-wit:diplomacy"] }],
+            value: 1,
+          },
+          {
+            key: "ChoiceSet",
+            flag: "feat",
+            choices: [
+              {
+                predicate: ["molten-wit:deception"],
+                value: "Compendium.pf2e.feats-srd.Item.Charming Liar",
+              },
+              {
+                predicate: ["molten-wit:diplomacy"],
+                value: "Compendium.pf2e.feats-srd.Item.Group Impression",
+              },
+            ],
+          },
+          {
+            key: "GrantItem",
+            uuid: "{item|flags.system.rulesSelections.feat}",
+          },
+        ],
+      },
+    };
+    const buildSteps = () =>
+      buildGrantChoiceSteps({
+        draft,
+        targetLevel: 1,
+        hasClassSelection: true,
+        hasDeitySelection: false,
+        sources: [
+          {
+            sourceItemType: "feat",
+            sourceSelection,
+            sourceDocument,
+          },
+        ],
+        extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+        readExistingGrantedSelection: () => null,
+      });
+
+    await expect(buildSteps()).resolves.toEqual([]);
+
+    draft.skillTrainings["skill-training-fighter-level-1"] = {
+      ruleChoices: {
+        "feat:molten-wit:skill": "deception",
+      },
+      additional: [],
+      loreChoices: {},
+    };
+
+    const visible = await buildSteps();
+
+    expect(visible).toHaveLength(1);
+    expect(visible[0]?.slotId).toBe("grant-choice-none-feat-molten-wit-feat-level-1");
+    expect(visible[0]?.filters).toMatchObject({
+      uuids: ["Compendium.pf2e.feats-srd.Item.Charming Liar", "Compendium.pf2e.feats-srd.Item.Group Impression"],
+      uuidPredicates: {
+        "Compendium.pf2e.feats-srd.Item.Charming Liar": ["molten-wit:deception"],
+        "Compendium.pf2e.feats-srd.Item.Group Impression": ["molten-wit:diplomacy"],
+      },
+    });
+  });
+
+  it("recognizes source singleton roll-option choices when timing predicate-gated static grants", async () => {
+    const draft = createEmptyDraft(1);
+    const sourceSelection = {
+      slotId: "heritage-level-1",
+      packId: "pf2e.heritages",
+      documentId: "emberkin",
+      uuid: "Compendium.pf2e.heritages.Item.emberkin",
+      itemType: "heritage",
+      featType: null,
+      name: "Emberkin",
+      level: 1,
+    };
+    const sourceDocument = {
+      name: "Emberkin",
+      system: {
+        slug: "emberkin",
+        level: { value: 1 },
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "path",
+            rollOption: "emberkin",
+            choices: [{ value: "fire", label: "Fire" }],
+          },
+          {
+            key: "ChoiceSet",
+            flag: "feat",
+            choices: [
+              {
+                predicate: ["emberkin:fire"],
+                value: "Compendium.pf2e.feats-srd.Item.Bonfire Soul",
+              },
+            ],
+          },
+          {
+            key: "GrantItem",
+            uuid: "{item|flags.system.rulesSelections.feat}",
+          },
+        ],
+      },
+    };
+    const buildSteps = () =>
+      buildGrantChoiceSteps({
+        draft,
+        targetLevel: 1,
+        hasClassSelection: true,
+        hasDeitySelection: false,
+        sources: [
+          {
+            sourceItemType: "heritage",
+            sourceSelection,
+            sourceDocument,
+          },
+        ],
+        extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+        readExistingGrantedSelection: () => null,
+      });
+
+    await expect(buildSteps()).resolves.toEqual([]);
+
+    draft.singletonChoices["singleton-choice-heritage-emberkin-path-level-1"] = "fire";
+
+    await expect(buildSteps()).resolves.toHaveLength(1);
+  });
 });

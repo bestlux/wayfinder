@@ -718,6 +718,100 @@ describe("actor-updater selection application", () => {
     });
   });
 
+  it("preselects predicate-gated static grant choices before creating the source item", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["grant-choice-none-feat-molten-wit-feat-level-1"] = selectionRef(
+      "grant-choice-none-feat-molten-wit-feat-level-1",
+      "feat",
+      "charming-liar",
+      "Charming Liar",
+      "skill"
+    );
+    const steps: PendingStep[] = [
+      {
+        id: "grant-choice-none-feat-molten-wit-feat-level-1",
+        level: 1,
+        kind: "pick-item",
+        slotKind: "grant-choice",
+        title: "Molten Wit feat grant",
+        description: "",
+        required: true,
+        slotId: "grant-choice-none-feat-molten-wit-feat-level-1",
+        filters: {
+          itemType: "feat",
+          packIds: ["pf2e.feats-srd"],
+          uuids: ["Compendium.test.pack.Item.charming-liar"],
+          uuidPredicates: {
+            "Compendium.test.pack.Item.charming-liar": ["molten-wit:deception"],
+          },
+        },
+        grantSelection: {
+          slotId: "grant-choice-none-feat-molten-wit-feat-level-1",
+          sourceItemType: "feat",
+          selectorPackId: "test.pack",
+          selectorDocumentId: "molten-wit",
+          selectorUuid: "Compendium.test.pack.Item.molten-wit",
+          selectorName: "Molten Wit",
+          selectorRuleIndex: 2,
+          grantRuleIndex: 3,
+          flag: "feat",
+          itemType: "feat",
+          classSlug: null,
+          dependsOn: null,
+          filters: {
+            itemType: "feat",
+          },
+        },
+      },
+    ];
+
+    const source = await createEmbeddedSource(
+      selectionRef("ancestry-feat-level-1", "feat", "molten-wit", "Molten Wit", "ancestry"),
+      draft,
+      steps,
+      {
+        fetchSelectionDocument: async () => ({
+          toObject: () => ({
+            _id: "molten-wit",
+            name: "Molten Wit",
+            type: "feat",
+            system: {
+              rules: [
+                { key: "ChoiceSet", flag: "skill", rollOption: "molten-wit" },
+                { key: "ActiveEffectLike" },
+                {
+                  key: "ChoiceSet",
+                  flag: "feat",
+                  choices: [
+                    {
+                      predicate: ["molten-wit:deception"],
+                      value: "Compendium.test.pack.Item.charming-liar",
+                    },
+                  ],
+                },
+                {
+                  key: "GrantItem",
+                  uuid: "{item|flags.system.rulesSelections.feat}",
+                },
+              ],
+            },
+          }),
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      }
+    );
+
+    expect(source?.system?.rules?.[2]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "feat",
+      selection: "Compendium.test.pack.Item.charming-liar",
+    });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({
+      feat: "Compendium.test.pack.Item.charming-liar",
+    });
+  });
+
   it("creates slotted feat sources and stamps source flags on the created items", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
     const actor = {

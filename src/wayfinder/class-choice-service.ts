@@ -14,7 +14,7 @@ import {
   buildClassTrainingStepsFromRules,
 } from "./class-choice/step-builders.js";
 import { remainingCreationBoostChoices } from "./domain/boost-rules.js";
-import { createPickItemStep } from "./domain/step-types.js";
+import { createPickItemStep, type PickItemSlotKind, type StepFilters } from "./domain/step-types.js";
 import { discoverSourceSkillTrainingMeta, type SkillTrainingSourceContext } from "./skill-training/source-discovery.js";
 
 interface BuildClassTrainingStepsParams {
@@ -28,6 +28,12 @@ interface BuildClassTrainingStepsParams {
 }
 
 interface BuildClassFeatStepsParams {
+  effectiveClassDocument: unknown | null;
+  targetLevel: number;
+  fulfilledCount: number;
+}
+
+interface BuildClassSkillFeatStepsParams {
   effectiveClassDocument: unknown | null;
   targetLevel: number;
   fulfilledCount: number;
@@ -65,6 +71,9 @@ interface BuildClassChoiceStepsParams {
 interface ClassDocumentLike {
   system?: {
     classFeatLevels?: {
+      value?: unknown;
+    };
+    skillFeatLevels?: {
       value?: unknown;
     };
   };
@@ -119,39 +128,35 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
 }
 
 export async function buildClassFeatSteps(params: BuildClassFeatStepsParams): Promise<PendingStep[]> {
-  const { effectiveClassDocument, targetLevel, fulfilledCount } = params;
-  if (!effectiveClassDocument) {
-    return [];
-  }
+  return buildFeatStepsFromClassLevels({
+    ...params,
+    levelField: "classFeatLevels",
+    slotKind: "class-feat",
+    title: (level) => `Level ${level} class feat`,
+    description: "Pick a class or archetype feat unlocked at this milestone.",
+    filters: (level) => ({
+      itemType: "feat",
+      featTypes: ["class", "archetype"],
+      maxLevel: level,
+    }),
+  });
+}
 
-  const classFeatLevelValues = (effectiveClassDocument as ClassDocumentLike).system?.classFeatLevels?.value;
-  const classFeatLevels = Array.isArray(classFeatLevelValues)
-    ? classFeatLevelValues
-        .map((value) => Number(value))
-        .filter((value): value is number => Number.isFinite(value) && value >= 1 && value <= targetLevel)
-        .map((value) => Math.floor(value))
-    : [];
+export async function buildClassSkillFeatSteps(params: BuildClassSkillFeatStepsParams): Promise<PendingStep[]> {
+  const initialSteps = await buildFeatStepsFromClassLevels({
+    ...params,
+    levelField: "skillFeatLevels",
+    slotKind: "skill-feat",
+    title: (level) => `Level ${level} skill feat`,
+    description: "Pick the skill feat unlocked at this class milestone.",
+    filters: (level) => ({
+      itemType: "feat",
+      featTypes: ["skill"],
+      maxLevel: level,
+    }),
+  });
 
-  if (classFeatLevels.length === 0) {
-    return [];
-  }
-
-  const milestones = Array.from(new Set(classFeatLevels)).sort((left, right) => left - right);
-  const startIndex = Math.min(Math.max(0, fulfilledCount), milestones.length);
-
-  return milestones.slice(startIndex).map((level) =>
-    createPickItemStep(
-      "class-feat",
-      level,
-      `Level ${level} class feat`,
-      "Pick a class or archetype feat unlocked at this milestone.",
-      {
-        itemType: "feat",
-        featTypes: ["class", "archetype"],
-        maxLevel: level,
-      }
-    )
-  );
+  return initialSteps.filter((step) => step.level === 1);
 }
 
 export async function buildClassBranchSteps(params: BuildClassBranchStepsParams): Promise<PendingStep[]> {
@@ -193,4 +198,39 @@ function shouldSkipExistingStep(
   actorSelection: string | null
 ): boolean {
   return !!actorSelection && !draftSelection;
+}
+
+function buildFeatStepsFromClassLevels(args: {
+  effectiveClassDocument: unknown | null;
+  levelField: "classFeatLevels" | "skillFeatLevels";
+  slotKind: PickItemSlotKind;
+  targetLevel: number;
+  fulfilledCount: number;
+  title: (level: number) => string;
+  description: string;
+  filters: (level: number) => StepFilters;
+}): PendingStep[] {
+  const { effectiveClassDocument, levelField, slotKind, targetLevel, fulfilledCount } = args;
+  if (!effectiveClassDocument) {
+    return [];
+  }
+
+  const rawLevels = (effectiveClassDocument as ClassDocumentLike).system?.[levelField]?.value;
+  const levels = Array.isArray(rawLevels)
+    ? rawLevels
+        .map((value) => Number(value))
+        .filter((value): value is number => Number.isFinite(value) && value >= 1 && value <= targetLevel)
+        .map((value) => Math.floor(value))
+    : [];
+
+  if (levels.length === 0) {
+    return [];
+  }
+
+  const milestones = Array.from(new Set(levels)).sort((left, right) => left - right);
+  const startIndex = Math.min(Math.max(0, fulfilledCount), milestones.length);
+
+  return milestones
+    .slice(startIndex)
+    .map((level) => createPickItemStep(slotKind, level, args.title(level), args.description, args.filters(level)));
 }

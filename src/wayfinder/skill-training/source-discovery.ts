@@ -83,6 +83,7 @@ export function discoverSourceSkillTrainingMeta(args: {
         choiceRules.push({
           key: `${source.sourceItemType}:${sourceSlug}:${spec.flag}`,
           flag: spec.flag,
+          ...(spec.rollOption ? { rollOption: spec.rollOption } : {}),
           prompt: spec.prompt ?? `Choose the skill ${sourceName} grants.`,
           sourceLabel: sourceName,
           options: spec.options.map((option) => ({ slug: option.value, label: option.label })),

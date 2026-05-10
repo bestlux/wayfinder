@@ -35,7 +35,7 @@ It is intentionally content-shape focused. The goal is not bespoke Adventure Pat
 | Skill-training and lore discovery | Guided | 524 | AP backgrounds, Lost Omens backgrounds, many ancestry feats | Covers structured `trainedSkills`, skill `ChoiceSet`s, `ActiveEffectLike` skill ranks, fixed lore, custom lore, and Additional Lore text shapes already supported by the training seam. |
 | Generic singleton choices | Guided when structured as flat non-grant `ChoiceSet`s | 44 | `Automaton`, `Fleshwarp`, `Mottle-Coat Centaur`, `Magical Experiment`, `Toymaker`, `Elemental Wrath` | Grant selector `ChoiceSet`s are now excluded so they are not duplicated as singleton steps. |
 | Filtered grant choices | Guided when structured as filtered item `ChoiceSet` plus `GrantItem` | 26 | `Nascent`; many rulebook side-book class-feature grants | Existing grant-choice seam handles predicates, dependency timing, and apply-side preselection. |
-| Static UUID grant choices | Guided for non-predicate feat/class-feature UUID lists | 14 | `Wanderlust`, `Sponsored by a Stranger`, `Old-Blood Vishkanya`, `Steadfast Tanuki`, `School of Rooted Wisdom` | New in this audit: explicit UUID allowlists are represented as grant-choice steps instead of PF2E popups or generic singleton choices. |
+| Static UUID grant choices | Guided for feat/class-feature UUID lists with supported predicates | 14+ | `Wanderlust`, `Sponsored by a Stranger`, `Old-Blood Vishkanya`, `Steadfast Tanuki`, `School of Rooted Wisdom`, `Molten Wit` | Explicit UUID allowlists are represented as grant-choice steps instead of PF2E popups or generic singleton choices, with option-level filtering for the supported predicate subset. |
 | Feat-owned innate spell choices | Guided for current supported innate cantrip shape | 2 | `Arcane Tattoos`, `Dragon Spit` | Works when the feat exposes the innate arcane cantrip shape already handled by the spell-choice seam. |
 
 ## Newly Supported Shape
@@ -46,8 +46,10 @@ Wayfinder now supports this when:
 
 - the `ChoiceSet` values are compendium item UUIDs
 - the matching `GrantItem` references `rulesSelections.<flag>`
-- the choices are not individually predicate-gated
+- the choices are either unpredicated or gated by supported static-grant predicates
 - the target pack maps to a supported item type, currently feats, class features, or deities
+
+Supported static-grant predicates currently include item predicates, actor ancestry/class predicates, actor skill-rank predicates, and active roll options created by earlier drafted `ChoiceSet` selections. This covers Molten Wit-style static feat grants without item-name special cases.
 
 Covered by this new path:
 
@@ -73,13 +75,25 @@ Live smoke also exposed two audit-sized regressions that are now covered:
 - Native `window.confirm` blocked browser-driven smoke at apply time. Wayfinder now uses Foundry `DialogV2.confirm` when available, with an async lifecycle test.
 - Static class-feature grant selections need to be available as planning context before PF2E creates the native granted item. Wayfinder now feeds drafted class-feature grant documents into spell-step construction without treating them as ordinary feat sources.
 
+## Live Predicate-Gated Static UUID Grant Smoke
+
+Live smoke was run in Foundry on 2026-05-09 after rebuilding the module.
+
+| Case | Actor | Flow | Expected grant options | Result | Placement / close evidence |
+| --- | --- | --- | --- | --- | --- |
+| Lost Omens ancestry feat | `WF Predicate 002` | Human / Naari / Acolyte / Fighter / `Molten Wit`; selected `Deception` in the source skill choice | `Charming Liar` only | Pass after small fix | The `Molten Wit feat grant` step stayed hidden until the source skill choice was drafted, then rendered one option. Selected `Charming Liar`; apply closed Wayfinder, no PF2E-native choice popup appeared, `Molten Wit` landed in Ancestry Feats, and `Charming Liar` was nested under it. `Sudden Charge` landed in Class Feats. |
+
+Live smoke exposed one predicate-timing regression that is now covered:
+
+- Predicate-gated static grants that reference a source-owned roll option must not render before that source choice exists in the draft. Wayfinder now delays those grant steps until the source roll-option selection has been drafted, preventing an earlier dead step with zero legal options.
+
 ## Reasonable But Not Audit-Sized
 
 These shapes are supportable, but they need a larger design slice than this audit should absorb.
 
 | Gap | Examples | Why deferred |
 | --- | --- | --- |
-| Predicate-gated static grant choices | `Molten Wit`, `Weapon Innovation` | Need option-level predicate evaluation against earlier drafted rule selections and actor roll options. Showing all UUID choices would be wrong. |
+| Equipment-derived predicate context for static grant choices | `Weapon Innovation` | Molten Wit-style active roll-option predicates are supported. Weapon Innovation also needs selected-weapon item context such as weapon category, group, traits, and handedness before all options can be guided safely. |
 | Static equipment grants | `Armor Innovation` | Needs item-type and pack support beyond feats/class features, plus apply-side confidence for equipment grants. |
 | Config-backed non-skill catalogs | `Samsaran Weapon Memory` using `choices.config = "baseWeaponTypes"` | Needs a generic config catalog resolver beyond the current skills-oriented support. |
 | Multiple connected `ChoiceSet` chains | 42 non-core docs, including Season of Ghosts backgrounds, kineticist gates, inventor innovations, and War of Immortals class features | Needs graph-like choice dependency handling, stale-selection clearing, and stronger predicate vocabulary. |
@@ -97,20 +111,24 @@ These should not be pulled into Wayfinder yet:
 
 ## Prioritized Follow-Up List
 
-1. Add predicate-aware option filtering for static grant choices, then cover `Molten Wit` before touching larger class-feature chains.
+1. Audit selected-item and equipment-derived roll-option contexts before widening Weapon Innovation-style initial-modification support.
 2. Add a generic config catalog resolver if `Samsaran Weapon Memory` is worth bringing into guided scope.
 3. Add item-pack support for non-feat static grants only after an equipment/class-feature grant acceptance test proves the apply path.
 4. Build side-book class contributors one class at a time, starting with the class whose level-1 choices are most structurally regular.
-5. Revisit the 42 multiple-`ChoiceSet` canaries after predicate-aware grant choices and side-book class contributors exist.
+5. Revisit the 42 multiple-`ChoiceSet` canaries after side-book class contributors and selected-item predicate context exist.
 
 ## Validation
 
 Targeted checks added with this audit:
 
-- `tests/wayfinder-grant-choice-step-builders.test.ts` covers AP static UUID feat grants, static UUID class-feature grants, and skips predicate-gated static UUID grants.
-- `tests/pack-service.test.ts` covers explicit UUID allowlist filtering against Foundry-style ID UUIDs and PF2E source-data name UUIDs.
+- `tests/wayfinder-grant-choice-step-builders.test.ts` covers AP static UUID feat grants, static UUID class-feature grants, and predicate-gated static UUID grants.
+- `tests/grant-choice-service.test.ts` covers delaying source-roll-option-gated static grants until the upstream rule choice is drafted.
+- `tests/pack-service.test.ts` covers explicit UUID allowlist filtering against Foundry-style ID UUIDs, PF2E source-data name UUIDs, active roll-option predicates, and skill-rank predicates.
+- `tests/wayfinder-option-context-service.test.ts` covers active roll-option context from drafted training rule choices.
+- `tests/wayfinder-selection-invalidation-service.test.ts` covers stale grant-choice invalidation when a source item's upstream rule selection changes.
 - `tests/wayfinder-singleton-rule-discovery.test.ts` covers skipping grant selector `ChoiceSet`s so grant-choice owns them.
 - `tests/actor-updater-integration.test.ts` covers leaving static UUID feat grants to PF2E native `GrantItem` creation.
+- `tests/actor-updater-selection-application.test.ts` covers apply-side preseeding for predicate-gated static grant choices.
 - `tests/wayfinder-draft-lifecycle-service.test.ts` covers async Foundry confirmation before apply-side mutation.
 - `tests/wayfinder-spell-choice-step-builders.test.ts` covers merging static class-feature branch curriculum into wizard spell-choice steps.
 - `tests/wayfinder-plan-builder-service.test.ts` covers passing drafted static class-feature grant documents into spell planning.

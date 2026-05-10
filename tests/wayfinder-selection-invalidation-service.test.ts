@@ -160,6 +160,53 @@ describe("wayfinder selection invalidation service", () => {
     expect(draft.spellChoices["spell-choice-wizard-curriculum-rank-1-level-1"]).toBeUndefined();
     expect(draft.classChoices["class-choice-cleric-doctrine-level-1"]).toBeUndefined();
   });
+
+  it("invalidates grant choices owned by the same source UUID", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["grant-choice-none-feat-molten-wit-feat-level-1"] = selection(
+      "grant-choice-none-feat-molten-wit-feat-level-1",
+      "feat",
+      "charming-liar"
+    );
+
+    const service = createSelectionInvalidationService(
+      {
+        draft,
+        previewValueByStepId: new Map([
+          ["grant-choice-none-feat-molten-wit-feat-level-1", "pf2e.feats-srd:charming-liar"],
+        ]),
+        pickerFiltersByStepId: new Map([
+          ["grant-choice-none-feat-molten-wit-feat-level-1", { rarity: [], source: [] }],
+        ]),
+        recentlyInvalidatedStepIds: new Set<string>(),
+        scrollById: new Map([["grant-choice-none-feat-molten-wit-feat-level-1:options", 20]]),
+      },
+      {
+        buildPlan: async () => ({
+          recommendedTargetLevel: 1,
+          targetLevel: 1,
+          steps: [
+            grantChoiceStep(
+              "grant-choice-none-feat-molten-wit-feat-level-1",
+              "Compendium.pf2e.feats-srd.Item.molten-wit"
+            ),
+            grantChoiceStep(
+              "grant-choice-none-feat-general-training-feat-level-1",
+              "Compendium.pf2e.feats-srd.Item.general-training"
+            ),
+          ],
+        }),
+        resetAncestryBoostDraft: () => false,
+        resetBackgroundBoostDraft: () => false,
+        resetClassBoostDraft: () => false,
+      }
+    );
+
+    await expect(
+      (service as any).invalidateGrantSelectionsBySourceUuid("Compendium.pf2e.feats-srd.Item.molten-wit")
+    ).resolves.toEqual(["grant-choice-none-feat-molten-wit-feat-level-1"]);
+    expect(draft.selections["grant-choice-none-feat-molten-wit-feat-level-1"]).toBeUndefined();
+  });
 });
 
 function selection(slotId: string, itemType: string, documentId: string) {
@@ -267,6 +314,39 @@ function spellChoiceStep(slotId: string, dependsOn: "class" | "class-branch"): P
       curriculumSpellNames: [],
       additionalAllowedSpellNames: [],
       restrictToCommon: false,
+    },
+  };
+}
+
+function grantChoiceStep(slotId: string, selectorUuid: string): PendingStep {
+  return {
+    id: slotId,
+    level: 1,
+    kind: "pick-item",
+    slotKind: "grant-choice",
+    title: slotId,
+    description: "",
+    required: true,
+    slotId,
+    filters: {
+      itemType: "feat",
+    },
+    grantSelection: {
+      slotId,
+      sourceItemType: "feat",
+      selectorPackId: "pf2e.feats-srd",
+      selectorDocumentId: selectorUuid.split(".").at(-1) ?? selectorUuid,
+      selectorUuid,
+      selectorName: selectorUuid,
+      selectorRuleIndex: 0,
+      grantRuleIndex: 1,
+      flag: "feat",
+      itemType: "feat",
+      classSlug: null,
+      dependsOn: null,
+      filters: {
+        itemType: "feat",
+      },
     },
   };
 }

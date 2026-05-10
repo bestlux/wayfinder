@@ -114,6 +114,17 @@ export function createSelectionInvalidationService(
     async invalidateGrantSelectionsByDependency(dependency: "class" | "deity"): Promise<string[]> {
       return invalidateGrantSelectionsByDependencySync(dependency);
     },
+
+    async invalidateGrantSelectionsBySourceUuid(sourceUuid: string): Promise<string[]> {
+      const normalizedSourceUuid = normalizeUuid(sourceUuid);
+      if (!normalizedSourceUuid) {
+        return [];
+      }
+
+      return invalidateMatchingPlanSteps(await deps.buildPlan(), invalidate, (step) => {
+        return step.kind === "pick-item" && normalizeUuid(step.grantSelection?.selectorUuid) === normalizedSourceUuid;
+      });
+    },
   };
 
   function invalidateSingletonChoicesBySourceSync(
@@ -197,4 +208,8 @@ function isGrantChoiceSlotIdForSource(
 
 function isGrantChoiceSlotIdForDependency(slotId: string, dependency: "class" | "deity"): boolean {
   return slotId.startsWith(`grant-choice-${dependency}-`);
+}
+
+function normalizeUuid(value: string | null | undefined): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim().toLowerCase() : null;
 }

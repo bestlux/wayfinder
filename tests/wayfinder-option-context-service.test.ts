@@ -78,6 +78,141 @@ describe("wayfinder option context service", () => {
     });
   });
 
+  it("builds roll-option context from drafted skill-training choices", async () => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-wizard-level-1"] = {
+      ruleChoices: {
+        "feat:molten-wit:skill": "deception",
+      },
+      additional: [],
+      loreChoices: {},
+    };
+
+    const context = await buildOptionContext({
+      draft,
+      steps: [
+        {
+          id: "skill-training-wizard-level-1",
+          level: 1,
+          kind: "skill-training",
+          slotKind: "skill-training",
+          title: "Wizard skill training",
+          description: "",
+          required: true,
+          slotId: "skill-training-wizard-level-1",
+          training: {
+            classSlug: "wizard",
+            className: "Wizard",
+            fixedSkills: [],
+            fixedLores: [],
+            additionalCount: 0,
+            loreChoices: [],
+            choiceRules: [
+              {
+                key: "feat:molten-wit:skill",
+                flag: "skill",
+                rollOption: "molten-wit",
+                prompt: "Choose Deception or Diplomacy",
+                sourceLabel: "Molten Wit",
+                options: [
+                  { slug: "deception", label: "Deception" },
+                  { slug: "diplomacy", label: "Diplomacy" },
+                ],
+                persistence: {
+                  sourceItemType: "feat",
+                  sourcePackId: "pf2e.feats-srd",
+                  sourceDocumentId: "molten-wit",
+                  sourceUuid: "Compendium.pf2e.feats-srd.Item.molten-wit",
+                  sourceRuleIndex: 0,
+                },
+              },
+            ],
+          },
+        } as any,
+      ],
+      resolveDocument: async () => null,
+      listActorItems: () => [],
+      fetchSelectionDocument: async () => null,
+      extractDocumentSlug: () => null,
+    });
+
+    expect(context.rollOptions).toEqual(["molten-wit:deception"]);
+  });
+
+  it("projects drafted skill training into option-context skill ranks", async () => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-rogue-level-1"] = {
+      ruleChoices: {
+        "class:racketSkill": "deception",
+      },
+      additional: ["acrobatics"],
+      loreChoices: {
+        "background:lore": "Warfare Lore",
+      },
+    };
+
+    const context = await buildOptionContext({
+      draft,
+      steps: [
+        {
+          id: "skill-training-rogue-level-1",
+          level: 1,
+          kind: "skill-training",
+          slotKind: "skill-training",
+          title: "Rogue skill training",
+          description: "",
+          required: true,
+          slotId: "skill-training-rogue-level-1",
+          training: {
+            classSlug: "rogue",
+            className: "Rogue",
+            fixedSkills: ["stealth"],
+            fixedLores: ["Scribing Lore"],
+            additionalCount: 1,
+            choiceRules: [
+              {
+                key: "class:racketSkill",
+                flag: "racketSkill",
+                prompt: "Choose a racket skill",
+                sourceLabel: "Rogue",
+                options: [{ slug: "deception", label: "Deception" }],
+                persistence: null,
+              },
+            ],
+            loreChoices: [
+              {
+                key: "background:lore",
+                flag: "lore",
+                prompt: "Lore",
+                sourceLabel: "Background",
+                placeholder: "Custom Lore",
+                suggestions: [],
+                allowCustom: true,
+                persistence: null,
+              },
+            ],
+          },
+        } as any,
+      ],
+      skillRanks: {
+        medicine: 1,
+      },
+      resolveDocument: async () => null,
+      listActorItems: () => [],
+      fetchSelectionDocument: async () => null,
+      extractDocumentSlug: () => null,
+    });
+
+    expect(context.skillRanks).toMatchObject({
+      acrobatics: 1,
+      deception: 1,
+      medicine: 1,
+      "scribing-lore": 1,
+      stealth: 1,
+      "warfare-lore": 1,
+    });
+  });
+
   it("counts dedication feats from drafted feat selections when the actor does not already have one", async () => {
     const draft = createEmptyDraft(2);
     draft.selections["class-feat-level-2"] = selection("class-feat-level-2", "feat", "wizard-dedication");

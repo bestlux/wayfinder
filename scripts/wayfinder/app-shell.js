@@ -86,7 +86,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const plan = await this.#buildPlan(snapshot, draft);
         const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
         const activeStep = await this.#resolveActiveStep(plan.steps, effectiveBuildState);
-        const activePane = activeStep ? await this.#buildActivePane(activeStep, effectiveBuildState) : null;
+        const activePane = activeStep ? await this.#buildActivePane(activeStep, effectiveBuildState, plan.steps) : null;
         const [effectiveAncestry, effectiveHeritage, effectiveBackground, effectiveClass, effectiveDeity] = await Promise.all([
             getEffectiveSingletonDocument(this.actor, draft, "ancestry"),
             getEffectiveSingletonDocument(this.actor, draft, "heritage"),
@@ -190,7 +190,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 this.#selectSkillIncrease(action.stepId, action.slug);
                 break;
             case "select-training-rule":
-                this.#selectTrainingRule(action.stepId, action.key, action.slug);
+                await this.#selectTrainingRule(action.stepId, action.key, action.slug);
                 break;
             case "toggle-training-skill":
                 await this.#toggleTrainingSkill(action.stepId, action.slug);
@@ -309,7 +309,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#activeStepId = resolved.activeStepId;
         return resolved.activeStep;
     }
-    async #buildActivePane(step, effectiveBuildState) {
+    async #buildActivePane(step, effectiveBuildState, planSteps) {
         if (step.kind === "manual") {
             const pane = {
                 kind: "manual",
@@ -358,6 +358,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             previewValueByStepId: this.#previewValueByStepId,
             resolveOptionContext: () => buildOptionContext({
                 draft: this.#requireDraft(),
+                steps: planSteps,
+                skillRanks: inspectActor(this.actor).skillRanks,
                 resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
                 listActorItems: () => listActorItems(this.actor),
                 fetchSelectionDocument,
@@ -392,6 +394,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             resolveSelection: async (value, selectionStep) => {
                 const optionContext = await buildOptionContext({
                     draft,
+                    steps: plan.steps,
+                    skillRanks: snapshot.skillRanks,
                     resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
                     listActorItems: () => listActorItems(this.actor),
                     fetchSelectionDocument,
@@ -451,11 +455,28 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             this.render(false);
         }
     }
-    #selectTrainingRule(stepId, key, slug) {
+    async #selectTrainingRule(stepId, key, slug) {
         this.#statusNote = null;
+        const step = await this.#findPlanStepBySlotId(stepId);
         if (setTrainingRuleSelection(this.#draftAdjustmentState(), stepId, key, slug)) {
+            const invalidated = await this.#invalidateGrantChoicesForTrainingRule(step, key);
+            if (invalidated.length > 0) {
+                this.#statusNote = "Skill training changed. Wayfinder marked dependent granted choices for review.";
+            }
             this.render(false);
         }
+    }
+    async #invalidateGrantChoicesForTrainingRule(step, key) {
+        if (step?.kind !== "skill-training") {
+            return [];
+        }
+        const choice = step.training.choiceRules.find((entry) => entry.key === key);
+        const sourceUuid = choice?.persistence?.sourceUuid;
+        if (!sourceUuid) {
+            return [];
+        }
+        const invalidation = this.#selectionInvalidationService();
+        return invalidation.invalidateGrantSelectionsBySourceUuid(sourceUuid);
     }
     async #setTrainingLore(stepId, key, value) {
         this.#statusNote = null;
@@ -490,11 +511,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     async #toggleSpellChoice(stepId, rawValue) {
         this.#statusNote = null;
         const draft = this.#requireDraft();
-        const step = await this.#findPlanStepBySlotId(stepId, inspectActor(this.actor), draft);
+        const snapshot = inspectActor(this.actor);
+        const plan = await this.#buildPlan(snapshot, draft);
+        const step = plan.steps.find((entry) => entry.id === stepId) ?? null;
         const result = await toggleSpellChoiceSelection(this.#selectionCommandState(draft), step ?? null, rawValue, {
             resolveSelection: async (value, selectionStep) => {
                 const optionContext = await buildOptionContext({
                     draft,
+                    steps: plan.steps,
+                    skillRanks: snapshot.skillRanks,
                     resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
                     listActorItems: () => listActorItems(this.actor),
                     fetchSelectionDocument,

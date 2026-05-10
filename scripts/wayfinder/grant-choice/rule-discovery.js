@@ -25,7 +25,7 @@ export function discoverGrantSelectionMeta(args) {
         if (grantRuleIndex === -1) {
             return [];
         }
-        const dependsOn = resolveGrantDependency(sourceItemType, filters.predicate ?? []);
+        const dependsOn = resolveGrantDependency(sourceItemType, grantDependencyPredicates(filters));
         const dependencyKey = dependsOn ?? "none";
         return [
             {
@@ -62,19 +62,35 @@ export function discoverGrantSelectionMeta(args) {
     }
 }
 function resolveStaticUuidChoiceFilters(rule) {
-    if (!Array.isArray(rule.choices) || rule.predicate !== undefined) {
+    if (!Array.isArray(rule.choices)) {
         return null;
     }
     const choices = rule.choices.filter(isRecord);
-    if (choices.length === 0 || choices.length !== rule.choices.length || choices.some((choice) => choice.predicate)) {
+    if (choices.length === 0 || choices.length !== rule.choices.length) {
         return null;
     }
-    const uuids = choices.map((choice) => toNonEmptyString(choice.value));
-    if (uuids.some((uuid) => !uuid || !parseCompendiumItemUuid(uuid))) {
+    const contextPredicate = normalizePredicateList(rule.predicate);
+    if (!contextPredicate) {
         return null;
+    }
+    const uuidPredicates = {};
+    const uuids = [];
+    for (const choice of choices) {
+        const uuid = toNonEmptyString(choice.value);
+        if (!uuid || !parseCompendiumItemUuid(uuid)) {
+            return null;
+        }
+        const predicate = normalizePredicateList(choice.predicate);
+        if (!predicate) {
+            return null;
+        }
+        uuids.push(uuid);
+        if (predicate.length > 0) {
+            uuidPredicates[uuid] = predicate;
+        }
     }
     const packIds = Array.from(new Set(uuids.flatMap((uuid) => {
-        const parsed = uuid ? parseCompendiumItemUuid(uuid) : null;
+        const parsed = parseCompendiumItemUuid(uuid);
         return parsed ? [parsed.packId] : [];
     })));
     const itemTypes = Array.from(new Set(packIds.flatMap((packId) => STATIC_UUID_PACK_ITEM_TYPES.get(packId) ?? [])));
@@ -84,8 +100,27 @@ function resolveStaticUuidChoiceFilters(rule) {
     return {
         itemType: itemTypes[0],
         packIds,
-        uuids: uuids.filter((uuid) => !!uuid),
+        uuids,
+        ...(Object.keys(uuidPredicates).length > 0 ? { uuidPredicates } : {}),
+        ...(contextPredicate.length > 0 ? { contextPredicate } : {}),
     };
+}
+function normalizePredicateList(value) {
+    if (value === undefined) {
+        return [];
+    }
+    if (Array.isArray(value)) {
+        const predicate = value.filter(isChoicePredicate);
+        return value.length === predicate.length ? predicate : null;
+    }
+    return isChoicePredicate(value) ? [value] : null;
+}
+function grantDependencyPredicates(filters) {
+    return [
+        ...(filters.predicate ?? []),
+        ...(filters.contextPredicate ?? []),
+        ...Object.values(filters.uuidPredicates ?? {}).flat(),
+    ];
 }
 function inferItemTypeFromPredicate(predicate) {
     for (const entry of predicate) {

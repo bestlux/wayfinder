@@ -19,21 +19,25 @@ type LooseDocument = {
 type LooseItem = {
   type?: string;
   system?: {
+    rules?: unknown;
     traits?: {
       value?: unknown[];
     } | null;
   } | null;
   flags?: {
     pf2e?: {
-      rulesSelections?: {
-        sanctification?: unknown;
-      } | null;
+      rulesSelections?: Record<string, unknown> | null;
+    } | null;
+    system?: {
+      rulesSelections?: Record<string, unknown> | null;
     } | null;
   } | null;
 };
 
 interface SharedContextDependencies {
   draft: DraftState;
+  steps?: PendingStep[];
+  skillRanks?: Record<string, number>;
   fetchSelectionDocument: (selection: SelectionRef) => Promise<unknown | null>;
   extractDocumentSlug: (document: unknown) => string | null;
 }
@@ -170,6 +174,9 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
 
   const ancestrySlug = deps.extractDocumentSlug(ancestryDocument);
   const selectedUuidsBySlotId = buildSelectedUuidsBySlotId(deps.draft);
+  const actorItems = deps.listActorItems();
+  const rollOptions = buildActiveRollOptions(deps.draft, deps.steps ?? [], actorItems);
+  const skillRanks = buildProjectedSkillRanks(deps.skillRanks, deps.draft, deps.steps ?? []);
   return {
     ancestrySlug,
     ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
@@ -179,12 +186,149 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
     deitySelected: !!deityDocument,
     sanctification: resolveSanctificationChoice({
       draft: deps.draft,
-      actorItems: deps.listActorItems(),
+      actorItems,
       deityDocument,
     }),
     hasDedicationFeat,
     ...(Object.keys(selectedUuidsBySlotId).length > 0 ? { selectedUuidsBySlotId } : {}),
+    ...(rollOptions.length > 0 ? { rollOptions } : {}),
+    ...(skillRanks ? { skillRanks } : {}),
   };
+}
+
+function buildActiveRollOptions(draft: DraftState, steps: PendingStep[], actorItems: unknown[]): string[] {
+  return Array.from(
+    new Set([...collectDraftRollOptions(draft, steps), ...collectActorRuleSelectionRollOptions(actorItems)])
+  ).sort();
+}
+
+function collectDraftRollOptions(draft: DraftState, steps: PendingStep[]): string[] {
+  const options: string[] = [];
+  for (const step of steps) {
+    if (step.kind === "singleton-choice") {
+      const rollOption = normalizeString(step.singletonChoice.rollOption);
+      const selection = normalizeString(draft.singletonChoices[step.slotId]);
+      if (rollOption && selection) {
+        options.push(`${rollOption}:${selection}`);
+      }
+      continue;
+    }
+
+    if (step.kind !== "skill-training") {
+      continue;
+    }
+
+    const training = draft.skillTrainings[step.slotId];
+    if (!training) {
+      continue;
+    }
+
+    for (const choice of step.training.choiceRules) {
+      const rollOption = normalizeString(choice.rollOption);
+      const selection = normalizeString(training.ruleChoices[choice.key]);
+      if (rollOption && selection) {
+        options.push(`${rollOption}:${selection}`);
+      }
+    }
+  }
+
+  return options;
+}
+
+function collectActorRuleSelectionRollOptions(actorItems: unknown[]): string[] {
+  return actorItems.flatMap((item) => {
+    const typedItem = item as LooseItem | null;
+    const rules = Array.isArray(typedItem?.system?.rules) ? typedItem.system.rules : [];
+    const rulesSelections = {
+      ...(typedItem?.flags?.system?.rulesSelections ?? {}),
+      ...(typedItem?.flags?.pf2e?.rulesSelections ?? {}),
+    };
+
+    return rules.flatMap((rule) => {
+      if (!isRecord(rule) || rule.key !== "ChoiceSet") {
+        return [];
+      }
+
+      const flag = normalizeString(rule.flag) ?? normalizeString(rule.rollOption) ?? normalizeString(rule.slug);
+      const rollOption = normalizeString(rule.rollOption);
+      const selection = flag ? normalizeString(rulesSelections[flag]) : null;
+      return rollOption && selection ? [`${rollOption}:${selection}`] : [];
+    });
+  });
+}
+
+function normalizeSkillRanks(value: Record<string, number> | undefined): Record<string, number> | null {
+  if (!value) {
+    return null;
+  }
+
+  const entries = Object.entries(value).flatMap(([slug, rank]) => {
+    const normalizedSlug = normalizeString(slug);
+    const numericRank = Number(rank);
+    return normalizedSlug && Number.isFinite(numericRank)
+      ? [[normalizedSlug, Math.max(0, Math.min(4, Math.floor(numericRank)))] as const]
+      : [];
+  });
+
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+function buildProjectedSkillRanks(
+  baseRanks: Record<string, number> | undefined,
+  draft: DraftState,
+  steps: PendingStep[]
+): Record<string, number> | null {
+  const projected = normalizeSkillRanks(baseRanks) ?? {};
+
+  for (const step of steps) {
+    if (step.kind !== "skill-training") {
+      continue;
+    }
+
+    const training = draft.skillTrainings[step.slotId];
+    if (!training) {
+      continue;
+    }
+
+    for (const skill of step.training.fixedSkills) {
+      setMinimumRank(projected, skill, 1);
+    }
+
+    for (const choice of step.training.choiceRules) {
+      setMinimumRank(projected, training.ruleChoices[choice.key], 1);
+    }
+
+    for (const skill of training.additional) {
+      setMinimumRank(projected, skill, 1);
+    }
+
+    for (const lore of step.training.fixedLores) {
+      setMinimumRank(projected, lore, 1);
+    }
+
+    for (const choice of step.training.loreChoices) {
+      setMinimumRank(projected, training.loreChoices[choice.key], 1);
+    }
+  }
+
+  for (const skill of Object.values(draft.skillIncreases)) {
+    const slug = normalizeSkillSlug(skill);
+    if (!slug) {
+      continue;
+    }
+    setMinimumRank(projected, slug, (projected[slug] ?? 0) + 1);
+  }
+
+  return Object.keys(projected).length > 0 ? projected : null;
+}
+
+function setMinimumRank(ranks: Record<string, number>, rawSlug: unknown, rank: number): void {
+  const slug = normalizeSkillSlug(rawSlug);
+  if (!slug) {
+    return;
+  }
+
+  ranks[slug] = Math.max(ranks[slug] ?? 0, rank);
 }
 
 function buildSelectedUuidsBySlotId(draft: DraftState): Record<string, string> {
@@ -197,6 +341,26 @@ function buildSelectedUuidsBySlotId(draft: DraftState): Record<string, string> {
 function classDocumentHasSpellcasting(document: unknown): boolean {
   const value = (document as LooseDocument | null)?.system?.spellcasting;
   return Number(value) > 0;
+}
+
+function normalizeString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim().toLowerCase() : null;
+}
+
+function normalizeSkillSlug(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object";
 }
 
 export async function buildContextNote(

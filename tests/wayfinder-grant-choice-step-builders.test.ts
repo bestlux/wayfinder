@@ -161,7 +161,7 @@ describe("wayfinder grant choice step builders", () => {
     ]);
   });
 
-  it("skips static UUID feat grants with choice-level predicates", () => {
+  it("builds static UUID feat grants with choice-level predicates", () => {
     const steps = buildGrantChoiceStepsFromRules({
       sourceItemType: "feat",
       effectiveSourceDocument: {
@@ -204,7 +204,25 @@ describe("wayfinder grant choice step builders", () => {
       extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
     });
 
-    expect(steps).toEqual([]);
+    expect(steps).toMatchObject([
+      {
+        slotId: "grant-choice-none-feat-molten-wit-feat-level-1",
+        filters: {
+          itemType: "feat",
+          packIds: ["pf2e.feats-srd"],
+          uuids: ["Compendium.pf2e.feats-srd.Item.Charming Liar", "Compendium.pf2e.feats-srd.Item.Group Impression"],
+          uuidPredicates: {
+            "Compendium.pf2e.feats-srd.Item.Charming Liar": ["molten-wit:deception"],
+            "Compendium.pf2e.feats-srd.Item.Group Impression": ["molten-wit:diplomacy"],
+          },
+        },
+        grantSelection: {
+          sourceItemType: "feat",
+          dependsOn: null,
+          flag: "feat",
+        },
+      },
+    ]);
   });
 
   it("builds a static UUID class-feature grant step from selected class features", () => {

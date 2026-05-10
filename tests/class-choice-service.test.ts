@@ -7,6 +7,7 @@ import {
   buildClassChoiceSteps,
   buildClassFeatSteps,
   buildClassGrantedItemSteps,
+  buildClassSkillFeatSteps,
   buildClassTrainingSteps,
 } from "../src/wayfinder/class-choice-service";
 
@@ -25,6 +26,43 @@ describe("class-choice-service", () => {
     });
 
     expect(steps.map((step) => step.slotId)).toEqual(["class-feat-level-1", "class-feat-level-2"]);
+  });
+
+  it("derives level 1 skill feat milestones from the effective class document", async () => {
+    const steps = await buildClassSkillFeatSteps({
+      effectiveClassDocument: {
+        system: {
+          skillFeatLevels: {
+            value: [1, 2, 3, 4],
+          },
+        },
+      },
+      targetLevel: 2,
+      fulfilledCount: 0,
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual(["skill-feat-level-1"]);
+    expect(steps[0]?.filters).toEqual({
+      itemType: "feat",
+      featTypes: ["skill"],
+      maxLevel: 1,
+    });
+  });
+
+  it("skips level 1 skill feat milestones already represented on the actor", async () => {
+    const steps = await buildClassSkillFeatSteps({
+      effectiveClassDocument: {
+        system: {
+          skillFeatLevels: {
+            value: [1, 2],
+          },
+        },
+      },
+      targetLevel: 1,
+      fulfilledCount: 1,
+    });
+
+    expect(steps).toEqual([]);
   });
 
   it("builds class training after creation boosts using the projected Intelligence modifier", async () => {

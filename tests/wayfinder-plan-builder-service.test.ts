@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import type { BuildStateActor } from "../src/build-state/document-types";
+import { MODULE_ID } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
 import type {
   ActorSnapshot,
@@ -17,7 +19,27 @@ import {
 
 describe("wayfinder plan builder service", () => {
   it("assembles the actor-facing plan builders with resolved documents and actor readers", async () => {
-    const actor = {};
+    const actor = {
+      items: {
+        contents: [
+          {
+            type: "feat",
+            name: "Student of the Canon",
+            system: { featType: { value: "skill" } },
+          },
+          {
+            type: "feat",
+            name: "Cat Fall",
+            flags: { [MODULE_ID]: { slotId: "skill-feat-level-1" } },
+          },
+          {
+            type: "feat",
+            name: "Cat Fall Duplicate",
+            flags: { [MODULE_ID]: { slotId: "skill-feat-level-1" } },
+          },
+        ],
+      },
+    } as unknown as BuildStateActor;
     const draft = createEmptyDraft(1);
     draft.selections.class = selection("class-level-1", "class", "wizard", "Wizard");
     draft.selections["ancestry-feat-level-1"] = selection(
@@ -66,7 +88,7 @@ describe("wayfinder plan builder service", () => {
         ancestry: 1,
         class: 2,
         archetype: 3,
-        skill: 0,
+        skill: 3,
         general: 0,
       },
       sourceIds: [],
@@ -97,6 +119,7 @@ describe("wayfinder plan builder service", () => {
     ]);
 
     const buildClassFeatSteps = vi.fn(async () => [step("class-feat-level-2")]);
+    const buildClassSkillFeatSteps = vi.fn(async () => [step("skill-feat-level-1")]);
     const buildClassTrainingSteps = vi.fn(async (params) => {
       expect(params.draftClassSelection).toEqual(draft.selections.class);
       expect(params.targetLevel).toBe(4);
@@ -259,6 +282,7 @@ describe("wayfinder plan builder service", () => {
       expect(receivedDraft).toBe(draft);
       const steps = [
         ...(await deps.buildClassFeatSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildClassSkillFeatSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassTrainingSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildGrantChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildSingletonChoiceSteps(receivedSnapshot, receivedDraft, 4)),
@@ -287,6 +311,7 @@ describe("wayfinder plan builder service", () => {
       {
         buildWayfinderPlan,
         buildClassFeatSteps,
+        buildClassSkillFeatSteps,
         buildClassTrainingSteps,
         buildGrantChoiceSteps,
         buildSingletonChoiceSteps,
@@ -315,6 +340,7 @@ describe("wayfinder plan builder service", () => {
 
     expect(plan.steps.map((entry) => entry.slotId)).toEqual([
       "class-feat-level-2",
+      "skill-feat-level-1",
       "skill-training-wizard-level-1",
       "class-branch-arcane-school-level-1",
       "deity-level-1",
@@ -329,6 +355,11 @@ describe("wayfinder plan builder service", () => {
       effectiveClassDocument: classDocument,
       targetLevel: 4,
       fulfilledCount: 5,
+    });
+    expect(buildClassSkillFeatSteps).toHaveBeenCalledWith({
+      effectiveClassDocument: classDocument,
+      targetLevel: 4,
+      fulfilledCount: 1,
     });
   });
 
@@ -367,6 +398,7 @@ describe("wayfinder plan builder service", () => {
           steps: [step("ancestry-level-1"), stepToFind],
         }),
         buildClassFeatSteps: async () => [],
+        buildClassSkillFeatSteps: async () => [],
         buildClassTrainingSteps: async () => [],
         buildGrantChoiceSteps: async () => [],
         buildSingletonChoiceSteps: async () => [],

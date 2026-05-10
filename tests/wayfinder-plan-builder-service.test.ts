@@ -91,6 +91,7 @@ describe("wayfinder plan builder service", () => {
         skill: 3,
         general: 0,
       },
+      fulfilledStepIds: ["class-feat-level-2", "skill-feat-level-1"],
       sourceIds: [],
       namesByType: {},
       skillRanks: {},
@@ -354,12 +355,14 @@ describe("wayfinder plan builder service", () => {
     expect(buildClassFeatSteps).toHaveBeenCalledWith({
       effectiveClassDocument: classDocument,
       targetLevel: 4,
-      fulfilledCount: 5,
+      fulfilledCount: 2,
+      fulfilledStepIds: ["class-feat-level-2", "skill-feat-level-1"],
     });
     expect(buildClassSkillFeatSteps).toHaveBeenCalledWith({
       effectiveClassDocument: classDocument,
       targetLevel: 4,
       fulfilledCount: 1,
+      fulfilledStepIds: ["class-feat-level-2", "skill-feat-level-1"],
     });
   });
 
@@ -381,6 +384,7 @@ describe("wayfinder plan builder service", () => {
             deity: false,
           },
           featCounts: { ancestry: 0, class: 0, archetype: 0, skill: 0, general: 0 },
+          fulfilledStepIds: [],
           sourceIds: [],
           namesByType: {},
           skillRanks: {},

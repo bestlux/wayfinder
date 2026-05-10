@@ -15,10 +15,11 @@ export async function buildWayfinderPlan(snapshot, draft, deps) {
         deps.buildClassChoiceSteps(snapshot, draft, plan.targetLevel),
         deps.buildSpellChoiceSteps(snapshot, draft, plan.targetLevel),
     ]);
+    const progressionSteps = classSkillFeatSteps.length > 0 ? plan.steps.filter((step) => step.slotKind !== "skill-feat") : plan.steps;
     return {
         ...plan,
         steps: sortPendingSteps([
-            ...plan.steps,
+            ...progressionSteps,
             ...classFeatSteps,
             ...classSkillFeatSteps,
             ...grantedItemSteps,

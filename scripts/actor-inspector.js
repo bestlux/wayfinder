@@ -1,8 +1,10 @@
+import { MODULE_ID } from "./constants.js";
 export function inspectActor(actor) {
     const items = normalizeItems(actor);
     const level = clampLevel(Number(actor?.system?.details?.level?.value ?? 1));
     const namesByType = {};
     const sourceIds = new Set();
+    const fulfilledStepIds = new Set();
     const singletonSlots = {
         ancestry: false,
         heritage: false,
@@ -33,6 +35,10 @@ export function inspectActor(actor) {
         if (typeof sourceId === "string" && sourceId) {
             sourceIds.add(sourceId);
         }
+        const wayfinderSlotId = item?.flags?.[MODULE_ID]?.slotId;
+        if (typeof wayfinderSlotId === "string" && wayfinderSlotId.length > 0) {
+            fulfilledStepIds.add(wayfinderSlotId);
+        }
         if (type === "feat") {
             const featType = String(item?.system?.featType?.value ?? item?.system?.category ?? "");
             if (featType in featCounts) {
@@ -40,12 +46,19 @@ export function inspectActor(actor) {
             }
         }
     }
+    for (const slotId of readCompletedStateStepIds(actor)) {
+        fulfilledStepIds.add(slotId);
+    }
+    for (const slotId of readFulfilledFeatSlotIds(actor)) {
+        fulfilledStepIds.add(slotId);
+    }
     return {
         actorId: String(actor?.id ?? ""),
         level,
         isBlank: items.length === 0 && !hasAnySingleton(singletonSlots),
         singletonSlots,
         featCounts,
+        fulfilledStepIds: Array.from(fulfilledStepIds).sort(),
         sourceIds: Array.from(sourceIds),
         namesByType,
         skillRanks: extractSkillRanks(actor),
@@ -71,6 +84,30 @@ function normalizeItems(actor) {
         return actor.items.contents;
     }
     return [];
+}
+function readCompletedStateStepIds(actor) {
+    const completedStepIds = actor?.flags?.[MODULE_ID]?.state?.completedStepIds;
+    return Array.isArray(completedStepIds)
+        ? completedStepIds.filter((slotId) => typeof slotId === "string" &&
+            (slotId.startsWith("ability-boosts-level-") || slotId.startsWith("skill-increase-level-")))
+        : [];
+}
+function readFulfilledFeatSlotIds(actor) {
+    return [
+        ...readFulfilledFeatSlotIdsForGroup(actor, "ancestry", "ancestry-feat"),
+        ...readFulfilledFeatSlotIdsForGroup(actor, "class", "class-feat"),
+        ...readFulfilledFeatSlotIdsForGroup(actor, "skill", "skill-feat"),
+        ...readFulfilledFeatSlotIdsForGroup(actor, "general", "general-feat"),
+    ];
+}
+function readFulfilledFeatSlotIdsForGroup(actor, groupId, slotKind) {
+    const group = typeof actor?.feats?.get === "function" ? actor.feats.get(groupId) : actor?.feats?.[groupId];
+    return Object.values(group?.slots ?? {}).flatMap((slot) => {
+        const level = Number(slot?.level);
+        return slot?.feat && Number.isFinite(level) && level >= 1 && level <= 20
+            ? [`${slotKind}-level-${Math.floor(level)}`]
+            : [];
+    });
 }
 function clampLevel(level) {
     if (!Number.isFinite(level)) {

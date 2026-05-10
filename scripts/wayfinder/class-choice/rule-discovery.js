@@ -141,19 +141,10 @@ export function discoverClassChoiceMeta(args) {
     const level = toFeatureLevel(document.system?.level?.value);
     return findRelevantClassRules(sourceDocument).flatMap((rule, ruleIndex) => {
         const selectionKey = extractClassChoiceKey(rule);
-        if (rule.key !== "ChoiceSet" || !selectionKey || !Array.isArray(rule.choices)) {
+        if (rule.key !== "ChoiceSet" || !selectionKey) {
             return [];
         }
-        const options = rule.choices
-            .filter((choice) => isRecord(choice))
-            .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
-            .filter((choice) => evaluatePredicate(choice.predicate, rollOptions))
-            .map((choice) => ({
-            value: String(choice.value),
-            label: resolveChoiceLabel(typeof choice.label === "string" ? choice.label : undefined, String(choice.value), localize),
-            img: typeof choice.img === "string" && choice.img.length > 0 ? choice.img : null,
-            detail: null,
-        }));
+        const options = resolveClassChoiceOptions(rule.choices, rollOptions, localize);
         if (options.length === 0) {
             return [];
         }
@@ -172,6 +163,42 @@ export function discoverClassChoiceMeta(args) {
             },
         ];
     });
+}
+function resolveClassChoiceOptions(choices, rollOptions, localize) {
+    if (Array.isArray(choices)) {
+        return choices
+            .filter((choice) => isRecord(choice))
+            .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
+            .filter((choice) => evaluatePredicate(choice.predicate, rollOptions))
+            .map((choice) => ({
+            value: String(choice.value),
+            label: resolveChoiceLabel(typeof choice.label === "string" ? choice.label : undefined, String(choice.value), localize),
+            img: typeof choice.img === "string" && choice.img.length > 0 ? choice.img : null,
+            detail: null,
+        }));
+    }
+    if (typeof choices === "string") {
+        return resolveConfiguredChoiceOptions(choices, localize);
+    }
+    return [];
+}
+function resolveConfiguredChoiceOptions(choiceSetKey, localize) {
+    if (choiceSetKey.startsWith("flags.")) {
+        return [];
+    }
+    const pf2eConfig = globalThis.CONFIG?.PF2E;
+    const choices = pf2eConfig?.[choiceSetKey];
+    if (!isRecord(choices)) {
+        return [];
+    }
+    return Object.entries(choices)
+        .filter((entry) => typeof entry[1] === "string" && entry[0].length > 0)
+        .map(([value, label]) => ({
+        value,
+        label: resolveChoiceLabel(label, value, localize),
+        img: null,
+        detail: null,
+    }));
 }
 export function buildChoiceRollOptions(deityDocument) {
     const document = deityDocument;

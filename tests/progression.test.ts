@@ -21,6 +21,7 @@ function makeSnapshot(partial: Partial<ActorSnapshot> = {}): ActorSnapshot {
       skill: 0,
       general: 0,
     },
+    fulfilledStepIds: [],
     sourceIds: [],
     namesByType: {},
     skillRanks: {},
@@ -97,5 +98,64 @@ describe("progression", () => {
     expect(steps.map((step) => `${step.slotKind}:${step.level}`)).toContain("ability-boosts:5");
     expect(steps.map((step) => `${step.slotKind}:${step.level}`)).toContain("skill-feat:4");
     expect(steps.map((step) => `${step.slotKind}:${step.level}`)).not.toContain("class-feat:2");
+  });
+
+  it("uses fulfilled slot ids before raw feat counts for level-up feat milestones", () => {
+    const steps = buildSteps(
+      makeSnapshot({
+        level: 1,
+        isBlank: false,
+        singletonSlots: {
+          ancestry: true,
+          heritage: true,
+          background: true,
+          class: true,
+          deity: false,
+        },
+        featCounts: {
+          ancestry: 1,
+          class: 0,
+          archetype: 0,
+          skill: 1,
+          general: 0,
+        },
+        fulfilledStepIds: ["ancestry-feat-level-1", "skill-feat-level-1"],
+      }),
+      1,
+      4
+    );
+
+    expect(steps.map((step) => `${step.slotKind}:${step.level}`)).toEqual(
+      expect.arrayContaining(["skill-feat:2", "skill-feat:4"])
+    );
+  });
+
+  it("skips exact fulfilled slot ids without consuming later same-kind milestones", () => {
+    const steps = buildSteps(
+      makeSnapshot({
+        level: 1,
+        isBlank: false,
+        singletonSlots: {
+          ancestry: true,
+          heritage: true,
+          background: true,
+          class: true,
+          deity: false,
+        },
+        featCounts: {
+          ancestry: 1,
+          class: 0,
+          archetype: 0,
+          skill: 2,
+          general: 0,
+        },
+        fulfilledStepIds: ["skill-feat-level-2"],
+      }),
+      1,
+      4
+    );
+
+    expect(steps.map((step) => `${step.slotKind}:${step.level}`)).toContain("skill-feat:4");
+    expect(steps.map((step) => `${step.slotKind}:${step.level}`)).not.toContain("skill-feat:2");
   });
 });

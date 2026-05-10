@@ -36,7 +36,7 @@ For the current repo-plus-compendium side-book audit, see [AP And Side-Book Leve
 | Level 1 class feat | Guided when the selected class grants one | Class-derived pick-item step | Comes from the selected class document's `classFeatLevels`. |
 | Level 1 skill feat | Guided when the selected class grants one | Class-derived pick-item step | Covers Rogue-style level-1 skill feat progression. Skill-feat options are filtered for supported `trained in ...` skill and lore prerequisite text. |
 | Class skill training | Guided | Dedicated class-training steps | Covers fixed and rule-driven training choices exposed by PF2E data, including projected background, ancestry, heritage, and feat-granted training. |
-| Class branches | Guided when PF2E rule data is structured | Branch-discovery and branch-selection steps | Works when the class exposes selector-style branch rules cleanly. |
+| Class branches | Guided when PF2E rule data is structured | Branch-discovery and branch-selection steps | Works when the class exposes selector-style branch rules cleanly. Class archetypes and branch options with embedded unsupported `ChoiceSet` rules are filtered until they have their own guided lane. |
 | Class-owned granted selections | Guided when PF2E rule data is structured | Granted-item and class-choice steps | Includes flows like deity-linked or class-linked granted selections when discoverable from rules. |
 | Class-owned spell choices | Partial / deferred | Class contributor seam plus spell-choice engine | Wizard and cleric are deeply guided. Bard, druid, witch, oracle, sorcerer, and other spellcasting class flows need dedicated contributors before Wayfinder can claim broad core spell coverage. |
 | Singleton `ChoiceSet` decisions from ancestry, heritage, background, class, deity, or selected feat sources | Guided when PF2E rule data is structured | Generic singleton-choice workflow | Supports planning, draft storage, invalidation, and apply-side persistence for supported `ChoiceSet` rules. |
@@ -67,8 +67,9 @@ For the current repo-plus-compendium side-book audit, see [AP And Side-Book Leve
 | Upgrade path | Existing actor with resolved choices | Actor already has items and Wayfinder flags | Re-open Wayfinder | Already resolved singleton, branch, class-choice, grant-choice, language, and spell-choice steps are skipped unless the draft overrides them | Existing-selection and plan-builder tests | merge |
 | Reset / re-run | Upstream selection changes | Draft contains dependent selections | Change ancestry, heritage, class, branch, or source rule choice | Dependent stale choices clear and affected steps surface as needing attention | Invalidation, draft adjustment, grant-choice, and singleton tests | merge |
 | Failure mode | Unsupported structured rule shape | Content exposes unsupported selected-item, equipment, config, or multi-ChoiceSet graph dependencies | Build plan | Wayfinder avoids guessing; unsupported choices remain PF2E-native/manual | AP/side-book audit gap table | release |
+| Failure mode | Direct feat or branch embeds an unsupported `ChoiceSet` | A selected feat or class-branch option needs an internal choice Wayfinder cannot yet render | Build picker options | Option is hidden from direct guided pickers unless it is on a supported grant-choice path | `tests/pack-service.test.ts`, live smoke harness | release |
 | Failure mode | PF2E-native grant popup duplication | Static or filtered grant choice is drafted before apply | Apply draft | Wayfinder preseeds supported rule selections so PF2E does not ask again | Actor-updater selection/integration tests and previous live smoke | merge |
-| Failure mode | Missing live browser evidence for full PC/PC2 matrix | Full PC/PC2 class-by-class Foundry smoke has not been rerun for this audit | Release review | Do not claim full live-smoked class coverage until that pass exists | This document | release |
+| Failure mode | Live Foundry apply/rerun regression | Representative level 1 through 5 flows for martial, skill-heavy, prepared caster, and spontaneous caster paths | Run repo-owned smoke harness | Disposable actors apply, rerun with zero pending steps, and clean up fixtures | `docs/coverage/beta-readiness-smoke.md` | release |
 
 ## Coverage Strengths
 
@@ -83,6 +84,7 @@ For the current repo-plus-compendium side-book audit, see [AP And Side-Book Leve
 
 - Spellcasting class coverage is the largest normal-use launch gap. Wizard and cleric are guided; other PC/PC2 spellcasting classes need class contributors before spell preparation, repertoire, focus/devotion/hex/composition, and subclass spell grants can be called guided.
 - Some level-1 choices are only as good as the PF2E rule data that drives them. If a background, ancestry, heritage, feat, or class does not expose a supported `ChoiceSet`, grant-choice, selector, or skill-training shape, Wayfinder cannot infer a guided step automatically.
+- Direct feat and class-branch options that embed their own unsupported `ChoiceSet` are hidden from guided pickers for now. Supported grant-choice paths can still surface choices such as Additional Lore when Wayfinder can build the dependent follow-up step.
 - Skill-feat prerequisite filtering covers supported `trained in ...` skill and lore text. It does not yet evaluate every prerequisite kind, such as ability thresholds, follower/deity requirements, equipment requirements, or table-specific access.
 - Background or ancestry singleton choices do not always project a trained skill rank. Wayfinder only projects training when the owning item rules actually drive a skill-rank effect or a supported training source.
 - Predicate-gated singleton follow-up chains are supported when predicates are driven by earlier singleton roll-option selections. Broader actor-roll-option predicates still need content-driven audit before being called broadly covered.
@@ -91,7 +93,9 @@ For the current repo-plus-compendium side-book audit, see [AP And Side-Book Leve
 
 ## Level 2+ Readiness List
 
-1. Replace generic level constants with selected-class progression data for skill feats, skill increases, class feats, and later spell milestones. The level-1 Rogue skill-feat fix is intentionally scoped; level 2+ needs count-by-slot or level-aware fulfillment so Rogue and Investigator do not consume later milestones incorrectly.
+For the current level-up audit, see [Level 2+ Coverage Matrix](./levelup-coverage-matrix.md).
+
+1. Keep class and skill feat planning anchored to selected-class progression data and exact fulfilled slot ids. The current level-up slice covers class feat and skill feat slot planning; broader non-wizard spell milestones still need class contributors.
 2. Add class contributors for non-wizard/cleric PC/PC2 spellcasters before claiming broad level-1 launch coverage: bard, druid, witch, oracle, sorcerer, and champion-related devotion/focus flows.
 3. Add Free Archetype as a distinct variant-rule feat group, using PF2E's `archetype` group rather than consuming normal class feat slots.
 4. Tighten archetype legality beyond the current dedication/follow-up split: active archetype family, dedication lockout, and GM override/table policy need a clear model before level 2+ archetype choices are guided.

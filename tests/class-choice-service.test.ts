@@ -28,7 +28,7 @@ describe("class-choice-service", () => {
     expect(steps.map((step) => step.slotId)).toEqual(["class-feat-level-1", "class-feat-level-2"]);
   });
 
-  it("derives level 1 skill feat milestones from the effective class document", async () => {
+  it("derives skill feat milestones from the effective class document", async () => {
     const steps = await buildClassSkillFeatSteps({
       effectiveClassDocument: {
         system: {
@@ -41,7 +41,7 @@ describe("class-choice-service", () => {
       fulfilledCount: 0,
     });
 
-    expect(steps.map((step) => step.slotId)).toEqual(["skill-feat-level-1"]);
+    expect(steps.map((step) => step.slotId)).toEqual(["skill-feat-level-1", "skill-feat-level-2"]);
     expect(steps[0]?.filters).toEqual({
       itemType: "feat",
       featTypes: ["skill"],
@@ -49,20 +49,26 @@ describe("class-choice-service", () => {
     });
   });
 
-  it("skips level 1 skill feat milestones already represented on the actor", async () => {
+  it("skips fulfilled skill feat slots without consuming later milestones", async () => {
     const steps = await buildClassSkillFeatSteps({
       effectiveClassDocument: {
         system: {
           skillFeatLevels: {
-            value: [1, 2],
+            value: [1, 2, 3, 4, 5],
           },
         },
       },
-      targetLevel: 1,
-      fulfilledCount: 1,
+      targetLevel: 5,
+      fulfilledCount: 3,
+      fulfilledStepIds: ["skill-feat-level-1"],
     });
 
-    expect(steps).toEqual([]);
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "skill-feat-level-2",
+      "skill-feat-level-3",
+      "skill-feat-level-4",
+      "skill-feat-level-5",
+    ]);
   });
 
   it("builds class training after creation boosts using the projected Intelligence modifier", async () => {

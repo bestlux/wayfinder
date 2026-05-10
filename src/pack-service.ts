@@ -421,6 +421,7 @@ async function getPackIndex(pack: GamePackLike, packId: string): Promise<PackInd
       "system.featType.value",
       "system.ancestry.slug",
       "system.category",
+      "system.rules",
       "system.prerequisites.value",
       "system.traits.value",
       "system.traits.traditions",
@@ -462,6 +463,10 @@ function matchesFilters(
   }
 
   if (filters.uuidPredicates && !matchesUuidChoicePredicate(entry, packId, filters.uuidPredicates, context)) {
+    return false;
+  }
+
+  if (hasUnsupportedEmbeddedChoiceSet(entry, step)) {
     return false;
   }
 
@@ -769,6 +774,10 @@ function matchesClassBranchContext(entry: PackIndexEntry, step: PendingStep, con
   }
 
   const traits = extractEntryTraits(entry);
+  if (traits.includes("class-archetype")) {
+    return false;
+  }
+
   if (branch.optionTag === "champion-cause") {
     const sanctification = context.sanctification ?? null;
     const isHoly = traits.includes("holy");
@@ -785,6 +794,31 @@ function matchesClassBranchContext(entry: PackIndexEntry, step: PendingStep, con
   }
 
   return !branch.classSlug || traits.length === 0 || traits.includes(branch.classSlug);
+}
+
+function hasUnsupportedEmbeddedChoiceSet(entry: PackIndexEntry, step: PendingStep): boolean {
+  if (!entryHasChoiceSetRule(entry)) {
+    return false;
+  }
+
+  if (step.kind === "class-branch") {
+    return true;
+  }
+
+  if (step.kind !== "pick-item" || step.slotKind === "grant-choice") {
+    return false;
+  }
+
+  return ["ancestry-feat", "class-feat", "general-feat", "skill-feat"].includes(step.slotKind);
+}
+
+function entryHasChoiceSetRule(entry: PackIndexEntry): boolean {
+  const rules = entry?.system?.rules;
+  return Array.isArray(rules) && rules.some((rule) => isRecord(rule) && rule.key === "ChoiceSet");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function matchesSpellChoiceContext(entry: PackIndexEntry, packId: string, step: PendingStep): boolean {

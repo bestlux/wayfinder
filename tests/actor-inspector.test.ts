@@ -31,6 +31,55 @@ describe("actor-inspector", () => {
       general: 1,
     });
   });
+
+  it("tracks fulfilled wayfinder and PF2E feat slot ids", () => {
+    const snapshot = inspectActor({
+      flags: {
+        "pf2e-wayfinder": {
+          state: {
+            completedStepIds: ["ability-boosts-level-1"],
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            type: "feat",
+            flags: {
+              "pf2e-wayfinder": {
+                slotId: "skill-feat-level-1",
+              },
+            },
+          },
+        ],
+      },
+      feats: {
+        skill: {
+          slots: {
+            level2: {
+              level: 2,
+              feat: {},
+            },
+          },
+        },
+        class: {
+          slots: {
+            level4: {
+              level: 4,
+              feat: {},
+            },
+          },
+        },
+      },
+    });
+
+    expect(snapshot.fulfilledStepIds).toEqual([
+      "ability-boosts-level-1",
+      "class-feat-level-4",
+      "skill-feat-level-1",
+      "skill-feat-level-2",
+    ]);
+  });
 });
 
 function featItem(category?: string, featType?: string): any {

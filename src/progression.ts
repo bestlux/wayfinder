@@ -92,6 +92,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
       "Pick the ancestry feat unlocked at this milestone.",
       ANCESTRY_FEAT_LEVELS,
       snapshot.featCounts.ancestry,
+      snapshot.fulfilledStepIds,
       targetLevel,
       {
         itemType: "feat",
@@ -107,6 +108,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
       "Pick the skill feat unlocked at this milestone.",
       SKILL_FEAT_LEVELS,
       snapshot.featCounts.skill,
+      snapshot.fulfilledStepIds,
       targetLevel,
       {
         itemType: "feat",
@@ -122,6 +124,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
       "Pick the general feat unlocked at this milestone.",
       GENERAL_FEAT_LEVELS,
       snapshot.featCounts.general,
+      snapshot.fulfilledStepIds,
       targetLevel,
       {
         itemType: "feat",
@@ -196,24 +199,29 @@ function buildFeatSteps(
   description: string,
   slotLevels: number[],
   fulfilledCount: number,
+  fulfilledStepIds: string[],
   targetLevel: number,
   filters: { itemType: string; featTypes: string[] }
 ): PendingStep[] {
-  const steps: PendingStep[] = [];
   const milestones = slotLevels.filter((value) => value <= targetLevel);
-  const startIndex = Math.min(Math.max(0, fulfilledCount), milestones.length);
+  const fulfilledSlotIds = fulfilledStepIdsForKind(fulfilledStepIds, slotKind);
+  const effectiveMilestones =
+    fulfilledSlotIds.size > 0
+      ? milestones.filter((level) => !fulfilledSlotIds.has(`${slotKind}-level-${level}`))
+      : milestones.slice(Math.min(Math.max(0, fulfilledCount), milestones.length));
 
-  for (const level of milestones.slice(startIndex)) {
-    steps.push(
-      createPickItemStep(slotKind, level, titleTemplate.replace("{level}", String(level)), description, {
-        itemType: filters.itemType,
-        featTypes: filters.featTypes,
-        maxLevel: level,
-      })
-    );
-  }
+  return effectiveMilestones.map((level) =>
+    createPickItemStep(slotKind, level, titleTemplate.replace("{level}", String(level)), description, {
+      itemType: filters.itemType,
+      featTypes: filters.featTypes,
+      maxLevel: level,
+    })
+  );
+}
 
-  return steps;
+function fulfilledStepIdsForKind(fulfilledStepIds: string[], slotKind: string): Set<string> {
+  const prefix = `${slotKind}-level-`;
+  return new Set(fulfilledStepIds.filter((slotId) => slotId.startsWith(prefix)));
 }
 
 function makeSkillIncreaseStep(level: number): PendingStep {

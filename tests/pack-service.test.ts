@@ -535,10 +535,54 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Battle Medicine"]);
   });
 
+  it("hides direct feat picks with embedded ChoiceSets until Wayfinder can render their choices", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("cat-fall", "Cat Fall", "skill", ["skill"]),
+      featEntry("additional-lore", "Additional Lore", "skill", ["skill"], true, {
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "lore",
+          },
+        ],
+      }),
+    ]);
+
+    const directOptions = await getOptionsForStep(
+      makeStep("skill-feat", {
+        itemType: "feat",
+        featTypes: ["skill"],
+        maxLevel: 1,
+      }),
+      EMPTY_CONTEXT
+    );
+    const grantOptions = await getOptionsForStep(
+      makeStep("grant-choice", {
+        itemType: "feat",
+        featTypes: ["skill"],
+        maxLevel: 1,
+      }),
+      EMPTY_CONTEXT
+    );
+
+    expect(directOptions.map((option) => option.name)).toEqual(["Cat Fall"]);
+    expect(grantOptions.map((option) => option.name)).toEqual(["Additional Lore", "Cat Fall"]);
+  });
+
   it("filters class-branch choices to the selector tag for the drafted class", async () => {
     setPack("pf2e.classfeatures", [
       classFeatureEntry("scoundrel", "Scoundrel", ["rogue"], ["rogue-racket"]),
       classFeatureEntry("ruffian", "Ruffian", ["rogue"], ["rogue-racket"]),
+      classFeatureEntry("battle-creed", "Battle Creed", ["cleric"], ["cleric-doctrine", "class-archetype"]),
+      classFeatureEntry("empiricism", "Empiricism", ["investigator"], ["investigator-methodology"], {
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "skill",
+          },
+        ],
+      }),
+      classFeatureEntry("interrogation", "Interrogation", ["investigator"], ["investigator-methodology"]),
       classFeatureEntry("warpriest", "Warpriest", ["cleric"], ["cleric-doctrine"]),
       classFeatureEntry("thesis-of-unity", "Thesis of Unity", ["wizard"], ["arcane-thesis"]),
     ]);
@@ -578,6 +622,78 @@ describe("pack-service dependency filtering", () => {
     );
 
     expect(options.map((option) => option.name)).toEqual(["Ruffian", "Scoundrel"]);
+
+    const clericOptions = await getOptionsForStep(
+      {
+        id: "class-branch-doctrine-level-1",
+        level: 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: "Doctrine",
+        description: "Choose a cleric doctrine.",
+        required: true,
+        slotId: "class-branch-doctrine-level-1",
+        filters: {
+          itemType: "feat",
+          featTypes: ["classfeature"],
+          maxLevel: 1,
+        },
+        branch: {
+          slotId: "class-branch-doctrine-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "doctrine",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.doctrine",
+          selectorName: "Doctrine",
+          selectorRuleIndex: 0,
+          flag: "doctrine",
+          optionTag: "cleric-doctrine",
+          classSlug: "cleric",
+          dependsOn: "class",
+        },
+      },
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "cleric",
+      }
+    );
+
+    expect(clericOptions.map((option) => option.name)).toEqual(["Warpriest"]);
+
+    const investigatorOptions = await getOptionsForStep(
+      {
+        id: "class-branch-methodology-level-1",
+        level: 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: "Methodology",
+        description: "Choose an investigator methodology.",
+        required: true,
+        slotId: "class-branch-methodology-level-1",
+        filters: {
+          itemType: "feat",
+          featTypes: ["classfeature"],
+          maxLevel: 1,
+        },
+        branch: {
+          slotId: "class-branch-methodology-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "methodology",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.methodology",
+          selectorName: "Methodology",
+          selectorRuleIndex: 0,
+          flag: "methodology",
+          optionTag: "investigator-methodology",
+          classSlug: "investigator",
+          dependsOn: "class",
+        },
+      },
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "investigator",
+      }
+    );
+
+    expect(investigatorOptions.map((option) => option.name)).toEqual(["Interrogation"]);
   });
 
   it("filters wizard branch choices separately for arcane school and arcane thesis", async () => {
@@ -1208,7 +1324,13 @@ function featEntry(
   };
 }
 
-function classFeatureEntry(slug: string, name: string, traits: string[], otherTags: string[]): any {
+function classFeatureEntry(
+  slug: string,
+  name: string,
+  traits: string[],
+  otherTags: string[],
+  systemOverrides: Record<string, unknown> = {}
+): any {
   return {
     _id: slug,
     name,
@@ -1228,6 +1350,7 @@ function classFeatureEntry(slug: string, name: string, traits: string[], otherTa
       publication: {
         title: "Player Core",
       },
+      ...systemOverrides,
     },
   };
 }

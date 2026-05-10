@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 import { sortPendingSteps } from "../src/progression";
-import type { PendingStep } from "../src/types";
+import type { ActorSnapshot, PendingStep } from "../src/types";
 import {
   createBoostStep,
   createClassBranchStep,
@@ -12,7 +12,12 @@ import {
   createSkillTrainingStep,
   createSpellChoiceStep,
 } from "../src/wayfinder/domain/step-types";
-import { getWayfinderStepStatus, modeLabel, resolveActiveStep } from "../src/wayfinder/plan-service";
+import {
+  buildWayfinderPlan,
+  getWayfinderStepStatus,
+  modeLabel,
+  resolveActiveStep,
+} from "../src/wayfinder/plan-service";
 
 describe("wayfinder plan service", () => {
   it("falls back to the first incomplete step when no active step is pinned", async () => {
@@ -206,6 +211,76 @@ describe("wayfinder plan service", () => {
       "language-choice",
       "spell-choice",
       "class-feat",
+    ]);
+  });
+
+  it("uses class-specific skill feat cadence instead of duplicating generic skill feat steps", async () => {
+    const draft = createEmptyDraft(5);
+    const plan = await buildWayfinderPlan(
+      {
+        actorId: "actor-1",
+        level: 1,
+        isBlank: false,
+        singletonSlots: {
+          ancestry: true,
+          heritage: true,
+          background: true,
+          class: true,
+          deity: false,
+        },
+        featCounts: {
+          ancestry: 1,
+          class: 0,
+          archetype: 0,
+          skill: 1,
+          general: 0,
+        },
+        fulfilledStepIds: ["skill-feat-level-1"],
+        sourceIds: [],
+        namesByType: {},
+        skillRanks: {},
+      } satisfies ActorSnapshot,
+      draft,
+      {
+        buildClassFeatSteps: async () => [],
+        buildClassSkillFeatSteps: async () => [
+          createPickItemStep("skill-feat", 2, "Level 2 skill feat", "", {
+            itemType: "feat",
+            featTypes: ["skill"],
+            maxLevel: 2,
+          }),
+          createPickItemStep("skill-feat", 3, "Level 3 skill feat", "", {
+            itemType: "feat",
+            featTypes: ["skill"],
+            maxLevel: 3,
+          }),
+          createPickItemStep("skill-feat", 4, "Level 4 skill feat", "", {
+            itemType: "feat",
+            featTypes: ["skill"],
+            maxLevel: 4,
+          }),
+          createPickItemStep("skill-feat", 5, "Level 5 skill feat", "", {
+            itemType: "feat",
+            featTypes: ["skill"],
+            maxLevel: 5,
+          }),
+        ],
+        buildClassTrainingSteps: async () => [],
+        buildGrantChoiceSteps: async () => [],
+        buildSingletonChoiceSteps: async () => [],
+        buildLanguageChoiceSteps: async () => [],
+        buildClassBranchSteps: async () => [],
+        buildClassGrantedItemSteps: async () => [],
+        buildClassChoiceSteps: async () => [],
+        buildSpellChoiceSteps: async () => [],
+      }
+    );
+
+    expect(plan.steps.filter((step) => step.slotKind === "skill-feat").map((step) => step.slotId)).toEqual([
+      "skill-feat-level-2",
+      "skill-feat-level-3",
+      "skill-feat-level-4",
+      "skill-feat-level-5",
     ]);
   });
 });

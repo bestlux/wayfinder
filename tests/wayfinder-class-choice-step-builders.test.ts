@@ -416,6 +416,79 @@ describe("wayfinder class-choice step-builders", () => {
       ])
     );
   });
+
+  it("builds class feature choices from configured PF2E choice records", async () => {
+    const previousConfig = (globalThis as { CONFIG?: unknown }).CONFIG;
+    (globalThis as { CONFIG?: { PF2E?: Record<string, unknown> } }).CONFIG = {
+      PF2E: {
+        weaponGroups: {
+          sword: "PF2E.WeaponGroupSword",
+          axe: "PF2E.WeaponGroupAxe",
+        },
+      },
+    };
+
+    try {
+      const fighterClass = {
+        system: {
+          slug: "fighter",
+          items: {
+            mastery: {
+              level: 5,
+              uuid: "Compendium.pf2e.classfeatures.Item.fighter-weapon-mastery",
+              name: "Fighter Weapon Mastery",
+            },
+          },
+        },
+      };
+      const documents = new Map<string, unknown>([
+        [
+          "Compendium.pf2e.classfeatures.Item.fighter-weapon-mastery",
+          {
+            type: "feat",
+            name: "Fighter Weapon Mastery",
+            system: {
+              category: "classfeature",
+              level: { value: 5 },
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "fighterWeaponMastery",
+                  choices: "weaponGroups",
+                },
+              ],
+            },
+          },
+        ],
+      ]);
+
+      const steps = await buildClassChoiceStepsFromRules({
+        effectiveClassDocument: fighterClass,
+        effectiveDeityDocument: null,
+        targetLevel: 5,
+        fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+        extractSlug: slugFromDocument,
+        localize: (value) => (value === "PF2E.WeaponGroupSword" ? "Sword" : value),
+      });
+
+      expect(steps).toEqual([
+        expect.objectContaining({
+          kind: "class-choice",
+          level: 5,
+          slotId: "class-choice-fighter-weapon-mastery-fighterWeaponMastery-level-5",
+          classChoice: expect.objectContaining({
+            flag: "fighterWeaponMastery",
+            options: [
+              { value: "sword", label: "Sword", img: null, detail: null },
+              { value: "axe", label: "PF2E.WeaponGroupAxe", img: null, detail: null },
+            ],
+          }),
+        }),
+      ]);
+    } finally {
+      (globalThis as { CONFIG?: unknown }).CONFIG = previousConfig;
+    }
+  });
 });
 
 function slugFromDocument(document: unknown): string | null {

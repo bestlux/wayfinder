@@ -4,6 +4,7 @@ node_modules/
 /coverage/
 dist/
 .worktrees/
+.wayfinder-smoke/
 *.log
 *.tmp
 *.tsbuildinfo

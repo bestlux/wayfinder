@@ -37,15 +37,15 @@ export function buildSteps(snapshot, currentLevel, targetLevel) {
             itemType: "class",
         }));
     }
-    steps.push(...buildFeatSteps("ancestry-feat", "Level {level} ancestry feat", "Pick the ancestry feat unlocked at this milestone.", ANCESTRY_FEAT_LEVELS, snapshot.featCounts.ancestry, targetLevel, {
+    steps.push(...buildFeatSteps("ancestry-feat", "Level {level} ancestry feat", "Pick the ancestry feat unlocked at this milestone.", ANCESTRY_FEAT_LEVELS, snapshot.featCounts.ancestry, snapshot.fulfilledStepIds, targetLevel, {
         itemType: "feat",
         featTypes: ["ancestry"],
     }));
-    steps.push(...buildFeatSteps("skill-feat", "Level {level} skill feat", "Pick the skill feat unlocked at this milestone.", SKILL_FEAT_LEVELS, snapshot.featCounts.skill, targetLevel, {
+    steps.push(...buildFeatSteps("skill-feat", "Level {level} skill feat", "Pick the skill feat unlocked at this milestone.", SKILL_FEAT_LEVELS, snapshot.featCounts.skill, snapshot.fulfilledStepIds, targetLevel, {
         itemType: "feat",
         featTypes: ["skill"],
     }));
-    steps.push(...buildFeatSteps("general-feat", "Level {level} general feat", "Pick the general feat unlocked at this milestone.", GENERAL_FEAT_LEVELS, snapshot.featCounts.general, targetLevel, {
+    steps.push(...buildFeatSteps("general-feat", "Level {level} general feat", "Pick the general feat unlocked at this milestone.", GENERAL_FEAT_LEVELS, snapshot.featCounts.general, snapshot.fulfilledStepIds, targetLevel, {
         itemType: "feat",
         featTypes: ["general"],
     }));
@@ -86,18 +86,21 @@ export function parseCompendiumAllowlist(raw) {
 export function mergePackIds(basePackIds, extraPackIds) {
     return Array.from(new Set([...basePackIds, ...extraPackIds]));
 }
-function buildFeatSteps(slotKind, titleTemplate, description, slotLevels, fulfilledCount, targetLevel, filters) {
-    const steps = [];
+function buildFeatSteps(slotKind, titleTemplate, description, slotLevels, fulfilledCount, fulfilledStepIds, targetLevel, filters) {
     const milestones = slotLevels.filter((value) => value <= targetLevel);
-    const startIndex = Math.min(Math.max(0, fulfilledCount), milestones.length);
-    for (const level of milestones.slice(startIndex)) {
-        steps.push(createPickItemStep(slotKind, level, titleTemplate.replace("{level}", String(level)), description, {
-            itemType: filters.itemType,
-            featTypes: filters.featTypes,
-            maxLevel: level,
-        }));
-    }
-    return steps;
+    const fulfilledSlotIds = fulfilledStepIdsForKind(fulfilledStepIds, slotKind);
+    const effectiveMilestones = fulfilledSlotIds.size > 0
+        ? milestones.filter((level) => !fulfilledSlotIds.has(`${slotKind}-level-${level}`))
+        : milestones.slice(Math.min(Math.max(0, fulfilledCount), milestones.length));
+    return effectiveMilestones.map((level) => createPickItemStep(slotKind, level, titleTemplate.replace("{level}", String(level)), description, {
+        itemType: filters.itemType,
+        featTypes: filters.featTypes,
+        maxLevel: level,
+    }));
+}
+function fulfilledStepIdsForKind(fulfilledStepIds, slotKind) {
+    const prefix = `${slotKind}-level-`;
+    return new Set(fulfilledStepIds.filter((slotId) => slotId.startsWith(prefix)));
 }
 function makeSkillIncreaseStep(level) {
     const maxRankLabel = level >= 15 ? "Legendary" : level >= 7 ? "Master" : "Expert";

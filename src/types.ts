@@ -96,6 +96,7 @@ export interface ActorSnapshot {
     skill: number;
     general: number;
   };
+  fulfilledStepIds: string[];
   sourceIds: string[];
   namesByType: Record<string, string[]>;
   skillRanks: Record<string, number>;

@@ -1,0 +1,78 @@
+# Level 2+ Coverage Matrix
+
+This document tracks Wayfinder's current confidence for supported level-up flows after the level-1 foundation. It is intentionally about depth for existing supported rule shapes, not broad content expansion.
+
+## Status Legend
+
+- `Guided`: Wayfinder plans, renders, drafts, applies, and can safely rerun this flow.
+- `Guided when PF2E rule data is structured`: the generic workflow exists, but only for supported PF2E rule shapes.
+- `Partial / deferred`: Wayfinder helps with part of the flow, while PF2E-native controls remain the source of truth for the rest.
+- `Manual / PF2E-native`: Wayfinder intentionally does not guide this yet.
+- `Blocker`: required before claiming launch-ready coverage for that surface.
+
+## Audit Evidence
+
+- PF2E reference source: `D:\Source\pf2e` on `v14-dev`, especially `src/module/item/class/document.ts`, `src/module/actor/character/feats/collection.ts`, and `src/module/actor/character/document.ts`.
+- PF2E class pack data: `D:\Source\pf2e\packs\pf2e\classes\*.json`.
+- PF2E behavior evidence: class documents expose `grantedFeatSlots` from class `ancestryFeatLevels`, `classFeatLevels`, `skillFeatLevels`, and `generalFeatLevels`; character feat groups are built from those class slots; Free Archetype is a distinct `archetype` feat group created only when the PF2E variant setting is enabled; class features are added or removed when the actor level changes.
+- Wayfinder implementation evidence: `src/actor-inspector.ts`, `src/progression.ts`, `src/wayfinder/plan-service.ts`, `src/wayfinder/class-choice-service.ts`, `src/wayfinder/application/wayfinder-plan-builder-service.ts`, and apply-side modules under `src/actor-updater/`.
+- Targeted regression evidence: `tests/actor-inspector.test.ts`, `tests/progression.test.ts`, `tests/class-choice-service.test.ts`, `tests/plan-service.test.ts`, `tests/wayfinder-plan-builder-service.test.ts`, and `tests/wayfinder-levelup-depth.test.ts`.
+- Live render evidence on 2026-05-10: headless Chrome connected to the local Foundry world at `http://localhost:30000/game`, imported the built Wayfinder module, loaded live PF2E compendium documents, and rendered target-level-5 plans for Fighter, Rogue, Wizard, and Sorcerer with no open duplicate PF2E-native dialogs.
+- Live apply evidence on 2026-05-10: the repo-owned Foundry smoke harness applied Fighter, Investigator, Wizard, Cleric, and Sorcerer actors from blank level 1 drafts to target level 5 against a real Foundry 14.360 / PF2E 8.1.1 world. Every case reached level 5, left no duplicate source IDs, produced no extra native PF2E dialogs, cleared the draft flag, and reran at target level 5 with zero pending steps. See `docs/coverage/beta-readiness-smoke.md`.
+
+## Level-Up Mechanics
+
+| Area | Status | Current handling | Evidence | Notes |
+| --- | --- | --- | --- | --- |
+| Target level planning | Guided | Draft target level can plan ahead from actor level through requested target level. | `src/progression.ts`, `tests/progression.test.ts`, live Foundry render smoke | Target level 5 rendered correctly for martial, skill-heavy, prepared-caster, and spontaneous-caster representative plans. |
+| Class feat cadence | Guided when class data exposes `classFeatLevels` | App-facing class step builder reads selected class document levels. | `src/wayfinder/class-choice-service.ts` | Fulfillment now prefers exact slot ids over total feat counts. |
+| Skill feat cadence | Guided when class data exposes `skillFeatLevels` | App-facing class step builder reads selected class document levels and replaces generic skill-feat milestones when class data is available. | `src/wayfinder/plan-service.ts`, `tests/wayfinder-levelup-depth.test.ts` | This covers Rogue and Investigator extra skill-feat cadence without consuming level 2 from a level-1 skill feat. |
+| Ancestry feat cadence | Guided | Base progression creates ancestry feat slots at 1, 5, 9, 13, and 17. | `src/progression.ts` | Option legality still depends on current predicate/prerequisite support. |
+| General feat cadence | Guided | Base progression creates general feat slots at 3, 7, 11, 15, and 19. | `src/progression.ts` | General slots can accept skill feats per PF2E; picker filter support remains limited by option-context predicates. |
+| Skill increases | Guided for drafting and apply | Base progression creates skill increases at 3, 5, 7, 9, 11, 13, 15, 17, and 19; apply-side raises selected ranks. | `src/actor-updater/training-application.ts`, existing tests | Prerequisite filtering uses projected ranks for supported skill/lore prerequisites. |
+| Level 5+ ability boosts | Guided | Base progression creates boost steps at 5, 10, 15, and 20; apply writes `system.build.attributes.boosts`. | `src/build-state.ts`, `src/actor-updater/boost-application.ts`, live Foundry render smoke | Target level 5 ability-boost steps rendered for Fighter, Rogue, Wizard, and Sorcerer. |
+| Existing Wayfinder actor rerun | Guided | Actor snapshot records fulfilled Wayfinder item slot ids and actor-level completed boost/skill-increase slots. | `src/actor-inspector.ts`, `tests/actor-inspector.test.ts` | Item slots are read from current actor items rather than trusting stale state. |
+| Existing PF2E-native actor rerun | Guided when PF2E feat groups are available | Actor snapshot reads filled PF2E feat slots by group and level. | `src/actor-inspector.ts`, `tests/wayfinder-levelup-depth.test.ts` | If a test harness or unusual actor omits PF2E `actor.feats`, Wayfinder falls back to legacy feat-count behavior. |
+| Later class features | Guided when PF2E rule data is structured | Wayfinder relies on PF2E actor level update to grant static class features and discovers supported class-feature choices before apply so PF2E-native choosers can be preselected. | PF2E `CharacterPF2e._preUpdate`, Wayfinder class-choice builders, live Fighter apply smoke | Fighter level 3 Bravery and level 5 Fighter Weapon Mastery were granted during level update; Fighter Weapon Mastery was preselected by Wayfinder. |
+| Class branch and class-choice progression | Guided when PF2E rule data is structured | Class-feature source discovery loads class features up to target level and builds branch/class-choice steps for supported `ChoiceSet` + `GrantItem` shapes, including configured PF2E choice records such as `weaponGroups`. | `src/wayfinder/class-choice/step-builders.ts`, `tests/wayfinder-class-choice-step-builders.test.ts`, live Foundry smoke harness | Fighter Weapon Mastery, Investigator Methodology, Wizard Arcane School/Thesis, Cleric Doctrine/Font, and Sorcerer Bloodline applied and reran cleanly. Class archetype branch options and branch options with embedded unsupported `ChoiceSet` rules are filtered out for now. |
+| Grant-choice and singleton-choice progression | Guided when PF2E rule data is structured | Source families are discovered from selected ancestry, heritage, background, selected feats, and class features; existing selections are skipped unless draft overrides. | Grant/singleton tests | Predicate support is broad enough for current static UUID paths, but selected-item and equipment predicates remain deferred. |
+| Wizard spellbook progression | Guided when PF2E rule data is structured | Wizard contributor handles level-1 spellbook/curriculum choices plus later spellbook and curriculum additions through target level. | `src/wayfinder/classes/wizard-contributor.ts`, live Foundry render smoke | Target level 5 rendered level 2, 3, 4, and 5 spellbook additions plus rank 2 and rank 3 curriculum spells. |
+| Cleric prepared progression | Guided for current supported level 1-5 spell-choice shape | Cleric contributor handles deity, sanctification, doctrine, divine font, and prepared spell choices exposed by the current supported rules. | `src/wayfinder/classes/cleric-contributor.ts`, live Foundry smoke harness | Cloistered Cleric with Sarenrae applied through level 5 and reran cleanly. Battle Creed and other class archetype doctrine paths are filtered as unsupported for this slice. |
+| Other spellcasters | Partial / deferred | Non-wizard/cleric spellcasters can receive generic class branch, feat, skill, ancestry, and boost milestones, but most spell-slot/repertoire progressions remain PF2E-native. | Contributor registry review, live Sorcerer smoke harness | Sorcerer Bloodline and level 2-5 non-spell milestones apply and rerun cleanly; spontaneous spell repertoire remains manual/PF2E-native. |
+| Free Archetype | Manual / PF2E-native | Analyzed as a separate PF2E `archetype` feat group behind the PF2E variant setting. | PF2E `CharacterFeats` reference | Do not model it by consuming normal class feat slots. Needs a future variant-rule progression lane. |
+| Starting gear, daily prep, purchasing | Manual / PF2E-native | No Wayfinder workflow. | Existing scope | Still out of scope for launch readiness. |
+
+## Validation Matrix
+
+| Track | Scenario | Setup | Action | Expected outcome | Evidence | Gate |
+| --- | --- | --- | --- | --- | --- | --- |
+| Default path | Martial standard cadence to level 5 | Level-1 Fighter-like actor with class data `classFeatLevels` and `skillFeatLevels` | Target level 5 | Class feats at 2 and 4, skill feats at 2 and 4, general feat at 3, ancestry feat and boosts at 5, skill increases at 3 and 5 | `tests/wayfinder-levelup-depth.test.ts`, live Fighter apply/rerun smoke harness | release |
+| Default path | Skill-heavy cadence to level 5 | Level-1 Investigator with extra skill-feat and skill-increase cadence | Target level 5 | Skill feats at 2, 3, 4, and 5; level-1 class choices and later skill increases do not consume future slots | `tests/wayfinder-levelup-depth.test.ts`, live Investigator apply/rerun smoke harness | release |
+| Existing-character path | PF2E-native filled feat slots | Actor exposes filled PF2E skill/class feat slots without Wayfinder flags | Rebuild plan to level 4 | Filled native level-1 and level-2 slots are skipped; later legal slots remain | `tests/wayfinder-levelup-depth.test.ts` | merge |
+| Existing-character path | Wayfinder-stamped actor rerun | Actor items have `flags.pf2e-wayfinder.slotId` | Rebuild plan to a higher target | Exact fulfilled item slots are skipped; unrelated same-kind future slots still render | `tests/actor-inspector.test.ts`, `tests/progression.test.ts` | merge |
+| Reset / re-run | Upstream class changes | Draft contains class feat, class branch, class choice, skill training, spell choices | Change class selection | Dependent slots invalidate and affected steps surface for new choices | Existing invalidation tests | merge |
+| Reset / re-run | Partial level-up draft | Draft has some level 2-5 choices but not all required steps | Attempt apply | Lifecycle blocks apply and keeps draft for review | Existing draft lifecycle tests | merge |
+| Failure mode | Raw feat count over-skips future slots | Actor has a level-1 skill feat plus target 4+ | Build plan | Exact slot fulfillment wins over raw count; level 2 and 4 skill feats remain available where legal | `tests/progression.test.ts` | merge |
+| Failure mode | Missing PF2E feat group data | Actor lacks `actor.feats` and lacks Wayfinder item flags | Build plan for existing actor | Legacy count fallback applies; confidence is lower and should be live-smoked before release claims | Documented limitation | release |
+| Failure mode | Configured class-feature ChoiceSet | Fighter Weapon Mastery exposes `choices: "weaponGroups"` rather than an inline option array | Target/apply level 5 Fighter | Wayfinder renders a class-choice step, writes the selected weapon group before PF2E grants the feature, and suppresses the native chooser | `tests/wayfinder-class-choice-step-builders.test.ts`, live Fighter apply smoke | merge |
+| Representative content | Wizard level-up | Wizard level-1 actor with school/thesis | Target levels 2-5 | Feat/skill/boost milestones, Arcane School and Arcane Thesis, spellbook and curriculum additions apply and rerun cleanly | Live Wizard apply/rerun smoke harness | release |
+| Representative content | Cleric level-up | Cleric level-1 actor with deity/font/doctrine | Target levels 2-5 | Deity, sanctification, doctrine, divine font, prepared spell choices, feat/skill/boost milestones apply and rerun cleanly for supported doctrine path | Live Cleric apply/rerun smoke harness | release |
+| Representative content | Sorcerer level-up | Sorcerer level-1 actor with bloodline | Target levels 2-5 | Bloodline and non-spell level-up milestones apply and rerun cleanly; spontaneous spell progression remains manual/PF2E-native | Live Sorcerer apply/rerun smoke harness | release |
+| Representative content | Free Archetype analysis | PF2E variant setting enabled | Inspect feat groups | Separate `archetype` group exists and must not consume class feat slots | PF2E `CharacterFeats` reference | future goal |
+
+## Class Cadence Notes
+
+PF2E class data makes class-specific cadence the source of truth. The current PC class pack audit shows:
+
+- Standard skill-feat cadence is not universal. Rogue has skill feats at every level from 1 to 20; Investigator has skill feats at 2 through 20; Swashbuckler has extra levels beyond the standard even-level cadence.
+- Standard class-feat cadence is not universal at level 1. Many martial and skill-heavy classes include a level-1 class feat, while wizard, cleric, bard, druid, witch, sorcerer, and other casters generally start at level 2.
+- Later class feature levels vary by class. Wayfinder should keep using PF2E class feature grants and only add guided branch/class-choice steps when the class feature's rule data exposes supported choice shapes.
+
+## Remaining Level 2+ Gaps
+
+1. Expand spell contributors before claiming broad caster coverage beyond Wizard and Cleric. Sorcerer and most other spontaneous repertoire progressions remain PF2E-native/manual.
+2. Add a Free Archetype implementation goal that creates a separate variant progression lane for PF2E's `archetype` feat group.
+3. Add class-archetype support only after Wayfinder has a dedicated class-archetype lane; normal class-branch pickers now hide these options.
+4. Add direct embedded-ChoiceSet support for selected feats and selected branch options, or keep filtering those options out until a guided follow-up step exists.
+5. Broaden predicate context only where level-up content needs it: ability prerequisites, deity/follower state, selected item state, equipment state, and archetype dedication lockouts.
+6. Keep unsupported AP/side-book-specific mechanics manual unless they prove a generic PF2E rule shape.

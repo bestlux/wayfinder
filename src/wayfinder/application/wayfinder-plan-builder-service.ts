@@ -113,13 +113,15 @@ export async function buildWayfinderAppPlan(
       deps.buildClassFeatSteps({
         effectiveClassDocument: await args.resolveDocument("class"),
         targetLevel,
-        fulfilledCount: planSnapshot.featCounts.class + planSnapshot.featCounts.archetype,
+        fulfilledCount: planSnapshot.featCounts.class,
+        fulfilledStepIds: planSnapshot.fulfilledStepIds,
       }),
     buildClassSkillFeatSteps: async (planSnapshot, _planDraft, targetLevel) =>
       deps.buildClassSkillFeatSteps({
         effectiveClassDocument: await args.resolveDocument("class"),
         targetLevel,
         fulfilledCount: countAppliedWayfinderSlotSelections(args.actor, "skill-feat"),
+        fulfilledStepIds: planSnapshot.fulfilledStepIds,
       }),
     buildClassTrainingSteps: async (_planSnapshot, planDraft, targetLevel) => {
       const effectiveBuildState = await getEffectiveBuildState(args.actor, planDraft);

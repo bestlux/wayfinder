@@ -51,7 +51,7 @@ export async function buildClassFeatSteps(params) {
     });
 }
 export async function buildClassSkillFeatSteps(params) {
-    const initialSteps = await buildFeatStepsFromClassLevels({
+    return buildFeatStepsFromClassLevels({
         ...params,
         levelField: "skillFeatLevels",
         slotKind: "skill-feat",
@@ -63,7 +63,6 @@ export async function buildClassSkillFeatSteps(params) {
             maxLevel: level,
         }),
     });
-    return initialSteps.filter((step) => step.level === 1);
 }
 export async function buildClassBranchSteps(params) {
     const steps = await buildClassBranchStepsFromRules(params);
@@ -97,9 +96,14 @@ function buildFeatStepsFromClassLevels(args) {
         return [];
     }
     const milestones = Array.from(new Set(levels)).sort((left, right) => left - right);
-    const startIndex = Math.min(Math.max(0, fulfilledCount), milestones.length);
-    return milestones
-        .slice(startIndex)
-        .map((level) => createPickItemStep(slotKind, level, args.title(level), args.description, args.filters(level)));
+    const fulfilledSlotIds = fulfilledStepIdsForKind(args.fulfilledStepIds ?? [], slotKind);
+    const effectiveMilestones = fulfilledSlotIds.size > 0
+        ? milestones.filter((level) => !fulfilledSlotIds.has(`${slotKind}-level-${level}`))
+        : milestones.slice(Math.min(Math.max(0, fulfilledCount), milestones.length));
+    return effectiveMilestones.map((level) => createPickItemStep(slotKind, level, args.title(level), args.description, args.filters(level)));
+}
+function fulfilledStepIdsForKind(fulfilledStepIds, slotKind) {
+    const prefix = `${slotKind}-level-`;
+    return new Set(fulfilledStepIds.filter((slotId) => slotId.startsWith(prefix)));
 }
 //# sourceMappingURL=class-choice-service.js.map

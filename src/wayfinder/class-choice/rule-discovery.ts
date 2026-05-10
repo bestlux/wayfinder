@@ -244,26 +244,11 @@ export function discoverClassChoiceMeta(args: {
 
   return findRelevantClassRules(sourceDocument).flatMap((rule, ruleIndex) => {
     const selectionKey = extractClassChoiceKey(rule);
-    if (rule.key !== "ChoiceSet" || !selectionKey || !Array.isArray(rule.choices)) {
+    if (rule.key !== "ChoiceSet" || !selectionKey) {
       return [];
     }
 
-    const options = rule.choices
-      .filter((choice): choice is { label?: unknown; value?: unknown; img?: unknown; predicate?: ChoicePredicate } =>
-        isRecord(choice)
-      )
-      .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
-      .filter((choice) => evaluatePredicate(choice.predicate, rollOptions))
-      .map((choice) => ({
-        value: String(choice.value),
-        label: resolveChoiceLabel(
-          typeof choice.label === "string" ? choice.label : undefined,
-          String(choice.value),
-          localize
-        ),
-        img: typeof choice.img === "string" && choice.img.length > 0 ? choice.img : null,
-        detail: null,
-      }));
+    const options = resolveClassChoiceOptions(rule.choices, rollOptions, localize);
 
     if (options.length === 0) {
       return [];
@@ -284,6 +269,61 @@ export function discoverClassChoiceMeta(args: {
       } satisfies ClassChoiceMeta,
     ];
   });
+}
+
+function resolveClassChoiceOptions(
+  choices: unknown,
+  rollOptions: Set<string>,
+  localize: (value: string) => string
+): ClassChoiceMeta["options"] {
+  if (Array.isArray(choices)) {
+    return choices
+      .filter((choice): choice is { label?: unknown; value?: unknown; img?: unknown; predicate?: ChoicePredicate } =>
+        isRecord(choice)
+      )
+      .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
+      .filter((choice) => evaluatePredicate(choice.predicate, rollOptions))
+      .map((choice) => ({
+        value: String(choice.value),
+        label: resolveChoiceLabel(
+          typeof choice.label === "string" ? choice.label : undefined,
+          String(choice.value),
+          localize
+        ),
+        img: typeof choice.img === "string" && choice.img.length > 0 ? choice.img : null,
+        detail: null,
+      }));
+  }
+
+  if (typeof choices === "string") {
+    return resolveConfiguredChoiceOptions(choices, localize);
+  }
+
+  return [];
+}
+
+function resolveConfiguredChoiceOptions(
+  choiceSetKey: string,
+  localize: (value: string) => string
+): ClassChoiceMeta["options"] {
+  if (choiceSetKey.startsWith("flags.")) {
+    return [];
+  }
+
+  const pf2eConfig = (globalThis as { CONFIG?: { PF2E?: Record<string, unknown> } }).CONFIG?.PF2E;
+  const choices = pf2eConfig?.[choiceSetKey];
+  if (!isRecord(choices)) {
+    return [];
+  }
+
+  return Object.entries(choices)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[0].length > 0)
+    .map(([value, label]) => ({
+      value,
+      label: resolveChoiceLabel(label, value, localize),
+      img: null,
+      detail: null,
+    }));
 }
 
 export function buildChoiceRollOptions(deityDocument: unknown | null): Set<string> {

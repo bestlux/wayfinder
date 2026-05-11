@@ -4,7 +4,7 @@ import { toCompendiumItemUuid } from "./shared/compendium.js";
 import { resolveUuid } from "./shared/foundry-compat.js";
 import { extractDocumentSlug } from "./shared/slug.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
-import { matchesChoicePredicate as matchesChoicePredicateTree, predicateIncludesString, } from "./wayfinder/rule-data.js";
+import { predicateIncludesString } from "./wayfinder/rule-data.js";
 const indexCache = new Map();
 const traitCatalogCache = new Map();
 const EMPTY_OPTION_CONTEXT = {
@@ -278,7 +278,7 @@ function matchesFilters(entry, packId, step, context, traitCatalog) {
     if (!filters) {
         return true;
     }
-    if (String(entry?.type ?? "") !== filters.itemType) {
+    if (!matchesItemType(entry, filters.itemType)) {
         return false;
     }
     if (Array.isArray(filters.contextPredicate) && filters.contextPredicate.length > 0) {
@@ -520,20 +520,18 @@ function matchesClassBranchContext(entry, step, context) {
     if (!branch) {
         return false;
     }
-    const category = stringOrNull(entry?.system?.category);
-    if (category && category !== "classfeature") {
-        return false;
-    }
     if (branch.classSlug && context.classSlug && branch.classSlug !== context.classSlug) {
-        return false;
-    }
-    const otherTags = normalizeTraitList(entry?.system?.traits?.otherTags);
-    if (!otherTags.includes(branch.optionTag)) {
         return false;
     }
     const traits = extractEntryTraits(entry);
     if (traits.includes("class-archetype")) {
         return false;
+    }
+    if (!Array.isArray(step.filters?.predicate) || step.filters.predicate.length === 0) {
+        const otherTags = normalizeTraitList(entry?.system?.traits?.otherTags);
+        if (!otherTags.includes(branch.optionTag)) {
+            return false;
+        }
     }
     if (branch.optionTag === "champion-cause") {
         const sanctification = context.sanctification ?? null;
@@ -549,14 +547,14 @@ function matchesClassBranchContext(entry, step, context) {
             return false;
         }
     }
-    return !branch.classSlug || traits.length === 0 || traits.includes(branch.classSlug);
+    return true;
 }
 function hasUnsupportedEmbeddedChoiceSet(entry, step) {
     if (!entryHasChoiceSetRule(entry)) {
         return false;
     }
     if (step.kind === "class-branch") {
-        return true;
+        return !Array.isArray(step.filters?.predicate) || step.filters.predicate.length === 0;
     }
     if (step.kind !== "pick-item" || step.slotKind === "grant-choice") {
         return false;
@@ -630,7 +628,7 @@ function matchesSpellChoiceContext(entry, packId, step) {
     return spellChoice.curriculumSpellNames.some((name) => namesMatch(name, entryName));
 }
 function matchesChoicePredicate(predicate, entry, context) {
-    return matchesChoicePredicateTree(predicate, (statement) => matchesChoicePredicateString(statement, entry, context));
+    return evaluateStaticPredicate(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
 }
 function matchesUuidAllowlist(entry, packId, allowedUuids) {
     const allowed = new Set(allowedUuids.map(normalizeUuid).filter(Boolean));
@@ -682,9 +680,7 @@ function matchesChoicePredicateString(statement, entry, context) {
     }
     if (resolved.startsWith("item:type:")) {
         const expectedType = resolved.slice("item:type:".length).trim().toLowerCase();
-        return (String(entry?.type ?? "")
-            .trim()
-            .toLowerCase() === expectedType);
+        return matchesItemType(entry, expectedType);
     }
     if (resolved.startsWith("item:category:")) {
         const expectedCategory = resolved.slice("item:category:".length).trim().toLowerCase();
@@ -695,6 +691,10 @@ function matchesChoicePredicateString(statement, entry, context) {
     if (resolved.startsWith("item:trait:")) {
         const expectedTrait = resolved.slice("item:trait:".length).trim().toLowerCase();
         return itemTraits.includes(expectedTrait);
+    }
+    if (resolved.startsWith("item:tag:")) {
+        const expectedTag = resolved.slice("item:tag:".length).trim().toLowerCase();
+        return itemTraits.includes(expectedTag);
     }
     if (resolved.startsWith("item:")) {
         const expectedSlug = resolved.slice("item:".length).trim().toLowerCase();
@@ -708,12 +708,26 @@ function matchesChoicePredicateString(statement, entry, context) {
 function matchesStaticPredicate(predicate, entry, context) {
     return evaluateStaticPredicate(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
 }
+function matchesItemType(entry, expectedType) {
+    const normalizedExpected = expectedType.trim().toLowerCase();
+    const entryType = String(entry?.type ?? "")
+        .trim()
+        .toLowerCase();
+    if (normalizedExpected === "feature") {
+        return entryType === "feat" && resolveFeatType(entry)?.trim().toLowerCase() === "classfeature";
+    }
+    return entryType === normalizedExpected;
+}
 function evaluateStaticPredicate(predicate, evaluateString) {
     if (typeof predicate === "string") {
         return evaluateString(predicate) === true;
     }
     if (Array.isArray(predicate)) {
         return predicate.every((entry) => evaluateStaticPredicate(entry, evaluateString));
+    }
+    const comparison = evaluateComparisonPredicate(predicate, evaluateString);
+    if (comparison !== null) {
+        return comparison;
     }
     if (Array.isArray(predicate.or)) {
         return predicate.or.some((entry) => evaluateStaticPredicate(entry, evaluateString));
@@ -725,6 +739,25 @@ function evaluateStaticPredicate(predicate, evaluateString) {
         return evaluateStringOrTree(predicate.not, evaluateString) === false;
     }
     return true;
+}
+function evaluateComparisonPredicate(predicate, evaluateString) {
+    for (const [operator, comparator] of [
+        ["lt", predicate.lt],
+        ["lte", predicate.lte],
+        ["gt", predicate.gt],
+        ["gte", predicate.gte],
+    ]) {
+        if (!Array.isArray(comparator) || comparator.length !== 2) {
+            continue;
+        }
+        const [left, right] = comparator;
+        if (typeof left !== "string" || (typeof right !== "number" && typeof right !== "string")) {
+            return false;
+        }
+        const resolved = evaluateString(`${operator}:${left}:${right}`);
+        return resolved === true;
+    }
+    return null;
 }
 function evaluateStringOrTree(predicate, evaluateString) {
     if (typeof predicate === "string") {
@@ -775,6 +808,24 @@ function evaluateStaticPredicateString(statement, entry, context) {
     }
     if (trimmed.startsWith("item:")) {
         return matchesChoicePredicateString(statement, entry, context);
+    }
+    const comparisonMatch = /^(lt|lte|gt|gte):item:level:(\d+)$/.exec(trimmed);
+    if (comparisonMatch) {
+        const level = numericOrNull(entry?.system?.level?.value);
+        const expected = Number(comparisonMatch[2]);
+        if (level === null || !Number.isFinite(expected)) {
+            return false;
+        }
+        switch (comparisonMatch[1]) {
+            case "lt":
+                return level < expected;
+            case "lte":
+                return level <= expected;
+            case "gt":
+                return level > expected;
+            case "gte":
+                return level >= expected;
+        }
     }
     return "unknown";
 }

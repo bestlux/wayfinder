@@ -139,6 +139,46 @@ describe("wayfinder option context service", () => {
     expect(context.rollOptions).toEqual(["molten-wit:deception"]);
   });
 
+  it("uses PF2E class-choice rollOption keys when evaluating drafted choices", async () => {
+    const draft = createEmptyDraft(1);
+    draft.classChoices["class-choice-kinetic-gate-kineticGate-level-1"] = "dual-gate";
+
+    const context = await buildOptionContext({
+      draft,
+      steps: [
+        {
+          id: "class-choice-kinetic-gate-kineticGate-level-1",
+          level: 1,
+          kind: "class-choice",
+          slotKind: "class-choice",
+          title: "Kinetic Gate",
+          description: "",
+          required: true,
+          slotId: "class-choice-kinetic-gate-kineticGate-level-1",
+          classChoice: {
+            slotId: "class-choice-kinetic-gate-kineticGate-level-1",
+            sourcePackId: "pf2e.classfeatures",
+            sourceDocumentId: "kinetic-gate",
+            sourceUuid: "Compendium.pf2e.classfeatures.Item.kinetic-gate",
+            sourceName: "Kinetic Gate",
+            sourceRuleIndex: 0,
+            flag: "kineticGate",
+            rollOption: "kinetic-gate:initial",
+            classSlug: "kineticist",
+            dependsOn: "class",
+            options: [{ value: "dual-gate", label: "Dual Gate", img: null, detail: null }],
+          },
+        } as any,
+      ],
+      resolveDocument: async () => null,
+      listActorItems: () => [],
+      fetchSelectionDocument: async () => null,
+      extractDocumentSlug: () => null,
+    });
+
+    expect(context.rollOptions).toEqual(["kinetic-gate:initial:dual-gate"]);
+  });
+
   it("projects drafted skill training into option-context skill ranks", async () => {
     const draft = createEmptyDraft(1);
     draft.skillTrainings["skill-training-rogue-level-1"] = {

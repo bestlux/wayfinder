@@ -61,7 +61,8 @@ export function createClassBranchStep(level, branch, options = {}) {
             ...options,
             slotId: options.slotId ?? branch.slotId,
         }),
-        filters: options.filters ?? {
+        filters: options.filters ??
+            branch.filters ?? {
             itemType: "feat",
             featTypes: ["classfeature"],
             maxLevel: level,

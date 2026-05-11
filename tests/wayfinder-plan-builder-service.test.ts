@@ -247,7 +247,10 @@ describe("wayfinder plan builder service", () => {
       expect(params.effectiveClassDocument).toBe(classDocument);
       expect(params.effectiveDeityDocument).toBe(deityDocument);
       expect(params.effectiveSchoolDocument).toBe(schoolDocument);
-      expect(params.effectiveClassFeatureDocuments).toEqual([{ fetched: "cascade-bearers" }]);
+      expect(params.effectiveClassFeatureDocuments).toEqual([
+        { fetched: "school-of-unified-magical-theory" },
+        { fetched: "cascade-bearers" },
+      ]);
       expect(
         params.readExistingSpellChoiceSelections({
           slotId: "spell-choice-wizard-level-1",

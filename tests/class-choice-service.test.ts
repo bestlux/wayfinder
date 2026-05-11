@@ -215,6 +215,82 @@ describe("class-choice-service", () => {
     expect(retained).toHaveLength(1);
   });
 
+  it("uses class-choice rollOption metadata when filtering dependent branch steps", async () => {
+    const draft = createEmptyDraft(1);
+    draft.classChoices["class-choice-kinetic-gate-kineticGate-level-1"] = "dual-gate";
+    const kineticistClass = {
+      system: {
+        slug: "kineticist",
+        items: {
+          gate: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.kinetic-gate",
+            name: "Kinetic Gate",
+          },
+        },
+      },
+    };
+    const documents = new Map<string, unknown>([
+      [
+        "Compendium.pf2e.classfeatures.Item.kinetic-gate",
+        {
+          type: "feat",
+          name: "Kinetic Gate",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                choices: [{ value: "dual-gate", label: "Dual Gate" }],
+                rollOption: "kinetic-gate:initial",
+              },
+              {
+                key: "ChoiceSet",
+                flag: "elementOne",
+                choices: {
+                  filter: ["item:tag:kineticist-kinetic-gate"],
+                },
+                rollOption: "kinetic-gate:first-element",
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.elementOne}",
+              },
+              {
+                key: "ChoiceSet",
+                flag: "elementTwo",
+                choices: {
+                  filter: ["item:tag:kineticist-kinetic-gate"],
+                },
+                predicate: ["kinetic-gate:initial:dual-gate"],
+                rollOption: "kinetic-gate:second-element",
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.elementTwo}",
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+
+    const steps = await buildClassBranchSteps({
+      draft,
+      effectiveClassDocument: kineticistClass,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+      readExistingBranchSelection: () => null,
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "class-branch-kinetic-gate-elementOne-level-1",
+      "class-branch-kinetic-gate-elementTwo-level-1",
+    ]);
+  });
+
   it("skips deity grant steps already resolved on the actor unless the draft overrides them", async () => {
     const draft = createEmptyDraft(1);
     const clericClass = {

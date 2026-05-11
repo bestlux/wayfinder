@@ -177,7 +177,8 @@ describe("wayfinder class rule discovery", () => {
         ],
       },
       {
-        flag: "divineFont",
+        flag: "selectorDocument",
+        rollOption: "divineFont",
         dependsOn: "deity",
         options: [
           { value: "heal", label: "Heal" },

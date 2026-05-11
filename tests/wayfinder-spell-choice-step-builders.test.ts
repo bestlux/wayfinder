@@ -256,6 +256,180 @@ describe("wayfinder spell-choice step builders", () => {
     });
   });
 
+  it("builds bard spontaneous repertoire steps through level 5", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(5),
+      currentLevel: 1,
+      effectiveClassDocument: {
+        system: {
+          slug: "bard",
+          items: {
+            spellcasting: {
+              name: "Occult Spellcasting",
+              uuid: "Compendium.pf2e.classfeatures.Item.occult-spellcasting",
+            },
+          },
+        },
+      },
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      targetLevel: 5,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "spell-choice-bard-cantrips-level-1",
+      "spell-choice-bard-repertoire-rank-1-level-1",
+      "spell-choice-bard-repertoire-rank-1-level-2",
+      "spell-choice-bard-repertoire-rank-2-level-3",
+      "spell-choice-bard-repertoire-rank-2-level-4",
+      "spell-choice-bard-repertoire-rank-3-level-5",
+    ]);
+    expect(steps[0]?.spellChoice).toMatchObject({
+      count: 5,
+      cantrip: true,
+      destination: {
+        key: "bard-occult-spontaneous",
+        tradition: "occult",
+        ability: "cha",
+        prepared: "spontaneous",
+      },
+    });
+    expect(steps[1]?.spellChoice).toMatchObject({
+      count: 2,
+      minRank: 1,
+      maxRank: 1,
+    });
+    expect(steps[3]?.spellChoice).toMatchObject({
+      count: 2,
+      minRank: 2,
+      maxRank: 2,
+    });
+  });
+
+  it("builds prepared caster starting spell steps for druid", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(5),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("druid", "Druid Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      targetLevel: 5,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "spell-choice-druid-cantrips-level-1",
+      "spell-choice-druid-rank-1-level-1",
+    ]);
+    expect(steps[0]?.spellChoice).toMatchObject({
+      count: 5,
+      destination: {
+        key: "druid-primal-prepared",
+        tradition: "primal",
+        ability: "wis",
+        prepared: "prepared",
+      },
+    });
+    expect(steps[1]?.spellChoice).toMatchObject({
+      count: 2,
+      minRank: 1,
+      maxRank: 1,
+    });
+  });
+
+  it("builds branch-derived witch prepared spell steps", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(5),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("witch", "Witch Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      effectiveClassFeatureDocuments: [
+        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult"),
+      ],
+      targetLevel: 5,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "spell-choice-witch-cantrips-level-1",
+      "spell-choice-witch-rank-1-level-1",
+    ]);
+    expect(steps[0]?.spellChoice?.destination).toMatchObject({
+      key: "witch-occult-prepared",
+      tradition: "occult",
+      ability: "int",
+      prepared: "prepared",
+    });
+  });
+
+  it("builds branch-derived sorcerer spontaneous repertoire steps", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(5),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("sorcerer", "Sorcerer Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      effectiveClassFeatureDocuments: [
+        classFeatureDocument("Bloodline: Imperial", "sorcerer-bloodline", "Tradition", "arcane"),
+      ],
+      targetLevel: 5,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.map((step) => step.slotId).slice(0, 2)).toEqual([
+      "spell-choice-sorcerer-cantrips-level-1",
+      "spell-choice-sorcerer-repertoire-rank-1-level-1",
+    ]);
+    expect(steps[0]?.spellChoice?.destination).toMatchObject({
+      key: "sorcerer-arcane-spontaneous",
+      tradition: "arcane",
+      ability: "cha",
+      prepared: "spontaneous",
+    });
+  });
+
+  it("builds magus bounded spellbook steps through level 5", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(5),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("magus", "Arcane Spellcasting (Magus)"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      targetLevel: 5,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "spell-choice-magus-cantrips-level-1",
+      "spell-choice-magus-spellbook-rank-1-level-1",
+      "spell-choice-magus-spellbook-level-2",
+      "spell-choice-magus-spellbook-level-3",
+      "spell-choice-magus-spellbook-level-4",
+      "spell-choice-magus-spellbook-level-5",
+    ]);
+    expect(steps[0]?.spellChoice).toMatchObject({
+      count: 8,
+      destination: {
+        key: "magus-arcane-prepared",
+        tradition: "arcane",
+        ability: "int",
+        prepared: "prepared",
+      },
+    });
+    expect(steps[1]?.spellChoice).toMatchObject({
+      count: 4,
+      minRank: 1,
+      maxRank: 1,
+    });
+  });
+
   it("returns no steps for unknown class slugs", async () => {
     const steps = await buildSpellChoiceSteps({
       draft: createEmptyDraft(1),
@@ -304,6 +478,34 @@ function clericClassDocument() {
           name: "Cleric Spellcasting",
           uuid: "Compendium.pf2e.classfeatures.Item.cleric-spellcasting",
         },
+      },
+    },
+  };
+}
+
+function classDocument(slug: string, spellcastingName: string) {
+  return {
+    system: {
+      slug,
+      items: {
+        spellcasting: {
+          name: spellcastingName,
+          uuid: `Compendium.pf2e.classfeatures.Item.${spellcastingName}`,
+        },
+      },
+    },
+  };
+}
+
+function classFeatureDocument(name: string, otherTag: string, traditionLabel: string, tradition: string) {
+  return {
+    name,
+    system: {
+      traits: {
+        otherTags: [otherTag],
+      },
+      description: {
+        value: `<p><strong>${traditionLabel}</strong> ${tradition}</p>`,
       },
     },
   };

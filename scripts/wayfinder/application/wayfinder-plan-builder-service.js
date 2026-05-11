@@ -10,6 +10,7 @@ import { readExistingBranchSelection, readExistingClassChoiceSelection, readExis
 import { buildGrantChoiceSteps } from "../grant-choice-service.js";
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
+import { documentFeatureLevel, getDocumentRules, toNonEmptyString } from "../rule-data.js";
 import { buildSingletonChoiceSteps } from "../singleton-choice-service.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
 import { asSpellChoiceClassDocument } from "../spell-choice/types.js";
@@ -131,6 +132,7 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             draft: planDraft,
             effectiveClassDocument: await args.resolveDocument("class"),
             effectiveDeityDocument: await args.resolveDocument("deity"),
+            additionalClassFeatures: await resolveSelectedClassFeatureChoiceSources(planDraft, deps),
             targetLevel,
             fetchSelectionDocument: deps.fetchSelectionDocument,
             extractSlug: deps.extractDocumentSlug,
@@ -318,9 +320,61 @@ function isGrantChoiceFeatSelection(selection) {
         !isGrantChoiceClassFeatureSelection(selection));
 }
 async function resolveSpellChoiceClassFeatureDocuments(draft, deps) {
-    const selections = dedupeSelectionsByUuid(Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection)));
+    const selections = dedupeSelectionsByUuid([
+        ...Object.values(draft.branchSelections),
+        ...Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection)),
+    ]);
     const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
     return documents.filter((document) => document !== null);
+}
+async function resolveSelectedClassFeatureChoiceSources(draft, deps) {
+    const directSelections = dedupeSelectionsByUuid([
+        ...Object.values(draft.branchSelections),
+        ...Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection)),
+    ]);
+    const directDocuments = await Promise.all(directSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+    const directSources = directSelections.flatMap((selection, index) => {
+        const document = directDocuments[index];
+        return document ? [{ level: documentFeatureLevel(document), selection, document }] : [];
+    });
+    const staticGrantSelections = dedupeSelectionsByUuid(directSources.flatMap((source) => staticClassFeatureGrantSelections(source.document)));
+    const staticGrantDocuments = await Promise.all(staticGrantSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+    const staticGrantSources = staticGrantSelections.flatMap((selection, index) => {
+        const document = staticGrantDocuments[index];
+        return document ? [{ level: documentFeatureLevel(document), selection, document }] : [];
+    });
+    return dedupeClassFeatureSourcesByUuid([...directSources, ...staticGrantSources]);
+}
+function staticClassFeatureGrantSelections(document) {
+    return getDocumentRules(document).flatMap((rule) => {
+        if (rule.key !== "GrantItem") {
+            return [];
+        }
+        const uuid = toNonEmptyString(rule.uuid);
+        const parsed = uuid ? parseCompendiumItemUuid(uuid) : null;
+        if (!uuid || !parsed || parsed.packId !== "pf2e.classfeatures") {
+            return [];
+        }
+        return [
+            {
+                slotId: `static-classfeature-grant-${parsed.documentId}`,
+                packId: parsed.packId,
+                documentId: parsed.documentId,
+                uuid,
+                itemType: "feat",
+                featType: "classfeature",
+                name: parsed.documentId,
+                level: null,
+            },
+        ];
+    });
+}
+function dedupeClassFeatureSourcesByUuid(sources) {
+    const byUuid = new Map();
+    for (const source of sources) {
+        byUuid.set(source.selection.uuid, source);
+    }
+    return Array.from(byUuid.values());
 }
 function isGrantChoiceClassFeatureSelection(selection) {
     return selection.slotId.startsWith("grant-choice-") && selection.packId === "pf2e.classfeatures";

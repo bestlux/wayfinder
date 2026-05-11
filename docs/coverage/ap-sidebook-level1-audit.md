@@ -94,7 +94,7 @@ These shapes are supportable, but they need a larger design slice than this audi
 | Gap | Examples | Why deferred |
 | --- | --- | --- |
 | Equipment-derived predicate context for static grant choices | `Weapon Innovation` | Molten Wit-style active roll-option predicates are supported. Weapon Innovation also needs selected-weapon item context such as weapon category, group, traits, and handedness before all options can be guided safely. |
-| Static equipment grants | `Armor Innovation` | Needs item-type and pack support beyond feats/class features, plus apply-side confidence for equipment grants. |
+| Static equipment grants | `Armor Innovation` | The live all-class smoke now proves the Armor Innovation path, including nested armor and modification choices. Other equipment-derived predicates still need content-specific audit before broad claims. |
 | Config-backed non-skill catalogs | `Samsaran Weapon Memory` using `choices.config = "baseWeaponTypes"` | Needs a generic config catalog resolver beyond the current skills-oriented support. |
 | Multiple connected `ChoiceSet` chains | 42 non-core docs, including Season of Ghosts backgrounds, kineticist gates, inventor innovations, and War of Immortals class features | Needs graph-like choice dependency handling, stale-selection clearing, and stronger predicate vocabulary. |
 | Full side-book class subsystems | `Animist`, `Commander`, `Exemplar`, `Guardian`, `Gunslinger`, `Inventor`, `Kineticist`, `Magus`, `Psychic`, `Summoner`, `Thaumaturge` | Generic class-feature discovery catches some selectors, but these classes need class-specific contributors before Wayfinder can claim deep support. |

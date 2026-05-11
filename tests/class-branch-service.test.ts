@@ -6,7 +6,7 @@ import {
 } from "../src/class-branch-service";
 import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep, SelectionRef } from "../src/types";
-import { createClassBranchStep } from "../src/wayfinder/domain/step-types";
+import { createClassBranchStep, createClassChoiceStep } from "../src/wayfinder/domain/step-types";
 
 describe("class-branch-service", () => {
   it("strips preselected selector entries from a class source by UUID, document id, and name", () => {
@@ -481,6 +481,190 @@ describe("class-branch-service", () => {
     });
 
     expect(createEmbeddedSource).toHaveBeenCalledWith(unifiedTheorySelection, draft, steps);
+  });
+
+  it("preseeds inline class choices that share a branch selector before PF2E can prompt natively", async () => {
+    const draft = createEmptyDraft(1);
+    const gateSlotId = "class-choice-kinetic-gate-kinetic-gate:initial-level-1";
+    const elementOneSlotId = "class-branch-kinetic-gate-elementOne-level-1";
+    const elementTwoSlotId = "class-branch-kinetic-gate-elementTwo-level-1";
+
+    draft.classChoices[gateSlotId] = "dual-gate";
+    draft.branchSelections[elementOneSlotId] = selection(
+      elementOneSlotId,
+      "pf2e.classfeatures",
+      "fire-gate",
+      "Compendium.pf2e.classfeatures.Item.fire-gate",
+      "Fire Gate"
+    );
+    draft.branchSelections[elementTwoSlotId] = selection(
+      elementTwoSlotId,
+      "pf2e.classfeatures",
+      "air-gate",
+      "Compendium.pf2e.classfeatures.Item.air-gate",
+      "Air Gate"
+    );
+
+    const selectorRules = [
+      {
+        key: "ChoiceSet",
+        flag: "kinetic-gate:initial",
+      },
+      {
+        key: "ChoiceSet",
+        flag: "elementOne",
+      },
+      {
+        key: "GrantItem",
+        uuid: "{item|flags.system.rulesSelections.elementOne}",
+      },
+      {
+        key: "ChoiceSet",
+        flag: "elementTwo",
+      },
+      {
+        key: "GrantItem",
+        uuid: "{item|flags.system.rulesSelections.elementTwo}",
+      },
+    ];
+
+    const steps: PendingStep[] = [
+      createClassChoiceStep(1, {
+        slotId: gateSlotId,
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "kinetic-gate",
+        sourceUuid: "Compendium.pf2e.classfeatures.Item.kinetic-gate",
+        sourceName: "Kinetic Gate",
+        sourceRuleIndex: 0,
+        flag: "kinetic-gate:initial",
+        classSlug: "kineticist",
+        dependsOn: "class",
+        options: [{ value: "dual-gate", label: "Dual Gate", img: null, detail: null }],
+      }),
+      createClassBranchStep(1, {
+        slotId: elementOneSlotId,
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "kinetic-gate",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.kinetic-gate",
+        selectorName: "Kinetic Gate",
+        selectorRuleIndex: 1,
+        grantRuleIndex: 2,
+        flag: "elementOne",
+        optionTag: "kineticist-element",
+        classSlug: "kineticist",
+        dependsOn: "class",
+      }),
+      createClassBranchStep(1, {
+        slotId: elementTwoSlotId,
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "kinetic-gate",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.kinetic-gate",
+        selectorName: "Kinetic Gate",
+        selectorRuleIndex: 3,
+        grantRuleIndex: 4,
+        flag: "elementTwo",
+        optionTag: "kineticist-element",
+        classSlug: "kineticist",
+        dependsOn: "class",
+      }),
+    ];
+
+    const createEmbeddedSource = vi.fn(async (pickedSelection: SelectionRef) => ({
+      name: pickedSelection.name,
+      type: "feat",
+      system: {
+        category: "classfeature",
+        rules:
+          pickedSelection.uuid === "Compendium.pf2e.classfeatures.Item.kinetic-gate"
+            ? structuredClone(selectorRules)
+            : [],
+      },
+      flags: {
+        core: {
+          sourceId: pickedSelection.uuid,
+        },
+      },
+    }));
+    const actorItems: any[] = [
+      {
+        id: "class-1",
+        type: "class",
+      },
+    ];
+    const createdIds = ["selector-1", "fire-gate-1", "air-gate-1"];
+    const deleteEmbeddedDocuments = vi.fn(async (_type: string, ids: string[]) => {
+      for (const id of ids) {
+        const index = actorItems.findIndex((item) => item.id === id);
+        if (index >= 0) {
+          actorItems.splice(index, 1);
+        }
+      }
+      return [];
+    });
+    const actor = {
+      items: {
+        contents: actorItems,
+      },
+      createEmbeddedDocuments: vi.fn().mockImplementation(async (_type: string, sources: any[]) =>
+        sources.map((source) => {
+          const item = {
+            ...structuredClone(source),
+            id: createdIds.shift(),
+          };
+          actorItems.push(item);
+          return item;
+        })
+      ),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments,
+    };
+
+    await applyClassBranchDraft(actor as any, draft, steps, {
+      createEmbeddedSource,
+      fetchSelectionDocument: vi.fn(async () => ({
+        system: {
+          rules: structuredClone(selectorRules),
+        },
+      })),
+    });
+
+    expect(actor.createEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      expect.objectContaining({
+        name: "Kinetic Gate",
+        system: expect.objectContaining({
+          rules: [],
+        }),
+        flags: expect.objectContaining({
+          pf2e: {
+            rulesSelections: {
+              "kinetic-gate:initial": "dual-gate",
+              elementOne: "Compendium.pf2e.classfeatures.Item.fire-gate",
+              elementTwo: "Compendium.pf2e.classfeatures.Item.air-gate",
+            },
+          },
+        }),
+      }),
+    ]);
+    expect(actor.updateEmbeddedDocuments).toHaveBeenLastCalledWith("Item", [
+      expect.objectContaining({
+        _id: "selector-1",
+        "flags.pf2e.rulesSelections.kinetic-gate:initial": "dual-gate",
+        "flags.pf2e.rulesSelections.elementOne": "Compendium.pf2e.classfeatures.Item.fire-gate",
+        "flags.pf2e.rulesSelections.elementTwo": "Compendium.pf2e.classfeatures.Item.air-gate",
+        "flags.pf2e.itemGrants.elementOne": {
+          id: "fire-gate-1",
+          onDelete: "detach",
+          nested: null,
+        },
+        "flags.pf2e.itemGrants.elementTwo": {
+          id: "air-gate-1",
+          onDelete: "detach",
+          nested: null,
+        },
+      }),
+    ]);
+    expect(deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actorItems.map((item) => item.id)).toEqual(["class-1", "selector-1", "fire-gate-1", "air-gate-1"]);
   });
 });
 

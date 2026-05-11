@@ -41,6 +41,13 @@ export function isChoicePredicate(value) {
     if ("not" in value && value.not !== undefined && !isChoicePredicate(value.not)) {
         return false;
     }
+    for (const key of ["lt", "lte", "gt", "gte"]) {
+        if (key in value &&
+            value[key] !== undefined &&
+            (!Array.isArray(value[key]) || value[key].length !== 2 || typeof value[key][0] !== "string")) {
+            return false;
+        }
+    }
     return true;
 }
 export function matchesChoicePredicateList(predicate, matchesString) {

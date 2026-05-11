@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { SelectionRef } from "../src/types";
 import {
   buildClassBranchStepsFromRules,
+  buildClassChoiceStepsFromFeatureSources,
   buildClassChoiceStepsFromRules,
   buildClassGrantedItemStepsFromRules,
   buildClassTrainingStepsFromRules,
@@ -177,6 +178,71 @@ describe("wayfinder class-choice step-builders", () => {
     ]);
   });
 
+  it("builds one ordered branch step per item-backed ChoiceSet on the same class feature", async () => {
+    const exemplarClass = {
+      system: {
+        slug: "exemplar",
+        items: {
+          ikons: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.divine-spark-and-ikons",
+            name: "Divine Spark and Ikons",
+          },
+        },
+      },
+    };
+    const documents = new Map<string, unknown>([
+      [
+        "Compendium.pf2e.classfeatures.Item.divine-spark-and-ikons",
+        {
+          type: "feat",
+          name: "Divine Spark and Ikons",
+          system: {
+            category: "classfeature",
+            level: { value: 1 },
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "firstIkon",
+                choices: { filter: ["item:tag:exemplar-ikon"] },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.firstIkon}",
+              },
+              {
+                key: "ChoiceSet",
+                flag: "secondIkon",
+                choices: { filter: ["item:tag:exemplar-ikon"] },
+              },
+              {
+                key: "GrantItem",
+                uuid: "{item|flags.system.rulesSelections.secondIkon}",
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+
+    const steps = await buildClassBranchStepsFromRules({
+      effectiveClassDocument: exemplarClass,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "class-branch-divine-spark-and-ikons-firstIkon-level-1",
+      "class-branch-divine-spark-and-ikons-secondIkon-level-1",
+    ]);
+    expect(steps.map((step) => step.branch?.flag)).toEqual(["firstIkon", "secondIkon"]);
+    expect(steps[0]?.filters).toMatchObject({
+      itemType: "feat",
+      predicate: ["item:tag:exemplar-ikon"],
+    });
+  });
+
   it("builds deity grants and filters deity-dependent class choices by roll options", async () => {
     const clericClass = {
       system: {
@@ -210,6 +276,7 @@ describe("wayfinder class-choice step-builders", () => {
                 flag: "deity",
                 choices: {
                   itemType: "deity",
+                  filter: [{ or: ["item:category:deity", "item:category:pantheon"] }],
                 },
               },
               {
@@ -279,6 +346,12 @@ describe("wayfinder class-choice step-builders", () => {
       fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
       extractSlug: slugFromDocument,
     });
+    const branchSteps = await buildClassBranchStepsFromRules({
+      effectiveClassDocument: clericClass,
+      targetLevel: 1,
+      fetchSelectionDocument: async (entry) => documents.get(entry.uuid) ?? null,
+      extractSlug: slugFromDocument,
+    });
     const choiceSteps = await buildClassChoiceStepsFromRules({
       effectiveClassDocument: clericClass,
       effectiveDeityDocument: deityDocument,
@@ -298,6 +371,7 @@ describe("wayfinder class-choice step-builders", () => {
         },
       },
     ]);
+    expect(branchSteps.some((step) => step.slotId === "class-branch-deity-level-1")).toBe(false);
     expect(choiceSteps).toMatchObject([
       {
         kind: "class-choice",
@@ -488,6 +562,66 @@ describe("wayfinder class-choice step-builders", () => {
     } finally {
       (globalThis as { CONFIG?: unknown }).CONFIG = previousConfig;
     }
+  });
+
+  it("builds class-choice steps from static class-feature grants selected by a branch", () => {
+    const steps = buildClassChoiceStepsFromFeatureSources({
+      classSlug: "thaumaturge",
+      effectiveDeityDocument: null,
+      extractSlug: slugFromDocument,
+      localize: (value) => value,
+      classFeatures: [
+        {
+          level: 1,
+          selection: {
+            slotId: "static-classfeature-grant-Initiate Benefit (Wand)",
+            packId: "pf2e.classfeatures",
+            documentId: "Initiate Benefit (Wand)",
+            uuid: "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)",
+            itemType: "feat",
+            featType: "classfeature",
+            name: "Initiate Benefit (Wand)",
+            level: null,
+          },
+          document: {
+            type: "feat",
+            name: "Initiate Benefit (Wand)",
+            system: {
+              slug: "initiate-benefit-wand",
+              category: "classfeature",
+              level: { value: 1 },
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  rollOption: "wand-initiate-damage-type",
+                  choices: [
+                    { label: "Cold", value: "cold" },
+                    { label: "Electricity", value: "electricity" },
+                    { label: "Fire", value: "fire" },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    expect(steps).toEqual([
+      expect.objectContaining({
+        kind: "class-choice",
+        slotId: "class-choice-initiate-benefit-wand-initiateBenefitWand-level-1",
+        classChoice: expect.objectContaining({
+          sourceUuid: "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)",
+          flag: "initiateBenefitWand",
+          options: [
+            { value: "cold", label: "Cold", img: null, detail: null },
+            { value: "electricity", label: "Electricity", img: null, detail: null },
+            { value: "fire", label: "Fire", img: null, detail: null },
+          ],
+        }),
+      }),
+    ]);
   });
 });
 

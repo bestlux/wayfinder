@@ -1,6 +1,8 @@
 import { stripPreselectedClassBranchEntries } from "../class-branch-service.js";
 import { stripPreselectedClassFeatureEntries } from "../class-feature-choice-service.js";
+import { MODULE_ID } from "../constants.js";
 import { fetchSelectionDocument } from "../pack-service.js";
+import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
 import { applyRuleSelectionToSource, ensureRuleSelections, stampImportedItemSource, } from "../shared/pf2e-item-source.js";
 import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
@@ -24,8 +26,10 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
     if (draft) {
         stripManualSystemItemGrants(source);
         applyPendingSingletonChoices(source, selection, draft, steps);
+        applyPendingClassChoices(source, selection, draft, steps);
         applyPendingBoostSelections(source, selection, draft);
         await applyPendingGrantChoiceSelections(source, selection, draft, steps, deps);
+        await applyPendingStaticGrantPreselectChoices(source, draft, steps, deps);
         applyPendingTrainingSelections(source, selection, draft, steps);
     }
     if (draft && selection.itemType === "feat") {
@@ -107,6 +111,22 @@ function applyPendingSingletonChoices(source, selection, draft, steps) {
             continue;
         }
         applyRuleSelection(source, step.singletonChoice.sourceRuleIndex, step.singletonChoice.flag, value);
+    }
+}
+function applyPendingClassChoices(source, selection, draft, steps) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    if (rules.length === 0) {
+        return;
+    }
+    for (const step of steps) {
+        if (step.kind !== "class-choice" || !step.classChoice || step.classChoice.sourceUuid !== selection.uuid) {
+            continue;
+        }
+        const value = draft.classChoices[step.slotId];
+        if (typeof value !== "string" || value.length === 0) {
+            continue;
+        }
+        applyRuleSelection(source, step.classChoice.sourceRuleIndex, step.classChoice.flag, value);
     }
 }
 function applyPendingTrainingSelections(source, selection, draft, steps) {
@@ -227,6 +247,116 @@ async function collectGrantedItemPreselectChoices(grantedSelection, draft, steps
         }
     }
     return preselectChoices;
+}
+async function applyPendingStaticGrantPreselectChoices(source, draft, steps, deps) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    if (rules.length === 0) {
+        return;
+    }
+    for (const rule of rules) {
+        if (!isLooseRecord(rule) || rule.key !== "GrantItem") {
+            continue;
+        }
+        const uuid = typeof rule.uuid === "string" ? rule.uuid : null;
+        const grantedSelection = uuid ? selectionFromStaticGrantUuid(uuid) : null;
+        if (!grantedSelection) {
+            continue;
+        }
+        const preselectChoices = await collectGrantedItemPreselectChoices(grantedSelection, draft, steps, deps);
+        if (Object.keys(preselectChoices).length === 0) {
+            continue;
+        }
+        rule.preselectChoices = {
+            ...(isLooseRecord(rule.preselectChoices) ? rule.preselectChoices : {}),
+            ...preselectChoices,
+        };
+        registerManualStaticItemGrant(source, grantedSelection.uuid, preselectChoices);
+    }
+    const manualGrants = readManualStaticItemGrants(source);
+    if (manualGrants.length > 0) {
+        source.system ??= {};
+        source.system.rules = rules.filter((rule) => !(isLooseRecord(rule) &&
+            rule.key === "GrantItem" &&
+            typeof rule.uuid === "string" &&
+            manualGrants.some((grant) => grant.uuid === rule.uuid)));
+    }
+}
+function selectionFromStaticGrantUuid(uuid) {
+    if (uuid.includes("{")) {
+        return null;
+    }
+    const parsed = parseCompendiumItemUuid(uuid);
+    if (!parsed) {
+        return null;
+    }
+    return {
+        slotId: `static-grant-${slugifyName(parsed.documentId) ?? "item"}`,
+        packId: parsed.packId,
+        documentId: parsed.documentId,
+        uuid,
+        itemType: parsed.packId === "pf2e.deities" ? "deity" : "feat",
+        featType: parsed.packId === "pf2e.classfeatures" ? "classfeature" : null,
+        name: parsed.documentId,
+        level: null,
+    };
+}
+function registerManualStaticItemGrant(source, uuid, choices) {
+    const key = manualStaticGrantKey(uuid);
+    if (!key) {
+        return;
+    }
+    source.flags ??= {};
+    source.flags[MODULE_ID] = {
+        ...(source.flags[MODULE_ID] ?? {}),
+        manualStaticItemGrants: [
+            ...readManualStaticItemGrants(source),
+            {
+                key,
+                uuid,
+                choices,
+            },
+        ],
+    };
+}
+function readManualStaticItemGrants(source) {
+    const grants = source.flags?.[MODULE_ID]?.manualStaticItemGrants;
+    if (!Array.isArray(grants)) {
+        return [];
+    }
+    return grants.flatMap((grant) => {
+        if (!isLooseRecord(grant) ||
+            typeof grant.key !== "string" ||
+            typeof grant.uuid !== "string" ||
+            !isLooseRecord(grant.choices)) {
+            return [];
+        }
+        return [
+            {
+                key: grant.key,
+                uuid: grant.uuid,
+                choices: Object.fromEntries(Object.entries(grant.choices).filter((entry) => typeof entry[1] === "string")),
+            },
+        ];
+    });
+}
+function manualStaticGrantKey(uuid) {
+    const parsed = parseCompendiumItemUuid(uuid);
+    return parsed ? toDromedary(slugifyName(parsed.documentId) ?? parsed.documentId) : null;
+}
+function toDromedary(value) {
+    const parts = value
+        .trim()
+        .split(/[^a-z0-9]+/i)
+        .filter(Boolean);
+    if (parts.length === 0) {
+        return null;
+    }
+    return parts
+        .map((part, index) => {
+        const lower = part.toLowerCase();
+        return index === 0 ? lower : `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+    })
+        .join("");
 }
 async function resolveGrantedSpellChoiceFlag(grantedSelection, deps) {
     const document = await deps.fetchSelectionDocument(grantedSelection);

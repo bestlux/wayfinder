@@ -459,6 +459,29 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Counterspell (Prepared)", "Reach Spell"]);
   });
 
+  it("treats PF2E item:type:feature predicates as classfeature feat documents", async () => {
+    setPack("pf2e.classfeatures", [
+      classFeatureEntry("harmonic-oscillator", "Harmonic Oscillator", ["inventor"], ["armor-innovation-modification"]),
+      classFeatureEntry("warrior-muse", "Warrior Muse", ["bard"], ["bard-muse"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("grant-choice", {
+        itemType: "feat",
+        packIds: ["pf2e.classfeatures"],
+        predicate: [
+          "item:level:1",
+          "item:type:feature",
+          "item:trait:inventor",
+          "item:tag:armor-innovation-modification",
+        ],
+      }),
+      EMPTY_CONTEXT
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Harmonic Oscillator"]);
+  });
+
   it("excludes the actor's own class from multiclass dedication grant choices", async () => {
     setPack("pf2e.feats-srd", [
       featEntry("fighter-dedication", "Fighter Dedication", "class", ["fighter", "dedication", "multiclass"]),
@@ -790,6 +813,70 @@ describe("pack-service dependency filtering", () => {
     expect(thesisOptions.map((option) => option.uuid)).toEqual([
       "Compendium.pf2e.classfeatures.Item.spell-blending",
       "Compendium.pf2e.classfeatures.Item.staff-nexus",
+    ]);
+  });
+
+  it("filters item-backed action branch choices from PF2E tactic predicates", async () => {
+    setPack("pf2e.actionspf2e", [
+      actionEntry(
+        "coordinating-maneuvers",
+        "Coordinating Maneuvers",
+        ["brandish", "commander", "tactic"],
+        ["commander-mobility-tactic"]
+      ),
+      actionEntry("strike-hard", "Strike Hard", ["brandish", "commander", "tactic"], ["commander-offensive-tactic"]),
+      actionEntry(
+        "take-the-high-ground",
+        "Take the High Ground",
+        ["brandish", "commander", "tactic"],
+        ["commander-expert-tactic"]
+      ),
+      actionEntry("avoid-notice", "Avoid Notice", ["exploration"], []),
+    ]);
+
+    const options = await getOptionsForStep(
+      {
+        id: "class-branch-tactics-firstTactic-level-1",
+        level: 1,
+        kind: "class-branch",
+        slotKind: "class-branch",
+        title: "Tactics",
+        description: "Choose a tactic.",
+        required: true,
+        slotId: "class-branch-tactics-firstTactic-level-1",
+        filters: {
+          itemType: "action",
+          packIds: ["pf2e.actionspf2e"],
+          predicate: [
+            "item:trait:tactic",
+            {
+              or: ["item:tag:commander-mobility-tactic", "item:tag:commander-offensive-tactic"],
+            },
+          ],
+        },
+        branch: {
+          slotId: "class-branch-tactics-firstTactic-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "tactics",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.tactics",
+          selectorName: "Tactics",
+          selectorRuleIndex: 0,
+          flag: "firstTactic",
+          optionTag: "firsttactic",
+          classSlug: "commander",
+          dependsOn: "class",
+        },
+      },
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "commander",
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Coordinating Maneuvers", "Strike Hard"]);
+    expect(options.map((option) => option.uuid)).toEqual([
+      "Compendium.pf2e.actionspf2e.Item.coordinating-maneuvers",
+      "Compendium.pf2e.actionspf2e.Item.strike-hard",
     ]);
   });
 
@@ -1351,6 +1438,25 @@ function classFeatureEntry(
         title: "Player Core",
       },
       ...systemOverrides,
+    },
+  };
+}
+
+function actionEntry(slug: string, name: string, traits: string[], otherTags: string[]): any {
+  return {
+    _id: slug,
+    name,
+    img: `${slug}.webp`,
+    type: "action",
+    system: {
+      slug,
+      traits: {
+        otherTags,
+        value: traits,
+      },
+      publication: {
+        title: "Player Core",
+      },
     },
   };
 }

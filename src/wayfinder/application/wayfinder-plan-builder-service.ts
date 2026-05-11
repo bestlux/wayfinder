@@ -36,6 +36,7 @@ import {
 import { buildGrantChoiceSteps, type GrantChoiceSourceContext } from "../grant-choice-service.js";
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
+import { documentFeatureLevel, getDocumentRules, toNonEmptyString } from "../rule-data.js";
 import { buildSingletonChoiceSteps, type SingletonChoiceSourceContext } from "../singleton-choice-service.js";
 import type { SkillTrainingSourceContext } from "../skill-training/source-discovery.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
@@ -216,6 +217,7 @@ export async function buildWayfinderAppPlan(
         draft: planDraft,
         effectiveClassDocument: await args.resolveDocument("class"),
         effectiveDeityDocument: await args.resolveDocument("deity"),
+        additionalClassFeatures: await resolveSelectedClassFeatureChoiceSources(planDraft, deps),
         targetLevel,
         fetchSelectionDocument: deps.fetchSelectionDocument,
         extractSlug: deps.extractDocumentSlug,
@@ -470,11 +472,77 @@ async function resolveSpellChoiceClassFeatureDocuments(
   draft: DraftState,
   deps: BuildWayfinderAppPlanDependencies
 ): Promise<DocumentLike[]> {
-  const selections = dedupeSelectionsByUuid(
-    Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection))
-  );
+  const selections = dedupeSelectionsByUuid([
+    ...Object.values(draft.branchSelections),
+    ...Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection)),
+  ]);
   const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
   return documents.filter((document): document is DocumentLike => document !== null);
+}
+
+async function resolveSelectedClassFeatureChoiceSources(
+  draft: DraftState,
+  deps: BuildWayfinderAppPlanDependencies
+): Promise<Array<{ level: number; selection: SelectionRef; document: DocumentLike }>> {
+  const directSelections = dedupeSelectionsByUuid([
+    ...Object.values(draft.branchSelections),
+    ...Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection)),
+  ]);
+  const directDocuments = await Promise.all(
+    directSelections.map((selection) => deps.fetchSelectionDocument(selection))
+  );
+  const directSources = directSelections.flatMap((selection, index) => {
+    const document = directDocuments[index];
+    return document ? [{ level: documentFeatureLevel(document), selection, document }] : [];
+  });
+
+  const staticGrantSelections = dedupeSelectionsByUuid(
+    directSources.flatMap((source) => staticClassFeatureGrantSelections(source.document))
+  );
+  const staticGrantDocuments = await Promise.all(
+    staticGrantSelections.map((selection) => deps.fetchSelectionDocument(selection))
+  );
+  const staticGrantSources = staticGrantSelections.flatMap((selection, index) => {
+    const document = staticGrantDocuments[index];
+    return document ? [{ level: documentFeatureLevel(document), selection, document }] : [];
+  });
+
+  return dedupeClassFeatureSourcesByUuid([...directSources, ...staticGrantSources]);
+}
+
+function staticClassFeatureGrantSelections(document: DocumentLike): SelectionRef[] {
+  return getDocumentRules(document).flatMap((rule) => {
+    if (rule.key !== "GrantItem") {
+      return [];
+    }
+
+    const uuid = toNonEmptyString(rule.uuid);
+    const parsed = uuid ? parseCompendiumItemUuid(uuid) : null;
+    if (!uuid || !parsed || parsed.packId !== "pf2e.classfeatures") {
+      return [];
+    }
+
+    return [
+      {
+        slotId: `static-classfeature-grant-${parsed.documentId}`,
+        packId: parsed.packId,
+        documentId: parsed.documentId,
+        uuid,
+        itemType: "feat",
+        featType: "classfeature",
+        name: parsed.documentId,
+        level: null,
+      } satisfies SelectionRef,
+    ];
+  });
+}
+
+function dedupeClassFeatureSourcesByUuid<T extends { selection: SelectionRef }>(sources: T[]): T[] {
+  const byUuid = new Map<string, T>();
+  for (const source of sources) {
+    byUuid.set(source.selection.uuid, source);
+  }
+  return Array.from(byUuid.values());
 }
 
 function isGrantChoiceClassFeatureSelection(selection: SelectionRef): boolean {

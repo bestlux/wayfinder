@@ -1,6 +1,6 @@
 import { createClassBranchStep, createClassChoiceStep, createPickItemStep, createSkillTrainingStep, } from "../domain/step-types.js";
 import { formatSlug } from "../formatting.js";
-import { buildChoiceRollOptions, discoverClassBranchMeta, discoverClassChoiceMeta, discoverGrantedItemMeta, discoverSkillTrainingMeta, getClassFeatureSources, } from "./rule-discovery.js";
+import { buildChoiceRollOptions, discoverClassBranchMetas, discoverClassChoiceMeta, discoverGrantedItemMeta, discoverSkillTrainingMeta, getClassFeatureSources, } from "./rule-discovery.js";
 export function buildClassTrainingStepsFromRules(args) {
     const { effectiveClassDocument, classSelection, extractSlug, localize, intelligenceModifier } = args;
     if (!effectiveClassDocument) {
@@ -39,13 +39,16 @@ export async function buildClassChoiceStepsFromRules(args) {
     if (!context) {
         return [];
     }
-    return buildClassChoiceStepsFromFeatures({
+    return buildClassChoiceStepsFromFeatureSources({
         classFeatures: context.classFeatures,
         classSlug: context.classSlug,
         effectiveDeityDocument: args.effectiveDeityDocument,
         extractSlug: args.extractSlug,
         localize: args.localize,
     });
+}
+export function buildClassChoiceStepsFromFeatureSources(args) {
+    return buildClassChoiceStepsFromFeatures(args);
 }
 async function loadClassFeatureContext(args) {
     const { effectiveClassDocument, targetLevel, fetchSelectionDocument, extractSlug } = args;
@@ -60,16 +63,15 @@ async function loadClassFeatureContext(args) {
 function buildClassBranchStepsFromFeatures(classFeatures, classSlug, extractSlug) {
     const steps = [];
     for (const feature of classFeatures) {
-        const branch = discoverClassBranchMeta({
+        const branches = discoverClassBranchMetas({
             selectorDocument: feature.document,
             selectorSelection: feature.selection,
             classSlug,
             extractSlug,
         });
-        if (!branch) {
-            continue;
+        for (const branch of branches) {
+            steps.push(createClassBranchStep(feature.level, branch));
         }
-        steps.push(createClassBranchStep(feature.level, branch));
     }
     return steps;
 }

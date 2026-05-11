@@ -43,7 +43,15 @@ export type PickItemSlotKind = Exclude<
 
 export type ChoicePredicate =
   | string
-  | { or?: ChoicePredicate[]; nor?: ChoicePredicate[]; not?: ChoicePredicate }
+  | {
+      or?: ChoicePredicate[];
+      nor?: ChoicePredicate[];
+      not?: ChoicePredicate;
+      lt?: [string, number | string];
+      lte?: [string, number | string];
+      gt?: [string, number | string];
+      gte?: [string, number | string];
+    }
   | ChoicePredicate[];
 
 export interface StepFilters {
@@ -64,10 +72,14 @@ export interface ClassBranchMeta {
   selectorUuid: string;
   selectorName: string;
   selectorRuleIndex: number;
+  grantRuleIndex?: number;
   flag: string;
+  rollOption?: string | null;
   optionTag: string;
   classSlug: string | null;
   dependsOn: "class" | "deity";
+  filters?: StepFilters;
+  predicate?: ChoicePredicate[];
 }
 
 export type GrantSelectionSourceItemType = "classfeature" | "ancestry" | "heritage" | "background" | "feat";
@@ -99,6 +111,7 @@ export interface ClassChoiceMeta {
   sourceName: string;
   sourceRuleIndex: number;
   flag: string;
+  rollOption?: string | null;
   classSlug: string | null;
   dependsOn: "class" | "deity";
   options: Array<{
@@ -142,13 +155,13 @@ export interface LanguageChoiceMeta {
 }
 
 export interface SpellChoiceDestination {
-  type: "spellbook" | "prepared" | "innate";
+  type: "spellbook" | "prepared" | "spontaneous" | "innate";
   key: string;
   label: string;
   entryName: string;
   tradition: string;
   ability: string;
-  prepared: "prepared" | "innate";
+  prepared: "prepared" | "spontaneous" | "innate";
 }
 
 export interface SpellChoiceMeta {
@@ -496,11 +509,12 @@ export function createClassBranchStep(
         slotId: options.slotId ?? branch.slotId,
       }
     ),
-    filters: options.filters ?? {
-      itemType: "feat",
-      featTypes: ["classfeature"],
-      maxLevel: level,
-    },
+    filters: options.filters ??
+      branch.filters ?? {
+        itemType: "feat",
+        featTypes: ["classfeature"],
+        maxLevel: level,
+      },
     branch,
   };
 }

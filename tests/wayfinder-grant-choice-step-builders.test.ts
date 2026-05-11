@@ -225,6 +225,111 @@ describe("wayfinder grant choice step builders", () => {
     ]);
   });
 
+  it("normalizes PF2E feature predicates to class-feature pack lookups", () => {
+    const steps = buildGrantChoiceStepsFromRules({
+      sourceItemType: "classfeature",
+      effectiveSourceDocument: {
+        name: "Armor Innovation",
+        system: {
+          slug: "armor-innovation",
+          level: { value: 1 },
+          rules: [
+            {
+              choices: {
+                filter: [
+                  "item:level:1",
+                  "item:type:feature",
+                  "item:trait:inventor",
+                  "item:tag:armor-innovation-modification",
+                ],
+              },
+              flag: "initialModification",
+              key: "ChoiceSet",
+            },
+            {
+              key: "GrantItem",
+              uuid: "{item|flags.system.rulesSelections.initialModification}",
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        slotId: "class-branch-innovation-level-1",
+        packId: "pf2e.classfeatures",
+        documentId: "armor-innovation",
+        uuid: "Compendium.pf2e.classfeatures.Item.armor-innovation",
+        itemType: "feat",
+        featType: "classfeature",
+        name: "Armor Innovation",
+        level: 1,
+      },
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        slotId: "grant-choice-class-classfeature-armor-innovation-initialModification-level-1",
+        filters: {
+          itemType: "feat",
+          packIds: ["pf2e.classfeatures"],
+          predicate: [
+            "item:level:1",
+            "item:type:feature",
+            "item:trait:inventor",
+            "item:tag:armor-innovation-modification",
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("defaults object-filter grant choices without itemType to feat options", () => {
+    const steps = buildGrantChoiceStepsFromRules({
+      sourceItemType: "classfeature",
+      effectiveSourceDocument: {
+        name: "Eldritch Trickster",
+        system: {
+          slug: "eldritch-trickster",
+          level: { value: 1 },
+          rules: [
+            {
+              choices: {
+                filter: ["item:tag:spellcasting-multiclass-archetype"],
+              },
+              flag: "eldritchTrickster",
+              key: "ChoiceSet",
+            },
+            {
+              key: "GrantItem",
+              uuid: "{item|flags.system.rulesSelections.eldritchTrickster}",
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        slotId: "class-branch-rogues-racket-level-1",
+        packId: "pf2e.classfeatures",
+        documentId: "eldritch-trickster",
+        uuid: "Compendium.pf2e.classfeatures.Item.eldritch-trickster",
+        itemType: "feat",
+        featType: "classfeature",
+        name: "Eldritch Trickster",
+        level: 1,
+      },
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        slotId: "grant-choice-class-classfeature-eldritch-trickster-eldritchTrickster-level-1",
+        filters: {
+          itemType: "feat",
+          predicate: ["item:tag:spellcasting-multiclass-archetype"],
+        },
+      },
+    ]);
+  });
+
   it("builds a static UUID class-feature grant step from selected class features", () => {
     const steps = buildGrantChoiceStepsFromRules({
       sourceItemType: "classfeature",

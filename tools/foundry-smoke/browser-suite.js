@@ -156,6 +156,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
       dialogsBefore,
       failures,
       lifecycleResult,
+      preStepIds: plan.steps.map((step) => step.slotId),
       rerunPlan,
       smokeCase,
     });
@@ -532,9 +533,16 @@ function validateAppliedCase({
   dialogsBefore,
   failures,
   lifecycleResult,
+  preStepIds,
   rerunPlan,
   smokeCase,
 }) {
+  const expectedStepIds = Array.isArray(smokeCase.expectedStepIds) ? smokeCase.expectedStepIds : [];
+  const missingExpectedStepIds = expectedStepIds.filter((slotId) => !preStepIds.includes(slotId));
+  if (missingExpectedStepIds.length > 0) {
+    failures.push(`Expected steps did not render: ${missingExpectedStepIds.join(", ")}`);
+  }
+
   if (lifecycleResult.kind !== "applied") {
     failures.push(`Apply lifecycle returned ${lifecycleResult.kind}`);
   }

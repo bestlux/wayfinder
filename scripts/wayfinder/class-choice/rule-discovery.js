@@ -55,40 +55,58 @@ export async function getClassFeatureSources(classDocument, targetLevel, fetchSe
     }));
 }
 export function discoverClassBranchMeta(args) {
+    return discoverClassBranchMetas(args)[0] ?? null;
+}
+export function discoverClassBranchMetas(args) {
     const { selectorDocument, selectorSelection, classSlug, extractSlug } = args;
     const document = selectorDocument;
     if (document?.type !== "feat" || document.system?.category !== "classfeature") {
-        return null;
+        return [];
     }
     const rules = findRelevantClassRules(selectorDocument);
-    const choiceRuleIndex = rules.findIndex((rule) => rule.key === "ChoiceSet" && typeof rule.flag === "string");
-    if (choiceRuleIndex === -1) {
-        return null;
-    }
-    const choiceRule = rules[choiceRuleIndex];
-    const choiceFlag = toNonEmptyString(choiceRule.flag);
-    const grantRule = rules.find((rule) => rule.key === "GrantItem" && typeof rule.uuid === "string");
-    if (!choiceFlag || !grantRule) {
-        return null;
-    }
-    const optionTag = extractChoiceTag(choiceRule, choiceFlag);
-    if (!optionTag) {
-        return null;
-    }
     const selectorSlug = extractSlug(selectorDocument) ?? selectorSelection.documentId;
     const level = toFeatureLevel(document.system?.level?.value);
-    return {
-        selectorPackId: selectorSelection.packId,
-        selectorDocumentId: selectorSelection.documentId,
-        selectorUuid: selectorSelection.uuid,
-        selectorName: toNonEmptyString(document.name) ?? selectorSelection.name,
-        selectorRuleIndex: choiceRuleIndex,
-        flag: choiceFlag,
-        optionTag,
-        classSlug,
-        dependsOn: referencesDeity(choiceRule) || optionTag === "champion-cause" ? "deity" : "class",
-        slotId: `class-branch-${selectorSlug}-level-${level}`,
-    };
+    const selectorName = toNonEmptyString(document.name) ?? selectorSelection.name;
+    const choiceRules = rules
+        .map((rule, ruleIndex) => ({ rule, ruleIndex }))
+        .filter((entry) => entry.rule.key === "ChoiceSet" && typeof entry.rule.flag === "string")
+        .flatMap((entry) => {
+        const choiceFlag = toNonEmptyString(entry.rule.flag);
+        const filters = extractChoiceFilters(entry.rule);
+        if (!choiceFlag || !filters) {
+            return [];
+        }
+        if (filters.itemType === "deity") {
+            return [];
+        }
+        const grantRuleIndex = rules.findIndex((rule) => rule.key === "GrantItem" &&
+            typeof rule.uuid === "string" &&
+            rule.uuid.includes(`rulesSelections.${choiceFlag}`));
+        if (grantRuleIndex === -1) {
+            return [];
+        }
+        return [{ ...entry, choiceFlag, filters, grantRuleIndex }];
+    });
+    return choiceRules.map((entry) => {
+        const optionTag = extractChoiceTag(entry.rule, entry.choiceFlag) ?? entry.choiceFlag.trim().toLowerCase();
+        const slotSuffix = choiceRules.length === 1 ? "" : `-${entry.choiceFlag}`;
+        return {
+            selectorPackId: selectorSelection.packId,
+            selectorDocumentId: selectorSelection.documentId,
+            selectorUuid: selectorSelection.uuid,
+            selectorName,
+            selectorRuleIndex: entry.ruleIndex,
+            grantRuleIndex: entry.grantRuleIndex,
+            flag: entry.choiceFlag,
+            rollOption: toNonEmptyString(entry.rule.rollOption),
+            optionTag,
+            classSlug,
+            dependsOn: referencesDeity(entry.rule) || optionTag === "champion-cause" ? "deity" : "class",
+            slotId: `class-branch-${selectorSlug}${slotSuffix}-level-${level}`,
+            filters: entry.filters,
+            predicate: Array.isArray(entry.rule.predicate) ? entry.rule.predicate : [],
+        };
+    });
 }
 export function discoverGrantedItemMeta(args) {
     const { selectorDocument, selectorSelection, classSlug } = args;
@@ -140,7 +158,7 @@ export function discoverClassChoiceMeta(args) {
     const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
     const level = toFeatureLevel(document.system?.level?.value);
     return findRelevantClassRules(sourceDocument).flatMap((rule, ruleIndex) => {
-        const selectionKey = extractClassChoiceKey(rule);
+        const selectionKey = extractClassChoiceKey(rule, sourceSlug);
         if (rule.key !== "ChoiceSet" || !selectionKey) {
             return [];
         }
@@ -157,6 +175,7 @@ export function discoverClassChoiceMeta(args) {
                 sourceName: toNonEmptyString(document.name) ?? sourceSelection.name,
                 sourceRuleIndex: ruleIndex,
                 flag: selectionKey,
+                rollOption: toNonEmptyString(rule.rollOption),
                 classSlug,
                 dependsOn: referencesDeity(rule) ? "deity" : "class",
                 options,
@@ -253,15 +272,33 @@ function toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, class
             : null,
     };
 }
-function extractClassChoiceKey(rule) {
-    const candidates = [rule.flag, rule.slug, rule.rollOption];
+function extractClassChoiceKey(rule, sourceSlug) {
+    const candidates = [rule.flag, rule.slug];
     for (const value of candidates) {
         const candidate = toNonEmptyString(value);
         if (candidate) {
-            return candidate;
+            return sanitizeChoiceFlag(candidate);
         }
     }
-    return null;
+    return toDromedaryFlag(sourceSlug);
+}
+function sanitizeChoiceFlag(value) {
+    return value.replace(/[^-a-z0-9]/gi, "");
+}
+function toDromedaryFlag(value) {
+    const parts = value
+        .trim()
+        .split(/[^a-z0-9]+/i)
+        .filter(Boolean);
+    if (parts.length === 0) {
+        return null;
+    }
+    return parts
+        .map((part, index) => {
+        const lower = part.toLowerCase();
+        return index === 0 ? lower : `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+    })
+        .join("");
 }
 function evaluatePredicate(predicate, rollOptions) {
     return !predicate || matchesChoicePredicate(predicate, (statement) => rollOptions.has(statement));
@@ -292,6 +329,23 @@ function extractChoiceTag(choiceRule, flag) {
     }
     const uuid = toNonEmptyString(choiceRule.uuid) ?? "";
     return uuid.includes(`rulesSelections.${flag}`) ? flag.trim().toLowerCase() : null;
+}
+function extractChoiceFilters(choiceRule) {
+    const choices = isRecord(choiceRule.choices) ? choiceRule.choices : null;
+    const rawFilter = Array.isArray(choices?.filter) ? choices.filter : [];
+    const itemType = normalizeChoiceItemType(toNonEmptyString(choices?.itemType) ?? "feat");
+    if (rawFilter.length === 0) {
+        return null;
+    }
+    return {
+        itemType,
+        ...(itemType === "feat" ? { packIds: ["pf2e.classfeatures", "pf2e.feats-srd"] } : {}),
+        ...(itemType === "action" ? { packIds: ["pf2e.actionspf2e"] } : {}),
+        predicate: rawFilter,
+    };
+}
+function normalizeChoiceItemType(itemType) {
+    return itemType === "feature" ? "feat" : itemType;
 }
 function selectionFromCompendiumUuid(uuid, name, itemType) {
     const parsed = parseCompendiumItemUuid(uuid);

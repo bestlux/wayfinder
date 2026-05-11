@@ -5,6 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { smokeCases } from "./class-cases.mjs";
 
 const MODULE_ID = "pf2e-wayfinder";
 const fixturePrefix = "WF Smoke Harness";
@@ -16,92 +17,6 @@ const defaultChromePaths = [
   "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
   "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-];
-
-const smokeCases = [
-  {
-    id: "fighter-l1-l5-apply-rerun",
-    label: "Fighter level 1 through 5 apply/rerun",
-    className: "Fighter",
-    classSlug: "fighter",
-    keyAbility: "str",
-    targetLevel: 5,
-    preferredSelections: {
-      "ancestry-feat": ["Cooperative Nature", "Haughty Obstinacy"],
-      "class-feat": ["Reactive Shield", "Intimidating Strike", "Quick Reversal"],
-      "general-feat": ["Toughness"],
-      "skill-feat": ["Cat Fall", "Forager", "Acrobatic Performer", "Group Impression", "Quick Jump"],
-    },
-    preferredSkills: ["athletics", "acrobatics", "survival", "intimidation", "religion", "stealth"],
-  },
-  {
-    id: "investigator-l1-l5-apply-rerun",
-    label: "Investigator level 1 through 5 apply/rerun",
-    className: "Investigator",
-    classSlug: "investigator",
-    keyAbility: "int",
-    targetLevel: 5,
-    preferredSelections: {
-      "ancestry-feat": ["Cooperative Nature", "Haughty Obstinacy"],
-      "class-branch-methodology-level-1": [
-        "Interrogation Methodology",
-        "Forensic Medicine Methodology",
-        "Empiricism Methodology",
-      ],
-      "class-feat": ["Known Weaknesses", "Flexible Studies", "Scalpel's Point"],
-      "general-feat": ["Toughness"],
-      "skill-feat": ["Cat Fall", "Forager", "Experienced Smuggler", "Acrobatic Performer", "Group Impression"],
-    },
-    preferredSkills: ["society", "arcana", "crafting", "medicine", "diplomacy", "stealth", "thievery", "deception"],
-  },
-  {
-    id: "wizard-l1-l5-apply-rerun",
-    label: "Wizard level 1 through 5 apply/rerun",
-    className: "Wizard",
-    classSlug: "wizard",
-    keyAbility: "int",
-    targetLevel: 5,
-    preferredSelections: {
-      "ancestry-feat": ["Cooperative Nature", "Haughty Obstinacy"],
-      "class-feat": ["Reach Spell", "Counterspell", "Cantrip Expansion"],
-      "general-feat": ["Toughness"],
-      "skill-feat": ["Recognize Spell", "Cat Fall", "Forager", "Acrobatic Performer"],
-    },
-    preferredSkills: ["arcana", "crafting", "society", "occultism", "religion", "medicine", "nature"],
-  },
-  {
-    id: "cleric-l1-l5-apply-rerun",
-    label: "Cleric level 1 through 5 apply/rerun",
-    className: "Cleric",
-    classSlug: "cleric",
-    deityName: "Sarenrae",
-    keyAbility: "wis",
-    targetLevel: 5,
-    preferredSelections: {
-      deity: ["Sarenrae", "Pharasma", "Abadar"],
-      "ancestry-feat": ["Cooperative Nature", "Haughty Obstinacy"],
-      "class-branch-doctrine-level-1": ["Cloistered Cleric", "Warpriest"],
-      "class-feat": ["Healing Hands", "Reach Spell", "Sap Life"],
-      "general-feat": ["Toughness"],
-      "skill-feat": ["Forager", "Recognize Spell", "Cat Fall", "Acrobatic Performer"],
-    },
-    preferredSkills: ["religion", "medicine", "diplomacy", "nature", "society", "athletics", "survival"],
-  },
-  {
-    id: "sorcerer-l1-l5-apply-rerun",
-    label: "Sorcerer level 1 through 5 apply/rerun",
-    className: "Sorcerer",
-    classSlug: "sorcerer",
-    keyAbility: "cha",
-    targetLevel: 5,
-    preferredSelections: {
-      "ancestry-feat": ["Cooperative Nature", "Haughty Obstinacy"],
-      "class-feat": ["Dangerous Sorcery", "Reach Spell", "Cantrip Expansion"],
-      "general-feat": ["Toughness"],
-      "skill-feat": ["Group Impression", "Cat Fall", "Forager", "Acrobatic Performer"],
-    },
-    preferredSkills: ["arcana", "deception", "diplomacy", "intimidation", "society", "religion", "stealth"],
-  },
 ];
 
 function usage() {

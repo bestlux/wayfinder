@@ -15,10 +15,7 @@ import type {
   SelectionRef,
   StepFilters,
 } from "./types.js";
-import {
-  matchesChoicePredicate as matchesChoicePredicateTree,
-  predicateIncludesString,
-} from "./wayfinder/rule-data.js";
+import { predicateIncludesString } from "./wayfinder/rule-data.js";
 
 interface PackEntryTraitsLike {
   rarity?: string;
@@ -448,7 +445,7 @@ function matchesFilters(
     return true;
   }
 
-  if (String(entry?.type ?? "") !== filters.itemType) {
+  if (!matchesItemType(entry, filters.itemType)) {
     return false;
   }
 
@@ -759,23 +756,20 @@ function matchesClassBranchContext(entry: PackIndexEntry, step: PendingStep, con
     return false;
   }
 
-  const category = stringOrNull(entry?.system?.category);
-  if (category && category !== "classfeature") {
-    return false;
-  }
-
   if (branch.classSlug && context.classSlug && branch.classSlug !== context.classSlug) {
-    return false;
-  }
-
-  const otherTags = normalizeTraitList(entry?.system?.traits?.otherTags);
-  if (!otherTags.includes(branch.optionTag)) {
     return false;
   }
 
   const traits = extractEntryTraits(entry);
   if (traits.includes("class-archetype")) {
     return false;
+  }
+
+  if (!Array.isArray(step.filters?.predicate) || step.filters.predicate.length === 0) {
+    const otherTags = normalizeTraitList(entry?.system?.traits?.otherTags);
+    if (!otherTags.includes(branch.optionTag)) {
+      return false;
+    }
   }
 
   if (branch.optionTag === "champion-cause") {
@@ -793,7 +787,7 @@ function matchesClassBranchContext(entry: PackIndexEntry, step: PendingStep, con
     }
   }
 
-  return !branch.classSlug || traits.length === 0 || traits.includes(branch.classSlug);
+  return true;
 }
 
 function hasUnsupportedEmbeddedChoiceSet(entry: PackIndexEntry, step: PendingStep): boolean {
@@ -802,7 +796,7 @@ function hasUnsupportedEmbeddedChoiceSet(entry: PackIndexEntry, step: PendingSte
   }
 
   if (step.kind === "class-branch") {
-    return true;
+    return !Array.isArray(step.filters?.predicate) || step.filters.predicate.length === 0;
   }
 
   if (step.kind !== "pick-item" || step.slotKind === "grant-choice") {
@@ -894,7 +888,7 @@ function matchesSpellChoiceContext(entry: PackIndexEntry, packId: string, step: 
 }
 
 function matchesChoicePredicate(predicate: ChoicePredicate, entry: PackIndexEntry, context: OptionContext): boolean {
-  return matchesChoicePredicateTree(predicate, (statement) => matchesChoicePredicateString(statement, entry, context));
+  return evaluateStaticPredicate(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
 }
 
 function matchesUuidAllowlist(entry: PackIndexEntry, packId: string, allowedUuids: string[]): boolean {
@@ -963,11 +957,7 @@ function matchesChoicePredicateString(statement: string, entry: PackIndexEntry, 
 
   if (resolved.startsWith("item:type:")) {
     const expectedType = resolved.slice("item:type:".length).trim().toLowerCase();
-    return (
-      String(entry?.type ?? "")
-        .trim()
-        .toLowerCase() === expectedType
-    );
+    return matchesItemType(entry, expectedType);
   }
 
   if (resolved.startsWith("item:category:")) {
@@ -980,6 +970,11 @@ function matchesChoicePredicateString(statement: string, entry: PackIndexEntry, 
   if (resolved.startsWith("item:trait:")) {
     const expectedTrait = resolved.slice("item:trait:".length).trim().toLowerCase();
     return itemTraits.includes(expectedTrait);
+  }
+
+  if (resolved.startsWith("item:tag:")) {
+    const expectedTag = resolved.slice("item:tag:".length).trim().toLowerCase();
+    return itemTraits.includes(expectedTag);
   }
 
   if (resolved.startsWith("item:")) {
@@ -998,6 +993,18 @@ function matchesStaticPredicate(predicate: ChoicePredicate, entry: PackIndexEntr
   return evaluateStaticPredicate(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
 }
 
+function matchesItemType(entry: PackIndexEntry, expectedType: string): boolean {
+  const normalizedExpected = expectedType.trim().toLowerCase();
+  const entryType = String(entry?.type ?? "")
+    .trim()
+    .toLowerCase();
+  if (normalizedExpected === "feature") {
+    return entryType === "feat" && resolveFeatType(entry)?.trim().toLowerCase() === "classfeature";
+  }
+
+  return entryType === normalizedExpected;
+}
+
 function evaluateStaticPredicate(
   predicate: ChoicePredicate,
   evaluateString: (statement: string) => boolean | "unknown"
@@ -1008,6 +1015,11 @@ function evaluateStaticPredicate(
 
   if (Array.isArray(predicate)) {
     return predicate.every((entry) => evaluateStaticPredicate(entry, evaluateString));
+  }
+
+  const comparison = evaluateComparisonPredicate(predicate, evaluateString);
+  if (comparison !== null) {
+    return comparison;
   }
 
   if (Array.isArray(predicate.or)) {
@@ -1023,6 +1035,32 @@ function evaluateStaticPredicate(
   }
 
   return true;
+}
+
+function evaluateComparisonPredicate(
+  predicate: Exclude<ChoicePredicate, string | ChoicePredicate[]>,
+  evaluateString: (statement: string) => boolean | "unknown"
+): boolean | null {
+  for (const [operator, comparator] of [
+    ["lt", predicate.lt],
+    ["lte", predicate.lte],
+    ["gt", predicate.gt],
+    ["gte", predicate.gte],
+  ] as const) {
+    if (!Array.isArray(comparator) || comparator.length !== 2) {
+      continue;
+    }
+
+    const [left, right] = comparator;
+    if (typeof left !== "string" || (typeof right !== "number" && typeof right !== "string")) {
+      return false;
+    }
+
+    const resolved = evaluateString(`${operator}:${left}:${right}`);
+    return resolved === true;
+  }
+
+  return null;
 }
 
 function evaluateStringOrTree(
@@ -1092,6 +1130,26 @@ function evaluateStaticPredicateString(
 
   if (trimmed.startsWith("item:")) {
     return matchesChoicePredicateString(statement, entry, context);
+  }
+
+  const comparisonMatch = /^(lt|lte|gt|gte):item:level:(\d+)$/.exec(trimmed);
+  if (comparisonMatch) {
+    const level = numericOrNull(entry?.system?.level?.value);
+    const expected = Number(comparisonMatch[2]);
+    if (level === null || !Number.isFinite(expected)) {
+      return false;
+    }
+
+    switch (comparisonMatch[1]) {
+      case "lt":
+        return level < expected;
+      case "lte":
+        return level <= expected;
+      case "gt":
+        return level > expected;
+      case "gte":
+        return level >= expected;
+    }
   }
 
   return "unknown";

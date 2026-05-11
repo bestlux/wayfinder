@@ -113,6 +113,23 @@ function collectDraftRollOptions(draft, steps) {
             }
             continue;
         }
+        if (step.kind === "class-choice") {
+            const rollOption = normalizeString(step.classChoice.rollOption ?? step.classChoice.flag);
+            const selection = normalizeString(draft.classChoices[step.slotId]);
+            if (rollOption && selection) {
+                options.push(`${rollOption}:${selection}`);
+            }
+            continue;
+        }
+        if (step.kind === "class-branch") {
+            const rollOption = normalizeString(step.branch?.rollOption);
+            const selection = draft.branchSelections[step.slotId];
+            const selectionSlug = normalizeSkillSlug(selection?.name);
+            if (rollOption && selectionSlug) {
+                options.push(`${rollOption}:${selectionSlug}`);
+            }
+            continue;
+        }
         if (step.kind !== "skill-training") {
             continue;
         }

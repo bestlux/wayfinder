@@ -373,6 +373,167 @@ describe("actor-updater selection application", () => {
     });
   });
 
+  it("preselects choices on static GrantItem children before PF2E creates them natively", async () => {
+    const draft = createEmptyDraft(1);
+    const step: PendingStep = {
+      id: "class-choice-initiate-benefit-wand-initiateBenefitWand-level-1",
+      level: 1,
+      kind: "class-choice",
+      slotKind: "class-choice",
+      title: "Wand damage type",
+      description: "",
+      required: true,
+      slotId: "class-choice-initiate-benefit-wand-initiateBenefitWand-level-1",
+      classChoice: {
+        slotId: "class-choice-initiate-benefit-wand-initiateBenefitWand-level-1",
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "Initiate Benefit (Wand)",
+        sourceUuid: "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)",
+        sourceName: "Initiate Benefit (Wand)",
+        sourceRuleIndex: 1,
+        flag: "initiateBenefitWand",
+        classSlug: "thaumaturge",
+        dependsOn: "class",
+        options: [{ value: "fire", label: "Fire", img: null, detail: null }],
+      },
+    };
+    draft.classChoices[step.slotId] = "fire";
+
+    const source = await createEmbeddedSource(
+      {
+        slotId: "class-branch-second-implement-level-5",
+        packId: "pf2e.classfeatures",
+        documentId: "wand",
+        uuid: "Compendium.pf2e.classfeatures.Item.wand",
+        itemType: "feat",
+        featType: "classfeature",
+        name: "Wand",
+        level: 1,
+      },
+      draft,
+      [step],
+      {
+        fetchSelectionDocument: async () => ({
+          toObject: () => ({
+            name: "Wand",
+            type: "feat",
+            system: {
+              category: "classfeature",
+              rules: [
+                {
+                  key: "GrantItem",
+                  uuid: "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)",
+                },
+              ],
+            },
+          }),
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      }
+    );
+
+    expect(source?.system?.rules).toEqual([]);
+    expect(source?.flags?.[MODULE_ID]?.manualStaticItemGrants).toEqual([
+      {
+        key: "initiateBenefitWand",
+        uuid: "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)",
+        choices: {
+          initiateBenefitWand: "fire",
+        },
+      },
+    ]);
+  });
+
+  it("preselects drafted class choices before creating the owning class feature item", async () => {
+    const draft = createEmptyDraft(1);
+    draft.classChoices["class-choice-armor-innovation-armorInnovation-level-1"] =
+      "Compendium.pf2e.equipment-srd.Item.Power Suit";
+    const steps: PendingStep[] = [
+      {
+        id: "class-choice-armor-innovation-armorInnovation-level-1",
+        level: 1,
+        kind: "class-choice",
+        slotKind: "class-choice",
+        title: "Armor Innovation",
+        description: "",
+        required: true,
+        slotId: "class-choice-armor-innovation-armorInnovation-level-1",
+        classChoice: {
+          slotId: "class-choice-armor-innovation-armorInnovation-level-1",
+          sourcePackId: "pf2e.classfeatures",
+          sourceDocumentId: "armor-innovation",
+          sourceUuid: "Compendium.pf2e.classfeatures.Item.armor-innovation",
+          sourceName: "Armor Innovation",
+          sourceRuleIndex: 0,
+          flag: "armorInnovation",
+          classSlug: "inventor",
+          dependsOn: "class",
+          options: [
+            {
+              value: "Compendium.pf2e.equipment-srd.Item.Power Suit",
+              label: "Power Suit",
+              img: null,
+              detail: null,
+            },
+          ],
+        },
+      },
+    ];
+
+    const source = await createEmbeddedSource(
+      {
+        slotId: "class-branch-innovation-level-1",
+        packId: "pf2e.classfeatures",
+        documentId: "armor-innovation",
+        uuid: "Compendium.pf2e.classfeatures.Item.armor-innovation",
+        itemType: "feat",
+        featType: "classfeature",
+        name: "Armor Innovation",
+        level: 1,
+      },
+      draft,
+      steps,
+      {
+        fetchSelectionDocument: async () => ({
+          toObject: () => ({
+            name: "Armor Innovation",
+            type: "feat",
+            system: {
+              category: "classfeature",
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "armorInnovation",
+                  choices: [
+                    {
+                      value: "Compendium.pf2e.equipment-srd.Item.Power Suit",
+                    },
+                  ],
+                },
+                {
+                  key: "GrantItem",
+                  uuid: "{item|flags.system.rulesSelections.armorInnovation}",
+                },
+              ],
+            },
+          }),
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      }
+    );
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "armorInnovation",
+      selection: "Compendium.pf2e.equipment-srd.Item.Power Suit",
+    });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({
+      armorInnovation: "Compendium.pf2e.equipment-srd.Item.Power Suit",
+    });
+  });
+
   it("preselects drafted singleton choices before creating the owning item", async () => {
     const draft = createEmptyDraft(1);
     draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "society";

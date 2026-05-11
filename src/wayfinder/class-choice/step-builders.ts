@@ -9,12 +9,14 @@ import { formatSlug } from "../formatting.js";
 import {
   buildChoiceRollOptions,
   type ClassFeatureSelectionSource,
-  discoverClassBranchMeta,
+  discoverClassBranchMetas,
   discoverClassChoiceMeta,
   discoverGrantedItemMeta,
   discoverSkillTrainingMeta,
   getClassFeatureSources,
 } from "./rule-discovery.js";
+
+export type { ClassFeatureSelectionSource } from "./rule-discovery.js";
 
 interface BuildClassFeatureStepArgs {
   effectiveClassDocument: unknown | null;
@@ -85,13 +87,23 @@ export async function buildClassChoiceStepsFromRules(args: BuildClassChoiceStepA
     return [];
   }
 
-  return buildClassChoiceStepsFromFeatures({
+  return buildClassChoiceStepsFromFeatureSources({
     classFeatures: context.classFeatures,
     classSlug: context.classSlug,
     effectiveDeityDocument: args.effectiveDeityDocument,
     extractSlug: args.extractSlug,
     localize: args.localize,
   });
+}
+
+export function buildClassChoiceStepsFromFeatureSources(args: {
+  classFeatures: ClassFeatureSelectionSource[];
+  classSlug: string | null;
+  effectiveDeityDocument: unknown | null;
+  extractSlug: (document: unknown) => string | null;
+  localize: (value: string) => string;
+}): ClassChoiceStep[] {
+  return buildClassChoiceStepsFromFeatures(args);
 }
 
 async function loadClassFeatureContext(
@@ -116,17 +128,16 @@ function buildClassBranchStepsFromFeatures(
   const steps: ClassBranchStep[] = [];
 
   for (const feature of classFeatures) {
-    const branch = discoverClassBranchMeta({
+    const branches = discoverClassBranchMetas({
       selectorDocument: feature.document,
       selectorSelection: feature.selection,
       classSlug,
       extractSlug,
     });
-    if (!branch) {
-      continue;
-    }
 
-    steps.push(createClassBranchStep(feature.level, branch));
+    for (const branch of branches) {
+      steps.push(createClassBranchStep(feature.level, branch));
+    }
   }
 
   return steps;

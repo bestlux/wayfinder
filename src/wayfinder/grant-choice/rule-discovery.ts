@@ -1,3 +1,4 @@
+import { OFFICIAL_PACKS } from "../../constants.js";
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import type { ChoicePredicate, GrantSelectionMeta, SelectionRef, StepFilters } from "../../types.js";
 import {
@@ -78,20 +79,57 @@ export function discoverGrantSelectionMeta(args: {
   function resolveChoiceFilters(rule: Record<string, unknown>): StepFilters | null {
     const choices = isRecord(rule.choices) && !Array.isArray(rule.choices) ? rule.choices : null;
     if (choices) {
-      const predicate = Array.isArray(choices.filter) ? choices.filter.filter(isChoicePredicate) : [];
-      const itemType = toNonEmptyString(choices.itemType) ?? inferItemTypeFromPredicate(predicate);
+      const predicate = Array.isArray(choices.filter)
+        ? choices.filter
+            .filter(isChoicePredicate)
+            .map((entry) => resolveParentGranterLevel(entry, documentFeatureLevel(sourceDocument)))
+        : [];
+      const rawItemType = toNonEmptyString(choices.itemType) ?? inferItemTypeFromPredicate(predicate) ?? "feat";
+      const itemType = rawItemType ? normalizeChoiceItemType(rawItemType) : null;
       if (!itemType || predicate.length === 0) {
         return null;
       }
 
+      const packIds = inferPackIds(itemType, predicate);
       return {
         itemType,
+        ...(packIds.length > 0 ? { packIds } : {}),
         predicate,
       };
     }
 
     return resolveStaticUuidChoiceFilters(rule);
   }
+}
+
+function resolveParentGranterLevel(predicate: ChoicePredicate, level: number): ChoicePredicate {
+  if (typeof predicate === "string") {
+    return predicate;
+  }
+
+  if (Array.isArray(predicate)) {
+    return predicate.map((entry) => resolveParentGranterLevel(entry, level));
+  }
+
+  const result = { ...predicate };
+  for (const key of ["lt", "lte", "gt", "gte"] as const) {
+    const comparator = result[key];
+    if (Array.isArray(comparator) && comparator[1] === "parent:granter:level") {
+      result[key] = [comparator[0], level];
+    }
+  }
+
+  if (Array.isArray(result.or)) {
+    result.or = result.or.map((entry) => resolveParentGranterLevel(entry, level));
+  }
+  if (Array.isArray(result.nor)) {
+    result.nor = result.nor.map((entry) => resolveParentGranterLevel(entry, level));
+  }
+  if (result.not) {
+    result.not = resolveParentGranterLevel(result.not, level);
+  }
+
+  return result;
 }
 
 function resolveStaticUuidChoiceFilters(rule: Record<string, unknown>): StepFilters | null {
@@ -202,6 +240,18 @@ function inferItemTypeFromPredicateEntry(predicate: ChoicePredicate): string | n
   }
 
   return inferItemTypeFromPredicate(branches);
+}
+
+function normalizeChoiceItemType(itemType: string): string {
+  return itemType === "feature" ? "feat" : itemType;
+}
+
+function inferPackIds(itemType: string, predicate: ChoicePredicate[]): string[] {
+  if (itemType === "feat" && predicateIncludesString(predicate, "item:type:feature")) {
+    return [...OFFICIAL_PACKS.classFeature];
+  }
+
+  return [];
 }
 
 function resolveGrantDependency(

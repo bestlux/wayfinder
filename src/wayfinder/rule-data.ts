@@ -64,6 +64,16 @@ export function isChoicePredicate(value: unknown): value is ChoicePredicate {
     return false;
   }
 
+  for (const key of ["lt", "lte", "gt", "gte"] as const) {
+    if (
+      key in value &&
+      value[key] !== undefined &&
+      (!Array.isArray(value[key]) || value[key].length !== 2 || typeof value[key][0] !== "string")
+    ) {
+      return false;
+    }
+  }
+
   return true;
 }
 

@@ -15,6 +15,7 @@
     "lint:fix": "eslint . --fix",
     "package": "npm run check && node tools/release/prepare-package.mjs",
     "package:artifact": "node tools/release/prepare-package.mjs",
+    "audit:classes": "node tools/foundry-smoke/audit-class-coverage.mjs",
     "smoke:foundry": "node tools/foundry-smoke/run-foundry-smoke.mjs",
     "check": "npm run format:check && npm run lint && npm run build && npm test && npm run check:strict",
     "test": "vitest run",

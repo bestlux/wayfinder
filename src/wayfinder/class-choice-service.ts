@@ -1,4 +1,5 @@
 import type { EffectiveBuildState } from "../build-state.js";
+import { slugifyName } from "../shared/slug.js";
 import type {
   ClassBranchMeta,
   ClassChoiceMeta,
@@ -9,12 +10,15 @@ import type {
 } from "../types.js";
 import {
   buildClassBranchStepsFromRules,
+  buildClassChoiceStepsFromFeatureSources,
   buildClassChoiceStepsFromRules,
   buildClassGrantedItemStepsFromRules,
   buildClassTrainingStepsFromRules,
+  type ClassFeatureSelectionSource,
 } from "./class-choice/step-builders.js";
 import { remainingCreationBoostChoices } from "./domain/boost-rules.js";
 import { createPickItemStep, type PickItemSlotKind, type StepFilters } from "./domain/step-types.js";
+import { matchesChoicePredicateList } from "./rule-data.js";
 import { discoverSourceSkillTrainingMeta, type SkillTrainingSourceContext } from "./skill-training/source-discovery.js";
 
 interface BuildClassTrainingStepsParams {
@@ -63,6 +67,7 @@ interface BuildClassChoiceStepsParams {
   draft: DraftState;
   effectiveClassDocument: unknown | null;
   effectiveDeityDocument: unknown | null;
+  additionalClassFeatures?: ClassFeatureSelectionSource[];
   targetLevel: number;
   fetchSelectionDocument: (selection: SelectionRef) => Promise<unknown | null>;
   extractSlug: (document: unknown) => string | null;
@@ -161,13 +166,85 @@ export async function buildClassSkillFeatSteps(params: BuildClassSkillFeatStepsP
 
 export async function buildClassBranchSteps(params: BuildClassBranchStepsParams): Promise<PendingStep[]> {
   const steps = await buildClassBranchStepsFromRules(params);
+  const classChoiceSteps = await buildClassChoiceStepsFromRules({
+    ...params,
+    effectiveDeityDocument: null,
+    localize: (value) => value,
+  });
+  const rollOptions = buildDraftClassBranchRollOptions(params.draft, steps, classChoiceSteps);
   return steps.filter(
     (step) =>
+      branchPredicateMatches(step.branch, rollOptions) &&
       !shouldSkipExistingStep(
         params.draft.branchSelections[step.slotId],
         params.readExistingBranchSelection(step.branch)
       )
   );
+}
+
+function branchPredicateMatches(branch: ClassBranchMeta, rollOptions: Set<string>): boolean {
+  if (!Array.isArray(branch.predicate) || branch.predicate.length === 0) {
+    return true;
+  }
+
+  return matchesChoicePredicateList(branch.predicate, (statement) => rollOptions.has(statement.toLowerCase()));
+}
+
+function buildDraftClassBranchRollOptions(
+  draft: DraftState,
+  branchSteps: PendingStep[],
+  classChoiceSteps: PendingStep[]
+): Set<string> {
+  const rollOptions = new Set<string>();
+  const classSelection = Object.values(draft.selections).find((selection) => selection.itemType === "class");
+  if (classSelection?.name) {
+    rollOptions.add(`class:${slugifyName(classSelection.name)}`);
+  }
+
+  for (const step of classChoiceSteps) {
+    if (step.kind !== "class-choice") {
+      continue;
+    }
+
+    const value = draft.classChoices[step.slotId];
+    if (typeof value !== "string" || value.length === 0) {
+      continue;
+    }
+
+    if (step.classChoice.rollOption) {
+      rollOptions.add(`${step.classChoice.rollOption}:${value}`.toLowerCase());
+    }
+    rollOptions.add(`${step.classChoice.flag}:${value}`.toLowerCase());
+  }
+
+  for (const [slotId, value] of Object.entries(draft.classChoices)) {
+    for (const key of possibleClassChoiceRollOptionKeys(slotId)) {
+      rollOptions.add(`${key}:${value}`.toLowerCase());
+    }
+  }
+
+  for (const step of branchSteps) {
+    if (step.kind !== "class-branch" || !step.branch?.rollOption) {
+      continue;
+    }
+
+    const selection = draft.branchSelections[step.slotId];
+    if (selection?.name) {
+      rollOptions.add(`${step.branch.rollOption}:${slugifyName(selection.name)}`.toLowerCase());
+    }
+  }
+
+  return rollOptions;
+}
+
+function possibleClassChoiceRollOptionKeys(slotId: string): string[] {
+  const match = /^class-choice-(.+)-level-\d+$/.exec(slotId);
+  if (!match?.[1]) {
+    return [];
+  }
+
+  const parts = match[1].split("-");
+  return parts.map((_, index) => parts.slice(index).join("-")).filter(Boolean);
 }
 
 export async function buildClassGrantedItemSteps(params: BuildClassGrantedItemStepsParams): Promise<PendingStep[]> {
@@ -183,14 +260,32 @@ export async function buildClassGrantedItemSteps(params: BuildClassGrantedItemSt
 }
 
 export async function buildClassChoiceSteps(params: BuildClassChoiceStepsParams): Promise<PendingStep[]> {
-  const steps = await buildClassChoiceStepsFromRules(params);
-  return steps.filter(
+  const classSlug = params.effectiveClassDocument ? params.extractSlug(params.effectiveClassDocument) : null;
+  const steps = [
+    ...(await buildClassChoiceStepsFromRules(params)),
+    ...buildClassChoiceStepsFromFeatureSources({
+      classFeatures: params.additionalClassFeatures ?? [],
+      classSlug,
+      effectiveDeityDocument: params.effectiveDeityDocument,
+      extractSlug: params.extractSlug,
+      localize: params.localize,
+    }),
+  ];
+  return dedupeStepsBySlotId(steps).filter(
     (step) =>
       !shouldSkipExistingStep(
         params.draft.classChoices[step.slotId],
         params.readExistingClassChoiceSelection(step.classChoice)
       )
   );
+}
+
+function dedupeStepsBySlotId<T extends PendingStep>(steps: T[]): T[] {
+  const bySlotId = new Map<string, T>();
+  for (const step of steps) {
+    bySlotId.set(step.slotId, step);
+  }
+  return Array.from(bySlotId.values());
 }
 
 function shouldSkipExistingStep(

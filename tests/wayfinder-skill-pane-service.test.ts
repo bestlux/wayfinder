@@ -299,6 +299,7 @@ describe("wayfinder skill pane service", () => {
 
     expect(pane.choiceSections[0]?.prompt).toBe("Choose a skill");
     expect(pane.choiceSections[0]?.options.map((option) => option.slug)).toEqual(["arcana", "occultism", "stealth"]);
+    expect(pane.additionalSkills).toEqual([]);
   });
 
   it("keeps conditional dedication choices narrow after selecting one preferred skill", async () => {

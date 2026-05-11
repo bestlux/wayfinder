@@ -25,9 +25,7 @@ export async function ensureSpellcastingEntry(
   const desiredSource = createSpellcastingEntrySource(spellChoice, actor, draft);
   const existing = findSpellcastingEntryForChoice(actor, spellChoice) as ActorItemLike | null;
   if (existing?.id) {
-    if (spellChoice.destination.type !== "prepared") {
-      await syncSpellcastingEntry(actor, existing, desiredSource);
-    }
+    await syncSpellcastingEntry(actor, existing, desiredSource);
     return existing;
   }
 

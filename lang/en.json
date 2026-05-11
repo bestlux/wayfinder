@@ -8,7 +8,7 @@
       "Subtitle": "Guided PF2E creation and level-up",
       "TargetLevel": "Target Level",
       "CurrentLevel": "Current Level",
-      "NoPending": "Nothing pending. This character is up to date.",
+      "NoPending": "No Wayfinder-guided steps are pending. PF2E-native or manual choices may still live on the character sheet.",
       "SaveDraft": "Save Draft",
       "Apply": "Apply Changes",
       "ApplyConfirmTitle": "Apply Wayfinder Changes",
@@ -28,6 +28,7 @@
     "Notifications": {
       "OwnerOnly": "Only the character's owner can use Wayfinder on this sheet.",
       "MissingSelections": "Finish the remaining steps before applying.",
+      "NoPendingSteps": "There are no Wayfinder-guided steps to apply. Check the PF2E sheet for any native or manual choices.",
       "DuplicateSelections": "You can't pick the same option twice in one draft.",
       "SavedDraft": "Wayfinder draft saved.",
       "ClearedDraft": "Wayfinder draft cleared.",

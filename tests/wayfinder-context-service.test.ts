@@ -104,6 +104,32 @@ describe("wayfinder context service", () => {
     expect(context.canGoPrevious).toBe(false);
     expect(context.canGoNext).toBe(false);
     expect(context.hasPendingSteps).toBe(true);
+    expect(context.canApplyDraft).toBe(true);
+  });
+
+  it("disables apply when there are no Wayfinder-guided steps", async () => {
+    const context = await buildWayfinderContext({
+      actorName: "Valeros",
+      currentLevel: 1,
+      targetLevel: 1,
+      steps: [],
+      activeStep: null,
+      activePane: null,
+      statusNote: null,
+      recentlyInvalidatedStepIds: new Set<string>(),
+      summaryDocuments: {
+        ancestry: null,
+        heritage: null,
+        background: null,
+        classDocument: null,
+        deity: null,
+      },
+      isStepComplete: async () => false,
+      getStepStatus: async () => "Missing",
+    });
+
+    expect(context.hasPendingSteps).toBe(false);
+    expect(context.canApplyDraft).toBe(false);
   });
 });
 

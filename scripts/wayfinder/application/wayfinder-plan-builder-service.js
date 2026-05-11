@@ -10,7 +10,7 @@ import { readExistingBranchSelection, readExistingClassChoiceSelection, readExis
 import { buildGrantChoiceSteps } from "../grant-choice-service.js";
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
-import { documentFeatureLevel, getDocumentRules, toNonEmptyString } from "../rule-data.js";
+import { documentFeatureLevel, getDocumentRules, matchesChoicePredicateList, toNonEmptyString } from "../rule-data.js";
 import { buildSingletonChoiceSteps } from "../singleton-choice-service.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
 import { asSpellChoiceClassDocument } from "../spell-choice/types.js";
@@ -132,7 +132,7 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             draft: planDraft,
             effectiveClassDocument: await args.resolveDocument("class"),
             effectiveDeityDocument: await args.resolveDocument("deity"),
-            additionalClassFeatures: await resolveSelectedClassFeatureChoiceSources(planDraft, deps),
+            additionalClassFeatures: await resolveSelectedClassFeatureChoiceSources(planDraft, args, deps),
             targetLevel,
             fetchSelectionDocument: deps.fetchSelectionDocument,
             extractSlug: deps.extractDocumentSlug,
@@ -151,7 +151,7 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
                     effectiveClassDocument,
                     effectiveDeityDocument,
                     effectiveSchoolDocument,
-                    effectiveClassFeatureDocuments: await resolveSpellChoiceClassFeatureDocuments(planDraft, deps),
+                    effectiveClassFeatureDocuments: await resolveSpellChoiceClassFeatureDocuments(planDraft, args, deps),
                     targetLevel,
                     extractSlug: deps.extractDocumentSlug,
                     readExistingSpellChoiceSelections: readExistingSelections,
@@ -268,7 +268,7 @@ async function resolveGrantChoiceSources(draft, args, deps) {
         ...readExistingSkillTrainingFeatSelections(args.actor).filter(isAncestryFeatSelection),
     ]);
     const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
-    const classFeatureSelections = dedupeSelectionsByUuid(Object.values(draft.branchSelections));
+    const classFeatureSelections = resolveSelectedClassFeatureSelections(draft, args.actor);
     const classFeatureDocuments = await Promise.all(classFeatureSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     return [
         ...sourceItemTypes.flatMap((sourceItemType, index) => {
@@ -319,25 +319,27 @@ function isGrantChoiceFeatSelection(selection) {
         selection.slotId.startsWith("grant-choice-") &&
         !isGrantChoiceClassFeatureSelection(selection));
 }
-async function resolveSpellChoiceClassFeatureDocuments(draft, deps) {
-    const selections = dedupeSelectionsByUuid([
-        ...Object.values(draft.branchSelections),
-        ...Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection)),
-    ]);
+async function resolveSpellChoiceClassFeatureDocuments(draft, args, deps) {
+    const selections = resolveSelectedClassFeatureSelections(draft, args.actor);
     const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
     return documents.filter((document) => document !== null);
 }
-async function resolveSelectedClassFeatureChoiceSources(draft, deps) {
-    const directSelections = dedupeSelectionsByUuid([
-        ...Object.values(draft.branchSelections),
-        ...Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection)),
-    ]);
+async function resolveSelectedClassFeatureChoiceSources(draft, args, deps) {
+    const effectiveClassDocument = await args.resolveDocument("class");
+    const classSlug = effectiveClassDocument ? deps.extractDocumentSlug(effectiveClassDocument) : null;
+    const directSelections = resolveSelectedClassFeatureSelections(draft, args.actor);
     const directDocuments = await Promise.all(directSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     const directSources = directSelections.flatMap((selection, index) => {
         const document = directDocuments[index];
         return document ? [{ level: documentFeatureLevel(document), selection, document }] : [];
     });
-    const staticGrantSelections = dedupeSelectionsByUuid(directSources.flatMap((source) => staticClassFeatureGrantSelections(source.document)));
+    const staticGrantSelections = dedupeSelectionsByUuid(directSources.flatMap((source) => staticClassFeatureGrantSelections({
+        actor: args.actor,
+        classSlug,
+        draft,
+        extractSlug: deps.extractDocumentSlug,
+        source,
+    })));
     const staticGrantDocuments = await Promise.all(staticGrantSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     const staticGrantSources = staticGrantSelections.flatMap((selection, index) => {
         const document = staticGrantDocuments[index];
@@ -345,9 +347,21 @@ async function resolveSelectedClassFeatureChoiceSources(draft, deps) {
     });
     return dedupeClassFeatureSourcesByUuid([...directSources, ...staticGrantSources]);
 }
-function staticClassFeatureGrantSelections(document) {
-    return getDocumentRules(document).flatMap((rule) => {
+function resolveSelectedClassFeatureSelections(draft, actor) {
+    return dedupeSelectionsByUuid([
+        ...Object.values(draft.branchSelections),
+        ...Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection)),
+        ...readExistingClassFeatureSelections(actor),
+    ]);
+}
+function staticClassFeatureGrantSelections(args) {
+    const rollOptions = buildClassFeatureRollOptions(args);
+    return getDocumentRules(args.source.document).flatMap((rule) => {
         if (rule.key !== "GrantItem") {
+            return [];
+        }
+        const predicate = Array.isArray(rule.predicate) ? rule.predicate : [];
+        if (predicate.length > 0 && !matchesChoicePredicateList(predicate, (statement) => rollOptions.has(statement))) {
             return [];
         }
         const uuid = toNonEmptyString(rule.uuid);
@@ -369,6 +383,70 @@ function staticClassFeatureGrantSelections(document) {
         ];
     });
 }
+function buildClassFeatureRollOptions(args) {
+    const sourceSlug = args.extractSlug(args.source.document) ?? args.source.selection.documentId;
+    const sourceLevel = documentFeatureLevel(args.source.document);
+    const existingRulesSelections = readExistingRulesSelections(args.actor, args.source.selection.uuid);
+    const rollOptions = new Set();
+    if (args.classSlug) {
+        rollOptions.add(`class:${args.classSlug}`.toLowerCase());
+    }
+    for (const rule of getDocumentRules(args.source.document)) {
+        if (rule.key !== "ChoiceSet") {
+            continue;
+        }
+        const choiceKey = classChoiceKeyForRule(rule, sourceSlug);
+        if (!choiceKey) {
+            continue;
+        }
+        const slotId = `class-choice-${sourceSlug}-${choiceKey}-level-${sourceLevel}`;
+        const ruleFlag = toNonEmptyString(rule.flag);
+        const selected = toNonEmptyString(args.draft.classChoices[slotId]) ??
+            toNonEmptyString(existingRulesSelections[choiceKey]) ??
+            (ruleFlag ? toNonEmptyString(existingRulesSelections[ruleFlag]) : null);
+        if (!selected) {
+            continue;
+        }
+        const rollOption = toNonEmptyString(rule.rollOption);
+        if (rollOption) {
+            rollOptions.add(`${rollOption}:${selected}`.toLowerCase());
+        }
+        rollOptions.add(`${choiceKey}:${selected}`.toLowerCase());
+        if (ruleFlag && ruleFlag !== choiceKey) {
+            rollOptions.add(`${ruleFlag}:${selected}`.toLowerCase());
+        }
+    }
+    return rollOptions;
+}
+function classChoiceKeyForRule(rule, sourceSlug) {
+    const flag = toNonEmptyString(rule.flag) ?? toNonEmptyString(rule.slug);
+    return flag ? sanitizeChoiceFlag(flag) : toDromedaryFlag(sourceSlug);
+}
+function sanitizeChoiceFlag(value) {
+    return value.replace(/[^-a-z0-9]/gi, "");
+}
+function toDromedaryFlag(value) {
+    const parts = value
+        .trim()
+        .split(/[^a-z0-9]+/i)
+        .filter(Boolean);
+    if (parts.length === 0) {
+        return null;
+    }
+    return parts
+        .map((part, index) => {
+        const lower = part.toLowerCase();
+        return index === 0 ? lower : `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+    })
+        .join("");
+}
+function readExistingRulesSelections(actor, sourceUuid) {
+    const item = listActorItems(actor).find((entry) => sourceIdOf(entry) === sourceUuid);
+    return {
+        ...(item?.flags?.system?.rulesSelections ?? {}),
+        ...(item?.flags?.pf2e?.rulesSelections ?? {}),
+    };
+}
 function dedupeClassFeatureSourcesByUuid(sources) {
     const byUuid = new Map();
     for (const source of sources) {
@@ -384,6 +462,40 @@ function isSkillTrainingFeatSelection(selection) {
 }
 function isSingletonChoiceFeatSelection(selection) {
     return isGrantChoiceFeatSelection(selection);
+}
+function readExistingClassFeatureSelections(actor) {
+    return listActorItems(actor)
+        .map((item) => selectionFromClassFeatureItem(item))
+        .filter((selection) => selection !== null);
+}
+function selectionFromClassFeatureItem(item) {
+    const typedItem = item;
+    if (!typedItem || typedItem.type !== "feat") {
+        return null;
+    }
+    const featType = typedItem.system?.featType?.value ?? typedItem.system?.category;
+    if (featType !== "classfeature") {
+        return null;
+    }
+    const sourceId = sourceIdOf(typedItem);
+    const parsed = sourceId ? parseCompendiumItemUuid(sourceId) : null;
+    if (!sourceId || !parsed) {
+        return null;
+    }
+    const existingSlotId = typeof typedItem.flags?.[MODULE_ID]?.slotId === "string" && typedItem.flags[MODULE_ID].slotId.length > 0
+        ? typedItem.flags[MODULE_ID].slotId
+        : null;
+    const level = toPositiveInteger(typedItem.system?.level?.value) ?? 1;
+    return {
+        slotId: existingSlotId ?? `existing-classfeature-${parsed.documentId}`,
+        packId: parsed.packId,
+        documentId: parsed.documentId,
+        uuid: sourceId,
+        itemType: "feat",
+        featType: "classfeature",
+        name: typeof typedItem.name === "string" ? typedItem.name : parsed.documentId,
+        level,
+    };
 }
 async function resolveSpellChoiceFeatSources(draft, args, deps) {
     const featSelections = dedupeSelectionsByUuid([

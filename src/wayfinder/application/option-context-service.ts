@@ -1,3 +1,4 @@
+import { sourceIdOf } from "../../shared/source-id.js";
 import type { DraftState, OptionContext, PendingStep, SelectionRef } from "../../types.js";
 
 type SingletonItemType = "ancestry" | "heritage" | "background" | "class" | "deity";
@@ -175,6 +176,7 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
   const ancestrySlug = deps.extractDocumentSlug(ancestryDocument);
   const selectedUuidsBySlotId = buildSelectedUuidsBySlotId(deps.draft);
   const actorItems = deps.listActorItems();
+  const actorSourceIds = buildActorSourceIds(actorItems);
   const rollOptions = buildActiveRollOptions(deps.draft, deps.steps ?? [], actorItems);
   const skillRanks = buildProjectedSkillRanks(deps.skillRanks, deps.draft, deps.steps ?? []);
   return {
@@ -191,9 +193,20 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
     }),
     hasDedicationFeat,
     ...(Object.keys(selectedUuidsBySlotId).length > 0 ? { selectedUuidsBySlotId } : {}),
+    ...(actorSourceIds.length > 0 ? { actorSourceIds } : {}),
     ...(rollOptions.length > 0 ? { rollOptions } : {}),
     ...(skillRanks ? { skillRanks } : {}),
   };
+}
+
+function buildActorSourceIds(actorItems: unknown[]): string[] {
+  return Array.from(
+    new Set(
+      actorItems
+        .map((item) => sourceIdOf(item))
+        .filter((sourceId): sourceId is string => typeof sourceId === "string" && sourceId.length > 0)
+    )
+  );
 }
 
 function buildActiveRollOptions(draft: DraftState, steps: PendingStep[], actorItems: unknown[]): string[] {

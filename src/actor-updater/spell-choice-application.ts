@@ -1,6 +1,12 @@
 import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
-import type { ActorItemLike, ActorLike, PreparedSlotLike, SpellSlotGroupLike } from "../shared/actor-model.js";
+import type {
+  ActorItemLike,
+  ActorLike,
+  EmbeddedItemSource,
+  PreparedSlotLike,
+  SpellSlotGroupLike,
+} from "../shared/actor-model.js";
 import { cloneData } from "../shared/cloning.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import type { DraftState, PendingStep, SelectionRef, SpellChoiceMeta } from "../types.js";
@@ -33,6 +39,8 @@ export async function applySpellChoiceDraft(actor: ActorLike, draft: DraftState,
         continue;
       }
 
+      stampSpellSourceFlags(source, selection);
+
       source.system ??= {};
       source.system.location ??= {};
       if (typeof source.system.location === "object" && source.system.location !== null) {
@@ -52,6 +60,19 @@ export async function applySpellChoiceDraft(actor: ActorLike, draft: DraftState,
       await syncPreparedSpellChoiceSelections(actor, entry.id, step.spellChoice, slotId, selections);
     }
   }
+}
+
+function stampSpellSourceFlags(source: EmbeddedItemSource, selection: SelectionRef): void {
+  source.flags ??= {};
+  source.flags.core = {
+    ...(source.flags.core ?? {}),
+    sourceId: selection.uuid,
+  };
+  source.flags[MODULE_ID] = {
+    ...(source.flags[MODULE_ID] ?? {}),
+    importedBy: MODULE_ID,
+    slotId: selection.slotId,
+  };
 }
 
 async function reconcileSpellChoiceSlot(actor: ActorLike, slotId: string, selections: SelectionRef[]): Promise<void> {

@@ -429,6 +429,397 @@ describe("wayfinder plan builder service", () => {
 
     expect(found).toEqual(stepToFind);
   });
+
+  it("replays actor-owned class-feature choices into class and spell planning", async () => {
+    const actor = {
+      items: {
+        contents: [
+          {
+            type: "feat",
+            name: "Demonic Bloodline",
+            sourceId: "Compendium.pf2e.classfeatures.Item.demonic-bloodline",
+            flags: {
+              core: {
+                sourceId: "Compendium.pf2e.classfeatures.Item.demonic-bloodline",
+              },
+              [MODULE_ID]: {
+                slotId: "class-branch-bloodline-level-1",
+              },
+            },
+            system: {
+              category: "classfeature",
+              level: { value: 1 },
+            },
+          },
+        ],
+      },
+    } as unknown as BuildStateActor;
+    const draft = createEmptyDraft(1);
+    draft.selections.class = selection("class-level-1", "class", "sorcerer", "Sorcerer", null);
+    const snapshot: ActorSnapshot = {
+      actorId: "actor-branch-caster",
+      level: 1,
+      isBlank: false,
+      singletonSlots: {
+        ancestry: false,
+        heritage: false,
+        background: false,
+        class: true,
+        deity: false,
+      },
+      featCounts: { ancestry: 0, class: 0, archetype: 0, skill: 0, general: 0 },
+      fulfilledStepIds: [],
+      sourceIds: [],
+      namesByType: {},
+      skillRanks: {},
+    };
+    const bloodlineDocument = {
+      name: "Demonic Bloodline",
+      system: {
+        level: { value: 1 },
+        traits: { otherTags: ["sorcerer-bloodline"] },
+      },
+    };
+    const buildClassChoiceSteps = vi.fn(async () => []);
+    const buildSpellChoiceSteps = vi.fn(async () => []);
+
+    await buildWayfinderAppPlan(
+      {
+        actor,
+        snapshot,
+        draft,
+        resolveDocument: async (itemType) => (itemType === "class" ? { name: "Sorcerer", slug: "sorcerer" } : null),
+        resolveArcaneSchoolDocument: async () => null,
+        localize: (value) => value,
+      },
+      {
+        buildWayfinderPlan: async (receivedSnapshot, receivedDraft, deps) => {
+          await deps.buildClassChoiceSteps(receivedSnapshot, receivedDraft, 5);
+          await deps.buildSpellChoiceSteps(receivedSnapshot, receivedDraft, 5);
+          return { recommendedTargetLevel: 5, targetLevel: 5, steps: [] };
+        },
+        buildClassFeatSteps: async () => [],
+        buildClassSkillFeatSteps: async () => [],
+        buildClassTrainingSteps: async () => [],
+        buildGrantChoiceSteps: async () => [],
+        buildSingletonChoiceSteps: async () => [],
+        buildLanguageChoiceSteps: async () => [],
+        buildClassBranchSteps: async () => [],
+        buildClassGrantedItemSteps: async () => [],
+        buildClassChoiceSteps,
+        buildSpellChoiceSteps,
+        findDraftSelectionByType: (_draft, itemType) => (itemType === "class" ? draft.selections.class : null),
+        readExistingSingletonSourceSelection: () => null,
+        readExistingBranchSelection: () => null,
+        readExistingGrantedSelection: () => null,
+        readExistingLanguageSelections: () => [],
+        readExistingClassChoiceSelection: () => null,
+        readExistingSingletonChoiceSelection: () => null,
+        readExistingSpellChoiceSelections: () => [],
+        fetchSelectionDocument: async (selectionRef) =>
+          selectionRef.uuid === "Compendium.pf2e.classfeatures.Item.demonic-bloodline"
+            ? bloodlineDocument
+            : { fetched: selectionRef.documentId },
+        extractDocumentSlug: (document) =>
+          document && typeof document === "object" && "slug" in document && typeof document.slug === "string"
+            ? document.slug
+            : null,
+      }
+    );
+
+    expect(buildClassChoiceSteps).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additionalClassFeatures: [
+          {
+            level: 1,
+            selection: expect.objectContaining({
+              slotId: "class-branch-bloodline-level-1",
+              uuid: "Compendium.pf2e.classfeatures.Item.demonic-bloodline",
+              featType: "classfeature",
+            }),
+            document: bloodlineDocument,
+          },
+        ],
+      })
+    );
+    expect(buildSpellChoiceSteps).toHaveBeenCalledWith(
+      expect.objectContaining({
+        effectiveClassFeatureDocuments: [bloodlineDocument],
+      })
+    );
+  });
+
+  it("honors predicates on static class-feature grants from existing actor features", async () => {
+    const run = async (thresholdSelection: "fork" | "expand") => {
+      const actor = {
+        items: {
+          contents: [
+            {
+              type: "feat",
+              name: "Gate's Threshold",
+              sourceId: "Compendium.pf2e.classfeatures.Item.gates-threshold",
+              flags: {
+                core: {
+                  sourceId: "Compendium.pf2e.classfeatures.Item.gates-threshold",
+                },
+                pf2e: {
+                  rulesSelections: {
+                    gatesThreshold: thresholdSelection,
+                  },
+                },
+                [MODULE_ID]: {
+                  slotId: "class-choice-gates-threshold-gatesThreshold-level-5",
+                },
+              },
+              system: {
+                category: "classfeature",
+                level: { value: 5 },
+              },
+            },
+          ],
+        },
+      } as unknown as BuildStateActor;
+      const draft = createEmptyDraft(5);
+      draft.selections.class = selection("class-level-1", "class", "kineticist", "Kineticist", null);
+      const snapshot: ActorSnapshot = {
+        actorId: `actor-kineticist-${thresholdSelection}`,
+        level: 5,
+        isBlank: false,
+        singletonSlots: {
+          ancestry: true,
+          heritage: true,
+          background: true,
+          class: true,
+          deity: false,
+        },
+        featCounts: { ancestry: 0, class: 0, archetype: 0, skill: 0, general: 0 },
+        fulfilledStepIds: [],
+        sourceIds: [],
+        namesByType: {},
+        skillRanks: {},
+      };
+      const thresholdDocument = {
+        name: "Gate's Threshold",
+        slug: "gates-threshold",
+        system: {
+          level: { value: 5 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              rollOption: "kinetic-gate:first-threshold",
+              choices: [
+                { value: "expand", label: "Expand the Portal" },
+                { value: "fork", label: "Fork the Path" },
+              ],
+            },
+            {
+              key: "GrantItem",
+              predicate: ["kinetic-gate:first-threshold:expand"],
+              uuid: "Compendium.pf2e.classfeatures.Item.gate-junction",
+            },
+          ],
+        },
+      };
+      const gateJunctionDocument = {
+        name: "Gate Junction",
+        slug: "gate-junction",
+        system: {
+          level: { value: 5 },
+          rules: [{ key: "ChoiceSet", flag: "junction", choices: [{ value: "aura", label: "Aura" }] }],
+        },
+      };
+      let additionalClassFeatureUuids: string[] = [];
+      const buildClassChoiceSteps = vi.fn(
+        async (params: { additionalClassFeatures?: Array<{ selection: SelectionRef }> }) => {
+          additionalClassFeatureUuids = (params.additionalClassFeatures ?? []).map((source) => source.selection.uuid);
+          return [] as PendingStep[];
+        }
+      );
+
+      await buildWayfinderAppPlan(
+        {
+          actor,
+          snapshot,
+          draft,
+          resolveDocument: async (itemType) =>
+            itemType === "class" ? { name: "Kineticist", slug: "kineticist" } : null,
+          resolveArcaneSchoolDocument: async () => null,
+          localize: (value) => value,
+        },
+        {
+          buildWayfinderPlan: async (receivedSnapshot, receivedDraft, deps) => {
+            await deps.buildClassChoiceSteps(receivedSnapshot, receivedDraft, 5);
+            return { recommendedTargetLevel: 5, targetLevel: 5, steps: [] };
+          },
+          buildClassFeatSteps: async () => [],
+          buildClassSkillFeatSteps: async () => [],
+          buildClassTrainingSteps: async () => [],
+          buildGrantChoiceSteps: async () => [],
+          buildSingletonChoiceSteps: async () => [],
+          buildLanguageChoiceSteps: async () => [],
+          buildClassBranchSteps: async () => [],
+          buildClassGrantedItemSteps: async () => [],
+          buildClassChoiceSteps,
+          buildSpellChoiceSteps: async () => [],
+          findDraftSelectionByType: (_draft, itemType) => (itemType === "class" ? draft.selections.class : null),
+          readExistingSingletonSourceSelection: () => null,
+          readExistingBranchSelection: () => null,
+          readExistingGrantedSelection: () => null,
+          readExistingLanguageSelections: () => [],
+          readExistingClassChoiceSelection: () => null,
+          readExistingSingletonChoiceSelection: () => null,
+          readExistingSpellChoiceSelections: () => [],
+          fetchSelectionDocument: async (selectionRef) => {
+            if (selectionRef.uuid === "Compendium.pf2e.classfeatures.Item.gates-threshold") {
+              return thresholdDocument;
+            }
+            if (selectionRef.uuid === "Compendium.pf2e.classfeatures.Item.gate-junction") {
+              return gateJunctionDocument;
+            }
+            return { fetched: selectionRef.documentId };
+          },
+          extractDocumentSlug: (document) =>
+            document && typeof document === "object" && "slug" in document && typeof document.slug === "string"
+              ? document.slug
+              : null,
+        }
+      );
+
+      return additionalClassFeatureUuids;
+    };
+
+    await expect(run("fork")).resolves.toEqual(["Compendium.pf2e.classfeatures.Item.gates-threshold"]);
+    await expect(run("expand")).resolves.toEqual([
+      "Compendium.pf2e.classfeatures.Item.gates-threshold",
+      "Compendium.pf2e.classfeatures.Item.gate-junction",
+    ]);
+  });
+
+  it("includes class-gated static class-feature grants for selected branches", async () => {
+    const run = async (classSlug: "fighter" | "thaumaturge") => {
+      const actor = { items: { contents: [] } } as unknown as BuildStateActor;
+      const draft = createEmptyDraft(5);
+      draft.selections.class = selection("class-level-1", "class", classSlug, classSlug, null);
+      draft.branchSelections["class-branch-second-implement-level-5"] = {
+        slotId: "class-branch-second-implement-level-5",
+        packId: "pf2e.classfeatures",
+        documentId: "wand",
+        uuid: "Compendium.pf2e.classfeatures.Item.Wand",
+        itemType: "feat",
+        featType: "classfeature",
+        name: "Wand",
+        level: 5,
+      };
+      const snapshot: ActorSnapshot = {
+        actorId: `actor-${classSlug}-wand`,
+        level: 5,
+        isBlank: false,
+        singletonSlots: {
+          ancestry: true,
+          heritage: true,
+          background: true,
+          class: true,
+          deity: false,
+        },
+        featCounts: { ancestry: 0, class: 0, archetype: 0, skill: 0, general: 0 },
+        fulfilledStepIds: [],
+        sourceIds: [],
+        namesByType: {},
+        skillRanks: {},
+      };
+      const wandDocument = {
+        name: "Wand",
+        slug: "wand",
+        system: {
+          level: { value: 5 },
+          rules: [
+            {
+              key: "GrantItem",
+              predicate: ["class:thaumaturge"],
+              uuid: "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)",
+            },
+          ],
+        },
+      };
+      const initiateBenefitDocument = {
+        name: "Initiate Benefit (Wand)",
+        slug: "initiate-benefit-wand",
+        system: {
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              rollOption: "wand-initiate-damage-type",
+              choices: [{ value: "cold", label: "Cold" }],
+            },
+          ],
+        },
+      };
+      let additionalClassFeatureUuids: string[] = [];
+      const buildClassChoiceSteps = vi.fn(
+        async (params: { additionalClassFeatures?: Array<{ selection: SelectionRef }> }) => {
+          additionalClassFeatureUuids = (params.additionalClassFeatures ?? []).map((source) => source.selection.uuid);
+          return [] as PendingStep[];
+        }
+      );
+
+      await buildWayfinderAppPlan(
+        {
+          actor,
+          snapshot,
+          draft,
+          resolveDocument: async (itemType) => (itemType === "class" ? { name: classSlug, slug: classSlug } : null),
+          resolveArcaneSchoolDocument: async () => null,
+          localize: (value) => value,
+        },
+        {
+          buildWayfinderPlan: async (receivedSnapshot, receivedDraft, deps) => {
+            await deps.buildClassChoiceSteps(receivedSnapshot, receivedDraft, 5);
+            return { recommendedTargetLevel: 5, targetLevel: 5, steps: [] };
+          },
+          buildClassFeatSteps: async () => [],
+          buildClassSkillFeatSteps: async () => [],
+          buildClassTrainingSteps: async () => [],
+          buildGrantChoiceSteps: async () => [],
+          buildSingletonChoiceSteps: async () => [],
+          buildLanguageChoiceSteps: async () => [],
+          buildClassBranchSteps: async () => [],
+          buildClassGrantedItemSteps: async () => [],
+          buildClassChoiceSteps,
+          buildSpellChoiceSteps: async () => [],
+          findDraftSelectionByType: (_draft, itemType) => (itemType === "class" ? draft.selections.class : null),
+          readExistingSingletonSourceSelection: () => null,
+          readExistingBranchSelection: () => null,
+          readExistingGrantedSelection: () => null,
+          readExistingLanguageSelections: () => [],
+          readExistingClassChoiceSelection: () => null,
+          readExistingSingletonChoiceSelection: () => null,
+          readExistingSpellChoiceSelections: () => [],
+          fetchSelectionDocument: async (selectionRef) => {
+            if (selectionRef.uuid === "Compendium.pf2e.classfeatures.Item.Wand") {
+              return wandDocument;
+            }
+            if (selectionRef.uuid === "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)") {
+              return initiateBenefitDocument;
+            }
+            return { fetched: selectionRef.documentId };
+          },
+          extractDocumentSlug: (document) =>
+            document && typeof document === "object" && "slug" in document && typeof document.slug === "string"
+              ? document.slug
+              : null,
+        }
+      );
+
+      return additionalClassFeatureUuids;
+    };
+
+    await expect(run("fighter")).resolves.toEqual(["Compendium.pf2e.classfeatures.Item.Wand"]);
+    await expect(run("thaumaturge")).resolves.toEqual([
+      "Compendium.pf2e.classfeatures.Item.Wand",
+      "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)",
+    ]);
+  });
 });
 
 function selection(

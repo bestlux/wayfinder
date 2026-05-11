@@ -36,6 +36,32 @@ describe("wayfinder draft lifecycle service", () => {
     expect(updateActor).not.toHaveBeenCalled();
   });
 
+  it("refuses to apply when there are no Wayfinder-guided steps", async () => {
+    const draft = createEmptyDraft(1);
+    const confirmApply = vi.fn(() => true);
+    const applyDraftToActor = vi.fn(async () => undefined);
+    const updateActor = vi.fn(async () => undefined);
+
+    const result = await applyDraftLifecycle({
+      actorName: "Kyra",
+      currentLevel: 1,
+      draft,
+      steps: [],
+      isStepComplete: async () => true,
+      confirmApply,
+      applyDraftToActor,
+      updateActor,
+    });
+
+    expect(result).toEqual({
+      kind: "warning",
+      warning: "no-pending-steps",
+    });
+    expect(confirmApply).not.toHaveBeenCalled();
+    expect(applyDraftToActor).not.toHaveBeenCalled();
+    expect(updateActor).not.toHaveBeenCalled();
+  });
+
   it("cancels the apply flow when confirmation is declined", async () => {
     const draft = createEmptyDraft(4);
     const confirmApply = vi.fn(() => false);
@@ -151,6 +177,32 @@ describe("wayfinder draft lifecycle service", () => {
     expect(result.kind).toBe("applied");
     expect(confirmApply).toHaveBeenCalledWith("Apply 1 Wayfinder step(s) to Ezren?");
     expect(order).toEqual(["confirm", "apply", "update"]);
+  });
+
+  it("preserves previously completed step ids during incremental applies", async () => {
+    const draft = createEmptyDraft(5);
+    const updateActor = vi.fn(async () => undefined);
+
+    await applyDraftLifecycle({
+      actorName: "Seelah",
+      currentLevel: 1,
+      draft,
+      existingCompletedStepIds: ["ancestry-level-1", "class-level-1"],
+      steps: [step("class-feat-level-2"), step("class-feat-level-2")],
+      isStepComplete: async () => true,
+      confirmApply: () => true,
+      applyDraftToActor: async () => undefined,
+      updateActor,
+      now: () => "2026-04-19T21:30:00.000Z",
+    });
+
+    expect(updateActor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        [STATE_FLAG]: expect.objectContaining({
+          completedStepIds: ["ancestry-level-1", "class-level-1", "class-feat-level-2"],
+        }),
+      })
+    );
   });
 
   it("builds the persisted draft patch and cleared draft state", () => {

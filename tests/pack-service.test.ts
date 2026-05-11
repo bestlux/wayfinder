@@ -424,6 +424,28 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Community Knowledge"]);
   });
 
+  it("hides actor-owned choices during existing-character reruns", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("reactive-shield", "Reactive Shield", "class", ["fighter"]),
+      featEntry("intimidating-strike", "Intimidating Strike", "class", ["fighter"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("class-feat", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 2,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "fighter",
+        actorSourceIds: ["Compendium.pf2e.feats-srd.Item.reactive-shield"],
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Intimidating Strike"]);
+  });
+
   it("keeps the current draft slot's selected choice visible", async () => {
     setPack("pf2e.feats-srd", [featEntry("puncturing-horn", "Puncturing Horn", "ancestry", ["kashrishi"])]);
 
@@ -1267,6 +1289,20 @@ describe("pack-service dependency filtering", () => {
         true
       )?.title
     ).toBe("No choices match current filters");
+
+    expect(
+      getPickerInfoState(
+        makeStep("skill-feat", {
+          itemType: "feat",
+          featTypes: ["skill"],
+          maxLevel: 1,
+        }),
+        EMPTY_CONTEXT,
+        0,
+        0,
+        ""
+      )?.message
+    ).toContain("Wayfinder hides direct options that require unsupported follow-up choices");
   });
 
   it("blocks deity-dependent class branches until a deity is chosen", () => {

@@ -42,7 +42,10 @@ interface ChooseSelectionOptionDependencies {
 }
 
 interface SelectClassChoiceDependencies {
+  invalidateSelectionsByPrefix: (prefix: string) => string[];
   invalidateBranchSelectionsByDependency: (dependency: "class" | "deity") => Promise<string[]>;
+  invalidateGrantSelectionsBySource: (sourceItemType: "classfeature") => Promise<string[]>;
+  invalidateSpellChoicesByDependency: (dependency: "class-branch") => Promise<string[]>;
 }
 
 interface SelectSingletonChoiceDependencies {
@@ -331,13 +334,7 @@ export async function selectClassChoiceValue(
   const wasSelected = state.draft.classChoices[stepId] === value;
   if (wasSelected) {
     delete state.draft.classChoices[stepId];
-    let statusNote: string | null = null;
-    if (invalidatesDeityBranches) {
-      const invalidated = await deps.invalidateBranchSelectionsByDependency("deity");
-      if (invalidated.length > 0) {
-        statusNote = "Sanctification changed. Wayfinder marked dependent class paths for review.";
-      }
-    }
+    const statusNote = await invalidateClassChoiceDependents(step ?? null, deps);
     state.recentlyInvalidatedStepIds.delete(stepId);
     return changedResult({ statusNote, shouldRender: true });
   }
@@ -345,14 +342,38 @@ export async function selectClassChoiceValue(
   const previousValue = state.draft.classChoices[stepId] ?? null;
   state.draft.classChoices[stepId] = value;
   let statusNote: string | null = null;
-  if (invalidatesDeityBranches && previousValue !== value) {
-    const invalidated = await deps.invalidateBranchSelectionsByDependency("deity");
-    if (invalidated.length > 0) {
-      statusNote = "Sanctification changed. Wayfinder marked dependent class paths for review.";
-    }
+  if (previousValue !== null && previousValue !== value) {
+    statusNote = await invalidateClassChoiceDependents(step ?? null, deps);
+  } else if (invalidatesDeityBranches && previousValue !== value) {
+    statusNote = await invalidateClassChoiceDependents(step ?? null, deps);
   }
   state.recentlyInvalidatedStepIds.delete(stepId);
   return changedResult({ statusNote, shouldAdvance: true });
+}
+
+async function invalidateClassChoiceDependents(
+  step: PendingStep | null,
+  deps: SelectClassChoiceDependencies
+): Promise<string | null> {
+  const branchInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch);
+  const deityBranchInvalidated =
+    step?.classChoice?.flag === "sanctification" || step?.classChoice?.dependsOn === "deity"
+      ? await deps.invalidateBranchSelectionsByDependency("deity")
+      : [];
+  const grantInvalidated = await deps.invalidateGrantSelectionsBySource("classfeature");
+  const spellInvalidated = await deps.invalidateSpellChoicesByDependency("class-branch");
+  const invalidatedCount =
+    branchInvalidated.length + deityBranchInvalidated.length + grantInvalidated.length + spellInvalidated.length;
+
+  if (invalidatedCount === 0) {
+    return null;
+  }
+
+  if (step?.classChoice?.flag === "sanctification") {
+    return "Sanctification changed. Wayfinder marked class paths for review.";
+  }
+
+  return "Class choice changed. Wayfinder reset class paths, class-feature choices, and spell choices for review.";
 }
 
 export async function toggleSpellChoiceSelection(

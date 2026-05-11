@@ -46,6 +46,10 @@ export function toggleTrainingSkillSelection(
   }
 
   const additionalCount = step.training?.additionalCount ?? 0;
+  if (additionalCount <= 0) {
+    return false;
+  }
+
   state.draft.skillTrainings[stepId] ??= emptyTrainingDraft();
   const current = state.draft.skillTrainings[stepId].additional;
   state.draft.skillTrainings[stepId].additional = current.includes(slug)

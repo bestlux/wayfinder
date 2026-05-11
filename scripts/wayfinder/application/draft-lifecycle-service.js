@@ -1,6 +1,12 @@
 import { DRAFT_FLAG, STATE_FLAG } from "../../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../../draft-service.js";
 export async function applyDraftLifecycle(args) {
+    if (args.steps.length === 0) {
+        return {
+            kind: "warning",
+            warning: "no-pending-steps",
+        };
+    }
     const completion = await Promise.all(args.steps.map((step) => args.isStepComplete(step)));
     if (completion.some((value) => !value)) {
         return {
@@ -15,6 +21,7 @@ export async function applyDraftLifecycle(args) {
         };
     }
     const actorUpdate = (await args.applyDraftToActor()) ?? {};
+    const completedStepIds = mergeCompletedStepIds(args.existingCompletedStepIds ?? [], args.steps);
     await args.updateActor({
         ...actorUpdate,
         [DRAFT_FLAG]: null,
@@ -22,13 +29,19 @@ export async function applyDraftLifecycle(args) {
             ...createEmptyState(),
             lastAppliedAt: (args.now ?? defaultNow)(),
             lastTargetLevel: args.draft.targetLevel,
-            completedStepIds: args.steps.map((step) => step.id),
+            completedStepIds,
         },
     });
     return {
         kind: "applied",
         nextDraft: normalizeDraft(null, args.currentLevel),
     };
+}
+function mergeCompletedStepIds(existingStepIds, steps) {
+    return Array.from(new Set([
+        ...existingStepIds.filter((stepId) => typeof stepId === "string" && stepId.length > 0),
+        ...steps.map((step) => step.id),
+    ]));
 }
 export function buildSaveDraftUpdate(draft) {
     return {

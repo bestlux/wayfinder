@@ -250,6 +250,28 @@ describe("actor-updater spell choice application", () => {
         }),
       }),
     ]);
+    expect(actor.createEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
+      expect.objectContaining({
+        name: "Shield",
+        flags: expect.objectContaining({
+          "pf2e-wayfinder": expect.objectContaining({
+            importedBy: "pf2e-wayfinder",
+            slotId: "spell-choice-wizard-spellbook-cantrips-level-1",
+          }),
+        }),
+      }),
+    ]);
+    expect(actor.createEmbeddedDocuments).toHaveBeenNthCalledWith(3, "Item", [
+      expect.objectContaining({
+        name: "Magic Missile",
+        flags: expect.objectContaining({
+          "pf2e-wayfinder": expect.objectContaining({
+            importedBy: "pf2e-wayfinder",
+            slotId: "spell-choice-wizard-spellbook-rank-1-level-1",
+          }),
+        }),
+      }),
+    ]);
 
     await applySpellChoiceDraft(actor as any, draft, [cantripStep, rankOneStep]);
 
@@ -561,6 +583,131 @@ describe("actor-updater spell choice application", () => {
       expect.objectContaining({
         name: "New Curriculum Spell",
         type: "spell",
+      }),
+    ]);
+  });
+
+  it("expands an existing prepared entry before assigning higher-rank prepared spells", async () => {
+    const { actor } = buildActorHarness({
+      level: 5,
+      items: [
+        {
+          id: "class-1",
+          type: "class",
+          name: "Cleric",
+          system: {
+            keyAbility: {
+              value: ["wis"],
+              selected: "wis",
+            },
+          },
+        },
+        {
+          id: "entry-1",
+          type: "spellcastingEntry",
+          name: "Divine Prepared Spells",
+          flags: {
+            "pf2e-wayfinder": {
+              destinationKey: "cleric-divine-prepared",
+              importedBy: "pf2e-wayfinder",
+            },
+          },
+          system: {
+            ability: { value: "wis" },
+            prepared: { value: "prepared", flexible: false },
+            tradition: { value: "divine" },
+            showSlotlessLevels: { value: true },
+            slots: {
+              slot0: {
+                max: 5,
+                value: 5,
+                prepared: [
+                  { id: "existing-cantrip", expended: false },
+                  { id: null, expended: false },
+                  { id: null, expended: false },
+                  { id: null, expended: false },
+                  { id: null, expended: false },
+                ],
+              },
+              slot1: {
+                max: 2,
+                value: 2,
+                prepared: [
+                  { id: "existing-rank-1", expended: true },
+                  { id: null, expended: false },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    setGamePacks({
+      "pf2e.spells-srd": {
+        heal: {
+          name: "Heal",
+          type: "spell",
+          system: {
+            level: { value: 3 },
+            traits: {
+              traditions: ["divine"],
+              value: [],
+            },
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(1);
+    draft.targetLevel = 5;
+    draft.spellChoices["spell-choice-cleric-rank-3-level-5"] = [
+      selection("spell-choice-cleric-rank-3-level-5", "pf2e.spells-srd", "heal", "spell", "Heal"),
+    ];
+
+    await applySpellChoiceDraft(actor as any, draft, [
+      spellChoiceStep(
+        "spell-choice-cleric-rank-3-level-5",
+        clericSpellChoice("spell-choice-cleric-rank-3-level-5", 1, 3, 3, false),
+        "Cleric rank 3 prepared spells"
+      ),
+    ]);
+
+    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      expect.objectContaining({
+        _id: "entry-1",
+        "system.slots": expect.objectContaining({
+          slot1: expect.objectContaining({
+            max: 3,
+            value: 3,
+            prepared: [
+              { id: "existing-rank-1", expended: true },
+              { id: null, expended: false },
+              { id: null, expended: false },
+            ],
+          }),
+          slot3: expect.objectContaining({
+            max: 2,
+            value: 2,
+            prepared: [
+              { id: null, expended: false },
+              { id: null, expended: false },
+            ],
+          }),
+        }),
+      }),
+    ]);
+    expect(actor.updateEmbeddedDocuments).toHaveBeenLastCalledWith("Item", [
+      expect.objectContaining({
+        _id: "entry-1",
+        "system.slots": expect.objectContaining({
+          slot3: expect.objectContaining({
+            prepared: [
+              { id: "created-1", expended: false },
+              { id: null, expended: false },
+            ],
+          }),
+        }),
       }),
     ]);
   });

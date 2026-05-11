@@ -11,6 +11,8 @@ Run from the repo root after `npm run build`:
 ```powershell
 $env:FOUNDRY_USER = "<local Foundry user>"
 $env:FOUNDRY_PASSWORD = "<local password if needed>"
+$env:FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE = "1"
+$env:FOUNDRY_SMOKE_WORLD_ID = "<expected local world id>"
 npm run smoke:foundry
 ```
 
@@ -28,7 +30,7 @@ The harness:
 - Builds drafts from live PF2E compendium options.
 - Applies through Wayfinder's normal apply lifecycle.
 - Verifies actor level, duplicate source IDs, native dialog count, draft cleanup, and rerun pending steps.
-- Deletes fixtures by default.
+- Deletes fixtures by default only when `FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE=1` and `FOUNDRY_SMOKE_WORLD_ID` matches the connected world. Use `--keep-actors` for non-destructive local debugging.
 - Writes JSON and Markdown artifacts under `.wayfinder-smoke/`, which is intentionally gitignored.
 
 Credentials are local environment variables only. Do not commit Foundry user names, passwords, storage state, or world-specific secrets.
@@ -46,7 +48,9 @@ Command:
 ```powershell
 $env:FOUNDRY_USER = "<local Foundry user>"
 $env:FOUNDRY_PASSWORD = "<local only>"
-node tools/foundry-smoke/run-foundry-smoke.mjs --out .wayfinder-smoke/all-class-l1-l5-attempt-3
+$env:FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE = "1"
+$env:FOUNDRY_SMOKE_WORLD_ID = "testing-world"
+node tools/foundry-smoke/run-foundry-smoke.mjs --out .wayfinder-smoke/beta-green-0.1.2-final-3 --incremental-case fighter-l1-l5-apply-rerun --incremental-case cleric-l1-l5-apply-rerun --incremental-case sorcerer-l1-l5-apply-rerun --incremental-case kineticist-l1-l5-apply-rerun
 ```
 
 Environment:
@@ -55,6 +59,10 @@ Environment:
 - PF2E system: 8.1.1
 - World: `testing-world`
 - Module: `pf2e-wayfinder`, active
+
+Artifact: `.wayfinder-smoke/beta-green-0.1.2-final-3`.
+
+Result: 31 pass, 0 fail, 0 classified/manual. This includes the all-class matrix below plus the targeted incremental existing-character reruns.
 
 | Case | Result | Target level | Planned steps | Rerun steps | Evidence |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -88,9 +96,21 @@ Environment:
 
 Selector pairs such as Doctrine plus Cloistered Cleric, Deity plus Deity (Cleric), Arcane School plus the selected school, and grant-choice source plus granted item intentionally share a Wayfinder slot ID. The harness treats duplicate source IDs as failures, while allowing those selector/granted pairs when rerun produces no pending steps.
 
+## 2026-05-11 Incremental Existing-Character Reruns
+
+These cases first applied a level 1 actor, reopened Wayfinder against that existing actor, advanced to level 5, applied, and reran at level 5. They are targeted safety checks for actor-owned class-feature replay, prepared spellcasting entry expansion, branch-derived spontaneous spell choices, predicate-gated grants, duplicate prevention, native popup suppression, and draft cleanup.
+
+| Case | Result | Initial steps | Incremental steps | Rerun steps | Evidence |
+| --- | --- | ---: | ---: | ---: | --- |
+| Fighter | Pass | 9 | 9 | 0 | Martial existing-character rerun; Weapon Mastery surfaced from actor state and no duplicate source IDs |
+| Cleric | Pass | 14 | 9 | 0 | Prepared caster rerun; existing prepared entry expanded through level 5 without duplicate PF2E-native dialogs |
+| Sorcerer | Pass | 11 | 13 | 0 | Branch-derived spontaneous caster rerun; level-2 rank-1 repertoire choice stayed visible and bloodline-derived repertoire choices stayed connected |
+| Kineticist | Pass | 16 | 13 | 0 | Class-choice-dependent branch rerun; Gate's Threshold predicate kept stale Gate Junction choices out |
+
 ## Beta Caveats
 
 - The all-class matrix is one deterministic legal path per PF2E class through level 5. It does not exhaustively prove every subclass, racket, muse, patron, order, mystery, eidolon, implement, or future high-level branch.
+- The matrix proves plan/fill/apply/rerun behavior for the maintained blank level-1-to-level-5 smoke cases. It is not exhaustive path coverage and should not be described as proving every legal build for every class.
 - Direct feat/class-branch options with embedded `ChoiceSet` rules are hidden unless Wayfinder has a supported follow-up path. Supported selected class-feature follow-ups are now preselected before PF2E native rules run.
 - Grant-choice paths remain allowed for supported embedded choices because Wayfinder can build the dependent follow-up step, as with General Training into Additional Lore.
 - Class archetype branch options are filtered out of normal class-branch choices. Free Archetype and class archetypes need their own variant or archetype lanes before they should appear as guided choices.

@@ -34,6 +34,7 @@ export interface WayfinderTemplateContext {
   currentLevel: number;
   targetLevel: number;
   hasPendingSteps: boolean;
+  canApplyDraft: boolean;
   guidance: string;
   summary: SummaryItem[];
   stepCount: number;
@@ -79,6 +80,7 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
     currentLevel: args.currentLevel,
     targetLevel: args.targetLevel,
     hasPendingSteps: args.steps.length > 0,
+    canApplyDraft: args.steps.length > 0,
     guidance: "Review one decision at a time, keep the draft coherent, and let earlier choices narrow what comes next.",
     summary,
     stepCount: args.steps.length,

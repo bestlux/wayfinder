@@ -62,6 +62,33 @@ describe("wayfinder draft adjustment service", () => {
     expect(draft.skillTrainings[step.slotId]?.additional).toEqual([]);
   });
 
+  it("does not create no-op additional training selections when none are allowed", () => {
+    const draft = createEmptyDraft(1);
+    const state = adjustmentState(draft);
+    const step: PendingStep = {
+      id: "skill-training-wizard-level-1",
+      level: 1,
+      kind: "skill-training",
+      slotKind: "skill-training",
+      title: "Wizard training",
+      description: "",
+      required: true,
+      slotId: "skill-training-wizard-level-1",
+      training: {
+        classSlug: "wizard",
+        className: "Wizard",
+        fixedSkills: [],
+        fixedLores: [],
+        choiceRules: [],
+        loreChoices: [],
+        additionalCount: 0,
+      },
+    };
+
+    expect(toggleTrainingSkillSelection(state, step, "arcana")).toBe(false);
+    expect(draft.skillTrainings[step.slotId]).toBeUndefined();
+  });
+
   it("switches ancestry mode and clears the opposing draft choices", () => {
     const draft = createEmptyDraft(1);
     draft.boosts.ancestry.mode = "standard";

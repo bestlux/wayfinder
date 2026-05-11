@@ -2,7 +2,10 @@
 
 globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
   cases,
+  allowDestructive = false,
+  expectedWorldId = "",
   fixturePrefix,
+  incrementalCases = [],
   keepActors,
   moduleId,
 }) {
@@ -11,8 +14,17 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
   if (!moduleRecord?.active) {
     throw new Error(`${moduleId} is not active in this world.`);
   }
+  if (!keepActors && !String(expectedWorldId ?? "").trim()) {
+    throw new Error("Foundry smoke cleanup/deletion requires an expected world id.");
+  }
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (!keepActors && !allowDestructive) {
+    throw new Error("Foundry smoke cleanup/deletion requires destructive opt-in.");
+  }
 
-  await cleanupActors(fixturePrefix);
+  if (!keepActors) {
+    await cleanupActors(fixturePrefix);
+  }
   const modules = await loadWayfinderModules(moduleId);
   const results = [];
 
@@ -20,6 +32,17 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
     console.log(`WFSMOKE case start ${smokeCase.id}`);
     const result = await runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix: fixturePrefix });
     console.log(`WFSMOKE case ${result.status} ${smokeCase.id}`);
+    results.push(result);
+  }
+
+  for (const smokeCase of incrementalCases) {
+    console.log(`WFSMOKE incremental case start ${smokeCase.id}`);
+    const result = await runIncrementalExistingCase(smokeCase, modules, {
+      keepActors,
+      moduleId,
+      prefix: fixturePrefix,
+    });
+    console.log(`WFSMOKE incremental case ${result.status} ${smokeCase.id}`);
     results.push(result);
   }
 
@@ -197,6 +220,119 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
   }
 }
 
+async function runIncrementalExistingCase(smokeCase, modules, { keepActors, moduleId, prefix }) {
+  let actor = null;
+  const warnings = [];
+  const classifications = [];
+  const failures = [];
+
+  try {
+    actor = await Actor.create({
+      name: `${prefix} - incremental - ${smokeCase.id}`,
+      type: "character",
+      ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER },
+      system: { details: { level: { value: 1 } } },
+    });
+
+    const initialCase = { ...smokeCase, targetLevel: 1 };
+    const initialDraft = modules.createEmptyDraft(initialCase.targetLevel);
+    await seedCreationDraft(initialDraft, initialCase);
+    const initialFill = await completeDraft(actor, initialDraft, initialCase, modules);
+    warnings.push(...initialFill.warnings.map((entry) => `initial: ${entry}`));
+    classifications.push(...initialFill.classifications.map((entry) => `initial: ${entry}`));
+
+    const initialPlan = await buildPlan(actor, initialDraft, modules);
+    const initialIncomplete = await incompleteSteps(actor, initialDraft, initialPlan.steps, modules);
+    if (initialIncomplete.length > 0) {
+      failures.push(`Initial incomplete before apply: ${initialIncomplete.map((step) => step.slotId).join(", ")}`);
+    }
+
+    const dialogsBefore = dialogCount();
+    await actor.setFlag(moduleId, "draft", initialDraft);
+    const initialLifecycleResult = failures.length
+      ? { kind: "warning", warning: "missing-selections" }
+      : await applyCompletedDraft(actor, initialDraft, initialPlan.steps, modules, moduleId);
+    if (initialLifecycleResult.kind !== "applied") {
+      failures.push(`Initial apply lifecycle returned ${initialLifecycleResult.kind}`);
+    }
+
+    const incrementalDraft = modules.createEmptyDraft(smokeCase.targetLevel);
+    const incrementalFill = await completeDraft(actor, incrementalDraft, smokeCase, modules);
+    warnings.push(...incrementalFill.warnings.map((entry) => `incremental: ${entry}`));
+    classifications.push(...incrementalFill.classifications.map((entry) => `incremental: ${entry}`));
+
+    const incrementalPlan = await buildPlan(actor, incrementalDraft, modules);
+    const incrementalIncomplete = await incompleteSteps(actor, incrementalDraft, incrementalPlan.steps, modules);
+    if (incrementalIncomplete.length > 0) {
+      failures.push(
+        `Incremental incomplete before apply: ${incrementalIncomplete.map((step) => step.slotId).join(", ")}`,
+      );
+    }
+    if (incrementalPlan.steps.length === 0) {
+      failures.push("Incremental rerun produced no level-up steps.");
+    }
+
+    await actor.setFlag(moduleId, "draft", incrementalDraft);
+    const incrementalLifecycleResult = failures.length
+      ? { kind: "warning", warning: "missing-selections" }
+      : await applyCompletedDraft(actor, incrementalDraft, incrementalPlan.steps, modules, moduleId);
+
+    await wait(1500);
+    const dialogsAfter = dialogCount();
+    const rerunDraft = modules.createEmptyDraft(smokeCase.targetLevel);
+    const rerunPlan = await buildPlan(actor, rerunDraft, modules);
+    const actorEvidence = collectActorEvidence(actor, modules, moduleId);
+    validateIncrementalCase({
+      actorEvidence,
+      classifications,
+      dialogsAfter,
+      dialogsBefore,
+      failures,
+      initialLifecycleResult,
+      initialStepIds: initialPlan.steps.map((step) => step.slotId),
+      incrementalLifecycleResult,
+      incrementalStepIds: incrementalPlan.steps.map((step) => step.slotId),
+      rerunPlan,
+      smokeCase,
+    });
+
+    return {
+      id: `${smokeCase.id}-incremental-existing`,
+      label: `${smokeCase.label} incremental existing-character rerun`,
+      status: statusFor(failures, classifications),
+      actor: actorEvidence,
+      classifications,
+      evidence: {
+        dialogsAfter,
+        dialogsBefore,
+        incrementalIncompleteBeforeApply: incrementalIncomplete.map(stepSummary),
+        incrementalStepIds: incrementalPlan.steps.map((step) => step.slotId),
+        initialIncompleteBeforeApply: initialIncomplete.map(stepSummary),
+        initialStepIds: initialPlan.steps.map((step) => step.slotId),
+        rerunStepIds: rerunPlan.steps.map((step) => step.slotId),
+        warnings,
+      },
+      failures,
+      warnings,
+    };
+  } catch (error) {
+    return {
+      id: `${smokeCase.id}-incremental-existing`,
+      label: `${smokeCase.label} incremental existing-character rerun`,
+      status: "fail",
+      actor: actor ? collectActorEvidence(actor, modules, moduleId) : null,
+      classifications,
+      evidence: {},
+      failures: [errorToString(error)],
+      warnings,
+    };
+  } finally {
+    if (actor && !keepActors) {
+      await actor.delete();
+    }
+  }
+}
+
 async function seedCreationDraft(draft, smokeCase) {
   draft.selections["ancestry-level-1"] = await selectionRef("pf2e.ancestries", "Human", "ancestry-level-1");
   draft.selections["heritage-level-1"] = await selectionRef(
@@ -222,7 +358,9 @@ async function seedCreationDraft(draft, smokeCase) {
   };
   draft.boosts.class.keyAbility = smokeCase.keyAbility;
   draft.boosts.levels["1"] = levelBoosts(smokeCase.keyAbility);
-  draft.boosts.levels["5"] = levelBoosts(smokeCase.keyAbility);
+  if (draft.targetLevel >= 5) {
+    draft.boosts.levels["5"] = levelBoosts(smokeCase.keyAbility);
+  }
 }
 
 async function completeDraft(actor, draft, smokeCase, modules) {
@@ -388,6 +526,36 @@ async function incompleteSteps(actor, draft, steps, modules) {
     }
   }
   return results;
+}
+
+async function applyCompletedDraft(actor, draft, steps, modules, moduleId) {
+  const snapshot = modules.inspectActor(actor);
+  return withTimeout(
+    modules.applyDraftLifecycle({
+      actorName: actor.name,
+      currentLevel: snapshot.level,
+      draft,
+      existingCompletedStepIds: readActorCompletedStepIds(actor, moduleId),
+      steps,
+      isStepComplete: (step) => isStepComplete(actor, draft, step, modules),
+      confirmApply: () => true,
+      applyDraftToActor: () =>
+        modules.applyDraftToActor(actor, draft, steps, {
+          deferActorUpdate: true,
+        }),
+      updateActor: (update) => actor.update(update),
+      now: () => new Date().toISOString(),
+    }),
+    45000,
+    `${actor.name} apply timed out`,
+  );
+}
+
+function readActorCompletedStepIds(actor, moduleId) {
+  const completedStepIds = actor.getFlag(moduleId, "state")?.completedStepIds;
+  return Array.isArray(completedStepIds)
+    ? completedStepIds.filter((stepId) => typeof stepId === "string")
+    : [];
 }
 
 function fillSkillTraining(draft, step, smokeCase) {
@@ -580,12 +748,93 @@ function validateAppliedCase({
   }
 }
 
+function validateIncrementalCase({
+  actorEvidence,
+  classifications,
+  dialogsAfter,
+  dialogsBefore,
+  failures,
+  initialLifecycleResult,
+  initialStepIds,
+  incrementalLifecycleResult,
+  incrementalStepIds,
+  rerunPlan,
+  smokeCase,
+}) {
+  if (initialLifecycleResult.kind !== "applied") {
+    failures.push(`Initial apply lifecycle returned ${initialLifecycleResult.kind}`);
+  }
+
+  if (incrementalLifecycleResult.kind !== "applied") {
+    failures.push(`Incremental apply lifecycle returned ${incrementalLifecycleResult.kind}`);
+  }
+
+  if (initialStepIds.length === 0) {
+    failures.push("Initial creation produced no Wayfinder steps.");
+  }
+
+  if (incrementalStepIds.length === 0) {
+    failures.push("Incremental level-up produced no Wayfinder steps.");
+  }
+
+  const expectedStepIds = Array.isArray(smokeCase.expectedStepIds) ? smokeCase.expectedStepIds : [];
+  const plannedStepIds = new Set([...initialStepIds, ...incrementalStepIds]);
+  const missingExpectedStepIds = expectedStepIds.filter((slotId) => !plannedStepIds.has(slotId));
+  if (missingExpectedStepIds.length > 0) {
+    failures.push(`Expected steps did not render: ${missingExpectedStepIds.join(", ")}`);
+  }
+
+  if (actorEvidence.levelAfterApply !== smokeCase.targetLevel) {
+    failures.push(`Actor level is ${actorEvidence.levelAfterApply}, expected ${smokeCase.targetLevel}`);
+  }
+
+  if (actorEvidence.moduleDraftAfterApply !== null) {
+    failures.push("Draft flag was not cleared after incremental apply.");
+  }
+
+  const unexpectedDuplicateSlotIds = actorEvidence.duplicateSlotIds.filter(
+    (slotId) =>
+      !slotId.startsWith("class-branch-") && !slotId.startsWith("deity-level-") && !slotId.startsWith("grant-choice-"),
+  );
+  if (unexpectedDuplicateSlotIds.length > 0) {
+    failures.push(`Duplicate Wayfinder slot ids: ${unexpectedDuplicateSlotIds.join(", ")}`);
+  }
+
+  if (actorEvidence.duplicateSourceIds.length > 0) {
+    failures.push(`Duplicate source ids: ${actorEvidence.duplicateSourceIds.join(", ")}`);
+  }
+
+  if (dialogsAfter > dialogsBefore) {
+    failures.push(`Native dialog count increased from ${dialogsBefore} to ${dialogsAfter}`);
+  }
+
+  if (rerunPlan.steps.length > 0) {
+    failures.push(`Rerun still has pending steps: ${rerunPlan.steps.map((step) => step.slotId).join(", ")}`);
+  }
+
+  if (classifications.length > 0) {
+    failures.push("Case has unsupported/manual classifications; incremental apply should not have proceeded.");
+  }
+}
+
 function statusFor(failures, classifications) {
   if (failures.length > 0) {
     return "fail";
   }
 
   return classifications.length > 0 ? "classified" : "pass";
+}
+
+function assertExpectedWorldId(actualWorldId, expectedWorldId) {
+  const expected = String(expectedWorldId ?? "").trim();
+  if (!expected) {
+    return;
+  }
+
+  const actual = String(actualWorldId ?? "").trim();
+  if (actual !== expected) {
+    throw new Error(`Foundry smoke expected world ${expected}, but connected to ${actual || "<unknown>"}.`);
+  }
 }
 
 async function cleanupActors(prefix) {

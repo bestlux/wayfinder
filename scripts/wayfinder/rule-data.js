@@ -60,6 +60,10 @@ export function matchesChoicePredicate(predicate, matchesString) {
     if (Array.isArray(predicate)) {
         return matchesChoicePredicateList(predicate, matchesString);
     }
+    const comparison = matchesComparisonPredicate(predicate, matchesString);
+    if (comparison !== null) {
+        return comparison;
+    }
     if (Array.isArray(predicate.or)) {
         return predicate.or.some((entry) => matchesChoicePredicate(entry, matchesString));
     }
@@ -70,6 +74,23 @@ export function matchesChoicePredicate(predicate, matchesString) {
         return !matchesChoicePredicate(predicate.not, matchesString);
     }
     return true;
+}
+function matchesComparisonPredicate(predicate, matchesString) {
+    for (const [operator, comparator] of [
+        ["lt", predicate.lt],
+        ["lte", predicate.lte],
+        ["gt", predicate.gt],
+        ["gte", predicate.gte],
+    ]) {
+        if (comparator === undefined) {
+            continue;
+        }
+        if (!Array.isArray(comparator) || comparator.length !== 2 || typeof comparator[0] !== "string") {
+            return false;
+        }
+        return matchesString(`${operator}:${comparator[0]}:${String(comparator[1])}`);
+    }
+    return null;
 }
 export function predicateIncludesString(predicate, target) {
     if (typeof predicate === "string") {
@@ -83,7 +104,16 @@ export function predicateIncludesString(predicate, target) {
     }
     return ((Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
         (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
-        (!!predicate.not && predicateIncludesString(predicate.not, target)));
+        (!!predicate.not && predicateIncludesString(predicate.not, target)) ||
+        comparisonPredicateIncludesString(predicate, target));
+}
+function comparisonPredicateIncludesString(predicate, target) {
+    for (const comparator of [predicate.lt, predicate.lte, predicate.gt, predicate.gte]) {
+        if (Array.isArray(comparator) && comparator.some((entry) => typeof entry === "string" && entry.includes(target))) {
+            return true;
+        }
+    }
+    return false;
 }
 export function isRecord(value) {
     return !!value && typeof value === "object";

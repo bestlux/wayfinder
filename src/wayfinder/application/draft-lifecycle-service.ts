@@ -6,6 +6,7 @@ export interface ApplyDraftLifecycleArgs {
   actorName: string;
   currentLevel: number;
   draft: DraftState;
+  existingCompletedStepIds?: string[];
   steps: PendingStep[];
   isStepComplete: (step: PendingStep) => Promise<boolean>;
   confirmApply?: (message: string) => boolean | Promise<boolean>;
@@ -15,11 +16,18 @@ export interface ApplyDraftLifecycleArgs {
 }
 
 export type ApplyDraftLifecycleResult =
-  | { kind: "warning"; warning: "missing-selections" }
+  | { kind: "warning"; warning: "missing-selections" | "no-pending-steps" }
   | { kind: "cancelled" }
   | { kind: "applied"; nextDraft: DraftState };
 
 export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promise<ApplyDraftLifecycleResult> {
+  if (args.steps.length === 0) {
+    return {
+      kind: "warning",
+      warning: "no-pending-steps",
+    };
+  }
+
   const completion = await Promise.all(args.steps.map((step) => args.isStepComplete(step)));
   if (completion.some((value) => !value)) {
     return {
@@ -37,6 +45,7 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
   }
 
   const actorUpdate = (await args.applyDraftToActor()) ?? {};
+  const completedStepIds = mergeCompletedStepIds(args.existingCompletedStepIds ?? [], args.steps);
   await args.updateActor({
     ...actorUpdate,
     [DRAFT_FLAG]: null,
@@ -44,7 +53,7 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
       ...createEmptyState(),
       lastAppliedAt: (args.now ?? defaultNow)(),
       lastTargetLevel: args.draft.targetLevel,
-      completedStepIds: args.steps.map((step) => step.id),
+      completedStepIds,
     },
   });
 
@@ -52,6 +61,15 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
     kind: "applied",
     nextDraft: normalizeDraft(null, args.currentLevel),
   };
+}
+
+function mergeCompletedStepIds(existingStepIds: string[], steps: PendingStep[]): string[] {
+  return Array.from(
+    new Set([
+      ...existingStepIds.filter((stepId) => typeof stepId === "string" && stepId.length > 0),
+      ...steps.map((step) => step.id),
+    ])
+  );
 }
 
 export function buildSaveDraftUpdate(draft: DraftState): Record<string, unknown> {

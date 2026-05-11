@@ -41,6 +41,16 @@ describe("wayfinder rule data helpers", () => {
     expect(matchesChoicePredicate(["item:type:feat", "item:rarity:rare"], matches)).toBe(false);
   });
 
+  it("evaluates comparison predicates through the caller-owned matcher", () => {
+    const active = new Set(["lte:item:level:1", "gt:actor:level:2"]);
+    const matches = (statement: string) => active.has(statement);
+
+    expect(matchesChoicePredicate({ lte: ["item:level", 1] }, matches)).toBe(true);
+    expect(matchesChoicePredicate({ gt: ["actor:level", "2"] }, matches)).toBe(true);
+    expect(matchesChoicePredicate({ lte: ["item:level", 2] }, matches)).toBe(false);
+    expect(matchesChoicePredicate({ not: { lte: ["item:level", 2] } }, matches)).toBe(true);
+  });
+
   it("finds predicate string fragments inside nested branches", () => {
     expect(
       predicateIncludesString(

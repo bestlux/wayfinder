@@ -12,12 +12,12 @@ This document tracks Wayfinder's current confidence for supported level-up flows
 
 ## Audit Evidence
 
-- PF2E reference source: `D:\Source\pf2e` on `v14-dev`, especially `src/module/item/class/document.ts`, `src/module/actor/character/feats/collection.ts`, and `src/module/actor/character/document.ts`.
-- PF2E class pack data: `D:\Source\pf2e\packs\pf2e\classes\*.json`.
+- PF2E reference source: a local PF2E checkout on `v14-dev`, especially `src/module/item/class/document.ts`, `src/module/actor/character/feats/collection.ts`, and `src/module/actor/character/document.ts`.
+- PF2E class pack data: local PF2E `packs/pf2e/classes/*.json`.
 - PF2E behavior evidence: class documents expose `grantedFeatSlots` from class `ancestryFeatLevels`, `classFeatLevels`, `skillFeatLevels`, and `generalFeatLevels`; character feat groups are built from those class slots; Free Archetype is a distinct `archetype` feat group created only when the PF2E variant setting is enabled; class features are added or removed when the actor level changes.
 - Wayfinder implementation evidence: `src/actor-inspector.ts`, `src/progression.ts`, `src/wayfinder/plan-service.ts`, `src/wayfinder/class-choice-service.ts`, `src/wayfinder/application/wayfinder-plan-builder-service.ts`, and apply-side modules under `src/actor-updater/`.
 - Targeted regression evidence: `tests/actor-inspector.test.ts`, `tests/progression.test.ts`, `tests/class-choice-service.test.ts`, `tests/plan-service.test.ts`, `tests/wayfinder-plan-builder-service.test.ts`, and `tests/wayfinder-levelup-depth.test.ts`.
-- Live apply evidence on 2026-05-11: the repo-owned Foundry smoke harness applied every class in `D:\Source\pf2e\packs\pf2e\classes` from blank level 1 drafts to target level 5 against a real Foundry / PF2E 8.1.1 world. Every case reached level 5, left no duplicate source IDs, cleared the draft flag, and reran at target level 5 with zero pending steps. The beta-green rerun also covered targeted incremental existing-character paths for Fighter, Cleric, Sorcerer, and Kineticist. See `.wayfinder-smoke/beta-green-0.1.2-final-3` and `docs/coverage/beta-readiness-smoke.md`.
+- Live apply evidence on 2026-05-11: the repo-owned Foundry smoke harness applied every class from the local PF2E class pack inventory from blank level 1 drafts to target level 5 against a real Foundry 14.360 / PF2E 8.1.1 world. Every case reached level 5, left no duplicate source IDs, cleared the draft flag, and reran at target level 5 with zero pending steps. The beta-green rerun also covered targeted incremental existing-character paths for Fighter, Cleric, Sorcerer, and Kineticist. Compatibility metadata allows the Foundry v14 line and PF2E 8.1.x; latest upstream checked the same day was Foundry 14.361 / PF2E 8.1.2. See `.wayfinder-smoke/beta-green-0.1.2-final-3` and `docs/coverage/beta-readiness-smoke.md`.
 
 ## Level-Up Mechanics
 

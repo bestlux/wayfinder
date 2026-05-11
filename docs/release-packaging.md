@@ -13,7 +13,7 @@ npm run package
 For a CI-style dry run after validation has already passed:
 
 ```powershell
-node tools/release/prepare-package.mjs --version 0.1.0 --tag v0.1.0 --repo bestlux/wayfinder
+node tools/release/prepare-package.mjs --version X.Y.Z --tag vX.Y.Z --repo bestlux/wayfinder
 ```
 
 Outputs land in `dist/release/`:
@@ -27,6 +27,16 @@ Outputs land in `dist/release/`:
 The archive intentionally ships only installable assets: `module.json`, generated `scripts/`, `styles/`, `templates/`, `lang/`, and top-level release docs like the README. It excludes `src/`, `tests/`, `node_modules/`, source maps, build config, workflow files, and other development-only content.
 
 Marketplace media lives in the repo-level `media/` folder and is referenced from `module.json` with tag-pinned `raw.githubusercontent.com` URLs for each release. Those images are intentionally not included in `module.zip`; publish them by committing them before cutting the matching tag. If a screenshot needs to change after release, cut a new version instead of mutating the old listing.
+
+## Public readiness checklist
+
+Before making the repository public or submitting a Foundry package listing:
+
+- Confirm the GitHub repository, release assets, and tag-pinned `media/` URLs are publicly reachable without authentication.
+- Confirm `module.json` has author contact metadata, including Discord handle when available.
+- Confirm `README.md`, `LICENSE.md`, `bugs`, `readme`, and `changelog` URLs are public and current.
+- Confirm compatibility metadata matches the intended support range and coverage docs state the exact smoke-tested Foundry/PF2E versions.
+- Run a secret scan over tracked files and do not commit local Foundry credentials, browser state, package tokens, or `.env` files.
 
 ## Publish through GitHub
 

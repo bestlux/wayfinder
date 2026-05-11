@@ -7,7 +7,7 @@
     {
       "name": "iomancer",
       "url": "https://github.com/bestlux",
-      "discord": ""
+      "discord": "bestlux"
     }
   ],
   "esmodules": ["scripts/wayfinder.js"],
@@ -52,8 +52,8 @@
     }
   ],
   "compatibility": {
-    "minimum": "14.360",
-    "verified": "14.360"
+    "minimum": "14",
+    "verified": "14"
   },
   "relationships": {
     "systems": [
@@ -61,12 +61,13 @@
         "id": "pf2e",
         "type": "system",
         "compatibility": {
-          "minimum": "8.1.1",
-          "verified": "8.1.1"
+          "minimum": "8.1.0",
+          "verified": "8.1.2"
         }
       }
     ]
   },
+  "license": "LICENSE.md",
   "url": "https://github.com/bestlux/wayfinder",
   "manifest": "https://github.com/bestlux/wayfinder/releases/latest/download/module.json",
   "download": "https://github.com/bestlux/wayfinder/releases/latest/download/module.zip",

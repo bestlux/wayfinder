@@ -3,8 +3,12 @@ agents/
 node_modules/
 /coverage/
 dist/
+.tmp/
 .worktrees/
 .wayfinder-smoke/
+.env
+.env.*
+!.env.example
 *.log
 *.tmp
 *.tsbuildinfo

@@ -6,11 +6,11 @@ It is intentionally content-shape focused. The goal is not bespoke Adventure Pat
 
 ## Evidence Source
 
-- Audit source: `D:\Source\pf2e\packs\pf2e`
+- Audit source: local PF2E pack data
 - Audit date: 2026-05-08
 - Core/default excluded from this pass: `Pathfinder Player Core`, `Pathfinder Player Core 2`, `Pathfinder Core Rulebook`, `Pathfinder Advanced Player's Guide`, and `Pathfinder Beginner Box: Hero's Handbook`
 - Non-core scope counted: `1,434` level-1-relevant documents
-- Generated scratch evidence: `.tmp/ap-sidebook-audit-summary.json` and `.tmp/ap-sidebook-wayfinder-support.json`
+- Generated scratch evidence was used during the audit and intentionally not retained in the repo.
 
 ## Content Inventory
 

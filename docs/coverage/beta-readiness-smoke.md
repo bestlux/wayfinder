@@ -60,6 +60,8 @@ Environment:
 - World: `testing-world`
 - Module: `pf2e-wayfinder`, active
 
+Compatibility metadata now allows the Foundry VTT v14 line and PF2E 8.1.x. The latest upstream versions checked on 2026-05-11 were Foundry VTT 14.361 and PF2E 8.1.2. This smoke matrix was not rerun against those exact latest builds, so the rows below remain evidence for 14.360 / 8.1.1 behavior plus the documented compatibility expectation for the patch lines.
+
 Artifact: `.wayfinder-smoke/beta-green-0.1.2-final-3`.
 
 Result: 31 pass, 0 fail, 0 classified/manual. This includes the all-class matrix below plus the targeted incremental existing-character reruns.

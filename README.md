@@ -4,7 +4,7 @@ A guided Pathfinder 2e character builder for Foundry VTT.
 
 Wayfinder takes the parts of PF2E character building that fragment your attention — class tables, compendium browsing, feat slots, boosts, spell choices, and source exceptions — and turns them into a single guided flow you open from the character sheet. Think Pathbuilder, but living inside your game world: it knows which sources your GM enabled, applies the supported rule shapes it can prove, and writes its output straight to the actor for supported guided paths. No JSON export, no re-import, fewer sheet-mismatch loops.
 
-> **Status:** early access. Wayfinder is being built slice-by-slice, class by class. Some flows are deeply guided; others hand you back to the PF2E sheet on purpose. The [level-1 coverage matrix](docs/coverage/level1-coverage-matrix.md), [level-up coverage matrix](docs/coverage/levelup-coverage-matrix.md), and [beta smoke matrix](docs/coverage/beta-readiness-smoke.md) are the honest answer to "does it support my class yet."
+> **Status:** beta / early access. Wayfinder has one maintained deterministic level-1-to-level-5 smoke path for every PF2E class, plus targeted existing-character rerun checks. That is not exhaustive coverage of every subclass, option, variant rule, or book path. The [level-1 coverage matrix](docs/coverage/level1-coverage-matrix.md), [level-up coverage matrix](docs/coverage/levelup-coverage-matrix.md), and [beta smoke matrix](docs/coverage/beta-readiness-smoke.md) are the honest answer to "does it support my class yet."
 
 ## Why use it
 
@@ -19,8 +19,8 @@ It is not a replacement for the PF2E system. It is a planning layer on top of it
 The first vertical slice covers level-1 creation and level-up milestones, with:
 
 - Ancestry, heritage, background, and class selection
-- Class branch and grant-driven choices for the classes that have a flow built (see the coverage matrix)
-- Common feat milestones and level-1 creation boosts
+- Class branch and grant-driven choices for the maintained class smoke flows through level 5
+- Common feat milestones, skill increases, and level-1 / level-5 ability boosts
 - Skill training reconciled across class, background, ancestry, heritage, and feat grants
 - Bonus-language selection that uses your final effective Intelligence
 - Spell-choice flows for supported caster profiles in the current coverage matrix
@@ -39,7 +39,7 @@ https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 
 Foundry's package updater will follow it for future versions. Older releases stay installable from their own release pages.
 
-**Compatibility:** Foundry VTT 14.360 with the PF2E system 8.1.1.
+**Compatibility:** Foundry VTT v14 with the PF2E system 8.1.x. The latest upstream versions checked on 2026-05-11 were Foundry VTT 14.361 and PF2E 8.1.2. The last full live smoke matrix was run on Foundry VTT 14.360 with PF2E 8.1.1; see [the smoke matrix](docs/coverage/beta-readiness-smoke.md) for exact evidence and caveats.
 
 ## Use it
 
@@ -93,6 +93,8 @@ Maintainer-only. The checked-in `module.json` is the development manifest; relea
 
 ## License & credits
 
-Wayfinder reuses PF2E compendium data and the PF2E system's actor/item application paths wherever it can. It does not attempt to replace the PF2E rules engine, and it depends on the system's rule shapes (`ChoiceSet`, selectors, grant items) being well-formed for the content it guides.
+Wayfinder is distributed under the terms in [LICENSE.md](LICENSE.md). It is currently all-rights-reserved software with permission to install and run the published module in Foundry Virtual Tabletop.
 
-Issues and feedback: <https://github.com/bestlux/wayfinder/issues>
+Wayfinder does not redistribute PF2E compendium data. It reads from the installed PF2E system and reuses the PF2E system's actor/item application paths wherever it can. It does not attempt to replace the PF2E rules engine, and it depends on the system's rule shapes (`ChoiceSet`, selectors, grant items) being well-formed for the content it guides.
+
+Issues and feedback: <https://github.com/bestlux/wayfinder/issues>. Maintainer Discord: `bestlux`.

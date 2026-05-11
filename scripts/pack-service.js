@@ -40,7 +40,7 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
             const traits = extractEntryTraits(entry);
             const documentId = String(entry._id);
             const uuid = toCompendiumItemUuid(packId, documentId);
-            if (isSelectedInDifferentDraftSlot(step, uuid, context)) {
+            if (isSelectedInDifferentDraftSlot(step, uuid, context) || isOwnedByActor(uuid, context)) {
                 continue;
             }
             const name = String(entry.name ?? "Unknown Option");
@@ -68,6 +68,14 @@ function isSelectedInDifferentDraftSlot(step, uuid, context) {
     const selectedUuidsBySlotId = context.selectedUuidsBySlotId ?? {};
     const normalizedUuid = uuid.trim().toLowerCase();
     return Object.entries(selectedUuidsBySlotId).some(([slotId, selectedUuid]) => slotId !== step.slotId && selectedUuid.trim().toLowerCase() === normalizedUuid);
+}
+function isOwnedByActor(uuid, context) {
+    const actorSourceIds = context.actorSourceIds ?? [];
+    if (actorSourceIds.length === 0) {
+        return false;
+    }
+    const normalizedUuid = uuid.trim().toLowerCase();
+    return actorSourceIds.some((sourceId) => sourceId.trim().toLowerCase() === normalizedUuid);
 }
 export async function resolveSelection(rawValue, step, context = EMPTY_OPTION_CONTEXT) {
     const options = await getOptionsForStep(step, context);
@@ -104,6 +112,14 @@ export function getPickerInfoState(step, context, optionCount, filteredCount, se
         return blocked;
     }
     if (optionCount === 0) {
+        if (hidesUnsupportedEmbeddedChoiceSets(step)) {
+            return {
+                tone: "empty",
+                eyebrow: "Unsupported guided options",
+                title: "No guided options are available",
+                message: "Nothing directly guided is available here. Wayfinder hides direct options that require unsupported follow-up choices; use the PF2E sheet for those choices for now.",
+            };
+        }
         return {
             tone: "empty",
             eyebrow: "No matching sources",
@@ -553,6 +569,15 @@ function hasUnsupportedEmbeddedChoiceSet(entry, step) {
     if (!entryHasChoiceSetRule(entry)) {
         return false;
     }
+    if (step.kind === "class-branch") {
+        return !Array.isArray(step.filters?.predicate) || step.filters.predicate.length === 0;
+    }
+    if (step.kind !== "pick-item" || step.slotKind === "grant-choice") {
+        return false;
+    }
+    return ["ancestry-feat", "class-feat", "general-feat", "skill-feat"].includes(step.slotKind);
+}
+function hidesUnsupportedEmbeddedChoiceSets(step) {
     if (step.kind === "class-branch") {
         return !Array.isArray(step.filters?.predicate) || step.filters.predicate.length === 0;
     }

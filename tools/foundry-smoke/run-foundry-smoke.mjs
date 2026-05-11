@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { smokeCases } from "./class-cases.mjs";
+import { validateSmokeSafety } from "./safety.mjs";
 
 const MODULE_ID = "pf2e-wayfinder";
 const fixturePrefix = "WF Smoke Harness";
@@ -24,6 +25,8 @@ function usage() {
 
 Options:
   --case <id>        Run one case. Can be passed more than once.
+  --incremental-case <id>
+                     Also run an existing-character incremental rerun for this case.
   --list            List available smoke case ids.
   --out <path>      Artifact directory. Defaults to ${defaultArtifactRoot}/<timestamp>.
   --headed          Run with a visible browser.
@@ -36,8 +39,11 @@ Environment:
   FOUNDRY_PASSWORD         Foundry user password. Optional.
   FOUNDRY_CHROME_PATH      Chrome/Edge executable path. Defaults to an installed Windows Chrome/Edge.
   FOUNDRY_SMOKE_CASES      Comma-separated case ids.
+  FOUNDRY_SMOKE_INCREMENTAL_CASES Comma-separated case ids for existing-character reruns.
   FOUNDRY_SMOKE_HEADLESS   true/false. Defaults to true.
   FOUNDRY_SMOKE_KEEP_ACTORS true/false. Defaults to false.
+  FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE true/false. Required for actor cleanup/deletion.
+  FOUNDRY_SMOKE_WORLD_ID   Expected Foundry world id. Required for actor cleanup/deletion.
   FOUNDRY_SMOKE_ARTIFACT_DIR Artifact directory override.
 `;
 }
@@ -45,11 +51,14 @@ Environment:
 function parseArgs(argv) {
   const options = {
     caseIds: [],
+    incrementalCaseIds: [],
     headed: false,
     help: false,
+    allowDestructive: envFlag("FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE", false),
     keepActors: envFlag("FOUNDRY_SMOKE_KEEP_ACTORS", false),
     list: false,
     outDir: process.env.FOUNDRY_SMOKE_ARTIFACT_DIR ?? "",
+    expectedWorldId: process.env.FOUNDRY_SMOKE_WORLD_ID ?? "",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -75,7 +84,7 @@ function parseArgs(argv) {
       continue;
     }
 
-    if (arg === "--case" || arg === "--out") {
+    if (arg === "--case" || arg === "--incremental-case" || arg === "--out") {
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) {
         throw new Error(`Missing value for ${arg}`);
@@ -83,6 +92,8 @@ function parseArgs(argv) {
 
       if (arg === "--case") {
         options.caseIds.push(value);
+      } else if (arg === "--incremental-case") {
+        options.incrementalCaseIds.push(value);
       } else {
         options.outDir = value;
       }
@@ -98,6 +109,11 @@ function parseArgs(argv) {
     .map((value) => value.trim())
     .filter(Boolean);
   options.caseIds.push(...envCaseIds);
+  const envIncrementalCaseIds = (process.env.FOUNDRY_SMOKE_INCREMENTAL_CASES ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  options.incrementalCaseIds.push(...envIncrementalCaseIds);
 
   return options;
 }
@@ -128,10 +144,10 @@ function resolveChromePath() {
   return defaultChromePaths.find((entry) => existsSync(entry)) ?? "";
 }
 
-function selectedCases(caseIds) {
+function selectedCases(caseIds, { defaultAll = true } = {}) {
   const ids = Array.from(new Set(caseIds));
   if (ids.length === 0) {
-    return smokeCases;
+    return defaultAll ? smokeCases : [];
   }
 
   const byId = new Map(smokeCases.map((entry) => [entry.id, entry]));
@@ -163,8 +179,14 @@ async function main() {
   }
 
   const cases = selectedCases(options.caseIds);
+  const incrementalCases = selectedCases(options.incrementalCaseIds, { defaultAll: false });
   const foundryUrl = process.env.FOUNDRY_URL || "http://localhost:30000";
   const headless = options.headed ? false : envFlag("FOUNDRY_SMOKE_HEADLESS", true);
+  const safety = validateSmokeSafety({
+    allowDestructive: options.allowDestructive,
+    expectedWorldId: options.expectedWorldId,
+    keepActors: options.keepActors,
+  });
   const outDir = resolveOutDir(options.outDir);
   await mkdir(outDir, { recursive: true });
 
@@ -196,7 +218,10 @@ async function main() {
       (payload) => globalThis.__runWayfinderSmokeSuite(payload),
       {
         cases,
+        allowDestructive: safety.allowDestructive,
+        expectedWorldId: safety.expectedWorldId,
         fixturePrefix,
+        incrementalCases,
         keepActors: options.keepActors,
         moduleId: MODULE_ID,
       },
@@ -240,8 +265,8 @@ function buildMarkdownSummary(result) {
       entry.id,
       entry.status,
       entry.actor?.levelAfterApply ?? "",
-      entry.evidence?.preStepIds?.length ?? 0,
-      entry.evidence?.rerunStepIds?.length ?? 0,
+      plannedStepCount(entry),
+      rerunStepCount(entry),
       entry.failures.join("<br>") || entry.classifications.join("<br>") || "ok",
     ].join(" | "),
   );
@@ -260,6 +285,21 @@ function buildMarkdownSummary(result) {
 | --- | --- | ---: | ---: | ---: | --- |
 ${rows.map((row) => `| ${row} |`).join("\n")}
 `;
+}
+
+function plannedStepCount(entry) {
+  if (Array.isArray(entry.evidence?.preStepIds)) {
+    return entry.evidence.preStepIds.length;
+  }
+
+  return (
+    (Array.isArray(entry.evidence?.initialStepIds) ? entry.evidence.initialStepIds.length : 0) +
+    (Array.isArray(entry.evidence?.incrementalStepIds) ? entry.evidence.incrementalStepIds.length : 0)
+  );
+}
+
+function rerunStepCount(entry) {
+  return Array.isArray(entry.evidence?.rerunStepIds) ? entry.evidence.rerunStepIds.length : 0;
 }
 
 function printSummary(result, outDir) {

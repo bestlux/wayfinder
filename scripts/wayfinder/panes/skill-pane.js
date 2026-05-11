@@ -60,25 +60,27 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
         ...metadata.fixedSkills,
         ...Object.values(selectedRuleChoices).filter((slug) => typeof slug === "string" && slug.length > 0),
     ]);
-    const additionalSkills = skillEntries
-        .filter(({ slug }) => !reservedSkills.has(slug))
-        .map(({ slug, label }) => {
-        const currentRank = Math.min(4, Math.max(0, projectedRanks[slug] ?? 0));
-        const selected = training.additional.includes(slug);
-        return {
-            slug,
-            label,
-            currentRank,
-            currentRankLabel: PROFICIENCY_LABELS[currentRank] ?? "Untrained",
-            currentRankCode: PROFICIENCY_CODES[currentRank] ?? "U",
-            targetRank: 1,
-            targetRankLabel: "Trained",
-            targetRankCode: "T",
-            selected,
-            disabled: currentRank >= 1 && !selected,
-            disabledReason: currentRank >= 1 ? "Already trained from another source" : null,
-        };
-    });
+    const additionalSkills = metadata.additionalCount > 0
+        ? skillEntries
+            .filter(({ slug }) => !reservedSkills.has(slug))
+            .map(({ slug, label }) => {
+            const currentRank = Math.min(4, Math.max(0, projectedRanks[slug] ?? 0));
+            const selected = training.additional.includes(slug);
+            return {
+                slug,
+                label,
+                currentRank,
+                currentRankLabel: PROFICIENCY_LABELS[currentRank] ?? "Untrained",
+                currentRankCode: PROFICIENCY_CODES[currentRank] ?? "U",
+                targetRank: 1,
+                targetRankLabel: "Trained",
+                targetRankCode: "T",
+                selected,
+                disabled: currentRank >= 1 && !selected,
+                disabledReason: currentRank >= 1 ? "Already trained from another source" : null,
+            };
+        })
+        : [];
     const choiceSections = metadata.choiceRules.map((choiceRule) => {
         const selectedSlug = selectedRuleChoices[choiceRule.key];
         const reservedByOtherChoices = new Set([

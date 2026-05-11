@@ -1,3 +1,4 @@
+import { sourceIdOf } from "../../shared/source-id.js";
 export function extractContextTraits(document, extractDocumentSlug, fallbackSlug) {
     const typedDocument = document;
     const traits = Array.isArray(typedDocument?.system?.traits?.value) ? typedDocument.system.traits.value : [];
@@ -79,6 +80,7 @@ export async function buildOptionContext(deps) {
     const ancestrySlug = deps.extractDocumentSlug(ancestryDocument);
     const selectedUuidsBySlotId = buildSelectedUuidsBySlotId(deps.draft);
     const actorItems = deps.listActorItems();
+    const actorSourceIds = buildActorSourceIds(actorItems);
     const rollOptions = buildActiveRollOptions(deps.draft, deps.steps ?? [], actorItems);
     const skillRanks = buildProjectedSkillRanks(deps.skillRanks, deps.draft, deps.steps ?? []);
     return {
@@ -95,9 +97,15 @@ export async function buildOptionContext(deps) {
         }),
         hasDedicationFeat,
         ...(Object.keys(selectedUuidsBySlotId).length > 0 ? { selectedUuidsBySlotId } : {}),
+        ...(actorSourceIds.length > 0 ? { actorSourceIds } : {}),
         ...(rollOptions.length > 0 ? { rollOptions } : {}),
         ...(skillRanks ? { skillRanks } : {}),
     };
+}
+function buildActorSourceIds(actorItems) {
+    return Array.from(new Set(actorItems
+        .map((item) => sourceIdOf(item))
+        .filter((sourceId) => typeof sourceId === "string" && sourceId.length > 0)));
 }
 function buildActiveRollOptions(draft, steps, actorItems) {
     return Array.from(new Set([...collectDraftRollOptions(draft, steps), ...collectActorRuleSelectionRollOptions(actorItems)])).sort();

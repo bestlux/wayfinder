@@ -2,7 +2,7 @@
 
 A guided Pathfinder 2e character builder for Foundry VTT.
 
-Wayfinder takes the parts of PF2E character building that fragment your attention — class tables, compendium browsing, feat slots, boosts, spell choices, and source exceptions — and turns them into a single guided flow you open from the character sheet. Think Pathbuilder, but living inside your game world: it knows which sources your GM enabled, applies the supported rule shapes it can prove, and writes its output straight to the actor. No JSON export, no re-import, no "why is my sheet wrong."
+Wayfinder takes the parts of PF2E character building that fragment your attention — class tables, compendium browsing, feat slots, boosts, spell choices, and source exceptions — and turns them into a single guided flow you open from the character sheet. Think Pathbuilder, but living inside your game world: it knows which sources your GM enabled, applies the supported rule shapes it can prove, and writes its output straight to the actor for supported guided paths. No JSON export, no re-import, fewer sheet-mismatch loops.
 
 > **Status:** early access. Wayfinder is being built slice-by-slice, class by class. Some flows are deeply guided; others hand you back to the PF2E sheet on purpose. The [level-1 coverage matrix](docs/coverage/level1-coverage-matrix.md), [level-up coverage matrix](docs/coverage/levelup-coverage-matrix.md), and [beta smoke matrix](docs/coverage/beta-readiness-smoke.md) are the honest answer to "does it support my class yet."
 
@@ -23,11 +23,11 @@ The first vertical slice covers level-1 creation and level-up milestones, with:
 - Common feat milestones and level-1 creation boosts
 - Skill training reconciled across class, background, ancestry, heritage, and feat grants
 - Bonus-language selection that uses your final effective Intelligence
-- Spell-choice flows for the casters with built-in support — wizard and cleric are deepest right now
+- Spell-choice flows for supported caster profiles in the current coverage matrix
 - Rarity and source filtering on every picker, with optional GM allowlists for non-official packs
 - Resumable drafts persisted on the actor, so you can leave and come back
 
-Where Wayfinder can't model a choice confidently, it says so and points you at the right native PF2E control. No silent omissions.
+Where Wayfinder can't model a required step confidently, it says so and points you at the right native PF2E control instead of applying as though unsupported work was handled.
 
 ## Install
 
@@ -39,7 +39,7 @@ https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 
 Foundry's package updater will follow it for future versions. Older releases stay installable from their own release pages.
 
-**Compatibility:** Foundry VTT 14.360 with the PF2E system 8.0.3.
+**Compatibility:** Foundry VTT 14.360 with the PF2E system 8.1.1.
 
 ## Use it
 
@@ -69,6 +69,8 @@ For live Foundry release smoke, build first and then run:
 ```powershell
 $env:FOUNDRY_USER = "<local Foundry user>"
 $env:FOUNDRY_PASSWORD = "<local password if needed>"
+$env:FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE = "1"
+$env:FOUNDRY_SMOKE_WORLD_ID = "<expected local world id>"
 npm run smoke:foundry
 ```
 

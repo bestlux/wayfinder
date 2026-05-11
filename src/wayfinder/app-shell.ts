@@ -672,7 +672,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const invalidation = this.#selectionInvalidationService();
     const step = await this.#findPlanStepBySlotId(stepId);
     const result = await selectClassChoiceValue(this.#selectionCommandState(), step ?? null, value, {
+      invalidateSelectionsByPrefix: invalidation.invalidateSelectionsByPrefix,
       invalidateBranchSelectionsByDependency: invalidation.invalidateBranchSelectionsByDependency,
+      invalidateGrantSelectionsBySource: invalidation.invalidateGrantSelectionsBySource,
+      invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,
     });
     await this.#finalizeSelectionCommand(result);
   }
@@ -980,6 +983,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         actorName: this.actor.name,
         currentLevel: snapshot.level,
         draft,
+        existingCompletedStepIds: readActorCompletedStepIds(this.actor),
         steps: plan.steps,
         isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
         confirmApply: confirmWayfinderApply,
@@ -1001,7 +1005,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     if (result.kind === "warning") {
-      ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.MissingSelections"));
+      const notificationKey =
+        result.warning === "no-pending-steps"
+          ? "PF2E-WAYFINDER.Notifications.NoPendingSteps"
+          : "PF2E-WAYFINDER.Notifications.MissingSelections";
+      ui.notifications.warn(game.i18n.localize(notificationKey));
+      this.render(false);
       return;
     }
 
@@ -1062,6 +1071,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.render(false);
     }
   }
+}
+
+function readActorCompletedStepIds(actor: unknown): string[] {
+  const completedStepIds = (actor as { flags?: { [MODULE_ID]?: { state?: { completedStepIds?: unknown } } } } | null)
+    ?.flags?.[MODULE_ID]?.state?.completedStepIds;
+  return Array.isArray(completedStepIds)
+    ? completedStepIds.filter((stepId): stepId is string => typeof stepId === "string")
+    : [];
 }
 
 function getPf2eConfig(): Pf2eConfigLike | null {

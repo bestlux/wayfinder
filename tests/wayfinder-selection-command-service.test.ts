@@ -378,17 +378,102 @@ describe("wayfinder selection command service", () => {
     };
 
     const result = await selectClassChoiceValue(state, step, "unholy", {
+      invalidateSelectionsByPrefix: () => [],
       invalidateBranchSelectionsByDependency: async () => ["class-branch-cause-level-1"],
+      invalidateGrantSelectionsBySource: async () => [],
+      invalidateSpellChoicesByDependency: async () => [],
     });
 
     expect(result).toMatchObject({
       kind: "changed",
       shouldAdvance: true,
       shouldRender: false,
-      statusNote: "Sanctification changed. Wayfinder marked dependent class paths for review.",
+      statusNote: "Sanctification changed. Wayfinder marked class paths for review.",
     });
     expect(draft.classChoices[step.slotId]).toBe("unholy");
     expect(state.recentlyInvalidatedStepIds.has(step.slotId)).toBe(false);
+  });
+
+  it("clears stale branch, grant, and spell choices when a class choice changes", async () => {
+    const gateChoiceSlotId = "class-choice-kineticist-kinetic-gate-level-1";
+    const elementTwoSlotId = "class-branch-kineticist-element-two-level-1";
+    const grantSlotId = "grant-choice-none-classfeature-air-gate-impulse-level-1";
+    const spellSlotId = "spell-choice-summoner-repertoire-rank-1-level-1";
+    const draft = createEmptyDraft(1);
+    draft.classChoices[gateChoiceSlotId] = "dual-gate";
+    draft.branchSelections[elementTwoSlotId] = selection(elementTwoSlotId, "feat", "air-gate", "Air Gate");
+    draft.selections[grantSlotId] = selection(grantSlotId, "feat", "air-impulse", "Air Impulse");
+    draft.spellChoices[spellSlotId] = [selection(spellSlotId, "spell", "summon-spell", "Summon Spell")];
+    const state = commandState(draft, { invalidatedSlotIds: [gateChoiceSlotId] });
+    const invalidatedPrefixes: string[] = [];
+    const invalidatedGrantSources: string[] = [];
+    const invalidatedSpellDependencies: string[] = [];
+    const step: PendingStep = {
+      id: gateChoiceSlotId,
+      level: 1,
+      kind: "class-choice",
+      slotKind: "class-choice",
+      title: "Kinetic Gate",
+      description: "",
+      required: true,
+      slotId: gateChoiceSlotId,
+      classChoice: {
+        slotId: gateChoiceSlotId,
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "kinetic-gate",
+        sourceUuid: "Compendium.pf2e.classfeatures.Item.kinetic-gate",
+        sourceName: "Kinetic Gate",
+        sourceRuleIndex: 0,
+        flag: "kineticGate",
+        rollOption: "kinetic-gate",
+        classSlug: "kineticist",
+        dependsOn: "class",
+        options: [],
+      },
+    };
+
+    const result = await selectClassChoiceValue(state, step, "single-gate", {
+      invalidateSelectionsByPrefix: (prefix) => {
+        invalidatedPrefixes.push(prefix);
+        if (prefix === SLOT_PREFIXES.classBranch) {
+          delete draft.branchSelections[elementTwoSlotId];
+          return [elementTwoSlotId];
+        }
+        return [];
+      },
+      invalidateBranchSelectionsByDependency: async () => [],
+      invalidateGrantSelectionsBySource: async (sourceItemType) => {
+        invalidatedGrantSources.push(sourceItemType);
+        if (sourceItemType === "classfeature") {
+          delete draft.selections[grantSlotId];
+          return [grantSlotId];
+        }
+        return [];
+      },
+      invalidateSpellChoicesByDependency: async (dependency) => {
+        invalidatedSpellDependencies.push(dependency);
+        if (dependency === "class-branch") {
+          delete draft.spellChoices[spellSlotId];
+          return [spellSlotId];
+        }
+        return [];
+      },
+    } as any);
+
+    expect(result).toMatchObject({
+      kind: "changed",
+      shouldAdvance: true,
+      statusNote:
+        "Class choice changed. Wayfinder reset class paths, class-feature choices, and spell choices for review.",
+    });
+    expect(draft.classChoices[gateChoiceSlotId]).toBe("single-gate");
+    expect(draft.branchSelections[elementTwoSlotId]).toBeUndefined();
+    expect(draft.selections[grantSlotId]).toBeUndefined();
+    expect(draft.spellChoices[spellSlotId]).toBeUndefined();
+    expect(invalidatedPrefixes).toContain(SLOT_PREFIXES.classBranch);
+    expect(invalidatedGrantSources).toContain("classfeature");
+    expect(invalidatedSpellDependencies).toContain("class-branch");
+    expect(state.recentlyInvalidatedStepIds.has(gateChoiceSlotId)).toBe(false);
   });
 
   it("rejects duplicate spell selections already chosen elsewhere", async () => {

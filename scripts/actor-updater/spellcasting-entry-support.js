@@ -11,9 +11,7 @@ export async function ensureSpellcastingEntry(actor, step, draft) {
     const desiredSource = createSpellcastingEntrySource(spellChoice, actor, draft);
     const existing = findSpellcastingEntryForChoice(actor, spellChoice);
     if (existing?.id) {
-        if (spellChoice.destination.type !== "prepared") {
-            await syncSpellcastingEntry(actor, existing, desiredSource);
-        }
+        await syncSpellcastingEntry(actor, existing, desiredSource);
         return existing;
     }
     const [created] = typeof actor.createEmbeddedDocuments === "function"

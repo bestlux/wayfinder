@@ -192,6 +192,122 @@ describe("spell-choice-service", () => {
     expect(selections).toEqual([]);
   });
 
+  it("does not use Wayfinder-stamped spells from other slots to satisfy future spell choices", () => {
+    const actor: ActorLike = {
+      items: {
+        contents: [
+          {
+            id: "entry-1",
+            type: "spellcastingEntry",
+            system: {
+              ability: { value: "cha" },
+              prepared: { value: "spontaneous" },
+              tradition: { value: "arcane" },
+            },
+          },
+          {
+            ...spellItem("entry-1", "Compendium.pf2e.spells-srd.Item.force-barrage", "Force Barrage", 1),
+            flags: {
+              "pf2e-wayfinder": {
+                slotId: "spell-choice-sorcerer-repertoire-rank-1-level-1",
+              },
+            },
+          },
+          {
+            ...spellItem("entry-1", "Compendium.pf2e.spells-srd.Item.mystic-armor", "Mystic Armor", 1),
+            flags: {
+              "pf2e-wayfinder": {
+                slotId: "spell-choice-sorcerer-repertoire-rank-1-level-1",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const selections = readExistingSpellChoiceSelections(actor, {
+      slotId: "spell-choice-sorcerer-repertoire-rank-1-level-2",
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "sorcerer-spellcasting",
+      sourceUuid: "Compendium.pf2e.classfeatures.Item.sorcerer-spellcasting",
+      sourceName: "Sorcerer Spellcasting",
+      classSlug: "sorcerer",
+      dependsOn: "class",
+      destination: {
+        type: "spontaneous",
+        key: "sorcerer-arcane-spontaneous",
+        label: "Arcane spell repertoire",
+        entryName: "Arcane Spontaneous Spells",
+        tradition: "arcane",
+        ability: "cha",
+        prepared: "spontaneous",
+      },
+      count: 1,
+      minRank: 1,
+      maxRank: 1,
+      cantrip: false,
+      curriculumSpellNames: [],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: true,
+    } satisfies SpellChoiceMeta);
+
+    expect(selections).toEqual([]);
+  });
+
+  it("does not use untagged spells to satisfy uncompleted future choices on Wayfinder-managed actors", () => {
+    const actor: ActorLike = {
+      flags: {
+        "pf2e-wayfinder": {
+          state: {
+            completedStepIds: ["spell-choice-sorcerer-repertoire-rank-1-level-1"],
+          },
+        },
+      },
+      items: {
+        contents: [
+          {
+            id: "entry-1",
+            type: "spellcastingEntry",
+            system: {
+              ability: { value: "cha" },
+              prepared: { value: "spontaneous" },
+              tradition: { value: "arcane" },
+            },
+          },
+          spellItem("entry-1", "Compendium.pf2e.spells-srd.Item.force-barrage", "Force Barrage", 1),
+        ],
+      },
+    };
+
+    const selections = readExistingSpellChoiceSelections(actor, {
+      slotId: "spell-choice-sorcerer-repertoire-rank-1-level-2",
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "sorcerer-spellcasting",
+      sourceUuid: "Compendium.pf2e.classfeatures.Item.sorcerer-spellcasting",
+      sourceName: "Sorcerer Spellcasting",
+      classSlug: "sorcerer",
+      dependsOn: "class",
+      destination: {
+        type: "spontaneous",
+        key: "sorcerer-arcane-spontaneous",
+        label: "Arcane spell repertoire",
+        entryName: "Arcane Spontaneous Spells",
+        tradition: "arcane",
+        ability: "cha",
+        prepared: "spontaneous",
+      },
+      count: 1,
+      minRank: 1,
+      maxRank: 1,
+      cantrip: false,
+      curriculumSpellNames: [],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: true,
+    } satisfies SpellChoiceMeta);
+
+    expect(selections).toEqual([]);
+  });
+
   it("derives the wizard maximum spell rank from level", () => {
     expect(wizardMaxSpellRank(1)).toBe(1);
     expect(wizardMaxSpellRank(3)).toBe(2);

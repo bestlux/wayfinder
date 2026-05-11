@@ -96,6 +96,11 @@ export function matchesChoicePredicate(
     return matchesChoicePredicateList(predicate, matchesString);
   }
 
+  const comparison = matchesComparisonPredicate(predicate, matchesString);
+  if (comparison !== null) {
+    return comparison;
+  }
+
   if (Array.isArray(predicate.or)) {
     return predicate.or.some((entry) => matchesChoicePredicate(entry, matchesString));
   }
@@ -109,6 +114,30 @@ export function matchesChoicePredicate(
   }
 
   return true;
+}
+
+function matchesComparisonPredicate(
+  predicate: Exclude<ChoicePredicate, string | ChoicePredicate[]>,
+  matchesString: (statement: string) => boolean
+): boolean | null {
+  for (const [operator, comparator] of [
+    ["lt", predicate.lt],
+    ["lte", predicate.lte],
+    ["gt", predicate.gt],
+    ["gte", predicate.gte],
+  ] as const) {
+    if (comparator === undefined) {
+      continue;
+    }
+
+    if (!Array.isArray(comparator) || comparator.length !== 2 || typeof comparator[0] !== "string") {
+      return false;
+    }
+
+    return matchesString(`${operator}:${comparator[0]}:${String(comparator[1])}`);
+  }
+
+  return null;
 }
 
 export function predicateIncludesString(predicate: ChoicePredicate, target: string): boolean {
@@ -127,8 +156,22 @@ export function predicateIncludesString(predicate: ChoicePredicate, target: stri
   return (
     (Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
     (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
-    (!!predicate.not && predicateIncludesString(predicate.not, target))
+    (!!predicate.not && predicateIncludesString(predicate.not, target)) ||
+    comparisonPredicateIncludesString(predicate, target)
   );
+}
+
+function comparisonPredicateIncludesString(
+  predicate: Exclude<ChoicePredicate, string | ChoicePredicate[]>,
+  target: string
+): boolean {
+  for (const comparator of [predicate.lt, predicate.lte, predicate.gt, predicate.gte]) {
+    if (Array.isArray(comparator) && comparator.some((entry) => typeof entry === "string" && entry.includes(target))) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

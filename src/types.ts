@@ -135,6 +135,7 @@ export interface OptionContext {
   sanctification?: "holy" | "unholy" | "none" | null;
   hasDedicationFeat: boolean;
   selectedUuidsBySlotId?: Record<string, string>;
+  actorSourceIds?: string[];
   rollOptions?: string[];
   skillRanks?: Record<string, number>;
 }

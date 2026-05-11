@@ -24,6 +24,7 @@ export async function applySpellChoiceDraft(actor, draft, steps) {
             if (!source) {
                 continue;
             }
+            stampSpellSourceFlags(source, selection);
             source.system ??= {};
             source.system.location ??= {};
             if (typeof source.system.location === "object" && source.system.location !== null) {
@@ -41,6 +42,18 @@ export async function applySpellChoiceDraft(actor, draft, steps) {
             await syncPreparedSpellChoiceSelections(actor, entry.id, step.spellChoice, slotId, selections);
         }
     }
+}
+function stampSpellSourceFlags(source, selection) {
+    source.flags ??= {};
+    source.flags.core = {
+        ...(source.flags.core ?? {}),
+        sourceId: selection.uuid,
+    };
+    source.flags[MODULE_ID] = {
+        ...(source.flags[MODULE_ID] ?? {}),
+        importedBy: MODULE_ID,
+        slotId: selection.slotId,
+    };
 }
 async function reconcileSpellChoiceSlot(actor, slotId, selections) {
     if (typeof actor?.deleteEmbeddedDocuments !== "function") {

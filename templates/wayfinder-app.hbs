@@ -131,7 +131,7 @@
     <button type="button" class="footer-clear" data-wayfinder-action="clear-draft">Clear Draft</button>
     <div class="footer-actions">
       <button type="button" class="secondary" data-wayfinder-action="save-draft">Save Draft</button>
-      <button type="button" class="primary" data-wayfinder-action="apply-draft">Apply Changes</button>
+      <button type="button" class="primary" data-wayfinder-action="apply-draft" {{#unless canApplyDraft}}disabled{{/unless}}>Apply Changes</button>
     </div>
   </footer>
 </section>

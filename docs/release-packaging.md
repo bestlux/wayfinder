@@ -26,7 +26,7 @@ Outputs land in `dist/release/`:
 
 The archive intentionally ships only installable assets: `module.json`, generated `scripts/`, `styles/`, `templates/`, `lang/`, and top-level release docs like the README. It excludes `src/`, `tests/`, `node_modules/`, source maps, build config, workflow files, and other development-only content.
 
-Marketplace media lives in the repo-level `media/` folder and is referenced from `module.json` with `raw.githubusercontent.com` URLs. Those images are intentionally not included in `module.zip`; publish them by committing them to the repository's default branch before cutting or replacing a release manifest.
+Marketplace media lives in the repo-level `media/` folder and is referenced from `module.json` with tag-pinned `raw.githubusercontent.com` URLs for each release. Those images are intentionally not included in `module.zip`; publish them by committing them before cutting the matching tag. If a screenshot needs to change after release, cut a new version instead of mutating the old listing.
 
 ## Publish through GitHub
 

@@ -86,7 +86,7 @@ export interface BuildClericSpellChoiceStepsParams {
 
 export interface SpellChoiceItem extends Omit<ActorItemLike, "flags" | "system"> {
   flags?: ActorItemFlags & {
-    "pf2e-wayfinder"?: {
+    "wayfinder-pf2e"?: {
       slotId?: unknown;
     };
   };

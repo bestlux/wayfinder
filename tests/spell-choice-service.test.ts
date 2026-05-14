@@ -154,7 +154,7 @@ describe("spell-choice-service", () => {
           {
             ...spellItem("entry-1", "Compendium.pf2e.spells-srd.Item.breathe-fire", "Breathe Fire", 1),
             flags: {
-              "pf2e-wayfinder": {
+              "wayfinder-pf2e": {
                 slotId: "spell-choice-wizard-curriculum-rank-1-level-1",
               },
             },
@@ -208,7 +208,7 @@ describe("spell-choice-service", () => {
           {
             ...spellItem("entry-1", "Compendium.pf2e.spells-srd.Item.force-barrage", "Force Barrage", 1),
             flags: {
-              "pf2e-wayfinder": {
+              "wayfinder-pf2e": {
                 slotId: "spell-choice-sorcerer-repertoire-rank-1-level-1",
               },
             },
@@ -216,7 +216,7 @@ describe("spell-choice-service", () => {
           {
             ...spellItem("entry-1", "Compendium.pf2e.spells-srd.Item.mystic-armor", "Mystic Armor", 1),
             flags: {
-              "pf2e-wayfinder": {
+              "wayfinder-pf2e": {
                 slotId: "spell-choice-sorcerer-repertoire-rank-1-level-1",
               },
             },
@@ -257,7 +257,7 @@ describe("spell-choice-service", () => {
   it("does not use untagged spells to satisfy uncompleted future choices on Wayfinder-managed actors", () => {
     const actor: ActorLike = {
       flags: {
-        "pf2e-wayfinder": {
+        "wayfinder-pf2e": {
           state: {
             completedStepIds: ["spell-choice-sorcerer-repertoire-rank-1-level-1"],
           },

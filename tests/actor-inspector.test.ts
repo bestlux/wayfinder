@@ -35,7 +35,7 @@ describe("actor-inspector", () => {
   it("tracks fulfilled wayfinder and PF2E feat slot ids", () => {
     const snapshot = inspectActor({
       flags: {
-        "pf2e-wayfinder": {
+        "wayfinder-pf2e": {
           state: {
             completedStepIds: ["ability-boosts-level-1"],
           },
@@ -46,7 +46,7 @@ describe("actor-inspector", () => {
           {
             type: "feat",
             flags: {
-              "pf2e-wayfinder": {
+              "wayfinder-pf2e": {
                 slotId: "skill-feat-level-1",
               },
             },

@@ -358,7 +358,7 @@ describe("class-branch-service", () => {
           onDelete: "detach",
           nested: null,
         },
-        "flags.pf2e-wayfinder.slotId": "class-branch-arcane-school-level-1",
+        "flags.wayfinder-pf2e.slotId": "class-branch-arcane-school-level-1",
       },
       {
         _id: "school-1",
@@ -367,8 +367,8 @@ describe("class-branch-service", () => {
           id: "selector-1",
           onDelete: "cascade",
         },
-        "flags.pf2e-wayfinder.importedBy": "pf2e-wayfinder",
-        "flags.pf2e-wayfinder.slotId": "class-branch-arcane-school-level-1",
+        "flags.wayfinder-pf2e.importedBy": "wayfinder-pf2e",
+        "flags.wayfinder-pf2e.slotId": "class-branch-arcane-school-level-1",
       },
     ]);
   });

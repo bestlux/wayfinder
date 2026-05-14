@@ -1,4 +1,4 @@
-export const MODULE_ID = "pf2e-wayfinder";
+export const MODULE_ID = "wayfinder-pf2e";
 export const MODULE_TITLE = "Wayfinder";
 export const DRAFT_FLAG = `flags.${MODULE_ID}.draft`;
 export const STATE_FLAG = `flags.${MODULE_ID}.state`;

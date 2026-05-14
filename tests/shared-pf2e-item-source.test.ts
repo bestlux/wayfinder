@@ -14,7 +14,7 @@ describe("shared PF2E item source helpers", () => {
     const source: EmbeddedItemSource = {
       _id: "compendium-id",
       flags: {
-        "pf2e-wayfinder": {
+        "wayfinder-pf2e": {
           custom: true,
         },
       },
@@ -28,9 +28,9 @@ describe("shared PF2E item source helpers", () => {
     expect(source._id).toBeUndefined();
     expect(source._stats?.compendiumSource).toBe("Compendium.pf2e.feats-srd.Item.Titan Swing");
     expect(source.flags?.core?.sourceId).toBe("Compendium.pf2e.feats-srd.Item.Titan Swing");
-    expect(source.flags?.["pf2e-wayfinder"]).toMatchObject({
+    expect(source.flags?.["wayfinder-pf2e"]).toMatchObject({
       custom: true,
-      importedBy: "pf2e-wayfinder",
+      importedBy: "wayfinder-pf2e",
       slotId: "grant-choice-none-background-wanderlust-feat-level-1",
     });
   });
@@ -55,7 +55,7 @@ describe("shared PF2E item source helpers", () => {
       id: "heritage-id",
       onDelete: "cascade",
     });
-    expect(source.flags?.["pf2e-wayfinder"]?.slotId).toBe("grant-choice-none-heritage-steadfast-tanuki-feat-level-1");
+    expect(source.flags?.["wayfinder-pf2e"]?.slotId).toBe("grant-choice-none-heritage-steadfast-tanuki-feat-level-1");
 
     expect(
       buildGrantedItemUpdate("created-id", {
@@ -70,8 +70,8 @@ describe("shared PF2E item source helpers", () => {
         id: "heritage-id",
         onDelete: "cascade",
       },
-      "flags.pf2e-wayfinder.importedBy": "pf2e-wayfinder",
-      "flags.pf2e-wayfinder.slotId": "grant-choice-none-heritage-steadfast-tanuki-feat-level-1",
+      "flags.wayfinder-pf2e.importedBy": "wayfinder-pf2e",
+      "flags.wayfinder-pf2e.slotId": "grant-choice-none-heritage-steadfast-tanuki-feat-level-1",
     });
   });
 

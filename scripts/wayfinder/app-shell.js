@@ -34,7 +34,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         },
         window: {
             icon: "fa-solid fa-compass",
-            title: "PF2E-WAYFINDER.App.Title",
+            title: "wayfinder-pf2e.App.Title",
             contentClasses: ["standard-form"],
         },
     };
@@ -57,7 +57,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #statusNote = null;
     static open(actor) {
         if (!canUseWayfinder(actor)) {
-            ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.OwnerOnly"));
+            ui.notifications.warn(game.i18n.localize("wayfinder-pf2e.Notifications.OwnerOnly"));
             return;
         }
         const existing = Object.values(actor.apps).find((app) => app instanceof WayfinderApp);
@@ -688,7 +688,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     async #finalizeSelectionCommand(result) {
         if (result.kind === "warning") {
             if (result.warning === "duplicate-selection") {
-                ui.notifications.warn(game.i18n.localize("PF2E-WAYFINDER.Notifications.DuplicateSelections"));
+                ui.notifications.warn(game.i18n.localize("wayfinder-pf2e.Notifications.DuplicateSelections"));
             }
             else if (result.warning === "language-choice-full") {
                 ui.notifications.warn("This language step is already full. Remove one before adding another.");
@@ -757,7 +757,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     async #saveDraft(notify = true) {
         await this.actor.update(buildSaveDraftUpdate(this.#requireDraft()));
         if (notify) {
-            ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.SavedDraft"));
+            ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.SavedDraft"));
         }
     }
     async #applyDraft() {
@@ -788,25 +788,25 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             console.error("PF2E Wayfinder failed to apply draft", error);
             this.#statusNote =
                 "Wayfinder could not apply this draft. The draft was kept for review; details are in the console.";
-            ui.notifications.error(game.i18n.localize("PF2E-WAYFINDER.Notifications.ApplyFailed"));
+            ui.notifications.error(game.i18n.localize("wayfinder-pf2e.Notifications.ApplyFailed"));
             this.render(false);
             return;
         }
         if (result.kind === "warning") {
             const notificationKey = result.warning === "no-pending-steps"
-                ? "PF2E-WAYFINDER.Notifications.NoPendingSteps"
-                : "PF2E-WAYFINDER.Notifications.MissingSelections";
+                ? "wayfinder-pf2e.Notifications.NoPendingSteps"
+                : "wayfinder-pf2e.Notifications.MissingSelections";
             ui.notifications.warn(game.i18n.localize(notificationKey));
             this.render(false);
             return;
         }
         if (result.kind === "cancelled") {
-            ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.ApplyCancelled"));
+            ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.ApplyCancelled"));
             return;
         }
         this.#draft = result.nextDraft;
         this.#recentlyInvalidatedStepIds.clear();
-        ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.Applied"));
+        ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.Applied"));
         await this.close({ animate: false });
     }
     async #clearDraft() {
@@ -820,7 +820,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#previewValueByStepId.clear();
         this.#recentlyInvalidatedStepIds.clear();
         await this.actor.update(cleared.actorUpdate);
-        ui.notifications.info(game.i18n.localize("PF2E-WAYFINDER.Notifications.ClearedDraft"));
+        ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.ClearedDraft"));
         this.render(false);
     }
     #togglePickerFilterMenu(stepId, filterKind) {
@@ -867,11 +867,11 @@ async function confirmWayfinderApply(message) {
     if (dialog) {
         const escapeHTML = foundryApi.utils?.escapeHTML ?? fallbackEscapeHtml;
         const result = await dialog.confirm({
-            window: { title: "PF2E-WAYFINDER.App.ApplyConfirmTitle" },
+            window: { title: "wayfinder-pf2e.App.ApplyConfirmTitle" },
             content: `<p>${escapeHTML(message)}</p>`,
             modal: true,
-            yes: { label: "PF2E-WAYFINDER.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
-            no: { label: "PF2E-WAYFINDER.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
+            yes: { label: "wayfinder-pf2e.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
+            no: { label: "wayfinder-pf2e.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
         });
         return result === true;
     }

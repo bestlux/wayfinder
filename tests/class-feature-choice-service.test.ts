@@ -205,7 +205,7 @@ describe("class-feature-choice-service", () => {
           onDelete: "detach",
           nested: null,
         },
-        "flags.pf2e-wayfinder.slotId": "deity-level-1",
+        "flags.wayfinder-pf2e.slotId": "deity-level-1",
       },
     ]);
     expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
@@ -223,7 +223,7 @@ describe("class-feature-choice-service", () => {
           },
         ],
         "flags.pf2e.rulesSelections.divineFont": "harm",
-        "flags.pf2e-wayfinder.slotId": "class-choice-divine-font-divineFont-level-1",
+        "flags.wayfinder-pf2e.slotId": "class-choice-divine-font-divineFont-level-1",
       },
     ]);
   });
@@ -434,7 +434,7 @@ describe("class-feature-choice-service", () => {
           },
         ],
         "flags.pf2e.rulesSelections.deity": "Compendium.pf2e.deities.Item.iomedae",
-        "flags.pf2e-wayfinder.slotId": "deity-level-1",
+        "flags.wayfinder-pf2e.slotId": "deity-level-1",
       },
     ]);
     expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
@@ -445,8 +445,8 @@ describe("class-feature-choice-service", () => {
           id: "selector-1",
           onDelete: "cascade",
         },
-        "flags.pf2e-wayfinder.importedBy": "pf2e-wayfinder",
-        "flags.pf2e-wayfinder.slotId": "deity-level-1",
+        "flags.wayfinder-pf2e.importedBy": "wayfinder-pf2e",
+        "flags.wayfinder-pf2e.slotId": "deity-level-1",
       },
     ]);
     expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(3, "Item", [
@@ -476,7 +476,7 @@ describe("class-feature-choice-service", () => {
           onDelete: "detach",
           nested: null,
         },
-        "flags.pf2e-wayfinder.slotId": "deity-level-1",
+        "flags.wayfinder-pf2e.slotId": "deity-level-1",
       },
     ]);
   });
@@ -606,7 +606,7 @@ describe("class-feature-choice-service", () => {
           },
         ],
         "flags.pf2e.rulesSelections.ancientElf": "Compendium.pf2e.feats-srd.Item.fighter-dedication",
-        "flags.pf2e-wayfinder.slotId": "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+        "flags.wayfinder-pf2e.slotId": "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
       },
     ]);
     expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
@@ -814,8 +814,8 @@ function featureSource(name: string, sourceId: string, system: Record<string, un
       pf2e: {
         rulesSelections: {},
       },
-      "pf2e-wayfinder": {
-        importedBy: "pf2e-wayfinder",
+      "wayfinder-pf2e": {
+        importedBy: "wayfinder-pf2e",
       },
     },
   };

@@ -228,8 +228,8 @@ describe("actor-updater spell choice application", () => {
         name: "Arcane Prepared Spells",
         type: "spellcastingEntry",
         flags: {
-          "pf2e-wayfinder": {
-            importedBy: "pf2e-wayfinder",
+          "wayfinder-pf2e": {
+            importedBy: "wayfinder-pf2e",
             destinationKey: "wizard-arcane-prepared",
           },
         },
@@ -254,8 +254,8 @@ describe("actor-updater spell choice application", () => {
       expect.objectContaining({
         name: "Shield",
         flags: expect.objectContaining({
-          "pf2e-wayfinder": expect.objectContaining({
-            importedBy: "pf2e-wayfinder",
+          "wayfinder-pf2e": expect.objectContaining({
+            importedBy: "wayfinder-pf2e",
             slotId: "spell-choice-wizard-spellbook-cantrips-level-1",
           }),
         }),
@@ -265,8 +265,8 @@ describe("actor-updater spell choice application", () => {
       expect.objectContaining({
         name: "Magic Missile",
         flags: expect.objectContaining({
-          "pf2e-wayfinder": expect.objectContaining({
-            importedBy: "pf2e-wayfinder",
+          "wayfinder-pf2e": expect.objectContaining({
+            importedBy: "wayfinder-pf2e",
             slotId: "spell-choice-wizard-spellbook-rank-1-level-1",
           }),
         }),
@@ -328,7 +328,7 @@ describe("actor-updater spell choice application", () => {
     expect(spellbookEntry).toMatchObject({
       name: "Arcane Prepared Spells",
       flags: {
-        "pf2e-wayfinder": {
+        "wayfinder-pf2e": {
           destinationKey: "wizard-arcane-prepared",
         },
       },
@@ -336,7 +336,7 @@ describe("actor-updater spell choice application", () => {
     expect(guidance).toMatchObject({
       sourceId: "Compendium.pf2e.spells-srd.Item.guidance",
       flags: {
-        "pf2e-wayfinder": {
+        "wayfinder-pf2e": {
           slotId,
         },
       },
@@ -368,9 +368,9 @@ describe("actor-updater spell choice application", () => {
           type: "spellcastingEntry",
           name: "Arcane Prepared Spells",
           flags: {
-            "pf2e-wayfinder": {
+            "wayfinder-pf2e": {
               destinationKey: "wizard-arcane-prepared",
-              importedBy: "pf2e-wayfinder",
+              importedBy: "wayfinder-pf2e",
             },
           },
           system: {
@@ -490,9 +490,9 @@ describe("actor-updater spell choice application", () => {
           type: "spellcastingEntry",
           name: "Arcane Prepared Spells",
           flags: {
-            "pf2e-wayfinder": {
+            "wayfinder-pf2e": {
               destinationKey: "wizard-arcane-prepared",
-              importedBy: "pf2e-wayfinder",
+              importedBy: "wayfinder-pf2e",
             },
           },
           system: {
@@ -523,7 +523,7 @@ describe("actor-updater spell choice application", () => {
             core: {
               sourceId: "Compendium.pf2e.spells-srd.Item.old-curriculum-spell",
             },
-            "pf2e-wayfinder": {
+            "wayfinder-pf2e": {
               slotId: "spell-choice-wizard-curriculum-rank-1-level-1",
             },
           },
@@ -607,9 +607,9 @@ describe("actor-updater spell choice application", () => {
           type: "spellcastingEntry",
           name: "Divine Prepared Spells",
           flags: {
-            "pf2e-wayfinder": {
+            "wayfinder-pf2e": {
               destinationKey: "cleric-divine-prepared",
-              importedBy: "pf2e-wayfinder",
+              importedBy: "wayfinder-pf2e",
             },
           },
           system: {
@@ -812,9 +812,9 @@ describe("actor-updater spell choice application", () => {
           type: "spellcastingEntry",
           name: "Arcane Prepared Spells",
           flags: {
-            "pf2e-wayfinder": {
+            "wayfinder-pf2e": {
               destinationKey: "wizard-arcane-prepared",
-              importedBy: "pf2e-wayfinder",
+              importedBy: "wayfinder-pf2e",
             },
           },
           system: {

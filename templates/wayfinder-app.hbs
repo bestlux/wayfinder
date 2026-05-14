@@ -84,46 +84,46 @@
           {{/if}}
 
           {{#if activePane.isManual}}
-            {{> "modules/pf2e-wayfinder/templates/wayfinder/manual-pane.hbs"}}
+            {{> "modules/wayfinder-pf2e/templates/wayfinder/manual-pane.hbs"}}
           {{/if}}
 
           {{#if activePane.isBoost}}
-            {{> "modules/pf2e-wayfinder/templates/wayfinder/boost-pane.hbs"}}
+            {{> "modules/wayfinder-pf2e/templates/wayfinder/boost-pane.hbs"}}
           {{/if}}
 
           {{#if activePane.isSkillIncrease}}
-            {{> "modules/pf2e-wayfinder/templates/wayfinder/skill-increase-pane.hbs"}}
+            {{> "modules/wayfinder-pf2e/templates/wayfinder/skill-increase-pane.hbs"}}
           {{/if}}
 
           {{#if activePane.isSkillTraining}}
-            {{> "modules/pf2e-wayfinder/templates/wayfinder/skill-training-pane.hbs"}}
+            {{> "modules/wayfinder-pf2e/templates/wayfinder/skill-training-pane.hbs"}}
           {{/if}}
 
           {{#if activePane.isSingletonChoice}}
-            {{> "modules/pf2e-wayfinder/templates/wayfinder/singleton-choice-pane.hbs"}}
+            {{> "modules/wayfinder-pf2e/templates/wayfinder/singleton-choice-pane.hbs"}}
           {{/if}}
 
           {{#if activePane.isLanguageChoice}}
-            {{> "modules/pf2e-wayfinder/templates/wayfinder/language-choice-pane.hbs"}}
+            {{> "modules/wayfinder-pf2e/templates/wayfinder/language-choice-pane.hbs"}}
           {{/if}}
 
           {{#if activePane.isClassChoice}}
-            {{> "modules/pf2e-wayfinder/templates/wayfinder/class-choice-pane.hbs"}}
+            {{> "modules/wayfinder-pf2e/templates/wayfinder/class-choice-pane.hbs"}}
           {{/if}}
 
           {{#if activePane.isSpellChoice}}
-            {{> "modules/pf2e-wayfinder/templates/wayfinder/spell-choice-pane.hbs"}}
+            {{> "modules/wayfinder-pf2e/templates/wayfinder/spell-choice-pane.hbs"}}
           {{/if}}
 
           {{#if activePane.isPickItem}}
-            {{> "modules/pf2e-wayfinder/templates/wayfinder/pick-pane.hbs"}}
+            {{> "modules/wayfinder-pf2e/templates/wayfinder/pick-pane.hbs"}}
           {{/if}}
         {{/if}}
       </main>
     </section>
   {{else}}
     <section class="wayfinder-empty">
-      <p>{{localize "PF2E-WAYFINDER.App.NoPending"}}</p>
+      <p>{{localize "wayfinder-pf2e.App.NoPending"}}</p>
     </section>
   {{/if}}
 

@@ -18,7 +18,7 @@ export interface ActorItemFlags extends LooseRecord {
     };
     itemGrants?: Record<string, unknown>;
   } & LooseRecord;
-  "pf2e-wayfinder"?: ActorModuleFlags;
+  "wayfinder-pf2e"?: ActorModuleFlags;
 }
 
 export interface PreparedSlotLike {

@@ -1,8 +1,8 @@
 import { MODULE_ID, SETTINGS } from "./constants.js";
 export function registerSettings() {
     game.settings.register(MODULE_ID, SETTINGS.extraPacks, {
-        name: "PF2E-WAYFINDER.Settings.ExtraPacks.Name",
-        hint: "PF2E-WAYFINDER.Settings.ExtraPacks.Hint",
+        name: "wayfinder-pf2e.Settings.ExtraPacks.Name",
+        hint: "wayfinder-pf2e.Settings.ExtraPacks.Hint",
         scope: "world",
         config: true,
         type: String,

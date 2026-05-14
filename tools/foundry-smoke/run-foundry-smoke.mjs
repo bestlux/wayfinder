@@ -8,7 +8,7 @@ import { chromium } from "playwright-core";
 import { smokeCases } from "./class-cases.mjs";
 import { validateSmokeSafety } from "./safety.mjs";
 
-const MODULE_ID = "pf2e-wayfinder";
+const MODULE_ID = "wayfinder-pf2e";
 const fixturePrefix = "WF Smoke Harness";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const browserSuitePath = path.join(repoRoot, "tools", "foundry-smoke", "browser-suite.js");

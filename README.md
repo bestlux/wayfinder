@@ -59,7 +59,7 @@ npm test
 For local Foundry testing, link the repo into:
 
 ```text
-C:\Users\<you>\AppData\Local\FoundryVTT\Data\modules\pf2e-wayfinder
+C:\Users\<you>\AppData\Local\FoundryVTT\Data\modules\wayfinder-pf2e
 ```
 
 Before closing meaningful work, run `npm run check` — it covers formatting, lint, build, tests, and strict typecheck in one pass.

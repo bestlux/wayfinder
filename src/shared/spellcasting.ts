@@ -6,7 +6,7 @@ interface SpellcastingEntryLike {
   name?: unknown;
   type?: unknown;
   flags?: {
-    "pf2e-wayfinder"?: {
+    "wayfinder-pf2e"?: {
       destinationKey?: unknown;
     };
   };
@@ -28,7 +28,7 @@ export function findSpellcastingEntryForChoice(actor: unknown, choice: SpellChoi
   return (
     items.find(
       (item) =>
-        item?.type === "spellcastingEntry" && item?.flags?.["pf2e-wayfinder"]?.destinationKey === choice.destination.key
+        item?.type === "spellcastingEntry" && item?.flags?.["wayfinder-pf2e"]?.destinationKey === choice.destination.key
     ) ??
     items.find(
       (item) => itemMatchesSpellcastingEntry(item, choice) && String(item?.name ?? "") === choice.destination.entryName

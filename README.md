@@ -1,5 +1,7 @@
 # Wayfinder
 
+![Wayfinder character builder inside Foundry](media/cover.webp)
+
 A guided Pathfinder 2e character builder for Foundry VTT.
 
 Wayfinder takes the parts of PF2E character building that fragment your attention — class tables, compendium browsing, feat slots, boosts, spell choices, and source exceptions — and turns them into a single guided flow you open from the character sheet. Think Pathbuilder, but living inside your game world: it knows which sources your GM enabled, applies the supported rule shapes it can prove, and writes its output straight to the actor for supported guided paths. No JSON export, no re-import, fewer sheet-mismatch loops.
@@ -28,6 +30,16 @@ The first vertical slice covers level-1 creation and level-up milestones, with:
 - Resumable drafts persisted on the actor, so you can leave and come back
 
 Where Wayfinder can't model a required step confidently, it says so and points you at the right native PF2E control instead of applying as though unsupported work was handled.
+
+## Screenshots
+
+![Guided character creation](media/screenshot-creation.webp)
+
+![Filtered feat picker](media/screenshot-feat-picker.webp)
+
+![Spell choice flow](media/screenshot-spell-choice.webp)
+
+![Level-up draft](media/screenshot-levelup.webp)
 
 ## Install
 

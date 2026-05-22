@@ -221,18 +221,36 @@ function validatePackageEntries(entries) {
 }
 
 function buildReleaseManifest(sourceManifest, { repo, tag, version }) {
-  const repositoryUrl = `https://github.com/${repo}`;
+  const repositoryUrl = "https://github.com/" + repo;
+  const rawMediaBaseUrl = "https://raw.githubusercontent.com/" + repo + "/" + tag + "/media/";
+  const media = Array.isArray(sourceManifest.media)
+    ? sourceManifest.media.map((entry) => ({
+        ...entry,
+        thumbnail: rewriteMediaUrl(entry.thumbnail, rawMediaBaseUrl),
+        url: rewriteMediaUrl(entry.url, rawMediaBaseUrl),
+      }))
+    : sourceManifest.media;
 
   return {
     ...sourceManifest,
     version,
-    manifest: `${repositoryUrl}/releases/latest/download/module.json`,
-    download: `${repositoryUrl}/releases/download/${tag}/module.zip`,
+    media,
+    manifest: repositoryUrl + "/releases/latest/download/module.json",
+    download: repositoryUrl + "/releases/download/" + tag + "/module.zip",
     url: sourceManifest.url || repositoryUrl,
     readme: sourceManifest.readme || `${repositoryUrl}#readme`,
     bugs: sourceManifest.bugs || `${repositoryUrl}/issues`,
     changelog: `${repositoryUrl}/releases/tag/${tag}`,
   };
+}
+
+function rewriteMediaUrl(value, rawMediaBaseUrl) {
+  if (typeof value !== "string") return value;
+
+  const mediaFileName = /\/media\/(?<fileName>[^/?#]+)(?:[?#].*)?$/u.exec(value)?.groups?.fileName;
+  if (!mediaFileName) return value;
+
+  return rawMediaBaseUrl + mediaFileName;
 }
 
 function createCrc32Table() {

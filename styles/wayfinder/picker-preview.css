@@ -418,8 +418,8 @@
 
 /* ── Trait Tags (PF2E style) ───────────────────────────── */
 
-.option-rarity,
-.preview-tags .tag {
+.wayfinder-app .option-rarity,
+.wayfinder-app .preview-tags .tag {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -434,23 +434,20 @@
   text-transform: uppercase;
 }
 
-.rarity-uncommon,
-.option-rarity.rarity-uncommon,
-.preview-tags .tag.rarity-uncommon {
+.wayfinder-app .option-rarity.rarity-uncommon,
+.wayfinder-app .preview-tags .tag.rarity-uncommon {
   background: var(--wf-rarity-uncommon);
   color: var(--text-light, #f4f1ea);
 }
 
-.rarity-rare,
-.option-rarity.rarity-rare,
-.preview-tags .tag.rarity-rare {
+.wayfinder-app .option-rarity.rarity-rare,
+.wayfinder-app .preview-tags .tag.rarity-rare {
   background: var(--wf-rarity-rare);
   color: var(--text-light, #f4f1ea);
 }
 
-.rarity-unique,
-.option-rarity.rarity-unique,
-.preview-tags .tag.rarity-unique {
+.wayfinder-app .option-rarity.rarity-unique,
+.wayfinder-app .preview-tags .tag.rarity-unique {
   background: var(--wf-rarity-unique);
   color: var(--text-light, #f4f1ea);
 }

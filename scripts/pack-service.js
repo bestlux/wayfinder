@@ -4,6 +4,7 @@ import { toCompendiumItemUuid } from "./shared/compendium.js";
 import { resolveUuid } from "./shared/foundry-compat.js";
 import { extractDocumentSlug } from "./shared/slug.js";
 import { mergePackIds, parseCompendiumAllowlist } from "./source-filter.js";
+import { discoverGrantSelectionMeta } from "./wayfinder/grant-choice/rule-discovery.js";
 import { predicateIncludesString } from "./wayfinder/rule-data.js";
 const indexCache = new Map();
 const traitCatalogCache = new Map();
@@ -308,7 +309,7 @@ function matchesFilters(entry, packId, step, context, traitCatalog) {
     if (filters.uuidPredicates && !matchesUuidChoicePredicate(entry, packId, filters.uuidPredicates, context)) {
         return false;
     }
-    if (hasUnsupportedEmbeddedChoiceSet(entry, step)) {
+    if (hasUnsupportedEmbeddedChoiceSet(entry, packId, step)) {
         return false;
     }
     if (filters.featTypes?.length) {
@@ -565,7 +566,7 @@ function matchesClassBranchContext(entry, step, context) {
     }
     return true;
 }
-function hasUnsupportedEmbeddedChoiceSet(entry, step) {
+function hasUnsupportedEmbeddedChoiceSet(entry, packId, step) {
     if (!entryHasChoiceSetRule(entry)) {
         return false;
     }
@@ -575,7 +576,10 @@ function hasUnsupportedEmbeddedChoiceSet(entry, step) {
     if (step.kind !== "pick-item" || step.slotKind === "grant-choice") {
         return false;
     }
-    return ["ancestry-feat", "class-feat", "general-feat", "skill-feat"].includes(step.slotKind);
+    if (!["ancestry-feat", "class-feat", "general-feat", "skill-feat"].includes(step.slotKind)) {
+        return false;
+    }
+    return !hasSupportedEmbeddedGrantChoice(entry, packId);
 }
 function hidesUnsupportedEmbeddedChoiceSets(step) {
     if (step.kind === "class-branch") {
@@ -589,6 +593,31 @@ function hidesUnsupportedEmbeddedChoiceSets(step) {
 function entryHasChoiceSetRule(entry) {
     const rules = entry?.system?.rules;
     return Array.isArray(rules) && rules.some((rule) => isRecord(rule) && rule.key === "ChoiceSet");
+}
+function hasSupportedEmbeddedGrantChoice(entry, packId) {
+    if (entry.type !== "feat") {
+        return false;
+    }
+    const documentId = String(entry._id ?? "");
+    if (!documentId) {
+        return false;
+    }
+    const sourceSelection = {
+        slotId: "embedded-choice-probe",
+        packId,
+        documentId,
+        uuid: toCompendiumItemUuid(packId, documentId),
+        itemType: "feat",
+        featType: resolveFeatType(entry),
+        name: String(entry.name ?? documentId),
+        level: numericOrNull(entry?.system?.level?.value),
+    };
+    return (discoverGrantSelectionMeta({
+        sourceItemType: "feat",
+        sourceDocument: entry,
+        sourceSelection,
+        extractSlug: extractEntrySlug,
+    }).length > 0);
 }
 function isRecord(value) {
     return typeof value === "object" && value !== null;

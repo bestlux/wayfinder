@@ -15,6 +15,7 @@ import type {
   SelectionRef,
   StepFilters,
 } from "./types.js";
+import { discoverGrantSelectionMeta } from "./wayfinder/grant-choice/rule-discovery.js";
 import { predicateIncludesString } from "./wayfinder/rule-data.js";
 
 interface PackEntryTraitsLike {
@@ -483,7 +484,7 @@ function matchesFilters(
     return false;
   }
 
-  if (hasUnsupportedEmbeddedChoiceSet(entry, step)) {
+  if (hasUnsupportedEmbeddedChoiceSet(entry, packId, step)) {
     return false;
   }
 
@@ -810,7 +811,7 @@ function matchesClassBranchContext(entry: PackIndexEntry, step: PendingStep, con
   return true;
 }
 
-function hasUnsupportedEmbeddedChoiceSet(entry: PackIndexEntry, step: PendingStep): boolean {
+function hasUnsupportedEmbeddedChoiceSet(entry: PackIndexEntry, packId: string, step: PendingStep): boolean {
   if (!entryHasChoiceSetRule(entry)) {
     return false;
   }
@@ -823,7 +824,11 @@ function hasUnsupportedEmbeddedChoiceSet(entry: PackIndexEntry, step: PendingSte
     return false;
   }
 
-  return ["ancestry-feat", "class-feat", "general-feat", "skill-feat"].includes(step.slotKind);
+  if (!["ancestry-feat", "class-feat", "general-feat", "skill-feat"].includes(step.slotKind)) {
+    return false;
+  }
+
+  return !hasSupportedEmbeddedGrantChoice(entry, packId);
 }
 
 function hidesUnsupportedEmbeddedChoiceSets(step: PendingStep): boolean {
@@ -841,6 +846,37 @@ function hidesUnsupportedEmbeddedChoiceSets(step: PendingStep): boolean {
 function entryHasChoiceSetRule(entry: PackIndexEntry): boolean {
   const rules = entry?.system?.rules;
   return Array.isArray(rules) && rules.some((rule) => isRecord(rule) && rule.key === "ChoiceSet");
+}
+
+function hasSupportedEmbeddedGrantChoice(entry: PackIndexEntry, packId: string): boolean {
+  if (entry.type !== "feat") {
+    return false;
+  }
+
+  const documentId = String(entry._id ?? "");
+  if (!documentId) {
+    return false;
+  }
+
+  const sourceSelection: SelectionRef = {
+    slotId: "embedded-choice-probe",
+    packId,
+    documentId,
+    uuid: toCompendiumItemUuid(packId, documentId),
+    itemType: "feat",
+    featType: resolveFeatType(entry),
+    name: String(entry.name ?? documentId),
+    level: numericOrNull(entry?.system?.level?.value),
+  };
+
+  return (
+    discoverGrantSelectionMeta({
+      sourceItemType: "feat",
+      sourceDocument: entry,
+      sourceSelection,
+      extractSlug: extractEntrySlug,
+    }).length > 0
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

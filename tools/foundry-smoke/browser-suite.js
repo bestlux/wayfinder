@@ -682,9 +682,14 @@ function collectActorEvidence(actor, modules, moduleId) {
     name: item.name,
     slotId: item.flags?.[moduleId]?.slotId ?? null,
     sourceId: modules.sourceIdOf(item),
+    trainingKey: item.flags?.[moduleId]?.trainingKey ?? null,
     type: item.type,
   }));
-  const slotIds = items.map((item) => item.slotId).filter(Boolean);
+  // Lore items are identified by slotId + trainingKey in the apply-side
+  // reconciler, so multiple lores may legitimately share one training slot.
+  const slotIds = items
+    .map((item) => (item.trainingKey ? `${item.slotId}:${item.trainingKey}` : item.slotId))
+    .filter(Boolean);
   const sourceIds = items.map((item) => item.sourceId).filter(Boolean);
 
   return {

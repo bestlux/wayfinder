@@ -31,6 +31,7 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
         await applyPendingGrantChoiceSelections(source, selection, draft, steps, deps);
         await applyPendingStaticGrantPreselectChoices(source, draft, steps, deps);
         applyPendingTrainingSelections(source, selection, draft, steps);
+        resolveGrantItemPreselectChoiceReferences(source);
     }
     if (draft && selection.itemType === "feat") {
         await applyPendingFeatSpellChoices(source, selection, draft, steps, deps);
@@ -280,6 +281,41 @@ async function applyPendingStaticGrantPreselectChoices(source, draft, steps, dep
             typeof rule.uuid === "string" &&
             manualGrants.some((grant) => grant.uuid === rule.uuid)));
     }
+}
+function resolveGrantItemPreselectChoiceReferences(source) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    if (rules.length === 0) {
+        return;
+    }
+    for (const rule of rules) {
+        if (!isLooseRecord(rule) || rule.key !== "GrantItem" || !isLooseRecord(rule.preselectChoices)) {
+            continue;
+        }
+        for (const [key, value] of Object.entries(rule.preselectChoices)) {
+            if (typeof value !== "string") {
+                continue;
+            }
+            const resolved = resolveRuleSelectionReference(source, value);
+            if (resolved) {
+                rule.preselectChoices[key] = resolved;
+            }
+        }
+    }
+}
+function resolveRuleSelectionReference(source, value) {
+    const match = /^\{item\|flags\.(?:system|pf2e)\.rulesSelections\.([^}]+)\}$/u.exec(value);
+    if (!match) {
+        return null;
+    }
+    const flag = match[1];
+    const pf2eSelection = source.flags?.pf2e?.rulesSelections?.[flag];
+    if (typeof pf2eSelection === "string" && pf2eSelection.length > 0) {
+        return pf2eSelection;
+    }
+    const systemFlags = source.flags?.system;
+    const systemRulesSelections = isLooseRecord(systemFlags) ? systemFlags.rulesSelections : null;
+    const systemSelection = isLooseRecord(systemRulesSelections) ? systemRulesSelections[flag] : null;
+    return typeof systemSelection === "string" && systemSelection.length > 0 ? systemSelection : null;
 }
 function selectionFromStaticGrantUuid(uuid) {
     if (uuid.includes("{")) {

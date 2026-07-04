@@ -1,0 +1,40 @@
+{
+  "wayfinder-pf2e": {
+    "Controls": {
+      "Open": "打开寻路仪"
+    },
+    "App": {
+      "Title": "寻路仪",
+      "Subtitle": "引导PF2e角色创建与升级",
+      "TargetLevel": "目标等级",
+      "CurrentLevel": "当前等级",
+      "Apply": "应用更改",
+      "ApplyConfirmTitle": "应用寻路仪更改",
+      "ApplyConfirmYes": "应用",
+      "ApplyConfirmNo": "取消",
+      "SaveDraft": "保存草稿",
+      "ClearDraft": "清除草稿",
+      "IncreaseTarget": "提高目标等级",
+      "DecreaseTarget": "降低目标等级",
+      "NoPending": "寻路仪引导步骤均已完成。但角色卡中仍可能保留系统原生或手动选项。",
+      "Guidance": "寻路仪负责处理如族裔，专长，职业分支，法术等构筑选项，以及属性提升和技能提升。寻路仪无法准确模拟的内容将交给你的角色卡处理。"
+    },
+    "Notifications": {
+      "SavedDraft": "寻路仪草稿已保存。",
+      "ClearedDraft": "寻路仪草稿已清除。",
+      "Applied": "寻路仪更改已应用。",
+      "OwnerOnly": "仅限该角色拥有者在角色卡使用寻路仪构筑与升级。",
+      "MissingSelections": "请在应用构筑前完成剩余步骤。",
+      "DuplicateSelections": "你无法在同一份草稿中选择两次相同选项。",
+      "ApplyCancelled": "应用已取消 — 你的草稿仍被保留。",
+      "NoPendingSteps": "此处无寻路仪引导步骤可供应用。请检查角色卡中是否存在原生或手动选项。",
+      "ApplyFailed": "无法应用变更。你的草稿内容未变—请重新检查并重试。"
+    },
+    "Settings": {
+      "ExtraPacks": {
+        "Name": "额外PF2e合集包白名单",
+        "Hint": "输入以半角逗号分隔的合集包ID，以检索PF2e官方合集包外的补充合集包，例如“ world.homebrew-feats,my-module.custom-options”。"
+      }
+    }
+  }
+}

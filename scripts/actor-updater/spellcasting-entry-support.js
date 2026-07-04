@@ -227,6 +227,9 @@ function buildSpellcastingEntrySlots(spellChoice, actor, draft) {
     if (spellChoice.destination.key === "magus-arcane-prepared") {
         return buildMagusPreparedSlots(actor, draft);
     }
+    if (spellChoice.destination.key === "animist-divine-prepared") {
+        return buildAnimistPreparedSlots(actor, draft);
+    }
     if (spellChoice.destination.type === "spontaneous") {
         return buildSpontaneousSpellcastingSlots(actor, draft);
     }
@@ -258,6 +261,17 @@ function buildFullPreparedSpellcastingSlots(actor, draft) {
     };
     for (let rank = 1; rank <= maxRank; rank += 1) {
         slots[`slot${rank}`] = makePreparedSlotGroup(rank <= fullRanks ? 3 : 2);
+    }
+    return slots;
+}
+function buildAnimistPreparedSlots(actor, draft) {
+    const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
+    const maxRank = wizardMaxSpellRank(currentLevel);
+    const slots = {
+        slot0: makePreparedSlotGroup(2),
+    };
+    for (let rank = 1; rank <= maxRank; rank += 1) {
+        slots[`slot${rank}`] = makePreparedSlotGroup(currentLevel >= rank * 2 ? 2 : 1);
     }
     return slots;
 }

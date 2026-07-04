@@ -8,8 +8,8 @@ export const animistContributor = preparedContributor({
     spellcastingFeatureName: "Animist & Apparition Spellcasting",
     tradition: "divine",
     ability: "wis",
-    cantripCount: 5,
-    rankOneCount: 2,
+    cantripCount: 2,
+    rankOneCount: 1,
 });
 export const druidContributor = preparedContributor({
     slug: "druid",

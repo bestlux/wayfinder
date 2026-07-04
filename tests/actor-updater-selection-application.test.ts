@@ -373,6 +373,111 @@ describe("actor-updater selection application", () => {
     });
   });
 
+  it("resolves static GrantItem preselect templates from drafted background training", async () => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-background-scholar"] = {
+      ruleChoices: {
+        "background:scholar:skill": "arcana",
+      },
+      additional: [],
+      loreChoices: {},
+    };
+    const selection = selectionRef("background-level-1", "background", "scholar", "Scholar");
+    const steps: PendingStep[] = [
+      {
+        id: "skill-training-background-scholar",
+        level: 1,
+        kind: "skill-training",
+        slotKind: "skill-training",
+        title: "Scholar training",
+        description: "",
+        required: true,
+        slotId: "skill-training-background-scholar",
+        training: {
+          classSlug: null,
+          className: null,
+          fixedSkills: [],
+          fixedLores: [],
+          choiceRules: [
+            {
+              key: "background:scholar:skill",
+              flag: "skill",
+              prompt: "Choose a skill",
+              sourceLabel: "Scholar",
+              options: [
+                { slug: "arcana", label: "Arcana" },
+                { slug: "occultism", label: "Occultism" },
+              ],
+              persistence: {
+                sourceItemType: "background",
+                sourcePackId: "test.pack",
+                sourceDocumentId: "scholar",
+                sourceUuid: selection.uuid,
+                sourceRuleIndex: 0,
+              },
+            },
+          ],
+          loreChoices: [],
+          additionalCount: 0,
+        },
+      },
+    ];
+
+    const source = await createEmbeddedSource(selection, draft, steps, {
+      fetchSelectionDocument: async () => ({
+        toObject: () => ({
+          _id: "background-compendium",
+          name: "Scholar",
+          type: "background",
+          system: {
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "skill",
+                choices: [
+                  { value: "arcana", label: "Arcana" },
+                  { value: "occultism", label: "Occultism" },
+                ],
+              },
+              {
+                key: "ActiveEffectLike",
+                path: "system.skills.{item|flags.pf2e.rulesSelections.skill}.rank",
+                mode: "upgrade",
+                value: 1,
+              },
+              {
+                key: "GrantItem",
+                uuid: "Compendium.pf2e.feats-srd.Item.Assurance",
+                preselectChoices: {
+                  assurance: "{item|flags.system.rulesSelections.skill}",
+                },
+              },
+            ],
+          },
+        }),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "skill",
+      selection: "arcana",
+    });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({
+      skill: "arcana",
+    });
+    expect(source?.system?.rules?.[2]).toMatchObject({
+      key: "GrantItem",
+      uuid: "Compendium.pf2e.feats-srd.Item.Assurance",
+      preselectChoices: {
+        assurance: "arcana",
+      },
+    });
+    expect(source?.flags?.[MODULE_ID]?.manualStaticItemGrants).toBeUndefined();
+  });
+
   it("preselects choices on static GrantItem children before PF2E creates them natively", async () => {
     const draft = createEmptyDraft(1);
     const step: PendingStep = {

@@ -51,7 +51,7 @@ https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 
 Foundry's package updater will follow it for future versions. Older releases stay installable from their own release pages.
 
-**Compatibility:** Foundry VTT v14 with the PF2E system 8.1.x. The latest upstream versions checked on 2026-05-11 were Foundry VTT 14.361 and PF2E 8.1.2. The last full live smoke matrix was run on Foundry VTT 14.360 with PF2E 8.1.1; see [the smoke matrix](docs/coverage/beta-readiness-smoke.md) for exact evidence and caveats.
+**Compatibility:** Foundry VTT v14. The current upstream target checked on 2026-07-04 is Foundry VTT 14.364 with PF2E 8.2.0. The last full live smoke matrix was run on Foundry VTT 14.360 with PF2E 8.1.1; this hotfix adds targeted unit coverage for PF2E 8.2.0-facing Natural Ambition, Scholar/Assurance, and Animist rule shapes, but the full live smoke matrix still needs to be rerun before bumping package compatibility metadata beyond PF2E 8.1.2. See [the smoke matrix](docs/coverage/beta-readiness-smoke.md) for exact evidence and caveats.
 
 ## Use it
 

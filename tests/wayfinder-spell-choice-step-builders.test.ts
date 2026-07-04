@@ -340,6 +340,38 @@ describe("wayfinder spell-choice step builders", () => {
     });
   });
 
+  it("builds limited animist prepared spell steps without apparition slots", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(5),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("animist", "Animist & Apparition Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      targetLevel: 5,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "spell-choice-animist-cantrips-level-1",
+      "spell-choice-animist-rank-1-level-1",
+    ]);
+    expect(steps[0]?.spellChoice).toMatchObject({
+      count: 2,
+      destination: {
+        key: "animist-divine-prepared",
+        tradition: "divine",
+        ability: "wis",
+        prepared: "prepared",
+      },
+    });
+    expect(steps[1]?.spellChoice).toMatchObject({
+      count: 1,
+      minRank: 1,
+      maxRank: 1,
+    });
+  });
+
   it("builds branch-derived witch prepared spell steps", async () => {
     const steps = await buildSpellChoiceSteps({
       draft: createEmptyDraft(5),

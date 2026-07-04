@@ -113,7 +113,7 @@ These cases first applied a level 1 actor, reopened Wayfinder against that exist
 
 - The all-class matrix is one deterministic legal path per PF2E class through level 5. It does not exhaustively prove every subclass, racket, muse, patron, order, mystery, eidolon, implement, or future high-level branch.
 - The matrix proves plan/fill/apply/rerun behavior for the maintained blank level-1-to-level-5 smoke cases. It is not exhaustive path coverage and should not be described as proving every legal build for every class.
-- Direct feat/class-branch options with embedded `ChoiceSet` rules are hidden unless Wayfinder has a supported follow-up path. Supported selected class-feature follow-ups are now preselected before PF2E native rules run.
-- Grant-choice paths remain allowed for supported embedded choices because Wayfinder can build the dependent follow-up step, as with General Training into Additional Lore.
+- Direct feat/class-branch options with embedded `ChoiceSet` rules are shown only when every embedded choice is covered by a guided follow-up lane. Supported feat-owned and selected class-feature follow-ups are preselected before PF2E native rules run.
+- Remaining embedded-`ChoiceSet` caveats are selected-item and equipment predicates, injected same-item selection predicates, cross-item dependency graphs, and class archetype lanes.
 - Class archetype branch options are filtered out of normal class-branch choices. Free Archetype and class archetypes need their own variant or archetype lanes before they should appear as guided choices.
 - Daily preparations, starting gear beyond class-feature grants, purchasing, retraining, and table-specific campaign systems remain PF2E-native/manual.

@@ -2,9 +2,14 @@ import { OFFICIAL_PACKS } from "../../constants.js";
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { documentFeatureLevel, extractChoiceKey, getDocumentRules, isChoicePredicate, isRecord, predicateIncludesString, toNonEmptyString, } from "../rule-data.js";
 const STATIC_UUID_PACK_ITEM_TYPES = new Map([
-    ["pf2e.feats-srd", "feat"],
-    ["pf2e.classfeatures", "feat"],
-    ["pf2e.deities", "deity"],
+    ...OFFICIAL_PACKS.ancestry.map((packId) => [packId, "ancestry"]),
+    ...OFFICIAL_PACKS.background.map((packId) => [packId, "background"]),
+    ...OFFICIAL_PACKS.class.map((packId) => [packId, "class"]),
+    ...OFFICIAL_PACKS.classFeature.map((packId) => [packId, "feat"]),
+    ...OFFICIAL_PACKS.deity.map((packId) => [packId, "deity"]),
+    ...OFFICIAL_PACKS.feat.map((packId) => [packId, "feat"]),
+    ...OFFICIAL_PACKS.heritage.map((packId) => [packId, "heritage"]),
+    ...OFFICIAL_PACKS.spell.map((packId) => [packId, "spell"]),
 ]);
 export function discoverGrantSelectionMeta(args) {
     const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;

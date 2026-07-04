@@ -282,4 +282,96 @@ describe("grant-choice-service", () => {
 
     await expect(buildSteps()).resolves.toHaveLength(1);
   });
+
+  it("supports static UUID grants from newly allowed official packs", async () => {
+    const draft = createEmptyDraft(1);
+    const steps = await buildGrantChoiceSteps({
+      draft,
+      targetLevel: 1,
+      hasClassSelection: true,
+      hasDeitySelection: false,
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: {
+            slotId: "class-feat-level-1",
+            packId: "pf2e.feats-srd",
+            documentId: "spell-grant",
+            uuid: "Compendium.pf2e.feats-srd.Item.spell-grant",
+            itemType: "feat",
+            featType: "class",
+            name: "Spell Grant",
+            level: 1,
+          },
+          sourceDocument: staticGrantDocument("spell-grant", [
+            "Compendium.pf2e.spells-srd.Item.Shield",
+            "Compendium.pf2e.spells-srd.Item.Guidance",
+          ]),
+        },
+      ],
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+      readExistingGrantedSelection: () => null,
+    });
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.filters).toMatchObject({
+      itemType: "spell",
+      packIds: ["pf2e.spells-srd"],
+      uuids: ["Compendium.pf2e.spells-srd.Item.Shield", "Compendium.pf2e.spells-srd.Item.Guidance"],
+    });
+  });
+
+  it("rejects static UUID grants with mixed item types", async () => {
+    const draft = createEmptyDraft(1);
+    const steps = await buildGrantChoiceSteps({
+      draft,
+      targetLevel: 1,
+      hasClassSelection: true,
+      hasDeitySelection: false,
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: {
+            slotId: "class-feat-level-1",
+            packId: "pf2e.feats-srd",
+            documentId: "mixed-grant",
+            uuid: "Compendium.pf2e.feats-srd.Item.mixed-grant",
+            itemType: "feat",
+            featType: "class",
+            name: "Mixed Grant",
+            level: 1,
+          },
+          sourceDocument: staticGrantDocument("mixed-grant", [
+            "Compendium.pf2e.spells-srd.Item.Shield",
+            "Compendium.pf2e.feats-srd.Item.Reactive Strike",
+          ]),
+        },
+      ],
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+      readExistingGrantedSelection: () => null,
+    });
+
+    expect(steps).toEqual([]);
+  });
 });
+
+function staticGrantDocument(slug: string, uuids: string[]): unknown {
+  return {
+    name: slug,
+    system: {
+      slug,
+      level: { value: 1 },
+      rules: [
+        {
+          key: "ChoiceSet",
+          flag: "grant",
+          choices: uuids.map((value) => ({ value })),
+        },
+        {
+          key: "GrantItem",
+          uuid: "{item|flags.system.rulesSelections.grant}",
+        },
+      ],
+    },
+  };
+}

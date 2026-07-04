@@ -18,9 +18,14 @@ interface NamedDocumentLike {
 type GrantChoiceSourceItemType = GrantSelectionMeta["sourceItemType"];
 
 const STATIC_UUID_PACK_ITEM_TYPES = new Map<string, string>([
-  ["pf2e.feats-srd", "feat"],
-  ["pf2e.classfeatures", "feat"],
-  ["pf2e.deities", "deity"],
+  ...OFFICIAL_PACKS.ancestry.map((packId) => [packId, "ancestry"] as const),
+  ...OFFICIAL_PACKS.background.map((packId) => [packId, "background"] as const),
+  ...OFFICIAL_PACKS.class.map((packId) => [packId, "class"] as const),
+  ...OFFICIAL_PACKS.classFeature.map((packId) => [packId, "feat"] as const),
+  ...OFFICIAL_PACKS.deity.map((packId) => [packId, "deity"] as const),
+  ...OFFICIAL_PACKS.feat.map((packId) => [packId, "feat"] as const),
+  ...OFFICIAL_PACKS.heritage.map((packId) => [packId, "heritage"] as const),
+  ...OFFICIAL_PACKS.spell.map((packId) => [packId, "spell"] as const),
 ]);
 
 export function discoverGrantSelectionMeta(args: {

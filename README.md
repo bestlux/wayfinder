@@ -1,112 +1,97 @@
+<div align="center">
+
 # Wayfinder
+
+**A guided Pathfinder 2e character builder, built into Foundry VTT.**
+
+[![Latest release](https://img.shields.io/github/v/release/bestlux/wayfinder?label=release&color=2b6cb0)](https://github.com/bestlux/wayfinder/releases/latest)
+![Foundry VTT v14](https://img.shields.io/badge/Foundry%20VTT-v14-e26a26)
+![PF2E 8.1+](https://img.shields.io/badge/PF2E%20system-8.1%2B-8a2422)
+[![License](https://img.shields.io/badge/license-all%20rights%20reserved-6b7280)](LICENSE.md)
 
 ![Wayfinder character builder inside Foundry](media/cover.webp)
 
-A guided Pathfinder 2e character builder for Foundry VTT.
+</div>
 
-Wayfinder takes the parts of PF2E character building that fragment your attention — class tables, compendium browsing, feat slots, boosts, spell choices, and source exceptions — and turns them into a single guided flow you open from the character sheet. Think Pathbuilder, but living inside your game world: it knows which sources your GM enabled, applies the supported rule shapes it can prove, and writes its output straight to the actor for supported guided paths. No JSON export, no re-import, fewer sheet-mismatch loops.
+Character creation and leveling in PF2E means juggling class tables, compendium browsers, feat slots, boosts, spell lists, and source exceptions. Wayfinder turns all of that into a single guided flow you open straight from the character sheet — think Pathbuilder, but living inside your game world. It knows which sources your GM enabled, filters every picker by what you can actually take, and writes the result directly to the actor. No JSON export, no re-import, no sheet-mismatch cleanup.
 
-> **Status:** beta / early access. Wayfinder has one maintained deterministic level-1-to-level-5 smoke path for every PF2E class, plus targeted existing-character rerun checks. That is not exhaustive coverage of every subclass, option, variant rule, or book path. The [level-1 coverage matrix](docs/coverage/level1-coverage-matrix.md), [level-up coverage matrix](docs/coverage/levelup-coverage-matrix.md), and [beta smoke matrix](docs/coverage/beta-readiness-smoke.md) are the honest answer to "does it support my class yet."
+## Highlights
 
-## Why use it
-
-- **You're new to PF2E.** It explains what each choice does before you commit and keeps the next step visible without hiding the rules.
-- **You've built characters before.** Search, pick, next. Earlier picks filter later ones, so you stop scrolling past feats you can't take anyway.
-- **You're a GM onboarding friends.** Wayfinder respects your enabled sources where it has support, and clearly hands off optional variants it cannot yet model.
-
-It is not a replacement for the PF2E system. It is a planning layer on top of it. The actor and items remain the source of truth; Wayfinder's job is to get you to a clean, valid state without making you click through twelve places to do it.
-
-## What's working today
-
-The first vertical slice covers level-1 creation and level-up milestones, with:
-
-- Ancestry, heritage, background, and class selection
-- Class branch and grant-driven choices for the maintained class smoke flows through level 5
-- Common feat milestones, skill increases, and level-1 / level-5 ability boosts
-- Skill training reconciled across class, background, ancestry, heritage, and feat grants
-- Bonus-language selection that uses your final effective Intelligence
-- Spell-choice flows for supported caster profiles in the current coverage matrix
-- Rarity and source filtering on every picker, with optional GM allowlists for non-official packs
-- Resumable drafts persisted on the actor, so you can leave and come back
-
-Where Wayfinder can't model a required step confidently, it says so and points you at the right native PF2E control instead of applying as though unsupported work was handled.
+- **One flow from level 1 to level up.** Ancestry, heritage, background, class, class branches, feats, boosts, skill increases, languages, and spell choices — all in order, in one window.
+- **Earlier picks filter later ones.** You stop scrolling past feats and options you can't take anyway.
+- **Beginner-friendly, veteran-fast.** Each step explains what you're choosing; experienced players just search, pick, next.
+- **Respects your table.** Rarity and source filters on every picker, with optional GM allowlists for non-official packs.
+- **Resumable drafts.** Progress is saved on the actor, so you can leave mid-build and come back later.
+- **Honest about its limits.** When Wayfinder can't model a step confidently, it says so and points you at the right native PF2E control instead of silently guessing.
 
 ## Screenshots
 
-![Guided character creation](media/screenshot-creation.webp)
+| | |
+| :---: | :---: |
+| ![Guided character creation](media/screenshot-creation.webp) | ![Filtered feat picker](media/screenshot-feat-picker.webp) |
+| *Guided level-1 creation — ancestry through boosts in one flow* | *Feat picker with rarity and source filters* |
+| ![Spell choice flow](media/screenshot-spell-choice.webp) | ![Level-up draft](media/screenshot-levelup.webp) |
+| *Spell choices land in the right spellcasting entry* | *Level-up drafts surface only what you still need to choose* |
 
-![Filtered feat picker](media/screenshot-feat-picker.webp)
+## Installation
 
-![Spell choice flow](media/screenshot-spell-choice.webp)
-
-![Level-up draft](media/screenshot-levelup.webp)
-
-## Install
-
-Paste this manifest URL into Foundry's package installer:
+Paste this manifest URL into Foundry's **Install Module** dialog:
 
 ```text
 https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 ```
 
-Foundry's package updater will follow it for future versions. Older releases stay installable from their own release pages.
+Foundry's package updater will follow it for future versions. Older releases stay installable from their own [release pages](https://github.com/bestlux/wayfinder/releases).
 
-**Compatibility:** Foundry VTT v14. The current upstream target checked on 2026-07-04 is Foundry VTT 14.364 with PF2E 8.2.0. The 0.1.6 hotfix passed the full repo-owned live smoke matrix against that pair, covering every PF2E class from blank level 1 drafts to target level 5 with clean reruns. See [the smoke matrix](docs/coverage/beta-readiness-smoke.md) for exact evidence and caveats.
+**Requirements:** Foundry VTT v14 with the PF2E system (8.1 or newer). The current release is verified against Foundry VTT 14.364 and PF2E 8.2.0.
 
-## Use it
+## Using Wayfinder
 
 1. Open an owned PF2E character actor.
-2. Click the Wayfinder action in the sheet header.
-3. Walk the steps. Save drafts as you go.
-4. Apply when you're ready — Wayfinder writes the changes back to the actor.
+2. Click the **Wayfinder** action in the sheet header.
+3. Walk the steps. Drafts save as you go.
+4. Apply when you're ready — Wayfinder writes the changes to the actor.
 
-## Develop
+Wayfinder is a planning layer on top of the PF2E system, not a replacement for it. The actor and its items remain the source of truth; Wayfinder's job is to get you to a clean, valid state without clicking through twelve places to do it.
 
-```powershell
-npm install
-npm run build
-npm test
-```
+## Class support
 
-For local Foundry testing, link the repo into:
+Every one of the 27 PF2E classes has a verified guided path from a blank level-1 character through level 5 — including class branches (instincts, doctrines, bloodlines, mysteries, and the rest), feat milestones, skill training, boosts, and spellcasting setup for prepared, spontaneous, spellbook, and bounded casters.
 
-```text
-C:\Users\<you>\AppData\Local\FoundryVTT\Data\modules\wayfinder-pf2e
-```
+<details>
+<summary><strong>All 27 classes, verified through level 5</strong></summary>
 
-Before closing meaningful work, run `npm run check` — it covers formatting, lint, build, tests, and strict typecheck in one pass.
+Alchemist · Animist · Barbarian · Bard · Champion · Cleric · Commander · Druid · Exemplar · Fighter · Guardian · Gunslinger · Inventor · Investigator · Kineticist · Magus · Monk · Oracle · Psychic · Ranger · Rogue · Sorcerer · Summoner · Swashbuckler · Thaumaturge · Witch · Wizard
 
-For live Foundry release smoke, build first and then run:
+Each class is verified by a live in-Foundry test that builds a character from blank level 1 to level 5 and applies it to the actor. That is one deterministic legal path per class — not exhaustive proof of every subclass, variant, or book option.
 
-```powershell
-$env:FOUNDRY_USER = "<local Foundry user>"
-$env:FOUNDRY_PASSWORD = "<local password if needed>"
-$env:FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE = "1"
-$env:FOUNDRY_SMOKE_WORLD_ID = "<expected local world id>"
-npm run smoke:foundry
-```
+</details>
 
-See [docs/coverage/beta-readiness-smoke.md](docs/coverage/beta-readiness-smoke.md) for harness setup, safety rules, and the current launch matrix.
+> **Status: beta.** Wayfinder is early-access software built slice by slice. If you want the fine print on exactly which choice shapes are guided today, the [level-1 coverage matrix](docs/coverage/level1-coverage-matrix.md), [level-up coverage matrix](docs/coverage/levelup-coverage-matrix.md), and [live smoke results](docs/coverage/beta-readiness-smoke.md) are the honest answer to "does it support my build yet."
 
-## Architecture
+### Not covered (yet)
 
-The codebase is organized so new features land in focused seams instead of growing the app shell:
+These stay in the native PF2E sheet for now, and Wayfinder will tell you so when they come up:
 
-- `src/wayfinder/domain/` — typed workflow rules: step kinds, decisions, slot IDs, completion, invalidation.
-- `src/wayfinder/application/` — actor-aware orchestration: plan building, pane assembly, selection commands, draft lifecycle.
-- `src/actor-updater/` — apply-side mutations and spellcasting sync.
-- `src/build-state.ts` and `src/shared/` — effective document resolution and reusable helpers.
+- Starting gear and item purchasing
+- Daily preparations
+- Free Archetype and class archetypes
+- Retraining and table-specific campaign systems
 
-When you're adding a new class flow, start with [the class-flow guide](docs/architecture/adding-a-class-flow.md). For current ownership boundaries and cleanup guardrails, see [the architecture maintenance notes](docs/architecture/maintenance.md). When in doubt, prefer extending one of those seams over adding more responsibility to `app-shell.ts` or the large choice services.
+## Feedback
 
-## Release & packaging
+Bug reports and feature requests: [GitHub issues](https://github.com/bestlux/wayfinder/issues). You can also reach the maintainer on Discord: `bestlux`.
 
-Maintainer-only. The checked-in `module.json` is the development manifest; release builds patch in version-specific URLs. See [docs/release-packaging.md](docs/release-packaging.md) for the full procedure.
+When reporting a bug, the Foundry version, PF2E system version, and the class/ancestry combination involved make it much faster to reproduce.
+
+## Development
+
+Build, test, local-linking, and smoke-harness instructions live in [docs/development.md](docs/development.md). Release packaging is documented in [docs/release-packaging.md](docs/release-packaging.md).
 
 ## License & credits
 
 Wayfinder is distributed under the terms in [LICENSE.md](LICENSE.md). It is currently all-rights-reserved software with permission to install and run the published module in Foundry Virtual Tabletop.
 
-Wayfinder does not redistribute PF2E compendium data. It reads from the installed PF2E system and reuses the PF2E system's actor/item application paths wherever it can. It does not attempt to replace the PF2E rules engine, and it depends on the system's rule shapes (`ChoiceSet`, selectors, grant items) being well-formed for the content it guides.
+Wayfinder does not redistribute PF2E compendium data. It reads from the installed PF2E system and reuses the system's actor/item application paths wherever it can.
 
-Issues and feedback: <https://github.com/bestlux/wayfinder/issues>. Maintainer Discord: `bestlux`.
+Pathfinder Second Edition and related trademarks are owned by Paizo Inc. Foundry Virtual Tabletop is owned by Foundry Gaming LLC. Wayfinder is an independent module, not affiliated with or endorsed by either.

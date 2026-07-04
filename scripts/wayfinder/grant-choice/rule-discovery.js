@@ -188,7 +188,29 @@ function inferPackIds(itemType, predicate) {
     if (itemType === "feat" && predicateIncludesString(predicate, "item:type:feature")) {
         return [...OFFICIAL_PACKS.classFeature];
     }
+    if (itemType === "feat" && predicateIncludesPrefix(predicate, "item:tag:")) {
+        return [...OFFICIAL_PACKS.classFeature, ...OFFICIAL_PACKS.feat];
+    }
     return [];
+}
+function predicateIncludesPrefix(predicate, prefix) {
+    return predicate.some((entry) => predicateEntryIncludesPrefix(entry, prefix));
+}
+function predicateEntryIncludesPrefix(predicate, prefix) {
+    if (typeof predicate === "string") {
+        return predicate.startsWith(prefix);
+    }
+    if (Array.isArray(predicate)) {
+        return predicateIncludesPrefix(predicate, prefix);
+    }
+    if (!isRecord(predicate)) {
+        return false;
+    }
+    return ([predicate.or, predicate.nor]
+        .filter(Array.isArray)
+        .flat()
+        .some((entry) => predicateEntryIncludesPrefix(entry, prefix)) ||
+        (predicate.not ? predicateEntryIncludesPrefix(predicate.not, prefix) : false));
 }
 function resolveGrantDependency(sourceItemType, predicate) {
     if (sourceItemType === "classfeature") {

@@ -285,6 +285,10 @@ function buildSpellcastingEntrySlots(
     return buildMagusPreparedSlots(actor, draft);
   }
 
+  if (spellChoice.destination.key === "animist-divine-prepared") {
+    return buildAnimistPreparedSlots(actor, draft);
+  }
+
   if (spellChoice.destination.type === "spontaneous") {
     return buildSpontaneousSpellcastingSlots(actor, draft);
   }
@@ -347,6 +351,30 @@ function buildFullPreparedSpellcastingSlots(
 
   for (let rank = 1; rank <= maxRank; rank += 1) {
     slots[`slot${rank}`] = makePreparedSlotGroup(rank <= fullRanks ? 3 : 2);
+  }
+
+  return slots;
+}
+
+function buildAnimistPreparedSlots(
+  actor: ActorLike,
+  draft: DraftState
+): Record<string, { max: number; value: number; prepared: Array<{ id: string | null; expended: boolean }> }> {
+  const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
+  const maxRank = wizardMaxSpellRank(currentLevel);
+  const slots: Record<
+    string,
+    {
+      max: number;
+      value: number;
+      prepared: Array<{ id: string | null; expended: boolean }>;
+    }
+  > = {
+    slot0: makePreparedSlotGroup(2),
+  };
+
+  for (let rank = 1; rank <= maxRank; rank += 1) {
+    slots[`slot${rank}`] = makePreparedSlotGroup(currentLevel >= rank * 2 ? 2 : 1);
   }
 
   return slots;

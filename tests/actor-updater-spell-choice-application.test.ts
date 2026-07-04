@@ -152,6 +152,117 @@ describe("actor-updater spell choice application", () => {
     ]);
   });
 
+  it("creates limited animist prepared slots without apparition capacity", async () => {
+    const { actor } = buildActorHarness();
+
+    setGamePacks({
+      "pf2e.spells-srd": {
+        guidance: {
+          name: "Guidance",
+          type: "spell",
+          system: {
+            level: { value: 1 },
+            traits: {
+              traditions: ["divine"],
+              value: ["cantrip"],
+            },
+          },
+        },
+        stabilize: {
+          name: "Stabilize",
+          type: "spell",
+          system: {
+            level: { value: 1 },
+            traits: {
+              traditions: ["divine"],
+              value: ["cantrip"],
+            },
+          },
+        },
+        heal: {
+          name: "Heal",
+          type: "spell",
+          system: {
+            level: { value: 1 },
+            traits: {
+              traditions: ["divine"],
+              value: [],
+            },
+          },
+        },
+      },
+    });
+
+    const draft = createEmptyDraft(5);
+    draft.spellChoices["spell-choice-animist-cantrips-level-1"] = [
+      selection("spell-choice-animist-cantrips-level-1", "pf2e.spells-srd", "guidance", "spell", "Guidance"),
+      selection("spell-choice-animist-cantrips-level-1", "pf2e.spells-srd", "stabilize", "spell", "Stabilize"),
+    ];
+    draft.spellChoices["spell-choice-animist-rank-1-level-1"] = [
+      selection("spell-choice-animist-rank-1-level-1", "pf2e.spells-srd", "heal", "spell", "Heal"),
+    ];
+
+    await applySpellChoiceDraft(actor as any, draft, [
+      spellChoiceStep(
+        "spell-choice-animist-cantrips-level-1",
+        animistSpellChoice("spell-choice-animist-cantrips-level-1", 2, 0, 0, true),
+        "Animist prepared cantrips"
+      ),
+      spellChoiceStep(
+        "spell-choice-animist-rank-1-level-1",
+        animistSpellChoice("spell-choice-animist-rank-1-level-1", 1, 1, 1, false),
+        "Animist prepared spells"
+      ),
+    ]);
+
+    expect(actor.createEmbeddedDocuments).toHaveBeenNthCalledWith(1, "Item", [
+      expect.objectContaining({
+        name: "Divine Prepared Spells",
+        type: "spellcastingEntry",
+        system: expect.objectContaining({
+          slots: expect.objectContaining({
+            slot0: expect.objectContaining({
+              max: 2,
+              value: 2,
+            }),
+            slot1: expect.objectContaining({
+              max: 2,
+              value: 2,
+            }),
+            slot2: expect.objectContaining({
+              max: 2,
+              value: 2,
+            }),
+            slot3: expect.objectContaining({
+              max: 1,
+              value: 1,
+            }),
+          }),
+        }),
+      }),
+    ]);
+    expect(actor.updateEmbeddedDocuments).toHaveBeenLastCalledWith("Item", [
+      expect.objectContaining({
+        _id: "created-1",
+        "system.slots": expect.objectContaining({
+          slot0: expect.objectContaining({
+            prepared: [
+              { id: "created-2", expended: false },
+              { id: "created-3", expended: false },
+            ],
+          }),
+          slot1: expect.objectContaining({
+            max: 2,
+            prepared: [
+              { id: "created-4", expended: false },
+              { id: null, expended: false },
+            ],
+          }),
+        }),
+      }),
+    ]);
+  });
+
   it("creates a wizard spellcasting entry and adds drafted spell choices without duplicates", async () => {
     const { actor, createdItems } = buildActorHarness({
       items: [
@@ -884,3 +995,28 @@ describe("actor-updater spell choice application", () => {
     ]);
   });
 });
+
+function animistSpellChoice(
+  slotId: string,
+  count: number,
+  minRank: number,
+  maxRank: number,
+  cantrip: boolean
+): ReturnType<typeof clericSpellChoice> {
+  return {
+    ...clericSpellChoice(slotId, count, minRank, maxRank, cantrip),
+    sourceDocumentId: "animist-spellcasting",
+    sourceUuid: "Compendium.pf2e.classfeatures.Item.animist-spellcasting",
+    sourceName: "Animist & Apparition Spellcasting",
+    classSlug: "animist",
+    destination: {
+      type: "prepared",
+      key: "animist-divine-prepared",
+      label: "Divine prepared spells",
+      entryName: "Divine Prepared Spells",
+      tradition: "divine",
+      ability: "wis",
+      prepared: "prepared",
+    },
+  };
+}

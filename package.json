@@ -1,6 +1,6 @@
 {
   "name": "wayfinder-pf2e",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "type": "module",
   "description": "A guided PF2E creation and level-up workflow module for Foundry VTT.",

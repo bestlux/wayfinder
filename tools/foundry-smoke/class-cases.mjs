@@ -192,6 +192,7 @@ export const smokeCases = [
     ],
     preferredSelections: {
       "class-branch-druidic-order-level-1": ["Storm Order", "Leaf Order"],
+      "grant-choice-none-feat-order-explorer-order-level-2": ["Leaf Order"],
       "class-feat": ["Order Explorer", "Reach Spell"],
     },
     preferredSkills: ["nature", "survival", "medicine", "athletics", "diplomacy"],

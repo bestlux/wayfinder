@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-05-11.
+Last updated: 2026-07-04.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -60,7 +60,7 @@ Environment:
 - World: `testing-world`
 - Module: `wayfinder-pf2e`, active
 
-Compatibility metadata now allows the Foundry VTT v14 line and PF2E 8.1.x. The latest upstream versions checked on 2026-05-11 were Foundry VTT 14.361 and PF2E 8.1.2. This smoke matrix was not rerun against those exact latest builds, so the rows below remain evidence for 14.360 / 8.1.1 behavior plus the documented compatibility expectation for the patch lines.
+Current upstream target checked on 2026-07-04 is Foundry VTT 14.364 and PF2E 8.2.0. The 0.1.6 hotfix passed the full live smoke matrix against that pair in `.wayfinder-smoke/2026-07-04T18-00-52Z`, with 27 class cases passing and no classified/manual failures. This adds live coverage for Natural Ambition visibility, Scholar/Assurance preselection, Animist base spellcasting counts, and selected feat-owned grant choices such as Druid Order Explorer.
 
 Artifact: `.wayfinder-smoke/beta-green-0.1.2-final-3`.
 

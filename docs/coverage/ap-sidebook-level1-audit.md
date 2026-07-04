@@ -123,7 +123,7 @@ Targeted checks added with this audit:
 
 - `tests/wayfinder-grant-choice-step-builders.test.ts` covers AP static UUID feat grants, static UUID class-feature grants, and predicate-gated static UUID grants.
 - `tests/grant-choice-service.test.ts` covers delaying source-roll-option-gated static grants until the upstream rule choice is drafted.
-- `tests/pack-service.test.ts` covers explicit UUID allowlist filtering against Foundry-style ID UUIDs, PF2E source-data name UUIDs, active roll-option predicates, and skill-rank predicates.
+- `tests/pack-options.test.ts` covers explicit UUID allowlist filtering against Foundry-style ID UUIDs, PF2E source-data name UUIDs, active roll-option predicates, and skill-rank predicates.
 - `tests/wayfinder-option-context-service.test.ts` covers active roll-option context from drafted training rule choices.
 - `tests/wayfinder-selection-invalidation-service.test.ts` covers stale grant-choice invalidation when a source item's upstream rule selection changes.
 - `tests/wayfinder-singleton-rule-discovery.test.ts` covers skipping grant selector `ChoiceSet`s so grant-choice owns them.

@@ -26,7 +26,6 @@ These are the known higher-value cleanup seams. They are deliberately not casual
 
 - Apply-side operation model: name the different item mutation paths explicitly, such as selected item creation, native grant preseeding, manual grant creation, rule-selection persistence, and existing-selection repair.
 - Source-family contributor registry: reduce direct loops in the plan builder by registering level-1 source families behind small input/output contracts.
-- Pack service boundary split: isolate Foundry pack access from option filtering and picker view-model shaping.
 - Skill and lore parser slices: split real PF2E skill/lore rule-shape parsers behind fixture-covered functions without broadening text inference.
 - Side-book class contributors: add class support one class at a time, starting from the most regular level-1 rule shapes.
 

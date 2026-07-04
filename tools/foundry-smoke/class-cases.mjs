@@ -227,6 +227,30 @@ export const smokeCases = [
     },
     preferredSkills: ["athletics", "acrobatics", "survival", "intimidation", "religion", "stealth"],
   }),
+  {
+    ...classCase({
+      className: "Fighter",
+      classSlug: "fighter",
+      keyAbility: "str",
+      expectedStepIds: [
+        "class-choice-fighter-weapon-mastery-fighterWeaponMastery-level-5",
+        "singleton-choice-feat-samsaran-weapon-memory-weaponOne-level-1",
+        "singleton-choice-feat-samsaran-weapon-memory-weaponTwo-level-1",
+      ],
+      preferredSelections: {
+        "ancestry-feat": ["Samsaran Weapon Memory"],
+        "singleton-choice-feat-samsaran-weapon-memory-weaponOne-level-1": ["Longsword", "Falchion", "Glaive"],
+        "singleton-choice-feat-samsaran-weapon-memory-weaponTwo-level-1": ["Longbow", "Composite Longbow", "Shortbow"],
+        "class-feat": ["Reactive Shield", "Intimidating Strike", "Quick Reversal"],
+      },
+      preferredSkills: ["athletics", "acrobatics", "survival", "intimidation", "religion", "stealth"],
+    }),
+    id: "fighter-samsaran-weapon-memory-l1-l5-apply-rerun",
+    label: "Fighter with Samsaran Weapon Memory config-feat level 1 through 5 apply/rerun",
+    ancestryName: "Samsaran",
+    heritageName: "Oracular Samsaran",
+    ancestryBoosts: { "0": "con", "1": "wis", "2": "str" },
+  },
   classCase({
     className: "Guardian",
     classSlug: "guardian",

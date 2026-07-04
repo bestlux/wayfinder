@@ -336,13 +336,21 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
 }
 
 async function seedCreationDraft(draft, smokeCase) {
-  draft.selections["ancestry-level-1"] = await selectionRef("pf2e.ancestries", "Human", "ancestry-level-1");
+  draft.selections["ancestry-level-1"] = await selectionRef(
+    "pf2e.ancestries",
+    smokeCase.ancestryName ?? "Human",
+    "ancestry-level-1",
+  );
   draft.selections["heritage-level-1"] = await selectionRef(
     "pf2e.heritages",
-    "Wintertouched Human",
+    smokeCase.heritageName ?? "Wintertouched Human",
     "heritage-level-1",
   );
-  draft.selections["background-level-1"] = await selectionRef("pf2e.backgrounds", "Acolyte", "background-level-1");
+  draft.selections["background-level-1"] = await selectionRef(
+    "pf2e.backgrounds",
+    smokeCase.backgroundName ?? "Acolyte",
+    "background-level-1",
+  );
   draft.selections["class-level-1"] = await selectionRef("pf2e.classes", smokeCase.className, "class-level-1");
   if (smokeCase.deityName) {
     draft.selections["deity-level-1"] = await selectionRef("pf2e.deities", smokeCase.deityName, "deity-level-1");
@@ -350,7 +358,7 @@ async function seedCreationDraft(draft, smokeCase) {
 
   const ancestryBoosts = uniqueAbilities([smokeCase.keyAbility, "dex", "con"]);
   draft.boosts.ancestry.modeTouched = true;
-  draft.boosts.ancestry.selectedBoosts = {
+  draft.boosts.ancestry.selectedBoosts = smokeCase.ancestryBoosts ?? {
     "0": ancestryBoosts[0],
     "1": ancestryBoosts[1],
   };

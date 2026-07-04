@@ -461,14 +461,6 @@ function isAncestryFeatSelection(selection: SelectionRef): boolean {
   return selection.itemType === "feat" && selection.featType === "ancestry";
 }
 
-function isGrantChoiceFeatSelection(selection: SelectionRef): boolean {
-  return (
-    selection.itemType === "feat" &&
-    selection.slotId.startsWith("grant-choice-") &&
-    !isGrantChoiceClassFeatureSelection(selection)
-  );
-}
-
 function isGrantChoiceSourceFeatSelection(selection: SelectionRef): boolean {
   return selection.itemType === "feat" && selection.featType !== "classfeature";
 }
@@ -672,11 +664,15 @@ function isGrantChoiceClassFeatureSelection(selection: SelectionRef): boolean {
 }
 
 function isSkillTrainingFeatSelection(selection: SelectionRef): boolean {
-  return isAncestryFeatSelection(selection) || isGrantChoiceFeatSelection(selection);
+  return isFeatSourceSelection(selection);
 }
 
 function isSingletonChoiceFeatSelection(selection: SelectionRef): boolean {
-  return isGrantChoiceFeatSelection(selection);
+  return isFeatSourceSelection(selection);
+}
+
+function isFeatSourceSelection(selection: SelectionRef): boolean {
+  return selection.itemType === "feat" && selection.featType !== "classfeature";
 }
 
 function readExistingClassFeatureSelections(actor: ActorLike): SelectionRef[] {
@@ -801,7 +797,7 @@ function selectionFromSkillTrainingFeatItem(item: unknown): SelectionRef | null 
     typeof typedItem.flags?.[MODULE_ID]?.slotId === "string" && typedItem.flags[MODULE_ID].slotId.length > 0
       ? typedItem.flags[MODULE_ID].slotId
       : null;
-  const isSupportedFeat = featType === "ancestry" || !!existingSlotId?.startsWith("grant-choice-");
+  const isSupportedFeat = featType !== "classfeature";
   if (!isSupportedFeat) {
     return null;
   }
@@ -817,7 +813,7 @@ function selectionFromSkillTrainingFeatItem(item: unknown): SelectionRef | null 
   }
 
   const level = toPositiveInteger(typedItem.system?.level?.value) ?? 1;
-  const slotId = existingSlotId ?? `ancestry-feat-level-${level}`;
+  const slotId = existingSlotId ?? `${featType || "feat"}-feat-level-${level}`;
 
   return {
     slotId,
@@ -825,7 +821,7 @@ function selectionFromSkillTrainingFeatItem(item: unknown): SelectionRef | null 
     documentId: parsed.documentId,
     uuid: sourceId,
     itemType: "feat",
-    featType: "ancestry",
+    featType: typeof featType === "string" ? featType : null,
     name: typeof typedItem.name === "string" ? typedItem.name : "",
     level,
   };

@@ -3,11 +3,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { SKILL_LABELS } from "../../scripts/constants.js";
-import { hasUnsupportedEmbeddedChoiceSet } from "../../scripts/pack/embedded-choice-policy.js";
-import { extractEntrySlug, numericOrNull, resolveFeatType } from "../../scripts/pack/entry.js";
-import { parseCompendiumItemUuid, toCompendiumItemUuid } from "../../scripts/shared/compendium.js";
-import { discoverGrantSelectionMeta } from "../../scripts/wayfinder/grant-choice/rule-discovery.js";
-import { discoverSingletonChoiceSpecs } from "../../scripts/wayfinder/singleton-choice/rule-discovery.js";
+import { classifyEmbeddedChoices, hasUnsupportedEmbeddedChoiceSet } from "../../scripts/pack/embedded-choice-policy.js";
+import { extractEntrySlug, resolveFeatType } from "../../scripts/pack/entry.js";
+import { parseCompendiumItemUuid } from "../../scripts/shared/compendium.js";
 
 const defaultPf2eRoot = "D:/Source/pf2e/packs/pf2e";
 const defaultOutDir = ".tmp/embedded-choice-audit";
@@ -267,48 +265,15 @@ function analyzeChoiceSetRules(entry, packId) {
     return [];
   }
 
-  const sourceSelection = selectionFromEntry(entry, packId);
-  const grantIndexes = sourceSelection
-    ? new Set(
-        discoverGrantSelectionMeta({
-          sourceItemType: sourceSelection.itemType === "feat" ? "feat" : "classfeature",
-          sourceDocument: entry,
-          sourceSelection,
-          extractSlug: extractEntrySlug,
-        }).map((meta) => meta.selectorRuleIndex)
-      )
-    : new Set();
-  const singletonIndexes = new Set(
-    discoverSingletonChoiceSpecs({
-      sourceItemType: "feat",
-      sourceDocument: entry,
-      sourceSlug: extractEntrySlug(entry) ?? String(entry._id ?? "entry"),
-      localize: identity,
-      includeTrainingChoices: false,
-    }).map((spec) => spec.sourceRuleIndex)
-  );
-  const trainingIndexes = new Set(
-    discoverSingletonChoiceSpecs({
-      sourceItemType: "feat",
-      sourceDocument: entry,
-      sourceSlug: extractEntrySlug(entry) ?? String(entry._id ?? "entry"),
-      localize: identity,
-      includeTrainingChoices: true,
-    })
-      .filter((spec) => spec.optionDomain === "skill" || spec.optionDomain === "lore")
-      .map((spec) => spec.sourceRuleIndex)
-  );
+  const sourceItemType = packId === "pf2e.classfeatures" ? "classfeature" : "feat";
+  const classification = classifyEmbeddedChoices(entry, packId, { sourceItemType, localize: identity });
+  const coverageByRuleIndex = new Map(classification.rules.map((rule) => [rule.ruleIndex, rule.coveredBy]));
 
   return rules.map(({ rule, ruleIndex }) => {
-    const coveredBy = [
-      ...(grantIndexes.has(ruleIndex) ? ["grant-choice"] : []),
-      ...(singletonIndexes.has(ruleIndex) ? ["singleton-choice"] : []),
-      ...(trainingIndexes.has(ruleIndex) ? ["skill-training"] : []),
-    ];
     return {
       ruleIndex,
       flag: choiceKey(rule),
-      coveredBy,
+      coveredBy: coverageByRuleIndex.get(ruleIndex) ?? [],
       shape: classifyChoiceShape(rule, entry, ruleIndex),
     };
   });
@@ -319,24 +284,6 @@ function getChoiceSetRules(entry) {
   return rules
     .map((rule, ruleIndex) => ({ rule, ruleIndex }))
     .filter(({ rule }) => isRecord(rule) && rule.key === "ChoiceSet");
-}
-
-function selectionFromEntry(entry, packId) {
-  const documentId = String(entry._id ?? "");
-  if (!documentId) {
-    return null;
-  }
-
-  return {
-    slotId: "embedded-choice-audit",
-    packId,
-    documentId,
-    uuid: toCompendiumItemUuid(packId, documentId),
-    itemType: String(entry.type ?? ""),
-    featType: resolveFeatType(entry),
-    name: String(entry.name ?? documentId),
-    level: numericOrNull(entry?.system?.level?.value),
-  };
 }
 
 function classifyChoiceShape(rule, entry, ruleIndex) {

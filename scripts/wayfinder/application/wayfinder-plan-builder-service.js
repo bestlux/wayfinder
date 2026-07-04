@@ -314,11 +314,6 @@ async function resolveGrantChoiceSources(draft, args, deps) {
 function isAncestryFeatSelection(selection) {
     return selection.itemType === "feat" && selection.featType === "ancestry";
 }
-function isGrantChoiceFeatSelection(selection) {
-    return (selection.itemType === "feat" &&
-        selection.slotId.startsWith("grant-choice-") &&
-        !isGrantChoiceClassFeatureSelection(selection));
-}
 function isGrantChoiceSourceFeatSelection(selection) {
     return selection.itemType === "feat" && selection.featType !== "classfeature";
 }
@@ -461,10 +456,13 @@ function isGrantChoiceClassFeatureSelection(selection) {
     return selection.slotId.startsWith("grant-choice-") && selection.packId === "pf2e.classfeatures";
 }
 function isSkillTrainingFeatSelection(selection) {
-    return isAncestryFeatSelection(selection) || isGrantChoiceFeatSelection(selection);
+    return isFeatSourceSelection(selection);
 }
 function isSingletonChoiceFeatSelection(selection) {
-    return isGrantChoiceFeatSelection(selection);
+    return isFeatSourceSelection(selection);
+}
+function isFeatSourceSelection(selection) {
+    return selection.itemType === "feat" && selection.featType !== "classfeature";
 }
 function readExistingClassFeatureSelections(actor) {
     return listActorItems(actor)
@@ -537,7 +535,7 @@ function selectionFromSkillTrainingFeatItem(item) {
     const existingSlotId = typeof typedItem.flags?.[MODULE_ID]?.slotId === "string" && typedItem.flags[MODULE_ID].slotId.length > 0
         ? typedItem.flags[MODULE_ID].slotId
         : null;
-    const isSupportedFeat = featType === "ancestry" || !!existingSlotId?.startsWith("grant-choice-");
+    const isSupportedFeat = featType !== "classfeature";
     if (!isSupportedFeat) {
         return null;
     }
@@ -550,14 +548,14 @@ function selectionFromSkillTrainingFeatItem(item) {
         return null;
     }
     const level = toPositiveInteger(typedItem.system?.level?.value) ?? 1;
-    const slotId = existingSlotId ?? `ancestry-feat-level-${level}`;
+    const slotId = existingSlotId ?? `${featType || "feat"}-feat-level-${level}`;
     return {
         slotId,
         packId: parsed.packId,
         documentId: parsed.documentId,
         uuid: sourceId,
         itemType: "feat",
-        featType: "ancestry",
+        featType: typeof featType === "string" ? featType : null,
         name: typeof typedItem.name === "string" ? typedItem.name : "",
         level,
     };

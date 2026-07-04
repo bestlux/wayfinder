@@ -151,18 +151,30 @@ describe("wayfinder plan builder service", () => {
     const buildSingletonChoiceSteps = vi.fn(async (params) => {
       expect(params.draft).toBe(draft);
       expect(params.targetLevel).toBe(4);
-      expect(params.sources).toMatchObject([
-        {
-          sourceItemType: "class",
-          sourceSelection: draft.selections.class,
-          sourceDocument: classDocument,
-        },
-        {
-          sourceItemType: "feat",
-          sourceSelection: draft.selections["grant-choice-class-heritage-ancient-elf-ancientElf-level-1"],
-          sourceDocument: { fetched: "fighter-dedication" },
-        },
-      ]);
+      expect(params.sources).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceItemType: "class",
+            sourceSelection: draft.selections.class,
+            sourceDocument: classDocument,
+          }),
+          expect.objectContaining({
+            sourceItemType: "feat",
+            sourceSelection: draft.selections["ancestry-feat-level-1"],
+            sourceDocument: { fetched: "elven-lore" },
+          }),
+          expect.objectContaining({
+            sourceItemType: "feat",
+            sourceSelection: draft.selections["class-feat-level-2"],
+            sourceDocument: { fetched: "order-explorer" },
+          }),
+          expect.objectContaining({
+            sourceItemType: "feat",
+            sourceSelection: draft.selections["grant-choice-class-heritage-ancient-elf-ancientElf-level-1"],
+            sourceDocument: { fetched: "fighter-dedication" },
+          }),
+        ])
+      );
       return [];
     });
     const buildGrantChoiceSteps = vi.fn(async (params) => {

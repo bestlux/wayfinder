@@ -116,6 +116,26 @@ describe("pack options dependency filtering", () => {
           },
         ],
       }),
+      featEntry("partial-ambition", "Partial Ambition", "ancestry", ["human"], false, {
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "naturalAmbition",
+            choices: {
+              itemType: "feat",
+              filter: ["item:level:1", "item:category:class", "item:trait:{actor|system.details.class.trait}"],
+            },
+          },
+          {
+            key: "GrantItem",
+            uuid: "{item|flags.system.rulesSelections.naturalAmbition}",
+          },
+          {
+            key: "ChoiceSet",
+            flag: "unsupported",
+          },
+        ],
+      }),
       featEntry("unsupported-human-choice", "Unsupported Human Choice", "ancestry", ["human"], false, {
         rules: [
           {
@@ -626,6 +646,18 @@ describe("pack options dependency filtering", () => {
   it("hides direct feat picks with embedded ChoiceSets until Wayfinder can render their choices", async () => {
     setPack("pf2e.feats-srd", [
       featEntry("cat-fall", "Cat Fall", "skill", ["skill"]),
+      featEntry("assured-training", "Assured Training", "skill", ["skill"], true, {
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "trainedSkill",
+            choices: [
+              { value: "arcana", label: "Arcana" },
+              { value: "crafting", label: "Crafting" },
+            ],
+          },
+        ],
+      }),
       featEntry("additional-lore", "Additional Lore", "skill", ["skill"], true, {
         rules: [
           {
@@ -653,8 +685,8 @@ describe("pack options dependency filtering", () => {
       EMPTY_CONTEXT
     );
 
-    expect(directOptions.map((option) => option.name)).toEqual(["Cat Fall"]);
-    expect(grantOptions.map((option) => option.name)).toEqual(["Additional Lore", "Cat Fall"]);
+    expect(directOptions.map((option) => option.name)).toEqual(["Assured Training", "Cat Fall"]);
+    expect(grantOptions.map((option) => option.name)).toEqual(["Additional Lore", "Assured Training", "Cat Fall"]);
   });
 
   it("filters class-branch choices to the selector tag for the drafted class", async () => {
@@ -671,6 +703,18 @@ describe("pack options dependency filtering", () => {
         ],
       }),
       classFeatureEntry("interrogation", "Interrogation", ["investigator"], ["investigator-methodology"]),
+      classFeatureEntry("known-methodology", "Known Methodology", ["investigator"], ["investigator-methodology"], {
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "specialty",
+            choices: [
+              { value: "clues", label: "Clues" },
+              { value: "deduction", label: "Deduction" },
+            ],
+          },
+        ],
+      }),
       classFeatureEntry("warpriest", "Warpriest", ["cleric"], ["cleric-doctrine"]),
       classFeatureEntry("thesis-of-unity", "Thesis of Unity", ["wizard"], ["arcane-thesis"]),
     ]);
@@ -781,7 +825,7 @@ describe("pack options dependency filtering", () => {
       }
     );
 
-    expect(investigatorOptions.map((option) => option.name)).toEqual(["Interrogation"]);
+    expect(investigatorOptions.map((option) => option.name)).toEqual(["Interrogation", "Known Methodology"]);
   });
 
   it("filters wizard branch choices separately for arcane school and arcane thesis", async () => {

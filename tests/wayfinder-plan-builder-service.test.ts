@@ -56,6 +56,13 @@ describe("wayfinder plan builder service", () => {
       "Fighter Dedication",
       "class"
     );
+    draft.selections["class-feat-level-2"] = selection(
+      "class-feat-level-2",
+      "feat",
+      "order-explorer",
+      "Order Explorer",
+      "class"
+    );
     draft.branchSelections["class-branch-arcane-school-level-1"] = selection(
       "class-branch-arcane-school-level-1",
       "feat",
@@ -167,6 +174,16 @@ describe("wayfinder plan builder service", () => {
             sourceItemType: "feat",
             sourceSelection: draft.selections["ancestry-feat-level-1"],
             sourceDocument: { fetched: "elven-lore" },
+          }),
+          expect.objectContaining({
+            sourceItemType: "feat",
+            sourceSelection: draft.selections["class-feat-level-2"],
+            sourceDocument: { fetched: "order-explorer" },
+          }),
+          expect.objectContaining({
+            sourceItemType: "feat",
+            sourceSelection: draft.selections["grant-choice-class-heritage-ancient-elf-ancientElf-level-1"],
+            sourceDocument: { fetched: "fighter-dedication" },
           }),
           expect.objectContaining({
             sourceItemType: "classfeature",

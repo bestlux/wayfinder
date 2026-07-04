@@ -6,7 +6,7 @@
 - Fixed Animist spellcasting planning and created spellcasting entries so Wayfinder models the base Animist prepared slots without adding apparition capacity.
 - Fixed Scholar-style background grants so Assurance receives the drafted skill preselection before PF2E creates the native granted feat.
 - Added Simplified Chinese localization.
-- Updated compatibility notes for the current Foundry VTT 14.364 / PF2E 8.2.0 target. Full live smoke on that pair remains pending.
+- Verified the hotfix against Foundry VTT 14.364 / PF2E 8.2.0 with the full live smoke matrix and bumped PF2E package compatibility metadata to 8.2.0.
 
 ## 0.1.5 - 2026-05-22
 

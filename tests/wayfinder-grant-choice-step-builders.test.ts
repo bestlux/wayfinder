@@ -387,6 +387,69 @@ describe("wayfinder grant choice step builders", () => {
     ]);
   });
 
+  it("searches class-feature packs for tag-filtered feat grant choices", () => {
+    const steps = buildGrantChoiceStepsFromRules({
+      sourceItemType: "feat",
+      effectiveSourceDocument: {
+        name: "Order Explorer",
+        system: {
+          slug: "order-explorer",
+          level: { value: 2 },
+          rules: [
+            {
+              adjustName: false,
+              choices: {
+                filter: [
+                  "item:tag:druid-order",
+                  {
+                    not: "item:tag:class-archetype",
+                  },
+                ],
+              },
+              flag: "order",
+              key: "ChoiceSet",
+            },
+            {
+              key: "GrantItem",
+              uuid: "{item|flags.system.rulesSelections.order}",
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        slotId: "class-feat-level-2",
+        packId: "pf2e.feats-srd",
+        documentId: "order-explorer",
+        uuid: "Compendium.pf2e.feats-srd.Item.order-explorer",
+        itemType: "feat",
+        featType: "class",
+        name: "Order Explorer",
+        level: 2,
+      },
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        slotId: "grant-choice-none-feat-order-explorer-order-level-2",
+        filters: {
+          itemType: "feat",
+          packIds: ["pf2e.classfeatures", "pf2e.feats-srd"],
+          predicate: [
+            "item:tag:druid-order",
+            {
+              not: "item:tag:class-archetype",
+            },
+          ],
+        },
+        grantSelection: {
+          sourceItemType: "feat",
+          flag: "order",
+        },
+      },
+    ]);
+  });
+
   it.each([
     {
       sourceItemType: "heritage" as const,

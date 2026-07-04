@@ -264,8 +264,8 @@ async function resolveGrantChoiceSources(draft, args, deps) {
     const sourceItemTypes = ["ancestry", "heritage", "background"];
     const sourceDocuments = await Promise.all(sourceItemTypes.map((itemType) => args.resolveDocument(itemType)));
     const featSelections = dedupeSelectionsByUuid([
-        ...Object.values(draft.selections).filter(isAncestryFeatSelection),
-        ...readExistingSkillTrainingFeatSelections(args.actor).filter(isAncestryFeatSelection),
+        ...Object.values(draft.selections).filter(isGrantChoiceSourceFeatSelection),
+        ...readExistingSkillTrainingFeatSelections(args.actor).filter(isGrantChoiceSourceFeatSelection),
     ]);
     const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     const classFeatureSelections = resolveSelectedClassFeatureSelections(draft, args.actor);
@@ -318,6 +318,9 @@ function isGrantChoiceFeatSelection(selection) {
     return (selection.itemType === "feat" &&
         selection.slotId.startsWith("grant-choice-") &&
         !isGrantChoiceClassFeatureSelection(selection));
+}
+function isGrantChoiceSourceFeatSelection(selection) {
+    return selection.itemType === "feat" && selection.featType !== "classfeature";
 }
 async function resolveSpellChoiceClassFeatureDocuments(draft, args, deps) {
     const selections = resolveSelectedClassFeatureSelections(draft, args.actor);

@@ -60,7 +60,7 @@ Environment:
 - World: `testing-world`
 - Module: `wayfinder-pf2e`, active
 
-Current upstream target checked on 2026-07-04 is Foundry VTT 14.364 and PF2E 8.2.0. The 0.1.6 hotfix adds targeted unit coverage for Natural Ambition visibility, Scholar/Assurance preselection, and Animist base spellcasting counts. This smoke matrix has not yet been rerun against 14.364 / 8.2.0, so the rows below remain live evidence for 14.360 / 8.1.1 behavior only.
+Current upstream target checked on 2026-07-04 is Foundry VTT 14.364 and PF2E 8.2.0. The 0.1.6 hotfix passed the full live smoke matrix against that pair in `.wayfinder-smoke/2026-07-04T18-00-52Z`, with 27 class cases passing and no classified/manual failures. This adds live coverage for Natural Ambition visibility, Scholar/Assurance preselection, Animist base spellcasting counts, and selected feat-owned grant choices such as Druid Order Explorer.
 
 Artifact: `.wayfinder-smoke/beta-green-0.1.2-final-3`.
 

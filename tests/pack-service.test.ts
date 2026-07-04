@@ -100,6 +100,53 @@ describe("pack-service dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Cooperative Nature", "Fanged Blood", "Wilderness Born"]);
   });
 
+  it("keeps Human ancestry feats whose ChoiceSet is handled by a follow-up grant choice", async () => {
+    setPack("pf2e.ancestries", [ancestryEntry("human", "Human", false)]);
+    setPack("pf2e.feats-srd", [
+      featEntry("cooperative-nature", "Cooperative Nature", "ancestry", ["human"], false),
+      featEntry("PodajLVxqYSAqVox", "Natural Ambition", "ancestry", ["human"], false, {
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "naturalAmbition",
+            choices: {
+              itemType: "feat",
+              filter: ["item:level:1", "item:category:class", "item:trait:{actor|system.details.class.trait}"],
+            },
+          },
+          {
+            key: "GrantItem",
+            uuid: "{item|flags.system.rulesSelections.naturalAmbition}",
+          },
+        ],
+      }),
+      featEntry("unsupported-human-choice", "Unsupported Human Choice", "ancestry", ["human"], false, {
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "unsupported",
+          },
+        ],
+      }),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("ancestry-feat", {
+        itemType: "feat",
+        featTypes: ["ancestry"],
+        maxLevel: 1,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        ancestrySlug: "human",
+        ancestryTraits: ["human"],
+        classSlug: "fighter",
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Cooperative Nature", "Natural Ambition"]);
+  });
+
   it("filters ancestry feat spellcasting prerequisites against the drafted class", async () => {
     setPack("pf2e.ancestries", [ancestryEntry("human", "Human", false)]);
     setPack("pf2e.feats-srd", [

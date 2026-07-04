@@ -1,6 +1,8 @@
+import { resolveConfiguredChoiceOptions } from "../class-choice/rule-discovery.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, } from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
 import { documentFeatureLevel, extractChoiceKey, getDocumentRules, isChoicePredicate, isRecord, toNonEmptyString, } from "../rule-data.js";
+const ENABLED_FEAT_CONFIG_CHOICE_KEYS = new Set(["baseWeaponTypes", "creatureTraits", "saves", "weaponGroups"]);
 export function discoverSingletonChoiceMeta(args) {
     const { sourceItemType, sourceDocument, sourceSelection, sourceLevel, extractSlug, localize } = args;
     const document = sourceDocument;
@@ -38,7 +40,7 @@ export function discoverSingletonChoiceSpecs(args) {
         if (isGrantSelectorChoice(rules, flag)) {
             return [];
         }
-        const options = resolveChoiceOptions(rule, localize, configuredSkills);
+        const options = resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType);
         if (!options ||
             options.options.length === 0 ||
             (!includeTrainingChoices && shouldSkipSingletonChoice(args.sourceItemType, options.optionDomain))) {
@@ -69,7 +71,7 @@ function shouldSkipSingletonChoice(sourceItemType, optionDomain) {
 function extractPredicate(value) {
     return Array.isArray(value) ? value.filter(isChoicePredicate) : [];
 }
-function resolveChoiceOptions(rule, localize, configuredSkills) {
+function resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType) {
     if (Array.isArray(rule.choices)) {
         const options = rule.choices
             .filter((choice) => isRecord(choice))
@@ -112,6 +114,20 @@ function resolveChoiceOptions(rule, localize, configuredSkills) {
             optionDomain: "skill",
             options,
         };
+    }
+    const configKey = typeof rule.choices === "string"
+        ? rule.choices
+        : typeof choiceConfig?.config === "string"
+            ? choiceConfig.config
+            : null;
+    if (sourceItemType === "feat" && configKey && ENABLED_FEAT_CONFIG_CHOICE_KEYS.has(configKey)) {
+        const options = resolveConfiguredChoiceOptions(configKey, localize);
+        return options.length > 0
+            ? {
+                optionDomain: "generic",
+                options,
+            }
+            : null;
     }
     return null;
 }

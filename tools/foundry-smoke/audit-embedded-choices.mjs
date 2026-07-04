@@ -160,6 +160,20 @@ function installMinimalPf2eConfig() {
         spear: "Spear",
         sword: "Sword",
       },
+      baseWeaponTypes: {
+        dagger: "Dagger",
+        longsword: "Longsword",
+        staff: "Staff",
+      },
+      saves: {
+        fortitude: "Fortitude",
+        reflex: "Reflex",
+        will: "Will",
+      },
+      creatureTraits: {
+        dragon: "Dragon",
+        fiend: "Fiend",
+      },
     },
   };
 }

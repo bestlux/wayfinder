@@ -1,4 +1,5 @@
 import type { ChoicePredicate, SelectionRef, SingletonChoiceMeta } from "../../types.js";
+import { resolveConfiguredChoiceOptions } from "../class-choice/rule-discovery.js";
 import {
   getConfiguredSkills,
   isConfiguredSkillSlug,
@@ -18,6 +19,8 @@ import {
 interface NamedDocumentLike {
   name?: unknown;
 }
+
+const ENABLED_FEAT_CONFIG_CHOICE_KEYS = new Set(["baseWeaponTypes", "creatureTraits", "saves", "weaponGroups"]);
 
 export interface SingletonChoiceSpec {
   sourceRuleIndex: number;
@@ -92,7 +95,7 @@ export function discoverSingletonChoiceSpecs(args: {
       return [];
     }
 
-    const options = resolveChoiceOptions(rule, localize, configuredSkills);
+    const options = resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType);
     if (
       !options ||
       options.options.length === 0 ||
@@ -139,7 +142,8 @@ function extractPredicate(value: unknown): ChoicePredicate[] {
 function resolveChoiceOptions(
   rule: Record<string, unknown>,
   localize: (value: string) => string,
-  configuredSkills: SkillConfigMap
+  configuredSkills: SkillConfigMap,
+  sourceItemType: SingletonChoiceMeta["sourceItemType"]
 ): { optionDomain: "generic" | "skill" | "lore"; options: SingletonChoiceSpec["options"] } | null {
   if (Array.isArray(rule.choices)) {
     const options = rule.choices
@@ -192,6 +196,22 @@ function resolveChoiceOptions(
       optionDomain: "skill",
       options,
     };
+  }
+
+  const configKey =
+    typeof rule.choices === "string"
+      ? rule.choices
+      : typeof choiceConfig?.config === "string"
+        ? choiceConfig.config
+        : null;
+  if (sourceItemType === "feat" && configKey && ENABLED_FEAT_CONFIG_CHOICE_KEYS.has(configKey)) {
+    const options = resolveConfiguredChoiceOptions(configKey, localize);
+    return options.length > 0
+      ? {
+          optionDomain: "generic",
+          options,
+        }
+      : null;
   }
 
   return null;

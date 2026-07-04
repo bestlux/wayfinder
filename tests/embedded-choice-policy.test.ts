@@ -11,6 +11,9 @@ describe("embedded choice policy", () => {
           arcana: { label: "Arcana" },
           crafting: { label: "Crafting" },
         },
+        weaponGroups: {
+          sword: "Sword",
+        },
       },
     };
   });
@@ -77,6 +80,23 @@ describe("embedded choice policy", () => {
 
     expect(result.covered).toEqual([0]);
     expect(result.uncovered).toEqual([]);
+  });
+
+  it("marks enabled config-string direct feat choices as covered", () => {
+    const result = classifyEmbeddedChoices(
+      featEntry("advanced-weapon-training", "Advanced Weapon Training", "class", [
+        {
+          key: "ChoiceSet",
+          flag: "weaponGroup",
+          choices: "weaponGroups",
+        },
+      ]),
+      "pf2e.feats-srd"
+    );
+
+    expect(result.covered).toEqual([0]);
+    expect(result.uncovered).toEqual([]);
+    expect(result.rules).toEqual([{ ruleIndex: 0, coveredBy: ["singleton-choice"] }]);
   });
 
   it("marks skill-training-only direct feat choices as covered", () => {

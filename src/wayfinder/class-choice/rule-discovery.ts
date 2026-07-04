@@ -329,7 +329,7 @@ function resolveClassChoiceOptions(
   return [];
 }
 
-function resolveConfiguredChoiceOptions(
+export function resolveConfiguredChoiceOptions(
   choiceSetKey: string,
   localize: (value: string) => string
 ): ClassChoiceMeta["options"] {

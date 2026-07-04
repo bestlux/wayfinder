@@ -201,7 +201,7 @@ function resolveClassChoiceOptions(choices, rollOptions, localize) {
     }
     return [];
 }
-function resolveConfiguredChoiceOptions(choiceSetKey, localize) {
+export function resolveConfiguredChoiceOptions(choiceSetKey, localize) {
     if (choiceSetKey.startsWith("flags.")) {
         return [];
     }

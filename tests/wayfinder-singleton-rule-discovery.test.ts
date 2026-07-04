@@ -196,6 +196,129 @@ describe("wayfinder singleton rule discovery", () => {
     }
   });
 
+  for (const configCase of [
+    {
+      key: "weaponGroups",
+      value: "sword",
+      label: "Sword",
+      choices: "weaponGroups",
+    },
+    {
+      key: "baseWeaponTypes",
+      value: "longsword",
+      label: "Longsword",
+      choices: { config: "baseWeaponTypes" },
+    },
+    {
+      key: "saves",
+      value: "fortitude",
+      label: "Fortitude",
+      choices: { config: "saves" },
+    },
+    {
+      key: "creatureTraits",
+      value: "dragon",
+      label: "Dragon",
+      choices: { config: "creatureTraits" },
+    },
+  ]) {
+    it(`discovers feat-owned ${configCase.key} config choices`, () => {
+      const globals = globalThis as typeof globalThis & {
+        CONFIG?: {
+          PF2E?: Record<string, unknown>;
+        };
+      };
+      const originalConfig = globals.CONFIG;
+      globals.CONFIG = {
+        ...(originalConfig ?? {}),
+        PF2E: {
+          ...(originalConfig?.PF2E ?? {}),
+          [configCase.key]: {
+            [configCase.value]: configCase.label,
+          },
+        },
+      };
+
+      try {
+        const choices = discoverSingletonChoiceMeta({
+          sourceItemType: "feat",
+          sourceDocument: {
+            name: "Config Feat",
+            system: {
+              slug: "config-feat",
+              level: { value: 1 },
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: configCase.key,
+                  prompt: "Choose a config option",
+                  choices: configCase.choices,
+                },
+              ],
+            },
+          },
+          sourceSelection: {
+            ...sourceSelection,
+            slotId: "class-feat-level-1",
+            packId: "pf2e.feats-srd",
+            documentId: "config-feat",
+            uuid: "Compendium.pf2e.feats-srd.Item.config-feat",
+            itemType: "feat",
+            featType: "class",
+            name: "Config Feat",
+          },
+          extractSlug,
+          localize: (value) => value,
+        });
+
+        expect(choices).toMatchObject([
+          {
+            slotId: `singleton-choice-feat-config-feat-${configCase.key}-level-1`,
+            sourceItemType: "feat",
+            flag: configCase.key,
+            options: [{ value: configCase.value, label: configCase.label }],
+          },
+        ]);
+      } finally {
+        globals.CONFIG = originalConfig;
+      }
+    });
+  }
+
+  it("skips dynamic config paths for feat-owned singleton choices", () => {
+    const choices = discoverSingletonChoiceMeta({
+      sourceItemType: "feat",
+      sourceDocument: {
+        name: "Dynamic Feat",
+        system: {
+          slug: "dynamic-feat",
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "dynamic",
+              choices: "flags.system.exemplar.ikons",
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        ...sourceSelection,
+        slotId: "class-feat-level-1",
+        packId: "pf2e.feats-srd",
+        documentId: "dynamic-feat",
+        uuid: "Compendium.pf2e.feats-srd.Item.dynamic-feat",
+        itemType: "feat",
+        featType: "class",
+        name: "Dynamic Feat",
+      },
+      extractSlug,
+      localize: (value) => value,
+    });
+
+    expect(choices).toEqual([]);
+  });
+
   it("preserves explicit custom labels for generic array-backed choices", () => {
     const choices = discoverSingletonChoiceMeta({
       sourceItemType: "background",

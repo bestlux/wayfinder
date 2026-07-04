@@ -54,7 +54,9 @@ describe("Foundry smoke class coverage", () => {
       smokeCases,
     });
 
-    expect(smokeCases.map((entry) => entry.classSlug).sort()).toEqual(expectedPf2eClassSlugs);
+    // Variant cases (for example the Samsaran config-feat fighter) may share a
+    // class slug; coverage is about unique classes, not case count.
+    expect(Array.from(new Set(smokeCases.map((entry) => entry.classSlug))).sort()).toEqual(expectedPf2eClassSlugs);
     expect(result.missingClassSlugs).toEqual([]);
     expect(result.spellcastingCasesMissingSpellSteps).toEqual([]);
   });

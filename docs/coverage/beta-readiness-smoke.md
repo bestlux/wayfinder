@@ -102,6 +102,10 @@ Selector pairs such as Doctrine plus Cloistered Cleric, Deity plus Deity (Cleric
 
 After the embedded-`ChoiceSet` coverage work (per-rule classifier, feat config-string choices, widened static UUID packs, predicate-backed branch policy fix), the full matrix reran green against Foundry VTT 14.364 / PF2E 8.2.0: 28 cases passing — all 27 class cases plus the new `fighter-samsaran-weapon-memory-l1-l5-apply-rerun` variant, which drafts Samsaran Weapon Memory through its two `baseWeaponTypes` config choices and verifies the singleton follow-up steps render, apply, and rerun cleanly. The animist and commander paths now organically draft Additional Lore through a direct skill-feat slot, exercising a feat-sourced embedded lore choice at apply. Artifacts: `.wayfinder-smoke/full-matrix-final-a` and `.wayfinder-smoke/full-matrix-final-b`.
 
+## 2026-07-04 Release 0.2.0 Full Matrix
+
+Before tagging `v0.2.0`, the release code passed the full live matrix against Foundry VTT 14.364 / PF2E 8.2.0 in world `testing-world`: 28 cases passing, 0 classified/manual, 0 failed. The run used two 14-case chunks, including `fighter-samsaran-weapon-memory-l1-l5-apply-rerun`; every case applied to level 5 and reran with 0 pending steps. Artifacts: `.wayfinder-smoke/release-0.2.0-a` and `.wayfinder-smoke/release-0.2.0-b`.
+
 ## 2026-05-11 Incremental Existing-Character Reruns
 
 These cases first applied a level 1 actor, reopened Wayfinder against that existing actor, advanced to level 5, applied, and reran at level 5. They are targeted safety checks for actor-owned class-feature replay, prepared spellcasting entry expansion, branch-derived spontaneous spell choices, predicate-gated grants, duplicate prevention, native popup suppression, and draft cleanup.

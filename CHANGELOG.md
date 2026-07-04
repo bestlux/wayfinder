@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 - 2026-07-04
+
+- Unlocked guided embedded ChoiceSet coverage for 184 more census entries: 99 direct feat entries and 85 class-branch options now stay visible when every embedded choice has a supported follow-up.
+- Added guided feat config-string choices for `baseWeaponTypes`, `creatureTraits`, `saves`, and `weaponGroups`, including the Samsaran Weapon Memory smoke case for two base-weapon selections.
+- Expanded static-UUID grant coverage so more direct feat grants and branch options can be selected, preseeding supported native PF2E follow-up choices where needed.
+- Fixed predicate-backed class-branch visibility so already-guided branches remain visible while unsupported tag-filter branches still stay hidden.
+- Internal: refactored pack service boundaries and reorganized the README around public coverage and release readiness.
+
 ## 0.1.6 - 2026-07-04
 
 - Fixed Human Natural Ambition and similar supported embedded grant-choice feats being hidden from relevant pickers.

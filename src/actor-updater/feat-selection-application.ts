@@ -1,4 +1,4 @@
-import { fetchSelectionDocument } from "../pack-service.js";
+import { fetchSelectionDocument } from "../pack/access.js";
 import type { ActorLike, FeatSlotLike, LooseRecord } from "../shared/actor-model.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
 import type { InsertFeatSelectionDependencies } from "./selection-dependencies.js";

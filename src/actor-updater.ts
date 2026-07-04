@@ -18,7 +18,7 @@ import { applySpellChoiceDraft } from "./actor-updater/spell-choice-application.
 import { applySkillIncreaseDraft, applyTrainingDraft } from "./actor-updater/training-application.js";
 import { applyClassBranchDraft } from "./class-branch-service.js";
 import { applyClassFeatureChoiceDraft } from "./class-feature-choice-service.js";
-import { fetchSelectionDocument } from "./pack-service.js";
+import { fetchSelectionDocument } from "./pack/access.js";
 import type { SelectorActorLike } from "./selector-application.js";
 import type { ActorLike } from "./shared/actor-model.js";
 import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";

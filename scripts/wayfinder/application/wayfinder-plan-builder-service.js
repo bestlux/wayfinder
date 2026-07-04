@@ -1,6 +1,6 @@
 import { getEffectiveBuildState, listActorItems } from "../../build-state.js";
 import { MODULE_ID } from "../../constants.js";
-import { fetchSelectionDocument } from "../../pack-service.js";
+import { fetchSelectionDocument } from "../../pack/access.js";
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";

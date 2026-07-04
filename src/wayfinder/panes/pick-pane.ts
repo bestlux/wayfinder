@@ -1,4 +1,4 @@
-import { fetchSelectionDocument } from "../../pack-service.js";
+import { fetchSelectionDocument } from "../../pack/access.js";
 import { enrichHtml } from "../../shared/foundry-compat.js";
 import type { DraftState, OptionRecord, PendingStep, SelectionRef } from "../../types.js";
 import { buildPreviewDetails, formatSlug } from "../formatting.js";

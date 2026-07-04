@@ -1,6 +1,6 @@
 import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
-import { fetchSelectionDocument } from "../pack-service.js";
+import { fetchSelectionDocument } from "../pack/access.js";
 import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
 import { buildItemGrantRecord, stampGrantedItemSource } from "../shared/pf2e-item-source.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";

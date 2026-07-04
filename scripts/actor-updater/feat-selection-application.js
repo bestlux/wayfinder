@@ -1,4 +1,4 @@
-import { fetchSelectionDocument } from "../pack-service.js";
+import { fetchSelectionDocument } from "../pack/access.js";
 import { stampSelectionFlags } from "./selection-flags.js";
 import { createEmbeddedSource } from "./selection-source-application.js";
 const DEFAULT_INSERT_DEPS = {

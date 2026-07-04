@@ -1,4 +1,4 @@
-import { fetchSelectionDocument } from "../pack-service.js";
+import { fetchSelectionDocument } from "../pack/access.js";
 import { cloneData } from "../shared/cloning.js";
 import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { findDraftSelectionByType } from "../wayfinder/draft-decisions.js";

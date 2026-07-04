@@ -1,7 +1,7 @@
 import { stripPreselectedClassBranchEntries } from "../class-branch-service.js";
 import { stripPreselectedClassFeatureEntries } from "../class-feature-choice-service.js";
 import { MODULE_ID } from "../constants.js";
-import { fetchSelectionDocument } from "../pack-service.js";
+import { fetchSelectionDocument } from "../pack/access.js";
 import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
 import { applyRuleSelectionToSource, ensureRuleSelections, stampImportedItemSource, } from "../shared/pf2e-item-source.js";

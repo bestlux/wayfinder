@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { inspectActor } from "../src/actor-inspector";
 import { getEffectiveBuildState, getEffectiveSingletonDocument } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
-import { clearPackServiceCache, getOptionsForStep } from "../src/pack-service";
+import { clearPackServiceCache } from "../src/pack/access";
+import { getOptionsForStep } from "../src/pack/options";
 import type { DraftState, OptionContext, PendingStep, SelectionRef } from "../src/types";
 import { buildWayfinderAppPlan } from "../src/wayfinder/application/wayfinder-plan-builder-service";
 

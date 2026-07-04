@@ -1,5 +1,5 @@
 import { listActorItems } from "../build-state.js";
-import { fetchSelectionDocument } from "../pack-service.js";
+import { fetchSelectionDocument } from "../pack/access.js";
 import { buildItemGrantRecord, stampGrantedItemSource } from "../shared/pf2e-item-source.js";
 import { applyManualGrantChoices, grantSourceMatches, readManualSystemItemGrants, selectionFromSystemGrant, } from "./manual-system-item-grants.js";
 import { createEmbeddedSource } from "./selection-source-application.js";

@@ -18,6 +18,7 @@
     "release:notes": "node tools/release/extract-release-notes.mjs",
     "release:foundry": "node tools/release/publish-foundry-package.mjs",
     "audit:classes": "node tools/foundry-smoke/audit-class-coverage.mjs",
+    "audit:embedded-choices": "node tools/foundry-smoke/audit-embedded-choices.mjs",
     "smoke:foundry": "node tools/foundry-smoke/run-foundry-smoke.mjs",
     "check": "npm run format:check && npm run lint && npm run build && npm test && npm run check:strict",
     "test": "vitest run",

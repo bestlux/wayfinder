@@ -301,16 +301,24 @@ function getChoiceSetRules(entry) {
 }
 
 function classifyChoiceShape(rule, entry, ruleIndex) {
+  if (isDynamicFlagsChoice(rule)) {
+    return "dynamic flags path";
+  }
+
   if (hasSelectedItemOrEquipmentPredicate(rule)) {
     return "selected-item/equipment predicate";
   }
 
-  if (hasSameItemDependency(entry, rule, ruleIndex)) {
-    return "intra-item dependency graph";
+  if (hasOptionPredicateDependency(entry, rule, ruleIndex)) {
+    return "option-predicate dependency";
   }
 
   if (typeof rule.choices === "string" || (isRecord(rule.choices) && typeof rule.choices.config === "string")) {
     return "config-string";
+  }
+
+  if (isStandaloneFilteredChoice(entry, rule)) {
+    return "standalone-filtered (no grant)";
   }
 
   if (isFilterPredicateGrant(entry, rule)) {
@@ -328,8 +336,23 @@ function classifyChoiceShape(rule, entry, ruleIndex) {
   return "other/unknown";
 }
 
+function isDynamicFlagsChoice(rule) {
+  const config =
+    typeof rule.choices === "string"
+      ? rule.choices
+      : isRecord(rule.choices) && typeof rule.choices.config === "string"
+        ? rule.choices.config
+        : null;
+
+  return typeof config === "string" && config.startsWith("flags.system.");
+}
+
 function isFilterPredicateGrant(entry, rule) {
   return isRecord(rule.choices) && Array.isArray(rule.choices.filter) && hasGrantForFlag(entry, choiceKey(rule));
+}
+
+function isStandaloneFilteredChoice(entry, rule) {
+  return isRecord(rule.choices) && Array.isArray(rule.choices.filter) && !hasGrantForFlag(entry, choiceKey(rule));
 }
 
 function isStaticUuidChoice(rule) {
@@ -367,26 +390,33 @@ function hasSelectedItemOrEquipmentPredicate(rule) {
   return JSON.stringify(choices).includes("item:group:") || JSON.stringify(choices).includes("item:damage:");
 }
 
-function hasSameItemDependency(entry, rule, ruleIndex) {
-  const currentKey = choiceKey(rule);
-  const currentRollOption = typeof rule.rollOption === "string" ? rule.rollOption : null;
+function hasOptionPredicateDependency(entry, rule, ruleIndex) {
+  if (!Array.isArray(rule.choices)) {
+    return false;
+  }
+
+  const optionPredicates = rule.choices.filter(isRecord).flatMap((choice) => {
+    if (choice.predicate === undefined) {
+      return [];
+    }
+    return [choice.predicate];
+  });
+  if (optionPredicates.length === 0) {
+    return false;
+  }
+
   const dependencyKeys = getChoiceSetRules(entry)
-    .filter((candidate) => candidate.ruleIndex !== ruleIndex)
+    .filter((candidate) => candidate.ruleIndex < ruleIndex)
     .flatMap((candidate) => [choiceKey(candidate.rule), candidate.rule.rollOption])
     .filter((value) => typeof value === "string" && value.length > 0);
   if (dependencyKeys.length === 0) {
     return false;
   }
 
-  const serialized = JSON.stringify([rule.predicate, rule.choices]);
+  const serialized = JSON.stringify(optionPredicates);
   return dependencyKeys.some((key) => {
     const escaped = escapeRegExp(key);
-    return (
-      new RegExp(`"${escaped}:`).test(serialized) ||
-      serialized.includes(`rulesSelections.${key}`) ||
-      (!!currentKey && currentKey !== key && serialized.includes(`${key}:${currentKey}`)) ||
-      (!!currentRollOption && currentRollOption !== key && serialized.includes(`${key}:${currentRollOption}`))
-    );
+    return new RegExp(`"${escaped}:`).test(serialized) || serialized.includes(`rulesSelections.${key}`);
   });
 }
 

@@ -388,6 +388,7 @@ describe("wayfinder selection command service", () => {
     const result = await selectClassChoiceValue(state, step, "unholy", {
       invalidateSelectionsByPrefix: () => [],
       invalidateBranchSelectionsByDependency: async () => ["class-branch-cause-level-1"],
+      invalidateClassChoicesBySourceChoice: async () => [],
       invalidateGrantSelectionsBySource: async () => [],
       invalidateFlagChoicesBySource: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
@@ -451,6 +452,7 @@ describe("wayfinder selection command service", () => {
         return [];
       },
       invalidateBranchSelectionsByDependency: async () => [],
+      invalidateClassChoicesBySourceChoice: async () => [],
       invalidateGrantSelectionsBySource: async (sourceItemType) => {
         invalidatedGrantSources.push(sourceItemType);
         if (sourceItemType === "classfeature") {
@@ -484,6 +486,66 @@ describe("wayfinder selection command service", () => {
     expect(invalidatedGrantSources).toContain("classfeature");
     expect(invalidatedSpellDependencies).toContain("class-branch");
     expect(state.recentlyInvalidatedStepIds.has(gateChoiceSlotId)).toBe(false);
+  });
+
+  it("clears stale same-item dependent class choices when a prerequisite class choice changes", async () => {
+    const elementSlotId = "class-choice-elemental-instinct-elementalInstinctElement-level-1";
+    const damageSlotId = "class-choice-elemental-instinct-elementalInstinctDamage-level-1";
+    const sourceUuid = "Compendium.pf2e.classfeatures.Item.0jSS6pgNXsC8k4o7";
+    const draft = createEmptyDraft(1);
+    draft.classChoices[elementSlotId] = "water";
+    draft.classChoices[damageSlotId] = "cold";
+    const state = commandState(draft, { invalidatedSlotIds: [elementSlotId] });
+    const invalidatedSourceChoices: Array<{ sourceUuid: string; flag: string }> = [];
+    const step: PendingStep = {
+      id: elementSlotId,
+      level: 1,
+      kind: "class-choice",
+      slotKind: "class-choice",
+      title: "Element",
+      description: "",
+      required: true,
+      slotId: elementSlotId,
+      classChoice: {
+        slotId: elementSlotId,
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "elemental-instinct",
+        sourceUuid,
+        sourceName: "Elemental Instinct",
+        sourceRuleIndex: 0,
+        flag: "elementalInstinctElement",
+        rollOption: "elemental-instinct",
+        classSlug: "barbarian",
+        dependsOn: "class",
+        options: [],
+      },
+    };
+
+    const result = await selectClassChoiceValue(state, step, "air", {
+      invalidateSelectionsByPrefix: () => [],
+      invalidateBranchSelectionsByDependency: async () => [],
+      invalidateClassChoicesBySourceChoice: async (dependencySourceUuid, flag) => {
+        invalidatedSourceChoices.push({ sourceUuid: dependencySourceUuid, flag });
+        if (dependencySourceUuid === sourceUuid && flag === "elementalInstinctElement") {
+          delete draft.classChoices[damageSlotId];
+          return [damageSlotId];
+        }
+        return [];
+      },
+      invalidateGrantSelectionsBySource: async () => [],
+      invalidateFlagChoicesBySource: async () => [],
+      invalidateSpellChoicesByDependency: async () => [],
+    });
+
+    expect(result).toMatchObject({
+      kind: "changed",
+      shouldAdvance: true,
+      statusNote:
+        "Class choice changed. Wayfinder reset class paths, class-feature choices, and spell choices for review.",
+    });
+    expect(draft.classChoices[elementSlotId]).toBe("air");
+    expect(draft.classChoices[damageSlotId]).toBeUndefined();
+    expect(invalidatedSourceChoices).toEqual([{ sourceUuid, flag: "elementalInstinctElement" }]);
   });
 
   it("rejects duplicate spell selections already chosen elsewhere", async () => {

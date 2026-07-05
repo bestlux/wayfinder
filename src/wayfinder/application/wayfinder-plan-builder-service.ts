@@ -19,6 +19,7 @@ import type {
   SpellChoiceMeta,
 } from "../../types.js";
 import type { ChoiceFilterActorContext } from "../choice-set-filters.js";
+import type { ClassFeatureSelectionSource } from "../class-choice/step-builders.js";
 import {
   buildClassBranchSteps,
   buildClassChoiceSteps,
@@ -520,7 +521,7 @@ async function resolveSelectedClassFeatureChoiceSources(
   draft: DraftState,
   args: BuildWayfinderAppPlanArgs,
   deps: BuildWayfinderAppPlanDependencies
-): Promise<Array<{ level: number; selection: SelectionRef; document: DocumentLike }>> {
+): Promise<ClassFeatureSelectionSource[]> {
   const effectiveClassDocument = await args.resolveDocument("class");
   const classSlug = effectiveClassDocument ? deps.extractDocumentSlug(effectiveClassDocument) : null;
   const directSelections = resolveSelectedClassFeatureSelections(draft, args.actor);
@@ -529,7 +530,16 @@ async function resolveSelectedClassFeatureChoiceSources(
   );
   const directSources = directSelections.flatMap((selection, index) => {
     const document = directDocuments[index];
-    return document ? [{ level: documentFeatureLevel(document), selection, document }] : [];
+    return document
+      ? [
+          {
+            level: documentFeatureLevel(document),
+            selection,
+            document,
+            existingRulesSelections: readExistingRulesSelections(args.actor, selection.uuid),
+          },
+        ]
+      : [];
   });
 
   const staticGrantSelections = dedupeSelectionsByUuid(
@@ -548,7 +558,16 @@ async function resolveSelectedClassFeatureChoiceSources(
   );
   const staticGrantSources = staticGrantSelections.flatMap((selection, index) => {
     const document = staticGrantDocuments[index];
-    return document ? [{ level: documentFeatureLevel(document), selection, document }] : [];
+    return document
+      ? [
+          {
+            level: documentFeatureLevel(document),
+            selection,
+            document,
+            existingRulesSelections: readExistingRulesSelections(args.actor, selection.uuid),
+          },
+        ]
+      : [];
   });
 
   return dedupeClassFeatureSourcesByUuid([...directSources, ...staticGrantSources]);

@@ -134,13 +134,17 @@ export async function buildClassGrantedItemSteps(params) {
 export async function buildClassChoiceSteps(params) {
     const classSlug = params.effectiveClassDocument ? params.extractSlug(params.effectiveClassDocument) : null;
     const steps = [
-        ...(await buildClassChoiceStepsFromRules(params)),
+        ...(await buildClassChoiceStepsFromRules({
+            ...params,
+            selectedValuesBySlotId: params.draft.classChoices,
+        })),
         ...buildClassChoiceStepsFromFeatureSources({
             classFeatures: params.additionalClassFeatures ?? [],
             classSlug,
             effectiveDeityDocument: params.effectiveDeityDocument,
             extractSlug: params.extractSlug,
             localize: params.localize,
+            selectedValuesBySlotId: params.draft.classChoices,
         }),
     ];
     return dedupeStepsBySlotId(steps).filter((step) => !shouldSkipExistingStep(params.draft.classChoices[step.slotId], params.readExistingClassChoiceSelection(step.classChoice)));

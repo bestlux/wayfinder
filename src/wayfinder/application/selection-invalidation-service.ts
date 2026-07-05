@@ -105,6 +105,26 @@ export function createSelectionInvalidationService(
       });
     },
 
+    async invalidateClassChoicesBySourceChoice(sourceUuid: string, flag: string): Promise<string[]> {
+      const normalizedSourceUuid = normalizeUuid(sourceUuid);
+      const normalizedFlag = normalizeFlag(flag);
+      if (!normalizedSourceUuid || !normalizedFlag) {
+        return [];
+      }
+
+      return invalidateMatchingPlanSteps(await deps.buildPlan(), invalidate, (step) => {
+        return (
+          step.kind === "class-choice" &&
+          (step.classChoice.dependsOnChoices?.some(
+            (dependency) =>
+              normalizeUuid(dependency.sourceUuid) === normalizedSourceUuid &&
+              normalizeFlag(dependency.flag) === normalizedFlag
+          ) ??
+            false)
+        );
+      });
+    },
+
     async invalidateSingletonChoicesBySource(
       sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity"
     ): Promise<string[]> {
@@ -279,5 +299,9 @@ function isFlagChoiceSlotIdForDependency(slotId: string, dependency: "ancestry" 
 }
 
 function normalizeUuid(value: string | null | undefined): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim().toLowerCase() : null;
+}
+
+function normalizeFlag(value: string | null | undefined): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim().toLowerCase() : null;
 }

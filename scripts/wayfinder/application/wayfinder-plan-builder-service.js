@@ -354,7 +354,16 @@ async function resolveSelectedClassFeatureChoiceSources(draft, args, deps) {
     const directDocuments = await Promise.all(directSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     const directSources = directSelections.flatMap((selection, index) => {
         const document = directDocuments[index];
-        return document ? [{ level: documentFeatureLevel(document), selection, document }] : [];
+        return document
+            ? [
+                {
+                    level: documentFeatureLevel(document),
+                    selection,
+                    document,
+                    existingRulesSelections: readExistingRulesSelections(args.actor, selection.uuid),
+                },
+            ]
+            : [];
     });
     const staticGrantSelections = dedupeSelectionsByUuid(directSources.flatMap((source) => staticClassFeatureGrantSelections({
         actor: args.actor,
@@ -366,7 +375,16 @@ async function resolveSelectedClassFeatureChoiceSources(draft, args, deps) {
     const staticGrantDocuments = await Promise.all(staticGrantSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     const staticGrantSources = staticGrantSelections.flatMap((selection, index) => {
         const document = staticGrantDocuments[index];
-        return document ? [{ level: documentFeatureLevel(document), selection, document }] : [];
+        return document
+            ? [
+                {
+                    level: documentFeatureLevel(document),
+                    selection,
+                    document,
+                    existingRulesSelections: readExistingRulesSelections(args.actor, selection.uuid),
+                },
+            ]
+            : [];
     });
     return dedupeClassFeatureSourcesByUuid([...directSources, ...staticGrantSources]);
 }

@@ -157,18 +157,21 @@ export function discoverClassChoiceMeta(args) {
     }
     const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
     const level = toFeatureLevel(document.system?.level?.value);
-    return findRelevantClassRules(sourceDocument).flatMap((rule, ruleIndex) => {
+    const activeRollOptions = new Set(rollOptions);
+    const choiceRefs = [];
+    const result = [];
+    const rules = findRelevantClassRules(sourceDocument);
+    rules.forEach((rule, ruleIndex) => {
         const selectionKey = extractClassChoiceKey(rule, sourceSlug);
         if (rule.key !== "ChoiceSet" || !selectionKey) {
-            return [];
+            return;
         }
-        const options = resolveClassChoiceOptions(rule.choices, rollOptions, localize);
-        if (options.length === 0) {
-            return [];
-        }
-        return [
-            {
-                slotId: `class-choice-${sourceSlug}-${selectionKey}-level-${level}`,
+        const slotId = "class-choice-" + sourceSlug + "-" + selectionKey + "-level-" + level;
+        const options = resolveClassChoiceOptions(rule.choices, activeRollOptions, localize);
+        const dependencyRefs = sameItemChoiceDependencies(rule, choiceRefs);
+        if (options.length > 0) {
+            result.push({
+                slotId,
                 sourcePackId: sourceSelection.packId,
                 sourceDocumentId: sourceSelection.documentId,
                 sourceUuid: sourceSelection.uuid,
@@ -178,10 +181,33 @@ export function discoverClassChoiceMeta(args) {
                 rollOption: toNonEmptyString(rule.rollOption),
                 classSlug,
                 dependsOn: referencesDeity(rule) ? "deity" : "class",
+                ...(dependencyRefs.length > 0
+                    ? {
+                        dependsOnChoices: dependencyRefs.map((entry) => ({
+                            sourceUuid: sourceSelection.uuid,
+                            flag: entry.flag,
+                        })),
+                    }
+                    : {}),
                 options,
-            },
-        ];
+            });
+        }
+        const selectedValue = toNonEmptyString(args.selectedValuesBySlotId?.[slotId]) ??
+            toNonEmptyString(args.existingSelectionsByFlag?.[selectionKey]) ??
+            toNonEmptyString(args.existingSelectionsByFlag?.[toNonEmptyString(rule.flag) ?? ""]) ??
+            (args.assumeFirstChoiceSelection ? (options[0]?.value ?? null) : null);
+        const choiceRef = {
+            flag: selectionKey,
+            rawFlag: toNonEmptyString(rule.flag),
+            rollOption: toNonEmptyString(rule.rollOption),
+            dependencyKeys: sameItemChoiceDependencyKeys(rules, selectionKey, toNonEmptyString(rule.flag), toNonEmptyString(rule.rollOption)),
+        };
+        choiceRefs.push(choiceRef);
+        if (selectedValue) {
+            addSameItemChoiceRollOptions(activeRollOptions, rules, choiceRef, selectedValue);
+        }
     });
+    return result;
 }
 function resolveClassChoiceOptions(choices, rollOptions, localize) {
     if (Array.isArray(choices)) {
@@ -302,6 +328,98 @@ function toDromedaryFlag(value) {
 }
 function evaluatePredicate(predicate, rollOptions) {
     return !predicate || matchesChoicePredicate(predicate, (statement) => rollOptions.has(statement));
+}
+function sameItemChoiceDependencies(rule, previousChoices) {
+    if (!Array.isArray(rule.choices) || previousChoices.length === 0) {
+        return [];
+    }
+    const predicates = rule.choices
+        .filter(isRecord)
+        .flatMap((choice) => (choice.predicate === undefined ? [] : [choice.predicate]));
+    if (predicates.length === 0) {
+        return [];
+    }
+    const serialized = JSON.stringify(predicates).toLowerCase();
+    return previousChoices.filter((choice) => choice.dependencyKeys.some((key) => {
+        const normalized = key.trim().toLowerCase();
+        return (normalized.length > 0 &&
+            (serialized.includes(`${normalized}:`) || serialized.includes(`rulesselections.${normalized}`)));
+    }));
+}
+function addSameItemChoiceRollOptions(rollOptions, rules, choiceRef, selectedValue) {
+    const normalizedValue = selectedValue.trim().toLowerCase();
+    if (!normalizedValue) {
+        return;
+    }
+    for (const key of new Set([choiceRef.rollOption, choiceRef.flag, choiceRef.rawFlag].filter(isPresentString))) {
+        rollOptions.add(`${key}:${normalizedValue}`.toLowerCase());
+    }
+    for (const option of resolveTemplatedRollOptions(rules, choiceRef.flag, choiceRef.rawFlag, normalizedValue)) {
+        rollOptions.add(option.toLowerCase());
+    }
+}
+function sameItemChoiceDependencyKeys(rules, selectionKey, rawFlag, rollOption) {
+    const keys = new Set([selectionKey, rawFlag, rollOption].filter(isPresentString));
+    for (const option of templatedRollOptionStrings(rules, selectionKey, rawFlag)) {
+        const resolved = resolveTemplatedRollOption(option, selectionKey, rawFlag, "__wayfinder_value__");
+        if (!resolved) {
+            continue;
+        }
+        const markerIndex = resolved.indexOf("__wayfinder_value__");
+        if (markerIndex <= 0) {
+            continue;
+        }
+        const prefix = resolved.slice(0, markerIndex).replace(/:+$/, "");
+        if (prefix) {
+            keys.add(prefix);
+        }
+    }
+    return Array.from(keys);
+}
+function resolveTemplatedRollOptions(rules, selectionKey, rawFlag, selectedValue) {
+    return templatedRollOptionStrings(rules, selectionKey, rawFlag)
+        .map((option) => resolveTemplatedRollOption(option, selectionKey, rawFlag, selectedValue))
+        .filter(isPresentString)
+        .filter((option) => !/\{item\|flags\.system\.rulesSelections\.[^}]+\}/.test(option))
+        .filter((option, index, all) => all.indexOf(option) === index);
+}
+function templatedRollOptionStrings(rules, selectionKey, rawFlag) {
+    const flags = new Set([selectionKey, rawFlag].filter(isPresentString).map((entry) => entry.toLowerCase()));
+    return rules.flatMap((rule) => {
+        if (rule.key !== "RollOption") {
+            return [];
+        }
+        const option = toNonEmptyString(rule.option);
+        if (!option || !rollOptionTemplateReferencesAnyFlag(option, flags)) {
+            return [];
+        }
+        return [option];
+    });
+}
+function resolveTemplatedRollOption(option, selectionKey, rawFlag, selectedValue) {
+    const flags = new Set([selectionKey, rawFlag].filter(isPresentString).map((entry) => entry.toLowerCase()));
+    let resolvedAny = false;
+    let unresolved = false;
+    const resolved = option.replace(/\{item\|flags\.system\.rulesSelections\.([^}]+)\}/g, (_match, flag) => {
+        if (!flags.has(String(flag).toLowerCase())) {
+            unresolved = true;
+            return "";
+        }
+        resolvedAny = true;
+        return selectedValue;
+    });
+    return resolvedAny && !unresolved ? resolved : null;
+}
+function rollOptionTemplateReferencesAnyFlag(option, flags) {
+    for (const match of option.matchAll(/\{item\|flags\.system\.rulesSelections\.([^}]+)\}/g)) {
+        if (flags.has(String(match[1] ?? "").toLowerCase())) {
+            return true;
+        }
+    }
+    return false;
+}
+function isPresentString(value) {
+    return typeof value === "string" && value.trim().length > 0;
 }
 function referencesDeity(rule) {
     return JSON.stringify(rule).includes("deity:primary:");

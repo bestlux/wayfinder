@@ -117,6 +117,7 @@ describe("wayfinder selection invalidation service", () => {
     const draft = createEmptyDraft(1);
     draft.branchSelections["class-branch-cause-level-1"] = selection("class-branch-cause-level-1", "feat", "paladin");
     draft.classChoices["class-choice-champion-sanctification-level-1"] = "holy";
+    draft.classChoices["class-choice-elemental-instinct-elementalInstinctDamage-level-1"] = "cold";
     draft.spellChoices["spell-choice-wizard-curriculum-rank-1-level-1"] = [
       selection("spell-choice-wizard-curriculum-rank-1-level-1", "spell", "force-barrage"),
     ];
@@ -138,6 +139,16 @@ describe("wayfinder selection invalidation service", () => {
             classBranchStep("class-branch-tenet-level-1", "class"),
             classChoiceStep("class-choice-champion-sanctification-level-1", "deity"),
             classChoiceStep("class-choice-cleric-doctrine-level-1", "class"),
+            classChoiceStep("class-choice-elemental-instinct-elementalInstinctDamage-level-1", "class", {
+              sourceUuid: "Compendium.pf2e.classfeatures.Item.0jSS6pgNXsC8k4o7",
+              flag: "elementalInstinctDamage",
+              dependsOnChoices: [
+                {
+                  sourceUuid: "Compendium.pf2e.classfeatures.Item.0jSS6pgNXsC8k4o7",
+                  flag: "elementalInstinctElement",
+                },
+              ],
+            }),
             spellChoiceStep("spell-choice-wizard-curriculum-rank-1-level-1", "class-branch"),
             spellChoiceStep("spell-choice-cleric-cantrip-level-1", "class"),
           ],
@@ -152,11 +163,18 @@ describe("wayfinder selection invalidation service", () => {
     expect(await service.invalidateClassChoicesByDependency("deity")).toEqual([
       "class-choice-champion-sanctification-level-1",
     ]);
+    expect(
+      await service.invalidateClassChoicesBySourceChoice(
+        "Compendium.pf2e.classfeatures.Item.0jSS6pgNXsC8k4o7",
+        "elementalInstinctElement"
+      )
+    ).toEqual(["class-choice-elemental-instinct-elementalInstinctDamage-level-1"]);
     expect(await service.invalidateSpellChoicesByDependency("class-branch")).toEqual([
       "spell-choice-wizard-curriculum-rank-1-level-1",
     ]);
     expect(draft.branchSelections["class-branch-cause-level-1"]).toBeUndefined();
     expect(draft.classChoices["class-choice-champion-sanctification-level-1"]).toBeUndefined();
+    expect(draft.classChoices["class-choice-elemental-instinct-elementalInstinctDamage-level-1"]).toBeUndefined();
     expect(draft.spellChoices["spell-choice-wizard-curriculum-rank-1-level-1"]).toBeUndefined();
     expect(draft.classChoices["class-choice-cleric-doctrine-level-1"]).toBeUndefined();
   });
@@ -252,7 +270,11 @@ function classBranchStep(slotId: string, dependsOn: "class" | "deity"): PendingS
   };
 }
 
-function classChoiceStep(slotId: string, dependsOn: "class" | "deity"): PendingStep {
+function classChoiceStep(
+  slotId: string,
+  dependsOn: "class" | "deity",
+  overrides: Partial<Extract<PendingStep, { kind: "class-choice" }>["classChoice"]> = {}
+): PendingStep {
   return {
     id: slotId,
     level: 1,
@@ -273,6 +295,7 @@ function classChoiceStep(slotId: string, dependsOn: "class" | "deity"): PendingS
       classSlug: "champion",
       dependsOn,
       options: [],
+      ...overrides,
     },
   };
 }

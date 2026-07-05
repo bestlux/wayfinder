@@ -178,8 +178,25 @@ export function sortPendingSteps(steps: PendingStep[]): PendingStep[] {
       return kindDelta;
     }
 
+    const classChoiceRuleDelta = sameSourceClassChoiceRuleDelta(left, right);
+    if (classChoiceRuleDelta !== 0) {
+      return classChoiceRuleDelta;
+    }
+
     return left.title.localeCompare(right.title);
   });
+}
+
+function sameSourceClassChoiceRuleDelta(left: PendingStep, right: PendingStep): number {
+  if (left.kind !== "class-choice" || right.kind !== "class-choice") {
+    return 0;
+  }
+
+  if (left.classChoice.sourceUuid !== right.classChoice.sourceUuid) {
+    return 0;
+  }
+
+  return left.classChoice.sourceRuleIndex - right.classChoice.sourceRuleIndex;
 }
 
 export function parseCompendiumAllowlist(raw: unknown): string[] {

@@ -45,6 +45,7 @@ export async function buildClassChoiceStepsFromRules(args) {
         effectiveDeityDocument: args.effectiveDeityDocument,
         extractSlug: args.extractSlug,
         localize: args.localize,
+        selectedValuesBySlotId: args.selectedValuesBySlotId,
     });
 }
 export function buildClassChoiceStepsFromFeatureSources(args) {
@@ -106,6 +107,8 @@ function buildClassChoiceStepsFromFeatures(args) {
             extractSlug: args.extractSlug,
             localize: args.localize,
             rollOptions,
+            selectedValuesBySlotId: args.selectedValuesBySlotId,
+            existingSelectionsByFlag: feature.existingRulesSelections,
         });
         for (const choice of choices) {
             steps.push(createClassChoiceStep(feature.level, choice, {

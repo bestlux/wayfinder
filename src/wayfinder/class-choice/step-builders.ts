@@ -28,6 +28,7 @@ interface BuildClassFeatureStepArgs {
 interface BuildClassChoiceStepArgs extends BuildClassFeatureStepArgs {
   effectiveDeityDocument: unknown | null;
   localize: (value: string) => string;
+  selectedValuesBySlotId?: Record<string, string | undefined>;
 }
 
 export function buildClassTrainingStepsFromRules(args: {
@@ -93,6 +94,7 @@ export async function buildClassChoiceStepsFromRules(args: BuildClassChoiceStepA
     effectiveDeityDocument: args.effectiveDeityDocument,
     extractSlug: args.extractSlug,
     localize: args.localize,
+    selectedValuesBySlotId: args.selectedValuesBySlotId,
   });
 }
 
@@ -102,6 +104,7 @@ export function buildClassChoiceStepsFromFeatureSources(args: {
   effectiveDeityDocument: unknown | null;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
+  selectedValuesBySlotId?: Record<string, string | undefined>;
 }): ClassChoiceStep[] {
   return buildClassChoiceStepsFromFeatures(args);
 }
@@ -185,6 +188,7 @@ function buildClassChoiceStepsFromFeatures(args: {
   effectiveDeityDocument: unknown | null;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
+  selectedValuesBySlotId?: Record<string, string | undefined>;
 }): ClassChoiceStep[] {
   const steps: ClassChoiceStep[] = [];
   const rollOptions = buildChoiceRollOptions(args.effectiveDeityDocument);
@@ -197,6 +201,8 @@ function buildClassChoiceStepsFromFeatures(args: {
       extractSlug: args.extractSlug,
       localize: args.localize,
       rollOptions,
+      selectedValuesBySlotId: args.selectedValuesBySlotId,
+      existingSelectionsByFlag: feature.existingRulesSelections,
     });
 
     for (const choice of choices) {

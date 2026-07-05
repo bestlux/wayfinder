@@ -122,6 +122,55 @@ describe("wayfinder plan service", () => {
     ]);
   });
 
+  it("orders same-source class choices by rule index before title", () => {
+    const sourceUuid = "Compendium.pf2e.classfeatures.Item.0jSS6pgNXsC8k4o7";
+    const steps = sortPendingSteps([
+      createClassChoiceStep(
+        1,
+        {
+          slotId: "class-choice-elemental-instinct-elementalInstinctDamage-level-1",
+          sourcePackId: "pf2e.classfeatures",
+          sourceDocumentId: "elemental-instinct",
+          sourceUuid,
+          sourceName: "Elemental Instinct",
+          sourceRuleIndex: 1,
+          flag: "elementalInstinctDamage",
+          classSlug: "barbarian",
+          dependsOn: "class",
+          options: [{ value: "cold", label: "Cold", img: null, detail: null }],
+        },
+        {
+          title: "Damage",
+          description: "",
+        }
+      ),
+      createClassChoiceStep(
+        1,
+        {
+          slotId: "class-choice-elemental-instinct-elementalInstinctElement-level-1",
+          sourcePackId: "pf2e.classfeatures",
+          sourceDocumentId: "elemental-instinct",
+          sourceUuid,
+          sourceName: "Elemental Instinct",
+          sourceRuleIndex: 0,
+          flag: "elementalInstinctElement",
+          classSlug: "barbarian",
+          dependsOn: "class",
+          options: [{ value: "water", label: "Water", img: null, detail: null }],
+        },
+        {
+          title: "Element",
+          description: "",
+        }
+      ),
+    ]);
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "class-choice-elemental-instinct-elementalInstinctElement-level-1",
+      "class-choice-elemental-instinct-elementalInstinctDamage-level-1",
+    ]);
+  });
+
   it("orders level 1 boosts, training, languages, and class details in rules-aligned sequence", () => {
     const steps = sortPendingSteps([
       createSkillTrainingStep(

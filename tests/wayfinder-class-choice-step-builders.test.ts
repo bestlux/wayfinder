@@ -564,6 +564,77 @@ describe("wayfinder class-choice step-builders", () => {
     }
   });
 
+  it("filters same-item class choice options from earlier ChoiceSet roll options", () => {
+    const feature = {
+      level: 1,
+      selection: {
+        slotId: "class-branch-instinct-level-1",
+        packId: "pf2e.classfeatures",
+        documentId: "elemental-instinct",
+        uuid: "Compendium.pf2e.classfeatures.Item.0jSS6pgNXsC8k4o7",
+        itemType: "feat",
+        featType: "classfeature",
+        name: "Elemental Instinct",
+        level: null,
+      },
+      document: elementalInstinctDocument(),
+    };
+    const elementSlotId = "class-choice-elemental-instinct-elementalInstinctElement-level-1";
+    const damageSlotId = "class-choice-elemental-instinct-elementalInstinctDamage-level-1";
+
+    const initialSteps = buildClassChoiceStepsFromFeatureSources({
+      classSlug: "barbarian",
+      effectiveDeityDocument: null,
+      extractSlug: slugFromDocument,
+      localize: (value) => value,
+      classFeatures: [feature],
+    });
+    const selectedSteps = buildClassChoiceStepsFromFeatureSources({
+      classSlug: "barbarian",
+      effectiveDeityDocument: null,
+      extractSlug: slugFromDocument,
+      localize: (value) => value,
+      selectedValuesBySlotId: {
+        [elementSlotId]: "water",
+      },
+      classFeatures: [feature],
+    });
+    const existingSteps = buildClassChoiceStepsFromFeatureSources({
+      classSlug: "barbarian",
+      effectiveDeityDocument: null,
+      extractSlug: slugFromDocument,
+      localize: (value) => value,
+      classFeatures: [
+        {
+          ...feature,
+          existingRulesSelections: {
+            elementalInstinctElement: "air",
+          },
+        },
+      ],
+    });
+
+    expect(initialSteps.map((step) => step.slotId)).toEqual([elementSlotId]);
+    expect(selectedSteps.map((step) => step.slotId)).toEqual([elementSlotId, damageSlotId]);
+    expect(selectedSteps.find((step) => step.slotId === damageSlotId)?.classChoice).toMatchObject({
+      flag: "elementalInstinctDamage",
+      dependsOnChoices: [
+        {
+          sourceUuid: "Compendium.pf2e.classfeatures.Item.0jSS6pgNXsC8k4o7",
+          flag: "elementalInstinctElement",
+        },
+      ],
+      options: [
+        { value: "bludgeoning", label: "PF2E.TraitBludgeoning", img: null, detail: null },
+        { value: "cold", label: "PF2E.TraitCold", img: null, detail: null },
+      ],
+    });
+    expect(existingSteps.find((step) => step.slotId === damageSlotId)?.classChoice.options).toEqual([
+      { value: "electricity", label: "PF2E.TraitElectricity", img: null, detail: null },
+      { value: "slashing", label: "PF2E.TraitSlashing", img: null, detail: null },
+    ]);
+  });
+
   it("builds class-choice steps from static class-feature grants selected by a branch", () => {
     const steps = buildClassChoiceStepsFromFeatureSources({
       classSlug: "thaumaturge",
@@ -624,6 +695,75 @@ describe("wayfinder class-choice step-builders", () => {
     ]);
   });
 });
+
+function elementalInstinctDocument(): unknown {
+  return {
+    type: "feat",
+    name: "Elemental Instinct",
+    system: {
+      slug: "elemental-instinct",
+      category: "classfeature",
+      level: { value: 1 },
+      rules: [
+        {
+          actorFlag: true,
+          choices: [
+            { label: "PF2E.TraitAir", value: "air" },
+            { label: "PF2E.TraitEarth", value: "earth" },
+            { label: "PF2E.TraitFire", value: "fire" },
+            { label: "PF2E.TraitMetal", value: "metal" },
+            { label: "PF2E.TraitWater", value: "water" },
+            { label: "PF2E.TraitWood", value: "wood" },
+          ],
+          flag: "elementalInstinctElement",
+          key: "ChoiceSet",
+          prompt: "PF2E.SpecificRule.Prompt.Element",
+          rollOption: "elemental-instinct",
+        },
+        {
+          actorFlag: true,
+          adjustName: false,
+          choices: [
+            {
+              label: "PF2E.TraitBludgeoning",
+              predicate: [{ or: ["elemental-instinct:earth", "elemental-instinct:water", "elemental-instinct:wood"] }],
+              value: "bludgeoning",
+            },
+            {
+              label: "PF2E.TraitCold",
+              predicate: ["elemental-instinct:water"],
+              value: "cold",
+            },
+            {
+              label: "PF2E.TraitElectricity",
+              predicate: ["elemental-instinct:air"],
+              value: "electricity",
+            },
+            {
+              label: "PF2E.TraitFire",
+              predicate: ["elemental-instinct:fire"],
+              value: "fire",
+            },
+            {
+              label: "PF2E.TraitPiercing",
+              predicate: [{ or: ["elemental-instinct:earth", "elemental-instinct:metal", "elemental-instinct:wood"] }],
+              value: "piercing",
+            },
+            {
+              label: "PF2E.TraitSlashing",
+              predicate: [{ or: ["elemental-instinct:air", "elemental-instinct:metal"] }],
+              value: "slashing",
+            },
+          ],
+          flag: "elementalInstinctDamage",
+          key: "ChoiceSet",
+          prompt: "PF2E.SpecificRule.Prompt.DamageType",
+          rollOption: "elemental-instinct:damage",
+        },
+      ],
+    },
+  };
+}
 
 function slugFromDocument(document: unknown): string | null {
   const systemSlug = (document as { system?: { slug?: unknown } } | null | undefined)?.system?.slug;

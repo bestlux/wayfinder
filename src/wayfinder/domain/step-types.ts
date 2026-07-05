@@ -131,6 +131,10 @@ export interface ClassChoiceMeta {
   rollOption?: string | null;
   classSlug: string | null;
   dependsOn: "class" | "deity";
+  dependsOnChoices?: Array<{
+    sourceUuid: string;
+    flag: string;
+  }>;
   options: Array<{
     value: string;
     label: string;

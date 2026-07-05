@@ -231,6 +231,7 @@ function markClassChoiceCoverage(
     extractSlug: extractEntrySlug,
     localize: options.localize ?? identity,
     rollOptions: buildChoiceRollOptions(options.effectiveDeityDocument ?? null),
+    assumeFirstChoiceSelection: true,
   })) {
     markCovered(coveredByRuleIndex, meta.sourceRuleIndex, "class-choice");
   }

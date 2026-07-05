@@ -678,6 +678,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const result = await selectClassChoiceValue(this.#selectionCommandState(), step ?? null, value, {
       invalidateSelectionsByPrefix: invalidation.invalidateSelectionsByPrefix,
       invalidateBranchSelectionsByDependency: invalidation.invalidateBranchSelectionsByDependency,
+      invalidateClassChoicesBySourceChoice: invalidation.invalidateClassChoicesBySourceChoice,
       invalidateGrantSelectionsBySource: invalidation.invalidateGrantSelectionsBySource,
       invalidateFlagChoicesBySource: invalidation.invalidateFlagChoicesBySource,
       invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,

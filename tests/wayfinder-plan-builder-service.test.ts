@@ -606,7 +606,7 @@ describe("wayfinder plan builder service", () => {
     expect(buildClassChoiceSteps).toHaveBeenCalledWith(
       expect.objectContaining({
         additionalClassFeatures: [
-          {
+          expect.objectContaining({
             level: 1,
             selection: expect.objectContaining({
               slotId: "class-branch-bloodline-level-1",
@@ -614,7 +614,8 @@ describe("wayfinder plan builder service", () => {
               featType: "classfeature",
             }),
             document: bloodlineDocument,
-          },
+            existingRulesSelections: {},
+          }),
         ],
       })
     );

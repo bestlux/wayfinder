@@ -80,6 +80,19 @@ export function createSelectionInvalidationService(state, deps) {
                 return step.kind === "class-choice" && step.classChoice?.dependsOn === dependency;
             });
         },
+        async invalidateClassChoicesBySourceChoice(sourceUuid, flag) {
+            const normalizedSourceUuid = normalizeUuid(sourceUuid);
+            const normalizedFlag = normalizeFlag(flag);
+            if (!normalizedSourceUuid || !normalizedFlag) {
+                return [];
+            }
+            return invalidateMatchingPlanSteps(await deps.buildPlan(), invalidate, (step) => {
+                return (step.kind === "class-choice" &&
+                    (step.classChoice.dependsOnChoices?.some((dependency) => normalizeUuid(dependency.sourceUuid) === normalizedSourceUuid &&
+                        normalizeFlag(dependency.flag) === normalizedFlag) ??
+                        false));
+            });
+        },
         async invalidateSingletonChoicesBySource(sourceItemType) {
             return invalidateMatchingPlanSteps(await deps.buildPlan(), invalidate, (step) => {
                 return step.kind === "singleton-choice" && step.singletonChoice?.sourceItemType === sourceItemType;
@@ -197,6 +210,9 @@ function isFlagChoiceSlotIdForDependency(slotId, dependency) {
     return slotId.startsWith("flag-choice-" + dependency + "-");
 }
 function normalizeUuid(value) {
+    return typeof value === "string" && value.trim().length > 0 ? value.trim().toLowerCase() : null;
+}
+function normalizeFlag(value) {
     return typeof value === "string" && value.trim().length > 0 ? value.trim().toLowerCase() : null;
 }
 //# sourceMappingURL=selection-invalidation-service.js.map

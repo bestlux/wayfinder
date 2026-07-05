@@ -48,6 +48,7 @@ interface ChooseSelectionOptionDependencies {
 interface SelectClassChoiceDependencies {
   invalidateSelectionsByPrefix: (prefix: string) => string[];
   invalidateBranchSelectionsByDependency: (dependency: "class" | "deity") => Promise<string[]>;
+  invalidateClassChoicesBySourceChoice: (sourceUuid: string, flag: string) => Promise<string[]>;
   invalidateGrantSelectionsBySource: (sourceItemType: "classfeature") => Promise<string[]>;
   invalidateFlagChoicesBySource: (sourceItemType: "classfeature") => Promise<string[]>;
   invalidateSpellChoicesByDependency: (dependency: "class-branch") => Promise<string[]>;
@@ -392,12 +393,16 @@ async function invalidateClassChoiceDependents(
     step?.classChoice?.flag === "sanctification" || step?.classChoice?.dependsOn === "deity"
       ? await deps.invalidateBranchSelectionsByDependency("deity")
       : [];
+  const choiceInvalidated = step?.classChoice
+    ? await deps.invalidateClassChoicesBySourceChoice(step.classChoice.sourceUuid, step.classChoice.flag)
+    : [];
   const grantInvalidated = await deps.invalidateGrantSelectionsBySource("classfeature");
   const flagInvalidated = await deps.invalidateFlagChoicesBySource("classfeature");
   const spellInvalidated = await deps.invalidateSpellChoicesByDependency("class-branch");
   const invalidatedCount =
     branchInvalidated.length +
     deityBranchInvalidated.length +
+    choiceInvalidated.length +
     grantInvalidated.length +
     flagInvalidated.length +
     spellInvalidated.length;

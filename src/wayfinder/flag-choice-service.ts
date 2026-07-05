@@ -13,6 +13,7 @@ interface BuildFlagChoiceStepsParams {
   targetLevel: number;
   sources: FlagChoiceSourceContext[];
   extractSlug: (document: unknown) => string | null;
+  localize?: (value: string) => string;
   actorContext?: ChoiceFilterActorContext | null;
   readExistingFlagChoiceSelection: (choice: FlagChoiceMeta) => string | null;
 }
@@ -25,6 +26,7 @@ export async function buildFlagChoiceSteps(params: BuildFlagChoiceStepsParams): 
         effectiveSourceDocument: source.sourceDocument,
         sourceSelection: source.sourceSelection,
         extractSlug: params.extractSlug,
+        localize: params.localize,
         actorContext: params.actorContext,
         requireResolvedActorPlaceholders: true,
       })

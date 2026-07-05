@@ -11,6 +11,7 @@ export function buildFlagChoiceStepsFromRules(args: {
   effectiveSourceDocument: unknown | null;
   sourceSelection: SelectionRef | null;
   extractSlug: (document: unknown) => string | null;
+  localize?: (value: string) => string;
   actorContext?: ChoiceFilterActorContext | null;
   requireResolvedActorPlaceholders?: boolean;
 }): PickItemStep[] {
@@ -24,6 +25,7 @@ export function buildFlagChoiceStepsFromRules(args: {
     sourceDocument: effectiveSourceDocument,
     sourceSelection,
     extractSlug,
+    localize: args.localize,
     actorContext: args.actorContext,
     requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
   }).map((choice) =>

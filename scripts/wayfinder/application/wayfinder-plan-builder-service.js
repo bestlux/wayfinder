@@ -104,6 +104,7 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             targetLevel,
             sources: await resolveFlagChoiceSources(planDraft, args, deps),
             extractSlug: deps.extractDocumentSlug,
+            localize: args.localize,
             actorContext: await resolveFlagChoiceActorContext(args, deps),
             readExistingFlagChoiceSelection: (choice) => deps.readExistingFlagChoiceSelection(args.actor, choice),
         }),

@@ -1,5 +1,4 @@
 import { resolveChoiceSetFilters } from "../choice-set-filters.js";
-import { formatSlug } from "../formatting.js";
 import { documentFeatureLevel, extractChoiceKey, getDocumentRules, toNonEmptyString } from "../rule-data.js";
 export function discoverFlagChoiceMeta(args) {
     const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;
@@ -36,7 +35,7 @@ export function discoverFlagChoiceMeta(args) {
                 sourceName,
                 sourceRuleIndex,
                 flag,
-                prompt: resolvePrompt(rule.prompt),
+                prompt: resolvePrompt(rule.prompt, args.localize ?? identity),
                 itemType: resolution.filters.itemType,
                 selectionValue: isRecord(rule.choices) && rule.choices.slugsAsValues === true ? "slug" : "uuid",
                 dependsOn,
@@ -60,9 +59,18 @@ function resolveActorDependency(dependencies) {
     }
     return null;
 }
-function resolvePrompt(prompt) {
-    const value = toNonEmptyString(prompt);
-    return value ? formatSlug(value) : null;
+function resolvePrompt(prompt, localize) {
+    const raw = toNonEmptyString(prompt);
+    if (!raw) {
+        return null;
+    }
+    // Prompts are usually i18n keys; only a successful localization is
+    // presentable as a step title, otherwise fall back to the derived title.
+    const localized = localize(raw);
+    return localized && localized !== raw ? localized : null;
+}
+function identity(value) {
+    return value;
 }
 function isRecord(value) {
     return !!value && typeof value === "object";

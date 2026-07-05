@@ -64,6 +64,27 @@ describe("wayfinder flag-choice rule discovery", () => {
     });
   });
 
+  it("localizes prompts and drops unlocalizable i18n keys", () => {
+    const localized = discoverFlagChoiceMeta({
+      sourceItemType: "feat",
+      sourceDocument: multifariousMuse(),
+      sourceSelection: sourceSelection("a898miJnjgD93ZsX", "Multifarious Muse"),
+      extractSlug,
+      localize: (value) => (value === "PF2E.SpecificRule.Bard.Muse.Prompt" ? "Muse" : value),
+      requireResolvedActorPlaceholders: true,
+    });
+    expect(localized[0]?.prompt).toBe("Muse");
+
+    const unlocalized = discoverFlagChoiceMeta({
+      sourceItemType: "feat",
+      sourceDocument: multifariousMuse(),
+      sourceSelection: sourceSelection("a898miJnjgD93ZsX", "Multifarious Muse"),
+      extractSlug,
+      requireResolvedActorPlaceholders: true,
+    });
+    expect(unlocalized[0]?.prompt).toBeNull();
+  });
+
   it("resolves actor ancestry placeholders and refuses unresolved placeholders at plan time", () => {
     const unresolved = discoverFlagChoiceMeta({
       sourceItemType: "feat",

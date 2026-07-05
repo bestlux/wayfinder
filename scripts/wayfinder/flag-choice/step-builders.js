@@ -11,6 +11,7 @@ export function buildFlagChoiceStepsFromRules(args) {
         sourceDocument: effectiveSourceDocument,
         sourceSelection,
         extractSlug,
+        localize: args.localize,
         actorContext: args.actorContext,
         requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
     }).map((choice) => createPickItemStep("flag-choice", choiceSourceLevel(effectiveSourceDocument), buildFlagChoiceTitle(choice), buildFlagChoiceDescription(choice), choice.filters, {

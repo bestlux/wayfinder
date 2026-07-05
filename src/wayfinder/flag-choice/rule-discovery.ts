@@ -1,6 +1,5 @@
 import type { FlagChoiceMeta, SelectionRef } from "../../types.js";
 import { type ChoiceFilterActorContext, resolveChoiceSetFilters } from "../choice-set-filters.js";
-import { formatSlug } from "../formatting.js";
 import { documentFeatureLevel, extractChoiceKey, getDocumentRules, toNonEmptyString } from "../rule-data.js";
 
 interface NamedDocumentLike {
@@ -14,6 +13,7 @@ export function discoverFlagChoiceMeta(args: {
   sourceDocument: unknown;
   sourceSelection: SelectionRef;
   extractSlug: (document: unknown) => string | null;
+  localize?: (value: string) => string;
   actorContext?: ChoiceFilterActorContext | null;
   requireResolvedActorPlaceholders?: boolean;
 }): FlagChoiceMeta[] {
@@ -55,7 +55,7 @@ export function discoverFlagChoiceMeta(args: {
         sourceName,
         sourceRuleIndex,
         flag,
-        prompt: resolvePrompt(rule.prompt),
+        prompt: resolvePrompt(rule.prompt, args.localize ?? identity),
         itemType: resolution.filters.itemType,
         selectionValue: isRecord(rule.choices) && rule.choices.slugsAsValues === true ? "slug" : "uuid",
         dependsOn,
@@ -86,9 +86,20 @@ function resolveActorDependency(dependencies: Array<FlagChoiceMeta["dependsOn"]>
   return null;
 }
 
-function resolvePrompt(prompt: unknown): string | null {
-  const value = toNonEmptyString(prompt);
-  return value ? formatSlug(value) : null;
+function resolvePrompt(prompt: unknown, localize: (value: string) => string): string | null {
+  const raw = toNonEmptyString(prompt);
+  if (!raw) {
+    return null;
+  }
+
+  // Prompts are usually i18n keys; only a successful localization is
+  // presentable as a step title, otherwise fall back to the derived title.
+  const localized = localize(raw);
+  return localized && localized !== raw ? localized : null;
+}
+
+function identity(value: string): string {
+  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

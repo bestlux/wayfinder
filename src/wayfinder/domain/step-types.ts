@@ -4,6 +4,7 @@ export type SlotKind =
   | "background"
   | "class"
   | "deity"
+  | "flag-choice"
   | "grant-choice"
   | "singleton-choice"
   | "language-choice"
@@ -102,6 +103,22 @@ export interface GrantSelectionMeta {
 }
 
 export type ClassGrantMeta = GrantSelectionMeta;
+
+export interface FlagChoiceMeta {
+  slotId: string;
+  sourceItemType: GrantSelectionSourceItemType;
+  sourcePackId: string;
+  sourceDocumentId: string;
+  sourceUuid: string;
+  sourceName: string;
+  sourceRuleIndex: number;
+  flag: string;
+  prompt: string | null;
+  itemType: string;
+  selectionValue: "uuid" | "slug";
+  dependsOn: "ancestry" | "class" | null;
+  filters: StepFilters;
+}
 
 export interface ClassChoiceMeta {
   slotId: string;
@@ -242,6 +259,7 @@ interface NoStepExtras {
   filters?: never;
   branch?: never;
   grantSelection?: never;
+  flagChoice?: never;
   singletonChoice?: never;
   languageChoice?: never;
   classChoice?: never;
@@ -253,6 +271,7 @@ export interface PickItemStep extends BasePendingStep<"pick-item", PickItemSlotK
   filters: StepFilters;
   branch?: never;
   grantSelection?: GrantSelectionMeta;
+  flagChoice?: FlagChoiceMeta;
   classChoice?: never;
   spellChoice?: never;
   training?: never;
@@ -342,6 +361,7 @@ interface StepOptions {
 
 interface PickItemStepOptions extends StepOptions {
   grantSelection?: GrantSelectionMeta;
+  flagChoice?: FlagChoiceMeta;
 }
 
 interface ClassBranchStepOptions extends StepOptions {
@@ -402,6 +422,7 @@ export function createPickItemStep(
     ...createBaseStep("pick-item", slotKind, level, title, description, options),
     filters,
     ...(options.grantSelection ? { grantSelection: options.grantSelection } : {}),
+    ...(options.flagChoice ? { flagChoice: options.flagChoice } : {}),
   };
 }
 
@@ -607,17 +628,18 @@ const SLOT_KIND_SORT_WEIGHTS: Record<SlotKind, number> = {
   "ancestry-feat": 4,
   "ability-boosts": 5,
   "grant-choice": 6,
-  deity: 7,
-  "singleton-choice": 8,
-  "class-choice": 9,
-  "class-branch": 10,
-  "skill-training": 11,
-  "language-choice": 12,
-  "spell-choice": 13,
-  "class-feat": 14,
-  "skill-feat": 15,
-  "general-feat": 16,
-  "skill-increase": 17,
+  "flag-choice": 7,
+  deity: 8,
+  "singleton-choice": 9,
+  "class-choice": 10,
+  "class-branch": 11,
+  "skill-training": 12,
+  "language-choice": 13,
+  "spell-choice": 14,
+  "class-feat": 15,
+  "skill-feat": 16,
+  "general-feat": 17,
+  "skill-increase": 18,
 };
 
 const STEP_MODE_LABELS: Record<StepKind, string> = {

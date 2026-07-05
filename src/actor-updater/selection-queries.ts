@@ -14,13 +14,17 @@ export function orderSelections(draft: DraftState, steps: PendingStep[]): Select
 }
 
 export function singletonSelections(selections: SelectionRef[]): SelectionRef[] {
-  return selections.filter((entry) => SINGLETON_ITEM_TYPES.has(entry.itemType));
+  return selections.filter((entry) => !isFlagChoiceSelection(entry) && SINGLETON_ITEM_TYPES.has(entry.itemType));
 }
 
 export function featSelections(selections: SelectionRef[]): SelectionRef[] {
-  return selections.filter((entry) => entry.itemType === "feat");
+  return selections.filter((entry) => !isFlagChoiceSelection(entry) && entry.itemType === "feat");
 }
 
 export function hasSourceId(actor: ActorLike, sourceId: string): boolean {
   return (listActorItems(actor) as ActorItemLike[]).some((item) => itemMatchesSourceId(item, sourceId));
+}
+
+function isFlagChoiceSelection(selection: SelectionRef): boolean {
+  return selection.slotId.startsWith("flag-choice-");
 }

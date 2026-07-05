@@ -74,6 +74,7 @@ export async function resolveSelection(rawValue, step, context = EMPTY_OPTION_CO
         featType: selected.featType,
         name: selected.name,
         level: selected.level,
+        slug: selected.slug,
     };
 }
 function isSelectedInDifferentDraftSlot(step, uuid, context) {

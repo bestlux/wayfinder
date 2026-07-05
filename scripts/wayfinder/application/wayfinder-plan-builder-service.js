@@ -6,12 +6,14 @@ import { extractDocumentSlug } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassSkillFeatSteps, buildClassTrainingSteps, } from "../class-choice-service.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
-import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingGrantedSelection, readExistingLanguageSelections, readExistingSingletonChoiceSelection, readExistingSingletonSourceSelection, } from "../existing-selection-service.js";
+import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingFlagChoiceSelection, readExistingGrantedSelection, readExistingLanguageSelections, readExistingSingletonChoiceSelection, readExistingSingletonSourceSelection, } from "../existing-selection-service.js";
+import { buildFlagChoiceSteps } from "../flag-choice-service.js";
 import { buildGrantChoiceSteps } from "../grant-choice-service.js";
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { documentFeatureLevel, getDocumentRules, matchesChoicePredicateList, toNonEmptyString } from "../rule-data.js";
 import { buildSingletonChoiceSteps } from "../singleton-choice-service.js";
+import { SLOT_PREFIXES } from "../slot-ids.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
 import { asSpellChoiceClassDocument } from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
@@ -21,6 +23,7 @@ const DEFAULT_DEPS = {
     buildClassSkillFeatSteps,
     buildClassTrainingSteps,
     buildGrantChoiceSteps,
+    buildFlagChoiceSteps,
     buildSingletonChoiceSteps,
     buildLanguageChoiceSteps,
     buildClassBranchSteps,
@@ -31,6 +34,7 @@ const DEFAULT_DEPS = {
     readExistingSingletonSourceSelection,
     readExistingBranchSelection,
     readExistingGrantedSelection,
+    readExistingFlagChoiceSelection,
     readExistingLanguageSelections,
     readExistingClassChoiceSelection,
     readExistingSingletonChoiceSelection,
@@ -94,6 +98,14 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             sources: await resolveGrantChoiceSources(planDraft, args, deps),
             extractSlug: deps.extractDocumentSlug,
             readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
+        }),
+        buildFlagChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildFlagChoiceSteps({
+            draft: planDraft,
+            targetLevel,
+            sources: await resolveFlagChoiceSources(planDraft, args, deps),
+            extractSlug: deps.extractDocumentSlug,
+            actorContext: await resolveFlagChoiceActorContext(args, deps),
+            readExistingFlagChoiceSelection: (choice) => deps.readExistingFlagChoiceSelection(args.actor, choice),
         }),
         buildSingletonChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildSingletonChoiceSteps({
             draft: planDraft,
@@ -195,6 +207,16 @@ function normalizeLanguageSet(value) {
         return new Set(value.filter((slug) => typeof slug === "string"));
     }
     return new Set();
+}
+async function resolveFlagChoiceActorContext(args, deps) {
+    const [ancestryDocument, classDocument] = await Promise.all([
+        args.resolveDocument("ancestry"),
+        args.resolveDocument("class"),
+    ]);
+    return {
+        ancestrySlug: deps.extractDocumentSlug(ancestryDocument),
+        classSlug: deps.extractDocumentSlug(classDocument),
+    };
 }
 export async function findPlanStepBySlotId(args, slotId, deps = DEFAULT_DEPS) {
     const plan = await buildWayfinderAppPlan(args, deps);
@@ -310,6 +332,9 @@ async function resolveGrantChoiceSources(draft, args, deps) {
                 : [];
         }),
     ];
+}
+async function resolveFlagChoiceSources(draft, args, deps) {
+    return resolveGrantChoiceSources(draft, args, deps);
 }
 function isAncestryFeatSelection(selection) {
     return selection.itemType === "feat" && selection.featType === "ancestry";
@@ -462,7 +487,9 @@ function isSingletonChoiceFeatSelection(selection) {
     return isFeatSourceSelection(selection);
 }
 function isFeatSourceSelection(selection) {
-    return selection.itemType === "feat" && selection.featType !== "classfeature";
+    return (selection.itemType === "feat" &&
+        selection.featType !== "classfeature" &&
+        !selection.slotId.startsWith(SLOT_PREFIXES.flagChoice));
 }
 function readExistingClassFeatureSelections(actor) {
     return listActorItems(actor)

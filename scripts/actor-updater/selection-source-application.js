@@ -26,6 +26,7 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
     if (draft) {
         stripManualSystemItemGrants(source);
         applyPendingSingletonChoices(source, selection, draft, steps);
+        applyPendingFlagChoices(source, selection, draft, steps);
         applyPendingClassChoices(source, selection, draft, steps);
         applyPendingBoostSelections(source, selection, draft);
         await applyPendingGrantChoiceSelections(source, selection, draft, steps, deps);
@@ -38,6 +39,25 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
     }
     stampImportedItemSource(source, { sourceId: selection.uuid, slotId: selection.slotId });
     return source;
+}
+function applyPendingFlagChoices(source, selection, draft, steps) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    if (rules.length === 0) {
+        return;
+    }
+    for (const step of steps) {
+        if (step.kind !== "pick-item" || !step.flagChoice || step.flagChoice.sourceUuid !== selection.uuid) {
+            continue;
+        }
+        const selected = draft.selections[step.slotId];
+        if (!selected) {
+            continue;
+        }
+        const value = flagChoiceSelectionValue(step.flagChoice, selected);
+        if (value) {
+            applyRuleSelection(source, step.flagChoice.sourceRuleIndex, step.flagChoice.flag, value);
+        }
+    }
 }
 function applyPendingBoostSelections(source, selection, draft) {
     if (!["ancestry", "background", "class"].includes(selection.itemType)) {
@@ -240,6 +260,13 @@ async function collectGrantedItemPreselectChoices(grantedSelection, draft, steps
                 preselectChoices[step.grantSelection.flag] = nestedSelection.uuid;
             }
         }
+        if (step.kind === "pick-item" && step.flagChoice?.sourceUuid === grantedSelection.uuid) {
+            const nestedSelection = draft.selections[step.slotId];
+            const value = nestedSelection ? flagChoiceSelectionValue(step.flagChoice, nestedSelection) : null;
+            if (value) {
+                preselectChoices[step.flagChoice.flag] = value;
+            }
+        }
         if (step.kind === "class-choice" && step.classChoice?.sourceUuid === grantedSelection.uuid) {
             const value = draft.classChoices[step.slotId];
             if (typeof value === "string" && value.length > 0) {
@@ -248,6 +275,12 @@ async function collectGrantedItemPreselectChoices(grantedSelection, draft, steps
         }
     }
     return preselectChoices;
+}
+function flagChoiceSelectionValue(choice, selection) {
+    if (choice.selectionValue === "uuid") {
+        return selection.uuid;
+    }
+    return selection.slug ?? slugifyName(selection.name) ?? selection.documentId;
 }
 async function applyPendingStaticGrantPreselectChoices(source, draft, steps, deps) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];

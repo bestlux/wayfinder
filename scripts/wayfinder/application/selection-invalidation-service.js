@@ -19,15 +19,20 @@ export function createSelectionInvalidationService(state, deps) {
                 cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
                 cleared += invalidateGrantSelectionsBySourceSync("ancestry").length;
                 cleared += invalidateGrantSelectionsBySourceSync("heritage").length;
+                cleared += invalidateFlagChoicesBySourceSync("ancestry").length;
+                cleared += invalidateFlagChoicesBySourceSync("heritage").length;
+                cleared += invalidateFlagChoicesByDependencySync("ancestry").length;
                 cleared += invalidateByPrefix(SLOT_PREFIXES.languageChoice).length;
             }
             else if (slotId === SLOT_IDS.heritage) {
                 cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
                 cleared += invalidateGrantSelectionsBySourceSync("heritage").length;
+                cleared += invalidateFlagChoicesBySourceSync("heritage").length;
             }
             else if (slotId === SLOT_IDS.background) {
                 cleared += invalidateSingletonChoicesBySourceSync("background").length;
                 cleared += invalidateGrantSelectionsBySourceSync("background").length;
+                cleared += invalidateFlagChoicesBySourceSync("background").length;
             }
             else if (slotId === SLOT_IDS.deity) {
                 cleared += invalidateByPrefix(SLOT_PREFIXES.classChoice).length;
@@ -44,10 +49,13 @@ export function createSelectionInvalidationService(state, deps) {
                 cleared += invalidateSingletonChoicesBySourceSync("class").length;
                 cleared += invalidateSingletonChoicesBySourceSync("deity").length;
                 cleared += invalidateGrantSelectionsByDependencySync("class").length;
+                cleared += invalidateFlagChoicesByDependencySync("class").length;
             }
             else if (getSlotIdKind(slotId) === "ancestry-feat") {
                 cleared += invalidateGrantSelectionsBySourceSync("feat").length;
                 cleared += invalidateGrantSelectionsBySourceSync("classfeature").length;
+                cleared += invalidateFlagChoicesBySourceSync("feat").length;
+                cleared += invalidateFlagChoicesBySourceSync("classfeature").length;
             }
             return cleared;
         },
@@ -82,6 +90,12 @@ export function createSelectionInvalidationService(state, deps) {
         },
         async invalidateGrantSelectionsByDependency(dependency) {
             return invalidateGrantSelectionsByDependencySync(dependency);
+        },
+        async invalidateFlagChoicesBySource(sourceItemType) {
+            return invalidateFlagChoicesBySourceSync(sourceItemType);
+        },
+        async invalidateFlagChoicesByDependency(dependency) {
+            return invalidateFlagChoicesByDependencySync(dependency);
         },
         async invalidateGrantSelectionsBySourceUuid(sourceUuid) {
             const normalizedSourceUuid = normalizeUuid(sourceUuid);
@@ -131,6 +145,34 @@ export function createSelectionInvalidationService(state, deps) {
             ...[...state.scrollById.keys()].map((key) => key.split(":")[0] ?? key),
         ]));
     }
+    function invalidateFlagChoicesBySourceSync(sourceItemType) {
+        const invalidated = [];
+        for (const slotId of candidateFlagChoiceSlotIds()) {
+            if (!isFlagChoiceSlotIdForSource(slotId, sourceItemType)) {
+                continue;
+            }
+            invalidated.push(...invalidate(slotId));
+        }
+        return invalidated;
+    }
+    function invalidateFlagChoicesByDependencySync(dependency) {
+        const invalidated = [];
+        for (const slotId of candidateFlagChoiceSlotIds()) {
+            if (!isFlagChoiceSlotIdForDependency(slotId, dependency)) {
+                continue;
+            }
+            invalidated.push(...invalidate(slotId));
+        }
+        return invalidated;
+    }
+    function candidateFlagChoiceSlotIds() {
+        return Array.from(new Set([
+            ...Object.keys(state.draft.selections),
+            ...state.previewValueByStepId.keys(),
+            ...state.pickerFiltersByStepId.keys(),
+            ...[...state.scrollById.keys()].map((key) => key.split(":")[0] ?? key),
+        ]));
+    }
 }
 function invalidateMatchingPlanSteps(plan, invalidateSelection, matches) {
     const invalidated = [];
@@ -147,6 +189,12 @@ function isGrantChoiceSlotIdForSource(slotId, sourceItemType) {
 }
 function isGrantChoiceSlotIdForDependency(slotId, dependency) {
     return slotId.startsWith(`grant-choice-${dependency}-`);
+}
+function isFlagChoiceSlotIdForSource(slotId, sourceItemType) {
+    return new RegExp("^flag-choice-(?:ancestry|class|none)-" + sourceItemType + "-").test(slotId);
+}
+function isFlagChoiceSlotIdForDependency(slotId, dependency) {
+    return slotId.startsWith("flag-choice-" + dependency + "-");
 }
 function normalizeUuid(value) {
     return typeof value === "string" && value.trim().length > 0 ? value.trim().toLowerCase() : null;

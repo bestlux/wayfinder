@@ -42,13 +42,18 @@ export function createSelectionInvalidationService(
         cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
         cleared += invalidateGrantSelectionsBySourceSync("ancestry").length;
         cleared += invalidateGrantSelectionsBySourceSync("heritage").length;
+        cleared += invalidateFlagChoicesBySourceSync("ancestry").length;
+        cleared += invalidateFlagChoicesBySourceSync("heritage").length;
+        cleared += invalidateFlagChoicesByDependencySync("ancestry").length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.languageChoice).length;
       } else if (slotId === SLOT_IDS.heritage) {
         cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
         cleared += invalidateGrantSelectionsBySourceSync("heritage").length;
+        cleared += invalidateFlagChoicesBySourceSync("heritage").length;
       } else if (slotId === SLOT_IDS.background) {
         cleared += invalidateSingletonChoicesBySourceSync("background").length;
         cleared += invalidateGrantSelectionsBySourceSync("background").length;
+        cleared += invalidateFlagChoicesBySourceSync("background").length;
       } else if (slotId === SLOT_IDS.deity) {
         cleared += invalidateByPrefix(SLOT_PREFIXES.classChoice).length;
         cleared += invalidateSingletonChoicesBySourceSync("deity").length;
@@ -63,9 +68,12 @@ export function createSelectionInvalidationService(
         cleared += invalidateSingletonChoicesBySourceSync("class").length;
         cleared += invalidateSingletonChoicesBySourceSync("deity").length;
         cleared += invalidateGrantSelectionsByDependencySync("class").length;
+        cleared += invalidateFlagChoicesByDependencySync("class").length;
       } else if (getSlotIdKind(slotId) === "ancestry-feat") {
         cleared += invalidateGrantSelectionsBySourceSync("feat").length;
         cleared += invalidateGrantSelectionsBySourceSync("classfeature").length;
+        cleared += invalidateFlagChoicesBySourceSync("feat").length;
+        cleared += invalidateFlagChoicesBySourceSync("classfeature").length;
       }
 
       return cleared;
@@ -113,6 +121,16 @@ export function createSelectionInvalidationService(
 
     async invalidateGrantSelectionsByDependency(dependency: "class" | "deity"): Promise<string[]> {
       return invalidateGrantSelectionsByDependencySync(dependency);
+    },
+
+    async invalidateFlagChoicesBySource(
+      sourceItemType: "ancestry" | "heritage" | "background" | "feat" | "classfeature"
+    ): Promise<string[]> {
+      return invalidateFlagChoicesBySourceSync(sourceItemType);
+    },
+
+    async invalidateFlagChoicesByDependency(dependency: "ancestry" | "class"): Promise<string[]> {
+      return invalidateFlagChoicesByDependencySync(dependency);
     },
 
     async invalidateGrantSelectionsBySourceUuid(sourceUuid: string): Promise<string[]> {
@@ -180,6 +198,45 @@ export function createSelectionInvalidationService(
       ])
     );
   }
+
+  function invalidateFlagChoicesBySourceSync(
+    sourceItemType: "ancestry" | "heritage" | "background" | "feat" | "classfeature"
+  ): string[] {
+    const invalidated: string[] = [];
+    for (const slotId of candidateFlagChoiceSlotIds()) {
+      if (!isFlagChoiceSlotIdForSource(slotId, sourceItemType)) {
+        continue;
+      }
+
+      invalidated.push(...invalidate(slotId));
+    }
+
+    return invalidated;
+  }
+
+  function invalidateFlagChoicesByDependencySync(dependency: "ancestry" | "class"): string[] {
+    const invalidated: string[] = [];
+    for (const slotId of candidateFlagChoiceSlotIds()) {
+      if (!isFlagChoiceSlotIdForDependency(slotId, dependency)) {
+        continue;
+      }
+
+      invalidated.push(...invalidate(slotId));
+    }
+
+    return invalidated;
+  }
+
+  function candidateFlagChoiceSlotIds(): string[] {
+    return Array.from(
+      new Set([
+        ...Object.keys(state.draft.selections),
+        ...state.previewValueByStepId.keys(),
+        ...state.pickerFiltersByStepId.keys(),
+        ...[...state.scrollById.keys()].map((key) => key.split(":")[0] ?? key),
+      ])
+    );
+  }
 }
 
 function invalidateMatchingPlanSteps(
@@ -208,6 +265,17 @@ function isGrantChoiceSlotIdForSource(
 
 function isGrantChoiceSlotIdForDependency(slotId: string, dependency: "class" | "deity"): boolean {
   return slotId.startsWith(`grant-choice-${dependency}-`);
+}
+
+function isFlagChoiceSlotIdForSource(
+  slotId: string,
+  sourceItemType: "ancestry" | "heritage" | "background" | "feat" | "classfeature"
+): boolean {
+  return new RegExp("^flag-choice-(?:ancestry|class|none)-" + sourceItemType + "-").test(slotId);
+}
+
+function isFlagChoiceSlotIdForDependency(slotId: string, dependency: "ancestry" | "class"): boolean {
+  return slotId.startsWith("flag-choice-" + dependency + "-");
 }
 
 function normalizeUuid(value: string | null | undefined): string | null {

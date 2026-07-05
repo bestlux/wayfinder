@@ -93,6 +93,7 @@ export async function resolveSelection(
     featType: selected.featType,
     name: selected.name,
     level: selected.level,
+    slug: selected.slug,
   };
 }
 

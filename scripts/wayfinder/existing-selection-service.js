@@ -15,6 +15,9 @@ export function readExistingGrantedSelection(actor, grant) {
     }
     return sourceIdOf(findGrantedActorItem(actor, selectorItem, grant));
 }
+export function readExistingFlagChoiceSelection(actor, choice) {
+    return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
+}
 export function readExistingClassChoiceSelection(actor, choice) {
     return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
 }
@@ -62,7 +65,7 @@ function findGrantedActorItem(actor, selectorItem, grant) {
     return (listTypedActorItems(actor).find((item) => item.type === grant.itemType && item.flags?.pf2e?.grantedBy?.id === selectorId) ?? null);
 }
 function readRulesSelection(item, flag) {
-    const selection = item?.flags?.pf2e?.rulesSelections?.[flag];
+    const selection = item?.flags?.system?.rulesSelections?.[flag] ?? item?.flags?.pf2e?.rulesSelections?.[flag];
     return typeof selection === "string" && selection.length > 0 ? selection : null;
 }
 function readLanguageValues(source) {

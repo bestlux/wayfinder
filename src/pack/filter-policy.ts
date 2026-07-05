@@ -90,7 +90,7 @@ export function matchesFilters(
     return false;
   }
 
-  if (hasUnsupportedEmbeddedChoiceSet(entry, packId, step)) {
+  if (hasUnsupportedEmbeddedChoiceSet(entry, packId, step, context)) {
     return false;
   }
 

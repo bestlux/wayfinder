@@ -12,11 +12,13 @@ import type {
   ClassChoiceMeta,
   ClassGrantMeta,
   DraftState,
+  FlagChoiceMeta,
   PendingStep,
   SelectionRef,
   SingletonChoiceMeta,
   SpellChoiceMeta,
 } from "../../types.js";
+import type { ChoiceFilterActorContext } from "../choice-set-filters.js";
 import {
   buildClassBranchSteps,
   buildClassChoiceSteps,
@@ -29,17 +31,20 @@ import { findDraftSelectionByType } from "../draft-decisions.js";
 import {
   readExistingBranchSelection,
   readExistingClassChoiceSelection,
+  readExistingFlagChoiceSelection,
   readExistingGrantedSelection,
   readExistingLanguageSelections,
   readExistingSingletonChoiceSelection,
   readExistingSingletonSourceSelection,
 } from "../existing-selection-service.js";
+import { buildFlagChoiceSteps, type FlagChoiceSourceContext } from "../flag-choice-service.js";
 import { buildGrantChoiceSteps, type GrantChoiceSourceContext } from "../grant-choice-service.js";
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { documentFeatureLevel, getDocumentRules, matchesChoicePredicateList, toNonEmptyString } from "../rule-data.js";
 import { buildSingletonChoiceSteps, type SingletonChoiceSourceContext } from "../singleton-choice-service.js";
 import type { SkillTrainingSourceContext } from "../skill-training/source-discovery.js";
+import { SLOT_PREFIXES } from "../slot-ids.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
 import { asSpellChoiceClassDocument } from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
@@ -64,6 +69,7 @@ interface BuildWayfinderAppPlanDependencies {
   buildClassSkillFeatSteps: typeof buildClassSkillFeatSteps;
   buildClassTrainingSteps: typeof buildClassTrainingSteps;
   buildGrantChoiceSteps: typeof buildGrantChoiceSteps;
+  buildFlagChoiceSteps: typeof buildFlagChoiceSteps;
   buildSingletonChoiceSteps: typeof buildSingletonChoiceSteps;
   buildLanguageChoiceSteps: typeof buildLanguageChoiceSteps;
   buildClassBranchSteps: typeof buildClassBranchSteps;
@@ -74,6 +80,7 @@ interface BuildWayfinderAppPlanDependencies {
   readExistingSingletonSourceSelection: (actor: ActorLike, itemType: SingletonItemType) => SelectionRef | null;
   readExistingBranchSelection: (actor: ActorLike, branch: ClassBranchMeta) => string | null;
   readExistingGrantedSelection: (actor: ActorLike, grant: ClassGrantMeta) => string | null;
+  readExistingFlagChoiceSelection: (actor: ActorLike, choice: FlagChoiceMeta) => string | null;
   readExistingLanguageSelections: (actor: ActorLike) => string[];
   readExistingClassChoiceSelection: (actor: ActorLike, choice: ClassChoiceMeta) => string | null;
   readExistingSingletonChoiceSelection: (actor: ActorLike, choice: SingletonChoiceMeta) => string | null;
@@ -88,6 +95,7 @@ const DEFAULT_DEPS: BuildWayfinderAppPlanDependencies = {
   buildClassSkillFeatSteps,
   buildClassTrainingSteps,
   buildGrantChoiceSteps,
+  buildFlagChoiceSteps,
   buildSingletonChoiceSteps,
   buildLanguageChoiceSteps,
   buildClassBranchSteps,
@@ -98,6 +106,7 @@ const DEFAULT_DEPS: BuildWayfinderAppPlanDependencies = {
   readExistingSingletonSourceSelection,
   readExistingBranchSelection,
   readExistingGrantedSelection,
+  readExistingFlagChoiceSelection,
   readExistingLanguageSelections,
   readExistingClassChoiceSelection,
   readExistingSingletonChoiceSelection,
@@ -175,6 +184,15 @@ export async function buildWayfinderAppPlan(
         sources: await resolveGrantChoiceSources(planDraft, args, deps),
         extractSlug: deps.extractDocumentSlug,
         readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
+      }),
+    buildFlagChoiceSteps: async (_planSnapshot, planDraft, targetLevel) =>
+      deps.buildFlagChoiceSteps({
+        draft: planDraft,
+        targetLevel,
+        sources: await resolveFlagChoiceSources(planDraft, args, deps),
+        extractSlug: deps.extractDocumentSlug,
+        actorContext: await resolveFlagChoiceActorContext(args, deps),
+        readExistingFlagChoiceSelection: (choice) => deps.readExistingFlagChoiceSelection(args.actor, choice),
       }),
     buildSingletonChoiceSteps: async (_planSnapshot, planDraft, targetLevel) =>
       deps.buildSingletonChoiceSteps({
@@ -312,6 +330,21 @@ function normalizeLanguageSet(value: unknown): Set<string> {
   }
 
   return new Set();
+}
+
+async function resolveFlagChoiceActorContext(
+  args: BuildWayfinderAppPlanArgs,
+  deps: BuildWayfinderAppPlanDependencies
+): Promise<ChoiceFilterActorContext> {
+  const [ancestryDocument, classDocument] = await Promise.all([
+    args.resolveDocument("ancestry"),
+    args.resolveDocument("class"),
+  ]);
+
+  return {
+    ancestrySlug: deps.extractDocumentSlug(ancestryDocument),
+    classSlug: deps.extractDocumentSlug(classDocument),
+  };
 }
 
 export async function findPlanStepBySlotId(
@@ -455,6 +488,14 @@ async function resolveGrantChoiceSources(
         : [];
     }),
   ];
+}
+
+async function resolveFlagChoiceSources(
+  draft: DraftState,
+  args: BuildWayfinderAppPlanArgs,
+  deps: BuildWayfinderAppPlanDependencies
+): Promise<FlagChoiceSourceContext[]> {
+  return resolveGrantChoiceSources(draft, args, deps);
 }
 
 function isAncestryFeatSelection(selection: SelectionRef): boolean {
@@ -672,7 +713,11 @@ function isSingletonChoiceFeatSelection(selection: SelectionRef): boolean {
 }
 
 function isFeatSourceSelection(selection: SelectionRef): boolean {
-  return selection.itemType === "feat" && selection.featType !== "classfeature";
+  return (
+    selection.itemType === "feat" &&
+    selection.featType !== "classfeature" &&
+    !selection.slotId.startsWith(SLOT_PREFIXES.flagChoice)
+  );
 }
 
 function readExistingClassFeatureSelections(actor: ActorLike): SelectionRef[] {

@@ -49,7 +49,7 @@ export function matchesFilters(entry, packId, step, context, traitCatalog) {
     if (filters.uuidPredicates && !matchesUuidChoicePredicate(entry, packId, filters.uuidPredicates, context)) {
         return false;
     }
-    if (hasUnsupportedEmbeddedChoiceSet(entry, packId, step)) {
+    if (hasUnsupportedEmbeddedChoiceSet(entry, packId, step, context)) {
         return false;
     }
     if (filters.featTypes?.length) {

@@ -1,6 +1,7 @@
 import { toCompendiumItemUuid } from "../shared/compendium.js";
-import type { PendingStep, SelectionRef } from "../types.js";
+import type { OptionContext, PendingStep, SelectionRef } from "../types.js";
 import { buildChoiceRollOptions, discoverClassChoiceMeta } from "../wayfinder/class-choice/rule-discovery.js";
+import { discoverFlagChoiceMeta } from "../wayfinder/flag-choice/rule-discovery.js";
 import { discoverGrantSelectionMeta } from "../wayfinder/grant-choice/rule-discovery.js";
 import { discoverSingletonChoiceSpecs } from "../wayfinder/singleton-choice/rule-discovery.js";
 import { discoverSourceSkillTrainingMeta } from "../wayfinder/skill-training/source-discovery.js";
@@ -8,7 +9,12 @@ import type { PackIndexEntry } from "./access.js";
 import { extractEntrySlug, isRecord, numericOrNull, resolveFeatType } from "./entry.js";
 
 type EmbeddedChoiceSourceItemType = "feat" | "classfeature";
-type EmbeddedChoiceCoverageLane = "grant-choice" | "singleton-choice" | "skill-training" | "class-choice";
+type EmbeddedChoiceCoverageLane =
+  | "grant-choice"
+  | "flag-choice"
+  | "singleton-choice"
+  | "skill-training"
+  | "class-choice";
 
 export interface EmbeddedChoiceRuleCoverage {
   ruleIndex: number;
@@ -26,9 +32,16 @@ export interface EmbeddedChoiceClassificationOptions {
   classSlug?: string | null;
   effectiveDeityDocument?: unknown | null;
   localize?: (value: string) => string;
+  optionContext?: Pick<OptionContext, "ancestrySlug" | "classSlug"> | null;
+  requireResolvedActorPlaceholders?: boolean;
 }
 
-export function hasUnsupportedEmbeddedChoiceSet(entry: PackIndexEntry, packId: string, step: PendingStep): boolean {
+export function hasUnsupportedEmbeddedChoiceSet(
+  entry: PackIndexEntry,
+  packId: string,
+  step: PendingStep,
+  optionContext?: OptionContext
+): boolean {
   if (!entryHasChoiceSetRule(entry)) {
     return false;
   }
@@ -42,7 +55,13 @@ export function hasUnsupportedEmbeddedChoiceSet(entry: PackIndexEntry, packId: s
       return false;
     }
 
-    return classifyEmbeddedChoices(entry, packId, { sourceItemType: "classfeature" }).uncovered.length > 0;
+    return (
+      classifyEmbeddedChoices(entry, packId, {
+        sourceItemType: "classfeature",
+        optionContext,
+        requireResolvedActorPlaceholders: true,
+      }).uncovered.length > 0
+    );
   }
 
   if (step.kind !== "pick-item" || step.slotKind === "grant-choice") {
@@ -53,7 +72,13 @@ export function hasUnsupportedEmbeddedChoiceSet(entry: PackIndexEntry, packId: s
     return false;
   }
 
-  return classifyEmbeddedChoices(entry, packId, { sourceItemType: "feat" }).uncovered.length > 0;
+  return (
+    classifyEmbeddedChoices(entry, packId, {
+      sourceItemType: "feat",
+      optionContext,
+      requireResolvedActorPlaceholders: true,
+    }).uncovered.length > 0
+  );
 }
 
 export function hidesUnsupportedEmbeddedChoiceSets(step: PendingStep): boolean {
@@ -107,6 +132,8 @@ export function classifyEmbeddedChoices(
     markCovered(coveredByRuleIndex, meta.selectorRuleIndex, "grant-choice");
   }
 
+  markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, options);
+
   if (sourceItemType === "feat") {
     markFeatSingletonCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity);
     markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity);
@@ -126,6 +153,28 @@ export function classifyEmbeddedChoices(
     uncovered: rules.filter((rule) => rule.coveredBy.length === 0).map((rule) => rule.ruleIndex),
     rules,
   };
+}
+
+function markFlagChoiceCoverage(
+  entry: PackIndexEntry,
+  sourceItemType: EmbeddedChoiceSourceItemType,
+  sourceSelection: SelectionRef,
+  coveredByRuleIndex: Map<number, Set<EmbeddedChoiceCoverageLane>>,
+  options: EmbeddedChoiceClassificationOptions
+): void {
+  for (const meta of discoverFlagChoiceMeta({
+    sourceItemType,
+    sourceDocument: entry,
+    sourceSelection,
+    extractSlug: extractEntrySlug,
+    actorContext: {
+      ancestrySlug: options.optionContext?.ancestrySlug,
+      classSlug: options.optionContext?.classSlug,
+    },
+    requireResolvedActorPlaceholders: options.requireResolvedActorPlaceholders,
+  })) {
+    markCovered(coveredByRuleIndex, meta.sourceRuleIndex, "flag-choice");
+  }
 }
 
 function markFeatSingletonCoverage(

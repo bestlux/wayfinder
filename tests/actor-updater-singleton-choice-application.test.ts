@@ -61,6 +61,74 @@ describe("actor-updater singleton-choice application", () => {
       },
     ]);
   });
+
+  it("writes flag-choice selections back to the owning source item", async () => {
+    const draft = createEmptyDraft(2);
+    draft.selections["flag-choice-none-feat-multifarious-muse-muse-level-2"] = {
+      slotId: "flag-choice-none-feat-multifarious-muse-muse-level-2",
+      packId: "pf2e.classfeatures",
+      documentId: "maestro",
+      uuid: "Compendium.pf2e.classfeatures.Item.maestro",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "Maestro",
+      level: 1,
+      slug: "maestro",
+    };
+
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: "feat-1",
+            type: "feat",
+            name: "Multifarious Muse",
+            flags: {
+              core: {
+                sourceId: "Compendium.pf2e.feats-srd.Item.multifarious-muse",
+              },
+              pf2e: {
+                rulesSelections: {},
+              },
+            },
+            system: {
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "muse",
+                  choices: {
+                    filter: ["item:tag:bard-muse"],
+                    slugsAsValues: true,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      updateEmbeddedDocuments: vi.fn(async () => []),
+    };
+
+    await applySingletonChoiceDraft(actor as any, draft, [flagChoiceStep()]);
+
+    expect(actor.updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        _id: "feat-1",
+        "system.rules": [
+          {
+            key: "ChoiceSet",
+            flag: "muse",
+            choices: {
+              filter: ["item:tag:bard-muse"],
+              slugsAsValues: true,
+            },
+            selection: "maestro",
+          },
+        ],
+        "flags.pf2e.rulesSelections.muse": "maestro",
+      },
+    ]);
+  });
 });
 
 function backgroundChoiceStep(): PendingStep {
@@ -89,6 +157,43 @@ function backgroundChoiceStep(): PendingStep {
         { value: "diplomacy", label: "Diplomacy", img: null, detail: null },
         { value: "society", label: "Society", img: null, detail: null },
       ],
+    },
+  };
+}
+
+function flagChoiceStep(): PendingStep {
+  return {
+    id: "flag-choice-none-feat-multifarious-muse-muse-level-2",
+    level: 2,
+    kind: "pick-item",
+    slotKind: "flag-choice",
+    title: "Muse",
+    description: "",
+    required: true,
+    slotId: "flag-choice-none-feat-multifarious-muse-muse-level-2",
+    filters: {
+      itemType: "feat",
+      packIds: ["pf2e.classfeatures"],
+      predicate: ["item:tag:bard-muse"],
+    },
+    flagChoice: {
+      slotId: "flag-choice-none-feat-multifarious-muse-muse-level-2",
+      sourceItemType: "feat",
+      sourcePackId: "pf2e.feats-srd",
+      sourceDocumentId: "multifarious-muse",
+      sourceUuid: "Compendium.pf2e.feats-srd.Item.multifarious-muse",
+      sourceName: "Multifarious Muse",
+      sourceRuleIndex: 0,
+      flag: "muse",
+      prompt: null,
+      itemType: "feat",
+      selectionValue: "slug",
+      dependsOn: null,
+      filters: {
+        itemType: "feat",
+        packIds: ["pf2e.classfeatures"],
+        predicate: ["item:tag:bard-muse"],
+      },
     },
   };
 }

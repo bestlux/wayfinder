@@ -49,6 +49,8 @@ describe("wayfinder selection command service", () => {
       invalidateSingletonChoicesBySource: async () => [],
       invalidateGrantSelectionsBySource: async () => [],
       invalidateGrantSelectionsByDependency: async () => [],
+      invalidateFlagChoicesBySource: async () => [],
+      invalidateFlagChoicesByDependency: async () => [],
       invalidateClassChoicesByDependency: async () => [],
       invalidateBranchSelectionsByDependency: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
@@ -117,6 +119,8 @@ describe("wayfinder selection command service", () => {
         return ["grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1"];
       },
       invalidateGrantSelectionsByDependency: async () => [],
+      invalidateFlagChoicesBySource: async () => [],
+      invalidateFlagChoicesByDependency: async () => [],
       invalidateClassChoicesByDependency: async () => [],
       invalidateBranchSelectionsByDependency: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
@@ -162,6 +166,8 @@ describe("wayfinder selection command service", () => {
       invalidateSingletonChoicesBySource: async () => [],
       invalidateGrantSelectionsBySource: async () => [],
       invalidateGrantSelectionsByDependency: async () => [],
+      invalidateFlagChoicesBySource: async () => [],
+      invalidateFlagChoicesByDependency: async () => [],
       invalidateClassChoicesByDependency: async () => ["class-choice-champion-sanctification-level-1"],
       invalidateBranchSelectionsByDependency: async () => ["class-branch-cause-level-1"],
       invalidateSpellChoicesByDependency: async () => [],
@@ -206,6 +212,8 @@ describe("wayfinder selection command service", () => {
         sourceItemType === "heritage" ? ["singleton-choice-heritage-arctic-elf-language-level-1"] : [],
       invalidateGrantSelectionsBySource: async () => [],
       invalidateGrantSelectionsByDependency: async () => [],
+      invalidateFlagChoicesBySource: async () => [],
+      invalidateFlagChoicesByDependency: async () => [],
       invalidateClassChoicesByDependency: async () => [],
       invalidateBranchSelectionsByDependency: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
@@ -381,6 +389,7 @@ describe("wayfinder selection command service", () => {
       invalidateSelectionsByPrefix: () => [],
       invalidateBranchSelectionsByDependency: async () => ["class-branch-cause-level-1"],
       invalidateGrantSelectionsBySource: async () => [],
+      invalidateFlagChoicesBySource: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
     });
 
@@ -450,6 +459,7 @@ describe("wayfinder selection command service", () => {
         }
         return [];
       },
+      invalidateFlagChoicesBySource: async () => [],
       invalidateSpellChoicesByDependency: async (dependency) => {
         invalidatedSpellDependencies.push(dependency);
         if (dependency === "class-branch") {

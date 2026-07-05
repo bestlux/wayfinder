@@ -43,7 +43,7 @@ export function clearDraftSlotDecisions(draft, slotId) {
     return true;
 }
 export function findDraftSelectionByType(draft, itemType) {
-    return Object.values(draft.selections).find((selection) => selection.itemType === itemType) ?? null;
+    return (Object.values(draft.selections).find((selection) => !selection.slotId.startsWith("flag-choice-") && selection.itemType === itemType) ?? null);
 }
 export function hasDuplicateDraftSelection(draft, selection) {
     return [...Object.values(draft.selections), ...Object.values(draft.branchSelections)].some((existing) => existing.uuid === selection.uuid && existing.slotId !== selection.slotId);

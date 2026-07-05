@@ -9,12 +9,15 @@ export function orderSelections(draft, steps) {
     });
 }
 export function singletonSelections(selections) {
-    return selections.filter((entry) => SINGLETON_ITEM_TYPES.has(entry.itemType));
+    return selections.filter((entry) => !isFlagChoiceSelection(entry) && SINGLETON_ITEM_TYPES.has(entry.itemType));
 }
 export function featSelections(selections) {
-    return selections.filter((entry) => entry.itemType === "feat");
+    return selections.filter((entry) => !isFlagChoiceSelection(entry) && entry.itemType === "feat");
 }
 export function hasSourceId(actor, sourceId) {
     return listActorItems(actor).some((item) => itemMatchesSourceId(item, sourceId));
+}
+function isFlagChoiceSelection(selection) {
+    return selection.slotId.startsWith("flag-choice-");
 }
 //# sourceMappingURL=selection-queries.js.map

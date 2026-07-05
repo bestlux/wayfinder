@@ -33,6 +33,10 @@ interface ChooseSelectionOptionDependencies {
     sourceItemType: "ancestry" | "heritage" | "background" | "feat" | "classfeature"
   ) => Promise<string[]>;
   invalidateGrantSelectionsByDependency: (dependency: "class" | "deity") => Promise<string[]>;
+  invalidateFlagChoicesBySource: (
+    sourceItemType: "ancestry" | "heritage" | "background" | "feat" | "classfeature"
+  ) => Promise<string[]>;
+  invalidateFlagChoicesByDependency: (dependency: "ancestry" | "class") => Promise<string[]>;
   invalidateClassChoicesByDependency: (dependency: "class" | "deity") => Promise<string[]>;
   invalidateBranchSelectionsByDependency: (dependency: "class" | "deity") => Promise<string[]>;
   invalidateSpellChoicesByDependency: (dependency: "class" | "class-branch") => Promise<string[]>;
@@ -45,6 +49,7 @@ interface SelectClassChoiceDependencies {
   invalidateSelectionsByPrefix: (prefix: string) => string[];
   invalidateBranchSelectionsByDependency: (dependency: "class" | "deity") => Promise<string[]>;
   invalidateGrantSelectionsBySource: (sourceItemType: "classfeature") => Promise<string[]>;
+  invalidateFlagChoicesBySource: (sourceItemType: "classfeature") => Promise<string[]>;
   invalidateSpellChoicesByDependency: (dependency: "class-branch") => Promise<string[]>;
 }
 
@@ -100,6 +105,9 @@ export async function chooseSelectionOption(
       ...(await deps.invalidateSingletonChoicesBySource("heritage")),
       ...(await deps.invalidateGrantSelectionsBySource("ancestry")),
       ...(await deps.invalidateGrantSelectionsBySource("heritage")),
+      ...(await deps.invalidateFlagChoicesBySource("ancestry")),
+      ...(await deps.invalidateFlagChoicesBySource("heritage")),
+      ...(await deps.invalidateFlagChoicesByDependency("ancestry")),
       ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.languageChoice),
       ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat),
     ];
@@ -120,6 +128,7 @@ export async function chooseSelectionOption(
     const invalidated = [
       ...(await deps.invalidateSingletonChoicesBySource("heritage")),
       ...(await deps.invalidateGrantSelectionsBySource("heritage")),
+      ...(await deps.invalidateFlagChoicesBySource("heritage")),
       ...(!sameMembers(previousTraits, nextTraits)
         ? deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat)
         : []),
@@ -134,6 +143,7 @@ export async function chooseSelectionOption(
     const invalidated = [
       ...(await deps.invalidateSingletonChoicesBySource("background")),
       ...(await deps.invalidateGrantSelectionsBySource("background")),
+      ...(await deps.invalidateFlagChoicesBySource("background")),
     ];
     const boostReset = deps.resetBackgroundBoostDraft();
     if (boostReset || invalidated.length > 0) {
@@ -166,6 +176,8 @@ export async function chooseSelectionOption(
         ...(await deps.invalidateGrantSelectionsByDependency("class")),
         ...(await deps.invalidateGrantSelectionsByDependency("deity")),
         ...(await deps.invalidateGrantSelectionsBySource("classfeature")),
+        ...(await deps.invalidateFlagChoicesByDependency("class")),
+        ...(await deps.invalidateFlagChoicesBySource("classfeature")),
       ];
       if (
         invalidated.length > 0 ||
@@ -204,16 +216,36 @@ export async function chooseSelectionOption(
   }
 
   if (step.slotKind === "ancestry-feat" && previousSelection?.uuid !== selection.uuid) {
-    const invalidated = await deps.invalidateGrantSelectionsBySource("feat");
+    const invalidated = [
+      ...(await deps.invalidateGrantSelectionsBySource("feat")),
+      ...(await deps.invalidateFlagChoicesBySource("feat")),
+    ];
     if (invalidated.length > 0) {
       statusNote = "Ancestry feat changed. Wayfinder marked dependent granted feat choices for review.";
+    }
+  }
+
+  if (
+    (step.slotKind === "class-feat" || step.slotKind === "general-feat" || step.slotKind === "skill-feat") &&
+    previousSelection?.uuid !== selection.uuid
+  ) {
+    const invalidated = [
+      ...(await deps.invalidateGrantSelectionsBySource("feat")),
+      ...(await deps.invalidateFlagChoicesBySource("feat")),
+    ];
+    if (invalidated.length > 0) {
+      statusNote = "Feat changed. Wayfinder marked dependent feat choices for review.";
     }
   }
 
   if (step.kind === "class-branch" && previousSelection?.uuid !== selection.uuid) {
     const invalidatedSpells = await deps.invalidateSpellChoicesByDependency("class-branch");
     const invalidatedGrantChoices = await deps.invalidateGrantSelectionsBySource("classfeature");
-    if ((invalidatedSpells.length > 0 || invalidatedGrantChoices.length > 0) && step.branch?.flag === "arcaneSchool") {
+    const invalidatedFlagChoices = await deps.invalidateFlagChoicesBySource("classfeature");
+    if (
+      (invalidatedSpells.length > 0 || invalidatedGrantChoices.length > 0 || invalidatedFlagChoices.length > 0) &&
+      step.branch?.flag === "arcaneSchool"
+    ) {
       statusNote = "Arcane school changed. Wayfinder marked dependent school choices for review.";
     }
   }
@@ -361,9 +393,14 @@ async function invalidateClassChoiceDependents(
       ? await deps.invalidateBranchSelectionsByDependency("deity")
       : [];
   const grantInvalidated = await deps.invalidateGrantSelectionsBySource("classfeature");
+  const flagInvalidated = await deps.invalidateFlagChoicesBySource("classfeature");
   const spellInvalidated = await deps.invalidateSpellChoicesByDependency("class-branch");
   const invalidatedCount =
-    branchInvalidated.length + deityBranchInvalidated.length + grantInvalidated.length + spellInvalidated.length;
+    branchInvalidated.length +
+    deityBranchInvalidated.length +
+    grantInvalidated.length +
+    flagInvalidated.length +
+    spellInvalidated.length;
 
   if (invalidatedCount === 0) {
     return null;

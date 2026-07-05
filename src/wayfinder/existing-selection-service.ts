@@ -2,7 +2,14 @@ import type { BuildStateActorItem } from "../build-state/document-types.js";
 import { listActorItems } from "../build-state.js";
 import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
-import type { ClassBranchMeta, ClassChoiceMeta, ClassGrantMeta, SelectionRef, SingletonChoiceMeta } from "../types.js";
+import type {
+  ClassBranchMeta,
+  ClassChoiceMeta,
+  ClassGrantMeta,
+  FlagChoiceMeta,
+  SelectionRef,
+  SingletonChoiceMeta,
+} from "../types.js";
 
 interface ActorItemLike extends BuildStateActorItem {
   flags?: BuildStateActorItem["flags"] & {
@@ -12,6 +19,9 @@ interface ActorItemLike extends BuildStateActorItem {
       grantedBy?: {
         id?: unknown;
       };
+    };
+    system?: {
+      rulesSelections?: Record<string, unknown>;
     };
   };
 }
@@ -32,6 +42,10 @@ export function readExistingGrantedSelection(actor: unknown, grant: ClassGrantMe
   }
 
   return sourceIdOf(findGrantedActorItem(actor, selectorItem, grant));
+}
+
+export function readExistingFlagChoiceSelection(actor: unknown, choice: FlagChoiceMeta): string | null {
+  return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
 }
 
 export function readExistingClassChoiceSelection(actor: unknown, choice: ClassChoiceMeta): string | null {
@@ -106,7 +120,7 @@ function findGrantedActorItem(
 }
 
 function readRulesSelection(item: ActorItemLike | null, flag: string): string | null {
-  const selection = item?.flags?.pf2e?.rulesSelections?.[flag];
+  const selection = item?.flags?.system?.rulesSelections?.[flag] ?? item?.flags?.pf2e?.rulesSelections?.[flag];
   return typeof selection === "string" && selection.length > 0 ? selection : null;
 }
 

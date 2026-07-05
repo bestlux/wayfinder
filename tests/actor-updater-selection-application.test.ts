@@ -710,6 +710,63 @@ describe("actor-updater selection application", () => {
     });
   });
 
+  it("preselects drafted flag choices before creating the owning item", async () => {
+    const draft = createEmptyDraft(2);
+    const sourceSelection = selectionRef(
+      "class-feat-level-2",
+      "feat",
+      "multifarious-muse",
+      "Multifarious Muse",
+      "class"
+    );
+    const flagSelection = {
+      ...selectionRef(
+        "flag-choice-none-feat-multifarious-muse-muse-level-2",
+        "feat",
+        "maestro",
+        "Maestro",
+        "classfeature"
+      ),
+      packId: "pf2e.classfeatures",
+      uuid: "Compendium.pf2e.classfeatures.Item.maestro",
+      slug: "maestro",
+    };
+    draft.selections[sourceSelection.slotId] = sourceSelection;
+    draft.selections[flagSelection.slotId] = flagSelection;
+
+    const source = await createEmbeddedSource(sourceSelection, draft, [flagChoiceStep()], {
+      fetchSelectionDocument: async () => ({
+        toObject: () => ({
+          name: "Multifarious Muse",
+          type: "feat",
+          system: {
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "muse",
+                choices: {
+                  filter: ["item:tag:bard-muse"],
+                  slugsAsValues: true,
+                },
+              },
+            ],
+          },
+        }),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "muse",
+      selection: "maestro",
+    });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({
+      muse: "maestro",
+    });
+  });
+
   it("preselects drafted feat-owned spell choices before creating the feat item", async () => {
     const draft = createEmptyDraft(1);
     draft.spellChoices["spell-choice-feat-arcane-tattoos-cantrip-level-1"] = [
@@ -1622,6 +1679,43 @@ function featStep(
       itemType: "feat",
       featTypes,
       maxLevel: level,
+    },
+  };
+}
+
+function flagChoiceStep(): PendingStep {
+  return {
+    id: "flag-choice-none-feat-multifarious-muse-muse-level-2",
+    level: 2,
+    kind: "pick-item",
+    slotKind: "flag-choice",
+    title: "Muse",
+    description: "",
+    required: true,
+    slotId: "flag-choice-none-feat-multifarious-muse-muse-level-2",
+    filters: {
+      itemType: "feat",
+      packIds: ["pf2e.classfeatures"],
+      predicate: ["item:tag:bard-muse"],
+    },
+    flagChoice: {
+      slotId: "flag-choice-none-feat-multifarious-muse-muse-level-2",
+      sourceItemType: "feat",
+      sourcePackId: "test.pack",
+      sourceDocumentId: "multifarious-muse",
+      sourceUuid: "Compendium.test.pack.Item.multifarious-muse",
+      sourceName: "Multifarious Muse",
+      sourceRuleIndex: 0,
+      flag: "muse",
+      prompt: null,
+      itemType: "feat",
+      selectionValue: "slug",
+      dependsOn: null,
+      filters: {
+        itemType: "feat",
+        packIds: ["pf2e.classfeatures"],
+        predicate: ["item:tag:bard-muse"],
+      },
     },
   };
 }

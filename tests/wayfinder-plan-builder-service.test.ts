@@ -119,6 +119,7 @@ describe("wayfinder plan builder service", () => {
 
     const readExistingBranchSelection = vi.fn((_actor: unknown, _branch: ClassBranchMeta) => "existing-branch");
     const readExistingGrantedSelection = vi.fn((_actor: unknown, _grant: ClassGrantMeta) => "existing-grant");
+    const readExistingFlagChoiceSelection = vi.fn(() => "existing-flag-choice");
     const readExistingLanguageSelections = vi.fn((_actor: unknown) => []);
     const readExistingClassChoiceSelection = vi.fn((_actor: unknown, _choice: ClassChoiceMeta) => "holy");
     const readExistingSingletonChoiceSelection = vi.fn((_actor: unknown, _choice: SingletonChoiceMeta) => "society");
@@ -205,6 +206,44 @@ describe("wayfinder plan builder service", () => {
         ])
       );
       return [];
+    });
+    const buildFlagChoiceSteps = vi.fn(async (params) => {
+      expect(params.targetLevel).toBe(4);
+      expect(params.actorContext).toEqual({ ancestrySlug: null, classSlug: "wizard" });
+      expect(params.sources).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceItemType: "feat",
+            sourceSelection: draft.selections["class-feat-level-2"],
+            sourceDocument: { fetched: "order-explorer" },
+          }),
+          expect.objectContaining({
+            sourceItemType: "classfeature",
+            sourceSelection: draft.branchSelections["class-branch-arcane-school-level-1"],
+            sourceDocument: { fetched: "school-of-unified-magical-theory" },
+          }),
+        ])
+      );
+      expect(
+        params.readExistingFlagChoiceSelection({
+          slotId: "flag-choice-none-feat-source-muse-level-2",
+          sourceItemType: "feat",
+          sourcePackId: "test.pack",
+          sourceDocumentId: "source",
+          sourceUuid: "Compendium.test.pack.Item.source",
+          sourceName: "Source",
+          sourceRuleIndex: 0,
+          flag: "muse",
+          prompt: null,
+          itemType: "feat",
+          selectionValue: "uuid",
+          dependsOn: null,
+          filters: {
+            itemType: "feat",
+          },
+        })
+      ).toBe("existing-flag-choice");
+      return [step("flag-choice-none-feat-source-muse-level-2")];
     });
     const buildLanguageChoiceSteps = vi.fn(async () => []);
     const buildClassBranchSteps = vi.fn(async (params) => {
@@ -318,6 +357,7 @@ describe("wayfinder plan builder service", () => {
         ...(await deps.buildClassSkillFeatSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassTrainingSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildGrantChoiceSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildFlagChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildSingletonChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildLanguageChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassBranchSteps(receivedSnapshot, receivedDraft, 4)),
@@ -347,6 +387,7 @@ describe("wayfinder plan builder service", () => {
         buildClassSkillFeatSteps,
         buildClassTrainingSteps,
         buildGrantChoiceSteps,
+        buildFlagChoiceSteps,
         buildSingletonChoiceSteps,
         buildLanguageChoiceSteps,
         buildClassBranchSteps,
@@ -357,6 +398,7 @@ describe("wayfinder plan builder service", () => {
         readExistingSingletonSourceSelection: () => null,
         readExistingBranchSelection,
         readExistingGrantedSelection,
+        readExistingFlagChoiceSelection,
         readExistingLanguageSelections,
         readExistingClassChoiceSelection,
         readExistingSingletonChoiceSelection,
@@ -375,6 +417,7 @@ describe("wayfinder plan builder service", () => {
       "class-feat-level-2",
       "skill-feat-level-1",
       "skill-training-wizard-level-1",
+      "flag-choice-none-feat-source-muse-level-2",
       "class-branch-arcane-school-level-1",
       "deity-level-1",
       "class-choice-wizard-thesis-level-1",
@@ -437,6 +480,7 @@ describe("wayfinder plan builder service", () => {
         buildClassSkillFeatSteps: async () => [],
         buildClassTrainingSteps: async () => [],
         buildGrantChoiceSteps: async () => [],
+        buildFlagChoiceSteps: async () => [],
         buildSingletonChoiceSteps: async () => [],
         buildLanguageChoiceSteps: async () => [],
         buildClassBranchSteps: async () => [],
@@ -447,6 +491,7 @@ describe("wayfinder plan builder service", () => {
         readExistingSingletonSourceSelection: () => null,
         readExistingBranchSelection: () => null,
         readExistingGrantedSelection: () => null,
+        readExistingFlagChoiceSelection: () => null,
         readExistingLanguageSelections: () => [],
         readExistingClassChoiceSelection: () => null,
         readExistingSingletonChoiceSelection: () => null,
@@ -531,6 +576,7 @@ describe("wayfinder plan builder service", () => {
         buildClassSkillFeatSteps: async () => [],
         buildClassTrainingSteps: async () => [],
         buildGrantChoiceSteps: async () => [],
+        buildFlagChoiceSteps: async () => [],
         buildSingletonChoiceSteps: async () => [],
         buildLanguageChoiceSteps: async () => [],
         buildClassBranchSteps: async () => [],
@@ -541,6 +587,7 @@ describe("wayfinder plan builder service", () => {
         readExistingSingletonSourceSelection: () => null,
         readExistingBranchSelection: () => null,
         readExistingGrantedSelection: () => null,
+        readExistingFlagChoiceSelection: () => null,
         readExistingLanguageSelections: () => [],
         readExistingClassChoiceSelection: () => null,
         readExistingSingletonChoiceSelection: () => null,
@@ -684,6 +731,7 @@ describe("wayfinder plan builder service", () => {
           buildClassSkillFeatSteps: async () => [],
           buildClassTrainingSteps: async () => [],
           buildGrantChoiceSteps: async () => [],
+          buildFlagChoiceSteps: async () => [],
           buildSingletonChoiceSteps: async () => [],
           buildLanguageChoiceSteps: async () => [],
           buildClassBranchSteps: async () => [],
@@ -694,6 +742,7 @@ describe("wayfinder plan builder service", () => {
           readExistingSingletonSourceSelection: () => null,
           readExistingBranchSelection: () => null,
           readExistingGrantedSelection: () => null,
+          readExistingFlagChoiceSelection: () => null,
           readExistingLanguageSelections: () => [],
           readExistingClassChoiceSelection: () => null,
           readExistingSingletonChoiceSelection: () => null,
@@ -810,6 +859,7 @@ describe("wayfinder plan builder service", () => {
           buildClassSkillFeatSteps: async () => [],
           buildClassTrainingSteps: async () => [],
           buildGrantChoiceSteps: async () => [],
+          buildFlagChoiceSteps: async () => [],
           buildSingletonChoiceSteps: async () => [],
           buildLanguageChoiceSteps: async () => [],
           buildClassBranchSteps: async () => [],
@@ -820,6 +870,7 @@ describe("wayfinder plan builder service", () => {
           readExistingSingletonSourceSelection: () => null,
           readExistingBranchSelection: () => null,
           readExistingGrantedSelection: () => null,
+          readExistingFlagChoiceSelection: () => null,
           readExistingLanguageSelections: () => [],
           readExistingClassChoiceSelection: () => null,
           readExistingSingletonChoiceSelection: () => null,

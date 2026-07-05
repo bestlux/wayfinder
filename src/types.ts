@@ -10,6 +10,7 @@ export type {
   ClassChoiceMeta,
   ClassChoiceStep,
   ClassGrantMeta,
+  FlagChoiceMeta,
   GrantSelectionMeta,
   LanguageChoiceMeta,
   LanguageChoiceStep,

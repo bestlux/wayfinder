@@ -34,6 +34,9 @@ export async function applyDraftToActor(actor, draft, steps, options = {}) {
         if (!step) {
             continue;
         }
+        if (step.kind === "pick-item" && step.slotKind === "flag-choice") {
+            continue;
+        }
         if (usesNativeGrantItemCreation(step)) {
             continue;
         }

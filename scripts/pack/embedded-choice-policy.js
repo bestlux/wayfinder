@@ -1,10 +1,11 @@
 import { toCompendiumItemUuid } from "../shared/compendium.js";
 import { buildChoiceRollOptions, discoverClassChoiceMeta } from "../wayfinder/class-choice/rule-discovery.js";
+import { discoverFlagChoiceMeta } from "../wayfinder/flag-choice/rule-discovery.js";
 import { discoverGrantSelectionMeta } from "../wayfinder/grant-choice/rule-discovery.js";
 import { discoverSingletonChoiceSpecs } from "../wayfinder/singleton-choice/rule-discovery.js";
 import { discoverSourceSkillTrainingMeta } from "../wayfinder/skill-training/source-discovery.js";
 import { extractEntrySlug, isRecord, numericOrNull, resolveFeatType } from "./entry.js";
-export function hasUnsupportedEmbeddedChoiceSet(entry, packId, step) {
+export function hasUnsupportedEmbeddedChoiceSet(entry, packId, step, optionContext) {
     if (!entryHasChoiceSetRule(entry)) {
         return false;
     }
@@ -16,7 +17,11 @@ export function hasUnsupportedEmbeddedChoiceSet(entry, packId, step) {
         if (Array.isArray(step.filters?.predicate) && step.filters.predicate.length > 0) {
             return false;
         }
-        return classifyEmbeddedChoices(entry, packId, { sourceItemType: "classfeature" }).uncovered.length > 0;
+        return (classifyEmbeddedChoices(entry, packId, {
+            sourceItemType: "classfeature",
+            optionContext,
+            requireResolvedActorPlaceholders: true,
+        }).uncovered.length > 0);
     }
     if (step.kind !== "pick-item" || step.slotKind === "grant-choice") {
         return false;
@@ -24,7 +29,11 @@ export function hasUnsupportedEmbeddedChoiceSet(entry, packId, step) {
     if (!["ancestry-feat", "class-feat", "general-feat", "skill-feat"].includes(step.slotKind)) {
         return false;
     }
-    return classifyEmbeddedChoices(entry, packId, { sourceItemType: "feat" }).uncovered.length > 0;
+    return (classifyEmbeddedChoices(entry, packId, {
+        sourceItemType: "feat",
+        optionContext,
+        requireResolvedActorPlaceholders: true,
+    }).uncovered.length > 0);
 }
 export function hidesUnsupportedEmbeddedChoiceSets(step) {
     if (step.kind === "class-branch") {
@@ -65,6 +74,7 @@ export function classifyEmbeddedChoices(entry, packId, options = {}) {
     })) {
         markCovered(coveredByRuleIndex, meta.selectorRuleIndex, "grant-choice");
     }
+    markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, options);
     if (sourceItemType === "feat") {
         markFeatSingletonCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity);
         markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity);
@@ -81,6 +91,21 @@ export function classifyEmbeddedChoices(entry, packId, options = {}) {
         uncovered: rules.filter((rule) => rule.coveredBy.length === 0).map((rule) => rule.ruleIndex),
         rules,
     };
+}
+function markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, options) {
+    for (const meta of discoverFlagChoiceMeta({
+        sourceItemType,
+        sourceDocument: entry,
+        sourceSelection,
+        extractSlug: extractEntrySlug,
+        actorContext: {
+            ancestrySlug: options.optionContext?.ancestrySlug,
+            classSlug: options.optionContext?.classSlug,
+        },
+        requireResolvedActorPlaceholders: options.requireResolvedActorPlaceholders,
+    })) {
+        markCovered(coveredByRuleIndex, meta.sourceRuleIndex, "flag-choice");
+    }
 }
 function markFeatSingletonCoverage(entry, _sourceSelection, coveredByRuleIndex, localize) {
     for (const spec of discoverSingletonChoiceSpecs({

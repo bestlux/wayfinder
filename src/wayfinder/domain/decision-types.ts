@@ -7,6 +7,7 @@ export interface SelectionRef {
   featType: string | null;
   name: string;
   level: number | null;
+  slug?: string | null;
 }
 
 export interface SkillTrainingDraft {

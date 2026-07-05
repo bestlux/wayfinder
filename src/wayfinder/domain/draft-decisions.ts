@@ -55,7 +55,11 @@ export function clearDraftSlotDecisions(draft: DraftState, slotId: string): bool
 }
 
 export function findDraftSelectionByType(draft: DraftState, itemType: SingletonItemType): SelectionRef | null {
-  return Object.values(draft.selections).find((selection) => selection.itemType === itemType) ?? null;
+  return (
+    Object.values(draft.selections).find(
+      (selection) => !selection.slotId.startsWith("flag-choice-") && selection.itemType === itemType
+    ) ?? null
+  );
 }
 
 export function hasDuplicateDraftSelection(draft: DraftState, selection: SelectionRef): boolean {

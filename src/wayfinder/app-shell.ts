@@ -574,6 +574,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       invalidateSingletonChoicesBySource: invalidation.invalidateSingletonChoicesBySource,
       invalidateGrantSelectionsBySource: invalidation.invalidateGrantSelectionsBySource,
       invalidateGrantSelectionsByDependency: invalidation.invalidateGrantSelectionsByDependency,
+      invalidateFlagChoicesBySource: invalidation.invalidateFlagChoicesBySource,
+      invalidateFlagChoicesByDependency: invalidation.invalidateFlagChoicesByDependency,
       invalidateClassChoicesByDependency: invalidation.invalidateClassChoicesByDependency,
       invalidateBranchSelectionsByDependency: invalidation.invalidateBranchSelectionsByDependency,
       invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,
@@ -677,6 +679,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       invalidateSelectionsByPrefix: invalidation.invalidateSelectionsByPrefix,
       invalidateBranchSelectionsByDependency: invalidation.invalidateBranchSelectionsByDependency,
       invalidateGrantSelectionsBySource: invalidation.invalidateGrantSelectionsBySource,
+      invalidateFlagChoicesBySource: invalidation.invalidateFlagChoicesBySource,
       invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,
     });
     await this.#finalizeSelectionCommand(result);

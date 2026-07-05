@@ -106,6 +106,10 @@ After the embedded-`ChoiceSet` coverage work (per-rule classifier, feat config-s
 
 Before tagging `v0.2.0`, the release code passed the full live matrix against Foundry VTT 14.364 / PF2E 8.2.0 in world `testing-world`: 28 cases passing, 0 classified/manual, 0 failed. The run used two 14-case chunks, including `fighter-samsaran-weapon-memory-l1-l5-apply-rerun`; every case applied to level 5 and reran with 0 pending steps. Artifacts: `.wayfinder-smoke/release-0.2.0-a` and `.wayfinder-smoke/release-0.2.0-b`.
 
+## 2026-07-05 Post-Flag-Choice Full Matrix
+
+After the standalone filtered flag-choice lane and same-item class-choice option-predicate work (plus the flag-choice prompt localization fix), the full matrix ran green against Foundry VTT 14.364 / PF2E 8.2.0 in world `testing-world`: 29 cases passing, 0 classified/manual, 0 failed, in two chunks (15 + 14). This includes the new `bard-multifarious-muse-l1-l5-apply-rerun` variant, which drafts Multifarious Muse at level 2, selects a second muse through the flag-choice step, selects the granted level-1 bard feat through the grant-choice step, applies to level 5, and reruns with 0 pending steps. Artifacts: `.wayfinder-smoke/slice5-matrix-a`, `.wayfinder-smoke/slice5-matrix-b`, and `.wayfinder-smoke/slice5-bard-localize` (post-fix bard re-verification).
+
 ## 2026-05-11 Incremental Existing-Character Reruns
 
 These cases first applied a level 1 actor, reopened Wayfinder against that existing actor, advanced to level 5, applied, and reran at level 5. They are targeted safety checks for actor-owned class-feature replay, prepared spellcasting entry expansion, branch-derived spontaneous spell choices, predicate-gated grants, duplicate prevention, native popup suppression, and draft cleanup.

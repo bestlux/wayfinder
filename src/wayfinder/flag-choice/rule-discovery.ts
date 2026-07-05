@@ -38,6 +38,9 @@ export function discoverFlagChoiceMeta(args: {
     if (!resolution) {
       return [];
     }
+    if (isUnsupportedFlagChoiceItemType(resolution.filters.itemType)) {
+      return [];
+    }
 
     const dependsOn = resolveActorDependency(resolution.actorDependencies);
     const dependencyKey = dependsOn ?? "none";
@@ -60,6 +63,10 @@ export function discoverFlagChoiceMeta(args: {
       } satisfies FlagChoiceMeta,
     ];
   });
+}
+
+function isUnsupportedFlagChoiceItemType(itemType: string): boolean {
+  return ["armor", "backpack", "consumable", "equipment", "shield", "treasure", "weapon"].includes(itemType);
 }
 
 function hasGrantForFlag(rules: Array<Record<string, unknown>>, flag: string): boolean {

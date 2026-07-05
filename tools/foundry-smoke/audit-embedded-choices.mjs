@@ -92,6 +92,10 @@ function main() {
 
   const featEntries = readPackEntries(options.pf2eRoot, "pf2e.feats-srd");
   const classFeatureEntries = readPackEntries(options.pf2eRoot, "pf2e.classfeatures");
+  const syntheticOptionContext = {
+    ancestrySlug: "human",
+    classSlug: "bard",
+  };
   const buckets = [
     ...featSlotKinds.map((slotKind) =>
       auditBucket({
@@ -100,6 +104,7 @@ function main() {
         packId: "pf2e.feats-srd",
         entries: featEntries.filter((entry) => resolveFeatType(entry) === featTypeBySlotKind[slotKind]),
         step: makePickItemStep(slotKind),
+        optionContext: syntheticOptionContext,
         shownMeaning: "current direct feat picker policy",
       })
     ),
@@ -109,6 +114,7 @@ function main() {
       packId: "pf2e.classfeatures",
       entries: classFeatureEntries,
       step: makeClassBranchStep({ predicateFiltered: false }),
+      optionContext: syntheticOptionContext,
       shownMeaning: "current tag-filter class-branch policy",
       alternateStep: makeClassBranchStep({ predicateFiltered: true }),
       alternateShownMeaning: "predicate-filter branch policy",
@@ -118,6 +124,7 @@ function main() {
   const report = {
     generatedAt: new Date().toISOString(),
     pf2eRoot: options.pf2eRoot,
+    syntheticOptionContext,
     buckets,
     totals: summarizeBuckets(buckets),
   };
@@ -222,7 +229,7 @@ function readdirSafe(filePath) {
 
 function auditBucket(args) {
   const rows = args.entries
-    .map((entry) => analyzeEntry(entry, args.packId, args.step))
+    .map((entry) => analyzeEntry(entry, args.packId, args.step, args.optionContext))
     .filter((entry) => entry.choiceSetRuleIndexes.length > 0);
   const hiddenRows = rows.filter((entry) => entry.hidden);
   const shownRows = rows.filter((entry) => !entry.hidden);
@@ -242,7 +249,7 @@ function auditBucket(args) {
 
   if (args.alternateStep) {
     const alternateRows = args.entries
-      .map((entry) => analyzeEntry(entry, args.packId, args.alternateStep))
+      .map((entry) => analyzeEntry(entry, args.packId, args.alternateStep, args.optionContext))
       .filter((entry) => entry.choiceSetRuleIndexes.length > 0);
     const alternateHidden = alternateRows.filter((entry) => entry.hidden);
     const alternateShown = alternateRows.filter((entry) => !entry.hidden);
@@ -257,8 +264,8 @@ function auditBucket(args) {
   return bucket;
 }
 
-function analyzeEntry(entry, packId, step) {
-  const ruleAnalyses = analyzeChoiceSetRules(entry, packId);
+function analyzeEntry(entry, packId, step, optionContext) {
+  const ruleAnalyses = analyzeChoiceSetRules(entry, packId, optionContext);
   return {
     packId,
     documentId: String(entry._id ?? ""),
@@ -266,21 +273,21 @@ function analyzeEntry(entry, packId, step) {
     name: String(entry.name ?? entry._id ?? "Unknown"),
     featType: resolveFeatType(entry),
     fileName: entry.__fileName,
-    hidden: hasUnsupportedEmbeddedChoiceSet(entry, packId, step),
+    hidden: hasUnsupportedEmbeddedChoiceSet(entry, packId, step, optionContext),
     choiceSetRuleIndexes: ruleAnalyses.map((rule) => rule.ruleIndex),
     covered: ruleAnalyses.filter((rule) => rule.coveredBy.length > 0),
     uncovered: ruleAnalyses.filter((rule) => rule.coveredBy.length === 0),
   };
 }
 
-function analyzeChoiceSetRules(entry, packId) {
+function analyzeChoiceSetRules(entry, packId, optionContext) {
   const rules = getChoiceSetRules(entry);
   if (rules.length === 0) {
     return [];
   }
 
   const sourceItemType = packId === "pf2e.classfeatures" ? "classfeature" : "feat";
-  const classification = classifyEmbeddedChoices(entry, packId, { sourceItemType, localize: identity });
+  const classification = classifyEmbeddedChoices(entry, packId, { sourceItemType, localize: identity, optionContext });
   const coverageByRuleIndex = new Map(classification.rules.map((rule) => [rule.ruleIndex, rule.coveredBy]));
 
   return rules.map(({ rule, ruleIndex }) => {

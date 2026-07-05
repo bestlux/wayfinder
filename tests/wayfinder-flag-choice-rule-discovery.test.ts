@@ -107,6 +107,24 @@ describe("wayfinder flag-choice rule discovery", () => {
     expect(result.uncovered).toEqual([]);
     expect(result.rules).toEqual([{ ruleIndex: 0, coveredBy: ["flag-choice"] }]);
   });
+
+  it("does not cover weapon equipment-predicate choices as flag choices", () => {
+    const discovered = discoverFlagChoiceMeta({
+      sourceItemType: "feat",
+      sourceDocument: surkiWeaponFamiliarity(),
+      sourceSelection: sourceSelection("Hx4DeunGyzMsoWqv", "Surki Weapon Familiarity", "ancestry"),
+      extractSlug,
+      requireResolvedActorPlaceholders: true,
+    });
+    const classification = classifyEmbeddedChoices(surkiWeaponFamiliarity() as any, "pf2e.feats-srd", {
+      sourceItemType: "feat",
+      requireResolvedActorPlaceholders: true,
+    });
+
+    expect(discovered).toEqual([]);
+    expect(classification.covered).toEqual([]);
+    expect(classification.uncovered).toEqual([0]);
+  });
 });
 
 function sourceSelection(documentId: string, name: string, featType = "class") {
@@ -262,6 +280,50 @@ function celestialMagicFeat() {
       flag: "spell",
       key: "ChoiceSet",
       prompt: "PF2E.SpecificRule.Prompt.Spell",
+    },
+  ]);
+}
+
+function surkiWeaponFamiliarity() {
+  return featEntry("Hx4DeunGyzMsoWqv", "Surki Weapon Familiarity", "ancestry", 1, [
+    {
+      adjustName: false,
+      choices: {
+        filter: [
+          "item:rarity:common",
+          {
+            or: ["item:group:axe", "item:group:hammer"],
+          },
+          {
+            not: "item:base:light-hammer",
+          },
+        ],
+        itemType: "weapon",
+        slugsAsValues: true,
+      },
+      flag: "weapon",
+      key: "ChoiceSet",
+      prompt: "PF2E.SpecificRule.Prompt.Weapon",
+    },
+    {
+      definition: [
+        {
+          or: [
+            {
+              and: ["item:group:pick", "item:category:martial"],
+            },
+            {
+              and: ["item:base:{item|flags.system.rulesSelections.weapon}", "item:category:martial"],
+            },
+            "item:base:light-hammer",
+            "item:base:sickle",
+            "item:base:scythe",
+          ],
+        },
+      ],
+      key: "MartialProficiency",
+      sameAs: "simple",
+      slug: "martial-surki-weapons",
     },
   ]);
 }

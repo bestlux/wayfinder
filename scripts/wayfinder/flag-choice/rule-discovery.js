@@ -21,6 +21,9 @@ export function discoverFlagChoiceMeta(args) {
         if (!resolution) {
             return [];
         }
+        if (isUnsupportedFlagChoiceItemType(resolution.filters.itemType)) {
+            return [];
+        }
         const dependsOn = resolveActorDependency(resolution.actorDependencies);
         const dependencyKey = dependsOn ?? "none";
         return [
@@ -41,6 +44,9 @@ export function discoverFlagChoiceMeta(args) {
             },
         ];
     });
+}
+function isUnsupportedFlagChoiceItemType(itemType) {
+    return ["armor", "backpack", "consumable", "equipment", "shield", "treasure", "weapon"].includes(itemType);
 }
 function hasGrantForFlag(rules, flag) {
     return rules.some((entry) => entry.key === "GrantItem" && typeof entry.uuid === "string" && entry.uuid.includes("rulesSelections." + flag));

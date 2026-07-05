@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 - 2026-07-05
+
+- Feats and options that configure a choice without granting an item are now guided instead of hidden, including Multifarious Muse, Bard Dedication, Adopted Ancestry, Celestial Magic, and related options.
+- More dependent class choices stay consistent when you change an earlier pick, including same-item follow-up choices such as Elemental Instinct damage types.
+- Choice prompts now use localized text instead of showing raw translation keys.
+- Simplified Chinese now activates correctly with Foundry's Chinese community localization stack.
+- Coverage tracking now distinguishes more embedded-choice shapes, improving the public readiness audit behind future guided choice work.
+
 ## 0.2.0 - 2026-07-04
 
 - Unlocked guided embedded ChoiceSet coverage for 184 more census entries: 99 direct feat entries and 85 class-branch options now stay visible when every embedded choice has a supported follow-up.

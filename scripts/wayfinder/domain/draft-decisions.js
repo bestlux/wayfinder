@@ -2,17 +2,19 @@ import { isClassBranchStep } from "./step-types.js";
 const DECISION_KIND_ORDER = {
     selection: 0,
     "class-branch": 1,
-    "singleton-choice": 2,
-    "language-choice": 3,
-    "class-choice": 4,
-    manual: 5,
-    "skill-increase": 6,
-    "skill-training": 7,
-    "spell-choice": 8,
+    "class-archetype": 2,
+    "singleton-choice": 3,
+    "language-choice": 4,
+    "class-choice": 5,
+    manual: 6,
+    "skill-increase": 7,
+    "skill-training": 8,
+    "spell-choice": 9,
 };
 export function clearDraftSlotDecisions(draft, slotId) {
     const hasItemSelection = !!draft.selections[slotId];
     const hasBranchSelection = !!draft.branchSelections[slotId];
+    const hasClassArchetypeChoice = Object.prototype.hasOwnProperty.call(draft.classArchetypeChoices, slotId);
     const hasTrainingSelection = !!draft.skillTrainings[slotId];
     const hasSingletonChoice = Object.prototype.hasOwnProperty.call(draft.singletonChoices, slotId);
     const hasLanguageChoices = (draft.languageChoices[slotId]?.length ?? 0) > 0;
@@ -22,6 +24,7 @@ export function clearDraftSlotDecisions(draft, slotId) {
     const hasSpellChoices = (draft.spellChoices[slotId]?.length ?? 0) > 0;
     if (!hasItemSelection &&
         !hasBranchSelection &&
+        !hasClassArchetypeChoice &&
         !hasTrainingSelection &&
         !hasSingletonChoice &&
         !hasLanguageChoices &&
@@ -33,6 +36,7 @@ export function clearDraftSlotDecisions(draft, slotId) {
     }
     delete draft.selections[slotId];
     delete draft.branchSelections[slotId];
+    delete draft.classArchetypeChoices[slotId];
     delete draft.skillTrainings[slotId];
     delete draft.singletonChoices[slotId];
     delete draft.languageChoices[slotId];
@@ -55,6 +59,9 @@ export function listDraftDecisions(draft) {
     }
     for (const [slotId, selection] of Object.entries(draft.branchSelections)) {
         decisions.push({ kind: "class-branch", slotId, selection });
+    }
+    for (const [slotId, value] of Object.entries(draft.classArchetypeChoices)) {
+        decisions.push({ kind: "class-archetype", slotId, value });
     }
     for (const [slotId, value] of Object.entries(draft.singletonChoices)) {
         decisions.push({ kind: "singleton-choice", slotId, value });
@@ -98,6 +105,10 @@ export function readDraftStepDecision(draft, step) {
         case "class-branch": {
             const selection = draft.branchSelections[slotId];
             return selection ? { kind: "class-branch", slotId, selection } : null;
+        }
+        case "class-archetype": {
+            const value = draft.classArchetypeChoices[slotId];
+            return typeof value === "string" && value.length > 0 ? { kind: "class-archetype", slotId, value } : null;
         }
         case "singleton-choice": {
             const value = draft.singletonChoices[slotId];

@@ -2,9 +2,11 @@ import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
+import { isBattleCreedSelected } from "../wayfinder/class-archetype/registry.js";
 import { SLOT_IDS } from "../wayfinder/slot-ids.js";
 import { createEmbeddedSource } from "./selection-application.js";
-import { createClericFontEntrySource, createClericPreparedEntrySource, ensureSpellcastingEntryFromSource, spellLocationId, syncSpellcastingEntry, } from "./spellcasting-entry-support.js";
+import { createBattleFontEntrySource, createClericFontEntrySource, createClericPreparedEntrySource, ensureSpellcastingEntryFromSource, spellLocationId, syncSpellcastingEntry, } from "./spellcasting-entry-support.js";
+const BATTLE_CREED_UUID = "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5";
 export async function syncNativeClassSpellcasting(actor, draft) {
     const classSlug = getCurrentClassSlug(actor, draft);
     if (classSlug !== "cleric") {
@@ -13,7 +15,8 @@ export async function syncNativeClassSpellcasting(actor, draft) {
     await syncClericSpellcasting(actor, draft);
 }
 async function syncClericSpellcasting(actor, draft) {
-    const preparedEntry = await ensureSpellcastingEntryFromSource(actor, createClericPreparedEntrySource(actor, draft), {
+    const usesBattleCreed = hasBattleCreed(actor, draft);
+    const preparedEntry = await ensureSpellcastingEntryFromSource(actor, createClericPreparedEntrySource(actor, draft, usesBattleCreed ? "battle-creed" : "standard"), {
         destinationKey: "cleric-divine-prepared",
         matches: (item) => item?.type === "spellcastingEntry" &&
             String(item?.name ?? "") === "Divine Prepared Spells" &&
@@ -28,6 +31,10 @@ async function syncClericSpellcasting(actor, draft) {
                 .toLowerCase() === "wis",
     });
     if (!preparedEntry?.id) {
+        return;
+    }
+    if (usesBattleCreed) {
+        await syncBattleFont(actor, draft);
         return;
     }
     const divineFont = resolveClericDivineFont(actor, draft);
@@ -45,7 +52,7 @@ async function syncClericSpellcasting(actor, draft) {
         return;
     }
     await pruneExtraClericFontEntries(actor, fontEntry.id);
-    const fontSpell = await ensureClericFontSpell(actor, fontEntry, divineFont);
+    const [fontSpell] = await reconcileClericFontSpells(actor, fontEntry, [divineFontSpellSelection(fontEntry.id, divineFont)], fontKey);
     if (!fontSpell?.id) {
         return;
     }
@@ -59,6 +66,26 @@ function getCurrentClassSlug(actor, draft) {
     }
     const draftedClass = draft.selections[SLOT_IDS.class];
     return extractDocumentSlug(draftedClass);
+}
+function hasBattleCreed(actor, draft) {
+    return (isBattleCreedSelected(draft) ||
+        listActorItems(actor).some((item) => itemMatchesSourceId(item, BATTLE_CREED_UUID)));
+}
+async function syncBattleFont(actor, draft) {
+    const fontEntry = await ensureSpellcastingEntryFromSource(actor, createBattleFontEntrySource(actor, draft), {
+        destinationKey: "cleric-battle-font",
+        matches: (item) => isClericFontEntry(item),
+    });
+    if (!fontEntry?.id) {
+        return;
+    }
+    await pruneExtraClericFontEntries(actor, fontEntry.id);
+    const fontSpells = await reconcileClericFontSpells(actor, fontEntry, battleFontSpellSelections(fontEntry.id), "cleric-battle-font");
+    if (fontSpells.length !== 2) {
+        return;
+    }
+    await syncSpellcastingEntry(actor, fontEntry, createBattleFontEntrySource(actor, draft));
+    await sanitizeBattleFontPreparedSlots(actor, fontEntry, new Set(fontSpells.flatMap((spell) => (spell.id ? [spell.id] : []))));
 }
 function resolveClericDivineFont(actor, draft) {
     const drafted = Object.entries(draft.classChoices).find(([slotId]) => slotId.includes("-divine-font-") && /-level-\d+$/.test(slotId))?.[1];
@@ -99,43 +126,67 @@ async function pruneExtraClericFontEntries(actor, keepEntryId) {
         await actor.deleteEmbeddedDocuments("Item", deleteIds);
     }
 }
-async function ensureClericFontSpell(actor, entry, divineFont) {
+async function reconcileClericFontSpells(actor, entry, desiredSelections, destinationKey) {
     if (typeof entry.id !== "string") {
-        return null;
+        return [];
     }
-    const desiredSelection = divineFontSpellSelection(entry.id, divineFont);
-    const desiredSourceId = desiredSelection.uuid;
     const entrySpells = listActorItems(actor).filter((item) => item?.type === "spell" && spellLocationId(item) === entry.id);
-    const keep = entrySpells.find((item) => itemMatchesSourceId(item, desiredSourceId)) ?? null;
+    const keptByUuid = new Map();
+    for (const selection of desiredSelections) {
+        const keep = entrySpells.find((item) => !Array.from(keptByUuid.values()).includes(item) && itemMatchesSourceId(item, selection.uuid));
+        if (keep) {
+            keptByUuid.set(selection.uuid, keep);
+        }
+    }
+    const keptIds = new Set(Array.from(keptByUuid.values()).flatMap((item) => (item.id ? [item.id] : [])));
     const obsoleteIds = entrySpells
-        .filter((item) => !keep || item.id !== keep.id)
+        .filter((item) => !item.id || !keptIds.has(item.id))
         .map((item) => item.id)
         .filter((id) => !!id);
     if (obsoleteIds.length > 0 && typeof actor?.deleteEmbeddedDocuments === "function") {
         await actor.deleteEmbeddedDocuments("Item", obsoleteIds);
     }
-    if (keep) {
-        return keep;
-    }
-    const source = await createEmbeddedSource(desiredSelection);
-    if (!source) {
-        return null;
-    }
-    source.system ??= {};
-    source.system.location ??= {};
-    if (typeof source.system.location === "object" && source.system.location !== null) {
-        source.system.location.value = entry.id;
-    }
-    else {
+    for (const desiredSelection of desiredSelections) {
+        if (keptByUuid.has(desiredSelection.uuid)) {
+            continue;
+        }
+        const source = await createEmbeddedSource(desiredSelection);
+        if (!source) {
+            continue;
+        }
+        source.system ??= {};
         source.system.location = { value: entry.id };
+        source.flags ??= {};
+        source.flags[MODULE_ID] = {
+            importedBy: MODULE_ID,
+            destinationKey,
+        };
+        const [created] = typeof actor.createEmbeddedDocuments === "function" ? await actor.createEmbeddedDocuments("Item", [source]) : [];
+        if (created) {
+            keptByUuid.set(desiredSelection.uuid, created);
+        }
     }
-    source.flags ??= {};
-    source.flags[MODULE_ID] = {
-        importedBy: MODULE_ID,
-        destinationKey: `cleric-divine-font-${divineFont}`,
-    };
-    const [created] = typeof actor.createEmbeddedDocuments === "function" ? await actor.createEmbeddedDocuments("Item", [source]) : [];
-    return created ?? null;
+    return desiredSelections.flatMap((selection) => {
+        const item = keptByUuid.get(selection.uuid);
+        return item ? [item] : [];
+    });
+}
+async function sanitizeBattleFontPreparedSlots(actor, entry, allowedSpellIds) {
+    if (!entry.id || !entry.system?.slots || typeof actor.updateEmbeddedDocuments !== "function") {
+        return;
+    }
+    const slots = entry.system.slots;
+    const sanitized = Object.fromEntries(Object.entries(slots).map(([slotKey, group]) => [
+        slotKey,
+        {
+            ...group,
+            prepared: Array.isArray(group.prepared)
+                ? group.prepared.map((slot) => typeof slot?.id === "string" && allowedSpellIds.has(slot.id) ? slot : { id: null, expended: false })
+                : [],
+        },
+    ]));
+    await actor.updateEmbeddedDocuments("Item", [{ _id: entry.id, "system.slots": sanitized }]);
+    entry.system.slots = sanitized;
 }
 function divineFontSpellSelection(entryId, divineFont) {
     const documentId = divineFont === "heal" ? "rfZpqmj0AIIdkVIs" : "wdA52JJnsuQWeyqz";
@@ -151,11 +202,39 @@ function divineFontSpellSelection(entryId, divineFont) {
         level: 1,
     };
 }
+function battleFontSpellSelections(entryId) {
+    return [
+        {
+            slotId: `cleric-battle-font-spell-${entryId}-bane`,
+            packId: "pf2e.spells-srd",
+            documentId: "7ZinJNzxq0XF0oMx",
+            uuid: "Compendium.pf2e.spells-srd.Item.7ZinJNzxq0XF0oMx",
+            itemType: "spell",
+            featType: null,
+            name: "Bane",
+            level: 1,
+            slug: "bane",
+        },
+        {
+            slotId: `cleric-battle-font-spell-${entryId}-bless`,
+            packId: "pf2e.spells-srd",
+            documentId: "XSujb7EsSwKl19Uu",
+            uuid: "Compendium.pf2e.spells-srd.Item.XSujb7EsSwKl19Uu",
+            itemType: "spell",
+            featType: null,
+            name: "Bless",
+            level: 1,
+            slug: "bless",
+        },
+    ];
+}
 function isClericFontEntry(item) {
     if (item?.type !== "spellcastingEntry") {
         return false;
     }
     return (String(item?.name ?? "").startsWith("Divine Font (") ||
-        String(item?.flags?.[MODULE_ID]?.destinationKey ?? "").startsWith("cleric-divine-font-"));
+        String(item?.name ?? "") === "Battle Font" ||
+        String(item?.flags?.[MODULE_ID]?.destinationKey ?? "").startsWith("cleric-divine-font-") ||
+        String(item?.flags?.[MODULE_ID]?.destinationKey ?? "") === "cleric-battle-font");
 }
 //# sourceMappingURL=native-spellcasting-application.js.map

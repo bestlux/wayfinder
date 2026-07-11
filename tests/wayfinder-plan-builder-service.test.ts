@@ -246,6 +246,7 @@ describe("wayfinder plan builder service", () => {
       return [step("flag-choice-none-feat-source-muse-level-2")];
     });
     const buildLanguageChoiceSteps = vi.fn(async () => []);
+    const buildClassArchetypeSteps = vi.fn(async () => []);
     const buildClassBranchSteps = vi.fn(async (params) => {
       expect(params.draft).toBe(draft);
       expect(params.effectiveClassDocument).toBe(classDocument);
@@ -360,6 +361,7 @@ describe("wayfinder plan builder service", () => {
         ...(await deps.buildFlagChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildSingletonChoiceSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildLanguageChoiceSteps(receivedSnapshot, receivedDraft, 4)),
+        ...(await deps.buildClassArchetypeSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassBranchSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassGrantedItemSteps(receivedSnapshot, receivedDraft, 4)),
         ...(await deps.buildClassChoiceSteps(receivedSnapshot, receivedDraft, 4)),
@@ -390,6 +392,7 @@ describe("wayfinder plan builder service", () => {
         buildFlagChoiceSteps,
         buildSingletonChoiceSteps,
         buildLanguageChoiceSteps,
+        buildClassArchetypeSteps,
         buildClassBranchSteps,
         buildClassGrantedItemSteps,
         buildClassChoiceSteps,
@@ -432,6 +435,7 @@ describe("wayfinder plan builder service", () => {
       targetLevel: 4,
       fulfilledCount: 2,
       fulfilledStepIds: ["class-feat-level-2", "skill-feat-level-1"],
+      reservedStepIds: [],
     });
     expect(buildClassSkillFeatSteps).toHaveBeenCalledWith({
       effectiveClassDocument: classDocument,
@@ -483,6 +487,7 @@ describe("wayfinder plan builder service", () => {
         buildFlagChoiceSteps: async () => [],
         buildSingletonChoiceSteps: async () => [],
         buildLanguageChoiceSteps: async () => [],
+        buildClassArchetypeSteps: async () => [],
         buildClassBranchSteps: async () => [],
         buildClassGrantedItemSteps: async () => [],
         buildClassChoiceSteps: async () => [],
@@ -579,6 +584,7 @@ describe("wayfinder plan builder service", () => {
         buildFlagChoiceSteps: async () => [],
         buildSingletonChoiceSteps: async () => [],
         buildLanguageChoiceSteps: async () => [],
+        buildClassArchetypeSteps: async () => [],
         buildClassBranchSteps: async () => [],
         buildClassGrantedItemSteps: async () => [],
         buildClassChoiceSteps,
@@ -735,6 +741,7 @@ describe("wayfinder plan builder service", () => {
           buildFlagChoiceSteps: async () => [],
           buildSingletonChoiceSteps: async () => [],
           buildLanguageChoiceSteps: async () => [],
+          buildClassArchetypeSteps: async () => [],
           buildClassBranchSteps: async () => [],
           buildClassGrantedItemSteps: async () => [],
           buildClassChoiceSteps,
@@ -863,6 +870,7 @@ describe("wayfinder plan builder service", () => {
           buildFlagChoiceSteps: async () => [],
           buildSingletonChoiceSteps: async () => [],
           buildLanguageChoiceSteps: async () => [],
+          buildClassArchetypeSteps: async () => [],
           buildClassBranchSteps: async () => [],
           buildClassGrantedItemSteps: async () => [],
           buildClassChoiceSteps,

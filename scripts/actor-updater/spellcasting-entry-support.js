@@ -81,7 +81,7 @@ export function createSpellcastingEntrySource(spellChoice, actor, draft) {
         },
     };
 }
-export function createClericPreparedEntrySource(actor, draft) {
+export function createClericPreparedEntrySource(actor, draft, profile = "standard") {
     return {
         name: "Divine Prepared Spells",
         type: "spellcastingEntry",
@@ -113,7 +113,9 @@ export function createClericPreparedEntrySource(actor, draft) {
             showSlotlessLevels: {
                 value: true,
             },
-            slots: buildClericPreparedSlots(actor, draft),
+            slots: profile === "battle-creed"
+                ? buildBattleCreedPreparedSlots(actor, draft)
+                : buildClericPreparedSlots(actor, draft),
             slug: null,
             spelldc: {
                 dc: 0,
@@ -128,6 +130,57 @@ export function createClericPreparedEntrySource(actor, draft) {
             [MODULE_ID]: {
                 importedBy: MODULE_ID,
                 destinationKey: "cleric-divine-prepared",
+            },
+        },
+    };
+}
+export function createBattleFontEntrySource(actor, draft) {
+    return {
+        name: "Battle Font",
+        type: "spellcastingEntry",
+        img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
+        system: {
+            ability: {
+                value: "wis",
+            },
+            autoHeightenLevel: {
+                value: null,
+            },
+            description: {
+                value: "",
+            },
+            prepared: {
+                flexible: false,
+                value: "prepared",
+            },
+            proficiency: {
+                slug: "cleric",
+                value: 1,
+            },
+            publication: {
+                license: "ORC",
+                remaster: true,
+                title: "",
+            },
+            rules: [],
+            showSlotlessLevels: {
+                value: false,
+            },
+            slots: buildClericFontSlots(actor, draft, null),
+            slug: null,
+            spelldc: {
+                dc: 0,
+                value: 0,
+            },
+            tradition: {
+                value: "divine",
+            },
+            traits: {},
+        },
+        flags: {
+            [MODULE_ID]: {
+                importedBy: MODULE_ID,
+                destinationKey: "cleric-battle-font",
             },
         },
     };
@@ -191,13 +244,16 @@ export async function syncSpellcastingEntry(actor, entry, desiredSource) {
     }
     const desiredSystem = desiredSource.system ?? {};
     const desiredFlags = desiredSource.flags ?? {};
+    const desiredProficiency = desiredSystem.proficiency;
     const mergedSlots = mergeSpellcastingEntrySlots(entry?.system?.slots, desiredSystem.slots ?? {});
     await actor.updateEmbeddedDocuments("Item", [
         {
             _id: entry.id,
+            name: desiredSource.name,
             "system.ability.value": desiredSystem.ability?.value ?? "",
             "system.prepared.flexible": desiredSystem.prepared?.flexible ?? false,
             "system.prepared.value": desiredSystem.prepared?.value ?? "",
+            "system.proficiency.slug": typeof desiredProficiency?.slug === "string" ? desiredProficiency.slug : "",
             "system.showSlotlessLevels.value": desiredSystem.showSlotlessLevels?.value ?? true,
             "system.slots": mergedSlots,
             "system.tradition.value": desiredSystem.tradition?.value ?? "",
@@ -205,6 +261,7 @@ export async function syncSpellcastingEntry(actor, entry, desiredSource) {
             [`flags.${MODULE_ID}.importedBy`]: desiredFlags?.[MODULE_ID]?.importedBy ?? MODULE_ID,
         },
     ]);
+    entry.name = desiredSource.name;
     entry.system ??= {};
     entry.system.slots = mergedSlots;
 }
@@ -251,6 +308,29 @@ function buildSpontaneousSpellcastingSlots(actor, draft) {
 }
 function buildClericPreparedSlots(actor, draft) {
     return buildFullPreparedSpellcastingSlots(actor, draft);
+}
+export function buildBattleCreedPreparedSlots(actor, draft) {
+    const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
+    const slots = {
+        slot0: makePreparedSlotGroup(5),
+    };
+    if (currentLevel === 1) {
+        slots.slot1 = makePreparedSlotGroup(1);
+        return slots;
+    }
+    if (currentLevel === 2) {
+        slots.slot1 = makePreparedSlotGroup(2);
+        return slots;
+    }
+    if (currentLevel === 3) {
+        slots.slot1 = makePreparedSlotGroup(2);
+        slots.slot2 = makePreparedSlotGroup(1);
+        return slots;
+    }
+    const maxRank = wizardMaxSpellRank(currentLevel);
+    slots[`slot${maxRank - 1}`] = makePreparedSlotGroup(2);
+    slots[`slot${maxRank}`] = makePreparedSlotGroup(2);
+    return slots;
 }
 function buildFullPreparedSpellcastingSlots(actor, draft) {
     const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
@@ -344,6 +424,16 @@ function mergeSpellcastingEntrySlots(existingSlots, desiredSlots) {
             max: desiredMax,
             value: Math.min(desiredMax, Math.max(0, existingMax < desiredMax ? desiredMax : Number(existingGroup?.value ?? desiredGroup?.value ?? desiredMax) || 0)),
             prepared: mergedPrepared,
+        };
+    }
+    for (const slotKey of Object.keys(existingSlots ?? {})) {
+        if (slotKey in desiredSlots) {
+            continue;
+        }
+        merged[slotKey] = {
+            max: 0,
+            value: 0,
+            prepared: [],
         };
     }
     return merged;

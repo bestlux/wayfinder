@@ -2,9 +2,52 @@ import { describe, expect, it } from "vitest";
 import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 import { getWayfinderStepStatus, isWayfinderStepComplete } from "../src/wayfinder/domain/step-evaluation";
-import { createClassChoiceStep, createSpellChoiceStep, getStepModeLabel } from "../src/wayfinder/domain/step-types";
+import {
+  createClassArchetypeStep,
+  createClassChoiceStep,
+  createSpellChoiceStep,
+  getStepModeLabel,
+} from "../src/wayfinder/domain/step-types";
 
 describe("wayfinder domain step evaluation", () => {
+  it("treats explicit Standard as a complete class-archetype decision", async () => {
+    const draft = createEmptyDraft(1);
+    const step = createClassArchetypeStep(1, {
+      slotId: "class-archetype-doctrine-level-1",
+      standardValue: "standard",
+      sourceName: "Doctrine",
+      selector: {
+        slotId: "class-branch-doctrine-level-1",
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "doctrine",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.doctrine",
+        selectorName: "Doctrine",
+        selectorRuleIndex: 0,
+        flag: "doctrine",
+        optionTag: "cleric-doctrine",
+        classSlug: "cleric",
+        dependsOn: "class",
+      },
+      options: [
+        { value: "standard", label: "Standard class path", img: null, detail: null },
+        { value: "battle-creed", label: "Battle Creed", img: null, detail: null },
+      ],
+    });
+    draft.classArchetypeChoices[step.slotId] = "standard";
+
+    expect(
+      await isWayfinderStepComplete(step, draft, {} as EffectiveBuildState, {
+        isTrainingStepComplete: () => false,
+      })
+    ).toBe(true);
+    expect(
+      await getWayfinderStepStatus(step, draft, new Set(), {} as EffectiveBuildState, {
+        isTrainingStepComplete: () => false,
+      })
+    ).toBe("Standard class path");
+    expect(getStepModeLabel(step.kind)).toBe("Class Archetype");
+  });
+
   it("uses typed class-choice metadata to resolve the selected label", async () => {
     const draft = createEmptyDraft(1);
     const step = createClassChoiceStep(1, {

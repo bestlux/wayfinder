@@ -9,6 +9,12 @@ import type {
   SelectionRef,
 } from "../types.js";
 import {
+  classArchetypeProfilesForSelector,
+  classArchetypeSlotId,
+  isBattleCreedSelected,
+  STANDARD_CLASS_PATH,
+} from "./class-archetype/registry.js";
+import {
   buildClassBranchStepsFromRules,
   buildClassChoiceStepsFromFeatureSources,
   buildClassChoiceStepsFromRules,
@@ -17,12 +23,18 @@ import {
   type ClassFeatureSelectionSource,
 } from "./class-choice/step-builders.js";
 import { remainingCreationBoostChoices } from "./domain/boost-rules.js";
-import { createPickItemStep, type PickItemSlotKind, type StepFilters } from "./domain/step-types.js";
+import {
+  createPickItemStep,
+  createSkillTrainingStep,
+  type PickItemSlotKind,
+  type StepFilters,
+} from "./domain/step-types.js";
 import { matchesChoicePredicateList } from "./rule-data.js";
 import { discoverSourceSkillTrainingMeta, type SkillTrainingSourceContext } from "./skill-training/source-discovery.js";
 
 interface BuildClassTrainingStepsParams {
   draftClassSelection: SelectionRef | null;
+  includeBaseClassTraining?: boolean;
   sourceSelections?: SkillTrainingSourceContext[];
   targetLevel: number;
   effectiveBuildState: EffectiveBuildState;
@@ -36,6 +48,7 @@ interface BuildClassFeatStepsParams {
   targetLevel: number;
   fulfilledCount: number;
   fulfilledStepIds?: readonly string[];
+  reservedStepIds?: readonly string[];
 }
 
 interface BuildClassSkillFeatStepsParams {
@@ -89,6 +102,7 @@ interface ClassDocumentLike {
 export async function buildClassTrainingSteps(params: BuildClassTrainingStepsParams): Promise<PendingStep[]> {
   const {
     draftClassSelection,
+    includeBaseClassTraining = true,
     sourceSelections = [],
     targetLevel,
     effectiveBuildState,
@@ -101,25 +115,57 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
   }
 
   if (
-    !effectiveBuildState.ancestry ||
-    !effectiveBuildState.background ||
-    !effectiveBuildState.class ||
-    remainingCreationBoostChoices(effectiveBuildState) > 0
+    includeBaseClassTraining &&
+    (!effectiveBuildState.ancestry ||
+      !effectiveBuildState.background ||
+      !effectiveBuildState.class ||
+      remainingCreationBoostChoices(effectiveBuildState) > 0)
   ) {
     return [];
   }
 
   const effectiveClassDocument = await fetchSelectionDocument(draftClassSelection);
+  const sourceTraining = discoverSourceSkillTrainingMeta({
+    sources: sourceSelections,
+    localize,
+  });
+  if (!includeBaseClassTraining) {
+    const sourceSelection = sourceSelections.find((source) => source.sourceSelection)?.sourceSelection ?? null;
+    const hasSourceTraining =
+      sourceTraining.fixedSkills.length > 0 ||
+      sourceTraining.fixedLores.length > 0 ||
+      sourceTraining.choiceRules.length > 0 ||
+      sourceTraining.loreChoices.length > 0;
+    if (!sourceSelection || !hasSourceTraining) {
+      return [];
+    }
+
+    const sourceSlug = sourceSelection.slug ?? slugifyName(sourceSelection.name) ?? sourceSelection.documentId;
+    const level = Math.max(1, sourceSelection.level ?? 1);
+    return [
+      createSkillTrainingStep(
+        level,
+        `${sourceSelection.name} skill training`,
+        `Choose the skill training granted by ${sourceSelection.name}.`,
+        {
+          classSlug: extractSlug(effectiveClassDocument) ?? "class",
+          className: sourceSelection.name,
+          ...sourceTraining,
+          additionalCount: 0,
+        },
+        {
+          slotId: `skill-training-${sourceSlug}-level-${level}`,
+        }
+      ),
+    ];
+  }
+
   const steps = buildClassTrainingStepsFromRules({
     effectiveClassDocument,
     classSelection: draftClassSelection,
     extractSlug,
     localize,
     intelligenceModifier: effectiveBuildState.projectedAbilities.int.modifier,
-  });
-  const sourceTraining = discoverSourceSkillTrainingMeta({
-    sources: sourceSelections,
-    localize,
   });
 
   return steps.map((step) => ({
@@ -146,6 +192,7 @@ export async function buildClassFeatSteps(params: BuildClassFeatStepsParams): Pr
       featTypes: ["class", "archetype"],
       maxLevel: level,
     }),
+    reservedStepIds: params.reservedStepIds,
   });
 }
 
@@ -172,14 +219,22 @@ export async function buildClassBranchSteps(params: BuildClassBranchStepsParams)
     localize: (value) => value,
   });
   const rollOptions = buildDraftClassBranchRollOptions(params.draft, steps, classChoiceSteps);
-  return steps.filter(
-    (step) =>
+  return steps.filter((step) => {
+    const existingSelection = params.readExistingBranchSelection(step.branch);
+    if (
+      classArchetypeProfilesForSelector(step.branch).length > 0 &&
+      !params.draft.branchSelections[step.slotId] &&
+      !existingSelection &&
+      params.draft.classArchetypeChoices[classArchetypeSlotId(step.branch)] !== STANDARD_CLASS_PATH
+    ) {
+      return false;
+    }
+
+    return (
       branchPredicateMatches(step.branch, rollOptions) &&
-      !shouldSkipExistingStep(
-        params.draft.branchSelections[step.slotId],
-        params.readExistingBranchSelection(step.branch)
-      )
-  );
+      !shouldSkipExistingStep(params.draft.branchSelections[step.slotId], existingSelection)
+    );
+  });
 }
 
 function branchPredicateMatches(branch: ClassBranchMeta, rollOptions: Set<string>): boolean {
@@ -277,6 +332,11 @@ export async function buildClassChoiceSteps(params: BuildClassChoiceStepsParams)
   ];
   return dedupeStepsBySlotId(steps).filter(
     (step) =>
+      !(
+        isBattleCreedSelected(params.draft) &&
+        step.kind === "class-choice" &&
+        step.classChoice.flag === "divineFont"
+      ) &&
       !shouldSkipExistingStep(
         params.draft.classChoices[step.slotId],
         params.readExistingClassChoiceSelection(step.classChoice)
@@ -306,6 +366,7 @@ function buildFeatStepsFromClassLevels(args: {
   targetLevel: number;
   fulfilledCount: number;
   fulfilledStepIds?: readonly string[];
+  reservedStepIds?: readonly string[];
   title: (level: number) => string;
   description: string;
   filters: (level: number) => StepFilters;
@@ -328,11 +389,13 @@ function buildFeatStepsFromClassLevels(args: {
   }
 
   const milestones = Array.from(new Set(levels)).sort((left, right) => left - right);
+  const reservedSlotIds = fulfilledStepIdsForKind(args.reservedStepIds ?? [], slotKind);
+  const availableMilestones = milestones.filter((level) => !reservedSlotIds.has(`${slotKind}-level-${level}`));
   const fulfilledSlotIds = fulfilledStepIdsForKind(args.fulfilledStepIds ?? [], slotKind);
   const effectiveMilestones =
     fulfilledSlotIds.size > 0
-      ? milestones.filter((level) => !fulfilledSlotIds.has(`${slotKind}-level-${level}`))
-      : milestones.slice(Math.min(Math.max(0, fulfilledCount), milestones.length));
+      ? availableMilestones.filter((level) => !fulfilledSlotIds.has(`${slotKind}-level-${level}`))
+      : availableMilestones.slice(Math.min(Math.max(0, fulfilledCount), availableMilestones.length));
 
   return effectiveMilestones.map((level) =>
     createPickItemStep(slotKind, level, args.title(level), args.description, args.filters(level))

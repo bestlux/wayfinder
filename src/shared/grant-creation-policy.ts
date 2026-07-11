@@ -1,7 +1,15 @@
 import type { PendingStep } from "../types.js";
 
 export function usesNativeGrantItemCreation(step: PendingStep | null | undefined): boolean {
-  if (step?.kind !== "pick-item" || step.slotKind !== "grant-choice" || !step.grantSelection) {
+  if (step?.kind !== "pick-item" || step.slotKind !== "grant-choice") {
+    return false;
+  }
+
+  if (step.staticGrantReplacement) {
+    return true;
+  }
+
+  if (!step.grantSelection) {
     return false;
   }
 

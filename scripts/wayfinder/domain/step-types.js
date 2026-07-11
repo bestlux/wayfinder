@@ -16,6 +16,7 @@ export function createPickItemStep(slotKind, level, title, description, filters,
         ...createBaseStep("pick-item", slotKind, level, title, description, options),
         filters,
         ...(options.grantSelection ? { grantSelection: options.grantSelection } : {}),
+        ...(options.staticGrantReplacement ? { staticGrantReplacement: options.staticGrantReplacement } : {}),
         ...(options.flagChoice ? { flagChoice: options.flagChoice } : {}),
     };
 }
@@ -71,6 +72,16 @@ export function createClassBranchStep(level, branch, options = {}) {
         branch,
     };
 }
+export function createClassArchetypeStep(level, classArchetype, options = {}) {
+    return {
+        ...createBaseStep("class-archetype", "class-archetype", level, options.title ?? "Choose a class path", options.description ??
+            "Choose the standard class progression or a supported class archetype that replaces part of it.", {
+            ...options,
+            slotId: options.slotId ?? classArchetype.slotId,
+        }),
+        classArchetype,
+    };
+}
 export function createClassChoiceStep(level, classChoice, options = {}) {
     return {
         ...createBaseStep("class-choice", "class-choice", level, options.title ?? classChoice.sourceName, options.description ?? "", {
@@ -97,6 +108,9 @@ export function isPickItemStep(step) {
 }
 export function isClassBranchStep(step) {
     return step.kind === "class-branch";
+}
+export function isClassArchetypeStep(step) {
+    return step.kind === "class-archetype";
 }
 export function isClassChoiceStep(step) {
     return step.kind === "class-choice";
@@ -132,16 +146,17 @@ const SLOT_KIND_SORT_WEIGHTS = {
     "grant-choice": 6,
     "flag-choice": 7,
     deity: 8,
-    "singleton-choice": 9,
-    "class-choice": 10,
-    "class-branch": 11,
-    "skill-training": 12,
-    "language-choice": 13,
-    "spell-choice": 14,
-    "class-feat": 15,
-    "skill-feat": 16,
-    "general-feat": 17,
-    "skill-increase": 18,
+    "class-archetype": 9,
+    "singleton-choice": 10,
+    "class-choice": 11,
+    "class-branch": 12,
+    "skill-training": 13,
+    "language-choice": 14,
+    "spell-choice": 15,
+    "class-feat": 16,
+    "skill-feat": 17,
+    "general-feat": 18,
+    "skill-increase": 19,
 };
 const STEP_MODE_LABELS = {
     "pick-item": "Selection",
@@ -150,6 +165,7 @@ const STEP_MODE_LABELS = {
     "skill-increase": "Skill",
     "singleton-choice": "Choice",
     "language-choice": "Languages",
+    "class-archetype": "Class Archetype",
     "class-branch": "Class Path",
     "class-choice": "Class Choice",
     "spell-choice": "Spells",

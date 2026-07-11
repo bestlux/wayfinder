@@ -130,6 +130,8 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
       ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER },
       system: { details: { level: { value: 1 } } },
     });
+    await seedActorSkillRanks(actor, smokeCase);
+    await seedActorItems(actor, smokeCase, failures);
 
     const draft = modules.createEmptyDraft(smokeCase.targetLevel);
     await seedCreationDraft(draft, smokeCase);
@@ -264,6 +266,9 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
     classifications.push(...incrementalFill.classifications.map((entry) => `incremental: ${entry}`));
 
     const incrementalPlan = await buildPlan(actor, incrementalDraft, modules);
+    console.log(
+      `WFSMOKE ${smokeCase.id} incremental plan ${incrementalPlan.steps.map((step) => step.slotId).join(",")}`,
+    );
     const incrementalIncomplete = await incompleteSteps(actor, incrementalDraft, incrementalPlan.steps, modules);
     if (incrementalIncomplete.length > 0) {
       failures.push(
@@ -362,7 +367,7 @@ async function seedCreationDraft(draft, smokeCase) {
     "0": ancestryBoosts[0],
     "1": ancestryBoosts[1],
   };
-  draft.boosts.background.selectedBoosts = {
+  draft.boosts.background.selectedBoosts = smokeCase.backgroundBoosts ?? {
     "0": "wis",
     "1": "con",
   };
@@ -437,6 +442,13 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
       const option = pickInlineOption(step.classChoice.options, step, smokeCase);
       if (option) {
         draft.classChoices[step.slotId] = option.value;
+      }
+      return;
+    }
+    case "class-archetype": {
+      const option = pickInlineOption(step.classArchetype.options, step, smokeCase);
+      if (option) {
+        draft.classArchetypeChoices[step.slotId] = option.value;
       }
       return;
     }
@@ -576,8 +588,13 @@ function fillSkillTraining(draft, step, smokeCase) {
   const additional = [];
 
   for (const choice of step.training.choiceRules) {
-    const options = choice.options.map((option) => option.slug);
-    const selection = preferred.find((skill) => options.includes(skill) && !used.has(skill)) ?? options[0];
+    const options = [...choice.options, ...(choice.fallbackOptions ?? [])].map((option) => option.slug);
+    const explicitSelection =
+      smokeCase.preferredRuleChoices?.[choice.key] ?? smokeCase.preferredRuleChoices?.[choice.flag];
+    const selection =
+      (options.includes(explicitSelection) && !used.has(explicitSelection) ? explicitSelection : null) ??
+      preferred.find((skill) => options.includes(skill) && !used.has(skill)) ??
+      options[0];
     if (selection) {
       ruleChoices[choice.key] = selection;
       used.add(selection);
@@ -679,9 +696,45 @@ function pickInlineOption(options, step, smokeCase) {
 
 function collectActorEvidence(actor, modules, moduleId) {
   const items = modules.listActorItems(actor).map((item) => ({
+    id: item.id,
     name: item.name,
     slotId: item.flags?.[moduleId]?.slotId ?? null,
+    destinationKey: item.flags?.[moduleId]?.destinationKey ?? null,
+    grantedById: item.flags?.pf2e?.grantedBy?.id ?? null,
+    grantRules: (Array.isArray(item.system?.rules) ? item.system.rules : []).flatMap((rule) =>
+      rule?.key === "GrantItem"
+        ? [
+            {
+              allowDuplicate: rule.allowDuplicate ?? null,
+              flag: rule.flag ?? null,
+              uuid: rule.uuid ?? null,
+            },
+          ]
+        : [],
+    ),
+    location:
+      typeof item.system?.location === "string" ? item.system.location : (item.system?.location?.value ?? null),
+    ruleSelections: item.flags?.pf2e?.rulesSelections ?? {},
     sourceId: modules.sourceIdOf(item),
+    spellcasting:
+      item.type === "spellcastingEntry"
+        ? {
+            prepared: item.system?.prepared?.value ?? null,
+            proficiencySlug: item.system?.proficiency?.slug ?? null,
+            slots: Object.fromEntries(
+              Object.entries(item.system?.slots ?? {}).map(([slotKey, group]) => [
+                slotKey,
+                {
+                  max: Number(group?.max ?? 0),
+                  prepared: Array.isArray(group?.prepared)
+                    ? group.prepared.map((slot) => slot?.id ?? null)
+                    : [],
+                },
+              ]),
+            ),
+            tradition: item.system?.tradition?.value ?? null,
+          }
+        : null,
     trainingKey: item.flags?.[moduleId]?.trainingKey ?? null,
     type: item.type,
   }));
@@ -726,6 +779,14 @@ function validateAppliedCase({
     failures.push(`Expected steps did not render: ${missingExpectedStepIds.join(", ")}`);
   }
 
+  const forbiddenStepIds = Array.isArray(smokeCase.forbiddenStepIds) ? smokeCase.forbiddenStepIds : [];
+  const renderedForbiddenStepIds = forbiddenStepIds.filter((slotId) => preStepIds.includes(slotId));
+  if (renderedForbiddenStepIds.length > 0) {
+    failures.push(`Forbidden steps rendered: ${renderedForbiddenStepIds.join(", ")}`);
+  }
+
+  validateActorExpectations(actorEvidence, smokeCase, failures);
+
   if (lifecycleResult.kind !== "applied") {
     failures.push(`Apply lifecycle returned ${lifecycleResult.kind}`);
   }
@@ -740,7 +801,10 @@ function validateAppliedCase({
 
   const unexpectedDuplicateSlotIds = actorEvidence.duplicateSlotIds.filter(
     (slotId) =>
-      !slotId.startsWith("class-branch-") && !slotId.startsWith("deity-level-") && !slotId.startsWith("grant-choice-"),
+      !slotId.startsWith("class-archetype-") &&
+      !slotId.startsWith("class-branch-") &&
+      !slotId.startsWith("deity-level-") &&
+      !slotId.startsWith("grant-choice-"),
   );
   if (unexpectedDuplicateSlotIds.length > 0) {
     failures.push(`Duplicate Wayfinder slot ids: ${unexpectedDuplicateSlotIds.join(", ")}`);
@@ -799,6 +863,14 @@ function validateIncrementalCase({
     failures.push(`Expected steps did not render: ${missingExpectedStepIds.join(", ")}`);
   }
 
+  const forbiddenStepIds = Array.isArray(smokeCase.forbiddenStepIds) ? smokeCase.forbiddenStepIds : [];
+  const renderedForbiddenStepIds = forbiddenStepIds.filter((slotId) => plannedStepIds.has(slotId));
+  if (renderedForbiddenStepIds.length > 0) {
+    failures.push(`Forbidden steps rendered: ${renderedForbiddenStepIds.join(", ")}`);
+  }
+
+  validateActorExpectations(actorEvidence, smokeCase, failures);
+
   if (actorEvidence.levelAfterApply !== smokeCase.targetLevel) {
     failures.push(`Actor level is ${actorEvidence.levelAfterApply}, expected ${smokeCase.targetLevel}`);
   }
@@ -809,7 +881,10 @@ function validateIncrementalCase({
 
   const unexpectedDuplicateSlotIds = actorEvidence.duplicateSlotIds.filter(
     (slotId) =>
-      !slotId.startsWith("class-branch-") && !slotId.startsWith("deity-level-") && !slotId.startsWith("grant-choice-"),
+      !slotId.startsWith("class-archetype-") &&
+      !slotId.startsWith("class-branch-") &&
+      !slotId.startsWith("deity-level-") &&
+      !slotId.startsWith("grant-choice-"),
   );
   if (unexpectedDuplicateSlotIds.length > 0) {
     failures.push(`Duplicate Wayfinder slot ids: ${unexpectedDuplicateSlotIds.join(", ")}`);
@@ -829,6 +904,123 @@ function validateIncrementalCase({
 
   if (classifications.length > 0) {
     failures.push("Case has unsupported/manual classifications; incremental apply should not have proceeded.");
+  }
+}
+
+function validateActorExpectations(actorEvidence, smokeCase, failures) {
+  const expectedItemNames = Array.isArray(smokeCase.expectedItemNames) ? smokeCase.expectedItemNames : [];
+  const missingItemNames = expectedItemNames.filter(
+    (name) => !actorEvidence.items.some((item) => item.name === name),
+  );
+  if (missingItemNames.length > 0) {
+    failures.push(`Expected actor items are missing: ${missingItemNames.join(", ")}`);
+  }
+
+  const forbiddenItemNames = Array.isArray(smokeCase.forbiddenItemNames) ? smokeCase.forbiddenItemNames : [];
+  const presentForbiddenItemNames = forbiddenItemNames.filter((name) =>
+    actorEvidence.items.some((item) => item.name === name),
+  );
+  if (presentForbiddenItemNames.length > 0) {
+    failures.push(`Forbidden actor items are present: ${presentForbiddenItemNames.join(", ")}`);
+  }
+
+  for (const [name, expectedCount] of Object.entries(smokeCase.expectedItemNameCounts ?? {})) {
+    const actualCount = actorEvidence.items.filter((item) => item.name === name).length;
+    if (actualCount !== expectedCount) {
+      failures.push(`Actor item count for ${name} is ${actualCount}, expected ${expectedCount}`);
+    }
+  }
+
+  for (const [slug, expectedRank] of Object.entries(smokeCase.expectedSkillRanks ?? {})) {
+    const actualRank = actorEvidence.skillRanks[slug] ?? 0;
+    if (actualRank !== expectedRank) {
+      failures.push(`Actor skill rank for ${slug} is ${actualRank}, expected ${expectedRank}`);
+    }
+  }
+
+  for (const [itemName, expectedSelections] of Object.entries(smokeCase.expectedItemRuleSelections ?? {})) {
+    const item = actorEvidence.items.find((candidate) => candidate.name === itemName);
+    for (const [flag, expectedValue] of Object.entries(expectedSelections)) {
+      const actualValue = item?.ruleSelections?.[flag];
+      if (actualValue !== expectedValue) {
+        failures.push(`${itemName} rule selection ${flag} is ${actualValue ?? "missing"}, expected ${expectedValue}`);
+      }
+    }
+  }
+
+  for (const expectation of smokeCase.expectedGrantReplacements ?? []) {
+    const source = actorEvidence.items.find((item) => item.name === expectation.sourceItemName);
+    const rule = source?.grantRules?.find((candidate) => candidate.flag === expectation.flag);
+    if (!source?.id || !rule?.uuid || expectation.originalUuids.includes(rule.uuid)) {
+      failures.push(`${expectation.sourceItemName} did not replace the ${expectation.flag} GrantItem rule`);
+      continue;
+    }
+
+    const grantedItem = actorEvidence.items.find(
+      (item) => item.sourceId === rule.uuid && item.grantedById === source.id,
+    );
+    if (!grantedItem) {
+      failures.push(`${expectation.sourceItemName} did not natively grant its ${expectation.flag} replacement`);
+    }
+  }
+
+  for (const [destinationKey, expectation] of Object.entries(smokeCase.expectedSpellcastingEntries ?? {})) {
+    const entry = actorEvidence.items.find(
+      (item) => item.type === "spellcastingEntry" && item.destinationKey === destinationKey,
+    );
+    if (!entry?.spellcasting) {
+      failures.push(`Expected spellcasting entry is missing: ${destinationKey}`);
+      continue;
+    }
+
+    for (const [slotKey, expectedMax] of Object.entries(expectation.slots ?? {})) {
+      const actualMax = entry.spellcasting.slots?.[slotKey]?.max;
+      if (actualMax !== expectedMax) {
+        failures.push(`${destinationKey} ${slotKey} max is ${actualMax ?? "missing"}, expected ${expectedMax}`);
+      }
+    }
+    for (const slotKey of expectation.forbiddenSlots ?? []) {
+      if (entry.spellcasting.slots?.[slotKey]) {
+        failures.push(`${destinationKey} unexpectedly contains ${slotKey}`);
+      }
+    }
+    if (expectation.proficiencySlug !== undefined && entry.spellcasting.proficiencySlug !== expectation.proficiencySlug) {
+      failures.push(
+        `${destinationKey} proficiency slug is ${entry.spellcasting.proficiencySlug ?? "missing"}, expected ${expectation.proficiencySlug}`,
+      );
+    }
+  }
+
+  for (const [itemName, destinationKey] of Object.entries(smokeCase.expectedItemDestinations ?? {})) {
+    const entry = actorEvidence.items.find(
+      (item) => item.type === "spellcastingEntry" && item.destinationKey === destinationKey,
+    );
+    const item = actorEvidence.items.find((candidate) => candidate.name === itemName && candidate.type === "spell");
+    if (!entry?.id || !item || item.location !== entry.id) {
+      failures.push(`${itemName} is not located in ${destinationKey}`);
+    }
+  }
+}
+
+async function seedActorItems(actor, smokeCase, failures) {
+  const uuids = Array.isArray(smokeCase.preseedItemUuids) ? smokeCase.preseedItemUuids : [];
+  for (const uuid of uuids) {
+    const document = await globalThis.fromUuid(uuid);
+    if (!document?.toObject) {
+      failures.push(`Could not preseed actor item: ${uuid}`);
+      continue;
+    }
+    await actor.createEmbeddedDocuments("Item", [document.toObject()]);
+  }
+}
+
+async function seedActorSkillRanks(actor, smokeCase) {
+  const ranks = smokeCase.preseedSkillRanks ?? {};
+  const updates = Object.fromEntries(
+    Object.entries(ranks).map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]),
+  );
+  if (Object.keys(updates).length > 0) {
+    await actor.update(updates);
   }
 }
 

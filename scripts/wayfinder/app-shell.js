@@ -15,7 +15,7 @@ import { buildSkillPane } from "./application/build-skill-pane-service.js";
 import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection, setTrainingRuleSelection, syncLanguageChoiceSelections, syncSkillTrainingSelections, toggleAncestryMode, toggleBoostChoice, toggleSkillIncreaseSelection, toggleTrainingSkillSelection, toggleVoluntaryChoice, toggleVoluntaryEnabled, toggleVoluntaryLegacy, } from "./application/draft-adjustment-service.js";
 import { applyDraftLifecycle, buildSaveDraftUpdate, createClearedDraftResult, } from "./application/draft-lifecycle-service.js";
 import { buildContextNote, buildOptionContext, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
-import { chooseSelectionOption, selectClassChoiceValue, selectSingletonChoiceValue, toggleLanguageChoiceValue, toggleSpellChoiceSelection, } from "./application/selection-command-service.js";
+import { chooseSelectionOption, selectClassArchetypeValue, selectClassChoiceValue, selectSingletonChoiceValue, toggleLanguageChoiceValue, toggleSpellChoiceSelection, } from "./application/selection-command-service.js";
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
 import { buildWayfinderContext } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
@@ -205,6 +205,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 break;
             case "select-singleton-choice":
                 await this.#selectSingletonChoice(action.stepId, action.value);
+                break;
+            case "select-class-archetype":
+                await this.#selectClassArchetype(action.stepId, action.value);
                 break;
             case "select-class-choice":
                 await this.#selectClassChoice(action.stepId, action.value);
@@ -514,6 +517,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             invalidateGrantSelectionsBySource: invalidation.invalidateGrantSelectionsBySource,
             invalidateFlagChoicesBySource: invalidation.invalidateFlagChoicesBySource,
             invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,
+        });
+        await this.#finalizeSelectionCommand(result);
+    }
+    async #selectClassArchetype(stepId, value) {
+        this.#statusNote = null;
+        const invalidation = this.#selectionInvalidationService();
+        const step = await this.#findPlanStepBySlotId(stepId);
+        const result = await selectClassArchetypeValue(this.#selectionCommandState(), step ?? null, value, {
+            invalidateSelection: invalidation.invalidateSelection,
+            invalidateSelectionsByPrefix: invalidation.invalidateSelectionsByPrefix,
+            invalidateGrantSelectionsBySource: invalidation.invalidateGrantSelectionsBySource,
+            invalidateFlagChoicesBySource: invalidation.invalidateFlagChoicesBySource,
         });
         await this.#finalizeSelectionCommand(result);
     }

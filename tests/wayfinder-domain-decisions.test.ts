@@ -8,6 +8,7 @@ import {
   writeDraftStepSelection,
 } from "../src/wayfinder/domain/draft-decisions";
 import {
+  createClassArchetypeStep,
   createClassBranchStep,
   createClassChoiceStep,
   createPickItemStep,
@@ -23,6 +24,7 @@ describe("wayfinder domain draft decisions", () => {
       "feat",
       "school-of-battle-magic"
     );
+    draft.classArchetypeChoices["class-archetype-doctrine-level-1"] = "standard";
     draft.classChoices["class-choice-wizard-thesis-level-1"] = "spell-substitution";
     draft.skillIncreases["skill-increase-level-3"] = "arcana";
     draft.skillTrainings["skill-training-wizard-level-1"] = {
@@ -38,6 +40,7 @@ describe("wayfinder domain draft decisions", () => {
     expect(listDraftDecisions(draft).map((decision) => `${decision.kind}:${decision.slotId}`)).toEqual([
       "selection:class-level-1",
       "class-branch:class-branch-arcane-school-level-1",
+      "class-archetype:class-archetype-doctrine-level-1",
       "class-choice:class-choice-wizard-thesis-level-1",
       "manual:manual-review-level-1",
       "skill-increase:skill-increase-level-3",
@@ -52,6 +55,7 @@ describe("wayfinder domain draft decisions", () => {
       itemType: "class",
     });
     const branchStep = createClassBranchStep(1, branchMeta());
+    const archetypeStep = createClassArchetypeStep(1, classArchetypeMeta());
     const classChoiceStep = createClassChoiceStep(1, classChoiceMeta());
     const spellChoiceStep = createSpellChoiceStep(1, "Wizard spellbook", "", spellChoiceMeta());
 
@@ -62,6 +66,7 @@ describe("wayfinder domain draft decisions", () => {
     expect(writeDraftStepSelection(draft, branchStep, branchSelection)).toBeNull();
 
     draft.classChoices[classChoiceStep.slotId] = "spell-substitution";
+    draft.classArchetypeChoices[archetypeStep.slotId] = "battle-creed";
     draft.spellChoices[spellChoiceStep.slotId] = [
       selection(spellChoiceStep.slotId, "spell", "magic-missile"),
       selection(spellChoiceStep.slotId, "spell", "mage-armor"),
@@ -69,6 +74,11 @@ describe("wayfinder domain draft decisions", () => {
 
     expect(readDraftStepSelection(draft, pickStep)?.uuid).toBe(classSelection.uuid);
     expect(readDraftStepSelection(draft, branchStep)?.uuid).toBe(branchSelection.uuid);
+    expect(readDraftStepDecision(draft, archetypeStep)).toEqual({
+      kind: "class-archetype",
+      slotId: archetypeStep.slotId,
+      value: "battle-creed",
+    });
     expect(readDraftStepDecision(draft, classChoiceStep)).toMatchObject({
       kind: "class-choice",
       slotId: classChoiceStep.slotId,
@@ -127,6 +137,25 @@ function classChoiceMeta(): ClassChoiceMeta {
     options: [
       { value: "spell-substitution", label: "Spell Substitution", img: null, detail: null },
       { value: "spell-blending", label: "Spell Blending", img: null, detail: null },
+    ],
+  };
+}
+
+function classArchetypeMeta() {
+  return {
+    slotId: "class-archetype-doctrine-level-1",
+    standardValue: "standard",
+    sourceName: "Doctrine",
+    selector: {
+      ...branchMeta(),
+      slotId: "class-branch-doctrine-level-1",
+      selectorName: "Doctrine",
+      optionTag: "cleric-doctrine",
+      classSlug: "cleric",
+    },
+    options: [
+      { value: "standard", label: "Standard", img: null, detail: null },
+      { value: "battle-creed", label: "Battle Creed", img: null, detail: null },
     ],
   };
 }

@@ -195,6 +195,10 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
         await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
     }
     if (existingMatches) {
+        if (grantPlan.adoptExistingSource) {
+            const refreshedSource = await createEmbeddedSource(grantPlan.selection);
+            await createManualStaticGrantedItems(actor, existingGranted, refreshedSource ?? existingGranted, grantPlan, createEmbeddedSource);
+        }
         return {
             item: existingGranted,
             update: buildGrantedItemUpdate(existingGrantedId, selectorItemId, grantPlan),
@@ -347,6 +351,12 @@ function findGrantedItemForPlan(actor, selectorItem, grantPlan) {
     const matchingSource = items.find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId && itemMatchesSourceId(item, grantPlan.selection.uuid));
     if (matchingSource) {
         return matchingSource;
+    }
+    if (grantPlan.adoptExistingSource) {
+        const adoptableSource = items.find((item) => itemMatchesSourceId(item, grantPlan.selection.uuid));
+        if (adoptableSource) {
+            return adoptableSource;
+        }
     }
     return (items.find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId && item?.flags?.[MODULE_ID]?.slotId === grantPlan.slotId) ?? null);
 }

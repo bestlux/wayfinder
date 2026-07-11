@@ -5,6 +5,8 @@ export type { DraftDecision, SelectionRef, SkillTrainingDraft } from "./wayfinde
 export type {
   BoostStep,
   ChoicePredicate,
+  ClassArchetypeMeta,
+  ClassArchetypeStep,
   ClassBranchMeta,
   ClassBranchStep,
   ClassChoiceMeta,
@@ -31,6 +33,7 @@ export type {
   SpellChoiceDestination,
   SpellChoiceMeta,
   SpellChoiceStep,
+  StaticGrantReplacementMeta,
   StepFilters,
   StepKind,
 } from "./wayfinder/domain/step-types.js";
@@ -71,6 +74,7 @@ export interface DraftState {
   skillIncreases: Record<string, string>;
   skillTrainings: Record<string, SkillTrainingDraft>;
   branchSelections: Record<string, SelectionRef>;
+  classArchetypeChoices: Record<string, string>;
   singletonChoices: Record<string, string>;
   languageChoices: Record<string, string[]>;
   classChoices: Record<string, string>;

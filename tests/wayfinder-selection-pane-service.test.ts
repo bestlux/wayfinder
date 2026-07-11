@@ -16,6 +16,69 @@ const EMPTY_CONTEXT: OptionContext = {
 };
 
 describe("wayfinder selection pane service", () => {
+  it("builds the dedicated class-archetype pane with an explicit Standard option", async () => {
+    const draft = createEmptyDraft(1);
+    draft.classArchetypeChoices["class-archetype-doctrine-level-1"] = "standard";
+    const step: PendingStep = {
+      id: "class-archetype-doctrine-level-1",
+      level: 1,
+      kind: "class-archetype",
+      slotKind: "class-archetype",
+      title: "Doctrine: standard or archetype",
+      description: "",
+      required: true,
+      slotId: "class-archetype-doctrine-level-1",
+      classArchetype: {
+        slotId: "class-archetype-doctrine-level-1",
+        standardValue: "standard",
+        sourceName: "Doctrine",
+        selector: {
+          slotId: "class-branch-doctrine-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "doctrine",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.doctrine",
+          selectorName: "Doctrine",
+          selectorRuleIndex: 0,
+          flag: "doctrine",
+          optionTag: "cleric-doctrine",
+          classSlug: "cleric",
+          dependsOn: "class",
+        },
+        options: [
+          { value: "standard", label: "Standard class path", img: null, detail: null },
+          { value: "battle-creed", label: "Battle Creed", img: null, detail: null },
+        ],
+      },
+    };
+
+    const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
+      draft,
+      searchByStepId: new Map(),
+      pickerFiltersByStepId: new Map(),
+      previewValueByStepId: new Map(),
+      resolveOptionContext: async () => EMPTY_CONTEXT,
+      resolveDeityDocument: async () => null,
+      buildContextNote: async () => null,
+      resolveStepStatus: async () => "Standard class path",
+      getOptionsForStep: async () => [],
+      getPickerInfoState: () => null,
+      buildPreview: async () => null,
+      matchesSearch: () => true,
+    });
+
+    expect(pane).toMatchObject({
+      kind: "class-archetype",
+      eyebrow: "Class Archetype",
+      action: "select-class-archetype",
+      completed: true,
+      selectedLabel: "Standard class path",
+      options: [
+        { value: "standard", selected: true },
+        { value: "battle-creed", selected: false },
+      ],
+    });
+  });
+
   it("builds a blocked class-choice pane when a deity-dependent choice has no deity context", async () => {
     const draft = createEmptyDraft(1);
     const step: PendingStep = {

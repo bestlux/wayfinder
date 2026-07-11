@@ -4,6 +4,8 @@ import { fetchSelectionDocument } from "../../pack/access.js";
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
+import { projectedClassArchetypeFeatSelections, reservedClassFeatSlotIds, selectedClassArchetypeSelection, withExistingClassArchetypeChoice, } from "../class-archetype/registry.js";
+import { buildClassArchetypeFallbackFeatSteps, buildClassArchetypeSteps } from "../class-archetype/service.js";
 import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassSkillFeatSteps, buildClassTrainingSteps, } from "../class-choice-service.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
 import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingFlagChoiceSelection, readExistingGrantedSelection, readExistingLanguageSelections, readExistingSingletonChoiceSelection, readExistingSingletonSourceSelection, } from "../existing-selection-service.js";
@@ -17,6 +19,13 @@ import { SLOT_PREFIXES } from "../slot-ids.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
 import { asSpellChoiceClassDocument } from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
+const SINGLETON_ITEM_TYPES = [
+    "ancestry",
+    "heritage",
+    "background",
+    "class",
+    "deity",
+];
 const DEFAULT_DEPS = {
     buildWayfinderPlan,
     buildClassFeatSteps,
@@ -26,6 +35,7 @@ const DEFAULT_DEPS = {
     buildFlagChoiceSteps,
     buildSingletonChoiceSteps,
     buildLanguageChoiceSteps,
+    buildClassArchetypeSteps,
     buildClassBranchSteps,
     buildClassGrantedItemSteps,
     buildClassChoiceSteps,
@@ -43,12 +53,14 @@ const DEFAULT_DEPS = {
     extractDocumentSlug,
 };
 export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
+    const classArchetypeDraft = withExistingClassArchetypeChoice(args.draft, listActorItems(args.actor));
     return deps.buildWayfinderPlan(args.snapshot, args.draft, {
         buildClassFeatSteps: async (planSnapshot, _planDraft, targetLevel) => deps.buildClassFeatSteps({
             effectiveClassDocument: await args.resolveDocument("class"),
             targetLevel,
             fulfilledCount: planSnapshot.featCounts.class,
             fulfilledStepIds: planSnapshot.fulfilledStepIds,
+            reservedStepIds: reservedClassFeatSlotIds(classArchetypeDraft),
         }),
         buildClassSkillFeatSteps: async (planSnapshot, _planDraft, targetLevel) => deps.buildClassSkillFeatSteps({
             effectiveClassDocument: await args.resolveDocument("class"),
@@ -58,29 +70,33 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
         }),
         buildClassTrainingSteps: async (_planSnapshot, planDraft, targetLevel) => {
             const effectiveBuildState = await getEffectiveBuildState(args.actor, planDraft);
+            const draftedClassSelection = deps.findDraftSelectionByType(planDraft, "class");
             return deps.buildClassTrainingSteps({
-                draftClassSelection: deps.findDraftSelectionByType(planDraft, "class"),
-                sourceSelections: [
-                    {
-                        sourceItemType: "ancestry",
-                        sourceSelection: deps.findDraftSelectionByType(planDraft, "ancestry") ??
-                            deps.readExistingSingletonSourceSelection(args.actor, "ancestry"),
-                        sourceDocument: effectiveBuildState.ancestry?.document ?? null,
-                    },
-                    {
-                        sourceItemType: "heritage",
-                        sourceSelection: deps.findDraftSelectionByType(planDraft, "heritage") ??
-                            deps.readExistingSingletonSourceSelection(args.actor, "heritage"),
-                        sourceDocument: effectiveBuildState.heritage,
-                    },
-                    {
-                        sourceItemType: "background",
-                        sourceSelection: deps.findDraftSelectionByType(planDraft, "background") ??
-                            deps.readExistingSingletonSourceSelection(args.actor, "background"),
-                        sourceDocument: effectiveBuildState.background?.document ?? null,
-                    },
-                    ...(await resolveSkillTrainingFeatSources(planDraft, args, deps)),
-                ],
+                draftClassSelection: draftedClassSelection ?? deps.readExistingSingletonSourceSelection(args.actor, "class"),
+                includeBaseClassTraining: !!draftedClassSelection,
+                sourceSelections: draftedClassSelection
+                    ? [
+                        {
+                            sourceItemType: "ancestry",
+                            sourceSelection: deps.findDraftSelectionByType(planDraft, "ancestry") ??
+                                deps.readExistingSingletonSourceSelection(args.actor, "ancestry"),
+                            sourceDocument: effectiveBuildState.ancestry?.document ?? null,
+                        },
+                        {
+                            sourceItemType: "heritage",
+                            sourceSelection: deps.findDraftSelectionByType(planDraft, "heritage") ??
+                                deps.readExistingSingletonSourceSelection(args.actor, "heritage"),
+                            sourceDocument: effectiveBuildState.heritage,
+                        },
+                        {
+                            sourceItemType: "background",
+                            sourceSelection: deps.findDraftSelectionByType(planDraft, "background") ??
+                                deps.readExistingSingletonSourceSelection(args.actor, "background"),
+                            sourceDocument: effectiveBuildState.background?.document ?? null,
+                        },
+                        ...(await resolveSkillTrainingFeatSources(classArchetypeDraft, targetLevel, args, deps)),
+                    ]
+                    : await resolveProjectedClassArchetypeSkillTrainingSources(classArchetypeDraft, targetLevel, args, deps),
                 targetLevel,
                 effectiveBuildState,
                 fetchSelectionDocument: deps.fetchSelectionDocument,
@@ -95,14 +111,14 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
                 deps.readExistingSingletonSourceSelection(args.actor, "class")),
             hasDeitySelection: !!(deps.findDraftSelectionByType(planDraft, "deity") ??
                 deps.readExistingSingletonSourceSelection(args.actor, "deity")),
-            sources: await resolveGrantChoiceSources(planDraft, args, deps),
+            sources: await resolveGrantChoiceSources(classArchetypeDraft, targetLevel, args, deps),
             extractSlug: deps.extractDocumentSlug,
             readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
         }),
         buildFlagChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildFlagChoiceSteps({
             draft: planDraft,
             targetLevel,
-            sources: await resolveFlagChoiceSources(planDraft, args, deps),
+            sources: await resolveFlagChoiceSources(classArchetypeDraft, targetLevel, args, deps),
             extractSlug: deps.extractDocumentSlug,
             localize: args.localize,
             actorContext: await resolveFlagChoiceActorContext(args, deps),
@@ -111,7 +127,7 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
         buildSingletonChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildSingletonChoiceSteps({
             draft: planDraft,
             targetLevel,
-            sources: await resolveSingletonChoiceSources(planDraft, args, deps),
+            sources: await resolveSingletonChoiceSources(classArchetypeDraft, targetLevel, args, deps),
             extractSlug: deps.extractDocumentSlug,
             localize: args.localize,
             readExistingSingletonChoiceSelection: (choice) => deps.readExistingSingletonChoiceSelection(args.actor, choice),
@@ -125,54 +141,70 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             readExistingLanguageSelections: () => deps.readExistingLanguageSelections(args.actor),
             localizeLanguage: (slug) => localizeLanguageLabel(slug),
         }),
-        buildClassBranchSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildClassBranchSteps({
-            draft: planDraft,
+        buildClassArchetypeSteps: async (_planSnapshot, planDraft, targetLevel) => [
+            ...(await deps.buildClassArchetypeSteps({
+                draft: planDraft,
+                effectiveClassDocument: await args.resolveDocument("class"),
+                targetLevel,
+                fetchSelectionDocument: deps.fetchSelectionDocument,
+                extractSlug: deps.extractDocumentSlug,
+                readExistingBranchSelection: (branch) => deps.readExistingBranchSelection(args.actor, branch),
+            })),
+            ...buildClassArchetypeFallbackFeatSteps({
+                draft: classArchetypeDraft,
+                actorItems: listActorItems(args.actor),
+                targetLevel,
+                projectedSingletonSources: await resolveDraftedSingletonSources(classArchetypeDraft, args, deps),
+            }),
+        ],
+        buildClassBranchSteps: async (_planSnapshot, _planDraft, targetLevel) => deps.buildClassBranchSteps({
+            draft: classArchetypeDraft,
             effectiveClassDocument: await args.resolveDocument("class"),
             targetLevel,
             fetchSelectionDocument: deps.fetchSelectionDocument,
             extractSlug: deps.extractDocumentSlug,
             readExistingBranchSelection: (branch) => deps.readExistingBranchSelection(args.actor, branch),
         }),
-        buildClassGrantedItemSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildClassGrantedItemSteps({
-            draft: planDraft,
+        buildClassGrantedItemSteps: async (_planSnapshot, _planDraft, targetLevel) => deps.buildClassGrantedItemSteps({
+            draft: classArchetypeDraft,
             effectiveClassDocument: await args.resolveDocument("class"),
             targetLevel,
             fetchSelectionDocument: deps.fetchSelectionDocument,
             extractSlug: deps.extractDocumentSlug,
             readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
         }),
-        buildClassChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildClassChoiceSteps({
-            draft: planDraft,
+        buildClassChoiceSteps: async (_planSnapshot, _planDraft, targetLevel) => deps.buildClassChoiceSteps({
+            draft: classArchetypeDraft,
             effectiveClassDocument: await args.resolveDocument("class"),
             effectiveDeityDocument: await args.resolveDocument("deity"),
-            additionalClassFeatures: await resolveSelectedClassFeatureChoiceSources(planDraft, args, deps),
+            additionalClassFeatures: await resolveSelectedClassFeatureChoiceSources(classArchetypeDraft, args, deps),
             targetLevel,
             fetchSelectionDocument: deps.fetchSelectionDocument,
             extractSlug: deps.extractDocumentSlug,
             localize: args.localize,
             readExistingClassChoiceSelection: (choice) => deps.readExistingClassChoiceSelection(args.actor, choice),
         }),
-        buildSpellChoiceSteps: async (planSnapshot, planDraft, targetLevel) => {
+        buildSpellChoiceSteps: async (planSnapshot, _planDraft, targetLevel) => {
             const effectiveClassDocument = await args.resolveDocument("class");
             const effectiveDeityDocument = await args.resolveDocument("deity");
             const effectiveSchoolDocument = await args.resolveArcaneSchoolDocument();
             const readExistingSelections = (choice) => deps.readExistingSpellChoiceSelections(args.actor, choice);
             return [
                 ...(await deps.buildSpellChoiceSteps({
-                    draft: planDraft,
+                    draft: classArchetypeDraft,
                     currentLevel: planSnapshot.level,
                     effectiveClassDocument,
                     effectiveDeityDocument,
                     effectiveSchoolDocument,
-                    effectiveClassFeatureDocuments: await resolveSpellChoiceClassFeatureDocuments(planDraft, args, deps),
+                    effectiveClassFeatureDocuments: await resolveSpellChoiceClassFeatureDocuments(classArchetypeDraft, args, deps),
                     targetLevel,
                     extractSlug: deps.extractDocumentSlug,
                     readExistingSpellChoiceSelections: readExistingSelections,
                 })),
                 ...buildFeatSpellChoiceSteps({
-                    draft: planDraft,
+                    draft: classArchetypeDraft,
                     effectiveClassDocument: asSpellChoiceClassDocument(effectiveClassDocument),
-                    featSources: await resolveSpellChoiceFeatSources(planDraft, args, deps),
+                    featSources: await resolveSpellChoiceFeatSources(classArchetypeDraft, targetLevel, args, deps),
                     extractSlug: deps.extractDocumentSlug,
                     readExistingSpellChoiceSelections: readExistingSelections,
                 }),
@@ -223,14 +255,8 @@ export async function findPlanStepBySlotId(args, slotId, deps = DEFAULT_DEPS) {
     const plan = await buildWayfinderAppPlan(args, deps);
     return plan.steps.find((step) => step.slotId === slotId) ?? null;
 }
-async function resolveSingletonChoiceSources(draft, args, deps) {
-    const itemTypes = [
-        "ancestry",
-        "heritage",
-        "background",
-        "class",
-        "deity",
-    ];
+async function resolveSingletonChoiceSources(draft, targetLevel, args, deps) {
+    const itemTypes = SINGLETON_ITEM_TYPES;
     const documents = await Promise.all(itemTypes.map((itemType) => args.resolveDocument(itemType)));
     const singletonItemSources = itemTypes
         .map((itemType, index) => {
@@ -245,6 +271,7 @@ async function resolveSingletonChoiceSources(draft, args, deps) {
         .filter((entry) => !!entry.sourceSelection && !!entry.sourceDocument);
     const featSelections = dedupeSelectionsByUuid([
         ...Object.values(draft.selections).filter(isSingletonChoiceFeatSelection),
+        ...projectedClassArchetypeFeatSelections(draft, targetLevel),
         ...readExistingSkillTrainingFeatSelections(args.actor),
     ]);
     const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
@@ -264,9 +291,18 @@ async function resolveSingletonChoiceSources(draft, args, deps) {
         }),
     ];
 }
-async function resolveSkillTrainingFeatSources(draft, args, deps) {
+async function resolveDraftedSingletonSources(draft, args, deps) {
+    const itemTypes = SINGLETON_ITEM_TYPES.filter((itemType) => !!deps.findDraftSelectionByType(draft, itemType));
+    const documents = await Promise.all(itemTypes.map((itemType) => args.resolveDocument(itemType)));
+    return itemTypes.map((sourceItemType, index) => ({
+        sourceItemType,
+        sourceDocument: documents[index],
+    }));
+}
+async function resolveSkillTrainingFeatSources(draft, targetLevel, args, deps) {
     const featSelections = dedupeSelectionsByUuid([
         ...Object.values(draft.selections).filter(isSkillTrainingFeatSelection),
+        ...projectedClassArchetypeFeatSelections(draft, targetLevel),
         ...readExistingSkillTrainingFeatSelections(args.actor),
     ]);
     const documents = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
@@ -283,11 +319,29 @@ async function resolveSkillTrainingFeatSources(draft, args, deps) {
             : [];
     });
 }
-async function resolveGrantChoiceSources(draft, args, deps) {
+async function resolveProjectedClassArchetypeSkillTrainingSources(draft, targetLevel, args, deps) {
+    const actorSourceIds = new Set(listActorItems(args.actor).map((item) => sourceIdOf(item)));
+    const selections = projectedClassArchetypeFeatSelections(draft, targetLevel).filter((selection) => !actorSourceIds.has(selection.uuid));
+    const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
+    return selections.flatMap((sourceSelection, index) => {
+        const sourceDocument = documents[index];
+        return sourceDocument
+            ? [
+                {
+                    sourceItemType: "feat",
+                    sourceSelection,
+                    sourceDocument,
+                },
+            ]
+            : [];
+    });
+}
+async function resolveGrantChoiceSources(draft, targetLevel, args, deps) {
     const sourceItemTypes = ["ancestry", "heritage", "background"];
     const sourceDocuments = await Promise.all(sourceItemTypes.map((itemType) => args.resolveDocument(itemType)));
     const featSelections = dedupeSelectionsByUuid([
         ...Object.values(draft.selections).filter(isGrantChoiceSourceFeatSelection),
+        ...projectedClassArchetypeFeatSelections(draft, targetLevel),
         ...readExistingSkillTrainingFeatSelections(args.actor).filter(isGrantChoiceSourceFeatSelection),
     ]);
     const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
@@ -334,8 +388,8 @@ async function resolveGrantChoiceSources(draft, args, deps) {
         }),
     ];
 }
-async function resolveFlagChoiceSources(draft, args, deps) {
-    return resolveGrantChoiceSources(draft, args, deps);
+async function resolveFlagChoiceSources(draft, targetLevel, args, deps) {
+    return resolveGrantChoiceSources(draft, targetLevel, args, deps);
 }
 function isAncestryFeatSelection(selection) {
     return selection.itemType === "feat" && selection.featType === "ancestry";
@@ -391,6 +445,7 @@ async function resolveSelectedClassFeatureChoiceSources(draft, args, deps) {
 }
 function resolveSelectedClassFeatureSelections(draft, actor) {
     return dedupeSelectionsByUuid([
+        ...(selectedClassArchetypeSelection(draft) ? [selectedClassArchetypeSelection(draft)] : []),
         ...Object.values(draft.branchSelections),
         ...Object.values(draft.selections).filter((selection) => isGrantChoiceClassFeatureSelection(selection)),
         ...readExistingClassFeatureSelections(actor),
@@ -544,9 +599,10 @@ function selectionFromClassFeatureItem(item) {
         level,
     };
 }
-async function resolveSpellChoiceFeatSources(draft, args, deps) {
+async function resolveSpellChoiceFeatSources(draft, targetLevel, args, deps) {
     const featSelections = dedupeSelectionsByUuid([
         ...Object.values(draft.selections).filter(isAncestryFeatSelection),
+        ...projectedClassArchetypeFeatSelections(draft, targetLevel),
         ...readExistingSkillTrainingFeatSelections(args.actor).filter(isAncestryFeatSelection),
     ]);
     const documents = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));

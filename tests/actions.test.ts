@@ -18,6 +18,22 @@ describe("wayfinder actions", () => {
     });
   });
 
+  it("parses the dedicated class-archetype action", () => {
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "select-class-archetype",
+          stepId: "class-archetype-doctrine-level-1",
+          value: "battle-creed",
+        },
+      } as any)
+    ).toEqual({
+      type: "select-class-archetype",
+      stepId: "class-archetype-doctrine-level-1",
+      value: "battle-creed",
+    });
+  });
+
   it("parses picker filter actions", () => {
     const action = parseWayfinderAction({
       dataset: {

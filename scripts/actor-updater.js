@@ -5,6 +5,7 @@ import { createEmbeddedSource, createSingletonGrantItems, createSingletonSystemG
 import { applySingletonChoiceDraft } from "./actor-updater/singleton-choice-application.js";
 import { applySpellChoiceDraft } from "./actor-updater/spell-choice-application.js";
 import { applySkillIncreaseDraft, applyTrainingDraft } from "./actor-updater/training-application.js";
+import { applyClassArchetypeDraft } from "./class-archetype-service.js";
 import { applyClassBranchDraft } from "./class-branch-service.js";
 import { applyClassFeatureChoiceDraft } from "./class-feature-choice-service.js";
 import { fetchSelectionDocument } from "./pack/access.js";
@@ -20,6 +21,10 @@ export async function applyDraftToActor(actor, draft, steps, options = {}) {
     await applySingletonChoiceDraft(actor, draft, steps);
     await applyLanguageChoiceDraft(actor, draft, steps);
     const projectedTrainingRanks = await applyTrainingDraft(actor, draft, steps);
+    await applyClassArchetypeDraft(actor, draft, steps, {
+        createEmbeddedSource,
+        fetchSelectionDocument,
+    });
     await applyClassBranchDraft(actor, draft, steps, {
         createEmbeddedSource,
         fetchSelectionDocument,
@@ -47,6 +52,7 @@ export async function applyDraftToActor(actor, draft, steps, options = {}) {
     }
     await applySingletonChoiceDraft(actor, draft, steps);
     await applySpellChoiceDraft(actor, draft, steps);
+    await syncNativeClassSpellcasting(actor, draft);
     const boostResult = await applyBoostDraft(actor, draft, undefined, {
         persistActorUpdate: !options.deferActorUpdate,
     });

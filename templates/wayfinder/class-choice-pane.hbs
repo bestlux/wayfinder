@@ -2,7 +2,7 @@
   <article class="skill-training-sheet class-choice-sheet" data-wayfinder-scroll-id="{{activePane.stepId}}:sheet">
     <header class="skill-training-header">
       <div>
-        <p class="eyebrow">Class Choice</p>
+        <p class="eyebrow">{{activePane.eyebrow}}</p>
         <h4>{{activePane.title}}</h4>
         <p>{{activePane.description}}</p>
       </div>
@@ -32,7 +32,7 @@
             <button
               type="button"
               class="skill-training-choice class-choice-option{{#if selected}} selected{{/if}}"
-              data-wayfinder-action="select-class-choice"
+              data-wayfinder-action="{{@root.activePane.action}}"
               data-step-id="{{@root.activePane.stepId}}"
               data-value="{{value}}"
             >

@@ -4,6 +4,7 @@ import type { PendingStep, SelectionRef } from "../src/types";
 import {
   chooseSelectionOption,
   type SelectionCommandState,
+  selectClassArchetypeValue,
   selectClassChoiceValue,
   selectSingletonChoiceValue,
   toggleLanguageChoiceValue,
@@ -12,6 +13,80 @@ import {
 import { SLOT_IDS, SLOT_PREFIXES } from "../src/wayfinder/slot-ids";
 
 describe("wayfinder selection command service", () => {
+  it("stores an explicit class-archetype path and invalidates its downstream class policy", async () => {
+    const draft = createEmptyDraft(5);
+    draft.classArchetypeChoices["class-archetype-doctrine-level-1"] = "standard";
+    const state = commandState(draft);
+    const invalidatedPrefixes: string[] = [];
+
+    const result = await selectClassArchetypeValue(state, classArchetypeStep(), "battle-creed", {
+      invalidateSelectionsByPrefix: (prefix) => {
+        invalidatedPrefixes.push(prefix);
+        return [prefix];
+      },
+      invalidateSelection: () => [],
+      invalidateGrantSelectionsBySource: async () => ["grant-choice"],
+      invalidateFlagChoicesBySource: async () => ["flag-choice"],
+    });
+
+    expect(result).toMatchObject({
+      kind: "changed",
+      shouldAdvance: true,
+      statusNote:
+        "Class path changed. Wayfinder reset dependent class choices, training, feats, and spells for review.",
+    });
+    expect(draft.classArchetypeChoices["class-archetype-doctrine-level-1"]).toBe("battle-creed");
+    expect(invalidatedPrefixes).toEqual([
+      SLOT_PREFIXES.classBranch,
+      SLOT_PREFIXES.classChoice,
+      SLOT_PREFIXES.skillTraining,
+      SLOT_PREFIXES.spellChoice,
+      SLOT_PREFIXES.classFeat,
+    ]);
+    expect(
+      await selectClassArchetypeValue(state, classArchetypeStep(), "battle-creed", {
+        invalidateSelection: () => [],
+        invalidateSelectionsByPrefix: () => [],
+        invalidateGrantSelectionsBySource: async () => [],
+        invalidateFlagChoicesBySource: async () => [],
+      })
+    ).toMatchObject({ kind: "noop" });
+  });
+
+  it("clears a drafted static grant conflict when Battle Creed is selected", async () => {
+    const draft = createEmptyDraft(5);
+    draft.classArchetypeChoices["class-archetype-doctrine-level-1"] = "standard";
+    draft.selections["general-feat-level-3"] = {
+      ...selection("general-feat-level-3", "feat", "AmP0qu7c5dlBSath", "Toughness"),
+      packId: "pf2e.feats-srd",
+      uuid: "Compendium.pf2e.feats-srd.Item.AmP0qu7c5dlBSath",
+      featType: "general",
+    };
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      "feat",
+      "cooperative-nature",
+      "Cooperative Nature"
+    );
+    const state = commandState(draft);
+    const invalidated: string[] = [];
+
+    await selectClassArchetypeValue(state, classArchetypeStep(), "battle-creed", {
+      invalidateSelection: (slotId) => {
+        delete draft.selections[slotId];
+        invalidated.push(slotId);
+        return [slotId];
+      },
+      invalidateSelectionsByPrefix: () => [],
+      invalidateGrantSelectionsBySource: async () => [],
+      invalidateFlagChoicesBySource: async () => [],
+    });
+
+    expect(invalidated).toEqual(["general-feat-level-3"]);
+    expect(draft.selections["general-feat-level-3"]).toBeUndefined();
+    expect(draft.selections["ancestry-feat-level-1"]?.name).toBe("Cooperative Nature");
+  });
+
   it("invalidates dependent class draft state when the chosen class changes", async () => {
     const draft = createEmptyDraft(1);
     draft.selections["class-level-1"] = selection("class-level-1", "class", "fighter", "Fighter");
@@ -716,6 +791,40 @@ function magicalExperimentChoiceStep(): PendingStep {
       options: [
         { value: "enhanced-senses", label: "Enhanced Senses", img: null, detail: null },
         { value: "resistant-skin", label: "Resistant Skin", img: null, detail: null },
+      ],
+    },
+  };
+}
+
+function classArchetypeStep(): PendingStep {
+  return {
+    id: "class-archetype-doctrine-level-1",
+    level: 1,
+    kind: "class-archetype",
+    slotKind: "class-archetype",
+    title: "Doctrine: standard or archetype",
+    description: "",
+    required: true,
+    slotId: "class-archetype-doctrine-level-1",
+    classArchetype: {
+      slotId: "class-archetype-doctrine-level-1",
+      standardValue: "standard",
+      sourceName: "Doctrine",
+      selector: {
+        slotId: "class-branch-doctrine-level-1",
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "doctrine",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.doctrine",
+        selectorName: "Doctrine",
+        selectorRuleIndex: 0,
+        flag: "doctrine",
+        optionTag: "cleric-doctrine",
+        classSlug: "cleric",
+        dependsOn: "class",
+      },
+      options: [
+        { value: "standard", label: "Standard class path", img: null, detail: null },
+        { value: "battle-creed", label: "Battle Creed", img: null, detail: null },
       ],
     },
   };

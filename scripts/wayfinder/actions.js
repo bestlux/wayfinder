@@ -54,6 +54,7 @@ export function parseWayfinderAction(element) {
         case "select-option":
         case "toggle-language-choice":
         case "select-singleton-choice":
+        case "select-class-archetype":
         case "select-class-choice":
         case "toggle-spell-choice":
             return element.dataset.stepId && element.dataset.value

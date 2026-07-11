@@ -36,6 +36,31 @@ describe("class-feature-choice-service", () => {
     expect(Object.keys(classSource.system.items)).toEqual(["doctrine"]);
   });
 
+  it("strips Divine Font for Battle Creed so its obsolete native chooser cannot open", () => {
+    const draft = createEmptyDraft(1);
+    draft.classArchetypeChoices["class-archetype-doctrine-level-1"] = "battle-creed";
+    const classSource = {
+      system: {
+        items: {
+          divineFont: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.Divine Font",
+            name: "Divine Font",
+          },
+          doctrine: {
+            level: 1,
+            uuid: "Compendium.pf2e.classfeatures.Item.Doctrine",
+            name: "Doctrine",
+          },
+        },
+      },
+    };
+
+    stripPreselectedClassFeatureEntries(classSource, draft, []);
+
+    expect(Object.keys(classSource.system.items)).toEqual(["doctrine"]);
+  });
+
   it("creates and updates class-owned feature items for cleric deity, sanctification, and divine font", async () => {
     const draft = createEmptyDraft(1);
     draft.selections["deity-level-1"] = selection("pf2e.deities", "gorum", "Gorum", "deity");

@@ -6,9 +6,59 @@ import {
 } from "../src/class-branch-service";
 import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep, SelectionRef } from "../src/types";
-import { createClassBranchStep, createClassChoiceStep } from "../src/wayfinder/domain/step-types";
+import {
+  createClassArchetypeStep,
+  createClassBranchStep,
+  createClassChoiceStep,
+} from "../src/wayfinder/domain/step-types";
 
 describe("class-branch-service", () => {
+  it("strips the replaced Doctrine selector when Battle Creed is selected", () => {
+    const draft = createEmptyDraft(1);
+    draft.classArchetypeChoices["class-archetype-doctrine-level-1"] = "battle-creed";
+    const steps: PendingStep[] = [
+      createClassArchetypeStep(1, {
+        slotId: "class-archetype-doctrine-level-1",
+        standardValue: "standard",
+        sourceName: "Doctrine",
+        selector: {
+          slotId: "class-branch-doctrine-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "doctrine-selector",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.doctrine-selector",
+          selectorName: "Doctrine",
+          selectorRuleIndex: 0,
+          flag: "doctrine",
+          optionTag: "cleric-doctrine",
+          classSlug: "cleric",
+          dependsOn: "class",
+        },
+        options: [
+          { value: "standard", label: "Standard", img: null, detail: null },
+          { value: "battle-creed", label: "Battle Creed", img: null, detail: null },
+        ],
+      }),
+    ];
+    const classSource = {
+      system: {
+        items: {
+          doctrine: {
+            uuid: "Compendium.pf2e.classfeatures.Item.Doctrine",
+            name: "Doctrine",
+          },
+          font: {
+            uuid: "Compendium.pf2e.classfeatures.Item.Divine Font",
+            name: "Divine Font",
+          },
+        },
+      },
+    };
+
+    stripPreselectedClassBranchEntries(classSource, draft, steps);
+
+    expect(Object.keys(classSource.system.items)).toEqual(["font"]);
+  });
+
   it("strips preselected selector entries from a class source by UUID, document id, and name", () => {
     const draft = createEmptyDraft(1);
     draft.branchSelections["class-branch-wizard-school-level-1"] = selection(

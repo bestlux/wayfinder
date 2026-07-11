@@ -1,3 +1,4 @@
+import { classArchetypeProfile } from "../class-archetype/registry.js";
 import { writeDraftStepSelection } from "../draft-decisions.js";
 import { sameMembers } from "../formatting.js";
 import { SLOT_IDS, SLOT_PREFIXES } from "../slot-ids.js";
@@ -89,6 +90,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
         if (previousClassSlug !== nextClassSlug) {
             const invalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classFeat);
             const deityInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.deity);
+            const classArchetypeInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classArchetype);
             const branchInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch);
             const classChoiceInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classChoice);
             const trainingInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.skillTraining);
@@ -106,6 +108,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
             ];
             if (invalidated.length > 0 ||
                 deityInvalidated.length > 0 ||
+                classArchetypeInvalidated.length > 0 ||
                 branchInvalidated.length > 0 ||
                 classChoiceInvalidated.length > 0 ||
                 trainingInvalidated.length > 0 ||
@@ -259,6 +262,38 @@ export async function selectClassChoiceValue(state, step, value, deps) {
     }
     state.recentlyInvalidatedStepIds.delete(stepId);
     return changedResult({ statusNote, shouldAdvance: true });
+}
+export async function selectClassArchetypeValue(state, step, value, deps) {
+    if (!step ||
+        step.kind !== "class-archetype" ||
+        !step.classArchetype.options.some((option) => option.value === value) ||
+        state.draft.classArchetypeChoices[step.slotId] === value) {
+        return NOOP_RESULT;
+    }
+    const invalidated = [
+        ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch),
+        ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classChoice),
+        ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.skillTraining),
+        ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.spellChoice),
+        ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classFeat),
+        ...(await deps.invalidateGrantSelectionsBySource("classfeature")),
+        ...(await deps.invalidateFlagChoicesBySource("classfeature")),
+    ];
+    const profile = classArchetypeProfile(value);
+    const projectedStaticGrantUuids = new Set(profile?.projectedFeatGrants.flatMap((grant) => grant.minimumLevel <= state.draft.targetLevel ? grant.staticFeatGrants.map((selection) => selection.uuid) : []) ?? []);
+    for (const [slotId, selection] of Object.entries(state.draft.selections)) {
+        if (slotId.startsWith(SLOT_PREFIXES.classArchetype) || projectedStaticGrantUuids.has(selection.uuid)) {
+            invalidated.push(...deps.invalidateSelection(slotId));
+        }
+    }
+    state.draft.classArchetypeChoices[step.slotId] = value;
+    state.recentlyInvalidatedStepIds.delete(step.slotId);
+    return changedResult({
+        statusNote: invalidated.length > 0
+            ? "Class path changed. Wayfinder reset dependent class choices, training, feats, and spells for review."
+            : null,
+        shouldAdvance: true,
+    });
 }
 async function invalidateClassChoiceDependents(step, deps) {
     const branchInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch);

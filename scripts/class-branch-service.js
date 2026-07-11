@@ -49,11 +49,28 @@ export async function applyClassBranchDraft(actor, draft, steps, deps) {
     }
 }
 export function stripPreselectedClassBranchEntries(classSource, draft, steps) {
-    stripSelectedSelectorEntries(classSource, getSelectedBranchSteps(draft, steps).map((step) => ({
-        uuid: step.branch.selectorUuid,
-        documentId: step.branch.selectorDocumentId,
-        name: step.branch.selectorName,
-    })));
+    const selectedArchetypeSelectors = steps.flatMap((step) => {
+        if (step.kind !== "class-archetype" ||
+            !draft.classArchetypeChoices[step.slotId] ||
+            draft.classArchetypeChoices[step.slotId] === step.classArchetype.standardValue) {
+            return [];
+        }
+        return [
+            {
+                uuid: step.classArchetype.selector.selectorUuid,
+                documentId: step.classArchetype.selector.selectorDocumentId,
+                name: step.classArchetype.selector.selectorName,
+            },
+        ];
+    });
+    stripSelectedSelectorEntries(classSource, [
+        ...getSelectedBranchSteps(draft, steps).map((step) => ({
+            uuid: step.branch.selectorUuid,
+            documentId: step.branch.selectorDocumentId,
+            name: step.branch.selectorName,
+        })),
+        ...selectedArchetypeSelectors,
+    ]);
 }
 function groupBranchStepsBySelector(steps) {
     const groupsBySelector = new Map();

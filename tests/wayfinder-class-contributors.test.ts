@@ -68,6 +68,7 @@ describe("wayfinder class contributors", () => {
       draft: args.draft,
       effectiveClassDocument: args.effectiveClassDocument,
       effectiveDeityDocument: args.effectiveDeityDocument,
+      effectiveClassFeatureDocuments: [],
       readExistingSpellChoiceSelections: args.readExistingSpellChoiceSelections,
       classSlug: "cleric",
     });

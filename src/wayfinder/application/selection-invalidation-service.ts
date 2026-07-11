@@ -60,6 +60,7 @@ export function createSelectionInvalidationService(
         cleared += invalidateGrantSelectionsByDependencySync("deity").length;
       } else if (slotId === SLOT_IDS.class) {
         cleared += invalidateByPrefix(SLOT_PREFIXES.deity).length;
+        cleared += invalidateByPrefix(SLOT_PREFIXES.classArchetype).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.classBranch).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.classChoice).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.skillTraining).length;

@@ -319,6 +319,7 @@ describe("wayfinder plan service", () => {
         buildFlagChoiceSteps: async () => [],
         buildSingletonChoiceSteps: async () => [],
         buildLanguageChoiceSteps: async () => [],
+        buildClassArchetypeSteps: async () => [],
         buildClassBranchSteps: async () => [],
         buildClassGrantedItemSteps: async () => [],
         buildClassChoiceSteps: async () => [],

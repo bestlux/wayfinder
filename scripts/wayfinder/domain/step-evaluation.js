@@ -12,6 +12,9 @@ export async function isWayfinderStepComplete(step, draft, effectiveBuildState, 
     if (step.kind === "class-branch") {
         return !!draft.branchSelections[step.slotId];
     }
+    if (step.kind === "class-archetype") {
+        return typeof draft.classArchetypeChoices[step.slotId] === "string";
+    }
     if (step.kind === "class-choice") {
         return typeof draft.classChoices[step.slotId] === "string" && draft.classChoices[step.slotId].length > 0;
     }
@@ -57,6 +60,13 @@ export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedSte
             return "Needs attention";
         }
         return draft.branchSelections[step.slotId]?.name ?? "Choose one";
+    }
+    if (step.kind === "class-archetype") {
+        if (recentlyInvalidatedStepIds.has(step.slotId) && !draft.classArchetypeChoices[step.slotId]) {
+            return "Needs attention";
+        }
+        const selected = draft.classArchetypeChoices[step.slotId];
+        return step.classArchetype.options.find((option) => option.value === selected)?.label ?? "Choose one";
     }
     if (step.kind === "class-choice") {
         if (recentlyInvalidatedStepIds.has(step.slotId) && !draft.classChoices[step.slotId]) {

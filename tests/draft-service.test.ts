@@ -10,7 +10,7 @@ import {
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 7,
+      version: 8,
       targetLevel: 4,
       selections: {},
       boosts: {
@@ -39,6 +39,7 @@ describe("draft-service", () => {
       skillIncreases: {},
       skillTrainings: {},
       branchSelections: {},
+      classArchetypeChoices: {},
       singletonChoices: {},
       languageChoices: {},
       classChoices: {},
@@ -215,8 +216,115 @@ describe("draft-service", () => {
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(7);
+    expect(patched.version).toBe(8);
     expect(patched.updatedAt).not.toBeNull();
+  });
+
+  it("clears incompatible class state when migrating a legacy Battle Creed branch", () => {
+    const draft = normalizeDraft(
+      {
+        version: 7,
+        targetLevel: 5,
+        branchSelections: {
+          "class-branch-doctrine-level-1": rawSelection(
+            "class-branch-doctrine-level-1",
+            "pf2e.classfeatures",
+            "49CkgA3kj7Im6gZ5",
+            "Battle Creed",
+            "classfeature"
+          ),
+          "class-branch-other-level-1": rawSelection(
+            "class-branch-other-level-1",
+            "pf2e.classfeatures",
+            "other",
+            "Other Branch",
+            "classfeature"
+          ),
+        },
+        selections: {
+          "class-feat-level-2": rawSelection(
+            "class-feat-level-2",
+            "pf2e.feats-srd",
+            "class-feat",
+            "Class Feat",
+            "class"
+          ),
+          "general-feat-level-3": rawSelection(
+            "general-feat-level-3",
+            "pf2e.feats-srd",
+            "AmP0qu7c5dlBSath",
+            "Toughness",
+            "general"
+          ),
+          "ancestry-feat-level-1": rawSelection(
+            "ancestry-feat-level-1",
+            "pf2e.feats-srd",
+            "ancestry-feat",
+            "Ancestry Feat",
+            "ancestry"
+          ),
+        },
+        classChoices: {
+          "class-choice-divine-font-divineFont-level-1": "heal",
+        },
+        skillTrainings: {
+          "skill-training-cleric-level-1": {
+            ruleChoices: { skill: "religion" },
+            additional: [],
+            loreChoices: {},
+          },
+        },
+        spellChoices: {
+          "spell-choice-cleric-rank-1-level-1": [
+            rawSelection("spell-choice-cleric-rank-1-level-1", "pf2e.spells-srd", "heal", "Heal", null),
+            rawSelection("spell-choice-cleric-rank-1-level-1", "pf2e.spells-srd", "harm", "Harm", null),
+          ],
+        },
+        languageChoices: {
+          "language-choice-level-1": ["Draconic"],
+        },
+      },
+      1
+    );
+
+    expect(draft.classArchetypeChoices).toEqual({
+      "class-archetype-doctrine-level-1": "battle-creed",
+    });
+    expect(draft.branchSelections).toEqual({});
+    expect(draft.classChoices).toEqual({});
+    expect(draft.skillTrainings).toEqual({});
+    expect(draft.spellChoices).toEqual({});
+    expect(draft.selections).toEqual({
+      "ancestry-feat-level-1": expect.objectContaining({ name: "Ancestry Feat" }),
+    });
+    expect(draft.languageChoices).toEqual({ "language-choice-level-1": ["draconic"] });
+  });
+
+  it("keeps an explicit lane decision when removing a stale legacy Battle Creed branch", () => {
+    const draft = normalizeDraft(
+      {
+        version: 8,
+        targetLevel: 1,
+        classArchetypeChoices: {
+          "class-archetype-doctrine-level-1": "standard",
+        },
+        branchSelections: {
+          "class-branch-doctrine-level-1": rawSelection(
+            "class-branch-doctrine-level-1",
+            "pf2e.classfeatures",
+            "49CkgA3kj7Im6gZ5",
+            "Battle Creed",
+            "classfeature"
+          ),
+        },
+      },
+      1
+    );
+
+    expect(draft.classArchetypeChoices).toEqual({
+      "class-archetype-doctrine-level-1": "standard",
+    });
+    expect(draft.branchSelections).toEqual({});
   });
 
   it("sanitizes module state", () => {
@@ -234,3 +342,16 @@ describe("draft-service", () => {
     });
   });
 });
+
+function rawSelection(slotId: string, packId: string, documentId: string, name: string, featType: string | null) {
+  return {
+    slotId,
+    packId,
+    documentId,
+    uuid: `Compendium.${packId}.Item.${documentId}`,
+    itemType: packId === "pf2e.spells-srd" ? "spell" : "feat",
+    featType,
+    name,
+    level: 1,
+  };
+}

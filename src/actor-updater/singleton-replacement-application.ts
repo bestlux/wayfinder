@@ -1,6 +1,8 @@
 import { listActorItems } from "../build-state.js";
+import { MODULE_ID } from "../constants.js";
 import type { ActorItemLike, ActorLike, EmbeddedItemSource } from "../shared/actor-model.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
+import { selectedClassArchetypeSelection } from "../wayfinder/class-archetype/registry.js";
 import { SINGLETON_ITEM_TYPES } from "./selection-constants.js";
 import type { CreateEmbeddedSourceDependencies } from "./selection-dependencies.js";
 import { createEmbeddedSource } from "./selection-source-application.js";
@@ -36,12 +38,22 @@ export async function replaceSingletonItems(
     return;
   }
 
+  const replacesClass = singletonSelections.some((selection) => selection.itemType === "class");
+  const classArchetypeSelection = replacesClass ? selectedClassArchetypeSelection(draft) : null;
+  const batchedSelections = [...singletonSelections, ...(classArchetypeSelection ? [classArchetypeSelection] : [])];
+
   const selectedTypes = new Set(singletonSelections.map((selection) => selection.itemType));
   const sources = (
-    await Promise.all(singletonSelections.map((selection) => createEmbeddedSource(selection, draft, steps, deps)))
+    await Promise.all(batchedSelections.map((selection) => createEmbeddedSource(selection, draft, steps, deps)))
   ).filter((source): source is EmbeddedItemSource => !!source);
 
-  const existing = (listActorItems(actor) as ActorItemLike[]).filter((item) => selectedTypes.has(item?.type ?? ""));
+  const existing = (listActorItems(actor) as ActorItemLike[]).filter(
+    (item) =>
+      selectedTypes.has(item?.type ?? "") ||
+      (replacesClass &&
+        typeof item?.flags?.[MODULE_ID]?.slotId === "string" &&
+        item.flags[MODULE_ID].slotId.startsWith("class-archetype-"))
+  );
   const existingIds = existing.map((item) => item.id).filter((id): id is string => typeof id === "string");
   if (existingIds.length > 0 && typeof actor.deleteEmbeddedDocuments === "function") {
     await actor.deleteEmbeddedDocuments("Item", existingIds);

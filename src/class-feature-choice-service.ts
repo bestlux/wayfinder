@@ -9,6 +9,7 @@ import {
 } from "./selector-application.js";
 import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
 import type { ClassChoiceMeta, ClassGrantMeta, DraftState, PendingStep, SelectionRef } from "./types.js";
+import { selectedClassArchetypeInternalChoices } from "./wayfinder/class-archetype/registry.js";
 
 type ApplyClassFeatureChoiceDependencies = SelectorApplicationDependencies;
 
@@ -148,6 +149,14 @@ function collectSelectedFeatureRefs(
         name: step.classChoice.sourceName,
       });
     }
+  }
+
+  for (const internalChoice of selectedClassArchetypeInternalChoices(draft)) {
+    refs.set(internalChoice.selection.uuid, {
+      uuid: internalChoice.selection.uuid,
+      documentId: internalChoice.selection.documentId,
+      name: internalChoice.selection.name,
+    });
   }
 
   return Array.from(refs.values());

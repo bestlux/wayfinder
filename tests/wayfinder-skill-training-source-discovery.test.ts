@@ -442,7 +442,7 @@ describe("wayfinder skill training source discovery", () => {
               slug: "fighter-dedication",
               description: {
                 value:
-                  "<p>You become trained in martial weapons. You become trained in your choice of Acrobatics or Athletics; if you are already trained in both of these skills, you instead become trained in a skill of your choice. You become trained in fighter class DC.</p>",
+                  "<p>You become trained in martial weapons. You become trained in your choice of Acrobatics or Athletics, if you are already trained in both skills, you instead become trained in another skill of your choice. You become trained in fighter class DC.</p>",
               },
               rules: [],
             },
@@ -532,7 +532,14 @@ describe("wayfinder skill training source discovery", () => {
         sourceRuleIndex: 0,
       },
     });
-    expect(training.choiceRules[0]?.fallbackPrompt).toBeUndefined();
+    expect(training.choiceRules[0]?.fallbackPrompt).toBe("Choose a skill");
+    expect(training.choiceRules[0]?.fallbackOptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slug: "acrobatics" }),
+        expect.objectContaining({ slug: "athletics" }),
+        expect.objectContaining({ slug: "arcana" }),
+      ])
+    );
   });
 
   it("discovers mixed specific and open multiclass dedication choices like Rogue Dedication", () => {

@@ -14,6 +14,7 @@ import { MODULE_ID } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
 import type { ActorLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import type { PendingStep, SelectionRef } from "../src/types";
+import { createClassArchetypeStep, createPickItemStep } from "../src/wayfinder/domain/step-types";
 
 describe("actor-updater selection application", () => {
   it("replaces singleton items with embedded sources stamped for wayfinder", async () => {
@@ -94,6 +95,129 @@ describe("actor-updater selection application", () => {
     expect(actor.createEmbeddedDocuments).toHaveBeenCalledTimes(1);
     const createdSources = actor.createEmbeddedDocuments.mock.calls[0]?.[1];
     expect(createdSources?.map((source) => source.name)).toEqual(["Elf", "Ancient Elf", "Acolyte", "Rogue"]);
+  });
+
+  it("creates a selected class archetype in the same embedded batch as its class", async () => {
+    const actor = {
+      items: [],
+      createEmbeddedDocuments: vi.fn(async (_type: "Item", sources: EmbeddedItemSource[]) => sources),
+    };
+    const draft = createEmptyDraft(1);
+    draft.classArchetypeChoices["class-archetype-doctrine-level-1"] = "battle-creed";
+    const classSelection = selectionRef("class-level-1", "class", "cleric", "Cleric");
+    const steps: PendingStep[] = [
+      createClassArchetypeStep(1, {
+        slotId: "class-archetype-doctrine-level-1",
+        standardValue: "standard",
+        sourceName: "Doctrine",
+        selector: {
+          slotId: "class-branch-doctrine-level-1",
+          selectorPackId: "pf2e.classfeatures",
+          selectorDocumentId: "doctrine",
+          selectorUuid: "Compendium.pf2e.classfeatures.Item.doctrine",
+          selectorName: "Doctrine",
+          selectorRuleIndex: 0,
+          flag: "doctrine",
+          optionTag: "cleric-doctrine",
+          classSlug: "cleric",
+          dependsOn: "class",
+        },
+        options: [
+          { value: "standard", label: "Standard", img: null, detail: null },
+          { value: "battle-creed", label: "Battle Creed", img: null, detail: null },
+        ],
+      }),
+    ];
+    const stripPreselectedClassFeatureEntries = vi.fn();
+    const stripPreselectedClassBranchEntries = vi.fn();
+
+    await replaceSingletonItems(actor, [classSelection], draft, steps, {
+      fetchSelectionDocument: async (selection) => ({
+        toObject: () => ({
+          name: selection.name,
+          type: selection.itemType === "class" ? "class" : "feat",
+          system: { rules: [] },
+        }),
+      }),
+      stripPreselectedClassFeatureEntries,
+      stripPreselectedClassBranchEntries,
+    });
+
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledTimes(1);
+    expect(actor.createEmbeddedDocuments.mock.calls[0]?.[1].map((source) => source.name)).toEqual([
+      "Cleric",
+      "Battle Creed",
+    ]);
+    expect(actor.createEmbeddedDocuments.mock.calls[0]?.[1][1]).toMatchObject({
+      flags: {
+        [MODULE_ID]: {
+          slotId: "class-archetype-doctrine-level-1",
+        },
+      },
+    });
+    expect(stripPreselectedClassFeatureEntries).toHaveBeenCalledTimes(1);
+    expect(stripPreselectedClassBranchEntries).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "Compendium.pf2e.feats-srd.Item.Toughness",
+    "Compendium.pf2e.feats-srd.Item.AmP0qu7c5dlBSath",
+  ])("rewrites a Battle Harbinger Toughness grant alias to the selected native fallback (%s)", async (ruleUuid) => {
+    const draft = createEmptyDraft(5);
+    const fallbackSlotId = "class-archetype-battle-harbinger-toughness-replacement-level-2";
+    const dedication = selectionRef(
+      "class-archetype-grant-battle-harbinger-dedication-level-2",
+      "feat",
+      "K7YK5ESDoreohCe8",
+      "Battle Harbinger Dedication"
+    );
+    dedication.uuid = "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8";
+    const fleet = selectionRef(fallbackSlotId, "feat", "Ux73dmoF8KnavyUD", "Fleet");
+    fleet.uuid = "Compendium.pf2e.feats-srd.Item.Ux73dmoF8KnavyUD";
+    draft.selections[fallbackSlotId] = fleet;
+    const step = createPickItemStep(
+      "grant-choice",
+      2,
+      "Choose another general feat",
+      "",
+      { itemType: "feat", featTypes: ["general"], maxLevel: 2 },
+      {
+        slotId: fallbackSlotId,
+        staticGrantReplacement: {
+          sourceUuid: dedication.uuid,
+          originalGrantUuids: [
+            "Compendium.pf2e.feats-srd.Item.Toughness",
+            "Compendium.pf2e.feats-srd.Item.AmP0qu7c5dlBSath",
+          ],
+          flag: "toughnessFallback",
+        },
+      }
+    );
+
+    const source = await createEmbeddedSource(dedication, draft, [step], {
+      fetchSelectionDocument: async () => ({
+        toObject: () => ({
+          name: "Battle Harbinger Dedication",
+          type: "feat",
+          system: {
+            rules: [
+              { key: "ChoiceSet", flag: "skill" },
+              { key: "ActiveEffectLike" },
+              { key: "GrantItem", uuid: ruleUuid },
+            ],
+          },
+        }),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+
+    expect(source?.system?.rules?.[2]).toMatchObject({
+      key: "GrantItem",
+      uuid: fleet.uuid,
+      flag: "toughnessFallback",
+      allowDuplicate: false,
+    });
   });
 
   it("preselects singleton boost and key ability data before embedded item creation", async () => {
@@ -371,6 +495,92 @@ describe("actor-updater selection application", () => {
     expect(source?.flags?.pf2e?.rulesSelections).toEqual({
       fighterSkill: "athletics",
     });
+  });
+
+  it("adds a legal ChoiceSet option before persisting a conditional fallback skill", async () => {
+    const draft = createEmptyDraft(5);
+    const slotId = "skill-training-battle-harbinger-dedication-level-2";
+    const choiceKey = "feat:battle-harbinger-dedication:skill";
+    draft.skillTrainings[slotId] = {
+      ruleChoices: { [choiceKey]: "society" },
+      additional: [],
+      loreChoices: {},
+    };
+    const dedication = selectionRef(slotId, "feat", "K7YK5ESDoreohCe8", "Battle Harbinger Dedication");
+    dedication.uuid = "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8";
+    const steps: PendingStep[] = [
+      {
+        id: slotId,
+        level: 2,
+        kind: "skill-training",
+        slotKind: "skill-training",
+        title: "Battle Harbinger training",
+        description: "",
+        required: true,
+        slotId,
+        training: {
+          classSlug: "cleric",
+          className: "Cleric",
+          fixedSkills: [],
+          fixedLores: [],
+          choiceRules: [
+            {
+              key: choiceKey,
+              flag: "skill",
+              prompt: "Choose Acrobatics or Athletics",
+              sourceLabel: "Battle Harbinger Dedication",
+              options: [
+                { slug: "acrobatics", label: "Acrobatics" },
+                { slug: "athletics", label: "Athletics" },
+              ],
+              fallbackPrompt: "Choose a skill",
+              fallbackOptions: [{ slug: "society", label: "Society" }],
+              persistence: {
+                sourceItemType: "feat",
+                sourcePackId: "pf2e.feats-srd",
+                sourceDocumentId: dedication.documentId,
+                sourceUuid: dedication.uuid,
+                sourceRuleIndex: 0,
+              },
+            },
+          ],
+          loreChoices: [],
+          additionalCount: 0,
+        },
+      },
+    ];
+
+    const source = await createEmbeddedSource(dedication, draft, steps, {
+      fetchSelectionDocument: async () => ({
+        toObject: () => ({
+          name: dedication.name,
+          type: "feat",
+          system: {
+            rules: [
+              {
+                key: "ChoiceSet",
+                flag: "skill",
+                choices: [
+                  { value: "acrobatics", label: "Acrobatics" },
+                  { value: "athletics", label: "Athletics" },
+                ],
+              },
+              { key: "ActiveEffectLike" },
+            ],
+          },
+        }),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "skill",
+      selection: "society",
+      choices: expect.arrayContaining([{ value: "society", label: "Society" }]),
+    });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({ skill: "society" });
   });
 
   it("resolves static GrantItem preselect templates from drafted background training", async () => {

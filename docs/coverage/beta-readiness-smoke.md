@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-07-05.
+Last updated: 2026-07-11.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -110,6 +110,21 @@ Before tagging `v0.2.0`, the release code passed the full live matrix against Fo
 
 After the standalone filtered flag-choice lane and same-item class-choice option-predicate work (plus the flag-choice prompt localization fix), the full matrix ran green against Foundry VTT 14.364 / PF2E 8.2.0 in world `testing-world`: 29 cases passing, 0 classified/manual, 0 failed, in two chunks (15 + 14). This includes the new `bard-multifarious-muse-l1-l5-apply-rerun` variant, which drafts Multifarious Muse at level 2, selects a second muse through the flag-choice step, selects the granted level-1 bard feat through the grant-choice step, applies to level 5, and reruns with 0 pending steps. Artifacts: `.wayfinder-smoke/slice5-matrix-a`, `.wayfinder-smoke/slice5-matrix-b`, and `.wayfinder-smoke/slice5-bard-localize` (post-fix bard re-verification).
 
+## 2026-07-11 Class-Archetype Lane
+
+The dedicated class-archetype lane ran against Foundry VTT 14.364 / PF2E 8.3.0 in world `testing-world`. All six maintained cases passed with no native choice dialogs, no duplicate source IDs, successful draft cleanup, and zero pending rerun steps.
+
+| Case | Result | Evidence |
+| --- | --- | --- |
+| Standard Cleric level 1 to 5 | Pass | Explicit Standard choice retained Doctrine, standard prepared slots, and normal Divine Font behavior |
+| Battle Creed level 1 to 5 | Pass | Doctrine replacement, Battle Harbinger Dedication, exact prepared slots, Battle Font, Bane/Bless, and class-feat cadence verified |
+| Incremental Battle Creed level 1 to 5 | Pass | Actor-owned profile was recovered; obsolete lower-rank prepared slots were removed and no profile items duplicated |
+| Battle Creed with Acrobatics and Athletics already trained | Pass | Society was appended to the native skill ChoiceSet, persisted on the dedication, and applied without a native dialog |
+| Battle Creed with actor-owned Toughness | Pass | Dedication's static grant used the drafted fallback feat without duplicating Toughness or consuming the ordinary general-feat slot |
+| Battle Creed with drafted Shielded Fortune | Pass | Pending background Toughness was projected before apply; Fleet remained nested under the dedication and Incredible Initiative independently occupied the level-3 general-feat slot |
+
+Artifact: `.wayfinder-smoke/class-archetype-final-2`.
+
 ## 2026-05-11 Incremental Existing-Character Reruns
 
 These cases first applied a level 1 actor, reopened Wayfinder against that existing actor, advanced to level 5, applied, and reran at level 5. They are targeted safety checks for actor-owned class-feature replay, prepared spellcasting entry expansion, branch-derived spontaneous spell choices, predicate-gated grants, duplicate prevention, native popup suppression, and draft cleanup.
@@ -127,6 +142,6 @@ These cases first applied a level 1 actor, reopened Wayfinder against that exist
 - The matrix proves plan/fill/apply/rerun behavior for the maintained blank level-1-to-level-5 smoke cases. It is not exhaustive path coverage and should not be described as proving every legal build for every class.
 - Direct feat options and tag-based class-branch options with embedded `ChoiceSet` rules are shown only when every embedded choice is covered by a guided follow-up lane; predicate-backed branch steps keep their curated options visible. Supported feat-owned and selected class-feature follow-ups are preselected before PF2E native rules run.
 - Standalone filtered no-grant `ChoiceSet` rules are guided through flag-choice steps when filters resolve to supported item types and required actor placeholders are known from draft context. Same-item class-choice option predicates are guided when later choices depend on earlier same-source class-choice roll options.
-- Remaining embedded-`ChoiceSet` caveats are selected-item and equipment predicates, dynamic flags-path choices, cross-item dependency graphs, and class archetype lanes.
-- Class archetype branch options are filtered out of normal class-branch choices. Free Archetype and class archetypes need their own variant or archetype lanes before they should appear as guided choices.
+- Remaining embedded-`ChoiceSet` caveats are selected-item and equipment predicates, dynamic flags-path choices, and cross-item dependency graphs.
+- Battle Creed is guided through the dedicated class-archetype lane. Other class-archetype branch options stay filtered until a complete profile is registered. Free Archetype remains a separate future variant lane over PF2E's `archetype` feat group.
 - Daily preparations, starting gear beyond class-feature grants, purchasing, retraining, and table-specific campaign systems remain PF2E-native/manual.

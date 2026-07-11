@@ -18,6 +18,7 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 ## Highlights
 
 - **One flow from level 1 to level up.** Ancestry, heritage, background, class, class branches, feats, boosts, skill increases, languages, and spell choices — all in order, in one window.
+- **Dedicated class-archetype decisions.** Battle Creed is guided as a complete Cleric progression profile instead of being treated as an ordinary Doctrine option.
 - **Earlier picks filter later ones.** You stop scrolling past feats and options you can't take anyway.
 - **Beginner-friendly, veteran-fast.** Each step explains what you're choosing; experienced players just search, pick, next.
 - **Respects your table.** Rarity and source filters on every picker, with optional GM allowlists for non-official packs.
@@ -43,7 +44,7 @@ https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 
 Foundry's package updater will follow it for future versions. Older releases stay installable from their own [release pages](https://github.com/bestlux/wayfinder/releases).
 
-**Requirements:** Foundry VTT v14 with the PF2E system (8.1 or newer). The current release is verified against Foundry VTT 14.364 and PF2E 8.2.0.
+**Requirements:** Foundry VTT v14 with the PF2E system (8.1 or newer). The current release is verified against Foundry VTT 14.364 and PF2E 8.2.0. The development branch's Battle Creed lane is additionally smoke-verified against PF2E 8.3.0.
 
 ## Using Wayfinder
 
@@ -57,6 +58,8 @@ Wayfinder is a planning layer on top of the PF2E system, not a replacement for i
 ## Class support
 
 Every one of the 27 PF2E classes has a verified guided path from a blank level-1 character through level 5 — including class branches (instincts, doctrines, bloodlines, mysteries, and the rest), feat milestones, skill training, boosts, and spellcasting setup for prepared, spontaneous, spellbook, and bounded casters.
+
+Battle Creed is the first guided class-archetype profile. Wayfinder handles its Doctrine replacement, level-2 Battle Harbinger Dedication, prepared-spell progression, Battle Font, nested skill choice, and conflicting static Toughness grant as one dedicated progression lane. Other class archetypes remain filtered until they have the same end-to-end support.
 
 <details>
 <summary><strong>All 27 classes, verified through level 5</strong></summary>
@@ -75,7 +78,7 @@ These stay in the native PF2E sheet for now, and Wayfinder will tell you so when
 
 - Starting gear and item purchasing
 - Daily preparations
-- Free Archetype and class archetypes
+- Free Archetype and class archetypes other than Battle Creed
 - Retraining and table-specific campaign systems
 
 ## Feedback

@@ -7,6 +7,7 @@ export const clericContributor = {
             draft: args.draft,
             effectiveClassDocument: args.effectiveClassDocument,
             effectiveDeityDocument: args.effectiveDeityDocument,
+            effectiveClassFeatureDocuments: args.effectiveClassFeatureDocuments ?? [],
             readExistingSpellChoiceSelections: args.readExistingSpellChoiceSelections,
             classSlug: CLERIC_CLASS_SLUG,
         });

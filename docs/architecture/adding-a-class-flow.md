@@ -2,6 +2,8 @@
 
 This repo now has an internal extension seam for class-specific behavior. Use it to keep new character-creation work out of `src/wayfinder/app-shell.ts` and out of the generic discovery/building modules unless the behavior is truly shared.
 
+For level-1 class archetypes that replace class mechanics, use the separate [class archetype lane contract](class-archetype-lane.md).
+
 ## When To Add A Contributor
 
 Add or extend a contributor under `src/wayfinder/classes/` when a rule is class-specific and changes which spell-choice or other class-owned planning steps should exist.

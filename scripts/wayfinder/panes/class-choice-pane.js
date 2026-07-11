@@ -1,11 +1,12 @@
 export function buildClassChoicePane(args) {
     const { step, selectedValue, selectedLabel, blocked, blockedTitle, blockedMessage } = args;
-    const classChoice = step.classChoice;
-    if (!classChoice) {
-        throw new Error(`Missing classChoice metadata for step ${step.id}`);
+    if (step.kind !== "class-choice" && step.kind !== "class-archetype") {
+        throw new Error(`Expected class choice metadata for step ${step.id}`);
     }
+    const choice = step.kind === "class-archetype" ? step.classArchetype : step.classChoice;
+    const dependsOn = step.kind === "class-archetype" ? "class" : step.classChoice.dependsOn;
     return {
-        kind: "class-choice",
+        kind: step.kind,
         isPickItem: false,
         isManual: false,
         isBoost: false,
@@ -18,17 +19,19 @@ export function buildClassChoicePane(args) {
         stepId: step.id,
         slotId: step.slotId,
         level: step.level,
-        modeLabel: "Class Choice",
+        modeLabel: step.kind === "class-archetype" ? "Class Archetype" : "Class Choice",
         title: step.title,
         description: step.description,
         completed: typeof selectedValue === "string" && selectedValue.length > 0,
         selectedLabel,
-        sourceName: classChoice.sourceName,
-        dependsOn: classChoice.dependsOn,
+        eyebrow: step.kind === "class-archetype" ? "Class Archetype" : "Class Choice",
+        action: step.kind === "class-archetype" ? "select-class-archetype" : "select-class-choice",
+        sourceName: choice.sourceName,
+        dependsOn,
         blocked,
         blockedTitle,
         blockedMessage,
-        options: classChoice.options.map((option) => ({
+        options: choice.options.map((option) => ({
             ...option,
             selected: option.value === selectedValue,
         })),

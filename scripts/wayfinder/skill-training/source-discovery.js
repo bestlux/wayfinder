@@ -63,7 +63,19 @@ export function discoverSourceSkillTrainingMeta(args) {
             configuredSkills,
         });
         fixedLores.push(...derived.fixedLores);
-        choiceRules.push(...derived.choiceRules);
+        for (const derivedChoice of derived.choiceRules) {
+            const persistedChoice = hasRuleSkillChoice
+                ? [...choiceRules].reverse().find((choice) => choice.persistence?.sourceUuid === source.sourceSelection?.uuid)
+                : null;
+            if (persistedChoice && derivedChoice.fallbackOptions?.length) {
+                persistedChoice.fallbackPrompt = derivedChoice.fallbackPrompt ?? "Choose a skill";
+                persistedChoice.fallbackOptions = derivedChoice.fallbackOptions;
+                continue;
+            }
+            if (!hasRuleSkillChoice || isOpenBonusSkillChoice(derivedChoice)) {
+                choiceRules.push(derivedChoice);
+            }
+        }
         loreChoices.push(...derived.loreChoices);
     }
     const flexibleLoreSuggestions = new Set(loreChoices.flatMap((choice) => choice.suggestions.map((suggestion) => normalizeLoreLabel(suggestion).toLowerCase())));
@@ -127,7 +139,7 @@ function discoverDescriptionTrainingMeta(args) {
         localize: args.localize,
         configuredSkills: args.configuredSkills,
     });
-    choiceRules.push(...(args.hasRuleSkillChoice ? dedicationSkillChoices.filter(isOpenBonusSkillChoice) : dedicationSkillChoices));
+    choiceRules.push(...dedicationSkillChoices);
     const loreSkillAndOtherSkillMatch = /\bone lore skill and one other intelligence- or wisdom-based skill of your choice\b/i.exec(descriptionText);
     if (loreSkillAndOtherSkillMatch) {
         loreChoices.push(createLoreChoice({
@@ -284,7 +296,7 @@ function buildFilteredSkillOptions(localize, configuredSkills, allowedAbilities)
 }
 function discoverDedicationSkillChoices(args) {
     const allSkillOptions = buildFilteredSkillOptions(args.localize, args.configuredSkills, []);
-    const choiceBetweenSpecificSkills = Array.from(args.descriptionText.matchAll(/\btrained in (?:your choice of )?([A-Za-z][A-Za-z' -]+?) or ([A-Za-z][A-Za-z' -]+?)(?: plus one skill of your choice)?; if you (?:are|were) already trained in both(?: of these skills| [A-Za-z][A-Za-z' -]+ and [A-Za-z][A-Za-z' -]+)?[,]? you (?:instead )?become trained in (?:an? )?(?:additional |another )?skill of your choice\b/gi));
+    const choiceBetweenSpecificSkills = Array.from(args.descriptionText.matchAll(/\btrained in (?:your choice of )?([A-Za-z][A-Za-z' -]+?) or ([A-Za-z][A-Za-z' -]+?)(?: plus one skill of your choice)?[;,] if you (?:are|were) already trained in both(?: of these skills| skills| [A-Za-z][A-Za-z' -]+ and [A-Za-z][A-Za-z' -]+)?[,]? you (?:instead )?become trained in (?:an? )?(?:additional |another )?skill of your choice\b/gi));
     if (choiceBetweenSpecificSkills.length > 0) {
         const rules = choiceBetweenSpecificSkills.flatMap((match, index) => {
             const firstSkill = skillSlugFromLabel(match[1], args.configuredSkills, args.localize);

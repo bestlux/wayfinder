@@ -1,4 +1,6 @@
-const DRAFT_VERSION = 7;
+import { classArchetypeProfile, migrateLegacyClassArchetypeBranches, STANDARD_CLASS_PATH, } from "./wayfinder/class-archetype/registry.js";
+import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
+const DRAFT_VERSION = 8;
 const STATE_VERSION = 1;
 export function createEmptyDraft(targetLevel = 1) {
     return {
@@ -10,6 +12,7 @@ export function createEmptyDraft(targetLevel = 1) {
         skillIncreases: {},
         skillTrainings: {},
         branchSelections: {},
+        classArchetypeChoices: {},
         singletonChoices: {},
         languageChoices: {},
         classChoices: {},
@@ -27,21 +30,68 @@ export function createEmptyState() {
 }
 export function normalizeDraft(raw, fallbackTargetLevel) {
     const draft = isRecord(raw) ? raw : {};
+    const branchSelections = sanitizeSelections(draft.branchSelections);
+    const classArchetypeChoices = Object.fromEntries(Object.entries(sanitizeChoiceValues(draft.classArchetypeChoices)).filter(([, value]) => value === STANDARD_CLASS_PATH || !!classArchetypeProfile(value)));
+    const migratedClassArchetypeProfiles = migrateLegacyClassArchetypeBranches(branchSelections, classArchetypeChoices);
+    const selections = sanitizeSelections(draft.selections);
+    const manual = sanitizeManual(draft.manual);
+    const skillTrainings = sanitizeSkillTrainings(draft.skillTrainings);
+    const classChoices = sanitizeClassChoices(draft.classChoices);
+    const spellChoices = sanitizeSpellChoices(draft.spellChoices);
+    if (migratedClassArchetypeProfiles.length > 0) {
+        clearLegacyClassArchetypeDependentState({
+            branchSelections,
+            classChoices,
+            manual,
+            selections,
+            skillTrainings,
+            spellChoices,
+            projectedStaticGrantUuids: new Set(migratedClassArchetypeProfiles.flatMap((profile) => profile.projectedFeatGrants.flatMap((grant) => grant.staticFeatGrants.map((selection) => selection.uuid)))),
+        });
+    }
     return {
         version: DRAFT_VERSION,
         targetLevel: clampLevel(typeof draft.targetLevel === "number" ? draft.targetLevel : fallbackTargetLevel),
-        selections: sanitizeSelections(draft.selections),
+        selections,
         boosts: sanitizeBoosts(draft.boosts),
-        manual: sanitizeManual(draft.manual),
+        manual,
         skillIncreases: sanitizeSkillIncreases(draft.skillIncreases),
-        skillTrainings: sanitizeSkillTrainings(draft.skillTrainings),
-        branchSelections: sanitizeSelections(draft.branchSelections),
+        skillTrainings,
+        branchSelections,
+        classArchetypeChoices,
         singletonChoices: sanitizeChoiceValues(draft.singletonChoices),
         languageChoices: sanitizeChoiceListValues(draft.languageChoices),
-        classChoices: sanitizeClassChoices(draft.classChoices),
-        spellChoices: sanitizeSpellChoices(draft.spellChoices),
+        classChoices,
+        spellChoices,
         updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
     };
+}
+function clearLegacyClassArchetypeDependentState(state) {
+    clearMatchingKeys(state.branchSelections, () => true);
+    clearMatchingKeys(state.classChoices, (slotId) => slotId.startsWith(SLOT_PREFIXES.classChoice));
+    clearMatchingKeys(state.skillTrainings, (slotId) => slotId.startsWith(SLOT_PREFIXES.skillTraining));
+    clearMatchingKeys(state.spellChoices, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
+    clearMatchingKeys(state.manual, (slotId) => [
+        SLOT_PREFIXES.classBranch,
+        SLOT_PREFIXES.classChoice,
+        SLOT_PREFIXES.classFeat,
+        SLOT_PREFIXES.skillTraining,
+        SLOT_PREFIXES.spellChoice,
+    ].some((prefix) => slotId.startsWith(prefix)));
+    clearMatchingKeys(state.selections, (slotId) => {
+        const selection = state.selections[slotId];
+        return (slotId.startsWith(SLOT_PREFIXES.classFeat) ||
+            /^grant-choice-(?:class|deity|none)-classfeature-/.test(slotId) ||
+            /^flag-choice-(?:ancestry|class|none)-classfeature-/.test(slotId) ||
+            (!!selection && state.projectedStaticGrantUuids.has(selection.uuid)));
+    });
+}
+function clearMatchingKeys(record, matches) {
+    for (const key of Object.keys(record)) {
+        if (matches(key)) {
+            delete record[key];
+        }
+    }
 }
 export function normalizeState(raw) {
     const state = isRecord(raw) ? raw : {};
@@ -115,6 +165,7 @@ function sanitizeSelections(raw) {
             featType: typeof selection.featType === "string" ? selection.featType : null,
             name,
             level: typeof selection.level === "number" ? clampLevel(selection.level) : null,
+            ...(typeof selection.slug === "string" && selection.slug.trim() ? { slug: selection.slug.trim() } : {}),
         };
     }
     return result;

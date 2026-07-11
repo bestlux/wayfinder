@@ -28,6 +28,23 @@ describe("class-choice-service", () => {
     expect(steps.map((step) => step.slotId)).toEqual(["class-feat-level-1", "class-feat-level-2"]);
   });
 
+  it("reserves an archetype-owned class feat without consuming later class feat milestones", async () => {
+    const steps = await buildClassFeatSteps({
+      effectiveClassDocument: {
+        system: {
+          classFeatLevels: {
+            value: [2, 4],
+          },
+        },
+      },
+      targetLevel: 4,
+      fulfilledCount: 0,
+      reservedStepIds: ["class-feat-level-2"],
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual(["class-feat-level-4"]);
+  });
+
   it("derives skill feat milestones from the effective class document", async () => {
     const steps = await buildClassSkillFeatSteps({
       effectiveClassDocument: {

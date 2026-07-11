@@ -1,5 +1,10 @@
 import { sourceIdOf } from "../../shared/source-id.js";
 import type { DraftState, OptionContext, PendingStep, SelectionRef } from "../../types.js";
+import {
+  projectedClassArchetypeFeatSelections,
+  projectedClassArchetypeStaticFeatSelections,
+  withExistingClassArchetypeChoice,
+} from "../class-archetype/registry.js";
 
 type SingletonItemType = "ancestry" | "heritage" | "background" | "class" | "deity";
 type LooseDocument = {
@@ -142,7 +147,9 @@ export async function resolveSelectionSlug(
 
 export async function hasDedicationFeatInContext(args: HasDedicationContextDependencies): Promise<boolean> {
   const { draft, listActorItems, fetchSelectionDocument, extractDocumentSlug } = args;
-  const actorHasDedication = listActorItems().some(
+  const actorItems = listActorItems();
+  const effectiveDraft = withExistingClassArchetypeChoice(draft, actorItems);
+  const actorHasDedication = actorItems.some(
     (item) =>
       (item as LooseItem | null)?.type === "feat" &&
       extractContextTraits(item, extractDocumentSlug).includes("dedication")
@@ -151,7 +158,10 @@ export async function hasDedicationFeatInContext(args: HasDedicationContextDepen
     return true;
   }
 
-  const draftedFeatSelections = Object.values(draft.selections).filter((selection) => selection.itemType === "feat");
+  const draftedFeatSelections = [
+    ...Object.values(effectiveDraft.selections).filter((selection) => selection.itemType === "feat"),
+    ...projectedClassArchetypeFeatSelections(effectiveDraft, effectiveDraft.targetLevel),
+  ];
   if (draftedFeatSelections.length === 0) {
     return false;
   }
@@ -165,20 +175,25 @@ export async function hasDedicationFeatInContext(args: HasDedicationContextDepen
 }
 
 export async function buildOptionContext(deps: OptionContextDependencies): Promise<OptionContext> {
+  const actorItems = deps.listActorItems();
+  const effectiveDraft = withExistingClassArchetypeChoice(deps.draft, actorItems);
   const [ancestryDocument, heritageDocument, classDocument, deityDocument, hasDedicationFeat] = await Promise.all([
     deps.resolveDocument("ancestry"),
     deps.resolveDocument("heritage"),
     deps.resolveDocument("class"),
     deps.resolveDocument("deity"),
-    hasDedicationFeatInContext(deps),
+    hasDedicationFeatInContext({
+      ...deps,
+      draft: effectiveDraft,
+      listActorItems: () => actorItems,
+    }),
   ]);
 
   const ancestrySlug = deps.extractDocumentSlug(ancestryDocument);
-  const selectedUuidsBySlotId = buildSelectedUuidsBySlotId(deps.draft);
-  const actorItems = deps.listActorItems();
+  const selectedUuidsBySlotId = buildSelectedUuidsBySlotId(effectiveDraft);
   const actorSourceIds = buildActorSourceIds(actorItems);
-  const rollOptions = buildActiveRollOptions(deps.draft, deps.steps ?? [], actorItems);
-  const skillRanks = buildProjectedSkillRanks(deps.skillRanks, deps.draft, deps.steps ?? []);
+  const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems);
+  const skillRanks = buildProjectedSkillRanks(deps.skillRanks, effectiveDraft, deps.steps ?? []);
   return {
     ancestrySlug,
     ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
@@ -187,7 +202,7 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
     classHasSpellcasting: classDocumentHasSpellcasting(classDocument),
     deitySelected: !!deityDocument,
     sanctification: resolveSanctificationChoice({
-      draft: deps.draft,
+      draft: effectiveDraft,
       actorItems,
       deityDocument,
     }),
@@ -364,7 +379,16 @@ function setMinimumRank(ranks: Record<string, number>, rawSlug: unknown, rank: n
 }
 
 function buildSelectedUuidsBySlotId(draft: DraftState): Record<string, string> {
-  const entries = [...Object.entries(draft.selections), ...Object.entries(draft.branchSelections)]
+  const entries = [
+    ...Object.entries(draft.selections),
+    ...Object.entries(draft.branchSelections),
+    ...projectedClassArchetypeFeatSelections(draft, draft.targetLevel).map(
+      (selection) => [selection.slotId, selection] as const
+    ),
+    ...projectedClassArchetypeStaticFeatSelections(draft, draft.targetLevel).map(
+      (selection) => [selection.slotId, selection] as const
+    ),
+  ]
     .map(([slotId, selection]) => [slotId, selection.uuid] as const)
     .filter(([, uuid]) => typeof uuid === "string" && uuid.length > 0);
   return Object.fromEntries(entries);

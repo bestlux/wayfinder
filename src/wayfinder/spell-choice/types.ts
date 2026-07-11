@@ -80,6 +80,7 @@ export interface BuildClericSpellChoiceStepsParams {
   draft: DraftState;
   effectiveClassDocument: SpellChoiceClassDocument;
   effectiveDeityDocument: SpellChoiceDeityDocument | null;
+  effectiveClassFeatureDocuments: SpellChoiceSchoolDocument[];
   readExistingSpellChoiceSelections: ReadExistingSpellChoiceSelections;
   classSlug: string;
 }

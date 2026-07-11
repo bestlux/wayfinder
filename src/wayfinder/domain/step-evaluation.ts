@@ -32,6 +32,10 @@ export async function isWayfinderStepComplete(
     return !!draft.branchSelections[step.slotId];
   }
 
+  if (step.kind === "class-archetype") {
+    return typeof draft.classArchetypeChoices[step.slotId] === "string";
+  }
+
   if (step.kind === "class-choice") {
     return typeof draft.classChoices[step.slotId] === "string" && draft.classChoices[step.slotId].length > 0;
   }
@@ -95,6 +99,14 @@ export async function getWayfinderStepStatus(
       return "Needs attention";
     }
     return draft.branchSelections[step.slotId]?.name ?? "Choose one";
+  }
+
+  if (step.kind === "class-archetype") {
+    if (recentlyInvalidatedStepIds.has(step.slotId) && !draft.classArchetypeChoices[step.slotId]) {
+      return "Needs attention";
+    }
+    const selected = draft.classArchetypeChoices[step.slotId];
+    return step.classArchetype.options.find((option) => option.value === selected)?.label ?? "Choose one";
   }
 
   if (step.kind === "class-choice") {

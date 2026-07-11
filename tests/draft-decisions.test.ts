@@ -55,6 +55,7 @@ describe("draft-decisions", () => {
       "spell-substitution"
     );
     draft.classChoices["class-choice-wizard-thesis-level-1"] = "spell-substitution";
+    draft.classArchetypeChoices["class-choice-wizard-thesis-level-1"] = "standard";
     draft.skillTrainings["skill-training-wizard-level-1"] = {
       ruleChoices: { wizardSkill: "arcana" },
       additional: ["society"],
@@ -74,6 +75,7 @@ describe("draft-decisions", () => {
     expect(clearDraftSlotDecisions(draft, "class-choice-wizard-thesis-level-1")).toBe(true);
     expect(draft.branchSelections["class-choice-wizard-thesis-level-1"]).toBeUndefined();
     expect(draft.classChoices["class-choice-wizard-thesis-level-1"]).toBeUndefined();
+    expect(draft.classArchetypeChoices["class-choice-wizard-thesis-level-1"]).toBeUndefined();
     expect(clearDraftSlotDecisions(draft, "missing-slot")).toBe(false);
   });
 });

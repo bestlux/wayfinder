@@ -35,6 +35,7 @@ export interface SelectorGrantPlan {
   createRulePolicy: "remove-all-grant-items" | number[] | null;
   updateCreatedGrant?: boolean;
   updateExistingGrantImmediately?: boolean;
+  adoptExistingSource?: boolean;
 }
 
 export interface SelectorApplicationPlan {
@@ -350,6 +351,16 @@ async function ensureGrantedItem(
   }
 
   if (existingMatches) {
+    if (grantPlan.adoptExistingSource) {
+      const refreshedSource = await createEmbeddedSource(grantPlan.selection);
+      await createManualStaticGrantedItems(
+        actor,
+        existingGranted,
+        refreshedSource ?? (existingGranted as EmbeddedItemSource),
+        grantPlan,
+        createEmbeddedSource
+      );
+    }
     return {
       item: existingGranted,
       update: buildGrantedItemUpdate(existingGrantedId!, selectorItemId, grantPlan),
@@ -551,6 +562,13 @@ function findGrantedItemForPlan(
   );
   if (matchingSource) {
     return matchingSource;
+  }
+
+  if (grantPlan.adoptExistingSource) {
+    const adoptableSource = items.find((item) => itemMatchesSourceId(item, grantPlan.selection.uuid));
+    if (adoptableSource) {
+      return adoptableSource;
+    }
   }
 
   return (

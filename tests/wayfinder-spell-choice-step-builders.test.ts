@@ -256,6 +256,37 @@ describe("wayfinder spell-choice step builders", () => {
     });
   });
 
+  it("reduces Battle Creed initial prepared spells to one from draft or existing class-feature state", async () => {
+    const drafted = createEmptyDraft(1);
+    drafted.classArchetypeChoices["class-archetype-doctrine-level-1"] = "battle-creed";
+    const shared = {
+      currentLevel: 1,
+      effectiveClassDocument: clericClassDocument(),
+      effectiveSchoolDocument: null,
+      effectiveDeityDocument: null,
+      targetLevel: 1,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    };
+
+    const [draftSteps, existingSteps] = await Promise.all([
+      buildSpellChoiceSteps({ ...shared, draft: drafted }),
+      buildSpellChoiceSteps({
+        ...shared,
+        draft: createEmptyDraft(1),
+        effectiveClassFeatureDocuments: [{ name: "Battle Creed", system: { slug: "battle-creed" } }],
+      }),
+    ]);
+
+    for (const steps of [draftSteps, existingSteps]) {
+      expect(steps.find((step) => step.slotId === "spell-choice-cleric-cantrips-level-1")?.spellChoice?.count).toBe(5);
+      expect(steps.find((step) => step.slotId === "spell-choice-cleric-rank-1-level-1")).toMatchObject({
+        title: "Battle harbinger prepared spell",
+        spellChoice: { count: 1 },
+      });
+    }
+  });
+
   it("builds bard spontaneous repertoire steps through level 5", async () => {
     const steps = await buildSpellChoiceSteps({
       draft: createEmptyDraft(5),

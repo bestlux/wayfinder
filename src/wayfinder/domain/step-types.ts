@@ -9,6 +9,7 @@ export type SlotKind =
   | "singleton-choice"
   | "language-choice"
   | "skill-training"
+  | "class-archetype"
   | "class-branch"
   | "class-choice"
   | "spell-choice"
@@ -26,6 +27,7 @@ export type StepKind =
   | "skill-increase"
   | "singleton-choice"
   | "language-choice"
+  | "class-archetype"
   | "class-branch"
   | "class-choice"
   | "spell-choice"
@@ -34,6 +36,7 @@ export type StepKind =
 export type PickItemSlotKind = Exclude<
   SlotKind,
   | "ability-boosts"
+  | "class-archetype"
   | "class-branch"
   | "class-choice"
   | "language-choice"
@@ -83,6 +86,19 @@ export interface ClassBranchMeta {
   predicate?: ChoicePredicate[];
 }
 
+export interface ClassArchetypeMeta {
+  slotId: string;
+  selector: ClassBranchMeta;
+  standardValue: string;
+  sourceName: string;
+  options: Array<{
+    value: string;
+    label: string;
+    img: string | null;
+    detail: string | null;
+  }>;
+}
+
 export type GrantSelectionSourceItemType = "classfeature" | "ancestry" | "heritage" | "background" | "feat";
 export type GrantSelectionDependency = "class" | "deity" | null;
 
@@ -100,6 +116,12 @@ export interface GrantSelectionMeta {
   classSlug: string | null;
   dependsOn: GrantSelectionDependency;
   filters: StepFilters;
+}
+
+export interface StaticGrantReplacementMeta {
+  sourceUuid: string;
+  originalGrantUuids: string[];
+  flag: string;
 }
 
 export type ClassGrantMeta = GrantSelectionMeta;
@@ -262,6 +284,7 @@ interface BasePendingStep<K extends StepKind, S extends SlotKind> {
 interface NoStepExtras {
   filters?: never;
   branch?: never;
+  classArchetype?: never;
   grantSelection?: never;
   flagChoice?: never;
   singletonChoice?: never;
@@ -274,7 +297,9 @@ interface NoStepExtras {
 export interface PickItemStep extends BasePendingStep<"pick-item", PickItemSlotKind> {
   filters: StepFilters;
   branch?: never;
+  classArchetype?: never;
   grantSelection?: GrantSelectionMeta;
+  staticGrantReplacement?: StaticGrantReplacementMeta;
   flagChoice?: FlagChoiceMeta;
   classChoice?: never;
   spellChoice?: never;
@@ -290,6 +315,7 @@ export interface SkillIncreaseStep extends BasePendingStep<"skill-increase", "sk
 export interface SkillTrainingStep extends BasePendingStep<"skill-training", "skill-training"> {
   filters?: never;
   branch?: never;
+  classArchetype?: never;
   grantSelection?: never;
   classChoice?: never;
   spellChoice?: never;
@@ -299,6 +325,7 @@ export interface SkillTrainingStep extends BasePendingStep<"skill-training", "sk
 export interface SingletonChoiceStep extends BasePendingStep<"singleton-choice", "singleton-choice"> {
   filters?: never;
   branch?: never;
+  classArchetype?: never;
   grantSelection?: never;
   singletonChoice: SingletonChoiceMeta;
   classChoice?: never;
@@ -309,6 +336,7 @@ export interface SingletonChoiceStep extends BasePendingStep<"singleton-choice",
 export interface LanguageChoiceStep extends BasePendingStep<"language-choice", "language-choice"> {
   filters?: never;
   branch?: never;
+  classArchetype?: never;
   grantSelection?: never;
   singletonChoice?: never;
   languageChoice: LanguageChoiceMeta;
@@ -320,6 +348,17 @@ export interface LanguageChoiceStep extends BasePendingStep<"language-choice", "
 export interface ClassBranchStep extends BasePendingStep<"class-branch", "class-branch"> {
   filters: StepFilters;
   branch: ClassBranchMeta;
+  classArchetype?: never;
+  grantSelection?: never;
+  classChoice?: never;
+  spellChoice?: never;
+  training?: never;
+}
+
+export interface ClassArchetypeStep extends BasePendingStep<"class-archetype", "class-archetype"> {
+  filters?: never;
+  branch?: never;
+  classArchetype: ClassArchetypeMeta;
   grantSelection?: never;
   classChoice?: never;
   spellChoice?: never;
@@ -329,6 +368,7 @@ export interface ClassBranchStep extends BasePendingStep<"class-branch", "class-
 export interface ClassChoiceStep extends BasePendingStep<"class-choice", "class-choice"> {
   filters?: never;
   branch?: never;
+  classArchetype?: never;
   grantSelection?: never;
   classChoice: ClassChoiceMeta;
   spellChoice?: never;
@@ -338,6 +378,7 @@ export interface ClassChoiceStep extends BasePendingStep<"class-choice", "class-
 export interface SpellChoiceStep extends BasePendingStep<"spell-choice", "spell-choice"> {
   filters: StepFilters;
   branch?: never;
+  classArchetype?: never;
   grantSelection?: never;
   classChoice?: never;
   spellChoice: SpellChoiceMeta;
@@ -352,6 +393,7 @@ export type PendingStep =
   | SkillTrainingStep
   | SingletonChoiceStep
   | LanguageChoiceStep
+  | ClassArchetypeStep
   | ClassBranchStep
   | ClassChoiceStep
   | SpellChoiceStep;
@@ -365,6 +407,7 @@ interface StepOptions {
 
 interface PickItemStepOptions extends StepOptions {
   grantSelection?: GrantSelectionMeta;
+  staticGrantReplacement?: StaticGrantReplacementMeta;
   flagChoice?: FlagChoiceMeta;
 }
 
@@ -372,6 +415,11 @@ interface ClassBranchStepOptions extends StepOptions {
   title?: string;
   description?: string;
   filters?: StepFilters;
+}
+
+interface ClassArchetypeStepOptions extends StepOptions {
+  title?: string;
+  description?: string;
 }
 
 interface ClassChoiceStepOptions extends StepOptions {
@@ -426,6 +474,7 @@ export function createPickItemStep(
     ...createBaseStep("pick-item", slotKind, level, title, description, options),
     filters,
     ...(options.grantSelection ? { grantSelection: options.grantSelection } : {}),
+    ...(options.staticGrantReplacement ? { staticGrantReplacement: options.staticGrantReplacement } : {}),
     ...(options.flagChoice ? { flagChoice: options.flagChoice } : {}),
   };
 }
@@ -544,6 +593,28 @@ export function createClassBranchStep(
   };
 }
 
+export function createClassArchetypeStep(
+  level: number,
+  classArchetype: ClassArchetypeMeta,
+  options: ClassArchetypeStepOptions = {}
+): ClassArchetypeStep {
+  return {
+    ...createBaseStep(
+      "class-archetype",
+      "class-archetype",
+      level,
+      options.title ?? "Choose a class path",
+      options.description ??
+        "Choose the standard class progression or a supported class archetype that replaces part of it.",
+      {
+        ...options,
+        slotId: options.slotId ?? classArchetype.slotId,
+      }
+    ),
+    classArchetype,
+  };
+}
+
 export function createClassChoiceStep(
   level: number,
   classChoice: ClassChoiceMeta,
@@ -592,6 +663,10 @@ export function isClassBranchStep(step: Pick<PendingStep, "kind">): step is Clas
   return step.kind === "class-branch";
 }
 
+export function isClassArchetypeStep(step: Pick<PendingStep, "kind">): step is ClassArchetypeStep {
+  return step.kind === "class-archetype";
+}
+
 export function isClassChoiceStep(step: Pick<PendingStep, "kind">): step is ClassChoiceStep {
   return step.kind === "class-choice";
 }
@@ -634,16 +709,17 @@ const SLOT_KIND_SORT_WEIGHTS: Record<SlotKind, number> = {
   "grant-choice": 6,
   "flag-choice": 7,
   deity: 8,
-  "singleton-choice": 9,
-  "class-choice": 10,
-  "class-branch": 11,
-  "skill-training": 12,
-  "language-choice": 13,
-  "spell-choice": 14,
-  "class-feat": 15,
-  "skill-feat": 16,
-  "general-feat": 17,
-  "skill-increase": 18,
+  "class-archetype": 9,
+  "singleton-choice": 10,
+  "class-choice": 11,
+  "class-branch": 12,
+  "skill-training": 13,
+  "language-choice": 14,
+  "spell-choice": 15,
+  "class-feat": 16,
+  "skill-feat": 17,
+  "general-feat": 18,
+  "skill-increase": 19,
 };
 
 const STEP_MODE_LABELS: Record<StepKind, string> = {
@@ -653,6 +729,7 @@ const STEP_MODE_LABELS: Record<StepKind, string> = {
   "skill-increase": "Skill",
   "singleton-choice": "Choice",
   "language-choice": "Languages",
+  "class-archetype": "Class Archetype",
   "class-branch": "Class Path",
   "class-choice": "Class Choice",
   "spell-choice": "Spells",

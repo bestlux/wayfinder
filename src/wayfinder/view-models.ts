@@ -272,7 +272,7 @@ export interface SkillTrainingStepPane {
 }
 
 export interface ClassChoiceStepPane {
-  kind: "class-choice";
+  kind: "class-choice" | "class-archetype";
   isPickItem: false;
   isManual: false;
   isBoost: false;
@@ -290,6 +290,8 @@ export interface ClassChoiceStepPane {
   description: string;
   completed: boolean;
   selectedLabel: string;
+  eyebrow: string;
+  action: "select-class-choice" | "select-class-archetype";
   sourceName: string;
   dependsOn: "class" | "deity";
   blocked: boolean;

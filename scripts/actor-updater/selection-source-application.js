@@ -30,7 +30,8 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
         applyPendingClassChoices(source, selection, draft, steps);
         applyPendingBoostSelections(source, selection, draft);
         await applyPendingGrantChoiceSelections(source, selection, draft, steps, deps);
-        await applyPendingStaticGrantPreselectChoices(source, draft, steps, deps);
+        const protectedStaticGrantRuleIndexes = applyPendingStaticGrantReplacements(source, selection, draft, steps);
+        await applyPendingStaticGrantPreselectChoices(source, draft, steps, deps, protectedStaticGrantRuleIndexes);
         applyPendingTrainingSelections(source, selection, draft, steps);
         resolveGrantItemPreselectChoiceReferences(source);
     }
@@ -39,6 +40,37 @@ export async function createEmbeddedSource(selection, draft, steps = [], deps = 
     }
     stampImportedItemSource(source, { sourceId: selection.uuid, slotId: selection.slotId });
     return source;
+}
+function applyPendingStaticGrantReplacements(source, selection, draft, steps) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    const protectedRuleIndexes = new Set();
+    for (const step of steps) {
+        if (step.kind !== "pick-item" ||
+            !step.staticGrantReplacement ||
+            step.staticGrantReplacement.sourceUuid !== selection.uuid) {
+            continue;
+        }
+        const replacement = draft.selections[step.slotId];
+        const matchingRuleIndexes = rules.flatMap((rule, index) => isLooseRecord(rule) &&
+            rule.key === "GrantItem" &&
+            typeof rule.uuid === "string" &&
+            step.staticGrantReplacement?.originalGrantUuids.includes(rule.uuid)
+            ? [index]
+            : []);
+        if (!replacement || matchingRuleIndexes.length !== 1) {
+            continue;
+        }
+        const ruleIndex = matchingRuleIndexes[0];
+        const rule = rules[ruleIndex];
+        if (!isLooseRecord(rule)) {
+            continue;
+        }
+        rule.uuid = replacement.uuid;
+        rule.flag = step.staticGrantReplacement.flag;
+        rule.allowDuplicate = false;
+        protectedRuleIndexes.add(ruleIndex);
+    }
+    return protectedRuleIndexes;
 }
 function applyPendingFlagChoices(source, selection, draft, steps) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
@@ -166,7 +198,7 @@ function applyPendingTrainingSelections(source, selection, draft, steps) {
         for (const choiceRule of step.training.choiceRules) {
             const choice = training.ruleChoices[choiceRule.key];
             if (choice) {
-                applyTrainingRuleSelection(source, selection, choiceRule.persistence, choiceRule.flag, choice);
+                applyTrainingRuleSelection(source, selection, choiceRule.persistence, choiceRule.flag, choice, choiceRule);
             }
         }
         for (const loreChoice of step.training.loreChoices) {
@@ -177,11 +209,28 @@ function applyPendingTrainingSelections(source, selection, draft, steps) {
         }
     }
 }
-function applyTrainingRuleSelection(source, selection, persistence, flag, value) {
+function applyTrainingRuleSelection(source, selection, persistence, flag, value, choiceRule) {
     if (!persistence || persistence.sourceUuid !== selection.uuid) {
         return;
     }
+    const fallbackOption = choiceRule?.options.some((option) => option.slug === value)
+        ? null
+        : choiceRule?.fallbackOptions?.find((option) => option.slug === value);
+    if (fallbackOption) {
+        addTrainingFallbackChoice(source, persistence.sourceRuleIndex, flag, fallbackOption);
+    }
     applyRuleSelection(source, persistence.sourceRuleIndex, flag, value);
+}
+function addTrainingFallbackChoice(source, sourceRuleIndex, flag, fallbackOption) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    const rule = rules[sourceRuleIndex];
+    if (!isLooseRecord(rule) || rule.key !== "ChoiceSet" || rule.flag !== flag || !Array.isArray(rule.choices)) {
+        return;
+    }
+    const alreadyAllowed = rule.choices.some((choice) => isLooseRecord(choice) && typeof choice.value === "string" && choice.value === fallbackOption.slug);
+    if (!alreadyAllowed) {
+        rule.choices.push({ label: fallbackOption.label, value: fallbackOption.slug });
+    }
 }
 async function applyPendingGrantChoiceSelections(source, selection, draft, steps, deps) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
@@ -282,12 +331,12 @@ function flagChoiceSelectionValue(choice, selection) {
     }
     return selection.slug ?? slugifyName(selection.name) ?? selection.documentId;
 }
-async function applyPendingStaticGrantPreselectChoices(source, draft, steps, deps) {
+async function applyPendingStaticGrantPreselectChoices(source, draft, steps, deps, protectedRuleIndexes = new Set()) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
     if (rules.length === 0) {
         return;
     }
-    for (const rule of rules) {
+    for (const [ruleIndex, rule] of rules.entries()) {
         if (!isLooseRecord(rule) || rule.key !== "GrantItem") {
             continue;
         }
@@ -304,7 +353,9 @@ async function applyPendingStaticGrantPreselectChoices(source, draft, steps, dep
             ...(isLooseRecord(rule.preselectChoices) ? rule.preselectChoices : {}),
             ...preselectChoices,
         };
-        registerManualStaticItemGrant(source, grantedSelection.uuid, preselectChoices);
+        if (!protectedRuleIndexes.has(ruleIndex)) {
+            registerManualStaticItemGrant(source, grantedSelection.uuid, preselectChoices);
+        }
     }
     const manualGrants = readManualStaticItemGrants(source);
     if (manualGrants.length > 0) {

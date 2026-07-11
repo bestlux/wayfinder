@@ -1,5 +1,11 @@
 export function usesNativeGrantItemCreation(step) {
-    if (step?.kind !== "pick-item" || step.slotKind !== "grant-choice" || !step.grantSelection) {
+    if (step?.kind !== "pick-item" || step.slotKind !== "grant-choice") {
+        return false;
+    }
+    if (step.staticGrantReplacement) {
+        return true;
+    }
+    if (!step.grantSelection) {
         return false;
     }
     const staticUuidCount = step.grantSelection.filters.uuids?.length ?? step.filters.uuids?.length ?? 0;

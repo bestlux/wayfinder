@@ -1,5 +1,6 @@
 import { applySelectorApplication, buildSelectorSelection, stripSelectedSelectorEntries, } from "./selector-application.js";
 import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
+import { selectedClassArchetypeInternalChoices } from "./wayfinder/class-archetype/registry.js";
 export async function applyClassFeatureChoiceDraft(actor, draft, steps, deps) {
     const groups = collectFeatureGroups(draft, steps);
     for (const group of groups) {
@@ -96,6 +97,13 @@ function collectSelectedFeatureRefs(draft, steps) {
                 name: step.classChoice.sourceName,
             });
         }
+    }
+    for (const internalChoice of selectedClassArchetypeInternalChoices(draft)) {
+        refs.set(internalChoice.selection.uuid, {
+            uuid: internalChoice.selection.uuid,
+            documentId: internalChoice.selection.documentId,
+            name: internalChoice.selection.name,
+        });
     }
     return Array.from(refs.values());
 }

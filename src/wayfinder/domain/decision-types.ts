@@ -28,6 +28,12 @@ export interface BranchSelectionDecision {
   selection: SelectionRef;
 }
 
+export interface ClassArchetypeDecision {
+  kind: "class-archetype";
+  slotId: string;
+  value: string;
+}
+
 export interface ClassChoiceDecision {
   kind: "class-choice";
   slotId: string;
@@ -73,6 +79,7 @@ export interface SpellChoiceDecision {
 export type DraftDecision =
   | ItemSelectionDecision
   | BranchSelectionDecision
+  | ClassArchetypeDecision
   | SingletonChoiceDecision
   | LanguageChoiceDecision
   | ClassChoiceDecision

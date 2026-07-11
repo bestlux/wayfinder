@@ -52,6 +52,7 @@ import {
   chooseSelectionOption,
   type SelectionCommandResult,
   type SelectionCommandState,
+  selectClassArchetypeValue,
   selectClassChoiceValue,
   selectSingletonChoiceValue,
   toggleLanguageChoiceValue,
@@ -324,6 +325,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         break;
       case "select-singleton-choice":
         await this.#selectSingletonChoice(action.stepId, action.value);
+        break;
+      case "select-class-archetype":
+        await this.#selectClassArchetype(action.stepId, action.value);
         break;
       case "select-class-choice":
         await this.#selectClassChoice(action.stepId, action.value);
@@ -682,6 +686,19 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       invalidateGrantSelectionsBySource: invalidation.invalidateGrantSelectionsBySource,
       invalidateFlagChoicesBySource: invalidation.invalidateFlagChoicesBySource,
       invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,
+    });
+    await this.#finalizeSelectionCommand(result);
+  }
+
+  async #selectClassArchetype(stepId: string, value: string): Promise<void> {
+    this.#statusNote = null;
+    const invalidation = this.#selectionInvalidationService();
+    const step = await this.#findPlanStepBySlotId(stepId);
+    const result = await selectClassArchetypeValue(this.#selectionCommandState(), step ?? null, value, {
+      invalidateSelection: invalidation.invalidateSelection,
+      invalidateSelectionsByPrefix: invalidation.invalidateSelectionsByPrefix,
+      invalidateGrantSelectionsBySource: invalidation.invalidateGrantSelectionsBySource,
+      invalidateFlagChoicesBySource: invalidation.invalidateFlagChoicesBySource,
     });
     await this.#finalizeSelectionCommand(result);
   }

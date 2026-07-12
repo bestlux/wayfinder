@@ -49,6 +49,34 @@ describe("foundry smoke safety", () => {
     ).toThrow(/FOUNDRY_SMOKE_WORLD_ID/);
   });
 
+  it("requires destructive opt-in and an expected world before changing Free Archetype", async () => {
+    const { validateSmokeSafety } = (await import("../tools/foundry-smoke/safety.mjs")) as {
+      validateSmokeSafety(args: {
+        allowDestructive: boolean;
+        expectedWorldId: string;
+        freeArchetypeMode: string;
+        keepActors: boolean;
+      }): unknown;
+    };
+
+    expect(() =>
+      validateSmokeSafety({
+        allowDestructive: false,
+        expectedWorldId: "testing-world",
+        freeArchetypeMode: "on",
+        keepActors: true,
+      })
+    ).toThrow("required to change the Free Archetype world setting");
+    expect(() =>
+      validateSmokeSafety({
+        allowDestructive: true,
+        expectedWorldId: "",
+        freeArchetypeMode: "off",
+        keepActors: true,
+      })
+    ).toThrow("FOUNDRY_SMOKE_WORLD_ID is required");
+  });
+
   it("rejects mismatched Foundry worlds", async () => {
     const { assertExpectedWorldId } = (await import("../tools/foundry-smoke/safety.mjs")) as {
       assertExpectedWorldId(args: { actualWorldId: string; expectedWorldId: string }): void;

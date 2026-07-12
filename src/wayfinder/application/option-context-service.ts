@@ -26,6 +26,11 @@ type LooseDocument = {
 type LooseItem = {
   type?: string;
   system?: {
+    level?: {
+      taken?: unknown;
+      value?: unknown;
+    } | null;
+    location?: unknown;
     rules?: unknown;
     traits?: {
       value?: unknown[];
@@ -44,6 +49,8 @@ type LooseItem = {
 interface SharedContextDependencies {
   draft: DraftState;
   steps?: PendingStep[];
+  excludedFeatSlotId?: string;
+  maximumFeatLevel?: number;
   skillRanks?: Record<string, number>;
   fetchSelectionDocument: (selection: SelectionRef) => Promise<unknown | null>;
   extractDocumentSlug: (document: unknown) => string | null;
@@ -147,13 +154,15 @@ export async function resolveSelectionSlug(
 }
 
 export async function hasDedicationFeatInContext(args: HasDedicationContextDependencies): Promise<boolean> {
-  const { draft, listActorItems, fetchSelectionDocument, extractDocumentSlug } = args;
+  const { draft, listActorItems, fetchSelectionDocument, extractDocumentSlug, excludedFeatSlotId, maximumFeatLevel } =
+    args;
   const actorItems = listActorItems();
   const effectiveDraft = withExistingClassArchetypeChoice(draft, actorItems);
   const actorHasDedication = actorItems.some(
     (item) =>
       (item as LooseItem | null)?.type === "feat" &&
-      extractContextTraits(item, extractDocumentSlug).includes("dedication")
+      extractContextTraits(item, extractDocumentSlug).includes("dedication") &&
+      isFeatAvailableByLevel(actorFeatLevel(item), maximumFeatLevel)
   );
   if (actorHasDedication) {
     return true;
@@ -162,7 +171,10 @@ export async function hasDedicationFeatInContext(args: HasDedicationContextDepen
   const draftedFeatSelections = [
     ...Object.values(effectiveDraft.selections).filter((selection) => selection.itemType === "feat"),
     ...projectedClassArchetypeFeatSelections(effectiveDraft, effectiveDraft.targetLevel),
-  ];
+  ].filter(
+    (selection) =>
+      selection.slotId !== excludedFeatSlotId && isFeatAvailableByLevel(draftedFeatLevel(selection), maximumFeatLevel)
+  );
   if (draftedFeatSelections.length === 0) {
     return false;
   }
@@ -173,6 +185,38 @@ export async function hasDedicationFeatInContext(args: HasDedicationContextDepen
   return draftedFeatDocuments.some((document) =>
     extractContextTraits(document, extractDocumentSlug).includes("dedication")
   );
+}
+
+function draftedFeatLevel(selection: SelectionRef): number | null {
+  const slotLevel = selection.slotId.match(/-level-(\d+)$/)?.[1];
+  return numericLevel(slotLevel) ?? numericLevel(selection.level);
+}
+
+function actorFeatLevel(item: unknown): number | null {
+  const typedItem = item as LooseItem | null;
+  const takenLevel = numericLevel(typedItem?.system?.level?.taken);
+  if (takenLevel !== null) {
+    return takenLevel;
+  }
+
+  const location = typedItem?.system?.location;
+  const locationValue =
+    typeof location === "string"
+      ? location
+      : typeof (location as { value?: unknown } | null)?.value === "string"
+        ? String((location as { value: string }).value)
+        : "";
+  const locationLevel = numericLevel(locationValue.match(/-(\d+)$/)?.[1]);
+  return locationLevel ?? numericLevel(typedItem?.system?.level?.value);
+}
+
+function isFeatAvailableByLevel(level: number | null, maximumFeatLevel: number | undefined): boolean {
+  return maximumFeatLevel === undefined || level === null || level <= maximumFeatLevel;
+}
+
+function numericLevel(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 1 && numeric <= 20 ? Math.floor(numeric) : null;
 }
 
 export async function buildOptionContext(deps: OptionContextDependencies): Promise<OptionContext> {
@@ -537,6 +581,10 @@ export async function buildContextNote(
         ? `Showing feats keyed to ${className} plus archetype follow-up feats unlocked by an existing dedication. Shared class feats that list ${className} also remain available.`
         : `Showing feats keyed to ${className} plus dedication feats that can begin an archetype path. Shared class feats that list ${className} also remain available.`;
     }
+    case "archetype-feat":
+      return context.hasDedicationFeat
+        ? "PF2E is showing its archetype feat pool for this Free Archetype slot. Wayfinder does not exhaustively validate access, prerequisites, archetype-family membership, or dedication lockouts; confirm eligibility with your GM."
+        : "PF2E is showing dedication feats for this Free Archetype slot. Wayfinder does not exhaustively validate access or prerequisites; confirm eligibility with your GM.";
     case "class-branch": {
       const className = ((await deps.resolveDocument("class")) as LooseDocument | null)?.name;
       const selectorName = step.branch?.selectorName;

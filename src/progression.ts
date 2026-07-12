@@ -7,6 +7,7 @@ import {
 } from "./wayfinder/domain/step-types.js";
 
 const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
+const FREE_ARCHETYPE_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const SKILL_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const GENERAL_FEAT_LEVELS = [3, 7, 11, 15, 19];
 const SKILL_INCREASE_LEVELS = [3, 5, 7, 9, 11, 13, 15, 17, 19];
@@ -100,6 +101,24 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
       }
     )
   );
+
+  if (snapshot.freeArchetypeEnabled) {
+    steps.push(
+      ...buildFeatSteps(
+        "archetype-feat",
+        "Level {level} Free Archetype feat",
+        "Fill PF2E's separate Free Archetype slot. Wayfinder mirrors PF2E's available archetype pool but cannot exhaustively validate access, prerequisites, archetype-family restrictions, or dedication lockouts; confirm eligibility with your GM.",
+        FREE_ARCHETYPE_FEAT_LEVELS,
+        snapshot.featCounts.archetype,
+        snapshot.fulfilledStepIds,
+        targetLevel,
+        {
+          itemType: "feat",
+          featTypes: ["class"],
+        }
+      )
+    );
+  }
 
   steps.push(
     ...buildFeatSteps(
@@ -211,7 +230,7 @@ export function mergePackIds(basePackIds: string[], extraPackIds: string[]): str
 }
 
 function buildFeatSteps(
-  slotKind: "ancestry-feat" | "class-feat" | "skill-feat" | "general-feat",
+  slotKind: "ancestry-feat" | "class-feat" | "archetype-feat" | "skill-feat" | "general-feat",
   titleTemplate: string,
   description: string,
   slotLevels: number[],

@@ -295,6 +295,53 @@ describe("pack options dependency filtering", () => {
     ]);
   });
 
+  it("mirrors PF2E's dedicated Free Archetype pool without mixing in ordinary class feats", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("combat-flexibility", "Combat Flexibility", "class", ["fighter"]),
+      featEntry("acrobat-dedication", "Acrobat Dedication", "class", ["archetype", "dedication"]),
+      featEntry("contortionist", "Contortionist", "class", ["archetype"]),
+    ]);
+    const step = makeStep("archetype-feat", {
+      itemType: "feat",
+      featTypes: ["class"],
+      maxLevel: 4,
+    });
+
+    const initialOptions = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      hasDedicationFeat: false,
+    });
+    const followUpOptions = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      hasDedicationFeat: true,
+    });
+
+    expect(initialOptions.map((option) => option.name)).toEqual(["Acrobat Dedication"]);
+    expect(followUpOptions.map((option) => option.name)).toEqual(["Acrobat Dedication", "Contortionist"]);
+  });
+
+  it("hides Free Archetype feats whose embedded choices have no guided follow-up", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("archer-dedication", "Archer Dedication", "class", ["archetype", "dedication"]),
+      featEntry("dandy-dedication", "Dandy Dedication", "class", ["archetype", "dedication"], true, {
+        rules: [{ key: "ChoiceSet", flag: "unsupported" }],
+      }),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("archetype-feat", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 2,
+      }),
+      EMPTY_CONTEXT
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Archer Dedication"]);
+  });
+
   it("excludes unrelated class-category feats that do not match the drafted class or archetype path", async () => {
     setPack("pf2e.classes", [classEntry("fighter", "Fighter")]);
     setPack("pf2e.feats-srd", [

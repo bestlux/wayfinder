@@ -39,7 +39,7 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
     if (step.kind !== "spell-choice" && step.kind !== "pick-item" && step.kind !== "class-branch") {
         return null;
     }
-    const optionContext = await deps.resolveOptionContext();
+    const optionContext = await deps.resolveOptionContext(step);
     const options = await deps.getOptionsForStep(step, optionContext);
     const search = deps.searchByStepId.get(step.id) ?? "";
     const filterState = normalizePickerFilterState(deps.pickerFiltersByStepId.get(step.id));

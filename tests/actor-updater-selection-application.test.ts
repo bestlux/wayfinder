@@ -1410,6 +1410,55 @@ describe("actor-updater selection application", () => {
     ]);
   });
 
+  it("writes future Free Archetype selections to PF2E's dedicated native slot", async () => {
+    const actor = {
+      feats: {
+        get: (groupId: string) => (groupId === "archetype" ? { slots: {} } : null),
+      },
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => [{ id: "created-archetype-feat" }]),
+    };
+    const selection = selectionRef("archetype-feat-level-4", "feat", "contortionist", "Contortionist", "class");
+    const step = featStep("archetype-feat-level-4", "archetype-feat", 4, ["class"]);
+
+    await insertFeatSelection(actor, selection, step, {
+      fetchSelectionDocument,
+      createEmbeddedSource: async () => ({ name: "Contortionist", type: "feat", system: {}, flags: {} }),
+    });
+
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        name: "Contortionist",
+        type: "feat",
+        system: { location: "archetype-4", level: { taken: 4 } },
+        flags: {},
+      },
+    ]);
+  });
+
+  it("refuses to apply a stale Free Archetype selection after PF2E removes the variant group", async () => {
+    const actor = {
+      feats: { get: () => null },
+      createEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const selection = selectionRef(
+      "archetype-feat-level-2",
+      "feat",
+      "acrobat-dedication",
+      "Acrobat Dedication",
+      "class"
+    );
+    const step = featStep("archetype-feat-level-2", "archetype-feat", 2, ["class"]);
+
+    await expect(
+      insertFeatSelection(actor, selection, step, {
+        fetchSelectionDocument,
+        createEmbeddedSource: async () => ({ name: "Acrobat Dedication", type: "feat", system: {}, flags: {} }),
+      })
+    ).rejects.toThrow("Free Archetype feat group is unavailable");
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
   it("preserves preselected feat sources during slotted feat creation", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
     const actor = {

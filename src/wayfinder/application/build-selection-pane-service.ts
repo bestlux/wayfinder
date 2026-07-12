@@ -42,7 +42,7 @@ interface BuildSelectionPaneDependencies {
   pickerFiltersByStepId: Map<string, PickerFilterState>;
   previewValueByStepId: Map<string, string>;
   openPickerFilterMenu?: { stepId: string; filterKind: PickerFilterKind } | null;
-  resolveOptionContext: () => Promise<OptionContext>;
+  resolveOptionContext: (step: PendingStep) => Promise<OptionContext>;
   resolveDeityDocument: () => Promise<unknown | null>;
   buildContextNote: (step: PendingStep, context: OptionContext) => Promise<string | null>;
   resolveStepStatus: (step: PendingStep, effectiveBuildState: EffectiveBuildState) => Promise<string>;
@@ -103,7 +103,7 @@ export async function buildSelectionPane(
     return null;
   }
 
-  const optionContext = await deps.resolveOptionContext();
+  const optionContext = await deps.resolveOptionContext(step);
   const options = await deps.getOptionsForStep(step, optionContext);
   const search = deps.searchByStepId.get(step.id) ?? "";
   const filterState = normalizePickerFilterState(deps.pickerFiltersByStepId.get(step.id));

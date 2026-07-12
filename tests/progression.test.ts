@@ -7,6 +7,7 @@ function makeSnapshot(partial: Partial<ActorSnapshot> = {}): ActorSnapshot {
     actorId: "actor-1",
     level: 1,
     isBlank: true,
+    freeArchetypeEnabled: false,
     singletonSlots: {
       ancestry: false,
       heritage: false,
@@ -157,5 +158,25 @@ describe("progression", () => {
 
     expect(steps.map((step) => `${step.slotKind}:${step.level}`)).toContain("skill-feat:4");
     expect(steps.map((step) => `${step.slotKind}:${step.level}`)).not.toContain("skill-feat:2");
+  });
+
+  it("adds separate even-level Free Archetype steps only when PF2E exposes the variant group", () => {
+    const disabledSteps = buildSteps(makeSnapshot(), 1, 5);
+    const enabledSteps = buildSteps(
+      makeSnapshot({
+        freeArchetypeEnabled: true,
+        fulfilledStepIds: ["archetype-feat-level-2"],
+      }),
+      1,
+      5
+    );
+
+    expect(disabledSteps.some((step) => step.slotKind === "archetype-feat")).toBe(false);
+    expect(enabledSteps.filter((step) => step.slotKind === "archetype-feat").map((step) => step.slotId)).toEqual([
+      "archetype-feat-level-4",
+    ]);
+    expect(enabledSteps.find((step) => step.slotKind === "archetype-feat")?.description).toContain(
+      "confirm eligibility with your GM"
+    );
   });
 });

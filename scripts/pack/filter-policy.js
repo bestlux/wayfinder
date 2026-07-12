@@ -90,13 +90,16 @@ export function matchesFilters(entry, packId, step, context, traitCatalog) {
     if (step.slotKind === "class-feat") {
         return matchesClassFeatContext(entry, context, traitCatalog);
     }
+    if (step.slotKind === "archetype-feat") {
+        return matchesArchetypeFeatContext(entry, context);
+    }
     if (step.slotKind === "skill-feat") {
         return matchesSkillFeatContext(entry, context);
     }
     return true;
 }
 export async function getTraitCatalog(slotKind) {
-    if (slotKind === "spell-choice") {
+    if (slotKind === "spell-choice" || slotKind === "archetype-feat") {
         return new Set();
     }
     const cacheKey = slotKind === "class-feat" ? "class" : "ancestry-heritage";
@@ -182,6 +185,14 @@ function matchesClassFeatContext(entry, context, _traitCatalog) {
         return context.hasDedicationFeat ? traits.includes("archetype") : traits.includes("dedication");
     }
     return false;
+}
+function matchesArchetypeFeatContext(entry, context) {
+    const category = stringOrNull(entry?.system?.category);
+    if (category && category !== "class") {
+        return false;
+    }
+    const traits = extractEntryTraits(entry);
+    return context.hasDedicationFeat ? traits.includes("archetype") : traits.includes("dedication");
 }
 function matchesSkillFeatContext(entry, context) {
     const category = stringOrNull(entry?.system?.category);

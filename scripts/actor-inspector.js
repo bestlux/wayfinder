@@ -2,6 +2,7 @@ import { MODULE_ID } from "./constants.js";
 export function inspectActor(actor) {
     const items = normalizeItems(actor);
     const level = clampLevel(Number(actor?.system?.details?.level?.value ?? 1));
+    const freeArchetypeEnabled = !!getFeatGroup(actor, "archetype");
     const namesByType = {};
     const sourceIds = new Set();
     const fulfilledStepIds = new Set();
@@ -40,7 +41,10 @@ export function inspectActor(actor) {
             fulfilledStepIds.add(wayfinderSlotId);
         }
         if (type === "feat") {
-            const featType = String(item?.system?.featType?.value ?? item?.system?.category ?? "");
+            const location = readFeatLocation(item);
+            const featType = isFreeArchetypeLocation(location)
+                ? "archetype"
+                : String(item?.system?.featType?.value ?? item?.system?.category ?? "");
             if (featType in featCounts) {
                 featCounts[featType] += 1;
             }
@@ -56,6 +60,7 @@ export function inspectActor(actor) {
         actorId: String(actor?.id ?? ""),
         level,
         isBlank: items.length === 0 && !hasAnySingleton(singletonSlots),
+        freeArchetypeEnabled,
         singletonSlots,
         featCounts,
         fulfilledStepIds: Array.from(fulfilledStepIds).sort(),
@@ -96,18 +101,32 @@ function readFulfilledFeatSlotIds(actor) {
     return [
         ...readFulfilledFeatSlotIdsForGroup(actor, "ancestry", "ancestry-feat"),
         ...readFulfilledFeatSlotIdsForGroup(actor, "class", "class-feat"),
+        ...readFulfilledFeatSlotIdsForGroup(actor, "archetype", "archetype-feat"),
         ...readFulfilledFeatSlotIdsForGroup(actor, "skill", "skill-feat"),
         ...readFulfilledFeatSlotIdsForGroup(actor, "general", "general-feat"),
     ];
 }
 function readFulfilledFeatSlotIdsForGroup(actor, groupId, slotKind) {
-    const group = typeof actor?.feats?.get === "function" ? actor.feats.get(groupId) : actor?.feats?.[groupId];
+    const group = getFeatGroup(actor, groupId);
     return Object.values(group?.slots ?? {}).flatMap((slot) => {
         const level = Number(slot?.level);
         return slot?.feat && Number.isFinite(level) && level >= 1 && level <= 20
             ? [`${slotKind}-level-${Math.floor(level)}`]
             : [];
     });
+}
+function getFeatGroup(actor, groupId) {
+    return typeof actor?.feats?.get === "function" ? actor.feats.get(groupId) : actor?.feats?.[groupId];
+}
+function readFeatLocation(item) {
+    const location = item?.system?.location;
+    if (typeof location === "string") {
+        return location;
+    }
+    return typeof location?.value === "string" ? location.value : "";
+}
+function isFreeArchetypeLocation(location) {
+    return location === "archetype" || /^archetype-\d+$/.test(location);
 }
 function clampLevel(level) {
     if (!Number.isFinite(level)) {

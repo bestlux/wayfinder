@@ -70,15 +70,41 @@ describe("actor-inspector", () => {
             },
           },
         },
+        archetype: {
+          slots: {
+            level2: {
+              level: 2,
+              feat: {},
+            },
+          },
+        },
       },
     });
 
+    expect(snapshot.freeArchetypeEnabled).toBe(true);
     expect(snapshot.fulfilledStepIds).toEqual([
       "ability-boosts-level-1",
+      "archetype-feat-level-2",
       "class-feat-level-4",
       "skill-feat-level-1",
       "skill-feat-level-2",
     ]);
+  });
+
+  it("counts class-category feats in PF2E's archetype locations only in the Free Archetype lane", () => {
+    const snapshot = inspectActor({
+      items: {
+        contents: [
+          { ...featItem("class"), system: { category: "class", location: "class-2" } },
+          { ...featItem("class"), system: { category: "class", location: "archetype-2" } },
+        ],
+      },
+      feats: new Map([["archetype", { slots: {} }]]),
+    });
+
+    expect(snapshot.freeArchetypeEnabled).toBe(true);
+    expect(snapshot.featCounts.class).toBe(1);
+    expect(snapshot.featCounts.archetype).toBe(1);
   });
 });
 

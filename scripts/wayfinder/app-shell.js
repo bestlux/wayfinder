@@ -362,9 +362,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             pickerFiltersByStepId: this.#pickerFiltersByStepId,
             openPickerFilterMenu: this.#openPickerFilterMenu,
             previewValueByStepId: this.#previewValueByStepId,
-            resolveOptionContext: () => buildOptionContext({
+            resolveOptionContext: (paneStep) => buildOptionContext({
                 draft: this.#requireDraft(),
                 steps: planSteps,
+                excludedFeatSlotId: paneStep.slotId,
+                maximumFeatLevel: paneStep.level,
                 skillRanks: inspectActor(this.actor).skillRanks,
                 resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
                 listActorItems: () => listActorItems(this.actor),
@@ -401,6 +403,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 const optionContext = await buildOptionContext({
                     draft,
                     steps: plan.steps,
+                    excludedFeatSlotId: selectionStep.slotId,
+                    maximumFeatLevel: selectionStep.level,
                     skillRanks: snapshot.skillRanks,
                     resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
                     listActorItems: () => listActorItems(this.actor),
@@ -544,6 +548,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 const optionContext = await buildOptionContext({
                     draft,
                     steps: plan.steps,
+                    excludedFeatSlotId: selectionStep.slotId,
+                    maximumFeatLevel: selectionStep.level,
                     skillRanks: snapshot.skillRanks,
                     resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
                     listActorItems: () => listActorItems(this.actor),

@@ -26,7 +26,7 @@ export function hasUnsupportedEmbeddedChoiceSet(entry, packId, step, optionConte
     if (step.kind !== "pick-item" || step.slotKind === "grant-choice") {
         return false;
     }
-    if (!["ancestry-feat", "class-feat", "general-feat", "skill-feat"].includes(step.slotKind)) {
+    if (!["ancestry-feat", "class-feat", "archetype-feat", "general-feat", "skill-feat"].includes(step.slotKind)) {
         return false;
     }
     return (classifyEmbeddedChoices(entry, packId, {
@@ -42,7 +42,7 @@ export function hidesUnsupportedEmbeddedChoiceSets(step) {
     if (step.kind !== "pick-item" || step.slotKind === "grant-choice") {
         return false;
     }
-    return ["ancestry-feat", "class-feat", "general-feat", "skill-feat"].includes(step.slotKind);
+    return ["ancestry-feat", "class-feat", "archetype-feat", "general-feat", "skill-feat"].includes(step.slotKind);
 }
 function entryHasChoiceSetRule(entry) {
     const rules = entry?.system?.rules;

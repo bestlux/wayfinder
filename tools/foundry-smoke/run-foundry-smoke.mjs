@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { smokeCases } from "./class-cases.mjs";
+import { freeArchetypeSmokeCases } from "./free-archetype-cases.mjs";
 import { validateSmokeSafety } from "./safety.mjs";
 
 const MODULE_ID = "wayfinder-pf2e";
@@ -13,6 +14,7 @@ const fixturePrefix = "WF Smoke Harness";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const browserSuitePath = path.join(repoRoot, "tools", "foundry-smoke", "browser-suite.js");
 const defaultArtifactRoot = ".wayfinder-smoke";
+const allSmokeCases = [...smokeCases, ...freeArchetypeSmokeCases];
 const defaultChromePaths = [
   "C:/Program Files/Google/Chrome/Application/chrome.exe",
   "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
@@ -31,6 +33,8 @@ Options:
   --out <path>      Artifact directory. Defaults to ${defaultArtifactRoot}/<timestamp>.
   --headed          Run with a visible browser.
   --keep-actors     Do not delete disposable actors after the run.
+  --free-archetype <unchanged|on|off>
+                     Temporarily set PF2E's Free Archetype variant for this invocation and restore it afterward.
   --help            Show this help text.
 
 Environment:
@@ -42,6 +46,7 @@ Environment:
   FOUNDRY_SMOKE_INCREMENTAL_CASES Comma-separated case ids for existing-character reruns.
   FOUNDRY_SMOKE_HEADLESS   true/false. Defaults to true.
   FOUNDRY_SMOKE_KEEP_ACTORS true/false. Defaults to false.
+  FOUNDRY_SMOKE_FREE_ARCHETYPE unchanged/on/off. Defaults to unchanged.
   FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE true/false. Required for actor cleanup/deletion.
   FOUNDRY_SMOKE_WORLD_ID   Expected Foundry world id. Required for actor cleanup/deletion.
   FOUNDRY_SMOKE_ARTIFACT_DIR Artifact directory override.
@@ -59,6 +64,7 @@ function parseArgs(argv) {
     list: false,
     outDir: process.env.FOUNDRY_SMOKE_ARTIFACT_DIR ?? "",
     expectedWorldId: process.env.FOUNDRY_SMOKE_WORLD_ID ?? "",
+    freeArchetypeMode: normalizeFreeArchetypeMode(process.env.FOUNDRY_SMOKE_FREE_ARCHETYPE ?? "unchanged"),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -84,7 +90,7 @@ function parseArgs(argv) {
       continue;
     }
 
-    if (arg === "--case" || arg === "--incremental-case" || arg === "--out") {
+    if (arg === "--case" || arg === "--incremental-case" || arg === "--out" || arg === "--free-archetype") {
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) {
         throw new Error(`Missing value for ${arg}`);
@@ -94,6 +100,8 @@ function parseArgs(argv) {
         options.caseIds.push(value);
       } else if (arg === "--incremental-case") {
         options.incrementalCaseIds.push(value);
+      } else if (arg === "--free-archetype") {
+        options.freeArchetypeMode = normalizeFreeArchetypeMode(value);
       } else {
         options.outDir = value;
       }
@@ -116,6 +124,15 @@ function parseArgs(argv) {
   options.incrementalCaseIds.push(...envIncrementalCaseIds);
 
   return options;
+}
+
+function normalizeFreeArchetypeMode(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (["unchanged", "on", "off"].includes(normalized)) {
+    return normalized;
+  }
+
+  throw new Error(`Invalid Free Archetype mode: ${value}. Expected unchanged, on, or off.`);
 }
 
 function envFlag(name, fallback) {
@@ -150,7 +167,7 @@ function selectedCases(caseIds, { defaultAll = true } = {}) {
     return defaultAll ? smokeCases : [];
   }
 
-  const byId = new Map(smokeCases.map((entry) => [entry.id, entry]));
+  const byId = new Map(allSmokeCases.map((entry) => [entry.id, entry]));
   const missing = ids.filter((id) => !byId.has(id));
   if (missing.length > 0) {
     throw new Error(`Unknown smoke case id(s): ${missing.join(", ")}`);
@@ -167,7 +184,7 @@ async function main() {
   }
 
   if (options.list) {
-    for (const entry of smokeCases) {
+    for (const entry of allSmokeCases) {
       console.log(`${entry.id} - ${entry.label}`);
     }
     return;
@@ -185,6 +202,7 @@ async function main() {
   const safety = validateSmokeSafety({
     allowDestructive: options.allowDestructive,
     expectedWorldId: options.expectedWorldId,
+    freeArchetypeMode: options.freeArchetypeMode,
     keepActors: options.keepActors,
   });
   const outDir = resolveOutDir(options.outDir);
@@ -214,18 +232,29 @@ async function main() {
     });
     await page.addScriptTag({ path: browserSuitePath });
 
-    const result = await page.evaluate(
-      (payload) => globalThis.__runWayfinderSmokeSuite(payload),
-      {
-        cases,
-        allowDestructive: safety.allowDestructive,
-        expectedWorldId: safety.expectedWorldId,
-        fixturePrefix,
-        incrementalCases,
-        keepActors: options.keepActors,
-        moduleId: MODULE_ID,
-      },
-    );
+    const variantState = await readFreeArchetypeVariantState(page, {
+      expectedWorldId: safety.expectedWorldId,
+      mode: options.freeArchetypeMode,
+    });
+    let result;
+    try {
+      variantState.effective = await configureFreeArchetypeVariant(page, variantState);
+      result = await page.evaluate(
+        (payload) => globalThis.__runWayfinderSmokeSuite(payload),
+        {
+          cases,
+          allowDestructive: safety.allowDestructive,
+          expectedWorldId: safety.expectedWorldId,
+          fixturePrefix,
+          incrementalCases,
+          keepActors: options.keepActors,
+          moduleId: MODULE_ID,
+        },
+      );
+    } finally {
+      variantState.restored = await restoreFreeArchetypeVariant(page, variantState);
+    }
+    result.freeArchetypeVariant = variantState;
 
     await writeArtifacts(outDir, result);
     printSummary(result, outDir);
@@ -236,6 +265,90 @@ async function main() {
   } finally {
     await closeBrowser(context, browser);
   }
+}
+
+async function readFreeArchetypeVariantState(page, { expectedWorldId, mode }) {
+  return page.evaluate(
+    ({ expectedWorldId, mode }) => {
+      const settingKey = "freeArchetypeVariant";
+      const foundryGame = globalThis.game;
+      const original = Boolean(foundryGame.settings.get("pf2e", settingKey));
+      if (mode === "unchanged") {
+        return {
+          changed: false,
+          effective: original,
+          mode,
+          original,
+          requested: null,
+          restored: null,
+        };
+      }
+
+      if (!foundryGame.user?.isGM) {
+        throw new Error("Free Archetype smoke runs require a GM user.");
+      }
+      if (String(foundryGame.world?.id ?? "").trim() !== String(expectedWorldId ?? "").trim()) {
+        throw new Error(
+          `Free Archetype smoke expected world ${expectedWorldId}, but connected to ${foundryGame.world?.id}.`,
+        );
+      }
+
+      const requested = mode === "on";
+      return {
+        changed: original !== requested,
+        effective: null,
+        mode,
+        original,
+        requested,
+        restored: null,
+      };
+    },
+    { expectedWorldId, mode },
+  );
+}
+
+async function configureFreeArchetypeVariant(page, state) {
+  if (state.mode === "unchanged") {
+    return state.original;
+  }
+
+  return page.evaluate(async (requested) => {
+    const settingKey = "freeArchetypeVariant";
+    const foundryGame = globalThis.game;
+    if (Boolean(foundryGame.settings.get("pf2e", settingKey)) !== requested) {
+      await foundryGame.settings.set("pf2e", settingKey, requested);
+    }
+    const effective = Boolean(foundryGame.settings.get("pf2e", settingKey));
+    const preparedEffective = Boolean(foundryGame.pf2e?.settings?.variants?.fa);
+    if (effective !== requested || preparedEffective !== requested) {
+      throw new Error(
+        `PF2E Free Archetype setting did not reach ${requested}; stored=${effective}, prepared=${preparedEffective}.`,
+      );
+    }
+    return effective;
+  }, state.requested);
+}
+
+async function restoreFreeArchetypeVariant(page, state) {
+  if (state.mode === "unchanged") {
+    return state.original;
+  }
+
+  return page.evaluate(async (original) => {
+    const settingKey = "freeArchetypeVariant";
+    const foundryGame = globalThis.game;
+    if (Boolean(foundryGame.settings.get("pf2e", settingKey)) !== original) {
+      await foundryGame.settings.set("pf2e", settingKey, original);
+    }
+    const restored = Boolean(foundryGame.settings.get("pf2e", settingKey));
+    const preparedRestored = Boolean(foundryGame.pf2e?.settings?.variants?.fa);
+    if (restored !== original || preparedRestored !== original) {
+      throw new Error(
+        `PF2E Free Archetype setting restoration failed; stored=${restored}, prepared=${preparedRestored}.`,
+      );
+    }
+    return restored;
+  }, state.original);
 }
 
 async function login(page, { foundryUrl, password, user }) {
@@ -279,6 +392,7 @@ function buildMarkdownSummary(result) {
 - User: ${result.user}
 - PF2E: ${result.pf2eVersion}
 - Wayfinder: ${result.moduleId} ${result.moduleVersion ?? "unknown"} (active: ${result.moduleActive})
+- Free Archetype: mode ${result.freeArchetypeVariant?.mode ?? "unchanged"}, effective ${result.freeArchetypeVariant?.effective ?? "unknown"}, restored ${result.freeArchetypeVariant?.restored ?? "unknown"}
 - Summary: ${result.summary.passed} passed, ${result.summary.classified} classified, ${result.summary.failed} failed
 
 | Case | Status | Level | Planned steps | Rerun steps | Notes |

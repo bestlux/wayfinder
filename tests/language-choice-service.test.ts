@@ -11,6 +11,7 @@ describe("language-choice service", () => {
         actorId: "actor-1",
         level: 1,
         isBlank: true,
+        freeArchetypeEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: false,
@@ -67,6 +68,7 @@ describe("language-choice service", () => {
         actorId: "actor-1",
         level: 1,
         isBlank: true,
+        freeArchetypeEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: false,
@@ -121,6 +123,7 @@ describe("language-choice service", () => {
         actorId: "actor-1",
         level: 1,
         isBlank: true,
+        freeArchetypeEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: false,

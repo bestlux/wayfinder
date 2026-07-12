@@ -336,6 +336,30 @@ describe("wayfinder option context service", () => {
     ).resolves.toBe(true);
   });
 
+  it("does not let a future-level dedication unlock an earlier feat picker", async () => {
+    const draft = createEmptyDraft(4);
+    draft.selections["archetype-feat-level-4"] = selection("archetype-feat-level-4", "feat", "wizard-dedication");
+    const dependencies = {
+      draft,
+      listActorItems: () => [],
+      fetchSelectionDocument: async () => ({
+        type: "feat",
+        system: { traits: { value: ["dedication"] } },
+      }),
+      extractDocumentSlug: () => null,
+    };
+
+    await expect(hasDedicationFeatInContext({ ...dependencies, maximumFeatLevel: 2 })).resolves.toBe(false);
+    await expect(hasDedicationFeatInContext({ ...dependencies, maximumFeatLevel: 4 })).resolves.toBe(true);
+    await expect(
+      hasDedicationFeatInContext({
+        ...dependencies,
+        excludedFeatSlotId: "archetype-feat-level-4",
+        maximumFeatLevel: 4,
+      })
+    ).resolves.toBe(false);
+  });
+
   it("resolves selection traits and slugs from fetched documents", async () => {
     const selectedHeritage = selection("heritage-level-1", "heritage", "wintertouched");
 
@@ -424,6 +448,35 @@ describe("wayfinder option context service", () => {
     ).resolves.toBe(
       "Resolve the deity step first so Wayfinder can narrow champion causes to the legal sanctification path."
     );
+  });
+
+  it("states the eligibility boundary for Free Archetype choices", async () => {
+    const step: PendingStep = {
+      id: "archetype-feat-level-4",
+      level: 4,
+      kind: "pick-item",
+      slotKind: "archetype-feat",
+      title: "Level 4 Free Archetype feat",
+      description: "",
+      required: true,
+      slotId: "archetype-feat-level-4",
+      filters: { itemType: "feat", featTypes: ["class"], maxLevel: 4 },
+    };
+
+    await expect(
+      buildContextNote(
+        step,
+        {
+          ancestrySlug: null,
+          ancestryTraits: [],
+          heritageTraits: [],
+          classSlug: "fighter",
+          classHasSpellcasting: false,
+          hasDedicationFeat: true,
+        },
+        { resolveDocument: async () => null }
+      )
+    ).resolves.toContain("archetype-family membership");
   });
 
   it("describes unified-theory wizard bonus spells as available arcane choices", async () => {

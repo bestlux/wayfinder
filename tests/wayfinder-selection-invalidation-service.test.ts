@@ -25,6 +25,7 @@ describe("wayfinder selection invalidation service", () => {
       selection("spell-choice-wizard-level-1", "spell", "magic-missile"),
     ];
     draft.selections["class-feat-level-2"] = selection("class-feat-level-2", "feat", "familiar");
+    draft.selections["archetype-feat-level-2"] = selection("archetype-feat-level-2", "feat", "acrobat-dedication");
     draft.boosts.class.keyAbility = "int";
 
     const service = createSelectionInvalidationService(
@@ -47,7 +48,7 @@ describe("wayfinder selection invalidation service", () => {
       }
     );
 
-    expect(service.clearSelection(SLOT_IDS.class)).toBe(7);
+    expect(service.clearSelection(SLOT_IDS.class)).toBe(8);
     expect(draft.selections[SLOT_IDS.class]).toBeUndefined();
     expect(draft.selections[SLOT_IDS.deity]).toBeUndefined();
     expect(draft.branchSelections["class-branch-arcane-school-level-1"]).toBeUndefined();
@@ -55,6 +56,7 @@ describe("wayfinder selection invalidation service", () => {
     expect(draft.skillTrainings["skill-training-wizard-level-1"]).toBeUndefined();
     expect(draft.spellChoices["spell-choice-wizard-level-1"]).toBeUndefined();
     expect(draft.selections["class-feat-level-2"]).toBeUndefined();
+    expect(draft.selections["archetype-feat-level-2"]).toBeUndefined();
     expect(draft.boosts.class.keyAbility).toBeNull();
   });
 

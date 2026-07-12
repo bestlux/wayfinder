@@ -422,7 +422,7 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
   switch (step.kind) {
     case "pick-item":
     case "class-branch": {
-      const optionContext = await buildPickerContext(actor, draft, planSteps, modules);
+      const optionContext = await buildPickerContext(actor, draft, step, planSteps, modules);
       const blocked = modules.getPickerBlockedState(step, optionContext);
       if (blocked) {
         notes.classifications.push(`${step.slotId}: picker blocked: ${blocked.title}`);
@@ -477,7 +477,7 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
       return;
     }
     case "spell-choice": {
-      const optionContext = await buildPickerContext(actor, draft, planSteps, modules);
+      const optionContext = await buildPickerContext(actor, draft, step, planSteps, modules);
       const blocked = modules.getPickerBlockedState(step, optionContext);
       if (blocked) {
         notes.classifications.push(`${step.slotId}: picker blocked: ${blocked.title}`);
@@ -545,11 +545,13 @@ async function resolveArcaneSchoolDocument(actor, draft, modules) {
   );
 }
 
-async function buildPickerContext(actor, draft, planSteps, modules) {
+async function buildPickerContext(actor, draft, step, planSteps, modules) {
   const snapshot = modules.inspectActor(actor);
   return modules.buildOptionContext({
     draft,
     steps: planSteps,
+    excludedFeatSlotId: step.slotId,
+    maximumFeatLevel: step.level,
     skillRanks: snapshot.skillRanks,
     resolveDocument: (itemType) => modules.getEffectiveSingletonDocument(actor, draft, itemType),
     listActorItems: () => modules.listActorItems(actor),

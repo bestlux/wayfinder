@@ -1,4 +1,20 @@
-export function validateSmokeSafety({ allowDestructive, expectedWorldId, keepActors }) {
+export function validateSmokeSafety({
+  allowDestructive,
+  expectedWorldId,
+  freeArchetypeMode = "unchanged",
+  keepActors,
+}) {
+  if (freeArchetypeMode !== "unchanged") {
+    if (!allowDestructive) {
+      throw new Error("FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE=1 is required to change the Free Archetype world setting.");
+    }
+
+    const normalizedWorldId = normalizeWorldId(expectedWorldId);
+    if (!normalizedWorldId) {
+      throw new Error("FOUNDRY_SMOKE_WORLD_ID is required to change the Free Archetype world setting.");
+    }
+  }
+
   if (keepActors) {
     return {
       allowDestructive: Boolean(allowDestructive),

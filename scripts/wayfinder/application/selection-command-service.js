@@ -89,6 +89,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
         }
         if (previousClassSlug !== nextClassSlug) {
             const invalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classFeat);
+            const archetypeFeatInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.archetypeFeat);
             const deityInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.deity);
             const classArchetypeInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classArchetype);
             const branchInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classBranch);
@@ -107,6 +108,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
                 ...(await deps.invalidateFlagChoicesBySource("classfeature")),
             ];
             if (invalidated.length > 0 ||
+                archetypeFeatInvalidated.length > 0 ||
                 deityInvalidated.length > 0 ||
                 classArchetypeInvalidated.length > 0 ||
                 branchInvalidated.length > 0 ||
@@ -117,8 +119,8 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
                 grantInvalidated.length > 0 ||
                 boostReset) {
                 statusNote = boostReset
-                    ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, related singleton choices, spell, and class feat selections for review."
-                    : "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, related singleton choices, spell, and class feat selections for review.";
+                    ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, related singleton choices, spell, class feat, and Free Archetype selections for review."
+                    : "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, related singleton choices, spell, class feat, and Free Archetype selections for review.";
             }
         }
         else if (boostReset) {
@@ -147,13 +149,32 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
             statusNote = "Ancestry feat changed. Wayfinder marked dependent granted feat choices for review.";
         }
     }
-    if ((step.slotKind === "class-feat" || step.slotKind === "general-feat" || step.slotKind === "skill-feat") &&
+    if ((step.slotKind === "class-feat" ||
+        step.slotKind === "archetype-feat" ||
+        step.slotKind === "general-feat" ||
+        step.slotKind === "skill-feat") &&
         previousSelection?.uuid !== selection.uuid) {
+        const [previousTraits, nextTraits] = await Promise.all([
+            deps.resolveSelectionTraits(previousSelection),
+            deps.resolveSelectionTraits(selection),
+        ]);
+        const dedicationContextChanged = previousTraits.includes("dedication") || nextTraits.includes("dedication");
+        const archetypeInvalidated = dedicationContextChanged
+            ? deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.archetypeFeat)
+            : [];
+        if (dedicationContextChanged && step.slotKind === "archetype-feat") {
+            state.draft.selections[step.slotId] = selection;
+            state.recentlyInvalidatedStepIds.delete(step.slotId);
+        }
+        const otherArchetypeInvalidated = archetypeInvalidated.filter((slotId) => slotId !== step.slotId);
         const invalidated = [
             ...(await deps.invalidateGrantSelectionsBySource("feat")),
             ...(await deps.invalidateFlagChoicesBySource("feat")),
         ];
-        if (invalidated.length > 0) {
+        if (otherArchetypeInvalidated.length > 0) {
+            statusNote = "Dedication changed. Wayfinder marked Free Archetype selections for review.";
+        }
+        else if (invalidated.length > 0) {
             statusNote = "Feat changed. Wayfinder marked dependent feat choices for review.";
         }
     }
@@ -276,6 +297,7 @@ export async function selectClassArchetypeValue(state, step, value, deps) {
         ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.skillTraining),
         ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.spellChoice),
         ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classFeat),
+        ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.archetypeFeat),
         ...(await deps.invalidateGrantSelectionsBySource("classfeature")),
         ...(await deps.invalidateFlagChoicesBySource("classfeature")),
     ];

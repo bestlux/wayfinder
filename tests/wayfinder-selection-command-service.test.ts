@@ -42,6 +42,7 @@ describe("wayfinder selection command service", () => {
       SLOT_PREFIXES.skillTraining,
       SLOT_PREFIXES.spellChoice,
       SLOT_PREFIXES.classFeat,
+      SLOT_PREFIXES.archetypeFeat,
     ]);
     expect(
       await selectClassArchetypeValue(state, classArchetypeStep(), "battle-creed", {
@@ -113,6 +114,7 @@ describe("wayfinder selection command service", () => {
       invalidateSelectionsByPrefix: (prefix) => {
         const invalidatedPrefixes = new Set<string>([
           SLOT_PREFIXES.classFeat,
+          SLOT_PREFIXES.archetypeFeat,
           SLOT_PREFIXES.deity,
           SLOT_PREFIXES.classBranch,
           SLOT_PREFIXES.classChoice,
@@ -144,7 +146,7 @@ describe("wayfinder selection command service", () => {
       shouldRender: false,
       warning: null,
       statusNote:
-        "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, related singleton choices, spell, and class feat selections for review.",
+        "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, related singleton choices, spell, class feat, and Free Archetype selections for review.",
     });
     expect(draft.selections["class-level-1"]?.documentId).toBe("champion");
     expect(draft.boosts.class.keyAbility).toBeNull();
@@ -207,12 +209,71 @@ describe("wayfinder selection command service", () => {
     expect(result).toMatchObject({
       kind: "changed",
       statusNote:
-        "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, related singleton choices, spell, and class feat selections for review.",
+        "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, related singleton choices, spell, class feat, and Free Archetype selections for review.",
     });
     expect(grantSourceCalls).toContain("classfeature");
     expect(
       draft.selections["grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1"]
     ).toBeUndefined();
+  });
+
+  it("invalidates Free Archetype follow-ups when their drafted dedication changes", async () => {
+    const draft = createEmptyDraft(4);
+    draft.selections["class-feat-level-2"] = selection(
+      "class-feat-level-2",
+      "feat",
+      "wizard-dedication",
+      "Wizard Dedication"
+    );
+    draft.selections["archetype-feat-level-2"] = selection(
+      "archetype-feat-level-2",
+      "feat",
+      "basic-wizard-spellcasting",
+      "Basic Wizard Spellcasting"
+    );
+    const state = commandState(draft);
+    const step: PendingStep = {
+      id: "class-feat-level-2",
+      level: 2,
+      kind: "pick-item",
+      slotKind: "class-feat",
+      title: "Level 2 class feat",
+      description: "",
+      required: true,
+      slotId: "class-feat-level-2",
+      filters: { itemType: "feat", featTypes: ["class"], maxLevel: 2 },
+    };
+
+    const result = await chooseSelectionOption(state, step, "test.pack:sudden-charge", {
+      resolveSelection: async () => selection("class-feat-level-2", "feat", "sudden-charge", "Sudden Charge"),
+      hasDuplicateDraftSelection: () => false,
+      resolveSelectionTraits: async (selectionRef) =>
+        selectionRef?.documentId === "wizard-dedication" ? ["archetype", "dedication"] : [],
+      resolveSelectionSlug: async () => null,
+      invalidateSelection: () => [],
+      invalidateSelectionsByPrefix: (prefix) => {
+        const invalidated = Object.keys(draft.selections).filter((slotId) => slotId.startsWith(prefix));
+        for (const slotId of invalidated) {
+          delete draft.selections[slotId];
+        }
+        return invalidated;
+      },
+      invalidateSingletonChoicesBySource: async () => [],
+      invalidateGrantSelectionsBySource: async () => [],
+      invalidateGrantSelectionsByDependency: async () => [],
+      invalidateFlagChoicesBySource: async () => [],
+      invalidateFlagChoicesByDependency: async () => [],
+      invalidateClassChoicesByDependency: async () => [],
+      invalidateBranchSelectionsByDependency: async () => [],
+      invalidateSpellChoicesByDependency: async () => [],
+      resetAncestryBoostDraft: () => false,
+      resetBackgroundBoostDraft: () => false,
+      resetClassBoostDraft: () => false,
+    });
+
+    expect(result.statusNote).toBe("Dedication changed. Wayfinder marked Free Archetype selections for review.");
+    expect(draft.selections["class-feat-level-2"]?.name).toBe("Sudden Charge");
+    expect(draft.selections["archetype-feat-level-2"]).toBeUndefined();
   });
 
   it("invalidates dependent class choices and branches when the deity changes", async () => {

@@ -84,6 +84,7 @@ describe("wayfinder plan builder service", () => {
       actorId: "actor-1",
       level: 2,
       isBlank: false,
+      freeArchetypeEnabled: false,
       singletonSlots: {
         ancestry: false,
         heritage: false,
@@ -455,6 +456,7 @@ describe("wayfinder plan builder service", () => {
           actorId: "actor-2",
           level: 1,
           isBlank: false,
+          freeArchetypeEnabled: false,
           singletonSlots: {
             ancestry: false,
             heritage: false,
@@ -539,6 +541,7 @@ describe("wayfinder plan builder service", () => {
       actorId: "actor-branch-caster",
       level: 1,
       isBlank: false,
+      freeArchetypeEnabled: false,
       singletonSlots: {
         ancestry: false,
         heritage: false,
@@ -668,6 +671,7 @@ describe("wayfinder plan builder service", () => {
         actorId: `actor-kineticist-${thresholdSelection}`,
         level: 5,
         isBlank: false,
+        freeArchetypeEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: true,
@@ -800,6 +804,7 @@ describe("wayfinder plan builder service", () => {
         actorId: `actor-${classSlug}-wand`,
         level: 5,
         isBlank: false,
+        freeArchetypeEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: true,
@@ -919,6 +924,7 @@ describe("wayfinder plan builder service", () => {
       actorId: "existing-investigator",
       level: 1,
       isBlank: false,
+      freeArchetypeEnabled: false,
       singletonSlots: {
         ancestry: true,
         heritage: true,

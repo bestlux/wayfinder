@@ -141,6 +141,10 @@ export function matchesFilters(
     return matchesClassFeatContext(entry, context, traitCatalog);
   }
 
+  if (step.slotKind === "archetype-feat") {
+    return matchesArchetypeFeatContext(entry, context);
+  }
+
   if (step.slotKind === "skill-feat") {
     return matchesSkillFeatContext(entry, context);
   }
@@ -149,7 +153,7 @@ export function matchesFilters(
 }
 
 export async function getTraitCatalog(slotKind: PendingStep["slotKind"]): Promise<Set<string>> {
-  if (slotKind === "spell-choice") {
+  if (slotKind === "spell-choice" || slotKind === "archetype-feat") {
     return new Set();
   }
 
@@ -257,6 +261,16 @@ function matchesClassFeatContext(entry: PackIndexEntry, context: OptionContext, 
   }
 
   return false;
+}
+
+function matchesArchetypeFeatContext(entry: PackIndexEntry, context: OptionContext): boolean {
+  const category = stringOrNull(entry?.system?.category);
+  if (category && category !== "class") {
+    return false;
+  }
+
+  const traits = extractEntryTraits(entry);
+  return context.hasDedicationFeat ? traits.includes("archetype") : traits.includes("dedication");
 }
 
 function matchesSkillFeatContext(entry: PackIndexEntry, context: OptionContext): boolean {

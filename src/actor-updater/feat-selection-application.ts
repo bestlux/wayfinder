@@ -62,6 +62,17 @@ function resolveFeatSlotData(
     | { slots?: Record<string, FeatSlotLike> }
     | null
     | undefined;
+  if (step?.slotKind === "archetype-feat") {
+    if (!group) {
+      throw new Error("PF2E's Free Archetype feat group is unavailable; the draft cannot be applied safely.");
+    }
+
+    return {
+      groupId,
+      slotId: `archetype-${step.level}`,
+    };
+  }
+
   const slots = Object.values(group?.slots ?? {});
   if (slots.length === 0) {
     return { groupId, slotId: null };
@@ -81,6 +92,8 @@ function resolveFeatGroupId(selection: SelectionRef, step: PendingStep | null): 
       return "ancestry";
     case "class-feat":
       return "class";
+    case "archetype-feat":
+      return "archetype";
     case "skill-feat":
       return "skill";
     case "general-feat":

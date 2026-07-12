@@ -270,6 +270,7 @@ describe("wayfinder plan service", () => {
         actorId: "actor-1",
         level: 1,
         isBlank: false,
+        freeArchetypeEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: true,

@@ -154,9 +154,10 @@ const SLOT_KIND_SORT_WEIGHTS = {
     "language-choice": 14,
     "spell-choice": 15,
     "class-feat": 16,
-    "skill-feat": 17,
-    "general-feat": 18,
-    "skill-increase": 19,
+    "archetype-feat": 17,
+    "skill-feat": 18,
+    "general-feat": 19,
+    "skill-increase": 20,
 };
 const STEP_MODE_LABELS = {
     "pick-item": "Selection",

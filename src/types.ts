@@ -93,6 +93,7 @@ export interface ActorSnapshot {
   actorId: string;
   level: number;
   isBlank: boolean;
+  freeArchetypeEnabled: boolean;
   singletonSlots: Record<"ancestry" | "heritage" | "background" | "class" | "deity", boolean>;
   featCounts: {
     ancestry: number;

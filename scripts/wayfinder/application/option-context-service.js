@@ -58,23 +58,50 @@ export async function resolveSelectionSlug(selection, deps) {
     return deps.extractDocumentSlug(document);
 }
 export async function hasDedicationFeatInContext(args) {
-    const { draft, listActorItems, fetchSelectionDocument, extractDocumentSlug } = args;
+    const { draft, listActorItems, fetchSelectionDocument, extractDocumentSlug, excludedFeatSlotId, maximumFeatLevel } = args;
     const actorItems = listActorItems();
     const effectiveDraft = withExistingClassArchetypeChoice(draft, actorItems);
     const actorHasDedication = actorItems.some((item) => item?.type === "feat" &&
-        extractContextTraits(item, extractDocumentSlug).includes("dedication"));
+        extractContextTraits(item, extractDocumentSlug).includes("dedication") &&
+        isFeatAvailableByLevel(actorFeatLevel(item), maximumFeatLevel));
     if (actorHasDedication) {
         return true;
     }
     const draftedFeatSelections = [
         ...Object.values(effectiveDraft.selections).filter((selection) => selection.itemType === "feat"),
         ...projectedClassArchetypeFeatSelections(effectiveDraft, effectiveDraft.targetLevel),
-    ];
+    ].filter((selection) => selection.slotId !== excludedFeatSlotId && isFeatAvailableByLevel(draftedFeatLevel(selection), maximumFeatLevel));
     if (draftedFeatSelections.length === 0) {
         return false;
     }
     const draftedFeatDocuments = await Promise.all(draftedFeatSelections.map((selection) => fetchSelectionDocument(selection)));
     return draftedFeatDocuments.some((document) => extractContextTraits(document, extractDocumentSlug).includes("dedication"));
+}
+function draftedFeatLevel(selection) {
+    const slotLevel = selection.slotId.match(/-level-(\d+)$/)?.[1];
+    return numericLevel(slotLevel) ?? numericLevel(selection.level);
+}
+function actorFeatLevel(item) {
+    const typedItem = item;
+    const takenLevel = numericLevel(typedItem?.system?.level?.taken);
+    if (takenLevel !== null) {
+        return takenLevel;
+    }
+    const location = typedItem?.system?.location;
+    const locationValue = typeof location === "string"
+        ? location
+        : typeof location?.value === "string"
+            ? String(location.value)
+            : "";
+    const locationLevel = numericLevel(locationValue.match(/-(\d+)$/)?.[1]);
+    return locationLevel ?? numericLevel(typedItem?.system?.level?.value);
+}
+function isFeatAvailableByLevel(level, maximumFeatLevel) {
+    return maximumFeatLevel === undefined || level === null || level <= maximumFeatLevel;
+}
+function numericLevel(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric >= 1 && numeric <= 20 ? Math.floor(numeric) : null;
 }
 export async function buildOptionContext(deps) {
     const actorItems = deps.listActorItems();
@@ -358,6 +385,10 @@ export async function buildContextNote(step, context, deps) {
                 ? `Showing feats keyed to ${className} plus archetype follow-up feats unlocked by an existing dedication. Shared class feats that list ${className} also remain available.`
                 : `Showing feats keyed to ${className} plus dedication feats that can begin an archetype path. Shared class feats that list ${className} also remain available.`;
         }
+        case "archetype-feat":
+            return context.hasDedicationFeat
+                ? "PF2E is showing its archetype feat pool for this Free Archetype slot. Wayfinder does not exhaustively validate access, prerequisites, archetype-family membership, or dedication lockouts; confirm eligibility with your GM."
+                : "PF2E is showing dedication feats for this Free Archetype slot. Wayfinder does not exhaustively validate access or prerequisites; confirm eligibility with your GM.";
         case "class-branch": {
             const className = (await deps.resolveDocument("class"))?.name;
             const selectorName = step.branch?.selectorName;

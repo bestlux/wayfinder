@@ -21,7 +21,7 @@ For the current repo-plus-compendium side-book audit, see [AP And Side-Book Leve
 - PC/PC2 inventory from that audit: 16 ancestries, 106 heritages, 63 backgrounds, 16 classes, 163 level-1 class features, 165 level-1 ancestry feats, 102 level-1 class feats, 69 level-1 skill feats, and 14 level-1 general feats.
 - Targeted regression evidence added in this audit: class-derived level-1 skill feat planning, projected draft skill training in option context, and skill-feat prerequisite filtering against trained skills and lores.
 - All-class live smoke evidence on 2026-05-11: `.wayfinder-smoke/beta-green-0.1.2-final-3` applied every class from the local PF2E class pack inventory from blank level 1 to target level 5 in Foundry 14.360 / PF2E 8.1.1, with 27 passing all-class cases, four passing targeted incremental existing-character reruns, zero duplicate source IDs, zero rerun pending steps, and no classified/manual failures.
-- Current release target checked on 2026-07-11: Foundry VTT 14.364 and PF2E 8.3.0. The 0.4.0 candidate passed 35 direct level-1-to-5 cases and seven incremental existing-character cases with 42 passing, zero classified/manual, and zero failed. Artifact: `.wayfinder-smoke/release-0.4.0-full-4`.
+- Current release target checked on 2026-07-11: Foundry VTT 14.364 and PF2E 8.3.0. The 0.5.0 candidate passed the 42-case baseline plus four direct/incremental Archer and Acrobat Free Archetype cases, with 46 passing, zero classified/manual, and zero failed. Artifacts: `.wayfinder-smoke/release-0.5.0-baseline-final` and `.wayfinder-smoke/release-0.5.0-free-archetype-final`.
 - Dedicated class-archetype evidence covers Standard and registered-profile paths for Cleric/Battle Creed, Gunslinger/Way of the Spellshot, and Investigator/Palatine Detective. All three profiles passed direct and incremental level-1-to-5 apply/rerun; Battle Creed also retains both-skills-trained, actor-owned Toughness, and same-draft Shielded Fortune fallback cases.
 - Embedded `ChoiceSet` audit refreshed on 2026-07-05: standalone filtered no-grant rules are now guided when their filters resolve to supported item types, and same-item class-choice option predicates are guided when driven by earlier same-item class-choice roll options.
 - Full repo gate from this audit: `npm run check`.
@@ -57,7 +57,7 @@ For the current repo-plus-compendium side-book audit, see [AP And Side-Book Leve
 | Level 1 skill increases | Partial / deferred | Dedicated checkpoint step | Wayfinder tracks the milestone and applies drafted increases, but this is not a blank-character level-1 decision. |
 | Starting gear or item purchasing | Not covered | None | Still outside the guided creation flow. |
 | Daily preparations | Not covered | None | Still intentionally out of scope. |
-| Optional campaign systems such as Free Archetype | Manual / PF2E-native | None | Free Archetype starts at level 2 and needs a separate PF2E `archetype` feat-group implementation before Wayfinder can guide it. |
+| Free Archetype campaign variant | Guided from level 2 with a GM-confirmation boundary | Separate even-level `archetype-feat` lane backed by PF2E's native group | Level 1 is unchanged. Later options mirror PF2E's dedication/archetype pool; exhaustive access, prerequisites, family membership, lockouts, and class-archetype combinations still require GM confirmation. |
 
 ## Launch-Readiness Matrix
 
@@ -70,6 +70,7 @@ For the current repo-plus-compendium side-book audit, see [AP And Side-Book Leve
 | Default path | Wizard creation | Elf / Wizard / school and thesis / spellbook | Draft branches, training, languages, spells, and apply | Wizard class features, spellbook entry, curriculum spells, languages, and lore apply | `tests/wayfinder-golden-path-integration.test.ts` | merge |
 | Default path | Cleric deity path | Cleric with deity, sanctification, divine font, prepared spells | Draft choices and apply | Cleric choices, divine font entry, prepared entry, and spells apply | `tests/wayfinder-golden-path-integration.test.ts`, `tests/actor-updater-native-spellcasting-application.test.ts` | merge |
 | Default and upgrade paths | Registered class archetypes | Standard/profile Cleric, Gunslinger, and Investigator; direct and incremental profile actors; Battle Creed conflict fixtures | Choose a registered profile and complete target level 5 | Replaced selector stays hidden, level-2 dedication occupies the reserved class feat, level-4 class feat remains, profile training/spells/grants apply to the correct destination, and rerun has zero pending steps | `.wayfinder-smoke/release-0.4.0-full-4`, class-archetype tests | release |
+| Upgrade path | Free Archetype | PF2E variant enabled; blank or existing Fighter/Archer and Rogue/Acrobat actors | Complete target level 5 and rerun | Separate class and archetype slots render at levels 2 and 4; archetype choices occupy `archetype-2`/`archetype-4`; rerun has zero pending steps | `.wayfinder-smoke/release-0.5.0-free-archetype-final`, focused tests | release |
 | Default path | Spellcasting classes | Bard, cleric, druid, magus, oracle, psychic, sorcerer, summoner, witch, wizard, and animist | Select class and complete target level 5 | Supported spellbook, prepared, spontaneous, and bounded choices render, apply, and rerun cleanly for the deterministic smoke paths | `.wayfinder-smoke/beta-green-0.1.2-final-3`, spell-choice builder tests | release |
 | Upgrade path | Existing actor with resolved choices | Actor already has items and Wayfinder flags | Re-open Wayfinder | Already resolved singleton, branch, class-choice, grant-choice, language, and spell-choice steps are skipped unless the draft overrides them | Existing-selection and plan-builder tests | merge |
 | Reset / re-run | Upstream selection changes | Draft contains dependent selections | Change ancestry, heritage, class, branch, or source rule choice | Dependent stale choices clear and affected steps surface as needing attention | Invalidation, draft adjustment, grant-choice, and singleton tests | merge |
@@ -99,6 +100,7 @@ For the current repo-plus-compendium side-book audit, see [AP And Side-Book Leve
 - Predicate-gated static UUID grants are supported for item predicates, actor ancestry/class predicates, actor skill-rank predicates, and active roll options created by drafted rule selections. Selected-item or equipment-derived predicates beyond the live-smoked innovation path still need content-driven expansion.
 - Class coverage is structurally extensible and now smoke-proven through level 5 for one deterministic path per PF2E class. Remaining risk is breadth across alternate subclass paths, later-level mechanics, variants, and uncommon rule shapes.
 - Battle Creed, Way of the Spellshot, and Palatine Detective are the registered class-archetype profiles. Other class archetypes remain intentionally hidden until their replaced features, forced feats, nested choices, and subsystem changes have dedicated evidence.
+- Free Archetype slot mechanics are guided, but the current picker intentionally mirrors PF2E's broad post-dedication archetype pool. It does not claim exhaustive access, prerequisite, family, or dedication-lockout adjudication.
 
 ## Level 2+ Readiness List
 
@@ -106,7 +108,7 @@ For the current level-up audit, see [Level 2+ Coverage Matrix](./levelup-coverag
 
 1. Keep class and skill feat planning anchored to selected-class progression data and exact fulfilled slot ids.
 2. Expand alternate subclass/branch coverage beyond the deterministic all-class smoke path, especially where tradition, focus, granted spells, or nested grants change downstream choices.
-3. Add Free Archetype as a distinct variant-rule feat group, using PF2E's `archetype` group rather than consuming normal class feat slots.
+3. Deepen Free Archetype eligibility behind the existing separate lane only where official PF2E data supports stable family, access, prerequisite, and lockout decisions.
 4. Broaden the class-archetype registry one evidence-backed profile at a time; do not expose an option solely from its PF2E tag.
 5. Tighten archetype legality beyond the current dedication/follow-up split: active archetype family, dedication lockout, and GM override/table policy need a clear model before level 2+ archetype choices are guided.
 6. Broaden option-context predicates for selected items and equipment-derived roll options beyond the live-smoked Armor Innovation path.

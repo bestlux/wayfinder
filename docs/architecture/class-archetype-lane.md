@@ -16,7 +16,7 @@ The release matrix passed live apply/rerun smoke on 2026-07-11 against Foundry V
 
 A class archetype is a level-1 class-construction decision. It can replace class features, change spellcasting, reserve later class-feat slots, and grant a dedication. An ordinary class branch only chooses one option under an existing selector; it does not own those cross-cutting changes.
 
-Free Archetype is different again. It is a campaign variant that adds PF2E's separate `archetype` feat group at even levels. It must remain a future progression lane and must not consume or replace normal class-feat slots.
+Free Archetype is different again. It is a campaign variant that adds PF2E's separate `archetype` feat group at even levels. Wayfinder implements it as an independent progression lane; it never consumes or replaces normal class-feat slots.
 
 ```mermaid
 flowchart LR
@@ -108,17 +108,17 @@ Palatine Detective replaces Investigator Methodology. Its profile `ChoiceSet` is
 
 The profile contributor creates one common divine innate cantrip and one common occult innate cantrip, both using Intelligence. These are distinct keyed entries. The same spell can legally be selected for both traditions; duplicate prevention is therefore scoped to a destination rather than to the entire actor.
 
-## Free Archetype extension boundary
+## Free Archetype boundary
 
-Free Archetype should be implemented as a separate variant progression contributor with these invariants:
+Free Archetype is implemented as a separate variant progression path with these invariants:
 
-- detect the active PF2E variant setting from live game state;
+- detect the active PF2E variant through the actor's live `archetype` feat group;
 - read and write the actor's separate `archetype` feat group;
 - create additional even-level archetype-feat steps without altering `classFeatLevels`;
-- share dedication prerequisite and duplicate filtering with ordinary feat lanes;
+- mirror PF2E's dedication-before/follow-up-after candidate split and share duplicate filtering with ordinary feat lanes;
 - keep class-archetype forced feats in whichever slot PF2E rules name. Battle Harbinger Dedication remains a normal level-2 class feat even when Free Archetype is enabled.
 
-The current class-archetype registry and projected-feat context are reusable inputs for that future lane, but they do not themselves enable Free Archetype.
+The lane intentionally stops short of a second archetype rules engine. Access, exhaustive prerequisites, archetype-family membership, dedication lockouts, and combinations with registered class-archetype profiles remain a visible GM-confirmation boundary. The class-archetype registry and projected-feat context inform the picker, but a registered class-archetype profile does not move its forced dedication into a Free Archetype slot.
 
 ## Acceptance gates
 
@@ -138,11 +138,12 @@ Live release gates completed on 2026-07-11:
 
 1. Run every maintained direct level-1-to-5 class/variant case, including Standard Cleric/Gunslinger/Investigator and all three profile paths.
 2. Run incremental level-1-to-5 cases for Fighter, Cleric, Sorcerer, Kineticist, Battle Creed, Spellshot, and Palatine Detective.
-3. Verify 42 pass, zero classified/manual, zero fail, zero native dialog increases, no invalid duplicate source IDs, draft cleanup, and zero pending rerun steps.
+3. Verify the 42-case class/class-archetype baseline with Free Archetype forced off: zero classified/manual, zero fail, zero native dialog increases, no invalid duplicate source IDs, draft cleanup, and zero pending rerun steps.
 4. Inspect profile-specific actor evidence for forced-feat location, selected rule values, class-feat preservation, exact spellcasting entry identity/capacity, and spell destination.
 5. Retain Battle Creed's both-skills-trained, actor-owned Toughness, and same-draft Shielded Fortune conflict cases.
+6. Run Free Archetype separately so its additional slots cannot mask class-feat or class-archetype regressions.
 
-The consolidated release artifact is `.wayfinder-smoke/release-0.4.0-full-4`.
+The latest baseline artifact is `.wayfinder-smoke/release-0.5.0-baseline-final`; the focused Free Archetype overlay is `.wayfinder-smoke/release-0.5.0-free-archetype-final`.
 
 ## Adding another class archetype
 

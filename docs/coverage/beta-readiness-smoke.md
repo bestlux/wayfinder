@@ -21,6 +21,7 @@ To pass harness arguments through npm on this machine, use an extra separator:
 ```powershell
 npm run smoke:foundry -- -- --list
 npm run smoke:foundry -- -- --case wizard-l1-l5-apply-rerun
+npm run smoke:foundry -- -- --free-archetype on --case free-archetype-fighter-archer-dedication
 ```
 
 The harness:
@@ -31,6 +32,7 @@ The harness:
 - Applies through Wayfinder's normal apply lifecycle.
 - Verifies actor level, duplicate source IDs, native dialog count, draft cleanup, and rerun pending steps.
 - Deletes fixtures by default only when `FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE=1` and `FOUNDRY_SMOKE_WORLD_ID` matches the connected world. Use `--keep-actors` for non-destructive local debugging.
+- Can temporarily force PF2E's Free Archetype world setting to `on` or `off` only under the same destructive/world guard, verifies the prepared PF2E state, and restores the original value in `finally`.
 - Writes JSON and Markdown artifacts under `.wayfinder-smoke/`, which is intentionally gitignored.
 
 Credentials are local environment variables only. Do not commit Foundry user names, passwords, storage state, or world-specific secrets.
@@ -40,6 +42,17 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-07-11 Release 0.5.0 Free Archetype Matrix
+
+The `v0.5.0` candidate ran as module version 0.5.0 against Foundry VTT 14.364 / PF2E 8.3.0 in `testing-world`. The existing 42-case matrix was forced to Free Archetype off; the focused overlay temporarily enabled it and restored the original setting afterward.
+
+Result: **46 pass, 0 classified/manual, 0 fail** across two artifacts:
+
+- `.wayfinder-smoke/release-0.5.0-baseline-final`: 35 direct and seven incremental existing-character cases with Free Archetype explicitly off.
+- `.wayfinder-smoke/release-0.5.0-free-archetype-final`: Archer Dedication → Quick Shot and Acrobat Dedication → Contortionist, each run as both a direct level-1-to-5 build and an incremental existing-character build with Free Archetype on.
+
+All four focused cases rendered independent `class-feat-level-2`/`class-feat-level-4` and `archetype-feat-level-2`/`archetype-feat-level-4` steps, wrote the archetype choices to `archetype-2` and `archetype-4`, applied without native dialogs or duplicate source IDs, cleared the draft, and reran with zero pending steps. This proves the separate slot mechanism and native pool handoff, not exhaustive archetype legality.
 
 ## 2026-07-11 Release 0.4.0 Full Matrix
 
@@ -161,5 +174,6 @@ These cases first applied a level 1 actor, reopened Wayfinder against that exist
 - Direct feat options and tag-based class-branch options with embedded `ChoiceSet` rules are shown only when every embedded choice is covered by a guided follow-up lane; predicate-backed branch steps keep their curated options visible. Supported feat-owned and selected class-feature follow-ups are preselected before PF2E native rules run.
 - Standalone filtered no-grant `ChoiceSet` rules are guided through flag-choice steps when filters resolve to supported item types and required actor placeholders are known from draft context. Same-item class-choice option predicates are guided when later choices depend on earlier same-source class-choice roll options.
 - Remaining embedded-`ChoiceSet` caveats are selected-item and equipment predicates, dynamic flags-path choices, and cross-item dependency graphs.
-- Battle Creed, Way of the Spellshot, and Palatine Detective are guided through the dedicated class-archetype lane. Other class-archetype branch options stay filtered until a complete profile is registered. Free Archetype remains a separate future variant lane over PF2E's `archetype` feat group.
+- Battle Creed, Way of the Spellshot, and Palatine Detective are guided through the dedicated class-archetype lane. Other class-archetype branch options stay filtered until a complete profile is registered.
+- Free Archetype uses PF2E's separate `archetype` feat group and native dedication/archetype candidate split. Wayfinder does not yet exhaustively prove access, prerequisites, archetype-family membership, dedication lockouts, or Free Archetype combinations with registered class-archetype profiles; those choices require GM confirmation.
 - Daily preparations, starting gear beyond class-feature grants, purchasing, retraining, and table-specific campaign systems remain PF2E-native/manual.

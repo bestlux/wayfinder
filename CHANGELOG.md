@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 - 2026-07-11
+
+- Added a dedicated Free Archetype lane that appears automatically when PF2E's Free Archetype variant is enabled.
+- Free Archetype choices use PF2E's separate even-level `archetype` slots, preserving ordinary class-feat progression on direct and existing-character level-ups.
+- The picker mirrors PF2E's native dedication-then-archetype pool, blocks duplicate selections, and clearly marks access, prerequisites, archetype-family membership, and dedication lockouts as GM-confirmation boundaries.
+- Added safe smoke-harness control for the Free Archetype world setting, including expected-world and destructive-operation guards plus automatic restoration.
+- Verified the release against Foundry VTT 14.364 and PF2E 8.3.0 with the existing 42-case baseline plus four direct/incremental Archer and Acrobat Free Archetype cases.
+
 ## 0.4.0 - 2026-07-11
 
 - Added complete level 1–5 guidance for Way of the Spellshot and Palatine Detective alongside Battle Creed's existing class-archetype lane.

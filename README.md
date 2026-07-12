@@ -13,12 +13,13 @@
 
 </div>
 
-Character creation and leveling in PF2E means juggling class tables, compendium browsers, feat slots, boosts, spell lists, and source exceptions. Wayfinder turns all of that into a single guided flow you open straight from the character sheet — think Pathbuilder, but living inside your game world. It knows which sources your GM enabled, filters every picker by what you can actually take, and writes the result directly to the actor. No JSON export, no re-import, no sheet-mismatch cleanup.
+Character creation and leveling in PF2E means juggling class tables, compendium browsers, feat slots, boosts, spell lists, and source exceptions. Wayfinder turns all of that into a single guided flow you open straight from the character sheet — think Pathbuilder, but living inside your game world. It knows which sources your GM enabled, narrows each picker using the rules it can verify, and writes the result directly to the actor. No JSON export, no re-import, no sheet-mismatch cleanup.
 
 ## Highlights
 
 - **One flow from level 1 to level up.** Ancestry, heritage, background, class, class branches, feats, boosts, skill increases, languages, and spell choices — all in order, in one window.
 - **Dedicated class-archetype decisions.** Battle Creed, Way of the Spellshot, and Palatine Detective are guided as complete progression profiles instead of ordinary subclass options.
+- **Native Free Archetype slots.** When PF2E's Free Archetype variant is enabled, Wayfinder adds separate even-level archetype choices without consuming normal class feats.
 - **Earlier picks filter later ones.** You stop scrolling past feats and options you can't take anyway.
 - **Beginner-friendly, veteran-fast.** Each step explains what you're choosing; experienced players just search, pick, next.
 - **Respects your table.** Rarity and source filters on every picker, with optional GM allowlists for non-official packs.
@@ -61,6 +62,8 @@ Every one of the 27 PF2E classes has a verified guided path from a blank level-1
 
 Three class-archetype profiles are guided through level 5. Battle Creed handles its Doctrine replacement, Battle Harbinger Dedication, alternate prepared progression, Battle Font, and grant fallbacks. Way of the Spellshot replaces Gunslinger's Way, applies Spellshot Dedication, and builds its Intelligence-based arcane spellbook. Palatine Detective replaces Investigator Methodology, persists its skill choice, creates separate divine and occult innate cantrips, and applies its dedication. Other class archetypes remain filtered until they have the same end-to-end support.
 
+PF2E's Free Archetype variant is guided through its own even-level feat lane. Wayfinder mirrors PF2E's native picker behavior—dedications before the actor has one, then the system's archetype feat pool—and applies choices to `archetype-2`, `archetype-4`, and later native slots. It does not yet exhaustively adjudicate access, prerequisites, archetype-family membership, or dedication lockouts; the picker calls out that boundary so the player and GM can confirm eligibility.
+
 <details>
 <summary><strong>All 27 classes, verified through level 5</strong></summary>
 
@@ -78,7 +81,8 @@ These stay in the native PF2E sheet for now, and Wayfinder will tell you so when
 
 - Starting gear and item purchasing
 - Daily preparations
-- Free Archetype and class archetypes other than Battle Creed, Way of the Spellshot, and Palatine Detective
+- Exhaustive Free Archetype legality, including access, every prerequisite form, archetype-family membership, dedication lockouts, and combinations with class-archetype profiles
+- Class archetypes other than Battle Creed, Way of the Spellshot, and Palatine Detective
 - Retraining and table-specific campaign systems
 
 ## Feedback

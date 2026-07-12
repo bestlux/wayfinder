@@ -58,6 +58,7 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
     foundryVersion: game.version ?? null,
     moduleActive: true,
     moduleId,
+    moduleVersion: moduleRecord.version ?? moduleRecord.manifest?.version ?? null,
     pf2eVersion: game.system?.version ?? null,
     summary,
     user: game.user?.name ?? null,
@@ -74,6 +75,7 @@ async function loadWayfinderModules(moduleId) {
     buildState,
     packAccess,
     packOptions,
+    pickerState,
     optionContext,
     planService,
     actorUpdater,
@@ -88,6 +90,7 @@ async function loadWayfinderModules(moduleId) {
     import(`/modules/${moduleId}/scripts/build-state.js`),
     import(`/modules/${moduleId}/scripts/pack/access.js`),
     import(`/modules/${moduleId}/scripts/pack/options.js`),
+    import(`/modules/${moduleId}/scripts/pack/picker-state.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/option-context-service.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/plan-service.js`),
     import(`/modules/${moduleId}/scripts/actor-updater.js`),
@@ -108,6 +111,7 @@ async function loadWayfinderModules(moduleId) {
     getEffectiveBuildState: buildState.getEffectiveBuildState,
     getEffectiveSingletonDocument: buildState.getEffectiveSingletonDocument,
     getOptionsForStep: packOptions.getOptionsForStep,
+    getPickerBlockedState: pickerState.getPickerBlockedState,
     inspectActor: actorInspector.inspectActor,
     isWayfinderStepComplete: planService.isWayfinderStepComplete,
     isWizardArcaneSchoolSlotId: slotIds.isWizardArcaneSchoolSlotId,
@@ -418,6 +422,11 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
     case "pick-item":
     case "class-branch": {
       const optionContext = await buildPickerContext(actor, draft, planSteps, modules);
+      const blocked = modules.getPickerBlockedState(step, optionContext);
+      if (blocked) {
+        notes.classifications.push(`${step.slotId}: picker blocked: ${blocked.title}`);
+        return;
+      }
       const options = await modules.getOptionsForStep(step, optionContext);
       const option = pickOption(options, step, smokeCase);
       if (!option) {
@@ -468,13 +477,28 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
     }
     case "spell-choice": {
       const optionContext = await buildPickerContext(actor, draft, planSteps, modules);
+      const blocked = modules.getPickerBlockedState(step, optionContext);
+      if (blocked) {
+        notes.classifications.push(`${step.slotId}: picker blocked: ${blocked.title}`);
+        return;
+      }
       const options = await modules.getOptionsForStep(step, optionContext);
       if (options.length === 0) {
         notes.classifications.push(`${step.slotId}: spell progression is PF2E-native/manual for this live data shape`);
         return;
       }
 
-      draft.spellChoices[step.slotId] = options.slice(0, step.spellChoice.count);
+      const selectedOptions = pickOptions(options, step, smokeCase, step.spellChoice.count);
+      const selections = (
+        await Promise.all(
+          selectedOptions.map((option) => modules.resolveSelection(option.value, step, optionContext)),
+        )
+      ).filter(Boolean);
+      if (selections.length === step.spellChoice.count) {
+        draft.spellChoices[step.slotId] = selections;
+      } else {
+        notes.warnings.push(`${step.slotId}: only ${selections.length} of ${step.spellChoice.count} spells resolved`);
+      }
       return;
     }
     case "skill-training":
@@ -679,6 +703,35 @@ function pickOption(options, step, smokeCase) {
   return options[0] ?? null;
 }
 
+function pickOptions(options, step, smokeCase, count) {
+  const preferred = [
+    ...(smokeCase.preferredSelections?.[step.slotId] ?? []),
+    ...(smokeCase.preferredSelections?.[step.slotKind] ?? []),
+  ];
+  const selected = [];
+  for (const name of preferred) {
+    const found = options.find(
+      (option) => namesMatch(option.name, name) && !selected.some((entry) => entry.uuid === option.uuid),
+    );
+    if (found) {
+      selected.push(found);
+    }
+    if (selected.length >= count) {
+      return selected;
+    }
+  }
+
+  for (const option of options) {
+    if (!selected.some((entry) => entry.uuid === option.uuid)) {
+      selected.push(option);
+    }
+    if (selected.length >= count) {
+      break;
+    }
+  }
+  return selected;
+}
+
 function pickInlineOption(options, step, smokeCase) {
   const preferred = [
     ...(smokeCase.preferredSelections?.[step.slotId] ?? []),
@@ -719,6 +772,7 @@ function collectActorEvidence(actor, modules, moduleId) {
     spellcasting:
       item.type === "spellcastingEntry"
         ? {
+            ability: item.system?.ability?.value ?? null,
             prepared: item.system?.prepared?.value ?? null,
             proficiencySlug: item.system?.proficiency?.slug ?? null,
             slots: Object.fromEntries(
@@ -743,7 +797,11 @@ function collectActorEvidence(actor, modules, moduleId) {
   const slotIds = items
     .map((item) => (item.trainingKey ? `${item.slotId}:${item.trainingKey}` : item.slotId))
     .filter(Boolean);
-  const sourceIds = items.map((item) => item.sourceId).filter(Boolean);
+  const sourceIds = items
+    .map((item) =>
+      item.sourceId ? (item.type === "spell" ? `${item.sourceId}@${item.location ?? "unplaced"}` : item.sourceId) : null,
+    )
+    .filter(Boolean);
 
   return {
     id: actor.id,
@@ -804,7 +862,8 @@ function validateAppliedCase({
       !slotId.startsWith("class-archetype-") &&
       !slotId.startsWith("class-branch-") &&
       !slotId.startsWith("deity-level-") &&
-      !slotId.startsWith("grant-choice-"),
+      !slotId.startsWith("grant-choice-") &&
+      !slotId.startsWith("spell-choice-"),
   );
   if (unexpectedDuplicateSlotIds.length > 0) {
     failures.push(`Duplicate Wayfinder slot ids: ${unexpectedDuplicateSlotIds.join(", ")}`);
@@ -884,7 +943,8 @@ function validateIncrementalCase({
       !slotId.startsWith("class-archetype-") &&
       !slotId.startsWith("class-branch-") &&
       !slotId.startsWith("deity-level-") &&
-      !slotId.startsWith("grant-choice-"),
+      !slotId.startsWith("grant-choice-") &&
+      !slotId.startsWith("spell-choice-"),
   );
   if (unexpectedDuplicateSlotIds.length > 0) {
     failures.push(`Duplicate Wayfinder slot ids: ${unexpectedDuplicateSlotIds.join(", ")}`);
@@ -948,6 +1008,13 @@ function validateActorExpectations(actorEvidence, smokeCase, failures) {
     }
   }
 
+  for (const [itemName, expectedLocation] of Object.entries(smokeCase.expectedItemLocations ?? {})) {
+    const item = actorEvidence.items.find((candidate) => candidate.name === itemName);
+    if (!item || item.location !== expectedLocation) {
+      failures.push(`${itemName} location is ${item?.location ?? "missing"}, expected ${expectedLocation}`);
+    }
+  }
+
   for (const expectation of smokeCase.expectedGrantReplacements ?? []) {
     const source = actorEvidence.items.find((item) => item.name === expectation.sourceItemName);
     const rule = source?.grantRules?.find((candidate) => candidate.flag === expectation.flag);
@@ -979,6 +1046,14 @@ function validateActorExpectations(actorEvidence, smokeCase, failures) {
         failures.push(`${destinationKey} ${slotKey} max is ${actualMax ?? "missing"}, expected ${expectedMax}`);
       }
     }
+    for (const [slotKey, expectedPrepared] of Object.entries(expectation.preparedSlots ?? {})) {
+      const actualPrepared = entry.spellcasting.slots?.[slotKey]?.prepared ?? null;
+      if (JSON.stringify(actualPrepared) !== JSON.stringify(expectedPrepared)) {
+        failures.push(
+          `${destinationKey} ${slotKey} prepared slots are ${JSON.stringify(actualPrepared)}, expected ${JSON.stringify(expectedPrepared)}`,
+        );
+      }
+    }
     for (const slotKey of expectation.forbiddenSlots ?? []) {
       if (entry.spellcasting.slots?.[slotKey]) {
         failures.push(`${destinationKey} unexpectedly contains ${slotKey}`);
@@ -989,15 +1064,27 @@ function validateActorExpectations(actorEvidence, smokeCase, failures) {
         `${destinationKey} proficiency slug is ${entry.spellcasting.proficiencySlug ?? "missing"}, expected ${expectation.proficiencySlug}`,
       );
     }
+    for (const field of ["ability", "prepared", "tradition"]) {
+      if (expectation[field] !== undefined && entry.spellcasting[field] !== expectation[field]) {
+        failures.push(
+          `${destinationKey} ${field} is ${entry.spellcasting[field] ?? "missing"}, expected ${expectation[field]}`,
+        );
+      }
+    }
   }
 
-  for (const [itemName, destinationKey] of Object.entries(smokeCase.expectedItemDestinations ?? {})) {
-    const entry = actorEvidence.items.find(
-      (item) => item.type === "spellcastingEntry" && item.destinationKey === destinationKey,
-    );
-    const item = actorEvidence.items.find((candidate) => candidate.name === itemName && candidate.type === "spell");
-    if (!entry?.id || !item || item.location !== entry.id) {
-      failures.push(`${itemName} is not located in ${destinationKey}`);
+  for (const [itemName, expectedDestinations] of Object.entries(smokeCase.expectedItemDestinations ?? {})) {
+    const destinationKeys = Array.isArray(expectedDestinations) ? expectedDestinations : [expectedDestinations];
+    for (const destinationKey of destinationKeys) {
+      const entry = actorEvidence.items.find(
+        (item) => item.type === "spellcastingEntry" && item.destinationKey === destinationKey,
+      );
+      const item = actorEvidence.items.find(
+        (candidate) => candidate.name === itemName && candidate.type === "spell" && candidate.location === entry?.id,
+      );
+      if (!entry?.id || !item) {
+        failures.push(`${itemName} is not located in ${destinationKey}`);
+      }
     }
   }
 }

@@ -66,7 +66,8 @@ function isGrantSelectorChoice(rules, flag) {
 function shouldSkipSingletonChoice(sourceItemType, optionDomain) {
     // Starting skill and lore choices belong to the skill training workflow so
     // they stay in one draft store and do not reappear as separate singleton steps.
-    return ["ancestry", "heritage", "background", "class", "feat"].includes(sourceItemType) && optionDomain !== "generic";
+    return (["ancestry", "heritage", "background", "class", "classfeature", "feat"].includes(sourceItemType) &&
+        optionDomain !== "generic");
 }
 function extractPredicate(value) {
     return Array.isArray(value) ? value.filter(isChoicePredicate) : [];

@@ -1268,6 +1268,34 @@ describe("pack options dependency filtering", () => {
 
     expect(options.map((option) => option.name)).toEqual(["Daze", "Shield"]);
   });
+
+  it("allows the same spell in a different spellcasting destination but not twice in one destination", async () => {
+    setPack("pf2e.spells-srd", [
+      spellEntry("guidance", "Guidance", 1, ["divine", "occult"], ["cantrip"]),
+      spellEntry("daze", "Daze", 1, ["divine", "occult"], ["cantrip"]),
+    ]);
+    const context: OptionContext = {
+      ...EMPTY_CONTEXT,
+      selectedSpellChoicesBySlotId: {
+        "spell-choice-palatine-divine": {
+          destinationKey: "palatine-detective-divine-innate",
+          uuids: ["Compendium.pf2e.spells-srd.Item.guidance"],
+        },
+      },
+    };
+
+    const occultOptions = await getOptionsForStep(
+      spellChoiceStep("spell-choice-palatine-occult", "palatine-detective-occult-innate", "occult"),
+      context
+    );
+    const sameDestinationOptions = await getOptionsForStep(
+      spellChoiceStep("spell-choice-palatine-divine-second", "palatine-detective-divine-innate", "divine"),
+      context
+    );
+
+    expect(occultOptions.map((option) => option.name)).toEqual(["Daze", "Guidance"]);
+    expect(sameDestinationOptions.map((option) => option.name)).toEqual(["Daze"]);
+  });
 });
 
 function makeStep(slotKind: PickItemSlotKind, filters: PendingStep["filters"]): PendingStep {
@@ -1443,6 +1471,46 @@ function spellEntry(slug: string, name: string, level: number, traditions: strin
       publication: {
         title: "Player Core",
       },
+    },
+  };
+}
+
+function spellChoiceStep(slotId: string, destinationKey: string, tradition: string): PendingStep {
+  return {
+    id: slotId,
+    level: 1,
+    kind: "spell-choice",
+    slotKind: "spell-choice",
+    title: slotId,
+    description: "",
+    required: true,
+    slotId,
+    filters: { itemType: "spell" },
+    spellChoice: {
+      slotId,
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "palatine-detective",
+      sourceUuid: "Compendium.pf2e.classfeatures.Item.palatine-detective",
+      sourceName: "Palatine Detective",
+      classSlug: "investigator",
+      dependsOn: "class-branch",
+      destination: {
+        type: "innate",
+        key: destinationKey,
+        label: destinationKey,
+        entryName: destinationKey,
+        tradition,
+        ability: "int",
+        prepared: "innate",
+      },
+      count: 1,
+      minRank: 0,
+      maxRank: 0,
+      cantrip: true,
+      curriculumSpellNames: [],
+      requiresCurriculum: false,
+      additionalAllowedSpellNames: [],
+      restrictToCommon: true,
     },
   };
 }

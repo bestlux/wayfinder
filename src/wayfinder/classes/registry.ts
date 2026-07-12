@@ -11,12 +11,16 @@ import {
   witchContributor,
 } from "./caster-contributors.js";
 import { clericContributor } from "./cleric-contributor.js";
+import { gunslingerContributor } from "./gunslinger-contributor.js";
+import { investigatorContributor } from "./investigator-contributor.js";
 import type { ClassContributor } from "./types.js";
 import { wizardContributor } from "./wizard-contributor.js";
 
 const CONTRIBUTORS = [
   wizardContributor,
   clericContributor,
+  gunslingerContributor,
+  investigatorContributor,
   bardContributor,
   animistContributor,
   druidContributor,

@@ -465,25 +465,43 @@ async function resolveSkillTrainingFeatSources(
   args: BuildWayfinderAppPlanArgs,
   deps: BuildWayfinderAppPlanDependencies
 ): Promise<SkillTrainingSourceContext[]> {
+  const classFeatureSelections = resolveSelectedClassFeatureSelections(draft, args.actor);
   const featSelections = dedupeSelectionsByUuid([
     ...Object.values(draft.selections).filter(isSkillTrainingFeatSelection),
     ...projectedClassArchetypeFeatSelections(draft, targetLevel),
     ...readExistingSkillTrainingFeatSelections(args.actor),
   ]);
-  const documents = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+  const [classFeatureDocuments, documents] = await Promise.all([
+    Promise.all(classFeatureSelections.map((selection) => deps.fetchSelectionDocument(selection))),
+    Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection))),
+  ]);
 
-  return featSelections.flatMap((sourceSelection, index) => {
-    const sourceDocument = documents[index];
-    return sourceDocument
-      ? [
-          {
-            sourceItemType: "feat",
-            sourceSelection,
-            sourceDocument,
-          } satisfies SkillTrainingSourceContext,
-        ]
-      : [];
-  });
+  return [
+    ...classFeatureSelections.flatMap((sourceSelection, index) => {
+      const sourceDocument = classFeatureDocuments[index];
+      return sourceDocument
+        ? [
+            {
+              sourceItemType: "classfeature",
+              sourceSelection,
+              sourceDocument,
+            } satisfies SkillTrainingSourceContext,
+          ]
+        : [];
+    }),
+    ...featSelections.flatMap((sourceSelection, index) => {
+      const sourceDocument = documents[index];
+      return sourceDocument
+        ? [
+            {
+              sourceItemType: "feat",
+              sourceSelection,
+              sourceDocument,
+            } satisfies SkillTrainingSourceContext,
+          ]
+        : [];
+    }),
+  ];
 }
 
 async function resolveProjectedClassArchetypeSkillTrainingSources(
@@ -492,24 +510,46 @@ async function resolveProjectedClassArchetypeSkillTrainingSources(
   args: BuildWayfinderAppPlanArgs,
   deps: BuildWayfinderAppPlanDependencies
 ): Promise<SkillTrainingSourceContext[]> {
-  const actorSourceIds = new Set(listActorItems(args.actor).map((item) => sourceIdOf(item)));
-  const selections = projectedClassArchetypeFeatSelections(draft, targetLevel).filter(
-    (selection) => !actorSourceIds.has(selection.uuid)
+  const actorSourceIds = new Set(
+    listActorItems(args.actor)
+      .map((item) => sourceIdOf(item)?.trim().toLowerCase())
+      .filter((sourceId): sourceId is string => !!sourceId)
   );
-  const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
+  const isNotActorOwned = (selection: SelectionRef): boolean =>
+    !actorSourceIds.has(selection.uuid.trim().toLowerCase());
+  const classFeatureSelections = resolveSelectedClassFeatureSelections(draft, args.actor).filter(isNotActorOwned);
+  const featSelections = projectedClassArchetypeFeatSelections(draft, targetLevel).filter(isNotActorOwned);
+  const [classFeatureDocuments, featDocuments] = await Promise.all([
+    Promise.all(classFeatureSelections.map((selection) => deps.fetchSelectionDocument(selection))),
+    Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection))),
+  ]);
 
-  return selections.flatMap((sourceSelection, index) => {
-    const sourceDocument = documents[index];
-    return sourceDocument
-      ? [
-          {
-            sourceItemType: "feat",
-            sourceSelection,
-            sourceDocument,
-          } satisfies SkillTrainingSourceContext,
-        ]
-      : [];
-  });
+  return [
+    ...classFeatureSelections.flatMap((sourceSelection, index) => {
+      const sourceDocument = classFeatureDocuments[index];
+      return sourceDocument
+        ? [
+            {
+              sourceItemType: "classfeature",
+              sourceSelection,
+              sourceDocument,
+            } satisfies SkillTrainingSourceContext,
+          ]
+        : [];
+    }),
+    ...featSelections.flatMap((sourceSelection, index) => {
+      const sourceDocument = featDocuments[index];
+      return sourceDocument
+        ? [
+            {
+              sourceItemType: "feat",
+              sourceSelection,
+              sourceDocument,
+            } satisfies SkillTrainingSourceContext,
+          ]
+        : [];
+    }),
+  ];
 }
 
 async function resolveGrantChoiceSources(

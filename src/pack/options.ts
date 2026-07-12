@@ -45,7 +45,7 @@ export async function getOptionsForStep(
       const traits = extractEntryTraits(entry);
       const documentId = String(entry._id);
       const uuid = toCompendiumItemUuid(packId, documentId);
-      if (isSelectedInDifferentDraftSlot(step, uuid, context) || isOwnedByActor(uuid, context)) {
+      if (isSelectedInDifferentDraftSlot(step, uuid, context) || isOwnedByActor(step, uuid, context)) {
         continue;
       }
 
@@ -99,19 +99,35 @@ export async function resolveSelection(
 
 function isSelectedInDifferentDraftSlot(step: PendingStep, uuid: string, context: OptionContext): boolean {
   const selectedUuidsBySlotId = context.selectedUuidsBySlotId ?? {};
+  const selectedSpellChoicesBySlotId = context.selectedSpellChoicesBySlotId ?? {};
+  const destinationKey = step.kind === "spell-choice" ? step.spellChoice.destination.key : null;
   const normalizedUuid = uuid.trim().toLowerCase();
-  return Object.entries(selectedUuidsBySlotId).some(
-    ([slotId, selectedUuid]) => slotId !== step.slotId && selectedUuid.trim().toLowerCase() === normalizedUuid
+  return (
+    Object.entries(selectedUuidsBySlotId).some(
+      ([slotId, selectedUuid]) => slotId !== step.slotId && selectedUuid.trim().toLowerCase() === normalizedUuid
+    ) ||
+    Object.entries(selectedSpellChoicesBySlotId).some(
+      ([slotId, selected]) =>
+        slotId !== step.slotId &&
+        destinationKey === selected.destinationKey &&
+        selected.uuids.some((selectedUuid) => selectedUuid.trim().toLowerCase() === normalizedUuid)
+    )
   );
 }
 
-function isOwnedByActor(uuid: string, context: OptionContext): boolean {
+function isOwnedByActor(step: PendingStep, uuid: string, context: OptionContext): boolean {
+  const normalizedUuid = uuid.trim().toLowerCase();
+  if (step.kind === "spell-choice") {
+    return (context.actorSpellUuidsByDestinationKey?.[step.spellChoice.destination.key] ?? []).some(
+      (sourceId) => sourceId.trim().toLowerCase() === normalizedUuid
+    );
+  }
+
   const actorSourceIds = context.actorSourceIds ?? [];
   if (actorSourceIds.length === 0) {
     return false;
   }
 
-  const normalizedUuid = uuid.trim().toLowerCase();
   return actorSourceIds.some((sourceId) => sourceId.trim().toLowerCase() === normalizedUuid);
 }
 

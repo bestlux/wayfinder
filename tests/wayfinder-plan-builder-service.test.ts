@@ -909,6 +909,96 @@ describe("wayfinder plan builder service", () => {
       "Compendium.pf2e.classfeatures.Item.Initiate Benefit (Wand)",
     ]);
   });
+
+  it("projects a newly selected archetype class feature into training for an existing class actor", async () => {
+    const actor = { items: { contents: [] } } as unknown as BuildStateActor;
+    const draft = createEmptyDraft(5);
+    draft.classArchetypeChoices["class-archetype-methodology-level-1"] = "palatine-detective";
+    const classSelection = selection("class-level-1", "class", "investigator", "Investigator", null);
+    const snapshot: ActorSnapshot = {
+      actorId: "existing-investigator",
+      level: 1,
+      isBlank: false,
+      singletonSlots: {
+        ancestry: true,
+        heritage: true,
+        background: true,
+        class: true,
+        deity: false,
+      },
+      featCounts: { ancestry: 0, class: 0, archetype: 0, skill: 0, general: 0 },
+      fulfilledStepIds: [],
+      sourceIds: [],
+      namesByType: {},
+      skillRanks: {},
+    };
+    let trainingSources: Array<{ sourceItemType: string; sourceSelection: SelectionRef | null }> = [];
+
+    await buildWayfinderAppPlan(
+      {
+        actor,
+        snapshot,
+        draft,
+        resolveDocument: async (itemType) =>
+          itemType === "class" ? { name: "Investigator", system: { slug: "investigator" } } : null,
+        resolveArcaneSchoolDocument: async () => null,
+        localize: (value) => value,
+      },
+      {
+        buildWayfinderPlan: async (receivedSnapshot, receivedDraft, deps) => {
+          await deps.buildClassTrainingSteps(receivedSnapshot, receivedDraft, 5);
+          return { recommendedTargetLevel: 5, targetLevel: 5, steps: [] };
+        },
+        buildClassFeatSteps: async () => [],
+        buildClassSkillFeatSteps: async () => [],
+        buildClassTrainingSteps: async (params) => {
+          trainingSources = params.sourceSelections ?? [];
+          return [];
+        },
+        buildGrantChoiceSteps: async () => [],
+        buildFlagChoiceSteps: async () => [],
+        buildSingletonChoiceSteps: async () => [],
+        buildLanguageChoiceSteps: async () => [],
+        buildClassArchetypeSteps: async () => [],
+        buildClassBranchSteps: async () => [],
+        buildClassGrantedItemSteps: async () => [],
+        buildClassChoiceSteps: async () => [],
+        buildSpellChoiceSteps: async () => [],
+        findDraftSelectionByType: () => null,
+        readExistingSingletonSourceSelection: (_actor, itemType) => (itemType === "class" ? classSelection : null),
+        readExistingBranchSelection: () => null,
+        readExistingGrantedSelection: () => null,
+        readExistingFlagChoiceSelection: () => null,
+        readExistingLanguageSelections: () => [],
+        readExistingClassChoiceSelection: () => null,
+        readExistingSingletonChoiceSelection: () => null,
+        readExistingSpellChoiceSelections: () => [],
+        fetchSelectionDocument: async (sourceSelection) => ({
+          name: sourceSelection.name,
+          system: { slug: sourceSelection.slug ?? sourceSelection.documentId, rules: [] },
+        }),
+        extractDocumentSlug: (document) => {
+          const typed = document as { system?: { slug?: unknown } } | null;
+          return typeof typed?.system?.slug === "string" ? typed.system.slug : null;
+        },
+      }
+    );
+
+    expect(trainingSources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceItemType: "classfeature",
+          sourceSelection: expect.objectContaining({
+            uuid: "Compendium.pf2e.classfeatures.Item.ppGGpc3Iv2NpAhys",
+          }),
+        }),
+        expect.objectContaining({
+          sourceItemType: "feat",
+          sourceSelection: expect.objectContaining({ uuid: "Compendium.pf2e.feats-srd.Item.LlTIbv1py77nACkI" }),
+        }),
+      ])
+    );
+  });
 });
 
 function selection(

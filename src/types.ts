@@ -140,7 +140,15 @@ export interface OptionContext {
   sanctification?: "holy" | "unholy" | "none" | null;
   hasDedicationFeat: boolean;
   selectedUuidsBySlotId?: Record<string, string>;
+  selectedSpellChoicesBySlotId?: Record<
+    string,
+    {
+      destinationKey: string;
+      uuids: string[];
+    }
+  >;
   actorSourceIds?: string[];
+  actorSpellUuidsByDestinationKey?: Record<string, string[]>;
   rollOptions?: string[];
   skillRanks?: Record<string, number>;
 }

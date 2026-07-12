@@ -1,8 +1,14 @@
 import { listActorItems } from "../build-state.js";
 export function findSpellcastingEntryForChoice(actor, choice) {
-    const items = listActorItems(actor).map(asSpellcastingEntry);
-    return (items.find((item) => item?.type === "spellcastingEntry" && item?.flags?.["wayfinder-pf2e"]?.destinationKey === choice.destination.key) ??
-        items.find((item) => itemMatchesSpellcastingEntry(item, choice) && String(item?.name ?? "") === choice.destination.entryName) ??
+    return findSpellcastingEntryForChoiceInItems(listActorItems(actor), choice);
+}
+export function findSpellcastingEntryForChoiceInItems(actorItems, choice) {
+    const items = actorItems.map(asSpellcastingEntry);
+    const keyedEntry = items.find((item) => item?.type === "spellcastingEntry" && item?.flags?.["wayfinder-pf2e"]?.destinationKey === choice.destination.key);
+    if (keyedEntry || choice.destination.entryReuse === "key-only") {
+        return keyedEntry ?? null;
+    }
+    return (items.find((item) => itemMatchesSpellcastingEntry(item, choice) && String(item?.name ?? "") === choice.destination.entryName) ??
         items.find((item) => itemMatchesSpellcastingEntry(item, choice)) ??
         null);
 }

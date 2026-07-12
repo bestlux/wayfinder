@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { applySpellChoiceDraft } from "../src/actor-updater/spell-choice-application";
 import { createEmptyDraft } from "../src/draft-service";
+import type { SpellChoiceMeta } from "../src/types";
 import {
   buildActorHarness,
   clericSpellChoice,
@@ -11,6 +12,144 @@ import {
 } from "./support/actor-updater-fixtures";
 
 describe("actor-updater spell choice application", () => {
+  it("creates a Spellshot spellbook with four cantrips and two open preparation slots", async () => {
+    const { actor } = buildActorHarness();
+    const cantrips = ["detect-magic", "ignition", "light", "shield"];
+    setGamePacks({
+      "pf2e.spells-srd": Object.fromEntries(
+        cantrips.map((slug) => [
+          slug,
+          {
+            name: slug,
+            type: "spell",
+            system: {
+              level: { value: 1 },
+              traits: { traditions: ["arcane"], value: ["cantrip"] },
+            },
+          },
+        ])
+      ),
+    });
+
+    const slotId = "spell-choice-spellshot-spellbook-cantrips-level-2";
+    const draft = createEmptyDraft(5);
+    draft.spellChoices[slotId] = cantrips.map((slug) => selection(slotId, "pf2e.spells-srd", slug, "spell", slug));
+
+    await applySpellChoiceDraft(actor as any, draft, [spellChoiceStep(slotId, spellshotSpellChoice(slotId))]);
+
+    const entry = actor.items.contents.find(
+      (item) => item.flags?.["wayfinder-pf2e"]?.destinationKey === "spellshot-arcane-spellbook"
+    );
+    expect(entry).toMatchObject({
+      name: "Spellshot Spellbook",
+      system: {
+        ability: { value: "int" },
+        prepared: { value: "prepared" },
+        slots: {
+          slot0: {
+            max: 2,
+            prepared: [
+              { id: null, expended: false },
+              { id: null, expended: false },
+            ],
+          },
+        },
+        tradition: { value: "arcane" },
+      },
+    });
+    expect(
+      actor.items.contents.filter(
+        (item) =>
+          item.type === "spell" &&
+          typeof item.system?.location === "object" &&
+          item.system.location?.value === entry?.id
+      )
+    ).toHaveLength(4);
+  });
+
+  it("does not adopt an unrelated compatible entry as the Spellshot spellbook", async () => {
+    const unrelatedEntry = {
+      id: "unrelated-arcane-entry",
+      type: "spellcastingEntry",
+      name: "Archetype Arcane Spells",
+      system: {
+        ability: { value: "int" },
+        prepared: { value: "prepared", flexible: false },
+        tradition: { value: "arcane" },
+        slots: {
+          slot0: { max: 5, value: 5, prepared: Array.from({ length: 5 }, () => ({ id: null, expended: false })) },
+          slot1: { max: 2, value: 2, prepared: Array.from({ length: 2 }, () => ({ id: null, expended: false })) },
+        },
+      },
+    };
+    const { actor } = buildActorHarness({ items: [unrelatedEntry] });
+    setGamePacks({
+      "pf2e.spells-srd": {
+        shield: {
+          name: "Shield",
+          type: "spell",
+          system: { level: { value: 1 }, traits: { traditions: ["arcane"], value: ["cantrip"] } },
+        },
+      },
+    });
+
+    const slotId = "spell-choice-spellshot-spellbook-cantrips-level-2";
+    const draft = createEmptyDraft(2);
+    draft.spellChoices[slotId] = [selection(slotId, "pf2e.spells-srd", "shield", "spell", "Shield")];
+
+    await applySpellChoiceDraft(actor as any, draft, [spellChoiceStep(slotId, spellshotSpellChoice(slotId))]);
+
+    expect(actor.items.contents.find((item) => item.id === unrelatedEntry.id)).toMatchObject({
+      name: "Archetype Arcane Spells",
+      system: { slots: { slot0: { max: 5 }, slot1: { max: 2 } } },
+    });
+    expect(
+      actor.items.contents.find(
+        (item) => item.flags?.["wayfinder-pf2e"]?.destinationKey === "spellshot-arcane-spellbook"
+      )
+    ).toMatchObject({ name: "Spellshot Spellbook", system: { slots: { slot0: { max: 2 } } } });
+  });
+
+  it("creates the same Palatine cantrip in separate divine and occult entries", async () => {
+    const { actor } = buildActorHarness();
+    setGamePacks({
+      "pf2e.spells-srd": {
+        guidance: {
+          name: "Guidance",
+          type: "spell",
+          system: {
+            level: { value: 1 },
+            traits: { traditions: ["divine", "occult"], value: ["cantrip"] },
+          },
+        },
+      },
+    });
+
+    const divineSlotId = "spell-choice-palatine-detective-divine-cantrip-level-1";
+    const occultSlotId = "spell-choice-palatine-detective-occult-cantrip-level-1";
+    const draft = createEmptyDraft(1);
+    draft.spellChoices[divineSlotId] = [selection(divineSlotId, "pf2e.spells-srd", "guidance", "spell", "Guidance")];
+    draft.spellChoices[occultSlotId] = [selection(occultSlotId, "pf2e.spells-srd", "guidance", "spell", "Guidance")];
+
+    await applySpellChoiceDraft(actor as any, draft, [
+      spellChoiceStep(divineSlotId, palatineSpellChoice(divineSlotId, "divine")),
+      spellChoiceStep(occultSlotId, palatineSpellChoice(occultSlotId, "occult")),
+    ]);
+
+    const entries = actor.items.contents.filter((item) => item.type === "spellcastingEntry");
+    const spells = actor.items.contents.filter((item) => item.type === "spell" && item.name === "Guidance");
+    expect(entries).toHaveLength(2);
+    expect(spells).toHaveLength(2);
+    expect(
+      new Set(
+        spells.map((item) => {
+          const location = item.system?.location;
+          return typeof location === "string" ? location : location?.value;
+        })
+      )
+    ).toEqual(new Set(entries.map((item) => item.id)));
+  });
+
   it("creates a prepared spellcasting entry and assigns cleric cantrips and spells into prepared slots", async () => {
     const { actor } = buildActorHarness();
 
@@ -995,6 +1134,66 @@ describe("actor-updater spell choice application", () => {
     ]);
   });
 });
+
+function spellshotSpellChoice(slotId: string): SpellChoiceMeta {
+  return {
+    slotId,
+    sourcePackId: "pf2e.classfeatures",
+    sourceDocumentId: "OmgtSDV1FubDUqWR",
+    sourceUuid: "Compendium.pf2e.classfeatures.Item.OmgtSDV1FubDUqWR",
+    sourceName: "Way of the Spellshot",
+    classSlug: "gunslinger",
+    dependsOn: "class-branch",
+    destination: {
+      type: "spellbook",
+      key: "spellshot-arcane-spellbook",
+      entryReuse: "key-only",
+      label: "Spellshot spellbook",
+      entryName: "Spellshot Spellbook",
+      tradition: "arcane",
+      ability: "int",
+      prepared: "prepared",
+    },
+    count: 4,
+    minRank: 0,
+    maxRank: 0,
+    cantrip: true,
+    curriculumSpellNames: [],
+    requiresCurriculum: false,
+    additionalAllowedSpellNames: [],
+    restrictToCommon: true,
+  };
+}
+
+function palatineSpellChoice(slotId: string, tradition: "divine" | "occult"): SpellChoiceMeta {
+  return {
+    slotId,
+    sourcePackId: "pf2e.classfeatures",
+    sourceDocumentId: "ppGGpc3Iv2NpAhys",
+    sourceUuid: "Compendium.pf2e.classfeatures.Item.ppGGpc3Iv2NpAhys",
+    sourceName: "Palatine Detective",
+    classSlug: "investigator",
+    dependsOn: "class-branch",
+    destination: {
+      type: "innate",
+      key: `palatine-detective-${tradition}-innate`,
+      entryReuse: "key-only",
+      label: `Palatine Detective ${tradition} innate spells`,
+      entryName: `Innate ${tradition} Spells`,
+      tradition,
+      ability: "int",
+      prepared: "innate",
+    },
+    count: 1,
+    minRank: 0,
+    maxRank: 0,
+    cantrip: true,
+    curriculumSpellNames: [],
+    requiresCurriculum: false,
+    additionalAllowedSpellNames: [],
+    restrictToCommon: true,
+  };
+}
 
 function animistSpellChoice(
   slotId: string,

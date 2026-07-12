@@ -2,7 +2,7 @@ import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
 import { cloneData } from "../shared/cloning.js";
 import { sourceIdOf } from "../shared/source-id.js";
-import { createEmbeddedSource, hasSourceId, stampSelectionFlags } from "./selection-application.js";
+import { createEmbeddedSource, stampSelectionFlags } from "./selection-application.js";
 import { ensureSpellcastingEntry, spellLocationId } from "./spellcasting-entry-support.js";
 export async function applySpellChoiceDraft(actor, draft, steps) {
     const stepMap = new Map(steps.map((step) => [step.slotId, step]));
@@ -17,7 +17,7 @@ export async function applySpellChoiceDraft(actor, draft, steps) {
         }
         await reconcileSpellChoiceSlot(actor, slotId, selections);
         for (const selection of selections) {
-            if (hasSourceId(actor, selection.uuid)) {
+            if (hasSpellSourceInEntry(actor, selection.uuid, entry.id)) {
                 continue;
             }
             const source = await createEmbeddedSource(selection);
@@ -42,6 +42,12 @@ export async function applySpellChoiceDraft(actor, draft, steps) {
             await syncPreparedSpellChoiceSelections(actor, entry.id, step.spellChoice, slotId, selections);
         }
     }
+}
+function hasSpellSourceInEntry(actor, sourceUuid, entryId) {
+    const normalizedSourceUuid = sourceUuid.trim().toLowerCase();
+    return listActorItems(actor).some((item) => item?.type === "spell" &&
+        spellLocationId(item) === entryId &&
+        sourceIdOf(item)?.trim().toLowerCase() === normalizedSourceUuid);
 }
 function stampSpellSourceFlags(source, selection) {
     source.flags ??= {};

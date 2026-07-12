@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createEmptyDraft, normalizeDraft } from "../src/draft-service";
 import type { SelectionRef } from "../src/types";
 import {
+  buildClassArchetypeMeta,
   projectedClassArchetypeFeatSelections,
   projectedClassArchetypeStaticFeatSelections,
   reservedClassFeatSlotIds,
@@ -98,6 +99,53 @@ describe("wayfinder class archetype service", () => {
         name: "Toughness",
       },
     ]);
+  });
+
+  it.each([
+    {
+      classSlug: "gunslinger",
+      optionTag: "gunslinger-way",
+      selectorName: "Gunslinger's Way",
+      slotId: "class-branch-gunslingers-way-level-1",
+      value: "way-of-the-spellshot",
+      label: "Way of the Spellshot",
+      dedicationUuid: "Compendium.pf2e.feats-srd.Item.BwDIwjHasZwcd61Z",
+    },
+    {
+      classSlug: "investigator",
+      optionTag: "investigator-methodology",
+      selectorName: "Methodology",
+      slotId: "class-branch-methodology-level-1",
+      value: "palatine-detective",
+      label: "Palatine Detective",
+      dedicationUuid: "Compendium.pf2e.feats-srd.Item.LlTIbv1py77nACkI",
+    },
+  ])("registers the $label selector replacement and level-2 dedication", (testCase) => {
+    const meta = buildClassArchetypeMeta({
+      slotId: testCase.slotId,
+      selectorPackId: "pf2e.classfeatures",
+      selectorDocumentId: "selector",
+      selectorUuid: "Compendium.pf2e.classfeatures.Item.selector",
+      selectorName: testCase.selectorName,
+      selectorRuleIndex: 0,
+      flag: "selection",
+      optionTag: testCase.optionTag,
+      classSlug: testCase.classSlug,
+      dependsOn: "class",
+    });
+    expect(meta).toMatchObject({
+      slotId: testCase.slotId.replace("class-branch-", "class-archetype-"),
+      options: [{ value: "standard" }, { value: testCase.value, label: testCase.label }],
+    });
+
+    for (let targetLevel = 1; targetLevel <= 5; targetLevel += 1) {
+      const draft = createEmptyDraft(targetLevel);
+      draft.classArchetypeChoices[meta!.slotId] = testCase.value;
+      expect(projectedClassArchetypeFeatSelections(draft, targetLevel)).toMatchObject(
+        targetLevel === 1 ? [] : [{ uuid: testCase.dedicationUuid, level: 2 }]
+      );
+      expect(reservedClassFeatSlotIds(draft)).toEqual(["class-feat-level-2"]);
+    }
   });
 
   it("recovers the active profile from an actor-owned Battle Creed on later level-ups", () => {

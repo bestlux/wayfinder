@@ -200,6 +200,7 @@ export interface LanguageChoiceMeta {
 export interface SpellChoiceDestination {
   type: "spellbook" | "prepared" | "spontaneous" | "innate";
   key: string;
+  entryReuse?: "compatible" | "key-only";
   label: string;
   entryName: string;
   tradition: string;
@@ -230,7 +231,7 @@ export interface SpellChoiceMeta {
 }
 
 export interface SkillTrainingPersistenceMeta {
-  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "feat";
+  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "classfeature" | "feat";
   sourcePackId: string;
   sourceDocumentId: string;
   sourceUuid: string;

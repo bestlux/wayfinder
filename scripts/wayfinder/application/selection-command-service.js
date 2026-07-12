@@ -343,9 +343,11 @@ export async function toggleSpellChoiceSelection(state, step, rawValue, deps) {
         if (slotId === step.slotId) {
             return false;
         }
-        return selections.some((entry) => entry.uuid === selection.uuid);
+        const otherDestinationKey = deps.destinationKeyForSlotId?.(slotId) ?? null;
+        return ((!otherDestinationKey || otherDestinationKey === step.spellChoice.destination.key) &&
+            selections.some((entry) => entry.uuid === selection.uuid));
     });
-    if (selectedElsewhere || deps.selectionExistsOnActor(selection)) {
+    if (selectedElsewhere || deps.selectionExistsOnActor(selection, step)) {
         return warningResult("duplicate-selection");
     }
     const requiredCount = step.spellChoice?.count ?? 0;

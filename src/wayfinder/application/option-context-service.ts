@@ -1,4 +1,5 @@
 import { sourceIdOf } from "../../shared/source-id.js";
+import { findSpellcastingEntryForChoiceInItems } from "../../shared/spellcasting.js";
 import type { DraftState, OptionContext, PendingStep, SelectionRef } from "../../types.js";
 import {
   projectedClassArchetypeFeatSelections,
@@ -191,7 +192,9 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
 
   const ancestrySlug = deps.extractDocumentSlug(ancestryDocument);
   const selectedUuidsBySlotId = buildSelectedUuidsBySlotId(effectiveDraft);
+  const selectedSpellChoicesBySlotId = buildSelectedSpellChoicesBySlotId(effectiveDraft, deps.steps ?? []);
   const actorSourceIds = buildActorSourceIds(actorItems);
+  const actorSpellUuidsByDestinationKey = buildActorSpellUuidsByDestinationKey(actorItems, deps.steps ?? []);
   const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems);
   const skillRanks = buildProjectedSkillRanks(deps.skillRanks, effectiveDraft, deps.steps ?? []);
   return {
@@ -208,7 +211,9 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
     }),
     hasDedicationFeat,
     ...(Object.keys(selectedUuidsBySlotId).length > 0 ? { selectedUuidsBySlotId } : {}),
+    ...(Object.keys(selectedSpellChoicesBySlotId).length > 0 ? { selectedSpellChoicesBySlotId } : {}),
     ...(actorSourceIds.length > 0 ? { actorSourceIds } : {}),
+    ...(Object.keys(actorSpellUuidsByDestinationKey).length > 0 ? { actorSpellUuidsByDestinationKey } : {}),
     ...(rollOptions.length > 0 ? { rollOptions } : {}),
     ...(skillRanks ? { skillRanks } : {}),
   };
@@ -221,6 +226,52 @@ function buildActorSourceIds(actorItems: unknown[]): string[] {
         .map((item) => sourceIdOf(item))
         .filter((sourceId): sourceId is string => typeof sourceId === "string" && sourceId.length > 0)
     )
+  );
+}
+
+function buildActorSpellUuidsByDestinationKey(actorItems: unknown[], steps: PendingStep[]): Record<string, string[]> {
+  const destinationByEntryId = new Map<string, string>();
+  for (const step of steps) {
+    if (step.kind !== "spell-choice") {
+      continue;
+    }
+
+    const entry = findSpellcastingEntryForChoiceInItems(actorItems, step.spellChoice);
+    if (typeof entry?.id === "string") {
+      destinationByEntryId.set(entry.id, step.spellChoice.destination.key);
+    }
+  }
+
+  const uuidsByDestination = new Map<string, Set<string>>();
+  for (const item of actorItems) {
+    const typed = item as {
+      type?: unknown;
+      system?: { location?: string | { value?: unknown } | null } | null;
+    } | null;
+    if (typed?.type !== "spell") {
+      continue;
+    }
+
+    const rawLocation = typed.system?.location;
+    const location =
+      typeof rawLocation === "string"
+        ? rawLocation
+        : rawLocation && typeof rawLocation.value === "string"
+          ? rawLocation.value
+          : null;
+    const destinationKey = location ? destinationByEntryId.get(location) : null;
+    const sourceUuid = sourceIdOf(item);
+    if (!destinationKey || !sourceUuid) {
+      continue;
+    }
+
+    const uuids = uuidsByDestination.get(destinationKey) ?? new Set<string>();
+    uuids.add(sourceUuid);
+    uuidsByDestination.set(destinationKey, uuids);
+  }
+
+  return Object.fromEntries(
+    Array.from(uuidsByDestination, ([destinationKey, uuids]) => [destinationKey, Array.from(uuids)] as const)
   );
 }
 
@@ -392,6 +443,33 @@ function buildSelectedUuidsBySlotId(draft: DraftState): Record<string, string> {
     .map(([slotId, selection]) => [slotId, selection.uuid] as const)
     .filter(([, uuid]) => typeof uuid === "string" && uuid.length > 0);
   return Object.fromEntries(entries);
+}
+
+function buildSelectedSpellChoicesBySlotId(
+  draft: DraftState,
+  steps: PendingStep[]
+): NonNullable<OptionContext["selectedSpellChoicesBySlotId"]> {
+  const destinationsBySlotId = new Map(
+    steps.flatMap((step) =>
+      step.kind === "spell-choice" ? [[step.slotId, step.spellChoice.destination.key] as const] : []
+    )
+  );
+  return Object.fromEntries(
+    Object.entries(draft.spellChoices).flatMap(([slotId, selections]) => {
+      const destinationKey = destinationsBySlotId.get(slotId);
+      if (!destinationKey) {
+        return [];
+      }
+      const uuids = Array.from(
+        new Set(
+          selections
+            .map((selection) => selection.uuid)
+            .filter((uuid): uuid is string => typeof uuid === "string" && uuid.length > 0)
+        )
+      );
+      return uuids.length > 0 ? [[slotId, { destinationKey, uuids }] as const] : [];
+    })
+  );
 }
 
 function classDocumentHasSpellcasting(document: unknown): boolean {

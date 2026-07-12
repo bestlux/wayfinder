@@ -271,6 +271,7 @@ export function discoverClassChoiceMeta(args: {
 
   const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
   const level = toFeatureLevel(document.system?.level?.value);
+  const configuredSkills = getConfiguredSkills();
   const activeRollOptions = new Set(rollOptions);
   const choiceRefs: SameItemChoiceRef[] = [];
   const result: ClassChoiceMeta[] = [];
@@ -284,9 +285,14 @@ export function discoverClassChoiceMeta(args: {
 
     const slotId = "class-choice-" + sourceSlug + "-" + selectionKey + "-level-" + level;
     const options = resolveClassChoiceOptions(rule.choices, activeRollOptions, localize);
+    const isTrainingChoice = looksLikeSkillChoiceRule(
+      rule,
+      options.map((option) => option.value.trim().toLowerCase()),
+      configuredSkills
+    );
 
     const dependencyRefs = sameItemChoiceDependencies(rule, choiceRefs);
-    if (options.length > 0) {
+    if (options.length > 0 && !isTrainingChoice) {
       result.push({
         slotId,
         sourcePackId: sourceSelection.packId,

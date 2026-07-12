@@ -287,6 +287,11 @@ function buildSpellcastingEntrySlots(spellChoice, actor, draft) {
     if (spellChoice.destination.key === "animist-divine-prepared") {
         return buildAnimistPreparedSlots(actor, draft);
     }
+    if (spellChoice.destination.key === "spellshot-arcane-spellbook") {
+        return {
+            slot0: makePreparedSlotGroup(2),
+        };
+    }
     if (spellChoice.destination.type === "spontaneous") {
         return buildSpontaneousSpellcastingSlots(actor, draft);
     }

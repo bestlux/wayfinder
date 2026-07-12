@@ -147,7 +147,117 @@ const BATTLE_CREED: ClassArchetypeProfile = {
   ],
 };
 
-const PROFILES = [BATTLE_CREED] as const;
+const WAY_OF_THE_SPELLSHOT: ClassArchetypeProfile = {
+  value: "way-of-the-spellshot",
+  label: "Way of the Spellshot",
+  detail:
+    "Follow the Way of the Spellshot. This replaces your normal gunslinger's way, uses Intelligence for your class DC, and adds arcane spellcasting through Spellshot Dedication.",
+  img: "systems/pf2e/icons/features/classes/way-of-the-spellshot.webp",
+  decisionSlotId: "class-archetype-gunslingers-way-level-1",
+  classSlug: "gunslinger",
+  selectorTag: "gunslinger-way",
+  selector: {
+    selection: {
+      packId: "pf2e.classfeatures",
+      documentId: "LDqVxLKrwEqSegiu",
+      uuid: "Compendium.pf2e.classfeatures.Item.LDqVxLKrwEqSegiu",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "Gunslinger's Way",
+      level: 1,
+      slug: "gunslingers-way",
+    },
+    flag: "way",
+    ruleIndex: 0,
+  },
+  selection: {
+    packId: "pf2e.classfeatures",
+    documentId: "OmgtSDV1FubDUqWR",
+    uuid: "Compendium.pf2e.classfeatures.Item.OmgtSDV1FubDUqWR",
+    itemType: "feat",
+    featType: "classfeature",
+    name: "Way of the Spellshot",
+    level: 1,
+    slug: "way-of-the-spellshot",
+  },
+  reservedClassFeatLevels: [2],
+  dedicationName: "Spellshot Dedication",
+  projectedFeatGrants: [
+    {
+      minimumLevel: 2,
+      selection: {
+        packId: "pf2e.feats-srd",
+        documentId: "BwDIwjHasZwcd61Z",
+        uuid: "Compendium.pf2e.feats-srd.Item.BwDIwjHasZwcd61Z",
+        itemType: "feat",
+        featType: "class",
+        name: "Spellshot Dedication",
+        level: 2,
+        slug: "spellshot-dedication",
+      },
+      staticFeatGrants: [],
+    },
+  ],
+  fallbackFeatChoices: [],
+  internalClassFeatureChoices: [],
+};
+
+const PALATINE_DETECTIVE: ClassArchetypeProfile = {
+  value: "palatine-detective",
+  label: "Palatine Detective",
+  detail:
+    "Adopt the esoterica methodology. This replaces your normal investigator methodology, grants divine and occult innate cantrips, and requires Palatine Detective Dedication at 2nd level.",
+  img: "icons/creatures/invertebrates/beetle-stag-yellow-green.webp",
+  decisionSlotId: "class-archetype-methodology-level-1",
+  classSlug: "investigator",
+  selectorTag: "investigator-methodology",
+  selector: {
+    selection: {
+      packId: "pf2e.classfeatures",
+      documentId: "uhHg9BXBiHpL5ndS",
+      uuid: "Compendium.pf2e.classfeatures.Item.uhHg9BXBiHpL5ndS",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "Methodology",
+      level: 1,
+      slug: "methodology",
+    },
+    flag: "methodology",
+    ruleIndex: 0,
+  },
+  selection: {
+    packId: "pf2e.classfeatures",
+    documentId: "ppGGpc3Iv2NpAhys",
+    uuid: "Compendium.pf2e.classfeatures.Item.ppGGpc3Iv2NpAhys",
+    itemType: "feat",
+    featType: "classfeature",
+    name: "Palatine Detective",
+    level: 1,
+    slug: "palatine-detective",
+  },
+  reservedClassFeatLevels: [2],
+  dedicationName: "Palatine Detective Dedication",
+  projectedFeatGrants: [
+    {
+      minimumLevel: 2,
+      selection: {
+        packId: "pf2e.feats-srd",
+        documentId: "LlTIbv1py77nACkI",
+        uuid: "Compendium.pf2e.feats-srd.Item.LlTIbv1py77nACkI",
+        itemType: "feat",
+        featType: "class",
+        name: "Palatine Detective Dedication",
+        level: 2,
+        slug: "palatine-detective-dedication",
+      },
+      staticFeatGrants: [],
+    },
+  ],
+  fallbackFeatChoices: [],
+  internalClassFeatureChoices: [],
+};
+
+const PROFILES = [BATTLE_CREED, WAY_OF_THE_SPELLSHOT, PALATINE_DETECTIVE] as const;
 const PROFILES_BY_VALUE = new Map<string, ClassArchetypeProfile>(PROFILES.map((profile) => [profile.value, profile]));
 
 export function classArchetypeProfilesForSelector(branch: ClassBranchMeta): ClassArchetypeProfile[] {
@@ -344,4 +454,12 @@ export function isBattleCreedSelected(draft: DraftState): boolean {
 
 export function documentIsBattleCreed(document: unknown): boolean {
   return classArchetypeProfileForDocument(document)?.value === BATTLE_CREED.value;
+}
+
+export function documentIsWayOfTheSpellshot(document: unknown): boolean {
+  return classArchetypeProfileForDocument(document)?.value === WAY_OF_THE_SPELLSHOT.value;
+}
+
+export function documentIsPalatineDetective(document: unknown): boolean {
+  return classArchetypeProfileForDocument(document)?.value === PALATINE_DETECTIVE.value;
 }

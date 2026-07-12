@@ -694,6 +694,59 @@ describe("wayfinder class-choice step-builders", () => {
       }),
     ]);
   });
+
+  it("keeps class-feature skill ChoiceSets in the training lane", () => {
+    testGlobals.CONFIG = {
+      PF2E: {
+        skills: {
+          occultism: { label: "PF2E.Skill.Occultism" },
+          religion: { label: "PF2E.Skill.Religion" },
+        },
+      },
+    };
+    const steps = buildClassChoiceStepsFromFeatureSources({
+      classSlug: "investigator",
+      effectiveDeityDocument: null,
+      extractSlug: slugFromDocument,
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+      classFeatures: [
+        {
+          level: 1,
+          selection: {
+            slotId: "class-archetype-methodology-level-1",
+            packId: "pf2e.classfeatures",
+            documentId: "ppGGpc3Iv2NpAhys",
+            uuid: "Compendium.pf2e.classfeatures.Item.ppGGpc3Iv2NpAhys",
+            itemType: "feat",
+            featType: "classfeature",
+            name: "Palatine Detective",
+            level: 1,
+          },
+          document: {
+            type: "feat",
+            name: "Palatine Detective",
+            system: {
+              slug: "palatine-detective",
+              category: "classfeature",
+              level: { value: 1 },
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "skill",
+                  choices: [
+                    { value: "occultism", label: "PF2E.Skill.Occultism" },
+                    { value: "religion", label: "PF2E.Skill.Religion" },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    expect(steps).toEqual([]);
+  });
 });
 
 function elementalInstinctDocument(): unknown {

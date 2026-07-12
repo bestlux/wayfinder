@@ -76,7 +76,8 @@ const SINGLETON_CHOICE_NOOP_RESULT: SelectionCommandResult = {
 
 interface ToggleSpellChoiceDependencies {
   resolveSelection: (rawValue: string, step: PendingStep) => Promise<SelectionRef | null>;
-  selectionExistsOnActor: (selection: SelectionRef) => boolean;
+  selectionExistsOnActor: (selection: SelectionRef, step: PendingStep) => boolean;
+  destinationKeyForSlotId?: (slotId: string) => string | null;
 }
 
 const NOOP_RESULT: SelectionCommandResult = {
@@ -508,9 +509,13 @@ export async function toggleSpellChoiceSelection(
       return false;
     }
 
-    return selections.some((entry) => entry.uuid === selection.uuid);
+    const otherDestinationKey = deps.destinationKeyForSlotId?.(slotId) ?? null;
+    return (
+      (!otherDestinationKey || otherDestinationKey === step.spellChoice.destination.key) &&
+      selections.some((entry) => entry.uuid === selection.uuid)
+    );
   });
-  if (selectedElsewhere || deps.selectionExistsOnActor(selection)) {
+  if (selectedElsewhere || deps.selectionExistsOnActor(selection, step)) {
     return warningResult("duplicate-selection");
   }
 

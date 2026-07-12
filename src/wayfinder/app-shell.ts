@@ -16,6 +16,7 @@ import { canUseWayfinder } from "../permissions.js";
 import type { SelectorActorLike } from "../selector-application.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
+import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import type { AbilityKey, DraftState, PendingStep, PickerFilterKind } from "../types.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
@@ -722,8 +723,27 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         });
         return resolveSelection(value, selectionStep, optionContext);
       },
-      selectionExistsOnActor: (selection) => {
-        return listActorItems(this.actor).some((item) => item?.type === "spell" && sourceIdOf(item) === selection.uuid);
+      selectionExistsOnActor: (selection, selectionStep) => {
+        if (selectionStep.kind !== "spell-choice") {
+          return false;
+        }
+
+        const entry = findSpellcastingEntryForChoice(this.actor, selectionStep.spellChoice);
+        const entryId = typeof entry?.id === "string" ? entry.id : null;
+        const normalizedUuid = selection.uuid.trim().toLowerCase();
+        return (
+          !!entryId &&
+          listActorItems(this.actor).some(
+            (item) =>
+              item?.type === "spell" &&
+              sourceIdOf(item)?.trim().toLowerCase() === normalizedUuid &&
+              actorItemLocationId(item) === entryId
+          )
+        );
+      },
+      destinationKeyForSlotId: (slotId) => {
+        const spellStep = plan.steps.find((candidate) => candidate.slotId === slotId);
+        return spellStep?.kind === "spell-choice" ? spellStep.spellChoice.destination.key : null;
       },
     });
     await this.#finalizeSelectionCommand(result);
@@ -1094,6 +1114,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.render(false);
     }
   }
+}
+
+function actorItemLocationId(item: BuildStateActorItem): string | null {
+  const rawLocation = item?.system?.location;
+  if (typeof rawLocation === "string") {
+    return rawLocation;
+  }
+  if (rawLocation && typeof rawLocation === "object" && "value" in rawLocation) {
+    return typeof rawLocation.value === "string" ? rawLocation.value : null;
+  }
+  return null;
 }
 
 function readActorCompletedStepIds(actor: unknown): string[] {

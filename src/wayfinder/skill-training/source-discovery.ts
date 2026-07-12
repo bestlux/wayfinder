@@ -16,7 +16,7 @@ import { formatSlug } from "../formatting.js";
 import { toNonEmptyString } from "../rule-data.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
 
-type TrainingSourceItemType = "ancestry" | "heritage" | "background" | "feat";
+type TrainingSourceItemType = "ancestry" | "heritage" | "background" | "classfeature" | "feat";
 
 interface TrainingSourceDocumentLike {
   name?: unknown;

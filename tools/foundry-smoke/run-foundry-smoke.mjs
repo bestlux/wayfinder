@@ -278,7 +278,7 @@ function buildMarkdownSummary(result) {
 - World: ${result.world}
 - User: ${result.user}
 - PF2E: ${result.pf2eVersion}
-- Wayfinder active: ${result.moduleActive}
+- Wayfinder: ${result.moduleId} ${result.moduleVersion ?? "unknown"} (active: ${result.moduleActive})
 - Summary: ${result.summary.passed} passed, ${result.summary.classified} classified, ${result.summary.failed} failed
 
 | Case | Status | Level | Planned steps | Rerun steps | Notes |

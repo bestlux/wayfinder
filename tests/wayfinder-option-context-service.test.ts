@@ -78,6 +78,65 @@ describe("wayfinder option context service", () => {
     });
   });
 
+  it("projects every drafted spell UUID by its spell-choice slot", async () => {
+    const draft = createEmptyDraft(1);
+    const slotId = "spell-choice-wizard-curriculum-rank-1-level-1";
+    draft.spellChoices[slotId] = [
+      selection("curriculum", "spell", "curriculum-a"),
+      selection("curriculum", "spell", "curriculum-b"),
+    ];
+
+    const context = await buildOptionContext({
+      draft,
+      steps: [spellChoiceStep(slotId, "wizard-arcane-prepared")],
+      resolveDocument: async () => null,
+      listActorItems: () => [],
+      fetchSelectionDocument: async () => null,
+      extractDocumentSlug: () => null,
+    });
+
+    expect(context.selectedSpellChoicesBySlotId).toEqual({
+      [slotId]: {
+        destinationKey: "wizard-arcane-prepared",
+        uuids: ["Compendium.test.pack.Item.curriculum-a", "Compendium.test.pack.Item.curriculum-b"],
+      },
+    });
+  });
+
+  it("indexes spells from an unflagged native entry using the shared destination matcher", async () => {
+    const slotId = "spell-choice-wizard-spellbook-rank-1-level-1";
+    const context = await buildOptionContext({
+      draft: createEmptyDraft(1),
+      steps: [spellChoiceStep(slotId, "wizard-arcane-prepared")],
+      resolveDocument: async () => null,
+      listActorItems: () => [
+        {
+          id: "wizard-entry",
+          type: "spellcastingEntry",
+          name: "Arcane Prepared Spells",
+          system: {
+            ability: { value: "int" },
+            prepared: { value: "prepared" },
+            tradition: { value: "arcane" },
+          },
+        },
+        {
+          id: "magic-missile",
+          type: "spell",
+          name: "Force Barrage",
+          flags: { core: { sourceId: "Compendium.pf2e.spells-srd.Item.force-barrage" } },
+          system: { location: { value: "wizard-entry" } },
+        },
+      ],
+      fetchSelectionDocument: async () => null,
+      extractDocumentSlug: () => null,
+    });
+
+    expect(context.actorSpellUuidsByDestinationKey).toEqual({
+      "wizard-arcane-prepared": ["Compendium.pf2e.spells-srd.Item.force-barrage"],
+    });
+  });
+
   it("builds roll-option context from drafted skill-training choices", async () => {
     const draft = createEmptyDraft(1);
     draft.skillTrainings["skill-training-wizard-level-1"] = {
@@ -441,5 +500,44 @@ function selection(slotId: string, itemType: string, documentId: string): Select
     featType: itemType === "feat" ? "class" : null,
     name: documentId,
     level: 2,
+  };
+}
+
+function spellChoiceStep(slotId: string, destinationKey: string): PendingStep {
+  return {
+    id: slotId,
+    level: 1,
+    kind: "spell-choice",
+    slotKind: "spell-choice",
+    title: slotId,
+    description: "",
+    required: true,
+    slotId,
+    filters: { itemType: "spell" },
+    spellChoice: {
+      slotId,
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "wizard-spellcasting",
+      sourceUuid: "Compendium.pf2e.classfeatures.Item.wizard-spellcasting",
+      sourceName: "Wizard Spellcasting",
+      classSlug: "wizard",
+      dependsOn: "class",
+      destination: {
+        type: "spellbook",
+        key: destinationKey,
+        label: "Wizard spellbook",
+        entryName: "Arcane Prepared Spells",
+        tradition: "arcane",
+        ability: "int",
+        prepared: "prepared",
+      },
+      count: 2,
+      minRank: 1,
+      maxRank: 1,
+      cantrip: false,
+      curriculumSpellNames: [],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: true,
+    },
   };
 }

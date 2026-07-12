@@ -653,6 +653,61 @@ describe("wayfinder skill training source discovery", () => {
       },
     ]);
   });
+
+  it("treats a selected class archetype as a persisted training source", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "classfeature",
+          sourceSelection: {
+            ...selection("class-archetype-methodology-level-1", "ppGGpc3Iv2NpAhys", "Palatine Detective"),
+            packId: "pf2e.classfeatures",
+            uuid: "Compendium.pf2e.classfeatures.Item.ppGGpc3Iv2NpAhys",
+            featType: "classfeature",
+          },
+          sourceDocument: {
+            name: "Palatine Detective",
+            system: {
+              slug: "palatine-detective",
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "skill",
+                  choices: [
+                    { value: "occultism", label: "PF2E.Skill.Occultism" },
+                    { value: "religion", label: "PF2E.Skill.Religion" },
+                  ],
+                },
+                {
+                  key: "ActiveEffectLike",
+                  mode: "upgrade",
+                  path: "system.skills.{item|flags.system.rulesSelections.skill}.rank",
+                  value: 1,
+                },
+              ],
+            },
+          },
+        },
+      ],
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(training.choiceRules).toMatchObject([
+      {
+        key: "classfeature:palatine-detective:skill",
+        flag: "skill",
+        options: [
+          { slug: "occultism", label: "Occultism" },
+          { slug: "religion", label: "Religion" },
+        ],
+        persistence: {
+          sourceItemType: "classfeature",
+          sourceUuid: "Compendium.pf2e.classfeatures.Item.ppGGpc3Iv2NpAhys",
+          sourceRuleIndex: 0,
+        },
+      },
+    ]);
+  });
 });
 
 function selection(slotId: string, documentId: string, name = documentId, itemType = "feat"): SelectionRef {

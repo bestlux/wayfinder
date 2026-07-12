@@ -670,6 +670,7 @@ describe("wayfinder selection command service", () => {
       resolveSelection: async () =>
         selection("spell-choice-wizard-cantrip-level-1", "spell", "magic-missile", "Magic Missile"),
       selectionExistsOnActor: () => false,
+      destinationKeyForSlotId: () => "wizard-arcane-known",
     });
 
     expect(result).toMatchObject({
@@ -679,6 +680,24 @@ describe("wayfinder selection command service", () => {
       shouldRender: false,
     });
     expect(draft.spellChoices[step.slotId]).toEqual([]);
+  });
+
+  it("allows the same spell selection in a different spellcasting destination", async () => {
+    const draft = createEmptyDraft(1);
+    draft.spellChoices["spell-choice-palatine-divine"] = [
+      selection("spell-choice-palatine-divine", "spell", "guidance", "Guidance"),
+    ];
+    const state = commandState(draft);
+    const step = spellChoiceStep("spell-choice-palatine-occult", "palatine-detective-occult-innate", "occult");
+
+    const result = await toggleSpellChoiceSelection(state, step, "test.pack:guidance", {
+      resolveSelection: async () => selection(step.slotId, "spell", "guidance", "Guidance"),
+      selectionExistsOnActor: () => false,
+      destinationKeyForSlotId: () => "palatine-detective-divine-innate",
+    });
+
+    expect(result).toMatchObject({ kind: "changed", shouldAdvance: true });
+    expect(draft.spellChoices[step.slotId]?.map((entry) => entry.documentId)).toEqual(["guidance"]);
   });
 
   it("adds a spell choice and advances when the slot becomes full", async () => {
@@ -750,6 +769,46 @@ function commandState(
     draft,
     previewValueByStepId: new Map(),
     recentlyInvalidatedStepIds: new Set(options.invalidatedSlotIds ?? []),
+  };
+}
+
+function spellChoiceStep(slotId: string, destinationKey: string, tradition: string): PendingStep {
+  return {
+    id: slotId,
+    level: 1,
+    kind: "spell-choice",
+    slotKind: "spell-choice",
+    title: slotId,
+    description: "",
+    required: true,
+    slotId,
+    filters: { itemType: "spell" },
+    spellChoice: {
+      slotId,
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "palatine-detective",
+      sourceUuid: "Compendium.pf2e.classfeatures.Item.palatine-detective",
+      sourceName: "Palatine Detective",
+      classSlug: "investigator",
+      dependsOn: "class-branch",
+      destination: {
+        type: "innate",
+        key: destinationKey,
+        label: destinationKey,
+        entryName: destinationKey,
+        tradition,
+        ability: "int",
+        prepared: "innate",
+      },
+      count: 1,
+      minRank: 0,
+      maxRank: 0,
+      cantrip: true,
+      curriculumSpellNames: [],
+      requiresCurriculum: false,
+      additionalAllowedSpellNames: [],
+      restrictToCommon: true,
+    },
   };
 }
 

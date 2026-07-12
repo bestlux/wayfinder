@@ -21,6 +21,7 @@ interface NamedDocumentLike {
 }
 
 const ENABLED_FEAT_CONFIG_CHOICE_KEYS = new Set(["baseWeaponTypes", "creatureTraits", "saves", "weaponGroups"]);
+type SingletonChoiceSourceItemType = SingletonChoiceMeta["sourceItemType"] | "classfeature";
 
 export interface SingletonChoiceSpec {
   sourceRuleIndex: number;
@@ -74,7 +75,7 @@ export function discoverSingletonChoiceMeta(args: {
 }
 
 export function discoverSingletonChoiceSpecs(args: {
-  sourceItemType: SingletonChoiceMeta["sourceItemType"];
+  sourceItemType: SingletonChoiceSourceItemType;
   sourceDocument: unknown;
   sourceSlug: string;
   sourceLevel?: number;
@@ -127,12 +128,15 @@ function isGrantSelectorChoice(rules: Array<Record<string, unknown>>, flag: stri
 }
 
 function shouldSkipSingletonChoice(
-  sourceItemType: SingletonChoiceMeta["sourceItemType"],
+  sourceItemType: SingletonChoiceSourceItemType,
   optionDomain: "generic" | "skill" | "lore"
 ): boolean {
   // Starting skill and lore choices belong to the skill training workflow so
   // they stay in one draft store and do not reappear as separate singleton steps.
-  return ["ancestry", "heritage", "background", "class", "feat"].includes(sourceItemType) && optionDomain !== "generic";
+  return (
+    ["ancestry", "heritage", "background", "class", "classfeature", "feat"].includes(sourceItemType) &&
+    optionDomain !== "generic"
+  );
 }
 
 function extractPredicate(value: unknown): ChoicePredicate[] {
@@ -143,7 +147,7 @@ function resolveChoiceOptions(
   rule: Record<string, unknown>,
   localize: (value: string) => string,
   configuredSkills: SkillConfigMap,
-  sourceItemType: SingletonChoiceMeta["sourceItemType"]
+  sourceItemType: SingletonChoiceSourceItemType
 ): { optionDomain: "generic" | "skill" | "lore"; options: SingletonChoiceSpec["options"] } | null {
   if (Array.isArray(rule.choices)) {
     const options = rule.choices

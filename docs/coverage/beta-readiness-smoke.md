@@ -41,6 +41,24 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
+## 2026-07-11 Release 0.4.0 Full Matrix
+
+The `v0.4.0` candidate ran as module version 0.4.0 against Foundry VTT 14.364 / PF2E 8.3.0 in `testing-world`:
+
+```powershell
+node tools/foundry-smoke/run-foundry-smoke.mjs --out .wayfinder-smoke/release-0.4.0-full-4 --incremental-case fighter-l1-l5-apply-rerun --incremental-case cleric-l1-l5-apply-rerun --incremental-case sorcerer-l1-l5-apply-rerun --incremental-case kineticist-l1-l5-apply-rerun --incremental-case cleric-battle-creed-l1-l5-apply-rerun --incremental-case gunslinger-spellshot-l1-l5-apply-rerun --incremental-case investigator-palatine-detective-l1-l5-apply-rerun
+```
+
+Result: **42 pass, 0 classified/manual, 0 fail** — 35 direct level-1-to-5 cases and seven incremental existing-character cases. Every case applied to level 5, cleared its draft, produced no invalid duplicate source IDs or native dialog increase, and reran with zero pending steps.
+
+The direct matrix covers every PF2E class plus maintained variant/fallback cases. The incremental matrix covers Fighter, Cleric, Sorcerer, Kineticist, Battle Creed, Way of the Spellshot, and Palatine Detective. Profile-specific assertions include:
+
+- Battle Creed's Doctrine replacement, level-2 dedication, exact alternate prepared slots, Battle Font, and skill/static-grant fallbacks;
+- Spellshot's way replacement, level-2 dedication, granted actions, Arcana-aware training, Intelligence-based arcane spellbook, four cantrips, and exactly two open cantrip preparation positions;
+- Palatine Detective's Methodology replacement, persisted Occultism choice, level-2 dedication and Mystic Aegis, separate divine/occult Intelligence-based innate entries, and the same Guidance cantrip represented legally in both entries.
+
+Artifact: `.wayfinder-smoke/release-0.4.0-full-4`.
+
 ## 2026-05-11 All-Class Matrix
 
 Command:
@@ -60,7 +78,7 @@ Environment:
 - World: `testing-world`
 - Module: `wayfinder-pf2e`, active
 
-Current upstream target checked on 2026-07-04 is Foundry VTT 14.364 and PF2E 8.2.0. The 0.1.6 hotfix passed the full live smoke matrix against that pair in `.wayfinder-smoke/2026-07-04T18-00-52Z`, with 27 class cases passing and no classified/manual failures. This adds live coverage for Natural Ambition visibility, Scholar/Assurance preselection, Animist base spellcasting counts, and selected feat-owned grant choices such as Druid Order Explorer.
+The upstream target checked on 2026-07-04 was Foundry VTT 14.364 and PF2E 8.2.0. The 0.1.6 hotfix passed the full live smoke matrix against that pair in `.wayfinder-smoke/2026-07-04T18-00-52Z`, with 27 class cases passing and no classified/manual failures. This adds live coverage for Natural Ambition visibility, Scholar/Assurance preselection, Animist base spellcasting counts, and selected feat-owned grant choices such as Druid Order Explorer.
 
 Artifact: `.wayfinder-smoke/beta-green-0.1.2-final-3`.
 
@@ -110,7 +128,7 @@ Before tagging `v0.2.0`, the release code passed the full live matrix against Fo
 
 After the standalone filtered flag-choice lane and same-item class-choice option-predicate work (plus the flag-choice prompt localization fix), the full matrix ran green against Foundry VTT 14.364 / PF2E 8.2.0 in world `testing-world`: 29 cases passing, 0 classified/manual, 0 failed, in two chunks (15 + 14). This includes the new `bard-multifarious-muse-l1-l5-apply-rerun` variant, which drafts Multifarious Muse at level 2, selects a second muse through the flag-choice step, selects the granted level-1 bard feat through the grant-choice step, applies to level 5, and reruns with 0 pending steps. Artifacts: `.wayfinder-smoke/slice5-matrix-a`, `.wayfinder-smoke/slice5-matrix-b`, and `.wayfinder-smoke/slice5-bard-localize` (post-fix bard re-verification).
 
-## 2026-07-11 Class-Archetype Lane
+## 2026-07-11 Initial Battle Creed Class-Archetype Lane
 
 The dedicated class-archetype lane ran against Foundry VTT 14.364 / PF2E 8.3.0 in world `testing-world`. All six maintained cases passed with no native choice dialogs, no duplicate source IDs, successful draft cleanup, and zero pending rerun steps.
 
@@ -143,5 +161,5 @@ These cases first applied a level 1 actor, reopened Wayfinder against that exist
 - Direct feat options and tag-based class-branch options with embedded `ChoiceSet` rules are shown only when every embedded choice is covered by a guided follow-up lane; predicate-backed branch steps keep their curated options visible. Supported feat-owned and selected class-feature follow-ups are preselected before PF2E native rules run.
 - Standalone filtered no-grant `ChoiceSet` rules are guided through flag-choice steps when filters resolve to supported item types and required actor placeholders are known from draft context. Same-item class-choice option predicates are guided when later choices depend on earlier same-source class-choice roll options.
 - Remaining embedded-`ChoiceSet` caveats are selected-item and equipment predicates, dynamic flags-path choices, and cross-item dependency graphs.
-- Battle Creed is guided through the dedicated class-archetype lane. Other class-archetype branch options stay filtered until a complete profile is registered. Free Archetype remains a separate future variant lane over PF2E's `archetype` feat group.
+- Battle Creed, Way of the Spellshot, and Palatine Detective are guided through the dedicated class-archetype lane. Other class-archetype branch options stay filtered until a complete profile is registered. Free Archetype remains a separate future variant lane over PF2E's `archetype` feat group.
 - Daily preparations, starting gear beyond class-feature grants, purchasing, retraining, and table-specific campaign systems remain PF2E-native/manual.

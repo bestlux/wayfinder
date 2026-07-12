@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 - 2026-07-11
+
+- Added complete level 1–5 guidance for Way of the Spellshot and Palatine Detective alongside Battle Creed's existing class-archetype lane.
+- Spellshot characters now receive their level-2 dedication, Intelligence-based arcane spellbook, four chosen cantrips, and two open cantrip preparation positions without consuming the level-4 class feat.
+- Palatine Detective characters now persist their Occultism-or-Religion choice, receive separate Intelligence-based divine and occult innate cantrips, and apply their level-2 dedication and granted abilities.
+- Class-feature skill choices and spells shared across separate spellcasting entries now stay in the correct destination without duplicate native prompts or unrelated entry changes.
+- Verified the release against Foundry VTT 14.364 and PF2E 8.3.0 with 35 direct level-1-to-5 cases and seven incremental level-up cases.
+
 ## 0.3.0 - 2026-07-05
 
 - Feats and options that configure a choice without granting an item are now guided instead of hidden, including Multifarious Muse, Bard Dedication, Adopted Ancestry, Celestial Magic, and related options.

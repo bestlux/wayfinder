@@ -2,7 +2,7 @@
   "id": "wayfinder-pf2e",
   "title": "Wayfinder — PF2E Character Builder",
   "description": "<p><strong>A guided Pathfinder 2e character builder, built into Foundry.</strong></p><p>Wayfinder turns PF2E character creation and leveling into a single guided flow you open from the character sheet. Ancestry, heritage, background, class, branch picks, feats, boosts, skill increases, spell choices — all in one place, with earlier picks filtering later ones so you stop scrolling past options you can't take.</p><p>Unlike standalone planners, Wayfinder lives inside your world. It respects enabled sources where it has support, writes supported guided results directly to the actor, and hands you back to the PF2E sheet for optional variants or choices it can't model confidently. No JSON export, no re-import, fewer sheet-mismatch loops.</p><p><strong>Who it's for:</strong></p><ul><li><em>New PF2E players</em> — every step explains what you're choosing and why those options are available.</li><li><em>Returning players</em> — search, pick, next; resumable drafts let you plan multiple levels at once.</li><li><em>GMs onboarding friends</em> — players self-serve inside Foundry with rules and sources matching your table.</li></ul><p><strong>Status:</strong> early access, built slice by slice. Class coverage and supported choice surfaces are tracked in the readme. Where Wayfinder can't guide a required step, it says so and points you to the right native PF2E control instead of applying as though unsupported work was handled.</p>",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "authors": [
     {
       "name": "iomancer",
@@ -32,27 +32,27 @@
   "media": [
     {
       "type": "cover",
-      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.3.0/media/cover.webp",
-      "thumbnail": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.3.0/media/cover-thumb.webp"
+      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.4.0/media/cover.webp",
+      "thumbnail": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.4.0/media/cover-thumb.webp"
     },
     {
       "type": "screenshot",
-      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.3.0/media/screenshot-creation.webp",
+      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.4.0/media/screenshot-creation.webp",
       "caption": "Guided level-1 creation: ancestry, heritage, background, class, and boosts in one flow."
     },
     {
       "type": "screenshot",
-      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.3.0/media/screenshot-feat-picker.webp",
+      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.4.0/media/screenshot-feat-picker.webp",
       "caption": "Feat picker with rarity and source filters; earlier choices narrow what's available."
     },
     {
       "type": "screenshot",
-      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.3.0/media/screenshot-spell-choice.webp",
+      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.4.0/media/screenshot-spell-choice.webp",
       "caption": "Spell choices wired into the actor — repertoire, spellbook, innate, and focus all land in the right place."
     },
     {
       "type": "screenshot",
-      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.3.0/media/screenshot-levelup.webp",
+      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.4.0/media/screenshot-levelup.webp",
       "caption": "Level-up draft carries forward earlier picks and surfaces only what you still need to choose."
     }
   ],
@@ -67,7 +67,7 @@
         "type": "system",
         "compatibility": {
           "minimum": "8.1.0",
-          "verified": "8.2.0"
+          "verified": "8.3.0"
         }
       }
     ]

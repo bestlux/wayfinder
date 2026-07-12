@@ -4,17 +4,13 @@ This document defines how Wayfinder guides PF2E class archetypes without mixing 
 
 ## Current scope and evidence
 
-The first supported profile is Cleric's **Battle Creed**. The source implementation and automated tests cover:
+Three profiles are registered and guided through level 5:
 
-- an explicit **Standard class path** versus **Battle Creed** decision at level 1;
-- Doctrine replacement without exposing Battle Creed in the ordinary Doctrine picker;
-- same-batch class and class-archetype creation so PF2E suppression runs at creation time;
-- Doctrine adoption of the already-created Battle Creed item, with no duplicate grant;
-- Battle Harbinger Dedication in the level-2 class-feat slot, including its skill choice and fallback;
-- Battle Creed prepared-spell progression and a PF2E-native Battle Font containing Bane and Bless;
-- legacy draft migration from a Doctrine branch selection into the dedicated lane.
+- Cleric **Battle Creed** replaces Doctrine, reserves the level-2 class feat for Battle Harbinger Dedication, changes prepared-spell progression, creates Battle Font, and handles skill/static-grant fallbacks.
+- Gunslinger **Way of the Spellshot** replaces Gunslinger's Way, reserves the level-2 class feat for Spellshot Dedication, projects its class-feature and dedication training, and creates an Intelligence-based arcane spellbook with four cantrips and two open cantrip preparation positions.
+- Investigator **Palatine Detective** replaces Methodology, persists its Occultism-or-Religion choice, reserves the level-2 class feat for Palatine Detective Dedication, and creates separate Intelligence-based divine and occult innate cantrip entries.
 
-The lane passed live apply/rerun smoke on 2026-07-11 against Foundry VTT 14.364 and PF2E 8.3.0. The verified cases cover Standard Cleric, direct Battle Creed creation, incremental Battle Creed level 1 to level 5, the both-dedication-skills-trained fallback, an actor-owned Toughness conflict, and a same-draft Shielded Fortune grant conflict. The consolidated artifact is `.wayfinder-smoke/class-archetype-final-2`.
+The release matrix passed live apply/rerun smoke on 2026-07-11 against Foundry VTT 14.364 and PF2E 8.3.0: 35 direct level-1-to-5 cases plus seven incremental existing-character cases, with 42 passing, zero classified/manual, and zero failed. Direct and incremental cases cover all three registered profiles; Battle Creed also retains its skill and static-grant fallback cases. Artifact: `.wayfinder-smoke/release-0.4.0-full-4`.
 
 ## Why this is a separate lane
 
@@ -26,10 +22,10 @@ Free Archetype is different again. It is a campaign variant that adds PF2E's sep
 flowchart LR
   A["Choose class"] --> B["Class archetype decision"]
   B -->|"Standard"| C["Ordinary class branch"]
-  B -->|"Battle Creed"| D["Archetype profile"]
-  D --> E["Replace Doctrine"]
+  B -->|"Registered profile"| D["Archetype profile"]
+  D --> E["Replace class selector"]
   D --> F["Reserve level-2 class feat"]
-  D --> G["Adjust spellcasting and font"]
+  D --> G["Contribute training, grants, and spellcasting"]
   H["Free Archetype variant"] --> I["Separate archetype feat group"]
 ```
 
@@ -38,7 +34,7 @@ flowchart LR
 The lane uses its own `class-archetype` step and slot kind. A draft stores an explicit string value in `classArchetypeChoices`:
 
 - `standard` means the user deliberately chose the normal class progression;
-- a registered profile value such as `battle-creed` activates that profile;
+- a registered profile value such as `battle-creed`, `way-of-the-spellshot`, or `palatine-detective` activates that profile;
 - no stored value means the decision is unanswered.
 
 This three-state distinction is required. Treating an omitted choice as Standard would hide an important character-building decision, while treating a class archetype as an ordinary branch would apply it too late for PF2E feature suppression.
@@ -72,7 +68,7 @@ Registration is intentionally explicit. PF2E's `class-archetype` tag identifies 
 6. Reserve profile-owned class-feat slots independently from fulfilled actor slots.
 7. Keep unregistered class-archetype options filtered out of ordinary branch pickers.
 
-For Battle Creed, the projected Battle Harbinger Dedication supplies its Acrobatics-or-Athletics choice to class training at level 2. If both are already trained, the existing skill-choice fallback allows another skill and persists that value into the dedication's PF2E rule selection.
+Selected class-feature sources and projected dedications both enter the training lane. This keeps skill-shaped `ChoiceSet` rules in one workflow for blank actors and existing-class actors. For Battle Creed, the projected Battle Harbinger Dedication supplies its Acrobatics-or-Athletics choice; if both are already trained, the fallback allows another skill. Spellshot likewise accounts for Arcana before resolving its dedication fallback, while Palatine Detective persists its Occultism-or-Religion selection on the profile item.
 
 ## Apply order
 
@@ -87,7 +83,7 @@ PF2E class-archetype suppression depends on creation order. The apply path must 
 7. Synchronize native spellcasting entries and spells.
 8. Update actor level so PF2E can reevaluate later profile grants.
 
-Selector adoption is the critical invariant: it links Doctrine to Battle Creed instead of granting a second Battle Creed item.
+Selector adoption is the critical invariant: it links the replaced selector to the already-created profile instead of granting a duplicate profile item.
 
 ## Battle Creed mechanics
 
@@ -99,6 +95,18 @@ Battle Creed has two spellcasting entries:
 Battle Font is not a permanent Bane-versus-Bless character choice. The player can prepare either spell, including duplicates, during daily preparation. Wayfinder therefore creates both spell documents and leaves the font slots empty.
 
 At level 2, Battle Harbinger Dedication occupies `class-feat-level-2`. The next ordinary Cleric class feat remains available at level 4.
+
+## Way of the Spellshot mechanics
+
+Way of the Spellshot replaces the ordinary Gunslinger's Way selection. Its class feature supplies Thoughtful Reload, Energy Shot, Arcana training, and the Intelligence class-DC adjustment through PF2E rules. Spellshot Dedication occupies `class-feat-level-2`; the level-4 Gunslinger class feat remains available.
+
+The profile contributor creates a keyed **Spellshot Spellbook** with four selected common arcane cantrips and exactly two open cantrip preparation positions. Its destination is key-only: Wayfinder will create or reuse its own keyed entry and will not adopt an unrelated arcane prepared entry merely because tradition, ability, and preparation type match.
+
+## Palatine Detective mechanics
+
+Palatine Detective replaces Investigator Methodology. Its profile `ChoiceSet` is routed through skill training so the chosen Occultism or Religion value is persisted before PF2E creates the item. The profile also grants Quick Identification. Palatine Detective Dedication occupies `class-feat-level-2`, grants Mystic Aegis, and leaves the level-4 Investigator class feat available.
+
+The profile contributor creates one common divine innate cantrip and one common occult innate cantrip, both using Intelligence. These are distinct keyed entries. The same spell can legally be selected for both traditions; duplicate prevention is therefore scoped to a destination rather than to the entire actor.
 
 ## Free Archetype extension boundary
 
@@ -116,26 +124,25 @@ The current class-archetype registry and projected-feat context are reusable inp
 
 Automated merge gates:
 
-- Standard Cleric still exposes Doctrine, standard prepared slots, and Heal/Harm Divine Font behavior.
-- Battle Creed hides Doctrine and the obsolete Divine Font build choice.
-- Class and Battle Creed share the initial creation batch.
-- Doctrine adopts exactly one Battle Creed item.
-- Level 2 creates one Battle Harbinger Dedication in `class-2`, with its chosen skill persisted.
-- Level 4 retains its ordinary class-feat step.
-- Battle Creed spell choices, prepared slots, Battle Font spells, and rerun preservation match PF2E data.
-- Draft migration, invalidation, pane actions, and explicit Standard completion remain covered.
+- Each affected class retains an explicit Standard path and its ordinary selector behavior.
+- Selecting a registered profile hides the replaced selector branch and reserves only the configured class-feat levels.
+- Class and profile share the initial creation batch, and selector adoption produces exactly one profile item.
+- Selected profile/class-feature training and projected dedication choices persist without PF2E-native choice dialogs, including existing-class actor paths.
+- Battle Creed prepared slots, Battle Font, skill fallback, and Toughness replacement remain covered.
+- Spellshot has four arcane cantrips, exactly two open cantrip preparation positions, an Intelligence-based keyed entry, and no unrelated entry adoption.
+- Palatine Detective has its chosen skill, two keyed innate entries, and permits the same legal cantrip in both traditions.
+- Level 4 retains the ordinary class-feat step for all three profiles.
+- Draft migration, invalidation, pane actions, explicit Standard completion, direct apply, incremental apply, and zero-step reruns remain covered.
 
-Live release gates, completed on 2026-07-11:
+Live release gates completed on 2026-07-11:
 
-1. Blank actor to level 5 with Standard Cleric, apply, then rerun with no pending steps or native choice dialogs.
-2. Blank actor to level 5 with Battle Creed, apply, then rerun with no duplicate Doctrine, Battle Creed, dedication, font entry, or font spell.
-3. Inspect actor evidence for suppressed Doctrine progression, dedication location and skill selection, exact prepared slots, Battle Font class-DC proficiency, and Bane/Bless availability.
-4. Run an incremental Battle Creed level 1 to level 5 case to prove stale lower-rank prepared slots are removed.
-5. Start with both Acrobatics and Athletics trained and prove another selected skill is persisted into the dedication without a native choice dialog.
-6. Start with actor-owned Toughness and prove the dedication's static grant is replaced by the drafted fallback feat without duplicating Toughness or consuming the ordinary general-feat slot.
-7. Draft Shielded Fortune and prove its pending Toughness grant triggers the same fallback while the ordinary level-3 general-feat slot remains independent.
+1. Run every maintained direct level-1-to-5 class/variant case, including Standard Cleric/Gunslinger/Investigator and all three profile paths.
+2. Run incremental level-1-to-5 cases for Fighter, Cleric, Sorcerer, Kineticist, Battle Creed, Spellshot, and Palatine Detective.
+3. Verify 42 pass, zero classified/manual, zero fail, zero native dialog increases, no invalid duplicate source IDs, draft cleanup, and zero pending rerun steps.
+4. Inspect profile-specific actor evidence for forced-feat location, selected rule values, class-feat preservation, exact spellcasting entry identity/capacity, and spell destination.
+5. Retain Battle Creed's both-skills-trained, actor-owned Toughness, and same-draft Shielded Fortune conflict cases.
 
-The direct and incremental cases verified exact level-5 Battle Creed spell slots, Bane and Bless in Battle Font, no native choice dialogs, no duplicate source items, draft cleanup, and zero pending rerun steps.
+The consolidated release artifact is `.wayfinder-smoke/release-0.4.0-full-4`.
 
 ## Adding another class archetype
 

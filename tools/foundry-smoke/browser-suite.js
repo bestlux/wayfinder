@@ -384,10 +384,11 @@ async function seedCreationDraft(draft, smokeCase) {
 
 async function completeDraft(actor, draft, smokeCase, modules) {
   const warnings = [];
-  const classifications = [];
+  let classifications = [];
   let iterations = 0;
 
   for (; iterations < 12; iterations += 1) {
+    classifications = [];
     const plan = await buildPlan(actor, draft, modules);
     let changed = false;
 

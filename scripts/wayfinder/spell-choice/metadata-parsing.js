@@ -1,6 +1,6 @@
 export function parseCurriculumSpells(raw) {
     const description = typeof raw === "string" ? raw : "";
-    const matches = description.matchAll(/<li><strong>([^<]+):<\/strong>\s*([\s\S]*?)<\/li>/gi);
+    const matches = description.matchAll(/<li><strong>([^<]+?)<\/strong>\s*:?\s*([\s\S]*?)<\/li>/gi);
     const result = {};
     for (const [, label, content] of matches) {
         const rank = rankFromCurriculumLabel(label);
@@ -51,7 +51,7 @@ function collectCurriculumSpellNames(content) {
     return Array.from(names);
 }
 function rankFromCurriculumLabel(label) {
-    const normalized = label.trim().toLowerCase();
+    const normalized = label.trim().replace(/:$/, "").toLowerCase();
     if (normalized === "cantrips" || normalized === "cantrip") {
         return 0;
     }

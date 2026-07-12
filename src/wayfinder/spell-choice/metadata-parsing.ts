@@ -7,7 +7,7 @@ interface DeitySpellAccess {
 
 export function parseCurriculumSpells(raw: unknown): Record<number, string[]> {
   const description = typeof raw === "string" ? raw : "";
-  const matches = description.matchAll(/<li><strong>([^<]+):<\/strong>\s*([\s\S]*?)<\/li>/gi);
+  const matches = description.matchAll(/<li><strong>([^<]+?)<\/strong>\s*:?\s*([\s\S]*?)<\/li>/gi);
   const result: Record<number, string[]> = {};
 
   for (const [, label, content] of matches) {
@@ -73,7 +73,7 @@ function collectCurriculumSpellNames(content: string): string[] {
 }
 
 function rankFromCurriculumLabel(label: string): number | null {
-  const normalized = label.trim().toLowerCase();
+  const normalized = label.trim().replace(/:$/, "").toLowerCase();
   if (normalized === "cantrips" || normalized === "cantrip") {
     return 0;
   }

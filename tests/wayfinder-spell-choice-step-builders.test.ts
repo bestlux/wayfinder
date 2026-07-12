@@ -76,6 +76,36 @@ describe("wayfinder spell-choice step builders", () => {
     ]);
   });
 
+  it("parses curriculum rank labels without colons", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(3),
+      currentLevel: 1,
+      effectiveClassDocument: wizardClassDocument(),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: {
+        name: "Red Mantis Magic School",
+        flags: {
+          core: {
+            sourceId: "Compendium.pf2e.classfeatures.Item.srcPBNjhq7FBSmi3",
+          },
+        },
+        system: {
+          slug: "red-mantis-magic-school",
+          description: {
+            value:
+              "<ul><li><strong>1st</strong> @UUID[Compendium.pf2e.spells-srd.Item.Fleet Step], @UUID[Compendium.pf2e.spells-srd.Item.Illusory Disguise]</li><li><strong>2nd</strong> @UUID[Compendium.pf2e.spells-srd.Item.Invisibility], @UUID[Compendium.pf2e.spells-srd.Item.Mist]</li></ul>",
+          },
+        },
+      },
+      targetLevel: 3,
+      extractSlug: extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps[2]?.spellChoice?.curriculumSpellNames).toEqual(["Fleet Step", "Illusory Disguise"]);
+    expect(steps[5]?.spellChoice?.curriculumSpellNames).toEqual(["Invisibility", "Mist"]);
+  });
+
   it("merges selected static class-feature grant curriculum into wizard school spell choices", async () => {
     const steps = await buildSpellChoiceSteps({
       draft: createEmptyDraft(1),

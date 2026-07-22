@@ -429,7 +429,7 @@
   flex-shrink: 0;
 }
 
-.nav-btn {
+.wayfinder-app .nav-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -449,7 +449,7 @@
     box-shadow var(--wf-transition);
 }
 
-.nav-btn:hover:not(:disabled) {
+.wayfinder-app .nav-btn:hover:not(:disabled) {
   background: linear-gradient(180deg, #fcf7ea 0%, #ebddc3 100%);
   box-shadow:
     inset 0 0 0 1px rgba(0, 0, 0, 0.1),
@@ -457,7 +457,7 @@
     0 0 3px rgba(94, 0, 0, 0.15);
 }
 
-.nav-btn:disabled {
+.wayfinder-app .nav-btn:disabled {
   opacity: 0.35;
   cursor: default;
 }

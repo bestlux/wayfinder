@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 - 2026-07-22
+
+- Scoped Wayfinder's navigation button styling to its own character-builder window so it no longer overrides Calandaria controls that use the same class name.
+
 ## 0.5.0 - 2026-07-11
 
 - Added a dedicated Free Archetype lane that appears automatically when PF2E's Free Archetype variant is enabled.

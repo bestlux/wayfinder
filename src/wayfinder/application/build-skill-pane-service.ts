@@ -102,10 +102,10 @@ export async function projectSkillRanks(
     projected[slug] = Math.max(projected[slug] ?? 0, 1);
   }
 
-  const sortedTrainingSlotIds = Object.keys(draft.skillTrainings).sort((left, right) => left.localeCompare(right));
+  const sortedTrainingSlotIds = Object.keys(draft.skillTrainings).sort(compareProjectedSkillSlotIds);
 
   for (const slotId of sortedTrainingSlotIds) {
-    if (slotId >= upToSlotId) {
+    if (compareProjectedSkillSlotIds(slotId, upToSlotId) >= 0) {
       break;
     }
 
@@ -126,7 +126,7 @@ export async function projectSkillRanks(
   const sortedSlotIds = Object.keys(draft.skillIncreases).sort(compareSkillIncreaseSlotIds);
 
   for (const slotId of sortedSlotIds) {
-    if (slotId >= upToSlotId) {
+    if (compareProjectedSkillSlotIds(slotId, upToSlotId) >= 0) {
       break;
     }
 
@@ -139,6 +139,35 @@ export async function projectSkillRanks(
   }
 
   return projected;
+}
+
+function compareProjectedSkillSlotIds(left: string, right: string): number {
+  const levelDelta = projectedSkillSlotLevel(left) - projectedSkillSlotLevel(right);
+  if (levelDelta !== 0) {
+    return levelDelta;
+  }
+
+  const kindDelta = projectedSkillSlotKindWeight(left) - projectedSkillSlotKindWeight(right);
+  if (kindDelta !== 0) {
+    return kindDelta;
+  }
+
+  return left.localeCompare(right);
+}
+
+function projectedSkillSlotLevel(slotId: string): number {
+  const match = /-level-(\d+)$/.exec(slotId);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function projectedSkillSlotKindWeight(slotId: string): number {
+  if (slotId.startsWith("skill-training-")) {
+    return 0;
+  }
+  if (slotId.startsWith("skill-increase-")) {
+    return 1;
+  }
+  return 2;
 }
 
 function extractFixedTrainedSkills(document: unknown): string[] {

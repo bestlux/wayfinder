@@ -124,6 +124,27 @@ describe("wayfinder skill pane service", () => {
     }
   });
 
+  it("projects level-1 draft training into a level-3 skill increase", async () => {
+    const draft = createEmptyDraft(3);
+    draft.skillTrainings["skill-training-wizard-level-1"] = trainingDraft(
+      {
+        "class:arcana": "arcana",
+      },
+      ["stealth"]
+    );
+
+    const projected = await projectSkillRanks(draft, "skill-increase-level-3", {
+      baseSkillRanks: {},
+      resolveDocument: async () => null,
+      localize: (value) => value,
+    });
+
+    expect(projected).toMatchObject({
+      arcana: 1,
+      stealth: 1,
+    });
+  });
+
   it("does not project singleton skill selections without a matching rank-granting rule", async () => {
     const draft = createEmptyDraft(1);
     draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "society";

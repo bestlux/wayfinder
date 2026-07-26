@@ -93,7 +93,7 @@ When reporting a bug, the Foundry version, PF2E system version, and the class/an
 
 ## Development
 
-Build, test, local-linking, and smoke-harness instructions live in [docs/development.md](docs/development.md). Release packaging is documented in [docs/release-packaging.md](docs/release-packaging.md).
+The current product direction and planned arcs live in [docs/roadmap.md](docs/roadmap.md). Build, test, local-linking, and smoke-harness instructions live in [docs/development.md](docs/development.md). Release packaging is documented in [docs/release-packaging.md](docs/release-packaging.md).
 
 ## License & credits
 

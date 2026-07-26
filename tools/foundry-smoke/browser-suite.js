@@ -429,6 +429,7 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
         return;
       }
       const options = await modules.getOptionsForStep(step, optionContext);
+      assertExpectedPickerOptions(options, step, smokeCase);
       const option = pickOption(options, step, smokeCase);
       if (!option) {
         notes.classifications.push(`${step.slotId}: no live compendium option matched supported filters`);
@@ -522,6 +523,28 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
     case "manual":
       notes.classifications.push(`${step.slotId}: manual PF2E-native checkpoint`);
       return;
+  }
+}
+
+function assertExpectedPickerOptions(options, step, smokeCase) {
+  const expectation = smokeCase.expectedPickerOptions?.[step.slotId];
+  if (!expectation) {
+    return;
+  }
+
+  const optionNames = new Set(options.map((option) => option.name));
+  const missing = (expectation.present ?? []).filter((name) => !optionNames.has(name));
+  const forbidden = (expectation.absent ?? []).filter((name) => optionNames.has(name));
+  if (missing.length > 0 || forbidden.length > 0) {
+    throw new Error(
+      [
+        `${step.slotId} picker legality expectation failed.`,
+        missing.length > 0 ? `Missing: ${missing.join(", ")}.` : "",
+        forbidden.length > 0 ? `Unexpected: ${forbidden.join(", ")}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
   }
 }
 

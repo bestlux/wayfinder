@@ -9,6 +9,7 @@ function freeArchetypeCase({
   classSlug,
   classFeats,
   keyAbility,
+  lockedOutDedication,
   preferredSkills,
 }) {
   return {
@@ -29,6 +30,12 @@ function freeArchetypeCase({
       "class-feat-level-4",
       "archetype-feat-level-4",
     ],
+    expectedPickerOptions: {
+      "archetype-feat-level-4": {
+        present: [archetypeFollowUp],
+        absent: [lockedOutDedication],
+      },
+    },
     preferredSelections: {
       "ancestry-feat": commonAncestry,
       "class-feat": classFeats,
@@ -49,6 +56,7 @@ export const freeArchetypeSmokeCases = [
     classSlug: "fighter",
     classFeats: ["Sudden Charge", "Reactive Shield", "Point Blank Stance"],
     keyAbility: "str",
+    lockedOutDedication: "Acrobat Dedication",
     preferredSkills: ["athletics", "acrobatics", "crafting", "medicine", "society", "survival"],
   }),
   freeArchetypeCase({
@@ -58,6 +66,7 @@ export const freeArchetypeSmokeCases = [
     classSlug: "rogue",
     classFeats: ["Nimble Dodge", "Trap Finder", "Mobility"],
     keyAbility: "dex",
+    lockedOutDedication: "Archer Dedication",
     preferredSkills: ["acrobatics", "stealth", "thievery", "deception", "diplomacy", "society", "athletics"],
   }),
 ];

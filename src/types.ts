@@ -151,6 +151,16 @@ export interface OptionRecord {
   label: string;
 }
 
+export interface ProjectedArchetypeFeat {
+  uuid: string | null;
+  name: string;
+  slug: string | null;
+  traits: string[];
+  familyIds: string[];
+  hasUnverifiedLockoutException: boolean;
+  bypassesExistingLockout: boolean;
+}
+
 export interface OptionContext {
   ancestrySlug: string | null;
   ancestryTraits: string[];
@@ -172,6 +182,7 @@ export interface OptionContext {
   actorSpellUuidsByDestinationKey?: Record<string, string[]>;
   rollOptions?: string[];
   skillRanks?: Record<string, number>;
+  projectedArchetypeFeats?: ProjectedArchetypeFeat[];
 }
 
 export interface PickerInfoState {

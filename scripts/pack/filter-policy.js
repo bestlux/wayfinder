@@ -3,6 +3,7 @@ import { getExtraPackSetting } from "../settings.js";
 import { toCompendiumItemUuid } from "../shared/compendium.js";
 import { expandCompendiumAllowlist, mergePackIds, parseCompendiumAllowlist } from "../source-filter.js";
 import { cacheTraitCatalog, getCachedTraitCatalog, getGamePack, getGamePackIds, getPackIndex, } from "./access.js";
+import { matchesArchetypeLegality } from "./archetype-legality.js";
 import { hasUnsupportedEmbeddedChoiceSet } from "./embedded-choice-policy.js";
 import { extractEntrySlug, extractEntryTraits, namesMatch, normalizeTraitList, numericOrNull, resolveFeatType, stringOrNull, } from "./entry.js";
 import { matchesChoicePredicate, matchesCurrentClassMulticlassDedication, matchesItemType, matchesStaticPredicate, matchesUuidAllowlist, matchesUuidChoicePredicate, } from "./predicates.js";
@@ -88,10 +89,10 @@ export function matchesFilters(entry, packId, step, context, traitCatalog) {
         return matchesAncestryFeatContext(entry, context, traitCatalog);
     }
     if (step.slotKind === "class-feat") {
-        return matchesClassFeatContext(entry, context, traitCatalog);
+        return matchesClassFeatContext(entry, packId, context, traitCatalog);
     }
     if (step.slotKind === "archetype-feat") {
-        return matchesArchetypeFeatContext(entry, context);
+        return matchesArchetypeFeatContext(entry, packId, context);
     }
     if (step.slotKind === "skill-feat") {
         return matchesSkillFeatContext(entry, context);
@@ -170,7 +171,7 @@ function extractPrerequisiteText(entry) {
         })
         : [];
 }
-function matchesClassFeatContext(entry, context, _traitCatalog) {
+function matchesClassFeatContext(entry, packId, context, _traitCatalog) {
     const category = stringOrNull(entry?.system?.category);
     if (category && category !== "class") {
         return false;
@@ -180,22 +181,20 @@ function matchesClassFeatContext(entry, context, _traitCatalog) {
         return true;
     }
     const traits = extractEntryTraits(entry);
-    if (traits.includes(classSlug)) {
-        return true;
-    }
     const isArchetypeFeat = traits.includes("archetype") || traits.includes("dedication");
     if (isArchetypeFeat) {
-        return context.hasDedicationFeat ? traits.includes("archetype") : traits.includes("dedication");
+        return matchesArchetypeLegality(entry, packId, context, matchesSkillRankPrerequisites);
     }
-    return false;
+    return traits.includes(classSlug);
 }
-function matchesArchetypeFeatContext(entry, context) {
+function matchesArchetypeFeatContext(entry, packId, context) {
     const category = stringOrNull(entry?.system?.category);
     if (category && category !== "class") {
         return false;
     }
     const traits = extractEntryTraits(entry);
-    return context.hasDedicationFeat ? traits.includes("archetype") : traits.includes("dedication");
+    return ((traits.includes("archetype") || traits.includes("dedication")) &&
+        matchesArchetypeLegality(entry, packId, context, matchesSkillRankPrerequisites));
 }
 function matchesSkillFeatContext(entry, context) {
     const category = stringOrNull(entry?.system?.category);
@@ -206,7 +205,7 @@ function matchesSkillFeatContext(entry, context) {
     if (traits.includes("archetype") || traits.includes("dedication")) {
         return false;
     }
-    return matchesSkillFeatTrainingPrerequisites(entry, context);
+    return matchesSkillRankPrerequisites(entry, context);
 }
 const RECALL_KNOWLEDGE_SKILLS = new Set([
     "arcana",
@@ -217,7 +216,7 @@ const RECALL_KNOWLEDGE_SKILLS = new Set([
     "religion",
     "society",
 ]);
-function matchesSkillFeatTrainingPrerequisites(entry, context) {
+function matchesSkillRankPrerequisites(entry, context) {
     const requirements = extractSkillTrainingRequirements(extractPrerequisiteText(entry));
     if (requirements.length === 0) {
         return true;

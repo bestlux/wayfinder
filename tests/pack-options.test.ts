@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import { clearPackServiceCache } from "../src/pack/access";
+import { projectedArchetypeFeat as projectArchetypeFeat } from "../src/pack/archetype-legality";
 import { getOptionsForStep } from "../src/pack/options";
 import { buildSteps } from "../src/progression";
-import type { ActorSnapshot, OptionContext, PendingStep, PickItemSlotKind } from "../src/types";
+import type { ActorSnapshot, OptionContext, PendingStep, PickItemSlotKind, SelectionRef } from "../src/types";
 import { buildOptionContext } from "../src/wayfinder/application/option-context-service";
 import { createPickItemStep } from "../src/wayfinder/domain/step-types";
 import { grantsRestrictedSpellRarityAccess } from "../src/wayfinder/spell-choice/rarity-access";
@@ -320,11 +321,7 @@ describe("pack options dependency filtering", () => {
       }
     );
 
-    expect(options.map((option) => option.name)).toEqual([
-      "Acrobat Dedication",
-      "Advanced Maneuver",
-      "Combat Flexibility",
-    ]);
+    expect(options.map((option) => option.name)).toEqual(["Advanced Maneuver", "Combat Flexibility"]);
   });
 
   it("mirrors PF2E's dedicated Free Archetype pool without mixing in ordinary class feats", async () => {
@@ -351,7 +348,451 @@ describe("pack options dependency filtering", () => {
     });
 
     expect(initialOptions.map((option) => option.name)).toEqual(["Acrobat Dedication"]);
-    expect(followUpOptions.map((option) => option.name)).toEqual(["Acrobat Dedication", "Contortionist"]);
+    expect(followUpOptions.map((option) => option.name)).toEqual(["Contortionist"]);
+  });
+
+  it.each<PickItemSlotKind>([
+    "class-feat",
+    "archetype-feat",
+  ])("enforces projected dedication lockout completion in the %s lane", async (slotKind) => {
+    setPack("pf2e.feats-srd", [
+      featEntry("acrobat-dedication", "Acrobat Dedication", "class", ["archetype", "dedication"]),
+      featEntry("contortionist", "Contortionist", "class", ["archetype"], true, {
+        prerequisites: { value: [{ value: "Acrobat Dedication" }] },
+      }),
+      featEntry("dodge-away", "Dodge Away", "class", ["archetype"], true, {
+        prerequisites: { value: [{ value: "Acrobat Dedication" }] },
+      }),
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
+    ]);
+    const step = makeStep(slotKind, {
+      itemType: "feat",
+      featTypes: ["class"],
+      maxLevel: 4,
+    });
+    const dedication = projectedArchetype("Acrobat Dedication", "acrobat", true);
+
+    const locked = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      hasDedicationFeat: true,
+      projectedArchetypeFeats: [dedication],
+    });
+    const stillLocked = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      hasDedicationFeat: true,
+      projectedArchetypeFeats: [dedication, projectedArchetype("Contortionist", "acrobat")],
+    });
+    const completed = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      hasDedicationFeat: true,
+      projectedArchetypeFeats: [
+        dedication,
+        projectedArchetype("Contortionist", "acrobat"),
+        projectedArchetype("Dodge Away", "acrobat"),
+      ],
+    });
+
+    expect(locked.some((option) => option.name === "Wizard Dedication")).toBe(false);
+    expect(stillLocked.some((option) => option.name === "Wizard Dedication")).toBe(false);
+    expect(completed.some((option) => option.name === "Wizard Dedication")).toBe(true);
+  });
+
+  it.each<PickItemSlotKind>([
+    "class-feat",
+    "archetype-feat",
+  ])("requires the matching projected dedication family in the %s lane", async (slotKind) => {
+    setPack("pf2e.feats-srd", [
+      featEntry("acrobat-dedication", "Acrobat Dedication", "class", ["archetype", "dedication"]),
+      featEntry("archer-dedication", "Archer Dedication", "class", ["archetype", "dedication"]),
+      featEntry("contortionist", "Contortionist", "class", ["archetype"], true, {
+        prerequisites: { value: [{ value: "Acrobat Dedication" }] },
+      }),
+      featEntry("quick-shot", "Quick Shot", "class", ["archetype"], true, {
+        prerequisites: { value: [{ value: "Archer Dedication" }] },
+      }),
+    ]);
+    const step = makeStep(slotKind, {
+      itemType: "feat",
+      featTypes: ["class"],
+      maxLevel: 4,
+    });
+
+    const withoutDedication = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      projectedArchetypeFeats: [],
+    });
+    const withAcrobat = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      hasDedicationFeat: true,
+      projectedArchetypeFeats: [projectedArchetype("Acrobat Dedication", "acrobat", true)],
+    });
+
+    expect(withoutDedication.map((option) => option.name)).toEqual(["Acrobat Dedication", "Archer Dedication"]);
+    expect(withAcrobat.map((option) => option.name)).toEqual(["Contortionist"]);
+  });
+
+  it("derives chained archetype feat membership from PF2E compendium folder ancestry", async () => {
+    const advancedConcoction = featEntry("advanced-concoction", "Advanced Concoction", "class", ["archetype"], true, {
+      prerequisites: { value: [{ value: "Basic Concoction" }] },
+    });
+    advancedConcoction.folder = "alchemist-level-6";
+    setPack(
+      "pf2e.feats-srd",
+      [advancedConcoction],
+      [
+        { id: "alchemist-level-6", name: "Level 6", folder: "alchemist-family" },
+        { id: "alchemist-family", name: "Alchemist", folder: "archetype-root" },
+        { id: "archetype-root", name: "Archetype", folder: null },
+      ]
+    );
+
+    const options = await getOptionsForStep(
+      makeStep("archetype-feat", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 6,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        hasDedicationFeat: true,
+        projectedArchetypeFeats: [
+          {
+            ...projectedArchetype("Alchemist Dedication", "alchemist", true),
+            familyIds: ["dedication:alchemist", "pf2e.feats-srd:alchemist-family"],
+          },
+        ],
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Advanced Concoction"]);
+  });
+
+  it.each<PickItemSlotKind>([
+    "class-feat",
+    "archetype-feat",
+  ])("excludes the current class's official multiclass dedication shape in the %s lane", async (slotKind) => {
+    setPack("pf2e.feats-srd", [
+      featEntry("fighter-dedication", "Fighter Dedication", "class", ["archetype", "dedication", "multiclass"]),
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep(slotKind, {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 2,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "fighter",
+        projectedArchetypeFeats: [],
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Wizard Dedication"]);
+  });
+
+  it.each([
+    [
+      "Soulforger Dedication",
+      "This Strike uses the same multiple attack penalty as the missed Strike and doesn't count toward your multiple attack penalty.",
+    ],
+    [
+      "Tattooed Historian Dedication",
+      "For every two tattooed historian feats you have, you can invest one magical tattoo that does not count against the maximum number of items you can have invested at one time.",
+    ],
+    [
+      "Pactbinder Dedication",
+      "You increase your proficiency from trained to expert in Diplomacy and in one of the following: Arcana, Nature, Occultism, or Religion. Many feats from this archetype involve swearing specific pacts.",
+    ],
+    [
+      "Pistol Phenom Dedication",
+      "This otherwise serves as Pistol Twirl for the purpose of meeting prerequisites, although as normal, it doesn't count as another pistol phenom feat for the purpose of meeting Pistol Phenom Dedication's special entry and taking another archetype.",
+    ],
+    [
+      "Wellspring Mage Dedication",
+      "Special You can't select another dedication feat until you gain two other feats from the Wellspring Mage archetype.",
+    ],
+  ])("does not exempt %s for unrelated or standard lockout prose", (name, description) => {
+    expect(projectDedicationWithDescription(name, description).hasUnverifiedLockoutException).toBe(false);
+  });
+
+  it.each([
+    [
+      "Familiar Sage Dedication",
+      "You can't select another dedication feat until you've gained two other feats from the familiar master or Familiar Sage archetypes.",
+    ],
+    [
+      "Juggler Dedication",
+      "Special You cannot select another dedication feat until you have gained one other feat from the Juggler archetype.",
+    ],
+    [
+      "Magaambyan Attendant Dedication",
+      "Special You cannot select another dedication feat other than Halcyon Speaker Dedication until you have gained two other feats from the Magaambyan Attendant or Halcyon Speaker archetype.",
+    ],
+    [
+      "Scion of Domora Dedication",
+      "You can't select another dedication feat until you have gained at least two other feats from the scion of Domora or familiar master archetypes.",
+    ],
+    ["Spell Trickster Dedication", "The two feats you gain from taking the dedication don't count toward this total."],
+    [
+      "Spellshot Dedication",
+      "Special You can't select another dedication feat other than Beast Gunner Dedication until you've gained two other feats from the Spellshot or Beast Gunner archetypes.",
+    ],
+    [
+      "Jalmeri Heavenseeker Dedication",
+      "Special You can't select another dedication feat until you gain two other feats from the Jalmeri Heavenseeker or Student of Perfection archetypes.",
+    ],
+    [
+      "Razmiran Priest Dedication",
+      "You can take the Cleric Dedication feat without needing to meet its prerequisites and before you take two other feats from the Razmiran priest archetype.",
+    ],
+  ])("exempts %s only for sentence-scoped dedication-lockout prose", (name, description) => {
+    expect(projectDedicationWithDescription(name, description).hasUnverifiedLockoutException).toBe(true);
+  });
+
+  it("keeps dedications visible when the active dedication declares an unstructured lockout exception", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("archetype-feat", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 4,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "fighter",
+        hasDedicationFeat: true,
+        projectedArchetypeFeats: [
+          projectArchetypeFeat(
+            {
+              name: "Cavalier Dedication",
+              system: {
+                description: {
+                  value:
+                    "<p><strong>Special</strong> You can take a second dedication feat closely tied to that cause even if you haven't taken two additional Cavalier feats.</p>",
+                },
+                traits: { value: ["archetype", "dedication"] },
+              },
+            },
+            null
+          ),
+        ],
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Wizard Dedication"]);
+  });
+
+  it("does not treat an exception declared by a candidate dedication as a general lockout bypass", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("cavalier-dedication", "Cavalier Dedication", "class", ["archetype", "dedication"], true, {
+        description: {
+          value:
+            "<p><strong>Special</strong> You can take a second dedication feat closely tied to that cause even if you haven't taken two additional Cavalier feats.</p>",
+        },
+      }),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("archetype-feat", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 4,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        hasDedicationFeat: true,
+        projectedArchetypeFeats: [projectedArchetype("Acrobat Dedication", "acrobat", true)],
+      }
+    );
+
+    expect(options).toEqual([]);
+  });
+
+  it("still enforces a standard incomplete dedication when another projected dedication has an exception", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("alchemist-dedication", "Alchemist Dedication", "class", ["archetype", "dedication"]),
+    ]);
+
+    const options = await getOptionsForStep(
+      makeStep("archetype-feat", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 4,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        hasDedicationFeat: true,
+        projectedArchetypeFeats: [
+          projectArchetypeFeat(
+            {
+              name: "Cavalier Dedication",
+              system: {
+                description: {
+                  value:
+                    "<p><strong>Special</strong> You can take a second dedication feat closely tied to that cause even if you haven't taken two additional Cavalier feats.</p>",
+                },
+                traits: { value: ["archetype", "dedication"] },
+              },
+            },
+            null
+          ),
+          projectedArchetype("Wizard Dedication", "wizard", true),
+        ],
+      }
+    );
+
+    expect(options).toEqual([]);
+  });
+
+  it("blocks a duplicate dedication after its family lockout is complete", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("acrobat-dedication", "Acrobat Dedication", "class", ["archetype", "dedication"]),
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
+    ]);
+    const context: OptionContext = {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      hasDedicationFeat: true,
+      projectedArchetypeFeats: [
+        projectedArchetype("Acrobat Dedication", "acrobat", true),
+        projectedArchetype("Contortionist", "acrobat"),
+        projectedArchetype("Dodge Away", "acrobat"),
+      ],
+    };
+
+    const options = await getOptionsForStep(
+      makeStep("archetype-feat", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 4,
+      }),
+      context
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Wizard Dedication"]);
+  });
+
+  it("permits a distinct dedication in the same compendium family after the lockout is complete", async () => {
+    const alternateDedication = featEntry("alternate-acrobat-dedication", "Alternate Acrobat Dedication", "class", [
+      "archetype",
+      "dedication",
+    ]);
+    alternateDedication.folder = "acrobat-level-2";
+    setPack(
+      "pf2e.feats-srd",
+      [alternateDedication],
+      [
+        { id: "acrobat-level-2", name: "Level 2", folder: "acrobat-family" },
+        { id: "acrobat-family", name: "Acrobat", folder: "archetype-root" },
+        { id: "archetype-root", name: "Archetype", folder: null },
+      ]
+    );
+
+    const options = await getOptionsForStep(
+      makeStep("archetype-feat", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 4,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        hasDedicationFeat: true,
+        projectedArchetypeFeats: [
+          {
+            ...projectedArchetype("Acrobat Dedication", "acrobat", true),
+            familyIds: ["dedication:acrobat", "pf2e.feats-srd:acrobat-family"],
+          },
+          {
+            ...projectedArchetype("Contortionist", "acrobat"),
+            familyIds: ["dedication:acrobat", "pf2e.feats-srd:acrobat-family"],
+          },
+          {
+            ...projectedArchetype("Dodge Away", "acrobat"),
+            familyIds: ["dedication:acrobat", "pf2e.feats-srd:acrobat-family"],
+          },
+        ],
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Alternate Acrobat Dedication"]);
+  });
+
+  it("keeps a follow-up visible when its folder ancestry is not under PF2E's Archetype root", async () => {
+    const advancedConcoction = featEntry("advanced-concoction", "Advanced Concoction", "class", ["archetype"], true, {
+      prerequisites: { value: [{ value: "Basic Concoction" }] },
+    });
+    advancedConcoction.folder = "alchemist-level-6";
+    setPack(
+      "pf2e.feats-srd",
+      [advancedConcoction],
+      [
+        { id: "alchemist-level-6", name: "Level 6", folder: "alchemist-family" },
+        { id: "alchemist-family", name: "Alchemist", folder: "feat-root" },
+        { id: "feat-root", name: "Feats", folder: null },
+      ]
+    );
+
+    const options = await getOptionsForStep(
+      makeStep("archetype-feat", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 6,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        hasDedicationFeat: true,
+        projectedArchetypeFeats: [projectedArchetype("Acrobat Dedication", "acrobat", true)],
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Advanced Concoction"]);
+  });
+
+  it("matches an add-on follow-up to an official dedication through its explicit family alias", async () => {
+    testGlobals.game.settings.get = () => "addon.*";
+    const aerialist = featEntry("aerialist", "Aerialist", "class", ["archetype"], true, {
+      prerequisites: { value: [{ value: "Acrobat Dedication" }] },
+    });
+    aerialist.folder = "addon-acrobat-level-4";
+    setPack(
+      "addon.feats",
+      [aerialist],
+      [
+        { id: "addon-acrobat-level-4", name: "Level 4", folder: "addon-acrobat-family" },
+        { id: "addon-acrobat-family", name: "Acrobat", folder: "addon-archetype-root" },
+        { id: "addon-archetype-root", name: "Archetype", folder: null },
+      ]
+    );
+
+    const options = await getOptionsForStep(
+      makeStep("archetype-feat", {
+        itemType: "feat",
+        featTypes: ["class"],
+        maxLevel: 4,
+      }),
+      {
+        ...EMPTY_CONTEXT,
+        hasDedicationFeat: true,
+        projectedArchetypeFeats: [
+          {
+            ...projectedArchetype("Acrobat Dedication", "acrobat", true),
+            familyIds: ["dedication:acrobat", "pf2e.feats-srd:acrobat-family"],
+          },
+        ],
+      }
+    );
+
+    expect(options.map((option) => option.name)).toEqual(["Aerialist"]);
   });
 
   it("hides Free Archetype feats whose embedded choices have no guided follow-up", async () => {
@@ -488,6 +929,50 @@ describe("pack options dependency filtering", () => {
 
     expect(rankTwoContext.skillRanks?.medicine).toBe(2);
     expect(options.map((option) => option.name)).toEqual(["Ward Medic"]);
+  });
+
+  it("filters an archetype feat against skill ranks projected from the draft", async () => {
+    const draft = createEmptyDraft(4);
+    draft.selections["class-feat-level-2"] = selectionRef(
+      "class-feat-level-2",
+      "feat",
+      "acrobat-dedication",
+      "Acrobat Dedication"
+    );
+    const buildContext = () =>
+      buildOptionContext({
+        draft,
+        excludedFeatSlotId: "archetype-feat-level-4",
+        maximumFeatLevel: 4,
+        skillRanks: { acrobatics: 1 },
+        resolveDocument: async () => null,
+        listActorItems: () => [],
+        fetchSelectionDocument: async (selection) =>
+          selection.documentId === "acrobat-dedication"
+            ? featEntry("acrobat-dedication", "Acrobat Dedication", "class", ["archetype", "dedication"])
+            : null,
+        extractDocumentSlug: () => null,
+      });
+    setPack("pf2e.feats-srd", [
+      featEntry("expert-tumbler", "Expert Tumbler", "class", ["archetype"], true, {
+        level: { value: 4 },
+        prerequisites: {
+          value: [{ value: "Acrobat Dedication" }, { value: "expert in Acrobatics" }],
+        },
+      }),
+    ]);
+    const step = makeStep("archetype-feat", {
+      itemType: "feat",
+      featTypes: ["class"],
+      maxLevel: 4,
+    });
+
+    await expect(getOptionsForStep(step, await buildContext())).resolves.toEqual([]);
+
+    draft.skillIncreases["skill-increase-level-3"] = "acrobatics";
+    const options = await getOptionsForStep(step, await buildContext());
+
+    expect(options.map((option) => option.name)).toEqual(["Expert Tumbler"]);
   });
 
   it("enforces expert prerequisites in the production skill-feat picker", async () => {
@@ -1509,6 +1994,46 @@ function makeStep(slotKind: PickItemSlotKind, filters: PendingStep["filters"]): 
   return createPickItemStep(slotKind, 1, "Test Step", "Test description", filters ?? { itemType: "feat" });
 }
 
+function projectedArchetype(name: string, family: string, dedication = false) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return {
+    uuid: `Compendium.pf2e.feats-srd.Item.${slug}`,
+    name,
+    slug,
+    traits: dedication ? ["archetype", "dedication"] : ["archetype"],
+    familyIds: [`dedication:${family}`],
+    hasUnverifiedLockoutException: false,
+    bypassesExistingLockout: false,
+  };
+}
+
+function projectDedicationWithDescription(name: string, description: string) {
+  return projectArchetypeFeat(
+    {
+      name,
+      system: {
+        description: { value: description },
+        traits: { value: ["archetype", "dedication"] },
+      },
+    },
+    null
+  );
+}
+
+function selectionRef(slotId: string, itemType: string, documentId: string, name: string): SelectionRef {
+  return {
+    slotId,
+    packId: "pf2e.feats-srd",
+    documentId,
+    uuid: `Compendium.pf2e.feats-srd.Item.${documentId}`,
+    itemType,
+    featType: itemType === "feat" ? "class" : null,
+    name,
+    level: 2,
+    slug: documentId,
+  };
+}
+
 function productionFeatStep(slotId: string): PendingStep {
   const snapshot: ActorSnapshot = {
     actorId: "actor-1",
@@ -1542,9 +2067,10 @@ function productionFeatStep(slotId: string): PendingStep {
   return step;
 }
 
-function setPack(id: string, entries: any[]): void {
+function setPack(id: string, entries: any[], folders: any[] = []): void {
   testGlobals.game.packs.set(id, {
     metadata: { id },
+    folders: new Map(folders.map((folder) => [folder.id, folder])),
     getIndex: async () => entries,
   });
 }

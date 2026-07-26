@@ -36,10 +36,12 @@ export function matchesItemType(entry, expectedType) {
 }
 export function matchesCurrentClassMulticlassDedication(entry, predicate, context) {
     const classSlug = context.classSlug?.trim().toLowerCase();
-    if (!classSlug || !predicateIncludesString(predicate, "item:trait:multiclass")) {
+    const traits = extractEntryTraits(entry);
+    const isMulticlass = traits.includes("multiclass") || (predicate ? predicateIncludesString(predicate, "item:trait:multiclass") : false);
+    if (!classSlug || !isMulticlass) {
         return false;
     }
-    return extractEntryTraits(entry).includes(classSlug);
+    return traits.includes(classSlug) || extractEntrySlug(entry) === `${classSlug}-dedication`;
 }
 function entryUuidCandidates(entry, packId) {
     const candidates = [];

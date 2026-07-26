@@ -37,6 +37,7 @@ export interface PackEntrySystemLike {
 
 export interface PackIndexEntry {
   _id?: unknown;
+  folder?: unknown;
   name?: unknown;
   img?: unknown;
   type?: unknown;
@@ -76,12 +77,26 @@ type PackDocumentSystemLike = NonNullable<BuildStateDocument["system"]> &
   };
 
 export type GamePackLike = Omit<PackLike, "getDocument"> & {
+  folders?: {
+    get(id: string): PackFolderLike | null | undefined;
+  };
   getDocument(documentId: string): Promise<PackDocumentLike | null>;
   getIndex(options: { fields: string[] }): Promise<Iterable<PackIndexEntry> | null | undefined>;
 };
 
+interface PackFolderLike {
+  _id?: unknown;
+  id?: unknown;
+  name?: unknown;
+  folder?: unknown;
+  parent?: unknown;
+}
+
 type PackServiceGlobals = typeof globalThis & {
   game?: {
+    folders?: {
+      get(id: string): PackFolderLike | null | undefined;
+    };
     packs?: Map<string, GamePackLike>;
   };
 };
@@ -111,6 +126,7 @@ export async function getPackIndex(pack: GamePackLike, packId: string): Promise<
 
   const index = await pack.getIndex({
     fields: [
+      "folder",
       "img",
       "type",
       "system.description.value",
@@ -132,6 +148,53 @@ export async function getPackIndex(pack: GamePackLike, packId: string): Promise<
   const contents = Array.from(index ?? []);
   indexCache.set(packId, contents);
   return contents;
+}
+
+export function resolvePackFamilyId(packId: string, folderValue: unknown): string | null {
+  const pack = getGamePack(packId);
+  let folder = resolvePackFolder(pack, folderValue);
+  if (!folder) {
+    return null;
+  }
+
+  const visited = new Set<string>();
+  while (true) {
+    const folderId = packFolderId(folder);
+    if (!folderId || visited.has(folderId)) {
+      return null;
+    }
+    visited.add(folderId);
+
+    const parent = resolvePackFolder(pack, folder.parent ?? folder.folder);
+    if (!parent) {
+      return null;
+    }
+
+    if (normalizeFolderName(parent.name) === "archetype") {
+      return `${packId}:${folderId}`;
+    }
+
+    folder = parent;
+  }
+}
+
+function resolvePackFolder(pack: GamePackLike | null, value: unknown): PackFolderLike | null {
+  if (value && typeof value === "object") {
+    return value as PackFolderLike;
+  }
+
+  const folderId = typeof value === "string" ? value : null;
+  const globals = globalThis as PackServiceGlobals;
+  return folderId ? (pack?.folders?.get(folderId) ?? globals.game?.folders?.get(folderId) ?? null) : null;
+}
+
+function packFolderId(folder: PackFolderLike): string | null {
+  const value = folder.id ?? folder._id;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function normalizeFolderName(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
 export function getCachedTraitCatalog(cacheKey: string): Set<string> | undefined {

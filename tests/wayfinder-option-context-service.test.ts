@@ -32,6 +32,7 @@ describe("wayfinder option context service", () => {
       },
       listActorItems: () => [
         {
+          name: "Acrobat Dedication",
           type: "feat",
           system: {
             traits: {
@@ -47,7 +48,7 @@ describe("wayfinder option context service", () => {
       },
     });
 
-    expect(context).toEqual({
+    expect(context).toMatchObject({
       ancestrySlug: "human",
       ancestryTraits: ["humanoid", "human"],
       heritageTraits: ["elf"],
@@ -56,6 +57,14 @@ describe("wayfinder option context service", () => {
       deitySelected: true,
       sanctification: "holy",
       hasDedicationFeat: true,
+      projectedArchetypeFeats: [
+        {
+          name: "Acrobat Dedication",
+          slug: "acrobat-dedication",
+          traits: ["dedication"],
+          familyIds: ["dedication:acrobat"],
+        },
+      ],
     });
   });
 
@@ -360,6 +369,38 @@ describe("wayfinder option context service", () => {
     ).resolves.toBe(false);
   });
 
+  it("uses same-level plan order when projecting a dedication across class and Free Archetype lanes", async () => {
+    const draft = createEmptyDraft(2);
+    draft.selections["class-feat-level-2"] = selection("class-feat-level-2", "feat", "acrobat-dedication");
+    draft.selections["archetype-feat-level-2"] = selection("archetype-feat-level-2", "feat", "wizard-dedication");
+    const steps = [featStep("class-feat-level-2", "class-feat"), featStep("archetype-feat-level-2", "archetype-feat")];
+    const dependencies = {
+      draft,
+      steps,
+      maximumFeatLevel: 2,
+      listActorItems: () => [],
+      fetchSelectionDocument: async (selectionRef: SelectionRef) => ({
+        name: selectionRef.name,
+        type: "feat",
+        system: { traits: { value: ["archetype", "dedication"] } },
+      }),
+      extractDocumentSlug: () => null,
+    };
+
+    await expect(
+      hasDedicationFeatInContext({
+        ...dependencies,
+        excludedFeatSlotId: "class-feat-level-2",
+      })
+    ).resolves.toBe(false);
+    await expect(
+      hasDedicationFeatInContext({
+        ...dependencies,
+        excludedFeatSlotId: "archetype-feat-level-2",
+      })
+    ).resolves.toBe(true);
+  });
+
   it("resolves selection traits and slugs from fetched documents", async () => {
     const selectedHeritage = selection("heritage-level-1", "heritage", "wintertouched");
 
@@ -476,7 +517,7 @@ describe("wayfinder option context service", () => {
         },
         { resolveDocument: async () => null }
       )
-    ).resolves.toContain("archetype-family membership");
+    ).resolves.toContain("resolved dedication families");
   });
 
   it("describes unified-theory wizard bonus spells as available arcane choices", async () => {
@@ -553,6 +594,20 @@ function selection(slotId: string, itemType: string, documentId: string): Select
     featType: itemType === "feat" ? "class" : null,
     name: documentId,
     level: 2,
+  };
+}
+
+function featStep(slotId: string, slotKind: "class-feat" | "archetype-feat"): PendingStep {
+  return {
+    id: slotId,
+    level: 2,
+    kind: "pick-item",
+    slotKind,
+    title: slotId,
+    description: "",
+    required: true,
+    slotId,
+    filters: { itemType: "feat", featTypes: ["class"], maxLevel: 2 },
   };
 }
 

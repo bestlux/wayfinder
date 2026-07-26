@@ -62,15 +62,18 @@ export function matchesItemType(entry: PackIndexEntry, expectedType: string): bo
 
 export function matchesCurrentClassMulticlassDedication(
   entry: PackIndexEntry,
-  predicate: ChoicePredicate[],
+  predicate: ChoicePredicate[] | null,
   context: OptionContext
 ): boolean {
   const classSlug = context.classSlug?.trim().toLowerCase();
-  if (!classSlug || !predicateIncludesString(predicate, "item:trait:multiclass")) {
+  const traits = extractEntryTraits(entry);
+  const isMulticlass =
+    traits.includes("multiclass") || (predicate ? predicateIncludesString(predicate, "item:trait:multiclass") : false);
+  if (!classSlug || !isMulticlass) {
     return false;
   }
 
-  return extractEntryTraits(entry).includes(classSlug);
+  return traits.includes(classSlug) || extractEntrySlug(entry) === `${classSlug}-dedication`;
 }
 
 function entryUuidCandidates(entry: PackIndexEntry, packId: string): string[] {

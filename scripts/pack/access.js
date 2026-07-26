@@ -19,6 +19,7 @@ export async function getPackIndex(pack, packId) {
     }
     const index = await pack.getIndex({
         fields: [
+            "folder",
             "img",
             "type",
             "system.description.value",
@@ -39,6 +40,44 @@ export async function getPackIndex(pack, packId) {
     const contents = Array.from(index ?? []);
     indexCache.set(packId, contents);
     return contents;
+}
+export function resolvePackFamilyId(packId, folderValue) {
+    const pack = getGamePack(packId);
+    let folder = resolvePackFolder(pack, folderValue);
+    if (!folder) {
+        return null;
+    }
+    const visited = new Set();
+    while (true) {
+        const folderId = packFolderId(folder);
+        if (!folderId || visited.has(folderId)) {
+            return null;
+        }
+        visited.add(folderId);
+        const parent = resolvePackFolder(pack, folder.parent ?? folder.folder);
+        if (!parent) {
+            return null;
+        }
+        if (normalizeFolderName(parent.name) === "archetype") {
+            return `${packId}:${folderId}`;
+        }
+        folder = parent;
+    }
+}
+function resolvePackFolder(pack, value) {
+    if (value && typeof value === "object") {
+        return value;
+    }
+    const folderId = typeof value === "string" ? value : null;
+    const globals = globalThis;
+    return folderId ? (pack?.folders?.get(folderId) ?? globals.game?.folders?.get(folderId) ?? null) : null;
+}
+function packFolderId(folder) {
+    const value = folder.id ?? folder._id;
+    return typeof value === "string" && value.length > 0 ? value : null;
+}
+function normalizeFolderName(value) {
+    return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 export function getCachedTraitCatalog(cacheKey) {
     return traitCatalogCache.get(cacheKey);

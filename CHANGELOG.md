@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 - 2026-07-26
+
+- Multi-level drafts now carry earlier skill training into later skill increases, so planned ranks stay accurate before anything is applied.
+- Bonus-language choices now use PF2E's configured campaign pool, honor unavailable-language settings, and clearly mark ancestry-external options that need GM approval.
+- Spell choices can explicitly include uncommon, rare, and unique options when the rules grant access or the GM approves them, without relaxing tradition, rank, cantrip, curriculum, or source restrictions.
+- Existing characters can map their observable foundations, native feat slots, and stored level boosts into a non-mutating level-by-level history; ambiguous historical choices remain visibly marked for review.
+- Supplemental compendium allowlists now accept `module-id.*` and global `*` wildcards while preserving existing item, rarity, level, and context filtering.
+- Wayfinder's Foundry settings category now uses the PF2e prefix so it sorts with other PF2e modules.
+
 ## 0.5.1 - 2026-07-22
 
 - Scoped Wayfinder's navigation button styling to its own character-builder window so it no longer overrides Calandaria controls that use the same class name.

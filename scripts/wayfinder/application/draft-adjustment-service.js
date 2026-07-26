@@ -176,13 +176,14 @@ export function adjustDraftTargetLevel(draft, currentLevel, delta) {
     draft.targetLevel = nextTargetLevel;
     return true;
 }
-export function syncLanguageChoiceSelections(state, effectiveBuildState) {
+export function syncLanguageChoiceSelections(state, effectiveBuildState, steps) {
     const languageState = effectiveBuildState.languages;
     const current = state.draft.languageChoices[SLOT_IDS.languageChoice] ?? [];
     if (current.length === 0) {
         return false;
     }
-    const allowed = new Set(languageState?.selectableLanguages ?? []);
+    const languageStep = steps.find((step) => step.kind === "language-choice");
+    const allowed = new Set(languageStep?.languageChoice.options.map((option) => option.value) ?? languageState?.selectableLanguages ?? []);
     const maxSelections = languageState?.maxSelections ?? 0;
     const next = current.filter((slug) => allowed.has(slug)).slice(0, maxSelections);
     if (next.length === current.length && next.every((slug, index) => slug === current[index])) {

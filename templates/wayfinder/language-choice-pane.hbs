@@ -53,8 +53,11 @@
             data-step-id="{{@root.activePane.stepId}}"
             data-value="{{value}}"
           >
-            <span class="class-choice-copy">
+            <span class="skill-training-choice-copy class-choice-copy">
               <span class="skill-training-choice-name">{{label}}</span>
+              {{#if requiresGmApproval}}
+                <span class="context-note">GM approval required</span>
+              {{/if}}
             </span>
             <span class="skill-training-choice-action">{{#if selected}}Chosen{{else}}Choose{{/if}}</span>
           </button>

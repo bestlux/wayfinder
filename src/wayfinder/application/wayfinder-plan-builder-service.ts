@@ -340,7 +340,7 @@ function localizeLanguageLabel(slug: string): string {
     .join(" ");
 }
 
-function listAvailableLanguageSlugs(): string[] {
+function listAvailableLanguageSlugs(): string[] | undefined {
   const globals = globalThis as typeof globalThis & {
     CONFIG?: {
       PF2E?: {
@@ -359,8 +359,13 @@ function listAvailableLanguageSlugs(): string[] {
       };
     };
   };
+  const configuredLanguages = globals.CONFIG?.PF2E?.languages;
+  if (!configuredLanguages) {
+    return undefined;
+  }
+
   const unavailable = normalizeLanguageSet(globals.game?.pf2e?.settings?.campaign?.languages?.unavailable);
-  return Object.keys(globals.CONFIG?.PF2E?.languages ?? {})
+  return Object.keys(configuredLanguages)
     .map((slug) => slug.trim().toLowerCase())
     .filter((slug) => slug.length > 0 && !unavailable.has(slug));
 }

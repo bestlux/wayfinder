@@ -36,7 +36,7 @@ export async function buildLanguageChoiceSteps(params: BuildLanguageChoiceStepsP
   if (!languageState || languageState.maxSelections <= 0) {
     return [];
   }
-  const selectableLanguages = resolveSelectableLanguages(languageState, params.availableLanguageSlugs ?? []);
+  const selectableLanguages = resolveSelectableLanguages(languageState, params.availableLanguageSlugs);
   if (selectableLanguages.length === 0) {
     return [];
   }
@@ -57,32 +57,50 @@ export async function buildLanguageChoiceSteps(params: BuildLanguageChoiceStepsP
         sourceName: ancestryName,
         grantedLanguages: languageState.grantedLanguages,
         count: languageState.maxSelections,
-        options: selectableLanguages.map((slug) => ({
-          value: slug,
-          label: params.localizeLanguage(slug),
+        options: selectableLanguages.map((option) => ({
+          value: option.slug,
+          label: params.localizeLanguage(option.slug),
+          requiresGmApproval: option.requiresGmApproval,
         })),
       },
       {
         title: "Bonus languages",
-        description: buildLanguageChoiceDescription(ancestryName, languageState.maxSelections),
+        description: buildLanguageChoiceDescription(
+          ancestryName,
+          languageState.maxSelections,
+          selectableLanguages.some((option) => option.requiresGmApproval)
+        ),
       }
     ),
   ];
 }
 
-function buildLanguageChoiceDescription(sourceName: string, count: number): string {
+function buildLanguageChoiceDescription(sourceName: string, count: number, hasGmApprovalOptions: boolean): string {
   const label = count === 1 ? "1 additional language" : `${count} additional languages`;
-  return `Choose ${label} from ${formatSlug(sourceName).toLowerCase()} and Intelligence-based language options.`;
+  const base = `Choose ${label} from ${formatSlug(sourceName).toLowerCase()} and Intelligence-based language options.`;
+  return hasGmApprovalOptions
+    ? `${base} Options beyond ${formatSlug(sourceName)}'s ancestry list require GM approval.`
+    : base;
 }
 
 function resolveSelectableLanguages(
   languageState: NonNullable<EffectiveBuildState["languages"]>,
-  availableLanguageSlugs: string[]
-): string[] {
+  availableLanguageSlugs: string[] | undefined
+): Array<{ slug: string; requiresGmApproval: boolean }> {
+  const ancestryLanguages = normalizeLanguageSlugs(languageState.selectableLanguages);
+  const ancestryLanguageSet = new Set(ancestryLanguages);
+  const hasAncestryList = ancestryLanguages.length > 0;
   const source =
-    languageState.selectableLanguages.length > 0 ? languageState.selectableLanguages : availableLanguageSlugs;
+    availableLanguageSlugs === undefined ? ancestryLanguages : normalizeLanguageSlugs(availableLanguageSlugs);
   const granted = new Set(languageState.grantedLanguages);
-  return Array.from(new Set(source.map((slug) => slug.trim().toLowerCase()).filter(Boolean))).filter(
-    (slug) => !granted.has(slug)
-  );
+  return source
+    .filter((slug) => !granted.has(slug))
+    .map((slug) => ({
+      slug,
+      requiresGmApproval: hasAncestryList && !ancestryLanguageSet.has(slug),
+    }));
+}
+
+function normalizeLanguageSlugs(slugs: string[]): string[] {
+  return Array.from(new Set(slugs.map((slug) => slug.trim().toLowerCase()).filter(Boolean)));
 }

@@ -213,9 +213,74 @@ describe("wayfinder draft adjustment service", () => {
       },
     } satisfies EffectiveBuildState;
 
-    expect(syncLanguageChoiceSelections(state, buildState)).toBe(true);
+    expect(syncLanguageChoiceSelections(state, buildState, [])).toBe(true);
     expect(draft.languageChoices["language-choice-level-1"]).toEqual(["draconic"]);
     expect(state.recentlyInvalidatedStepIds.has("language-choice-level-1")).toBe(true);
+  });
+
+  it("keeps a configured GM-approved language exposed by the current plan", () => {
+    const draft = createEmptyDraft(1);
+    draft.languageChoices["language-choice-level-1"] = ["goblin"];
+    const state = adjustmentState(draft);
+    const buildState = {
+      ancestry: null,
+      heritage: null,
+      background: null,
+      class: null,
+      deity: null,
+      languages: {
+        sourceLanguages: [],
+        grantedLanguages: ["common"],
+        selectableLanguages: ["draconic"],
+        maxSelections: 1,
+      },
+      levelBoosts: {
+        1: [],
+        5: [],
+        10: [],
+        15: [],
+        20: [],
+      },
+      allowedBoosts: {
+        1: 4,
+        5: 0,
+        10: 0,
+        15: 0,
+        20: 0,
+      },
+      projectedAbilities: {
+        str: { key: "str", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        dex: { key: "dex", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        con: { key: "con", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        int: { key: "int", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        wis: { key: "wis", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        cha: { key: "cha", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+      },
+    } satisfies EffectiveBuildState;
+
+    expect(
+      syncLanguageChoiceSelections(state, buildState, [
+        {
+          id: "language-choice-level-1",
+          level: 1,
+          kind: "language-choice",
+          slotKind: "language-choice",
+          title: "Bonus languages",
+          description: "",
+          required: true,
+          slotId: "language-choice-level-1",
+          languageChoice: {
+            slotId: "language-choice-level-1",
+            sourceItemType: "ancestry",
+            sourceName: "Human",
+            grantedLanguages: ["common"],
+            count: 1,
+            options: [{ value: "goblin", label: "Goblin", requiresGmApproval: true }],
+          },
+        },
+      ])
+    ).toBe(false);
+    expect(draft.languageChoices["language-choice-level-1"]).toEqual(["goblin"]);
   });
 
   it("trims drafted class training picks when the projected build lowers the allowance", () => {

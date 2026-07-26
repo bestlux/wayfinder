@@ -248,7 +248,8 @@ export function adjustDraftTargetLevel(draft: DraftState, currentLevel: number, 
 
 export function syncLanguageChoiceSelections(
   state: DraftAdjustmentState,
-  effectiveBuildState: EffectiveBuildState
+  effectiveBuildState: EffectiveBuildState,
+  steps: PendingStep[]
 ): boolean {
   const languageState = effectiveBuildState.languages;
   const current = state.draft.languageChoices[SLOT_IDS.languageChoice] ?? [];
@@ -256,7 +257,10 @@ export function syncLanguageChoiceSelections(
     return false;
   }
 
-  const allowed = new Set(languageState?.selectableLanguages ?? []);
+  const languageStep = steps.find((step) => step.kind === "language-choice");
+  const allowed = new Set(
+    languageStep?.languageChoice.options.map((option) => option.value) ?? languageState?.selectableLanguages ?? []
+  );
   const maxSelections = languageState?.maxSelections ?? 0;
   const next = current.filter((slug) => allowed.has(slug)).slice(0, maxSelections);
   if (next.length === current.length && next.every((slug, index) => slug === current[index])) {

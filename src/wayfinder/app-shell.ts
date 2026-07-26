@@ -816,7 +816,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const effectiveBuildState = await getEffectiveBuildState(this.actor, this.#requireDraft());
     const plan = await this.#buildPlan();
     const trainingChanged = syncSkillTrainingSelections(this.#draftAdjustmentState(), plan.steps);
-    const languageChanged = syncLanguageChoiceSelections(this.#draftAdjustmentState(), effectiveBuildState);
+    const languageChanged = syncLanguageChoiceSelections(this.#draftAdjustmentState(), effectiveBuildState, plan.steps);
 
     if (trainingChanged && languageChanged) {
       this.#statusNote =

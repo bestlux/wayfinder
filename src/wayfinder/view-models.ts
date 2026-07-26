@@ -364,6 +364,7 @@ export interface LanguageChoiceStepPane {
   options: Array<{
     value: string;
     label: string;
+    requiresGmApproval: boolean;
     selected: boolean;
   }>;
 }

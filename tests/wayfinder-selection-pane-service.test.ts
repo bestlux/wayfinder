@@ -375,8 +375,8 @@ describe("wayfinder selection pane service", () => {
         grantedLanguages: ["Common"],
         count: 2,
         options: [
-          { value: "draconic", label: "Draconic" },
-          { value: "dwarven", label: "Dwarven" },
+          { value: "draconic", label: "Draconic", requiresGmApproval: false },
+          { value: "dwarven", label: "Dwarven", requiresGmApproval: true },
         ],
       },
     };
@@ -416,8 +416,8 @@ describe("wayfinder selection pane service", () => {
     expect(pane.grantedLanguages).toEqual(["Common"]);
     expect(pane.requiredCount).toBe(2);
     expect(pane.options).toEqual([
-      { value: "draconic", label: "Draconic", selected: true },
-      { value: "dwarven", label: "Dwarven", selected: false },
+      { value: "draconic", label: "Draconic", selected: true, requiresGmApproval: false },
+      { value: "dwarven", label: "Dwarven", selected: false, requiresGmApproval: true },
     ]);
   });
 

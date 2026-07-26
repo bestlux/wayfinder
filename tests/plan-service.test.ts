@@ -199,8 +199,8 @@ describe("wayfinder plan service", () => {
           grantedLanguages: ["common"],
           count: 2,
           options: [
-            { value: "draconic", label: "Draconic" },
-            { value: "dwarven", label: "Dwarven" },
+            { value: "draconic", label: "Draconic", requiresGmApproval: false },
+            { value: "dwarven", label: "Dwarven", requiresGmApproval: false },
           ],
         },
         {

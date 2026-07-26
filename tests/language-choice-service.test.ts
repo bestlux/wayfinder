@@ -110,8 +110,62 @@ describe("language-choice service", () => {
       languageChoice: {
         count: 2,
         options: [
-          { value: "draconic", label: "Draconic" },
-          { value: "dwarven", label: "Dwarven" },
+          { value: "draconic", label: "Draconic", requiresGmApproval: false },
+          { value: "dwarven", label: "Dwarven", requiresGmApproval: false },
+        ],
+      },
+    });
+  });
+
+  it("adds configured campaign languages beyond an ancestry list and marks the GM boundary", async () => {
+    const steps = await buildLanguageChoiceSteps({
+      snapshot: {
+        actorId: "actor-1",
+        level: 1,
+        isBlank: true,
+        freeArchetypeEnabled: false,
+        singletonSlots: {
+          ancestry: true,
+          heritage: false,
+          background: true,
+          class: true,
+          deity: false,
+        },
+        featCounts: {
+          ancestry: 0,
+          class: 0,
+          archetype: 0,
+          skill: 0,
+          general: 0,
+        },
+        fulfilledStepIds: [],
+        sourceIds: [],
+        namesByType: {},
+        skillRanks: {},
+      },
+      targetLevel: 1,
+      draft: createEmptyDraft(1),
+      effectiveBuildState: buildState({
+        languages: {
+          sourceLanguages: [],
+          grantedLanguages: ["common"],
+          selectableLanguages: ["draconic", "dwarven"],
+          maxSelections: 2,
+        },
+      }),
+      availableLanguageSlugs: ["common", "draconic", "dwarven", "goblin"],
+      readExistingLanguageSelections: () => [],
+      localizeLanguage: (slug) => slug[0].toUpperCase() + slug.slice(1),
+    });
+
+    expect(steps[0]).toMatchObject({
+      description:
+        "Choose 2 additional languages from human and Intelligence-based language options. Options beyond Human's ancestry list require GM approval.",
+      languageChoice: {
+        options: [
+          { value: "draconic", label: "Draconic", requiresGmApproval: false },
+          { value: "dwarven", label: "Dwarven", requiresGmApproval: false },
+          { value: "goblin", label: "Goblin", requiresGmApproval: true },
         ],
       },
     });

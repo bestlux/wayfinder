@@ -99,6 +99,8 @@ describe("wayfinder golden path integration", () => {
           draconic: "",
           dwarven: "",
           gnomish: "",
+          goblin: "",
+          wildsong: "",
         },
       },
     };
@@ -110,6 +112,15 @@ describe("wayfinder golden path integration", () => {
         value: [],
       };
       setGamePacks(packs);
+      (globalThis as unknown as { game: Record<string, unknown> }).game.pf2e = {
+        settings: {
+          campaign: {
+            languages: {
+              unavailable: new Set(["wildsong"]),
+            },
+          },
+        },
+      };
 
       const { actor } = buildActorHarness();
       primeActorSystem(actor);
@@ -148,7 +159,12 @@ describe("wayfinder golden path integration", () => {
         sourceName: "Human",
         grantedLanguages: ["common"],
         count: 2,
-        options: [{ value: "draconic" }, { value: "dwarven" }, { value: "gnomish" }],
+        options: [
+          { value: "draconic", requiresGmApproval: false },
+          { value: "dwarven", requiresGmApproval: false },
+          { value: "gnomish", requiresGmApproval: false },
+          { value: "goblin", requiresGmApproval: false },
+        ],
       });
     } finally {
       testGlobals.CONFIG = originalConfig;

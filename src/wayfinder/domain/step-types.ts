@@ -195,6 +195,7 @@ export interface LanguageChoiceMeta {
   options: Array<{
     value: string;
     label: string;
+    requiresGmApproval: boolean;
   }>;
 }
 

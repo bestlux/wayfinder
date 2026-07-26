@@ -865,6 +865,10 @@ export const smokeCases = [
       "class-branch-patron-level-1",
       "spell-choice-witch-cantrips-level-1",
       "spell-choice-witch-rank-1-level-1",
+      "spell-choice-witch-familiar-level-2",
+      "spell-choice-witch-familiar-level-3",
+      "spell-choice-witch-familiar-level-4",
+      "spell-choice-witch-familiar-level-5",
     ],
     preferredSelections: {
       "class-branch-patron-level-1": ["Spinner of Threads", "Faith's Flamekeeper"],

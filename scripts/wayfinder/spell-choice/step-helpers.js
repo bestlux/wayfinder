@@ -25,6 +25,7 @@ export function makeSpellChoiceStep(args) {
         additionalAllowedSpellNames: args.additionalAllowedSpellNames,
         ...(args.additionalAllowedSpellUuids ? { additionalAllowedSpellUuids: args.additionalAllowedSpellUuids } : {}),
         restrictToCommon: args.restrictToCommon,
+        ...(args.reuseExistingEntryOnly ? { reuseExistingEntryOnly: true } : {}),
     });
 }
 export function hasSatisfiedExistingSelections(step, draft, readExistingSpellChoiceSelections) {

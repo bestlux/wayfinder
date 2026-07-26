@@ -21,6 +21,7 @@ interface CreateSpellChoiceStepArgs {
   additionalAllowedSpellNames: string[];
   additionalAllowedSpellUuids?: string[];
   restrictToCommon: boolean;
+  reuseExistingEntryOnly?: boolean;
   destination: SpellChoiceMeta["destination"];
 }
 
@@ -56,6 +57,7 @@ export function makeSpellChoiceStep(args: CreateSpellChoiceStepArgs): PendingSte
     additionalAllowedSpellNames: args.additionalAllowedSpellNames,
     ...(args.additionalAllowedSpellUuids ? { additionalAllowedSpellUuids: args.additionalAllowedSpellUuids } : {}),
     restrictToCommon: args.restrictToCommon,
+    ...(args.reuseExistingEntryOnly ? { reuseExistingEntryOnly: true } : {}),
   });
 }
 

@@ -2,6 +2,7 @@ import { buildMagusSpellChoiceSteps } from "../spell-choice/magus-step-builder.j
 import { buildPreparedSpellChoiceSteps } from "../spell-choice/prepared-step-builder.js";
 import { buildSpontaneousRepertoireSpellChoiceSteps } from "../spell-choice/spontaneous-step-builder.js";
 import { findClassFeatureDocumentByOtherTag, parseTraditionFromClassFeatureDocument, } from "../spell-choice/tradition-utils.js";
+import { buildWitchSpellChoiceSteps } from "../spell-choice/witch-step-builder.js";
 export const animistContributor = preparedContributor({
     slug: "animist",
     classLabel: "Animist",
@@ -65,16 +66,12 @@ export const witchContributor = {
     async buildSpellChoiceSteps(args) {
         const patron = findClassFeatureDocumentByOtherTag(args.effectiveClassFeatureDocuments ?? [], "witch-patron");
         const tradition = parseTraditionFromClassFeatureDocument(patron, "occult");
-        return buildPreparedSpellChoiceSteps({
+        return buildWitchSpellChoiceSteps({
             draft: args.draft,
+            currentLevel: args.currentLevel,
             effectiveClassDocument: args.effectiveClassDocument,
-            classSlug: "witch",
-            classLabel: "Witch",
-            spellcastingFeatureName: "Witch Spellcasting",
+            targetLevel: args.targetLevel,
             tradition,
-            ability: "int",
-            cantripCount: 5,
-            rankOneCount: 2,
             readExistingSpellChoiceSelections: args.readExistingSpellChoiceSelections,
         });
     },

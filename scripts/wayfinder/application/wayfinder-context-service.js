@@ -35,6 +35,7 @@ export async function buildWayfinderContext(args) {
         completedCount: stepRows.filter((step) => step.complete).length,
         activeStepIndex: activeStepIndex + 1,
         statusNote: args.statusNote,
+        planningNote: args.planningNote ?? null,
         steps: stepRows,
         activePane: args.activePane,
         canGoPrevious: activeStepIndex > 0,

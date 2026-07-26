@@ -4,7 +4,7 @@ import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helper
 import type { SpellTradition } from "./tradition-utils.js";
 import type { ReadExistingSpellChoiceSelections, SpellChoiceClassDocument } from "./types.js";
 
-interface BuildPreparedSpellChoiceStepsParams {
+export interface BuildPreparedSpellChoiceStepsParams {
   draft: Parameters<typeof appendPendingSpellChoiceStep>[2];
   effectiveClassDocument: SpellChoiceClassDocument;
   classSlug: string;
@@ -19,7 +19,7 @@ interface BuildPreparedSpellChoiceStepsParams {
 
 export function buildPreparedSpellChoiceSteps(params: BuildPreparedSpellChoiceStepsParams): PendingStep[] {
   const source = findClassFeatureSource(params.effectiveClassDocument, params.spellcastingFeatureName);
-  const destination = preparedDestination(params);
+  const destination = preparedSpellChoiceDestination(params);
   const steps: PendingStep[] = [];
   const addStep = (step: PendingStep): void =>
     appendPendingSpellChoiceStep(steps, step, params.draft, params.readExistingSpellChoiceSelections);
@@ -67,7 +67,9 @@ export function buildPreparedSpellChoiceSteps(params: BuildPreparedSpellChoiceSt
   return steps;
 }
 
-function preparedDestination(params: BuildPreparedSpellChoiceStepsParams): SpellChoiceMeta["destination"] {
+export function preparedSpellChoiceDestination(
+  params: Pick<BuildPreparedSpellChoiceStepsParams, "ability" | "classSlug" | "tradition">
+): SpellChoiceMeta["destination"] {
   return {
     type: "prepared",
     key: `${params.classSlug}-${params.tradition}-prepared`,

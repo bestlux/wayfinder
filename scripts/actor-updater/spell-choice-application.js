@@ -2,6 +2,7 @@ import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
 import { cloneData } from "../shared/cloning.js";
 import { sourceIdOf } from "../shared/source-id.js";
+import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { createEmbeddedSource, stampSelectionFlags } from "./selection-application.js";
 import { ensureSpellcastingEntry, spellLocationId } from "./spellcasting-entry-support.js";
 export async function applySpellChoiceDraft(actor, draft, steps) {
@@ -11,13 +12,16 @@ export async function applySpellChoiceDraft(actor, draft, steps) {
         if (step?.kind !== "spell-choice" || !step.spellChoice || selections.length === 0) {
             continue;
         }
-        const entry = await ensureSpellcastingEntry(actor, step, draft);
-        if (!entry?.id) {
+        const entry = step.spellChoice.reuseExistingEntryOnly
+            ? findSpellcastingEntryForChoice(actor, step.spellChoice)
+            : await ensureSpellcastingEntry(actor, step, draft);
+        const entryId = typeof entry?.id === "string" ? entry.id : null;
+        if (!entryId) {
             continue;
         }
         await reconcileSpellChoiceSlot(actor, slotId, selections);
         for (const selection of selections) {
-            if (hasSpellSourceInEntry(actor, selection.uuid, entry.id)) {
+            if (hasSpellSourceInEntry(actor, selection.uuid, entryId)) {
                 continue;
             }
             const source = await createEmbeddedSource(selection);
@@ -28,18 +32,18 @@ export async function applySpellChoiceDraft(actor, draft, steps) {
             source.system ??= {};
             source.system.location ??= {};
             if (typeof source.system.location === "object" && source.system.location !== null) {
-                source.system.location.value = entry.id;
+                source.system.location.value = entryId;
             }
             else {
-                source.system.location = { value: entry.id };
+                source.system.location = { value: entryId };
             }
             const created = typeof actor.createEmbeddedDocuments === "function"
                 ? await actor.createEmbeddedDocuments("Item", [source])
                 : [];
             await stampSelectionFlags(actor, created, selection);
         }
-        if (step.spellChoice.destination.type === "prepared") {
-            await syncPreparedSpellChoiceSelections(actor, entry.id, step.spellChoice, slotId, selections);
+        if (step.spellChoice.destination.type === "prepared" && !step.spellChoice.reuseExistingEntryOnly) {
+            await syncPreparedSpellChoiceSelections(actor, entryId, step.spellChoice, slotId, selections);
         }
     }
 }

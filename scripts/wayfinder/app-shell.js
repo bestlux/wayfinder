@@ -28,6 +28,7 @@ import { emptyPickerFilterState, togglePickerFilterValue } from "./panes/picker-
 import { getWayfinderStepStatus, isWayfinderStepComplete, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
 import { canGrantRestrictedSpellRarityAccess, grantsRestrictedSpellRarityAccess, } from "./spell-choice/rarity-access.js";
+import { buildHistoricalSpellChoicePlanningNote } from "./spell-choice-service.js";
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
     static DEFAULT_OPTIONS = {
         id: MODULE_ID,
@@ -100,6 +101,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             getEffectiveSingletonDocument(this.actor, draft, "class"),
             getEffectiveSingletonDocument(this.actor, draft, "deity"),
         ]);
+        const planningNote = buildHistoricalSpellChoicePlanningNote({
+            currentLevel: snapshot.level,
+            effectiveClassDocument: effectiveClass,
+            extractSlug: extractDocumentSlug,
+        });
         return buildWayfinderContext({
             actorName: this.actor.name,
             currentLevel: snapshot.level,
@@ -108,6 +114,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             activeStep,
             activePane,
             statusNote: this.#statusNote,
+            planningNote,
             recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
             summaryDocuments: {
                 ancestry: effectiveAncestry,

@@ -2,7 +2,7 @@ import { findClassFeatureSource } from "./source-utils.js";
 import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helpers.js";
 export function buildPreparedSpellChoiceSteps(params) {
     const source = findClassFeatureSource(params.effectiveClassDocument, params.spellcastingFeatureName);
-    const destination = preparedDestination(params);
+    const destination = preparedSpellChoiceDestination(params);
     const steps = [];
     const addStep = (step) => appendPendingSpellChoiceStep(steps, step, params.draft, params.readExistingSpellChoiceSelections);
     addStep(makeSpellChoiceStep({
@@ -41,7 +41,7 @@ export function buildPreparedSpellChoiceSteps(params) {
     }));
     return steps;
 }
-function preparedDestination(params) {
+export function preparedSpellChoiceDestination(params) {
     return {
         type: "prepared",
         key: `${params.classSlug}-${params.tradition}-prepared`,

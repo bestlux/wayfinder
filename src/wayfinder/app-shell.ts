@@ -76,6 +76,7 @@ import {
   canGrantRestrictedSpellRarityAccess,
   grantsRestrictedSpellRarityAccess,
 } from "./spell-choice/rarity-access.js";
+import { buildHistoricalSpellChoicePlanningNote } from "./spell-choice-service.js";
 import type { ActivePane, ManualStepPane } from "./view-models.js";
 
 interface Pf2eConfigLike {
@@ -215,6 +216,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         getEffectiveSingletonDocument(this.actor, draft, "class"),
         getEffectiveSingletonDocument(this.actor, draft, "deity"),
       ]);
+    const planningNote = buildHistoricalSpellChoicePlanningNote({
+      currentLevel: snapshot.level,
+      effectiveClassDocument: effectiveClass,
+      extractSlug: extractDocumentSlug,
+    });
     return buildWayfinderContext({
       actorName: this.actor.name,
       currentLevel: snapshot.level,
@@ -223,6 +229,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       activeStep,
       activePane,
       statusNote: this.#statusNote,
+      planningNote,
       recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
       summaryDocuments: {
         ancestry: effectiveAncestry,

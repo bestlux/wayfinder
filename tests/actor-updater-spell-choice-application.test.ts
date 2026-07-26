@@ -291,6 +291,93 @@ describe("actor-updater spell choice application", () => {
     ]);
   });
 
+  it("adds witch familiar spells to the existing entry without changing prepared slots", async () => {
+    const prepared = [
+      { id: "prepared-cantrip", expended: false },
+      { id: null, expended: false },
+    ];
+    const entry = {
+      id: "witch-entry",
+      type: "spellcastingEntry",
+      name: "Occult Prepared Spells",
+      flags: {
+        "wayfinder-pf2e": {
+          destinationKey: "witch-occult-prepared",
+        },
+      },
+      system: {
+        ability: { value: "int" },
+        prepared: { value: "prepared", flexible: false },
+        tradition: { value: "occult" },
+        slots: {
+          slot1: {
+            max: 2,
+            value: 2,
+            prepared,
+          },
+        },
+      },
+    };
+    const { actor, createdItems } = buildActorHarness({ level: 2, items: [entry] });
+    setGamePacks({
+      "pf2e.spells-srd": {
+        fear: {
+          name: "Fear",
+          type: "spell",
+          system: {
+            level: { value: 1 },
+            traits: { traditions: ["occult"], value: [] },
+          },
+        },
+        soothe: {
+          name: "Soothe",
+          type: "spell",
+          system: {
+            level: { value: 1 },
+            traits: { traditions: ["occult"], value: [] },
+          },
+        },
+      },
+    });
+
+    const slotId = "spell-choice-witch-familiar-level-2";
+    const draft = createEmptyDraft(2);
+    draft.spellChoices[slotId] = [
+      selection(slotId, "pf2e.spells-srd", "fear", "spell", "Fear"),
+      selection(slotId, "pf2e.spells-srd", "soothe", "spell", "Soothe"),
+    ];
+    const spellChoice: SpellChoiceMeta = {
+      ...clericSpellChoice(slotId, 2, 1, 1, false),
+      sourceName: "Witch Spellcasting",
+      classSlug: "witch",
+      reuseExistingEntryOnly: true,
+      destination: {
+        type: "spellbook",
+        key: "witch-occult-prepared",
+        label: "Witch familiar spells",
+        entryName: "Occult Prepared Spells",
+        tradition: "occult",
+        ability: "int",
+        prepared: "prepared",
+      },
+    };
+
+    await applySpellChoiceDraft(actor as any, draft, [spellChoiceStep(slotId, spellChoice)]);
+
+    expect(createdItems.filter((item) => item.type === "spellcastingEntry")).toEqual([]);
+    expect(createdItems.filter((item) => item.type === "spell")).toHaveLength(2);
+    expect(createdItems.filter((item) => item.type === "spell").map((item) => item.system?.location)).toEqual([
+      { value: "witch-entry" },
+      { value: "witch-entry" },
+    ]);
+    expect(entry.system.slots.slot1.prepared).toEqual(prepared);
+    expect(
+      actor.updateEmbeddedDocuments.mock.calls
+        .flatMap(([, updates]) => updates)
+        .some((update) => Object.keys(update).some((key) => key.startsWith("system.slots")))
+    ).toBe(false);
+  });
+
   it("creates limited animist prepared slots without apparition capacity", async () => {
     const { actor } = buildActorHarness();
 

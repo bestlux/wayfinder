@@ -9,6 +9,7 @@ import type {
 } from "../shared/actor-model.js";
 import { cloneData } from "../shared/cloning.js";
 import { sourceIdOf } from "../shared/source-id.js";
+import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import type { DraftState, PendingStep, SelectionRef, SpellChoiceMeta } from "../types.js";
 import { createEmbeddedSource, stampSelectionFlags } from "./selection-application.js";
 import { ensureSpellcastingEntry, spellLocationId } from "./spellcasting-entry-support.js";
@@ -22,15 +23,18 @@ export async function applySpellChoiceDraft(actor: ActorLike, draft: DraftState,
       continue;
     }
 
-    const entry = await ensureSpellcastingEntry(actor, step, draft);
-    if (!entry?.id) {
+    const entry = step.spellChoice.reuseExistingEntryOnly
+      ? findSpellcastingEntryForChoice(actor, step.spellChoice)
+      : await ensureSpellcastingEntry(actor, step, draft);
+    const entryId = typeof entry?.id === "string" ? entry.id : null;
+    if (!entryId) {
       continue;
     }
 
     await reconcileSpellChoiceSlot(actor, slotId, selections);
 
     for (const selection of selections) {
-      if (hasSpellSourceInEntry(actor, selection.uuid, entry.id)) {
+      if (hasSpellSourceInEntry(actor, selection.uuid, entryId)) {
         continue;
       }
 
@@ -44,9 +48,9 @@ export async function applySpellChoiceDraft(actor: ActorLike, draft: DraftState,
       source.system ??= {};
       source.system.location ??= {};
       if (typeof source.system.location === "object" && source.system.location !== null) {
-        source.system.location.value = entry.id;
+        source.system.location.value = entryId;
       } else {
-        source.system.location = { value: entry.id };
+        source.system.location = { value: entryId };
       }
 
       const created =
@@ -56,8 +60,8 @@ export async function applySpellChoiceDraft(actor: ActorLike, draft: DraftState,
       await stampSelectionFlags(actor, created, selection);
     }
 
-    if (step.spellChoice.destination.type === "prepared") {
-      await syncPreparedSpellChoiceSelections(actor, entry.id, step.spellChoice, slotId, selections);
+    if (step.spellChoice.destination.type === "prepared" && !step.spellChoice.reuseExistingEntryOnly) {
+      await syncPreparedSpellChoiceSelections(actor, entryId, step.spellChoice, slotId, selections);
     }
   }
 }

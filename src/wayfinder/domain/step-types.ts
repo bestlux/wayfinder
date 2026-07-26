@@ -230,6 +230,7 @@ export interface SpellChoiceMeta {
   additionalAllowedSpellNames: string[];
   additionalAllowedSpellUuids?: string[];
   restrictToCommon: boolean;
+  reuseExistingEntryOnly?: boolean;
 }
 
 export interface SkillTrainingPersistenceMeta {

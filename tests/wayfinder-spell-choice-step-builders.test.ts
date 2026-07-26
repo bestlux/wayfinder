@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import type { SelectionRef } from "../src/types";
 import type { SpellChoiceDocumentLike } from "../src/wayfinder/spell-choice/types";
-import { buildSpellChoiceSteps } from "../src/wayfinder/spell-choice-service";
+import { buildHistoricalSpellChoicePlanningNote, buildSpellChoiceSteps } from "../src/wayfinder/spell-choice-service";
 
 describe("wayfinder spell-choice step builders", () => {
   it("builds wizard spellbook steps for initial choices and later spellbook growth", async () => {
@@ -433,7 +433,7 @@ describe("wayfinder spell-choice step builders", () => {
     });
   });
 
-  it("builds branch-derived witch prepared spell steps", async () => {
+  it("builds branch-derived witch prepared and familiar spell steps", async () => {
     const steps = await buildSpellChoiceSteps({
       draft: createEmptyDraft(5),
       currentLevel: 1,
@@ -451,6 +451,10 @@ describe("wayfinder spell-choice step builders", () => {
     expect(steps.map((step) => step.slotId)).toEqual([
       "spell-choice-witch-cantrips-level-1",
       "spell-choice-witch-rank-1-level-1",
+      "spell-choice-witch-familiar-level-2",
+      "spell-choice-witch-familiar-level-3",
+      "spell-choice-witch-familiar-level-4",
+      "spell-choice-witch-familiar-level-5",
     ]);
     expect(steps[0]?.spellChoice?.destination).toMatchObject({
       key: "witch-occult-prepared",
@@ -458,6 +462,100 @@ describe("wayfinder spell-choice step builders", () => {
       ability: "int",
       prepared: "prepared",
     });
+  });
+
+  it("builds two witch familiar spells per level with the current rank ceiling", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(3),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("witch", "Witch Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      effectiveClassFeatureDocuments: [
+        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult"),
+      ],
+      targetLevel: 3,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "spell-choice-witch-cantrips-level-1",
+      "spell-choice-witch-rank-1-level-1",
+      "spell-choice-witch-familiar-level-2",
+      "spell-choice-witch-familiar-level-3",
+    ]);
+    expect(steps.find((step) => step.slotId === "spell-choice-witch-familiar-level-2")?.spellChoice).toMatchObject({
+      count: 2,
+      minRank: 1,
+      maxRank: 1,
+      reuseExistingEntryOnly: true,
+      destination: {
+        key: "witch-occult-prepared",
+        type: "spellbook",
+      },
+    });
+    expect(steps.find((step) => step.slotId === "spell-choice-witch-familiar-level-3")?.spellChoice).toMatchObject({
+      count: 2,
+      minRank: 1,
+      maxRank: 2,
+      reuseExistingEntryOnly: true,
+      destination: {
+        key: "witch-occult-prepared",
+        type: "spellbook",
+      },
+    });
+  });
+
+  it("discloses the witch historical cutoff without scheduling historical spell steps", async () => {
+    const effectiveClassDocument = classDocument("witch", "Witch Spellcasting");
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(3),
+      currentLevel: 3,
+      effectiveClassDocument,
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      effectiveClassFeatureDocuments: [
+        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult"),
+      ],
+      targetLevel: 3,
+      extractSlug,
+      readExistingSpellChoiceSelections: (choice) =>
+        Array.from({ length: choice.count }, (_, index) =>
+          selection(choice.slotId, `existing-${choice.slotId}-${index}`, `Existing ${index}`)
+        ),
+    });
+    const planningNote = buildHistoricalSpellChoicePlanningNote({
+      currentLevel: 3,
+      effectiveClassDocument,
+      extractSlug,
+    });
+
+    expect(steps).toEqual([]);
+    expect(planningNote).toBe(
+      "Spell choices for levels up to 3 aren't re-planned for existing characters. Spells already on the sheet are treated as complete — review them there."
+    );
+  });
+
+  it("suppresses fulfilled witch familiar steps on rerun", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(3),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("witch", "Witch Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      effectiveClassFeatureDocuments: [
+        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult"),
+      ],
+      targetLevel: 3,
+      extractSlug,
+      readExistingSpellChoiceSelections: (choice) =>
+        Array.from({ length: choice.count }, (_, index) =>
+          selection(choice.slotId, `fulfilled-${choice.slotId}-${index}`, `Fulfilled ${index}`)
+        ),
+    });
+
+    expect(steps).toEqual([]);
   });
 
   it("builds branch-derived sorcerer spontaneous repertoire steps", async () => {
@@ -485,6 +583,31 @@ describe("wayfinder spell-choice step builders", () => {
       ability: "cha",
       prepared: "spontaneous",
     });
+  });
+
+  it("discloses the spontaneous-caster historical cutoff", async () => {
+    const effectiveClassDocument = classDocument("sorcerer", "Sorcerer Spellcasting");
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(3),
+      currentLevel: 3,
+      effectiveClassDocument,
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      effectiveClassFeatureDocuments: [
+        classFeatureDocument("Bloodline: Imperial", "sorcerer-bloodline", "Tradition", "arcane"),
+      ],
+      targetLevel: 3,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+    const planningNote = buildHistoricalSpellChoicePlanningNote({
+      currentLevel: 3,
+      effectiveClassDocument,
+      extractSlug,
+    });
+
+    expect(steps.map((step) => step.level).filter((level) => level > 1)).toEqual([]);
+    expect(planningNote).toContain("Spell choices for levels up to 3 aren't re-planned");
   });
 
   it("builds magus bounded spellbook steps through level 5", async () => {

@@ -42,6 +42,13 @@
     {{/if}}
   {{/if}}
 
+  {{#if planningNote}}
+    <div class="status-note">
+      <i class="fa-solid fa-circle-info"></i>
+      <span>{{planningNote}}</span>
+    </div>
+  {{/if}}
+
   {{#if hasPendingSteps}}
     <section class="wizard-frame">
       <aside class="wizard-rail">

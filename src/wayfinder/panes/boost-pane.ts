@@ -1,6 +1,6 @@
 import type { EffectiveBuildState } from "../../build-state.js";
 import { ABILITY_KEYS } from "../../constants.js";
-import type { AbilityKey, BoostLevel, PendingStep } from "../../types.js";
+import type { AbilityKey, BoostStep, PendingStep } from "../../types.js";
 import { canChooseFromSlotRecord, requiredBoostSlots } from "../domain/boost-rules.js";
 
 export {
@@ -23,13 +23,17 @@ interface BoostPaneDependencies {
 }
 
 export async function buildBoostPane(
-  step: PendingStep,
+  step: BoostStep,
   effectiveBuildState: EffectiveBuildState,
   deps: BoostPaneDependencies
 ): Promise<BoostStepPane> {
   const isCreationStep = step.level === 1;
-  const blocked =
+  const selectedBatchBoosts = effectiveBuildState.levelBoosts[step.boost.batchLevel];
+  const missingPriorGradualBoost =
+    step.boost.grantCount === 1 && selectedBatchBoosts.length < step.boost.requiredCount - step.boost.grantCount;
+  const blockedForCreation =
     isCreationStep && (!effectiveBuildState.ancestry || !effectiveBuildState.background || !effectiveBuildState.class);
+  const blocked = blockedForCreation || missingPriorGradualBoost;
   const abilitySummary = Object.values(effectiveBuildState.projectedAbilities).map((entry) => ({
     attribute: entry.key,
     label: deps.abilityLabel(entry.key),
@@ -55,10 +59,16 @@ export async function buildBoostPane(
     title: step.title,
     description: step.description,
     blocked,
-    blockedTitle: blocked ? "Choose ancestry, background, and class first" : null,
-    blockedMessage: blocked
+    blockedTitle: blockedForCreation
+      ? "Choose ancestry, background, and class first"
+      : missingPriorGradualBoost
+        ? "Complete the earlier gradual boost first"
+        : null,
+    blockedMessage: blockedForCreation
       ? "Wayfinder needs the drafted ancestry, background, and class before it can offer a legal creation-boost layout."
-      : null,
+      : missingPriorGradualBoost
+        ? `PF2E stores levels ${step.boost.batchLevel - 3}–${step.boost.batchLevel} as one ordered boost batch. Choose each earlier level before this one.`
+        : null,
     completed: await deps.isStepComplete(step, effectiveBuildState),
     selectedLabel: await deps.stepStatus(step, effectiveBuildState),
     abilitySummary,
@@ -78,7 +88,7 @@ export async function buildBoostPane(
       isCreationStep && effectiveBuildState.class
         ? buildClassBoostSection(effectiveBuildState, deps.abilityLabel)
         : null,
-    levelSection: buildLevelBoostSection(step.level as BoostLevel, effectiveBuildState, deps.abilityLabel),
+    levelSection: buildLevelBoostSection(step, effectiveBuildState, deps.abilityLabel),
   };
 }
 
@@ -204,21 +214,29 @@ function buildClassBoostSection(
 }
 
 function buildLevelBoostSection(
-  level: BoostLevel,
+  step: BoostStep,
   effectiveBuildState: EffectiveBuildState,
   abilityLabel: BoostPaneDependencies["abilityLabel"]
 ): BoostStepPane["levelSection"] {
-  const selected = effectiveBuildState.levelBoosts[level];
-  const allowed = effectiveBuildState.allowedBoosts[level];
+  const selected = effectiveBuildState.levelBoosts[step.boost.batchLevel];
+  const allowed = step.boost.requiredCount;
+  const gradualSelectionIndex = step.boost.grantCount === 1 ? allowed - 1 : null;
+  const gradualSelection = gradualSelectionIndex === null ? null : (selected[gradualSelectionIndex] ?? null);
   return {
-    level,
-    remaining: Math.max(0, allowed - selected.length),
+    level: step.level,
+    batchLevel: step.boost.batchLevel,
+    remaining: gradualSelectionIndex === null ? Math.max(0, allowed - selected.length) : Number(!gradualSelection),
     buttons: ABILITY_KEYS.map((attribute) => ({
       attribute,
       label: abilityLabel(attribute),
-      selected: selected.includes(attribute),
-      disabled: !selected.includes(attribute) && selected.length >= allowed,
-      partial: effectiveBuildState.projectedAbilities[attribute].partial && selected.includes(attribute),
+      selected: gradualSelectionIndex === null ? selected.includes(attribute) : gradualSelection === attribute,
+      disabled:
+        gradualSelectionIndex === null
+          ? !selected.includes(attribute) && selected.length >= allowed
+          : selected.some((entry, index) => index !== gradualSelectionIndex && entry === attribute),
+      partial:
+        effectiveBuildState.projectedAbilities[attribute].partial &&
+        (gradualSelectionIndex === null ? selected.includes(attribute) : gradualSelection === attribute),
     })),
   };
 }

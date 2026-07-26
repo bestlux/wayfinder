@@ -2,16 +2,22 @@ export function validateSmokeSafety({
   allowDestructive,
   expectedWorldId,
   freeArchetypeMode = "unchanged",
+  gradualBoostsMode = "unchanged",
   keepActors,
 }) {
-  if (freeArchetypeMode !== "unchanged") {
+  const changedVariant = [
+    ["Free Archetype", freeArchetypeMode],
+    ["Gradual Ability Boosts", gradualBoostsMode],
+  ].find(([, mode]) => mode !== "unchanged");
+  if (changedVariant) {
+    const [label] = changedVariant;
     if (!allowDestructive) {
-      throw new Error("FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE=1 is required to change the Free Archetype world setting.");
+      throw new Error(`FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE=1 is required to change the ${label} world setting.`);
     }
 
     const normalizedWorldId = normalizeWorldId(expectedWorldId);
     if (!normalizedWorldId) {
-      throw new Error("FOUNDRY_SMOKE_WORLD_ID is required to change the Free Archetype world setting.");
+      throw new Error(`FOUNDRY_SMOKE_WORLD_ID is required to change the ${label} world setting.`);
     }
   }
 

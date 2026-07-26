@@ -171,7 +171,8 @@ export interface BoostStepPane {
     options: BoostAttributeButton[];
   };
   levelSection: {
-    level: BoostLevel;
+    level: number;
+    batchLevel: BoostLevel;
     remaining: number;
     buttons: BoostAttributeButton[];
   };

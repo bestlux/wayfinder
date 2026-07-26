@@ -23,8 +23,15 @@ export function createPickItemStep(slotKind, level, title, description, filters,
 export function createManualStep(slotKind, level, title, description, options = {}) {
     return createBaseStep("manual", slotKind, level, title, description, options);
 }
-export function createBoostStep(level, title, description, options = {}) {
-    return createBaseStep("boost", "ability-boosts", level, title, description, options);
+export function createBoostStep(level, title, description, boost = {
+    batchLevel: level,
+    requiredCount: 4,
+    grantCount: 4,
+}, options = {}) {
+    return {
+        ...createBaseStep("boost", "ability-boosts", level, title, description, options),
+        boost,
+    };
 }
 export function createSkillIncreaseStep(level, title, description, options = {}) {
     return createBaseStep("skill-increase", "skill-increase", level, title, description, options);

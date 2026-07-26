@@ -8,6 +8,7 @@ function makeSnapshot(partial: Partial<ActorSnapshot> = {}): ActorSnapshot {
     level: 1,
     isBlank: true,
     freeArchetypeEnabled: false,
+    gradualBoostsEnabled: false,
     singletonSlots: {
       ancestry: false,
       heritage: false,
@@ -184,5 +185,38 @@ describe("progression", () => {
     expect(enabledSteps.find((step) => step.slotKind === "archetype-feat")?.description).toContain(
       "confirm eligibility with your GM"
     );
+  });
+
+  it("schedules standard and gradual ability boosts through level 20 for a blank build", () => {
+    const standardBoostLevels = buildSteps(makeSnapshot(), 1, 20)
+      .filter((step) => step.kind === "boost" && step.level > 1)
+      .map((step) => step.level);
+    const gradualBoostLevels = buildSteps(makeSnapshot({ gradualBoostsEnabled: true }), 1, 20)
+      .filter((step) => step.kind === "boost" && step.level > 1)
+      .map((step) => step.level);
+
+    expect(standardBoostLevels).toEqual([5, 10, 15, 20]);
+    expect(gradualBoostLevels).toEqual([2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20]);
+  });
+
+  it("uses the active boost cadence for an existing character mid-progression", () => {
+    const existing = makeSnapshot({
+      level: 8,
+      isBlank: false,
+      singletonSlots: {
+        ancestry: true,
+        heritage: true,
+        background: true,
+        class: true,
+        deity: false,
+      },
+    });
+    const boostLevels = (snapshot: ActorSnapshot) =>
+      buildSteps(snapshot, 8, 15)
+        .filter((step) => step.kind === "boost")
+        .map((step) => step.level);
+
+    expect(boostLevels(existing)).toEqual([10, 15]);
+    expect(boostLevels({ ...existing, gradualBoostsEnabled: true })).toEqual([9, 10, 12, 13, 14, 15]);
   });
 });

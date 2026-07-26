@@ -1,3 +1,4 @@
+import { abilityBoostMilestones, isGradualAbilityBoostsEnabled } from "../../ability-boost-progression.js";
 import type { BuildStateActorItem } from "../../build-state/document-types.js";
 import { listActorItems } from "../../build-state.js";
 import { sourceIdOf } from "../../shared/source-id.js";
@@ -8,8 +9,6 @@ const FREE_ARCHETYPE_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const SKILL_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const GENERAL_FEAT_LEVELS = [3, 7, 11, 15, 19];
 const SKILL_INCREASE_LEVELS = [3, 5, 7, 9, 11, 13, 15, 17, 19];
-const ABILITY_BOOST_LEVELS = [1, 5, 10, 15, 20];
-
 const SINGLETONS = [
   ["ancestry", "Ancestry"],
   ["heritage", "Heritage"],
@@ -38,10 +37,17 @@ interface FeatGroupLike {
   slots?: Record<string, FeatSlotLike>;
 }
 
+interface ExistingCharacterHistoryOptions {
+  now?: () => string;
+  gradualBoostsEnabled?: boolean;
+}
+
 export function buildExistingCharacterHistory(
   actor: unknown,
-  now: () => string = () => new Date().toISOString()
+  options: ExistingCharacterHistoryOptions = {}
 ): ExistingCharacterHistory {
+  const now = options.now ?? (() => new Date().toISOString());
+  const gradualBoostsEnabled = options.gradualBoostsEnabled ?? isGradualAbilityBoostsEnabled();
   const actorLevel = actorLevelOf(actor);
   const items = listActorItems(actor) as ActorItemLike[];
   const entries: ExistingCharacterHistoryEntry[] = [];
@@ -89,27 +95,7 @@ export function buildExistingCharacterHistory(
   const classLevels = featGroupLevels(actor, "class").filter((level) => level <= actorLevel);
   entries.push(...buildFeatLaneEntries(actor, items, "class", "class-feat", "Class feat", classLevels));
 
-  for (const level of ABILITY_BOOST_LEVELS.filter((candidate) => candidate <= actorLevel)) {
-    const levelBoosts = readActorLevelBoosts(actor, level);
-    entries.push(
-      levelBoosts.length === 4
-        ? mappedEntry(
-            `ability-boosts-level-${level}`,
-            level,
-            "ability-boost",
-            level === 1 ? "Level 1 free ability boosts" : `Level ${level} ability boosts`,
-            levelBoosts.map((ability) => ability.toUpperCase()).join(", "),
-            null
-          )
-        : reviewEntry(
-            `ability-boosts-level-${level}`,
-            level,
-            "ability-boost",
-            level === 1 ? "Level 1 free ability boosts" : `Level ${level} ability boosts`,
-            "Review required: no complete level-specific boost record is stored on the actor"
-          )
-    );
-  }
+  entries.push(...buildAbilityBoostEntries(actor, actorLevel, gradualBoostsEnabled));
 
   entries.push(
     reviewEntry(
@@ -149,6 +135,84 @@ export function buildExistingCharacterHistory(
     actorLevel,
     entries: entries.sort(compareHistoryEntries),
   };
+}
+
+function buildAbilityBoostEntries(
+  actor: unknown,
+  actorLevel: number,
+  gradualBoostsEnabled: boolean
+): ExistingCharacterHistoryEntry[] {
+  const entries: ExistingCharacterHistoryEntry[] = [];
+  if (actorLevel >= 1) {
+    const creationBoosts = readActorLevelBoosts(actor, 1);
+    entries.push(
+      creationBoosts.length === 4
+        ? mappedEntry(
+            "ability-boosts-level-1",
+            1,
+            "ability-boost",
+            "Level 1 free ability boosts",
+            creationBoosts.map((ability) => ability.toUpperCase()).join(", "),
+            null
+          )
+        : reviewEntry(
+            "ability-boosts-level-1",
+            1,
+            "ability-boost",
+            "Level 1 free ability boosts",
+            "Review required: no complete level-specific boost record is stored on the actor"
+          )
+    );
+  }
+
+  for (const milestone of abilityBoostMilestones(gradualBoostsEnabled).filter(
+    (candidate) => candidate.level <= actorLevel
+  )) {
+    const batchBoosts = readActorLevelBoosts(actor, milestone.batchLevel);
+    if (gradualBoostsEnabled) {
+      const ability = batchBoosts[milestone.requiredCount - 1];
+      entries.push(
+        ability
+          ? mappedEntry(
+              `ability-boosts-level-${milestone.level}`,
+              milestone.level,
+              "ability-boost",
+              `Level ${milestone.level} ability boost`,
+              ability.toUpperCase(),
+              null
+            )
+          : reviewEntry(
+              `ability-boosts-level-${milestone.level}`,
+              milestone.level,
+              "ability-boost",
+              `Level ${milestone.level} ability boost`,
+              "Review required: no boost is stored at this position in PF2E's gradual boost batch"
+            )
+      );
+      continue;
+    }
+
+    entries.push(
+      batchBoosts.length === 4
+        ? mappedEntry(
+            `ability-boosts-level-${milestone.level}`,
+            milestone.level,
+            "ability-boost",
+            `Level ${milestone.level} ability boosts`,
+            batchBoosts.map((ability) => ability.toUpperCase()).join(", "),
+            null
+          )
+        : reviewEntry(
+            `ability-boosts-level-${milestone.level}`,
+            milestone.level,
+            "ability-boost",
+            `Level ${milestone.level} ability boosts`,
+            "Review required: no complete level-specific boost record is stored on the actor"
+          )
+    );
+  }
+
+  return entries;
 }
 
 export function withExistingCharacterHistory(state: ModuleState, history: ExistingCharacterHistory): ModuleState {

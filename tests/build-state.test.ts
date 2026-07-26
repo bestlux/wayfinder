@@ -87,6 +87,36 @@ describe("build-state", () => {
     });
   });
 
+  it("mirrors PF2E's gradual batch allowance in effective boosts and projections", async () => {
+    const actor = {
+      system: {
+        build: {
+          attributes: {
+            boosts: {
+              1: ["str", "dex", "con", "int"],
+              5: ["wis", "cha", "str", "dex"],
+            },
+          },
+        },
+      },
+      items: [],
+    };
+    testGlobals.game.settings = {
+      get: (_scope: string, key: string) => key === "gradualBoostsVariant",
+    };
+
+    const gradualState = await getEffectiveBuildState(actor, createEmptyDraft(3));
+    expect(gradualState.allowedBoosts[5]).toBe(2);
+    expect(gradualState.levelBoosts[5]).toEqual(["wis", "cha"]);
+    expect(gradualState.projectedAbilities.wis.boostCount).toBe(1);
+
+    testGlobals.game.settings.get = () => false;
+    const standardState = await getEffectiveBuildState(actor, createEmptyDraft(3));
+    expect(standardState.allowedBoosts[5]).toBe(0);
+    expect(standardState.levelBoosts[5]).toEqual([]);
+    expect(standardState.projectedAbilities.wis.boostCount).toBe(0);
+  });
+
   it("falls back to committed ancestry boost mode and voluntary state until the draft touches them", async () => {
     const actor = {
       system: {

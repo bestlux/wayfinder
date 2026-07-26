@@ -15,6 +15,11 @@ describe("boost pane helpers", () => {
       description: "Choose boosts",
       required: true,
       slotId: "ability-boosts-level-1",
+      boost: {
+        batchLevel: 1,
+        requiredCount: 4,
+        grantCount: 4,
+      },
     };
 
     const pane = await buildBoostPane(
@@ -38,6 +43,48 @@ describe("boost pane helpers", () => {
   it("counts remaining creation-boost choices across ancestry, background, class, and level boosts", () => {
     const buildState = makeBuildState();
     expect(remainingCreationBoostChoices(buildState)).toBe(8);
+  });
+
+  it("offers one ordered choice for a gradual boost and disables abilities already used in its batch", async () => {
+    const pane = await buildBoostPane(
+      {
+        id: "ability-boosts-level-3",
+        level: 3,
+        kind: "boost",
+        slotKind: "ability-boosts",
+        title: "Level 3 ability boost",
+        description: "Choose one",
+        required: true,
+        slotId: "ability-boosts-level-3",
+        boost: {
+          batchLevel: 5,
+          requiredCount: 2,
+          grantCount: 1,
+        },
+      },
+      makeBuildState({
+        levelBoosts: {
+          1: [],
+          5: ["str"],
+          10: [],
+          15: [],
+          20: [],
+        },
+      }),
+      {
+        isStepComplete: async () => false,
+        stepStatus: async () => "1 choice remaining",
+        abilityLabel: (attribute) => attribute.toUpperCase(),
+      }
+    );
+
+    expect(pane.blocked).toBe(false);
+    expect(pane.levelSection).toMatchObject({ level: 3, batchLevel: 5, remaining: 1 });
+    expect(pane.levelSection.buttons.find((button) => button.attribute === "str")).toMatchObject({
+      selected: false,
+      disabled: true,
+    });
+    expect(pane.levelSection.buttons.filter((button) => !button.disabled)).toHaveLength(5);
   });
 });
 

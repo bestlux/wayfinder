@@ -1,3 +1,4 @@
+import { isGradualAbilityBoostsEnabled } from "./ability-boost-progression.js";
 import { MODULE_ID } from "./constants.js";
 import type { ActorSnapshot } from "./types.js";
 
@@ -5,6 +6,7 @@ export function inspectActor(actor: any): ActorSnapshot {
   const items = normalizeItems(actor);
   const level = clampLevel(Number(actor?.system?.details?.level?.value ?? 1));
   const freeArchetypeEnabled = !!getFeatGroup(actor, "archetype");
+  const gradualBoostsEnabled = isGradualAbilityBoostsEnabled();
   const namesByType: Record<string, string[]> = {};
   const sourceIds = new Set<string>();
   const fulfilledStepIds = new Set<string>();
@@ -71,6 +73,7 @@ export function inspectActor(actor: any): ActorSnapshot {
     level,
     isBlank: items.length === 0 && !hasAnySingleton(singletonSlots),
     freeArchetypeEnabled,
+    gradualBoostsEnabled,
     singletonSlots,
     featCounts,
     fulfilledStepIds: Array.from(fulfilledStepIds).sort(),

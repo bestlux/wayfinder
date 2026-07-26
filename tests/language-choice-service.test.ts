@@ -12,6 +12,7 @@ describe("language-choice service", () => {
         level: 1,
         isBlank: true,
         freeArchetypeEnabled: false,
+        gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: false,
@@ -69,6 +70,7 @@ describe("language-choice service", () => {
         level: 1,
         isBlank: true,
         freeArchetypeEnabled: false,
+        gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: false,
@@ -124,6 +126,7 @@ describe("language-choice service", () => {
         level: 1,
         isBlank: true,
         freeArchetypeEnabled: false,
+        gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: false,
@@ -178,6 +181,7 @@ describe("language-choice service", () => {
         level: 1,
         isBlank: true,
         freeArchetypeEnabled: false,
+        gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: false,

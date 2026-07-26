@@ -16,6 +16,7 @@ import {
   toggleVoluntaryEnabled,
   toggleVoluntaryLegacy,
 } from "../src/wayfinder/application/draft-adjustment-service";
+import { createBoostStep } from "../src/wayfinder/domain/step-types";
 
 describe("wayfinder draft adjustment service", () => {
   it("toggles skill increases on and off without disturbing other draft state", () => {
@@ -168,9 +169,56 @@ describe("wayfinder draft adjustment service", () => {
       },
     } satisfies EffectiveBuildState;
 
-    expect(toggleBoostChoice(state, buildState, "ability-boosts-level-5", "level-5", "dex")).toBe(true);
+    const step = createBoostStep(5, "Level 5 ability boosts", "");
+    expect(toggleBoostChoice(state, buildState, step, "level-5", "dex")).toBe(true);
     expect(draft.boosts.levels["5"]).toEqual(["str", "dex"]);
     expect(state.recentlyInvalidatedStepIds.has("ability-boosts-level-5")).toBe(false);
+  });
+
+  it("stores gradual choices in the native batch and enforces one unique ordered choice per step", () => {
+    const draft = createEmptyDraft(3);
+    const state = adjustmentState(draft);
+    const buildState = {
+      ancestry: null,
+      heritage: null,
+      background: null,
+      class: null,
+      deity: null,
+      languages: null,
+      levelBoosts: {
+        1: [],
+        5: ["str"],
+        10: [],
+        15: [],
+        20: [],
+      },
+      allowedBoosts: {
+        1: 4,
+        5: 2,
+        10: 0,
+        15: 0,
+        20: 0,
+      },
+      projectedAbilities: {
+        str: { key: "str", modifier: 1, partial: false, boostCount: 1, flawCount: 0 },
+        dex: { key: "dex", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        con: { key: "con", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        int: { key: "int", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        wis: { key: "wis", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+        cha: { key: "cha", modifier: 0, partial: false, boostCount: 0, flawCount: 0 },
+      },
+    } satisfies EffectiveBuildState;
+    const step = createBoostStep(3, "Level 3 ability boost", "", {
+      batchLevel: 5,
+      requiredCount: 2,
+      grantCount: 1,
+    });
+
+    expect(toggleBoostChoice(state, buildState, step, "level-5", "str")).toBe(false);
+    expect(toggleBoostChoice(state, buildState, step, "level-5", "dex")).toBe(true);
+    expect(draft.boosts.levels).toEqual({ 5: ["str", "dex"] });
+    expect(toggleBoostChoice(state, buildState, step, "level-5", "con")).toBe(true);
+    expect(draft.boosts.levels).toEqual({ 5: ["str", "con"] });
   });
 
   it("trims drafted language choices when the projected build lowers the allowance", () => {

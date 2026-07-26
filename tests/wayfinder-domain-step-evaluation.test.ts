@@ -3,6 +3,7 @@ import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 import { getWayfinderStepStatus, isWayfinderStepComplete } from "../src/wayfinder/domain/step-evaluation";
 import {
+  createBoostStep,
   createClassArchetypeStep,
   createClassChoiceStep,
   createSpellChoiceStep,
@@ -125,5 +126,33 @@ describe("wayfinder domain step evaluation", () => {
         isTrainingStepComplete: () => false,
       })
     ).toBe("1/2 chosen");
+  });
+
+  it("keeps earlier gradual boost steps complete as their shared native batch grows", async () => {
+    const draft = createEmptyDraft(3);
+    const buildState = {
+      levelBoosts: {
+        1: [],
+        5: ["str", "dex"],
+        10: [],
+        15: [],
+        20: [],
+      },
+    } as EffectiveBuildState;
+    const level2 = createBoostStep(2, "Level 2 ability boost", "", {
+      batchLevel: 5,
+      requiredCount: 1,
+      grantCount: 1,
+    });
+    const level3 = createBoostStep(3, "Level 3 ability boost", "", {
+      batchLevel: 5,
+      requiredCount: 2,
+      grantCount: 1,
+    });
+    const deps = { isTrainingStepComplete: () => false };
+
+    expect(await isWayfinderStepComplete(level2, draft, buildState, deps)).toBe(true);
+    expect(await isWayfinderStepComplete(level3, draft, buildState, deps)).toBe(true);
+    expect(await getWayfinderStepStatus(level2, draft, new Set(), buildState, deps)).toBe("Ready to apply");
   });
 });

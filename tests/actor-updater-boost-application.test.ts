@@ -136,6 +136,7 @@ describe("actor-updater boost application", () => {
             attributes: {
               boosts: {
                 1: ["str"],
+                10: ["wis"],
               },
             },
           },
@@ -143,6 +144,8 @@ describe("actor-updater boost application", () => {
       }),
     };
     const draft = createEmptyDraft(5);
+    draft.boosts.levels["1"] = ["str", "dex", "con", "wis"];
+    draft.boosts.levels["5"] = ["str", "dex", "int", "cha"];
     const effectiveBuildState: EffectiveBuildState = {
       ancestry: {
         document: null,
@@ -231,14 +234,16 @@ describe("actor-updater boost application", () => {
           boosts: {
             1: ["str", "dex", "con", "wis"],
             5: ["str", "dex", "int", "cha"],
-            10: [],
-            15: [],
-            20: [],
+            10: ["wis"],
           },
         },
       },
       "system.details.keyability.value": "wis",
     });
     expect(result.actorUpdate).toEqual(update.mock.calls[0]?.[0]);
+    const actorBuild = result.actorUpdate["system.build"] as {
+      attributes: { boosts: Record<string, unknown> };
+    };
+    expect(actorBuild.attributes.boosts).not.toHaveProperty("2");
   });
 });

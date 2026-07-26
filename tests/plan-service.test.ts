@@ -271,6 +271,7 @@ describe("wayfinder plan service", () => {
         level: 1,
         isBlank: false,
         freeArchetypeEnabled: false,
+        gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
           heritage: true,

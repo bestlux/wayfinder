@@ -900,3 +900,30 @@ export const smokeCases = [
     preferredSkills: ["arcana", "crafting", "society", "occultism", "religion", "medicine", "nature"],
   }),
 ];
+
+export const gradualBoostsSmokeCases = [
+  {
+    ...classCase({
+      className: "Fighter",
+      classSlug: "fighter",
+      keyAbility: "str",
+      expectedStepIds: [
+        "ability-boosts-level-2",
+        "ability-boosts-level-3",
+        "ability-boosts-level-4",
+        "ability-boosts-level-5",
+        "class-choice-fighter-weapon-mastery-fighterWeaponMastery-level-5",
+      ],
+      preferredSelections: {
+        "class-feat": ["Reactive Shield", "Intimidating Strike", "Quick Reversal"],
+        "skill-feat": ["Cat Fall", "Forager", "Acrobatic Performer", "Group Impression", "Quick Jump"],
+      },
+      preferredSkills: ["athletics", "acrobatics", "survival", "intimidation", "religion", "stealth"],
+    }),
+    id: "fighter-gradual-boosts-l1-l5-apply-rerun",
+    label: "Fighter with Gradual Ability Boosts level 1 through 5 apply/rerun",
+    gradualBoostsVariant: true,
+    expectedBoostBatchCounts: { 1: 4, 5: 4 },
+    forbiddenBoostBatchLevels: [2, 3, 4],
+  },
+];

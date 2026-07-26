@@ -650,8 +650,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     async #toggleBoostChoice(stepId, section, attribute) {
         this.#statusNote = null;
+        const step = await this.#findPlanStepBySlotId(stepId);
+        if (!step) {
+            return;
+        }
         const effectiveBuildState = await getEffectiveBuildState(this.actor, this.#requireDraft());
-        if (toggleBoostChoice(this.#draftAdjustmentState(), effectiveBuildState, stepId, section, attribute)) {
+        if (toggleBoostChoice(this.#draftAdjustmentState(), effectiveBuildState, step, section, attribute)) {
             await this.#syncDependentChoicesAfterBuildChange();
             this.render(false);
         }
@@ -895,7 +899,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     async #importExistingHistory() {
         const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
-        const history = buildExistingCharacterHistory(this.actor);
+        const history = buildExistingCharacterHistory(this.actor, {
+            gradualBoostsEnabled: inspectActor(this.actor).gradualBoostsEnabled,
+        });
         await this.actor.update({
             [STATE_FLAG]: withExistingCharacterHistory(state, history),
         });

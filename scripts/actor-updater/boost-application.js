@@ -50,7 +50,7 @@ export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS, options
         await actor.updateEmbeddedDocuments("Item", updates);
     }
     const actorUpdate = {
-        "system.build": buildActorBuildUpdate(actor, buildState.levelBoosts),
+        "system.build": buildActorBuildUpdate(actor, buildState.levelBoosts, draft.boosts.levels),
     };
     if (buildState.class?.selectedKeyAbility) {
         actorUpdate["system.details.keyability.value"] = buildState.class.selectedKeyAbility;
@@ -60,7 +60,7 @@ export async function applyBoostDraft(actor, draft, deps = DEFAULT_DEPS, options
     }
     return { actorUpdate };
 }
-function buildActorBuildUpdate(actor, levelBoosts) {
+function buildActorBuildUpdate(actor, levelBoosts, draftedLevelBoosts) {
     const sourceActor = actor;
     const sourceBuild = sourceActor.toObject?.().system?.build ?? sourceActor._source?.system?.build ?? actor.system?.build ?? {};
     const build = cloneData(sourceBuild);
@@ -69,7 +69,9 @@ function buildActorBuildUpdate(actor, levelBoosts) {
         ? cloneData(attributes.boosts)
         : {};
     for (const level of BOOST_LEVELS) {
-        boosts[level] = levelBoosts[level];
+        if (Object.hasOwn(draftedLevelBoosts, String(level))) {
+            boosts[level] = levelBoosts[level];
+        }
     }
     attributes.boosts = boosts;
     build.attributes = attributes;

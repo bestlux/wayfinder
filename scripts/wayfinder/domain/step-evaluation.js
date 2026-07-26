@@ -42,8 +42,7 @@ export async function isWayfinderStepComplete(step, draft, effectiveBuildState, 
             isClassBoostSectionComplete(effectiveBuildState) &&
             effectiveBuildState.levelBoosts[1].length === effectiveBuildState.allowedBoosts[1]);
     }
-    const level = step.level;
-    return effectiveBuildState.levelBoosts[level].length === effectiveBuildState.allowedBoosts[level];
+    return (step.kind === "boost" && effectiveBuildState.levelBoosts[step.boost.batchLevel].length >= step.boost.requiredCount);
 }
 export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState, deps) {
     if (step.kind === "manual") {
@@ -131,8 +130,9 @@ export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedSte
     }
     const remaining = step.level === 1
         ? remainingCreationBoostChoices(effectiveBuildState)
-        : Math.max(0, effectiveBuildState.allowedBoosts[step.level] -
-            effectiveBuildState.levelBoosts[step.level].length);
+        : step.kind === "boost"
+            ? Math.max(0, step.boost.requiredCount - effectiveBuildState.levelBoosts[step.boost.batchLevel].length)
+            : 0;
     return remaining === 0 ? "Ready to apply" : `${remaining} choice${remaining === 1 ? "" : "s"} remaining`;
 }
 export function modeLabel(kind) {

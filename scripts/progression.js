@@ -1,10 +1,10 @@
+import { abilityBoostMilestones } from "./ability-boost-progression.js";
 import { createBoostStep, createPickItemStep, createSkillIncreaseStep, sortWeightForSlotKind, } from "./wayfinder/domain/step-types.js";
 const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
 const FREE_ARCHETYPE_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const SKILL_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const GENERAL_FEAT_LEVELS = [3, 7, 11, 15, 19];
 const SKILL_INCREASE_LEVELS = [3, 5, 7, 9, 11, 13, 15, 17, 19];
-const ABILITY_BOOST_LEVELS = [5, 10, 15, 20];
 export function buildProgressionPlan(snapshot, requestedTargetLevel) {
     const currentLevel = clampLevel(snapshot.level);
     const currentSteps = buildSteps(snapshot, currentLevel, currentLevel);
@@ -57,11 +57,14 @@ export function buildSteps(snapshot, currentLevel, targetLevel) {
         featTypes: ["general", "skill"],
     }));
     if (snapshot.isBlank || !allCreationAnchorsPresent(snapshot)) {
-        steps.push(makeBoostStep("ability-boosts", 1, "Assign creation boosts", "Allocate ancestry, background, class, and free level 1 boosts inside Wayfinder before finalizing the draft."));
+        steps.push(makeBoostStep("ability-boosts", 1, "Assign creation boosts", "Allocate ancestry, background, class, and free level 1 boosts inside Wayfinder before finalizing the draft.", { level: 1, batchLevel: 1, requiredCount: 4, grantCount: 4 }));
     }
-    for (const level of ABILITY_BOOST_LEVELS) {
+    for (const milestone of abilityBoostMilestones(snapshot.gradualBoostsEnabled)) {
+        const { level } = milestone;
         if (level > currentLevel && level <= targetLevel) {
-            steps.push(makeBoostStep("ability-boosts", level, `Level ${level} ability boosts`, "Spend this level's four free ability boosts. Pick four different abilities — no doubling up."));
+            steps.push(makeBoostStep("ability-boosts", level, `Level ${level} ability boost${milestone.grantCount === 1 ? "" : "s"}`, milestone.grantCount === 1
+                ? `Choose this level's ability boost. Each ability can be boosted only once across the level ${milestone.batchLevel - 3}–${milestone.batchLevel} batch.`
+                : "Spend this level's four free ability boosts. Pick four different abilities — no doubling up.", milestone));
         }
     }
     for (const level of SKILL_INCREASE_LEVELS) {
@@ -141,7 +144,7 @@ function clampLevel(level) {
 function makePickStep(slotKind, level, title, description, filters) {
     return createPickItemStep(slotKind, level, title, description, filters);
 }
-function makeBoostStep(_slotKind, level, title, description) {
-    return createBoostStep(level, title, description);
+function makeBoostStep(_slotKind, level, title, description, milestone) {
+    return createBoostStep(level, title, description, milestone);
 }
 //# sourceMappingURL=progression.js.map

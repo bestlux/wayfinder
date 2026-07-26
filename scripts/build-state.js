@@ -1,7 +1,7 @@
+import { allowedAbilityBoosts, BOOST_LEVELS, isGradualAbilityBoostsEnabled } from "./ability-boost-progression.js";
 import { projectAbilities } from "./build-state/ability-projection.js";
 import { getEffectiveSingletonDocument, listActorItems } from "./build-state/singleton-resolution.js";
 import { ABILITY_KEYS } from "./constants.js";
-const BOOST_LEVELS = [1, 5, 10, 15, 20];
 async function getEffectiveBuildState(actor, draft) {
     const [ancestryDocument, heritageDocument, backgroundDocument, classDocument, deityDocument] = await Promise.all([
         getEffectiveSingletonDocument(actor, draft, "ancestry"),
@@ -13,8 +13,8 @@ async function getEffectiveBuildState(actor, draft) {
     const ancestry = ancestryDocument ? buildEffectiveAncestryState(ancestryDocument, draft.boosts) : null;
     const background = backgroundDocument ? buildEffectiveBackgroundState(backgroundDocument, draft.boosts) : null;
     const effectiveClass = classDocument ? buildEffectiveClassState(classDocument, draft.boosts) : null;
-    const levelBoosts = buildEffectiveLevelBoosts(actor, draft.boosts);
-    const allowedBoosts = buildAllowedBoosts(draft.targetLevel);
+    const allowedBoosts = buildAllowedBoosts(draft.targetLevel, isGradualAbilityBoostsEnabled());
+    const levelBoosts = buildEffectiveLevelBoosts(actor, draft.boosts, allowedBoosts);
     const projectedAbilities = projectAbilities({
         ancestryBoosts: ancestry?.buildBoosts ?? [],
         ancestryFlaws: ancestry?.buildFlaws ?? [],
@@ -98,16 +98,16 @@ function buildEffectiveLanguageState(actor, ancestryDocument, intelligenceModifi
         maxSelections: additionalCount + Math.max(intelligenceModifier, 0),
     };
 }
-function buildEffectiveLevelBoosts(actor, boosts) {
+function buildEffectiveLevelBoosts(actor, boosts, allowedBoosts) {
     const actorBuildBoosts = actor?.system?.build?.attributes?.boosts ?? {};
     return Object.fromEntries(BOOST_LEVELS.map((level) => {
         const draftSelection = boosts.levels[String(level)];
         const source = Array.isArray(draftSelection) ? draftSelection : actorBuildBoosts[level];
-        return [level, normalizeAbilityList(source, 4)];
+        return [level, normalizeAbilityList(source, 4).slice(0, allowedBoosts[level])];
     }));
 }
-function buildAllowedBoosts(targetLevel) {
-    return Object.fromEntries(BOOST_LEVELS.map((level) => [level, level <= targetLevel ? 4 : 0]));
+function buildAllowedBoosts(targetLevel, gradualBoostsEnabled) {
+    return Object.fromEntries(BOOST_LEVELS.map((level) => [level, allowedAbilityBoosts(level, targetLevel, gradualBoostsEnabled)]));
 }
 function normalizeAbility(value) {
     const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";

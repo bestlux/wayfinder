@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { inspectActor } from "../src/actor-inspector";
 
 describe("actor-inspector", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("counts feats from category when featType is missing", () => {
     const snapshot = inspectActor({
       id: "actor-1",
@@ -105,6 +109,14 @@ describe("actor-inspector", () => {
     expect(snapshot.freeArchetypeEnabled).toBe(true);
     expect(snapshot.featCounts.class).toBe(1);
     expect(snapshot.featCounts.archetype).toBe(1);
+  });
+
+  it("reads Gradual Ability Boosts from PF2E's authoritative world setting", () => {
+    const get = vi.fn((_scope: string, key: string) => key === "gradualBoostsVariant");
+    vi.stubGlobal("game", { settings: { get } });
+
+    expect(inspectActor({ items: [] }).gradualBoostsEnabled).toBe(true);
+    expect(get).toHaveBeenCalledWith("pf2e", "gradualBoostsVariant");
   });
 });
 

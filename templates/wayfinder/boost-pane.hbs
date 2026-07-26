@@ -146,7 +146,7 @@
 
         <div class="boost-button-grid">
           {{#each activePane.levelSection.buttons}}
-            <button type="button" class="boost-choice{{#if selected}} selected{{/if}}{{#if partial}} partial{{/if}}" data-wayfinder-action="toggle-boost-choice" data-step-id="{{../activePane.stepId}}" data-section="level-{{../activePane.levelSection.level}}" data-attribute="{{attribute}}" {{#if disabled}}disabled{{/if}}>
+            <button type="button" class="boost-choice{{#if selected}} selected{{/if}}{{#if partial}} partial{{/if}}" data-wayfinder-action="toggle-boost-choice" data-step-id="{{../activePane.stepId}}" data-section="level-{{../activePane.levelSection.batchLevel}}" data-attribute="{{attribute}}" {{#if disabled}}disabled{{/if}}>
               <span class="boost-choice-code">{{attribute}}</span>
               <span class="boost-choice-label">{{label}}</span>
             </button>

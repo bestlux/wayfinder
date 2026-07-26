@@ -377,7 +377,7 @@ async function seedCreationDraft(draft, smokeCase) {
   };
   draft.boosts.class.keyAbility = smokeCase.keyAbility;
   draft.boosts.levels["1"] = levelBoosts(smokeCase.keyAbility);
-  if (draft.targetLevel >= 5) {
+  if (draft.targetLevel >= 5 && !smokeCase.gradualBoostsVariant) {
     draft.boosts.levels["5"] = levelBoosts(smokeCase.keyAbility);
   }
 }
@@ -508,9 +508,17 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
     case "skill-increase":
       fillSkillIncrease(draft, step, smokeCase);
       return;
-    case "boost":
-      draft.boosts.levels[String(step.level)] = levelBoosts(smokeCase.keyAbility);
+    case "boost": {
+      const batchLevel = String(step.boost?.batchLevel ?? step.level);
+      const requiredCount = Number(step.boost?.requiredCount ?? 4);
+      const selected = [...(draft.boosts.levels[batchLevel] ?? [])];
+      for (const ability of levelBoosts(smokeCase.keyAbility)) {
+        if (selected.length >= requiredCount) break;
+        if (!selected.includes(ability)) selected.push(ability);
+      }
+      draft.boosts.levels[batchLevel] = selected.slice(0, requiredCount);
       return;
+    }
     case "manual":
       notes.classifications.push(`${step.slotId}: manual PF2E-native checkpoint`);
       return;
@@ -805,8 +813,10 @@ function collectActorEvidence(actor, modules, moduleId) {
       item.sourceId ? (item.type === "spell" ? `${item.sourceId}@${item.location ?? "unplaced"}` : item.sourceId) : null,
     )
     .filter(Boolean);
+  const abilityBoosts = actor.toObject?.().system?.build?.attributes?.boosts ?? {};
 
   return {
+    abilityBoosts,
     id: actor.id,
     duplicateSlotIds: duplicates(slotIds),
     duplicateSourceIds: duplicates(sourceIds),
@@ -998,6 +1008,20 @@ function validateActorExpectations(actorEvidence, smokeCase, failures) {
     const actualRank = actorEvidence.skillRanks[slug] ?? 0;
     if (actualRank !== expectedRank) {
       failures.push(`Actor skill rank for ${slug} is ${actualRank}, expected ${expectedRank}`);
+    }
+  }
+
+  for (const [batchLevel, expectedCount] of Object.entries(smokeCase.expectedBoostBatchCounts ?? {})) {
+    const actualCount = Array.isArray(actorEvidence.abilityBoosts?.[batchLevel])
+      ? actorEvidence.abilityBoosts[batchLevel].length
+      : 0;
+    if (actualCount !== expectedCount) {
+      failures.push(`Actor boost batch ${batchLevel} has ${actualCount} choices, expected ${expectedCount}`);
+    }
+  }
+  for (const batchLevel of smokeCase.forbiddenBoostBatchLevels ?? []) {
+    if (Object.hasOwn(actorEvidence.abilityBoosts ?? {}, String(batchLevel))) {
+      failures.push(`Actor boost storage unexpectedly contains intervening level ${batchLevel}`);
     }
   }
 

@@ -87,7 +87,7 @@ export function toggleVoluntaryLegacy(state) {
     }
     return true;
 }
-export function toggleBoostChoice(state, effectiveBuildState, stepId, section, attribute) {
+export function toggleBoostChoice(state, effectiveBuildState, step, section, attribute) {
     switch (section) {
         case "ancestry":
             if (!effectiveBuildState.ancestry) {
@@ -117,18 +117,37 @@ export function toggleBoostChoice(state, effectiveBuildState, stepId, section, a
         case "level-10":
         case "level-15":
         case "level-20": {
-            const level = section.split("-")[1] ?? "";
-            const numericLevel = Number(level);
-            const selected = state.draft.boosts.levels[level] ?? [...effectiveBuildState.levelBoosts[numericLevel]];
-            state.draft.boosts.levels[level] = selected.includes(attribute)
-                ? selected.filter((entry) => entry !== attribute)
-                : [...selected, attribute].slice(0, effectiveBuildState.allowedBoosts[numericLevel]);
+            if (step.kind !== "boost" || section !== `level-${step.boost.batchLevel}`) {
+                return false;
+            }
+            const level = String(step.boost.batchLevel);
+            const selected = state.draft.boosts.levels[level] ?? [...effectiveBuildState.levelBoosts[step.boost.batchLevel]];
+            const priorCount = step.boost.requiredCount - step.boost.grantCount;
+            if (!selected.includes(attribute) && selected.length < priorCount) {
+                return false;
+            }
+            if (step.boost.grantCount === 1) {
+                const selectionIndex = step.boost.requiredCount - 1;
+                const currentSelection = selected[selectionIndex];
+                if (selected.some((entry, index) => index !== selectionIndex && entry === attribute)) {
+                    return false;
+                }
+                state.draft.boosts.levels[level] =
+                    currentSelection === attribute
+                        ? selected.slice(0, selectionIndex)
+                        : [...selected.slice(0, selectionIndex), attribute, ...selected.slice(selectionIndex + 1, 4)];
+            }
+            else {
+                state.draft.boosts.levels[level] = selected.includes(attribute)
+                    ? selected.filter((entry) => entry !== attribute)
+                    : [...selected, attribute].slice(0, step.boost.requiredCount);
+            }
             break;
         }
         default:
             return false;
     }
-    state.recentlyInvalidatedStepIds.delete(stepId);
+    state.recentlyInvalidatedStepIds.delete(step.slotId);
     return true;
 }
 export function toggleVoluntaryChoice(state, ancestry, stepId, attribute, choiceKind) {

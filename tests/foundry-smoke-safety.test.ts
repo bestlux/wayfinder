@@ -77,6 +77,34 @@ describe("foundry smoke safety", () => {
     ).toThrow("FOUNDRY_SMOKE_WORLD_ID is required");
   });
 
+  it("applies the same destructive world guard to Gradual Ability Boosts", async () => {
+    const { validateSmokeSafety } = (await import("../tools/foundry-smoke/safety.mjs")) as {
+      validateSmokeSafety(args: {
+        allowDestructive: boolean;
+        expectedWorldId: string;
+        gradualBoostsMode: string;
+        keepActors: boolean;
+      }): unknown;
+    };
+
+    expect(() =>
+      validateSmokeSafety({
+        allowDestructive: false,
+        expectedWorldId: "testing-world",
+        gradualBoostsMode: "on",
+        keepActors: true,
+      })
+    ).toThrow("required to change the Gradual Ability Boosts world setting");
+    expect(() =>
+      validateSmokeSafety({
+        allowDestructive: true,
+        expectedWorldId: "",
+        gradualBoostsMode: "off",
+        keepActors: true,
+      })
+    ).toThrow("FOUNDRY_SMOKE_WORLD_ID is required");
+  });
+
   it("rejects mismatched Foundry worlds", async () => {
     const { assertExpectedWorldId } = (await import("../tools/foundry-smoke/safety.mjs")) as {
       assertExpectedWorldId(args: { actualWorldId: string; expectedWorldId: string }): void;

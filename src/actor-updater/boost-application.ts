@@ -77,7 +77,7 @@ export async function applyBoostDraft(
   }
 
   const actorUpdate: Record<string, unknown> = {
-    "system.build": buildActorBuildUpdate(actor, buildState.levelBoosts),
+    "system.build": buildActorBuildUpdate(actor, buildState.levelBoosts, draft.boosts.levels),
   };
   if (buildState.class?.selectedKeyAbility) {
     actorUpdate["system.details.keyability.value"] = buildState.class.selectedKeyAbility;
@@ -105,7 +105,8 @@ type ActorWithSourceBuild = ActorLike & {
 
 function buildActorBuildUpdate(
   actor: ActorLike,
-  levelBoosts: EffectiveBuildState["levelBoosts"]
+  levelBoosts: EffectiveBuildState["levelBoosts"],
+  draftedLevelBoosts: DraftState["boosts"]["levels"]
 ): Record<string, unknown> {
   const sourceActor = actor as ActorWithSourceBuild;
   const sourceBuild =
@@ -120,7 +121,9 @@ function buildActorBuildUpdate(
       : {};
 
   for (const level of BOOST_LEVELS) {
-    boosts[level] = levelBoosts[level];
+    if (Object.hasOwn(draftedLevelBoosts, String(level))) {
+      boosts[level] = levelBoosts[level];
+    }
   }
 
   attributes.boosts = boosts;

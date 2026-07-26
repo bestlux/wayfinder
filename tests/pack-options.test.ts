@@ -1515,6 +1515,7 @@ function productionFeatStep(slotId: string): PendingStep {
     level: 1,
     isBlank: false,
     freeArchetypeEnabled: false,
+    gradualBoostsEnabled: false,
     singletonSlots: {
       ancestry: true,
       heritage: true,

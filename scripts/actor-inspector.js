@@ -1,8 +1,10 @@
+import { isGradualAbilityBoostsEnabled } from "./ability-boost-progression.js";
 import { MODULE_ID } from "./constants.js";
 export function inspectActor(actor) {
     const items = normalizeItems(actor);
     const level = clampLevel(Number(actor?.system?.details?.level?.value ?? 1));
     const freeArchetypeEnabled = !!getFeatGroup(actor, "archetype");
+    const gradualBoostsEnabled = isGradualAbilityBoostsEnabled();
     const namesByType = {};
     const sourceIds = new Set();
     const fulfilledStepIds = new Set();
@@ -61,6 +63,7 @@ export function inspectActor(actor) {
         level,
         isBlank: items.length === 0 && !hasAnySingleton(singletonSlots),
         freeArchetypeEnabled,
+        gradualBoostsEnabled,
         singletonSlots,
         featCounts,
         fulfilledStepIds: Array.from(fulfilledStepIds).sort(),

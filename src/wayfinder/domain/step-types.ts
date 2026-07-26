@@ -312,7 +312,15 @@ export interface PickItemStep extends BasePendingStep<"pick-item", PickItemSlotK
 
 export interface ManualStep extends BasePendingStep<"manual", SlotKind>, NoStepExtras {}
 
-export interface BoostStep extends BasePendingStep<"boost", "ability-boosts">, NoStepExtras {}
+export interface AbilityBoostStepMeta {
+  batchLevel: 1 | 5 | 10 | 15 | 20;
+  requiredCount: number;
+  grantCount: number;
+}
+
+export interface BoostStep extends BasePendingStep<"boost", "ability-boosts">, NoStepExtras {
+  boost: AbilityBoostStepMeta;
+}
 
 export interface SkillIncreaseStep extends BasePendingStep<"skill-increase", "skill-increase">, NoStepExtras {}
 
@@ -497,9 +505,17 @@ export function createBoostStep(
   level: number,
   title: string,
   description: string,
+  boost: AbilityBoostStepMeta = {
+    batchLevel: level as AbilityBoostStepMeta["batchLevel"],
+    requiredCount: 4,
+    grantCount: 4,
+  },
   options: StepOptions = {}
 ): BoostStep {
-  return createBaseStep("boost", "ability-boosts", level, title, description, options);
+  return {
+    ...createBaseStep("boost", "ability-boosts", level, title, description, options),
+    boost,
+  };
 }
 
 export function createSkillIncreaseStep(

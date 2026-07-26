@@ -45,7 +45,10 @@ describe("existing character history service", () => {
       },
     };
 
-    const history = buildExistingCharacterHistory(actor, () => "2026-07-26T18:00:00.000Z");
+    const history = buildExistingCharacterHistory(actor, {
+      now: () => "2026-07-26T18:00:00.000Z",
+      gradualBoostsEnabled: false,
+    });
 
     expect(history).toMatchObject({
       version: 1,
@@ -102,7 +105,7 @@ describe("existing character history service", () => {
     };
     const history = buildExistingCharacterHistory(
       { system: { details: { level: { value: 1 } } }, items: [] },
-      () => "2026-07-26T18:00:00.000Z"
+      { now: () => "2026-07-26T18:00:00.000Z", gradualBoostsEnabled: false }
     );
 
     expect(withExistingCharacterHistory(state, history)).toEqual({
@@ -148,6 +151,41 @@ describe("existing character history service", () => {
         value: "Known Weaknesses",
         status: "mapped",
       }),
+    ]);
+  });
+
+  it("maps each gradual boost from its native batch position to the actual acquisition level", () => {
+    const history = buildExistingCharacterHistory(
+      {
+        system: {
+          details: { level: { value: 8 } },
+          build: {
+            attributes: {
+              boosts: {
+                1: ["str", "dex", "con", "int"],
+                5: ["wis", "cha", "str", "dex"],
+                10: ["con", "int"],
+              },
+            },
+          },
+        },
+        items: [],
+      },
+      { gradualBoostsEnabled: true }
+    );
+
+    expect(
+      history.entries
+        .filter((entry) => entry.category === "ability-boost" && entry.slotId !== "creation-source-boosts-level-1")
+        .map((entry) => [entry.slotId, entry.value, entry.status])
+    ).toEqual([
+      ["ability-boosts-level-1", "STR, DEX, CON, INT", "mapped"],
+      ["ability-boosts-level-2", "WIS", "mapped"],
+      ["ability-boosts-level-3", "CHA", "mapped"],
+      ["ability-boosts-level-4", "STR", "mapped"],
+      ["ability-boosts-level-5", "DEX", "mapped"],
+      ["ability-boosts-level-7", "CON", "mapped"],
+      ["ability-boosts-level-8", "INT", "mapped"],
     ]);
   });
 });

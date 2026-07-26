@@ -1,5 +1,5 @@
 import type { EffectiveBuildState } from "../../build-state.js";
-import type { AbilityKey, BoostLevel, DraftState, PendingStep } from "../../types.js";
+import type { AbilityKey, DraftState, PendingStep } from "../../types.js";
 import { SLOT_IDS } from "../slot-ids.js";
 
 type BoostRecord = Record<string, { value: AbilityKey[]; selected: AbilityKey | null }>;
@@ -135,7 +135,7 @@ export function toggleVoluntaryLegacy(state: DraftAdjustmentState): boolean {
 export function toggleBoostChoice(
   state: DraftAdjustmentState,
   effectiveBuildState: EffectiveBuildState,
-  stepId: string,
+  step: PendingStep,
   section: string,
   attribute: AbilityKey
 ): boolean {
@@ -175,19 +175,37 @@ export function toggleBoostChoice(
     case "level-10":
     case "level-15":
     case "level-20": {
-      const level = section.split("-")[1] ?? "";
-      const numericLevel = Number(level) as BoostLevel;
-      const selected = state.draft.boosts.levels[level] ?? [...effectiveBuildState.levelBoosts[numericLevel]];
-      state.draft.boosts.levels[level] = selected.includes(attribute)
-        ? selected.filter((entry) => entry !== attribute)
-        : [...selected, attribute].slice(0, effectiveBuildState.allowedBoosts[numericLevel]);
+      if (step.kind !== "boost" || section !== `level-${step.boost.batchLevel}`) {
+        return false;
+      }
+      const level = String(step.boost.batchLevel);
+      const selected = state.draft.boosts.levels[level] ?? [...effectiveBuildState.levelBoosts[step.boost.batchLevel]];
+      const priorCount = step.boost.requiredCount - step.boost.grantCount;
+      if (!selected.includes(attribute) && selected.length < priorCount) {
+        return false;
+      }
+      if (step.boost.grantCount === 1) {
+        const selectionIndex = step.boost.requiredCount - 1;
+        const currentSelection = selected[selectionIndex];
+        if (selected.some((entry, index) => index !== selectionIndex && entry === attribute)) {
+          return false;
+        }
+        state.draft.boosts.levels[level] =
+          currentSelection === attribute
+            ? selected.slice(0, selectionIndex)
+            : [...selected.slice(0, selectionIndex), attribute, ...selected.slice(selectionIndex + 1, 4)];
+      } else {
+        state.draft.boosts.levels[level] = selected.includes(attribute)
+          ? selected.filter((entry) => entry !== attribute)
+          : [...selected, attribute].slice(0, step.boost.requiredCount);
+      }
       break;
     }
     default:
       return false;
   }
 
-  state.recentlyInvalidatedStepIds.delete(stepId);
+  state.recentlyInvalidatedStepIds.delete(step.slotId);
   return true;
 }
 

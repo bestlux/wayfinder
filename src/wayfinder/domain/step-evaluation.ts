@@ -1,6 +1,6 @@
 import type { EffectiveBuildState } from "../../build-state.js";
 import { SKILL_LABELS } from "../../constants.js";
-import type { BoostLevel, DraftState, PendingStep, SkillTrainingStep, StepKind } from "../../types.js";
+import type { DraftState, PendingStep, SkillTrainingStep, StepKind } from "../../types.js";
 import { formatSlug } from "../formatting.js";
 import {
   isAncestryBoostSectionComplete,
@@ -72,8 +72,9 @@ export async function isWayfinderStepComplete(
     );
   }
 
-  const level = step.level as BoostLevel;
-  return effectiveBuildState.levelBoosts[level].length === effectiveBuildState.allowedBoosts[level];
+  return (
+    step.kind === "boost" && effectiveBuildState.levelBoosts[step.boost.batchLevel].length >= step.boost.requiredCount
+  );
 }
 
 export async function getWayfinderStepStatus(
@@ -191,11 +192,9 @@ export async function getWayfinderStepStatus(
   const remaining =
     step.level === 1
       ? remainingCreationBoostChoices(effectiveBuildState)
-      : Math.max(
-          0,
-          effectiveBuildState.allowedBoosts[step.level as BoostLevel] -
-            effectiveBuildState.levelBoosts[step.level as BoostLevel].length
-        );
+      : step.kind === "boost"
+        ? Math.max(0, step.boost.requiredCount - effectiveBuildState.levelBoosts[step.boost.batchLevel].length)
+        : 0;
 
   return remaining === 0 ? "Ready to apply" : `${remaining} choice${remaining === 1 ? "" : "s"} remaining`;
 }

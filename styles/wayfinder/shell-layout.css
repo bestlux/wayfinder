@@ -469,8 +469,8 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.28rem 0.6rem;
-  border-bottom: 1px solid rgba(94, 0, 0, 0.15);
-  background: rgba(94, 0, 0, 0.05);
+  border: 1px solid var(--wf-rule);
+  background: var(--wf-paper-strong);
   color: var(--wf-primary);
   font: 700 0.64rem / 1.3 var(--sans-serif, sans-serif);
   letter-spacing: 0.02em;
@@ -480,6 +480,11 @@
   font-size: 0.7rem;
   flex-shrink: 0;
   opacity: 0.7;
+}
+
+.wayfinder-app .wayfinder-empty {
+  background: var(--wf-paper);
+  color: var(--wf-ink);
 }
 
 /* ── Shared Button Base ────────────────────────────────── */

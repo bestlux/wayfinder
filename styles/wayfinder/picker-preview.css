@@ -16,23 +16,30 @@
   background: rgba(241, 233, 217, 0.55);
 }
 
+.option-browser-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wf-rule) transparent;
+}
+
 .browser-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   padding: 0.35rem 0.55rem;
   border-bottom: 1px solid rgba(95, 77, 57, 0.16);
-  background: rgba(255, 252, 245, 0.28);
+  background: rgba(248, 242, 230, 0.98);
 }
 
 .browser-header-row {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
-}
-
-.spell-browser-header-row {
-  justify-content: space-between;
 }
 
 .browser-header h4 {
@@ -51,6 +58,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+.browser-context-note {
+  padding: 0.35rem 0.55rem 0;
+}
+
+.spell-browser-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem 0.55rem 0;
 }
 
 .spell-source-note {
@@ -126,7 +144,7 @@
   flex-wrap: wrap;
   gap: 0.35rem;
   align-items: flex-start;
-  padding-top: 0.1rem;
+  padding: 0.35rem 0.55rem;
 }
 
 .picker-filter-menu {
@@ -328,9 +346,6 @@
   flex-direction: column;
   gap: 0;
   min-height: 0;
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--wf-rule) transparent;
 }
 
 .option-row {

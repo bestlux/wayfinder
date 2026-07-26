@@ -83,7 +83,7 @@
 }
 
 @media (max-width: 760px) {
-  .wayfinder-shell {
+  .wayfinder-app .window-content {
     padding: 0.4rem;
   }
 

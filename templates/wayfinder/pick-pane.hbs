@@ -1,17 +1,20 @@
 <section class="selection-stage">
   <section class="option-browser">
-    <header class="browser-header">
-      <div class="browser-header-row">
-        <h4>{{activePane.resultCount}} matching choice{{#unless (eq activePane.resultCount 1)}}s{{/unless}}</h4>
-        {{#if activePane.contextNote}}
-          <p class="context-note">{{activePane.contextNote}}</p>
-        {{/if}}
-      </div>
+    <div class="option-browser-scroll" data-wayfinder-option-list data-step-id="{{activePane.stepId}}" data-wayfinder-scroll-id="{{activePane.stepId}}:options">
+      <header class="browser-header">
+        <div class="browser-header-row">
+          <h4>{{activePane.resultCount}} matching choice{{#unless (eq activePane.resultCount 1)}}s{{/unless}}</h4>
+        </div>
 
-      <label class="search-shell">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="search" value="{{activePane.search}}" placeholder="Search name, source, rarity…" aria-label="Search choices" data-wayfinder-search data-step-id="{{activePane.stepId}}" />
-      </label>
+        <label class="search-shell">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="search" value="{{activePane.search}}" placeholder="Search name, source, rarity…" aria-label="Search choices" data-wayfinder-search data-step-id="{{activePane.stepId}}" />
+        </label>
+      </header>
+
+      {{#if activePane.contextNote}}
+        <p class="context-note browser-context-note">{{activePane.contextNote}}</p>
+      {{/if}}
 
       {{#if activePane.filterGroups.length}}
         <div class="picker-filter-bar">
@@ -59,40 +62,40 @@
           {{/if}}
         </div>
       {{/if}}
-    </header>
 
-    {{#if activePane.options.length}}
-      <div class="option-list" data-wayfinder-option-list data-step-id="{{activePane.stepId}}" data-wayfinder-scroll-id="{{activePane.stepId}}:options">
-        {{#each activePane.options}}
-          <article class="option-row{{#if previewing}} previewing{{/if}}{{#if selected}} selected{{/if}}">
-            <button type="button" class="option-main" data-wayfinder-action="preview-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
-              <img src="{{img}}" alt="{{name}}" />
-              <span class="option-copy">
-                <span class="option-title-row">
-                  <span class="option-name">{{name}}</span>
-                  {{#if rarity}}
-                    <span class="option-rarity rarity-{{rarity}}">{{rarity}}</span>
-                  {{/if}}
+      {{#if activePane.options.length}}
+        <div class="option-list">
+          {{#each activePane.options}}
+            <article class="option-row{{#if previewing}} previewing{{/if}}{{#if selected}} selected{{/if}}">
+              <button type="button" class="option-main" data-wayfinder-action="preview-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
+                <img src="{{img}}" alt="{{name}}" />
+                <span class="option-copy">
+                  <span class="option-title-row">
+                    <span class="option-name">{{name}}</span>
+                    {{#if rarity}}
+                      <span class="option-rarity rarity-{{rarity}}">{{rarity}}</span>
+                    {{/if}}
+                  </span>
+                  <span class="option-source">{{sourceLabel}}</span>
                 </span>
-                <span class="option-source">{{sourceLabel}}</span>
-              </span>
-            </button>
+              </button>
 
-            <button type="button" class="option-select{{#if selected}} is-selected{{/if}}" data-wayfinder-action="select-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
-              {{#if selected}}<i class="fa-solid fa-check"></i> Chosen{{else}}Choose{{/if}}
-            </button>
-          </article>
-        {{/each}}
-      </div>
-    {{else}}
-      {{#if activePane.infoState}}
-        <div class="picker-state picker-state-{{activePane.infoState.tone}}">
-          <p class="eyebrow">{{activePane.infoState.eyebrow}}</p>
-          <h4>{{activePane.infoState.title}}</h4>
-          <p>{{activePane.infoState.message}}</p>
+              <button type="button" class="option-select{{#if selected}} is-selected{{/if}}" data-wayfinder-action="select-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
+                {{#if selected}}<i class="fa-solid fa-check"></i> Chosen{{else}}Choose{{/if}}
+              </button>
+            </article>
+          {{/each}}
         </div>
+      {{else}}
+        {{#if activePane.infoState}}
+          <div class="picker-state picker-state-{{activePane.infoState.tone}}">
+            <p class="eyebrow">{{activePane.infoState.eyebrow}}</p>
+            <h4>{{activePane.infoState.title}}</h4>
+            <p>{{activePane.infoState.message}}</p>
+          </div>
+        {{/if}}
       {{/if}}
-    {{/if}}
+    </div>
   </section>
 
   <section class="preview-pane">

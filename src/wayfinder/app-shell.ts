@@ -147,6 +147,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       icon: "fa-solid fa-compass",
       title: "wayfinder-pf2e.App.Title",
       contentClasses: ["standard-form"],
+      resizable: true,
     },
   };
 

@@ -1,6 +1,6 @@
-<section class="wayfinder-shell">
+<section>
   {{#if existingCharacterHistory}}
-    <details class="history-report" open>
+    <details class="history-report">
       <summary>
         <span>
           <strong>Existing character history</strong>
@@ -8,26 +8,28 @@
         </span>
         <button type="button" class="secondary history-refresh" data-wayfinder-action="import-existing-history">Refresh from actor</button>
       </summary>
-      <p class="history-scope">
-        Wayfinder maps only choices it can verify from actor data and PF2E native feat slots. It leaves ambiguous source boosts, skill increases, and embedded choices explicit instead of guessing.
-      </p>
-      <div class="history-levels">
-        {{#each existingCharacterHistory.levels}}
-          <section class="history-level">
-            <h3>Level {{level}}</h3>
-            <div class="history-entries">
-              {{#each entries}}
-                <article class="history-entry {{status}}">
-                  <i class="fa-solid {{#if mapped}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}}"></i>
-                  <span>
-                    <strong>{{label}}</strong>
-                    <small>{{value}}</small>
-                  </span>
-                </article>
-              {{/each}}
-            </div>
-          </section>
-        {{/each}}
+      <div class="history-report-body">
+        <p class="history-scope">
+          Wayfinder maps only choices it can verify from actor data and PF2E native feat slots. It leaves ambiguous source boosts, skill increases, and embedded choices explicit instead of guessing.
+        </p>
+        <div class="history-levels">
+          {{#each existingCharacterHistory.levels}}
+            <section class="history-level">
+              <h3>Level {{level}}</h3>
+              <div class="history-entries">
+                {{#each entries}}
+                  <article class="history-entry {{status}}">
+                    <i class="fa-solid {{#if mapped}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}}"></i>
+                    <span>
+                      <strong>{{label}}</strong>
+                      <small>{{value}}</small>
+                    </span>
+                  </article>
+                {{/each}}
+              </div>
+            </section>
+          {{/each}}
+        </div>
       </div>
     </details>
   {{else}}

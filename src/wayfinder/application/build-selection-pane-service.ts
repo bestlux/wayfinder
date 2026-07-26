@@ -20,6 +20,10 @@ import {
 } from "../panes/picker-filters.js";
 import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
+import {
+  canGrantRestrictedSpellRarityAccess,
+  grantsRestrictedSpellRarityAccess,
+} from "../spell-choice/rarity-access.js";
 import type {
   ClassChoiceStepPane,
   LanguageChoiceStepPane,
@@ -104,7 +108,9 @@ export async function buildSelectionPane(
   }
 
   const optionContext = await deps.resolveOptionContext(step);
-  const options = await deps.getOptionsForStep(step, optionContext);
+  const spellRarityAccessGranted = step.kind === "spell-choice" && deps.draft.spellRarityAccess[step.slotId] === true;
+  const optionStep = grantsRestrictedSpellRarityAccess(step, spellRarityAccessGranted);
+  const options = await deps.getOptionsForStep(optionStep, optionContext);
   const search = deps.searchByStepId.get(step.id) ?? "";
   const filterState = normalizePickerFilterState(deps.pickerFiltersByStepId.get(step.id));
   const searchedOptions = options.filter((option) => deps.matchesSearch(option, search));
@@ -161,6 +167,11 @@ export async function buildSelectionPane(
       preview,
       modeLabel: getStepModeLabel(step.kind),
       previewValue,
+      rarityAccess: {
+        available: canGrantRestrictedSpellRarityAccess(step),
+        granted: spellRarityAccessGranted,
+        locked: selectedSelections.length > 0,
+      },
     });
   }
 

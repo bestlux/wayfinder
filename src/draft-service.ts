@@ -6,7 +6,7 @@ import {
 } from "./wayfinder/class-archetype/registry.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
 
-const DRAFT_VERSION = 8;
+const DRAFT_VERSION = 9;
 const STATE_VERSION = 1;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
@@ -24,6 +24,7 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     languageChoices: {},
     classChoices: {},
     spellChoices: {},
+    spellRarityAccess: {},
     updatedAt: null,
   };
 }
@@ -51,6 +52,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
   const skillTrainings = sanitizeSkillTrainings(draft.skillTrainings);
   const classChoices = sanitizeClassChoices(draft.classChoices);
   const spellChoices = sanitizeSpellChoices(draft.spellChoices);
+  const spellRarityAccess = sanitizeSpellRarityAccess(draft.spellRarityAccess);
   if (migratedClassArchetypeProfiles.length > 0) {
     clearLegacyClassArchetypeDependentState({
       branchSelections,
@@ -59,6 +61,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
       selections,
       skillTrainings,
       spellChoices,
+      spellRarityAccess,
       projectedStaticGrantUuids: new Set(
         migratedClassArchetypeProfiles.flatMap((profile) =>
           profile.projectedFeatGrants.flatMap((grant) => grant.staticFeatGrants.map((selection) => selection.uuid))
@@ -81,6 +84,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     languageChoices: sanitizeChoiceListValues(draft.languageChoices),
     classChoices,
     spellChoices,
+    spellRarityAccess,
     updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
   };
 }
@@ -92,12 +96,14 @@ function clearLegacyClassArchetypeDependentState(state: {
   selections: DraftState["selections"];
   skillTrainings: DraftState["skillTrainings"];
   spellChoices: DraftState["spellChoices"];
+  spellRarityAccess: DraftState["spellRarityAccess"];
   projectedStaticGrantUuids: ReadonlySet<string>;
 }): void {
   clearMatchingKeys(state.branchSelections, () => true);
   clearMatchingKeys(state.classChoices, (slotId) => slotId.startsWith(SLOT_PREFIXES.classChoice));
   clearMatchingKeys(state.skillTrainings, (slotId) => slotId.startsWith(SLOT_PREFIXES.skillTraining));
   clearMatchingKeys(state.spellChoices, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
+  clearMatchingKeys(state.spellRarityAccess, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
   clearMatchingKeys(state.manual, (slotId) =>
     [
       SLOT_PREFIXES.classBranch,
@@ -291,6 +297,16 @@ function sanitizeSpellChoices(raw: unknown): DraftState["spellChoices"] {
   }
 
   return result;
+}
+
+function sanitizeSpellRarityAccess(raw: unknown): DraftState["spellRarityAccess"] {
+  if (!isRecord(raw)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(raw).filter((entry): entry is [string, true] => entry[0].length > 0 && entry[1] === true)
+  );
 }
 
 function sanitizeSpellSelection(slotId: string, value: unknown): DraftState["selections"][string] | null {

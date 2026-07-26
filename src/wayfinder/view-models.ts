@@ -398,6 +398,11 @@ export interface SpellChoiceStepPane {
   infoState: PickerInfoState | null;
   destinationLabel: string;
   sourceName: string;
+  rarityAccess: {
+    available: boolean;
+    granted: boolean;
+    locked: boolean;
+  };
   filterGroups: PickerFilterGroupPane[];
   options: Array<OptionRecord & { selected: boolean; previewing: boolean; sourceLabel: string }>;
   preview: PreviewPane | null;

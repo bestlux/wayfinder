@@ -281,7 +281,7 @@ describe("wayfinder class archetype service", () => {
       1
     );
 
-    expect(draft.version).toBe(8);
+    expect(draft.version).toBe(9);
     expect(draft.branchSelections).toEqual({});
     expect(draft.classArchetypeChoices).toEqual({
       "class-archetype-doctrine-level-1": "battle-creed",

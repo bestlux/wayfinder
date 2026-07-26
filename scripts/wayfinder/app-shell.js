@@ -26,6 +26,7 @@ import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
 import { emptyPickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
 import { getWayfinderStepStatus, isWayfinderStepComplete, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
+import { canGrantRestrictedSpellRarityAccess, grantsRestrictedSpellRarityAccess, } from "./spell-choice/rarity-access.js";
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
     static DEFAULT_OPTIONS = {
         id: MODULE_ID,
@@ -215,6 +216,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 break;
             case "toggle-spell-choice":
                 await this.#toggleSpellChoice(action.stepId, action.value);
+                break;
+            case "toggle-spell-rarity-access":
+                await this.#toggleSpellRarityAccess(action.stepId);
                 break;
             case "clear-option":
                 this.#statusNote = null;
@@ -411,7 +415,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     fetchSelectionDocument,
                     extractDocumentSlug,
                 });
-                return resolveSelection(value, selectionStep, optionContext);
+                return resolveSelection(value, grantsRestrictedSpellRarityAccess(selectionStep, draft.spellRarityAccess[selectionStep.slotId] === true), optionContext);
             },
             hasDuplicateDraftSelection: (selection) => hasDuplicateDraftSelection(draft, selection),
             resolveSelectionTraits: (selection) => resolveSelectionTraits(selection, {
@@ -556,7 +560,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     fetchSelectionDocument,
                     extractDocumentSlug,
                 });
-                return resolveSelection(value, selectionStep, optionContext);
+                return resolveSelection(value, grantsRestrictedSpellRarityAccess(selectionStep, draft.spellRarityAccess[selectionStep.slotId] === true), optionContext);
             },
             selectionExistsOnActor: (selection, selectionStep) => {
                 if (selectionStep.kind !== "spell-choice") {
@@ -576,6 +580,29 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             },
         });
         await this.#finalizeSelectionCommand(result);
+    }
+    async #toggleSpellRarityAccess(stepId) {
+        this.#statusNote = null;
+        const draft = this.#requireDraft();
+        const plan = await this.#buildPlan(inspectActor(this.actor), draft);
+        const step = plan.steps.find((entry) => entry.id === stepId);
+        if (!step || !canGrantRestrictedSpellRarityAccess(step)) {
+            return;
+        }
+        if ((draft.spellChoices[step.slotId] ?? []).length > 0) {
+            ui.notifications.warn("Clear the spells chosen for this step before changing rarity access.");
+            return;
+        }
+        if (draft.spellRarityAccess[step.slotId] === true) {
+            delete draft.spellRarityAccess[step.slotId];
+            this.#statusNote = "Restricted spell rarities are hidden for this step.";
+        }
+        else {
+            draft.spellRarityAccess[step.slotId] = true;
+            this.#statusNote =
+                "Restricted spell rarities are available for this step. Choose only options granted by the rules or approved by the GM.";
+        }
+        this.render(false);
     }
     async #toggleTrainingSkill(stepId, slug) {
         this.#statusNote = null;

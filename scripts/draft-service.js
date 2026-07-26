@@ -1,6 +1,6 @@
 import { classArchetypeProfile, migrateLegacyClassArchetypeBranches, STANDARD_CLASS_PATH, } from "./wayfinder/class-archetype/registry.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
-const DRAFT_VERSION = 8;
+const DRAFT_VERSION = 9;
 const STATE_VERSION = 1;
 export function createEmptyDraft(targetLevel = 1) {
     return {
@@ -17,6 +17,7 @@ export function createEmptyDraft(targetLevel = 1) {
         languageChoices: {},
         classChoices: {},
         spellChoices: {},
+        spellRarityAccess: {},
         updatedAt: null,
     };
 }
@@ -38,6 +39,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
     const skillTrainings = sanitizeSkillTrainings(draft.skillTrainings);
     const classChoices = sanitizeClassChoices(draft.classChoices);
     const spellChoices = sanitizeSpellChoices(draft.spellChoices);
+    const spellRarityAccess = sanitizeSpellRarityAccess(draft.spellRarityAccess);
     if (migratedClassArchetypeProfiles.length > 0) {
         clearLegacyClassArchetypeDependentState({
             branchSelections,
@@ -46,6 +48,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
             selections,
             skillTrainings,
             spellChoices,
+            spellRarityAccess,
             projectedStaticGrantUuids: new Set(migratedClassArchetypeProfiles.flatMap((profile) => profile.projectedFeatGrants.flatMap((grant) => grant.staticFeatGrants.map((selection) => selection.uuid)))),
         });
     }
@@ -63,6 +66,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
         languageChoices: sanitizeChoiceListValues(draft.languageChoices),
         classChoices,
         spellChoices,
+        spellRarityAccess,
         updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
     };
 }
@@ -71,6 +75,7 @@ function clearLegacyClassArchetypeDependentState(state) {
     clearMatchingKeys(state.classChoices, (slotId) => slotId.startsWith(SLOT_PREFIXES.classChoice));
     clearMatchingKeys(state.skillTrainings, (slotId) => slotId.startsWith(SLOT_PREFIXES.skillTraining));
     clearMatchingKeys(state.spellChoices, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
+    clearMatchingKeys(state.spellRarityAccess, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
     clearMatchingKeys(state.manual, (slotId) => [
         SLOT_PREFIXES.classBranch,
         SLOT_PREFIXES.classChoice,
@@ -228,6 +233,12 @@ function sanitizeSpellChoices(raw) {
         }
     }
     return result;
+}
+function sanitizeSpellRarityAccess(raw) {
+    if (!isRecord(raw)) {
+        return {};
+    }
+    return Object.fromEntries(Object.entries(raw).filter((entry) => entry[0].length > 0 && entry[1] === true));
 }
 function sanitizeSpellSelection(slotId, value) {
     if (!isRecord(value)) {

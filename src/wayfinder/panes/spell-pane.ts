@@ -14,6 +14,7 @@ export function buildSpellChoicePane(args: {
   preview: PreviewPane | null;
   modeLabel: string;
   previewValue: string;
+  rarityAccess: SpellChoiceStepPane["rarityAccess"];
 }): SpellChoiceStepPane {
   const {
     step,
@@ -28,6 +29,7 @@ export function buildSpellChoicePane(args: {
     preview,
     modeLabel,
     previewValue,
+    rarityAccess,
   } = args;
   const selectedValues = selectedSelections.map((selection) => `${selection.packId}:${selection.documentId}`);
   const requiredCount = step.spellChoice?.count ?? 0;
@@ -61,6 +63,7 @@ export function buildSpellChoicePane(args: {
     infoState,
     destinationLabel: step.spellChoice?.destination.label ?? "Spell destination",
     sourceName: step.spellChoice?.sourceName ?? "Spell source",
+    rarityAccess,
     filterGroups,
     options: visibleOptions.map((option) => ({
       ...option,

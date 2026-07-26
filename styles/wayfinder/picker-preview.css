@@ -62,6 +62,32 @@
   line-height: 1.25;
 }
 
+.spell-rarity-access {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.35rem;
+  border: 1px solid rgba(95, 77, 57, 0.2);
+  border-radius: var(--wf-radius);
+  background: rgba(255, 252, 245, 0.55);
+}
+
+.spell-rarity-access.is-granted {
+  border-color: rgba(152, 81, 61, 0.38);
+  background: rgba(152, 81, 61, 0.08);
+}
+
+.spell-rarity-access button {
+  flex: 0 0 auto;
+}
+
+.spell-rarity-access p {
+  margin: 0;
+  color: var(--wf-ink-soft);
+  font-size: 0.62rem;
+  line-height: 1.25;
+}
+
 /* ── Search ────────────────────────────────────────────── */
 
 .search-shell {

@@ -3,6 +3,7 @@ import { clearPackServiceCache } from "../src/pack/access";
 import { getOptionsForStep } from "../src/pack/options";
 import type { OptionContext, PendingStep, PickItemSlotKind } from "../src/types";
 import { createPickItemStep } from "../src/wayfinder/domain/step-types";
+import { grantsRestrictedSpellRarityAccess } from "../src/wayfinder/spell-choice/rarity-access";
 
 const testGlobals = globalThis as typeof globalThis & { CONFIG: any; game: any };
 
@@ -1208,6 +1209,22 @@ describe("pack options dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Guidance"]);
   });
 
+  it("includes approved restricted rarities without relaxing spell list or rank policy", async () => {
+    setPack("pf2e.spells-srd", [
+      spellEntry("common-occult", "Common Occult", 1, ["occult"], ["cantrip"]),
+      spellEntry("uncommon-occult", "Uncommon Occult", 1, ["occult"], ["cantrip"], "uncommon"),
+      spellEntry("rare-divine", "Rare Divine", 1, ["divine"], ["cantrip"], "rare"),
+      spellEntry("rare-ranked", "Rare Ranked", 1, ["occult"], [], "rare"),
+    ]);
+    const step = spellChoiceStep("spell-choice-witch-cantrips-level-1", "witch-occult-prepared", "occult");
+
+    const restricted = await getOptionsForStep(step, EMPTY_CONTEXT);
+    const granted = await getOptionsForStep(grantsRestrictedSpellRarityAccess(step, true), EMPTY_CONTEXT);
+
+    expect(restricted.map((option) => option.name)).toEqual(["Common Occult"]);
+    expect(granted.map((option) => option.name)).toEqual(["Common Occult", "Uncommon Occult"]);
+  });
+
   it("includes deity spell UUID allowances even when the spell is outside the class tradition", async () => {
     setPack("pf2e.spells-srd", [
       spellEntry("heal", "Heal", 1, ["divine"], []),
@@ -1499,7 +1516,14 @@ function actionEntry(slug: string, name: string, traits: string[], otherTags: st
   };
 }
 
-function spellEntry(slug: string, name: string, level: number, traditions: string[], traits: string[]): any {
+function spellEntry(
+  slug: string,
+  name: string,
+  level: number,
+  traditions: string[],
+  traits: string[],
+  rarity = "common"
+): any {
   return {
     _id: slug,
     name,
@@ -1511,7 +1535,7 @@ function spellEntry(slug: string, name: string, level: number, traditions: strin
         value: level,
       },
       traits: {
-        rarity: "common",
+        rarity,
         traditions,
         value: traits,
       },

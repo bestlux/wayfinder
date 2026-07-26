@@ -13,6 +13,29 @@
         {{/if}}
       </div>
 
+      {{#if activePane.rarityAccess.available}}
+        <div class="spell-rarity-access{{#if activePane.rarityAccess.granted}} is-granted{{/if}}">
+          <button
+            type="button"
+            class="secondary compact{{#if activePane.rarityAccess.granted}} is-selected{{/if}}"
+            data-wayfinder-action="toggle-spell-rarity-access"
+            data-step-id="{{activePane.stepId}}"
+            aria-pressed="{{#if activePane.rarityAccess.granted}}true{{else}}false{{/if}}"
+            {{#if activePane.rarityAccess.locked}}disabled{{/if}}
+          >
+            {{#if activePane.rarityAccess.granted}}
+              <i class="fa-solid fa-unlock"></i> Restricted rarities included
+            {{else}}
+              <i class="fa-solid fa-lock"></i> Include restricted rarities
+            {{/if}}
+          </button>
+          <p>
+            Uncommon, rare, and unique spells require rules access or GM approval.
+            {{#if activePane.rarityAccess.locked}}Clear this step's spells to change access.{{/if}}
+          </p>
+        </div>
+      {{/if}}
+
       <label class="search-shell">
         <i class="fa-solid fa-magnifying-glass"></i>
         <input type="search" value="{{activePane.search}}" placeholder="Search name, source, rarity…" aria-label="Search spells" data-wayfinder-search data-step-id="{{activePane.stepId}}" />

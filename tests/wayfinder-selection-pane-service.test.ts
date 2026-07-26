@@ -564,6 +564,94 @@ describe("wayfinder selection pane service", () => {
     expect(pane.selectedCount).toBe(1);
     expect(pane.remainingCount).toBe(1);
     expect(pane.preview?.selectedLabel).toBe("Added to draft");
+    expect(pane.rarityAccess).toEqual({
+      available: true,
+      granted: false,
+      locked: true,
+    });
+  });
+
+  it("explicitly grants restricted spell access without changing other spell policy", async () => {
+    const draft = createEmptyDraft(1);
+    const slotId = "spell-choice-witch-cantrips-level-1";
+    draft.spellRarityAccess[slotId] = true;
+    const step: PendingStep = {
+      id: slotId,
+      level: 1,
+      kind: "spell-choice",
+      slotKind: "spell-choice",
+      title: "Witch cantrips",
+      description: "",
+      required: true,
+      slotId,
+      filters: { itemType: "spell" },
+      spellChoice: {
+        slotId,
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "witch-spellcasting",
+        sourceUuid: "Compendium.pf2e.classfeatures.Item.witch-spellcasting",
+        sourceName: "Witch Spellcasting",
+        classSlug: "witch",
+        dependsOn: "class",
+        destination: {
+          type: "prepared",
+          key: "witch-occult-prepared",
+          label: "Witch familiar",
+          entryName: "Witch Spellcasting",
+          tradition: "occult",
+          ability: "int",
+          prepared: "prepared",
+        },
+        count: 5,
+        minRank: 0,
+        maxRank: 0,
+        cantrip: true,
+        curriculumSpellNames: [],
+        additionalAllowedSpellNames: [],
+        restrictToCommon: true,
+      },
+    };
+    let optionStep: PendingStep | null = null;
+
+    const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
+      draft,
+      searchByStepId: new Map(),
+      pickerFiltersByStepId: new Map(),
+      previewValueByStepId: new Map(),
+      resolveOptionContext: async () => EMPTY_CONTEXT,
+      resolveDeityDocument: async () => null,
+      buildContextNote: async () => null,
+      resolveStepStatus: async () => "0/5 chosen",
+      getOptionsForStep: async (candidate) => {
+        optionStep = candidate;
+        return [option("test.pack:forbidding-ward", "Forbidding Ward", "uncommon")];
+      },
+      getPickerInfoState: () => null,
+      buildPreview: async () => null,
+      matchesSearch: () => true,
+    });
+
+    expect(optionStep?.kind).toBe("spell-choice");
+    expect(optionStep?.kind === "spell-choice" && optionStep.spellChoice.restrictToCommon).toBe(false);
+    expect(optionStep?.filters).toEqual({ itemType: "spell" });
+    expect(
+      optionStep?.kind === "spell-choice" && {
+        tradition: optionStep.spellChoice.destination.tradition,
+        cantrip: optionStep.spellChoice.cantrip,
+        minRank: optionStep.spellChoice.minRank,
+        maxRank: optionStep.spellChoice.maxRank,
+      }
+    ).toEqual({
+      tradition: "occult",
+      cantrip: true,
+      minRank: 0,
+      maxRank: 0,
+    });
+    expect(pane?.kind === "spell-choice" && pane.rarityAccess).toEqual({
+      available: true,
+      granted: true,
+      locked: false,
+    });
   });
 });
 

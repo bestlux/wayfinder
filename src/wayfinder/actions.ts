@@ -28,6 +28,7 @@ export type WayfinderAction =
   | { type: "select-class-archetype"; stepId: string; value: string }
   | { type: "select-class-choice"; stepId: string; value: string }
   | { type: "toggle-spell-choice"; stepId: string; value: string }
+  | { type: "toggle-spell-rarity-access"; stepId: string }
   | { type: "clear-option"; stepId: string }
   | { type: "target-up" }
   | { type: "target-down" }
@@ -140,6 +141,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
           }
         : null;
     case "clear-picker-filters":
+    case "toggle-spell-rarity-access":
       return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
     case "toggle-ancestry-mode":
     case "toggle-voluntary-enabled":

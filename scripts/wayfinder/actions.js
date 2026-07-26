@@ -78,6 +78,7 @@ export function parseWayfinderAction(element) {
                 }
                 : null;
         case "clear-picker-filters":
+        case "toggle-spell-rarity-access":
             return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
         case "toggle-ancestry-mode":
         case "toggle-voluntary-enabled":

@@ -79,6 +79,7 @@ export interface DraftState {
   languageChoices: Record<string, string[]>;
   classChoices: Record<string, string>;
   spellChoices: Record<string, SelectionRef[]>;
+  spellRarityAccess: Record<string, true>;
   updatedAt: string | null;
 }
 

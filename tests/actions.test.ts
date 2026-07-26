@@ -68,6 +68,20 @@ describe("wayfinder actions", () => {
     });
   });
 
+  it("parses the spell rarity access toggle", () => {
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "toggle-spell-rarity-access",
+          stepId: "spell-choice-witch-cantrips-level-1",
+        },
+      } as any)
+    ).toEqual({
+      type: "toggle-spell-rarity-access",
+      stepId: "spell-choice-witch-cantrips-level-1",
+    });
+  });
+
   it("rejects incomplete action datasets", () => {
     expect(
       parseWayfinderAction({

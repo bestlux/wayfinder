@@ -90,6 +90,12 @@ describe("wayfinder draft lifecycle service", () => {
 
   it("applies the draft, persists completion state, and returns a reset draft", async () => {
     const draft = createEmptyDraft(5);
+    const existingCharacterHistory = {
+      version: 1 as const,
+      importedAt: "2026-07-26T18:00:00.000Z",
+      actorLevel: 5,
+      entries: [],
+    };
     const confirmApply = vi.fn(() => true);
     const order: string[] = [];
     const applyDraftToActor = vi.fn(async () => {
@@ -120,6 +126,7 @@ describe("wayfinder draft lifecycle service", () => {
           lastAppliedAt: "2026-04-19T21:30:00.000Z",
           lastTargetLevel: 5,
           completedStepIds: ["ancestry-level-1", "class-level-1"],
+          existingCharacterHistory,
         },
       });
     });
@@ -129,6 +136,7 @@ describe("wayfinder draft lifecycle service", () => {
       actorName: "Kyra",
       currentLevel: 1,
       draft,
+      existingCharacterHistory,
       steps,
       isStepComplete: async () => true,
       confirmApply,

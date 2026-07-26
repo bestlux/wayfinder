@@ -131,6 +131,71 @@ describe("wayfinder context service", () => {
     expect(context.hasPendingSteps).toBe(false);
     expect(context.canApplyDraft).toBe(false);
   });
+
+  it("groups imported existing-character history by level and exposes review counts", async () => {
+    const context = await buildWayfinderContext({
+      actorName: "Ezren",
+      currentLevel: 5,
+      targetLevel: 5,
+      steps: [],
+      activeStep: null,
+      activePane: null,
+      statusNote: null,
+      recentlyInvalidatedStepIds: new Set<string>(),
+      summaryDocuments: {
+        ancestry: { name: "Human" },
+        heritage: { name: "Versatile Heritage" },
+        background: { name: "Scholar" },
+        classDocument: { name: "Wizard" },
+        deity: null,
+      },
+      isStepComplete: async () => false,
+      getStepStatus: async () => "Missing",
+      canImportExistingHistory: true,
+      existingCharacterHistory: {
+        version: 1,
+        importedAt: "2026-07-26T18:00:00.000Z",
+        actorLevel: 5,
+        entries: [
+          {
+            slotId: "ancestry-level-1",
+            level: 1,
+            category: "foundation",
+            label: "Ancestry",
+            value: "Human",
+            status: "mapped",
+            sourceUuid: "Compendium.pf2e.ancestries.Item.human",
+          },
+          {
+            slotId: "ability-boosts-level-5",
+            level: 5,
+            category: "ability-boost",
+            label: "Level 5 ability boosts",
+            value: "Review required",
+            status: "review",
+            sourceUuid: null,
+          },
+        ],
+      },
+    });
+
+    expect(context.canImportExistingHistory).toBe(true);
+    expect(context.existingCharacterHistory).toMatchObject({
+      actorLevel: 5,
+      mappedCount: 1,
+      reviewCount: 1,
+      levels: [
+        {
+          level: 1,
+          entries: [expect.objectContaining({ slotId: "ancestry-level-1", mapped: true, review: false })],
+        },
+        {
+          level: 5,
+          entries: [expect.objectContaining({ slotId: "ability-boosts-level-5", mapped: false, review: true })],
+        },
+      ],
+    });
+  });
 });
 
 function step(id: string, title: string): PendingStep {

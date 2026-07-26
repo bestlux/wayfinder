@@ -51,10 +51,11 @@ describe("draft-service", () => {
 
   it("creates an empty module state", () => {
     expect(createEmptyState()).toEqual({
-      version: 1,
+      version: 2,
       lastAppliedAt: null,
       lastTargetLevel: null,
       completedStepIds: [],
+      existingCharacterHistory: null,
     });
   });
 
@@ -343,12 +344,45 @@ describe("draft-service", () => {
         lastAppliedAt: "2026-04-08T00:00:00.000Z",
         lastTargetLevel: 24,
         completedStepIds: ["a", 1, "b"],
+        existingCharacterHistory: {
+          version: 1,
+          importedAt: "2026-07-26T18:00:00.000Z",
+          actorLevel: 5,
+          entries: [
+            {
+              slotId: "ancestry-level-1",
+              level: 1,
+              category: "foundation",
+              label: "Ancestry",
+              value: "Human",
+              status: "mapped",
+              sourceUuid: "Compendium.pf2e.ancestries.Item.human",
+            },
+            { slotId: 42, status: "invalid" },
+          ],
+        },
       })
     ).toEqual({
-      version: 1,
+      version: 2,
       lastAppliedAt: "2026-04-08T00:00:00.000Z",
       lastTargetLevel: 20,
       completedStepIds: ["a", "b"],
+      existingCharacterHistory: {
+        version: 1,
+        importedAt: "2026-07-26T18:00:00.000Z",
+        actorLevel: 5,
+        entries: [
+          {
+            slotId: "ancestry-level-1",
+            level: 1,
+            category: "foundation",
+            label: "Ancestry",
+            value: "Human",
+            status: "mapped",
+            sourceUuid: "Compendium.pf2e.ancestries.Item.human",
+          },
+        ],
+      },
     });
   });
 });

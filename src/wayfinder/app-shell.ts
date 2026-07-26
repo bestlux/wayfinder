@@ -7,8 +7,8 @@ import type {
 } from "../build-state/document-types.js";
 import type { EffectiveBuildState } from "../build-state.js";
 import { getEffectiveBuildState, getEffectiveSingletonDocument, listActorItems } from "../build-state.js";
-import { MODULE_ID, MODULE_TITLE } from "../constants.js";
-import { createEmptyDraft, normalizeDraft } from "../draft-service.js";
+import { MODULE_ID, MODULE_TITLE, STATE_FLAG } from "../constants.js";
+import { createEmptyDraft, normalizeDraft, normalizeState } from "../draft-service.js";
 import { fetchSelectionDocument } from "../pack/access.js";
 import { getOptionsForStep, resolveSelection } from "../pack/options.js";
 import { getPickerInfoState } from "../pack/picker-state.js";
@@ -43,6 +43,10 @@ import {
   buildSaveDraftUpdate,
   createClearedDraftResult,
 } from "./application/draft-lifecycle-service.js";
+import {
+  buildExistingCharacterHistory,
+  withExistingCharacterHistory,
+} from "./application/existing-character-history-service.js";
 import {
   buildContextNote,
   buildOptionContext,
@@ -198,6 +202,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   async _prepareContext(): Promise<WayfinderTemplateContext> {
     const snapshot = inspectActor(this.actor);
     const draft = this.#ensureDraft(snapshot.level);
+    const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
     const plan = await this.#buildPlan(snapshot, draft);
     const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
     const activeStep = await this.#resolveActiveStep(plan.steps, effectiveBuildState);
@@ -228,6 +233,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       },
       isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
       getStepStatus: (step) => this.#stepStatus(step, effectiveBuildState),
+      canImportExistingHistory: !snapshot.isBlank,
+      existingCharacterHistory: state.existingCharacterHistory,
     });
   }
 
@@ -359,6 +366,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         break;
       case "apply-draft":
         await this.#applyDraft();
+        break;
+      case "import-existing-history":
+        await this.#importExistingHistory();
         break;
       case "clear-draft":
         await this.#clearDraft();
@@ -1073,6 +1083,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         currentLevel: snapshot.level,
         draft,
         existingCompletedStepIds: readActorCompletedStepIds(this.actor),
+        existingCharacterHistory: normalizeState(this.actor.getFlag(MODULE_ID, "state")).existingCharacterHistory,
         steps: plan.steps,
         isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
         confirmApply: confirmWayfinderApply,
@@ -1112,6 +1123,19 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#recentlyInvalidatedStepIds.clear();
     ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.Applied"));
     await this.close({ animate: false });
+  }
+
+  async #importExistingHistory(): Promise<void> {
+    const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
+    const history = buildExistingCharacterHistory(this.actor);
+    await this.actor.update({
+      [STATE_FLAG]: withExistingCharacterHistory(state, history),
+    });
+    const mappedCount = history.entries.filter((entry) => entry.status === "mapped").length;
+    const reviewCount = history.entries.length - mappedCount;
+    this.#statusNote = `Mapped ${mappedCount} observable choices; ${reviewCount} historical decisions need review.`;
+    ui.notifications.info("Wayfinder mapped the source-backed history it could verify from this actor.");
+    this.render(false);
   }
 
   async #clearDraft(): Promise<void> {

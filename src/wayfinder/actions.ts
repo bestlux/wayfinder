@@ -34,6 +34,7 @@ export type WayfinderAction =
   | { type: "target-down" }
   | { type: "save-draft" }
   | { type: "apply-draft" }
+  | { type: "import-existing-history" }
   | { type: "clear-draft" };
 
 interface InteractionHandlers {
@@ -111,6 +112,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
     case "target-down":
     case "save-draft":
     case "apply-draft":
+    case "import-existing-history":
     case "clear-draft":
       return { type: action };
     case "preview-option":

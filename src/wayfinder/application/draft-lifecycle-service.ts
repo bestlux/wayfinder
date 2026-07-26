@@ -1,12 +1,13 @@
 import { DRAFT_FLAG, STATE_FLAG } from "../../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../../draft-service.js";
-import type { DraftState, PendingStep } from "../../types.js";
+import type { DraftState, ExistingCharacterHistory, PendingStep } from "../../types.js";
 
 export interface ApplyDraftLifecycleArgs {
   actorName: string;
   currentLevel: number;
   draft: DraftState;
   existingCompletedStepIds?: string[];
+  existingCharacterHistory?: ExistingCharacterHistory | null;
   steps: PendingStep[];
   isStepComplete: (step: PendingStep) => Promise<boolean>;
   confirmApply?: (message: string) => boolean | Promise<boolean>;
@@ -54,6 +55,7 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
       lastAppliedAt: (args.now ?? defaultNow)(),
       lastTargetLevel: args.draft.targetLevel,
       completedStepIds,
+      existingCharacterHistory: args.existingCharacterHistory ?? null,
     },
   });
 

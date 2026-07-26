@@ -1,4 +1,11 @@
-import type { AbilityKey, BoostDraftState, DraftState, ModuleState } from "./types.js";
+import type {
+  AbilityKey,
+  BoostDraftState,
+  DraftState,
+  ExistingCharacterHistory,
+  ExistingCharacterHistoryEntry,
+  ModuleState,
+} from "./types.js";
 import {
   classArchetypeProfile,
   migrateLegacyClassArchetypeBranches,
@@ -7,7 +14,7 @@ import {
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
 
 const DRAFT_VERSION = 9;
-const STATE_VERSION = 1;
+const STATE_VERSION = 2;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
   return {
@@ -35,6 +42,7 @@ export function createEmptyState(): ModuleState {
     lastAppliedAt: null,
     lastTargetLevel: null,
     completedStepIds: [],
+    existingCharacterHistory: null,
   };
 }
 
@@ -142,6 +150,48 @@ export function normalizeState(raw: unknown): ModuleState {
     completedStepIds: Array.isArray(state.completedStepIds)
       ? state.completedStepIds.filter((value): value is string => typeof value === "string")
       : [],
+    existingCharacterHistory: sanitizeExistingCharacterHistory(state.existingCharacterHistory),
+  };
+}
+
+function sanitizeExistingCharacterHistory(raw: unknown): ExistingCharacterHistory | null {
+  if (!isRecord(raw) || raw.version !== 1 || typeof raw.importedAt !== "string") {
+    return null;
+  }
+
+  const actorLevel = clampLevel(typeof raw.actorLevel === "number" ? raw.actorLevel : 1);
+  const entries = Array.isArray(raw.entries)
+    ? raw.entries.flatMap((entry): ExistingCharacterHistoryEntry[] => {
+        if (
+          !isRecord(entry) ||
+          typeof entry.slotId !== "string" ||
+          typeof entry.label !== "string" ||
+          typeof entry.value !== "string" ||
+          !["foundation", "feat", "ability-boost", "skill-increase", "other"].includes(String(entry.category)) ||
+          !["mapped", "review"].includes(String(entry.status))
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            slotId: entry.slotId,
+            level: clampLevel(typeof entry.level === "number" ? entry.level : 1),
+            category: entry.category as ExistingCharacterHistoryEntry["category"],
+            label: entry.label,
+            value: entry.value,
+            status: entry.status as ExistingCharacterHistoryEntry["status"],
+            sourceUuid: typeof entry.sourceUuid === "string" ? entry.sourceUuid : null,
+          },
+        ];
+      })
+    : [];
+
+  return {
+    version: 1,
+    importedAt: raw.importedAt,
+    actorLevel,
+    entries,
   };
 }
 

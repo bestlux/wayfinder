@@ -88,6 +88,24 @@ export interface ModuleState {
   lastAppliedAt: string | null;
   lastTargetLevel: number | null;
   completedStepIds: string[];
+  existingCharacterHistory: ExistingCharacterHistory | null;
+}
+
+export interface ExistingCharacterHistoryEntry {
+  slotId: string;
+  level: number;
+  category: "foundation" | "feat" | "ability-boost" | "skill-increase" | "other";
+  label: string;
+  value: string;
+  status: "mapped" | "review";
+  sourceUuid: string | null;
+}
+
+export interface ExistingCharacterHistory {
+  version: 1;
+  importedAt: string;
+  actorLevel: number;
+  entries: ExistingCharacterHistoryEntry[];
 }
 
 export interface ActorSnapshot {

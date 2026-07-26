@@ -1,7 +1,7 @@
 import { classArchetypeProfile, migrateLegacyClassArchetypeBranches, STANDARD_CLASS_PATH, } from "./wayfinder/class-archetype/registry.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
 const DRAFT_VERSION = 9;
-const STATE_VERSION = 1;
+const STATE_VERSION = 2;
 export function createEmptyDraft(targetLevel = 1) {
     return {
         version: DRAFT_VERSION,
@@ -27,6 +27,7 @@ export function createEmptyState() {
         lastAppliedAt: null,
         lastTargetLevel: null,
         completedStepIds: [],
+        existingCharacterHistory: null,
     };
 }
 export function normalizeDraft(raw, fallbackTargetLevel) {
@@ -107,6 +108,42 @@ export function normalizeState(raw) {
         completedStepIds: Array.isArray(state.completedStepIds)
             ? state.completedStepIds.filter((value) => typeof value === "string")
             : [],
+        existingCharacterHistory: sanitizeExistingCharacterHistory(state.existingCharacterHistory),
+    };
+}
+function sanitizeExistingCharacterHistory(raw) {
+    if (!isRecord(raw) || raw.version !== 1 || typeof raw.importedAt !== "string") {
+        return null;
+    }
+    const actorLevel = clampLevel(typeof raw.actorLevel === "number" ? raw.actorLevel : 1);
+    const entries = Array.isArray(raw.entries)
+        ? raw.entries.flatMap((entry) => {
+            if (!isRecord(entry) ||
+                typeof entry.slotId !== "string" ||
+                typeof entry.label !== "string" ||
+                typeof entry.value !== "string" ||
+                !["foundation", "feat", "ability-boost", "skill-increase", "other"].includes(String(entry.category)) ||
+                !["mapped", "review"].includes(String(entry.status))) {
+                return [];
+            }
+            return [
+                {
+                    slotId: entry.slotId,
+                    level: clampLevel(typeof entry.level === "number" ? entry.level : 1),
+                    category: entry.category,
+                    label: entry.label,
+                    value: entry.value,
+                    status: entry.status,
+                    sourceUuid: typeof entry.sourceUuid === "string" ? entry.sourceUuid : null,
+                },
+            ];
+        })
+        : [];
+    return {
+        version: 1,
+        importedAt: raw.importedAt,
+        actorLevel,
+        entries,
     };
 }
 export function buildDraftPatch(draft) {

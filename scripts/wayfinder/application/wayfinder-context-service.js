@@ -39,6 +39,32 @@ export async function buildWayfinderContext(args) {
         activePane: args.activePane,
         canGoPrevious: activeStepIndex > 0,
         canGoNext: activeStepIndex >= 0 && activeStepIndex < args.steps.length - 1,
+        canImportExistingHistory: args.canImportExistingHistory ?? false,
+        existingCharacterHistory: buildExistingCharacterHistoryView(args.existingCharacterHistory ?? null),
+    };
+}
+function buildExistingCharacterHistoryView(history) {
+    if (!history) {
+        return null;
+    }
+    const levels = Array.from(new Set(history.entries.map((entry) => entry.level)))
+        .sort((left, right) => left - right)
+        .map((level) => ({
+        level,
+        entries: history.entries
+            .filter((entry) => entry.level === level)
+            .map((entry) => ({
+            ...entry,
+            mapped: entry.status === "mapped",
+            review: entry.status === "review",
+        })),
+    }));
+    return {
+        actorLevel: history.actorLevel,
+        importedAt: history.importedAt,
+        mappedCount: history.entries.filter((entry) => entry.status === "mapped").length,
+        reviewCount: history.entries.filter((entry) => entry.status === "review").length,
+        levels,
     };
 }
 function buildSummaryItems(documents) {

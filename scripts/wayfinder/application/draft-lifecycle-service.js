@@ -30,6 +30,7 @@ export async function applyDraftLifecycle(args) {
             lastAppliedAt: (args.now ?? defaultNow)(),
             lastTargetLevel: args.draft.targetLevel,
             completedStepIds,
+            existingCharacterHistory: args.existingCharacterHistory ?? null,
         },
     });
     return {

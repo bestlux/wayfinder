@@ -1,4 +1,4 @@
-import type { PendingStep } from "../../types.js";
+import type { ExistingCharacterHistory, ExistingCharacterHistoryEntry, PendingStep } from "../../types.js";
 import { modeLabel } from "../plan-service.js";
 import type { ActivePane, StepNavRow, SummaryItem } from "../view-models.js";
 
@@ -26,6 +26,8 @@ export interface BuildWayfinderContextArgs {
   summaryDocuments: WayfinderSummaryDocuments;
   isStepComplete: (step: PendingStep) => Promise<boolean>;
   getStepStatus: (step: PendingStep) => Promise<string>;
+  canImportExistingHistory?: boolean;
+  existingCharacterHistory?: ExistingCharacterHistory | null;
 }
 
 export interface WayfinderTemplateContext {
@@ -45,6 +47,19 @@ export interface WayfinderTemplateContext {
   activePane: ActivePane | null;
   canGoPrevious: boolean;
   canGoNext: boolean;
+  canImportExistingHistory: boolean;
+  existingCharacterHistory: ExistingCharacterHistoryView | null;
+}
+
+export interface ExistingCharacterHistoryView {
+  actorLevel: number;
+  importedAt: string;
+  mappedCount: number;
+  reviewCount: number;
+  levels: Array<{
+    level: number;
+    entries: Array<ExistingCharacterHistoryEntry & { mapped: boolean; review: boolean }>;
+  }>;
 }
 
 export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Promise<WayfinderTemplateContext> {
@@ -91,6 +106,37 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
     activePane: args.activePane,
     canGoPrevious: activeStepIndex > 0,
     canGoNext: activeStepIndex >= 0 && activeStepIndex < args.steps.length - 1,
+    canImportExistingHistory: args.canImportExistingHistory ?? false,
+    existingCharacterHistory: buildExistingCharacterHistoryView(args.existingCharacterHistory ?? null),
+  };
+}
+
+function buildExistingCharacterHistoryView(
+  history: ExistingCharacterHistory | null
+): ExistingCharacterHistoryView | null {
+  if (!history) {
+    return null;
+  }
+
+  const levels = Array.from(new Set(history.entries.map((entry) => entry.level)))
+    .sort((left, right) => left - right)
+    .map((level) => ({
+      level,
+      entries: history.entries
+        .filter((entry) => entry.level === level)
+        .map((entry) => ({
+          ...entry,
+          mapped: entry.status === "mapped",
+          review: entry.status === "review",
+        })),
+    }));
+
+  return {
+    actorLevel: history.actorLevel,
+    importedAt: history.importedAt,
+    mappedCount: history.entries.filter((entry) => entry.status === "mapped").length,
+    reviewCount: history.entries.filter((entry) => entry.status === "review").length,
+    levels,
   };
 }
 

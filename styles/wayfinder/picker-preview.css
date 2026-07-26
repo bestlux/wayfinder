@@ -60,8 +60,14 @@
   min-width: 0;
 }
 
+/* Standalone note: it owns a full-width line and scrolls with the option list,
+   so it wraps instead of inheriting the inline single-line clamp above. */
+
 .browser-context-note {
   padding: 0.35rem 0.55rem 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .spell-browser-notes {

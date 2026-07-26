@@ -1,13 +1,13 @@
 import { OFFICIAL_PACKS, SKILL_LABELS } from "../constants.js";
 import { getExtraPackSetting } from "../settings.js";
 import { toCompendiumItemUuid } from "../shared/compendium.js";
-import { mergePackIds, parseCompendiumAllowlist } from "../source-filter.js";
-import { cacheTraitCatalog, getCachedTraitCatalog, getGamePack, getPackIndex } from "./access.js";
+import { expandCompendiumAllowlist, mergePackIds, parseCompendiumAllowlist } from "../source-filter.js";
+import { cacheTraitCatalog, getCachedTraitCatalog, getGamePack, getGamePackIds, getPackIndex, } from "./access.js";
 import { hasUnsupportedEmbeddedChoiceSet } from "./embedded-choice-policy.js";
 import { extractEntrySlug, extractEntryTraits, namesMatch, normalizeTraitList, numericOrNull, resolveFeatType, stringOrNull, } from "./entry.js";
 import { matchesChoicePredicate, matchesCurrentClassMulticlassDedication, matchesItemType, matchesStaticPredicate, matchesUuidAllowlist, matchesUuidChoicePredicate, } from "./predicates.js";
 export function resolvePackIds(slotKind, filters) {
-    const extras = parseCompendiumAllowlist(getExtraPackSetting());
+    const extras = expandCompendiumAllowlist(parseCompendiumAllowlist(getExtraPackSetting()), getGamePackIds());
     if (filters?.packIds?.length) {
         return mergePackIds(filters.packIds, extras);
     }

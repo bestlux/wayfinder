@@ -49,4 +49,16 @@ export function cacheTraitCatalog(cacheKey, traits) {
 export function getGamePack(packId) {
     return globalThis.game?.packs?.get(packId) ?? null;
 }
+export function getGamePackIds() {
+    const packs = globalThis.game?.packs;
+    if (!packs) {
+        return [];
+    }
+    return Array.from(packs.entries())
+        .filter(([, pack]) => {
+        const documentName = pack.documentName ?? pack.metadata?.type;
+        return typeof documentName !== "string" || documentName === "Item";
+    })
+        .map(([packId]) => packId);
+}
 //# sourceMappingURL=access.js.map

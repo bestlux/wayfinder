@@ -22,7 +22,7 @@
     "Settings": {
       "ExtraPacks": {
         "Name": "Extra PF2E compendium allowlist",
-        "Hint": "Comma-separated compendium ids to search in addition to the official PF2E packs, for example world.homebrew-feats,my-module.custom-options."
+        "Hint": "Comma-separated compendium ids or wildcards to search in addition to the official PF2E packs. Use my-module.* for every compendium in one module, or * for every installed compendium."
       }
     },
     "Notifications": {

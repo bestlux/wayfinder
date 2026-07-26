@@ -145,3 +145,17 @@ export function cacheTraitCatalog(cacheKey: string, traits: Set<string>): void {
 export function getGamePack(packId: string): GamePackLike | null {
   return (globalThis as PackServiceGlobals).game?.packs?.get(packId) ?? null;
 }
+
+export function getGamePackIds(): string[] {
+  const packs = (globalThis as PackServiceGlobals).game?.packs;
+  if (!packs) {
+    return [];
+  }
+
+  return Array.from(packs.entries())
+    .filter(([, pack]) => {
+      const documentName = pack.documentName ?? pack.metadata?.type;
+      return typeof documentName !== "string" || documentName === "Item";
+    })
+    .map(([packId]) => packId);
+}

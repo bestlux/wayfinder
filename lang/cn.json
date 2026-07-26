@@ -33,7 +33,7 @@
     "Settings": {
       "ExtraPacks": {
         "Name": "额外PF2e合集包白名单",
-        "Hint": "输入以半角逗号分隔的合集包ID，以检索PF2e官方合集包外的补充合集包，例如“ world.homebrew-feats,my-module.custom-options”。"
+        "Hint": "输入以半角逗号分隔的合集包ID或通配符，以检索PF2e官方合集包外的补充合集包。使用“my-module.*”可包含一个模组的全部合集包，使用“*”可包含全部已安装的合集包。"
       }
     }
   }

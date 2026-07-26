@@ -45,6 +45,34 @@ describe("pack options dependency filtering", () => {
     } as any;
   });
 
+  it("discovers every installed pack matching a module-prefix allowlist wildcard", async () => {
+    testGlobals.game.settings.get = () => "battlezoo-dragons.*";
+    setPack("battlezoo-dragons.dragon-ancestries", [ancestryEntry("dragon", "Dragon")]);
+    setPack("battlezoo-dragons.dragon-heritages", [heritageEntry("brine-dragon", "Brine Dragon", "dragon")]);
+    setPack("other-module.ancestries", [ancestryEntry("outsider", "Outsider")]);
+
+    const options = await getOptionsForStep(makeStep("ancestry", { itemType: "ancestry" }));
+
+    expect(options.map((option) => option.name)).toEqual(["Dragon"]);
+  });
+
+  it("applies the existing item-type filters when the global allowlist wildcard searches all installed packs", async () => {
+    testGlobals.game.settings.get = () => "*";
+    setPack("homebrew.ancestries", [ancestryEntry("dragon", "Dragon")]);
+    setPack("homebrew.feats", [featEntry("dragon-flight", "Dragon Flight", "ancestry", ["dragon"])]);
+    testGlobals.game.packs.set("homebrew.journals", {
+      documentName: "JournalEntry",
+      metadata: { id: "homebrew.journals", type: "JournalEntry" },
+      getIndex: async () => {
+        throw new Error("Non-Item compendiums must not be indexed");
+      },
+    });
+
+    const options = await getOptionsForStep(makeStep("ancestry", { itemType: "ancestry" }));
+
+    expect(options.map((option) => option.name)).toEqual(["Dragon"]);
+  });
+
   it("filters heritages to the drafted ancestry plus versatile heritages", async () => {
     setPack("pf2e.heritages", [
       heritageEntry("ancient-elf", "Ancient Elf", "elf"),

@@ -134,8 +134,10 @@ export interface SelectionDocumentLike {
 }
 
 export interface PackLike {
+  documentName?: string;
   metadata?: {
     id?: string;
+    type?: string;
   };
   getDocument(documentId: string): Promise<SelectionDocumentLike | null>;
 }

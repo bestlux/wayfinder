@@ -94,7 +94,7 @@ Held deliberately, revisited only at 1.0: NPC/creature building, token image edi
 
 ## Docs housekeeping
 
-- `agents/v1-backlog.md` is superseded by this file; it keeps a banner and stays as history.
+- The v1 backlog, research digest, and implementation notes in `agents/` were removed on 2026-07-26 — the v1 plan shipped in full, and their capability snapshots no longer matched the code. This file is their successor.
 - `agents/product-brief.md` and `agents/design-vision.md` remain canonical for scope philosophy and feel. The design vision needs no revision — Arc 2 exists to finish honoring it.
 - `docs/issue-backlog-2026-07-26.md` remains the tactical plan for #7 and the template for future issue-triage snapshots.
 - Coverage matrices in `docs/coverage/` stay evidence-first; Arc 1's depth work extends them past level 5.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1 - 2026-07-26
+
+- General feat slots now admit qualifying skill feats while respecting projected skill ranks and other prerequisites across a multi-level draft.
+- Witch familiar learned-spell choices now appear at their later progression levels and apply to the familiar's spellcasting entry instead of stopping after level 1.
+- Existing-character history stays contained within its report panel, and Wayfinder's panels retain readable colors across Foundry themes.
+- Gradual Ability Boosts now follows PF2E's world setting, splitting each normal four-boost milestone across the appropriate levels and applying the accumulated boosts correctly.
+- Skill choices now use a consistent responsive grid, making long training and increase lists easier to scan.
+
 ## 0.6.0 - 2026-07-26
 
 - Multi-level drafts now carry earlier skill training into later skill increases, so planned ranks stay accurate before anything is applied.

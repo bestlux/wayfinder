@@ -145,6 +145,24 @@ describe("wayfinder skill pane service", () => {
     });
   });
 
+  it("keeps overridden unleveled training in bounded skill projections", async () => {
+    const draft = createEmptyDraft(3);
+    draft.skillTrainings["skill-training-legacy"] = trainingDraft(
+      {
+        "class:medicine": "medicine",
+      },
+      []
+    );
+
+    const projected = await projectSkillRanks(draft, "skill-increase-level-3", {
+      baseSkillRanks: {},
+      resolveDocument: async () => null,
+      localize: (value) => value,
+    });
+
+    expect(projected.medicine).toBe(1);
+  });
+
   it("does not project singleton skill selections without a matching rank-granting rule", async () => {
     const draft = createEmptyDraft(1);
     draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "society";

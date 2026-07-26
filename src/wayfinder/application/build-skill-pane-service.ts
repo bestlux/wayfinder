@@ -2,8 +2,9 @@ import { SKILL_LABELS } from "../../constants.js";
 import { resolveSingletonChoiceSkillGrant } from "../../shared/singleton-choice-skill-grants.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import type { DraftState, PendingStep } from "../../types.js";
+import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { formatSlug } from "../formatting.js";
-import { buildSkillIncreasePane, buildSkillTrainingPane, compareSkillIncreaseSlotIds } from "../panes/skill-pane.js";
+import { buildSkillIncreasePane, buildSkillTrainingPane } from "../panes/skill-pane.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
 import type { SkillIncreaseStepPane, SkillTrainingStepPane } from "../view-models.js";
 
@@ -66,7 +67,7 @@ export async function projectSkillRanks(
   upToSlotId: string,
   deps: ProjectSkillRanksDependencies
 ): Promise<Record<string, number>> {
-  const projected = { ...deps.baseSkillRanks };
+  const baseSkillRanks = { ...deps.baseSkillRanks };
   const [ancestryDocument, heritageDocument, backgroundDocument, classDocument] = await Promise.all([
     deps.resolveDocument("ancestry"),
     deps.resolveDocument("heritage"),
@@ -75,19 +76,19 @@ export async function projectSkillRanks(
   ]);
 
   for (const slug of extractFixedTrainedSkills(backgroundDocument)) {
-    projected[slug] = Math.max(projected[slug] ?? 0, 1);
+    baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
   }
 
   for (const slug of extractFixedTrainedSkills(ancestryDocument)) {
-    projected[slug] = Math.max(projected[slug] ?? 0, 1);
+    baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
   }
 
   for (const slug of extractFixedTrainedSkills(heritageDocument)) {
-    projected[slug] = Math.max(projected[slug] ?? 0, 1);
+    baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
   }
 
   for (const slug of extractFixedTrainedSkills(classDocument)) {
-    projected[slug] = Math.max(projected[slug] ?? 0, 1);
+    baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
   }
 
   for (const slug of extractDraftedSingletonSkillChoices(
@@ -99,75 +100,14 @@ export async function projectSkillRanks(
     ],
     deps.localize
   )) {
-    projected[slug] = Math.max(projected[slug] ?? 0, 1);
+    baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
   }
 
-  const sortedTrainingSlotIds = Object.keys(draft.skillTrainings).sort(compareProjectedSkillSlotIds);
-
-  for (const slotId of sortedTrainingSlotIds) {
-    if (compareProjectedSkillSlotIds(slotId, upToSlotId) >= 0) {
-      break;
-    }
-
-    const training = draft.skillTrainings[slotId];
-    if (!training) {
-      continue;
-    }
-
-    for (const slug of [...Object.values(training.ruleChoices), ...training.additional]) {
-      if (!slug) {
-        continue;
-      }
-
-      projected[slug] = Math.max(projected[slug] ?? 0, 1);
-    }
-  }
-
-  const sortedSlotIds = Object.keys(draft.skillIncreases).sort(compareSkillIncreaseSlotIds);
-
-  for (const slotId of sortedSlotIds) {
-    if (compareProjectedSkillSlotIds(slotId, upToSlotId) >= 0) {
-      break;
-    }
-
-    const slug = draft.skillIncreases[slotId];
-    if (slug && typeof projected[slug] === "number") {
-      projected[slug] = Math.min(4, projected[slug] + 1);
-    } else if (slug) {
-      projected[slug] = 1;
-    }
-  }
-
-  return projected;
-}
-
-function compareProjectedSkillSlotIds(left: string, right: string): number {
-  const levelDelta = projectedSkillSlotLevel(left) - projectedSkillSlotLevel(right);
-  if (levelDelta !== 0) {
-    return levelDelta;
-  }
-
-  const kindDelta = projectedSkillSlotKindWeight(left) - projectedSkillSlotKindWeight(right);
-  if (kindDelta !== 0) {
-    return kindDelta;
-  }
-
-  return left.localeCompare(right);
-}
-
-function projectedSkillSlotLevel(slotId: string): number {
-  const match = /-level-(\d+)$/.exec(slotId);
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
-}
-
-function projectedSkillSlotKindWeight(slotId: string): number {
-  if (slotId.startsWith("skill-training-")) {
-    return 0;
-  }
-  if (slotId.startsWith("skill-increase-")) {
-    return 1;
-  }
-  return 2;
+  return projectDraftSkillRanks({
+    baseSkillRanks,
+    draft,
+    beforeSlotId: upToSlotId,
+  });
 }
 
 function extractFixedTrainedSkills(document: unknown): string[] {

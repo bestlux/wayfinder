@@ -6,6 +6,7 @@ import {
   projectedClassArchetypeStaticFeatSelections,
   withExistingClassArchetypeChoice,
 } from "../class-archetype/registry.js";
+import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 
 type SingletonItemType = "ancestry" | "heritage" | "background" | "class" | "deity";
 type LooseDocument = {
@@ -240,7 +241,12 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
   const actorSourceIds = buildActorSourceIds(actorItems);
   const actorSpellUuidsByDestinationKey = buildActorSpellUuidsByDestinationKey(actorItems, deps.steps ?? []);
   const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems);
-  const skillRanks = buildProjectedSkillRanks(deps.skillRanks, effectiveDraft, deps.steps ?? []);
+  const skillRanks = buildProjectedSkillRanks(
+    deps.skillRanks,
+    effectiveDraft,
+    deps.steps ?? [],
+    skillProjectionBoundarySlotId(deps.maximumFeatLevel)
+  );
   return {
     ancestrySlug,
     ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
@@ -399,29 +405,13 @@ function collectActorRuleSelectionRollOptions(actorItems: unknown[]): string[] {
   });
 }
 
-function normalizeSkillRanks(value: Record<string, number> | undefined): Record<string, number> | null {
-  if (!value) {
-    return null;
-  }
-
-  const entries = Object.entries(value).flatMap(([slug, rank]) => {
-    const normalizedSlug = normalizeString(slug);
-    const numericRank = Number(rank);
-    return normalizedSlug && Number.isFinite(numericRank)
-      ? [[normalizedSlug, Math.max(0, Math.min(4, Math.floor(numericRank)))] as const]
-      : [];
-  });
-
-  return entries.length > 0 ? Object.fromEntries(entries) : null;
-}
-
 function buildProjectedSkillRanks(
   baseRanks: Record<string, number> | undefined,
   draft: DraftState,
-  steps: PendingStep[]
+  steps: PendingStep[],
+  beforeSlotId: string | undefined
 ): Record<string, number> | null {
-  const projected = normalizeSkillRanks(baseRanks) ?? {};
-
+  const additionalTrainingSkillsBySlotId: Record<string, unknown[]> = {};
   for (const step of steps) {
     if (step.kind !== "skill-training") {
       continue;
@@ -432,45 +422,24 @@ function buildProjectedSkillRanks(
       continue;
     }
 
-    for (const skill of step.training.fixedSkills) {
-      setMinimumRank(projected, skill, 1);
-    }
-
-    for (const choice of step.training.choiceRules) {
-      setMinimumRank(projected, training.ruleChoices[choice.key], 1);
-    }
-
-    for (const skill of training.additional) {
-      setMinimumRank(projected, skill, 1);
-    }
-
-    for (const lore of step.training.fixedLores) {
-      setMinimumRank(projected, lore, 1);
-    }
-
-    for (const choice of step.training.loreChoices) {
-      setMinimumRank(projected, training.loreChoices[choice.key], 1);
-    }
+    additionalTrainingSkillsBySlotId[step.slotId] = [
+      ...step.training.fixedSkills,
+      ...step.training.fixedLores,
+      ...step.training.loreChoices.map((choice) => training.loreChoices[choice.key]),
+    ];
   }
 
-  for (const skill of Object.values(draft.skillIncreases)) {
-    const slug = normalizeSkillSlug(skill);
-    if (!slug) {
-      continue;
-    }
-    setMinimumRank(projected, slug, (projected[slug] ?? 0) + 1);
-  }
-
+  const projected = projectDraftSkillRanks({
+    baseSkillRanks: baseRanks ?? {},
+    draft,
+    beforeSlotId,
+    additionalTrainingSkillsBySlotId,
+  });
   return Object.keys(projected).length > 0 ? projected : null;
 }
 
-function setMinimumRank(ranks: Record<string, number>, rawSlug: unknown, rank: number): void {
-  const slug = normalizeSkillSlug(rawSlug);
-  if (!slug) {
-    return;
-  }
-
-  ranks[slug] = Math.max(ranks[slug] ?? 0, rank);
+function skillProjectionBoundarySlotId(maximumFeatLevel: number | undefined): string | undefined {
+  return maximumFeatLevel === undefined ? undefined : `option-context-level-${maximumFeatLevel}`;
 }
 
 function buildSelectedUuidsBySlotId(draft: DraftState): Record<string, string> {

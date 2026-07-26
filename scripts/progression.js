@@ -54,7 +54,7 @@ export function buildSteps(snapshot, currentLevel, targetLevel) {
     }));
     steps.push(...buildFeatSteps("general-feat", "Level {level} general feat", "Pick the general feat unlocked at this milestone.", GENERAL_FEAT_LEVELS, snapshot.featCounts.general, snapshot.fulfilledStepIds, targetLevel, {
         itemType: "feat",
-        featTypes: ["general"],
+        featTypes: ["general", "skill"],
     }));
     if (snapshot.isBlank || !allCreationAnchorsPresent(snapshot)) {
         steps.push(makeBoostStep("ability-boosts", 1, "Assign creation boosts", "Allocate ancestry, background, class, and free level 1 boosts inside Wayfinder before finalizing the draft."));

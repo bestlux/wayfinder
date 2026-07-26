@@ -147,7 +147,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
       targetLevel,
       {
         itemType: "feat",
-        featTypes: ["general"],
+        featTypes: ["general", "skill"],
       }
     )
   );

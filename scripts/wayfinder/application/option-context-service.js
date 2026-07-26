@@ -1,6 +1,7 @@
 import { sourceIdOf } from "../../shared/source-id.js";
 import { findSpellcastingEntryForChoiceInItems } from "../../shared/spellcasting.js";
 import { projectedClassArchetypeFeatSelections, projectedClassArchetypeStaticFeatSelections, withExistingClassArchetypeChoice, } from "../class-archetype/registry.js";
+import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 export function extractContextTraits(document, extractDocumentSlug, fallbackSlug) {
     const typedDocument = document;
     const traits = Array.isArray(typedDocument?.system?.traits?.value) ? typedDocument.system.traits.value : [];
@@ -123,7 +124,7 @@ export async function buildOptionContext(deps) {
     const actorSourceIds = buildActorSourceIds(actorItems);
     const actorSpellUuidsByDestinationKey = buildActorSpellUuidsByDestinationKey(actorItems, deps.steps ?? []);
     const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems);
-    const skillRanks = buildProjectedSkillRanks(deps.skillRanks, effectiveDraft, deps.steps ?? []);
+    const skillRanks = buildProjectedSkillRanks(deps.skillRanks, effectiveDraft, deps.steps ?? [], skillProjectionBoundarySlotId(deps.maximumFeatLevel));
     return {
         ancestrySlug,
         ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
@@ -251,21 +252,8 @@ function collectActorRuleSelectionRollOptions(actorItems) {
         });
     });
 }
-function normalizeSkillRanks(value) {
-    if (!value) {
-        return null;
-    }
-    const entries = Object.entries(value).flatMap(([slug, rank]) => {
-        const normalizedSlug = normalizeString(slug);
-        const numericRank = Number(rank);
-        return normalizedSlug && Number.isFinite(numericRank)
-            ? [[normalizedSlug, Math.max(0, Math.min(4, Math.floor(numericRank)))]]
-            : [];
-    });
-    return entries.length > 0 ? Object.fromEntries(entries) : null;
-}
-function buildProjectedSkillRanks(baseRanks, draft, steps) {
-    const projected = normalizeSkillRanks(baseRanks) ?? {};
+function buildProjectedSkillRanks(baseRanks, draft, steps, beforeSlotId) {
+    const additionalTrainingSkillsBySlotId = {};
     for (const step of steps) {
         if (step.kind !== "skill-training") {
             continue;
@@ -274,37 +262,22 @@ function buildProjectedSkillRanks(baseRanks, draft, steps) {
         if (!training) {
             continue;
         }
-        for (const skill of step.training.fixedSkills) {
-            setMinimumRank(projected, skill, 1);
-        }
-        for (const choice of step.training.choiceRules) {
-            setMinimumRank(projected, training.ruleChoices[choice.key], 1);
-        }
-        for (const skill of training.additional) {
-            setMinimumRank(projected, skill, 1);
-        }
-        for (const lore of step.training.fixedLores) {
-            setMinimumRank(projected, lore, 1);
-        }
-        for (const choice of step.training.loreChoices) {
-            setMinimumRank(projected, training.loreChoices[choice.key], 1);
-        }
+        additionalTrainingSkillsBySlotId[step.slotId] = [
+            ...step.training.fixedSkills,
+            ...step.training.fixedLores,
+            ...step.training.loreChoices.map((choice) => training.loreChoices[choice.key]),
+        ];
     }
-    for (const skill of Object.values(draft.skillIncreases)) {
-        const slug = normalizeSkillSlug(skill);
-        if (!slug) {
-            continue;
-        }
-        setMinimumRank(projected, slug, (projected[slug] ?? 0) + 1);
-    }
+    const projected = projectDraftSkillRanks({
+        baseSkillRanks: baseRanks ?? {},
+        draft,
+        beforeSlotId,
+        additionalTrainingSkillsBySlotId,
+    });
     return Object.keys(projected).length > 0 ? projected : null;
 }
-function setMinimumRank(ranks, rawSlug, rank) {
-    const slug = normalizeSkillSlug(rawSlug);
-    if (!slug) {
-        return;
-    }
-    ranks[slug] = Math.max(ranks[slug] ?? 0, rank);
+function skillProjectionBoundarySlotId(maximumFeatLevel) {
+    return maximumFeatLevel === undefined ? undefined : `option-context-level-${maximumFeatLevel}`;
 }
 function buildSelectedUuidsBySlotId(draft) {
     const entries = [

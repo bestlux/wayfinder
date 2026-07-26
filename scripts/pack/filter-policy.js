@@ -96,6 +96,9 @@ export function matchesFilters(entry, packId, step, context, traitCatalog) {
     if (step.slotKind === "skill-feat") {
         return matchesSkillFeatContext(entry, context);
     }
+    if (step.slotKind === "general-feat" && stringOrNull(entry?.system?.category) === "skill") {
+        return matchesSkillFeatContext(entry, context);
+    }
     return true;
 }
 export async function getTraitCatalog(slotKind) {
@@ -225,21 +228,37 @@ function matchesSkillFeatTrainingPrerequisites(entry, context) {
 function extractSkillTrainingRequirements(prerequisites) {
     return prerequisites.flatMap((prerequisite) => {
         const text = prerequisite.trim().toLowerCase();
-        if (!/\btrained in\b/.test(text)) {
+        const proficiency = /\b(trained|expert|master|legendary) in\b/.exec(text)?.[1];
+        const requiredRank = proficiencyRank(proficiency);
+        if (requiredRank === null) {
             return [];
         }
         if (/\btrained in at least one skill\b/.test(text)) {
-            return [{ kind: "any-skill" }];
+            return [{ kind: "any-skill", requiredRank: 1 }];
         }
         if (/\btrained in a skill with the recall knowledge action\b/.test(text)) {
-            return [{ kind: "recall-knowledge" }];
+            return [{ kind: "recall-knowledge", requiredRank: 1 }];
         }
         if (/\btrained in lore\b/.test(text)) {
-            return [{ kind: "any-lore" }];
+            return [{ kind: "any-lore", requiredRank: 1 }];
         }
         const slugs = extractNamedSkillSlugs(text);
-        return slugs.length > 0 ? [{ kind: "one-of", slugs }] : [];
+        return slugs.length > 0 ? [{ kind: "one-of", requiredRank, slugs }] : [];
     });
+}
+function proficiencyRank(value) {
+    switch (value) {
+        case "trained":
+            return 1;
+        case "expert":
+            return 2;
+        case "master":
+            return 3;
+        case "legendary":
+            return 4;
+        default:
+            return null;
+    }
 }
 function extractNamedSkillSlugs(text) {
     const slugs = new Set();
@@ -248,8 +267,8 @@ function extractNamedSkillSlugs(text) {
             slugs.add(slug);
         }
     }
-    const trainedText = text.split(/\btrained in\b/).at(-1) ?? text;
-    const parts = trainedText.split(/[,;]|\bor\b|\band\b/);
+    const proficiencyText = text.split(/\b(?:trained|expert|master|legendary) in\b/).at(-1) ?? text;
+    const parts = proficiencyText.split(/[,;]|\bor\b|\band\b/);
     for (const part of parts) {
         const match = part.trim().match(/^([a-z][a-z -]*?) lore\b/);
         if (match?.[1]) {
@@ -264,13 +283,13 @@ function extractNamedSkillSlugs(text) {
 function matchesSkillTrainingRequirement(requirement, skillRanks) {
     switch (requirement.kind) {
         case "any-skill":
-            return Object.values(skillRanks).some((rank) => rank >= 1);
+            return Object.values(skillRanks).some((rank) => rank >= requirement.requiredRank);
         case "any-lore":
-            return Object.entries(skillRanks).some(([slug, rank]) => rank >= 1 && isLoreSkillSlug(slug));
+            return Object.entries(skillRanks).some(([slug, rank]) => rank >= requirement.requiredRank && isLoreSkillSlug(slug));
         case "recall-knowledge":
-            return Object.entries(skillRanks).some(([slug, rank]) => rank >= 1 && (RECALL_KNOWLEDGE_SKILLS.has(slug) || isLoreSkillSlug(slug)));
+            return Object.entries(skillRanks).some(([slug, rank]) => rank >= requirement.requiredRank && (RECALL_KNOWLEDGE_SKILLS.has(slug) || isLoreSkillSlug(slug)));
         case "one-of":
-            return requirement.slugs.some((slug) => (skillRanks[slug] ?? 0) >= 1);
+            return requirement.slugs.some((slug) => (skillRanks[slug] ?? 0) >= requirement.requiredRank);
     }
 }
 function isLoreSkillSlug(slug) {

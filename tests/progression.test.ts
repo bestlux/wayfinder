@@ -101,6 +101,12 @@ describe("progression", () => {
     expect(steps.map((step) => `${step.slotKind}:${step.level}`)).not.toContain("class-feat:2");
   });
 
+  it("allows skill feats in general feat slots", () => {
+    const generalFeatStep = buildSteps(makeSnapshot(), 1, 3).find((step) => step.slotId === "general-feat-level-3");
+
+    expect(generalFeatStep?.filters?.featTypes).toEqual(["general", "skill"]);
+  });
+
   it("uses fulfilled slot ids before raw feat counts for level-up feat milestones", () => {
     const steps = buildSteps(
       makeSnapshot({

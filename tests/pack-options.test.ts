@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { createEmptyDraft } from "../src/draft-service";
 import { clearPackServiceCache } from "../src/pack/access";
 import { getOptionsForStep } from "../src/pack/options";
-import type { OptionContext, PendingStep, PickItemSlotKind } from "../src/types";
+import { buildSteps } from "../src/progression";
+import type { ActorSnapshot, OptionContext, PendingStep, PickItemSlotKind } from "../src/types";
+import { buildOptionContext } from "../src/wayfinder/application/option-context-service";
 import { createPickItemStep } from "../src/wayfinder/domain/step-types";
 import { grantsRestrictedSpellRarityAccess } from "../src/wayfinder/spell-choice/rarity-access";
 
@@ -441,6 +444,118 @@ describe("pack options dependency filtering", () => {
       "Assurance",
       "Cat Fall",
       "Dubious Knowledge",
+    ]);
+  });
+
+  it("feeds level-bounded draft skill increases into the production general-feat picker", async () => {
+    const draft = createEmptyDraft(5);
+    draft.skillIncreases["skill-increase-level-5"] = "medicine";
+    const rankOneContext = await buildOptionContext({
+      draft,
+      maximumFeatLevel: 3,
+      skillRanks: {
+        medicine: 1,
+      },
+      resolveDocument: async () => null,
+      listActorItems: () => [],
+      fetchSelectionDocument: async () => null,
+      extractDocumentSlug: () => null,
+    });
+    setPack("pf2e.feats-srd", [
+      featEntry("ward-medic", "Ward Medic", "skill", ["general", "skill"], true, {
+        level: { value: 2 },
+        prerequisites: { value: [{ value: "expert in Medicine" }] },
+      }),
+    ]);
+    const generalFeatStep = productionFeatStep("general-feat-level-3");
+
+    expect(rankOneContext.skillRanks?.medicine).toBe(1);
+    await expect(getOptionsForStep(generalFeatStep, rankOneContext)).resolves.toEqual([]);
+
+    draft.skillIncreases["skill-increase-level-3"] = "medicine";
+    const rankTwoContext = await buildOptionContext({
+      draft,
+      maximumFeatLevel: 3,
+      skillRanks: {
+        medicine: 1,
+      },
+      resolveDocument: async () => null,
+      listActorItems: () => [],
+      fetchSelectionDocument: async () => null,
+      extractDocumentSlug: () => null,
+    });
+    const options = await getOptionsForStep(generalFeatStep, rankTwoContext);
+
+    expect(rankTwoContext.skillRanks?.medicine).toBe(2);
+    expect(options.map((option) => option.name)).toEqual(["Ward Medic"]);
+  });
+
+  it("enforces expert prerequisites in the production skill-feat picker", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("ward-medic", "Ward Medic", "skill", ["general", "skill"], true, {
+        level: { value: 2 },
+        prerequisites: { value: [{ value: "expert in Medicine" }] },
+      }),
+    ]);
+    const skillFeatStep = productionFeatStep("skill-feat-level-2");
+
+    await expect(
+      getOptionsForStep(skillFeatStep, {
+        ...EMPTY_CONTEXT,
+        skillRanks: { medicine: 1 },
+      })
+    ).resolves.toEqual([]);
+    await expect(
+      getOptionsForStep(skillFeatStep, {
+        ...EMPTY_CONTEXT,
+        skillRanks: { medicine: 2 },
+      })
+    ).resolves.toMatchObject([{ name: "Ward Medic" }]);
+  });
+
+  it("maps named skill prerequisites to trained through legendary ranks", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("trained-crafting", "Trained Crafting", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [{ value: "trained in Crafting" }] },
+      }),
+      featEntry("expert-medicine", "Expert Medicine", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [{ value: "expert in Medicine" }] },
+      }),
+      featEntry("master-athletics", "Master Athletics", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [{ value: "master in Athletics" }] },
+      }),
+      featEntry("legendary-arcana", "Legendary Arcana", "skill", ["general", "skill"], true, {
+        prerequisites: { value: [{ value: "legendary in Arcana" }] },
+      }),
+    ]);
+    const skillFeatStep = productionFeatStep("skill-feat-level-2");
+
+    await expect(
+      getOptionsForStep(skillFeatStep, {
+        ...EMPTY_CONTEXT,
+        skillRanks: {
+          arcana: 3,
+          athletics: 2,
+          crafting: 0,
+          medicine: 1,
+        },
+      })
+    ).resolves.toEqual([]);
+    const options = await getOptionsForStep(skillFeatStep, {
+      ...EMPTY_CONTEXT,
+      skillRanks: {
+        arcana: 4,
+        athletics: 3,
+        crafting: 1,
+        medicine: 2,
+      },
+    });
+
+    expect(options.map((option) => option.name)).toEqual([
+      "Expert Medicine",
+      "Legendary Arcana",
+      "Master Athletics",
+      "Trained Crafting",
     ]);
   });
 
@@ -1392,6 +1507,38 @@ describe("pack options dependency filtering", () => {
 
 function makeStep(slotKind: PickItemSlotKind, filters: PendingStep["filters"]): PendingStep {
   return createPickItemStep(slotKind, 1, "Test Step", "Test description", filters ?? { itemType: "feat" });
+}
+
+function productionFeatStep(slotId: string): PendingStep {
+  const snapshot: ActorSnapshot = {
+    actorId: "actor-1",
+    level: 1,
+    isBlank: false,
+    freeArchetypeEnabled: false,
+    singletonSlots: {
+      ancestry: true,
+      heritage: true,
+      background: true,
+      class: true,
+      deity: false,
+    },
+    featCounts: {
+      ancestry: 0,
+      class: 0,
+      archetype: 0,
+      skill: 0,
+      general: 0,
+    },
+    fulfilledStepIds: [],
+    sourceIds: [],
+    namesByType: {},
+    skillRanks: {},
+  };
+  const step = buildSteps(snapshot, 1, 3).find((entry) => entry.slotId === slotId);
+  if (!step) {
+    throw new Error(`Expected production progression step ${slotId}`);
+  }
+  return step;
 }
 
 function setPack(id: string, entries: any[]): void {

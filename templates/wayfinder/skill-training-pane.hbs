@@ -35,24 +35,42 @@
           </div>
           <span class="skill-training-source-label">{{sourceLabel}}</span>
         </header>
-        <div class="skill-training-choice-list">
+        {{#if unavailableLegend}}
+          <p class="skill-training-choice-legend">{{unavailableLegend}}</p>
+        {{/if}}
+        <div class="skill-training-choice-list skill-training-choice-grid">
           {{#each options}}
             <button
               type="button"
-              class="skill-training-choice{{#if selected}} selected{{/if}}"
+              class="skill-training-choice skill-training-choice-option{{#if selected}} selected{{/if}}"
               data-wayfinder-action="select-training-rule"
               data-step-id="{{../../activePane.stepId}}"
               data-key="{{../key}}"
               data-slug="{{slug}}"
+              {{#if disabledReason}}
+                title="{{disabledReason}}"
+                aria-label="{{label}}. Unavailable: {{disabledReason}}"
+              {{/if}}
               {{#if disabled}}disabled{{/if}}
             >
+              <span
+                class="rank-chip current rank-{{currentRankCode}}"
+                title="{{currentRankLabel}}"
+                aria-label="Current proficiency: {{currentRankLabel}}"
+              >{{currentRankCode}}</span>
               <span class="skill-training-choice-copy">
                 <span class="skill-training-choice-name">{{label}}</span>
-                {{#if disabledReason}}
-                  <span class="skill-increase-detail">{{disabledReason}}</span>
+                {{#if keyAbility}}
+                  <span class="skill-training-choice-ability">{{keyAbility}}</span>
                 {{/if}}
               </span>
-              <span class="skill-training-choice-action">{{#if selected}}Chosen{{else}}Choose{{/if}}</span>
+              {{#if selected}}
+                <span class="skill-training-choice-action">Chosen</span>
+              {{else}}
+                {{#if disabled}}
+                  <span class="skill-training-choice-action unavailable">Taken</span>
+                {{/if}}
+              {{/if}}
             </button>
           {{/each}}
         </div>

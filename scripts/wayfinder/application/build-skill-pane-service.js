@@ -101,19 +101,31 @@ function buildSkillList(actorSkillRanks, deps) {
         for (const slug of Object.keys(deps.configSkills)) {
             const sourceLabel = resolveConfigSkillLabel(deps.configSkills[slug]);
             const label = skillLabel(slug, sourceLabel, deps.localize);
-            result.push({ slug, label });
+            result.push({
+                slug,
+                label,
+                keyAbility: resolveConfigSkillAbility(deps.configSkills[slug]),
+            });
             seen.add(slug);
         }
     }
     else {
         for (const [slug, label] of Object.entries(SKILL_LABELS)) {
-            result.push({ slug, label: skillLabel(slug, label, deps.localize) });
+            result.push({
+                slug,
+                label: skillLabel(slug, label, deps.localize),
+                keyAbility: null,
+            });
             seen.add(slug);
         }
     }
     for (const slug of Object.keys(actorSkillRanks)) {
         if (!seen.has(slug)) {
-            result.push({ slug, label: skillLabel(slug, undefined, deps.localize) });
+            result.push({
+                slug,
+                label: skillLabel(slug, undefined, deps.localize),
+                keyAbility: null,
+            });
         }
     }
     return result.sort((left, right) => left.label.localeCompare(right.label));
@@ -127,6 +139,17 @@ function resolveConfigSkillLabel(entry) {
     }
     const label = entry.label;
     return typeof label === "string" ? label : undefined;
+}
+function resolveConfigSkillAbility(entry) {
+    if (!entry || typeof entry !== "object") {
+        return null;
+    }
+    const attribute = entry.attribute;
+    if (typeof attribute !== "string") {
+        return null;
+    }
+    const normalized = attribute.trim();
+    return normalized.length > 0 ? normalized.toUpperCase() : null;
 }
 function skillLabel(slug, sourceLabel, localize) {
     const localized = typeof sourceLabel === "string" && sourceLabel.length > 0 ? localize(sourceLabel) : "";

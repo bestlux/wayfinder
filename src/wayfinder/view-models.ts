@@ -221,9 +221,14 @@ export interface SkillTrainingRuleChoicePane {
   sourceLabel: string;
   selectedSlug: string | null;
   selectedLabel: string | null;
+  unavailableLegend: string | null;
   options: Array<{
     slug: string;
     label: string;
+    currentRank: number;
+    currentRankLabel: string;
+    currentRankCode: string;
+    keyAbility: string | null;
     selected: boolean;
     disabled: boolean;
     disabledReason: string | null;

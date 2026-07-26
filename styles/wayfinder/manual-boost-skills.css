@@ -545,6 +545,84 @@
   transition: font-weight var(--wf-transition);
 }
 
+.skill-training-choice-legend {
+  margin: -0.05rem 0 0.35rem;
+  color: var(--wf-ink-soft);
+  font: 0.68rem / 1.35 var(--sans-serif, sans-serif);
+}
+
+.skill-training-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  grid-auto-rows: 3.5rem;
+  align-items: stretch;
+}
+
+.skill-training-choice-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 100% !important;
+  padding: 0.42rem 0.55rem;
+  overflow: hidden;
+}
+
+/* No zebra striping in the grid: with a responsive column count, nth-child
+   alternation reads as column stripes at even counts and a checkerboard at odd
+   ones. The cell borders already separate options. */
+
+.skill-training-choice-option:hover:not(:disabled) {
+  border-color: rgba(94, 0, 0, 0.28) !important;
+  background: rgba(94, 0, 0, 0.055);
+}
+
+.wayfinder-app .skill-training-choice-option:focus-visible {
+  border-color: rgba(94, 0, 0, 0.38) !important;
+  box-shadow: 0 0 0 2px rgba(94, 0, 0, 0.18) !important;
+}
+
+.wayfinder-app .skill-training-choice-option.selected:focus-visible {
+  box-shadow:
+    inset 3px 0 0 var(--wf-primary),
+    0 0 0 2px rgba(94, 0, 0, 0.18) !important;
+}
+
+.skill-training-choice-option.selected .rank-chip.current {
+  opacity: 0.8;
+}
+
+.skill-training-choice-option:disabled {
+  opacity: 0.58;
+}
+
+.skill-training-choice-option:disabled:hover {
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.skill-training-choice-option .skill-training-choice-copy {
+  justify-content: center;
+  overflow: hidden;
+}
+
+.skill-training-choice-option .skill-training-choice-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-training-choice-ability {
+  color: var(--wf-ink-soft);
+  font: 700 0.58rem / 1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.08em;
+}
+
+.skill-training-choice-action.unavailable {
+  color: var(--wf-ink-soft);
+}
+
 .lore-suggestion-list {
   margin-bottom: 0.15rem;
 }

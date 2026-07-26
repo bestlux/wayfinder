@@ -10,6 +10,11 @@ import type { SkillIncreaseStepPane, SkillTrainingStepPane } from "../view-model
 
 type SkillPane = SkillIncreaseStepPane | SkillTrainingStepPane;
 type SkillDocumentType = "ancestry" | "heritage" | "background" | "class";
+type SkillListEntry = {
+  slug: string;
+  label: string;
+  keyAbility: string | null;
+};
 type LooseSkillDocument = {
   system?: {
     slug?: unknown;
@@ -160,27 +165,39 @@ function extractDraftedSingletonSkillChoices(
 function buildSkillList(
   actorSkillRanks: Record<string, number>,
   deps: Pick<BuildSkillPaneDependencies, "configSkills" | "localize">
-): Array<{ slug: string; label: string }> {
-  const result: Array<{ slug: string; label: string }> = [];
+): SkillListEntry[] {
+  const result: SkillListEntry[] = [];
   const seen = new Set<string>();
 
   if (deps.configSkills && typeof deps.configSkills === "object") {
     for (const slug of Object.keys(deps.configSkills)) {
       const sourceLabel = resolveConfigSkillLabel(deps.configSkills[slug]);
       const label = skillLabel(slug, sourceLabel, deps.localize);
-      result.push({ slug, label });
+      result.push({
+        slug,
+        label,
+        keyAbility: resolveConfigSkillAbility(deps.configSkills[slug]),
+      });
       seen.add(slug);
     }
   } else {
     for (const [slug, label] of Object.entries(SKILL_LABELS)) {
-      result.push({ slug, label: skillLabel(slug, label, deps.localize) });
+      result.push({
+        slug,
+        label: skillLabel(slug, label, deps.localize),
+        keyAbility: null,
+      });
       seen.add(slug);
     }
   }
 
   for (const slug of Object.keys(actorSkillRanks)) {
     if (!seen.has(slug)) {
-      result.push({ slug, label: skillLabel(slug, undefined, deps.localize) });
+      result.push({
+        slug,
+        label: skillLabel(slug, undefined, deps.localize),
+        keyAbility: null,
+      });
     }
   }
 
@@ -198,6 +215,20 @@ function resolveConfigSkillLabel(entry: unknown): string | undefined {
 
   const label = (entry as { label?: unknown }).label;
   return typeof label === "string" ? label : undefined;
+}
+
+function resolveConfigSkillAbility(entry: unknown): string | null {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const attribute = (entry as { attribute?: unknown }).attribute;
+  if (typeof attribute !== "string") {
+    return null;
+  }
+
+  const normalized = attribute.trim();
+  return normalized.length > 0 ? normalized.toUpperCase() : null;
 }
 
 function skillLabel(slug: string, sourceLabel: string | undefined, localize: (value: string) => string): string {

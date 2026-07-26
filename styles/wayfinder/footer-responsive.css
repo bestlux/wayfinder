@@ -147,6 +147,10 @@
     flex-direction: column;
   }
 
+  .skill-training-choice-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .skill-training-choice {
     min-width: 0;
     width: 100%;

@@ -60,6 +60,7 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
         ...metadata.fixedSkills,
         ...Object.values(selectedRuleChoices).filter((slug) => typeof slug === "string" && slug.length > 0),
     ]);
+    const keyAbilities = new Map(skillEntries.map(({ slug, keyAbility }) => [slug, keyAbility ?? null]));
     const additionalSkills = metadata.additionalCount > 0
         ? skillEntries
             .filter(({ slug }) => !reservedSkills.has(slug))
@@ -99,23 +100,38 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
             (primaryOptionsFullyUnavailable(choiceRule.options, reservedByOtherChoices, projectedRanks, selectedSlug) ||
                 selectedIsFallbackOnly);
         const visibleOptions = useFallbackOptions ? fallbackOptions : choiceRule.options;
+        const options = visibleOptions.map((option) => {
+            const currentRank = Math.min(4, Math.max(0, projectedRanks[option.slug] ?? 0));
+            const selected = option.slug === selectedSlug;
+            const disabledReason = selected
+                ? null
+                : reservedByOtherChoices.has(option.slug)
+                    ? "Already chosen elsewhere in this step"
+                    : currentRank >= 1
+                        ? "Already trained from another source"
+                        : null;
+            return {
+                ...option,
+                currentRank,
+                currentRankLabel: PROFICIENCY_LABELS[currentRank] ?? "Untrained",
+                currentRankCode: PROFICIENCY_CODES[currentRank] ?? "U",
+                keyAbility: keyAbilities.get(option.slug) ?? null,
+                selected,
+                disabled: !selected && disabledReason !== null,
+                disabledReason,
+            };
+        });
+        const unavailableReasons = [
+            ...new Set(options.map((option) => option.disabledReason).filter((reason) => typeof reason === "string")),
+        ];
         return {
             key: choiceRule.key,
             prompt: useFallbackOptions ? (choiceRule.fallbackPrompt ?? choiceRule.prompt) : choiceRule.prompt,
             sourceLabel: choiceRule.sourceLabel,
             selectedSlug,
             selectedLabel: selectedSlug ? (SKILL_LABELS[selectedSlug] ?? formatSlug(selectedSlug)) : null,
-            options: visibleOptions.map((option) => ({
-                ...option,
-                selected: option.slug === selectedSlug,
-                disabled: option.slug !== selectedSlug &&
-                    (reservedByOtherChoices.has(option.slug) || (projectedRanks[option.slug] ?? 0) >= 1),
-                disabledReason: reservedByOtherChoices.has(option.slug)
-                    ? "Already chosen elsewhere in this step"
-                    : (projectedRanks[option.slug] ?? 0) >= 1
-                        ? "Already trained from another source"
-                        : null,
-            })),
+            unavailableLegend: unavailableReasons.length > 0 ? `Dimmed options: ${unavailableReasons.join("; ")}` : null,
+            options,
         };
     });
     const loreSections = metadata.loreChoices.map((choice) => {

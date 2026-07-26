@@ -274,6 +274,127 @@ describe("wayfinder skill pane service", () => {
     expect(pane.additionalSkills.map((entry) => entry.slug)).toEqual(["nature", "stealth"]);
   });
 
+  it("adds stable rank, ability, and unavailable-state metadata only to rule-choice options", async () => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-wizard-level-1"] = {
+      ruleChoices: {
+        "class:first": "arcana",
+      },
+      additional: [],
+      loreChoices: {
+        "class:lore": "Academia Lore",
+      },
+    };
+    const step: PendingStep = {
+      id: "skill-training-wizard-level-1",
+      level: 1,
+      kind: "skill-training",
+      slotKind: "skill-training",
+      title: "Wizard training",
+      description: "",
+      required: true,
+      slotId: "skill-training-wizard-level-1",
+      training: {
+        classSlug: "wizard",
+        className: "Wizard",
+        fixedSkills: [],
+        fixedLores: [],
+        choiceRules: [
+          {
+            key: "class:first",
+            flag: "first",
+            prompt: "Choose a tradition skill",
+            sourceLabel: "Wizard",
+            options: [
+              { slug: "arcana", label: "Arcana" },
+              { slug: "occultism", label: "Occultism" },
+            ],
+            persistence: null,
+          },
+          {
+            key: "class:second",
+            flag: "second",
+            prompt: "Choose another skill",
+            sourceLabel: "Wizard",
+            options: [
+              { slug: "arcana", label: "Arcana" },
+              { slug: "nature", label: "Nature" },
+              { slug: "stealth", label: "Stealth" },
+            ],
+            persistence: null,
+          },
+        ],
+        loreChoices: [
+          {
+            key: "class:lore",
+            flag: "lore",
+            prompt: "Choose a lore",
+            sourceLabel: "Wizard",
+            placeholder: "Lore",
+            allowCustom: true,
+            suggestions: ["Academia Lore", "Scribing Lore"],
+            persistence: null,
+          },
+        ],
+        additionalCount: 0,
+      },
+    };
+
+    const pane = await buildSkillPane(step, draft, {
+      baseSkillRanks: {
+        nature: 1,
+      },
+      resolveDocument: async () => null,
+      configSkills: {
+        arcana: { label: "Arcana", attribute: "int" },
+        nature: { label: "Nature", attribute: "wis" },
+        occultism: { label: "Occultism", attribute: "int" },
+        stealth: { label: "Stealth", attribute: "dex" },
+        "academia-lore": { label: "Academia Lore" },
+      },
+      localize: (value) => value,
+      isTrainingStepComplete: () => false,
+    });
+
+    expect(pane?.kind).toBe("skill-training");
+    if (!pane || pane.kind !== "skill-training") {
+      throw new Error("Expected a skill-training pane");
+    }
+
+    const options = pane.choiceSections[1]?.options ?? [];
+    expect(options.map((option) => option.slug)).toEqual(["arcana", "nature", "stealth"]);
+    expect(options.find((option) => option.slug === "nature")).toMatchObject({
+      currentRank: 1,
+      currentRankCode: "T",
+      currentRankLabel: "Trained",
+      keyAbility: "WIS",
+      disabled: true,
+      disabledReason: "Already trained from another source",
+    });
+    expect(options.find((option) => option.slug === "stealth")).toMatchObject({
+      currentRank: 0,
+      currentRankCode: "U",
+      currentRankLabel: "Untrained",
+      keyAbility: "DEX",
+      disabled: false,
+      disabledReason: null,
+    });
+    expect(options.find((option) => option.slug === "arcana")).toMatchObject({
+      keyAbility: "INT",
+      disabled: true,
+      disabledReason: "Already chosen elsewhere in this step",
+    });
+    expect(pane.choiceSections[1]?.unavailableLegend).toBe(
+      "Dimmed options: Already chosen elsewhere in this step; Already trained from another source"
+    );
+    expect(pane.loreSections[0]?.suggestions).toEqual([
+      { value: "Academia Lore", selected: true },
+      { value: "Scribing Lore", selected: false },
+    ]);
+    expect(pane.loreSections[0]?.suggestions[0]).not.toHaveProperty("currentRankCode");
+    expect(pane.loreSections[0]?.suggestions[0]).not.toHaveProperty("keyAbility");
+  });
+
   it("falls back to broad skill options when a conditional dedication choice's preferred skills are already trained", async () => {
     const draft = createEmptyDraft(1);
     const step: PendingStep = {

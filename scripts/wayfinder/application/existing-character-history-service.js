@@ -32,10 +32,10 @@ export function buildExistingCharacterHistory(actor, now = () => new Date().toIS
         entries.push(mappedEntry("deity-level-1", 1, "foundation", "Deity", itemName(deity), sourceIdOf(deity)));
     }
     for (const [groupId, slotKind, label, levels] of FEAT_LANES) {
-        entries.push(...buildFeatLaneEntries(actor, items, groupId, slotKind, label, levels.filter((level) => level <= actorLevel)));
+        entries.push(...buildFeatLaneEntries(actor, items, groupId, slotKind, label, historyFeatLevels(actor, groupId, levels, actorLevel)));
     }
     if (getFeatGroup(actor, "archetype")) {
-        entries.push(...buildFeatLaneEntries(actor, items, "archetype", "archetype-feat", "Free Archetype feat", FREE_ARCHETYPE_FEAT_LEVELS.filter((level) => level <= actorLevel)));
+        entries.push(...buildFeatLaneEntries(actor, items, "archetype", "archetype-feat", "Free Archetype feat", historyFeatLevels(actor, "archetype", FREE_ARCHETYPE_FEAT_LEVELS, actorLevel)));
     }
     const classLevels = featGroupLevels(actor, "class").filter((level) => level <= actorLevel);
     entries.push(...buildFeatLaneEntries(actor, items, "class", "class-feat", "Class feat", classLevels));
@@ -94,6 +94,14 @@ function featGroupLevels(actor, groupId) {
         .map((slot) => Number(slot.level))
         .filter((level) => Number.isFinite(level) && level >= 1 && level <= 20)
         .map(Math.floor))).sort((left, right) => left - right);
+}
+/**
+ * PF2E's prepared feat groups are authoritative for an actor's actual cadence.
+ * Static rules are only a fallback for actor shapes that expose no usable slots.
+ */
+function historyFeatLevels(actor, groupId, fallbackLevels, actorLevel) {
+    const nativeLevels = featGroupLevels(actor, groupId);
+    return (nativeLevels.length > 0 ? nativeLevels : fallbackLevels).filter((level) => level <= actorLevel);
 }
 function getFeatGroup(actor, groupId) {
     const feats = actor?.feats;

@@ -68,7 +68,7 @@ export function buildExistingCharacterHistory(
         groupId,
         slotKind,
         label,
-        levels.filter((level) => level <= actorLevel)
+        historyFeatLevels(actor, groupId, levels, actorLevel)
       )
     );
   }
@@ -81,7 +81,7 @@ export function buildExistingCharacterHistory(
         "archetype",
         "archetype-feat",
         "Free Archetype feat",
-        FREE_ARCHETYPE_FEAT_LEVELS.filter((level) => level <= actorLevel)
+        historyFeatLevels(actor, "archetype", FREE_ARCHETYPE_FEAT_LEVELS, actorLevel)
       )
     );
   }
@@ -205,6 +205,20 @@ function featGroupLevels(actor: unknown, groupId: string): number[] {
         .map(Math.floor)
     )
   ).sort((left, right) => left - right);
+}
+
+/**
+ * PF2E's prepared feat groups are authoritative for an actor's actual cadence.
+ * Static rules are only a fallback for actor shapes that expose no usable slots.
+ */
+function historyFeatLevels(
+  actor: unknown,
+  groupId: string,
+  fallbackLevels: readonly number[],
+  actorLevel: number
+): number[] {
+  const nativeLevels = featGroupLevels(actor, groupId);
+  return (nativeLevels.length > 0 ? nativeLevels : fallbackLevels).filter((level) => level <= actorLevel);
 }
 
 function getFeatGroup(actor: unknown, groupId: string): FeatGroupLike | null {

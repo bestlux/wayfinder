@@ -110,6 +110,46 @@ describe("existing character history service", () => {
       existingCharacterHistory: history,
     });
   });
+
+  it("uses PF2E native feat-group levels for nonstandard class cadences", () => {
+    const actor = {
+      system: { details: { level: { value: 3 } } },
+      items: {
+        contents: [
+          actorItem(
+            "skill-feat-3",
+            "feat",
+            "Known Weaknesses",
+            "Compendium.pf2e.feats-srd.Item.known-weaknesses",
+            "skill-3"
+          ),
+        ],
+      },
+      feats: {
+        skill: {
+          slots: {
+            investigatorLevel3: {
+              level: 3,
+              feat: "skill-feat-3",
+            },
+          },
+        },
+      },
+    };
+
+    const history = buildExistingCharacterHistory(actor);
+    const skillFeatEntries = history.entries.filter(
+      (entry) => entry.category === "feat" && entry.slotId.startsWith("skill-feat-")
+    );
+
+    expect(skillFeatEntries).toEqual([
+      expect.objectContaining({
+        slotId: "skill-feat-level-3",
+        value: "Known Weaknesses",
+        status: "mapped",
+      }),
+    ]);
+  });
 });
 
 function actorItem(

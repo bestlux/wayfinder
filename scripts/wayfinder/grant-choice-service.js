@@ -119,6 +119,7 @@ function collectPredicateStrings(predicate) {
         return [];
     }
     return [
+        ...collectPredicateStringsFromBranch(predicate.and),
         ...collectPredicateStringsFromBranch(predicate.or),
         ...collectPredicateStringsFromBranch(predicate.nor),
         ...collectPredicateStringsFromBranch(predicate.not),

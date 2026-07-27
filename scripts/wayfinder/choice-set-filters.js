@@ -2,6 +2,7 @@ import { OFFICIAL_PACKS } from "../constants.js";
 import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { isChoicePredicate, isRecord, predicateIncludesString, toNonEmptyString } from "./rule-data.js";
 const STATIC_UUID_PACK_ITEM_TYPES = new Map([
+    ...OFFICIAL_PACKS.action.map((packId) => [packId, "action"]),
     ...OFFICIAL_PACKS.ancestry.map((packId) => [packId, "ancestry"]),
     ...OFFICIAL_PACKS.background.map((packId) => [packId, "background"]),
     ...OFFICIAL_PACKS.class.map((packId) => [packId, "class"]),
@@ -12,6 +13,7 @@ const STATIC_UUID_PACK_ITEM_TYPES = new Map([
     ...OFFICIAL_PACKS.spell.map((packId) => [packId, "spell"]),
 ]);
 const OFFICIAL_PACKS_BY_ITEM_TYPE = {
+    action: OFFICIAL_PACKS.action,
     ancestry: OFFICIAL_PACKS.ancestry,
     background: OFFICIAL_PACKS.background,
     class: OFFICIAL_PACKS.class,
@@ -59,6 +61,9 @@ function resolveParentGranterLevel(predicate, level) {
         return predicate.map((entry) => resolveParentGranterLevel(entry, level));
     }
     const result = { ...predicate };
+    if (Array.isArray(result.and)) {
+        result.and = result.and.map((entry) => resolveParentGranterLevel(entry, level));
+    }
     for (const key of ["lt", "lte", "gt", "gte"]) {
         const comparator = result[key];
         if (Array.isArray(comparator) && comparator[1] === "parent:granter:level") {
@@ -159,6 +164,9 @@ function resolveActorInjectedPredicateEntry(predicate, options, actorDependencie
         return predicate.map((entry) => resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved));
     }
     const result = { ...predicate };
+    if (Array.isArray(result.and)) {
+        result.and = result.and.map((entry) => resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved));
+    }
     if (Array.isArray(result.or)) {
         result.or = result.or.map((entry) => resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved));
     }
@@ -234,7 +242,7 @@ function inferItemTypeFromPredicateEntry(predicate) {
     if (!isRecord(predicate)) {
         return null;
     }
-    const branches = [predicate.or, predicate.nor].filter(Array.isArray).flat();
+    const branches = [predicate.and, predicate.or, predicate.nor].filter(Array.isArray).flat();
     if (predicate.not) {
         branches.push(predicate.not);
     }
@@ -265,7 +273,7 @@ function predicateEntryIncludesPrefix(predicate, prefix) {
     if (!isRecord(predicate)) {
         return false;
     }
-    return ([predicate.or, predicate.nor]
+    return ([predicate.and, predicate.or, predicate.nor]
         .filter(Array.isArray)
         .flat()
         .some((entry) => predicateEntryIncludesPrefix(entry, prefix)) ||

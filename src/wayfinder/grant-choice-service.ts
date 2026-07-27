@@ -186,6 +186,7 @@ function collectPredicateStrings(predicate: ChoicePredicate | ChoicePredicate[])
   }
 
   return [
+    ...collectPredicateStringsFromBranch(predicate.and),
     ...collectPredicateStringsFromBranch(predicate.or),
     ...collectPredicateStringsFromBranch(predicate.nor),
     ...collectPredicateStringsFromBranch(predicate.not),

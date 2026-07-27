@@ -450,6 +450,74 @@ describe("wayfinder grant choice step builders", () => {
     ]);
   });
 
+  it("builds action grant steps from Tactical Excellence predicate variants", () => {
+    const tacticFilter = [
+      "item:trait:tactic",
+      {
+        or: [
+          "item:tag:commander-mobility-tactic",
+          "item:tag:commander-offensive-tactic",
+          {
+            and: ["item:tag:commander-expert-tactic", "tactical-excellence:2"],
+          },
+        ],
+      },
+    ];
+    const steps = buildGrantChoiceStepsFromRules({
+      sourceItemType: "feat",
+      effectiveSourceDocument: {
+        name: "Tactical Excellence",
+        system: {
+          slug: "tactical-excellence",
+          level: { value: 4 },
+          rules: ["firstTactic", "secondTactic"].flatMap((flag) => [
+            {
+              choices: {
+                filter: tacticFilter,
+                itemType: "action",
+              },
+              flag,
+              key: "ChoiceSet",
+            },
+            {
+              key: "GrantItem",
+              uuid: `{item|flags.system.rulesSelections.${flag}}`,
+            },
+          ]),
+        },
+      },
+      sourceSelection: {
+        slotId: "archetype-feat-level-4",
+        packId: "pf2e.feats-srd",
+        documentId: "tactical-excellence",
+        uuid: "Compendium.pf2e.feats-srd.Item.tactical-excellence",
+        itemType: "feat",
+        featType: "class",
+        name: "Tactical Excellence",
+        level: 4,
+      },
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+    });
+
+    expect(steps).toHaveLength(2);
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "grant-choice-none-feat-tactical-excellence-firstTactic-level-4",
+      "grant-choice-none-feat-tactical-excellence-secondTactic-level-4",
+    ]);
+    expect(steps.map((step) => step.filters)).toEqual([
+      {
+        itemType: "action",
+        packIds: ["pf2e.actionspf2e"],
+        predicate: tacticFilter,
+      },
+      {
+        itemType: "action",
+        packIds: ["pf2e.actionspf2e"],
+        predicate: tacticFilter,
+      },
+    ]);
+  });
+
   it.each([
     {
       sourceItemType: "heritage" as const,

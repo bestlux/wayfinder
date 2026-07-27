@@ -52,6 +52,10 @@ export function isChoicePredicate(value: unknown): value is ChoicePredicate {
     return false;
   }
 
+  if ("and" in value && value.and !== undefined && (!Array.isArray(value.and) || !value.and.every(isChoicePredicate))) {
+    return false;
+  }
+
   if ("or" in value && value.or !== undefined && (!Array.isArray(value.or) || !value.or.every(isChoicePredicate))) {
     return false;
   }
@@ -99,6 +103,10 @@ export function matchesChoicePredicate(
   const comparison = matchesComparisonPredicate(predicate, matchesString);
   if (comparison !== null) {
     return comparison;
+  }
+
+  if (Array.isArray(predicate.and)) {
+    return predicate.and.every((entry) => matchesChoicePredicate(entry, matchesString));
   }
 
   if (Array.isArray(predicate.or)) {
@@ -154,6 +162,7 @@ export function predicateIncludesString(predicate: ChoicePredicate, target: stri
   }
 
   return (
+    (Array.isArray(predicate.and) && predicate.and.some((entry) => predicateIncludesString(entry, target))) ||
     (Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
     (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
     (!!predicate.not && predicateIncludesString(predicate.not, target)) ||

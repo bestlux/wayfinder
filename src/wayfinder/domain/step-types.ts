@@ -49,6 +49,7 @@ export type PickItemSlotKind = Exclude<
 export type ChoicePredicate =
   | string
   | {
+      and?: ChoicePredicate[];
       or?: ChoicePredicate[];
       nor?: ChoicePredicate[];
       not?: ChoicePredicate;

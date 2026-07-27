@@ -1663,6 +1663,45 @@ describe("pack options dependency filtering", () => {
       "Compendium.pf2e.actionspf2e.Item.coordinating-maneuvers",
       "Compendium.pf2e.actionspf2e.Item.strike-hard",
     ]);
+
+    const tacticalExcellenceStep: PendingStep = {
+      id: "grant-choice-none-feat-tactical-excellence-firstTactic-level-4",
+      level: 4,
+      kind: "pick-item",
+      slotKind: "grant-choice",
+      title: "Tactical Excellence",
+      description: "Choose a tactic.",
+      required: true,
+      slotId: "grant-choice-none-feat-tactical-excellence-firstTactic-level-4",
+      filters: {
+        itemType: "action",
+        packIds: ["pf2e.actionspf2e"],
+        predicate: [
+          "item:trait:tactic",
+          {
+            or: [
+              "item:tag:commander-mobility-tactic",
+              "item:tag:commander-offensive-tactic",
+              {
+                and: ["item:tag:commander-expert-tactic", "tactical-excellence:2"],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const firstSelectionOptions = await getOptionsForStep(tacticalExcellenceStep, EMPTY_CONTEXT);
+    const secondSelectionOptions = await getOptionsForStep(tacticalExcellenceStep, {
+      ...EMPTY_CONTEXT,
+      rollOptions: ["tactical-excellence:2"],
+    });
+
+    expect(firstSelectionOptions.map((option) => option.name)).toEqual(["Coordinating Maneuvers", "Strike Hard"]);
+    expect(secondSelectionOptions.map((option) => option.name)).toEqual([
+      "Coordinating Maneuvers",
+      "Strike Hard",
+      "Take the High Ground",
+    ]);
   });
 
   it("filters champion causes by the effective sanctification state", async () => {

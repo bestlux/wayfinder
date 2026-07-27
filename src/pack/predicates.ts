@@ -163,6 +163,10 @@ function evaluateStaticPredicate(
     return comparison;
   }
 
+  if (Array.isArray(predicate.and)) {
+    return predicate.and.every((entry) => evaluateStaticPredicate(entry, evaluateString));
+  }
+
   if (Array.isArray(predicate.or)) {
     return predicate.or.some((entry) => evaluateStaticPredicate(entry, evaluateString));
   }
@@ -221,6 +225,13 @@ function evaluateStringOrTree(
       return true;
     }
     return predicate.or.every((entry) => evaluateStringOrTree(entry, evaluateString) === false) ? false : "unknown";
+  }
+
+  if (Array.isArray(predicate.and)) {
+    if (predicate.and.some((entry) => evaluateStringOrTree(entry, evaluateString) === false)) {
+      return false;
+    }
+    return predicate.and.every((entry) => evaluateStringOrTree(entry, evaluateString) === true) ? true : "unknown";
   }
 
   if (Array.isArray(predicate.nor)) {

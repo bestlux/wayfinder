@@ -22,6 +22,7 @@ interface ResolveChoiceSetFiltersOptions {
 }
 
 const STATIC_UUID_PACK_ITEM_TYPES = new Map<string, string>([
+  ...OFFICIAL_PACKS.action.map((packId) => [packId, "action"] as const),
   ...OFFICIAL_PACKS.ancestry.map((packId) => [packId, "ancestry"] as const),
   ...OFFICIAL_PACKS.background.map((packId) => [packId, "background"] as const),
   ...OFFICIAL_PACKS.class.map((packId) => [packId, "class"] as const),
@@ -33,6 +34,7 @@ const STATIC_UUID_PACK_ITEM_TYPES = new Map<string, string>([
 ]);
 
 const OFFICIAL_PACKS_BY_ITEM_TYPE: Record<string, readonly string[]> = {
+  action: OFFICIAL_PACKS.action,
   ancestry: OFFICIAL_PACKS.ancestry,
   background: OFFICIAL_PACKS.background,
   class: OFFICIAL_PACKS.class,
@@ -92,6 +94,9 @@ function resolveParentGranterLevel(predicate: ChoicePredicate, level: number): C
   }
 
   const result = { ...predicate };
+  if (Array.isArray(result.and)) {
+    result.and = result.and.map((entry) => resolveParentGranterLevel(entry, level));
+  }
   for (const key of ["lt", "lte", "gt", "gte"] as const) {
     const comparator = result[key];
     if (Array.isArray(comparator) && comparator[1] === "parent:granter:level") {
@@ -234,6 +239,11 @@ function resolveActorInjectedPredicateEntry(
   }
 
   const result = { ...predicate };
+  if (Array.isArray(result.and)) {
+    result.and = result.and.map((entry) =>
+      resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved)
+    );
+  }
   if (Array.isArray(result.or)) {
     result.or = result.or.map((entry) =>
       resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved)
@@ -334,7 +344,7 @@ function inferItemTypeFromPredicateEntry(predicate: ChoicePredicate): string | n
     return null;
   }
 
-  const branches = [predicate.or, predicate.nor].filter(Array.isArray).flat();
+  const branches = [predicate.and, predicate.or, predicate.nor].filter(Array.isArray).flat();
   if (predicate.not) {
     branches.push(predicate.not);
   }
@@ -376,7 +386,7 @@ function predicateEntryIncludesPrefix(predicate: ChoicePredicate, prefix: string
   }
 
   return (
-    [predicate.or, predicate.nor]
+    [predicate.and, predicate.or, predicate.nor]
       .filter(Array.isArray)
       .flat()
       .some((entry) => predicateEntryIncludesPrefix(entry, prefix)) ||

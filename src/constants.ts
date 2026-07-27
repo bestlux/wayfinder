@@ -16,6 +16,7 @@ export const SETTINGS_KEYS = {
 export const ABILITY_KEYS = ["str", "dex", "con", "int", "wis", "cha"] as const;
 
 export const OFFICIAL_PACKS = {
+  action: ["pf2e.actionspf2e"],
   ancestry: ["pf2e.ancestries"],
   heritage: ["pf2e.heritages"],
   background: ["pf2e.backgrounds"],

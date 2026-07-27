@@ -563,6 +563,23 @@ export const smokeCases = [
       "class-feat": ["Combat Assessment", "Defensive Advance"],
     },
     preferredSkills: ["warfare-lore", "athletics", "diplomacy", "intimidation", "society", "survival"],
+    expectedItemNames: [
+      "Tactics",
+      "Coordinating Maneuvers",
+      "Defensive Retreat",
+      "Double Team",
+      "End It!",
+      "Gather to Me!",
+    ],
+    expectedItemRuleSelections: {
+      Tactics: {
+        firstTactic: "Compendium.pf2e.actionspf2e.Item.Kp325Qf0qpF6RCDE",
+        secondTactic: "Compendium.pf2e.actionspf2e.Item.UJi0VYnhVSdnl9II",
+        thirdTactic: "Compendium.pf2e.actionspf2e.Item.c5jVVnNYlP5HB6Ob",
+        fourthTactic: "Compendium.pf2e.actionspf2e.Item.lI4JCQcqvrZE2U5n",
+        fifthTactic: "Compendium.pf2e.actionspf2e.Item.URxnrN8ji84AoVup",
+      },
+    },
   }),
   classCase({
     className: "Druid",

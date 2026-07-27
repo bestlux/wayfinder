@@ -85,10 +85,7 @@ describe("grant-borne embedded choice policy", () => {
         disclosure: "PF2E will ask you to choose an emotion when this is applied.",
       },
       { name: "Cleric Dedication", disclosure: null },
-      {
-        name: "Commander Dedication",
-        disclosure: "PF2E will ask you to choose 5 tactics when this is applied.",
-      },
+      { name: "Commander Dedication", disclosure: null },
       { name: "Summoner Dedication", disclosure: null },
     ]);
   });
@@ -323,7 +320,7 @@ describe("grant-borne embedded choice policy", () => {
     ]);
   });
 
-  it("keeps Commander Dedication selectable and discloses five unsupported tactics", async () => {
+  it("guides all five Commander Dedication tactics without duplicate options or disclosure", async () => {
     const sources = await resolveFixtureSources(COMMANDER_DEDICATION, {
       "Compendium.pf2e.classfeatures.Item.Tactics": TACTICS,
     });
@@ -332,13 +329,163 @@ describe("grant-borne embedded choice policy", () => {
     expect(classification.uncovered).toEqual([]);
     expect(classification.staticGrants[0]).toMatchObject({
       sourceName: "Tactics",
-      covered: [],
-      uncovered: [0, 2, 4, 6, 8],
+      covered: [0, 2, 4, 6, 8],
+      uncovered: [],
+      rules: [
+        { ruleIndex: 0, coveredBy: ["grant-choice"] },
+        { ruleIndex: 2, coveredBy: ["grant-choice"] },
+        { ruleIndex: 4, coveredBy: ["grant-choice"] },
+        { ruleIndex: 6, coveredBy: ["grant-choice"] },
+        { ruleIndex: 8, coveredBy: ["grant-choice"] },
+      ],
     });
-    expect(buildStaticGrantChoiceDisclosure(classification)).toBe(
-      "PF2E will ask you to choose 5 tactics when this is applied."
+    expect(buildStaticGrantChoiceDisclosure(classification)).toBeNull();
+
+    const grantSteps = await buildGrantSteps(sources);
+    expect(grantSteps).toHaveLength(5);
+    expect(grantSteps.map((step) => step.slotId)).toEqual([
+      "grant-choice-class-classfeature-tactics-firstTactic-level-2",
+      "grant-choice-class-classfeature-tactics-secondTactic-level-2",
+      "grant-choice-class-classfeature-tactics-thirdTactic-level-2",
+      "grant-choice-class-classfeature-tactics-fourthTactic-level-2",
+      "grant-choice-class-classfeature-tactics-fifthTactic-level-2",
+    ]);
+    expect(grantSteps.map((step) => step.filters)).toEqual(
+      Array.from({ length: 5 }, () => ({
+        itemType: "action",
+        packIds: ["pf2e.actionspf2e"],
+        predicate: [
+          "item:trait:tactic",
+          {
+            or: ["item:tag:commander-mobility-tactic", "item:tag:commander-offensive-tactic"],
+          },
+        ],
+      }))
     );
-    await expect(buildGrantSteps(sources)).resolves.toEqual([]);
+
+    const identities = grantSteps.map(choiceRuleIdentity);
+    expect(new Set(identities.map((identity) => identity?.key))).toHaveLength(5);
+    expect(dedupeChoiceRuleSteps([...grantSteps, ...structuredClone(grantSteps)])).toEqual(grantSteps);
+
+    clearPackServiceCache();
+    const globals = globalThis as typeof globalThis & { game?: unknown };
+    globals.game = {
+      settings: { get: () => "homebrew.commander-actions" },
+      packs: new Map([
+        [
+          "pf2e.actionspf2e",
+          actionPack([
+            actionEntry(
+              "coordinating-maneuvers",
+              "Coordinating Maneuvers",
+              ["brandish", "commander", "tactic"],
+              ["commander-mobility-tactic"]
+            ),
+            actionEntry(
+              "defensive-retreat",
+              "Defensive Retreat",
+              ["brandish", "commander", "tactic"],
+              ["commander-offensive-tactic"]
+            ),
+            actionEntry(
+              "take-the-high-ground",
+              "Take the High Ground",
+              ["brandish", "commander", "tactic"],
+              ["commander-expert-tactic"]
+            ),
+            actionEntry("avoid-notice", "Avoid Notice", ["exploration"], []),
+            {
+              ...actionEntry("tactic-feat", "Tactic Feat", ["tactic"], ["commander-offensive-tactic"]),
+              type: "feat",
+            },
+          ]),
+        ],
+        [
+          "homebrew.commander-actions",
+          actionPack([actionEntry("custom-maneuver", "Custom Maneuver", ["tactic"], ["commander-mobility-tactic"])]),
+        ],
+      ]),
+    };
+
+    const firstOptions = await getOptionsForStep(grantSteps[0], {
+      ancestrySlug: null,
+      ancestryTraits: [],
+      heritageTraits: [],
+      classSlug: "fighter",
+      classHasSpellcasting: false,
+      deitySelected: false,
+      hasDedicationFeat: false,
+    });
+    expect(firstOptions.map((option) => option.name)).toEqual([
+      "Coordinating Maneuvers",
+      "Custom Maneuver",
+      "Defensive Retreat",
+    ]);
+
+    const secondOptions = await getOptionsForStep(grantSteps[1], {
+      ancestrySlug: null,
+      ancestryTraits: [],
+      heritageTraits: [],
+      classSlug: "fighter",
+      classHasSpellcasting: false,
+      deitySelected: false,
+      hasDedicationFeat: false,
+      selectedUuidsBySlotId: {
+        [grantSteps[0].slotId]: "Compendium.pf2e.actionspf2e.Item.coordinating-maneuvers",
+      },
+    });
+    expect(secondOptions.map((option) => option.name)).toEqual(["Custom Maneuver", "Defensive Retreat"]);
+  });
+
+  it("preseeds all five Commander tactics on the statically granted Tactics feature", async () => {
+    const sources = await resolveFixtureSources(COMMANDER_DEDICATION, {
+      "Compendium.pf2e.classfeatures.Item.Tactics": TACTICS,
+    });
+    const grantSteps = await buildGrantSteps(sources);
+    const selectedTactics = [
+      ["coordinating-maneuvers", "Coordinating Maneuvers"],
+      ["defensive-retreat", "Defensive Retreat"],
+      ["double-team", "Double Team"],
+      ["end-it", "End It!"],
+      ["gather-to-me", "Gather to Me!"],
+    ] as const;
+    const draft = createEmptyDraft(2);
+    for (const [index, step] of grantSteps.entries()) {
+      const [documentId, name] = selectedTactics[index]!;
+      draft.selections[step.slotId] = {
+        slotId: step.slotId,
+        packId: "pf2e.actionspf2e",
+        documentId,
+        uuid: `Compendium.pf2e.actionspf2e.Item.${documentId}`,
+        itemType: "action",
+        featType: null,
+        name,
+        level: null,
+        slug: documentId,
+      };
+    }
+
+    const source = await createEmbeddedSource(selectionFor(COMMANDER_DEDICATION), draft, grantSteps, {
+      fetchSelectionDocument: async () => ({
+        toObject: () => structuredClone(COMMANDER_DEDICATION),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+
+    expect(source?.flags?.[MODULE_ID]?.manualStaticItemGrants).toEqual([
+      {
+        key: "tactics",
+        uuid: "Compendium.pf2e.classfeatures.Item.Tactics",
+        choices: {
+          firstTactic: "Compendium.pf2e.actionspf2e.Item.coordinating-maneuvers",
+          secondTactic: "Compendium.pf2e.actionspf2e.Item.defensive-retreat",
+          thirdTactic: "Compendium.pf2e.actionspf2e.Item.double-team",
+          fourthTactic: "Compendium.pf2e.actionspf2e.Item.end-it",
+          fifthTactic: "Compendium.pf2e.actionspf2e.Item.gather-to-me",
+        },
+      },
+    ]);
   });
 
   it("discloses Cathartic Mage's structured emotional-state choice", async () => {
@@ -510,6 +657,32 @@ function archetypeFeatStep(): PendingStep {
       itemType: "feat",
       featTypes: ["class"],
       maxLevel: 2,
+    },
+  };
+}
+
+function actionPack(index: PackIndexEntry[]) {
+  return {
+    documentName: "Item",
+    metadata: { id: "test.actions", type: "Item" },
+    getIndex: async () => index,
+    getDocument: async () => null,
+  };
+}
+
+function actionEntry(id: string, name: string, traits: string[], otherTags: string[]): PackIndexEntry {
+  return {
+    _id: id,
+    name,
+    type: "action",
+    system: {
+      slug: id,
+      rules: [],
+      traits: {
+        rarity: "common",
+        value: traits,
+        otherTags,
+      },
     },
   };
 }

@@ -88,6 +88,26 @@ export function matchesChoicePredicateList(
   return predicate.every((entry) => matchesChoicePredicate(entry, matchesString));
 }
 
+export function matchesChoiceSetRulePredicate(
+  rule: Record<string, unknown>,
+  activeRollOptions: ReadonlySet<string>
+): boolean {
+  if (rule.predicate === undefined) {
+    return true;
+  }
+
+  const predicate = Array.isArray(rule.predicate)
+    ? rule.predicate.filter(isChoicePredicate)
+    : isChoicePredicate(rule.predicate)
+      ? [rule.predicate]
+      : null;
+  if (!predicate || (Array.isArray(rule.predicate) && predicate.length !== rule.predicate.length)) {
+    return false;
+  }
+
+  return matchesChoicePredicateList(predicate, (statement) => activeRollOptions.has(statement.trim().toLowerCase()));
+}
+
 export function matchesChoicePredicate(
   predicate: ChoicePredicate,
   matchesString: (statement: string) => boolean

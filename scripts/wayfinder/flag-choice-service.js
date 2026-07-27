@@ -6,6 +6,7 @@ export async function buildFlagChoiceSteps(params) {
         effectiveSourceDocument: source.sourceDocument,
         sourceSelection: source.sourceSelection,
         sourceLevel: source.sourceLevel,
+        activeRollOptions: params.activeRollOptions,
         extractSlug: params.extractSlug,
         localize: params.localize,
         actorContext: params.actorContext,

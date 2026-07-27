@@ -11,6 +11,7 @@ export function buildGrantChoiceStepsFromRules(args: {
   sourceSelection: SelectionRef | null;
   sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
+  activeRollOptions?: ReadonlySet<string>;
 }): PickItemStep[] {
   const { sourceItemType, effectiveSourceDocument, sourceSelection, extractSlug } = args;
   if (!effectiveSourceDocument || !sourceSelection) {
@@ -23,6 +24,7 @@ export function buildGrantChoiceStepsFromRules(args: {
     sourceSelection,
     sourceLevel: args.sourceLevel,
     extractSlug,
+    activeRollOptions: args.activeRollOptions,
   }).map((grant) =>
     createPickItemStep(
       "grant-choice",

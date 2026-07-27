@@ -10,6 +10,7 @@ export async function buildGrantChoiceSteps(params) {
         effectiveSourceDocument: source.sourceDocument,
         sourceSelection: source.sourceSelection,
         sourceLevel: source.sourceLevel,
+        activeRollOptions: params.activeRollOptions,
         extractSlug: params.extractSlug,
     }).map((step) => ({ source, step })))
         .filter(({ source, step }) => {

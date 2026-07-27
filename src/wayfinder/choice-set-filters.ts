@@ -130,14 +130,9 @@ function resolveStaticUuidChoiceFilters(
     return null;
   }
 
-  const contextPredicate = normalizePredicateList(rule.predicate, options);
-  if (!contextPredicate) {
-    return null;
-  }
-
   const uuidPredicates: Record<string, ChoicePredicate[]> = {};
   const uuids: string[] = [];
-  const actorDependencies = new Set<ActorChoiceFilterDependency>(contextPredicate.actorDependencies);
+  const actorDependencies = new Set<ActorChoiceFilterDependency>();
   for (const choice of choices) {
     const uuid = toNonEmptyString(choice.value);
     if (!uuid || !parseCompendiumItemUuid(uuid)) {
@@ -178,7 +173,6 @@ function resolveStaticUuidChoiceFilters(
       packIds,
       uuids,
       ...(Object.keys(uuidPredicates).length > 0 ? { uuidPredicates } : {}),
-      ...(contextPredicate.predicate.length > 0 ? { contextPredicate: contextPredicate.predicate } : {}),
     },
     actorDependencies: Array.from(actorDependencies),
   };

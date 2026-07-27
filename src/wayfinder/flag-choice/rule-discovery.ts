@@ -1,6 +1,12 @@
 import type { FlagChoiceMeta, SelectionRef } from "../../types.js";
 import { type ChoiceFilterActorContext, resolveChoiceSetFilters } from "../choice-set-filters.js";
-import { documentFeatureLevel, extractChoiceKey, getDocumentRules, toNonEmptyString } from "../rule-data.js";
+import {
+  documentFeatureLevel,
+  extractChoiceKey,
+  getDocumentRules,
+  matchesChoiceSetRulePredicate,
+  toNonEmptyString,
+} from "../rule-data.js";
 
 interface NamedDocumentLike {
   name?: unknown;
@@ -17,6 +23,7 @@ export function discoverFlagChoiceMeta(args: {
   localize?: (value: string) => string;
   actorContext?: ChoiceFilterActorContext | null;
   requireResolvedActorPlaceholders?: boolean;
+  activeRollOptions?: ReadonlySet<string>;
 }): FlagChoiceMeta[] {
   const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
@@ -28,6 +35,9 @@ export function discoverFlagChoiceMeta(args: {
   return rules.flatMap((rule, sourceRuleIndex) => {
     const flag = extractChoiceKey(rule);
     if (rule.key !== "ChoiceSet" || !flag || hasGrantForFlag(rules, flag)) {
+      return [];
+    }
+    if (!matchesChoiceSetRulePredicate(rule, args.activeRollOptions ?? new Set())) {
       return [];
     }
 

@@ -29,6 +29,7 @@ interface BuildClassChoiceStepArgs extends BuildClassFeatureStepArgs {
   effectiveDeityDocument: unknown | null;
   localize: (value: string) => string;
   selectedValuesBySlotId?: Record<string, string | undefined>;
+  activeRollOptions?: ReadonlySet<string>;
 }
 
 export function buildClassTrainingStepsFromRules(args: {
@@ -37,6 +38,7 @@ export function buildClassTrainingStepsFromRules(args: {
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
   intelligenceModifier: number;
+  activeRollOptions?: ReadonlySet<string>;
 }): SkillTrainingStep[] {
   const { effectiveClassDocument, classSelection, extractSlug, localize, intelligenceModifier } = args;
   if (!effectiveClassDocument) {
@@ -49,6 +51,7 @@ export function buildClassTrainingStepsFromRules(args: {
     extractSlug,
     localize,
     intelligenceModifier,
+    activeRollOptions: args.activeRollOptions,
   });
   if (!training) {
     return [];
@@ -95,6 +98,7 @@ export async function buildClassChoiceStepsFromRules(args: BuildClassChoiceStepA
     extractSlug: args.extractSlug,
     localize: args.localize,
     selectedValuesBySlotId: args.selectedValuesBySlotId,
+    activeRollOptions: args.activeRollOptions,
   });
 }
 
@@ -105,6 +109,7 @@ export function buildClassChoiceStepsFromFeatureSources(args: {
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
   selectedValuesBySlotId?: Record<string, string | undefined>;
+  activeRollOptions?: ReadonlySet<string>;
 }): ClassChoiceStep[] {
   return buildClassChoiceStepsFromFeatures(args);
 }
@@ -151,12 +156,17 @@ function buildClassGrantedItemStepsFromFeatures(
   classSlug: string | null
 ): PickItemStep[] {
   const steps: PickItemStep[] = [];
+  const activeRollOptions = new Set<string>();
+  if (classSlug) {
+    activeRollOptions.add(`class:${classSlug}`.toLowerCase());
+  }
 
   for (const feature of classFeatures) {
     const grant = discoverGrantedItemMeta({
       selectorDocument: feature.document,
       selectorSelection: feature.selection,
       classSlug,
+      activeRollOptions,
     });
     if (!grant) {
       continue;
@@ -189,9 +199,13 @@ function buildClassChoiceStepsFromFeatures(args: {
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
   selectedValuesBySlotId?: Record<string, string | undefined>;
+  activeRollOptions?: ReadonlySet<string>;
 }): ClassChoiceStep[] {
   const steps: ClassChoiceStep[] = [];
   const rollOptions = buildChoiceRollOptions(args.effectiveDeityDocument);
+  for (const option of args.activeRollOptions ?? []) {
+    rollOptions.add(option.toLowerCase());
+  }
 
   for (const feature of args.classFeatures) {
     const choices = discoverClassChoiceMeta({

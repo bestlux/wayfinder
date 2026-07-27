@@ -15,6 +15,7 @@ export function buildFlagChoiceStepsFromRules(args: {
   localize?: (value: string) => string;
   actorContext?: ChoiceFilterActorContext | null;
   requireResolvedActorPlaceholders?: boolean;
+  activeRollOptions?: ReadonlySet<string>;
 }): PickItemStep[] {
   const { sourceItemType, effectiveSourceDocument, sourceSelection, extractSlug } = args;
   if (!effectiveSourceDocument || !sourceSelection) {
@@ -30,6 +31,7 @@ export function buildFlagChoiceStepsFromRules(args: {
     localize: args.localize,
     actorContext: args.actorContext,
     requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
+    activeRollOptions: args.activeRollOptions,
   }).map((choice) =>
     createPickItemStep(
       "flag-choice",

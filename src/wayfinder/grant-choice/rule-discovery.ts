@@ -4,6 +4,7 @@ import {
   documentFeatureLevel,
   extractChoiceKey,
   getDocumentRules,
+  matchesChoiceSetRulePredicate,
   predicateIncludesString,
   toNonEmptyString,
 } from "../rule-data.js";
@@ -20,6 +21,7 @@ export function discoverGrantSelectionMeta(args: {
   sourceSelection: SelectionRef;
   sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
+  activeRollOptions?: ReadonlySet<string>;
 }): GrantSelectionMeta[] {
   const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
@@ -31,6 +33,9 @@ export function discoverGrantSelectionMeta(args: {
   return rules.flatMap((rule, sourceRuleIndex) => {
     const flag = extractChoiceKey(rule);
     if (rule.key !== "ChoiceSet" || !flag) {
+      return [];
+    }
+    if (!matchesChoiceSetRulePredicate(rule, args.activeRollOptions ?? new Set())) {
       return [];
     }
 

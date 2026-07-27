@@ -56,6 +56,20 @@ export function isChoicePredicate(value) {
 export function matchesChoicePredicateList(predicate, matchesString) {
     return predicate.every((entry) => matchesChoicePredicate(entry, matchesString));
 }
+export function matchesChoiceSetRulePredicate(rule, activeRollOptions) {
+    if (rule.predicate === undefined) {
+        return true;
+    }
+    const predicate = Array.isArray(rule.predicate)
+        ? rule.predicate.filter(isChoicePredicate)
+        : isChoicePredicate(rule.predicate)
+            ? [rule.predicate]
+            : null;
+    if (!predicate || (Array.isArray(rule.predicate) && predicate.length !== rule.predicate.length)) {
+        return false;
+    }
+    return matchesChoicePredicateList(predicate, (statement) => activeRollOptions.has(statement.trim().toLowerCase()));
+}
 export function matchesChoicePredicate(predicate, matchesString) {
     if (typeof predicate === "string") {
         return matchesString(predicate);

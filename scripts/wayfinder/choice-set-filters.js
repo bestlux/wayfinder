@@ -89,13 +89,9 @@ function resolveStaticUuidChoiceFilters(rule, options) {
     if (choices.length === 0 || choices.length !== rule.choices.length) {
         return null;
     }
-    const contextPredicate = normalizePredicateList(rule.predicate, options);
-    if (!contextPredicate) {
-        return null;
-    }
     const uuidPredicates = {};
     const uuids = [];
-    const actorDependencies = new Set(contextPredicate.actorDependencies);
+    const actorDependencies = new Set();
     for (const choice of choices) {
         const uuid = toNonEmptyString(choice.value);
         if (!uuid || !parseCompendiumItemUuid(uuid)) {
@@ -127,7 +123,6 @@ function resolveStaticUuidChoiceFilters(rule, options) {
             packIds,
             uuids,
             ...(Object.keys(uuidPredicates).length > 0 ? { uuidPredicates } : {}),
-            ...(contextPredicate.predicate.length > 0 ? { contextPredicate: contextPredicate.predicate } : {}),
         },
         actorDependencies: Array.from(actorDependencies),
     };

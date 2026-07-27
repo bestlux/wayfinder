@@ -957,6 +957,7 @@ function collectActorEvidence(actor, modules, moduleId) {
       typeof item.system?.location === "string" ? item.system.location : (item.system?.location?.value ?? null),
     ruleSelections: item.flags?.pf2e?.rulesSelections ?? {},
     sourceId: modules.sourceIdOf(item),
+    traits: Array.isArray(item.system?.traits?.value) ? item.system.traits.value : [],
     spellcasting:
       item.type === "spellcastingEntry"
         ? {
@@ -1178,6 +1179,13 @@ function validateActorExpectations(actorEvidence, smokeCase, failures) {
     const actualCount = actorEvidence.items.filter((item) => item.name === name).length;
     if (actualCount !== expectedCount) {
       failures.push(`Actor item count for ${name} is ${actualCount}, expected ${expectedCount}`);
+    }
+  }
+
+  for (const [trait, expectedCount] of Object.entries(smokeCase.expectedItemTraitCounts ?? {})) {
+    const actualCount = actorEvidence.items.filter((item) => item.traits.includes(trait)).length;
+    if (actualCount !== expectedCount) {
+      failures.push(`Actor item count for trait ${trait} is ${actualCount}, expected ${expectedCount}`);
     }
   }
 

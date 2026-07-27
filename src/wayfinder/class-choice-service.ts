@@ -41,6 +41,7 @@ interface BuildClassTrainingStepsParams {
   fetchSelectionDocument: (selection: SelectionRef) => Promise<unknown | null>;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
+  activeRollOptions?: ReadonlySet<string>;
 }
 
 interface BuildClassFeatStepsParams {
@@ -85,6 +86,7 @@ interface BuildClassChoiceStepsParams {
   fetchSelectionDocument: (selection: SelectionRef) => Promise<unknown | null>;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
+  activeRollOptions?: ReadonlySet<string>;
   readExistingClassChoiceSelection: (choice: ClassChoiceMeta) => string | null;
 }
 
@@ -128,6 +130,7 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
   const sourceTraining = discoverSourceSkillTrainingMeta({
     sources: sourceSelections,
     localize,
+    activeRollOptions: params.activeRollOptions,
   });
   if (!includeBaseClassTraining) {
     const sourceSelection = sourceSelections.find((source) => source.sourceSelection)?.sourceSelection ?? null;
@@ -166,6 +169,7 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
     extractSlug,
     localize,
     intelligenceModifier: effectiveBuildState.projectedAbilities.int.modifier,
+    activeRollOptions: params.activeRollOptions,
   });
 
   return steps.map((step) => ({
@@ -328,6 +332,7 @@ export async function buildClassChoiceSteps(params: BuildClassChoiceStepsParams)
       extractSlug: params.extractSlug,
       localize: params.localize,
       selectedValuesBySlotId: params.draft.classChoices,
+      activeRollOptions: params.activeRollOptions,
     }),
   ];
   return dedupeStepsBySlotId(steps).filter(

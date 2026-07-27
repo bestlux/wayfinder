@@ -10,6 +10,7 @@ export function buildSingletonChoiceStepsFromRules(args: {
   sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
+  activeRollOptions?: ReadonlySet<string>;
 }): SingletonChoiceStep[] {
   const { sourceItemType, effectiveSourceDocument, sourceSelection, extractSlug, localize } = args;
   if (!effectiveSourceDocument || !sourceSelection) {
@@ -24,6 +25,7 @@ export function buildSingletonChoiceStepsFromRules(args: {
     sourceLevel,
     extractSlug,
     localize,
+    activeRollOptions: args.activeRollOptions,
   }).map((choice) =>
     createSingletonChoiceStep(sourceLevel, choice, {
       title: formatChoiceFlag(choice.flag),

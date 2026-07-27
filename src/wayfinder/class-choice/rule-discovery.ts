@@ -55,14 +55,20 @@ export function discoverSkillTrainingMeta(args: {
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
   intelligenceModifier: number;
+  activeRollOptions?: ReadonlySet<string>;
 }): SkillTrainingMeta | null {
   const { classDocument, classSelection, extractSlug, localize, intelligenceModifier } = args;
   const document = classDocument as NamedDocumentLike | null | undefined;
   const configuredSkills = getConfiguredSkills();
   const className = toNonEmptyString(document?.name) ?? "Class";
+  const activeRollOptions = new Set(args.activeRollOptions ?? []);
+  const classSlug = extractSlug(classDocument);
+  if (classSlug) {
+    activeRollOptions.add(`class:${classSlug}`.toLowerCase());
+  }
   const choiceRules = findRelevantClassRules(classDocument)
     .map((rule, ruleIndex) =>
-      toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection)
+      toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection, activeRollOptions)
     )
     .filter(
       (rule: SkillTrainingMeta["choiceRules"][number] | null): rule is SkillTrainingMeta["choiceRules"][number] =>
@@ -80,7 +86,7 @@ export function discoverSkillTrainingMeta(args: {
   }
 
   return {
-    classSlug: extractSlug(classDocument) ?? "class",
+    classSlug: classSlug ?? "class",
     className,
     fixedSkills,
     fixedLores: [],
@@ -203,6 +209,7 @@ export function discoverGrantedItemMeta(args: {
   selectorDocument: unknown;
   selectorSelection: SelectionRef;
   classSlug: string | null;
+  activeRollOptions?: ReadonlySet<string>;
 }): ClassGrantMeta | null {
   const { selectorDocument, selectorSelection, classSlug } = args;
   const document = selectorDocument as NamedDocumentLike | null | undefined;
@@ -211,9 +218,18 @@ export function discoverGrantedItemMeta(args: {
   }
 
   const rules = findRelevantClassRules(selectorDocument);
+  const activeRollOptions = new Set(args.activeRollOptions ?? []);
+  if (classSlug) {
+    activeRollOptions.add(`class:${classSlug}`.toLowerCase());
+  }
   const choiceRuleIndex = rules.findIndex((rule) => {
     const choices = isRecord(rule.choices) ? rule.choices : null;
-    return rule.key === "ChoiceSet" && typeof rule.flag === "string" && choices?.itemType === "deity";
+    return (
+      rule.key === "ChoiceSet" &&
+      typeof rule.flag === "string" &&
+      choices?.itemType === "deity" &&
+      evaluatePredicate(rule.predicate as ChoicePredicate | undefined, activeRollOptions)
+    );
   });
   if (choiceRuleIndex === -1) {
     return null;
@@ -274,6 +290,9 @@ export function discoverClassChoiceMeta(args: {
   const level = args.sourceLevel ?? toFeatureLevel(document.system?.level?.value);
   const configuredSkills = getConfiguredSkills();
   const activeRollOptions = new Set(rollOptions);
+  if (classSlug) {
+    activeRollOptions.add(`class:${classSlug}`.toLowerCase());
+  }
   const choiceRefs: SameItemChoiceRef[] = [];
   const result: ClassChoiceMeta[] = [];
 
@@ -281,6 +300,9 @@ export function discoverClassChoiceMeta(args: {
   rules.forEach((rule, ruleIndex) => {
     const selectionKey = extractClassChoiceKey(rule, sourceSlug);
     if (rule.key !== "ChoiceSet" || !selectionKey) {
+      return;
+    }
+    if (!evaluatePredicate(rule.predicate as ChoicePredicate | undefined, activeRollOptions)) {
       return;
     }
 
@@ -432,9 +454,13 @@ function toTrainingChoiceRule(
   localize: (value: string) => string,
   configuredSkills: SkillConfigMap,
   className: string,
-  classSelection: SelectionRef | null
+  classSelection: SelectionRef | null,
+  activeRollOptions: ReadonlySet<string>
 ): SkillTrainingMeta["choiceRules"][number] | null {
   if (rule.key !== "ChoiceSet" || !Array.isArray(rule.choices) || typeof rule.flag !== "string") {
+    return null;
+  }
+  if (!evaluatePredicate(rule.predicate as ChoicePredicate | undefined, new Set(activeRollOptions))) {
     return null;
   }
 
@@ -517,7 +543,9 @@ function toDromedaryFlag(value: string): string | null {
 }
 
 function evaluatePredicate(predicate: ChoicePredicate | undefined, rollOptions: Set<string>): boolean {
-  return !predicate || matchesChoicePredicate(predicate, (statement) => rollOptions.has(statement));
+  return (
+    !predicate || matchesChoicePredicate(predicate, (statement) => rollOptions.has(statement.trim().toLowerCase()))
+  );
 }
 
 function sameItemChoiceDependencies(

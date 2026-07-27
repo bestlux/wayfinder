@@ -320,7 +320,7 @@ describe("grant-borne embedded choice policy", () => {
     ]);
   });
 
-  it("guides all five Commander Dedication tactics without duplicate options or disclosure", async () => {
+  it("guides only the two unconditional Commander Dedication tactics without disclosure", async () => {
     const sources = await resolveFixtureSources(COMMANDER_DEDICATION, {
       "Compendium.pf2e.classfeatures.Item.Tactics": TACTICS,
     });
@@ -329,29 +329,23 @@ describe("grant-borne embedded choice policy", () => {
     expect(classification.uncovered).toEqual([]);
     expect(classification.staticGrants[0]).toMatchObject({
       sourceName: "Tactics",
-      covered: [0, 2, 4, 6, 8],
+      covered: [0, 2],
       uncovered: [],
       rules: [
         { ruleIndex: 0, coveredBy: ["grant-choice"] },
         { ruleIndex: 2, coveredBy: ["grant-choice"] },
-        { ruleIndex: 4, coveredBy: ["grant-choice"] },
-        { ruleIndex: 6, coveredBy: ["grant-choice"] },
-        { ruleIndex: 8, coveredBy: ["grant-choice"] },
       ],
     });
     expect(buildStaticGrantChoiceDisclosure(classification)).toBeNull();
 
     const grantSteps = await buildGrantSteps(sources);
-    expect(grantSteps).toHaveLength(5);
+    expect(grantSteps).toHaveLength(2);
     expect(grantSteps.map((step) => step.slotId)).toEqual([
       "grant-choice-class-classfeature-tactics-firstTactic-level-2",
       "grant-choice-class-classfeature-tactics-secondTactic-level-2",
-      "grant-choice-class-classfeature-tactics-thirdTactic-level-2",
-      "grant-choice-class-classfeature-tactics-fourthTactic-level-2",
-      "grant-choice-class-classfeature-tactics-fifthTactic-level-2",
     ]);
     expect(grantSteps.map((step) => step.filters)).toEqual(
-      Array.from({ length: 5 }, () => ({
+      Array.from({ length: 2 }, () => ({
         itemType: "action",
         packIds: ["pf2e.actionspf2e"],
         predicate: [
@@ -364,7 +358,7 @@ describe("grant-borne embedded choice policy", () => {
     );
 
     const identities = grantSteps.map(choiceRuleIdentity);
-    expect(new Set(identities.map((identity) => identity?.key))).toHaveLength(5);
+    expect(new Set(identities.map((identity) => identity?.key))).toHaveLength(2);
     expect(dedupeChoiceRuleSteps([...grantSteps, ...structuredClone(grantSteps)])).toEqual(grantSteps);
 
     clearPackServiceCache();
@@ -437,7 +431,27 @@ describe("grant-borne embedded choice policy", () => {
     expect(secondOptions.map((option) => option.name)).toEqual(["Custom Maneuver", "Defensive Retreat"]);
   });
 
-  it("preseeds all five Commander tactics on the statically granted Tactics feature", async () => {
+  it("still guides all five tactics for a Commander-class character", async () => {
+    const sources = await resolveFixtureSources(COMMANDER_DEDICATION, {
+      "Compendium.pf2e.classfeatures.Item.Tactics": TACTICS,
+    });
+    const classification = classifyWithStaticGrants(COMMANDER_DEDICATION, sources, "commander");
+    const grantSteps = await buildGrantSteps(sources, new Set(["class:commander"]));
+
+    expect(classification.staticGrants[0]).toMatchObject({
+      covered: [0, 2, 4, 6, 8],
+      uncovered: [],
+    });
+    expect(grantSteps.map((step) => step.grantSelection?.flag)).toEqual([
+      "firstTactic",
+      "secondTactic",
+      "thirdTactic",
+      "fourthTactic",
+      "fifthTactic",
+    ]);
+  });
+
+  it("preseeds only the two active Commander Dedication tactics on the statically granted feature", async () => {
     const sources = await resolveFixtureSources(COMMANDER_DEDICATION, {
       "Compendium.pf2e.classfeatures.Item.Tactics": TACTICS,
     });
@@ -445,9 +459,6 @@ describe("grant-borne embedded choice policy", () => {
     const selectedTactics = [
       ["coordinating-maneuvers", "Coordinating Maneuvers"],
       ["defensive-retreat", "Defensive Retreat"],
-      ["double-team", "Double Team"],
-      ["end-it", "End It!"],
-      ["gather-to-me", "Gather to Me!"],
     ] as const;
     const draft = createEmptyDraft(2);
     for (const [index, step] of grantSteps.entries()) {
@@ -480,9 +491,6 @@ describe("grant-borne embedded choice policy", () => {
         choices: {
           firstTactic: "Compendium.pf2e.actionspf2e.Item.coordinating-maneuvers",
           secondTactic: "Compendium.pf2e.actionspf2e.Item.defensive-retreat",
-          thirdTactic: "Compendium.pf2e.actionspf2e.Item.double-team",
-          fourthTactic: "Compendium.pf2e.actionspf2e.Item.end-it",
-          fifthTactic: "Compendium.pf2e.actionspf2e.Item.gather-to-me",
         },
       },
     ]);
@@ -532,10 +540,14 @@ describe("grant-borne embedded choice policy", () => {
   });
 });
 
-function classifyWithStaticGrants(entry: unknown, staticGrantSources: StaticGrantChoiceSource[]) {
+function classifyWithStaticGrants(
+  entry: unknown,
+  staticGrantSources: StaticGrantChoiceSource[],
+  classSlug = "fighter"
+) {
   return classifyEmbeddedChoices(entry as PackIndexEntry, "pf2e.feats-srd", {
     sourceItemType: "feat",
-    classSlug: "fighter",
+    classSlug,
     staticGrantSources,
   });
 }
@@ -569,7 +581,10 @@ async function resolveFixtureSources(
   });
 }
 
-async function buildGrantSteps(sources: StaticGrantChoiceSource[]): Promise<PendingStep[]> {
+async function buildGrantSteps(
+  sources: StaticGrantChoiceSource[],
+  activeRollOptions: ReadonlySet<string> = new Set()
+): Promise<PendingStep[]> {
   return buildGrantChoiceSteps({
     draft: {
       version: 1,
@@ -603,6 +618,7 @@ async function buildGrantSteps(sources: StaticGrantChoiceSource[]): Promise<Pend
     hasClassSelection: true,
     hasDeitySelection: false,
     sources,
+    activeRollOptions,
     extractSlug,
     readExistingGrantedSelection: () => null,
   });

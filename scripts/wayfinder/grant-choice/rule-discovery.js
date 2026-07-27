@@ -1,5 +1,5 @@
 import { resolveChoiceSetFilters } from "../choice-set-filters.js";
-import { documentFeatureLevel, extractChoiceKey, getDocumentRules, predicateIncludesString, toNonEmptyString, } from "../rule-data.js";
+import { documentFeatureLevel, extractChoiceKey, getDocumentRules, matchesChoiceSetRulePredicate, predicateIncludesString, toNonEmptyString, } from "../rule-data.js";
 export function discoverGrantSelectionMeta(args) {
     const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;
     const document = sourceDocument;
@@ -10,6 +10,9 @@ export function discoverGrantSelectionMeta(args) {
     return rules.flatMap((rule, sourceRuleIndex) => {
         const flag = extractChoiceKey(rule);
         if (rule.key !== "ChoiceSet" || !flag) {
+            return [];
+        }
+        if (!matchesChoiceSetRulePredicate(rule, args.activeRollOptions ?? new Set())) {
             return [];
         }
         const resolution = resolveChoiceSetFilters(rule, { sourceLevel: level });

@@ -3,6 +3,7 @@ import type { OptionContext, PendingStep, SelectionRef } from "../types.js";
 import { buildChoiceRollOptions, discoverClassChoiceMeta } from "../wayfinder/class-choice/rule-discovery.js";
 import { discoverFlagChoiceMeta } from "../wayfinder/flag-choice/rule-discovery.js";
 import { discoverGrantSelectionMeta } from "../wayfinder/grant-choice/rule-discovery.js";
+import { matchesChoiceSetRulePredicate } from "../wayfinder/rule-data.js";
 import { discoverSingletonChoiceSpecs } from "../wayfinder/singleton-choice/rule-discovery.js";
 import { discoverSourceSkillTrainingMeta } from "../wayfinder/skill-training/source-discovery.js";
 import type { StaticGrantChoiceSource } from "../wayfinder/static-grant-choice-sources.js";
@@ -43,7 +44,7 @@ export interface EmbeddedChoiceClassificationOptions {
   classSlug?: string | null;
   effectiveDeityDocument?: unknown | null;
   localize?: (value: string) => string;
-  optionContext?: Pick<OptionContext, "ancestrySlug" | "classSlug"> | null;
+  optionContext?: Pick<OptionContext, "ancestrySlug" | "classSlug" | "deitySelected" | "rollOptions"> | null;
   requireResolvedActorPlaceholders?: boolean;
   staticGrantSources?: StaticGrantChoiceSource[];
 }
@@ -119,11 +120,11 @@ export function classifyEmbeddedChoices(
   packId: string,
   options: EmbeddedChoiceClassificationOptions = {}
 ): EmbeddedChoiceClassification {
-  const choiceSetRuleIndexes = getChoiceSetRuleIndexes(entry);
+  const choiceSetRuleIndexes = getActiveChoiceSetRuleIndexes(entry, options);
   const ownChoices = classifyOwnEmbeddedChoices(entry, packId, choiceSetRuleIndexes, options);
   const staticGrants = (options.staticGrantSources ?? []).map((source) => {
     const grantedEntry = source.sourceDocument as PackIndexEntry;
-    const grantedRuleIndexes = getChoiceSetRuleIndexes(grantedEntry);
+    const grantedRuleIndexes = getActiveChoiceSetRuleIndexes(grantedEntry, options);
     const grantedChoices = classifyOwnEmbeddedChoices(grantedEntry, source.sourceSelection.packId, grantedRuleIndexes, {
       ...options,
       sourceItemType: source.sourceItemType,
@@ -161,6 +162,7 @@ function classifyOwnEmbeddedChoices(
   }
 
   const coveredByRuleIndex = new Map<number, Set<EmbeddedChoiceCoverageLane>>();
+  const activeRollOptions = buildActiveRuleRollOptions(options);
   for (const ruleIndex of choiceSetRuleIndexes) {
     coveredByRuleIndex.set(ruleIndex, new Set());
   }
@@ -171,6 +173,7 @@ function classifyOwnEmbeddedChoices(
     sourceSelection,
     sourceLevel: numericOrNull(entry?.system?.level?.value) ?? undefined,
     extractSlug: extractEntrySlug,
+    activeRollOptions,
   })) {
     markCovered(coveredByRuleIndex, meta.selectorRuleIndex, "grant-choice");
   }
@@ -178,8 +181,20 @@ function classifyOwnEmbeddedChoices(
   markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, options);
 
   if (sourceItemType === "feat") {
-    markFeatSingletonCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity);
-    markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity);
+    markFeatSingletonCoverage(
+      entry,
+      sourceSelection,
+      coveredByRuleIndex,
+      options.localize ?? identity,
+      activeRollOptions
+    );
+    markFeatSkillTrainingCoverage(
+      entry,
+      sourceSelection,
+      coveredByRuleIndex,
+      options.localize ?? identity,
+      activeRollOptions
+    );
   }
 
   if (sourceItemType === "classfeature") {
@@ -247,6 +262,7 @@ function markFlagChoiceCoverage(
   coveredByRuleIndex: Map<number, Set<EmbeddedChoiceCoverageLane>>,
   options: EmbeddedChoiceClassificationOptions
 ): void {
+  const activeRollOptions = buildActiveRuleRollOptions(options);
   for (const meta of discoverFlagChoiceMeta({
     sourceItemType,
     sourceDocument: entry,
@@ -258,6 +274,7 @@ function markFlagChoiceCoverage(
       classSlug: options.optionContext?.classSlug,
     },
     requireResolvedActorPlaceholders: options.requireResolvedActorPlaceholders,
+    activeRollOptions,
   })) {
     markCovered(coveredByRuleIndex, meta.sourceRuleIndex, "flag-choice");
   }
@@ -267,13 +284,15 @@ function markFeatSingletonCoverage(
   entry: PackIndexEntry,
   _sourceSelection: SelectionRef,
   coveredByRuleIndex: Map<number, Set<EmbeddedChoiceCoverageLane>>,
-  localize: (value: string) => string
+  localize: (value: string) => string,
+  activeRollOptions: ReadonlySet<string>
 ): void {
   for (const spec of discoverSingletonChoiceSpecs({
     sourceItemType: "feat",
     sourceDocument: entry,
     sourceSlug: extractEntrySlug(entry) ?? String(entry._id ?? "feat"),
     localize,
+    activeRollOptions,
   })) {
     markCovered(coveredByRuleIndex, spec.sourceRuleIndex, "singleton-choice");
   }
@@ -283,7 +302,8 @@ function markFeatSkillTrainingCoverage(
   entry: PackIndexEntry,
   sourceSelection: SelectionRef,
   coveredByRuleIndex: Map<number, Set<EmbeddedChoiceCoverageLane>>,
-  localize: (value: string) => string
+  localize: (value: string) => string,
+  activeRollOptions: ReadonlySet<string>
 ): void {
   const training = discoverSourceSkillTrainingMeta({
     sources: [
@@ -294,6 +314,7 @@ function markFeatSkillTrainingCoverage(
       },
     ],
     localize,
+    activeRollOptions,
   });
 
   for (const choice of [...training.choiceRules, ...training.loreChoices]) {
@@ -310,26 +331,48 @@ function markClassChoiceCoverage(
   coveredByRuleIndex: Map<number, Set<EmbeddedChoiceCoverageLane>>,
   options: EmbeddedChoiceClassificationOptions
 ): void {
+  const activeRollOptions = buildActiveRuleRollOptions(options);
+  for (const option of buildChoiceRollOptions(options.effectiveDeityDocument ?? null)) {
+    activeRollOptions.add(option);
+  }
   for (const meta of discoverClassChoiceMeta({
     sourceDocument: entry,
     sourceSelection,
-    classSlug: options.classSlug ?? null,
+    classSlug: options.classSlug ?? options.optionContext?.classSlug ?? null,
     extractSlug: extractEntrySlug,
     localize: options.localize ?? identity,
-    rollOptions: buildChoiceRollOptions(options.effectiveDeityDocument ?? null),
+    rollOptions: activeRollOptions,
     assumeFirstChoiceSelection: true,
   })) {
     markCovered(coveredByRuleIndex, meta.sourceRuleIndex, "class-choice");
   }
 }
 
-function getChoiceSetRuleIndexes(entry: PackIndexEntry): number[] {
+function getActiveChoiceSetRuleIndexes(entry: PackIndexEntry, options: EmbeddedChoiceClassificationOptions): number[] {
+  const activeRollOptions = buildActiveRuleRollOptions(options);
   const rules = entry?.system?.rules;
-  if (!Array.isArray(rules)) {
-    return [];
-  }
+  return Array.isArray(rules)
+    ? rules.flatMap((rule, ruleIndex) =>
+        isRecord(rule) && rule.key === "ChoiceSet" && matchesChoiceSetRulePredicate(rule, activeRollOptions)
+          ? [ruleIndex]
+          : []
+      )
+    : [];
+}
 
-  return rules.flatMap((rule, ruleIndex) => (isRecord(rule) && rule.key === "ChoiceSet" ? [ruleIndex] : []));
+function buildActiveRuleRollOptions(options: EmbeddedChoiceClassificationOptions): Set<string> {
+  const active = new Set((options.optionContext?.rollOptions ?? []).map((option) => option.trim().toLowerCase()));
+  const classSlug = options.optionContext?.classSlug ?? options.classSlug;
+  if (classSlug) {
+    active.add(`class:${classSlug}`.toLowerCase());
+  }
+  if (options.optionContext?.ancestrySlug) {
+    active.add(`ancestry:${options.optionContext.ancestrySlug}`.toLowerCase());
+  }
+  if (options.optionContext?.deitySelected) {
+    active.add("deity");
+  }
+  return active;
 }
 
 function markCovered(

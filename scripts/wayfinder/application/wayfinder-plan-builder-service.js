@@ -13,6 +13,7 @@ import { buildFlagChoiceSteps } from "../flag-choice-service.js";
 import { buildGrantChoiceSteps } from "../grant-choice-service.js";
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
+import { buildProjectedChoiceRuleRollOptions } from "../projected-rule-options.js";
 import { documentFeatureLevel, getDocumentRules, matchesChoicePredicateList, toNonEmptyString } from "../rule-data.js";
 import { buildSingletonChoiceSteps } from "../singleton-choice-service.js";
 import { SLOT_PREFIXES } from "../slot-ids.js";
@@ -72,32 +73,43 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
         buildClassTrainingSteps: async (_planSnapshot, planDraft, targetLevel) => {
             const effectiveBuildState = await getEffectiveBuildState(args.actor, planDraft);
             const draftedClassSelection = deps.findDraftSelectionByType(planDraft, "class");
+            const sourceSelections = draftedClassSelection
+                ? [
+                    {
+                        sourceItemType: "ancestry",
+                        sourceSelection: deps.findDraftSelectionByType(planDraft, "ancestry") ??
+                            deps.readExistingSingletonSourceSelection(args.actor, "ancestry"),
+                        sourceDocument: effectiveBuildState.ancestry?.document ?? null,
+                    },
+                    {
+                        sourceItemType: "heritage",
+                        sourceSelection: deps.findDraftSelectionByType(planDraft, "heritage") ??
+                            deps.readExistingSingletonSourceSelection(args.actor, "heritage"),
+                        sourceDocument: effectiveBuildState.heritage,
+                    },
+                    {
+                        sourceItemType: "background",
+                        sourceSelection: deps.findDraftSelectionByType(planDraft, "background") ??
+                            deps.readExistingSingletonSourceSelection(args.actor, "background"),
+                        sourceDocument: effectiveBuildState.background?.document ?? null,
+                    },
+                    ...(await resolveSkillTrainingFeatSources(classArchetypeDraft, targetLevel, args, deps)),
+                ]
+                : await resolveProjectedClassArchetypeSkillTrainingSources(classArchetypeDraft, targetLevel, args, deps);
+            const effectiveClassSelection = draftedClassSelection ?? deps.readExistingSingletonSourceSelection(args.actor, "class");
+            const rulePredicateSources = [
+                ...sourceSelections,
+                {
+                    sourceItemType: "class",
+                    sourceSelection: effectiveClassSelection,
+                    sourceDocument: effectiveBuildState.class?.document ?? null,
+                },
+            ];
             return deps.buildClassTrainingSteps({
-                draftClassSelection: draftedClassSelection ?? deps.readExistingSingletonSourceSelection(args.actor, "class"),
+                draftClassSelection: effectiveClassSelection,
                 includeBaseClassTraining: !!draftedClassSelection,
-                sourceSelections: draftedClassSelection
-                    ? [
-                        {
-                            sourceItemType: "ancestry",
-                            sourceSelection: deps.findDraftSelectionByType(planDraft, "ancestry") ??
-                                deps.readExistingSingletonSourceSelection(args.actor, "ancestry"),
-                            sourceDocument: effectiveBuildState.ancestry?.document ?? null,
-                        },
-                        {
-                            sourceItemType: "heritage",
-                            sourceSelection: deps.findDraftSelectionByType(planDraft, "heritage") ??
-                                deps.readExistingSingletonSourceSelection(args.actor, "heritage"),
-                            sourceDocument: effectiveBuildState.heritage,
-                        },
-                        {
-                            sourceItemType: "background",
-                            sourceSelection: deps.findDraftSelectionByType(planDraft, "background") ??
-                                deps.readExistingSingletonSourceSelection(args.actor, "background"),
-                            sourceDocument: effectiveBuildState.background?.document ?? null,
-                        },
-                        ...(await resolveSkillTrainingFeatSources(classArchetypeDraft, targetLevel, args, deps)),
-                    ]
-                    : await resolveProjectedClassArchetypeSkillTrainingSources(classArchetypeDraft, targetLevel, args, deps),
+                sourceSelections,
+                activeRollOptions: await resolveProjectedRuleRollOptions(planDraft, rulePredicateSources, args, deps),
                 targetLevel,
                 effectiveBuildState,
                 fetchSelectionDocument: deps.fetchSelectionDocument,
@@ -105,34 +117,46 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
                 localize: args.localize,
             });
         },
-        buildGrantChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildGrantChoiceSteps({
-            draft: planDraft,
-            targetLevel,
-            hasClassSelection: !!(deps.findDraftSelectionByType(planDraft, "class") ??
-                deps.readExistingSingletonSourceSelection(args.actor, "class")),
-            hasDeitySelection: !!(deps.findDraftSelectionByType(planDraft, "deity") ??
-                deps.readExistingSingletonSourceSelection(args.actor, "deity")),
-            sources: await resolveGrantChoiceSources(classArchetypeDraft, targetLevel, args, deps),
-            extractSlug: deps.extractDocumentSlug,
-            readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
-        }),
-        buildFlagChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildFlagChoiceSteps({
-            draft: planDraft,
-            targetLevel,
-            sources: await resolveFlagChoiceSources(classArchetypeDraft, targetLevel, args, deps),
-            extractSlug: deps.extractDocumentSlug,
-            localize: args.localize,
-            actorContext: await resolveFlagChoiceActorContext(args, deps),
-            readExistingFlagChoiceSelection: (choice) => deps.readExistingFlagChoiceSelection(args.actor, choice),
-        }),
-        buildSingletonChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => deps.buildSingletonChoiceSteps({
-            draft: planDraft,
-            targetLevel,
-            sources: await resolveSingletonChoiceSources(classArchetypeDraft, targetLevel, args, deps),
-            extractSlug: deps.extractDocumentSlug,
-            localize: args.localize,
-            readExistingSingletonChoiceSelection: (choice) => deps.readExistingSingletonChoiceSelection(args.actor, choice),
-        }),
+        buildGrantChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => {
+            const sources = await resolveGrantChoiceSources(classArchetypeDraft, targetLevel, args, deps);
+            return deps.buildGrantChoiceSteps({
+                draft: planDraft,
+                targetLevel,
+                hasClassSelection: !!(deps.findDraftSelectionByType(planDraft, "class") ??
+                    deps.readExistingSingletonSourceSelection(args.actor, "class")),
+                hasDeitySelection: !!(deps.findDraftSelectionByType(planDraft, "deity") ??
+                    deps.readExistingSingletonSourceSelection(args.actor, "deity")),
+                sources,
+                activeRollOptions: await resolveProjectedRuleRollOptions(planDraft, sources, args, deps),
+                extractSlug: deps.extractDocumentSlug,
+                readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
+            });
+        },
+        buildFlagChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => {
+            const sources = await resolveFlagChoiceSources(classArchetypeDraft, targetLevel, args, deps);
+            return deps.buildFlagChoiceSteps({
+                draft: planDraft,
+                targetLevel,
+                sources,
+                activeRollOptions: await resolveProjectedRuleRollOptions(planDraft, sources, args, deps),
+                extractSlug: deps.extractDocumentSlug,
+                localize: args.localize,
+                actorContext: await resolveFlagChoiceActorContext(args, deps),
+                readExistingFlagChoiceSelection: (choice) => deps.readExistingFlagChoiceSelection(args.actor, choice),
+            });
+        },
+        buildSingletonChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => {
+            const sources = await resolveSingletonChoiceSources(classArchetypeDraft, targetLevel, args, deps);
+            return deps.buildSingletonChoiceSteps({
+                draft: planDraft,
+                targetLevel,
+                sources,
+                activeRollOptions: await resolveProjectedRuleRollOptions(planDraft, sources, args, deps),
+                extractSlug: deps.extractDocumentSlug,
+                localize: args.localize,
+                readExistingSingletonChoiceSelection: (choice) => deps.readExistingSingletonChoiceSelection(args.actor, choice),
+            });
+        },
         buildLanguageChoiceSteps: async (planSnapshot, planDraft, targetLevel) => deps.buildLanguageChoiceSteps({
             snapshot: planSnapshot,
             targetLevel,
@@ -174,17 +198,26 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
             extractSlug: deps.extractDocumentSlug,
             readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
         }),
-        buildClassChoiceSteps: async (_planSnapshot, _planDraft, targetLevel) => deps.buildClassChoiceSteps({
-            draft: classArchetypeDraft,
-            effectiveClassDocument: await args.resolveDocument("class"),
-            effectiveDeityDocument: await args.resolveDocument("deity"),
-            additionalClassFeatures: await resolveSelectedClassFeatureChoiceSources(classArchetypeDraft, args, deps),
-            targetLevel,
-            fetchSelectionDocument: deps.fetchSelectionDocument,
-            extractSlug: deps.extractDocumentSlug,
-            localize: args.localize,
-            readExistingClassChoiceSelection: (choice) => deps.readExistingClassChoiceSelection(args.actor, choice),
-        }),
+        buildClassChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => {
+            const additionalClassFeatures = await resolveSelectedClassFeatureChoiceSources(classArchetypeDraft, args, deps);
+            return deps.buildClassChoiceSteps({
+                draft: classArchetypeDraft,
+                effectiveClassDocument: await args.resolveDocument("class"),
+                effectiveDeityDocument: await args.resolveDocument("deity"),
+                additionalClassFeatures,
+                activeRollOptions: await resolveProjectedRuleRollOptions(planDraft, additionalClassFeatures.map((source) => ({
+                    sourceItemType: "classfeature",
+                    sourceSelection: source.selection,
+                    sourceDocument: source.document,
+                    sourceLevel: source.level,
+                })), args, deps),
+                targetLevel,
+                fetchSelectionDocument: deps.fetchSelectionDocument,
+                extractSlug: deps.extractDocumentSlug,
+                localize: args.localize,
+                readExistingClassChoiceSelection: (choice) => deps.readExistingClassChoiceSelection(args.actor, choice),
+            });
+        },
         buildSpellChoiceSteps: async (planSnapshot, _planDraft, targetLevel) => {
             const effectiveClassDocument = await args.resolveDocument("class");
             const effectiveDeityDocument = await args.resolveDocument("deity");
@@ -255,6 +288,17 @@ async function resolveFlagChoiceActorContext(args, deps) {
         ancestrySlug: deps.extractDocumentSlug(ancestryDocument),
         classSlug: deps.extractDocumentSlug(classDocument),
     };
+}
+async function resolveProjectedRuleRollOptions(draft, sources, args, deps) {
+    const effectiveBuildState = await getEffectiveBuildState(args.actor, draft);
+    return buildProjectedChoiceRuleRollOptions({
+        draft,
+        actorItems: listActorItems(args.actor),
+        sources,
+        classSlug: deps.extractDocumentSlug(effectiveBuildState.class?.document ?? null),
+        ancestrySlug: deps.extractDocumentSlug(effectiveBuildState.ancestry?.document ?? null),
+        deitySelected: !!effectiveBuildState.deity,
+    });
 }
 export async function findPlanStepBySlotId(args, slotId, deps = DEFAULT_DEPS) {
     const plan = await buildWayfinderAppPlan(args, deps);

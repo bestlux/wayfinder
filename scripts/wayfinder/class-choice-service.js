@@ -21,6 +21,7 @@ export async function buildClassTrainingSteps(params) {
     const sourceTraining = discoverSourceSkillTrainingMeta({
         sources: sourceSelections,
         localize,
+        activeRollOptions: params.activeRollOptions,
     });
     if (!includeBaseClassTraining) {
         const sourceSelection = sourceSelections.find((source) => source.sourceSelection)?.sourceSelection ?? null;
@@ -50,6 +51,7 @@ export async function buildClassTrainingSteps(params) {
         extractSlug,
         localize,
         intelligenceModifier: effectiveBuildState.projectedAbilities.int.modifier,
+        activeRollOptions: params.activeRollOptions,
     });
     return steps.map((step) => ({
         ...step,
@@ -179,6 +181,7 @@ export async function buildClassChoiceSteps(params) {
             extractSlug: params.extractSlug,
             localize: params.localize,
             selectedValuesBySlotId: params.draft.classChoices,
+            activeRollOptions: params.activeRollOptions,
         }),
     ];
     return dedupeStepsBySlotId(steps).filter((step) => !(isBattleCreedSelected(params.draft) &&

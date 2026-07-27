@@ -2,6 +2,7 @@ import { toCompendiumItemUuid } from "../shared/compendium.js";
 import { buildChoiceRollOptions, discoverClassChoiceMeta } from "../wayfinder/class-choice/rule-discovery.js";
 import { discoverFlagChoiceMeta } from "../wayfinder/flag-choice/rule-discovery.js";
 import { discoverGrantSelectionMeta } from "../wayfinder/grant-choice/rule-discovery.js";
+import { matchesChoiceSetRulePredicate } from "../wayfinder/rule-data.js";
 import { discoverSingletonChoiceSpecs } from "../wayfinder/singleton-choice/rule-discovery.js";
 import { discoverSourceSkillTrainingMeta } from "../wayfinder/skill-training/source-discovery.js";
 import { extractEntrySlug, isRecord, numericOrNull, resolveFeatType } from "./entry.js";
@@ -53,11 +54,11 @@ function entryHasChoiceSetRule(entry) {
     return Array.isArray(rules) && rules.some((rule) => isRecord(rule) && rule.key === "ChoiceSet");
 }
 export function classifyEmbeddedChoices(entry, packId, options = {}) {
-    const choiceSetRuleIndexes = getChoiceSetRuleIndexes(entry);
+    const choiceSetRuleIndexes = getActiveChoiceSetRuleIndexes(entry, options);
     const ownChoices = classifyOwnEmbeddedChoices(entry, packId, choiceSetRuleIndexes, options);
     const staticGrants = (options.staticGrantSources ?? []).map((source) => {
         const grantedEntry = source.sourceDocument;
-        const grantedRuleIndexes = getChoiceSetRuleIndexes(grantedEntry);
+        const grantedRuleIndexes = getActiveChoiceSetRuleIndexes(grantedEntry, options);
         const grantedChoices = classifyOwnEmbeddedChoices(grantedEntry, source.sourceSelection.packId, grantedRuleIndexes, {
             ...options,
             sourceItemType: source.sourceItemType,
@@ -86,6 +87,7 @@ function classifyOwnEmbeddedChoices(entry, packId, choiceSetRuleIndexes, options
         };
     }
     const coveredByRuleIndex = new Map();
+    const activeRollOptions = buildActiveRuleRollOptions(options);
     for (const ruleIndex of choiceSetRuleIndexes) {
         coveredByRuleIndex.set(ruleIndex, new Set());
     }
@@ -95,13 +97,14 @@ function classifyOwnEmbeddedChoices(entry, packId, choiceSetRuleIndexes, options
         sourceSelection,
         sourceLevel: numericOrNull(entry?.system?.level?.value) ?? undefined,
         extractSlug: extractEntrySlug,
+        activeRollOptions,
     })) {
         markCovered(coveredByRuleIndex, meta.selectorRuleIndex, "grant-choice");
     }
     markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, options);
     if (sourceItemType === "feat") {
-        markFeatSingletonCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity);
-        markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity);
+        markFeatSingletonCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity, activeRollOptions);
+        markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity, activeRollOptions);
     }
     if (sourceItemType === "classfeature") {
         markClassChoiceCoverage(entry, sourceSelection, coveredByRuleIndex, options);
@@ -150,6 +153,7 @@ function indefiniteArticle(noun) {
     return /^[aeiou]/i.test(noun) ? "an" : "a";
 }
 function markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, options) {
+    const activeRollOptions = buildActiveRuleRollOptions(options);
     for (const meta of discoverFlagChoiceMeta({
         sourceItemType,
         sourceDocument: entry,
@@ -161,21 +165,23 @@ function markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredB
             classSlug: options.optionContext?.classSlug,
         },
         requireResolvedActorPlaceholders: options.requireResolvedActorPlaceholders,
+        activeRollOptions,
     })) {
         markCovered(coveredByRuleIndex, meta.sourceRuleIndex, "flag-choice");
     }
 }
-function markFeatSingletonCoverage(entry, _sourceSelection, coveredByRuleIndex, localize) {
+function markFeatSingletonCoverage(entry, _sourceSelection, coveredByRuleIndex, localize, activeRollOptions) {
     for (const spec of discoverSingletonChoiceSpecs({
         sourceItemType: "feat",
         sourceDocument: entry,
         sourceSlug: extractEntrySlug(entry) ?? String(entry._id ?? "feat"),
         localize,
+        activeRollOptions,
     })) {
         markCovered(coveredByRuleIndex, spec.sourceRuleIndex, "singleton-choice");
     }
 }
-function markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleIndex, localize) {
+function markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleIndex, localize, activeRollOptions) {
     const training = discoverSourceSkillTrainingMeta({
         sources: [
             {
@@ -185,6 +191,7 @@ function markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleInde
             },
         ],
         localize,
+        activeRollOptions,
     });
     for (const choice of [...training.choiceRules, ...training.loreChoices]) {
         const sourceRuleIndex = choice.persistence?.sourceRuleIndex;
@@ -194,24 +201,44 @@ function markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleInde
     }
 }
 function markClassChoiceCoverage(entry, sourceSelection, coveredByRuleIndex, options) {
+    const activeRollOptions = buildActiveRuleRollOptions(options);
+    for (const option of buildChoiceRollOptions(options.effectiveDeityDocument ?? null)) {
+        activeRollOptions.add(option);
+    }
     for (const meta of discoverClassChoiceMeta({
         sourceDocument: entry,
         sourceSelection,
-        classSlug: options.classSlug ?? null,
+        classSlug: options.classSlug ?? options.optionContext?.classSlug ?? null,
         extractSlug: extractEntrySlug,
         localize: options.localize ?? identity,
-        rollOptions: buildChoiceRollOptions(options.effectiveDeityDocument ?? null),
+        rollOptions: activeRollOptions,
         assumeFirstChoiceSelection: true,
     })) {
         markCovered(coveredByRuleIndex, meta.sourceRuleIndex, "class-choice");
     }
 }
-function getChoiceSetRuleIndexes(entry) {
+function getActiveChoiceSetRuleIndexes(entry, options) {
+    const activeRollOptions = buildActiveRuleRollOptions(options);
     const rules = entry?.system?.rules;
-    if (!Array.isArray(rules)) {
-        return [];
+    return Array.isArray(rules)
+        ? rules.flatMap((rule, ruleIndex) => isRecord(rule) && rule.key === "ChoiceSet" && matchesChoiceSetRulePredicate(rule, activeRollOptions)
+            ? [ruleIndex]
+            : [])
+        : [];
+}
+function buildActiveRuleRollOptions(options) {
+    const active = new Set((options.optionContext?.rollOptions ?? []).map((option) => option.trim().toLowerCase()));
+    const classSlug = options.optionContext?.classSlug ?? options.classSlug;
+    if (classSlug) {
+        active.add(`class:${classSlug}`.toLowerCase());
     }
-    return rules.flatMap((rule, ruleIndex) => (isRecord(rule) && rule.key === "ChoiceSet" ? [ruleIndex] : []));
+    if (options.optionContext?.ancestrySlug) {
+        active.add(`ancestry:${options.optionContext.ancestrySlug}`.toLowerCase());
+    }
+    if (options.optionContext?.deitySelected) {
+        active.add("deity");
+    }
+    return active;
 }
 function markCovered(coveredByRuleIndex, ruleIndex, lane) {
     coveredByRuleIndex.get(ruleIndex)?.add(lane);

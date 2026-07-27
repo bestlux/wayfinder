@@ -1,7 +1,7 @@
 import { resolveConfiguredChoiceOptions } from "../class-choice/rule-discovery.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, } from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
-import { documentFeatureLevel, extractChoiceKey, getDocumentRules, isChoicePredicate, isRecord, toNonEmptyString, } from "../rule-data.js";
+import { documentFeatureLevel, extractChoiceKey, getDocumentRules, isChoicePredicate, isRecord, matchesChoiceSetRulePredicate, toNonEmptyString, } from "../rule-data.js";
 const ENABLED_FEAT_CONFIG_CHOICE_KEYS = new Set(["baseWeaponTypes", "creatureTraits", "saves", "weaponGroups"]);
 export function discoverSingletonChoiceMeta(args) {
     const { sourceItemType, sourceDocument, sourceSelection, sourceLevel, extractSlug, localize } = args;
@@ -12,6 +12,7 @@ export function discoverSingletonChoiceMeta(args) {
         sourceSlug: extractSlug(sourceDocument) ?? sourceSelection.documentId,
         sourceLevel,
         localize,
+        activeRollOptions: args.activeRollOptions,
     }).map((choice) => ({
         slotId: choice.slotId,
         sourceItemType,
@@ -35,6 +36,9 @@ export function discoverSingletonChoiceSpecs(args) {
     return rules.flatMap((rule, sourceRuleIndex) => {
         const flag = extractChoiceKey(rule);
         if (rule.key !== "ChoiceSet" || !flag) {
+            return [];
+        }
+        if (!matchesChoiceSetRulePredicate(rule, args.activeRollOptions ?? new Set())) {
             return [];
         }
         if (isGrantSelectorChoice(rules, flag)) {

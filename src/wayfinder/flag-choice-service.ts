@@ -13,6 +13,7 @@ interface BuildFlagChoiceStepsParams {
   draft: DraftState;
   targetLevel: number;
   sources: FlagChoiceSourceContext[];
+  activeRollOptions?: ReadonlySet<string>;
   extractSlug: (document: unknown) => string | null;
   localize?: (value: string) => string;
   actorContext?: ChoiceFilterActorContext | null;
@@ -27,6 +28,7 @@ export async function buildFlagChoiceSteps(params: BuildFlagChoiceStepsParams): 
         effectiveSourceDocument: source.sourceDocument,
         sourceSelection: source.sourceSelection,
         sourceLevel: source.sourceLevel,
+        activeRollOptions: params.activeRollOptions,
         extractSlug: params.extractSlug,
         localize: params.localize,
         actorContext: params.actorContext,

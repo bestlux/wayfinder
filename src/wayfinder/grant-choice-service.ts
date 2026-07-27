@@ -22,6 +22,7 @@ interface BuildGrantChoiceStepsParams {
   hasClassSelection: boolean;
   hasDeitySelection: boolean;
   sources: GrantChoiceSourceContext[];
+  activeRollOptions?: ReadonlySet<string>;
   extractSlug: (document: unknown) => string | null;
   readExistingGrantedSelection: (grant: GrantSelectionMeta) => string | null;
 }
@@ -38,6 +39,7 @@ export async function buildGrantChoiceSteps(params: BuildGrantChoiceStepsParams)
         effectiveSourceDocument: source.sourceDocument,
         sourceSelection: source.sourceSelection,
         sourceLevel: source.sourceLevel,
+        activeRollOptions: params.activeRollOptions,
         extractSlug: params.extractSlug,
       }).map((step) => ({ source, step }))
     )

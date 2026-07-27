@@ -48,6 +48,7 @@ interface DerivedTrainingMeta {
 export function discoverSourceSkillTrainingMeta(args: {
   sources: SkillTrainingSourceContext[];
   localize: (value: string) => string;
+  activeRollOptions?: ReadonlySet<string>;
 }): Pick<SkillTrainingMeta, "fixedSkills" | "fixedLores" | "choiceRules" | "loreChoices"> {
   const configuredSkills = getConfiguredSkills();
   const fixedSkills: string[] = [];
@@ -76,6 +77,7 @@ export function discoverSourceSkillTrainingMeta(args: {
       sourceSlug,
       localize: args.localize,
       includeTrainingChoices: true,
+      activeRollOptions: args.activeRollOptions,
     })) {
       const persistence = selectionPersistence(source, spec.sourceRuleIndex);
       if (spec.optionDomain === "skill") {

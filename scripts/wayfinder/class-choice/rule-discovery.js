@@ -11,8 +11,13 @@ export function discoverSkillTrainingMeta(args) {
     const document = classDocument;
     const configuredSkills = getConfiguredSkills();
     const className = toNonEmptyString(document?.name) ?? "Class";
+    const activeRollOptions = new Set(args.activeRollOptions ?? []);
+    const classSlug = extractSlug(classDocument);
+    if (classSlug) {
+        activeRollOptions.add(`class:${classSlug}`.toLowerCase());
+    }
     const choiceRules = findRelevantClassRules(classDocument)
-        .map((rule, ruleIndex) => toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection))
+        .map((rule, ruleIndex) => toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection, activeRollOptions))
         .filter((rule) => rule !== null);
     const additionalCount = Math.max(0, toNonNegativeNumber(document?.system?.trainedSkills?.additional) + Math.trunc(intelligenceModifier));
     const fixedSkills = toStringArray(document?.system?.trainedSkills?.value).map((entry) => entry.toLowerCase());
@@ -20,7 +25,7 @@ export function discoverSkillTrainingMeta(args) {
         return null;
     }
     return {
-        classSlug: extractSlug(classDocument) ?? "class",
+        classSlug: classSlug ?? "class",
         className,
         fixedSkills,
         fixedLores: [],
@@ -115,9 +120,16 @@ export function discoverGrantedItemMeta(args) {
         return null;
     }
     const rules = findRelevantClassRules(selectorDocument);
+    const activeRollOptions = new Set(args.activeRollOptions ?? []);
+    if (classSlug) {
+        activeRollOptions.add(`class:${classSlug}`.toLowerCase());
+    }
     const choiceRuleIndex = rules.findIndex((rule) => {
         const choices = isRecord(rule.choices) ? rule.choices : null;
-        return rule.key === "ChoiceSet" && typeof rule.flag === "string" && choices?.itemType === "deity";
+        return (rule.key === "ChoiceSet" &&
+            typeof rule.flag === "string" &&
+            choices?.itemType === "deity" &&
+            evaluatePredicate(rule.predicate, activeRollOptions));
     });
     if (choiceRuleIndex === -1) {
         return null;
@@ -159,12 +171,18 @@ export function discoverClassChoiceMeta(args) {
     const level = args.sourceLevel ?? toFeatureLevel(document.system?.level?.value);
     const configuredSkills = getConfiguredSkills();
     const activeRollOptions = new Set(rollOptions);
+    if (classSlug) {
+        activeRollOptions.add(`class:${classSlug}`.toLowerCase());
+    }
     const choiceRefs = [];
     const result = [];
     const rules = findRelevantClassRules(sourceDocument);
     rules.forEach((rule, ruleIndex) => {
         const selectionKey = extractClassChoiceKey(rule, sourceSlug);
         if (rule.key !== "ChoiceSet" || !selectionKey) {
+            return;
+        }
+        if (!evaluatePredicate(rule.predicate, activeRollOptions)) {
             return;
         }
         const slotId = "class-choice-" + sourceSlug + "-" + selectionKey + "-level-" + level;
@@ -265,8 +283,11 @@ export function buildChoiceRollOptions(deityDocument) {
     }
     return options;
 }
-function toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection) {
+function toTrainingChoiceRule(rule, ruleIndex, localize, configuredSkills, className, classSelection, activeRollOptions) {
     if (rule.key !== "ChoiceSet" || !Array.isArray(rule.choices) || typeof rule.flag !== "string") {
+        return null;
+    }
+    if (!evaluatePredicate(rule.predicate, new Set(activeRollOptions))) {
         return null;
     }
     const options = rule.choices
@@ -329,7 +350,7 @@ function toDromedaryFlag(value) {
         .join("");
 }
 function evaluatePredicate(predicate, rollOptions) {
-    return !predicate || matchesChoicePredicate(predicate, (statement) => rollOptions.has(statement));
+    return (!predicate || matchesChoicePredicate(predicate, (statement) => rollOptions.has(statement.trim().toLowerCase())));
 }
 function sameItemChoiceDependencies(rule, previousChoices) {
     if (!Array.isArray(rule.choices) || previousChoices.length === 0) {

@@ -13,6 +13,7 @@ import {
   getDocumentRules,
   isChoicePredicate,
   isRecord,
+  matchesChoiceSetRulePredicate,
   toNonEmptyString,
 } from "../rule-data.js";
 
@@ -46,6 +47,7 @@ export function discoverSingletonChoiceMeta(args: {
   sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
+  activeRollOptions?: ReadonlySet<string>;
 }): SingletonChoiceMeta[] {
   const { sourceItemType, sourceDocument, sourceSelection, sourceLevel, extractSlug, localize } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
@@ -55,6 +57,7 @@ export function discoverSingletonChoiceMeta(args: {
     sourceSlug: extractSlug(sourceDocument) ?? sourceSelection.documentId,
     sourceLevel,
     localize,
+    activeRollOptions: args.activeRollOptions,
   }).map(
     (choice) =>
       ({
@@ -81,6 +84,7 @@ export function discoverSingletonChoiceSpecs(args: {
   sourceLevel?: number;
   localize: (value: string) => string;
   includeTrainingChoices?: boolean;
+  activeRollOptions?: ReadonlySet<string>;
 }): SingletonChoiceSpec[] {
   const { sourceItemType, sourceDocument, sourceSlug, sourceLevel, localize, includeTrainingChoices = false } = args;
   const level = sourceLevel ?? documentFeatureLevel(sourceDocument);
@@ -90,6 +94,9 @@ export function discoverSingletonChoiceSpecs(args: {
   return rules.flatMap((rule, sourceRuleIndex) => {
     const flag = extractChoiceKey(rule);
     if (rule.key !== "ChoiceSet" || !flag) {
+      return [];
+    }
+    if (!matchesChoiceSetRulePredicate(rule, args.activeRollOptions ?? new Set())) {
       return [];
     }
     if (isGrantSelectorChoice(rules, flag)) {

@@ -12,6 +12,7 @@ export function buildClassTrainingStepsFromRules(args) {
         extractSlug,
         localize,
         intelligenceModifier,
+        activeRollOptions: args.activeRollOptions,
     });
     if (!training) {
         return [];
@@ -46,6 +47,7 @@ export async function buildClassChoiceStepsFromRules(args) {
         extractSlug: args.extractSlug,
         localize: args.localize,
         selectedValuesBySlotId: args.selectedValuesBySlotId,
+        activeRollOptions: args.activeRollOptions,
     });
 }
 export function buildClassChoiceStepsFromFeatureSources(args) {
@@ -78,11 +80,16 @@ function buildClassBranchStepsFromFeatures(classFeatures, classSlug, extractSlug
 }
 function buildClassGrantedItemStepsFromFeatures(classFeatures, classSlug) {
     const steps = [];
+    const activeRollOptions = new Set();
+    if (classSlug) {
+        activeRollOptions.add(`class:${classSlug}`.toLowerCase());
+    }
     for (const feature of classFeatures) {
         const grant = discoverGrantedItemMeta({
             selectorDocument: feature.document,
             selectorSelection: feature.selection,
             classSlug,
+            activeRollOptions,
         });
         if (!grant) {
             continue;
@@ -99,6 +106,9 @@ function buildClassGrantedItemStepsFromFeatures(classFeatures, classSlug) {
 function buildClassChoiceStepsFromFeatures(args) {
     const steps = [];
     const rollOptions = buildChoiceRollOptions(args.effectiveDeityDocument);
+    for (const option of args.activeRollOptions ?? []) {
+        rollOptions.add(option.toLowerCase());
+    }
     for (const feature of args.classFeatures) {
         const choices = discoverClassChoiceMeta({
             sourceDocument: feature.document,

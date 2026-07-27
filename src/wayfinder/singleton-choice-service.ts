@@ -1,5 +1,4 @@
-import type { ChoicePredicate, DraftState, PendingStep, SelectionRef, SingletonChoiceMeta } from "../types.js";
-import { matchesChoicePredicateList } from "./rule-data.js";
+import type { DraftState, PendingStep, SelectionRef, SingletonChoiceMeta, SingletonChoiceStep } from "../types.js";
 import { buildSingletonChoiceStepsFromRules } from "./singleton-choice/step-builders.js";
 
 export interface SingletonChoiceSourceContext {
@@ -13,27 +12,38 @@ interface BuildSingletonChoiceStepsParams {
   draft: DraftState;
   targetLevel: number;
   sources: SingletonChoiceSourceContext[];
+  activeRollOptions?: ReadonlySet<string>;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
   readExistingSingletonChoiceSelection: (choice: SingletonChoiceMeta) => string | null;
 }
 
 export async function buildSingletonChoiceSteps(params: BuildSingletonChoiceStepsParams): Promise<PendingStep[]> {
-  const steps = params.sources.flatMap((source) =>
-    buildSingletonChoiceStepsFromRules({
-      sourceItemType: source.sourceItemType,
-      effectiveSourceDocument: source.sourceDocument,
-      sourceSelection: source.sourceSelection,
-      sourceLevel: source.sourceLevel,
-      extractSlug: params.extractSlug,
-      localize: params.localize,
-    })
-  );
-  const activeRollOptions = buildActiveRollOptions(steps, params.draft, params.readExistingSingletonChoiceSelection);
+  const activeRollOptions = new Set(params.activeRollOptions ?? []);
+  let steps: SingletonChoiceStep[] = [];
+  let changed = true;
+  while (changed) {
+    steps = params.sources.flatMap((source) =>
+      buildSingletonChoiceStepsFromRules({
+        sourceItemType: source.sourceItemType,
+        effectiveSourceDocument: source.sourceDocument,
+        sourceSelection: source.sourceSelection,
+        sourceLevel: source.sourceLevel,
+        extractSlug: params.extractSlug,
+        localize: params.localize,
+        activeRollOptions,
+      })
+    );
+    changed = addSelectedRollOptions(
+      activeRollOptions,
+      steps,
+      params.draft,
+      params.readExistingSingletonChoiceSelection
+    );
+  }
 
   return steps
     .filter((step) => step.level <= params.targetLevel)
-    .filter((step) => matchesPredicate(step.singletonChoice.predicate, activeRollOptions))
     .filter(
       (step) =>
         !shouldSkipExistingStep(
@@ -47,40 +57,31 @@ function shouldSkipExistingStep(draftSelection: string | undefined, actorSelecti
   return !!actorSelection && !draftSelection;
 }
 
-function buildActiveRollOptions(
+function addSelectedRollOptions(
+  active: Set<string>,
   steps: PendingStep[],
   draft: DraftState,
   readExistingSingletonChoiceSelection: (choice: SingletonChoiceMeta) => string | null
-): Set<string> {
-  const active = new Set<string>();
-  let changed = true;
+): boolean {
+  let changed = false;
+  for (const step of steps) {
+    if (step.kind !== "singleton-choice") {
+      continue;
+    }
 
-  while (changed) {
-    changed = false;
+    const selectedValue =
+      draft.singletonChoices[step.slotId] ?? readExistingSingletonChoiceSelection(step.singletonChoice);
+    const rollOption = step.singletonChoice.rollOption;
+    if (!selectedValue || !rollOption) {
+      continue;
+    }
 
-    for (const step of steps) {
-      if (step.kind !== "singleton-choice" || !matchesPredicate(step.singletonChoice.predicate, active)) {
-        continue;
-      }
-
-      const selectedValue =
-        draft.singletonChoices[step.slotId] ?? readExistingSingletonChoiceSelection(step.singletonChoice);
-      const rollOption = step.singletonChoice.rollOption;
-      if (!selectedValue || !rollOption) {
-        continue;
-      }
-
-      const activeRollOption = `${rollOption}:${selectedValue}`;
-      if (!active.has(activeRollOption)) {
-        active.add(activeRollOption);
-        changed = true;
-      }
+    const activeRollOption = `${rollOption}:${selectedValue}`.toLowerCase();
+    if (!active.has(activeRollOption)) {
+      active.add(activeRollOption);
+      changed = true;
     }
   }
 
-  return active;
-}
-
-function matchesPredicate(predicate: ChoicePredicate[], activeRollOptions: Set<string>): boolean {
-  return matchesChoicePredicateList(predicate, (statement) => activeRollOptions.has(statement));
+  return changed;
 }

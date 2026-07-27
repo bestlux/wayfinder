@@ -153,7 +153,7 @@ describe("wayfinder selection pane service", () => {
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map([[step.id, "winter"]]),
-      pickerFiltersByStepId: new Map([[step.id, { rarity: ["common"], source: ["Player Core"] }]]),
+      pickerFiltersByStepId: new Map([[step.id, { rank: [], rarity: ["common"], source: ["Player Core"] }]]),
       openPickerFilterMenu: { stepId: step.id, filterKind: "source" },
       previewValueByStepId: new Map([[step.id, "test.pack:wintertouched"]]),
       resolveOptionContext: async () => EMPTY_CONTEXT,
@@ -233,7 +233,7 @@ describe("wayfinder selection pane service", () => {
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map([[step.id, "winter"]]),
-      pickerFiltersByStepId: new Map([[step.id, { rarity: ["common"], source: ["Lost Omens"] }]]),
+      pickerFiltersByStepId: new Map([[step.id, { rank: [], rarity: ["common"], source: ["Lost Omens"] }]]),
       openPickerFilterMenu: { stepId: step.id, filterKind: "source" },
       previewValueByStepId: new Map(),
       resolveOptionContext: async () => EMPTY_CONTEXT,
@@ -523,7 +523,7 @@ describe("wayfinder selection pane service", () => {
         },
         count: 2,
         minRank: 1,
-        maxRank: 1,
+        maxRank: 2,
         cantrip: false,
         curriculumSpellNames: [],
         additionalAllowedSpellNames: [],
@@ -534,13 +534,25 @@ describe("wayfinder selection pane service", () => {
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map(),
-      pickerFiltersByStepId: new Map(),
+      pickerFiltersByStepId: new Map([
+        [
+          step.id,
+          {
+            rank: ["rank:2"],
+            rarity: [],
+            source: [],
+          },
+        ],
+      ]),
       previewValueByStepId: new Map([[step.id, "test.pack:heal"]]),
       resolveOptionContext: async () => EMPTY_CONTEXT,
       resolveDeityDocument: async () => null,
       buildContextNote: async () => "Divine list",
       resolveStepStatus: async () => "1/2 chosen",
-      getOptionsForStep: async () => [option("test.pack:heal", "Heal"), option("test.pack:bless", "Bless")],
+      getOptionsForStep: async () => [
+        option("test.pack:heal", "Heal"),
+        option("test.pack:dispel-magic", "Dispel Magic", "common", "Player Core", 2),
+      ],
       getPickerInfoState: () => null,
       buildPreview: async () => ({
         title: "Heal",
@@ -563,7 +575,30 @@ describe("wayfinder selection pane service", () => {
     }
     expect(pane.selectedCount).toBe(1);
     expect(pane.remainingCount).toBe(1);
-    expect(pane.preview?.selectedLabel).toBe("Added to draft");
+    expect(pane.selectedSpells).toEqual([
+      {
+        value: "test.pack:heal",
+        name: "heal",
+        rankLabel: "Rank 1",
+      },
+    ]);
+    expect(pane.options).toEqual([
+      expect.objectContaining({
+        name: "Dispel Magic",
+        rankLabel: "Rank 2",
+        selected: false,
+      }),
+    ]);
+    expect(pane.activeFilterCount).toBe(1);
+    expect(pane.filterGroups.find((group) => group.key === "rank")?.options).toEqual([
+      { value: "rank:1", label: "Rank 1", count: 1, selected: false },
+      { value: "rank:2", label: "Rank 2", count: 1, selected: true },
+    ]);
+    expect(pane.filterGroups.map((group) => group.key)).toEqual(["rank", "rarity", "source"]);
+    expect(pane.preview).toMatchObject({
+      title: "Heal",
+      selectedLabel: "Added to draft",
+    });
     expect(pane.rarityAccess).toEqual({
       available: true,
       granted: false,
@@ -652,10 +687,18 @@ describe("wayfinder selection pane service", () => {
       granted: true,
       locked: false,
     });
+    expect(pane?.kind === "spell-choice" && pane.options[0]?.rankLabel).toBe("Cantrip");
   });
 });
 
-function option(value: string, name: string, rarity = "common", source = "Player Core"): OptionRecord {
+function option(
+  value: string,
+  name: string,
+  rarity = "common",
+  source = "Player Core",
+  level = 1,
+  traits: string[] = []
+): OptionRecord {
   return {
     value,
     packId: "test.pack",
@@ -665,9 +708,9 @@ function option(value: string, name: string, rarity = "common", source = "Player
     itemType: "feat",
     featType: null,
     name,
-    level: 1,
+    level,
     slug: name.toLowerCase(),
-    traits: [],
+    traits,
     rarity,
     source,
     label: name,

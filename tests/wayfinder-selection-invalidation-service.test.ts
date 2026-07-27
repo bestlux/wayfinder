@@ -32,7 +32,7 @@ describe("wayfinder selection invalidation service", () => {
       {
         draft,
         previewValueByStepId: new Map([[SLOT_IDS.class, "wizard"]]),
-        pickerFiltersByStepId: new Map([[SLOT_IDS.class, { rarity: ["common"], source: [] }]]),
+        pickerFiltersByStepId: new Map([[SLOT_IDS.class, { rank: [], rarity: ["common"], source: [] }]]),
         recentlyInvalidatedStepIds: new Set<string>(),
         scrollById: new Map([[SLOT_IDS.class, 4]]),
       },
@@ -91,7 +91,9 @@ describe("wayfinder selection invalidation service", () => {
     draft.selections[SLOT_IDS.class] = selection(SLOT_IDS.class, "class", "wizard");
 
     const previewValueByStepId = new Map([["class-branch-arcane-school-level-1", "test.pack:battle-magic"]]);
-    const pickerFiltersByStepId = new Map([["class-branch-arcane-school-level-1", { rarity: ["common"], source: [] }]]);
+    const pickerFiltersByStepId = new Map([
+      ["class-branch-arcane-school-level-1", { rank: [], rarity: ["common"], source: [] }],
+    ]);
     const scrollById = new Map([["class-branch-arcane-school-level-1:options", 12]]);
     const service = createSelectionInvalidationService(
       {
@@ -196,7 +198,7 @@ describe("wayfinder selection invalidation service", () => {
           ["grant-choice-none-feat-molten-wit-feat-level-1", "pf2e.feats-srd:charming-liar"],
         ]),
         pickerFiltersByStepId: new Map([
-          ["grant-choice-none-feat-molten-wit-feat-level-1", { rarity: [], source: [] }],
+          ["grant-choice-none-feat-molten-wit-feat-level-1", { rank: [], rarity: [], source: [] }],
         ]),
         recentlyInvalidatedStepIds: new Set<string>(),
         scrollById: new Map([["grant-choice-none-feat-molten-wit-feat-level-1:options", 20]]),

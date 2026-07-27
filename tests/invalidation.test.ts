@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
+import type { PickerFilterState } from "../src/types";
 import {
   clearSelectionState,
   invalidateSelectionState,
@@ -14,8 +15,8 @@ describe("wayfinder invalidation helpers", () => {
     draft.boosts.ancestry.modeTouched = true;
 
     const previewValueByStepId = new Map<string, string>([[SLOT_IDS.ancestry, "human"]]);
-    const pickerFiltersByStepId = new Map<string, { rarity: string[]; source: string[] }>([
-      [SLOT_IDS.ancestry, { rarity: ["common"], source: [] }],
+    const pickerFiltersByStepId = new Map<string, PickerFilterState>([
+      [SLOT_IDS.ancestry, { rank: [], rarity: ["common"], source: [] }],
     ]);
     const recentlyInvalidatedStepIds = new Set<string>();
     const scrollById = new Map<string, number>([
@@ -60,7 +61,7 @@ describe("wayfinder invalidation helpers", () => {
     draft.classChoices["class-choice-wizard-thesis-level-1"] = "spell-substitution";
 
     const previewValueByStepId = new Map<string, string>();
-    const pickerFiltersByStepId = new Map<string, { rarity: string[]; source: string[] }>();
+    const pickerFiltersByStepId = new Map<string, PickerFilterState>();
     const recentlyInvalidatedStepIds = new Set<string>();
     const scrollById = new Map<string, number>();
     const state = { draft, previewValueByStepId, pickerFiltersByStepId, recentlyInvalidatedStepIds, scrollById };
@@ -84,8 +85,8 @@ describe("wayfinder invalidation helpers", () => {
   it("invalidates filter-only dependent steps for a prefix", () => {
     const draft = createEmptyDraft(1);
     const previewValueByStepId = new Map<string, string>([["class-branch-cause-level-1", "test.pack:paladin"]]);
-    const pickerFiltersByStepId = new Map<string, { rarity: string[]; source: string[] }>([
-      ["class-branch-cause-level-1", { rarity: ["common"], source: ["Player Core"] }],
+    const pickerFiltersByStepId = new Map<string, PickerFilterState>([
+      ["class-branch-cause-level-1", { rank: [], rarity: ["common"], source: ["Player Core"] }],
     ]);
     const recentlyInvalidatedStepIds = new Set<string>();
     const scrollById = new Map<string, number>([["class-branch-cause-level-1:options", 24]]);
@@ -107,7 +108,7 @@ describe("wayfinder invalidation helpers", () => {
   it("invalidates scroll-only dependent steps for a prefix", () => {
     const draft = createEmptyDraft(1);
     const previewValueByStepId = new Map<string, string>();
-    const pickerFiltersByStepId = new Map<string, { rarity: string[]; source: string[] }>();
+    const pickerFiltersByStepId = new Map<string, PickerFilterState>();
     const recentlyInvalidatedStepIds = new Set<string>();
     const scrollById = new Map<string, number>([
       ["class-branch-cause-level-1:options", 24],

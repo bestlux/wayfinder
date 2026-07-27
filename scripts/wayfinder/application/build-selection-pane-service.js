@@ -47,12 +47,13 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
     const search = deps.searchByStepId.get(step.id) ?? "";
     const filterState = normalizePickerFilterState(deps.pickerFiltersByStepId.get(step.id));
     const searchedOptions = options.filter((option) => deps.matchesSearch(option, search));
+    const filterKinds = step.kind === "spell-choice" ? ["rank", "rarity", "source"] : ["rarity", "source"];
     const openFilterKind = deps.openPickerFilterMenu?.stepId === step.id ? deps.openPickerFilterMenu.filterKind : null;
-    const filterGroups = buildPickerFilterGroups(searchedOptions, filterState).map((group) => ({
+    const filterGroups = buildPickerFilterGroups(searchedOptions, filterState, filterKinds).map((group) => ({
         ...group,
         isOpen: group.key === openFilterKind,
     }));
-    const filteredOptions = searchedOptions.filter((option) => matchesPickerFilters(option, filterState));
+    const filteredOptions = searchedOptions.filter((option) => matchesPickerFilters(option, filterState, undefined, filterKinds));
     const infoState = deps.getPickerInfoState(step, optionContext, options.length, filteredOptions.length, search, activePickerFilterCount(filterState) > 0);
     const visibleOptions = infoState?.tone === "blocked" ? [] : filteredOptions;
     const contextNote = await deps.buildContextNote(step, optionContext);

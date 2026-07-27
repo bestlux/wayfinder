@@ -193,9 +193,10 @@ export interface PickerInfoState {
   message: string;
 }
 
-export type PickerFilterKind = "rarity" | "source";
+export type PickerFilterKind = "rank" | "rarity" | "source";
 
 export interface PickerFilterState {
+  rank: string[];
   rarity: string[];
   source: string[];
 }

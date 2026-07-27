@@ -10,6 +10,33 @@
           <i class="fa-solid fa-magnifying-glass"></i>
           <input type="search" value="{{activePane.search}}" placeholder="Search name, source, rarity…" aria-label="Search spells" data-wayfinder-search data-step-id="{{activePane.stepId}}" />
         </label>
+
+        {{#if activePane.selectedSpells.length}}
+          <section class="spell-selected-summary" aria-label="Selected spells">
+            <div class="spell-selected-summary-heading">
+              <span>Selected</span>
+              <span>{{activePane.selectedCount}} / {{activePane.requiredCount}}</span>
+            </div>
+
+            <div class="spell-selected-list" data-wayfinder-scroll-id="{{activePane.stepId}}:selected-spells">
+              {{#each activePane.selectedSpells}}
+                <button
+                  type="button"
+                  class="spell-selected-item"
+                  data-wayfinder-action="toggle-spell-choice"
+                  data-step-id="{{../activePane.stepId}}"
+                  data-value="{{value}}"
+                  aria-label="Remove {{name}}"
+                  title="Remove {{name}}"
+                >
+                  <span class="spell-selected-name">{{name}}</span>
+                  <span class="spell-selected-rank">{{rankLabel}}</span>
+                  <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
+              {{/each}}
+            </div>
+          </section>
+        {{/if}}
       </header>
 
       <div class="spell-browser-notes">
@@ -102,6 +129,7 @@
                 <span class="option-copy">
                   <span class="option-title-row">
                     <span class="option-name">{{name}}</span>
+                    <span class="option-rank">{{rankLabel}}</span>
                     {{#if rarity}}
                       <span class="option-rarity rarity-{{rarity}}">{{rarity}}</span>
                     {{/if}}

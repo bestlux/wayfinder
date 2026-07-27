@@ -761,6 +761,32 @@ describe("wayfinder selection command service", () => {
     expect(draft.spellChoices[step.slotId]?.map((entry) => entry.documentId)).toEqual(["guidance"]);
   });
 
+  it("removes a selected spell directly even when it is no longer in the option catalog", async () => {
+    const draft = createEmptyDraft(1);
+    const step = spellChoiceStep("spell-choice-palatine-occult", "palatine-detective-occult-innate", "occult");
+    draft.spellChoices[step.slotId] = [selection(step.slotId, "spell", "guidance", "Guidance")];
+    const state = commandState(draft, { invalidatedSlotIds: [step.slotId] });
+    let attemptedResolution = false;
+
+    const result = await toggleSpellChoiceSelection(state, step, "test.pack:guidance", {
+      resolveSelection: async () => {
+        attemptedResolution = true;
+        return null;
+      },
+      selectionExistsOnActor: () => false,
+    });
+
+    expect(result).toMatchObject({
+      kind: "changed",
+      shouldRender: true,
+      shouldAdvance: false,
+      warning: null,
+    });
+    expect(attemptedResolution).toBe(false);
+    expect(draft.spellChoices[step.slotId]).toBeUndefined();
+    expect(state.recentlyInvalidatedStepIds.has(step.slotId)).toBe(false);
+  });
+
   it("adds a spell choice and advances when the slot becomes full", async () => {
     const draft = createEmptyDraft(1);
     draft.spellChoices["spell-choice-cleric-rank-1-level-1"] = [

@@ -17,7 +17,7 @@ import type { SelectorActorLike } from "../selector-application.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
-import type { AbilityKey, DraftState, PendingStep, PickerFilterKind } from "../types.js";
+import type { AbilityKey, DraftState, PendingStep, PickerFilterKind, PickerFilterState } from "../types.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
 import { buildSkillPane } from "./application/build-skill-pane-service.js";
@@ -162,7 +162,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #draft: DraftState | null = null;
   #activeStepId: string | null = null;
   #searchByStepId = new Map<string, string>();
-  #pickerFiltersByStepId = new Map<string, { rarity: string[]; source: string[] }>();
+  #pickerFiltersByStepId = new Map<string, PickerFilterState>();
   #openPickerFilterMenu: { stepId: string; filterKind: PickerFilterKind } | null = null;
   #previewValueByStepId = new Map<string, string>();
   #scrollById = new Map<string, number>();
@@ -1177,14 +1177,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.render(false);
   }
 
-  #togglePickerFilter(stepId: string, filterKind: "rarity" | "source", value: string): void {
+  #togglePickerFilter(stepId: string, filterKind: PickerFilterKind, value: string): void {
     this.#statusNote = null;
     const next = togglePickerFilterValue(
       this.#pickerFiltersByStepId.get(stepId) ?? emptyPickerFilterState(),
       filterKind,
       value
     );
-    if (next.rarity.length === 0 && next.source.length === 0) {
+    if (next.rank.length === 0 && next.rarity.length === 0 && next.source.length === 0) {
       this.#pickerFiltersByStepId.delete(stepId);
     } else {
       this.#pickerFiltersByStepId.set(stepId, next);

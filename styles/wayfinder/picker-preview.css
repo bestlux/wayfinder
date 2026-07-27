@@ -50,6 +50,84 @@
   flex-shrink: 0;
 }
 
+.spell-selected-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-height: 0;
+  padding-top: 0.05rem;
+  border-top: 1px solid rgba(95, 77, 57, 0.12);
+}
+
+.spell-selected-summary-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.18rem;
+  color: var(--wf-ink-soft);
+  font: 700 0.56rem / 1.1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.spell-selected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  max-height: 4.2rem;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.12rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wf-rule) transparent;
+}
+
+.wayfinder-app .spell-selected-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.3rem;
+  align-items: center;
+  width: 100%;
+  min-height: 1.55rem;
+  height: auto;
+  padding: 0.16rem 0.3rem;
+  border: 1px solid rgba(94, 0, 0, 0.2);
+  border-radius: var(--wf-radius);
+  background: rgba(94, 0, 0, 0.05);
+  color: var(--wf-ink);
+  line-height: 1.1;
+  text-align: left;
+}
+
+.wayfinder-app .spell-selected-item:hover {
+  border-color: rgba(94, 0, 0, 0.36);
+  background: rgba(94, 0, 0, 0.09);
+}
+
+.wayfinder-app .spell-selected-item:active {
+  transform: translateY(1px);
+}
+
+.spell-selected-name {
+  overflow: hidden;
+  font: 600 0.7rem / 1.1 var(--serif, serif);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spell-selected-rank {
+  color: var(--wf-secondary);
+  font: 700 0.54rem / 1 var(--sans-serif, sans-serif);
+  white-space: nowrap;
+}
+
+.spell-selected-item .fa-xmark {
+  color: var(--wf-primary);
+  font-size: 0.62rem;
+}
+
 .context-note {
   margin: 0;
   color: #6f4f1a;
@@ -450,6 +528,20 @@
   font: 600 0.84rem / 1.15 var(--serif, serif);
   white-space: normal;
   word-break: break-word;
+}
+
+.option-rank {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.08rem 0.28rem;
+  border: 1px solid rgba(23, 31, 105, 0.28);
+  border-radius: var(--wf-radius);
+  background: rgba(23, 31, 105, 0.07);
+  color: var(--wf-secondary);
+  font: 700 0.52rem / 1.15 var(--sans-serif, sans-serif);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .option-source,

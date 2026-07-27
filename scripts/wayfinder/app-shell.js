@@ -938,7 +938,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #togglePickerFilter(stepId, filterKind, value) {
         this.#statusNote = null;
         const next = togglePickerFilterValue(this.#pickerFiltersByStepId.get(stepId) ?? emptyPickerFilterState(), filterKind, value);
-        if (next.rarity.length === 0 && next.source.length === 0) {
+        if (next.rank.length === 0 && next.rarity.length === 0 && next.source.length === 0) {
             this.#pickerFiltersByStepId.delete(stepId);
         }
         else {

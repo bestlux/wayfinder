@@ -90,9 +90,57 @@ describe("wayfinder picker filters", () => {
       },
     ]);
   });
+
+  it("offers only spell ranks present in the options and distinguishes cantrips", () => {
+    const groups = buildPickerFilterGroups(
+      [
+        option("Detect Magic", "common", "Player Core", 1, ["cantrip"]),
+        option("Bless", "common", "Player Core", 1),
+        option("Dispel Magic", "common", "Player Core", 2),
+        option("See the Unseen", "common", "Player Core", 2),
+      ],
+      emptyPickerFilterState(),
+      ["rank"]
+    );
+
+    expect(groups).toEqual([
+      {
+        key: "rank",
+        label: "Rank",
+        summaryLabel: "All",
+        selectedCount: 0,
+        options: [
+          { value: "cantrip", label: "Cantrip", count: 1, selected: false },
+          { value: "rank:1", label: "Rank 1", count: 1, selected: false },
+          { value: "rank:2", label: "Rank 2", count: 2, selected: false },
+        ],
+      },
+    ]);
+  });
+
+  it("narrows spell options by rank without changing rarity or source behavior", () => {
+    const options = [
+      option("Detect Magic", "common", "Player Core", 1, ["cantrip"]),
+      option("Bless", "common", "Player Core", 1),
+      option("Dispel Magic", "common", "Player Core", 2),
+    ];
+    const state = togglePickerFilterValue(emptyPickerFilterState(), "rank", "rank:2");
+
+    expect(options.filter((entry) => matchesPickerFilters(entry, state)).map((entry) => entry.name)).toEqual([
+      "Dispel Magic",
+    ]);
+    expect(activePickerFilterCount(state)).toBe(1);
+    expect(buildPickerFilterGroups(options, state).map((group) => group.key)).toEqual(["rarity", "source"]);
+  });
 });
 
-function option(name: string, rarity: string | null, source: string | null): OptionRecord {
+function option(
+  name: string,
+  rarity: string | null,
+  source: string | null,
+  level = 1,
+  traits: string[] = []
+): OptionRecord {
   return {
     value: `test.pack:${name.toLowerCase().replace(/\s+/g, "-")}`,
     packId: "test.pack",
@@ -102,9 +150,9 @@ function option(name: string, rarity: string | null, source: string | null): Opt
     itemType: "feat",
     featType: null,
     name,
-    level: 1,
+    level,
     slug: name.toLowerCase().replace(/\s+/g, "-"),
-    traits: [],
+    traits,
     rarity,
     source,
     label: name,

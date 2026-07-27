@@ -68,6 +68,38 @@ describe("wayfinder actions", () => {
     });
   });
 
+  it("parses spell rank filters and pinned-summary deselection actions", () => {
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "toggle-picker-filter",
+          stepId: "spell-choice-wizard-spellbook-level-3",
+          filterKind: "rank",
+          value: "rank:2",
+        },
+      } as any)
+    ).toEqual({
+      type: "toggle-picker-filter",
+      stepId: "spell-choice-wizard-spellbook-level-3",
+      filterKind: "rank",
+      value: "rank:2",
+    });
+
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "toggle-spell-choice",
+          stepId: "spell-choice-wizard-spellbook-level-3",
+          value: "pf2e.spells-srd:dispel-magic",
+        },
+      } as any)
+    ).toEqual({
+      type: "toggle-spell-choice",
+      stepId: "spell-choice-wizard-spellbook-level-3",
+      value: "pf2e.spells-srd:dispel-magic",
+    });
+  });
+
   it("parses the spell rarity access toggle", () => {
     expect(
       parseWayfinderAction({

@@ -1,4 +1,11 @@
-import type { AbilityKey, BoostLevel, OptionRecord, PickerInfoState, SingletonChoiceMeta } from "../types.js";
+import type {
+  AbilityKey,
+  BoostLevel,
+  OptionRecord,
+  PickerFilterKind,
+  PickerInfoState,
+  SingletonChoiceMeta,
+} from "../types.js";
 
 export interface StepNavRow {
   id: string;
@@ -39,7 +46,7 @@ export interface PreviewPane {
 }
 
 export interface PickerFilterGroupPane {
-  key: "rarity" | "source";
+  key: PickerFilterKind;
   label: string;
   summaryLabel: string;
   selectedCount: number;
@@ -411,7 +418,19 @@ export interface SpellChoiceStepPane {
     locked: boolean;
   };
   filterGroups: PickerFilterGroupPane[];
-  options: Array<OptionRecord & { selected: boolean; previewing: boolean; sourceLabel: string }>;
+  selectedSpells: Array<{
+    value: string;
+    name: string;
+    rankLabel: string;
+  }>;
+  options: Array<
+    OptionRecord & {
+      selected: boolean;
+      previewing: boolean;
+      sourceLabel: string;
+      rankLabel: string;
+    }
+  >;
   preview: PreviewPane | null;
 }
 

@@ -1,11 +1,11 @@
-import type { DraftState } from "../../types.js";
+import type { DraftState, PickerFilterState } from "../../types.js";
 import { clearDraftSlotDecisions, listDraftDecisionSlotIds } from "./draft-decisions.js";
 import { SLOT_IDS } from "./slot-ids.js";
 
 export interface DraftInteractionState {
   draft: DraftState;
   previewValueByStepId: Map<string, string>;
-  pickerFiltersByStepId: Map<string, { rarity: string[]; source: string[] }>;
+  pickerFiltersByStepId: Map<string, PickerFilterState>;
   recentlyInvalidatedStepIds: Set<string>;
   scrollById: Map<string, number>;
 }

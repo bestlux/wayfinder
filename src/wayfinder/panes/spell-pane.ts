@@ -1,5 +1,6 @@
 import type { OptionRecord, PendingStep, SelectionRef } from "../../types.js";
 import type { PreviewPane, SpellChoiceStepPane } from "../view-models.js";
+import { spellRankLabel } from "./picker-filters.js";
 
 export function buildSpellChoicePane(args: {
   step: PendingStep;
@@ -65,11 +66,17 @@ export function buildSpellChoicePane(args: {
     sourceName: step.spellChoice?.sourceName ?? "Spell source",
     rarityAccess,
     filterGroups,
+    selectedSpells: selectedSelections.map((selection) => ({
+      value: `${selection.packId}:${selection.documentId}`,
+      name: selection.name,
+      rankLabel: spellRankLabel(selection.level, step.spellChoice?.cantrip === true),
+    })),
     options: visibleOptions.map((option) => ({
       ...option,
       selected: selectedValues.includes(option.value),
       previewing: option.value === previewValue,
       sourceLabel: option.source ?? "Unknown Source",
+      rankLabel: spellRankLabel(option.level, option.traits.includes("cantrip") || step.spellChoice?.cantrip === true),
     })),
     preview,
   };

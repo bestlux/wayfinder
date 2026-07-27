@@ -508,14 +508,8 @@ export async function toggleSpellChoiceSelection(
     return NOOP_RESULT;
   }
 
-  const selection = await deps.resolveSelection(rawValue, step);
-  if (!selection) {
-    return NOOP_RESULT;
-  }
-
-  state.draft.spellChoices[step.slotId] ??= [];
-  const current = state.draft.spellChoices[step.slotId];
-  const existingIndex = current.findIndex((entry) => entry.uuid === selection.uuid);
+  const current = state.draft.spellChoices[step.slotId] ?? [];
+  const existingIndex = current.findIndex((entry) => `${entry.packId}:${entry.documentId}` === rawValue);
   if (existingIndex !== -1) {
     current.splice(existingIndex, 1);
     if (current.length === 0) {
@@ -524,6 +518,14 @@ export async function toggleSpellChoiceSelection(
     state.recentlyInvalidatedStepIds.delete(step.slotId);
     return changedResult({ shouldRender: true });
   }
+
+  const selection = await deps.resolveSelection(rawValue, step);
+  if (!selection) {
+    return NOOP_RESULT;
+  }
+
+  state.draft.spellChoices[step.slotId] ??= [];
+  const nextSelections = state.draft.spellChoices[step.slotId];
 
   const selectedElsewhere = Object.entries(state.draft.spellChoices).some(([slotId, selections]) => {
     if (slotId === step.slotId) {
@@ -541,13 +543,13 @@ export async function toggleSpellChoiceSelection(
   }
 
   const requiredCount = step.spellChoice?.count ?? 0;
-  if (current.length >= requiredCount) {
+  if (nextSelections.length >= requiredCount) {
     return warningResult("spell-choice-full");
   }
 
-  current.push(selection);
+  nextSelections.push(selection);
   state.recentlyInvalidatedStepIds.delete(step.slotId);
-  return current.length >= requiredCount
+  return nextSelections.length >= requiredCount
     ? changedResult({ shouldAdvance: true })
     : changedResult({ shouldRender: true });
 }

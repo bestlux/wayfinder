@@ -146,6 +146,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
 
     console.log(`WFSMOKE ${smokeCase.id} plan/apply start`);
     const plan = await buildPlan(actor, draft, modules);
+    validateDraftPlanExpectations(plan.steps, draft, smokeCase, failures);
     const incompleteBeforeApply = await incompleteSteps(actor, draft, plan.steps, modules);
     if (incompleteBeforeApply.length > 0) {
       failures.push(`Incomplete before apply: ${incompleteBeforeApply.map((step) => step.slotId).join(", ")}`);
@@ -170,7 +171,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
             updateActor: (update) => actor.update(update),
             now: () => new Date().toISOString(),
           }),
-          45000,
+          smokeCase.applyTimeoutMs ?? 45000,
           `${smokeCase.id} apply timed out`,
         );
 
@@ -391,6 +392,7 @@ async function completeDraft(actor, draft, smokeCase, modules) {
     classifications = [];
     const plan = await buildPlan(actor, draft, modules);
     let changed = false;
+    let refreshAfterStep = null;
 
     for (const step of plan.steps) {
       if (await isStepComplete(actor, draft, step, modules)) {
@@ -399,10 +401,26 @@ async function completeDraft(actor, draft, smokeCase, modules) {
 
       const before = JSON.stringify(draft);
       await fillStep(actor, draft, step, plan.steps, smokeCase, modules, { classifications, warnings });
-      changed = changed || before !== JSON.stringify(draft);
+      const stepChanged = before !== JSON.stringify(draft);
+      changed = changed || stepChanged;
+      if (stepChanged && step.kind === "class-branch") {
+        refreshAfterStep = step;
+        break;
+      }
     }
 
     const nextPlan = await buildPlan(actor, draft, modules);
+    if (refreshAfterStep) {
+      await logCurriculumPlanRefresh(
+        actor,
+        draft,
+        plan.steps,
+        nextPlan.steps,
+        refreshAfterStep,
+        smokeCase,
+        modules,
+      );
+    }
     const remaining = await incompleteSteps(actor, draft, nextPlan.steps, modules);
     if (remaining.length === 0) {
       return { classifications, iterations: iterations + 1, warnings };
@@ -485,6 +503,14 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
         return;
       }
       const options = await modules.getOptionsForStep(step, optionContext);
+      if (isCurriculumSpellChoiceStep(step)) {
+        console.log(
+          `WFSMOKE ${smokeCase.id} curriculum fill ${step.slotId} ${JSON.stringify({
+            curriculumSpellNames: step.spellChoice.curriculumSpellNames,
+            optionsLength: options.length,
+          })}`,
+        );
+      }
       if (options.length === 0) {
         notes.classifications.push(`${step.slotId}: spell progression is PF2E-native/manual for this live data shape`);
         return;
@@ -526,6 +552,65 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
   }
 }
 
+async function logCurriculumPlanRefresh(
+  actor,
+  draft,
+  staleSteps,
+  refreshedSteps,
+  refreshedAfterStep,
+  smokeCase,
+  modules,
+) {
+  const staleStepsBySlotId = new Map(staleSteps.map((step) => [step.slotId, step]));
+
+  for (const refreshedStep of refreshedSteps) {
+    if (!isCurriculumSpellChoiceStep(refreshedStep)) {
+      continue;
+    }
+
+    const staleStep = staleStepsBySlotId.get(refreshedStep.slotId);
+    if (!isCurriculumSpellChoiceStep(staleStep)) {
+      continue;
+    }
+
+    const staleNames = staleStep.spellChoice.curriculumSpellNames;
+    const refreshedNames = refreshedStep.spellChoice.curriculumSpellNames;
+    if (JSON.stringify(staleNames) === JSON.stringify(refreshedNames)) {
+      continue;
+    }
+
+    const [staleContext, refreshedContext] = await Promise.all([
+      buildPickerContext(actor, draft, staleStep, staleSteps, modules),
+      buildPickerContext(actor, draft, refreshedStep, refreshedSteps, modules),
+    ]);
+    const [staleOptions, refreshedOptions] = await Promise.all([
+      modules.getOptionsForStep(staleStep, staleContext),
+      modules.getOptionsForStep(refreshedStep, refreshedContext),
+    ]);
+    console.log(
+      `WFSMOKE ${smokeCase.id} curriculum refresh ${refreshedStep.slotId} ${JSON.stringify({
+        refreshedAfterStep: refreshedAfterStep.slotId,
+        stale: {
+          curriculumSpellNames: staleNames,
+          optionsLength: staleOptions.length,
+        },
+        refreshed: {
+          curriculumSpellNames: refreshedNames,
+          optionsLength: refreshedOptions.length,
+        },
+      })}`,
+    );
+  }
+}
+
+function isCurriculumSpellChoiceStep(step) {
+  return (
+    step?.kind === "spell-choice" &&
+    step.spellChoice.dependsOn === "class-branch" &&
+    step.spellChoice.requiresCurriculum !== false
+  );
+}
+
 function assertExpectedPickerOptions(options, step, smokeCase) {
   const expectation = smokeCase.expectedPickerOptions?.[step.slotId];
   if (!expectation) {
@@ -545,6 +630,29 @@ function assertExpectedPickerOptions(options, step, smokeCase) {
         .filter(Boolean)
         .join(" "),
     );
+  }
+
+  if (step.kind !== "spell-choice") {
+    return;
+  }
+
+  const optionRanks = options
+    .map((option) => Number(option.level))
+    .filter((rank) => Number.isInteger(rank) && rank >= 0);
+  const highestRank = optionRanks.length > 0 ? Math.max(...optionRanks) : null;
+  const rankFailures = [
+    expectation.minRank !== undefined && step.spellChoice.minRank !== expectation.minRank
+      ? `step min rank ${step.spellChoice.minRank}, expected ${expectation.minRank}`
+      : "",
+    expectation.maxRank !== undefined && step.spellChoice.maxRank !== expectation.maxRank
+      ? `step max rank ${step.spellChoice.maxRank}, expected ${expectation.maxRank}`
+      : "",
+    expectation.highestRank !== undefined && highestRank !== expectation.highestRank
+      ? `highest offered rank ${highestRank ?? "missing"}, expected ${expectation.highestRank}`
+      : "",
+  ].filter(Boolean);
+  if (rankFailures.length > 0) {
+    throw new Error(`${step.slotId} spell-rank expectation failed: ${rankFailures.join("; ")}.`);
   }
 }
 
@@ -689,10 +797,56 @@ function fillSkillTraining(draft, step, smokeCase) {
 }
 
 function fillSkillIncrease(draft, step, smokeCase) {
+  const explicit = smokeCase.expectedSkillIncreaseSelections?.[step.slotId];
+  if (typeof explicit === "string" && explicit.length > 0) {
+    draft.skillIncreases[step.slotId] = explicit;
+    return;
+  }
+
   const preferred = smokeCase.preferredSkills ?? [];
   const existing = new Set(Object.values(draft.skillIncreases));
   const selection = preferred.find((skill) => !existing.has(skill)) ?? preferred[0] ?? "athletics";
   draft.skillIncreases[step.slotId] = selection;
+}
+
+function validateDraftPlanExpectations(steps, draft, smokeCase, failures) {
+  const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
+
+  for (const [slotId, expectation] of Object.entries(smokeCase.expectedBoostSteps ?? {})) {
+    const step = stepsBySlotId.get(slotId);
+    if (step?.kind !== "boost") {
+      failures.push(`Expected boost step did not render as a boost: ${slotId}`);
+      continue;
+    }
+
+    for (const field of ["batchLevel", "requiredCount", "grantCount"]) {
+      if (expectation[field] !== undefined && step.boost[field] !== expectation[field]) {
+        failures.push(
+          `${slotId} ${field} is ${step.boost[field] ?? "missing"}, expected ${expectation[field]}`,
+        );
+      }
+    }
+
+    if (expectation.selectedCount !== undefined) {
+      const selectedCount = draft.boosts.levels[String(step.boost.batchLevel)]?.length ?? 0;
+      if (selectedCount !== expectation.selectedCount) {
+        failures.push(`${slotId} selected ${selectedCount} boosts, expected ${expectation.selectedCount}`);
+      }
+    }
+  }
+
+  for (const [slotId, expectedSlug] of Object.entries(smokeCase.expectedSkillIncreaseSelections ?? {})) {
+    const step = stepsBySlotId.get(slotId);
+    if (step?.kind !== "skill-increase") {
+      failures.push(`Expected skill-increase step did not render: ${slotId}`);
+      continue;
+    }
+
+    const actualSlug = draft.skillIncreases[slotId];
+    if (actualSlug !== expectedSlug) {
+      failures.push(`${slotId} selected ${actualSlug ?? "nothing"}, expected ${expectedSlug}`);
+    }
+  }
 }
 
 function isTrainingComplete(draft, step) {

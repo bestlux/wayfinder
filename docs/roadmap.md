@@ -54,6 +54,8 @@ Three arcs. Each is shippable in slices, keeps the smoke harness green, and ends
 
 The correctness arc. No new surfaces; the existing ones stop having asterisks.
 
+**Status (2026-07-27): all four items delivered.** Projection consolidated behind one shared helper and shipped in 0.6.1 with the general-slot skill-feat fix; archetype legality now filters both feat lanes against projected state; Gradual Ability Boosts mirrors PF2E's own allowance formula; depth verified to level 10 across five profiles and to level 20 for one. Remaining Arc 1 debt: high-level *caster* verification (spell ranks 6–9, level-19/20 caster milestones) and the spell-deficit audit for existing characters that issue #18 tracks publicly.
+
 1. **One projection, many readers.** Fix #16 by consolidating, not patching: a single projected-state service (skills, boosts, feats, languages, known spells, dedications) computed per step position, consumed by every pane and eligibility filter. #15 and #16 become regression tests of the same seam.
 2. **Archetype legality v1.** Prerequisite checking against projected state, the two-feats-before-a-new-dedication rule, duplicate-dedication lockouts, and family membership where PF2E data expresses it. Boundaries that survive stay explicitly labeled; the rest become real filters.
 3. **Depth verification.** Extend the smoke matrix: a representative class set (one martial, one prepared, one spontaneous, one bounded, one skill-monkey) verified L1→10, and at least one class L1→20. Boosts at 10/15/20 and high-rank spell scheduling get evidence, and the README's promise moves past level 5.

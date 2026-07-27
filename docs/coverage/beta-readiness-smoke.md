@@ -43,6 +43,27 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
+## 2026-07-27 Depth Verification Past Level 5
+
+First live evidence above level 5, run against Foundry VTT 14.364 / PF2E 8.3.0 in `testing-world`.
+
+Result: **6 pass, 0 classified/manual, 0 fail** for the depth matrix, with branch-heavy baselines rerun alongside it.
+
+| Case | Target | Proves |
+| --- | ---: | --- |
+| `fighter-depth-l1-l10-apply-rerun` | 10 | martial path, boosts at 10, skill increases to 7/9 |
+| `wizard-depth-l1-l10-apply-rerun` | 10 | prepared caster, arcane school curriculum through rank 5 |
+| `bard-depth-l1-l10-apply-rerun` | 10 | spontaneous repertoire through rank 5 |
+| `magus-depth-l1-l10-apply-rerun` | 10 | bounded spellcasting |
+| `investigator-depth-l1-l10-apply-rerun` | 10 | skill-heavy cadence |
+| `fighter-depth-l1-l20-apply-rerun` | 20 | all five boost batches, skill increases through 19 |
+
+Beyond the standard apply/rerun checks, these cases assert that each boost milestone at 10/15/20 spends four boosts into `system.build.attributes.boosts`, that skill increases resolve to expected final ranks, and that caster pickers expose the spell ranks their progression allows. The level-20 fighter finished with boosts recorded in all five batches (1/5/10/15/20) and three skills at rank 4, with zero duplicate source IDs.
+
+`wizard-depth` initially failed with every curriculum step reporting zero options. That was a harness defect, not a product defect: filling continued against the plan built before the arcane school was drafted, so ordinary spellbook steps consumed the curriculum spells first and duplicate filtering emptied the curriculum steps. The harness now replans immediately after a class-branch selection. The same curriculum step was confirmed working in the live UI for both School of Battle Magic and Red Mantis Magic School while diagnosing this.
+
+Known gap: the level-20 proof is a martial class. Spell ranks 6 through 9 and caster-specific level-19/20 milestones remain unverified.
+
 ## 2026-07-11 Release 0.5.0 Free Archetype Matrix
 
 The `v0.5.0` candidate ran as module version 0.5.0 against Foundry VTT 14.364 / PF2E 8.3.0 in `testing-world`. The existing 42-case matrix was forced to Free Archetype off; the focused overlay temporarily enabled it and restored the original setting afterward.

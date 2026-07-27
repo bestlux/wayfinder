@@ -60,9 +60,15 @@ Wayfinder is a planning layer on top of the PF2E system, not a replacement for i
 
 Every one of the 27 PF2E classes has a verified guided path from a blank level-1 character through level 5 — including class branches (instincts, doctrines, bloodlines, mysteries, and the rest), feat milestones, skill training, boosts, and spellcasting setup for prepared, spontaneous, spellbook, and bounded casters.
 
+Five representative profiles are verified further, to level 10: a martial (Fighter), a prepared caster (Wizard), a spontaneous caster (Bard), a bounded caster (Magus), and a skill-heavy class (Investigator). One class — Fighter — is verified to level 20. Those runs check more than a clean apply: the ability-boost milestones at levels 10, 15, and 20 each spend four boosts into PF2E's native build data, skill increases land at the expected proficiency ranks through legendary, and caster pickers offer the spell ranks their progression allows. High-level *caster* play above level 10 is not yet proven — spell ranks 6 through 9 and the level-19/20 caster milestones remain unverified.
+
 Three class-archetype profiles are guided through level 5. Battle Creed handles its Doctrine replacement, Battle Harbinger Dedication, alternate prepared progression, Battle Font, and grant fallbacks. Way of the Spellshot replaces Gunslinger's Way, applies Spellshot Dedication, and builds its Intelligence-based arcane spellbook. Palatine Detective replaces Investigator Methodology, persists its skill choice, creates separate divine and occult innate cantrips, and applies its dedication. Other class archetypes remain filtered until they have the same end-to-end support.
 
-PF2E's Free Archetype variant is guided through its own even-level feat lane. Wayfinder mirrors PF2E's native picker behavior—dedications before the actor has one, then the system's archetype feat pool—and applies choices to `archetype-2`, `archetype-4`, and later native slots. It does not yet exhaustively adjudicate access, prerequisites, archetype-family membership, or dedication lockouts; the picker calls out that boundary so the player and GM can confirm eligibility.
+PF2E's Free Archetype variant is guided through its own even-level feat lane, applying choices to `archetype-2`, `archetype-4`, and later native slots.
+
+Both that lane and ordinary class-feat slots share one archetype legality check. Wayfinder verifies that a new dedication is not a duplicate and not your own class's multiclass dedication, that an existing dedication is not still owed two feats from its archetype, that an archetype feat belongs to a family you actually have a dedication for, and that supported skill-rank prerequisites are met — counting choices you have only drafted, not just applied. This is stricter than PF2E's own picker, which checks only whether you have any dedication at all.
+
+Some things still can't be verified from data, and Wayfinder shows those options rather than hiding them on a guess: dedications whose own text changes the lockout rule, feats whose archetype family can't be resolved, access entries, campaign permission, and prerequisites written as prose (feat, class-feature, and attribute requirements). The picker names that boundary so you and your GM can confirm.
 
 <details>
 <summary><strong>All 27 classes, verified through level 5</strong></summary>
@@ -81,8 +87,9 @@ These stay in the native PF2E sheet for now, and Wayfinder will tell you so when
 
 - Starting gear and item purchasing
 - Daily preparations
-- Exhaustive Free Archetype legality, including access, every prerequisite form, archetype-family membership, dedication lockouts, and combinations with class-archetype profiles
+- Archetype requirements that only exist as prose — access entries, campaign permission, feat/class-feature/attribute prerequisites, and dedications whose own text rewrites the lockout rule
 - Class archetypes other than Battle Creed, Way of the Spellshot, and Palatine Detective
+- Retroactive spell reconciliation for characters levelled outside Wayfinder — their earlier spell choices are treated as settled, and Wayfinder says so
 - Retraining and table-specific campaign systems
 
 ## Feedback

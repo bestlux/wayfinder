@@ -9,6 +9,7 @@ export async function buildGrantChoiceSteps(params) {
         sourceItemType: source.sourceItemType,
         effectiveSourceDocument: source.sourceDocument,
         sourceSelection: source.sourceSelection,
+        sourceLevel: source.sourceLevel,
         extractSlug: params.extractSlug,
     }).map((step) => ({ source, step })))
         .filter(({ source, step }) => {

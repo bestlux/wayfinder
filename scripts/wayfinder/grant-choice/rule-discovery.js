@@ -5,14 +5,14 @@ export function discoverGrantSelectionMeta(args) {
     const document = sourceDocument;
     const sourceName = toNonEmptyString(document?.name) ?? sourceSelection.name;
     const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
-    const level = documentFeatureLevel(sourceDocument);
+    const level = args.sourceLevel ?? documentFeatureLevel(sourceDocument);
     const rules = getDocumentRules(sourceDocument);
     return rules.flatMap((rule, sourceRuleIndex) => {
         const flag = extractChoiceKey(rule);
         if (rule.key !== "ChoiceSet" || !flag) {
             return [];
         }
-        const resolution = resolveChoiceSetFilters(rule, { sourceLevel: documentFeatureLevel(sourceDocument) });
+        const resolution = resolveChoiceSetFilters(rule, { sourceLevel: level });
         if (!resolution) {
             return [];
         }

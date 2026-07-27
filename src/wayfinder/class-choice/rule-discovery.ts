@@ -255,6 +255,7 @@ export function discoverGrantedItemMeta(args: {
 export function discoverClassChoiceMeta(args: {
   sourceDocument: unknown;
   sourceSelection: SelectionRef;
+  sourceLevel?: number;
   classSlug: string | null;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
@@ -270,7 +271,7 @@ export function discoverClassChoiceMeta(args: {
   }
 
   const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
-  const level = toFeatureLevel(document.system?.level?.value);
+  const level = args.sourceLevel ?? toFeatureLevel(document.system?.level?.value);
   const configuredSkills = getConfiguredSkills();
   const activeRollOptions = new Set(rollOptions);
   const choiceRefs: SameItemChoiceRef[] = [];

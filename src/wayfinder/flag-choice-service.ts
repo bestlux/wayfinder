@@ -6,6 +6,7 @@ export interface FlagChoiceSourceContext {
   sourceItemType: FlagChoiceMeta["sourceItemType"];
   sourceSelection: SelectionRef | null;
   sourceDocument: unknown | null;
+  sourceLevel?: number;
 }
 
 interface BuildFlagChoiceStepsParams {
@@ -25,6 +26,7 @@ export async function buildFlagChoiceSteps(params: BuildFlagChoiceStepsParams): 
         sourceItemType: source.sourceItemType,
         effectiveSourceDocument: source.sourceDocument,
         sourceSelection: source.sourceSelection,
+        sourceLevel: source.sourceLevel,
         extractSlug: params.extractSlug,
         localize: params.localize,
         actorContext: params.actorContext,

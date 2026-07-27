@@ -9,6 +9,7 @@ export function buildGrantChoiceStepsFromRules(args: {
   sourceItemType: GrantChoiceSourceItemType;
   effectiveSourceDocument: unknown | null;
   sourceSelection: SelectionRef | null;
+  sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
 }): PickItemStep[] {
   const { sourceItemType, effectiveSourceDocument, sourceSelection, extractSlug } = args;
@@ -20,11 +21,12 @@ export function buildGrantChoiceStepsFromRules(args: {
     sourceItemType,
     sourceDocument: effectiveSourceDocument,
     sourceSelection,
+    sourceLevel: args.sourceLevel,
     extractSlug,
   }).map((grant) =>
     createPickItemStep(
       "grant-choice",
-      choiceSourceLevel(effectiveSourceDocument),
+      args.sourceLevel ?? choiceSourceLevel(effectiveSourceDocument),
       buildGrantChoiceTitle(grant),
       buildGrantChoiceDescription(grant),
       grant.filters,

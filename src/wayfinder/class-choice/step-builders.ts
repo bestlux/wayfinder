@@ -197,6 +197,7 @@ function buildClassChoiceStepsFromFeatures(args: {
     const choices = discoverClassChoiceMeta({
       sourceDocument: feature.document,
       sourceSelection: feature.selection,
+      sourceLevel: feature.level,
       classSlug: args.classSlug,
       extractSlug: args.extractSlug,
       localize: args.localize,

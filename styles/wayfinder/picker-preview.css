@@ -463,6 +463,42 @@
   font-style: italic;
 }
 
+.option-disclosure {
+  display: flex;
+  gap: 0.25rem;
+  align-items: flex-start;
+  margin-top: 0.15rem;
+  color: #76510d;
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.option-disclosure i {
+  margin-top: 0.08rem;
+  color: #a36800;
+}
+
+.choice-disclosure {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin: 0.65rem 0.8rem 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(163, 104, 0, 0.4);
+  border-radius: var(--wf-radius);
+  background: rgba(233, 215, 161, 0.32);
+  color: #65450b;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.choice-disclosure i {
+  margin-top: 0.12rem;
+  color: #a36800;
+}
+
 /* ── Trait Tags (PF2E style) ───────────────────────────── */
 
 .wayfinder-app .option-rarity,

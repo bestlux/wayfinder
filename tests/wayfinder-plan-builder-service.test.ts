@@ -16,8 +16,118 @@ import {
   buildWayfinderAppPlan,
   findPlanStepBySlotId,
 } from "../src/wayfinder/application/wayfinder-plan-builder-service";
+import { CLERIC_DEDICATION, DEITY_CLERIC, EIDOLON, SUMMONER_DEDICATION } from "./fixtures/grant-borne-dedications";
 
 describe("wayfinder plan builder service", () => {
+  it("expands selected feats into one level of static choice-bearing sources", async () => {
+    const actor = { items: { contents: [] } } as unknown as BuildStateActor;
+    const draft = createEmptyDraft(2);
+    draft.selections["class-feat-level-2"] = selection(
+      "class-feat-level-2",
+      "feat",
+      "smCDaPlpRDA47xjK",
+      "Cleric Dedication",
+      "class"
+    );
+    draft.selections["archetype-feat-level-2"] = selection(
+      "archetype-feat-level-2",
+      "feat",
+      "SwzPqEsLzZpNufvm",
+      "Summoner Dedication",
+      "class"
+    );
+    const snapshot: ActorSnapshot = {
+      actorId: "actor-static-grant-choices",
+      level: 1,
+      isBlank: false,
+      freeArchetypeEnabled: true,
+      gradualBoostsEnabled: false,
+      singletonSlots: {
+        ancestry: true,
+        heritage: true,
+        background: true,
+        class: true,
+        deity: false,
+      },
+      featCounts: { ancestry: 0, class: 0, archetype: 0, skill: 0, general: 0 },
+      fulfilledStepIds: [],
+      sourceIds: [],
+      namesByType: {},
+      skillRanks: {},
+    };
+    const documentsByDocumentId: Record<string, unknown> = {
+      smCDaPlpRDA47xjK: CLERIC_DEDICATION,
+      SwzPqEsLzZpNufvm: SUMMONER_DEDICATION,
+      "Deity (Cleric)": DEITY_CLERIC,
+      Eidolon: EIDOLON,
+    };
+    const grantSources: string[] = [];
+    const additionalClassFeatureSources: string[] = [];
+
+    await buildWayfinderAppPlan(
+      {
+        actor,
+        snapshot,
+        draft,
+        resolveDocument: async () => null,
+        resolveArcaneSchoolDocument: async () => null,
+        localize: (value) => value,
+      },
+      {
+        buildWayfinderPlan: async (receivedSnapshot, receivedDraft, deps) => {
+          await deps.buildGrantChoiceSteps(receivedSnapshot, receivedDraft, 2);
+          await deps.buildClassChoiceSteps(receivedSnapshot, receivedDraft, 2);
+          return { recommendedTargetLevel: 2, targetLevel: 2, steps: [] };
+        },
+        buildClassFeatSteps: async () => [],
+        buildClassSkillFeatSteps: async () => [],
+        buildClassTrainingSteps: async () => [],
+        buildGrantChoiceSteps: async (params) => {
+          grantSources.push(...params.sources.map((source) => source.sourceSelection?.uuid ?? ""));
+          return [];
+        },
+        buildFlagChoiceSteps: async () => [],
+        buildSingletonChoiceSteps: async () => [],
+        buildLanguageChoiceSteps: async () => [],
+        buildClassArchetypeSteps: async () => [],
+        buildClassBranchSteps: async () => [],
+        buildClassGrantedItemSteps: async () => [],
+        buildClassChoiceSteps: async (params) => {
+          additionalClassFeatureSources.push(...params.additionalClassFeatures.map((source) => source.selection.uuid));
+          return [];
+        },
+        buildSpellChoiceSteps: async () => [],
+        findDraftSelectionByType: () => null,
+        readExistingSingletonSourceSelection: () => null,
+        readExistingBranchSelection: () => null,
+        readExistingGrantedSelection: () => null,
+        readExistingFlagChoiceSelection: () => null,
+        readExistingLanguageSelections: () => [],
+        readExistingClassChoiceSelection: () => null,
+        readExistingSingletonChoiceSelection: () => null,
+        readExistingSpellChoiceSelections: () => [],
+        fetchSelectionDocument: async (selectionRef) => documentsByDocumentId[selectionRef.documentId] ?? null,
+        extractDocumentSlug: (document) => {
+          const slug = (document as { system?: { slug?: unknown } } | null)?.system?.slug;
+          return typeof slug === "string" ? slug : null;
+        },
+      }
+    );
+
+    expect(grantSources).toEqual(
+      expect.arrayContaining([
+        "Compendium.pf2e.classfeatures.Item.Deity (Cleric)",
+        "Compendium.pf2e.classfeatures.Item.Eidolon",
+      ])
+    );
+    expect(additionalClassFeatureSources).toEqual(
+      expect.arrayContaining([
+        "Compendium.pf2e.classfeatures.Item.Deity (Cleric)",
+        "Compendium.pf2e.classfeatures.Item.Eidolon",
+      ])
+    );
+  });
+
   it("assembles the actor-facing plan builders with resolved documents and actor readers", async () => {
     const actor = {
       items: {

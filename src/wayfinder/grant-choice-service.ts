@@ -13,6 +13,7 @@ export interface GrantChoiceSourceContext {
   sourceItemType: GrantSelectionMeta["sourceItemType"];
   sourceSelection: SelectionRef | null;
   sourceDocument: unknown | null;
+  sourceLevel?: number;
 }
 
 interface BuildGrantChoiceStepsParams {
@@ -36,6 +37,7 @@ export async function buildGrantChoiceSteps(params: BuildGrantChoiceStepsParams)
         sourceItemType: source.sourceItemType,
         effectiveSourceDocument: source.sourceDocument,
         sourceSelection: source.sourceSelection,
+        sourceLevel: source.sourceLevel,
         extractSlug: params.extractSlug,
       }).map((step) => ({ source, step }))
     )

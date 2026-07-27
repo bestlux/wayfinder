@@ -5,6 +5,7 @@ import { discoverFlagChoiceMeta } from "../wayfinder/flag-choice/rule-discovery.
 import { discoverGrantSelectionMeta } from "../wayfinder/grant-choice/rule-discovery.js";
 import { discoverSingletonChoiceSpecs } from "../wayfinder/singleton-choice/rule-discovery.js";
 import { discoverSourceSkillTrainingMeta } from "../wayfinder/skill-training/source-discovery.js";
+import type { StaticGrantChoiceSource } from "../wayfinder/static-grant-choice-sources.js";
 import type { PackIndexEntry } from "./access.js";
 import { extractEntrySlug, isRecord, numericOrNull, resolveFeatType } from "./entry.js";
 
@@ -25,6 +26,16 @@ export interface EmbeddedChoiceClassification {
   covered: number[];
   uncovered: number[];
   rules: EmbeddedChoiceRuleCoverage[];
+  staticGrants: StaticGrantEmbeddedChoiceClassification[];
+}
+
+export interface StaticGrantEmbeddedChoiceClassification {
+  covered: number[];
+  uncovered: number[];
+  rules: EmbeddedChoiceRuleCoverage[];
+  grantRuleIndex: number;
+  sourceName: string;
+  sourceUuid: string;
 }
 
 export interface EmbeddedChoiceClassificationOptions {
@@ -34,6 +45,7 @@ export interface EmbeddedChoiceClassificationOptions {
   localize?: (value: string) => string;
   optionContext?: Pick<OptionContext, "ancestrySlug" | "classSlug"> | null;
   requireResolvedActorPlaceholders?: boolean;
+  staticGrantSources?: StaticGrantChoiceSource[];
 }
 
 export function hasUnsupportedEmbeddedChoiceSet(
@@ -72,6 +84,10 @@ export function hasUnsupportedEmbeddedChoiceSet(
     return false;
   }
 
+  // Suppression is intentionally limited to uncovered ChoiceSets owned by the
+  // option itself. Unsupported choices on statically granted children are
+  // disclosed on the still-selectable option; hiding those options would turn
+  // an honest PF2E handoff into a silent omission.
   return (
     classifyEmbeddedChoices(entry, packId, {
       sourceItemType: "feat",
@@ -104,6 +120,32 @@ export function classifyEmbeddedChoices(
   options: EmbeddedChoiceClassificationOptions = {}
 ): EmbeddedChoiceClassification {
   const choiceSetRuleIndexes = getChoiceSetRuleIndexes(entry);
+  const ownChoices = classifyOwnEmbeddedChoices(entry, packId, choiceSetRuleIndexes, options);
+  const staticGrants = (options.staticGrantSources ?? []).map((source) => {
+    const grantedEntry = source.sourceDocument as PackIndexEntry;
+    const grantedRuleIndexes = getChoiceSetRuleIndexes(grantedEntry);
+    const grantedChoices = classifyOwnEmbeddedChoices(grantedEntry, source.sourceSelection.packId, grantedRuleIndexes, {
+      ...options,
+      sourceItemType: source.sourceItemType,
+      staticGrantSources: [],
+    });
+    return {
+      ...grantedChoices,
+      grantRuleIndex: source.grantRuleIndex,
+      sourceName: source.sourceSelection.name,
+      sourceUuid: source.sourceSelection.uuid,
+    } satisfies StaticGrantEmbeddedChoiceClassification;
+  });
+
+  return { ...ownChoices, staticGrants };
+}
+
+function classifyOwnEmbeddedChoices(
+  entry: PackIndexEntry,
+  packId: string,
+  choiceSetRuleIndexes: number[],
+  options: EmbeddedChoiceClassificationOptions
+): Omit<EmbeddedChoiceClassification, "staticGrants"> {
   if (choiceSetRuleIndexes.length === 0) {
     return { covered: [], uncovered: [], rules: [] };
   }
@@ -127,6 +169,7 @@ export function classifyEmbeddedChoices(
     sourceItemType,
     sourceDocument: entry,
     sourceSelection,
+    sourceLevel: numericOrNull(entry?.system?.level?.value) ?? undefined,
     extractSlug: extractEntrySlug,
   })) {
     markCovered(coveredByRuleIndex, meta.selectorRuleIndex, "grant-choice");
@@ -155,6 +198,48 @@ export function classifyEmbeddedChoices(
   };
 }
 
+export function buildStaticGrantChoiceDisclosure(classification: EmbeddedChoiceClassification): string | null {
+  const disclosures = classification.staticGrants.flatMap((grant) => {
+    if (grant.uncovered.length === 0) {
+      return [];
+    }
+
+    const noun = deriveChoiceNoun(grant.sourceName);
+    if (!noun) {
+      const countLabel = grant.uncovered.length === 1 ? "a choice" : `${grant.uncovered.length} choices`;
+      return [`PF2E will ask you to make ${countLabel} for ${grant.sourceName} when this is applied.`];
+    }
+
+    const countLabel =
+      grant.uncovered.length === 1
+        ? `${indefiniteArticle(noun)} ${noun}`
+        : `${grant.uncovered.length} ${pluralize(noun)}`;
+    return [`PF2E will ask you to choose ${countLabel} when this is applied.`];
+  });
+
+  return disclosures.length > 0 ? disclosures.join(" ") : null;
+}
+
+function deriveChoiceNoun(sourceName: string): string | null {
+  const words = sourceName.match(/[A-Za-z][A-Za-z'-]*/g) ?? [];
+  return words.length > 0 ? singularize(words.at(-1)!.toLowerCase()) : null;
+}
+
+function singularize(noun: string): string {
+  return noun.endsWith("s") && !noun.endsWith("ss") ? noun.slice(0, -1) : noun;
+}
+
+function pluralize(noun: string): string {
+  if (noun.endsWith("y") && !/[aeiou]y$/i.test(noun)) {
+    return `${noun.slice(0, -1)}ies`;
+  }
+  return noun.endsWith("s") ? noun : `${noun}s`;
+}
+
+function indefiniteArticle(noun: string): "a" | "an" {
+  return /^[aeiou]/i.test(noun) ? "an" : "a";
+}
+
 function markFlagChoiceCoverage(
   entry: PackIndexEntry,
   sourceItemType: EmbeddedChoiceSourceItemType,
@@ -166,6 +251,7 @@ function markFlagChoiceCoverage(
     sourceItemType,
     sourceDocument: entry,
     sourceSelection,
+    sourceLevel: numericOrNull(entry?.system?.level?.value) ?? undefined,
     extractSlug: extractEntrySlug,
     actorContext: {
       ancestrySlug: options.optionContext?.ancestrySlug,

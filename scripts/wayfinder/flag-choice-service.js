@@ -5,6 +5,7 @@ export async function buildFlagChoiceSteps(params) {
         sourceItemType: source.sourceItemType,
         effectiveSourceDocument: source.sourceDocument,
         sourceSelection: source.sourceSelection,
+        sourceLevel: source.sourceLevel,
         extractSlug: params.extractSlug,
         localize: params.localize,
         actorContext: params.actorContext,

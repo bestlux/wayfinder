@@ -12,6 +12,7 @@ export function discoverFlagChoiceMeta(args: {
   sourceItemType: FlagChoiceSourceItemType;
   sourceDocument: unknown;
   sourceSelection: SelectionRef;
+  sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
   localize?: (value: string) => string;
   actorContext?: ChoiceFilterActorContext | null;
@@ -21,7 +22,7 @@ export function discoverFlagChoiceMeta(args: {
   const document = sourceDocument as NamedDocumentLike | null | undefined;
   const sourceName = toNonEmptyString(document?.name) ?? sourceSelection.name;
   const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
-  const level = documentFeatureLevel(sourceDocument);
+  const level = args.sourceLevel ?? documentFeatureLevel(sourceDocument);
   const rules = getDocumentRules(sourceDocument);
 
   return rules.flatMap((rule, sourceRuleIndex) => {

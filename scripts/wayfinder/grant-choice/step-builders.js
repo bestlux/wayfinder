@@ -10,8 +10,9 @@ export function buildGrantChoiceStepsFromRules(args) {
         sourceItemType,
         sourceDocument: effectiveSourceDocument,
         sourceSelection,
+        sourceLevel: args.sourceLevel,
         extractSlug,
-    }).map((grant) => createPickItemStep("grant-choice", choiceSourceLevel(effectiveSourceDocument), buildGrantChoiceTitle(grant), buildGrantChoiceDescription(grant), grant.filters, {
+    }).map((grant) => createPickItemStep("grant-choice", args.sourceLevel ?? choiceSourceLevel(effectiveSourceDocument), buildGrantChoiceTitle(grant), buildGrantChoiceDescription(grant), grant.filters, {
         slotId: grant.slotId,
         grantSelection: grant,
     }));

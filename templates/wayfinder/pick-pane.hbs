@@ -77,6 +77,9 @@
                     {{/if}}
                   </span>
                   <span class="option-source">{{sourceLabel}}</span>
+                  {{#if disclosure}}
+                    <span class="option-disclosure"><i class="fa-solid fa-triangle-exclamation"></i> {{disclosure}}</span>
+                  {{/if}}
                 </span>
               </button>
 
@@ -140,6 +143,13 @@
             </div>
           {{/each}}
         </dl>
+      {{/if}}
+
+      {{#if activePane.preview.disclosure}}
+        <aside class="choice-disclosure">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span>{{activePane.preview.disclosure}}</span>
+        </aside>
       {{/if}}
 
       <section class="preview-description prose">

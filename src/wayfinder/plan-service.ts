@@ -2,6 +2,7 @@ import type { inspectActor } from "../actor-inspector.js";
 import type { EffectiveBuildState } from "../build-state.js";
 import { buildProgressionPlan, sortPendingSteps } from "../progression.js";
 import type { DraftState, PendingStep, StepKind } from "../types.js";
+import { dedupeChoiceRuleSteps } from "./domain/choice-rule-ownership.js";
 import {
   getWayfinderStepStatus as getDomainStepStatus,
   isWayfinderStepComplete as isDomainStepComplete,
@@ -70,23 +71,25 @@ export async function buildWayfinderPlan(
   const progressionSteps =
     classSkillFeatSteps.length > 0 ? plan.steps.filter((step) => step.slotKind !== "skill-feat") : plan.steps;
 
+  const registeredSteps = dedupeChoiceRuleSteps([
+    ...progressionSteps,
+    ...classFeatSteps,
+    ...classSkillFeatSteps,
+    ...grantedItemSteps,
+    ...trainingSteps,
+    ...grantChoiceSteps,
+    ...flagChoiceSteps,
+    ...singletonChoiceSteps,
+    ...languageChoiceSteps,
+    ...classArchetypeSteps,
+    ...branchSteps,
+    ...classChoiceSteps,
+    ...spellChoiceSteps,
+  ]);
+
   return {
     ...plan,
-    steps: sortPendingSteps([
-      ...progressionSteps,
-      ...classFeatSteps,
-      ...classSkillFeatSteps,
-      ...grantedItemSteps,
-      ...trainingSteps,
-      ...grantChoiceSteps,
-      ...flagChoiceSteps,
-      ...singletonChoiceSteps,
-      ...languageChoiceSteps,
-      ...classArchetypeSteps,
-      ...branchSteps,
-      ...classChoiceSteps,
-      ...spellChoiceSteps,
-    ]),
+    steps: sortPendingSteps(registeredSteps),
   };
 }
 

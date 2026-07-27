@@ -21,6 +21,9 @@ const OFFICIAL_PACKS_BY_ITEM_TYPE = {
     heritage: OFFICIAL_PACKS.heritage,
     spell: OFFICIAL_PACKS.spell,
 };
+export function hasSupportedChoiceSetItemType(itemType) {
+    return (OFFICIAL_PACKS_BY_ITEM_TYPE[normalizeChoiceItemType(itemType)]?.length ?? 0) > 0;
+}
 export function resolveChoiceSetFilters(rule, options) {
     const choices = isRecord(rule.choices) && !Array.isArray(rule.choices) ? rule.choices : null;
     if (choices) {
@@ -33,7 +36,7 @@ export function resolveChoiceSetFilters(rule, options) {
         }
         const rawItemType = toNonEmptyString(choices.itemType) ?? inferItemTypeFromPredicate(resolvedPredicate.predicate) ?? "feat";
         const itemType = rawItemType ? normalizeChoiceItemType(rawItemType) : null;
-        if (!itemType || resolvedPredicate.predicate.length === 0) {
+        if (!itemType || !hasSupportedChoiceSetItemType(itemType) || resolvedPredicate.predicate.length === 0) {
             return null;
         }
         const packIds = inferPackIds(itemType, resolvedPredicate.predicate);

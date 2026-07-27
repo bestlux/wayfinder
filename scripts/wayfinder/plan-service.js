@@ -1,4 +1,5 @@
 import { buildProgressionPlan, sortPendingSteps } from "../progression.js";
+import { dedupeChoiceRuleSteps } from "./domain/choice-rule-ownership.js";
 import { getWayfinderStepStatus as getDomainStepStatus, isWayfinderStepComplete as isDomainStepComplete, } from "./domain/step-evaluation.js";
 import { getStepModeLabel } from "./domain/step-types.js";
 export async function buildWayfinderPlan(snapshot, draft, deps) {
@@ -18,23 +19,24 @@ export async function buildWayfinderPlan(snapshot, draft, deps) {
         deps.buildSpellChoiceSteps(snapshot, draft, plan.targetLevel),
     ]);
     const progressionSteps = classSkillFeatSteps.length > 0 ? plan.steps.filter((step) => step.slotKind !== "skill-feat") : plan.steps;
+    const registeredSteps = dedupeChoiceRuleSteps([
+        ...progressionSteps,
+        ...classFeatSteps,
+        ...classSkillFeatSteps,
+        ...grantedItemSteps,
+        ...trainingSteps,
+        ...grantChoiceSteps,
+        ...flagChoiceSteps,
+        ...singletonChoiceSteps,
+        ...languageChoiceSteps,
+        ...classArchetypeSteps,
+        ...branchSteps,
+        ...classChoiceSteps,
+        ...spellChoiceSteps,
+    ]);
     return {
         ...plan,
-        steps: sortPendingSteps([
-            ...progressionSteps,
-            ...classFeatSteps,
-            ...classSkillFeatSteps,
-            ...grantedItemSteps,
-            ...trainingSteps,
-            ...grantChoiceSteps,
-            ...flagChoiceSteps,
-            ...singletonChoiceSteps,
-            ...languageChoiceSteps,
-            ...classArchetypeSteps,
-            ...branchSteps,
-            ...classChoiceSteps,
-            ...spellChoiceSteps,
-        ]),
+        steps: sortPendingSteps(registeredSteps),
     };
 }
 export async function resolveActiveStep(steps, activeStepId, isStepComplete) {

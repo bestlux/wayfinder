@@ -32,6 +32,7 @@ export interface PreviewPane {
   tags: string[];
   details: DetailRow[];
   description: string;
+  disclosure?: string | null;
   selected: boolean;
   selectedLabel: string;
   value: string;

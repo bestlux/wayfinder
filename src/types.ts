@@ -149,6 +149,7 @@ export interface OptionRecord {
   rarity: string | null;
   source: string | null;
   label: string;
+  disclosure?: string | null;
 }
 
 export interface ProjectedArchetypeFeat {

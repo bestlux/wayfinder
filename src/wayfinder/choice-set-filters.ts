@@ -43,6 +43,10 @@ const OFFICIAL_PACKS_BY_ITEM_TYPE: Record<string, readonly string[]> = {
   spell: OFFICIAL_PACKS.spell,
 };
 
+export function hasSupportedChoiceSetItemType(itemType: string): boolean {
+  return (OFFICIAL_PACKS_BY_ITEM_TYPE[normalizeChoiceItemType(itemType)]?.length ?? 0) > 0;
+}
+
 export function resolveChoiceSetFilters(
   rule: Record<string, unknown>,
   options: ResolveChoiceSetFiltersOptions
@@ -60,7 +64,7 @@ export function resolveChoiceSetFilters(
     const rawItemType =
       toNonEmptyString(choices.itemType) ?? inferItemTypeFromPredicate(resolvedPredicate.predicate) ?? "feat";
     const itemType = rawItemType ? normalizeChoiceItemType(rawItemType) : null;
-    if (!itemType || resolvedPredicate.predicate.length === 0) {
+    if (!itemType || !hasSupportedChoiceSetItemType(itemType) || resolvedPredicate.predicate.length === 0) {
       return null;
     }
 

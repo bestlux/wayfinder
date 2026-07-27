@@ -1,6 +1,8 @@
 import { toCompendiumItemUuid } from "../shared/compendium.js";
 import type { OptionContext, OptionRecord, PendingStep, SelectionRef } from "../types.js";
-import { getGamePack, getPackIndex } from "./access.js";
+import { resolveStaticGrantChoiceSources } from "../wayfinder/static-grant-choice-sources.js";
+import { fetchSelectionDocument, getGamePack, getPackIndex, type PackIndexEntry } from "./access.js";
+import { buildStaticGrantChoiceDisclosure, classifyEmbeddedChoices } from "./embedded-choice-policy.js";
 import { extractEntrySlug, extractEntryTraits, numericOrNull, resolveFeatType, stringOrNull } from "./entry.js";
 import { getTraitCatalog, matchesFilters, resolvePackIds } from "./filter-policy.js";
 
@@ -25,7 +27,7 @@ export async function getOptionsForStep(
 
   const packIds = resolvePackIds(step.slotKind, step.filters);
   const traitCatalog = await getTraitCatalog(step.slotKind);
-  const results: OptionRecord[] = [];
+  const results: Array<{ entry: PackIndexEntry; option: OptionRecord }> = [];
 
   for (const packId of packIds) {
     const pack = getGamePack(packId);
@@ -52,25 +54,69 @@ export async function getOptionsForStep(
       const name = String(entry.name ?? "Unknown Option");
 
       results.push({
-        value: `${packId}:${documentId}`,
-        packId,
-        documentId,
-        uuid,
-        img: String(entry.img ?? ""),
-        itemType: String(entry.type ?? ""),
-        featType,
-        name,
-        level,
-        slug,
-        traits,
-        rarity: stringOrNull(entry?.system?.traits?.rarity),
-        source: stringOrNull(entry?.system?.publication?.title),
-        label: level === null ? name : `${name} (Level ${level})`,
+        entry,
+        option: {
+          value: `${packId}:${documentId}`,
+          packId,
+          documentId,
+          uuid,
+          img: String(entry.img ?? ""),
+          itemType: String(entry.type ?? ""),
+          featType,
+          name,
+          level,
+          slug,
+          traits,
+          rarity: stringOrNull(entry?.system?.traits?.rarity),
+          source: stringOrNull(entry?.system?.publication?.title),
+          label: level === null ? name : `${name} (Level ${level})`,
+        },
       });
     }
   }
 
-  return dedupeAndSort(results);
+  const enriched = await Promise.all(
+    results.map(async ({ entry, option }) => ({
+      ...option,
+      disclosure: await resolveStaticGrantDisclosure(entry, option, context),
+    }))
+  );
+  return dedupeAndSort(enriched);
+}
+
+async function resolveStaticGrantDisclosure(
+  entry: PackIndexEntry,
+  option: OptionRecord,
+  context: OptionContext
+): Promise<string | null> {
+  const sourceSelection: SelectionRef = {
+    slotId: "static-grant-disclosure-probe",
+    packId: option.packId,
+    documentId: option.documentId,
+    uuid: option.uuid,
+    itemType: option.itemType,
+    featType: option.featType,
+    name: option.name,
+    level: option.level,
+    slug: option.slug,
+  };
+  const staticGrantSources = await resolveStaticGrantChoiceSources({
+    sources: [{ sourceSelection, sourceDocument: entry }],
+    fetchSelectionDocument,
+  });
+  if (staticGrantSources.length === 0) {
+    return null;
+  }
+
+  return buildStaticGrantChoiceDisclosure(
+    classifyEmbeddedChoices(entry, option.packId, {
+      sourceItemType: "feat",
+      classSlug: context.classSlug,
+      optionContext: context,
+      requireResolvedActorPlaceholders: true,
+      staticGrantSources,
+    })
+  );
 }
 
 export async function resolveSelection(

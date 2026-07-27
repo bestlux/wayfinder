@@ -7,6 +7,7 @@ export function buildSingletonChoiceStepsFromRules(args: {
   sourceItemType: SingletonChoiceMeta["sourceItemType"];
   effectiveSourceDocument: unknown | null;
   sourceSelection: SelectionRef | null;
+  sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
 }): SingletonChoiceStep[] {
@@ -15,7 +16,7 @@ export function buildSingletonChoiceStepsFromRules(args: {
     return [];
   }
 
-  const sourceLevel = choiceSourceLevel(sourceSelection, effectiveSourceDocument);
+  const sourceLevel = args.sourceLevel ?? choiceSourceLevel(sourceSelection, effectiveSourceDocument);
   return discoverSingletonChoiceMeta({
     sourceItemType,
     sourceDocument: effectiveSourceDocument,

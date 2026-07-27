@@ -6,6 +6,7 @@ export interface SingletonChoiceSourceContext {
   sourceItemType: SingletonChoiceMeta["sourceItemType"];
   sourceSelection: SelectionRef | null;
   sourceDocument: unknown | null;
+  sourceLevel?: number;
 }
 
 interface BuildSingletonChoiceStepsParams {
@@ -23,6 +24,7 @@ export async function buildSingletonChoiceSteps(params: BuildSingletonChoiceStep
       sourceItemType: source.sourceItemType,
       effectiveSourceDocument: source.sourceDocument,
       sourceSelection: source.sourceSelection,
+      sourceLevel: source.sourceLevel,
       extractSlug: params.extractSlug,
       localize: params.localize,
     })

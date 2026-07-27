@@ -56,6 +56,7 @@ import { SLOT_PREFIXES } from "../slot-ids.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
 import { asSpellChoiceClassDocument } from "../spell-choice/types.js";
 import { buildSpellChoiceSteps, readExistingSpellChoiceSelections } from "../spell-choice-service.js";
+import { resolveStaticGrantChoiceSources } from "../static-grant-choice-sources.js";
 
 type ActorSnapshot = ReturnType<typeof inspectActor>;
 type SingletonItemType = "ancestry" | "heritage" | "background" | "class" | "deity";
@@ -432,22 +433,19 @@ async function resolveSingletonChoiceSources(
     ...projectedClassArchetypeFeatSelections(draft, targetLevel),
     ...readExistingSkillTrainingFeatSelections(args.actor),
   ]);
-  const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+  const featSources = await resolveExpandedFeatChoiceSources(featSelections, deps);
 
   return [
     ...singletonItemSources,
-    ...featSelections.flatMap((sourceSelection, index) => {
-      const sourceDocument = featDocuments[index];
-      return sourceDocument
-        ? [
-            {
-              sourceItemType: "feat",
-              sourceSelection,
-              sourceDocument,
-            } satisfies SingletonChoiceSourceContext,
-          ]
-        : [];
-    }),
+    ...featSources.map(
+      (source) =>
+        ({
+          sourceItemType: source.sourceItemType,
+          sourceSelection: source.sourceSelection,
+          sourceDocument: source.sourceDocument,
+          sourceLevel: source.sourceLevel,
+        }) satisfies SingletonChoiceSourceContext
+    ),
   ];
 }
 
@@ -570,7 +568,7 @@ async function resolveGrantChoiceSources(
     ...projectedClassArchetypeFeatSelections(draft, targetLevel),
     ...readExistingSkillTrainingFeatSelections(args.actor).filter(isGrantChoiceSourceFeatSelection),
   ]);
-  const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+  const featSources = await resolveExpandedFeatChoiceSources(featSelections, deps);
   const classFeatureSelections = resolveSelectedClassFeatureSelections(draft, args.actor);
   const classFeatureDocuments = await Promise.all(
     classFeatureSelections.map((selection) => deps.fetchSelectionDocument(selection))
@@ -592,18 +590,15 @@ async function resolveGrantChoiceSources(
           ]
         : [];
     }),
-    ...featSelections.flatMap((sourceSelection, index) => {
-      const sourceDocument = featDocuments[index];
-      return sourceDocument
-        ? [
-            {
-              sourceItemType: "feat",
-              sourceSelection,
-              sourceDocument,
-            } satisfies GrantChoiceSourceContext,
-          ]
-        : [];
-    }),
+    ...featSources.map(
+      (source) =>
+        ({
+          sourceItemType: source.sourceItemType,
+          sourceSelection: source.sourceSelection,
+          sourceDocument: source.sourceDocument,
+          sourceLevel: source.sourceLevel,
+        }) satisfies GrantChoiceSourceContext
+    ),
     ...classFeatureSelections.flatMap((sourceSelection, index) => {
       const sourceDocument = classFeatureDocuments[index];
       return sourceDocument
@@ -671,6 +666,23 @@ async function resolveSelectedClassFeatureChoiceSources(
       : [];
   });
 
+  const featSelections = dedupeSelectionsByUuid([
+    ...Object.values(draft.selections).filter(isGrantChoiceSourceFeatSelection),
+    ...projectedClassArchetypeFeatSelections(draft, draft.targetLevel),
+    ...readExistingSkillTrainingFeatSelections(args.actor).filter(isGrantChoiceSourceFeatSelection),
+  ]);
+  const grantedFeatSources = (await resolveExpandedFeatChoiceSources(featSelections, deps))
+    .filter((source) => source.staticGrant && source.sourceItemType === "classfeature")
+    .map(
+      (source) =>
+        ({
+          level: source.sourceLevel,
+          selection: source.sourceSelection,
+          document: source.sourceDocument,
+          existingRulesSelections: {},
+        }) satisfies ClassFeatureSelectionSource
+    );
+
   const staticGrantSelections = dedupeSelectionsByUuid(
     directSources.flatMap((source) =>
       staticClassFeatureGrantSelections({
@@ -699,7 +711,51 @@ async function resolveSelectedClassFeatureChoiceSources(
       : [];
   });
 
-  return dedupeClassFeatureSourcesByUuid([...directSources, ...staticGrantSources]);
+  return dedupeClassFeatureSourcesByUuid([...directSources, ...staticGrantSources, ...grantedFeatSources]);
+}
+
+interface ExpandedFeatChoiceSource {
+  sourceItemType: "classfeature" | "feat";
+  sourceSelection: SelectionRef;
+  sourceDocument: unknown;
+  sourceLevel: number;
+  staticGrant: boolean;
+}
+
+async function resolveExpandedFeatChoiceSources(
+  featSelections: SelectionRef[],
+  deps: BuildWayfinderAppPlanDependencies
+): Promise<ExpandedFeatChoiceSource[]> {
+  const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
+  const directSources = featSelections.flatMap((sourceSelection, index) => {
+    const sourceDocument = featDocuments[index];
+    return sourceDocument
+      ? [
+          {
+            sourceItemType: "feat" as const,
+            sourceSelection,
+            sourceDocument,
+            sourceLevel: sourceSelection.level ?? documentFeatureLevel(sourceDocument),
+            staticGrant: false,
+          },
+        ]
+      : [];
+  });
+  const staticGrantSources = await resolveStaticGrantChoiceSources({
+    sources: directSources.map(({ sourceSelection, sourceDocument }) => ({ sourceSelection, sourceDocument })),
+    fetchSelectionDocument: deps.fetchSelectionDocument,
+  });
+
+  return [
+    ...directSources,
+    ...staticGrantSources.map((source) => ({
+      sourceItemType: source.sourceItemType,
+      sourceSelection: source.sourceSelection,
+      sourceDocument: source.sourceDocument,
+      sourceLevel: source.sourceLevel,
+      staticGrant: true,
+    })),
+  ];
 }
 
 function resolveSelectedClassFeatureSelections(draft: DraftState, actor: ActorLike): SelectionRef[] {

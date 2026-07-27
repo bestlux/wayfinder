@@ -18,13 +18,14 @@ export function discoverGrantSelectionMeta(args: {
   sourceItemType: GrantChoiceSourceItemType;
   sourceDocument: unknown;
   sourceSelection: SelectionRef;
+  sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
 }): GrantSelectionMeta[] {
   const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
   const sourceName = toNonEmptyString(document?.name) ?? sourceSelection.name;
   const sourceSlug = extractSlug(sourceDocument) ?? sourceSelection.documentId;
-  const level = documentFeatureLevel(sourceDocument);
+  const level = args.sourceLevel ?? documentFeatureLevel(sourceDocument);
   const rules = getDocumentRules(sourceDocument);
 
   return rules.flatMap((rule, sourceRuleIndex) => {
@@ -33,7 +34,7 @@ export function discoverGrantSelectionMeta(args: {
       return [];
     }
 
-    const resolution = resolveChoiceSetFilters(rule, { sourceLevel: documentFeatureLevel(sourceDocument) });
+    const resolution = resolveChoiceSetFilters(rule, { sourceLevel: level });
     if (!resolution) {
       return [];
     }

@@ -168,7 +168,7 @@ export interface ClassChoiceMeta {
 
 export interface SingletonChoiceMeta {
   slotId: string;
-  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity" | "feat";
+  sourceItemType: "ancestry" | "heritage" | "background" | "class" | "deity" | "classfeature" | "feat";
   sourcePackId: string;
   sourceDocumentId: string;
   sourceUuid: string;

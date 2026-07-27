@@ -3,12 +3,14 @@ import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 import { sortPendingSteps } from "../src/progression";
 import type { ActorSnapshot, PendingStep } from "../src/types";
+import { choiceRuleIdentity } from "../src/wayfinder/domain/choice-rule-ownership";
 import {
   createBoostStep,
   createClassBranchStep,
   createClassChoiceStep,
   createLanguageChoiceStep,
   createPickItemStep,
+  createSingletonChoiceStep,
   createSkillTrainingStep,
   createSpellChoiceStep,
 } from "../src/wayfinder/domain/step-types";
@@ -335,5 +337,86 @@ describe("wayfinder plan service", () => {
       "skill-feat-level-4",
       "skill-feat-level-5",
     ]);
+  });
+
+  it("registers one owner per ChoiceSet rule and prefers the apply-safe class-choice lane", async () => {
+    const sourceUuid = "Compendium.pf2e.classfeatures.Item.Deity (Cleric)";
+    const singletonStep = createSingletonChoiceStep(2, {
+      slotId: "singleton-choice-classfeature-deity-cleric-sanctification-level-2",
+      sourceItemType: "classfeature",
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "Deity (Cleric)",
+      sourceUuid,
+      sourceName: "Deity (Cleric)",
+      sourceRuleIndex: 2,
+      flag: "sanctification",
+      prompt: "Sanctification",
+      predicate: [],
+      rollOption: null,
+      options: [{ value: "holy", label: "Holy", img: null, detail: null }],
+    });
+    const classChoiceStep = createClassChoiceStep(2, {
+      slotId: "class-choice-deity-cleric-sanctification-level-2",
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "Deity (Cleric)",
+      sourceUuid,
+      sourceName: "Deity (Cleric)",
+      sourceRuleIndex: 2,
+      flag: "sanctification",
+      classSlug: "fighter",
+      dependsOn: "deity",
+      options: [{ value: "holy", label: "Holy", img: null, detail: null }],
+    });
+
+    const plan = await buildWayfinderPlan(
+      {
+        actorId: "actor-1",
+        level: 1,
+        isBlank: false,
+        freeArchetypeEnabled: false,
+        gradualBoostsEnabled: false,
+        singletonSlots: {
+          ancestry: true,
+          heritage: true,
+          background: true,
+          class: true,
+          deity: false,
+        },
+        featCounts: {
+          ancestry: 0,
+          class: 0,
+          archetype: 0,
+          skill: 0,
+          general: 0,
+        },
+        fulfilledStepIds: [],
+        sourceIds: [],
+        namesByType: {},
+        skillRanks: {},
+      } satisfies ActorSnapshot,
+      createEmptyDraft(2),
+      {
+        buildClassFeatSteps: async () => [],
+        buildClassSkillFeatSteps: async () => [],
+        buildClassTrainingSteps: async () => [],
+        buildGrantChoiceSteps: async () => [],
+        buildFlagChoiceSteps: async () => [],
+        buildSingletonChoiceSteps: async () => [singletonStep],
+        buildLanguageChoiceSteps: async () => [],
+        buildClassArchetypeSteps: async () => [],
+        buildClassBranchSteps: async () => [],
+        buildClassGrantedItemSteps: async () => [],
+        buildClassChoiceSteps: async () => [classChoiceStep],
+        buildSpellChoiceSteps: async () => [],
+      }
+    );
+
+    const identity = choiceRuleIdentity(classChoiceStep);
+    expect(identity).toMatchObject({
+      sourceUuid,
+      ruleIndex: 2,
+      flag: "sanctification",
+    });
+    expect(plan.steps.filter((step) => choiceRuleIdentity(step)?.key === identity?.key)).toEqual([classChoiceStep]);
   });
 });

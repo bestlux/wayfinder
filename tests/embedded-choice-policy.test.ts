@@ -143,6 +143,7 @@ describe("embedded choice policy", () => {
     expect(result.covered).toEqual([]);
     expect(result.uncovered).toEqual([]);
     expect(result.rules).toEqual([]);
+    expect(result.staticGrants).toEqual([]);
   });
 });
 

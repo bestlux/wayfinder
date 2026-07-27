@@ -6,7 +6,7 @@ export function buildSingletonChoiceStepsFromRules(args) {
     if (!effectiveSourceDocument || !sourceSelection) {
         return [];
     }
-    const sourceLevel = choiceSourceLevel(sourceSelection, effectiveSourceDocument);
+    const sourceLevel = args.sourceLevel ?? choiceSourceLevel(sourceSelection, effectiveSourceDocument);
     return discoverSingletonChoiceMeta({
         sourceItemType,
         sourceDocument: effectiveSourceDocument,

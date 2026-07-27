@@ -29,6 +29,10 @@ export function hasUnsupportedEmbeddedChoiceSet(entry, packId, step, optionConte
     if (!["ancestry-feat", "class-feat", "archetype-feat", "general-feat", "skill-feat"].includes(step.slotKind)) {
         return false;
     }
+    // Suppression is intentionally limited to uncovered ChoiceSets owned by the
+    // option itself. Unsupported choices on statically granted children are
+    // disclosed on the still-selectable option; hiding those options would turn
+    // an honest PF2E handoff into a silent omission.
     return (classifyEmbeddedChoices(entry, packId, {
         sourceItemType: "feat",
         optionContext,
@@ -50,6 +54,25 @@ function entryHasChoiceSetRule(entry) {
 }
 export function classifyEmbeddedChoices(entry, packId, options = {}) {
     const choiceSetRuleIndexes = getChoiceSetRuleIndexes(entry);
+    const ownChoices = classifyOwnEmbeddedChoices(entry, packId, choiceSetRuleIndexes, options);
+    const staticGrants = (options.staticGrantSources ?? []).map((source) => {
+        const grantedEntry = source.sourceDocument;
+        const grantedRuleIndexes = getChoiceSetRuleIndexes(grantedEntry);
+        const grantedChoices = classifyOwnEmbeddedChoices(grantedEntry, source.sourceSelection.packId, grantedRuleIndexes, {
+            ...options,
+            sourceItemType: source.sourceItemType,
+            staticGrantSources: [],
+        });
+        return {
+            ...grantedChoices,
+            grantRuleIndex: source.grantRuleIndex,
+            sourceName: source.sourceSelection.name,
+            sourceUuid: source.sourceSelection.uuid,
+        };
+    });
+    return { ...ownChoices, staticGrants };
+}
+function classifyOwnEmbeddedChoices(entry, packId, choiceSetRuleIndexes, options) {
     if (choiceSetRuleIndexes.length === 0) {
         return { covered: [], uncovered: [], rules: [] };
     }
@@ -70,6 +93,7 @@ export function classifyEmbeddedChoices(entry, packId, options = {}) {
         sourceItemType,
         sourceDocument: entry,
         sourceSelection,
+        sourceLevel: numericOrNull(entry?.system?.level?.value) ?? undefined,
         extractSlug: extractEntrySlug,
     })) {
         markCovered(coveredByRuleIndex, meta.selectorRuleIndex, "grant-choice");
@@ -92,11 +116,45 @@ export function classifyEmbeddedChoices(entry, packId, options = {}) {
         rules,
     };
 }
+export function buildStaticGrantChoiceDisclosure(classification) {
+    const disclosures = classification.staticGrants.flatMap((grant) => {
+        if (grant.uncovered.length === 0) {
+            return [];
+        }
+        const noun = deriveChoiceNoun(grant.sourceName);
+        if (!noun) {
+            const countLabel = grant.uncovered.length === 1 ? "a choice" : `${grant.uncovered.length} choices`;
+            return [`PF2E will ask you to make ${countLabel} for ${grant.sourceName} when this is applied.`];
+        }
+        const countLabel = grant.uncovered.length === 1
+            ? `${indefiniteArticle(noun)} ${noun}`
+            : `${grant.uncovered.length} ${pluralize(noun)}`;
+        return [`PF2E will ask you to choose ${countLabel} when this is applied.`];
+    });
+    return disclosures.length > 0 ? disclosures.join(" ") : null;
+}
+function deriveChoiceNoun(sourceName) {
+    const words = sourceName.match(/[A-Za-z][A-Za-z'-]*/g) ?? [];
+    return words.length > 0 ? singularize(words.at(-1).toLowerCase()) : null;
+}
+function singularize(noun) {
+    return noun.endsWith("s") && !noun.endsWith("ss") ? noun.slice(0, -1) : noun;
+}
+function pluralize(noun) {
+    if (noun.endsWith("y") && !/[aeiou]y$/i.test(noun)) {
+        return `${noun.slice(0, -1)}ies`;
+    }
+    return noun.endsWith("s") ? noun : `${noun}s`;
+}
+function indefiniteArticle(noun) {
+    return /^[aeiou]/i.test(noun) ? "an" : "a";
+}
 function markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, options) {
     for (const meta of discoverFlagChoiceMeta({
         sourceItemType,
         sourceDocument: entry,
         sourceSelection,
+        sourceLevel: numericOrNull(entry?.system?.level?.value) ?? undefined,
         extractSlug: extractEntrySlug,
         actorContext: {
             ancestrySlug: options.optionContext?.ancestrySlug,

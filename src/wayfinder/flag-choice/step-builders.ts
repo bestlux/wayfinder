@@ -10,6 +10,7 @@ export function buildFlagChoiceStepsFromRules(args: {
   sourceItemType: FlagChoiceSourceItemType;
   effectiveSourceDocument: unknown | null;
   sourceSelection: SelectionRef | null;
+  sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
   localize?: (value: string) => string;
   actorContext?: ChoiceFilterActorContext | null;
@@ -24,6 +25,7 @@ export function buildFlagChoiceStepsFromRules(args: {
     sourceItemType,
     sourceDocument: effectiveSourceDocument,
     sourceSelection,
+    sourceLevel: args.sourceLevel,
     extractSlug,
     localize: args.localize,
     actorContext: args.actorContext,
@@ -31,7 +33,7 @@ export function buildFlagChoiceStepsFromRules(args: {
   }).map((choice) =>
     createPickItemStep(
       "flag-choice",
-      choiceSourceLevel(effectiveSourceDocument),
+      args.sourceLevel ?? choiceSourceLevel(effectiveSourceDocument),
       buildFlagChoiceTitle(choice),
       buildFlagChoiceDescription(choice),
       choice.filters,

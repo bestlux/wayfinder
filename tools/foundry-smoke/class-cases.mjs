@@ -111,6 +111,7 @@ export const expectedPf2eClassSlugs = [
 ];
 
 function classCase({
+  applyTimeoutMs,
   className,
   classSlug,
   keyAbility,
@@ -124,6 +125,7 @@ function classCase({
   return {
     id: `${classSlug}-l1-l5-apply-rerun`,
     label: `${className} level 1 through 5 apply/rerun`,
+    ...(applyTimeoutMs === undefined ? {} : { applyTimeoutMs }),
     className,
     classSlug,
     deityName,

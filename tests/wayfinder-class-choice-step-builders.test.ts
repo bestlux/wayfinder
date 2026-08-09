@@ -491,7 +491,7 @@ describe("wayfinder class-choice step-builders", () => {
     );
   });
 
-  it("builds class feature choices from configured PF2E choice records", async () => {
+  it("builds class feature choices from PF2E object-form configured choice records", async () => {
     const previousConfig = (globalThis as { CONFIG?: unknown }).CONFIG;
     (globalThis as { CONFIG?: { PF2E?: Record<string, unknown> } }).CONFIG = {
       PF2E: {
@@ -528,7 +528,7 @@ describe("wayfinder class-choice step-builders", () => {
                 {
                   key: "ChoiceSet",
                   flag: "fighterWeaponMastery",
-                  choices: "weaponGroups",
+                  choices: { config: "weaponGroups" },
                 },
               ],
             },

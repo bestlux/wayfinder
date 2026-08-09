@@ -214,6 +214,7 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
         slotId: grantPlan.slotId,
         granterId: selectorItemId,
     });
+    assertResolvedUnconditionalChoiceSets(source, grantPlan.selection.name);
     const created = await actor.createEmbeddedDocuments("Item", [source]);
     const createdItem = Array.isArray(created) ? (created[0] ?? null) : null;
     if (!createdItem?.id) {
@@ -225,6 +226,21 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
         update: grantPlan.updateCreatedGrant ? buildGrantedItemUpdate(createdItem.id, selectorItemId, grantPlan) : null,
         reusedExistingItem: false,
     };
+}
+function assertResolvedUnconditionalChoiceSets(source, sourceName) {
+    const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
+    const selections = source.flags?.pf2e?.rulesSelections ?? {};
+    for (const [ruleIndex, rule] of rules.entries()) {
+        if (rule?.key !== "ChoiceSet" || rule.predicate !== undefined) {
+            continue;
+        }
+        const flag = typeof rule.flag === "string" && rule.flag.length > 0 ? rule.flag : null;
+        const resolvedByRule = typeof rule.selection === "string" && rule.selection.length > 0;
+        const resolvedByFlag = flag && typeof selections[flag] === "string" && selections[flag].length > 0;
+        if (!resolvedByRule && !resolvedByFlag) {
+            throw new Error(`Cannot create ${sourceName}: unresolved unconditional ChoiceSet ${flag ? `"${flag}"` : `at rule ${ruleIndex}`}.`);
+        }
+    }
 }
 async function createManualStaticGrantedItems(actor, granter, granterSource, grantPlan, createEmbeddedSource) {
     const granterId = typeof granter.id === "string" ? granter.id : null;

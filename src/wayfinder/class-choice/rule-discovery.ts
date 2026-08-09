@@ -395,8 +395,14 @@ function resolveClassChoiceOptions(
       }));
   }
 
-  if (typeof choices === "string") {
-    return resolveConfiguredChoiceOptions(choices, localize);
+  const configKey =
+    typeof choices === "string"
+      ? choices
+      : isRecord(choices) && typeof choices.config === "string"
+        ? choices.config
+        : null;
+  if (configKey) {
+    return resolveConfiguredChoiceOptions(configKey, localize);
   }
 
   return [];

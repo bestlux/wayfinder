@@ -28,10 +28,10 @@ describe("Wayfinder settings", () => {
         restricted: true,
         type: String,
         choices: {
-          common: "Common",
-          uncommon: "Uncommon",
-          rare: "Rare",
-          unique: "Unique",
+          common: "wayfinder-pf2e.Settings.SpellRarityCeiling.Choices.Common",
+          uncommon: "wayfinder-pf2e.Settings.SpellRarityCeiling.Choices.Uncommon",
+          rare: "wayfinder-pf2e.Settings.SpellRarityCeiling.Choices.Rare",
+          unique: "wayfinder-pf2e.Settings.SpellRarityCeiling.Choices.Unique",
         },
         default: "common",
       })

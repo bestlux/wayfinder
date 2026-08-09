@@ -6,7 +6,7 @@ import {
 } from "../src/wayfinder/application/existing-character-history-service";
 
 describe("existing character history service", () => {
-  it("maps source-backed foundations and PF2E native feat slots without inferring ambiguous history", () => {
+  it("maps source-backed foundations and PF2E native feat slots without inferring ambiguous history", async () => {
     const actor = {
       system: {
         details: { level: { value: 5 } },
@@ -45,7 +45,7 @@ describe("existing character history service", () => {
       },
     };
 
-    const history = buildExistingCharacterHistory(actor, {
+    const history = await buildExistingCharacterHistory(actor, {
       now: () => "2026-07-26T18:00:00.000Z",
       gradualBoostsEnabled: false,
     });
@@ -98,12 +98,12 @@ describe("existing character history service", () => {
     );
   });
 
-  it("preserves existing application state when attaching an imported history", () => {
+  it("preserves existing application state when attaching an imported history", async () => {
     const state = {
       ...createEmptyState(),
       completedStepIds: ["class-feat-level-2"],
     };
-    const history = buildExistingCharacterHistory(
+    const history = await buildExistingCharacterHistory(
       { system: { details: { level: { value: 1 } } }, items: [] },
       { now: () => "2026-07-26T18:00:00.000Z", gradualBoostsEnabled: false }
     );
@@ -114,7 +114,7 @@ describe("existing character history service", () => {
     });
   });
 
-  it("uses PF2E native feat-group levels for nonstandard class cadences", () => {
+  it("uses PF2E native feat-group levels for nonstandard class cadences", async () => {
     const actor = {
       system: { details: { level: { value: 3 } } },
       items: {
@@ -140,7 +140,7 @@ describe("existing character history service", () => {
       },
     };
 
-    const history = buildExistingCharacterHistory(actor);
+    const history = await buildExistingCharacterHistory(actor);
     const skillFeatEntries = history.entries.filter(
       (entry) => entry.category === "feat" && entry.slotId.startsWith("skill-feat-")
     );
@@ -154,8 +154,8 @@ describe("existing character history service", () => {
     ]);
   });
 
-  it("maps each gradual boost from its native batch position to the actual acquisition level", () => {
-    const history = buildExistingCharacterHistory(
+  it("maps each gradual boost from its native batch position to the actual acquisition level", async () => {
+    const history = await buildExistingCharacterHistory(
       {
         system: {
           details: { level: { value: 8 } },
@@ -188,7 +188,150 @@ describe("existing character history service", () => {
       ["ability-boosts-level-8", "INT", "mapped"],
     ]);
   });
+
+  it("audits a complete level-3 witch familiar spellbook as matched", async () => {
+    const history = await buildExistingCharacterHistory(witchActor(20));
+
+    expect(spellAuditEntries(history.entries)).toEqual([
+      expect.objectContaining({
+        slotId: "spell-audit-witch-through-level-3",
+        label: "Witch spell audit",
+        value:
+          "20 spells found, matches expectations through level 3. Actor spell data does not identify which level each spell was learned.",
+        status: "mapped",
+      }),
+    ]);
+  });
+
+  it("reports the exact deficit for a level-3 witch missing two familiar spells", async () => {
+    const history = await buildExistingCharacterHistory(witchActor(18));
+    const [audit] = spellAuditEntries(history.entries);
+
+    expect(audit).toMatchObject({ status: "review" });
+    expect(audit?.value).toContain("2 fewer spells than expected (18 found; 20 expected through level 3)");
+    expect(audit?.value).toContain("add them on the sheet, or rebuild through Wayfinder");
+  });
+
+  it("marks a feat-granted surplus spell for review without recommending deletion", async () => {
+    const history = await buildExistingCharacterHistory(witchActor(21));
+    const [audit] = spellAuditEntries(history.entries);
+
+    expect(audit).toMatchObject({ status: "review" });
+    expect(audit?.value).toContain("1 more spell than expected (21 found; 20 expected through level 3)");
+    expect(audit?.value).toContain("probably feat- or item-granted");
+    expect(audit?.value).toContain("do not delete anything based on this audit");
+  });
+
+  it("adds no spell audit entry for a non-caster", async () => {
+    const history = await buildExistingCharacterHistory({
+      system: { details: { level: { value: 3 } } },
+      items: {
+        contents: [actorItem("class-1", "class", "Fighter", "Compendium.pf2e.classes.Item.fighter")],
+      },
+    });
+
+    expect(spellAuditEntries(history.entries)).toEqual([]);
+  });
+
+  it("marks a witch with no selected patron as unresolvable instead of assuming a total", async () => {
+    const actor = witchActor(15);
+    actor.items.contents = actor.items.contents.filter((item) => item.id !== "witch-patron");
+
+    const history = await buildExistingCharacterHistory(actor);
+
+    expect(spellAuditEntries(history.entries)).toEqual([
+      expect.objectContaining({
+        slotId: "spell-audit-witch-through-level-3",
+        value:
+          "Review required: Wayfinder cannot resolve the witch spell total because no patron is selected on the actor.",
+        status: "review",
+      }),
+    ]);
+  });
+
+  it("marks an apparition-dependent animist profile as a single honest boundary", async () => {
+    const history = await buildExistingCharacterHistory({
+      system: { details: { level: { value: 3 } } },
+      items: {
+        contents: [
+          {
+            ...actorItem("class-1", "class", "Animist", "Compendium.pf2e.classes.Item.animist"),
+            system: { slug: "animist", spellcasting: 2 },
+          },
+        ],
+      },
+    });
+
+    expect(spellAuditEntries(history.entries)).toEqual([
+      expect.objectContaining({
+        value: expect.stringContaining("apparition spells are not fully represented"),
+        status: "review",
+      }),
+    ]);
+  });
 });
+
+function spellAuditEntries<T extends { slotId: string }>(entries: T[]): T[] {
+  return entries.filter((entry) => entry.slotId.startsWith("spell-audit-"));
+}
+
+function witchActor(spellCount: number) {
+  const entryId = "witch-entry";
+  return {
+    system: { details: { level: { value: 3 } } },
+    items: {
+      contents: [
+        {
+          ...actorItem("class-1", "class", "Witch", "Compendium.pf2e.classes.Item.witch"),
+          system: { slug: "witch" },
+        },
+        {
+          id: "witch-patron",
+          type: "feat",
+          name: "Spinner of Threads",
+          flags: { core: { sourceId: "Compendium.pf2e.classfeatures.Item.spinner-of-threads" } },
+          system: {
+            category: "classfeature",
+            traits: { otherTags: ["witch-patron"] },
+            description: {
+              value:
+                "<p><strong>Spell List</strong> occult</p><p><strong>Initial Lesson</strong> Your familiar learns @UUID[Compendium.pf2e.spells-srd.Item.sure-strike]{Sure Strike}.</p>",
+            },
+          },
+        },
+        {
+          id: entryId,
+          type: "spellcastingEntry",
+          name: "Occult Prepared Spells",
+          flags: { "wayfinder-pf2e": { destinationKey: "witch-occult-prepared" } },
+          system: {
+            ability: { value: "int" },
+            prepared: { value: "prepared" },
+            tradition: { value: "occult" },
+            slots: {
+              slot0: {
+                max: 5,
+                value: 5,
+                prepared: Array.from({ length: 5 }, () => ({ id: null, expended: false })),
+              },
+            },
+          },
+        },
+        ...Array.from({ length: spellCount }, (_, index) => ({
+          id: `witch-spell-${index + 1}`,
+          type: "spell",
+          name: `Witch Spell ${index + 1}`,
+          ...(index >= 20 ? { flags: { pf2e: { grantedBy: { id: "bonus-feat" } } } } : {}),
+          system: {
+            level: { value: index < 10 ? 1 : 2 },
+            location: { value: entryId },
+            traits: { value: index < 10 ? ["cantrip"] : [] },
+          },
+        })),
+      ],
+    },
+  };
+}
 
 function actorItem(
   id: string,

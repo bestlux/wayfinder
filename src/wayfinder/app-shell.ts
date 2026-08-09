@@ -1146,7 +1146,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   async #importExistingHistory(): Promise<void> {
     const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
-    const history = buildExistingCharacterHistory(this.actor, {
+    const history = await buildExistingCharacterHistory(this.actor, {
       gradualBoostsEnabled: inspectActor(this.actor).gradualBoostsEnabled,
     });
     await this.actor.update({

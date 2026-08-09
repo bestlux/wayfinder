@@ -3,6 +3,7 @@ import type { BuildStateActorItem } from "../../build-state/document-types.js";
 import { listActorItems } from "../../build-state.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import type { ExistingCharacterHistory, ExistingCharacterHistoryEntry, ModuleState } from "../../types.js";
+import { buildExistingCharacterSpellAuditEntries } from "./existing-character-spell-audit-service.js";
 
 const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
 const FREE_ARCHETYPE_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
@@ -42,10 +43,10 @@ interface ExistingCharacterHistoryOptions {
   gradualBoostsEnabled?: boolean;
 }
 
-export function buildExistingCharacterHistory(
+export async function buildExistingCharacterHistory(
   actor: unknown,
   options: ExistingCharacterHistoryOptions = {}
-): ExistingCharacterHistory {
+): Promise<ExistingCharacterHistory> {
   const now = options.now ?? (() => new Date().toISOString());
   const gradualBoostsEnabled = options.gradualBoostsEnabled ?? isGradualAbilityBoostsEnabled();
   const actorLevel = actorLevelOf(actor);
@@ -128,6 +129,8 @@ export function buildExistingCharacterHistory(
       "Review required: Wayfinder will read source-backed rule selections when their owning steps are available"
     )
   );
+
+  entries.push(...(await buildExistingCharacterSpellAuditEntries(actor, actorLevel)));
 
   return {
     version: 1,

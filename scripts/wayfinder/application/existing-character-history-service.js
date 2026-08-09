@@ -1,6 +1,7 @@
 import { abilityBoostMilestones, isGradualAbilityBoostsEnabled } from "../../ability-boost-progression.js";
 import { listActorItems } from "../../build-state.js";
 import { sourceIdOf } from "../../shared/source-id.js";
+import { buildExistingCharacterSpellAuditEntries } from "./existing-character-spell-audit-service.js";
 const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
 const FREE_ARCHETYPE_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const SKILL_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
@@ -17,7 +18,7 @@ const FEAT_LANES = [
     ["skill", "skill-feat", "Skill feat", SKILL_FEAT_LEVELS],
     ["general", "general-feat", "General feat", GENERAL_FEAT_LEVELS],
 ];
-export function buildExistingCharacterHistory(actor, options = {}) {
+export async function buildExistingCharacterHistory(actor, options = {}) {
     const now = options.now ?? (() => new Date().toISOString());
     const gradualBoostsEnabled = options.gradualBoostsEnabled ?? isGradualAbilityBoostsEnabled();
     const actorLevel = actorLevelOf(actor);
@@ -47,6 +48,7 @@ export function buildExistingCharacterHistory(actor, options = {}) {
         entries.push(reviewEntry(`skill-increase-level-${level}`, level, "skill-increase", `Level ${level} skill increase`, "Review required: current skill ranks do not identify the level of each increase"));
     }
     entries.push(reviewEntry("embedded-choice-history-level-1", 1, "other", "Class features and embedded choices", "Review required: Wayfinder will read source-backed rule selections when their owning steps are available"));
+    entries.push(...(await buildExistingCharacterSpellAuditEntries(actor, actorLevel)));
     return {
         version: 1,
         importedAt: now(),

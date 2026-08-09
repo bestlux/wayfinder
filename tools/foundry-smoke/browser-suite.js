@@ -496,6 +496,7 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
       return;
     }
     case "spell-choice": {
+      assertExpectedSpellChoiceCount(step, smokeCase);
       const optionContext = await buildPickerContext(actor, draft, step, planSteps, modules);
       const blocked = modules.getPickerBlockedState(step, optionContext);
       if (blocked) {
@@ -600,6 +601,17 @@ async function logCurriculumPlanRefresh(
         },
       })}`,
     );
+  }
+}
+
+function assertExpectedSpellChoiceCount(step, smokeCase) {
+  const expected = smokeCase.expectedSpellChoiceCounts?.[step.slotId];
+  if (expected === undefined) {
+    return;
+  }
+
+  if (step.spellChoice.count !== expected) {
+    throw new Error(`${step.slotId} requires ${step.spellChoice.count} spells, expected ${expected}.`);
   }
 }
 

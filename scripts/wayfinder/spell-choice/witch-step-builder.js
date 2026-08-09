@@ -1,20 +1,9 @@
 import { wizardMaxSpellRank } from "../../shared/spellcasting.js";
-import { buildPreparedSpellChoiceSteps, preparedSpellChoiceDestination } from "./prepared-step-builder.js";
-import { findClassFeatureSource } from "./source-utils.js";
+import { parseWitchPatronLessonSpellAccess } from "./metadata-parsing.js";
+import { preparedSpellChoiceDestination } from "./prepared-step-builder.js";
+import { fallbackSourceRef, findClassFeatureSource, sourceRefFromDocument } from "./source-utils.js";
 import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helpers.js";
 export function buildWitchSpellChoiceSteps(params) {
-    const initialSteps = buildPreparedSpellChoiceSteps({
-        draft: params.draft,
-        effectiveClassDocument: params.effectiveClassDocument,
-        classSlug: "witch",
-        classLabel: "Witch",
-        spellcastingFeatureName: "Witch Spellcasting",
-        tradition: params.tradition,
-        ability: "int",
-        cantripCount: 5,
-        rankOneCount: 2,
-        readExistingSpellChoiceSelections: params.readExistingSpellChoiceSelections,
-    });
     const source = findClassFeatureSource(params.effectiveClassDocument, "Witch Spellcasting");
     const destination = {
         ...preparedSpellChoiceDestination({
@@ -25,8 +14,65 @@ export function buildWitchSpellChoiceSteps(params) {
         type: "spellbook",
         label: "Witch familiar spells",
     };
-    const learnedSteps = [];
-    const addStep = (step) => appendPendingSpellChoiceStep(learnedSteps, step, params.draft, params.readExistingSpellChoiceSelections);
+    const steps = [];
+    const addStep = (step) => appendPendingSpellChoiceStep(steps, step, params.draft, params.readExistingSpellChoiceSelections);
+    addStep(makeSpellChoiceStep({
+        slotId: "spell-choice-witch-cantrips-level-1",
+        level: 1,
+        title: "Witch familiar cantrips",
+        description: `Choose the 10 ${params.tradition} cantrips your familiar begins knowing.`,
+        source,
+        classSlug: "witch",
+        dependsOn: "class",
+        count: 10,
+        minRank: 0,
+        maxRank: 0,
+        cantrip: true,
+        curriculumSpellNames: [],
+        additionalAllowedSpellNames: [],
+        restrictToCommon: true,
+        destination,
+    }));
+    addStep(makeSpellChoiceStep({
+        slotId: "spell-choice-witch-rank-1-level-1",
+        level: 1,
+        title: "Witch familiar spells",
+        description: `Choose the five 1st-rank ${params.tradition} spells your familiar begins knowing.`,
+        source,
+        classSlug: "witch",
+        dependsOn: "class",
+        count: 5,
+        minRank: 1,
+        maxRank: 1,
+        cantrip: false,
+        curriculumSpellNames: [],
+        additionalAllowedSpellNames: [],
+        restrictToCommon: true,
+        destination,
+    }));
+    const patronLesson = parseWitchPatronLessonSpellAccess(params.patronDocument);
+    if (patronLesson.uuids.length > 0) {
+        const patronName = String(params.patronDocument?.name ?? "Patron");
+        const patronSource = sourceRefFromDocument(params.patronDocument) ?? fallbackSourceRef(patronName);
+        addStep(makeSpellChoiceStep({
+            slotId: "spell-choice-witch-patron-lesson-level-1",
+            level: 1,
+            title: "Patron initial-lesson spell",
+            description: "Add the additional 1st-rank spell your familiar learns from your patron's initial lesson.",
+            source: patronSource,
+            classSlug: "witch",
+            dependsOn: "class-branch",
+            count: 1,
+            minRank: 1,
+            maxRank: 1,
+            cantrip: false,
+            curriculumSpellNames: patronLesson.names,
+            additionalAllowedSpellNames: patronLesson.names,
+            additionalAllowedSpellUuids: patronLesson.uuids,
+            restrictToCommon: false,
+            destination,
+        }));
+    }
     for (let level = Math.max(2, params.currentLevel + 1); level <= params.targetLevel; level += 1) {
         addStep(makeSpellChoiceStep({
             slotId: `spell-choice-witch-familiar-level-${level}`,
@@ -47,6 +93,6 @@ export function buildWitchSpellChoiceSteps(params) {
             destination,
         }));
     }
-    return [...initialSteps, ...learnedSteps];
+    return steps;
 }
 //# sourceMappingURL=witch-step-builder.js.map

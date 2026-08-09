@@ -83,6 +83,7 @@ export const witchContributor: ClassContributor = {
       draft: args.draft,
       currentLevel: args.currentLevel,
       effectiveClassDocument: args.effectiveClassDocument,
+      patronDocument: patron,
       targetLevel: args.targetLevel,
       tradition,
       readExistingSpellChoiceSelections: args.readExistingSpellChoiceSelections,

@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import type { SelectionRef } from "../src/types";
 import type { SpellChoiceDocumentLike } from "../src/wayfinder/spell-choice/types";
-import { buildHistoricalSpellChoicePlanningNote, buildSpellChoiceSteps } from "../src/wayfinder/spell-choice-service";
+import {
+  buildHistoricalSpellChoicePlanningNote,
+  buildSpellChoiceSteps,
+  readExistingSpellChoiceSelections,
+} from "../src/wayfinder/spell-choice-service";
 
 describe("wayfinder spell-choice step builders", () => {
   it("builds wizard spellbook steps for initial choices and later spellbook growth", async () => {
@@ -433,7 +437,7 @@ describe("wayfinder spell-choice step builders", () => {
     });
   });
 
-  it("builds branch-derived witch prepared and familiar spell steps", async () => {
+  it("builds branch-derived witch familiar-known spell steps", async () => {
     const steps = await buildSpellChoiceSteps({
       draft: createEmptyDraft(5),
       currentLevel: 1,
@@ -441,7 +445,7 @@ describe("wayfinder spell-choice step builders", () => {
       effectiveDeityDocument: null,
       effectiveSchoolDocument: null,
       effectiveClassFeatureDocuments: [
-        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult"),
+        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult", ["Sure Strike"]),
       ],
       targetLevel: 5,
       extractSlug: extractSlug,
@@ -451,17 +455,75 @@ describe("wayfinder spell-choice step builders", () => {
     expect(steps.map((step) => step.slotId)).toEqual([
       "spell-choice-witch-cantrips-level-1",
       "spell-choice-witch-rank-1-level-1",
+      "spell-choice-witch-patron-lesson-level-1",
       "spell-choice-witch-familiar-level-2",
       "spell-choice-witch-familiar-level-3",
       "spell-choice-witch-familiar-level-4",
       "spell-choice-witch-familiar-level-5",
     ]);
-    expect(steps[0]?.spellChoice?.destination).toMatchObject({
-      key: "witch-occult-prepared",
-      tradition: "occult",
-      ability: "int",
-      prepared: "prepared",
+    expect(steps[0]).toMatchObject({
+      title: "Witch familiar cantrips",
+      description: "Choose the 10 occult cantrips your familiar begins knowing.",
+      spellChoice: {
+        count: 10,
+        destination: {
+          key: "witch-occult-prepared",
+          type: "spellbook",
+          label: "Witch familiar spells",
+          tradition: "occult",
+          ability: "int",
+          prepared: "prepared",
+        },
+      },
     });
+    expect(steps[1]).toMatchObject({
+      title: "Witch familiar spells",
+      description: "Choose the five 1st-rank occult spells your familiar begins knowing.",
+      spellChoice: {
+        count: 5,
+        destination: { type: "spellbook" },
+      },
+    });
+    expect(steps[2]).toMatchObject({
+      title: "Patron initial-lesson spell",
+      description: "Add the additional 1st-rank spell your familiar learns from your patron's initial lesson.",
+      spellChoice: {
+        count: 1,
+        curriculumSpellNames: ["Sure Strike"],
+        additionalAllowedSpellUuids: ["Compendium.pf2e.spells-srd.Item.Sure Strike"],
+        destination: { type: "spellbook" },
+      },
+    });
+  });
+
+  it("guides patron initial-lesson spell choices encoded in PF2E patron data", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(1),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("witch", "Witch Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      effectiveClassFeatureDocuments: [
+        classFeatureDocument("Wilding Steward", "witch-patron", "Spell List", "primal", [
+          "Summon Animal",
+          "Summon Plant or Fungus",
+        ]),
+      ],
+      targetLevel: 1,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.find((step) => step.slotId === "spell-choice-witch-patron-lesson-level-1")?.spellChoice).toMatchObject(
+      {
+        count: 1,
+        curriculumSpellNames: ["Summon Animal", "Summon Plant or Fungus"],
+        additionalAllowedSpellUuids: [
+          "Compendium.pf2e.spells-srd.Item.Summon Animal",
+          "Compendium.pf2e.spells-srd.Item.Summon Plant or Fungus",
+        ],
+      }
+    );
   });
 
   it("builds two witch familiar spells per level with the current rank ceiling", async () => {
@@ -472,7 +534,7 @@ describe("wayfinder spell-choice step builders", () => {
       effectiveDeityDocument: null,
       effectiveSchoolDocument: null,
       effectiveClassFeatureDocuments: [
-        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult"),
+        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult", ["Sure Strike"]),
       ],
       targetLevel: 3,
       extractSlug,
@@ -482,6 +544,7 @@ describe("wayfinder spell-choice step builders", () => {
     expect(steps.map((step) => step.slotId)).toEqual([
       "spell-choice-witch-cantrips-level-1",
       "spell-choice-witch-rank-1-level-1",
+      "spell-choice-witch-patron-lesson-level-1",
       "spell-choice-witch-familiar-level-2",
       "spell-choice-witch-familiar-level-3",
     ]);
@@ -516,7 +579,7 @@ describe("wayfinder spell-choice step builders", () => {
       effectiveDeityDocument: null,
       effectiveSchoolDocument: null,
       effectiveClassFeatureDocuments: [
-        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult"),
+        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult", ["Sure Strike"]),
       ],
       targetLevel: 3,
       extractSlug,
@@ -545,7 +608,7 @@ describe("wayfinder spell-choice step builders", () => {
       effectiveDeityDocument: null,
       effectiveSchoolDocument: null,
       effectiveClassFeatureDocuments: [
-        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult"),
+        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult", ["Sure Strike"]),
       ],
       targetLevel: 3,
       extractSlug,
@@ -553,6 +616,44 @@ describe("wayfinder spell-choice step builders", () => {
         Array.from({ length: choice.count }, (_, index) =>
           selection(choice.slotId, `fulfilled-${choice.slotId}-${index}`, `Fulfilled ${index}`)
         ),
+    });
+
+    expect(steps).toEqual([]);
+  });
+
+  it("suppresses all level-1 witch choices when the familiar's known spells are already on the entry", async () => {
+    const entryId = "witch-entry";
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: entryId,
+            type: "spellcastingEntry",
+            name: "Occult Prepared Spells",
+            system: {
+              ability: { value: "int" },
+              prepared: { value: "prepared" },
+              tradition: { value: "occult" },
+            },
+          },
+          ...Array.from({ length: 10 }, (_, index) => knownWitchSpell(entryId, `Cantrip ${index + 1}`, true)),
+          ...Array.from({ length: 5 }, (_, index) => knownWitchSpell(entryId, `Rank One ${index + 1}`, false)),
+          knownWitchSpell(entryId, "Sure Strike", false),
+        ],
+      },
+    };
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(1),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("witch", "Witch Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      effectiveClassFeatureDocuments: [
+        classFeatureDocument("Spinner of Threads", "witch-patron", "Spell List", "occult", ["Sure Strike"]),
+      ],
+      targetLevel: 1,
+      extractSlug,
+      readExistingSpellChoiceSelections: (choice) => readExistingSpellChoiceSelections(actor, choice),
     });
 
     expect(steps).toEqual([]);
@@ -713,7 +814,21 @@ function classDocument(slug: string, spellcastingName: string) {
   };
 }
 
-function classFeatureDocument(name: string, otherTag: string, traditionLabel: string, tradition: string) {
+function classFeatureDocument(
+  name: string,
+  otherTag: string,
+  traditionLabel: string,
+  tradition: string,
+  lessonSpellNames: string[] = []
+) {
+  const lesson =
+    lessonSpellNames.length > 0
+      ? `<p><strong>Initial Lesson</strong> Your familiar learns ${
+          lessonSpellNames.length > 1 ? "your choice of " : ""
+        }${lessonSpellNames
+          .map((spellName) => `@UUID[Compendium.pf2e.spells-srd.Item.${spellName}]`)
+          .join(" or ")}.</p>`
+      : "";
   return {
     name,
     system: {
@@ -721,7 +836,25 @@ function classFeatureDocument(name: string, otherTag: string, traditionLabel: st
         otherTags: [otherTag],
       },
       description: {
-        value: `<p><strong>${traditionLabel}</strong> ${tradition}</p>`,
+        value: `<p><strong>${traditionLabel}</strong> ${tradition}</p>${lesson}`,
+      },
+    },
+  };
+}
+
+function knownWitchSpell(entryId: string, name: string, cantrip: boolean) {
+  return {
+    id: `${entryId}-${name}`,
+    type: "spell",
+    name,
+    sourceId: `Compendium.pf2e.spells-srd.Item.${name}`,
+    system: {
+      level: { value: 1 },
+      location: { value: entryId },
+      traits: {
+        rarity: "common",
+        traditions: ["occult"],
+        value: cantrip ? ["cantrip"] : [],
       },
     },
   };

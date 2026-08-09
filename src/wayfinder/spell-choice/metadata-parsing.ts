@@ -1,6 +1,11 @@
-import type { SpellChoiceDeityDocument } from "./types.js";
+import type { SpellChoiceDeityDocument, SpellChoiceSchoolDocument } from "./types.js";
 
 interface DeitySpellAccess {
+  names: string[];
+  uuids: string[];
+}
+
+export interface WitchPatronLessonSpellAccess {
   names: string[];
   uuids: string[];
 }
@@ -41,6 +46,33 @@ export function parseDeitySpellAccess(document: SpellChoiceDeityDocument | null,
     const uuid = spellUuidFromDeityReference(raw);
     if (uuid) {
       uuids.add(uuid);
+    }
+  }
+
+  return {
+    names: Array.from(names),
+    uuids: Array.from(uuids),
+  };
+}
+
+export function parseWitchPatronLessonSpellAccess(
+  document: SpellChoiceSchoolDocument | null
+): WitchPatronLessonSpellAccess {
+  const description = String(document?.system?.description?.value ?? "");
+  const lessonText = /familiar learns([\s\S]*?)<\/p>/i.exec(description)?.[1] ?? "";
+  const names = new Set<string>();
+  const uuids = new Set<string>();
+
+  for (const match of lessonText.matchAll(
+    /@UUID\[(Compendium\.pf2e\.spells-srd\.Item\.([^\]]+))\](?:\{([^}]+)\})?/gi
+  )) {
+    const uuid = String(match[1] ?? "").trim();
+    const name = normalizeCurriculumSpellName(match[3] ?? match[2] ?? "");
+    if (uuid) {
+      uuids.add(uuid);
+    }
+    if (name && !/^[A-Za-z0-9]{16}$/.test(name)) {
+      names.add(name);
     }
   }
 

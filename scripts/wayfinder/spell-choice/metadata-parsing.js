@@ -34,6 +34,26 @@ export function parseDeitySpellAccess(document, rank) {
         uuids: Array.from(uuids),
     };
 }
+export function parseWitchPatronLessonSpellAccess(document) {
+    const description = String(document?.system?.description?.value ?? "");
+    const lessonText = /familiar learns([\s\S]*?)<\/p>/i.exec(description)?.[1] ?? "";
+    const names = new Set();
+    const uuids = new Set();
+    for (const match of lessonText.matchAll(/@UUID\[(Compendium\.pf2e\.spells-srd\.Item\.([^\]]+))\](?:\{([^}]+)\})?/gi)) {
+        const uuid = String(match[1] ?? "").trim();
+        const name = normalizeCurriculumSpellName(match[3] ?? match[2] ?? "");
+        if (uuid) {
+            uuids.add(uuid);
+        }
+        if (name && !/^[A-Za-z0-9]{16}$/.test(name)) {
+            names.add(name);
+        }
+    }
+    return {
+        names: Array.from(names),
+        uuids: Array.from(uuids),
+    };
+}
 function collectCurriculumSpellNames(content) {
     const names = new Set();
     for (const match of content.matchAll(/@UUID\[Compendium\.pf2e\.spells-srd\.Item\.([^\]]+)\](?:\{([^}]+)\})?/gi)) {

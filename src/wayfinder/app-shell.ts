@@ -617,6 +617,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       invalidateGrantSelectionsByDependency: invalidation.invalidateGrantSelectionsByDependency,
       invalidateFlagChoicesBySource: invalidation.invalidateFlagChoicesBySource,
       invalidateFlagChoicesByDependency: invalidation.invalidateFlagChoicesByDependency,
+      invalidateCampaignFeatSelectionsByFeatType: invalidation.invalidateCampaignFeatSelectionsByFeatType,
       invalidateClassChoicesByDependency: invalidation.invalidateClassChoicesByDependency,
       invalidateBranchSelectionsByDependency: invalidation.invalidateBranchSelectionsByDependency,
       invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,

@@ -1,6 +1,7 @@
 import { abilityBoostMilestones, isGradualAbilityBoostsEnabled } from "../../ability-boost-progression.js";
 import type { BuildStateActorItem } from "../../build-state/document-types.js";
 import { listActorItems } from "../../build-state.js";
+import { campaignFeatStepId, readCampaignFeatSections } from "../../campaign-feat-sections.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import type { ExistingCharacterHistory, ExistingCharacterHistoryEntry, ModuleState } from "../../types.js";
 import { buildExistingCharacterSpellAuditEntries } from "./existing-character-spell-audit-service.js";
@@ -91,6 +92,10 @@ export async function buildExistingCharacterHistory(
         historyFeatLevels(actor, "archetype", FREE_ARCHETYPE_FEAT_LEVELS, actorLevel)
       )
     );
+  }
+
+  for (const section of readCampaignFeatSections(actor)) {
+    entries.push(...buildCampaignFeatLaneEntries(actor, items, section, actorLevel));
   }
 
   const classLevels = featGroupLevels(actor, "class").filter((level) => level <= actorLevel);
@@ -240,6 +245,35 @@ function buildFeatLaneEntries(
       ? mappedEntry(slotId, level, "feat", `${label}`, itemName(item), sourceIdOf(item))
       : reviewEntry(slotId, level, "feat", label, "No feat is assigned to this PF2E slot");
   });
+}
+
+function buildCampaignFeatLaneEntries(
+  actor: unknown,
+  items: ActorItemLike[],
+  section: ReturnType<typeof readCampaignFeatSections>[number],
+  actorLevel: number
+): ExistingCharacterHistoryEntry[] {
+  return section.slots
+    .filter((slot) => slot.level <= actorLevel)
+    .map((slot) => {
+      const item = featItemForNativeSlot(actor, items, section.id, slot.id);
+      const slotId = campaignFeatStepId(section, slot);
+      return item
+        ? mappedEntry(slotId, slot.level, "feat", section.label, itemName(item), sourceIdOf(item))
+        : reviewEntry(slotId, slot.level, "feat", section.label, "No feat is assigned to this PF2E slot");
+    });
+}
+
+function featItemForNativeSlot(
+  actor: unknown,
+  items: ActorItemLike[],
+  groupId: string,
+  nativeSlotId: string
+): ActorItemLike | null {
+  const group = getFeatGroup(actor, groupId);
+  const nativeSlot = group?.slots?.[nativeSlotId];
+  const slotFeat = resolveActorItem(nativeSlot?.feat, items);
+  return slotFeat ?? items.find((item) => item.type === "feat" && readLocation(item) === nativeSlotId) ?? null;
 }
 
 function featItemForSlot(actor: unknown, items: ActorItemLike[], groupId: string, level: number): ActorItemLike | null {

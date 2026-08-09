@@ -128,6 +128,7 @@ describe("wayfinder selection command service", () => {
       invalidateGrantSelectionsByDependency: async () => [],
       invalidateFlagChoicesBySource: async () => [],
       invalidateFlagChoicesByDependency: async () => [],
+      invalidateCampaignFeatSelectionsByFeatType: async () => [],
       invalidateClassChoicesByDependency: async () => [],
       invalidateBranchSelectionsByDependency: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
@@ -198,6 +199,7 @@ describe("wayfinder selection command service", () => {
       invalidateGrantSelectionsByDependency: async () => [],
       invalidateFlagChoicesBySource: async () => [],
       invalidateFlagChoicesByDependency: async () => [],
+      invalidateCampaignFeatSelectionsByFeatType: async () => [],
       invalidateClassChoicesByDependency: async () => [],
       invalidateBranchSelectionsByDependency: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
@@ -263,6 +265,7 @@ describe("wayfinder selection command service", () => {
       invalidateGrantSelectionsByDependency: async () => [],
       invalidateFlagChoicesBySource: async () => [],
       invalidateFlagChoicesByDependency: async () => [],
+      invalidateCampaignFeatSelectionsByFeatType: async () => [],
       invalidateClassChoicesByDependency: async () => [],
       invalidateBranchSelectionsByDependency: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
@@ -304,6 +307,7 @@ describe("wayfinder selection command service", () => {
       invalidateGrantSelectionsByDependency: async () => [],
       invalidateFlagChoicesBySource: async () => [],
       invalidateFlagChoicesByDependency: async () => [],
+      invalidateCampaignFeatSelectionsByFeatType: async () => [],
       invalidateClassChoicesByDependency: async () => ["class-choice-champion-sanctification-level-1"],
       invalidateBranchSelectionsByDependency: async () => ["class-branch-cause-level-1"],
       invalidateSpellChoicesByDependency: async () => [],
@@ -350,6 +354,7 @@ describe("wayfinder selection command service", () => {
       invalidateGrantSelectionsByDependency: async () => [],
       invalidateFlagChoicesBySource: async () => [],
       invalidateFlagChoicesByDependency: async () => [],
+      invalidateCampaignFeatSelectionsByFeatType: async () => [],
       invalidateClassChoicesByDependency: async () => [],
       invalidateBranchSelectionsByDependency: async () => [],
       invalidateSpellChoicesByDependency: async () => [],
@@ -362,7 +367,7 @@ describe("wayfinder selection command service", () => {
       kind: "changed",
       shouldAdvance: true,
       statusNote:
-        "Heritage changed. Wayfinder marked heritage-driven choices and ancestry-feat draft picks for review.",
+        "Heritage changed. Wayfinder marked heritage-driven choices plus native and campaign ancestry-feat draft picks for review.",
     });
     expect(draft.selections["heritage-level-1"]?.documentId).toBe("arctic-elf");
   });

@@ -1,4 +1,5 @@
 import { type AbilityBoostMilestone, abilityBoostMilestones } from "./ability-boost-progression.js";
+import { campaignFeatStepId } from "./campaign-feat-sections.js";
 import type { ActorSnapshot, PendingStep, PickItemSlotKind, ProgressionPlan, StepFilters } from "./types.js";
 import {
   createBoostStep,
@@ -101,6 +102,42 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
       }
     )
   );
+
+  for (const section of snapshot.campaignFeatSections) {
+    for (const slot of section.slots) {
+      if (slot.level > targetLevel || slot.fulfilled) {
+        continue;
+      }
+
+      const slotId = campaignFeatStepId(section, slot);
+      if (snapshot.fulfilledStepIds.includes(slotId)) {
+        continue;
+      }
+
+      steps.push(
+        createPickItemStep(
+          "campaign-feat",
+          slot.level,
+          `Level ${slot.level} ${section.label}`,
+          `Fill PF2E's ${section.label} campaign feat slot.`,
+          {
+            itemType: "feat",
+            ...(section.supported.length > 0 ? { featTypes: section.supported } : {}),
+            maxLevel: slot.level,
+          },
+          {
+            slotId,
+            campaignFeat: {
+              sectionId: section.id,
+              sectionLabel: section.label,
+              groupSlotId: slot.id,
+              supported: section.supported,
+            },
+          }
+        )
+      );
+    }
+  }
 
   if (snapshot.freeArchetypeEnabled) {
     steps.push(

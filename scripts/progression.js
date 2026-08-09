@@ -1,4 +1,5 @@
 import { abilityBoostMilestones } from "./ability-boost-progression.js";
+import { campaignFeatStepId } from "./campaign-feat-sections.js";
 import { createBoostStep, createPickItemStep, createSkillIncreaseStep, sortWeightForSlotKind, } from "./wayfinder/domain/step-types.js";
 const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
 const FREE_ARCHETYPE_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
@@ -42,6 +43,30 @@ export function buildSteps(snapshot, currentLevel, targetLevel) {
         itemType: "feat",
         featTypes: ["ancestry"],
     }));
+    for (const section of snapshot.campaignFeatSections) {
+        for (const slot of section.slots) {
+            if (slot.level > targetLevel || slot.fulfilled) {
+                continue;
+            }
+            const slotId = campaignFeatStepId(section, slot);
+            if (snapshot.fulfilledStepIds.includes(slotId)) {
+                continue;
+            }
+            steps.push(createPickItemStep("campaign-feat", slot.level, `Level ${slot.level} ${section.label}`, `Fill PF2E's ${section.label} campaign feat slot.`, {
+                itemType: "feat",
+                ...(section.supported.length > 0 ? { featTypes: section.supported } : {}),
+                maxLevel: slot.level,
+            }, {
+                slotId,
+                campaignFeat: {
+                    sectionId: section.id,
+                    sectionLabel: section.label,
+                    groupSlotId: slot.id,
+                    supported: section.supported,
+                },
+            }));
+        }
+    }
     if (snapshot.freeArchetypeEnabled) {
         steps.push(...buildFeatSteps("archetype-feat", "Level {level} Free Archetype feat", "Fill PF2E's separate Free Archetype slot. Wayfinder mirrors PF2E's available archetype pool but cannot exhaustively validate access, prerequisites, archetype-family restrictions, or dedication lockouts; confirm eligibility with your GM.", FREE_ARCHETYPE_FEAT_LEVELS, snapshot.featCounts.archetype, snapshot.fulfilledStepIds, targetLevel, {
             itemType: "feat",

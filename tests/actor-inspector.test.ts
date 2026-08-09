@@ -118,6 +118,115 @@ describe("actor-inspector", () => {
     expect(inspectActor({ items: [] }).gradualBoostsEnabled).toBe(true);
     expect(get).toHaveBeenCalledWith("pf2e", "gradualBoostsVariant");
   });
+
+  it("detects configured campaign feat sections only when PF2E exposes the actor group", () => {
+    const get = vi.fn((_scope: string, key: string) =>
+      key === "campaignFeatSections"
+        ? [
+            {
+              id: "xdy_ancestryparagon",
+              label: "Ancestry Paragon",
+              supported: ["ancestry"],
+              slots: [1, 3, 7, 11, 15, 19],
+            },
+          ]
+        : false
+    );
+    vi.stubGlobal("game", { settings: { get } });
+
+    const snapshot = inspectActor({
+      items: [],
+      feats: new Map([
+        [
+          "xdy_ancestryparagon",
+          {
+            id: "xdy_ancestryparagon",
+            label: "Ancestry Paragon",
+            supported: ["ancestry"],
+            slots: {
+              "xdy_ancestryparagon-1": {
+                id: "xdy_ancestryparagon-1",
+                level: 1,
+                feat: {},
+              },
+            },
+          },
+        ],
+      ]),
+    });
+
+    expect(snapshot.campaignFeatSections).toEqual([
+      {
+        id: "xdy_ancestryparagon",
+        label: "Ancestry Paragon",
+        supported: ["ancestry"],
+        slots: [
+          { id: "xdy_ancestryparagon-1", level: 1, fulfilled: true },
+          { id: "xdy_ancestryparagon-3", level: 3, fulfilled: false },
+          { id: "xdy_ancestryparagon-7", level: 7, fulfilled: false },
+          { id: "xdy_ancestryparagon-11", level: 11, fulfilled: false },
+          { id: "xdy_ancestryparagon-15", level: 15, fulfilled: false },
+          { id: "xdy_ancestryparagon-19", level: 19, fulfilled: false },
+        ],
+      },
+    ]);
+    expect(snapshot.fulfilledStepIds).toContain("campaign-feat-xdy_ancestryparagon-level-1");
+
+    const withoutGroup = inspectActor({ items: [], feats: new Map() });
+    expect(withoutGroup.campaignFeatSections).toEqual([]);
+  });
+
+  it("reads campaign settings through the native settings receiver", () => {
+    const settings = {
+      isNativeSettings: true,
+      get(this: { isNativeSettings?: boolean }, _scope: string, key: string) {
+        if (!this.isNativeSettings) {
+          throw new Error("Missing ClientSettings receiver");
+        }
+        return key === "campaignFeatSections"
+          ? [{ id: "custom", label: "Custom", supported: ["ancestry"], slots: [1] }]
+          : false;
+      },
+    };
+    vi.stubGlobal("game", { settings });
+
+    expect(
+      inspectActor({
+        items: [],
+        feats: { custom: { id: "custom", label: "Custom", supported: ["ancestry"], slots: {} } },
+      }).campaignFeatSections
+    ).toHaveLength(1);
+  });
+
+  it("fails malformed, absent, or throwing campaign section settings to no sections", () => {
+    const actor = {
+      items: [],
+      feats: new Map([["custom", { id: "custom", label: "Custom", supported: ["ancestry"], slots: {} }]]),
+    };
+
+    vi.stubGlobal("game", { settings: { get: () => ({ id: "custom" }) } });
+    expect(inspectActor(actor).campaignFeatSections).toEqual([]);
+
+    vi.stubGlobal("game", { settings: { get: () => [{ id: "custom", label: "Custom", slots: [null, "bad"] }] } });
+    expect(inspectActor(actor).campaignFeatSections).toEqual([]);
+
+    vi.stubGlobal("game", {
+      settings: { get: () => [{ id: "custom", label: "Custom", supported: "ancestry", slots: [1] }] },
+    });
+    expect(inspectActor(actor).campaignFeatSections).toEqual([]);
+
+    vi.stubGlobal("game", {
+      settings: {
+        get: (_scope: string, key: string) => {
+          if (key === "campaignFeatSections") {
+            throw new Error("Setting is not registered");
+          }
+          return false;
+        },
+      },
+    });
+    expect(inspectActor(actor).campaignFeatSections).toEqual([]);
+  });
 });
 
 function featItem(category?: string, featType?: string): any {

@@ -16,6 +16,7 @@ export type SlotKind =
   | "ancestry-feat"
   | "class-feat"
   | "archetype-feat"
+  | "campaign-feat"
   | "skill-feat"
   | "general-feat"
   | "ability-boosts"
@@ -69,6 +70,13 @@ export interface StepFilters {
   featTypes?: string[];
   maxLevel?: number;
   predicate?: ChoicePredicate[];
+}
+
+export interface CampaignFeatMeta {
+  sectionId: string;
+  sectionLabel: string;
+  groupSlotId: string;
+  supported: string[];
 }
 
 export interface ClassBranchMeta {
@@ -285,6 +293,7 @@ interface BasePendingStep<K extends StepKind, S extends SlotKind> {
   description: string;
   required: boolean;
   slotId: string;
+  campaignFeat?: CampaignFeatMeta;
 }
 
 interface NoStepExtras {
@@ -307,6 +316,7 @@ export interface PickItemStep extends BasePendingStep<"pick-item", PickItemSlotK
   grantSelection?: GrantSelectionMeta;
   staticGrantReplacement?: StaticGrantReplacementMeta;
   flagChoice?: FlagChoiceMeta;
+  campaignFeat?: CampaignFeatMeta;
   classChoice?: never;
   spellChoice?: never;
   training?: never;
@@ -423,6 +433,7 @@ interface PickItemStepOptions extends StepOptions {
   grantSelection?: GrantSelectionMeta;
   staticGrantReplacement?: StaticGrantReplacementMeta;
   flagChoice?: FlagChoiceMeta;
+  campaignFeat?: CampaignFeatMeta;
 }
 
 interface ClassBranchStepOptions extends StepOptions {
@@ -490,6 +501,7 @@ export function createPickItemStep(
     ...(options.grantSelection ? { grantSelection: options.grantSelection } : {}),
     ...(options.staticGrantReplacement ? { staticGrantReplacement: options.staticGrantReplacement } : {}),
     ...(options.flagChoice ? { flagChoice: options.flagChoice } : {}),
+    ...(options.campaignFeat ? { campaignFeat: options.campaignFeat } : {}),
   };
 }
 
@@ -740,9 +752,10 @@ const SLOT_KIND_SORT_WEIGHTS: Record<SlotKind, number> = {
   "spell-choice": 15,
   "class-feat": 16,
   "archetype-feat": 17,
-  "skill-feat": 18,
-  "general-feat": 19,
-  "skill-increase": 20,
+  "campaign-feat": 18,
+  "skill-feat": 19,
+  "general-feat": 20,
+  "skill-increase": 21,
 };
 
 const STEP_MODE_LABELS: Record<StepKind, string> = {

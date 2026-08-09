@@ -81,7 +81,11 @@ export function hasUnsupportedEmbeddedChoiceSet(
     return false;
   }
 
-  if (!["ancestry-feat", "class-feat", "archetype-feat", "general-feat", "skill-feat"].includes(step.slotKind)) {
+  if (
+    !["ancestry-feat", "class-feat", "archetype-feat", "campaign-feat", "general-feat", "skill-feat"].includes(
+      step.slotKind
+    )
+  ) {
     return false;
   }
 
@@ -107,7 +111,9 @@ export function hidesUnsupportedEmbeddedChoiceSets(step: PendingStep): boolean {
     return false;
   }
 
-  return ["ancestry-feat", "class-feat", "archetype-feat", "general-feat", "skill-feat"].includes(step.slotKind);
+  return ["ancestry-feat", "class-feat", "archetype-feat", "campaign-feat", "general-feat", "skill-feat"].includes(
+    step.slotKind
+  );
 }
 
 function entryHasChoiceSetRule(entry: PackIndexEntry): boolean {

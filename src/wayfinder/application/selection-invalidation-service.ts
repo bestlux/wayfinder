@@ -46,10 +46,12 @@ export function createSelectionInvalidationService(
         cleared += invalidateFlagChoicesBySourceSync("heritage").length;
         cleared += invalidateFlagChoicesByDependencySync("ancestry").length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.languageChoice).length;
+        cleared += invalidateCampaignFeatSelectionsByFeatTypeSync("ancestry").length;
       } else if (slotId === SLOT_IDS.heritage) {
         cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
         cleared += invalidateGrantSelectionsBySourceSync("heritage").length;
         cleared += invalidateFlagChoicesBySourceSync("heritage").length;
+        cleared += invalidateCampaignFeatSelectionsByFeatTypeSync("ancestry").length;
       } else if (slotId === SLOT_IDS.background) {
         cleared += invalidateSingletonChoicesBySourceSync("background").length;
         cleared += invalidateGrantSelectionsBySourceSync("background").length;
@@ -74,6 +76,11 @@ export function createSelectionInvalidationService(
       } else if (getSlotIdKind(slotId) === "class-archetype") {
         cleared += invalidateByPrefix(SLOT_PREFIXES.archetypeFeat).length;
       } else if (getSlotIdKind(slotId) === "ancestry-feat") {
+        cleared += invalidateGrantSelectionsBySourceSync("feat").length;
+        cleared += invalidateGrantSelectionsBySourceSync("classfeature").length;
+        cleared += invalidateFlagChoicesBySourceSync("feat").length;
+        cleared += invalidateFlagChoicesBySourceSync("classfeature").length;
+      } else if (getSlotIdKind(slotId) === "campaign-feat") {
         cleared += invalidateGrantSelectionsBySourceSync("feat").length;
         cleared += invalidateGrantSelectionsBySourceSync("classfeature").length;
         cleared += invalidateFlagChoicesBySourceSync("feat").length;
@@ -161,6 +168,10 @@ export function createSelectionInvalidationService(
 
     async invalidateFlagChoicesByDependency(dependency: "ancestry" | "class"): Promise<string[]> {
       return invalidateFlagChoicesByDependencySync(dependency);
+    },
+
+    async invalidateCampaignFeatSelectionsByFeatType(featType: string): Promise<string[]> {
+      return invalidateCampaignFeatSelectionsByFeatTypeSync(featType);
     },
 
     async invalidateGrantSelectionsBySourceUuid(sourceUuid: string): Promise<string[]> {
@@ -266,6 +277,18 @@ export function createSelectionInvalidationService(
         ...[...state.scrollById.keys()].map((key) => key.split(":")[0] ?? key),
       ])
     );
+  }
+
+  function invalidateCampaignFeatSelectionsByFeatTypeSync(featType: string): string[] {
+    const invalidated: string[] = [];
+    for (const [slotId, selection] of Object.entries(state.draft.selections)) {
+      if (!slotId.startsWith(SLOT_PREFIXES.campaignFeat) || selection.featType !== featType) {
+        continue;
+      }
+
+      invalidated.push(...invalidate(slotId));
+    }
+    return invalidated;
   }
 }
 

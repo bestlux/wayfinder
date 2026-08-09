@@ -64,6 +64,14 @@ describe("wayfinder selection invalidation service", () => {
     const draft = createEmptyDraft(1);
     draft.selections[SLOT_IDS.ancestry] = selection(SLOT_IDS.ancestry, "ancestry", "human");
     draft.languageChoices[SLOT_IDS.languageChoice] = ["draconic"];
+    draft.selections["campaign-feat-ancestry-paragon-level-1"] = {
+      ...selection("campaign-feat-ancestry-paragon-level-1", "feat", "cooperative-nature"),
+      featType: "ancestry",
+    };
+    draft.selections["campaign-feat-dual-class-level-1"] = {
+      ...selection("campaign-feat-dual-class-level-1", "feat", "reactive-shield"),
+      featType: "class",
+    };
 
     const service = createSelectionInvalidationService(
       {
@@ -81,9 +89,11 @@ describe("wayfinder selection invalidation service", () => {
       }
     );
 
-    expect(service.clearSelection(SLOT_IDS.ancestry)).toBe(2);
+    expect(service.clearSelection(SLOT_IDS.ancestry)).toBe(3);
     expect(draft.selections[SLOT_IDS.ancestry]).toBeUndefined();
     expect(draft.languageChoices[SLOT_IDS.languageChoice]).toBeUndefined();
+    expect(draft.selections["campaign-feat-ancestry-paragon-level-1"]).toBeUndefined();
+    expect(draft.selections["campaign-feat-dual-class-level-1"]).toBeDefined();
   });
 
   it("clears filter-only dependent class steps when the class selection is cleared", () => {

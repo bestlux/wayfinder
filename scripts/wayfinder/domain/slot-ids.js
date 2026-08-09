@@ -11,6 +11,7 @@ export const SLOT_IDS = {
 export const SLOT_PREFIXES = {
     ancestryFeat: "ancestry-feat-level-",
     archetypeFeat: "archetype-feat-level-",
+    campaignFeat: "campaign-feat-",
     classBranch: "class-branch-",
     classArchetype: "class-archetype-",
     classChoice: "class-choice-",
@@ -28,6 +29,7 @@ const SLOT_KIND_PREFIXES = [
     { kind: "ability-boosts", prefix: "ability-boosts-level-" },
     { kind: "ancestry-feat", prefix: SLOT_PREFIXES.ancestryFeat },
     { kind: "archetype-feat", prefix: SLOT_PREFIXES.archetypeFeat },
+    { kind: "campaign-feat", prefix: SLOT_PREFIXES.campaignFeat },
     { kind: "class-branch", prefix: SLOT_PREFIXES.classBranch },
     { kind: "class-archetype", prefix: SLOT_PREFIXES.classArchetype },
     { kind: "class-choice", prefix: SLOT_PREFIXES.classChoice },

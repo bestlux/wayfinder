@@ -23,11 +23,13 @@ export function createSelectionInvalidationService(state, deps) {
                 cleared += invalidateFlagChoicesBySourceSync("heritage").length;
                 cleared += invalidateFlagChoicesByDependencySync("ancestry").length;
                 cleared += invalidateByPrefix(SLOT_PREFIXES.languageChoice).length;
+                cleared += invalidateCampaignFeatSelectionsByFeatTypeSync("ancestry").length;
             }
             else if (slotId === SLOT_IDS.heritage) {
                 cleared += invalidateSingletonChoicesBySourceSync("heritage").length;
                 cleared += invalidateGrantSelectionsBySourceSync("heritage").length;
                 cleared += invalidateFlagChoicesBySourceSync("heritage").length;
+                cleared += invalidateCampaignFeatSelectionsByFeatTypeSync("ancestry").length;
             }
             else if (slotId === SLOT_IDS.background) {
                 cleared += invalidateSingletonChoicesBySourceSync("background").length;
@@ -57,6 +59,12 @@ export function createSelectionInvalidationService(state, deps) {
                 cleared += invalidateByPrefix(SLOT_PREFIXES.archetypeFeat).length;
             }
             else if (getSlotIdKind(slotId) === "ancestry-feat") {
+                cleared += invalidateGrantSelectionsBySourceSync("feat").length;
+                cleared += invalidateGrantSelectionsBySourceSync("classfeature").length;
+                cleared += invalidateFlagChoicesBySourceSync("feat").length;
+                cleared += invalidateFlagChoicesBySourceSync("classfeature").length;
+            }
+            else if (getSlotIdKind(slotId) === "campaign-feat") {
                 cleared += invalidateGrantSelectionsBySourceSync("feat").length;
                 cleared += invalidateGrantSelectionsBySourceSync("classfeature").length;
                 cleared += invalidateFlagChoicesBySourceSync("feat").length;
@@ -121,6 +129,9 @@ export function createSelectionInvalidationService(state, deps) {
         },
         async invalidateFlagChoicesByDependency(dependency) {
             return invalidateFlagChoicesByDependencySync(dependency);
+        },
+        async invalidateCampaignFeatSelectionsByFeatType(featType) {
+            return invalidateCampaignFeatSelectionsByFeatTypeSync(featType);
         },
         async invalidateGrantSelectionsBySourceUuid(sourceUuid) {
             const normalizedSourceUuid = normalizeUuid(sourceUuid);
@@ -197,6 +208,16 @@ export function createSelectionInvalidationService(state, deps) {
             ...state.pickerFiltersByStepId.keys(),
             ...[...state.scrollById.keys()].map((key) => key.split(":")[0] ?? key),
         ]));
+    }
+    function invalidateCampaignFeatSelectionsByFeatTypeSync(featType) {
+        const invalidated = [];
+        for (const [slotId, selection] of Object.entries(state.draft.selections)) {
+            if (!slotId.startsWith(SLOT_PREFIXES.campaignFeat) || selection.featType !== featType) {
+                continue;
+            }
+            invalidated.push(...invalidate(slotId));
+        }
+        return invalidated;
     }
 }
 function invalidateMatchingPlanSteps(plan, invalidateSelection, matches) {

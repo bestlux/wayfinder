@@ -41,6 +41,7 @@ describe("wayfinder plan builder service", () => {
       level: 1,
       isBlank: false,
       freeArchetypeEnabled: true,
+      campaignFeatSections: [],
       gradualBoostsEnabled: false,
       singletonSlots: {
         ancestry: true,
@@ -195,6 +196,7 @@ describe("wayfinder plan builder service", () => {
       level: 2,
       isBlank: false,
       freeArchetypeEnabled: false,
+      campaignFeatSections: [],
       gradualBoostsEnabled: false,
       singletonSlots: {
         ancestry: false,
@@ -568,6 +570,7 @@ describe("wayfinder plan builder service", () => {
           level: 1,
           isBlank: false,
           freeArchetypeEnabled: false,
+          campaignFeatSections: [],
           gradualBoostsEnabled: false,
           singletonSlots: {
             ancestry: false,
@@ -654,6 +657,7 @@ describe("wayfinder plan builder service", () => {
       level: 1,
       isBlank: false,
       freeArchetypeEnabled: false,
+      campaignFeatSections: [],
       gradualBoostsEnabled: false,
       singletonSlots: {
         ancestry: false,
@@ -785,6 +789,7 @@ describe("wayfinder plan builder service", () => {
         level: 5,
         isBlank: false,
         freeArchetypeEnabled: false,
+        campaignFeatSections: [],
         gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
@@ -919,6 +924,7 @@ describe("wayfinder plan builder service", () => {
         level: 5,
         isBlank: false,
         freeArchetypeEnabled: false,
+        campaignFeatSections: [],
         gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
@@ -1040,6 +1046,7 @@ describe("wayfinder plan builder service", () => {
       level: 1,
       isBlank: false,
       freeArchetypeEnabled: false,
+      campaignFeatSections: [],
       gradualBoostsEnabled: false,
       singletonSlots: {
         ancestry: true,

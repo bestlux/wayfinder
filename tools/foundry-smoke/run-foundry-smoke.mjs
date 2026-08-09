@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { gradualBoostsSmokeCases, smokeCases } from "./class-cases.mjs";
+import { ancestryParagonSection, campaignFeatSmokeCases } from "./campaign-feat-cases.mjs";
 import { freeArchetypeSmokeCases } from "./free-archetype-cases.mjs";
 import { validateSmokeSafety } from "./safety.mjs";
 
@@ -14,7 +15,12 @@ const fixturePrefix = "WF Smoke Harness";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const browserSuitePath = path.join(repoRoot, "tools", "foundry-smoke", "browser-suite.js");
 const defaultArtifactRoot = ".wayfinder-smoke";
-const allSmokeCases = [...smokeCases, ...freeArchetypeSmokeCases, ...gradualBoostsSmokeCases];
+const allSmokeCases = [
+  ...smokeCases,
+  ...freeArchetypeSmokeCases,
+  ...campaignFeatSmokeCases,
+  ...gradualBoostsSmokeCases,
+];
 const defaultChromePaths = [
   "C:/Program Files/Google/Chrome/Application/chrome.exe",
   "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
@@ -35,6 +41,8 @@ Options:
   --keep-actors     Do not delete disposable actors after the run.
   --free-archetype <unchanged|on|off>
                      Temporarily set PF2E's Free Archetype variant for this invocation and restore it afterward.
+  --campaign-feat-sections <unchanged|ancestry-paragon|off>
+                     Temporarily set PF2E's campaign feat sections for this invocation and restore them afterward.
   --gradual-boosts <unchanged|on|off>
                      Temporarily set PF2E's Gradual Ability Boosts variant and restore it afterward.
   --help            Show this help text.
@@ -49,6 +57,7 @@ Environment:
   FOUNDRY_SMOKE_HEADLESS   true/false. Defaults to true.
   FOUNDRY_SMOKE_KEEP_ACTORS true/false. Defaults to false.
   FOUNDRY_SMOKE_FREE_ARCHETYPE unchanged/on/off. Defaults to unchanged.
+  FOUNDRY_SMOKE_CAMPAIGN_FEAT_SECTIONS unchanged/ancestry-paragon/off. Defaults to unchanged.
   FOUNDRY_SMOKE_GRADUAL_BOOSTS unchanged/on/off. Defaults to unchanged.
   FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE true/false. Required for actor cleanup/deletion.
   FOUNDRY_SMOKE_WORLD_ID   Expected Foundry world id. Required for actor cleanup/deletion.
@@ -70,6 +79,9 @@ function parseArgs(argv) {
     freeArchetypeMode: normalizeVariantMode(
       process.env.FOUNDRY_SMOKE_FREE_ARCHETYPE ?? "unchanged",
       "Free Archetype",
+    ),
+    campaignFeatSectionsMode: normalizeCampaignFeatSectionsMode(
+      process.env.FOUNDRY_SMOKE_CAMPAIGN_FEAT_SECTIONS ?? "unchanged",
     ),
     gradualBoostsMode: normalizeVariantMode(
       process.env.FOUNDRY_SMOKE_GRADUAL_BOOSTS ?? "unchanged",
@@ -105,6 +117,7 @@ function parseArgs(argv) {
       arg === "--incremental-case" ||
       arg === "--out" ||
       arg === "--free-archetype" ||
+      arg === "--campaign-feat-sections" ||
       arg === "--gradual-boosts"
     ) {
       const value = argv[index + 1];
@@ -118,6 +131,8 @@ function parseArgs(argv) {
         options.incrementalCaseIds.push(value);
       } else if (arg === "--free-archetype") {
         options.freeArchetypeMode = normalizeVariantMode(value, "Free Archetype");
+      } else if (arg === "--campaign-feat-sections") {
+        options.campaignFeatSectionsMode = normalizeCampaignFeatSectionsMode(value);
       } else if (arg === "--gradual-boosts") {
         options.gradualBoostsMode = normalizeVariantMode(value, "Gradual Ability Boosts");
       } else {
@@ -151,6 +166,17 @@ function normalizeVariantMode(value, label) {
   }
 
   throw new Error(`Invalid ${label} mode: ${value}. Expected unchanged, on, or off.`);
+}
+
+function normalizeCampaignFeatSectionsMode(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (["unchanged", "ancestry-paragon", "off"].includes(normalized)) {
+    return normalized;
+  }
+
+  throw new Error(
+    `Invalid Campaign Feat Sections mode: ${value}. Expected unchanged, ancestry-paragon, or off.`,
+  );
 }
 
 function envFlag(name, fallback) {
@@ -219,6 +245,7 @@ async function main() {
   const headless = options.headed ? false : envFlag("FOUNDRY_SMOKE_HEADLESS", true);
   const safety = validateSmokeSafety({
     allowDestructive: options.allowDestructive,
+    campaignFeatSectionsMode: options.campaignFeatSectionsMode,
     expectedWorldId: options.expectedWorldId,
     freeArchetypeMode: options.freeArchetypeMode,
     gradualBoostsMode: options.gradualBoostsMode,
@@ -267,11 +294,17 @@ async function main() {
         label: "Gradual Ability Boosts",
       }),
     };
+    const campaignFeatSections = await readCampaignFeatSectionsState(page, {
+      expectedWorldId: safety.expectedWorldId,
+      mode: options.campaignFeatSectionsMode,
+    });
     let result;
+    let restorationError = null;
     try {
       for (const state of Object.values(variantStates)) {
         state.effective = await configureVariant(page, state);
       }
+      campaignFeatSections.effective = await configureCampaignFeatSections(page, campaignFeatSections);
       result = await page.evaluate(
         (payload) => globalThis.__runWayfinderSmokeSuite(payload),
         {
@@ -285,9 +318,19 @@ async function main() {
         },
       );
     } finally {
-      await restoreVariants(page, variantStates);
+      try {
+        campaignFeatSections.restored = await restoreCampaignFeatSections(page, campaignFeatSections);
+      } catch (error) {
+        restorationError = error;
+      }
+      try {
+        await restoreVariants(page, variantStates);
+      } catch (error) {
+        restorationError ??= error;
+      }
     }
-    Object.assign(result, variantStates);
+    if (restorationError) throw restorationError;
+    Object.assign(result, variantStates, { campaignFeatSections });
 
     await writeArtifacts(outDir, result);
     printSummary(result, outDir);
@@ -340,6 +383,88 @@ async function readVariantState(page, { expectedWorldId, mode, settingKey, prepa
     },
     { expectedWorldId, label, mode, preparedKey, settingKey },
   );
+}
+
+async function readCampaignFeatSectionsState(page, { expectedWorldId, mode }) {
+  return page.evaluate(
+    ({ ancestryParagonSection, expectedWorldId, mode }) => {
+      const foundryGame = globalThis.game;
+      const stored = foundryGame.settings.get("pf2e", "campaignFeatSections");
+      const original = Array.isArray(stored) ? JSON.parse(JSON.stringify(stored)) : [];
+      if (mode === "unchanged") {
+        return {
+          changed: false,
+          effective: original,
+          mode,
+          original,
+          requested: null,
+          restored: null,
+        };
+      }
+
+      if (!foundryGame.user?.isGM) {
+        throw new Error("Campaign Feat Sections smoke runs require a GM user.");
+      }
+      if (String(foundryGame.world?.id ?? "").trim() !== String(expectedWorldId ?? "").trim()) {
+        throw new Error(
+          `Campaign Feat Sections smoke expected world ${expectedWorldId}, but connected to ${foundryGame.world?.id}.`,
+        );
+      }
+
+      const requested = mode === "ancestry-paragon" ? [ancestryParagonSection] : [];
+      return {
+        changed: JSON.stringify(original) !== JSON.stringify(requested),
+        effective: null,
+        mode,
+        original,
+        requested,
+        restored: null,
+      };
+    },
+    { ancestryParagonSection, expectedWorldId, mode },
+  );
+}
+
+async function configureCampaignFeatSections(page, state) {
+  if (state.mode === "unchanged") {
+    return state.original;
+  }
+
+  return page.evaluate(async ({ requested }) => {
+    const foundryGame = globalThis.game;
+    if (JSON.stringify(foundryGame.settings.get("pf2e", "campaignFeatSections")) !== JSON.stringify(requested)) {
+      await foundryGame.settings.set("pf2e", "campaignFeatSections", requested);
+    }
+    const stored = foundryGame.settings.get("pf2e", "campaignFeatSections");
+    const prepared = foundryGame.pf2e?.settings?.campaign?.feats?.sections;
+    if (JSON.stringify(stored) !== JSON.stringify(requested) || JSON.stringify(prepared) !== JSON.stringify(requested)) {
+      throw new Error(
+        `PF2E Campaign Feat Sections did not reach the requested value; stored=${JSON.stringify(stored)}, prepared=${JSON.stringify(prepared)}.`,
+      );
+    }
+    return JSON.parse(JSON.stringify(stored));
+  }, state);
+}
+
+async function restoreCampaignFeatSections(page, state) {
+  if (state.mode === "unchanged") {
+    return state.original;
+  }
+
+  return page.evaluate(async ({ original }) => {
+    const foundryGame = globalThis.game;
+    if (JSON.stringify(foundryGame.settings.get("pf2e", "campaignFeatSections")) !== JSON.stringify(original)) {
+      await foundryGame.settings.set("pf2e", "campaignFeatSections", original);
+    }
+    const stored = foundryGame.settings.get("pf2e", "campaignFeatSections");
+    const prepared = foundryGame.pf2e?.settings?.campaign?.feats?.sections;
+    if (JSON.stringify(stored) !== JSON.stringify(original) || JSON.stringify(prepared) !== JSON.stringify(original)) {
+      throw new Error(
+        `PF2E Campaign Feat Sections restoration failed; stored=${JSON.stringify(stored)}, prepared=${JSON.stringify(prepared)}.`,
+      );
+    }
+    return JSON.parse(JSON.stringify(stored));
+  }, state);
 }
 
 async function configureVariant(page, state) {
@@ -438,6 +563,7 @@ function buildMarkdownSummary(result) {
 - PF2E: ${result.pf2eVersion}
 - Wayfinder: ${result.moduleId} ${result.moduleVersion ?? "unknown"} (active: ${result.moduleActive})
 - Free Archetype: mode ${result.freeArchetypeVariant?.mode ?? "unchanged"}, effective ${result.freeArchetypeVariant?.effective ?? "unknown"}, restored ${result.freeArchetypeVariant?.restored ?? "unknown"}
+- Campaign Feat Sections: mode ${result.campaignFeatSections?.mode ?? "unchanged"}, effective ${JSON.stringify(result.campaignFeatSections?.effective ?? "unknown")}, restored ${JSON.stringify(result.campaignFeatSections?.restored ?? "unknown")}
 - Gradual Ability Boosts: mode ${result.gradualBoostsVariant?.mode ?? "unchanged"}, effective ${result.gradualBoostsVariant?.effective ?? "unknown"}, restored ${result.gradualBoostsVariant?.restored ?? "unknown"}
 - Summary: ${result.summary.passed} passed, ${result.summary.classified} classified, ${result.summary.failed} failed
 

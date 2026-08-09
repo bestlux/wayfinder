@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEmptyState } from "../src/draft-service";
 import {
   buildExistingCharacterHistory,
@@ -6,6 +6,10 @@ import {
 } from "../src/wayfinder/application/existing-character-history-service";
 
 describe("existing character history service", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("maps source-backed foundations and PF2E native feat slots without inferring ambiguous history", async () => {
     const actor = {
       system: {
@@ -152,6 +156,75 @@ describe("existing character history service", () => {
         status: "mapped",
       }),
     ]);
+  });
+
+  it("maps a fulfilled native campaign feat slot with the section label", async () => {
+    vi.stubGlobal("game", {
+      settings: {
+        get: (_scope: string, key: string) =>
+          key === "campaignFeatSections"
+            ? [
+                {
+                  id: "xdy_ancestryparagon",
+                  label: "Ancestry Paragon",
+                  supported: ["ancestry"],
+                  slots: [{ id: "ancestry-paragon-first-slot", level: 1 }, 3, 7, 11, 15, 19],
+                },
+              ]
+            : false,
+      },
+    });
+    const actor = {
+      system: { details: { level: { value: 3 } } },
+      items: {
+        contents: [
+          actorItem(
+            "campaign-feat-1",
+            "feat",
+            "Cooperative Nature",
+            "Compendium.pf2e.feats-srd.Item.cooperative-nature",
+            "ancestry-paragon-first-slot"
+          ),
+        ],
+      },
+      feats: {
+        xdy_ancestryparagon: {
+          id: "xdy_ancestryparagon",
+          label: "Ancestry Paragon",
+          supported: ["ancestry"],
+          slots: {
+            "ancestry-paragon-first-slot": {
+              id: "ancestry-paragon-first-slot",
+              level: 1,
+              feat: "campaign-feat-1",
+            },
+            "xdy_ancestryparagon-3": {
+              id: "xdy_ancestryparagon-3",
+              level: 3,
+              feat: null,
+            },
+          },
+        },
+      },
+    };
+
+    const history = await buildExistingCharacterHistory(actor, { gradualBoostsEnabled: false });
+
+    expect(history.entries).toContainEqual(
+      expect.objectContaining({
+        slotId: "campaign-feat-xdy_ancestryparagon-level-1",
+        label: "Ancestry Paragon",
+        value: "Cooperative Nature",
+        status: "mapped",
+      })
+    );
+    expect(history.entries).toContainEqual(
+      expect.objectContaining({
+        slotId: "campaign-feat-xdy_ancestryparagon-level-3",
+        label: "Ancestry Paragon",
+        status: "review",
+      })
+    );
   });
 
   it("maps each gradual boost from its native batch position to the actual acquisition level", async () => {

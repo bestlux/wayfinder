@@ -384,6 +384,14 @@ function isRecord(value) {
     return !!value && typeof value === "object";
 }
 export async function buildContextNote(step, context, deps) {
+    if (step.slotKind === "campaign-feat" &&
+        step.campaignFeat?.supported.length === 1 &&
+        step.campaignFeat.supported[0] === "ancestry") {
+        const ancestryName = (await deps.resolveDocument("ancestry"))?.name;
+        return ancestryName
+            ? `Showing ${step.campaignFeat.sectionLabel} feats keyed to ${ancestryName}. Class-dependent feats are filtered against the drafted class.`
+            : null;
+    }
     switch (step.slotKind) {
         case "heritage": {
             const ancestryDocument = deps.resolveDocument("ancestry");

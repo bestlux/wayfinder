@@ -1,4 +1,5 @@
 import { isGradualAbilityBoostsEnabled } from "./ability-boost-progression.js";
+import { campaignFeatStepId, readCampaignFeatSections } from "./campaign-feat-sections.js";
 import { MODULE_ID } from "./constants.js";
 import type { ActorSnapshot } from "./types.js";
 
@@ -6,6 +7,7 @@ export function inspectActor(actor: any): ActorSnapshot {
   const items = normalizeItems(actor);
   const level = clampLevel(Number(actor?.system?.details?.level?.value ?? 1));
   const freeArchetypeEnabled = !!getFeatGroup(actor, "archetype");
+  const campaignFeatSections = readCampaignFeatSections(actor);
   const gradualBoostsEnabled = isGradualAbilityBoostsEnabled();
   const namesByType: Record<string, string[]> = {};
   const sourceIds = new Set<string>();
@@ -68,11 +70,20 @@ export function inspectActor(actor: any): ActorSnapshot {
     fulfilledStepIds.add(slotId);
   }
 
+  for (const section of campaignFeatSections) {
+    for (const slot of section.slots) {
+      if (slot.fulfilled) {
+        fulfilledStepIds.add(campaignFeatStepId(section, slot));
+      }
+    }
+  }
+
   return {
     actorId: String(actor?.id ?? ""),
     level,
     isBlank: items.length === 0 && !hasAnySingleton(singletonSlots),
     freeArchetypeEnabled,
+    campaignFeatSections,
     gradualBoostsEnabled,
     singletonSlots,
     featCounts,

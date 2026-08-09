@@ -1,5 +1,6 @@
 import { abilityBoostMilestones, isGradualAbilityBoostsEnabled } from "../../ability-boost-progression.js";
 import { listActorItems } from "../../build-state.js";
+import { campaignFeatStepId, readCampaignFeatSections } from "../../campaign-feat-sections.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import { buildExistingCharacterSpellAuditEntries } from "./existing-character-spell-audit-service.js";
 const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
@@ -39,6 +40,9 @@ export async function buildExistingCharacterHistory(actor, options = {}) {
     }
     if (getFeatGroup(actor, "archetype")) {
         entries.push(...buildFeatLaneEntries(actor, items, "archetype", "archetype-feat", "Free Archetype feat", historyFeatLevels(actor, "archetype", FREE_ARCHETYPE_FEAT_LEVELS, actorLevel)));
+    }
+    for (const section of readCampaignFeatSections(actor)) {
+        entries.push(...buildCampaignFeatLaneEntries(actor, items, section, actorLevel));
     }
     const classLevels = featGroupLevels(actor, "class").filter((level) => level <= actorLevel);
     entries.push(...buildFeatLaneEntries(actor, items, "class", "class-feat", "Class feat", classLevels));
@@ -93,6 +97,23 @@ function buildFeatLaneEntries(actor, items, groupId, slotKind, label, levels) {
             ? mappedEntry(slotId, level, "feat", `${label}`, itemName(item), sourceIdOf(item))
             : reviewEntry(slotId, level, "feat", label, "No feat is assigned to this PF2E slot");
     });
+}
+function buildCampaignFeatLaneEntries(actor, items, section, actorLevel) {
+    return section.slots
+        .filter((slot) => slot.level <= actorLevel)
+        .map((slot) => {
+        const item = featItemForNativeSlot(actor, items, section.id, slot.id);
+        const slotId = campaignFeatStepId(section, slot);
+        return item
+            ? mappedEntry(slotId, slot.level, "feat", section.label, itemName(item), sourceIdOf(item))
+            : reviewEntry(slotId, slot.level, "feat", section.label, "No feat is assigned to this PF2E slot");
+    });
+}
+function featItemForNativeSlot(actor, items, groupId, nativeSlotId) {
+    const group = getFeatGroup(actor, groupId);
+    const nativeSlot = group?.slots?.[nativeSlotId];
+    const slotFeat = resolveActorItem(nativeSlot?.feat, items);
+    return slotFeat ?? items.find((item) => item.type === "feat" && readLocation(item) === nativeSlotId) ?? null;
 }
 function featItemForSlot(actor, items, groupId, level) {
     const slots = Object.values(getFeatGroup(actor, groupId)?.slots ?? {});

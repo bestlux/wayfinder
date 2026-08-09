@@ -4,6 +4,7 @@ import type { PendingStep } from "./wayfinder/domain/step-types.js";
 export type { DraftDecision, SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
 export type {
   BoostStep,
+  CampaignFeatMeta,
   ChoicePredicate,
   ClassArchetypeMeta,
   ClassArchetypeStep,
@@ -113,6 +114,7 @@ export interface ActorSnapshot {
   level: number;
   isBlank: boolean;
   freeArchetypeEnabled: boolean;
+  campaignFeatSections: CampaignFeatSectionSnapshot[];
   gradualBoostsEnabled: boolean;
   singletonSlots: Record<"ancestry" | "heritage" | "background" | "class" | "deity", boolean>;
   featCounts: {
@@ -126,6 +128,19 @@ export interface ActorSnapshot {
   sourceIds: string[];
   namesByType: Record<string, string[]>;
   skillRanks: Record<string, number>;
+}
+
+export interface CampaignFeatSlotSnapshot {
+  id: string;
+  level: number;
+  fulfilled: boolean;
+}
+
+export interface CampaignFeatSectionSnapshot {
+  id: string;
+  label: string;
+  supported: string[];
+  slots: CampaignFeatSlotSnapshot[];
 }
 
 export interface ProgressionPlan {

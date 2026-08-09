@@ -57,6 +57,14 @@ export function getPickerInfoState(
 }
 
 export function getPickerBlockedState(step: PendingStep, context: OptionContext): PickerInfoState | null {
+  if (
+    step.slotKind === "campaign-feat" &&
+    step.campaignFeat?.supported.length === 1 &&
+    step.campaignFeat.supported[0] === "ancestry"
+  ) {
+    return ancestryFeatBlockedState(context);
+  }
+
   switch (step.slotKind) {
     case "heritage":
       return context.ancestrySlug
@@ -69,24 +77,7 @@ export function getPickerBlockedState(step: PendingStep, context: OptionContext)
               "Pick an ancestry first — heritages depend on it, and your options will show up here once that's set.",
           };
     case "ancestry-feat":
-      if (context.ancestryTraits.length === 0) {
-        return {
-          tone: "blocked",
-          eyebrow: "Prerequisite required",
-          title: "Choose an ancestry before ancestry feats",
-          message: "Ancestry feats are filtered from the drafted ancestry and any versatile heritage tags.",
-        };
-      }
-
-      return context.classSlug
-        ? null
-        : {
-            tone: "blocked",
-            eyebrow: "Prerequisite required",
-            title: "Choose a class before ancestry feats",
-            message:
-              "Some ancestry feats depend on class features such as spellcasting. Pick the class step before reviewing ancestry feat options.",
-          };
+      return ancestryFeatBlockedState(context);
     case "class-feat":
       return context.classSlug
         ? null
@@ -151,6 +142,27 @@ export function getPickerBlockedState(step: PendingStep, context: OptionContext)
     default:
       return null;
   }
+}
+
+function ancestryFeatBlockedState(context: OptionContext): PickerInfoState | null {
+  if (context.ancestryTraits.length === 0) {
+    return {
+      tone: "blocked",
+      eyebrow: "Prerequisite required",
+      title: "Choose an ancestry before ancestry feats",
+      message: "Ancestry feats are filtered from the drafted ancestry and any versatile heritage tags.",
+    };
+  }
+
+  return context.classSlug
+    ? null
+    : {
+        tone: "blocked",
+        eyebrow: "Prerequisite required",
+        title: "Choose a class before ancestry feats",
+        message:
+          "Some ancestry feats depend on class features such as spellcasting. Pick the class step before reviewing ancestry feat options.",
+      };
 }
 
 function requiresResolvedCurriculum(step: PendingStep): boolean {

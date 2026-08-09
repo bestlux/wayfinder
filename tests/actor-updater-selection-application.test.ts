@@ -1459,6 +1459,77 @@ describe("actor-updater selection application", () => {
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
   });
 
+  it("writes campaign feat selections to the exact PF2E campaign slot", async () => {
+    const actor = {
+      feats: {
+        get: (groupId: string) => (groupId === "xdy_ancestryparagon" ? { slots: {} } : null),
+      },
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => [{ id: "created-campaign-feat" }]),
+    };
+    const selection = selectionRef(
+      "campaign-feat-xdy_ancestryparagon-level-3",
+      "feat",
+      "cooperative-nature",
+      "Cooperative Nature",
+      "ancestry"
+    );
+    const step: PendingStep = {
+      ...featStep("campaign-feat-xdy_ancestryparagon-level-3", "campaign-feat", 3, ["ancestry"]),
+      campaignFeat: {
+        sectionId: "xdy_ancestryparagon",
+        sectionLabel: "Ancestry Paragon",
+        groupSlotId: "ancestry-paragon-third-level-slot",
+        supported: ["ancestry"],
+      },
+    };
+
+    await insertFeatSelection(actor, selection, step, {
+      fetchSelectionDocument,
+      createEmbeddedSource: async () => ({ name: "Cooperative Nature", type: "feat", system: {}, flags: {} }),
+    });
+
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        name: "Cooperative Nature",
+        type: "feat",
+        system: { location: "ancestry-paragon-third-level-slot", level: { taken: 3 } },
+        flags: {},
+      },
+    ]);
+  });
+
+  it("refuses a campaign feat selection after PF2E removes the section group", async () => {
+    const actor = {
+      feats: { get: () => null },
+      createEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const selection = selectionRef(
+      "campaign-feat-xdy_ancestryparagon-level-1",
+      "feat",
+      "cooperative-nature",
+      "Cooperative Nature",
+      "ancestry"
+    );
+    const step: PendingStep = {
+      ...featStep("campaign-feat-xdy_ancestryparagon-level-1", "campaign-feat", 1, ["ancestry"]),
+      campaignFeat: {
+        sectionId: "xdy_ancestryparagon",
+        sectionLabel: "Ancestry Paragon",
+        groupSlotId: "xdy_ancestryparagon-1",
+        supported: ["ancestry"],
+      },
+    };
+
+    await expect(
+      insertFeatSelection(actor, selection, step, {
+        fetchSelectionDocument,
+        createEmbeddedSource: async () => ({ name: "Cooperative Nature", type: "feat", system: {}, flags: {} }),
+      })
+    ).rejects.toThrow("campaign feat group is unavailable");
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
   it("preserves preselected feat sources during slotted feat creation", async () => {
     const insertFeat = vi.fn(async () => [{ id: "created-feat-1" }]);
     const actor = {

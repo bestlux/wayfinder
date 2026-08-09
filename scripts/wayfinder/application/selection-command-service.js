@@ -37,6 +37,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
             ...(await deps.invalidateFlagChoicesBySource("ancestry")),
             ...(await deps.invalidateFlagChoicesBySource("heritage")),
             ...(await deps.invalidateFlagChoicesByDependency("ancestry")),
+            ...(await deps.invalidateCampaignFeatSelectionsByFeatType("ancestry")),
             ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.languageChoice),
             ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat),
         ];
@@ -46,8 +47,8 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
         }
         if (invalidated.length > 0 || boostReset) {
             statusNote = boostReset
-                ? "Ancestry changed. Wayfinder cleared ancestry-specific boost draft choices and marked dependent heritage, ancestry choice, language, and ancestry-feat picks for review."
-                : "Ancestry changed. Wayfinder marked dependent heritage, ancestry choice, language, and ancestry-feat draft picks for review.";
+                ? "Ancestry changed. Wayfinder cleared ancestry-specific boost draft choices and marked dependent heritage, ancestry choice, language, native ancestry-feat, and campaign ancestry-feat picks for review."
+                : "Ancestry changed. Wayfinder marked dependent heritage, ancestry choice, language, native ancestry-feat, and campaign ancestry-feat draft picks for review.";
         }
     }
     if (step.slotKind === "heritage" && previousSelection?.uuid !== selection.uuid) {
@@ -58,12 +59,15 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
             ...(await deps.invalidateGrantSelectionsBySource("heritage")),
             ...(await deps.invalidateFlagChoicesBySource("heritage")),
             ...(!sameMembers(previousTraits, nextTraits)
-                ? deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat)
+                ? [
+                    ...deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat),
+                    ...(await deps.invalidateCampaignFeatSelectionsByFeatType("ancestry")),
+                ]
                 : []),
         ];
         if (invalidated.length > 0) {
             statusNote =
-                "Heritage changed. Wayfinder marked heritage-driven choices and ancestry-feat draft picks for review.";
+                "Heritage changed. Wayfinder marked heritage-driven choices plus native and campaign ancestry-feat draft picks for review.";
         }
     }
     if (step.slotKind === "background" && previousSelection?.uuid !== selection.uuid) {
@@ -140,7 +144,8 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
                 "Deity changed. Wayfinder marked dependent class choices, class paths, and deity-driven choices for review.";
         }
     }
-    if (step.slotKind === "ancestry-feat" && previousSelection?.uuid !== selection.uuid) {
+    if ((step.slotKind === "ancestry-feat" || (step.slotKind === "campaign-feat" && selection.featType === "ancestry")) &&
+        previousSelection?.uuid !== selection.uuid) {
         const invalidated = [
             ...(await deps.invalidateGrantSelectionsBySource("feat")),
             ...(await deps.invalidateFlagChoicesBySource("feat")),
@@ -151,6 +156,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
     }
     if ((step.slotKind === "class-feat" ||
         step.slotKind === "archetype-feat" ||
+        (step.slotKind === "campaign-feat" && selection.featType !== "ancestry") ||
         step.slotKind === "general-feat" ||
         step.slotKind === "skill-feat") &&
         previousSelection?.uuid !== selection.uuid) {

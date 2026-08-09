@@ -142,7 +142,7 @@ export function matchesFilters(
     return matchesSpellChoiceContext(entry, packId, step);
   }
 
-  if (step.slotKind === "ancestry-feat") {
+  if (step.slotKind === "ancestry-feat" || isAncestryCampaignFeatStep(step)) {
     return matchesAncestryFeatContext(entry, context, traitCatalog);
   }
 
@@ -205,6 +205,14 @@ export async function getTraitCatalog(slotKind: PendingStep["slotKind"]): Promis
 
   cacheTraitCatalog(cacheKey, traits);
   return traits;
+}
+
+function isAncestryCampaignFeatStep(step: PendingStep): boolean {
+  return (
+    step.slotKind === "campaign-feat" &&
+    step.campaignFeat?.supported.length === 1 &&
+    step.campaignFeat.supported[0] === "ancestry"
+  );
 }
 
 function matchesAncestryFeatContext(entry: PackIndexEntry, context: OptionContext, traitCatalog: Set<string>): boolean {

@@ -8,6 +8,7 @@ function makeSnapshot(partial: Partial<ActorSnapshot> = {}): ActorSnapshot {
     level: 1,
     isBlank: true,
     freeArchetypeEnabled: false,
+    campaignFeatSections: [],
     gradualBoostsEnabled: false,
     singletonSlots: {
       ancestry: false,
@@ -185,6 +186,90 @@ describe("progression", () => {
     expect(enabledSteps.find((step) => step.slotKind === "archetype-feat")?.description).toContain(
       "confirm eligibility with your GM"
     );
+  });
+
+  it("schedules Ancestry Paragon beside the native ancestry lane through the requested level", () => {
+    const section = {
+      id: "xdy_ancestryparagon",
+      label: "Ancestry Paragon",
+      supported: ["ancestry"],
+      slots: [1, 3, 7, 11, 15, 19].map((level) => ({
+        id: `xdy_ancestryparagon-${level}`,
+        level,
+        fulfilled: false,
+      })),
+    };
+    const level3 = buildSteps(makeSnapshot({ campaignFeatSections: [section] }), 1, 3);
+
+    expect(level3.filter((step) => step.slotKind === "campaign-feat")).toEqual([
+      expect.objectContaining({
+        level: 1,
+        slotId: "campaign-feat-xdy_ancestryparagon-level-1",
+        title: "Level 1 Ancestry Paragon",
+        filters: expect.objectContaining({ featTypes: ["ancestry"], maxLevel: 1 }),
+        campaignFeat: expect.objectContaining({
+          sectionId: "xdy_ancestryparagon",
+          groupSlotId: "xdy_ancestryparagon-1",
+        }),
+      }),
+      expect.objectContaining({
+        level: 3,
+        slotId: "campaign-feat-xdy_ancestryparagon-level-3",
+      }),
+    ]);
+    expect(level3.filter((step) => step.slotId === "ancestry-feat-level-1")).toHaveLength(1);
+
+    expect(
+      buildSteps(makeSnapshot({ campaignFeatSections: [section] }), 1, 20)
+        .filter((step) => step.slotKind === "campaign-feat")
+        .map((step) => step.level)
+    ).toEqual([1, 3, 7, 11, 15, 19]);
+  });
+
+  it("keeps non-ancestry campaign sections on their honest generic supported pool", () => {
+    const [step] = buildSteps(
+      makeSnapshot({
+        campaignFeatSections: [
+          {
+            id: "xdy_dualclass",
+            label: "Dual Class",
+            supported: ["class"],
+            slots: [{ id: "xdy_dualclass-1", level: 1, fulfilled: false }],
+          },
+        ],
+      }),
+      1,
+      1
+    ).filter((candidate) => candidate.slotKind === "campaign-feat");
+
+    expect(step?.filters).toEqual({ itemType: "feat", featTypes: ["class"], maxLevel: 1 });
+    expect(step?.campaignFeat?.supported).toEqual(["class"]);
+  });
+
+  it("keeps explicit same-level campaign slots distinct while preserving projection suffixes", () => {
+    const steps = buildSteps(
+      makeSnapshot({
+        campaignFeatSections: [
+          {
+            id: "bonus-ancestry",
+            label: "Bonus Ancestry",
+            supported: ["ancestry"],
+            slots: [
+              { id: "bonus-ancestry-first", level: 1, fulfilled: false },
+              { id: "bonus-ancestry-second", level: 1, fulfilled: false },
+            ],
+          },
+        ],
+      }),
+      1,
+      1
+    ).filter((step) => step.slotKind === "campaign-feat");
+
+    expect(steps.map((step) => step.slotId)).toEqual([
+      "campaign-feat-bonus-ancestry-bonus-ancestry-first-level-1",
+      "campaign-feat-bonus-ancestry-bonus-ancestry-second-level-1",
+    ]);
+    expect(steps.every((step) => step.slotId.endsWith("-level-1"))).toBe(true);
   });
 
   it("schedules standard and gradual ability boosts through level 20 for a blank build", () => {

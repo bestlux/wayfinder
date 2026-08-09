@@ -591,6 +591,17 @@ export async function buildContextNote(
   context: OptionContext,
   deps: Pick<OptionContextDependencies, "resolveDocument">
 ): Promise<string | null> {
+  if (
+    step.slotKind === "campaign-feat" &&
+    step.campaignFeat?.supported.length === 1 &&
+    step.campaignFeat.supported[0] === "ancestry"
+  ) {
+    const ancestryName = ((await deps.resolveDocument("ancestry")) as LooseDocument | null)?.name;
+    return ancestryName
+      ? `Showing ${step.campaignFeat.sectionLabel} feats keyed to ${ancestryName}. Class-dependent feats are filtered against the drafted class.`
+      : null;
+  }
+
   switch (step.slotKind) {
     case "heritage": {
       const ancestryDocument = deps.resolveDocument("ancestry");

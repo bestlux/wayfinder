@@ -18,6 +18,7 @@ export function createPickItemStep(slotKind, level, title, description, filters,
         ...(options.grantSelection ? { grantSelection: options.grantSelection } : {}),
         ...(options.staticGrantReplacement ? { staticGrantReplacement: options.staticGrantReplacement } : {}),
         ...(options.flagChoice ? { flagChoice: options.flagChoice } : {}),
+        ...(options.campaignFeat ? { campaignFeat: options.campaignFeat } : {}),
     };
 }
 export function createManualStep(slotKind, level, title, description, options = {}) {
@@ -162,9 +163,10 @@ const SLOT_KIND_SORT_WEIGHTS = {
     "spell-choice": 15,
     "class-feat": 16,
     "archetype-feat": 17,
-    "skill-feat": 18,
-    "general-feat": 19,
-    "skill-increase": 20,
+    "campaign-feat": 18,
+    "skill-feat": 19,
+    "general-feat": 20,
+    "skill-increase": 21,
 };
 const STEP_MODE_LABELS = {
     "pick-item": "Selection",

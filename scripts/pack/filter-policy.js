@@ -86,7 +86,7 @@ export function matchesFilters(entry, packId, step, context, traitCatalog) {
     if (step.slotKind === "spell-choice") {
         return matchesSpellChoiceContext(entry, packId, step);
     }
-    if (step.slotKind === "ancestry-feat") {
+    if (step.slotKind === "ancestry-feat" || isAncestryCampaignFeatStep(step)) {
         return matchesAncestryFeatContext(entry, context, traitCatalog);
     }
     if (step.slotKind === "class-feat") {
@@ -136,6 +136,11 @@ export async function getTraitCatalog(slotKind) {
     }
     cacheTraitCatalog(cacheKey, traits);
     return traits;
+}
+function isAncestryCampaignFeatStep(step) {
+    return (step.slotKind === "campaign-feat" &&
+        step.campaignFeat?.supported.length === 1 &&
+        step.campaignFeat.supported[0] === "ancestry");
 }
 function matchesAncestryFeatContext(entry, context, traitCatalog) {
     const category = stringOrNull(entry?.system?.category);

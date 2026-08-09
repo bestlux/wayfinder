@@ -105,6 +105,34 @@ describe("foundry smoke safety", () => {
     ).toThrow("FOUNDRY_SMOKE_WORLD_ID is required");
   });
 
+  it("applies destructive and world guards to campaign feat section forcing", async () => {
+    const { validateSmokeSafety } = (await import("../tools/foundry-smoke/safety.mjs")) as {
+      validateSmokeSafety(args: {
+        allowDestructive: boolean;
+        campaignFeatSectionsMode: string;
+        expectedWorldId: string;
+        keepActors: boolean;
+      }): unknown;
+    };
+
+    expect(() =>
+      validateSmokeSafety({
+        allowDestructive: false,
+        campaignFeatSectionsMode: "ancestry-paragon",
+        expectedWorldId: "testing-world",
+        keepActors: true,
+      })
+    ).toThrow("required to change the Campaign Feat Sections world setting");
+    expect(() =>
+      validateSmokeSafety({
+        allowDestructive: true,
+        campaignFeatSectionsMode: "off",
+        expectedWorldId: "",
+        keepActors: true,
+      })
+    ).toThrow("FOUNDRY_SMOKE_WORLD_ID is required");
+  });
+
   it("rejects mismatched Foundry worlds", async () => {
     const { assertExpectedWorldId } = (await import("../tools/foundry-smoke/safety.mjs")) as {
       assertExpectedWorldId(args: { actualWorldId: string; expectedWorldId: string }): void;

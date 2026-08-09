@@ -273,6 +273,7 @@ describe("wayfinder plan service", () => {
         level: 1,
         isBlank: false,
         freeArchetypeEnabled: false,
+        campaignFeatSections: [],
         gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
@@ -374,6 +375,7 @@ describe("wayfinder plan service", () => {
         level: 1,
         isBlank: false,
         freeArchetypeEnabled: false,
+        campaignFeatSections: [],
         gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,

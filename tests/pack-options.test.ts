@@ -129,6 +129,71 @@ describe("pack options dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Cooperative Nature", "Fanged Blood", "Wilderness Born"]);
   });
 
+  it("reuses drafted-ancestry filtering for ancestry-only campaign sections", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("cooperative-nature", "Cooperative Nature", "ancestry", ["human"], false),
+      featEntry("sky-herd-guard", "Sky Herd Guard", "ancestry", ["sarangay"], false),
+    ]);
+    const step = createPickItemStep(
+      "campaign-feat",
+      1,
+      "Level 1 Ancestry Paragon",
+      "",
+      { itemType: "feat", featTypes: ["ancestry"], maxLevel: 1 },
+      {
+        slotId: "campaign-feat-xdy_ancestryparagon-level-1",
+        campaignFeat: {
+          sectionId: "xdy_ancestryparagon",
+          sectionLabel: "Ancestry Paragon",
+          groupSlotId: "xdy_ancestryparagon-1",
+          supported: ["ancestry"],
+        },
+      }
+    );
+
+    const options = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      ancestrySlug: "human",
+      ancestryTraits: ["human"],
+      classSlug: "fighter",
+    });
+
+    expect(options.map((option) => option.name)).toEqual(["Cooperative Nature"]);
+  });
+
+  it("keeps class and unknown campaign categories generic without invented class narrowing", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("fighter-feat", "Fighter Feat", "class", ["fighter"]),
+      featEntry("cleric-feat", "Cleric Feat", "class", ["cleric"]),
+      featEntry("mythic-feat", "Mythic Feat", "mythic", ["mythic"]),
+    ]);
+    const campaignStep = (supported: string[], id: string) =>
+      createPickItemStep(
+        "campaign-feat",
+        1,
+        id,
+        "",
+        { itemType: "feat", featTypes: supported, maxLevel: 1 },
+        {
+          slotId: `campaign-feat-${id}-level-1`,
+          campaignFeat: {
+            sectionId: id,
+            sectionLabel: id,
+            groupSlotId: `${id}-1`,
+            supported,
+          },
+        }
+      );
+    const context = { ...EMPTY_CONTEXT, classSlug: "fighter" };
+
+    expect(
+      (await getOptionsForStep(campaignStep(["class"], "dual-class"), context)).map((option) => option.name)
+    ).toEqual(["Cleric Feat", "Fighter Feat"]);
+    expect((await getOptionsForStep(campaignStep(["mythic"], "custom"), context)).map((option) => option.name)).toEqual(
+      ["Mythic Feat"]
+    );
+  });
+
   it("keeps Human ancestry feats whose ChoiceSet is handled by a follow-up grant choice", async () => {
     setPack("pf2e.ancestries", [ancestryEntry("human", "Human", false)]);
     setPack("pf2e.feats-srd", [
@@ -2079,6 +2144,7 @@ function productionFeatStep(slotId: string): PendingStep {
     level: 1,
     isBlank: false,
     freeArchetypeEnabled: false,
+    campaignFeatSections: [],
     gradualBoostsEnabled: false,
     singletonSlots: {
       ancestry: true,

@@ -62,6 +62,23 @@ function resolveFeatSlotData(
     | { slots?: Record<string, FeatSlotLike> }
     | null
     | undefined;
+  if (step?.slotKind === "campaign-feat") {
+    const campaignFeat = step.campaignFeat;
+    if (!campaignFeat || !group) {
+      throw new Error("PF2E's campaign feat group is unavailable; the draft cannot be applied safely.");
+    }
+
+    const slot = group.slots?.[campaignFeat.groupSlotId];
+    if (slot && (slot.level !== step.level || slot.feat)) {
+      throw new Error("PF2E's campaign feat slot is unavailable; the draft cannot be applied safely.");
+    }
+
+    return {
+      groupId,
+      slotId: campaignFeat.groupSlotId,
+    };
+  }
+
   if (step?.slotKind === "archetype-feat") {
     if (!group) {
       throw new Error("PF2E's Free Archetype feat group is unavailable; the draft cannot be applied safely.");
@@ -94,6 +111,8 @@ function resolveFeatGroupId(selection: SelectionRef, step: PendingStep | null): 
       return "class";
     case "archetype-feat":
       return "archetype";
+    case "campaign-feat":
+      return step.campaignFeat?.sectionId ?? null;
     case "skill-feat":
       return "skill";
     case "general-feat":

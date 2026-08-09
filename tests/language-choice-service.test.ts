@@ -12,6 +12,7 @@ describe("language-choice service", () => {
         level: 1,
         isBlank: true,
         freeArchetypeEnabled: false,
+        campaignFeatSections: [],
         gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
@@ -70,6 +71,7 @@ describe("language-choice service", () => {
         level: 1,
         isBlank: true,
         freeArchetypeEnabled: false,
+        campaignFeatSections: [],
         gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
@@ -126,6 +128,7 @@ describe("language-choice service", () => {
         level: 1,
         isBlank: true,
         freeArchetypeEnabled: false,
+        campaignFeatSections: [],
         gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,
@@ -181,6 +184,7 @@ describe("language-choice service", () => {
         level: 1,
         isBlank: true,
         freeArchetypeEnabled: false,
+        campaignFeatSections: [],
         gradualBoostsEnabled: false,
         singletonSlots: {
           ancestry: true,

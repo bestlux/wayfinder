@@ -1,11 +1,13 @@
 export function validateSmokeSafety({
   allowDestructive,
+  campaignFeatSectionsMode = "unchanged",
   expectedWorldId,
   freeArchetypeMode = "unchanged",
   gradualBoostsMode = "unchanged",
   keepActors,
 }) {
   const changedVariant = [
+    ["Campaign Feat Sections", campaignFeatSectionsMode],
     ["Free Archetype", freeArchetypeMode],
     ["Gradual Ability Boosts", gradualBoostsMode],
   ].find(([, mode]) => mode !== "unchanged");

@@ -7,7 +7,7 @@ import { buildSteps } from "../src/progression";
 import type { ActorSnapshot, OptionContext, PendingStep, PickItemSlotKind, SelectionRef } from "../src/types";
 import { buildOptionContext } from "../src/wayfinder/application/option-context-service";
 import { createPickItemStep } from "../src/wayfinder/domain/step-types";
-import { grantsRestrictedSpellRarityAccess } from "../src/wayfinder/spell-choice/rarity-access";
+import { withRestrictedSpellRarityAccess } from "../src/wayfinder/spell-choice/rarity-access";
 
 const testGlobals = globalThis as typeof globalThis & { CONFIG: any; game: any };
 
@@ -1886,7 +1886,7 @@ describe("pack options dependency filtering", () => {
     const step = spellChoiceStep("spell-choice-witch-cantrips-level-1", "witch-occult-prepared", "occult");
 
     const restricted = await getOptionsForStep(step, EMPTY_CONTEXT);
-    const granted = await getOptionsForStep(grantsRestrictedSpellRarityAccess(step, true), EMPTY_CONTEXT);
+    const granted = await getOptionsForStep(withRestrictedSpellRarityAccess(step, "common", true), EMPTY_CONTEXT);
 
     expect(restricted.map((option) => option.name)).toEqual(["Common Occult"]);
     expect(granted.map((option) => option.name)).toEqual(["Common Occult", "Uncommon Occult"]);

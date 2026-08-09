@@ -231,6 +231,7 @@ export interface SpellChoiceMeta {
   additionalAllowedSpellNames: string[];
   additionalAllowedSpellUuids?: string[];
   restrictToCommon: boolean;
+  rarityCeiling?: "common" | "uncommon" | "rare" | "unique";
   reuseExistingEntryOnly?: boolean;
 }
 

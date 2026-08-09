@@ -22,7 +22,8 @@ import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
 import {
   canGrantRestrictedSpellRarityAccess,
-  grantsRestrictedSpellRarityAccess,
+  type SpellRarityCeiling,
+  withRestrictedSpellRarityAccess,
 } from "../spell-choice/rarity-access.js";
 import type {
   ClassChoiceStepPane,
@@ -45,6 +46,7 @@ interface BuildSelectionPaneDependencies {
   searchByStepId: Map<string, string>;
   pickerFiltersByStepId: Map<string, PickerFilterState>;
   previewValueByStepId: Map<string, string>;
+  spellRarityCeiling?: SpellRarityCeiling;
   openPickerFilterMenu?: { stepId: string; filterKind: PickerFilterKind } | null;
   resolveOptionContext: (step: PendingStep) => Promise<OptionContext>;
   resolveDeityDocument: () => Promise<unknown | null>;
@@ -108,8 +110,9 @@ export async function buildSelectionPane(
   }
 
   const optionContext = await deps.resolveOptionContext(step);
+  const spellRarityCeiling = deps.spellRarityCeiling ?? "common";
   const spellRarityAccessGranted = step.kind === "spell-choice" && deps.draft.spellRarityAccess[step.slotId] === true;
-  const optionStep = grantsRestrictedSpellRarityAccess(step, spellRarityAccessGranted);
+  const optionStep = withRestrictedSpellRarityAccess(step, spellRarityCeiling, spellRarityAccessGranted);
   const options = await deps.getOptionsForStep(optionStep, optionContext);
   const search = deps.searchByStepId.get(step.id) ?? "";
   const filterState = normalizePickerFilterState(deps.pickerFiltersByStepId.get(step.id));
@@ -172,7 +175,7 @@ export async function buildSelectionPane(
       modeLabel: getStepModeLabel(step.kind),
       previewValue,
       rarityAccess: {
-        available: canGrantRestrictedSpellRarityAccess(step),
+        available: canGrantRestrictedSpellRarityAccess(step, spellRarityCeiling),
         granted: spellRarityAccessGranted,
         locked: selectedSelections.length > 0,
       },

@@ -2,6 +2,7 @@ import { OFFICIAL_PACKS, SKILL_LABELS } from "../constants.js";
 import { getExtraPackSetting } from "../settings.js";
 import { toCompendiumItemUuid } from "../shared/compendium.js";
 import { expandCompendiumAllowlist, mergePackIds, parseCompendiumAllowlist } from "../source-filter.js";
+import { isSpellRarityWithinCeiling, spellChoiceRarityCeiling } from "../wayfinder/spell-choice/rarity-access.js";
 import { cacheTraitCatalog, getCachedTraitCatalog, getGamePack, getGamePackIds, getPackIndex, } from "./access.js";
 import { matchesArchetypeLegality } from "./archetype-legality.js";
 import { hasUnsupportedEmbeddedChoiceSet } from "./embedded-choice-policy.js";
@@ -385,13 +386,9 @@ function matchesSpellChoiceContext(entry, packId, step) {
     else if (!traditions.includes(spellChoice.destination.tradition)) {
         return false;
     }
-    const restrictToCommon = spellChoice.restrictToCommon ?? false;
     if (spellChoice.curriculumSpellNames.length === 0) {
-        if (!restrictToCommon) {
-            return true;
-        }
         const rarity = stringOrNull(entry?.system?.traits?.rarity)?.trim().toLowerCase() ?? "";
-        return rarity === "" || rarity === "common";
+        return isSpellRarityWithinCeiling(rarity, spellChoiceRarityCeiling(spellChoice));
     }
     return spellChoice.curriculumSpellNames.some((name) => namesMatch(name, entryName));
 }

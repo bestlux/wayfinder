@@ -1,4 +1,5 @@
 import type { SpellChoiceMeta } from "../../types.js";
+import { isSpellRarityWithinCeiling, spellChoiceRarityCeiling } from "./rarity-access.js";
 import type { SpellChoiceItem } from "./types.js";
 
 export function spellMatchesChoice(item: SpellChoiceItem, choice: SpellChoiceMeta, entryId: string): boolean {
@@ -28,7 +29,6 @@ export function spellMatchesChoice(item: SpellChoiceItem, choice: SpellChoiceMet
   const additionalAllowedSpellUuids = new Set(
     (choice.additionalAllowedSpellUuids ?? []).map((uuid) => uuid.trim().toLowerCase()).filter(Boolean)
   );
-  const restrictToCommon = choice.restrictToCommon ?? false;
   if (choice.curriculumSpellNames.length === 0) {
     if (
       additionalAllowedSpellNames.some((name) => namesMatch(name, itemName)) ||
@@ -42,14 +42,10 @@ export function spellMatchesChoice(item: SpellChoiceItem, choice: SpellChoiceMet
       return false;
     }
 
-    if (!restrictToCommon) {
-      return true;
-    }
-
     const rarity = String(item.system?.traits?.rarity ?? "")
       .trim()
       .toLowerCase();
-    return rarity === "" || rarity === "common";
+    return isSpellRarityWithinCeiling(rarity, spellChoiceRarityCeiling(choice));
   }
 
   return choice.curriculumSpellNames.some((name) => namesMatch(name, itemName));

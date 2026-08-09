@@ -1,3 +1,4 @@
+import { isSpellRarityWithinCeiling, spellChoiceRarityCeiling } from "./rarity-access.js";
 export function spellMatchesChoice(item, choice, entryId) {
     if (item.type !== "spell") {
         return false;
@@ -19,7 +20,6 @@ export function spellMatchesChoice(item, choice, entryId) {
     const itemName = String(item.name ?? "");
     const additionalAllowedSpellNames = choice.additionalAllowedSpellNames ?? [];
     const additionalAllowedSpellUuids = new Set((choice.additionalAllowedSpellUuids ?? []).map((uuid) => uuid.trim().toLowerCase()).filter(Boolean));
-    const restrictToCommon = choice.restrictToCommon ?? false;
     if (choice.curriculumSpellNames.length === 0) {
         if (additionalAllowedSpellNames.some((name) => namesMatch(name, itemName)) ||
             readSourceIds(item).some((sourceId) => additionalAllowedSpellUuids.has(sourceId.trim().toLowerCase()))) {
@@ -29,13 +29,10 @@ export function spellMatchesChoice(item, choice, entryId) {
         if (!traditions.includes(choice.destination.tradition)) {
             return false;
         }
-        if (!restrictToCommon) {
-            return true;
-        }
         const rarity = String(item.system?.traits?.rarity ?? "")
             .trim()
             .toLowerCase();
-        return rarity === "" || rarity === "common";
+        return isSpellRarityWithinCeiling(rarity, spellChoiceRarityCeiling(choice));
     }
     return choice.curriculumSpellNames.some((name) => namesMatch(name, itemName));
 }

@@ -8,6 +8,7 @@ export const FLAG_KEYS = {
 } as const;
 export const SETTINGS = {
   extraPacks: "additionalSourcePacks",
+  spellRarityCeiling: "spellRarityCeiling",
 } as const;
 export const SETTINGS_KEYS = {
   includeOfficialSources: "includeOfficialSources",

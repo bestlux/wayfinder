@@ -15,7 +15,8 @@ describe("Wayfinder settings", () => {
   });
 
   it("registers the spell rarity ceiling as a GM-controlled world dropdown", () => {
-    registerSettings();
+    const onSpellRarityCeilingChange = vi.fn();
+    registerSettings({ onSpellRarityCeilingChange });
 
     expect(testGlobals.game.settings.register).toHaveBeenCalledWith(
       MODULE_ID,
@@ -34,6 +35,7 @@ describe("Wayfinder settings", () => {
           unique: "wayfinder-pf2e.Settings.SpellRarityCeiling.Choices.Unique",
         },
         default: "common",
+        onChange: onSpellRarityCeilingChange,
       })
     );
   });

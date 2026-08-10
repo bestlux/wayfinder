@@ -336,6 +336,7 @@ async function applyPendingStaticGrantPreselectChoices(source, draft, steps, dep
     if (rules.length === 0) {
         return;
     }
+    const manualizedRuleIndexes = new Set();
     for (const [ruleIndex, rule] of rules.entries()) {
         if (!isLooseRecord(rule) || rule.key !== "GrantItem") {
             continue;
@@ -355,15 +356,12 @@ async function applyPendingStaticGrantPreselectChoices(source, draft, steps, dep
         };
         if (!protectedRuleIndexes.has(ruleIndex)) {
             registerManualStaticItemGrant(source, grantedSelection.uuid, preselectChoices);
+            manualizedRuleIndexes.add(ruleIndex);
         }
     }
-    const manualGrants = readManualStaticItemGrants(source);
-    if (manualGrants.length > 0) {
+    if (manualizedRuleIndexes.size > 0) {
         source.system ??= {};
-        source.system.rules = rules.filter((rule) => !(isLooseRecord(rule) &&
-            rule.key === "GrantItem" &&
-            typeof rule.uuid === "string" &&
-            manualGrants.some((grant) => grant.uuid === rule.uuid)));
+        source.system.rules = rules.filter((_rule, ruleIndex) => !manualizedRuleIndexes.has(ruleIndex));
     }
 }
 function resolveGrantItemPreselectChoiceReferences(source) {

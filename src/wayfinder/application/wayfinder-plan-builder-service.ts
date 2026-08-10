@@ -35,6 +35,7 @@ import {
   buildClassSkillFeatSteps,
   buildClassTrainingSteps,
 } from "../class-choice-service.js";
+import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
 import {
   readExistingBranchSelection,
@@ -50,7 +51,12 @@ import { buildGrantChoiceSteps, type GrantChoiceSourceContext } from "../grant-c
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { buildProjectedChoiceRuleRollOptions, type ChoiceRuleSourceContext } from "../projected-rule-options.js";
-import { documentFeatureLevel, getDocumentRules, matchesChoicePredicateList, toNonEmptyString } from "../rule-data.js";
+import {
+  documentFeatureLevel,
+  getDocumentRules,
+  matchesChoicePredicateListAgainstRollOptions,
+  toNonEmptyString,
+} from "../rule-data.js";
 import { buildSingletonChoiceSteps, type SingletonChoiceSourceContext } from "../singleton-choice-service.js";
 import type { SkillTrainingSourceContext } from "../skill-training/source-discovery.js";
 import { SLOT_PREFIXES } from "../slot-ids.js";
@@ -447,6 +453,10 @@ async function resolveProjectedRuleRollOptions(
     classSlug: deps.extractDocumentSlug(effectiveBuildState.class?.document ?? null),
     ancestrySlug: deps.extractDocumentSlug(effectiveBuildState.ancestry?.document ?? null),
     deitySelected: !!effectiveBuildState.deity,
+    skillRanks: projectDraftSkillRanks({
+      baseSkillRanks: args.snapshot.skillRanks,
+      draft,
+    }),
   });
 }
 
@@ -485,7 +495,7 @@ async function resolveSingletonChoiceSources(
     ...projectedClassArchetypeFeatSelections(draft, targetLevel),
     ...readExistingSkillTrainingFeatSelections(args.actor),
   ]);
-  const featSources = await resolveExpandedFeatChoiceSources(featSelections, deps);
+  const featSources = await resolveExpandedFeatChoiceSources(featSelections, draft, args, deps);
 
   return [
     ...singletonItemSources,
@@ -620,7 +630,7 @@ async function resolveGrantChoiceSources(
     ...projectedClassArchetypeFeatSelections(draft, targetLevel),
     ...readExistingSkillTrainingFeatSelections(args.actor).filter(isGrantChoiceSourceFeatSelection),
   ]);
-  const featSources = await resolveExpandedFeatChoiceSources(featSelections, deps);
+  const featSources = await resolveExpandedFeatChoiceSources(featSelections, draft, args, deps);
   const classFeatureSelections = resolveSelectedClassFeatureSelections(draft, args.actor);
   const classFeatureDocuments = await Promise.all(
     classFeatureSelections.map((selection) => deps.fetchSelectionDocument(selection))
@@ -723,7 +733,7 @@ async function resolveSelectedClassFeatureChoiceSources(
     ...projectedClassArchetypeFeatSelections(draft, draft.targetLevel),
     ...readExistingSkillTrainingFeatSelections(args.actor).filter(isGrantChoiceSourceFeatSelection),
   ]);
-  const grantedFeatSources = (await resolveExpandedFeatChoiceSources(featSelections, deps))
+  const grantedFeatSources = (await resolveExpandedFeatChoiceSources(featSelections, draft, args, deps))
     .filter((source) => source.staticGrant && source.sourceItemType === "classfeature")
     .map(
       (source) =>
@@ -776,6 +786,8 @@ interface ExpandedFeatChoiceSource {
 
 async function resolveExpandedFeatChoiceSources(
   featSelections: SelectionRef[],
+  draft: DraftState,
+  args: BuildWayfinderAppPlanArgs,
   deps: BuildWayfinderAppPlanDependencies
 ): Promise<ExpandedFeatChoiceSource[]> {
   const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
@@ -796,6 +808,7 @@ async function resolveExpandedFeatChoiceSources(
   const staticGrantSources = await resolveStaticGrantChoiceSources({
     sources: directSources.map(({ sourceSelection, sourceDocument }) => ({ sourceSelection, sourceDocument })),
     fetchSelectionDocument: deps.fetchSelectionDocument,
+    activeRollOptions: await resolveProjectedRuleRollOptions(draft, directSources, args, deps),
   });
 
   return [
@@ -833,7 +846,7 @@ function staticClassFeatureGrantSelections(args: {
     }
 
     const predicate = Array.isArray(rule.predicate) ? (rule.predicate as ChoicePredicate[]) : [];
-    if (predicate.length > 0 && !matchesChoicePredicateList(predicate, (statement) => rollOptions.has(statement))) {
+    if (predicate.length > 0 && !matchesChoicePredicateListAgainstRollOptions(predicate, rollOptions)) {
       return [];
     }
 

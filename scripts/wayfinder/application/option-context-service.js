@@ -4,6 +4,7 @@ import { sourceIdOf } from "../../shared/source-id.js";
 import { findSpellcastingEntryForChoiceInItems } from "../../shared/spellcasting.js";
 import { projectedClassArchetypeFeatSelections, projectedClassArchetypeStaticFeatSelections, withExistingClassArchetypeChoice, } from "../class-archetype/registry.js";
 import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
+import { collectActorRuleSelectionRollOptions, collectSkillRankRollOptions } from "../projected-rule-options.js";
 export function extractContextTraits(document, extractDocumentSlug, fallbackSlug) {
     const typedDocument = document;
     const traits = Array.isArray(typedDocument?.system?.traits?.value) ? typedDocument.system.traits.value : [];
@@ -110,8 +111,8 @@ export async function buildOptionContext(deps) {
     const selectedSpellChoicesBySlotId = buildSelectedSpellChoicesBySlotId(effectiveDraft, deps.steps ?? []);
     const actorSourceIds = buildActorSourceIds(actorItems);
     const actorSpellUuidsByDestinationKey = buildActorSpellUuidsByDestinationKey(actorItems, deps.steps ?? []);
-    const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems);
     const skillRanks = buildProjectedSkillRanks(deps.skillRanks, effectiveDraft, deps.steps ?? [], skillProjectionBoundarySlotId(deps.maximumFeatLevel));
+    const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems, skillRanks);
     return {
         ancestrySlug,
         ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
@@ -245,8 +246,12 @@ function buildActorSpellUuidsByDestinationKey(actorItems, steps) {
     }
     return Object.fromEntries(Array.from(uuidsByDestination, ([destinationKey, uuids]) => [destinationKey, Array.from(uuids)]));
 }
-function buildActiveRollOptions(draft, steps, actorItems) {
-    return Array.from(new Set([...collectDraftRollOptions(draft, steps), ...collectActorRuleSelectionRollOptions(actorItems)])).sort();
+function buildActiveRollOptions(draft, steps, actorItems, skillRanks) {
+    return Array.from(new Set([
+        ...collectDraftRollOptions(draft, steps),
+        ...collectActorRuleSelectionRollOptions(actorItems),
+        ...collectSkillRankRollOptions(skillRanks),
+    ])).sort();
 }
 function collectDraftRollOptions(draft, steps) {
     const options = [];
@@ -292,25 +297,6 @@ function collectDraftRollOptions(draft, steps) {
         }
     }
     return options;
-}
-function collectActorRuleSelectionRollOptions(actorItems) {
-    return actorItems.flatMap((item) => {
-        const typedItem = item;
-        const rules = Array.isArray(typedItem?.system?.rules) ? typedItem.system.rules : [];
-        const rulesSelections = {
-            ...(typedItem?.flags?.system?.rulesSelections ?? {}),
-            ...(typedItem?.flags?.pf2e?.rulesSelections ?? {}),
-        };
-        return rules.flatMap((rule) => {
-            if (!isRecord(rule) || rule.key !== "ChoiceSet") {
-                return [];
-            }
-            const flag = normalizeString(rule.flag) ?? normalizeString(rule.rollOption) ?? normalizeString(rule.slug);
-            const rollOption = normalizeString(rule.rollOption);
-            const selection = flag ? normalizeString(rulesSelections[flag]) : null;
-            return rollOption && selection ? [`${rollOption}:${selection}`] : [];
-        });
-    });
 }
 function buildProjectedSkillRanks(baseRanks, draft, steps, beforeSlotId) {
     const additionalTrainingSkillsBySlotId = {};
@@ -379,9 +365,6 @@ function normalizeSkillSlug(value) {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
-}
-function isRecord(value) {
-    return !!value && typeof value === "object";
 }
 export async function buildContextNote(step, context, deps) {
     if (step.slotKind === "campaign-feat" &&
@@ -491,8 +474,7 @@ export async function buildContextNote(step, context, deps) {
                 : spellChoice.minRank === spellChoice.maxRank
                     ? `rank ${spellChoice.maxRank} ${tradition} spells`
                     : `${tradition} spells of rank ${spellChoice.minRank} to ${spellChoice.maxRank}`;
-            const sourceLabel = spellChoice.sourceName || "Wizard Spellcasting";
-            return `Showing ${rankLabel} that will be added to the ${spellChoice.destination.label}. Source: ${sourceLabel}. Daily prepared loadouts remain on PF2E's character sheet.`;
+            return `Showing ${rankLabel} that will be added to the ${spellChoice.destination.label}. Daily prepared loadouts remain on PF2E's character sheet.`;
         }
         case "skill-feat":
             return "Showing baseline skill feats. Archetype-tagged skill feats stay hidden until Wayfinder tracks a specific archetype path.";

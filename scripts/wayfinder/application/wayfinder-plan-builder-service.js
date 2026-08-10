@@ -7,6 +7,7 @@ import { sourceIdOf } from "../../shared/source-id.js";
 import { projectedClassArchetypeFeatSelections, reservedClassFeatSlotIds, selectedClassArchetypeSelection, withExistingClassArchetypeChoice, } from "../class-archetype/registry.js";
 import { buildClassArchetypeFallbackFeatSteps, buildClassArchetypeSteps } from "../class-archetype/service.js";
 import { buildClassBranchSteps, buildClassChoiceSteps, buildClassFeatSteps, buildClassGrantedItemSteps, buildClassSkillFeatSteps, buildClassTrainingSteps, } from "../class-choice-service.js";
+import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { findDraftSelectionByType } from "../draft-decisions.js";
 import { readExistingBranchSelection, readExistingClassChoiceSelection, readExistingFlagChoiceSelection, readExistingGrantedSelection, readExistingLanguageSelections, readExistingSingletonChoiceSelection, readExistingSingletonSourceSelection, } from "../existing-selection-service.js";
 import { buildFlagChoiceSteps } from "../flag-choice-service.js";
@@ -14,7 +15,7 @@ import { buildGrantChoiceSteps } from "../grant-choice-service.js";
 import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { buildProjectedChoiceRuleRollOptions } from "../projected-rule-options.js";
-import { documentFeatureLevel, getDocumentRules, matchesChoicePredicateList, toNonEmptyString } from "../rule-data.js";
+import { documentFeatureLevel, getDocumentRules, matchesChoicePredicateListAgainstRollOptions, toNonEmptyString, } from "../rule-data.js";
 import { buildSingletonChoiceSteps } from "../singleton-choice-service.js";
 import { SLOT_PREFIXES } from "../slot-ids.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
@@ -298,6 +299,10 @@ async function resolveProjectedRuleRollOptions(draft, sources, args, deps) {
         classSlug: deps.extractDocumentSlug(effectiveBuildState.class?.document ?? null),
         ancestrySlug: deps.extractDocumentSlug(effectiveBuildState.ancestry?.document ?? null),
         deitySelected: !!effectiveBuildState.deity,
+        skillRanks: projectDraftSkillRanks({
+            baseSkillRanks: args.snapshot.skillRanks,
+            draft,
+        }),
     });
 }
 export async function findPlanStepBySlotId(args, slotId, deps = DEFAULT_DEPS) {
@@ -323,7 +328,7 @@ async function resolveSingletonChoiceSources(draft, targetLevel, args, deps) {
         ...projectedClassArchetypeFeatSelections(draft, targetLevel),
         ...readExistingSkillTrainingFeatSelections(args.actor),
     ]);
-    const featSources = await resolveExpandedFeatChoiceSources(featSelections, deps);
+    const featSources = await resolveExpandedFeatChoiceSources(featSelections, draft, args, deps);
     return [
         ...singletonItemSources,
         ...featSources.map((source) => ({
@@ -426,7 +431,7 @@ async function resolveGrantChoiceSources(draft, targetLevel, args, deps) {
         ...projectedClassArchetypeFeatSelections(draft, targetLevel),
         ...readExistingSkillTrainingFeatSelections(args.actor).filter(isGrantChoiceSourceFeatSelection),
     ]);
-    const featSources = await resolveExpandedFeatChoiceSources(featSelections, deps);
+    const featSources = await resolveExpandedFeatChoiceSources(featSelections, draft, args, deps);
     const classFeatureSelections = resolveSelectedClassFeatureSelections(draft, args.actor);
     const classFeatureDocuments = await Promise.all(classFeatureSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     return [
@@ -501,7 +506,7 @@ async function resolveSelectedClassFeatureChoiceSources(draft, args, deps) {
         ...projectedClassArchetypeFeatSelections(draft, draft.targetLevel),
         ...readExistingSkillTrainingFeatSelections(args.actor).filter(isGrantChoiceSourceFeatSelection),
     ]);
-    const grantedFeatSources = (await resolveExpandedFeatChoiceSources(featSelections, deps))
+    const grantedFeatSources = (await resolveExpandedFeatChoiceSources(featSelections, draft, args, deps))
         .filter((source) => source.staticGrant && source.sourceItemType === "classfeature")
         .map((source) => ({
         level: source.sourceLevel,
@@ -532,7 +537,7 @@ async function resolveSelectedClassFeatureChoiceSources(draft, args, deps) {
     });
     return dedupeClassFeatureSourcesByUuid([...directSources, ...staticGrantSources, ...grantedFeatSources]);
 }
-async function resolveExpandedFeatChoiceSources(featSelections, deps) {
+async function resolveExpandedFeatChoiceSources(featSelections, draft, args, deps) {
     const featDocuments = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     const directSources = featSelections.flatMap((sourceSelection, index) => {
         const sourceDocument = featDocuments[index];
@@ -551,6 +556,7 @@ async function resolveExpandedFeatChoiceSources(featSelections, deps) {
     const staticGrantSources = await resolveStaticGrantChoiceSources({
         sources: directSources.map(({ sourceSelection, sourceDocument }) => ({ sourceSelection, sourceDocument })),
         fetchSelectionDocument: deps.fetchSelectionDocument,
+        activeRollOptions: await resolveProjectedRuleRollOptions(draft, directSources, args, deps),
     });
     return [
         ...directSources,
@@ -578,7 +584,7 @@ function staticClassFeatureGrantSelections(args) {
             return [];
         }
         const predicate = Array.isArray(rule.predicate) ? rule.predicate : [];
-        if (predicate.length > 0 && !matchesChoicePredicateList(predicate, (statement) => rollOptions.has(statement))) {
+        if (predicate.length > 0 && !matchesChoicePredicateListAgainstRollOptions(predicate, rollOptions)) {
             return [];
         }
         const uuid = toNonEmptyString(rule.uuid);

@@ -13,11 +13,8 @@ export interface ApplyDraftLifecycleArgs {
   confirmApply?: (message: string) => boolean | Promise<boolean>;
   applyDraftToActor: () => Promise<Record<string, unknown> | void>;
   updateActor: (update: Record<string, unknown>) => Promise<void>;
-  applyTimeoutMs?: number;
   now?: () => string;
 }
-
-export const DEFAULT_APPLY_TIMEOUT_MS = 30_000;
 
 export type ApplyDraftLifecycleResult =
   | { kind: "warning"; warning: "missing-selections" | "no-pending-steps" }
@@ -48,10 +45,6 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
     };
   }
 
-  return withTimeout(completeApply(args), args.applyTimeoutMs ?? DEFAULT_APPLY_TIMEOUT_MS, args.actorName);
-}
-
-async function completeApply(args: ApplyDraftLifecycleArgs): Promise<ApplyDraftLifecycleResult> {
   const actorUpdate = (await args.applyDraftToActor()) ?? {};
   const completedStepIds = mergeCompletedStepIds(args.existingCompletedStepIds ?? [], args.steps);
   await args.updateActor({
@@ -70,29 +63,6 @@ async function completeApply(args: ApplyDraftLifecycleArgs): Promise<ApplyDraftL
     kind: "applied",
     nextDraft: normalizeDraft(null, args.currentLevel),
   };
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, actorName: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(
-        new Error(
-          `Applying the Wayfinder draft to ${actorName} did not finish within ${timeoutMs}ms. The actor may be partially updated.`
-        )
-      );
-    }, timeoutMs);
-
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      }
-    );
-  });
 }
 
 function mergeCompletedStepIds(existingStepIds: string[], steps: PendingStep[]): string[] {

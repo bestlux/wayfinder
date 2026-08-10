@@ -3,7 +3,7 @@ import { classArchetypeProfilesForSelector, classArchetypeSlotId, isBattleCreedS
 import { buildClassBranchStepsFromRules, buildClassChoiceStepsFromFeatureSources, buildClassChoiceStepsFromRules, buildClassGrantedItemStepsFromRules, buildClassTrainingStepsFromRules, } from "./class-choice/step-builders.js";
 import { remainingCreationBoostChoices } from "./domain/boost-rules.js";
 import { createPickItemStep, createSkillTrainingStep, } from "./domain/step-types.js";
-import { matchesChoicePredicateList } from "./rule-data.js";
+import { matchesChoicePredicateListAgainstRollOptions } from "./rule-data.js";
 import { discoverSourceSkillTrainingMeta } from "./skill-training/source-discovery.js";
 export async function buildClassTrainingSteps(params) {
     const { draftClassSelection, includeBaseClassTraining = true, sourceSelections = [], targetLevel, effectiveBuildState, fetchSelectionDocument, extractSlug, localize, } = params;
@@ -117,7 +117,7 @@ function branchPredicateMatches(branch, rollOptions) {
     if (!Array.isArray(branch.predicate) || branch.predicate.length === 0) {
         return true;
     }
-    return matchesChoicePredicateList(branch.predicate, (statement) => rollOptions.has(statement.toLowerCase()));
+    return matchesChoicePredicateListAgainstRollOptions(branch.predicate, rollOptions);
 }
 function buildDraftClassBranchRollOptions(draft, branchSteps, classChoiceSteps) {
     const rollOptions = new Set();

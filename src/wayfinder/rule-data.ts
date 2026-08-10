@@ -56,6 +56,14 @@ export function isChoicePredicate(value: unknown): value is ChoicePredicate {
     return false;
   }
 
+  if (
+    "nand" in value &&
+    value.nand !== undefined &&
+    (!Array.isArray(value.nand) || !value.nand.every(isChoicePredicate))
+  ) {
+    return false;
+  }
+
   if ("or" in value && value.or !== undefined && (!Array.isArray(value.or) || !value.or.every(isChoicePredicate))) {
     return false;
   }
@@ -78,7 +86,7 @@ export function isChoicePredicate(value: unknown): value is ChoicePredicate {
     }
   }
 
-  return true;
+  return ["and", "nand", "or", "nor", "not", "lt", "lte", "gt", "gte"].some((key) => key in value);
 }
 
 export function matchesChoicePredicateList(
@@ -105,7 +113,60 @@ export function matchesChoiceSetRulePredicate(
     return false;
   }
 
-  return matchesChoicePredicateList(predicate, (statement) => activeRollOptions.has(statement.trim().toLowerCase()));
+  return matchesChoicePredicateListAgainstRollOptions(predicate, activeRollOptions);
+}
+
+export function matchesChoicePredicateListAgainstRollOptions(
+  predicate: ChoicePredicate[],
+  activeRollOptions: ReadonlySet<string>
+): boolean {
+  return matchesChoicePredicateList(predicate, (statement) => matchesProjectedRollOption(statement, activeRollOptions));
+}
+
+export function matchesChoicePredicateAgainstRollOptions(
+  predicate: ChoicePredicate,
+  activeRollOptions: ReadonlySet<string>
+): boolean {
+  return matchesChoicePredicate(predicate, (statement) => matchesProjectedRollOption(statement, activeRollOptions));
+}
+
+function matchesProjectedRollOption(statement: string, activeRollOptions: ReadonlySet<string>): boolean {
+  const normalized = statement.trim().toLowerCase();
+  if (activeRollOptions.has(normalized)) {
+    return true;
+  }
+
+  const comparison = /^(lt|lte|gt|gte):(.+):(-?\d+(?:\.\d+)?)$/u.exec(normalized);
+  if (!comparison) {
+    return false;
+  }
+
+  const [, operator, operand, rawExpected] = comparison;
+  const expected = Number(rawExpected);
+  const prefix = `${operand}:`;
+  return Array.from(activeRollOptions).some((option) => {
+    if (!option.startsWith(prefix)) {
+      return false;
+    }
+
+    const actual = Number(option.slice(prefix.length));
+    if (!Number.isFinite(actual) || !Number.isFinite(expected)) {
+      return false;
+    }
+
+    switch (operator) {
+      case "lt":
+        return actual < expected;
+      case "lte":
+        return actual <= expected;
+      case "gt":
+        return actual > expected;
+      case "gte":
+        return actual >= expected;
+      default:
+        return false;
+    }
+  });
 }
 
 export function matchesChoicePredicate(
@@ -127,6 +188,10 @@ export function matchesChoicePredicate(
 
   if (Array.isArray(predicate.and)) {
     return predicate.and.every((entry) => matchesChoicePredicate(entry, matchesString));
+  }
+
+  if (Array.isArray(predicate.nand)) {
+    return !predicate.nand.every((entry) => matchesChoicePredicate(entry, matchesString));
   }
 
   if (Array.isArray(predicate.or)) {
@@ -183,6 +248,7 @@ export function predicateIncludesString(predicate: ChoicePredicate, target: stri
 
   return (
     (Array.isArray(predicate.and) && predicate.and.some((entry) => predicateIncludesString(entry, target))) ||
+    (Array.isArray(predicate.nand) && predicate.nand.some((entry) => predicateIncludesString(entry, target))) ||
     (Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
     (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
     (!!predicate.not && predicateIncludesString(predicate.not, target)) ||

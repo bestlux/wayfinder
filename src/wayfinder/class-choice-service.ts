@@ -29,7 +29,7 @@ import {
   type PickItemSlotKind,
   type StepFilters,
 } from "./domain/step-types.js";
-import { matchesChoicePredicateList } from "./rule-data.js";
+import { matchesChoicePredicateListAgainstRollOptions } from "./rule-data.js";
 import { discoverSourceSkillTrainingMeta, type SkillTrainingSourceContext } from "./skill-training/source-discovery.js";
 
 interface BuildClassTrainingStepsParams {
@@ -246,7 +246,7 @@ function branchPredicateMatches(branch: ClassBranchMeta, rollOptions: Set<string
     return true;
   }
 
-  return matchesChoicePredicateList(branch.predicate, (statement) => rollOptions.has(statement.toLowerCase()));
+  return matchesChoicePredicateListAgainstRollOptions(branch.predicate, rollOptions);
 }
 
 function buildDraftClassBranchRollOptions(

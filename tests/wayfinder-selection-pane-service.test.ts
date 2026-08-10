@@ -594,7 +594,7 @@ describe("wayfinder selection pane service", () => {
       { value: "rank:1", label: "Rank 1", count: 1, selected: false },
       { value: "rank:2", label: "Rank 2", count: 1, selected: true },
     ]);
-    expect(pane.filterGroups.map((group) => group.key)).toEqual(["rank", "rarity", "source"]);
+    expect(pane.filterGroups.map((group) => group.key)).toEqual(["rank"]);
     expect(pane.preview).toMatchObject({
       title: "Heal",
       selectedLabel: "Added to draft",

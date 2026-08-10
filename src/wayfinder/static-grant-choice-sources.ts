@@ -1,6 +1,12 @@
 import { parseCompendiumItemUuid } from "../shared/compendium.js";
+import { slugifyName } from "../shared/slug.js";
 import type { SelectionRef } from "../types.js";
-import { documentFeatureLevel, getDocumentRules, toNonEmptyString } from "./rule-data.js";
+import {
+  documentFeatureLevel,
+  getDocumentRules,
+  matchesChoiceSetRulePredicate,
+  toNonEmptyString,
+} from "./rule-data.js";
 
 export interface StaticGrantChoiceSource {
   grantRuleIndex: number;
@@ -17,6 +23,7 @@ interface ResolveStaticGrantChoiceSourcesArgs {
     sourceDocument: unknown;
   }>;
   fetchSelectionDocument: (selection: SelectionRef) => Promise<unknown | null>;
+  activeRollOptions?: ReadonlySet<string>;
 }
 
 /**
@@ -30,7 +37,7 @@ export async function resolveStaticGrantChoiceSources(
   args: ResolveStaticGrantChoiceSourcesArgs
 ): Promise<StaticGrantChoiceSource[]> {
   const pending = args.sources.flatMap(({ sourceSelection, sourceDocument }) =>
-    staticGrantSelections(sourceSelection, sourceDocument).map(
+    staticGrantSelections(sourceSelection, sourceDocument, args.activeRollOptions).map(
       async ({ grantRuleIndex, selection }): Promise<StaticGrantChoiceSource | null> => {
         const sourceDocument = await args.fetchSelectionDocument(selection);
         if (!sourceDocument || !getDocumentRules(sourceDocument).some((rule) => rule.key === "ChoiceSet")) {
@@ -62,10 +69,12 @@ export async function resolveStaticGrantChoiceSources(
 
 export function staticGrantSelections(
   parentSelection: SelectionRef,
-  sourceDocument: unknown
+  sourceDocument: unknown,
+  activeRollOptions: ReadonlySet<string> = new Set()
 ): Array<{ grantRuleIndex: number; selection: SelectionRef }> {
+  const sourceRollOptions = buildSourceRollOptions(parentSelection, sourceDocument, activeRollOptions);
   return getDocumentRules(sourceDocument).flatMap((rule, grantRuleIndex) => {
-    if (rule.key !== "GrantItem") {
+    if (rule.key !== "GrantItem" || !matchesChoiceSetRulePredicate(rule, sourceRollOptions)) {
       return [];
     }
 
@@ -92,6 +101,27 @@ export function staticGrantSelections(
       },
     ];
   });
+}
+
+function buildSourceRollOptions(
+  parentSelection: SelectionRef,
+  sourceDocument: unknown,
+  activeRollOptions: ReadonlySet<string>
+): Set<string> {
+  const options = new Set(Array.from(activeRollOptions, (option) => option.trim().toLowerCase()));
+  const sourceSlug =
+    toNonEmptyString((sourceDocument as { system?: { slug?: unknown } } | null)?.system?.slug)?.toLowerCase() ??
+    parentSelection.slug?.trim().toLowerCase() ??
+    slugifyName(parentSelection.name);
+  const sourceCategory = toNonEmptyString(
+    (sourceDocument as { system?: { category?: unknown; featType?: { value?: unknown } } } | null)?.system?.featType
+      ?.value ?? (sourceDocument as { system?: { category?: unknown } } | null)?.system?.category
+  )?.toLowerCase();
+  if (sourceSlug) {
+    options.add(`${sourceCategory === "classfeature" ? "feature" : "feat"}:${sourceSlug}`);
+  }
+  options.add(`self:level:${parentSelection.level ?? documentFeatureLevel(sourceDocument)}`);
+  return options;
 }
 
 function inferGrantedSourceItemType(selection: SelectionRef, document: unknown): "classfeature" | "feat" {

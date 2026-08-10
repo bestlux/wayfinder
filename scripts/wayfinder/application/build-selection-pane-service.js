@@ -50,7 +50,9 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
     const searchedOptions = options.filter((option) => deps.matchesSearch(option, search));
     const filterKinds = step.kind === "spell-choice" ? ["rank", "rarity", "source"] : ["rarity", "source"];
     const openFilterKind = deps.openPickerFilterMenu?.stepId === step.id ? deps.openPickerFilterMenu.filterKind : null;
-    const filterGroups = buildPickerFilterGroups(searchedOptions, filterState, filterKinds).map((group) => ({
+    const filterGroups = buildPickerFilterGroups(searchedOptions, filterState, filterKinds)
+        .filter((group) => group.options.length > 1 || group.selectedCount > 0)
+        .map((group) => ({
         ...group,
         isOpen: group.key === openFilterKind,
     }));

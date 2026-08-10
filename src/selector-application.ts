@@ -343,13 +343,6 @@ async function ensureGrantedItem(
     return { item: null, update: null, reusedExistingItem: false };
   }
   const existingMatches = existingGranted && itemMatchesSourceId(existingGranted, grantPlan.selection.uuid);
-  if (existingGranted && !existingMatches) {
-    if (!existingGrantedId) {
-      return { item: null, update: null, reusedExistingItem: false };
-    }
-    await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
-  }
-
   if (existingMatches) {
     if (grantPlan.adoptExistingSource) {
       const refreshedSource = await createEmbeddedSource(grantPlan.selection);
@@ -380,6 +373,9 @@ async function ensureGrantedItem(
   });
 
   assertResolvedUnconditionalChoiceSets(source, grantPlan.selection.name);
+  if (existingGrantedId) {
+    await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
+  }
   const created = await actor.createEmbeddedDocuments("Item", [source]);
   const createdItem = Array.isArray(created) ? ((created[0] as SelectorItemLike | undefined) ?? null) : null;
   if (!createdItem?.id) {
@@ -398,7 +394,7 @@ function assertResolvedUnconditionalChoiceSets(source: EmbeddedItemSource, sourc
   const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
   const selections = source.flags?.pf2e?.rulesSelections ?? {};
   for (const [ruleIndex, rule] of rules.entries()) {
-    if (rule?.key !== "ChoiceSet" || rule.predicate !== undefined) {
+    if (rule?.key !== "ChoiceSet" || !isUnconditionalPredicate(rule.predicate)) {
       continue;
     }
 
@@ -411,6 +407,10 @@ function assertResolvedUnconditionalChoiceSets(source: EmbeddedItemSource, sourc
       );
     }
   }
+}
+
+function isUnconditionalPredicate(predicate: unknown): boolean {
+  return predicate === undefined || (Array.isArray(predicate) && predicate.length === 0);
 }
 
 async function createManualStaticGrantedItems(

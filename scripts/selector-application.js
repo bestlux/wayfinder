@@ -188,12 +188,6 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
         return { item: null, update: null, reusedExistingItem: false };
     }
     const existingMatches = existingGranted && itemMatchesSourceId(existingGranted, grantPlan.selection.uuid);
-    if (existingGranted && !existingMatches) {
-        if (!existingGrantedId) {
-            return { item: null, update: null, reusedExistingItem: false };
-        }
-        await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
-    }
     if (existingMatches) {
         if (grantPlan.adoptExistingSource) {
             const refreshedSource = await createEmbeddedSource(grantPlan.selection);
@@ -215,6 +209,9 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
         granterId: selectorItemId,
     });
     assertResolvedUnconditionalChoiceSets(source, grantPlan.selection.name);
+    if (existingGrantedId) {
+        await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
+    }
     const created = await actor.createEmbeddedDocuments("Item", [source]);
     const createdItem = Array.isArray(created) ? (created[0] ?? null) : null;
     if (!createdItem?.id) {
@@ -231,7 +228,7 @@ function assertResolvedUnconditionalChoiceSets(source, sourceName) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
     const selections = source.flags?.pf2e?.rulesSelections ?? {};
     for (const [ruleIndex, rule] of rules.entries()) {
-        if (rule?.key !== "ChoiceSet" || rule.predicate !== undefined) {
+        if (rule?.key !== "ChoiceSet" || !isUnconditionalPredicate(rule.predicate)) {
             continue;
         }
         const flag = typeof rule.flag === "string" && rule.flag.length > 0 ? rule.flag : null;
@@ -241,6 +238,9 @@ function assertResolvedUnconditionalChoiceSets(source, sourceName) {
             throw new Error(`Cannot create ${sourceName}: unresolved unconditional ChoiceSet ${flag ? `"${flag}"` : `at rule ${ruleIndex}`}.`);
         }
     }
+}
+function isUnconditionalPredicate(predicate) {
+    return predicate === undefined || (Array.isArray(predicate) && predicate.length === 0);
 }
 async function createManualStaticGrantedItems(actor, granter, granterSource, grantPlan, createEmbeddedSource) {
     const granterId = typeof granter.id === "string" ? granter.id : null;

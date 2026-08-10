@@ -44,7 +44,7 @@ export function discoverSingletonChoiceSpecs(args) {
         if (isGrantSelectorChoice(rules, flag)) {
             return [];
         }
-        const options = resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType);
+        const options = resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, args.activeRollOptions ?? new Set());
         if (!options ||
             options.options.length === 0 ||
             (!includeTrainingChoices && shouldSkipSingletonChoice(args.sourceItemType, options.optionDomain))) {
@@ -76,10 +76,11 @@ function shouldSkipSingletonChoice(sourceItemType, optionDomain) {
 function extractPredicate(value) {
     return Array.isArray(value) ? value.filter(isChoicePredicate) : [];
 }
-function resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType) {
+function resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, activeRollOptions) {
     if (Array.isArray(rule.choices)) {
         const options = rule.choices
             .filter((choice) => isRecord(choice))
+            .filter((choice) => matchesChoiceSetRulePredicate(choice, activeRollOptions))
             .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
             .map((choice) => {
             const rawValue = String(choice.value).trim();

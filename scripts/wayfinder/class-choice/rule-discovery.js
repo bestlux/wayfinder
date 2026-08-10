@@ -1,6 +1,6 @@
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { formatSlug } from "../formatting.js";
-import { isRecord, matchesChoicePredicate, toNonEmptyString } from "../rule-data.js";
+import { isRecord, matchesChoicePredicateAgainstRollOptions, toNonEmptyString } from "../rule-data.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel } from "./skill-config.js";
 export function findRelevantClassRules(document) {
     const rules = document?.system?.rules;
@@ -355,7 +355,7 @@ function toDromedaryFlag(value) {
         .join("");
 }
 function evaluatePredicate(predicate, rollOptions) {
-    return (!predicate || matchesChoicePredicate(predicate, (statement) => rollOptions.has(statement.trim().toLowerCase())));
+    return !predicate || matchesChoicePredicateAgainstRollOptions(predicate, rollOptions);
 }
 function sameItemChoiceDependencies(rule, previousChoices) {
     if (!Array.isArray(rule.choices) || previousChoices.length === 0) {

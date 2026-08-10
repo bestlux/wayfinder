@@ -103,6 +103,7 @@ async function resolveStaticGrantDisclosure(
   const staticGrantSources = await resolveStaticGrantChoiceSources({
     sources: [{ sourceSelection, sourceDocument: entry }],
     fetchSelectionDocument,
+    activeRollOptions: new Set(context.rollOptions ?? []),
   });
   if (staticGrantSources.length === 0) {
     return null;

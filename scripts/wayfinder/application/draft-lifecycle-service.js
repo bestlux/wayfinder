@@ -1,6 +1,5 @@
 import { DRAFT_FLAG, STATE_FLAG } from "../../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../../draft-service.js";
-export const DEFAULT_APPLY_TIMEOUT_MS = 30_000;
 export async function applyDraftLifecycle(args) {
     if (args.steps.length === 0) {
         return {
@@ -21,9 +20,6 @@ export async function applyDraftLifecycle(args) {
             kind: "cancelled",
         };
     }
-    return withTimeout(completeApply(args), args.applyTimeoutMs ?? DEFAULT_APPLY_TIMEOUT_MS, args.actorName);
-}
-async function completeApply(args) {
     const actorUpdate = (await args.applyDraftToActor()) ?? {};
     const completedStepIds = mergeCompletedStepIds(args.existingCompletedStepIds ?? [], args.steps);
     await args.updateActor({
@@ -41,20 +37,6 @@ async function completeApply(args) {
         kind: "applied",
         nextDraft: normalizeDraft(null, args.currentLevel),
     };
-}
-function withTimeout(promise, timeoutMs, actorName) {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new Error(`Applying the Wayfinder draft to ${actorName} did not finish within ${timeoutMs}ms. The actor may be partially updated.`));
-        }, timeoutMs);
-        promise.then((value) => {
-            clearTimeout(timer);
-            resolve(value);
-        }, (error) => {
-            clearTimeout(timer);
-            reject(error);
-        });
-    });
 }
 function mergeCompletedStepIds(existingStepIds, steps) {
     return Array.from(new Set([

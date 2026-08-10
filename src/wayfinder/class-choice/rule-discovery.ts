@@ -8,7 +8,7 @@ import type {
   SkillTrainingMeta,
 } from "../../types.js";
 import { formatSlug } from "../formatting.js";
-import { isRecord, matchesChoicePredicate, toNonEmptyString } from "../rule-data.js";
+import { isRecord, matchesChoicePredicateAgainstRollOptions, toNonEmptyString } from "../rule-data.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, type SkillConfigMap } from "./skill-config.js";
 
 export interface ClassFeatureSelectionSource {
@@ -549,9 +549,7 @@ function toDromedaryFlag(value: string): string | null {
 }
 
 function evaluatePredicate(predicate: ChoicePredicate | undefined, rollOptions: Set<string>): boolean {
-  return (
-    !predicate || matchesChoicePredicate(predicate, (statement) => rollOptions.has(statement.trim().toLowerCase()))
-  );
+  return !predicate || matchesChoicePredicateAgainstRollOptions(predicate, rollOptions);
 }
 
 function sameItemChoiceDependencies(

@@ -120,10 +120,12 @@ export async function buildSelectionPane(
   const filterKinds: PickerFilterKind[] =
     step.kind === "spell-choice" ? ["rank", "rarity", "source"] : ["rarity", "source"];
   const openFilterKind = deps.openPickerFilterMenu?.stepId === step.id ? deps.openPickerFilterMenu.filterKind : null;
-  const filterGroups = buildPickerFilterGroups(searchedOptions, filterState, filterKinds).map((group) => ({
-    ...group,
-    isOpen: group.key === openFilterKind,
-  }));
+  const filterGroups = buildPickerFilterGroups(searchedOptions, filterState, filterKinds)
+    .filter((group) => group.options.length > 1 || group.selectedCount > 0)
+    .map((group) => ({
+      ...group,
+      isOpen: group.key === openFilterKind,
+    }));
   const filteredOptions = searchedOptions.filter((option) =>
     matchesPickerFilters(option, filterState, undefined, filterKinds)
   );

@@ -204,7 +204,7 @@ describe("wayfinder option context service", () => {
       extractDocumentSlug: () => null,
     });
 
-    expect(context.rollOptions).toEqual(["molten-wit:deception"]);
+    expect(context.rollOptions).toEqual(["molten-wit:deception", "skill:deception:rank:1"]);
   });
 
   it("uses PF2E class-choice rollOption keys when evaluating drafted choices", async () => {
@@ -579,7 +579,7 @@ describe("wayfinder option context service", () => {
         }
       )
     ).resolves.toBe(
-      "Showing rank 1 arcane spells that will be added to the Wizard spellbook. Source: School of Unified Magical Theory. Daily prepared loadouts remain on PF2E's character sheet."
+      "Showing rank 1 arcane spells that will be added to the Wizard spellbook. Daily prepared loadouts remain on PF2E's character sheet."
     );
   });
 });

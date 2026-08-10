@@ -1,7 +1,7 @@
 import { MODULE_ID, SETTINGS } from "./constants.js";
 import { normalizeSpellRarityCeiling, type SpellRarityCeiling } from "./wayfinder/spell-choice/rarity-access.js";
 
-export function registerSettings(): void {
+export function registerSettings(args: { onSpellRarityCeilingChange?: () => void } = {}): void {
   game.settings.register(MODULE_ID, SETTINGS.extraPacks, {
     name: "wayfinder-pf2e.Settings.ExtraPacks.Name",
     hint: "wayfinder-pf2e.Settings.ExtraPacks.Hint",
@@ -25,6 +25,7 @@ export function registerSettings(): void {
       unique: "wayfinder-pf2e.Settings.SpellRarityCeiling.Choices.Unique",
     },
     default: "common",
+    onChange: args.onSpellRarityCeilingChange,
   });
 }
 

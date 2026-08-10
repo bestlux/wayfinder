@@ -6,6 +6,9 @@ export function buildProjectedChoiceRuleRollOptions(args) {
     addOption(active, args.ancestrySlug ? `ancestry:${args.ancestrySlug}` : null);
     addOption(active, args.deitySelected ? "deity" : null);
     addDraftSingletonRollOptions(active, args.draft);
+    for (const option of collectSkillRankRollOptions(args.skillRanks)) {
+        addOption(active, option);
+    }
     for (const option of collectActorRuleSelectionRollOptions(args.actorItems)) {
         addOption(active, option);
     }
@@ -68,6 +71,15 @@ export function collectActorRuleSelectionRollOptions(actorItems) {
             const selection = flag ? normalize(rulesSelections[flag]) : null;
             return rollOption && selection ? [`${rollOption}:${selection}`] : [];
         });
+    });
+}
+export function collectSkillRankRollOptions(skillRanks) {
+    return Object.entries(skillRanks ?? {}).flatMap(([rawSlug, rawRank]) => {
+        const slug = normalize(rawSlug)
+            ?.replace(/[^a-z0-9]+/gu, "-")
+            .replace(/^-+|-+$/gu, "");
+        const rank = Number(rawRank);
+        return slug && Number.isFinite(rank) ? [`skill:${slug}:rank:${Math.max(0, Math.min(4, Math.floor(rank)))}`] : [];
     });
 }
 function draftedRuleSelectionValues(draft, source, sourceSlug, sourceLevel, flag) {

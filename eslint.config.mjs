@@ -34,6 +34,7 @@ export default tseslint.config(
     ignores: [
       "agents/**",
       ".claude/**",
+      ".worktrees/**",
       "dist/**",
       "lang/**",
       "node_modules/**",

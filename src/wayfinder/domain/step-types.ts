@@ -51,6 +51,7 @@ export type ChoicePredicate =
   | string
   | {
       and?: ChoicePredicate[];
+      nand?: ChoicePredicate[];
       or?: ChoicePredicate[];
       nor?: ChoicePredicate[];
       not?: ChoicePredicate;

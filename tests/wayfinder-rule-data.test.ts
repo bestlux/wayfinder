@@ -6,6 +6,7 @@ import {
   isChoicePredicate,
   matchesChoicePredicate,
   matchesChoicePredicateList,
+  matchesChoiceSetRulePredicate,
   predicateIncludesString,
   toNonEmptyString,
 } from "../src/wayfinder/rule-data";
@@ -38,7 +39,14 @@ describe("wayfinder rule data helpers", () => {
     expect(matchesChoicePredicateList(["item:type:feat", { not: "item:rarity:rare" }], matches)).toBe(true);
     expect(matchesChoicePredicate({ or: ["item:rarity:rare", "deity:primary:font:heal"] }, matches)).toBe(true);
     expect(matchesChoicePredicate({ nor: ["item:rarity:rare", "item:type:spell"] }, matches)).toBe(true);
+    expect(matchesChoicePredicate({ nand: ["item:type:feat", "item:rarity:rare"] }, matches)).toBe(true);
+    expect(matchesChoicePredicate({ nand: ["item:type:feat", "deity:primary:font:heal"] }, matches)).toBe(false);
     expect(matchesChoicePredicate(["item:type:feat", "item:rarity:rare"], matches)).toBe(false);
+  });
+
+  it("rejects unknown predicate objects instead of treating them as active", () => {
+    expect(isChoicePredicate({ unsupported: ["item:type:feat"] })).toBe(false);
+    expect(matchesChoiceSetRulePredicate({ predicate: [{ unsupported: ["item:type:feat"] }] }, new Set())).toBe(false);
   });
 
   it("evaluates comparison predicates through the caller-owned matcher", () => {
@@ -49,6 +57,15 @@ describe("wayfinder rule data helpers", () => {
     expect(matchesChoicePredicate({ gt: ["actor:level", "2"] }, matches)).toBe(true);
     expect(matchesChoicePredicate({ lte: ["item:level", 2] }, matches)).toBe(false);
     expect(matchesChoicePredicate({ not: { lte: ["item:level", 2] } }, matches)).toBe(true);
+  });
+
+  it("evaluates numeric rule comparisons against projected roll-option values", () => {
+    const active = new Set(["skill:crafting:rank:1", "self:level:5"]);
+
+    expect(matchesChoiceSetRulePredicate({ predicate: [{ gte: ["skill:crafting:rank", 1] }] }, active)).toBe(true);
+    expect(matchesChoiceSetRulePredicate({ predicate: [{ lte: ["skill:crafting:rank", 1] }] }, active)).toBe(true);
+    expect(matchesChoiceSetRulePredicate({ predicate: [{ gt: ["skill:crafting:rank", 1] }] }, active)).toBe(false);
+    expect(matchesChoiceSetRulePredicate({ predicate: [{ lt: ["self:level", 6] }] }, active)).toBe(true);
   });
 
   it("finds predicate string fragments inside nested branches", () => {

@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { applySelectorApplication } from "../src/selector-application";
 
 describe("selector application", () => {
-  it("rejects unresolved unconditional child choices before starting PF2E creation", async () => {
+  it.each([
+    { label: "missing", predicate: undefined },
+    { label: "empty", predicate: [] },
+  ])("rejects unresolved unconditional child choices with a $label predicate before PF2E creation", async ({
+    predicate,
+  }) => {
     const createEmbeddedDocuments = vi.fn(async (_type: string, sources: Array<Record<string, unknown>>) => [
       {
         ...structuredClone(sources[0]),
@@ -72,6 +77,7 @@ describe("selector application", () => {
                         key: "ChoiceSet",
                         flag: "eidolonTradition",
                         choices: { config: "magicTraditions" },
+                        ...(predicate === undefined ? {} : { predicate }),
                       },
                     ],
                   },

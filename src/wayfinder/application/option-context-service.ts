@@ -9,6 +9,7 @@ import {
   withExistingClassArchetypeChoice,
 } from "../class-archetype/registry.js";
 import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
+import { collectActorRuleSelectionRollOptions, collectSkillRankRollOptions } from "../projected-rule-options.js";
 
 type SingletonItemType = "ancestry" | "heritage" | "background" | "class" | "deity";
 type LooseDocument = {
@@ -217,13 +218,13 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
   const selectedSpellChoicesBySlotId = buildSelectedSpellChoicesBySlotId(effectiveDraft, deps.steps ?? []);
   const actorSourceIds = buildActorSourceIds(actorItems);
   const actorSpellUuidsByDestinationKey = buildActorSpellUuidsByDestinationKey(actorItems, deps.steps ?? []);
-  const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems);
   const skillRanks = buildProjectedSkillRanks(
     deps.skillRanks,
     effectiveDraft,
     deps.steps ?? [],
     skillProjectionBoundarySlotId(deps.maximumFeatLevel)
   );
+  const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems, skillRanks);
   return {
     ancestrySlug,
     ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
@@ -401,9 +402,18 @@ function buildActorSpellUuidsByDestinationKey(actorItems: unknown[], steps: Pend
   );
 }
 
-function buildActiveRollOptions(draft: DraftState, steps: PendingStep[], actorItems: unknown[]): string[] {
+function buildActiveRollOptions(
+  draft: DraftState,
+  steps: PendingStep[],
+  actorItems: unknown[],
+  skillRanks: Record<string, number> | null
+): string[] {
   return Array.from(
-    new Set([...collectDraftRollOptions(draft, steps), ...collectActorRuleSelectionRollOptions(actorItems)])
+    new Set([
+      ...collectDraftRollOptions(draft, steps),
+      ...collectActorRuleSelectionRollOptions(actorItems),
+      ...collectSkillRankRollOptions(skillRanks),
+    ])
   ).sort();
 }
 
@@ -457,28 +467,6 @@ function collectDraftRollOptions(draft: DraftState, steps: PendingStep[]): strin
   }
 
   return options;
-}
-
-function collectActorRuleSelectionRollOptions(actorItems: unknown[]): string[] {
-  return actorItems.flatMap((item) => {
-    const typedItem = item as LooseItem | null;
-    const rules = Array.isArray(typedItem?.system?.rules) ? typedItem.system.rules : [];
-    const rulesSelections = {
-      ...(typedItem?.flags?.system?.rulesSelections ?? {}),
-      ...(typedItem?.flags?.pf2e?.rulesSelections ?? {}),
-    };
-
-    return rules.flatMap((rule) => {
-      if (!isRecord(rule) || rule.key !== "ChoiceSet") {
-        return [];
-      }
-
-      const flag = normalizeString(rule.flag) ?? normalizeString(rule.rollOption) ?? normalizeString(rule.slug);
-      const rollOption = normalizeString(rule.rollOption);
-      const selection = flag ? normalizeString(rulesSelections[flag]) : null;
-      return rollOption && selection ? [`${rollOption}:${selection}`] : [];
-    });
-  });
 }
 
 function buildProjectedSkillRanks(
@@ -580,10 +568,6 @@ function normalizeSkillSlug(value: unknown): string | null {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object";
 }
 
 export async function buildContextNote(
@@ -711,8 +695,7 @@ export async function buildContextNote(
         : spellChoice.minRank === spellChoice.maxRank
           ? `rank ${spellChoice.maxRank} ${tradition} spells`
           : `${tradition} spells of rank ${spellChoice.minRank} to ${spellChoice.maxRank}`;
-      const sourceLabel = spellChoice.sourceName || "Wizard Spellcasting";
-      return `Showing ${rankLabel} that will be added to the ${spellChoice.destination.label}. Source: ${sourceLabel}. Daily prepared loadouts remain on PF2E's character sheet.`;
+      return `Showing ${rankLabel} that will be added to the ${spellChoice.destination.label}. Daily prepared loadouts remain on PF2E's character sheet.`;
     }
     case "skill-feat":
       return "Showing baseline skill feats. Archetype-tagged skill feats stay hidden until Wayfinder tracks a specific archetype path.";

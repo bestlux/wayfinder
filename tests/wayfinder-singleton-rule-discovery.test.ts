@@ -16,6 +16,36 @@ const sourceSelection: SelectionRef = {
 };
 
 describe("wayfinder singleton rule discovery", () => {
+  it("filters literal choices by their own predicates", () => {
+    const choices = discoverSingletonChoiceMeta({
+      sourceItemType: "background",
+      sourceDocument: {
+        name: "Sponsored by Family",
+        system: {
+          slug: "sponsored-by-family",
+          level: { value: 1 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "familyKeepsake",
+              choices: [
+                { value: "ring", label: "Ancestor's Ring", predicate: ["family:ring"] },
+                { value: "crest", label: "Family Crest", predicate: ["family:crest"] },
+                { value: "letter", label: "Family Letter" },
+              ],
+            },
+          ],
+        },
+      },
+      sourceSelection,
+      extractSlug,
+      localize: (value) => value,
+      activeRollOptions: new Set(["family:crest"]),
+    });
+
+    expect(choices[0]?.options.map((option) => option.value)).toEqual(["crest", "letter"]);
+  });
+
   it("discovers generic singleton choice metadata from direct-document ChoiceSet rules", () => {
     const choices = discoverSingletonChoiceMeta({
       sourceItemType: "background",

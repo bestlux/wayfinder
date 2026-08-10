@@ -1,10 +1,10 @@
 import { MODULE_ID } from "./constants.js";
 import { registerSettings } from "./settings.js";
 import { preloadHandlebarsTemplates } from "./shared/foundry-compat.js";
-import { registerSheetControls } from "./sheet-controls.js";
+import { registerSheetControls, rerenderOpenWayfinderApps } from "./sheet-controls.js";
 
 Hooks.once("init", () => {
-  registerSettings();
+  registerSettings({ onSpellRarityCeilingChange: rerenderOpenWayfinderApps });
   void preloadHandlebarsTemplates([
     `modules/${MODULE_ID}/templates/wayfinder/manual-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/boost-pane.hbs`,

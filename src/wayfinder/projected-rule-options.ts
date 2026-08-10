@@ -21,12 +21,16 @@ export function buildProjectedChoiceRuleRollOptions(args: {
   classSlug?: string | null;
   ancestrySlug?: string | null;
   deitySelected?: boolean;
+  skillRanks?: Record<string, number>;
 }): Set<string> {
   const active = new Set<string>();
   addOption(active, args.classSlug ? `class:${args.classSlug}` : null);
   addOption(active, args.ancestrySlug ? `ancestry:${args.ancestrySlug}` : null);
   addOption(active, args.deitySelected ? "deity" : null);
   addDraftSingletonRollOptions(active, args.draft);
+  for (const option of collectSkillRankRollOptions(args.skillRanks)) {
+    addOption(active, option);
+  }
 
   for (const option of collectActorRuleSelectionRollOptions(args.actorItems)) {
     addOption(active, option);
@@ -103,6 +107,16 @@ export function collectActorRuleSelectionRollOptions(actorItems: unknown[]): str
       const selection = flag ? normalize(rulesSelections[flag]) : null;
       return rollOption && selection ? [`${rollOption}:${selection}`] : [];
     });
+  });
+}
+
+export function collectSkillRankRollOptions(skillRanks: Record<string, number> | null | undefined): string[] {
+  return Object.entries(skillRanks ?? {}).flatMap(([rawSlug, rawRank]) => {
+    const slug = normalize(rawSlug)
+      ?.replace(/[^a-z0-9]+/gu, "-")
+      .replace(/^-+|-+$/gu, "");
+    const rank = Number(rawRank);
+    return slug && Number.isFinite(rank) ? [`skill:${slug}:rank:${Math.max(0, Math.min(4, Math.floor(rank)))}`] : [];
   });
 }
 

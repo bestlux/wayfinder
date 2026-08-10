@@ -538,6 +538,31 @@ describe("grant-borne embedded choice policy", () => {
     const selection = selectionFor(COMMANDER_DEDICATION);
     expect(staticGrantSelections(selection, TACTICS)).toEqual([]);
   });
+
+  it("only follows static GrantItem UUIDs whose parent predicate is active", () => {
+    const selection = selectionFor(COMMANDER_DEDICATION);
+    const sourceDocument = {
+      system: {
+        slug: "stonemasons-eye",
+        level: { value: 1 },
+        rules: [
+          {
+            key: "GrantItem",
+            uuid: "Compendium.pf2e.feats-srd.Item.Specialty Crafting",
+            predicate: [{ gte: ["skill:crafting:rank", 1] }],
+          },
+        ],
+      },
+    };
+
+    expect(staticGrantSelections(selection, sourceDocument, new Set(["skill:crafting:rank:0"]))).toEqual([]);
+    expect(staticGrantSelections(selection, sourceDocument, new Set(["skill:crafting:rank:1"]))).toMatchObject([
+      {
+        grantRuleIndex: 0,
+        selection: { uuid: "Compendium.pf2e.feats-srd.Item.Specialty Crafting" },
+      },
+    ]);
+  });
 });
 
 function classifyWithStaticGrants(

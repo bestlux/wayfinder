@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DRAFT_FLAG, STATE_FLAG } from "../src/constants";
 import { createEmptyDraft, createEmptyState } from "../src/draft-service";
 import type { PendingStep } from "../src/types";
@@ -9,10 +9,6 @@ import {
 } from "../src/wayfinder/application/draft-lifecycle-service";
 
 describe("wayfinder draft lifecycle service", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("refuses to apply when any planned step is incomplete", async () => {
     const draft = createEmptyDraft(3);
     const confirmApply = vi.fn(() => true);
@@ -189,27 +185,6 @@ describe("wayfinder draft lifecycle service", () => {
     expect(result.kind).toBe("applied");
     expect(confirmApply).toHaveBeenCalledWith("Apply 1 Wayfinder step(s) to Ezren?");
     expect(order).toEqual(["confirm", "apply", "update"]);
-  });
-
-  it("rejects a stalled apply with an honest partial-update error", async () => {
-    vi.useFakeTimers();
-    const apply = applyDraftLifecycle({
-      actorName: "Mios",
-      currentLevel: 1,
-      draft: createEmptyDraft(2),
-      steps: [step("class-level-1")],
-      isStepComplete: async () => true,
-      confirmApply: () => true,
-      applyDraftToActor: () => new Promise(() => undefined),
-      updateActor: vi.fn(async () => undefined),
-      applyTimeoutMs: 25,
-    });
-    const rejection = expect(apply).rejects.toThrow(
-      "Applying the Wayfinder draft to Mios did not finish within 25ms. The actor may be partially updated."
-    );
-
-    await vi.advanceTimersByTimeAsync(25);
-    await rejection;
   });
 
   it("preserves previously completed step ids during incremental applies", async () => {

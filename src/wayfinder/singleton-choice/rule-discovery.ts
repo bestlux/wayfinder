@@ -103,7 +103,13 @@ export function discoverSingletonChoiceSpecs(args: {
       return [];
     }
 
-    const options = resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType);
+    const options = resolveChoiceOptions(
+      rule,
+      localize,
+      configuredSkills,
+      sourceItemType,
+      args.activeRollOptions ?? new Set()
+    );
     if (
       !options ||
       options.options.length === 0 ||
@@ -154,11 +160,15 @@ function resolveChoiceOptions(
   rule: Record<string, unknown>,
   localize: (value: string) => string,
   configuredSkills: SkillConfigMap,
-  sourceItemType: SingletonChoiceSourceItemType
+  sourceItemType: SingletonChoiceSourceItemType,
+  activeRollOptions: ReadonlySet<string>
 ): { optionDomain: "generic" | "skill" | "lore"; options: SingletonChoiceSpec["options"] } | null {
   if (Array.isArray(rule.choices)) {
     const options = rule.choices
-      .filter((choice): choice is { label?: unknown; value?: unknown; img?: unknown } => isRecord(choice))
+      .filter((choice): choice is { label?: unknown; value?: unknown; img?: unknown } & Record<string, unknown> =>
+        isRecord(choice)
+      )
+      .filter((choice) => matchesChoiceSetRulePredicate(choice, activeRollOptions))
       .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
       .map((choice) => {
         const rawValue = String(choice.value).trim();

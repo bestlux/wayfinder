@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { applySpellChoiceDraft } from "../src/actor-updater/spell-choice-application";
+import { createSpellcastingEntrySource } from "../src/actor-updater/spellcasting-entry-support";
 import { createEmptyDraft } from "../src/draft-service";
 import type { SpellChoiceMeta } from "../src/types";
 import {
@@ -12,6 +13,20 @@ import {
 } from "./support/actor-updater-fixtures";
 
 describe("actor-updater spell choice application", () => {
+  it("models a single rank-10 Wizard slot at level 19", () => {
+    const draft = createEmptyDraft(19);
+    const source = createSpellcastingEntrySource(
+      wizardSpellChoice("spell-choice-wizard-spellbook-level-19", 2, 1, 10, false),
+      { system: { details: { level: { value: 19 } } } },
+      draft
+    );
+
+    expect(source.system?.slots).toMatchObject({
+      slot9: { max: 3, value: 3 },
+      slot10: { max: 1, value: 1 },
+    });
+  });
+
   it("creates a Spellshot spellbook with four cantrips and two open preparation slots", async () => {
     const { actor } = buildActorHarness();
     const cantrips = ["detect-magic", "ignition", "light", "shield"];
@@ -1170,6 +1185,11 @@ describe("actor-updater spell choice application", () => {
                 value: 3,
                 prepared: Array.from({ length: 3 }, () => ({ id: null, expended: false })),
               },
+              slot10: {
+                max: 1,
+                value: 0,
+                prepared: [{ id: "wish-spell", expended: true }],
+              },
             },
           },
         },
@@ -1216,6 +1236,11 @@ describe("actor-updater spell choice application", () => {
             max: 2,
             value: 2,
           }),
+          slot10: {
+            max: 1,
+            value: 0,
+            prepared: [{ id: "wish-spell", expended: true }],
+          },
         }),
       }),
     ]);

@@ -1,5 +1,8 @@
+import { wizardMaxSpellRank } from "../../shared/spellcasting.js";
 import { buildMagusSpellChoiceSteps } from "../spell-choice/magus-step-builder.js";
+import { parseSorcerousGiftSpellAccess } from "../spell-choice/metadata-parsing.js";
 import { buildPreparedSpellChoiceSteps } from "../spell-choice/prepared-step-builder.js";
+import { sourceRefFromDocument } from "../spell-choice/source-utils.js";
 import { buildSpontaneousRepertoireSpellChoiceSteps } from "../spell-choice/spontaneous-step-builder.js";
 import { findClassFeatureDocumentByOtherTag, parseTraditionFromClassFeatureDocument, } from "../spell-choice/tradition-utils.js";
 import { buildWitchSpellChoiceSteps } from "../spell-choice/witch-step-builder.js";
@@ -38,6 +41,9 @@ export const oracleContributor = spontaneousContributor({
     spellcastingFeatureName: "Oracle Spellcasting",
     tradition: "divine",
     ability: "cha",
+    cantripCount: 5,
+    initialRankOneCount: 3,
+    rankIncreaseCount: 3,
 });
 export const psychicContributor = spontaneousContributor({
     slug: "psychic",
@@ -46,6 +52,7 @@ export const psychicContributor = spontaneousContributor({
     ability: "int",
     cantripCount: 3,
     initialRankOneCount: 2,
+    maximumSpellRank: 9,
 });
 export const sorcererContributor = branchTraditionSpontaneousContributor({
     slug: "sorcerer",
@@ -108,8 +115,9 @@ function spontaneousContributor(config) {
                 ability: config.ability,
                 cantripCount: config.cantripCount ?? 5,
                 initialRankOneCount: config.initialRankOneCount ?? 2,
-                rankIncreaseCount: 2,
-                rankMaintenanceCount: 1,
+                rankIncreaseCount: config.rankIncreaseCount ?? 2,
+                rankMaintenanceCount: config.rankMaintenanceCount ?? 1,
+                maximumSpellRank: config.maximumSpellRank,
             });
         },
     };
@@ -120,16 +128,22 @@ function branchTraditionSpontaneousContributor(config) {
         async buildSpellChoiceSteps(args) {
             const branch = findClassFeatureDocumentByOtherTag(args.effectiveClassFeatureDocuments ?? [], config.branchTag);
             const tradition = parseTraditionFromClassFeatureDocument(branch, config.fallbackTradition);
+            const grantedSpells = config.slug === "sorcerer" ? parseSorcerousGiftSpellAccess(branch) : {};
+            const requiredGiftRanks = Array.from({ length: Math.min(9, wizardMaxSpellRank(args.targetLevel)) + 1 }, (_, rank) => rank);
+            const hasCompleteGiftSchedule = config.slug !== "sorcerer" || requiredGiftRanks.every((rank) => grantedSpells[rank]);
             return buildSpontaneousRepertoireSpellChoiceSteps({
                 ...args,
                 classSlug: config.slug,
                 spellcastingFeatureName: config.spellcastingFeatureName,
                 tradition,
                 ability: config.ability,
-                cantripCount: 5,
-                initialRankOneCount: 2,
-                rankIncreaseCount: 2,
+                cantripCount: config.slug === "sorcerer" && hasCompleteGiftSchedule ? 4 : 5,
+                initialRankOneCount: config.slug === "sorcerer" && !hasCompleteGiftSchedule ? 3 : 2,
+                rankIncreaseCount: config.slug === "sorcerer" && !hasCompleteGiftSchedule ? 3 : 2,
                 rankMaintenanceCount: 1,
+                maximumSpellRank: config.slug === "summoner" ? 9 : 10,
+                grantedSpells: hasCompleteGiftSchedule ? grantedSpells : {},
+                grantedSpellSource: branch ? sourceRefFromDocument(branch) : null,
             });
         },
     };

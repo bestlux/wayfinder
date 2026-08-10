@@ -30,6 +30,12 @@ export function readExistingSpellChoiceSelections(actor: unknown, choice: SpellC
     return [];
   }
 
+  const choiceLevel = levelFromSpellChoiceSlotId(choice.slotId);
+  const currentActorLevel = actorLevel(actor);
+  if (choiceLevel !== null && currentActorLevel !== null && choiceLevel > currentActorLevel) {
+    return [];
+  }
+
   const eligible = actorItems
     .filter((item) => {
       const slotId = wayfinderSlotId(item);
@@ -39,6 +45,19 @@ export function readExistingSpellChoiceSelections(actor: unknown, choice: SpellC
     .filter((selection): selection is SelectionRef => !!selection);
 
   return dedupeSelections(eligible).slice(0, choice.count);
+}
+
+function actorLevel(actor: unknown): number | null {
+  const value = (actor as { system?: { details?: { level?: { value?: unknown } } } } | null)?.system?.details?.level
+    ?.value;
+  const level = Number(value);
+  return value !== null && value !== undefined && Number.isFinite(level) ? Math.max(0, Math.floor(level)) : null;
+}
+
+function levelFromSpellChoiceSlotId(slotId: string): number | null {
+  const match = /-level-(\d+)$/.exec(slotId);
+  const level = Number(match?.[1]);
+  return Number.isInteger(level) ? level : null;
 }
 
 function readWayfinderCompletedStepIds(actor: unknown): Set<string> | null {

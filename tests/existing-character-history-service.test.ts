@@ -295,6 +295,85 @@ describe("existing character history service", () => {
     expect(audit?.value).toContain("do not delete anything based on this audit");
   });
 
+  it("does not let an extra cantrip cancel a missing ranked spell", async () => {
+    const actor = witchActor(20);
+    const rankedSpell = actor.items.contents.find((item) => item.id === "witch-spell-16") as
+      | { system?: { traits?: { value?: string[] } } }
+      | undefined;
+    if (rankedSpell?.system?.traits) {
+      rankedSpell.system.traits.value = ["cantrip"];
+    }
+
+    const history = await buildExistingCharacterHistory(actor);
+    const [audit] = spellAuditEntries(history.entries);
+
+    expect(audit).toMatchObject({ status: "review" });
+    expect(audit?.value).toContain("1 expected spell is missing and 1 other spell does not match");
+  });
+
+  it("refuses to guess between multiple plausible spellcasting destinations", async () => {
+    const actor = witchActor(20);
+    const entry = actor.items.contents.find((item) => item.id === "witch-entry");
+    if (entry?.flags) {
+      delete entry.flags["wayfinder-pf2e"];
+    }
+    (actor.items.contents as Array<Record<string, unknown>>).push({
+      ...structuredClone(entry),
+      id: "witch-entry-duplicate",
+    });
+
+    const history = await buildExistingCharacterHistory(actor);
+
+    expect(spellAuditEntries(history.entries)).toEqual([
+      expect.objectContaining({
+        value: expect.stringContaining("multiple plausible destinations"),
+        status: "review",
+      }),
+    ]);
+  });
+
+  it("marks Magus Studious Spells as an explicit audit boundary", async () => {
+    const history = await buildExistingCharacterHistory({
+      system: { details: { level: { value: 7 } } },
+      items: {
+        contents: [
+          {
+            ...actorItem("class-1", "class", "Magus", "Compendium.pf2e.classes.Item.magus"),
+            system: { slug: "magus" },
+          },
+        ],
+      },
+    });
+
+    expect(spellAuditEntries(history.entries)).toEqual([
+      expect.objectContaining({
+        value: expect.stringContaining("Magus Studious Spells"),
+        status: "review",
+      }),
+    ]);
+  });
+
+  it("audits Sorcerer choices together with exact bloodline gifts", async () => {
+    const actor = sorcererActor();
+    const completeHistory = await buildExistingCharacterHistory(actor);
+    expect(spellAuditEntries(completeHistory.entries)).toEqual([
+      expect.objectContaining({
+        value: expect.stringContaining("12 spells found, matches expectations through level 3"),
+        status: "mapped",
+      }),
+    ]);
+
+    const gift = actor.items.contents.find((item) => item.id === "sorcerer-gift-rank-2");
+    if (gift) {
+      gift.name = "Entangling Flora";
+      gift.flags = { core: { sourceId: "Compendium.pf2e.spells-srd.Item.entangling-flora" } };
+    }
+    const incorrectHistory = await buildExistingCharacterHistory(actor);
+    expect(spellAuditEntries(incorrectHistory.entries)[0]?.value).toContain(
+      "1 expected spell is missing and 1 other spell does not match"
+    );
+  });
+
   it("adds no spell audit entry for a non-caster", async () => {
     const history = await buildExistingCharacterHistory({
       system: { details: { level: { value: 3 } } },
@@ -393,14 +472,72 @@ function witchActor(spellCount: number) {
         ...Array.from({ length: spellCount }, (_, index) => ({
           id: `witch-spell-${index + 1}`,
           type: "spell",
-          name: `Witch Spell ${index + 1}`,
+          name: index === 10 ? "Sure Strike" : `Witch Spell ${index + 1}`,
+          ...(index === 10 ? { flags: { core: { sourceId: "Compendium.pf2e.spells-srd.Item.sure-strike" } } } : {}),
           ...(index >= 20 ? { flags: { pf2e: { grantedBy: { id: "bonus-feat" } } } } : {}),
           system: {
-            level: { value: index < 10 ? 1 : 2 },
+            level: { value: index < 18 ? 1 : 2 },
             location: { value: entryId },
             traits: { value: index < 10 ? ["cantrip"] : [] },
           },
         })),
+      ],
+    },
+  };
+}
+
+function sorcererActor() {
+  const entryId = "sorcerer-entry";
+  const spell = (id: string, name: string, rank: number, cantrip = false, sourceId?: string) => ({
+    id,
+    type: "spell",
+    name,
+    flags: { core: { sourceId: sourceId ?? `Compendium.pf2e.spells-srd.Item.${id}` } },
+    system: {
+      level: { value: rank },
+      location: { value: entryId },
+      traits: { value: cantrip ? ["cantrip"] : [] },
+    },
+  });
+  return {
+    system: { details: { level: { value: 3 } } },
+    items: {
+      contents: [
+        {
+          ...actorItem("class-1", "class", "Sorcerer", "Compendium.pf2e.classes.Item.sorcerer"),
+          system: { slug: "sorcerer" },
+        },
+        {
+          id: "imperial-bloodline",
+          type: "feat",
+          name: "Bloodline: Imperial",
+          flags: { core: { sourceId: "Compendium.pf2e.classfeatures.Item.imperial-bloodline" } },
+          system: {
+            category: "classfeature",
+            traits: { otherTags: ["sorcerer-bloodline"] },
+            description: {
+              value:
+                "<p><strong>Tradition</strong> arcane</p><p><strong>Sorcerous Gifts</strong> cantrip @UUID[Compendium.pf2e.spells-srd.Item.detect-magic]{Detect Magic}; 1st: @UUID[Compendium.pf2e.spells-srd.Item.force-barrage]{Force Barrage}; 2nd: @UUID[Compendium.pf2e.spells-srd.Item.dispel-magic]{Dispel Magic}</p>",
+            },
+          },
+        },
+        {
+          id: entryId,
+          type: "spellcastingEntry",
+          name: "Arcane Spontaneous Spells",
+          flags: { "wayfinder-pf2e": { destinationKey: "sorcerer-arcane-spontaneous" } },
+          system: {
+            ability: { value: "cha" },
+            prepared: { value: "spontaneous" },
+            tradition: { value: "arcane" },
+          },
+        },
+        spell("sorcerer-gift-cantrip", "Detect Magic", 0, true, "Compendium.pf2e.spells-srd.Item.detect-magic"),
+        ...Array.from({ length: 4 }, (_, index) => spell(`sorcerer-cantrip-${index}`, `Cantrip ${index}`, 0, true)),
+        spell("sorcerer-gift-rank-1", "Force Barrage", 1, false, "Compendium.pf2e.spells-srd.Item.force-barrage"),
+        ...Array.from({ length: 3 }, (_, index) => spell(`sorcerer-rank-1-${index}`, `Rank 1 Spell ${index}`, 1)),
+        spell("sorcerer-gift-rank-2", "Dispel Magic", 2, false, "Compendium.pf2e.spells-srd.Item.dispel-magic"),
+        ...Array.from({ length: 2 }, (_, index) => spell(`sorcerer-rank-2-${index}`, `Rank 2 Spell ${index}`, 2)),
       ],
     },
   };

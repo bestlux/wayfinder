@@ -359,7 +359,7 @@ function buildSpellcastingEntrySlots(
   }
 
   if (spellChoice.destination.type === "spontaneous") {
-    return buildSpontaneousSpellcastingSlots(actor, draft);
+    return buildSpontaneousSpellcastingSlots(actor, draft, spellChoice.destination.key);
   }
 
   if (spellChoice.destination.type === "prepared") {
@@ -371,10 +371,14 @@ function buildSpellcastingEntrySlots(
 
 function buildSpontaneousSpellcastingSlots(
   actor: ActorLike,
-  draft: DraftState
+  draft: DraftState,
+  destinationKey: string
 ): Record<string, { max: number; value: number; prepared: Array<{ id: string | null; expended: boolean }> }> {
   const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
-  const maxRank = wizardMaxSpellRank(currentLevel);
+  const usesFourSlotProgression = /^(bard|oracle|sorcerer)-/.test(destinationKey);
+  const maxRank = usesFourSlotProgression
+    ? wizardMaxSpellRank(currentLevel)
+    : Math.min(9, wizardMaxSpellRank(currentLevel));
   const slots: Record<
     string,
     {
@@ -387,7 +391,8 @@ function buildSpontaneousSpellcastingSlots(
   };
 
   for (let rank = 1; rank <= maxRank; rank += 1) {
-    slots[`slot${rank}`] = makePreparedSlotGroup(3);
+    const slotCount = rank === 10 ? 1 : usesFourSlotProgression ? (rank <= Math.floor(currentLevel / 2) ? 4 : 3) : 3;
+    slots[`slot${rank}`] = makePreparedSlotGroup(slotCount);
   }
 
   return slots;
@@ -451,7 +456,7 @@ function buildFullPreparedSpellcastingSlots(
   };
 
   for (let rank = 1; rank <= maxRank; rank += 1) {
-    slots[`slot${rank}`] = makePreparedSlotGroup(rank <= fullRanks ? 3 : 2);
+    slots[`slot${rank}`] = makePreparedSlotGroup(rank === 10 ? 1 : rank <= fullRanks ? 3 : 2);
   }
 
   return slots;
@@ -462,7 +467,7 @@ function buildAnimistPreparedSlots(
   draft: DraftState
 ): Record<string, { max: number; value: number; prepared: Array<{ id: string | null; expended: boolean }> }> {
   const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
-  const maxRank = wizardMaxSpellRank(currentLevel);
+  const maxRank = Math.min(9, wizardMaxSpellRank(currentLevel));
   const slots: Record<
     string,
     {
@@ -543,7 +548,7 @@ function buildWizardSpellcastingSlots(
 
   slots.slot0 = makePreparedSlotGroup(cantripSlots);
   for (let rank = 1; rank <= maxRank; rank += 1) {
-    slots[`slot${rank}`] = makePreparedSlotGroup(rankSlots);
+    slots[`slot${rank}`] = makePreparedSlotGroup(rank === 10 ? 1 : rankSlots);
   }
 
   return slots;
@@ -610,11 +615,18 @@ function mergeSpellcastingEntrySlots(
       continue;
     }
 
-    merged[slotKey] = {
-      max: 0,
-      value: 0,
-      prepared: [],
-    };
+    const existingGroup = existingSlots?.[slotKey];
+    merged[slotKey] =
+      slotKey === "slot10" && Number(existingGroup?.max ?? 0) > 0
+        ? {
+            ...existingGroup,
+            prepared: Array.isArray(existingGroup?.prepared) ? existingGroup.prepared.map((slot) => ({ ...slot })) : [],
+          }
+        : {
+            max: 0,
+            value: 0,
+            prepared: [],
+          };
   }
 
   return merged;

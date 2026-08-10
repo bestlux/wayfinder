@@ -117,7 +117,7 @@ export function buildWizardSpellChoiceSteps(params) {
             restrictToCommon: false,
             destination: WIZARD_SPELLBOOK_DESTINATION,
         }));
-        if (!isUnifiedTheory && level >= 3 && level % 2 === 1) {
+        if (!isUnifiedTheory && level >= 3 && level % 2 === 1 && maxRank <= 9) {
             addStep(makeSpellChoiceStep({
                 slotId: `spell-choice-wizard-curriculum-rank-${maxRank}-level-${level}`,
                 level,

@@ -1,8 +1,9 @@
 import { wizardMaxSpellRank } from "../../shared/spellcasting.js";
-import type { PendingStep } from "../../types.js";
+import type { PendingStep, SpellChoiceMeta } from "../../types.js";
+import type { SorcerousGiftSpellAccess } from "./metadata-parsing.js";
 import { findClassFeatureSource } from "./source-utils.js";
 import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helpers.js";
-import type { ReadExistingSpellChoiceSelections, SpellChoiceClassDocument } from "./types.js";
+import type { ReadExistingSpellChoiceSelections, SourceRef, SpellChoiceClassDocument } from "./types.js";
 
 interface BuildSpontaneousRepertoireStepsParams {
   draft: Parameters<typeof appendPendingSpellChoiceStep>[2];
@@ -17,6 +18,9 @@ interface BuildSpontaneousRepertoireStepsParams {
   initialRankOneCount: number;
   rankIncreaseCount: number;
   rankMaintenanceCount: number;
+  maximumSpellRank?: number;
+  grantedSpells?: Partial<Record<number, SorcerousGiftSpellAccess>>;
+  grantedSpellSource?: SourceRef | null;
   readExistingSpellChoiceSelections: ReadExistingSpellChoiceSelections;
 }
 
@@ -37,6 +41,7 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(
   const addStep = (step: PendingStep): void =>
     appendPendingSpellChoiceStep(steps, step, params.draft, params.readExistingSpellChoiceSelections);
 
+  addGrantedSpellStep(params, addStep, destination, 0, 1);
   addStep(
     makeSpellChoiceStep({
       slotId: `spell-choice-${params.classSlug}-cantrips-level-1`,
@@ -56,7 +61,7 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(
       destination,
     })
   );
-
+  addGrantedSpellStep(params, addStep, destination, 1, 1);
   addStep(
     makeSpellChoiceStep({
       slotId: `spell-choice-${params.classSlug}-repertoire-rank-1-level-1`,
@@ -76,10 +81,18 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(
       destination,
     })
   );
-
   for (let level = Math.max(2, params.currentLevel + 1); level <= params.targetLevel; level += 1) {
     const rank = wizardMaxSpellRank(level);
-    const count = level % 2 === 1 ? params.rankIncreaseCount : params.rankMaintenanceCount;
+    if (rank > (params.maximumSpellRank ?? 10)) {
+      continue;
+    }
+    if (rank === 10 && level > 19) {
+      continue;
+    }
+    const count = rank === 10 ? 2 : level % 2 === 1 ? params.rankIncreaseCount : params.rankMaintenanceCount;
+    if (level % 2 === 1) {
+      addGrantedSpellStep(params, addStep, destination, rank, level);
+    }
     addStep(
       makeSpellChoiceStep({
         slotId: `spell-choice-${params.classSlug}-repertoire-rank-${rank}-level-${level}`,
@@ -102,6 +115,41 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(
   }
 
   return steps;
+}
+
+function addGrantedSpellStep(
+  params: BuildSpontaneousRepertoireStepsParams,
+  addStep: (step: PendingStep) => void,
+  destination: SpellChoiceMeta["destination"],
+  rank: number,
+  level: number
+): void {
+  const grantedSpell = params.grantedSpells?.[rank];
+  if (!grantedSpell || !params.grantedSpellSource) {
+    return;
+  }
+
+  const isCantrip = rank === 0;
+  addStep(
+    makeSpellChoiceStep({
+      slotId: `spell-choice-${params.classSlug}-granted-${isCantrip ? "cantrip" : `rank-${rank}`}-level-${level}`,
+      level,
+      title: `${formatTitle(params.classSlug)} ${isCantrip ? "granted cantrip" : `rank ${rank} granted spell`}`,
+      description: `Add ${grantedSpell.name}, the ${isCantrip ? "cantrip" : `rank ${rank} spell`} granted by your bloodline.`,
+      source: params.grantedSpellSource,
+      classSlug: params.classSlug,
+      dependsOn: "class-branch",
+      count: 1,
+      minRank: rank,
+      maxRank: rank,
+      cantrip: isCantrip,
+      curriculumSpellNames: [grantedSpell.name],
+      additionalAllowedSpellNames: [grantedSpell.name],
+      additionalAllowedSpellUuids: [grantedSpell.uuid],
+      restrictToCommon: false,
+      destination,
+    })
+  );
 }
 
 function formatTitle(value: string): string {

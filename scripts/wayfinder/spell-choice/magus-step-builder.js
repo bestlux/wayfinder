@@ -1,4 +1,4 @@
-import { wizardMaxSpellRank } from "../../shared/spellcasting.js";
+import { magusMaxSpellRank } from "../../shared/spellcasting.js";
 import { findClassFeatureSource } from "./source-utils.js";
 import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helpers.js";
 const MAGUS_SPELLBOOK_DESTINATION = {
@@ -11,7 +11,7 @@ const MAGUS_SPELLBOOK_DESTINATION = {
     prepared: "prepared",
 };
 export function buildMagusSpellChoiceSteps(params) {
-    const source = findClassFeatureSource(params.effectiveClassDocument, "Arcane Spellcasting (Magus)");
+    const source = findClassFeatureSource(params.effectiveClassDocument, "Magus Spellcasting");
     const steps = [];
     const addStep = (step) => appendPendingSpellChoiceStep(steps, step, params.draft, params.readExistingSpellChoiceSelections);
     addStep(makeSpellChoiceStep({
@@ -35,11 +35,11 @@ export function buildMagusSpellChoiceSteps(params) {
         slotId: "spell-choice-magus-spellbook-rank-1-level-1",
         level: 1,
         title: "Magus spellbook spells",
-        description: "Add the four 1st-rank arcane spells that begin your magus spellbook.",
+        description: "Add the five 1st-rank arcane spells that begin your magus spellbook.",
         source,
         classSlug: "magus",
         dependsOn: "class",
-        count: 4,
+        count: 5,
         minRank: 1,
         maxRank: 1,
         cantrip: false,
@@ -59,7 +59,7 @@ export function buildMagusSpellChoiceSteps(params) {
             dependsOn: "class",
             count: 2,
             minRank: 1,
-            maxRank: wizardMaxSpellRank(level),
+            maxRank: magusMaxSpellRank(level),
             cantrip: false,
             curriculumSpellNames: [],
             additionalAllowedSpellNames: [],

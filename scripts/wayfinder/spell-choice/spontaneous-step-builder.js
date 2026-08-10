@@ -14,6 +14,7 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(params) {
     };
     const steps = [];
     const addStep = (step) => appendPendingSpellChoiceStep(steps, step, params.draft, params.readExistingSpellChoiceSelections);
+    addGrantedSpellStep(params, addStep, destination, 0, 1);
     addStep(makeSpellChoiceStep({
         slotId: `spell-choice-${params.classSlug}-cantrips-level-1`,
         level: 1,
@@ -31,6 +32,7 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(params) {
         restrictToCommon: true,
         destination,
     }));
+    addGrantedSpellStep(params, addStep, destination, 1, 1);
     addStep(makeSpellChoiceStep({
         slotId: `spell-choice-${params.classSlug}-repertoire-rank-1-level-1`,
         level: 1,
@@ -50,7 +52,16 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(params) {
     }));
     for (let level = Math.max(2, params.currentLevel + 1); level <= params.targetLevel; level += 1) {
         const rank = wizardMaxSpellRank(level);
-        const count = level % 2 === 1 ? params.rankIncreaseCount : params.rankMaintenanceCount;
+        if (rank > (params.maximumSpellRank ?? 10)) {
+            continue;
+        }
+        if (rank === 10 && level > 19) {
+            continue;
+        }
+        const count = rank === 10 ? 2 : level % 2 === 1 ? params.rankIncreaseCount : params.rankMaintenanceCount;
+        if (level % 2 === 1) {
+            addGrantedSpellStep(params, addStep, destination, rank, level);
+        }
         addStep(makeSpellChoiceStep({
             slotId: `spell-choice-${params.classSlug}-repertoire-rank-${rank}-level-${level}`,
             level,
@@ -70,6 +81,31 @@ export function buildSpontaneousRepertoireSpellChoiceSteps(params) {
         }));
     }
     return steps;
+}
+function addGrantedSpellStep(params, addStep, destination, rank, level) {
+    const grantedSpell = params.grantedSpells?.[rank];
+    if (!grantedSpell || !params.grantedSpellSource) {
+        return;
+    }
+    const isCantrip = rank === 0;
+    addStep(makeSpellChoiceStep({
+        slotId: `spell-choice-${params.classSlug}-granted-${isCantrip ? "cantrip" : `rank-${rank}`}-level-${level}`,
+        level,
+        title: `${formatTitle(params.classSlug)} ${isCantrip ? "granted cantrip" : `rank ${rank} granted spell`}`,
+        description: `Add ${grantedSpell.name}, the ${isCantrip ? "cantrip" : `rank ${rank} spell`} granted by your bloodline.`,
+        source: params.grantedSpellSource,
+        classSlug: params.classSlug,
+        dependsOn: "class-branch",
+        count: 1,
+        minRank: rank,
+        maxRank: rank,
+        cantrip: isCantrip,
+        curriculumSpellNames: [grantedSpell.name],
+        additionalAllowedSpellNames: [grantedSpell.name],
+        additionalAllowedSpellUuids: [grantedSpell.uuid],
+        restrictToCommon: false,
+        destination,
+    }));
 }
 function formatTitle(value) {
     return value

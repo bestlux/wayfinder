@@ -10,6 +10,11 @@ export interface WitchPatronLessonSpellAccess {
   uuids: string[];
 }
 
+export interface SorcerousGiftSpellAccess {
+  name: string;
+  uuid: string;
+}
+
 export function parseCurriculumSpells(raw: unknown): Record<number, string[]> {
   const description = typeof raw === "string" ? raw : "";
   const matches = description.matchAll(/<li><strong>([^<]+?)<\/strong>\s*:?\s*([\s\S]*?)<\/li>/gi);
@@ -80,6 +85,29 @@ export function parseWitchPatronLessonSpellAccess(
     names: Array.from(names),
     uuids: Array.from(uuids),
   };
+}
+
+export function parseSorcerousGiftSpellAccess(
+  document: SpellChoiceSchoolDocument | null
+): Partial<Record<number, SorcerousGiftSpellAccess>> {
+  const description = String(document?.system?.description?.value ?? "");
+  const giftText = /<strong>(?:Sorcerous Gifts|Granted Spells)<\/strong>([\s\S]*?)<\/p>/i.exec(description)?.[1] ?? "";
+  const gifts: Partial<Record<number, SorcerousGiftSpellAccess>> = {};
+
+  for (const segment of giftText.split(/[;,]/)) {
+    const label = /^\s*(cantrip|\d+(?:st|nd|rd|th))\s*:?/i.exec(segment)?.[1] ?? "";
+    const references = Array.from(
+      segment.matchAll(/@UUID\[(Compendium\.pf2e\.spells-srd\.Item\.[^\]]+)\](?:\{([^}]+)\})?/gi)
+    );
+    const rank = rankFromCurriculumLabel(label);
+    const uuid = String(references[0]?.[1] ?? "").trim();
+    const name = normalizeCurriculumSpellName(references[0]?.[2] ?? "");
+    if (rank !== null && references.length === 1 && uuid && name) {
+      gifts[rank] = { name, uuid };
+    }
+  }
+
+  return gifts;
 }
 
 function collectCurriculumSpellNames(content: string): string[] {

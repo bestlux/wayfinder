@@ -3,17 +3,23 @@ export function findSpellcastingEntryForChoice(actor, choice) {
     return findSpellcastingEntryForChoiceInItems(listActorItems(actor), choice);
 }
 export function findSpellcastingEntryForChoiceInItems(actorItems, choice) {
+    return findSpellcastingEntriesForChoiceInItems(actorItems, choice)[0] ?? null;
+}
+export function findSpellcastingEntriesForChoiceInItems(actorItems, choice) {
     const items = actorItems.map(asSpellcastingEntry);
-    const keyedEntry = items.find((item) => item?.type === "spellcastingEntry" && item?.flags?.["wayfinder-pf2e"]?.destinationKey === choice.destination.key);
-    if (keyedEntry || choice.destination.entryReuse === "key-only") {
-        return keyedEntry ?? null;
+    const keyedEntries = items.filter((item) => item?.type === "spellcastingEntry" && item?.flags?.["wayfinder-pf2e"]?.destinationKey === choice.destination.key);
+    if (keyedEntries.length > 0 || choice.destination.entryReuse === "key-only") {
+        return keyedEntries.filter((entry) => entry !== null);
     }
-    return (items.find((item) => itemMatchesSpellcastingEntry(item, choice) && String(item?.name ?? "") === choice.destination.entryName) ??
-        items.find((item) => itemMatchesSpellcastingEntry(item, choice)) ??
-        null);
+    const matchingEntries = items.filter((item) => itemMatchesSpellcastingEntry(item, choice));
+    const namedEntries = matchingEntries.filter((item) => String(item?.name ?? "") === choice.destination.entryName);
+    return (namedEntries.length > 0 ? namedEntries : matchingEntries).filter((entry) => entry !== null);
 }
 export function wizardMaxSpellRank(level) {
-    return Math.max(1, Math.min(9, Math.ceil(level / 2)));
+    return Math.max(1, Math.min(10, Math.ceil(level / 2)));
+}
+export function magusMaxSpellRank(level) {
+    return Math.min(9, wizardMaxSpellRank(level));
 }
 function asSpellcastingEntry(value) {
     return value && typeof value === "object" ? value : null;

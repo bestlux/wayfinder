@@ -2,8 +2,9 @@ import { spellLocationId } from "../../actor-updater/spellcasting-entry-support.
 import { listActorItems } from "../../build-state.js";
 import { createEmptyDraft } from "../../draft-service.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
-import { findSpellcastingEntryForChoice } from "../../shared/spellcasting.js";
-import { parseWitchPatronLessonSpellAccess } from "../spell-choice/metadata-parsing.js";
+import { sourceIdOf } from "../../shared/source-id.js";
+import { findSpellcastingEntriesForChoiceInItems, wizardMaxSpellRank } from "../../shared/spellcasting.js";
+import { parseSorcerousGiftSpellAccess, parseWitchPatronLessonSpellAccess } from "../spell-choice/metadata-parsing.js";
 import { findClassFeatureDocumentByOtherTag, parseTraditionFromClassFeatureDocument, } from "../spell-choice/tradition-utils.js";
 import { buildSpellChoiceSteps } from "../spell-choice-service.js";
 const AUDITED_CLASS_SLUGS = new Set(["bard", "magus", "oracle", "sorcerer", "witch", "wizard"]);
@@ -32,8 +33,13 @@ export async function buildExistingCharacterSpellAuditEntries(actor, actorLevel)
             ]
             : [];
     }
+    if (classSlug === "magus" && actorLevel >= 7) {
+        return [
+            boundaryEntry(classSlug, className(classDocument, classSlug), actorLevel, "Wayfinder does not yet model the fixed and hybrid-study spells added by Magus Studious Spells at levels 7, 11, and 13."),
+        ];
+    }
     const classFeatures = items.filter(isClassFeatureDocument);
-    const resolution = resolveRequiredClassChoices(classSlug, classFeatures);
+    const resolution = resolveRequiredClassChoices(classSlug, classFeatures, actorLevel);
     if (resolution.boundary) {
         return [boundaryEntry(classSlug, className(classDocument, classSlug), actorLevel, resolution.boundary)];
     }
@@ -54,11 +60,15 @@ export async function buildExistingCharacterSpellAuditEntries(actor, actorLevel)
             boundaryEntry(classSlug, className(classDocument, classSlug), actorLevel, "Wayfinder's current spell-choice builder does not expose a finite spellbook or repertoire total for this class."),
         ];
     }
-    const expected = countableSteps.reduce((total, step) => total + (step.spellChoice?.count ?? 0), 0);
-    const observed = countObservedSpells(actor, countableSteps);
-    return [comparisonEntry(classSlug, className(classDocument, classSlug), actorLevel, observed, expected)];
+    const comparison = compareObservedSpells(actor, countableSteps);
+    if (comparison.boundary) {
+        return [boundaryEntry(classSlug, className(classDocument, classSlug), actorLevel, comparison.boundary)];
+    }
+    return [
+        comparisonEntry(classSlug, className(classDocument, classSlug), actorLevel, comparison.observed, comparison.expected, comparison.deficit, comparison.extra),
+    ];
 }
-function resolveRequiredClassChoices(classSlug, classFeatures) {
+function resolveRequiredClassChoices(classSlug, classFeatures, actorLevel) {
     if (classSlug === "witch") {
         const patron = findClassFeatureDocumentByOtherTag(classFeatures, "witch-patron");
         if (!patron) {
@@ -85,6 +95,17 @@ function resolveRequiredClassChoices(classSlug, classFeatures) {
         if (!strictTraditionFromClassFeature(branch)) {
             return unresolved("Wayfinder cannot resolve the sorcerer repertoire total because the selected bloodline's tradition is unavailable.");
         }
+        const gifts = parseSorcerousGiftSpellAccess(branch);
+        const requiredGiftRanks = [
+            0,
+            ...Array.from({ length: Math.min(9, wizardMaxSpellRank(actorLevel)) }, (_, index) => index + 1),
+        ];
+        const missingGiftRanks = requiredGiftRanks.filter((rank) => !gifts[rank]);
+        if (missingGiftRanks.length > 0) {
+            return unresolved(`Wayfinder cannot resolve the sorcerer repertoire total because the selected bloodline is missing sorcerous gift data for ${missingGiftRanks
+                .map((rank) => (rank === 0 ? "its cantrip" : `rank ${rank}`))
+                .join(", ")}.`);
+        }
     }
     return { effectiveSchoolDocument: null, boundary: null };
 }
@@ -103,7 +124,8 @@ function isCountableSpellChoiceStep(step) {
     return (step.kind === "spell-choice" &&
         (step.spellChoice?.destination.type === "spellbook" || step.spellChoice?.destination.type === "spontaneous"));
 }
-function countObservedSpells(actor, steps) {
+function compareObservedSpells(actor, steps) {
+    const actorItems = listActorItems(actor);
     const entryIds = new Set();
     const choicesByDestination = new Map();
     for (const step of steps) {
@@ -113,29 +135,112 @@ function countObservedSpells(actor, steps) {
         }
     }
     for (const choice of choicesByDestination.values()) {
-        const entry = findSpellcastingEntryForChoice(actor, choice);
-        if (typeof entry?.id === "string" && entry.id.length > 0) {
-            entryIds.add(entry.id);
+        const entries = findSpellcastingEntriesForChoiceInItems(actorItems, choice);
+        if (entries.length !== 1 || typeof entries[0]?.id !== "string" || entries[0].id.length === 0) {
+            return {
+                observed: 0,
+                expected: 0,
+                deficit: 0,
+                extra: 0,
+                boundary: entries.length > 1
+                    ? `Wayfinder found multiple plausible destinations for ${choice.destination.label} and will not guess which one to audit.`
+                    : `Wayfinder cannot identify the spellcasting entry for ${choice.destination.label}.`,
+            };
+        }
+        entryIds.add(entries[0].id);
+    }
+    const observedSpells = actorItems.filter((item) => item.type === "spell" && entryIds.has(spellLocationId(item) ?? ""));
+    const expectedSlots = steps.flatMap((step) => {
+        const choice = step.spellChoice;
+        if (!choice) {
+            return [];
+        }
+        const entryId = Array.from(entryIds).find((candidate) => findSpellcastingEntriesForChoiceInItems(actorItems, choice).some((entry) => entry.id === candidate));
+        return entryId ? Array.from({ length: choice.count }, () => ({ choice, entryId })) : [];
+    });
+    const matchedSpellByExpectedSlot = new Map();
+    const assignExpectedSlot = (expectedIndex, visitedSpells) => {
+        const expectedSlot = expectedSlots[expectedIndex];
+        if (!expectedSlot) {
+            return false;
+        }
+        for (let observedIndex = 0; observedIndex < observedSpells.length; observedIndex += 1) {
+            if (visitedSpells.has(observedIndex)) {
+                continue;
+            }
+            const observedSpell = observedSpells[observedIndex];
+            if (!observedSpell || !spellMatchesAuditSlot(observedSpell, expectedSlot)) {
+                continue;
+            }
+            visitedSpells.add(observedIndex);
+            const previousExpectedIndex = matchedSpellByExpectedSlot.get(observedIndex);
+            if (previousExpectedIndex === undefined || assignExpectedSlot(previousExpectedIndex, visitedSpells)) {
+                matchedSpellByExpectedSlot.set(observedIndex, expectedIndex);
+                return true;
+            }
+        }
+        return false;
+    };
+    let matched = 0;
+    for (let expectedIndex = 0; expectedIndex < expectedSlots.length; expectedIndex += 1) {
+        if (assignExpectedSlot(expectedIndex, new Set())) {
+            matched += 1;
         }
     }
-    return listActorItems(actor).filter((item) => item.type === "spell" && entryIds.has(spellLocationId(item) ?? "")).length;
+    return {
+        observed: observedSpells.length,
+        expected: expectedSlots.length,
+        deficit: expectedSlots.length - matched,
+        extra: observedSpells.length - matched,
+        boundary: null,
+    };
 }
-function comparisonEntry(classSlug, classLabel, actorLevel, observed, expected) {
+function spellMatchesAuditSlot(item, expected) {
+    if (spellLocationId(item) !== expected.entryId) {
+        return false;
+    }
+    const choice = expected.choice;
+    const traits = Array.isArray(item.system?.traits?.value)
+        ? item.system.traits.value.filter((value) => typeof value === "string")
+        : [];
+    const isCantrip = traits.some((trait) => trait.trim().toLowerCase() === "cantrip");
+    if (choice.cantrip !== isCantrip) {
+        return false;
+    }
+    const rank = choice.cantrip
+        ? 0
+        : Number(item.system?.level?.value ?? 0);
+    if (rank < choice.minRank || rank > choice.maxRank) {
+        return false;
+    }
+    const exactNames = [...choice.curriculumSpellNames, ...(choice.additionalAllowedSpellNames ?? [])];
+    const exactUuids = new Set((choice.additionalAllowedSpellUuids ?? []).map((uuid) => uuid.trim().toLowerCase()));
+    if (exactNames.length === 0 && exactUuids.size === 0) {
+        return item.flags?.pf2e?.grantedBy === undefined;
+    }
+    const itemName = String(item.name ?? "");
+    const sourceId = sourceIdOf(item)?.trim().toLowerCase() ?? "";
+    return (exactNames.some((name) => name.localeCompare(itemName, undefined, { sensitivity: "accent" }) === 0) ||
+        exactUuids.has(sourceId));
+}
+function comparisonEntry(classSlug, classLabel, actorLevel, observed, expected, deficit, extra) {
     const attributionBoundary = "Actor spell data does not identify which level each spell was learned.";
-    const difference = observed - expected;
     let value;
     let status;
-    if (difference === 0) {
+    if (deficit === 0 && extra === 0) {
         value = `${observed} spells found, matches expectations through level ${actorLevel}. ${attributionBoundary}`;
         status = "mapped";
     }
-    else if (difference < 0) {
-        const deficit = Math.abs(difference);
+    else if (deficit > 0 && extra === 0) {
         value = `${deficit} fewer spell${deficit === 1 ? "" : "s"} than expected (${observed} found; ${expected} expected through level ${actorLevel}) — add ${deficit === 1 ? "it" : "them"} on the sheet, or rebuild through Wayfinder. ${attributionBoundary}`;
         status = "review";
     }
+    else if (extra > 0 && deficit === 0) {
+        value = `${extra} more spell${extra === 1 ? "" : "s"} than expected (${observed} found; ${expected} expected through level ${actorLevel}), probably feat- or item-granted — review ${extra === 1 ? "it" : "them"} on the sheet; do not delete anything based on this audit. ${attributionBoundary}`;
+        status = "review";
+    }
     else {
-        value = `${difference} more spell${difference === 1 ? "" : "s"} than expected (${observed} found; ${expected} expected through level ${actorLevel}), probably feat- or item-granted — review ${difference === 1 ? "it" : "them"} on the sheet; do not delete anything based on this audit. ${attributionBoundary}`;
+        value = `${deficit} expected spell${deficit === 1 ? " is" : "s are"} missing and ${extra} other spell${extra === 1 ? " does" : "s do"} not match those open places (${observed} found; ${expected} expected through level ${actorLevel}) — review both groups on the sheet; do not delete anything based on this audit. ${attributionBoundary}`;
         status = "review";
     }
     return {

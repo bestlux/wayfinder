@@ -373,6 +373,55 @@ describe("wayfinder spell-choice step builders", () => {
     });
   });
 
+  it("builds Oracle's three-spell rank increases and one level-19 rank-10 grant", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(20),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("oracle", "Oracle Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      targetLevel: 20,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-oracle-repertoire-rank-1-level-1")?.spellChoice?.count
+    ).toBe(3);
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-oracle-repertoire-rank-2-level-3")?.spellChoice?.count
+    ).toBe(3);
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-oracle-repertoire-rank-10-level-19")?.spellChoice
+    ).toMatchObject({
+      count: 2,
+      minRank: 10,
+      maxRank: 10,
+    });
+    expect(steps.map((step) => step.slotId)).not.toContain("spell-choice-oracle-repertoire-rank-10-level-20");
+  });
+
+  it("adds rank-10 Wizard spellbook choices without inventing a rank-10 curriculum spell", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(20),
+      currentLevel: 18,
+      effectiveClassDocument: wizardClassDocument(),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: battleMagicSchoolDocument(),
+      targetLevel: 20,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.find((step) => step.slotId === "spell-choice-wizard-spellbook-level-19")?.spellChoice?.maxRank).toBe(
+      10
+    );
+    expect(steps.find((step) => step.slotId === "spell-choice-wizard-spellbook-level-20")?.spellChoice?.maxRank).toBe(
+      10
+    );
+    expect(steps.map((step) => step.slotId)).not.toContain("spell-choice-wizard-curriculum-rank-10-level-19");
+  });
+
   it("builds prepared caster starting spell steps for druid", async () => {
     const steps = await buildSpellChoiceSteps({
       draft: createEmptyDraft(5),
@@ -666,24 +715,72 @@ describe("wayfinder spell-choice step builders", () => {
       effectiveClassDocument: classDocument("sorcerer", "Sorcerer Spellcasting"),
       effectiveDeityDocument: null,
       effectiveSchoolDocument: null,
-      effectiveClassFeatureDocuments: [
-        classFeatureDocument("Bloodline: Imperial", "sorcerer-bloodline", "Tradition", "arcane"),
-      ],
+      effectiveClassFeatureDocuments: [sorcererBloodlineDocument()],
       targetLevel: 5,
       extractSlug: extractSlug,
       readExistingSpellChoiceSelections: () => [],
     });
 
-    expect(steps.map((step) => step.slotId).slice(0, 2)).toEqual([
+    expect(steps.map((step) => step.slotId).slice(0, 4)).toEqual([
+      "spell-choice-sorcerer-granted-cantrip-level-1",
       "spell-choice-sorcerer-cantrips-level-1",
+      "spell-choice-sorcerer-granted-rank-1-level-1",
       "spell-choice-sorcerer-repertoire-rank-1-level-1",
     ]);
+    expect(steps[1]?.spellChoice?.count).toBe(4);
+    expect(steps[0]?.spellChoice).toMatchObject({
+      count: 1,
+      additionalAllowedSpellNames: ["Detect Magic"],
+      additionalAllowedSpellUuids: ["Compendium.pf2e.spells-srd.Item.detect-magic"],
+    });
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-sorcerer-repertoire-rank-2-level-3")?.spellChoice?.count
+    ).toBe(2);
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-sorcerer-granted-rank-2-level-3")?.spellChoice
+    ).toMatchObject({
+      additionalAllowedSpellNames: ["Dispel Magic"],
+    });
     expect(steps[0]?.spellChoice?.destination).toMatchObject({
       key: "sorcerer-arcane-spontaneous",
       tradition: "arcane",
       ability: "cha",
       prepared: "spontaneous",
     });
+  });
+
+  it("keeps full Sorcerer counts when a variant bloodline gift cannot be resolved", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(3),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("sorcerer", "Sorcerer Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      effectiveClassFeatureDocuments: [
+        {
+          name: "Bloodline: Draconic",
+          system: {
+            traits: { otherTags: ["sorcerer-bloodline"] },
+            description: {
+              value:
+                "<p><strong>Tradition</strong> arcane</p><p><strong>Granted Spells</strong> cantrip: @UUID[Compendium.pf2e.spells-srd.Item.shield]{Shield}; 1st: @UUID[Compendium.pf2e.spells-srd.Item.fear]{Fear}; 2nd: see Draconic Exemplars below; 3rd: @UUID[Compendium.pf2e.spells-srd.Item.haste]{Haste}</p>",
+            },
+          },
+        },
+      ],
+      targetLevel: 3,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.map((step) => step.slotId).some((slotId) => slotId.includes("-granted-"))).toBe(false);
+    expect(steps.find((step) => step.slotId === "spell-choice-sorcerer-cantrips-level-1")?.spellChoice?.count).toBe(5);
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-sorcerer-repertoire-rank-1-level-1")?.spellChoice?.count
+    ).toBe(3);
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-sorcerer-repertoire-rank-2-level-3")?.spellChoice?.count
+    ).toBe(3);
   });
 
   it("discloses the spontaneous-caster historical cutoff", async () => {
@@ -741,10 +838,25 @@ describe("wayfinder spell-choice step builders", () => {
       },
     });
     expect(steps[1]?.spellChoice).toMatchObject({
-      count: 4,
+      count: 5,
       minRank: 1,
       maxRank: 1,
     });
+  });
+
+  it("keeps Magus spellbook learning capped at rank 9 through level 20", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(20),
+      currentLevel: 19,
+      effectiveClassDocument: classDocument("magus", "Magus Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      targetLevel: 20,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.find((step) => step.slotId === "spell-choice-magus-spellbook-level-20")?.spellChoice?.maxRank).toBe(9);
   });
 
   it("returns no steps for unknown class slugs", async () => {
@@ -837,6 +949,20 @@ function classFeatureDocument(
       },
       description: {
         value: `<p><strong>${traditionLabel}</strong> ${tradition}</p>${lesson}`,
+      },
+    },
+  };
+}
+
+function sorcererBloodlineDocument() {
+  return {
+    name: "Bloodline: Imperial",
+    flags: { core: { sourceId: "Compendium.pf2e.classfeatures.Item.imperial-bloodline" } },
+    system: {
+      traits: { otherTags: ["sorcerer-bloodline"] },
+      description: {
+        value:
+          "<p><strong>Tradition</strong> arcane</p><p><strong>Sorcerous Gifts</strong> cantrip @UUID[Compendium.pf2e.spells-srd.Item.detect-magic]{Detect Magic}; 1st: @UUID[Compendium.pf2e.spells-srd.Item.force-barrage]{Force Barrage}; 2nd: @UUID[Compendium.pf2e.spells-srd.Item.dispel-magic]{Dispel Magic}; 3rd: @UUID[Compendium.pf2e.spells-srd.Item.haste]{Haste}</p>",
       },
     },
   };

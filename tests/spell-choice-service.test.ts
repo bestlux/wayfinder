@@ -308,11 +308,59 @@ describe("spell-choice-service", () => {
     expect(selections).toEqual([]);
   });
 
+  it("does not use an untagged spell to satisfy a learning step above the actor's current level", () => {
+    const actor: ActorLike = {
+      system: { details: { level: { value: 1 } } },
+      items: {
+        contents: [
+          {
+            id: "entry-1",
+            type: "spellcastingEntry",
+            system: {
+              ability: { value: "cha" },
+              prepared: { value: "spontaneous" },
+              tradition: { value: "arcane" },
+            },
+          },
+          spellItem("entry-1", "Compendium.pf2e.spells-srd.Item.force-barrage", "Force Barrage", 1),
+        ],
+      },
+    };
+
+    const selections = readExistingSpellChoiceSelections(actor, {
+      slotId: "spell-choice-sorcerer-repertoire-rank-1-level-2",
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "sorcerer-spellcasting",
+      sourceUuid: "Compendium.pf2e.classfeatures.Item.sorcerer-spellcasting",
+      sourceName: "Sorcerer Spellcasting",
+      classSlug: "sorcerer",
+      dependsOn: "class",
+      destination: {
+        type: "spontaneous",
+        key: "sorcerer-arcane-spontaneous",
+        label: "Arcane spell repertoire",
+        entryName: "Arcane Spontaneous Spells",
+        tradition: "arcane",
+        ability: "cha",
+        prepared: "spontaneous",
+      },
+      count: 1,
+      minRank: 1,
+      maxRank: 1,
+      cantrip: false,
+      curriculumSpellNames: [],
+      additionalAllowedSpellNames: [],
+      restrictToCommon: true,
+    } satisfies SpellChoiceMeta);
+
+    expect(selections).toEqual([]);
+  });
+
   it("derives the wizard maximum spell rank from level", () => {
     expect(wizardMaxSpellRank(1)).toBe(1);
     expect(wizardMaxSpellRank(3)).toBe(2);
     expect(wizardMaxSpellRank(17)).toBe(9);
-    expect(wizardMaxSpellRank(20)).toBe(9);
+    expect(wizardMaxSpellRank(20)).toBe(10);
   });
 });
 

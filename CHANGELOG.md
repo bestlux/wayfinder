@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.0 - 2026-08-09
+
+- **PF2E 8.4 fix:** applying a Summoner no longer hangs. PF2E 8.4 changed the eidolon's tradition choice to a form Wayfinder did not recognize, so it was never offered or answered and PF2E waited on it indefinitely, leaving the character partly built. Apply now also fails with a clear message rather than waiting without end.
+- Archetype eligibility is checked rather than disclaimed. Wayfinder verifies that a dedication is not a duplicate or your own class's multiclass entry, that an existing dedication is not still owed two feats from its archetype, that an archetype feat belongs to a family you have a dedication for, and that supported skill-rank prerequisites are met — counting choices you have drafted, not only applied.
+- Choices carried by granted items are guided or announced instead of surprising you at apply. Cleric Dedication's deity and sanctification, Summoner Dedication's eidolon, and Commander's five tactics are planned in Wayfinder; anything still unmodelled says so on the option before you pick it.
+- Choices whose own rule conditions are unmet are no longer offered. A Fighter taking Commander Dedication is asked for the two tactics the dedication grants, not the five a Commander receives.
+- Ancestry Paragon and other campaign feat sections are planned. Wayfinder mirrors PF2E's own campaign feat sections, so variants supplied by a module or defined by a GM appear as feat steps and apply into the native group.
+- Gradual Ability Boosts follows PF2E's world setting, spreading each four-boost milestone across its levels using the system's own allowance formula.
+- Spell pickers show each spell's rank, filter by rank, and keep your current selections pinned in view — the difference between browsing 20 spells and 300.
+- GMs can set a world-wide spell rarity ceiling, so players see the uncommon or rare options a table allows without needing to find the per-step control.
+- Existing characters get a spell audit. Map Existing Character now reports whether a caster's known, spellbook, or repertoire contents match expectations for their level, naming deficits and marking surpluses for review without changing anything.
+- Witch familiars start with the spells they actually know — ten cantrips, five 1st-rank spells, and the patron's lesson spell — rather than the smaller daily-preparation numbers.
+- General feat slots admit skill feats, with trained, expert, master, and legendary prerequisites all enforced against drafted training.
+- Picker context notes wrap instead of truncating, so filter explanations can be read in full.
+- Verified against Foundry VTT 14.364 and PF2E 8.4.0 with a 41-case live matrix, including five classes built through level 10 and one through level 20 — the first coverage above level 5.
+
 ## 0.6.1 - 2026-07-26
 
 - General feat slots now admit qualifying skill feats while respecting projected skill ranks and other prerequisites across a multi-level draft.

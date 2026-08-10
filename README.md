@@ -45,7 +45,7 @@ https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 
 Foundry's package updater will follow it for future versions. Older releases stay installable from their own [release pages](https://github.com/bestlux/wayfinder/releases).
 
-**Requirements:** Foundry VTT v14 with the PF2E system (8.1 or newer). This release is verified against Foundry VTT 14.364 and PF2E 8.3.0.
+**Requirements:** Foundry VTT v14 with the PF2E system (8.1 or newer). This release is verified against Foundry VTT 14.364 and PF2E 8.4.0.
 
 ## Using Wayfinder
 

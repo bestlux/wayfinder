@@ -32,27 +32,27 @@
   "media": [
     {
       "type": "cover",
-      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.6.1/media/cover.webp",
-      "thumbnail": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.6.1/media/cover-thumb.webp"
+      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.7.0/media/cover.webp",
+      "thumbnail": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.7.0/media/cover-thumb.webp"
     },
     {
       "type": "screenshot",
-      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.6.1/media/screenshot-creation.webp",
+      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.7.0/media/screenshot-creation.webp",
       "caption": "Guided level-1 creation: ancestry, heritage, background, class, and boosts in one flow."
     },
     {
       "type": "screenshot",
-      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.6.1/media/screenshot-feat-picker.webp",
+      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.7.0/media/screenshot-feat-picker.webp",
       "caption": "Feat picker with rarity and source filters; earlier choices narrow what's available."
     },
     {
       "type": "screenshot",
-      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.6.1/media/screenshot-spell-choice.webp",
+      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.7.0/media/screenshot-spell-choice.webp",
       "caption": "Spell choices wired into the actor — repertoire, spellbook, innate, and focus all land in the right place."
     },
     {
       "type": "screenshot",
-      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.6.1/media/screenshot-levelup.webp",
+      "url": "https://raw.githubusercontent.com/bestlux/wayfinder/v0.7.0/media/screenshot-levelup.webp",
       "caption": "Level-up draft carries forward earlier picks and surfaces only what you still need to choose."
     }
   ],

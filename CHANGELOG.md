@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.0 - 2026-08-09
+## 0.7.0 - 2026-08-10
 
 - **PF2E 8.4 fix:** applying a Summoner no longer hangs. PF2E 8.4 changed the eidolon's tradition choice to a form Wayfinder did not recognize, so it was never offered or answered and PF2E waited on it indefinitely, leaving the character partly built. Apply now also fails with a clear message rather than waiting without end.
 - Archetype eligibility is checked rather than disclaimed. Wayfinder verifies that a dedication is not a duplicate or your own class's multiclass entry, that an existing dedication is not still owed two feats from its archetype, that an archetype feat belongs to a family you have a dedication for, and that supported skill-rank prerequisites are met — counting choices you have drafted, not only applied.
@@ -14,7 +14,7 @@
 - Witch familiars start with the spells they actually know — ten cantrips, five 1st-rank spells, and the patron's lesson spell — rather than the smaller daily-preparation numbers.
 - General feat slots admit skill feats, with trained, expert, master, and legendary prerequisites all enforced against drafted training.
 - Picker context notes wrap instead of truncating, so filter explanations can be read in full.
-- Verified against Foundry VTT 14.364 and PF2E 8.4.0 with a 41-case live matrix, including five classes built through level 10 and one through level 20 — the first coverage above level 5.
+- Verified against Foundry VTT 14.364 and PF2E 8.4.0 with a 53-case live matrix: 41 direct builds, seven existing-character incremental upgrades, three Free Archetype paths, Ancestry Paragon, and Gradual Ability Boosts. Five classes reached level 10 and one reached level 20 — the first release coverage above level 5.
 
 ## 0.6.1 - 2026-07-26
 

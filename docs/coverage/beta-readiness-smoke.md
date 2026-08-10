@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-07-11.
+Last updated: 2026-08-10.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -42,6 +42,18 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-08-10 Release 0.7.0 Full Matrix
+
+The `v0.7.0` candidate passed 53 live apply/rerun executions against Foundry VTT 14.364 / PF2E 8.4.0 in `testing-world`, with zero classified/manual cases and zero failures:
+
+- 41 direct baseline and depth cases, including five classes through level 10 and Fighter through level 20.
+- Seven existing-character incremental upgrades.
+- Three Free Archetype paths with the variant enabled.
+- One Ancestry Paragon campaign-section path.
+- One Gradual Ability Boosts path.
+
+Artifacts: `.wayfinder-smoke/release-0.7.0-baseline`, `.wayfinder-smoke/release-0.7.0-free-archetype-final`, `.wayfinder-smoke/release-0.7.0-ancestry-paragon`, and `.wayfinder-smoke/release-0.7.0-gradual-boosts`.
 
 ## 2026-07-27 Depth Verification Past Level 5
 

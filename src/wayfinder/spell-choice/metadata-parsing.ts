@@ -102,7 +102,7 @@ export function parseSorcerousGiftSpellAccess(
     const rank = rankFromCurriculumLabel(label);
     const uuid = String(references[0]?.[1] ?? "").trim();
     const name = normalizeCurriculumSpellName(references[0]?.[2] ?? "");
-    if (rank !== null && references.length === 1 && uuid && name) {
+    if (rank !== null && references.length === 1 && uuid) {
       gifts[rank] = { name, uuid };
     }
   }

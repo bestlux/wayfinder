@@ -10,6 +10,7 @@ import {
 } from "../class-archetype/registry.js";
 import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { collectActorRuleSelectionRollOptions, collectSkillRankRollOptions } from "../projected-rule-options.js";
+import { selectionTakenLevel } from "../selection-level.js";
 
 type SingletonItemType = "ancestry" | "heritage" | "background" | "class" | "deity";
 type LooseDocument = {
@@ -175,8 +176,7 @@ export async function hasDedicationFeatInContext(args: HasDedicationContextDepen
 }
 
 function draftedFeatLevel(selection: SelectionRef): number | null {
-  const slotLevel = selection.slotId.match(/-level-(\d+)$/)?.[1];
-  return numericLevel(slotLevel) ?? numericLevel(selection.level);
+  return selectionTakenLevel(selection);
 }
 
 function actorFeatLevel(item: unknown): number | null {

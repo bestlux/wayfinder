@@ -6,6 +6,7 @@ import {
   hasSourceId,
   insertFeatSelection,
   orderSelections,
+  preflightFeatSelection,
   replaceSingletonItem,
   replaceSingletonItems,
   restoreSingletonSourceSlotFlags,
@@ -378,6 +379,26 @@ describe("actor-updater selection application", () => {
         },
       },
     ]);
+  });
+
+  it("rejects a stale future selection when its canonical PF2E slot became occupied", async () => {
+    const actor = {
+      feats: {
+        get: (groupId: string) =>
+          groupId === "class" ? { slots: { "class-2": { id: "class-2", level: 2, feat: { id: "other" } } } } : null,
+      },
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => [{ id: "created-class-feat" }]),
+    };
+    const selection = selectionRef("class-feat-level-2", "feat", "reactive-strike", "Reactive Strike", "class");
+
+    await expect(
+      insertFeatSelection(actor, selection, featStep(selection.slotId, "class-feat", 2, ["class"]), {
+        fetchSelectionDocument,
+        createEmbeddedSource: async () => ({ name: selection.name, type: "feat", system: {}, flags: {} }),
+      })
+    ).rejects.toThrow("class feat slot at level 2 is already occupied");
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
   });
 
   it("strips class preselected data when building a class embedded source", async () => {
@@ -1436,6 +1457,36 @@ describe("actor-updater selection application", () => {
     ]);
   });
 
+  it.each([
+    { slotKind: "class-feat" as const, slotId: "class-feat-level-2", level: 2, groupId: "class" },
+    { slotKind: "skill-feat" as const, slotId: "skill-feat-level-2", level: 2, groupId: "skill" },
+    { slotKind: "general-feat" as const, slotId: "general-feat-level-3", level: 3, groupId: "general" },
+  ])("writes a future $slotKind selection to its canonical PF2E slot", async ({ slotKind, slotId, level, groupId }) => {
+    const actor = {
+      feats: {
+        get: (requestedGroupId: string) => (requestedGroupId === groupId ? { slots: {} } : null),
+      },
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => [{ id: `created-${slotKind}` }]),
+    };
+    const selection = selectionRef(slotId, "feat", `future-${slotKind}`, `Future ${slotKind}`, groupId);
+    const step = featStep(slotId, slotKind, level, [groupId]);
+
+    await insertFeatSelection(actor, selection, step, {
+      fetchSelectionDocument,
+      createEmbeddedSource: async () => ({ name: selection.name, type: "feat", system: {}, flags: {} }),
+    });
+
+    expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        name: selection.name,
+        type: "feat",
+        system: { location: `${groupId}-${level}`, level: { taken: level } },
+        flags: {},
+      },
+    ]);
+  });
+
   it("refuses to apply a stale Free Archetype selection after PF2E removes the variant group", async () => {
     const actor = {
       feats: { get: () => null },
@@ -1643,6 +1694,48 @@ describe("actor-updater selection application", () => {
       })
     ).rejects.toThrow("no longer matches PF2E's current slot filters");
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("preflights current campaign filters without creating an embedded source", async () => {
+    const createEmbeddedSource = vi.fn(async () => ({ name: "Rare Human Feat", type: "feat", system: {} }));
+    const selection = selectionRef(
+      "campaign-feat-filtered-level-1",
+      "feat",
+      "rare-human-feat",
+      "Rare Human Feat",
+      "ancestry"
+    );
+    const step: PendingStep = {
+      ...featStep("campaign-feat-filtered-level-1", "campaign-feat", 1, ["ancestry"]),
+      campaignFeat: {
+        sectionId: "filtered",
+        sectionLabel: "Filtered",
+        groupSlotId: "filtered-1",
+        supported: ["ancestry"],
+        filter: { categories: ["ancestry"], traits: ["human"], omitTraits: [], conjunction: "and" },
+      },
+    };
+
+    await expect(
+      preflightFeatSelection({ feats: { get: () => ({ slots: {} }) } }, selection, step, {
+        fetchSelectionDocument: async () => ({
+          name: "Rare Human Feat",
+          system: { category: "ancestry", traits: { value: ["human", "rare"] } },
+          toObject: () => ({
+            name: "Rare Human Feat",
+            system: { category: "ancestry", traits: { value: ["human", "rare"] } },
+          }),
+        }),
+        createEmbeddedSource,
+        resolveCampaignFeatSlot: () => ({
+          sectionId: "filtered",
+          supported: ["ancestry"],
+          filter: { categories: ["ancestry"], traits: ["human"], omitTraits: ["rare"], conjunction: "and" },
+          slot: { id: "filtered-1", level: 1, fulfilled: false, filter: null },
+        }),
+      })
+    ).rejects.toThrow("no longer matches PF2E's current slot filters");
+    expect(createEmbeddedSource).not.toHaveBeenCalled();
   });
 
   it("preserves preselected feat sources during slotted feat creation", async () => {

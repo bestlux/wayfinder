@@ -1,4 +1,5 @@
 import type { GrantSelectionMeta, PickItemStep, SelectionRef } from "../../types.js";
+import type { ChoiceFilterActorContext } from "../choice-set-filters.js";
 import { createPickItemStep } from "../domain/step-types.js";
 import { formatSlug } from "../formatting.js";
 import { discoverGrantSelectionMeta } from "./rule-discovery.js";
@@ -12,20 +13,25 @@ export function buildGrantChoiceStepsFromRules(args: {
   sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
   activeRollOptions?: ReadonlySet<string>;
+  actorContext?: ChoiceFilterActorContext | null;
+  requireResolvedActorPlaceholders?: boolean;
 }): PickItemStep[] {
   const { sourceItemType, effectiveSourceDocument, sourceSelection, extractSlug } = args;
   if (!effectiveSourceDocument || !sourceSelection) {
     return [];
   }
 
-  return discoverGrantSelectionMeta({
+  const discovered = discoverGrantSelectionMeta({
     sourceItemType,
     sourceDocument: effectiveSourceDocument,
     sourceSelection,
     sourceLevel: args.sourceLevel,
     extractSlug,
     activeRollOptions: args.activeRollOptions,
-  }).map((grant) =>
+    actorContext: args.actorContext,
+    requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
+  });
+  return discovered.map((grant) =>
     createPickItemStep(
       "grant-choice",
       args.sourceLevel ?? choiceSourceLevel(effectiveSourceDocument),

@@ -16,6 +16,7 @@ import { buildLanguageChoiceSteps } from "../language-choice-service.js";
 import { buildWayfinderPlan } from "../plan-service.js";
 import { buildProjectedChoiceRuleRollOptions } from "../projected-rule-options.js";
 import { documentFeatureLevel, getDocumentRules, matchesChoicePredicateListAgainstRollOptions, toNonEmptyString, } from "../rule-data.js";
+import { selectionTakenLevel } from "../selection-level.js";
 import { buildSingletonChoiceSteps } from "../singleton-choice-service.js";
 import { SLOT_PREFIXES } from "../slot-ids.js";
 import { buildFeatSpellChoiceSteps } from "../spell-choice/feat-step-builder.js";
@@ -129,6 +130,7 @@ export async function buildWayfinderAppPlan(args, deps = DEFAULT_DEPS) {
                     deps.readExistingSingletonSourceSelection(args.actor, "deity")),
                 sources,
                 activeRollOptions: await resolveProjectedRuleRollOptions(planDraft, sources, args, deps),
+                actorContext: await resolveFlagChoiceActorContext(args, deps),
                 extractSlug: deps.extractDocumentSlug,
                 readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
             });
@@ -288,7 +290,21 @@ async function resolveFlagChoiceActorContext(args, deps) {
     return {
         ancestrySlug: deps.extractDocumentSlug(ancestryDocument),
         classSlug: deps.extractDocumentSlug(classDocument),
+        ...kineticistGateActorContext(args.actor, args.draft),
     };
+}
+function kineticistGateActorContext(actor, draft) {
+    const elements = Array.from(new Set([
+        ...listActorItems(actor).map((item) => kineticistGateElement(extractDocumentSlug(item) ?? item.name)),
+        ...Object.values(draft.branchSelections).map((selection) => kineticistGateElement(selection.slug ?? selection.name)),
+    ].filter((element) => !!element)));
+    return elements.length > 0 ? { kineticistGateElements: elements } : {};
+}
+function kineticistGateElement(value) {
+    if (typeof value !== "string") {
+        return null;
+    }
+    return /^(air|earth|fire|metal|water|wood)(?:-|\s+)gate$/i.exec(value.trim())?.[1]?.toLowerCase() ?? null;
 }
 async function resolveProjectedRuleRollOptions(draft, sources, args, deps) {
     const effectiveBuildState = await getEffectiveBuildState(args.actor, draft);
@@ -547,7 +563,7 @@ async function resolveExpandedFeatChoiceSources(featSelections, draft, args, dep
                     sourceItemType: "feat",
                     sourceSelection,
                     sourceDocument,
-                    sourceLevel: sourceSelection.level ?? documentFeatureLevel(sourceDocument),
+                    sourceLevel: selectionTakenLevel(sourceSelection, documentFeatureLevel(sourceDocument)),
                     staticGrant: false,
                 },
             ]
@@ -560,7 +576,9 @@ async function resolveExpandedFeatChoiceSources(featSelections, draft, args, dep
     });
     return [
         ...directSources,
-        ...staticGrantSources.map((source) => ({
+        ...staticGrantSources
+            .filter((source) => source.supportsGuidedChoices)
+            .map((source) => ({
             sourceItemType: source.sourceItemType,
             sourceSelection: source.sourceSelection,
             sourceDocument: source.sourceDocument,

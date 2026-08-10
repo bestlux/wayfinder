@@ -282,6 +282,7 @@ describe("wayfinder plan builder service", () => {
             sourceItemType: "feat",
             sourceSelection: draft.selections["class-feat-level-2"],
             sourceDocument: { fetched: "order-explorer" },
+            sourceLevel: 2,
           }),
           expect.objectContaining({
             sourceItemType: "feat",
@@ -779,6 +780,11 @@ describe("wayfinder plan builder service", () => {
                 level: { value: 5 },
               },
             },
+            {
+              type: "effect",
+              name: "Fire Gate",
+              system: { slug: "fire-gate" },
+            },
           ],
         },
       } as unknown as BuildStateActor;
@@ -841,6 +847,12 @@ describe("wayfinder plan builder service", () => {
           return [] as PendingStep[];
         }
       );
+      const buildFlagChoiceSteps = vi.fn(
+        async (params: { actorContext?: { kineticistGateElements?: string[] } | null }) => {
+          expect(params.actorContext?.kineticistGateElements).toEqual(["fire"]);
+          return [] as PendingStep[];
+        }
+      );
 
       await buildWayfinderAppPlan(
         {
@@ -854,6 +866,7 @@ describe("wayfinder plan builder service", () => {
         },
         {
           buildWayfinderPlan: async (receivedSnapshot, receivedDraft, deps) => {
+            await deps.buildFlagChoiceSteps(receivedSnapshot, receivedDraft, 5);
             await deps.buildClassChoiceSteps(receivedSnapshot, receivedDraft, 5);
             return { recommendedTargetLevel: 5, targetLevel: 5, steps: [] };
           },
@@ -861,7 +874,7 @@ describe("wayfinder plan builder service", () => {
           buildClassSkillFeatSteps: async () => [],
           buildClassTrainingSteps: async () => [],
           buildGrantChoiceSteps: async () => [],
-          buildFlagChoiceSteps: async () => [],
+          buildFlagChoiceSteps,
           buildSingletonChoiceSteps: async () => [],
           buildLanguageChoiceSteps: async () => [],
           buildClassArchetypeSteps: async () => [],

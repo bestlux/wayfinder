@@ -31,6 +31,7 @@ import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
 import { canGrantRestrictedSpellRarityAccess, withRestrictedSpellRarityAccess } from "./spell-choice/rarity-access.js";
 import { buildHistoricalSpellChoicePlanningNote } from "./spell-choice-service.js";
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
+    static #openApps = new Set();
     static DEFAULT_OPTIONS = {
         id: MODULE_ID,
         tag: "section",
@@ -74,6 +75,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             return;
         }
         new WayfinderApp({ actor }).render(true);
+    }
+    static rerenderOpenApps() {
+        for (const app of this.#openApps) {
+            app.render(false);
+        }
     }
     constructor(options) {
         super({
@@ -144,10 +150,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             onManualChange: this.#onManualChange,
             onLoreInputChange: this.#onLoreInputChange,
         }, this.#scrollById, this.#pendingSearchFocus).pendingSearchFocus;
+        WayfinderApp.#openApps.add(this);
     }
     _tearDown(options) {
-        super._tearDown(options);
-        delete this.actor.apps[this.id];
+        try {
+            super._tearDown(options);
+        }
+        finally {
+            WayfinderApp.#openApps.delete(this);
+            delete this.actor.apps[this.id];
+        }
     }
     #onActionClick = async (event) => {
         const target = event.currentTarget;

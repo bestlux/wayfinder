@@ -51,8 +51,9 @@ export const psychicContributor = spontaneousContributor({
     tradition: "occult",
     ability: "int",
     cantripCount: 3,
-    initialRankOneCount: 2,
-    maximumSpellRank: 9,
+    initialRankOneCount: 1,
+    rankIncreaseCount: 1,
+    rankMaintenanceCount: 1,
 });
 export const sorcererContributor = branchTraditionSpontaneousContributor({
     slug: "sorcerer",

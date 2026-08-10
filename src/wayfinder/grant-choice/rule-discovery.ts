@@ -1,5 +1,5 @@
 import type { ChoicePredicate, GrantSelectionMeta, SelectionRef, StepFilters } from "../../types.js";
-import { resolveChoiceSetFilters } from "../choice-set-filters.js";
+import { type ChoiceFilterActorContext, resolveChoiceSetFilters } from "../choice-set-filters.js";
 import {
   documentFeatureLevel,
   extractChoiceKey,
@@ -22,6 +22,8 @@ export function discoverGrantSelectionMeta(args: {
   sourceLevel?: number;
   extractSlug: (document: unknown) => string | null;
   activeRollOptions?: ReadonlySet<string>;
+  actorContext?: ChoiceFilterActorContext | null;
+  requireResolvedActorPlaceholders?: boolean;
 }): GrantSelectionMeta[] {
   const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
@@ -39,7 +41,11 @@ export function discoverGrantSelectionMeta(args: {
       return [];
     }
 
-    const resolution = resolveChoiceSetFilters(rule, { sourceLevel: level });
+    const resolution = resolveChoiceSetFilters(rule, {
+      sourceLevel: level,
+      actorContext: args.actorContext,
+      requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
+    });
     if (!resolution) {
       return [];
     }
@@ -53,7 +59,9 @@ export function discoverGrantSelectionMeta(args: {
       return [];
     }
 
-    const dependsOn = resolveGrantDependency(sourceItemType, grantDependencyPredicates(filters));
+    const dependsOn = resolution.actorDependencies.includes("class")
+      ? "class"
+      : resolveGrantDependency(sourceItemType, grantDependencyPredicates(filters));
     const dependencyKey = dependsOn ?? "none";
     return [
       {

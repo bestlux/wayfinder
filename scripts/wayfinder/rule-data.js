@@ -32,31 +32,25 @@ export function isChoicePredicate(value) {
     if (!isRecord(value)) {
         return false;
     }
-    if ("and" in value && value.and !== undefined && (!Array.isArray(value.and) || !value.and.every(isChoicePredicate))) {
-        return false;
+    const keys = Object.keys(value);
+    if (keys.length === 1 && ["and", "nand", "or", "xor", "nor", "iff"].includes(keys[0])) {
+        const entries = value[keys[0]];
+        return Array.isArray(entries) && entries.every(isChoicePredicate);
     }
-    if ("nand" in value &&
-        value.nand !== undefined &&
-        (!Array.isArray(value.nand) || !value.nand.every(isChoicePredicate))) {
-        return false;
+    if (keys.length === 1 && keys[0] === "not") {
+        return isChoicePredicate(value.not);
     }
-    if ("or" in value && value.or !== undefined && (!Array.isArray(value.or) || !value.or.every(isChoicePredicate))) {
-        return false;
+    if (keys.length === 2 && keys.includes("if") && keys.includes("then")) {
+        return isChoicePredicate(value.if) && isChoicePredicate(value.then);
     }
-    if ("nor" in value && value.nor !== undefined && (!Array.isArray(value.nor) || !value.nor.every(isChoicePredicate))) {
-        return false;
+    if (keys.length === 1 && ["eq", "lt", "lte", "gt", "gte"].includes(keys[0])) {
+        const comparator = value[keys[0]];
+        return (Array.isArray(comparator) &&
+            comparator.length === 2 &&
+            typeof comparator[0] === "string" &&
+            ["string", "number"].includes(typeof comparator[1]));
     }
-    if ("not" in value && value.not !== undefined && !isChoicePredicate(value.not)) {
-        return false;
-    }
-    for (const key of ["lt", "lte", "gt", "gte"]) {
-        if (key in value &&
-            value[key] !== undefined &&
-            (!Array.isArray(value[key]) || value[key].length !== 2 || typeof value[key][0] !== "string")) {
-            return false;
-        }
-    }
-    return ["and", "nand", "or", "nor", "not", "lt", "lte", "gt", "gte"].some((key) => key in value);
+    return false;
 }
 export function matchesChoicePredicateList(predicate, matchesString) {
     return predicate.every((entry) => matchesChoicePredicate(entry, matchesString));
@@ -86,7 +80,7 @@ function matchesProjectedRollOption(statement, activeRollOptions) {
     if (activeRollOptions.has(normalized)) {
         return true;
     }
-    const comparison = /^(lt|lte|gt|gte):(.+):(-?\d+(?:\.\d+)?)$/u.exec(normalized);
+    const comparison = /^(eq|lt|lte|gt|gte):(.+):(-?\d+(?:\.\d+)?)$/u.exec(normalized);
     if (!comparison) {
         return false;
     }
@@ -110,6 +104,8 @@ function matchesProjectedRollOption(statement, activeRollOptions) {
                 return actual > expected;
             case "gte":
                 return actual >= expected;
+            case "eq":
+                return actual === expected;
             default:
                 return false;
         }
@@ -135,16 +131,27 @@ export function matchesChoicePredicate(predicate, matchesString) {
     if (Array.isArray(predicate.or)) {
         return predicate.or.some((entry) => matchesChoicePredicate(entry, matchesString));
     }
+    if (Array.isArray(predicate.xor)) {
+        return predicate.xor.filter((entry) => matchesChoicePredicate(entry, matchesString)).length === 1;
+    }
     if (Array.isArray(predicate.nor)) {
         return predicate.nor.every((entry) => !matchesChoicePredicate(entry, matchesString));
     }
     if (predicate.not) {
         return !matchesChoicePredicate(predicate.not, matchesString);
     }
+    if (predicate.if && predicate.then) {
+        return (!matchesChoicePredicate(predicate.if, matchesString) || matchesChoicePredicate(predicate.then, matchesString));
+    }
+    if (Array.isArray(predicate.iff)) {
+        const results = predicate.iff.map((entry) => matchesChoicePredicate(entry, matchesString));
+        return results.every(Boolean) || results.every((result) => !result);
+    }
     return true;
 }
 function matchesComparisonPredicate(predicate, matchesString) {
     for (const [operator, comparator] of [
+        ["eq", predicate.eq],
         ["lt", predicate.lt],
         ["lte", predicate.lte],
         ["gt", predicate.gt],
@@ -155,6 +162,9 @@ function matchesComparisonPredicate(predicate, matchesString) {
         }
         if (!Array.isArray(comparator) || comparator.length !== 2 || typeof comparator[0] !== "string") {
             return false;
+        }
+        if (operator === "eq" && typeof comparator[1] === "string") {
+            return comparator[0] === comparator[1];
         }
         return matchesString(`${operator}:${comparator[0]}:${String(comparator[1])}`);
     }
@@ -173,12 +183,16 @@ export function predicateIncludesString(predicate, target) {
     return ((Array.isArray(predicate.and) && predicate.and.some((entry) => predicateIncludesString(entry, target))) ||
         (Array.isArray(predicate.nand) && predicate.nand.some((entry) => predicateIncludesString(entry, target))) ||
         (Array.isArray(predicate.or) && predicate.or.some((entry) => predicateIncludesString(entry, target))) ||
+        (Array.isArray(predicate.xor) && predicate.xor.some((entry) => predicateIncludesString(entry, target))) ||
         (Array.isArray(predicate.nor) && predicate.nor.some((entry) => predicateIncludesString(entry, target))) ||
         (!!predicate.not && predicateIncludesString(predicate.not, target)) ||
+        (!!predicate.if && predicateIncludesString(predicate.if, target)) ||
+        (!!predicate.then && predicateIncludesString(predicate.then, target)) ||
+        (Array.isArray(predicate.iff) && predicate.iff.some((entry) => predicateIncludesString(entry, target))) ||
         comparisonPredicateIncludesString(predicate, target));
 }
 function comparisonPredicateIncludesString(predicate, target) {
-    for (const comparator of [predicate.lt, predicate.lte, predicate.gt, predicate.gte]) {
+    for (const comparator of [predicate.eq, predicate.lt, predicate.lte, predicate.gt, predicate.gte]) {
         if (Array.isArray(comparator) && comparator.some((entry) => typeof entry === "string" && entry.includes(target))) {
             return true;
         }

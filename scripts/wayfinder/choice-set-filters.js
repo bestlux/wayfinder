@@ -29,9 +29,10 @@ export function hasSupportedChoiceSetItemType(itemType) {
 export function resolveChoiceSetFilters(rule, options) {
     const choices = isRecord(rule.choices) && !Array.isArray(rule.choices) ? rule.choices : null;
     if (choices) {
-        const rawPredicate = Array.isArray(choices.filter)
-            ? choices.filter.filter(isChoicePredicate).map((entry) => resolveParentGranterLevel(entry, options.sourceLevel))
-            : [];
+        if (!Array.isArray(choices.filter) || !choices.filter.every(isChoicePredicate)) {
+            return null;
+        }
+        const rawPredicate = choices.filter.map((entry) => resolveParentGranterLevel(entry, options.sourceLevel));
         const resolvedPredicate = resolveActorInjectedPredicate(rawPredicate, options);
         if (!resolvedPredicate) {
             return null;
@@ -64,7 +65,13 @@ function resolveParentGranterLevel(predicate, level) {
     if (Array.isArray(result.and)) {
         result.and = result.and.map((entry) => resolveParentGranterLevel(entry, level));
     }
-    for (const key of ["lt", "lte", "gt", "gte"]) {
+    if (Array.isArray(result.nand)) {
+        result.nand = result.nand.map((entry) => resolveParentGranterLevel(entry, level));
+    }
+    if (Array.isArray(result.xor)) {
+        result.xor = result.xor.map((entry) => resolveParentGranterLevel(entry, level));
+    }
+    for (const key of ["eq", "lt", "lte", "gt", "gte"]) {
         const comparator = result[key];
         if (Array.isArray(comparator) && comparator[1] === "parent:granter:level") {
             result[key] = [comparator[0], level];
@@ -78,6 +85,15 @@ function resolveParentGranterLevel(predicate, level) {
     }
     if (result.not) {
         result.not = resolveParentGranterLevel(result.not, level);
+    }
+    if (result.if) {
+        result.if = resolveParentGranterLevel(result.if, level);
+    }
+    if (result.then) {
+        result.then = resolveParentGranterLevel(result.then, level);
+    }
+    if (Array.isArray(result.iff)) {
+        result.iff = result.iff.map((entry) => resolveParentGranterLevel(entry, level));
     }
     return result;
 }
@@ -162,8 +178,14 @@ function resolveActorInjectedPredicateEntry(predicate, options, actorDependencie
     if (Array.isArray(result.and)) {
         result.and = result.and.map((entry) => resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved));
     }
+    if (Array.isArray(result.nand)) {
+        result.nand = result.nand.map((entry) => resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved));
+    }
     if (Array.isArray(result.or)) {
         result.or = result.or.map((entry) => resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved));
+    }
+    if (Array.isArray(result.xor)) {
+        result.xor = result.xor.map((entry) => resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved));
     }
     if (Array.isArray(result.nor)) {
         result.nor = result.nor.map((entry) => resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved));
@@ -171,7 +193,16 @@ function resolveActorInjectedPredicateEntry(predicate, options, actorDependencie
     if (result.not) {
         result.not = resolveActorInjectedPredicateEntry(result.not, options, actorDependencies, markUnresolved);
     }
-    for (const key of ["lt", "lte", "gt", "gte"]) {
+    if (result.if) {
+        result.if = resolveActorInjectedPredicateEntry(result.if, options, actorDependencies, markUnresolved);
+    }
+    if (result.then) {
+        result.then = resolveActorInjectedPredicateEntry(result.then, options, actorDependencies, markUnresolved);
+    }
+    if (Array.isArray(result.iff)) {
+        result.iff = result.iff.map((entry) => resolveActorInjectedPredicateEntry(entry, options, actorDependencies, markUnresolved));
+    }
+    for (const key of ["eq", "lt", "lte", "gt", "gte"]) {
         const comparator = result[key];
         if (!Array.isArray(comparator)) {
             continue;
@@ -198,6 +229,9 @@ function resolveActorInjectedPredicateString(statement, options, actorDependenci
     });
 }
 function actorDependencyForPath(path) {
+    if (/^flags\.system\.kineticist\.gate\.(?:one|two|three|four|five|six)$/.test(path)) {
+        return "class";
+    }
     switch (path) {
         case "system.details.ancestry.trait":
             return "ancestry";
@@ -208,6 +242,11 @@ function actorDependencyForPath(path) {
     }
 }
 function actorPlaceholderValue(path, context) {
+    const gateOrdinal = /^flags\.system\.kineticist\.gate\.(one|two|three|four|five|six)$/.exec(path)?.[1];
+    if (gateOrdinal && context?.kineticistGateElements) {
+        const index = ["one", "two", "three", "four", "five", "six"].indexOf(gateOrdinal);
+        return context.kineticistGateElements[index] ?? `wayfinder-unselected-kineticist-gate-${index + 1}`;
+    }
     switch (path) {
         case "system.details.ancestry.trait":
             return toNonEmptyString(context?.ancestrySlug);

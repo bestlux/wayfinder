@@ -350,12 +350,16 @@ async function applyPendingStaticGrantPreselectChoices(source, draft, steps, dep
         if (Object.keys(preselectChoices).length === 0) {
             continue;
         }
-        rule.preselectChoices = {
-            ...(isLooseRecord(rule.preselectChoices) ? rule.preselectChoices : {}),
+        const existingPreselectChoices = isLooseRecord(rule.preselectChoices)
+            ? Object.fromEntries(Object.entries(rule.preselectChoices).filter((entry) => typeof entry[1] === "string"))
+            : {};
+        const resolvedPreselectChoices = {
             ...preselectChoices,
+            ...existingPreselectChoices,
         };
+        rule.preselectChoices = resolvedPreselectChoices;
         if (!protectedRuleIndexes.has(ruleIndex)) {
-            registerManualStaticItemGrant(source, grantedSelection.uuid, preselectChoices);
+            registerManualStaticItemGrant(source, grantedSelection.uuid, resolvedPreselectChoices);
             manualizedRuleIndexes.add(ruleIndex);
         }
     }

@@ -1,3 +1,4 @@
+import { selectionTakenLevel } from "../selection-level.js";
 import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helpers.js";
 export function buildFeatSpellChoiceSteps(args) {
     const classProfile = classSpellcastingProfile(args.effectiveClassDocument, args.extractSlug);
@@ -54,7 +55,7 @@ export function buildFeatSpellChoiceSteps(args) {
 }
 function appendFeatSpellChoiceStep(args) {
     const sourceSlug = extractSourceSlug(args.source.sourceDocument) ?? args.source.sourceSelection.documentId;
-    const level = args.source.sourceSelection.level ?? 1;
+    const level = selectionTakenLevel(args.source.sourceSelection);
     appendPendingSpellChoiceStep(args.steps, makeSpellChoiceStep({
         slotId: `spell-choice-feat-${sourceSlug}-cantrip-level-${level}`,
         level,

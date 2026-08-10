@@ -5,6 +5,7 @@ import { findSpellcastingEntryForChoiceInItems } from "../../shared/spellcasting
 import { projectedClassArchetypeFeatSelections, projectedClassArchetypeStaticFeatSelections, withExistingClassArchetypeChoice, } from "../class-archetype/registry.js";
 import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { collectActorRuleSelectionRollOptions, collectSkillRankRollOptions } from "../projected-rule-options.js";
+import { selectionTakenLevel } from "../selection-level.js";
 export function extractContextTraits(document, extractDocumentSlug, fallbackSlug) {
     const typedDocument = document;
     const traits = Array.isArray(typedDocument?.system?.traits?.value) ? typedDocument.system.traits.value : [];
@@ -72,8 +73,7 @@ export async function hasDedicationFeatInContext(args) {
     return projected.some((feat) => feat.traits.includes("dedication"));
 }
 function draftedFeatLevel(selection) {
-    const slotLevel = selection.slotId.match(/-level-(\d+)$/)?.[1];
-    return numericLevel(slotLevel) ?? numericLevel(selection.level);
+    return selectionTakenLevel(selection);
 }
 function actorFeatLevel(item) {
     const typedItem = item;

@@ -289,6 +289,31 @@ describe("actor-inspector", () => {
 
     expect(snapshot.campaignFeatSections.map((section) => section.id)).toEqual(["unique"]);
   });
+
+  it("rejects campaign sections with duplicate normalized slot ids", () => {
+    vi.stubGlobal("game", {
+      settings: {
+        get: () => [
+          {
+            id: "custom",
+            label: "Custom",
+            supported: ["ancestry"],
+            slots: [
+              { id: " repeated ", level: 1 },
+              { id: "repeated", level: 3 },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(
+      inspectActor({
+        items: [],
+        feats: new Map([["custom", { id: "custom", label: "Custom", supported: ["ancestry"], slots: {} }]]),
+      }).campaignFeatSections
+    ).toEqual([]);
+  });
 });
 
 function featItem(category?: string, featType?: string): any {

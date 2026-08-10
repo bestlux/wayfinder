@@ -27,6 +27,76 @@ describe("actor-updater spell choice application", () => {
     });
   });
 
+  it("models a single rank-10 Psychic slot and keeps Magus capped at rank 9", () => {
+    const draft = createEmptyDraft(19);
+    const psychic = createSpellcastingEntrySource(
+      {
+        ...wizardSpellChoice("spell-choice-psychic-repertoire-rank-10-level-19", 2, 10, 10, false),
+        classSlug: "psychic",
+        destination: {
+          type: "spontaneous",
+          key: "psychic-occult-spontaneous",
+          label: "Occult spell repertoire",
+          entryName: "Occult Spontaneous Spells",
+          tradition: "occult",
+          ability: "int",
+          prepared: "spontaneous",
+        },
+      },
+      { system: { details: { level: { value: 19 } } } },
+      draft
+    );
+    const magus = createSpellcastingEntrySource(
+      {
+        ...wizardSpellChoice("spell-choice-magus-spellbook-level-19", 2, 1, 9, false),
+        classSlug: "magus",
+        destination: {
+          type: "prepared",
+          key: "magus-arcane-prepared",
+          label: "Magus spellbook",
+          entryName: "Arcane Prepared Spells",
+          tradition: "arcane",
+          ability: "int",
+          prepared: "prepared",
+        },
+      },
+      { system: { details: { level: { value: 19 } } } },
+      draft
+    );
+
+    expect(psychic.system?.slots?.slot10).toMatchObject({ max: 1, value: 1 });
+    expect(magus.system?.slots?.slot9).toMatchObject({ max: 2, value: 2 });
+    expect(magus.system?.slots?.slot10).toBeUndefined();
+  });
+
+  it.each([
+    { level: 1, expected: { slot1: { max: 1, value: 1 } } },
+    { level: 2, expected: { slot1: { max: 2, value: 2 } } },
+    { level: 3, expected: { slot1: { max: 2, value: 2 }, slot2: { max: 1, value: 1 } } },
+    { level: 4, expected: { slot1: { max: 2, value: 2 }, slot2: { max: 2, value: 2 } } },
+  ])("models Psychic's staggered slot progression at level $level", ({ level, expected }) => {
+    const draft = createEmptyDraft(level);
+    const source = createSpellcastingEntrySource(
+      {
+        ...wizardSpellChoice(`spell-choice-psychic-repertoire-rank-1-level-${level}`, 1, 1, 1, false),
+        classSlug: "psychic",
+        destination: {
+          type: "spontaneous",
+          key: "psychic-occult-spontaneous",
+          label: "Occult spell repertoire",
+          entryName: "Occult Spontaneous Spells",
+          tradition: "occult",
+          ability: "int",
+          prepared: "spontaneous",
+        },
+      },
+      { system: { details: { level: { value: level } } } },
+      draft
+    );
+
+    expect(source.system?.slots).toMatchObject(expected);
+  });
+
   it("creates a Spellshot spellbook with four cantrips and two open preparation slots", async () => {
     const { actor } = buildActorHarness();
     const cantrips = ["detect-magic", "ignition", "light", "shield"];

@@ -1,7 +1,7 @@
 import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
 import { slugifyName } from "../shared/slug.js";
-import { findSpellcastingEntryForChoice, wizardMaxSpellRank } from "../shared/spellcasting.js";
+import { findSpellcastingEntryForChoice, magusMaxSpellRank, wizardMaxSpellRank } from "../shared/spellcasting.js";
 import { SLOT_IDS } from "../wayfinder/slot-ids.js";
 export async function ensureSpellcastingEntry(actor, step, draft) {
     const spellChoice = step.spellChoice;
@@ -303,14 +303,24 @@ function buildSpellcastingEntrySlots(spellChoice, actor, draft) {
 function buildSpontaneousSpellcastingSlots(actor, draft, destinationKey) {
     const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
     const usesFourSlotProgression = /^(bard|oracle|sorcerer)-/.test(destinationKey);
-    const maxRank = usesFourSlotProgression
-        ? wizardMaxSpellRank(currentLevel)
-        : Math.min(9, wizardMaxSpellRank(currentLevel));
+    const usesPsychicProgression = destinationKey.startsWith("psychic-");
+    const gainsRankTen = /^(bard|oracle|psychic|sorcerer)-/.test(destinationKey);
+    const maxRank = gainsRankTen ? wizardMaxSpellRank(currentLevel) : Math.min(9, wizardMaxSpellRank(currentLevel));
     const slots = {
         slot0: makePreparedSlotGroup(5),
     };
     for (let rank = 1; rank <= maxRank; rank += 1) {
-        const slotCount = rank === 10 ? 1 : usesFourSlotProgression ? (rank <= Math.floor(currentLevel / 2) ? 4 : 3) : 3;
+        const slotCount = rank === 10
+            ? 1
+            : usesFourSlotProgression
+                ? rank <= Math.floor(currentLevel / 2)
+                    ? 4
+                    : 3
+                : usesPsychicProgression
+                    ? currentLevel >= rank * 2
+                        ? 2
+                        : 1
+                    : 3;
         slots[`slot${rank}`] = makePreparedSlotGroup(slotCount);
     }
     return slots;
@@ -366,7 +376,7 @@ function buildAnimistPreparedSlots(actor, draft) {
 }
 function buildMagusPreparedSlots(actor, draft) {
     const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
-    const maxRank = wizardMaxSpellRank(currentLevel);
+    const maxRank = magusMaxSpellRank(currentLevel);
     const slots = {
         slot0: makePreparedSlotGroup(5),
     };

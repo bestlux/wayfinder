@@ -8,7 +8,7 @@ import type {
   SpellSlotGroupLike,
 } from "../shared/actor-model.js";
 import { slugifyName } from "../shared/slug.js";
-import { findSpellcastingEntryForChoice, wizardMaxSpellRank } from "../shared/spellcasting.js";
+import { findSpellcastingEntryForChoice, magusMaxSpellRank, wizardMaxSpellRank } from "../shared/spellcasting.js";
 import type { DraftState, PendingStep } from "../types.js";
 import { SLOT_IDS } from "../wayfinder/slot-ids.js";
 
@@ -376,9 +376,9 @@ function buildSpontaneousSpellcastingSlots(
 ): Record<string, { max: number; value: number; prepared: Array<{ id: string | null; expended: boolean }> }> {
   const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
   const usesFourSlotProgression = /^(bard|oracle|sorcerer)-/.test(destinationKey);
-  const maxRank = usesFourSlotProgression
-    ? wizardMaxSpellRank(currentLevel)
-    : Math.min(9, wizardMaxSpellRank(currentLevel));
+  const usesPsychicProgression = destinationKey.startsWith("psychic-");
+  const gainsRankTen = /^(bard|oracle|psychic|sorcerer)-/.test(destinationKey);
+  const maxRank = gainsRankTen ? wizardMaxSpellRank(currentLevel) : Math.min(9, wizardMaxSpellRank(currentLevel));
   const slots: Record<
     string,
     {
@@ -391,7 +391,18 @@ function buildSpontaneousSpellcastingSlots(
   };
 
   for (let rank = 1; rank <= maxRank; rank += 1) {
-    const slotCount = rank === 10 ? 1 : usesFourSlotProgression ? (rank <= Math.floor(currentLevel / 2) ? 4 : 3) : 3;
+    const slotCount =
+      rank === 10
+        ? 1
+        : usesFourSlotProgression
+          ? rank <= Math.floor(currentLevel / 2)
+            ? 4
+            : 3
+          : usesPsychicProgression
+            ? currentLevel >= rank * 2
+              ? 2
+              : 1
+            : 3;
     slots[`slot${rank}`] = makePreparedSlotGroup(slotCount);
   }
 
@@ -491,7 +502,7 @@ function buildMagusPreparedSlots(
   draft: DraftState
 ): Record<string, { max: number; value: number; prepared: Array<{ id: string | null; expended: boolean }> }> {
   const currentLevel = Math.max(1, Number(actor?.system?.details?.level?.value ?? 1) || 1, draft.targetLevel || 1);
-  const maxRank = wizardMaxSpellRank(currentLevel);
+  const maxRank = magusMaxSpellRank(currentLevel);
   const slots: Record<
     string,
     {

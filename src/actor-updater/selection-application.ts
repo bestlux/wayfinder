@@ -1,5 +1,5 @@
 export { createSingletonGrantItems } from "./explicit-grant-application.js";
-export { insertFeatSelection } from "./feat-selection-application.js";
+export { insertFeatSelection, preflightFeatSelection } from "./feat-selection-application.js";
 export type {
   CreateEmbeddedSourceDependencies,
   InsertFeatSelectionDependencies,

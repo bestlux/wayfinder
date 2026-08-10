@@ -1,7 +1,7 @@
 import { applyBoostDraft } from "./actor-updater/boost-application.js";
 import { applyLanguageChoiceDraft } from "./actor-updater/language-choice-application.js";
 import { syncNativeClassSpellcasting } from "./actor-updater/native-spellcasting-application.js";
-import { createEmbeddedSource, createSingletonGrantItems, createSingletonSystemGrantItems, featSelections, hasSourceId, insertFeatSelection, orderSelections, replaceSingletonItems, restoreSingletonSourceSlotFlags, singletonSelections, } from "./actor-updater/selection-application.js";
+import { createEmbeddedSource, createSingletonGrantItems, createSingletonSystemGrantItems, featSelections, hasSourceId, insertFeatSelection, orderSelections, preflightFeatSelection, replaceSingletonItems, restoreSingletonSourceSlotFlags, singletonSelections, } from "./actor-updater/selection-application.js";
 import { applySingletonChoiceDraft } from "./actor-updater/singleton-choice-application.js";
 import { applySpellChoiceDraft } from "./actor-updater/spell-choice-application.js";
 import { applySkillIncreaseDraft, applyTrainingDraft } from "./actor-updater/training-application.js";
@@ -14,6 +14,13 @@ export async function applyDraftToActor(actor, draft, steps, options = {}) {
     const selections = orderSelections(draft, steps);
     const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
     const deferredActorUpdate = {};
+    const pendingFeatSelections = featSelections(selections).filter((selection) => {
+        const step = stepsBySlotId.get(selection.slotId);
+        return (!!step && !(step.kind === "pick-item" && step.slotKind === "flag-choice") && !usesNativeGrantItemCreation(step));
+    });
+    for (const selection of pendingFeatSelections) {
+        await preflightFeatSelection(actor, selection, stepsBySlotId.get(selection.slotId) ?? null);
+    }
     await replaceSingletonItems(actor, singletonSelections(selections), draft, steps);
     await createSingletonSystemGrantItems(actor, draft, steps);
     await createSingletonGrantItems(actor, draft, steps);
@@ -34,18 +41,9 @@ export async function applyDraftToActor(actor, draft, steps, options = {}) {
         fetchSelectionDocument,
     });
     await syncNativeClassSpellcasting(actor, draft);
-    for (const selection of featSelections(selections)) {
+    for (const selection of pendingFeatSelections) {
         const step = stepsBySlotId.get(selection.slotId);
-        if (!step) {
-            continue;
-        }
-        if (step.kind === "pick-item" && step.slotKind === "flag-choice") {
-            continue;
-        }
-        if (usesNativeGrantItemCreation(step)) {
-            continue;
-        }
-        if (hasSourceId(actor, selection.uuid)) {
+        if (!step || hasSourceId(actor, selection.uuid)) {
             continue;
         }
         await insertFeatSelection(actor, selection, step, undefined, draft, steps);

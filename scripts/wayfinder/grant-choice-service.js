@@ -11,6 +11,8 @@ export async function buildGrantChoiceSteps(params) {
         sourceSelection: source.sourceSelection,
         sourceLevel: source.sourceLevel,
         activeRollOptions: params.activeRollOptions,
+        actorContext: params.actorContext,
+        requireResolvedActorPlaceholders: true,
         extractSlug: params.extractSlug,
     }).map((step) => ({ source, step })))
         .filter(({ source, step }) => {
@@ -121,9 +123,19 @@ function collectPredicateStrings(predicate) {
     }
     return [
         ...collectPredicateStringsFromBranch(predicate.and),
+        ...collectPredicateStringsFromBranch(predicate.nand),
         ...collectPredicateStringsFromBranch(predicate.or),
+        ...collectPredicateStringsFromBranch(predicate.xor),
         ...collectPredicateStringsFromBranch(predicate.nor),
         ...collectPredicateStringsFromBranch(predicate.not),
+        ...collectPredicateStringsFromBranch(predicate.if),
+        ...collectPredicateStringsFromBranch(predicate.then),
+        ...collectPredicateStringsFromBranch(predicate.iff),
+        ...collectPredicateStringsFromComparison(predicate.eq),
+        ...collectPredicateStringsFromComparison(predicate.lt),
+        ...collectPredicateStringsFromComparison(predicate.lte),
+        ...collectPredicateStringsFromComparison(predicate.gt),
+        ...collectPredicateStringsFromComparison(predicate.gte),
     ];
 }
 function collectPredicateStringsFromBranch(branch) {
@@ -131,5 +143,10 @@ function collectPredicateStringsFromBranch(branch) {
         return [];
     }
     return collectPredicateStrings(branch);
+}
+function collectPredicateStringsFromComparison(comparison) {
+    return Array.isArray(comparison)
+        ? comparison.filter((operand) => typeof operand === "string").map((operand) => operand.trim())
+        : [];
 }
 //# sourceMappingURL=grant-choice-service.js.map

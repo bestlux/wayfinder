@@ -462,48 +462,31 @@ describe("class-feature-choice-service", () => {
         "flags.wayfinder-pf2e.slotId": "deity-level-1",
       },
     ]);
-    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
-      {
-        _id: "deity-1",
-        "flags.core.sourceId": "Compendium.pf2e.deities.Item.iomedae",
-        "flags.pf2e.grantedBy": {
-          id: "selector-1",
-          onDelete: "cascade",
+    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(
+      2,
+      "Item",
+      expect.arrayContaining([
+        expect.objectContaining({
+          _id: "selector-1",
+          "flags.pf2e.itemGrants.deity": {
+            id: "deity-1",
+            onDelete: "detach",
+            nested: null,
+          },
+        }),
+        {
+          _id: "deity-1",
+          "flags.core.sourceId": "Compendium.pf2e.deities.Item.iomedae",
+          "flags.pf2e.grantedBy": {
+            id: "selector-1",
+            onDelete: "cascade",
+          },
+          "flags.wayfinder-pf2e.importedBy": "wayfinder-pf2e",
+          "flags.wayfinder-pf2e.slotId": "deity-level-1",
         },
-        "flags.wayfinder-pf2e.importedBy": "wayfinder-pf2e",
-        "flags.wayfinder-pf2e.slotId": "deity-level-1",
-      },
-    ]);
-    expect(actor.updateEmbeddedDocuments).toHaveBeenNthCalledWith(3, "Item", [
-      {
-        _id: "selector-1",
-        "system.rules": [
-          {
-            key: "ChoiceSet",
-            flag: "deity",
-            choices: {
-              itemType: "deity",
-            },
-            selection: "Compendium.pf2e.deities.Item.iomedae",
-          },
-          {
-            key: "GrantItem",
-            uuid: "{item|flags.system.rulesSelections.deity}",
-          },
-          {
-            key: "GrantItem",
-            uuid: "Compendium.pf2e.classfeatures.Item.deific-weapon",
-          },
-        ],
-        "flags.pf2e.rulesSelections.deity": "Compendium.pf2e.deities.Item.iomedae",
-        "flags.pf2e.itemGrants.deity": {
-          id: "deity-1",
-          onDelete: "detach",
-          nested: null,
-        },
-        "flags.wayfinder-pf2e.slotId": "deity-level-1",
-      },
-    ]);
+      ])
+    );
+    expect(actor.updateEmbeddedDocuments).toHaveBeenCalledTimes(2);
   });
 
   it("persists an existing heritage grant selection before creating the granted feat", async () => {

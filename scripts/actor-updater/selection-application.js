@@ -1,5 +1,5 @@
 export { createSingletonGrantItems } from "./explicit-grant-application.js";
-export { insertFeatSelection } from "./feat-selection-application.js";
+export { insertFeatSelection, preflightFeatSelection } from "./feat-selection-application.js";
 export { restoreSingletonSourceSlotFlags, stampSelectionFlags } from "./selection-flags.js";
 export { featSelections, hasSourceId, orderSelections, singletonSelections } from "./selection-queries.js";
 export { createEmbeddedSource } from "./selection-source-application.js";

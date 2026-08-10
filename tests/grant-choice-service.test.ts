@@ -353,6 +353,66 @@ describe("grant-choice-service", () => {
 
     expect(steps).toEqual([]);
   });
+
+  it("resolves Kineticist gate placeholders for grant-owned impulse choices", async () => {
+    const draft = createEmptyDraft(5);
+    const steps = await buildGrantChoiceSteps({
+      draft,
+      targetLevel: 5,
+      hasClassSelection: true,
+      hasDeitySelection: false,
+      actorContext: { classSlug: "kineticist", kineticistGateElements: ["fire", "water"] },
+      sources: [
+        {
+          sourceItemType: "classfeature",
+          sourceSelection: {
+            slotId: "class-choice-gates-threshold-level-5",
+            packId: "pf2e.classfeatures",
+            documentId: "gates-threshold",
+            uuid: "Compendium.pf2e.classfeatures.Item.gates-threshold",
+            itemType: "feat",
+            featType: "classfeature",
+            name: "Gate's Threshold",
+            level: 5,
+          },
+          sourceDocument: {
+            name: "Gate's Threshold",
+            system: {
+              slug: "gates-threshold",
+              level: { value: 5 },
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "impulseExpand",
+                  choices: {
+                    itemType: "feat",
+                    filter: [
+                      "item:trait:impulse",
+                      {
+                        or: [
+                          "item:trait:{actor|flags.system.kineticist.gate.one}",
+                          "item:trait:{actor|flags.system.kineticist.gate.two}",
+                        ],
+                      },
+                    ],
+                  },
+                },
+                { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.impulseExpand}" },
+              ],
+            },
+          },
+        },
+      ],
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+      readExistingGrantedSelection: () => null,
+    });
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.filters.predicate).toEqual([
+      "item:trait:impulse",
+      { or: ["item:trait:fire", "item:trait:water"] },
+    ]);
+  });
 });
 
 function staticGrantDocument(slug: string, uuids: string[]): unknown {

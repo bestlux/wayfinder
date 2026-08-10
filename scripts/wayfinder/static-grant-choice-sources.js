@@ -1,6 +1,7 @@
 import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { slugifyName } from "../shared/slug.js";
-import { documentFeatureLevel, getDocumentRules, matchesChoiceSetRulePredicate, toNonEmptyString, } from "./rule-data.js";
+import { documentFeatureLevel, extractChoiceKey, getDocumentRules, matchesChoiceSetRulePredicate, toNonEmptyString, } from "./rule-data.js";
+import { selectionTakenLevel } from "./selection-level.js";
 /**
  * Loads only direct, static GrantItem targets that themselves carry ChoiceSets.
  *
@@ -9,16 +10,34 @@ import { documentFeatureLevel, getDocumentRules, matchesChoiceSetRulePredicate, 
  * lanes after that selection is drafted.
  */
 export async function resolveStaticGrantChoiceSources(args) {
-    const pending = args.sources.flatMap(({ sourceSelection, sourceDocument }) => staticGrantSelections(sourceSelection, sourceDocument, args.activeRollOptions).map(async ({ grantRuleIndex, selection }) => {
+    const grants = args.sources.flatMap(({ sourceSelection, sourceDocument }) => staticGrantSelections(sourceSelection, sourceDocument, args.activeRollOptions).map((grant) => ({
+        ...grant,
+        parentSelection: sourceSelection,
+    })));
+    const occurrenceCounts = new Map();
+    for (const grant of grants) {
+        const key = staticGrantOccurrenceKey(grant.parentSelection, grant.selection);
+        occurrenceCounts.set(key, (occurrenceCounts.get(key) ?? 0) + 1);
+    }
+    const pending = grants.map(async ({ grantRuleIndex, preselectChoices, selection, parentSelection, }) => {
         const sourceDocument = await args.fetchSelectionDocument(selection);
-        if (!sourceDocument || !getDocumentRules(sourceDocument).some((rule) => rule.key === "ChoiceSet")) {
+        const choiceRules = sourceDocument
+            ? getDocumentRules(sourceDocument).filter((rule) => rule.key === "ChoiceSet")
+            : [];
+        if (!sourceDocument ||
+            choiceRules.length === 0 ||
+            choiceRules.every((rule) => {
+                const key = extractChoiceKey(rule);
+                return key !== null && typeof preselectChoices[key] === "string" && preselectChoices[key].length > 0;
+            })) {
             return null;
         }
         const sourceItemType = inferGrantedSourceItemType(selection, sourceDocument);
-        const sourceLevel = sourceSelection.level ?? documentFeatureLevel(sourceDocument);
+        const sourceLevel = selectionTakenLevel(parentSelection, documentFeatureLevel(sourceDocument));
         return {
             grantRuleIndex,
-            parentSelection: sourceSelection,
+            supportsGuidedChoices: occurrenceCounts.get(staticGrantOccurrenceKey(parentSelection, selection)) === 1,
+            parentSelection,
             sourceItemType,
             sourceSelection: {
                 ...selection,
@@ -29,9 +48,12 @@ export async function resolveStaticGrantChoiceSources(args) {
             sourceDocument,
             sourceLevel,
         };
-    }));
+    });
     const resolved = await Promise.all(pending);
     return dedupeStaticGrantSources(resolved.filter((source) => source !== null));
+}
+function staticGrantOccurrenceKey(parentSelection, childSelection) {
+    return `${parentSelection.uuid.trim().toLowerCase()}|${childSelection.uuid.trim().toLowerCase()}`;
 }
 export function staticGrantSelections(parentSelection, sourceDocument, activeRollOptions = new Set()) {
     const sourceRollOptions = buildSourceRollOptions(parentSelection, sourceDocument, activeRollOptions);
@@ -48,6 +70,7 @@ export function staticGrantSelections(parentSelection, sourceDocument, activeRol
         return [
             {
                 grantRuleIndex,
+                preselectChoices: isStringRecord(rule.preselectChoices) ? rule.preselectChoices : {},
                 selection: {
                     slotId: `static-grant-choice-${parentSelection.slotId}-${grantRuleIndex}`,
                     packId: parsed.packId,
@@ -72,7 +95,7 @@ function buildSourceRollOptions(parentSelection, sourceDocument, activeRollOptio
     if (sourceSlug) {
         options.add(`${sourceCategory === "classfeature" ? "feature" : "feat"}:${sourceSlug}`);
     }
-    options.add(`self:level:${parentSelection.level ?? documentFeatureLevel(sourceDocument)}`);
+    options.add(`self:level:${selectionTakenLevel(parentSelection, documentFeatureLevel(sourceDocument))}`);
     return options;
 }
 function inferGrantedSourceItemType(selection, document) {
@@ -82,8 +105,14 @@ function inferGrantedSourceItemType(selection, document) {
 function dedupeStaticGrantSources(sources) {
     const byParentAndUuid = new Map();
     for (const source of sources) {
-        byParentAndUuid.set(`${source.parentSelection.uuid}|${source.sourceSelection.uuid}`, source);
+        byParentAndUuid.set(`${source.parentSelection.uuid}|${source.grantRuleIndex}|${source.sourceSelection.uuid}`, source);
     }
     return Array.from(byParentAndUuid.values());
+}
+function isStringRecord(value) {
+    return (!!value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        Object.values(value).every((entry) => typeof entry === "string"));
 }
 //# sourceMappingURL=static-grant-choice-sources.js.map

@@ -563,6 +563,148 @@ describe("grant-borne embedded choice policy", () => {
       },
     ]);
   });
+
+  it("uses the parent's acquisition slot level for a static granted child choice", async () => {
+    const selection = {
+      ...selectionFor(COMMANDER_DEDICATION),
+      slotId: "general-feat-level-3",
+      level: 1,
+    };
+    const sourceDocument = {
+      system: {
+        rules: [{ key: "GrantItem", uuid: "Compendium.pf2e.feats-srd.Item.Specialty Crafting" }],
+      },
+    };
+    const childDocument = {
+      name: "Specialty Crafting",
+      system: { level: { value: 1 }, rules: [{ key: "ChoiceSet", flag: "specialtyCrafting", choices: [] }] },
+    };
+
+    expect(
+      await resolveStaticGrantChoiceSources({
+        sources: [{ sourceSelection: selection, sourceDocument }],
+        fetchSelectionDocument: async () => childDocument,
+      })
+    ).toMatchObject([
+      {
+        sourceLevel: 3,
+        sourceSelection: { level: 3, slotId: "static-grant-choice-general-feat-level-3-0" },
+      },
+    ]);
+  });
+
+  it("preserves distinct same-UUID grants and skips already-preselected child choices", async () => {
+    const selection = selectionFor(COMMANDER_DEDICATION);
+    const sourceDocument = {
+      system: {
+        rules: [
+          {
+            key: "GrantItem",
+            uuid: "Compendium.pf2e.feats-srd.Item.Specialty Crafting",
+            preselectChoices: { specialtyCrafting: "st-crafting" },
+          },
+          {
+            key: "GrantItem",
+            uuid: "Compendium.pf2e.feats-srd.Item.Specialty Crafting",
+            preselectChoices: { specialtyCrafting: "blacksmithing" },
+          },
+        ],
+      },
+    };
+    const childDocument = {
+      name: "Specialty Crafting",
+      system: { rules: [{ key: "ChoiceSet", flag: "specialtyCrafting", choices: [] }] },
+    };
+
+    expect(staticGrantSelections(selection, sourceDocument)).toMatchObject([
+      { grantRuleIndex: 0, preselectChoices: { specialtyCrafting: "st-crafting" } },
+      { grantRuleIndex: 1, preselectChoices: { specialtyCrafting: "blacksmithing" } },
+    ]);
+    expect(
+      await resolveStaticGrantChoiceSources({
+        sources: [{ sourceSelection: selection, sourceDocument }],
+        fetchSelectionDocument: async () => childDocument,
+      })
+    ).toEqual([]);
+  });
+
+  it("defers duplicate same-UUID child choices to PF2E with an explicit disclosure", async () => {
+    const selection = selectionFor(COMMANDER_DEDICATION);
+    const sourceDocument = {
+      system: {
+        rules: [
+          { key: "GrantItem", uuid: "Compendium.pf2e.feats-srd.Item.Specialty Crafting" },
+          { key: "GrantItem", uuid: "Compendium.pf2e.feats-srd.Item.Specialty Crafting" },
+        ],
+      },
+    };
+    const childDocument = {
+      name: "Specialty Crafting",
+      system: { rules: [{ key: "ChoiceSet", flag: "specialtyCrafting", choices: [] }] },
+    };
+    const sources = await resolveStaticGrantChoiceSources({
+      sources: [{ sourceSelection: selection, sourceDocument }],
+      fetchSelectionDocument: async () => childDocument,
+    });
+
+    expect(sources).toMatchObject([
+      { grantRuleIndex: 0, supportsGuidedChoices: false },
+      { grantRuleIndex: 1, supportsGuidedChoices: false },
+    ]);
+    const classification = classifyWithStaticGrants(sourceDocument, sources);
+    expect(classification.staticGrants).toMatchObject([
+      { grantRuleIndex: 0, covered: [], uncovered: [0] },
+      { grantRuleIndex: 1, covered: [], uncovered: [0] },
+    ]);
+    expect(buildStaticGrantChoiceDisclosure(classification)).toContain("PF2E will ask");
+  });
+
+  it("does not guide a partial duplicate when the other occurrence is already preselected", async () => {
+    const selection = selectionFor(COMMANDER_DEDICATION);
+    const sourceDocument = {
+      system: {
+        rules: [
+          {
+            key: "GrantItem",
+            uuid: "Compendium.pf2e.feats-srd.Item.Specialty Crafting",
+            preselectChoices: { specialtyCrafting: "st-crafting" },
+          },
+          { key: "GrantItem", uuid: "Compendium.pf2e.feats-srd.Item.Specialty Crafting" },
+        ],
+      },
+    };
+    const childDocument = {
+      name: "Specialty Crafting",
+      system: { rules: [{ key: "ChoiceSet", flag: "specialtyCrafting", choices: [] }] },
+    };
+
+    expect(
+      await resolveStaticGrantChoiceSources({
+        sources: [{ sourceSelection: selection, sourceDocument }],
+        fetchSelectionDocument: async () => childDocument,
+      })
+    ).toMatchObject([{ grantRuleIndex: 1, supportsGuidedChoices: false }]);
+  });
+
+  it("keeps a single unresolved static child choice guided", async () => {
+    const selection = selectionFor(COMMANDER_DEDICATION);
+    const sourceDocument = {
+      system: {
+        rules: [{ key: "GrantItem", uuid: "Compendium.pf2e.feats-srd.Item.Specialty Crafting" }],
+      },
+    };
+    const childDocument = {
+      name: "Specialty Crafting",
+      system: { rules: [{ key: "ChoiceSet", flag: "specialtyCrafting", choices: [] }] },
+    };
+
+    expect(
+      await resolveStaticGrantChoiceSources({
+        sources: [{ sourceSelection: selection, sourceDocument }],
+        fetchSelectionDocument: async () => childDocument,
+      })
+    ).toMatchObject([{ grantRuleIndex: 0, supportsGuidedChoices: true }]);
+  });
 });
 
 function classifyWithStaticGrants(

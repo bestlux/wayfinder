@@ -221,7 +221,8 @@ function normalizeSettingSection(value: unknown): CampaignSectionSettingLike[] {
   }
 
   const slots = section.slots.flatMap((slot) => normalizeConfiguredSlot(slot, id, supported));
-  return slots.length === section.slots.length && slots.length > 0
+  const slotIdsAreUnique = new Set(slots.map((slot) => slot.id)).size === slots.length;
+  return slots.length === section.slots.length && slots.length > 0 && slotIdsAreUnique
     ? [
         {
           id,

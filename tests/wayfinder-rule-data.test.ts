@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveChoiceSetFilters } from "../src/wayfinder/choice-set-filters";
 import {
   documentFeatureLevel,
   extractChoiceKey,
@@ -42,6 +43,11 @@ describe("wayfinder rule data helpers", () => {
     expect(matchesChoicePredicate({ nand: ["item:type:feat", "item:rarity:rare"] }, matches)).toBe(true);
     expect(matchesChoicePredicate({ nand: ["item:type:feat", "deity:primary:font:heal"] }, matches)).toBe(false);
     expect(matchesChoicePredicate(["item:type:feat", "item:rarity:rare"], matches)).toBe(false);
+    expect(matchesChoicePredicate({ xor: ["item:type:feat", "item:rarity:rare"] }, matches)).toBe(true);
+    expect(matchesChoicePredicate({ if: "item:type:feat", then: "deity:primary:font:heal" }, matches)).toBe(true);
+    expect(matchesChoicePredicate({ if: "item:type:feat", then: "item:rarity:rare" }, matches)).toBe(false);
+    expect(matchesChoicePredicate({ iff: ["item:type:feat", "deity:primary:font:heal"] }, matches)).toBe(true);
+    expect(matchesChoicePredicate({ iff: ["item:type:feat", "item:rarity:rare"] }, matches)).toBe(false);
   });
 
   it("rejects unknown predicate objects instead of treating them as active", () => {
@@ -66,6 +72,8 @@ describe("wayfinder rule data helpers", () => {
     expect(matchesChoiceSetRulePredicate({ predicate: [{ lte: ["skill:crafting:rank", 1] }] }, active)).toBe(true);
     expect(matchesChoiceSetRulePredicate({ predicate: [{ gt: ["skill:crafting:rank", 1] }] }, active)).toBe(false);
     expect(matchesChoiceSetRulePredicate({ predicate: [{ lt: ["self:level", 6] }] }, active)).toBe(true);
+    expect(matchesChoiceSetRulePredicate({ predicate: [{ eq: ["self:level", 5] }] }, active)).toBe(true);
+    expect(matchesChoicePredicate({ eq: ["arcane", "arcane"] }, () => false)).toBe(true);
   });
 
   it("finds predicate string fragments inside nested branches", () => {
@@ -76,5 +84,68 @@ describe("wayfinder rule data helpers", () => {
       )
     ).toBe(true);
     expect(predicateIncludesString({ nor: ["item:level:2"] }, "{actor|system.details.class.trait}")).toBe(false);
+  });
+
+  it("preserves valid nested query predicates and rejects malformed elements", () => {
+    const nested = { xor: ["item:trait:air", { and: ["item:trait:earth", { not: "item:rarity:rare" }] }] };
+
+    expect(
+      resolveChoiceSetFilters({ key: "ChoiceSet", choices: { filter: ["item:type:feat", nested] } }, { sourceLevel: 1 })
+        ?.filters.predicate
+    ).toEqual(["item:type:feat", nested]);
+    expect(
+      resolveChoiceSetFilters(
+        { key: "ChoiceSet", choices: { filter: ["item:type:feat", { unsupported: ["item:trait:air"] }] } },
+        { sourceLevel: 1 }
+      )
+    ).toBeNull();
+  });
+
+  it("resolves Kineticist gate placeholders throughout nested impulse predicates", () => {
+    const result = resolveChoiceSetFilters(
+      {
+        key: "ChoiceSet",
+        choices: {
+          itemType: "feat",
+          filter: [
+            "item:trait:impulse",
+            {
+              or: [
+                "item:trait:{actor|flags.system.kineticist.gate.one}",
+                {
+                  not: {
+                    xor: [
+                      "item:trait:{actor|flags.system.kineticist.gate.one}",
+                      "item:trait:{actor|flags.system.kineticist.gate.two}",
+                      "item:trait:{actor|flags.system.kineticist.gate.three}",
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        sourceLevel: 5,
+        actorContext: { kineticistGateElements: ["fire", "water"] },
+        requireResolvedActorPlaceholders: true,
+      }
+    );
+
+    expect(result?.actorDependencies).toEqual(["class"]);
+    expect(result?.filters.predicate).toEqual([
+      "item:trait:impulse",
+      {
+        or: [
+          "item:trait:fire",
+          {
+            not: {
+              xor: ["item:trait:fire", "item:trait:water", "item:trait:wayfinder-unselected-kineticist-gate-3"],
+            },
+          },
+        ],
+      },
+    ]);
   });
 });

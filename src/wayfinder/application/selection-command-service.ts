@@ -1,6 +1,6 @@
 import type { DraftState, PendingStep, SelectionRef } from "../../types.js";
 import { classArchetypeProfile } from "../class-archetype/registry.js";
-import { writeDraftStepSelection } from "../draft-decisions.js";
+import { readDraftStepSelection, writeDraftStepSelection } from "../draft-decisions.js";
 import { sameMembers } from "../formatting.js";
 import { SLOT_IDS, SLOT_PREFIXES } from "../slot-ids.js";
 
@@ -105,7 +105,17 @@ export async function chooseSelectionOption(
     return warningResult("duplicate-selection");
   }
 
-  const previousSelection = writeDraftStepSelection(state.draft, step, selection);
+  const previousSelection = readDraftStepSelection(state.draft, step);
+  const classTransition =
+    step.slotKind === "class" && previousSelection?.uuid !== selection.uuid
+      ? await Promise.all([
+          deps.resolveSelectionSlug(previousSelection),
+          deps.resolveSelectionSlug(selection),
+          deps.resolveSelectionClassHasSpellcasting(previousSelection),
+          deps.resolveSelectionClassHasSpellcasting(selection),
+        ])
+      : null;
+  writeDraftStepSelection(state.draft, step, selection);
   state.recentlyInvalidatedStepIds.delete(selection.slotId);
 
   let statusNote: string | null = null;
@@ -172,12 +182,7 @@ export async function chooseSelectionOption(
 
   if (step.slotKind === "class" && previousSelection?.uuid !== selection.uuid) {
     const [previousClassSlug, nextClassSlug, previousClassHasSpellcasting, nextClassHasSpellcasting] =
-      await Promise.all([
-        deps.resolveSelectionSlug(previousSelection),
-        deps.resolveSelectionSlug(selection),
-        deps.resolveSelectionClassHasSpellcasting(previousSelection),
-        deps.resolveSelectionClassHasSpellcasting(selection),
-      ]);
+      classTransition ?? [null, null, false, false];
     const boostReset = deps.resetClassBoostDraft();
     if (boostReset) {
       state.recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);

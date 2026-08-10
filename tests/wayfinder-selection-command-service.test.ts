@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep, SelectionRef } from "../src/types";
 import {
@@ -219,6 +219,52 @@ describe("wayfinder selection command service", () => {
     expect(
       draft.selections["grant-choice-none-classfeature-school-of-unified-magical-theory-feat-level-1"]
     ).toBeUndefined();
+  });
+
+  it("keeps the previous class when transition metadata cannot be resolved", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections[SLOT_IDS.class] = selection(SLOT_IDS.class, "class", "wizard", "Wizard");
+    const step: PendingStep = {
+      id: SLOT_IDS.class,
+      level: 1,
+      kind: "pick-item",
+      slotKind: "class",
+      title: "Class",
+      description: "",
+      required: true,
+      slotId: SLOT_IDS.class,
+      filters: { itemType: "class" },
+    };
+    const invalidateSelectionsByPrefix = vi.fn(() => []);
+
+    await expect(
+      chooseSelectionOption(commandState(draft), step, "test.pack:fighter", {
+        resolveSelection: async () => selection(SLOT_IDS.class, "class", "fighter", "Fighter"),
+        hasDuplicateDraftSelection: () => false,
+        resolveSelectionTraits: async () => [],
+        resolveSelectionSlug: async () => {
+          throw new Error("Transient pack failure");
+        },
+        resolveSelectionClassHasSpellcasting: async () => false,
+        invalidateSelection: () => [],
+        invalidateSelectionsByPrefix,
+        invalidateSingletonChoicesBySource: async () => [],
+        invalidateGrantSelectionsBySource: async () => [],
+        invalidateGrantSelectionsByDependency: async () => [],
+        invalidateFlagChoicesBySource: async () => [],
+        invalidateFlagChoicesByDependency: async () => [],
+        invalidateCampaignFeatSelectionsByFeatType: async () => [],
+        invalidateClassChoicesByDependency: async () => [],
+        invalidateBranchSelectionsByDependency: async () => [],
+        invalidateSpellChoicesByDependency: async () => [],
+        resetAncestryBoostDraft: () => false,
+        resetBackgroundBoostDraft: () => false,
+        resetClassBoostDraft: () => false,
+      })
+    ).rejects.toThrow("Transient pack failure");
+
+    expect(draft.selections[SLOT_IDS.class]?.documentId).toBe("wizard");
+    expect(invalidateSelectionsByPrefix).not.toHaveBeenCalled();
   });
 
   it("invalidates native and campaign ancestry feats when class spellcasting capability changes", async () => {

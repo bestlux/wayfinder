@@ -36,14 +36,7 @@ export function registerSheetControls() {
     Hooks.on("renderActorSheet", inject);
 }
 export function rerenderOpenWayfinderApps() {
-    for (const actor of game.actors ?? []) {
-        const apps = Object.values(actor.apps ?? {});
-        for (const app of apps) {
-            if (app instanceof WayfinderApp) {
-                app.render(false);
-            }
-        }
-    }
+    WayfinderApp.rerenderOpenApps();
 }
 function getRootElement(html, application) {
     if (html instanceof HTMLElement) {

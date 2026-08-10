@@ -3,13 +3,16 @@ import { slugifyName } from "../shared/slug.js";
 import type { SelectionRef } from "../types.js";
 import {
   documentFeatureLevel,
+  extractChoiceKey,
   getDocumentRules,
   matchesChoiceSetRulePredicate,
   toNonEmptyString,
 } from "./rule-data.js";
+import { selectionTakenLevel } from "./selection-level.js";
 
 export interface StaticGrantChoiceSource {
   grantRuleIndex: number;
+  supportsGuidedChoices: boolean;
   parentSelection: SelectionRef;
   sourceItemType: "classfeature" | "feat";
   sourceSelection: SelectionRef;
@@ -36,42 +39,72 @@ interface ResolveStaticGrantChoiceSourcesArgs {
 export async function resolveStaticGrantChoiceSources(
   args: ResolveStaticGrantChoiceSourcesArgs
 ): Promise<StaticGrantChoiceSource[]> {
-  const pending = args.sources.flatMap(({ sourceSelection, sourceDocument }) =>
-    staticGrantSelections(sourceSelection, sourceDocument, args.activeRollOptions).map(
-      async ({ grantRuleIndex, selection }): Promise<StaticGrantChoiceSource | null> => {
-        const sourceDocument = await args.fetchSelectionDocument(selection);
-        if (!sourceDocument || !getDocumentRules(sourceDocument).some((rule) => rule.key === "ChoiceSet")) {
-          return null;
-        }
+  const grants = args.sources.flatMap(({ sourceSelection, sourceDocument }) =>
+    staticGrantSelections(sourceSelection, sourceDocument, args.activeRollOptions).map((grant) => ({
+      ...grant,
+      parentSelection: sourceSelection,
+    }))
+  );
+  const occurrenceCounts = new Map<string, number>();
+  for (const grant of grants) {
+    const key = staticGrantOccurrenceKey(grant.parentSelection, grant.selection);
+    occurrenceCounts.set(key, (occurrenceCounts.get(key) ?? 0) + 1);
+  }
 
-        const sourceItemType = inferGrantedSourceItemType(selection, sourceDocument);
-        const sourceLevel = sourceSelection.level ?? documentFeatureLevel(sourceDocument);
-        return {
-          grantRuleIndex,
-          parentSelection: sourceSelection,
-          sourceItemType,
-          sourceSelection: {
-            ...selection,
-            name: toNonEmptyString((sourceDocument as { name?: unknown }).name) ?? selection.name,
-            level: sourceLevel,
-            featType: sourceItemType,
-          },
-          sourceDocument,
-          sourceLevel,
-        };
+  const pending = grants.map(
+    async ({
+      grantRuleIndex,
+      preselectChoices,
+      selection,
+      parentSelection,
+    }): Promise<StaticGrantChoiceSource | null> => {
+      const sourceDocument = await args.fetchSelectionDocument(selection);
+      const choiceRules = sourceDocument
+        ? getDocumentRules(sourceDocument).filter((rule) => rule.key === "ChoiceSet")
+        : [];
+      if (
+        !sourceDocument ||
+        choiceRules.length === 0 ||
+        choiceRules.every((rule) => {
+          const key = extractChoiceKey(rule);
+          return key !== null && typeof preselectChoices[key] === "string" && preselectChoices[key].length > 0;
+        })
+      ) {
+        return null;
       }
-    )
+
+      const sourceItemType = inferGrantedSourceItemType(selection, sourceDocument);
+      const sourceLevel = selectionTakenLevel(parentSelection, documentFeatureLevel(sourceDocument));
+      return {
+        grantRuleIndex,
+        supportsGuidedChoices: occurrenceCounts.get(staticGrantOccurrenceKey(parentSelection, selection)) === 1,
+        parentSelection,
+        sourceItemType,
+        sourceSelection: {
+          ...selection,
+          name: toNonEmptyString((sourceDocument as { name?: unknown }).name) ?? selection.name,
+          level: sourceLevel,
+          featType: sourceItemType,
+        },
+        sourceDocument,
+        sourceLevel,
+      };
+    }
   );
 
   const resolved = await Promise.all(pending);
   return dedupeStaticGrantSources(resolved.filter((source): source is StaticGrantChoiceSource => source !== null));
 }
 
+function staticGrantOccurrenceKey(parentSelection: SelectionRef, childSelection: SelectionRef): string {
+  return `${parentSelection.uuid.trim().toLowerCase()}|${childSelection.uuid.trim().toLowerCase()}`;
+}
+
 export function staticGrantSelections(
   parentSelection: SelectionRef,
   sourceDocument: unknown,
   activeRollOptions: ReadonlySet<string> = new Set()
-): Array<{ grantRuleIndex: number; selection: SelectionRef }> {
+): Array<{ grantRuleIndex: number; preselectChoices: Record<string, string>; selection: SelectionRef }> {
   const sourceRollOptions = buildSourceRollOptions(parentSelection, sourceDocument, activeRollOptions);
   return getDocumentRules(sourceDocument).flatMap((rule, grantRuleIndex) => {
     if (rule.key !== "GrantItem" || !matchesChoiceSetRulePredicate(rule, sourceRollOptions)) {
@@ -88,6 +121,7 @@ export function staticGrantSelections(
     return [
       {
         grantRuleIndex,
+        preselectChoices: isStringRecord(rule.preselectChoices) ? rule.preselectChoices : {},
         selection: {
           slotId: `static-grant-choice-${parentSelection.slotId}-${grantRuleIndex}`,
           packId: parsed.packId,
@@ -120,7 +154,7 @@ function buildSourceRollOptions(
   if (sourceSlug) {
     options.add(`${sourceCategory === "classfeature" ? "feature" : "feat"}:${sourceSlug}`);
   }
-  options.add(`self:level:${parentSelection.level ?? documentFeatureLevel(sourceDocument)}`);
+  options.add(`self:level:${selectionTakenLevel(parentSelection, documentFeatureLevel(sourceDocument))}`);
   return options;
 }
 
@@ -134,7 +168,19 @@ function inferGrantedSourceItemType(selection: SelectionRef, document: unknown):
 function dedupeStaticGrantSources(sources: StaticGrantChoiceSource[]): StaticGrantChoiceSource[] {
   const byParentAndUuid = new Map<string, StaticGrantChoiceSource>();
   for (const source of sources) {
-    byParentAndUuid.set(`${source.parentSelection.uuid}|${source.sourceSelection.uuid}`, source);
+    byParentAndUuid.set(
+      `${source.parentSelection.uuid}|${source.grantRuleIndex}|${source.sourceSelection.uuid}`,
+      source
+    );
   }
   return Array.from(byParentAndUuid.values());
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.values(value).every((entry) => typeof entry === "string")
+  );
 }

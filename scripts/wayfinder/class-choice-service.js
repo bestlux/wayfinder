@@ -4,6 +4,7 @@ import { buildClassBranchStepsFromRules, buildClassChoiceStepsFromFeatureSources
 import { remainingCreationBoostChoices } from "./domain/boost-rules.js";
 import { createPickItemStep, createSkillTrainingStep, } from "./domain/step-types.js";
 import { matchesChoicePredicateListAgainstRollOptions } from "./rule-data.js";
+import { selectionTakenLevel } from "./selection-level.js";
 import { discoverSourceSkillTrainingMeta } from "./skill-training/source-discovery.js";
 export async function buildClassTrainingSteps(params) {
     const { draftClassSelection, includeBaseClassTraining = true, sourceSelections = [], targetLevel, effectiveBuildState, fetchSelectionDocument, extractSlug, localize, } = params;
@@ -33,7 +34,7 @@ export async function buildClassTrainingSteps(params) {
             return [];
         }
         const sourceSlug = sourceSelection.slug ?? slugifyName(sourceSelection.name) ?? sourceSelection.documentId;
-        const level = Math.max(1, sourceSelection.level ?? 1);
+        const level = selectionTakenLevel(sourceSelection);
         return [
             createSkillTrainingStep(level, `${sourceSelection.name} skill training`, `Choose the skill training granted by ${sourceSelection.name}.`, {
                 classSlug: extractSlug(effectiveClassDocument) ?? "class",

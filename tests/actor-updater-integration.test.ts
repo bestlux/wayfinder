@@ -10,9 +10,89 @@ import {
   deitySelectionStep,
   selection,
   setGamePacks,
+  testGlobals,
 } from "./support/actor-updater-fixtures";
 
 describe("actor-updater integration", () => {
+  it("rejects stale campaign policy before mutating singleton actor items", async () => {
+    const { actor } = buildActorHarness({
+      items: [
+        {
+          id: "old-ancestry",
+          type: "ancestry",
+          name: "Elf",
+          flags: { core: { sourceId: "Compendium.pf2e.ancestries.Item.elf" } },
+        },
+      ],
+    });
+    actor.feats = {
+      get: (groupId: string) => (groupId === "custom" ? { slots: {} } : null),
+    };
+    setGamePacks({
+      "pf2e.ancestries": { human: { name: "Human", type: "ancestry", system: {} } },
+      "pf2e.feats-srd": {
+        "rare-human-feat": {
+          name: "Rare Human Feat",
+          type: "feat",
+          system: { category: "ancestry", traits: { value: ["human", "rare"] } },
+        },
+      },
+    });
+    (testGlobals.game as typeof testGlobals.game & { settings: { get: () => unknown } }).settings = {
+      get: () => [
+        {
+          id: "custom",
+          label: "Custom",
+          supported: ["ancestry"],
+          filter: { categories: ["ancestry"], traits: ["human"], omitTraits: ["rare"], conjunction: "and" },
+          slots: [{ id: "custom-1", level: 1 }],
+        },
+      ],
+    };
+
+    const draft = createEmptyDraft(1);
+    draft.selections["ancestry-level-1"] = selection(
+      "ancestry-level-1",
+      "pf2e.ancestries",
+      "human",
+      "ancestry",
+      "Human"
+    );
+    draft.selections["campaign-feat-custom-level-1"] = selection(
+      "campaign-feat-custom-level-1",
+      "pf2e.feats-srd",
+      "rare-human-feat",
+      "feat",
+      "Rare Human Feat",
+      "ancestry"
+    );
+    const campaignStep: PendingStep = {
+      id: "campaign-feat-custom-level-1",
+      level: 1,
+      kind: "pick-item",
+      slotKind: "campaign-feat",
+      title: "Custom feat",
+      description: "",
+      required: true,
+      slotId: "campaign-feat-custom-level-1",
+      filters: { itemType: "feat", featTypes: ["ancestry"] },
+      campaignFeat: {
+        sectionId: "custom",
+        sectionLabel: "Custom",
+        groupSlotId: "custom-1",
+        supported: ["ancestry"],
+        filter: { categories: ["ancestry"], traits: ["human"], omitTraits: [], conjunction: "and" },
+      },
+    };
+
+    await expect(applyDraftToActor(actor as never, draft, [ancestrySelectionStep(), campaignStep])).rejects.toThrow(
+      "no longer matches PF2E's current slot filters"
+    );
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.items.contents.map((item) => item.id)).toContain("old-ancestry");
+  });
+
   it("refreshes PF2E actor data before slotting drafted feats", async () => {
     const { actor, createdItems } = buildActorHarness();
     let slotsReady = false;

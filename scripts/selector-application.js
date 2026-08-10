@@ -48,28 +48,102 @@ export async function applySelectorApplication(actor, plan, deps) {
     for (const grantPlan of grantPlans) {
         selectorUpdate[`flags.pf2e.rulesSelections.${grantPlan.flag}`] = grantPlan.selection.uuid;
     }
-    if (grantPlans.length > 0 && !createdSelector) {
-        // Existing actor-owned ChoiceSet sources must persist their selection before any granted item is created,
-        // otherwise PF2E can still surface the native prompt during the grant creation update.
-        await actor.updateEmbeddedDocuments("Item", [cloneData(selectorUpdate)]);
-    }
     const grantedItemUpdates = [];
-    for (const grantPlan of grantPlans) {
-        const grantedItemResult = await ensureGrantedItem(actor, selectorItem, grantPlan, deps.createEmbeddedSource);
-        if (grantedItemResult.item?.id) {
-            selectorUpdate[`flags.pf2e.itemGrants.${grantPlan.flag}`] = buildItemGrantRecord(grantedItemResult.item.id, {
-                nested: null,
+    const createdItemIds = [];
+    const replacedItemIds = [];
+    const selectorRollback = !createdSelector ? buildSelectorRollbackUpdate(selectorItem, plan, grantPlans) : null;
+    let selectorWasUpdated = false;
+    try {
+        if (grantPlans.length > 0 && !createdSelector) {
+            // Existing actor-owned ChoiceSet sources must persist their selection before any granted item is created,
+            // otherwise PF2E can still surface the native prompt during the grant creation update.
+            await actor.updateEmbeddedDocuments("Item", [cloneData(selectorUpdate)]);
+            selectorWasUpdated = true;
+        }
+        for (const grantPlan of grantPlans) {
+            const grantedItemResult = await ensureGrantedItem(actor, selectorItem, grantPlan, deps.createEmbeddedSource);
+            createdItemIds.push(...grantedItemResult.createdItemIds);
+            if (grantedItemResult.replacedItemId) {
+                replacedItemIds.push(grantedItemResult.replacedItemId);
+            }
+            if (grantedItemResult.item?.id) {
+                selectorUpdate[`flags.pf2e.itemGrants.${grantPlan.flag}`] = buildItemGrantRecord(grantedItemResult.item.id, {
+                    nested: null,
+                });
+            }
+            if (grantedItemResult.update) {
+                grantedItemUpdates.push(grantedItemResult.update);
+            }
+            grantedItemUpdates.push(...grantedItemResult.supplementalUpdates);
+        }
+        const updates = [selectorUpdate, ...grantedItemUpdates];
+        await actor.updateEmbeddedDocuments("Item", updates);
+        selectorWasUpdated = true;
+        if (replacedItemIds.length > 0) {
+            await actor.deleteEmbeddedDocuments("Item", Array.from(new Set(replacedItemIds)));
+        }
+    }
+    catch (error) {
+        const rollbackErrors = [];
+        if (selectorWasUpdated && selectorRollback) {
+            try {
+                await actor.updateEmbeddedDocuments("Item", [selectorRollback]);
+            }
+            catch (rollbackError) {
+                rollbackErrors.push(rollbackError);
+            }
+        }
+        const rollbackIds = Array.from(new Set([...createdItemIds, ...(createdSelector ? [selectorItem.id] : [])]));
+        if (rollbackIds.length > 0) {
+            try {
+                await actor.deleteEmbeddedDocuments("Item", rollbackIds);
+            }
+            catch (rollbackError) {
+                rollbackErrors.push(rollbackError);
+            }
+        }
+        if (rollbackErrors.length > 0) {
+            throw new AggregateError([error, ...rollbackErrors], "Failed to roll back selector application safely.", {
+                cause: error,
             });
         }
-        if (grantedItemResult.reusedExistingItem && grantedItemResult.update && grantPlan.updateExistingGrantImmediately) {
-            await actor.updateEmbeddedDocuments("Item", [grantedItemResult.update]);
+        throw error;
+    }
+}
+function buildSelectorRollbackUpdate(selectorItem, plan, grantPlans) {
+    const update = {
+        _id: selectorItem.id,
+        "system.rules": cloneData(Array.isArray(selectorItem.system?.rules) ? selectorItem.system.rules : []),
+    };
+    const rulesSelections = selectorItem.flags?.pf2e?.rulesSelections ?? {};
+    const itemGrants = selectorItem.flags?.pf2e?.itemGrants ?? {};
+    for (const flag of new Set([
+        ...plan.ruleSelections.map((selection) => selection.flag),
+        ...grantPlans.map((grant) => grant.flag),
+    ])) {
+        if (Object.hasOwn(rulesSelections, flag)) {
+            update[`flags.pf2e.rulesSelections.${flag}`] = cloneData(rulesSelections[flag]);
         }
-        else if (grantedItemResult.update) {
-            grantedItemUpdates.push(grantedItemResult.update);
+        else {
+            update[`flags.pf2e.rulesSelections.-=${flag}`] = null;
         }
     }
-    const updates = [selectorUpdate, ...grantedItemUpdates];
-    await actor.updateEmbeddedDocuments("Item", updates);
+    for (const grantPlan of grantPlans) {
+        if (Object.hasOwn(itemGrants, grantPlan.flag)) {
+            update[`flags.pf2e.itemGrants.${grantPlan.flag}`] = cloneData(itemGrants[grantPlan.flag]);
+        }
+        else {
+            update[`flags.pf2e.itemGrants.-=${grantPlan.flag}`] = null;
+        }
+    }
+    const previousSlotId = selectorItem.flags?.[MODULE_ID]?.slotId;
+    if (typeof previousSlotId === "string") {
+        update[`flags.${MODULE_ID}.slotId`] = previousSlotId;
+    }
+    else if (plan.slotId) {
+        update[`flags.${MODULE_ID}.-=slotId`] = null;
+    }
+    return update;
 }
 export function stripSelectedSelectorEntries(classSource, selectedRefs) {
     if (selectedRefs.length === 0 || !classSource?.system?.items || typeof classSource.system.items !== "object") {
@@ -180,28 +254,31 @@ function pruneCreationRules(rules, selectedRuleIndexes, policy) {
 async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedSource) {
     const selectorItemId = typeof selectorItem.id === "string" ? selectorItem.id : null;
     if (!selectorItemId) {
-        return { item: null, update: null, reusedExistingItem: false };
+        throw new Error("Cannot create a selector grant without a persisted selector item.");
     }
     const existingGranted = findGrantedItemForPlan(actor, selectorItem, grantPlan);
     const existingGrantedId = typeof existingGranted?.id === "string" ? existingGranted.id : null;
     if (existingGranted && !existingGrantedId) {
-        return { item: null, update: null, reusedExistingItem: false };
+        throw new Error(`Cannot replace ${grantPlan.selection.name}: the existing grant has no document ID.`);
     }
     const existingMatches = existingGranted && itemMatchesSourceId(existingGranted, grantPlan.selection.uuid);
     if (existingMatches) {
+        let manualPreparation = { createdItemIds: [], updates: [] };
         if (grantPlan.adoptExistingSource) {
             const refreshedSource = await createEmbeddedSource(grantPlan.selection);
-            await createManualStaticGrantedItems(actor, existingGranted, refreshedSource ?? existingGranted, grantPlan, createEmbeddedSource);
+            manualPreparation = await createManualStaticGrantedItems(actor, existingGranted, refreshedSource ?? existingGranted, grantPlan, createEmbeddedSource, null);
         }
         return {
             item: existingGranted,
             update: buildGrantedItemUpdate(existingGrantedId, selectorItemId, grantPlan),
-            reusedExistingItem: true,
+            createdItemIds: manualPreparation.createdItemIds,
+            replacedItemId: null,
+            supplementalUpdates: manualPreparation.updates,
         };
     }
     const source = await createEmbeddedSource(grantPlan.selection);
     if (!source) {
-        return { item: null, update: null, reusedExistingItem: false };
+        throw new Error(`Cannot create ${grantPlan.selection.name}: its source document is unavailable.`);
     }
     stampGrantedItemSource(source, {
         sourceId: grantPlan.selection.uuid,
@@ -209,20 +286,32 @@ async function ensureGrantedItem(actor, selectorItem, grantPlan, createEmbeddedS
         granterId: selectorItemId,
     });
     assertResolvedUnconditionalChoiceSets(source, grantPlan.selection.name);
-    if (existingGrantedId) {
-        await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
-    }
     const created = await actor.createEmbeddedDocuments("Item", [source]);
     const createdItem = Array.isArray(created) ? (created[0] ?? null) : null;
     if (!createdItem?.id) {
-        return { item: createdItem, update: null, reusedExistingItem: false };
+        throw new Error(`Cannot create ${grantPlan.selection.name}: Foundry returned no created item.`);
     }
-    await createManualStaticGrantedItems(actor, createdItem, source, grantPlan, createEmbeddedSource);
-    return {
-        item: createdItem,
-        update: grantPlan.updateCreatedGrant ? buildGrantedItemUpdate(createdItem.id, selectorItemId, grantPlan) : null,
-        reusedExistingItem: false,
-    };
+    try {
+        const manualPreparation = await createManualStaticGrantedItems(actor, createdItem, source, grantPlan, createEmbeddedSource, existingGrantedId);
+        return {
+            item: createdItem,
+            update: grantPlan.updateCreatedGrant ? buildGrantedItemUpdate(createdItem.id, selectorItemId, grantPlan) : null,
+            createdItemIds: [createdItem.id, ...manualPreparation.createdItemIds],
+            replacedItemId: existingGrantedId,
+            supplementalUpdates: manualPreparation.updates,
+        };
+    }
+    catch (error) {
+        try {
+            await actor.deleteEmbeddedDocuments("Item", [createdItem.id]);
+        }
+        catch (rollbackError) {
+            throw new AggregateError([error, rollbackError], `Failed to replace ${grantPlan.selection.name} safely.`, {
+                cause: rollbackError,
+            });
+        }
+        throw error;
+    }
 }
 function assertResolvedUnconditionalChoiceSets(source, sourceName) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];
@@ -242,45 +331,64 @@ function assertResolvedUnconditionalChoiceSets(source, sourceName) {
 function isUnconditionalPredicate(predicate) {
     return predicate === undefined || (Array.isArray(predicate) && predicate.length === 0);
 }
-async function createManualStaticGrantedItems(actor, granter, granterSource, grantPlan, createEmbeddedSource) {
+async function createManualStaticGrantedItems(actor, granter, granterSource, grantPlan, createEmbeddedSource, replaceDescendantsOwnedById) {
     const granterId = typeof granter.id === "string" ? granter.id : null;
     if (!granterId) {
-        return;
+        return { createdItemIds: [], updates: [] };
     }
     const grants = readManualStaticItemGrants(granterSource);
     if (grants.length === 0) {
-        return;
+        return { createdItemIds: [], updates: [] };
     }
     const actorItems = listActorItems(actor);
     const granterUpdate = {
         _id: granterId,
     };
-    for (const grant of grants) {
-        if (actorItems.some((item) => itemMatchesSourceId(item, grant.uuid))) {
-            continue;
-        }
-        const selection = selectionFromManualStaticGrant(grant, grantPlan.slotId);
-        if (!selection) {
-            continue;
-        }
-        const source = await createEmbeddedSource(selection);
-        if (!source) {
-            continue;
-        }
-        applyManualChoiceSelections(source, grant.choices);
-        stampGrantedItemSource(source, {
-            sourceId: grant.uuid,
-            slotId: selection.slotId,
-            granterId,
-        });
-        const created = await actor.createEmbeddedDocuments("Item", [source]);
-        const createdItem = Array.isArray(created) ? (created[0] ?? null) : null;
-        if (createdItem?.id) {
+    const createdItemIds = [];
+    try {
+        for (const grant of grants) {
+            if (actorItems.some((item) => itemMatchesSourceId(item, grant.uuid) && item.flags?.pf2e?.grantedBy?.id !== replaceDescendantsOwnedById)) {
+                continue;
+            }
+            const selection = selectionFromManualStaticGrant(grant, grantPlan.slotId);
+            if (!selection) {
+                throw new Error(`Cannot create a static child for ${grantPlan.selection.name}: invalid UUID ${grant.uuid}.`);
+            }
+            const source = await createEmbeddedSource(selection);
+            if (!source) {
+                throw new Error(`Cannot create a static child for ${grantPlan.selection.name}: ${grant.uuid} is unavailable.`);
+            }
+            applyManualChoiceSelections(source, grant.choices);
+            stampGrantedItemSource(source, {
+                sourceId: grant.uuid,
+                slotId: selection.slotId,
+                granterId,
+            });
+            const created = await actor.createEmbeddedDocuments("Item", [source]);
+            const createdItem = Array.isArray(created) ? (created[0] ?? null) : null;
+            if (!createdItem?.id) {
+                throw new Error(`Cannot create a static child for ${grantPlan.selection.name}: Foundry returned no item.`);
+            }
+            createdItemIds.push(createdItem.id);
             granterUpdate[`flags.pf2e.itemGrants.${grant.key}`] = buildItemGrantRecord(createdItem.id);
         }
+        return {
+            createdItemIds,
+            updates: Object.keys(granterUpdate).length > 1 ? [granterUpdate] : [],
+        };
     }
-    if (Object.keys(granterUpdate).length > 1) {
-        await actor.updateEmbeddedDocuments("Item", [granterUpdate]);
+    catch (error) {
+        if (createdItemIds.length > 0) {
+            try {
+                await actor.deleteEmbeddedDocuments("Item", createdItemIds);
+            }
+            catch (rollbackError) {
+                throw new AggregateError([error, rollbackError], `Failed to create ${grantPlan.selection.name} safely.`, {
+                    cause: rollbackError,
+                });
+            }
+        }
+        throw error;
     }
 }
 function applyManualChoiceSelections(source, choices) {

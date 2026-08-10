@@ -1,5 +1,6 @@
 import { createSingletonChoiceStep } from "../domain/step-types.js";
 import { formatSlug } from "../formatting.js";
+import { selectionTakenLevel } from "../selection-level.js";
 import { discoverSingletonChoiceMeta } from "./rule-discovery.js";
 export function buildSingletonChoiceStepsFromRules(args) {
     const { sourceItemType, effectiveSourceDocument, sourceSelection, extractSlug, localize } = args;
@@ -21,13 +22,9 @@ export function buildSingletonChoiceStepsFromRules(args) {
     }));
 }
 function choiceSourceLevel(selection, document) {
-    const slotLevel = /-level-(\d+)$/.exec(selection.slotId)?.[1];
-    if (slotLevel) {
-        return Math.max(1, Number(slotLevel));
-    }
     const value = document?.system?.level?.value;
     const number = Number(value);
-    return Number.isFinite(number) && number >= 1 ? Math.floor(number) : 1;
+    return selectionTakenLevel(selection, Number.isFinite(number) && number >= 1 ? Math.floor(number) : 1);
 }
 function formatChoiceFlag(flag) {
     return formatSlug(flag.replace(/([a-z0-9])([A-Z])/g, "$1 $2"));

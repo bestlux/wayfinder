@@ -1,4 +1,5 @@
 import type { PendingStep, SelectionRef } from "../../types.js";
+import { selectionTakenLevel } from "../selection-level.js";
 import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helpers.js";
 import type { ReadExistingSpellChoiceSelections, SpellChoiceClassDocument, SpellChoiceDocumentLike } from "./types.js";
 
@@ -92,7 +93,7 @@ function appendFeatSpellChoiceStep(args: {
   destination: Parameters<typeof makeSpellChoiceStep>[0]["destination"];
 }): void {
   const sourceSlug = extractSourceSlug(args.source.sourceDocument) ?? args.source.sourceSelection.documentId;
-  const level = args.source.sourceSelection.level ?? 1;
+  const level = selectionTakenLevel(args.source.sourceSelection);
   appendPendingSpellChoiceStep(
     args.steps,
     makeSpellChoiceStep({

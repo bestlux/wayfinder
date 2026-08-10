@@ -51,10 +51,15 @@ export type ChoicePredicate =
   | string
   | {
       and?: ChoicePredicate[];
+      eq?: [string, number | string];
+      iff?: ChoicePredicate[];
+      if?: ChoicePredicate;
       nand?: ChoicePredicate[];
       or?: ChoicePredicate[];
       nor?: ChoicePredicate[];
       not?: ChoicePredicate;
+      then?: ChoicePredicate;
+      xor?: ChoicePredicate[];
       lt?: [string, number | string];
       lte?: [string, number | string];
       gt?: [string, number | string];

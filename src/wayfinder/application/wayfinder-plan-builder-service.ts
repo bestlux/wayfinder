@@ -57,6 +57,7 @@ import {
   matchesChoicePredicateListAgainstRollOptions,
   toNonEmptyString,
 } from "../rule-data.js";
+import { selectionTakenLevel } from "../selection-level.js";
 import { buildSingletonChoiceSteps, type SingletonChoiceSourceContext } from "../singleton-choice-service.js";
 import type { SkillTrainingSourceContext } from "../skill-training/source-discovery.js";
 import { SLOT_PREFIXES } from "../slot-ids.js";
@@ -228,6 +229,7 @@ export async function buildWayfinderAppPlan(
         ),
         sources,
         activeRollOptions: await resolveProjectedRuleRollOptions(planDraft, sources, args, deps),
+        actorContext: await resolveFlagChoiceActorContext(args, deps),
         extractSlug: deps.extractDocumentSlug,
         readExistingGrantedSelection: (grant) => deps.readExistingGrantedSelection(args.actor, grant),
       });
@@ -436,7 +438,34 @@ async function resolveFlagChoiceActorContext(
   return {
     ancestrySlug: deps.extractDocumentSlug(ancestryDocument),
     classSlug: deps.extractDocumentSlug(classDocument),
+    ...kineticistGateActorContext(args.actor, args.draft),
   };
+}
+
+function kineticistGateActorContext(
+  actor: ActorLike,
+  draft: DraftState
+): Pick<ChoiceFilterActorContext, "kineticistGateElements"> {
+  const elements = Array.from(
+    new Set(
+      [
+        ...listActorItems(actor).map((item) => kineticistGateElement(extractDocumentSlug(item) ?? item.name)),
+        ...Object.values(draft.branchSelections).map((selection) =>
+          kineticistGateElement(selection.slug ?? selection.name)
+        ),
+      ].filter((element): element is string => !!element)
+    )
+  );
+
+  return elements.length > 0 ? { kineticistGateElements: elements } : {};
+}
+
+function kineticistGateElement(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  return /^(air|earth|fire|metal|water|wood)(?:-|\s+)gate$/i.exec(value.trim())?.[1]?.toLowerCase() ?? null;
 }
 
 async function resolveProjectedRuleRollOptions(
@@ -799,7 +828,7 @@ async function resolveExpandedFeatChoiceSources(
             sourceItemType: "feat" as const,
             sourceSelection,
             sourceDocument,
-            sourceLevel: sourceSelection.level ?? documentFeatureLevel(sourceDocument),
+            sourceLevel: selectionTakenLevel(sourceSelection, documentFeatureLevel(sourceDocument)),
             staticGrant: false,
           },
         ]
@@ -813,13 +842,15 @@ async function resolveExpandedFeatChoiceSources(
 
   return [
     ...directSources,
-    ...staticGrantSources.map((source) => ({
-      sourceItemType: source.sourceItemType,
-      sourceSelection: source.sourceSelection,
-      sourceDocument: source.sourceDocument,
-      sourceLevel: source.sourceLevel,
-      staticGrant: true,
-    })),
+    ...staticGrantSources
+      .filter((source) => source.supportsGuidedChoices)
+      .map((source) => ({
+        sourceItemType: source.sourceItemType,
+        sourceSelection: source.sourceSelection,
+        sourceDocument: source.sourceDocument,
+        sourceLevel: source.sourceLevel,
+        staticGrant: true,
+      })),
   ];
 }
 

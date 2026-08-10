@@ -131,11 +131,17 @@ export function classifyEmbeddedChoices(
   const staticGrants = (options.staticGrantSources ?? []).map((source) => {
     const grantedEntry = source.sourceDocument as PackIndexEntry;
     const grantedRuleIndexes = getActiveChoiceSetRuleIndexes(grantedEntry, options);
-    const grantedChoices = classifyOwnEmbeddedChoices(grantedEntry, source.sourceSelection.packId, grantedRuleIndexes, {
-      ...options,
-      sourceItemType: source.sourceItemType,
-      staticGrantSources: [],
-    });
+    const grantedChoices = source.supportsGuidedChoices
+      ? classifyOwnEmbeddedChoices(grantedEntry, source.sourceSelection.packId, grantedRuleIndexes, {
+          ...options,
+          sourceItemType: source.sourceItemType,
+          staticGrantSources: [],
+        })
+      : {
+          covered: [],
+          uncovered: grantedRuleIndexes,
+          rules: grantedRuleIndexes.map((ruleIndex) => ({ ruleIndex, coveredBy: [] })),
+        };
     return {
       ...grantedChoices,
       grantRuleIndex: source.grantRuleIndex,

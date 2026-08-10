@@ -783,6 +783,83 @@ describe("wayfinder spell-choice step builders", () => {
     ).toBe(3);
   });
 
+  it("keeps UUID-only Sorcerous Gifts fixed instead of replacing them with arbitrary spells", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(3),
+      currentLevel: 1,
+      effectiveClassDocument: classDocument("sorcerer", "Sorcerer Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      effectiveClassFeatureDocuments: [
+        {
+          name: "Bloodline: Angelic",
+          system: {
+            traits: { otherTags: ["sorcerer-bloodline"] },
+            description: {
+              value:
+                "<p><strong>Tradition</strong> divine</p><p><strong>Sorcerous Gifts</strong> cantrip: @UUID[Compendium.pf2e.spells-srd.Item.light]; 1st: @UUID[Compendium.pf2e.spells-srd.Item.heal]; 2nd: @UUID[Compendium.pf2e.spells-srd.Item.spiritual-armament]</p>",
+            },
+          },
+        },
+      ],
+      targetLevel: 3,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps.find((step) => step.slotId === "spell-choice-sorcerer-cantrips-level-1")?.spellChoice?.count).toBe(4);
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-sorcerer-granted-cantrip-level-1")?.spellChoice
+    ).toMatchObject({
+      additionalAllowedSpellNames: [],
+      additionalAllowedSpellUuids: ["Compendium.pf2e.spells-srd.Item.light"],
+    });
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-sorcerer-granted-rank-2-level-3")?.spellChoice
+    ).toMatchObject({ additionalAllowedSpellUuids: ["Compendium.pf2e.spells-srd.Item.spiritual-armament"] });
+  });
+
+  it("builds the Psychic rank-10 repertoire step at level 19", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(19),
+      currentLevel: 18,
+      effectiveClassDocument: classDocument("psychic", "Psychic Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      targetLevel: 19,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-psychic-repertoire-rank-10-level-19")?.spellChoice
+    ).toMatchObject({ count: 2, minRank: 10, maxRank: 10 });
+  });
+
+  it("builds one Psychic repertoire choice at each level through level 4", async () => {
+    const steps = await buildSpellChoiceSteps({
+      draft: createEmptyDraft(4),
+      currentLevel: 0,
+      effectiveClassDocument: classDocument("psychic", "Psychic Spellcasting"),
+      effectiveDeityDocument: null,
+      effectiveSchoolDocument: null,
+      targetLevel: 4,
+      extractSlug,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(
+      steps
+        .filter((step) => step.slotId.startsWith("spell-choice-psychic-repertoire-rank-"))
+        .map((step) => ({ slotId: step.slotId, count: step.spellChoice?.count }))
+    ).toEqual([
+      { slotId: "spell-choice-psychic-repertoire-rank-1-level-1", count: 1 },
+      { slotId: "spell-choice-psychic-repertoire-rank-1-level-2", count: 1 },
+      { slotId: "spell-choice-psychic-repertoire-rank-2-level-3", count: 1 },
+      { slotId: "spell-choice-psychic-repertoire-rank-2-level-4", count: 1 },
+    ]);
+  });
+
   it("discloses the spontaneous-caster historical cutoff", async () => {
     const effectiveClassDocument = classDocument("sorcerer", "Sorcerer Spellcasting");
     const steps = await buildSpellChoiceSteps({

@@ -30,6 +30,7 @@ import {
   type StepFilters,
 } from "./domain/step-types.js";
 import { matchesChoicePredicateListAgainstRollOptions } from "./rule-data.js";
+import { selectionTakenLevel } from "./selection-level.js";
 import { discoverSourceSkillTrainingMeta, type SkillTrainingSourceContext } from "./skill-training/source-discovery.js";
 
 interface BuildClassTrainingStepsParams {
@@ -144,7 +145,7 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
     }
 
     const sourceSlug = sourceSelection.slug ?? slugifyName(sourceSelection.name) ?? sourceSelection.documentId;
-    const level = Math.max(1, sourceSelection.level ?? 1);
+    const level = selectionTakenLevel(sourceSelection);
     return [
       createSkillTrainingStep(
         level,

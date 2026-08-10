@@ -134,6 +134,8 @@ interface FoundryDialogApiLike {
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(
   foundry.applications.api.ApplicationV2
 ) {
+  static #openApps = new Set<WayfinderApp>();
+
   static DEFAULT_OPTIONS = {
     id: MODULE_ID,
     tag: "section",
@@ -182,6 +184,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     new WayfinderApp({ actor }).render(true);
+  }
+
+  static rerenderOpenApps(): void {
+    for (const app of this.#openApps) {
+      app.render(false);
+    }
   }
 
   constructor(options: { actor: WayfinderActorLike }) {
@@ -264,11 +272,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#scrollById,
       this.#pendingSearchFocus
     ).pendingSearchFocus;
+    WayfinderApp.#openApps.add(this);
   }
 
   _tearDown(options: unknown): void {
-    super._tearDown(options);
-    delete this.actor.apps[this.id];
+    try {
+      super._tearDown(options);
+    } finally {
+      WayfinderApp.#openApps.delete(this);
+      delete this.actor.apps[this.id];
+    }
   }
 
   #onActionClick = async (event: Event): Promise<void> => {

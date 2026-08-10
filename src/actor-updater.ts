@@ -9,6 +9,7 @@ import {
   hasSourceId,
   insertFeatSelection,
   orderSelections,
+  preflightFeatSelection,
   replaceSingletonItems,
   restoreSingletonSourceSlotFlags,
   singletonSelections,
@@ -43,6 +44,16 @@ export async function applyDraftToActor(
   const selections = orderSelections(draft, steps);
   const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
   const deferredActorUpdate: Record<string, unknown> = {};
+  const pendingFeatSelections = featSelections(selections).filter((selection) => {
+    const step = stepsBySlotId.get(selection.slotId);
+    return (
+      !!step && !(step.kind === "pick-item" && step.slotKind === "flag-choice") && !usesNativeGrantItemCreation(step)
+    );
+  });
+
+  for (const selection of pendingFeatSelections) {
+    await preflightFeatSelection(actor, selection, stepsBySlotId.get(selection.slotId) ?? null);
+  }
 
   await replaceSingletonItems(actor, singletonSelections(selections), draft, steps);
   await createSingletonSystemGrantItems(actor, draft, steps);
@@ -66,18 +77,9 @@ export async function applyDraftToActor(
   });
   await syncNativeClassSpellcasting(actor, draft);
 
-  for (const selection of featSelections(selections)) {
+  for (const selection of pendingFeatSelections) {
     const step = stepsBySlotId.get(selection.slotId);
-    if (!step) {
-      continue;
-    }
-    if (step.kind === "pick-item" && step.slotKind === "flag-choice") {
-      continue;
-    }
-    if (usesNativeGrantItemCreation(step)) {
-      continue;
-    }
-    if (hasSourceId(actor, selection.uuid)) {
+    if (!step || hasSourceId(actor, selection.uuid)) {
       continue;
     }
 

@@ -42,14 +42,7 @@ export function registerSheetControls(): void {
 }
 
 export function rerenderOpenWayfinderApps(): void {
-  for (const actor of game.actors ?? []) {
-    const apps = Object.values((actor as { apps?: Record<string, unknown> }).apps ?? {});
-    for (const app of apps) {
-      if (app instanceof WayfinderApp) {
-        app.render(false);
-      }
-    }
-  }
+  WayfinderApp.rerenderOpenApps();
 }
 
 function getRootElement(html: unknown, application: any): HTMLElement | null {

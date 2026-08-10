@@ -88,11 +88,13 @@ function addGrantedSpellStep(params, addStep, destination, rank, level) {
         return;
     }
     const isCantrip = rank === 0;
+    const giftLabel = grantedSpell.name || (isCantrip ? "the cantrip" : `the rank ${rank} spell`);
+    const allowedNames = grantedSpell.name ? [grantedSpell.name] : [];
     addStep(makeSpellChoiceStep({
         slotId: `spell-choice-${params.classSlug}-granted-${isCantrip ? "cantrip" : `rank-${rank}`}-level-${level}`,
         level,
         title: `${formatTitle(params.classSlug)} ${isCantrip ? "granted cantrip" : `rank ${rank} granted spell`}`,
-        description: `Add ${grantedSpell.name}, the ${isCantrip ? "cantrip" : `rank ${rank} spell`} granted by your bloodline.`,
+        description: `Add ${giftLabel} granted by your bloodline.`,
         source: params.grantedSpellSource,
         classSlug: params.classSlug,
         dependsOn: "class-branch",
@@ -100,8 +102,8 @@ function addGrantedSpellStep(params, addStep, destination, rank, level) {
         minRank: rank,
         maxRank: rank,
         cantrip: isCantrip,
-        curriculumSpellNames: [grantedSpell.name],
-        additionalAllowedSpellNames: [grantedSpell.name],
+        curriculumSpellNames: allowedNames,
+        additionalAllowedSpellNames: allowedNames,
         additionalAllowedSpellUuids: [grantedSpell.uuid],
         restrictToCommon: false,
         destination,

@@ -46,6 +46,30 @@ export async function insertFeatSelection(
   }
 }
 
+export async function preflightFeatSelection(
+  actor: ActorLike,
+  selection: SelectionRef,
+  step: PendingStep | null,
+  deps: InsertFeatSelectionDependencies = DEFAULT_INSERT_DEPS
+): Promise<void> {
+  if (step?.slotKind !== "campaign-feat") {
+    return;
+  }
+
+  const source = await deps.fetchSelectionDocument(selection);
+  if (!source) {
+    throw new Error("The selected campaign feat is unavailable; the draft cannot be applied safely.");
+  }
+
+  resolveFeatSlotData(
+    actor,
+    selection,
+    step,
+    source as unknown as LooseRecord,
+    deps.resolveCampaignFeatSlot ?? resolveCampaignFeatSlotSetting
+  );
+}
+
 function applyFeatSlotData(
   source: LooseRecord,
   slotData: { groupId: string; slotId: string | null },
@@ -117,17 +141,37 @@ function resolveFeatSlotData(
     };
   }
 
-  const slots = Object.values(group?.slots ?? {});
-  if (slots.length === 0) {
+  if (!group) {
     return { groupId, slotId: null };
   }
 
+  const slots = Object.values(group.slots ?? {});
+
   const matchingLevel = slots.find((slot) => slot.level === step?.level && !slot.feat);
+  const canonicalSlotId = canonicalCoreFeatSlotId(groupId, step);
+  const canonicalSlot = canonicalSlotId ? group.slots?.[canonicalSlotId] : null;
+  if (canonicalSlot?.feat) {
+    throw new Error(`PF2E's ${groupId} feat slot at level ${step?.level} is already occupied.`);
+  }
+  if (matchingLevel || canonicalSlotId) {
+    return {
+      groupId,
+      slotId: matchingLevel?.id ?? canonicalSlotId,
+    };
+  }
+
   const firstOpen = slots.find((slot) => !slot.feat);
   return {
     groupId,
-    slotId: matchingLevel?.id ?? firstOpen?.id ?? null,
+    slotId: firstOpen?.id ?? null,
   };
+}
+
+function canonicalCoreFeatSlotId(groupId: string, step: PendingStep | null): string | null {
+  return typeof step?.level === "number" &&
+    ["ancestry-feat", "class-feat", "skill-feat", "general-feat"].includes(step.slotKind)
+    ? `${groupId}-${step.level}`
+    : null;
 }
 
 function featCategory(source: LooseRecord): string | null {

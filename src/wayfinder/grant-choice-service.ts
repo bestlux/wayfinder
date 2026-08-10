@@ -6,6 +6,7 @@ import type {
   SelectionRef,
   StepFilters,
 } from "../types.js";
+import type { ChoiceFilterActorContext } from "./choice-set-filters.js";
 import { buildGrantChoiceStepsFromRules } from "./grant-choice/step-builders.js";
 import { documentFeatureLevel, extractChoiceKey, getDocumentRules, isRecord, toNonEmptyString } from "./rule-data.js";
 
@@ -23,6 +24,7 @@ interface BuildGrantChoiceStepsParams {
   hasDeitySelection: boolean;
   sources: GrantChoiceSourceContext[];
   activeRollOptions?: ReadonlySet<string>;
+  actorContext?: ChoiceFilterActorContext | null;
   extractSlug: (document: unknown) => string | null;
   readExistingGrantedSelection: (grant: GrantSelectionMeta) => string | null;
 }
@@ -40,6 +42,8 @@ export async function buildGrantChoiceSteps(params: BuildGrantChoiceStepsParams)
         sourceSelection: source.sourceSelection,
         sourceLevel: source.sourceLevel,
         activeRollOptions: params.activeRollOptions,
+        actorContext: params.actorContext,
+        requireResolvedActorPlaceholders: true,
         extractSlug: params.extractSlug,
       }).map((step) => ({ source, step }))
     )
@@ -189,9 +193,19 @@ function collectPredicateStrings(predicate: ChoicePredicate | ChoicePredicate[])
 
   return [
     ...collectPredicateStringsFromBranch(predicate.and),
+    ...collectPredicateStringsFromBranch(predicate.nand),
     ...collectPredicateStringsFromBranch(predicate.or),
+    ...collectPredicateStringsFromBranch(predicate.xor),
     ...collectPredicateStringsFromBranch(predicate.nor),
     ...collectPredicateStringsFromBranch(predicate.not),
+    ...collectPredicateStringsFromBranch(predicate.if),
+    ...collectPredicateStringsFromBranch(predicate.then),
+    ...collectPredicateStringsFromBranch(predicate.iff),
+    ...collectPredicateStringsFromComparison(predicate.eq),
+    ...collectPredicateStringsFromComparison(predicate.lt),
+    ...collectPredicateStringsFromComparison(predicate.lte),
+    ...collectPredicateStringsFromComparison(predicate.gt),
+    ...collectPredicateStringsFromComparison(predicate.gte),
   ];
 }
 
@@ -201,4 +215,10 @@ function collectPredicateStringsFromBranch(branch: unknown): string[] {
   }
 
   return collectPredicateStrings(branch as ChoicePredicate);
+}
+
+function collectPredicateStringsFromComparison(comparison: unknown): string[] {
+  return Array.isArray(comparison)
+    ? comparison.filter((operand): operand is string => typeof operand === "string").map((operand) => operand.trim())
+    : [];
 }

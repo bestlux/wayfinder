@@ -6,14 +6,17 @@ export function buildGrantChoiceStepsFromRules(args) {
     if (!effectiveSourceDocument || !sourceSelection) {
         return [];
     }
-    return discoverGrantSelectionMeta({
+    const discovered = discoverGrantSelectionMeta({
         sourceItemType,
         sourceDocument: effectiveSourceDocument,
         sourceSelection,
         sourceLevel: args.sourceLevel,
         extractSlug,
         activeRollOptions: args.activeRollOptions,
-    }).map((grant) => createPickItemStep("grant-choice", args.sourceLevel ?? choiceSourceLevel(effectiveSourceDocument), buildGrantChoiceTitle(grant), buildGrantChoiceDescription(grant), grant.filters, {
+        actorContext: args.actorContext,
+        requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
+    });
+    return discovered.map((grant) => createPickItemStep("grant-choice", args.sourceLevel ?? choiceSourceLevel(effectiveSourceDocument), buildGrantChoiceTitle(grant), buildGrantChoiceDescription(grant), grant.filters, {
         slotId: grant.slotId,
         grantSelection: grant,
     }));

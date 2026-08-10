@@ -15,7 +15,11 @@ export function discoverGrantSelectionMeta(args) {
         if (!matchesChoiceSetRulePredicate(rule, args.activeRollOptions ?? new Set())) {
             return [];
         }
-        const resolution = resolveChoiceSetFilters(rule, { sourceLevel: level });
+        const resolution = resolveChoiceSetFilters(rule, {
+            sourceLevel: level,
+            actorContext: args.actorContext,
+            requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
+        });
         if (!resolution) {
             return [];
         }
@@ -24,7 +28,9 @@ export function discoverGrantSelectionMeta(args) {
         if (grantRuleIndex === -1) {
             return [];
         }
-        const dependsOn = resolveGrantDependency(sourceItemType, grantDependencyPredicates(filters));
+        const dependsOn = resolution.actorDependencies.includes("class")
+            ? "class"
+            : resolveGrantDependency(sourceItemType, grantDependencyPredicates(filters));
         const dependencyKey = dependsOn ?? "none";
         return [
             {

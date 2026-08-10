@@ -143,29 +143,103 @@ export async function applySelectorApplication(
     selectorUpdate[`flags.pf2e.rulesSelections.${grantPlan.flag}`] = grantPlan.selection.uuid;
   }
 
-  if (grantPlans.length > 0 && !createdSelector) {
-    // Existing actor-owned ChoiceSet sources must persist their selection before any granted item is created,
-    // otherwise PF2E can still surface the native prompt during the grant creation update.
-    await actor.updateEmbeddedDocuments("Item", [cloneData(selectorUpdate)]);
-  }
-
   const grantedItemUpdates: Record<string, unknown>[] = [];
-  for (const grantPlan of grantPlans) {
-    const grantedItemResult = await ensureGrantedItem(actor, selectorItem, grantPlan, deps.createEmbeddedSource);
-    if (grantedItemResult.item?.id) {
-      selectorUpdate[`flags.pf2e.itemGrants.${grantPlan.flag}`] = buildItemGrantRecord(grantedItemResult.item.id, {
-        nested: null,
+  const createdItemIds: string[] = [];
+  const replacedItemIds: string[] = [];
+  const selectorRollback = !createdSelector ? buildSelectorRollbackUpdate(selectorItem, plan, grantPlans) : null;
+  let selectorWasUpdated = false;
+  try {
+    if (grantPlans.length > 0 && !createdSelector) {
+      // Existing actor-owned ChoiceSet sources must persist their selection before any granted item is created,
+      // otherwise PF2E can still surface the native prompt during the grant creation update.
+      await actor.updateEmbeddedDocuments("Item", [cloneData(selectorUpdate)]);
+      selectorWasUpdated = true;
+    }
+
+    for (const grantPlan of grantPlans) {
+      const grantedItemResult = await ensureGrantedItem(actor, selectorItem, grantPlan, deps.createEmbeddedSource);
+      createdItemIds.push(...grantedItemResult.createdItemIds);
+      if (grantedItemResult.replacedItemId) {
+        replacedItemIds.push(grantedItemResult.replacedItemId);
+      }
+      if (grantedItemResult.item?.id) {
+        selectorUpdate[`flags.pf2e.itemGrants.${grantPlan.flag}`] = buildItemGrantRecord(grantedItemResult.item.id, {
+          nested: null,
+        });
+      }
+      if (grantedItemResult.update) {
+        grantedItemUpdates.push(grantedItemResult.update);
+      }
+      grantedItemUpdates.push(...grantedItemResult.supplementalUpdates);
+    }
+
+    const updates = [selectorUpdate, ...grantedItemUpdates];
+    await actor.updateEmbeddedDocuments("Item", updates);
+    selectorWasUpdated = true;
+    if (replacedItemIds.length > 0) {
+      await actor.deleteEmbeddedDocuments("Item", Array.from(new Set(replacedItemIds)));
+    }
+  } catch (error) {
+    const rollbackErrors: unknown[] = [];
+    if (selectorWasUpdated && selectorRollback) {
+      try {
+        await actor.updateEmbeddedDocuments("Item", [selectorRollback]);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    const rollbackIds = Array.from(new Set([...createdItemIds, ...(createdSelector ? [selectorItem.id] : [])]));
+    if (rollbackIds.length > 0) {
+      try {
+        await actor.deleteEmbeddedDocuments("Item", rollbackIds);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError([error, ...rollbackErrors], "Failed to roll back selector application safely.", {
+        cause: error,
       });
     }
-    if (grantedItemResult.reusedExistingItem && grantedItemResult.update && grantPlan.updateExistingGrantImmediately) {
-      await actor.updateEmbeddedDocuments("Item", [grantedItemResult.update]);
-    } else if (grantedItemResult.update) {
-      grantedItemUpdates.push(grantedItemResult.update);
+    throw error;
+  }
+}
+
+function buildSelectorRollbackUpdate(
+  selectorItem: SelectorItemLike,
+  plan: SelectorApplicationPlan,
+  grantPlans: SelectorGrantPlan[]
+): Record<string, unknown> {
+  const update: Record<string, unknown> = {
+    _id: selectorItem.id,
+    "system.rules": cloneData(Array.isArray(selectorItem.system?.rules) ? selectorItem.system.rules : []),
+  };
+  const rulesSelections = selectorItem.flags?.pf2e?.rulesSelections ?? {};
+  const itemGrants = selectorItem.flags?.pf2e?.itemGrants ?? {};
+  for (const flag of new Set([
+    ...plan.ruleSelections.map((selection) => selection.flag),
+    ...grantPlans.map((grant) => grant.flag),
+  ])) {
+    if (Object.hasOwn(rulesSelections, flag)) {
+      update[`flags.pf2e.rulesSelections.${flag}`] = cloneData(rulesSelections[flag]);
+    } else {
+      update[`flags.pf2e.rulesSelections.-=${flag}`] = null;
     }
   }
-
-  const updates = [selectorUpdate, ...grantedItemUpdates];
-  await actor.updateEmbeddedDocuments("Item", updates);
+  for (const grantPlan of grantPlans) {
+    if (Object.hasOwn(itemGrants, grantPlan.flag)) {
+      update[`flags.pf2e.itemGrants.${grantPlan.flag}`] = cloneData(itemGrants[grantPlan.flag]);
+    } else {
+      update[`flags.pf2e.itemGrants.-=${grantPlan.flag}`] = null;
+    }
+  }
+  const previousSlotId = selectorItem.flags?.[MODULE_ID]?.slotId;
+  if (typeof previousSlotId === "string") {
+    update[`flags.${MODULE_ID}.slotId`] = previousSlotId;
+  } else if (plan.slotId) {
+    update[`flags.${MODULE_ID}.-=slotId`] = null;
+  }
+  return update;
 }
 
 export function stripSelectedSelectorEntries(
@@ -331,39 +405,49 @@ async function ensureGrantedItem(
   selectorItem: SelectorItemLike,
   grantPlan: SelectorGrantPlan,
   createEmbeddedSource: SelectorApplicationDependencies["createEmbeddedSource"]
-): Promise<{ item: SelectorItemLike | null; update: Record<string, unknown> | null; reusedExistingItem: boolean }> {
+): Promise<{
+  item: SelectorItemLike;
+  update: Record<string, unknown> | null;
+  createdItemIds: string[];
+  replacedItemId: string | null;
+  supplementalUpdates: Record<string, unknown>[];
+}> {
   const selectorItemId = typeof selectorItem.id === "string" ? selectorItem.id : null;
   if (!selectorItemId) {
-    return { item: null, update: null, reusedExistingItem: false };
+    throw new Error("Cannot create a selector grant without a persisted selector item.");
   }
 
   const existingGranted = findGrantedItemForPlan(actor, selectorItem, grantPlan);
   const existingGrantedId = typeof existingGranted?.id === "string" ? existingGranted.id : null;
   if (existingGranted && !existingGrantedId) {
-    return { item: null, update: null, reusedExistingItem: false };
+    throw new Error(`Cannot replace ${grantPlan.selection.name}: the existing grant has no document ID.`);
   }
   const existingMatches = existingGranted && itemMatchesSourceId(existingGranted, grantPlan.selection.uuid);
   if (existingMatches) {
+    let manualPreparation: ManualStaticGrantPreparation = { createdItemIds: [], updates: [] };
     if (grantPlan.adoptExistingSource) {
       const refreshedSource = await createEmbeddedSource(grantPlan.selection);
-      await createManualStaticGrantedItems(
+      manualPreparation = await createManualStaticGrantedItems(
         actor,
         existingGranted,
         refreshedSource ?? (existingGranted as EmbeddedItemSource),
         grantPlan,
-        createEmbeddedSource
+        createEmbeddedSource,
+        null
       );
     }
     return {
       item: existingGranted,
       update: buildGrantedItemUpdate(existingGrantedId!, selectorItemId, grantPlan),
-      reusedExistingItem: true,
+      createdItemIds: manualPreparation.createdItemIds,
+      replacedItemId: null,
+      supplementalUpdates: manualPreparation.updates,
     };
   }
 
   const source = await createEmbeddedSource(grantPlan.selection);
   if (!source) {
-    return { item: null, update: null, reusedExistingItem: false };
+    throw new Error(`Cannot create ${grantPlan.selection.name}: its source document is unavailable.`);
   }
 
   stampGrantedItemSource(source, {
@@ -373,21 +457,37 @@ async function ensureGrantedItem(
   });
 
   assertResolvedUnconditionalChoiceSets(source, grantPlan.selection.name);
-  if (existingGrantedId) {
-    await actor.deleteEmbeddedDocuments("Item", [existingGrantedId]);
-  }
   const created = await actor.createEmbeddedDocuments("Item", [source]);
   const createdItem = Array.isArray(created) ? ((created[0] as SelectorItemLike | undefined) ?? null) : null;
   if (!createdItem?.id) {
-    return { item: createdItem, update: null, reusedExistingItem: false };
+    throw new Error(`Cannot create ${grantPlan.selection.name}: Foundry returned no created item.`);
   }
-  await createManualStaticGrantedItems(actor, createdItem, source, grantPlan, createEmbeddedSource);
-
-  return {
-    item: createdItem,
-    update: grantPlan.updateCreatedGrant ? buildGrantedItemUpdate(createdItem.id, selectorItemId, grantPlan) : null,
-    reusedExistingItem: false,
-  };
+  try {
+    const manualPreparation = await createManualStaticGrantedItems(
+      actor,
+      createdItem,
+      source,
+      grantPlan,
+      createEmbeddedSource,
+      existingGrantedId
+    );
+    return {
+      item: createdItem,
+      update: grantPlan.updateCreatedGrant ? buildGrantedItemUpdate(createdItem.id, selectorItemId, grantPlan) : null,
+      createdItemIds: [createdItem.id, ...manualPreparation.createdItemIds],
+      replacedItemId: existingGrantedId,
+      supplementalUpdates: manualPreparation.updates,
+    };
+  } catch (error) {
+    try {
+      await actor.deleteEmbeddedDocuments("Item", [createdItem.id]);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], `Failed to replace ${grantPlan.selection.name} safely.`, {
+        cause: rollbackError,
+      });
+    }
+    throw error;
+  }
 }
 
 function assertResolvedUnconditionalChoiceSets(source: EmbeddedItemSource, sourceName: string): void {
@@ -418,55 +518,83 @@ async function createManualStaticGrantedItems(
   granter: SelectorItemLike,
   granterSource: EmbeddedItemSource,
   grantPlan: SelectorGrantPlan,
-  createEmbeddedSource: SelectorApplicationDependencies["createEmbeddedSource"]
-): Promise<void> {
+  createEmbeddedSource: SelectorApplicationDependencies["createEmbeddedSource"],
+  replaceDescendantsOwnedById: string | null
+): Promise<ManualStaticGrantPreparation> {
   const granterId = typeof granter.id === "string" ? granter.id : null;
   if (!granterId) {
-    return;
+    return { createdItemIds: [], updates: [] };
   }
 
   const grants = readManualStaticItemGrants(granterSource);
   if (grants.length === 0) {
-    return;
+    return { createdItemIds: [], updates: [] };
   }
 
   const actorItems = listActorItems(actor) as SelectorItemLike[];
   const granterUpdate: Record<string, unknown> = {
     _id: granterId,
   };
+  const createdItemIds: string[] = [];
 
-  for (const grant of grants) {
-    if (actorItems.some((item) => itemMatchesSourceId(item, grant.uuid))) {
-      continue;
-    }
+  try {
+    for (const grant of grants) {
+      if (
+        actorItems.some(
+          (item) =>
+            itemMatchesSourceId(item, grant.uuid) && item.flags?.pf2e?.grantedBy?.id !== replaceDescendantsOwnedById
+        )
+      ) {
+        continue;
+      }
 
-    const selection = selectionFromManualStaticGrant(grant, grantPlan.slotId);
-    if (!selection) {
-      continue;
-    }
+      const selection = selectionFromManualStaticGrant(grant, grantPlan.slotId);
+      if (!selection) {
+        throw new Error(`Cannot create a static child for ${grantPlan.selection.name}: invalid UUID ${grant.uuid}.`);
+      }
 
-    const source = await createEmbeddedSource(selection);
-    if (!source) {
-      continue;
-    }
+      const source = await createEmbeddedSource(selection);
+      if (!source) {
+        throw new Error(`Cannot create a static child for ${grantPlan.selection.name}: ${grant.uuid} is unavailable.`);
+      }
 
-    applyManualChoiceSelections(source, grant.choices);
-    stampGrantedItemSource(source, {
-      sourceId: grant.uuid,
-      slotId: selection.slotId,
-      granterId,
-    });
+      applyManualChoiceSelections(source, grant.choices);
+      stampGrantedItemSource(source, {
+        sourceId: grant.uuid,
+        slotId: selection.slotId,
+        granterId,
+      });
 
-    const created = await actor.createEmbeddedDocuments("Item", [source]);
-    const createdItem = Array.isArray(created) ? ((created[0] as SelectorItemLike | undefined) ?? null) : null;
-    if (createdItem?.id) {
+      const created = await actor.createEmbeddedDocuments("Item", [source]);
+      const createdItem = Array.isArray(created) ? ((created[0] as SelectorItemLike | undefined) ?? null) : null;
+      if (!createdItem?.id) {
+        throw new Error(`Cannot create a static child for ${grantPlan.selection.name}: Foundry returned no item.`);
+      }
+      createdItemIds.push(createdItem.id);
       granterUpdate[`flags.pf2e.itemGrants.${grant.key}`] = buildItemGrantRecord(createdItem.id);
     }
-  }
 
-  if (Object.keys(granterUpdate).length > 1) {
-    await actor.updateEmbeddedDocuments("Item", [granterUpdate]);
+    return {
+      createdItemIds,
+      updates: Object.keys(granterUpdate).length > 1 ? [granterUpdate] : [],
+    };
+  } catch (error) {
+    if (createdItemIds.length > 0) {
+      try {
+        await actor.deleteEmbeddedDocuments("Item", createdItemIds);
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], `Failed to create ${grantPlan.selection.name} safely.`, {
+          cause: rollbackError,
+        });
+      }
+    }
+    throw error;
   }
+}
+
+interface ManualStaticGrantPreparation {
+  createdItemIds: string[];
+  updates: Record<string, unknown>[];
 }
 
 function applyManualChoiceSelections(source: EmbeddedItemSource, choices: Record<string, string>): void {

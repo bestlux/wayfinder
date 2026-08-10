@@ -20,8 +20,7 @@ export function matchesArchetypeLegality(entry, packId, context, matchesSkillRan
         if (dedications.some((dedication) => isDuplicateDedication(candidate, dedication))) {
             return false;
         }
-        if (!candidate.bypassesExistingLockout &&
-            dedications.some((dedication) => !dedication.hasUnverifiedLockoutException && isIncompleteDedication(dedication, projected))) {
+        if (dedications.some((dedication) => blocksDedication(dedication, candidate, projected))) {
             return false;
         }
         return true;
@@ -39,15 +38,36 @@ export function projectedArchetypeFeat(document, packId, fallback = {}) {
     const name = stringOrNull(entry?.name) ?? fallback.name ?? "Unknown Feat";
     const slug = extractEntrySlug(entry) ?? fallback.slug ?? null;
     const traits = extractEntryTraits(entry ?? {});
+    const familyIds = resolveArchetypeFamilyIds(entry, packId, name, slug, traits);
     return {
         uuid: fallback.uuid ?? null,
         name,
         slug,
         traits,
-        familyIds: resolveArchetypeFamilyIds(entry, packId, name, slug, traits),
-        hasUnverifiedLockoutException: hasUnverifiedDedicationLockoutException(entry),
-        bypassesExistingLockout: hasUnverifiedCandidateLockoutBypass(entry, name),
+        familyIds,
+        ...resolveDedicationLockout(entry, traits, familyIds),
     };
+}
+export function mergeActorAndDraftArchetypeFeats(actorFeats, draftedFeats) {
+    const remainingActorOccurrences = new Map();
+    for (const feat of actorFeats) {
+        const key = projectedIdentityKey(feat);
+        if (key) {
+            remainingActorOccurrences.set(key, (remainingActorOccurrences.get(key) ?? 0) + 1);
+        }
+    }
+    return [
+        ...actorFeats,
+        ...draftedFeats.filter((feat) => {
+            const key = projectedIdentityKey(feat);
+            const remaining = key ? (remainingActorOccurrences.get(key) ?? 0) : 0;
+            if (!key || remaining === 0) {
+                return true;
+            }
+            remainingActorOccurrences.set(key, remaining - 1);
+            return false;
+        }),
+    ];
 }
 function resolveArchetypeFamilyIds(entry, packId, name, slug, traits) {
     const familyIds = new Set();
@@ -89,30 +109,131 @@ function isDuplicateDedication(candidate, projected) {
     }
     return false;
 }
-function isIncompleteDedication(dedication, projected) {
-    if (dedication.familyIds.length === 0) {
+function blocksDedication(dedication, candidate, projected) {
+    const lockout = dedication.dedicationLockout;
+    if (!lockout) {
         return false;
     }
-    const followUpCount = projected.filter((feat) => !feat.traits.includes("dedication") && sharesArchetypeFamily(feat, dedication)).length;
-    return followUpCount < 2;
+    if (lockout.allowedDedicationFamilyIds.some((familyId) => candidate.familyIds.includes(familyId))) {
+        return false;
+    }
+    if (dedication.unresolvedLockoutException === "follow-up-qualification") {
+        return true;
+    }
+    const countingFamilyIds = expandedCountingFamilyIds(lockout.countingFamilyIds, projected);
+    const followUpCount = projected.filter((feat) => !feat.traits.includes("dedication") && feat.familyIds.some((familyId) => countingFamilyIds.has(familyId))).length;
+    return followUpCount < lockout.requiredFollowUpCount;
+}
+function expandedCountingFamilyIds(familyIds, projected) {
+    const expanded = new Set(familyIds);
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const dedication of projected.filter((feat) => feat.traits.includes("dedication"))) {
+            if (!dedication.familyIds.some((familyId) => expanded.has(familyId))) {
+                continue;
+            }
+            for (const familyId of dedication.familyIds) {
+                if (!expanded.has(familyId)) {
+                    expanded.add(familyId);
+                    changed = true;
+                }
+            }
+        }
+    }
+    return expanded;
 }
 function sharesArchetypeFamily(left, right) {
     const rightFamilies = new Set(right.familyIds);
     return left.familyIds.some((familyId) => rightFamilies.has(familyId));
 }
-function hasUnverifiedDedicationLockoutException(entry) {
-    return normalizedDescriptionSentences(entry).some((sentence) => permitsAnotherDedicationEarly(sentence) ||
-        changesDedicationLockoutTarget(sentence) ||
-        changesDedicationLockoutCount(sentence) ||
-        sharesDedicationLockoutAcrossFamilies(sentence) ||
-        excludesGrantedDedicationFeatsFromLockout(sentence));
+function resolveDedicationLockout(entry, traits, defaultFamilyIds) {
+    if (!traits.includes("dedication")) {
+        return { dedicationLockout: null, unresolvedLockoutException: null };
+    }
+    const sentences = normalizedDescriptionSentences(entry);
+    let requiredFollowUpCount = 2;
+    const countingFamilyIds = new Set(defaultFamilyIds);
+    const allowedDedicationFamilyIds = new Set();
+    for (const sentence of sentences) {
+        if (isDedicationLockoutSentence(sentence)) {
+            const count = extractRequiredFollowUpCount(sentence);
+            const families = extractCountingFamilyIds(sentence);
+            const allowedFamily = extractNamedAllowedDedicationFamilyId(sentence);
+            if (count !== null) {
+                requiredFollowUpCount = count;
+            }
+            for (const familyId of families) {
+                countingFamilyIds.add(familyId);
+            }
+            if (allowedFamily) {
+                allowedDedicationFamilyIds.add(allowedFamily);
+            }
+            continue;
+        }
+        const targetedPermission = extractTargetedEarlyDedicationPermission(sentence);
+        if (targetedPermission) {
+            allowedDedicationFamilyIds.add(targetedPermission.allowedFamilyId);
+            requiredFollowUpCount = targetedPermission.requiredFollowUpCount;
+            for (const familyId of targetedPermission.countingFamilyIds) {
+                countingFamilyIds.add(familyId);
+            }
+        }
+    }
+    const unresolvedLockoutException = unresolvedLockoutExceptionKind(sentences, {
+        hasNamedAllowedDedication: allowedDedicationFamilyIds.size > 0,
+        hasNonstandardCount: requiredFollowUpCount !== 2,
+        hasAdditionalCountingFamily: Array.from(countingFamilyIds).some((familyId) => !defaultFamilyIds.includes(familyId)),
+    });
+    return {
+        dedicationLockout: {
+            requiredFollowUpCount,
+            countingFamilyIds: Array.from(countingFamilyIds),
+            allowedDedicationFamilyIds: Array.from(allowedDedicationFamilyIds),
+        },
+        unresolvedLockoutException,
+    };
 }
-function hasUnverifiedCandidateLockoutBypass(entry, name) {
-    const normalizedName = normalize(name).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-    const familyName = normalize(name.replace(/\s+dedication$/iu, "")).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-    const candidate = `(?:this dedication(?: feat)?|${normalizedName}|the dedication feat for (?:the )?${familyName}(?: archetype)?)`;
-    const permission = new RegExp(`\\b(?:(?:can|may)\\s+(?:take|select|gain)|allowing you to take)\\s+${candidate}\\b[^.!?]*\\b(?:even if|before|without)\\b`, "u");
-    return normalizedDescriptionSentences(entry).some((sentence) => permission.test(sentence));
+function unresolvedLockoutExceptionKind(sentences, resolved) {
+    if (sentences.some(excludesGrantedDedicationFeatsFromLockout)) {
+        return "follow-up-qualification";
+    }
+    if (!resolved.hasNamedAllowedDedication &&
+        sentences.some((sentence) => permitsAnotherDedicationEarly(sentence) || changesDedicationLockoutTarget(sentence))) {
+        return "allowed-dedication";
+    }
+    return sentences.some((sentence) => (changesDedicationLockoutCount(sentence) && !resolved.hasNonstandardCount) ||
+        (sharesDedicationLockoutAcrossFamilies(sentence) && !resolved.hasAdditionalCountingFamily))
+        ? "follow-up-qualification"
+        : null;
+}
+function extractRequiredFollowUpCount(sentence) {
+    const value = sentence.match(/\b(one|two|three|[123])\s+(?:additional\s+|other\s+)?feats?\b/u)?.[1];
+    return value ? ({ one: 1, two: 2, three: 3 }[value] ?? Number(value)) : null;
+}
+function extractCountingFamilyIds(sentence) {
+    const value = sentence.match(/\bfrom (?:the )?([^.!?]+?) archetypes?\b/u)?.[1];
+    if (!value) {
+        return [];
+    }
+    return value
+        .split(/\s+(?:or|and)\s+|,\s*/u)
+        .map((family) => family.replace(/^(?:the|an?)\s+/u, "").trim())
+        .map((family) => dedicationFamilyId(`${family} dedication`))
+        .filter((familyId) => familyId !== null);
+}
+function extractNamedAllowedDedicationFamilyId(sentence) {
+    const name = sentence.match(/\bother than\s+(?:the\s+)?([^.!?]+? dedication)(?: feat)?\b[^.!?]*\buntil\b/u)?.[1];
+    return name ? dedicationFamilyId(name) : null;
+}
+function extractTargetedEarlyDedicationPermission(sentence) {
+    const name = sentence.match(/\b(?:can|may)\s+(?:take|select|gain)\s+(?:the\s+)?([^.!?]+? dedication)(?: feat)?\b[^.!?]*\bbefore\b/u)?.[1];
+    const allowedFamilyId = name && !/^(?:a\s+)?(?:another|second|this) dedication$/u.test(name) ? dedicationFamilyId(name) : null;
+    const requiredFollowUpCount = extractRequiredFollowUpCount(sentence);
+    const countingFamilyIds = extractCountingFamilyIds(sentence);
+    return allowedFamilyId && requiredFollowUpCount !== null && countingFamilyIds.length > 0
+        ? { allowedFamilyId, requiredFollowUpCount, countingFamilyIds }
+        : null;
 }
 function permitsAnotherDedicationEarly(sentence) {
     return (/\b(?:can|may)\s+(?:take|select|gain)\s+(?:a\s+)?(?:another|second)\s+dedication feat\b[^.!?]*\b(?:even if|before|without)\b/u.test(sentence) ||
@@ -168,5 +289,17 @@ function extractPrerequisiteText(entry) {
 }
 function normalize(value) {
     return value.trim().toLowerCase();
+}
+function projectedIdentityKey(feat) {
+    if (feat.uuid) {
+        return `uuid:${normalize(feat.uuid)}`;
+    }
+    if (feat.slug) {
+        return `slug:${normalize(feat.slug)}`;
+    }
+    if (feat.name.trim()) {
+        return `name:${normalize(feat.name)}`;
+    }
+    return null;
 }
 //# sourceMappingURL=archetype-legality.js.map

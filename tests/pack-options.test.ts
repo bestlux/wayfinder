@@ -643,44 +643,85 @@ describe("pack options dependency filtering", () => {
       "Special You can't select another dedication feat until you gain two other feats from the Wellspring Mage archetype.",
     ],
   ])("does not exempt %s for unrelated or standard lockout prose", (name, description) => {
-    expect(projectDedicationWithDescription(name, description).hasUnverifiedLockoutException).toBe(false);
+    expect(projectDedicationWithDescription(name, description).unresolvedLockoutException).toBeNull();
   });
 
   it.each([
-    [
-      "Familiar Sage Dedication",
-      "You can't select another dedication feat until you've gained two other feats from the familiar master or Familiar Sage archetypes.",
-    ],
-    [
-      "Juggler Dedication",
-      "Special You cannot select another dedication feat until you have gained one other feat from the Juggler archetype.",
-    ],
+    ["Juggler Dedication", PF2E_84_ARCHETYPE_DESCRIPTIONS.juggler, 1, ["dedication:juggler"], []],
     [
       "Magaambyan Attendant Dedication",
-      "Special You cannot select another dedication feat other than Halcyon Speaker Dedication until you have gained two other feats from the Magaambyan Attendant or Halcyon Speaker archetype.",
+      PF2E_84_ARCHETYPE_DESCRIPTIONS.magaambyanAttendant,
+      2,
+      ["dedication:magaambyan-attendant", "dedication:halcyon-speaker"],
+      ["dedication:halcyon-speaker"],
     ],
-    [
-      "Scion of Domora Dedication",
-      "You can't select another dedication feat until you have gained at least two other feats from the scion of Domora or familiar master archetypes.",
-    ],
-    ["Spell Trickster Dedication", "The two feats you gain from taking the dedication don't count toward this total."],
     [
       "Spellshot Dedication",
-      "Special You can't select another dedication feat other than Beast Gunner Dedication until you've gained two other feats from the Spellshot or Beast Gunner archetypes.",
-    ],
-    [
-      "Jalmeri Heavenseeker Dedication",
-      "Special You can't select another dedication feat until you gain two other feats from the Jalmeri Heavenseeker or Student of Perfection archetypes.",
+      PF2E_84_ARCHETYPE_DESCRIPTIONS.spellshot,
+      2,
+      ["dedication:spellshot", "dedication:beast-gunner"],
+      ["dedication:beast-gunner"],
     ],
     [
       "Razmiran Priest Dedication",
-      "You can take the Cleric Dedication feat without needing to meet its prerequisites and before you take two other feats from the Razmiran priest archetype.",
+      PF2E_84_ARCHETYPE_DESCRIPTIONS.razmiranPriest,
+      2,
+      ["dedication:razmiran-priest"],
+      ["dedication:cleric"],
     ],
-  ])("exempts %s only for sentence-scoped dedication-lockout prose", (name, description) => {
-    expect(projectDedicationWithDescription(name, description).hasUnverifiedLockoutException).toBe(true);
+  ])("resolves PF2E 8.4's structured %s lockout", (name, description, count, families, allowed) => {
+    const projected = projectDedicationWithDescription(name, description);
+    expect(projected.unresolvedLockoutException).toBeNull();
+    expect(projected.dedicationLockout).toEqual({
+      requiredFollowUpCount: count,
+      countingFamilyIds: families,
+      allowedDedicationFamilyIds: allowed,
+    });
   });
 
-  it("keeps dedications visible when the active dedication declares an unstructured lockout exception", async () => {
+  it.each([
+    ["Cavalier Dedication", PF2E_84_ARCHETYPE_DESCRIPTIONS.cavalier, "allowed-dedication"],
+    [
+      "Spell Trickster Dedication",
+      "The two feats you gain from taking the dedication don't count toward this total.",
+      "follow-up-qualification",
+    ],
+  ])("keeps %s's unstructured exception review-only", (name, description, unresolvedKind) => {
+    const projected = projectDedicationWithDescription(name, description);
+    expect(projected.unresolvedLockoutException).toBe(unresolvedKind);
+    expect(projected.dedicationLockout).toMatchObject({
+      requiredFollowUpCount: 2,
+      allowedDedicationFamilyIds: [],
+    });
+  });
+
+  it("keeps unresolved follow-up exclusions locked even when projected family feats reach the ordinary count", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
+    ]);
+    const spellTrickster = projectDedicationWithDescription(
+      "Spell Trickster Dedication",
+      "The two feats you gain from taking the dedication don't count toward this total."
+    );
+
+    const options = await getOptionsForStep(
+      makeStep("archetype-feat", { itemType: "feat", featTypes: ["class"], maxLevel: 4 }),
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "fighter",
+        hasDedicationFeat: true,
+        projectedArchetypeFeats: [
+          spellTrickster,
+          projectedArchetype("Granted Trick One", "spell-trickster"),
+          projectedArchetype("Granted Trick Two", "spell-trickster"),
+        ],
+      }
+    );
+
+    expect(options).toEqual([]);
+  });
+
+  it("preserves the ordinary lockout for Cavalier's GM-adjudicated exception", async () => {
     setPack("pf2e.feats-srd", [
       featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
     ]);
@@ -700,10 +741,7 @@ describe("pack options dependency filtering", () => {
             {
               name: "Cavalier Dedication",
               system: {
-                description: {
-                  value:
-                    "<p><strong>Special</strong> You can take a second dedication feat closely tied to that cause even if you haven't taken two additional Cavalier feats.</p>",
-                },
+                description: { value: PF2E_84_ARCHETYPE_DESCRIPTIONS.cavalier },
                 traits: { value: ["archetype", "dedication"] },
               },
             },
@@ -713,17 +751,32 @@ describe("pack options dependency filtering", () => {
       }
     );
 
-    expect(options.map((option) => option.name)).toEqual(["Wizard Dedication"]);
+    expect(options).toEqual([]);
   });
 
-  it("does not treat an exception declared by a candidate dedication as a general lockout bypass", async () => {
+  it.each([
+    [
+      "Magaambyan Attendant Dedication",
+      PF2E_84_ARCHETYPE_DESCRIPTIONS.magaambyanAttendant,
+      "halcyon-speaker-dedication",
+      "Halcyon Speaker Dedication",
+    ],
+    [
+      "Spellshot Dedication",
+      PF2E_84_ARCHETYPE_DESCRIPTIONS.spellshot,
+      "beast-gunner-dedication",
+      "Beast Gunner Dedication",
+    ],
+    [
+      "Razmiran Priest Dedication",
+      PF2E_84_ARCHETYPE_DESCRIPTIONS.razmiranPriest,
+      "cleric-dedication",
+      "Cleric Dedication",
+    ],
+  ])("allows only %s's named early dedication", async (activeName, description, allowedSlug, allowedName) => {
     setPack("pf2e.feats-srd", [
-      featEntry("cavalier-dedication", "Cavalier Dedication", "class", ["archetype", "dedication"], true, {
-        description: {
-          value:
-            "<p><strong>Special</strong> You can take a second dedication feat closely tied to that cause even if you haven't taken two additional Cavalier feats.</p>",
-        },
-      }),
+      featEntry(allowedSlug, allowedName, "class", ["archetype", "dedication"]),
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
     ]);
 
     const options = await getOptionsForStep(
@@ -734,48 +787,86 @@ describe("pack options dependency filtering", () => {
       }),
       {
         ...EMPTY_CONTEXT,
+        classSlug: "fighter",
         hasDedicationFeat: true,
-        projectedArchetypeFeats: [projectedArchetype("Acrobat Dedication", "acrobat", true)],
+        projectedArchetypeFeats: [projectDedicationWithDescription(activeName, description)],
       }
     );
 
-    expect(options).toEqual([]);
+    expect(options.map((option) => option.name)).toEqual([allowedName]);
   });
 
-  it("still enforces a standard incomplete dedication when another projected dedication has an exception", async () => {
+  it("uses the Juggler one-feat count without unlocking unrelated dedications early", async () => {
     setPack("pf2e.feats-srd", [
-      featEntry("alchemist-dedication", "Alchemist Dedication", "class", ["archetype", "dedication"]),
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
+    ]);
+    const step = makeStep("archetype-feat", {
+      itemType: "feat",
+      featTypes: ["class"],
+      maxLevel: 4,
+    });
+    const juggler = projectDedicationWithDescription("Juggler Dedication", PF2E_84_ARCHETYPE_DESCRIPTIONS.juggler);
+    const locked = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      hasDedicationFeat: true,
+      projectedArchetypeFeats: [juggler],
+    });
+    const complete = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      hasDedicationFeat: true,
+      projectedArchetypeFeats: [juggler, projectedArchetype("Focused Juggler", "juggler")],
+    });
+
+    expect(locked).toEqual([]);
+    expect(complete.map((option) => option.name)).toEqual(["Wizard Dedication"]);
+  });
+
+  it("keeps Beast Gunner's own lockout after Spellshot permits taking it early", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
     ]);
 
-    const options = await getOptionsForStep(
-      makeStep("archetype-feat", {
-        itemType: "feat",
-        featTypes: ["class"],
-        maxLevel: 4,
-      }),
-      {
-        ...EMPTY_CONTEXT,
-        hasDedicationFeat: true,
-        projectedArchetypeFeats: [
-          projectArchetypeFeat(
-            {
-              name: "Cavalier Dedication",
-              system: {
-                description: {
-                  value:
-                    "<p><strong>Special</strong> You can take a second dedication feat closely tied to that cause even if you haven't taken two additional Cavalier feats.</p>",
-                },
-                traits: { value: ["archetype", "dedication"] },
-              },
-            },
-            null
-          ),
-          projectedArchetype("Wizard Dedication", "wizard", true),
-        ],
-      }
-    );
+    const beastGunner = projectedArchetype("Beast Gunner Dedication", "beast-gunner", true);
+    beastGunner.familyIds.push("pf2e.feats-srd:beast-gunner-family");
+    const firstBeastGunnerFollowUp = projectedArchetype("Black Powder Embodiment", "beast-gunner");
+    firstBeastGunnerFollowUp.familyIds = ["pf2e.feats-srd:beast-gunner-family"];
+    const secondBeastGunnerFollowUp = projectedArchetype("Call Gun", "beast-gunner");
+    secondBeastGunnerFollowUp.familyIds = ["pf2e.feats-srd:beast-gunner-family"];
+    const step = makeStep("archetype-feat", {
+      itemType: "feat",
+      featTypes: ["class"],
+      maxLevel: 4,
+    });
+    const baseContext: OptionContext = {
+      ...EMPTY_CONTEXT,
+      classSlug: "fighter",
+      hasDedicationFeat: true,
+      projectedArchetypeFeats: [
+        projectDedicationWithDescription("Spellshot Dedication", PF2E_84_ARCHETYPE_DESCRIPTIONS.spellshot),
+        beastGunner,
+      ],
+    };
+    const locked = await getOptionsForStep(step, {
+      ...baseContext,
+      projectedArchetypeFeats: [
+        ...(baseContext.projectedArchetypeFeats ?? []),
+        projectedArchetype("Fulminating Shot", "spellshot"),
+        firstBeastGunnerFollowUp,
+      ],
+    });
+    const complete = await getOptionsForStep(step, {
+      ...baseContext,
+      projectedArchetypeFeats: [
+        ...(baseContext.projectedArchetypeFeats ?? []),
+        firstBeastGunnerFollowUp,
+        secondBeastGunnerFollowUp,
+      ],
+    });
 
-    expect(options).toEqual([]);
+    expect(locked).toEqual([]);
+    expect(complete.map((option) => option.name)).toEqual(["Wizard Dedication"]);
   });
 
   it("blocks a duplicate dedication after its family lockout is complete", async () => {
@@ -2159,14 +2250,21 @@ function makeStep(slotKind: PickItemSlotKind, filters: PendingStep["filters"]): 
 
 function projectedArchetype(name: string, family: string, dedication = false) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const familyIds = [`dedication:${family}`];
   return {
     uuid: `Compendium.pf2e.feats-srd.Item.${slug}`,
     name,
     slug,
     traits: dedication ? ["archetype", "dedication"] : ["archetype"],
-    familyIds: [`dedication:${family}`],
-    hasUnverifiedLockoutException: false,
-    bypassesExistingLockout: false,
+    familyIds,
+    dedicationLockout: dedication
+      ? {
+          requiredFollowUpCount: 2,
+          countingFamilyIds: familyIds,
+          allowedDedicationFamilyIds: [],
+        }
+      : null,
+    unresolvedLockoutException: null,
   };
 }
 
@@ -2182,6 +2280,19 @@ function projectDedicationWithDescription(name: string, description: string) {
     null
   );
 }
+
+const PF2E_84_ARCHETYPE_DESCRIPTIONS = {
+  cavalier:
+    "<p><strong>Special</strong> If you have pledged yourself to a cause, you can take a second dedication feat closely tied to that cause even if you haven't taken two additional Cavalier feats. The GM determines what archetypes, if any, are valid choices.</p>",
+  juggler:
+    "<p><strong>Special</strong> You cannot select another dedication feat until you have gained one other feat from the Juggler archetype.</p>",
+  magaambyanAttendant:
+    "<div><strong>Special</strong> You cannot select another dedication feat other than @UUID[Compendium.pf2e.feats-srd.Item.Halcyon Speaker Dedication] until you have gained two other feats from the @UUID[Compendium.pf2e.journals.JournalEntry.magaambyan]{Magaambyan Attendant} or @UUID[Compendium.pf2e.journals.JournalEntry.halcyon]{Halcyon Speaker} archetype.</div>",
+  razmiranPriest:
+    "<p>You can take the @UUID[Compendium.pf2e.feats-srd.Item.Cleric Dedication] feat without needing to meet its prerequisites and before you take two other feats from the Razmiran priest archetype, but you must choose Razmir as your deity.</p>",
+  spellshot:
+    "<p><strong>Special</strong> You can't select another dedication feat other than @UUID[Compendium.pf2e.feats-srd.Item.Beast Gunner Dedication] until you've gained two other feats from the @UUID[Compendium.pf2e.journals.JournalEntry.spellshot]{Spellshot} or @UUID[Compendium.pf2e.journals.JournalEntry.beast-gunner]{Beast Gunner} archetypes.</p>",
+} as const;
 
 function selectionRef(slotId: string, itemType: string, documentId: string, name: string): SelectionRef {
   return {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
+import {
+  matchesArchetypeLegality,
+  mergeActorAndDraftArchetypeFeats,
+  projectedArchetypeFeat,
+} from "../src/pack/archetype-legality";
 import type { PendingStep, SelectionRef } from "../src/types";
 import {
   buildContextNote,
@@ -401,6 +406,77 @@ describe("wayfinder option context service", () => {
     ).resolves.toBe(true);
   });
 
+  it("deduplicates partially applied actor feats from their remaining draft projections", async () => {
+    const draft = createEmptyDraft(4);
+    draft.selections["class-feat-level-2"] = selection("class-feat-level-2", "feat", "acrobat-dedication");
+    draft.selections["class-feat-level-4"] = selection("class-feat-level-4", "feat", "contortionist");
+    const documents = {
+      "acrobat-dedication": {
+        name: "Acrobat Dedication",
+        type: "feat",
+        system: { slug: "acrobat-dedication", traits: { value: ["archetype", "dedication"] } },
+      },
+      contortionist: {
+        name: "Contortionist",
+        type: "feat",
+        system: {
+          slug: "contortionist",
+          traits: { value: ["archetype"] },
+          prerequisites: { value: [{ value: "Acrobat Dedication" }] },
+        },
+      },
+    };
+    const context = await buildOptionContext({
+      draft,
+      resolveDocument: async () => null,
+      listActorItems: () => [
+        actorFeat("Acrobat Dedication", "acrobat-dedication", ["archetype", "dedication"], 2),
+        actorFeat("Contortionist", "contortionist", ["archetype"], 4),
+      ],
+      fetchSelectionDocument: async (selectionRef) =>
+        documents[selectionRef.documentId as keyof typeof documents] ?? null,
+      extractDocumentSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+    });
+
+    expect(context.projectedArchetypeFeats?.map((feat) => feat.name)).toEqual(["Acrobat Dedication", "Contortionist"]);
+    expect(
+      matchesArchetypeLegality(
+        {
+          name: "Wizard Dedication",
+          type: "feat",
+          system: { slug: "wizard-dedication", traits: { value: ["archetype", "dedication"] } },
+        },
+        "test.pack",
+        context,
+        () => true
+      )
+    ).toBe(false);
+  });
+
+  it("reconciles actor and draft archetype identities one occurrence at a time", () => {
+    const document = {
+      name: "Repeatable Acrobat Trick",
+      system: {
+        slug: "repeatable-acrobat-trick",
+        traits: { value: ["archetype"] },
+        prerequisites: { value: [{ value: "Acrobat Dedication" }] },
+      },
+    };
+    const actorFeat = projectedArchetypeFeat(document, null, { uuid: "Compendium.test.pack.Item.repeatable" });
+    const appliedDraftFeat = projectedArchetypeFeat(document, null, {
+      uuid: "Compendium.test.pack.Item.repeatable",
+    });
+    const secondDraftOccurrence = projectedArchetypeFeat(document, null, {
+      uuid: "Compendium.test.pack.Item.repeatable",
+    });
+    const sameSlugDifferentSource = projectedArchetypeFeat(document, null, {
+      uuid: "Compendium.other.pack.Item.repeatable",
+    });
+
+    expect(mergeActorAndDraftArchetypeFeats([actorFeat], [appliedDraftFeat, secondDraftOccurrence])).toHaveLength(2);
+    expect(mergeActorAndDraftArchetypeFeats([actorFeat], [sameSlugDifferentSource])).toHaveLength(2);
+  });
+
   it("resolves selection traits and slugs from fetched documents", async () => {
     const selectedHeritage = selection("heritage-level-1", "heritage", "wintertouched");
 
@@ -520,6 +596,39 @@ describe("wayfinder option context service", () => {
     ).resolves.toContain("resolved dedication families");
   });
 
+  it("discloses unresolved GM-adjudicated dedication exceptions", async () => {
+    const step = featStep("archetype-feat-level-4", "archetype-feat");
+    const cavalier = projectedArchetypeFeat(
+      {
+        name: "Cavalier Dedication",
+        system: {
+          traits: { value: ["archetype", "dedication"] },
+          description: {
+            value:
+              "You can take a second dedication feat closely tied to your cause even if you haven't taken two additional Cavalier feats. The GM determines what archetypes are valid.",
+          },
+        },
+      },
+      null
+    );
+
+    await expect(
+      buildContextNote(
+        step,
+        {
+          ancestrySlug: null,
+          ancestryTraits: [],
+          heritageTraits: [],
+          classSlug: "fighter",
+          classHasSpellcasting: false,
+          hasDedicationFeat: true,
+          projectedArchetypeFeats: [cavalier],
+        },
+        { resolveDocument: async () => null }
+      )
+    ).resolves.toContain("GM-adjudicated dedication exception");
+  });
+
   it("describes unified-theory wizard bonus spells as available arcane choices", async () => {
     const step: PendingStep = {
       id: "spell-choice-wizard-unified-rank-1-level-1",
@@ -608,6 +717,18 @@ function featStep(slotId: string, slotKind: "class-feat" | "archetype-feat"): Pe
     required: true,
     slotId,
     filters: { itemType: "feat", featTypes: ["class"], maxLevel: 2 },
+  };
+}
+
+function actorFeat(name: string, documentId: string, traits: string[], level: number) {
+  return {
+    name,
+    type: "feat",
+    flags: { core: { sourceId: `Compendium.test.pack.Item.${documentId}` } },
+    system: {
+      level: { taken: level },
+      traits: { value: traits },
+    },
   };
 }
 

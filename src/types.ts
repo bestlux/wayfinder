@@ -178,8 +178,12 @@ export interface ProjectedArchetypeFeat {
   slug: string | null;
   traits: string[];
   familyIds: string[];
-  hasUnverifiedLockoutException: boolean;
-  bypassesExistingLockout: boolean;
+  dedicationLockout: {
+    requiredFollowUpCount: number;
+    countingFamilyIds: string[];
+    allowedDedicationFamilyIds: string[];
+  } | null;
+  unresolvedLockoutException: "allowed-dedication" | "follow-up-qualification" | null;
 }
 
 export interface OptionContext {

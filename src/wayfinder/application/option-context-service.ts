@@ -1,4 +1,4 @@
-import { projectedArchetypeFeat } from "../../pack/archetype-legality.js";
+import { mergeActorAndDraftArchetypeFeats, projectedArchetypeFeat } from "../../pack/archetype-legality.js";
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import { findSpellcastingEntryForChoiceInItems } from "../../shared/spellcasting.js";
@@ -315,7 +315,7 @@ async function buildProjectedArchetypeFeats(args: HasDedicationContextDependenci
     })
   );
 
-  return [...actorFeats, ...draftedFeats].filter(
+  return mergeActorAndDraftArchetypeFeats(actorFeats, draftedFeats).filter(
     (feat) => feat.traits.includes("archetype") || feat.traits.includes("dedication")
   );
 }
@@ -628,13 +628,14 @@ export async function buildContextNote(
         return null;
       }
 
+      const exceptionReview = archetypeExceptionReview(context);
       return context.hasDedicationFeat
-        ? `Showing feats keyed to ${className} plus legal archetype follow-up feats unlocked by projected dedications. Shared class feats that list ${className} also remain available. Special dedication exceptions, unresolved family metadata, access, and unsupported free-text prerequisites still require GM confirmation.`
+        ? `Showing feats keyed to ${className} plus legal archetype follow-up feats unlocked by projected dedications. Shared class feats that list ${className} also remain available.${exceptionReview} Unresolved family metadata, access, and unsupported free-text prerequisites still require GM confirmation.`
         : `Showing feats keyed to ${className} plus dedications legal for the projected draft. Shared class feats that list ${className} also remain available. Unresolved family metadata, access, and unsupported free-text prerequisites still require GM confirmation.`;
     }
     case "archetype-feat":
       return context.hasDedicationFeat
-        ? "Showing Free Archetype feats legal for resolved dedication families, standard lockouts, duplicates, current-class multiclass limits, and supported skill-rank prerequisites. Special dedication exceptions, unresolved family metadata, access, and unsupported free-text prerequisites still require GM confirmation."
+        ? `Showing Free Archetype feats legal for resolved dedication families, structured lockouts, duplicates, current-class multiclass limits, and supported skill-rank prerequisites.${archetypeExceptionReview(context)} Unresolved family metadata, access, and unsupported free-text prerequisites still require GM confirmation.`
         : "Showing dedications legal for the projected draft, including current-class multiclass limits and supported skill-rank prerequisites. Unresolved family metadata, access, and unsupported free-text prerequisites still require GM confirmation.";
     case "class-branch": {
       const className = ((await deps.resolveDocument("class")) as LooseDocument | null)?.name;
@@ -715,4 +716,10 @@ export async function buildContextNote(
     default:
       return null;
   }
+}
+
+function archetypeExceptionReview(context: OptionContext): string {
+  return context.projectedArchetypeFeats?.some((feat) => feat.unresolvedLockoutException)
+    ? " This draft includes a GM-adjudicated dedication exception that Wayfinder does not automate."
+    : "";
 }

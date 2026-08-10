@@ -103,11 +103,15 @@ export function matchesFilters(
     return false;
   }
 
-  if (filters.featTypes?.length) {
+  if (Array.isArray(filters.featTypes)) {
     const featType = resolveFeatType(entry);
     if (!featType || !filters.featTypes.includes(featType)) {
       return false;
     }
+  }
+
+  if (!matchesTraitFilters(entry, filters)) {
+    return false;
   }
 
   if (typeof filters.maxLevel === "number") {
@@ -142,7 +146,7 @@ export function matchesFilters(
     return matchesSpellChoiceContext(entry, packId, step);
   }
 
-  if (step.slotKind === "ancestry-feat" || isAncestryCampaignFeatStep(step)) {
+  if (step.slotKind === "ancestry-feat" || isAncestryCampaignFeatCandidate(step, entry)) {
     return matchesAncestryFeatContext(entry, context, traitCatalog);
   }
 
@@ -207,12 +211,22 @@ export async function getTraitCatalog(slotKind: PendingStep["slotKind"]): Promis
   return traits;
 }
 
-function isAncestryCampaignFeatStep(step: PendingStep): boolean {
-  return (
-    step.slotKind === "campaign-feat" &&
-    step.campaignFeat?.supported.length === 1 &&
-    step.campaignFeat.supported[0] === "ancestry"
-  );
+function isAncestryCampaignFeatCandidate(step: PendingStep, entry: PackIndexEntry): boolean {
+  return step.slotKind === "campaign-feat" && resolveFeatType(entry) === "ancestry";
+}
+
+function matchesTraitFilters(entry: PackIndexEntry, filters: StepFilters): boolean {
+  const traits = new Set(extractEntryTraits(entry));
+  if (filters.omitTraits?.some((trait) => traits.has(trait))) {
+    return false;
+  }
+  if (!filters.traits?.length) {
+    return true;
+  }
+
+  return filters.traitConjunction === "and"
+    ? filters.traits.every((trait) => traits.has(trait))
+    : filters.traits.some((trait) => traits.has(trait));
 }
 
 function matchesAncestryFeatContext(entry: PackIndexEntry, context: OptionContext, traitCatalog: Set<string>): boolean {

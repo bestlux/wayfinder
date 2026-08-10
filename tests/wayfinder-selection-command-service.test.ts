@@ -110,6 +110,7 @@ describe("wayfinder selection command service", () => {
       hasDuplicateDraftSelection: () => false,
       resolveSelectionTraits: async () => [],
       resolveSelectionSlug: async (selectionRef) => selectionRef?.documentId ?? null,
+      resolveSelectionClassHasSpellcasting: async () => false,
       invalidateSelection: () => [],
       invalidateSelectionsByPrefix: (prefix) => {
         const invalidatedPrefixes = new Set<string>([
@@ -184,6 +185,7 @@ describe("wayfinder selection command service", () => {
       hasDuplicateDraftSelection: () => false,
       resolveSelectionTraits: async () => [],
       resolveSelectionSlug: async (selectionRef) => selectionRef?.documentId ?? null,
+      resolveSelectionClassHasSpellcasting: async (selectionRef) => selectionRef?.documentId === "wizard",
       invalidateSelection: () => [],
       invalidateSelectionsByPrefix: () => [],
       invalidateSingletonChoicesBySource: async () => [],
@@ -219,6 +221,74 @@ describe("wayfinder selection command service", () => {
     ).toBeUndefined();
   });
 
+  it("invalidates native and campaign ancestry feats when class spellcasting capability changes", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections[SLOT_IDS.class] = selection(SLOT_IDS.class, "class", "wizard", "Wizard");
+    draft.selections["ancestry-feat-level-1"] = {
+      ...selection("ancestry-feat-level-1", "feat", "adapted-cantrip", "Adapted Cantrip"),
+      featType: "ancestry",
+    };
+    draft.selections["campaign-feat-ancestry-paragon-level-1"] = {
+      ...selection("campaign-feat-ancestry-paragon-level-1", "feat", "adapted-cantrip", "Adapted Cantrip"),
+      featType: "ancestry",
+    };
+    draft.selections["campaign-feat-dual-class-level-1"] = {
+      ...selection("campaign-feat-dual-class-level-1", "feat", "reactive-shield", "Reactive Shield"),
+      featType: "class",
+    };
+    const state = commandState(draft);
+    const step: PendingStep = {
+      id: SLOT_IDS.class,
+      level: 1,
+      kind: "pick-item",
+      slotKind: "class",
+      title: "Class",
+      description: "",
+      required: true,
+      slotId: SLOT_IDS.class,
+      filters: { itemType: "class" },
+    };
+
+    const result = await chooseSelectionOption(state, step, "test.pack:fighter", {
+      resolveSelection: async () => selection(SLOT_IDS.class, "class", "fighter", "Fighter"),
+      hasDuplicateDraftSelection: () => false,
+      resolveSelectionTraits: async () => [],
+      resolveSelectionSlug: async () => "same-class-slug",
+      resolveSelectionClassHasSpellcasting: async (selectionRef) => selectionRef?.documentId === "wizard",
+      invalidateSelection: () => [],
+      invalidateSelectionsByPrefix: (prefix) => {
+        if (prefix !== SLOT_PREFIXES.ancestryFeat) {
+          return [];
+        }
+        delete draft.selections["ancestry-feat-level-1"];
+        return ["ancestry-feat-level-1"];
+      },
+      invalidateSingletonChoicesBySource: async () => [],
+      invalidateGrantSelectionsBySource: async () => [],
+      invalidateGrantSelectionsByDependency: async () => [],
+      invalidateFlagChoicesBySource: async () => [],
+      invalidateFlagChoicesByDependency: async () => [],
+      invalidateCampaignFeatSelectionsByFeatType: async (featType) => {
+        if (featType !== "ancestry") {
+          return [];
+        }
+        delete draft.selections["campaign-feat-ancestry-paragon-level-1"];
+        return ["campaign-feat-ancestry-paragon-level-1"];
+      },
+      invalidateClassChoicesByDependency: async () => [],
+      invalidateBranchSelectionsByDependency: async () => [],
+      invalidateSpellChoicesByDependency: async () => [],
+      resetAncestryBoostDraft: () => false,
+      resetBackgroundBoostDraft: () => false,
+      resetClassBoostDraft: () => false,
+    });
+
+    expect(result.statusNote).toContain("native ancestry feat, campaign ancestry feat");
+    expect(draft.selections["ancestry-feat-level-1"]).toBeUndefined();
+    expect(draft.selections["campaign-feat-ancestry-paragon-level-1"]).toBeUndefined();
+    expect(draft.selections["campaign-feat-dual-class-level-1"]).toBeDefined();
+  });
+
   it("invalidates Free Archetype follow-ups when their drafted dedication changes", async () => {
     const draft = createEmptyDraft(4);
     draft.selections["class-feat-level-2"] = selection(
@@ -252,6 +322,7 @@ describe("wayfinder selection command service", () => {
       resolveSelectionTraits: async (selectionRef) =>
         selectionRef?.documentId === "wizard-dedication" ? ["archetype", "dedication"] : [],
       resolveSelectionSlug: async () => null,
+      resolveSelectionClassHasSpellcasting: async () => false,
       invalidateSelection: () => [],
       invalidateSelectionsByPrefix: (prefix) => {
         const invalidated = Object.keys(draft.selections).filter((slotId) => slotId.startsWith(prefix));
@@ -300,6 +371,7 @@ describe("wayfinder selection command service", () => {
       hasDuplicateDraftSelection: () => false,
       resolveSelectionTraits: async () => [],
       resolveSelectionSlug: async () => null,
+      resolveSelectionClassHasSpellcasting: async () => false,
       invalidateSelection: () => [],
       invalidateSelectionsByPrefix: () => [],
       invalidateSingletonChoicesBySource: async () => [],
@@ -346,6 +418,7 @@ describe("wayfinder selection command service", () => {
       hasDuplicateDraftSelection: () => false,
       resolveSelectionTraits: async () => ["cold"],
       resolveSelectionSlug: async () => null,
+      resolveSelectionClassHasSpellcasting: async () => false,
       invalidateSelection: () => [],
       invalidateSelectionsByPrefix: () => [],
       invalidateSingletonChoicesBySource: async (sourceItemType) =>

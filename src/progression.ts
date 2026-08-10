@@ -114,6 +114,8 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
         continue;
       }
 
+      const filter = slot.filter ?? section.filter;
+      const featTypes = intersectCampaignFeatTypes(section.supported, filter.categories);
       steps.push(
         createPickItemStep(
           "campaign-feat",
@@ -122,7 +124,10 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
           `Fill PF2E's ${section.label} campaign feat slot.`,
           {
             itemType: "feat",
-            ...(section.supported.length > 0 ? { featTypes: section.supported } : {}),
+            ...(featTypes ? { featTypes } : {}),
+            ...(filter.traits.length > 0 ? { traits: filter.traits } : {}),
+            ...(filter.omitTraits.length > 0 ? { omitTraits: filter.omitTraits } : {}),
+            ...(filter.traits.length > 0 ? { traitConjunction: filter.conjunction } : {}),
             maxLevel: slot.level,
           },
           {
@@ -132,6 +137,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
               sectionLabel: section.label,
               groupSlotId: slot.id,
               supported: section.supported,
+              filter,
             },
           }
         )
@@ -225,6 +231,21 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
   }
 
   return sortPendingSteps(steps);
+}
+
+function intersectCampaignFeatTypes(supported: string[], filtered: string[]): string[] | null {
+  if (supported.length === 0 && filtered.length === 0) {
+    return null;
+  }
+  if (supported.length === 0) {
+    return [...filtered];
+  }
+  if (filtered.length === 0) {
+    return [...supported];
+  }
+
+  const allowed = new Set(filtered);
+  return supported.filter((category) => allowed.has(category));
 }
 
 export function sortPendingSteps(steps: PendingStep[]): PendingStep[] {

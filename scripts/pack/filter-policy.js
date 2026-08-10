@@ -54,11 +54,14 @@ export function matchesFilters(entry, packId, step, context, traitCatalog) {
     if (hasUnsupportedEmbeddedChoiceSet(entry, packId, step, context)) {
         return false;
     }
-    if (filters.featTypes?.length) {
+    if (Array.isArray(filters.featTypes)) {
         const featType = resolveFeatType(entry);
         if (!featType || !filters.featTypes.includes(featType)) {
             return false;
         }
+    }
+    if (!matchesTraitFilters(entry, filters)) {
+        return false;
     }
     if (typeof filters.maxLevel === "number") {
         const level = numericOrNull(entry?.system?.level?.value);
@@ -86,7 +89,7 @@ export function matchesFilters(entry, packId, step, context, traitCatalog) {
     if (step.slotKind === "spell-choice") {
         return matchesSpellChoiceContext(entry, packId, step);
     }
-    if (step.slotKind === "ancestry-feat" || isAncestryCampaignFeatStep(step)) {
+    if (step.slotKind === "ancestry-feat" || isAncestryCampaignFeatCandidate(step, entry)) {
         return matchesAncestryFeatContext(entry, context, traitCatalog);
     }
     if (step.slotKind === "class-feat") {
@@ -137,10 +140,20 @@ export async function getTraitCatalog(slotKind) {
     cacheTraitCatalog(cacheKey, traits);
     return traits;
 }
-function isAncestryCampaignFeatStep(step) {
-    return (step.slotKind === "campaign-feat" &&
-        step.campaignFeat?.supported.length === 1 &&
-        step.campaignFeat.supported[0] === "ancestry");
+function isAncestryCampaignFeatCandidate(step, entry) {
+    return step.slotKind === "campaign-feat" && resolveFeatType(entry) === "ancestry";
+}
+function matchesTraitFilters(entry, filters) {
+    const traits = new Set(extractEntryTraits(entry));
+    if (filters.omitTraits?.some((trait) => traits.has(trait))) {
+        return false;
+    }
+    if (!filters.traits?.length) {
+        return true;
+    }
+    return filters.traitConjunction === "and"
+        ? filters.traits.every((trait) => traits.has(trait))
+        : filters.traits.some((trait) => traits.has(trait));
 }
 function matchesAncestryFeatContext(entry, context, traitCatalog) {
     const category = stringOrNull(entry?.system?.category);

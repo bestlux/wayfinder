@@ -1,3 +1,4 @@
+import type { CampaignFeatSlotAuthority } from "../campaign-feat-sections.js";
 import type { EmbeddedItemSource, SelectionDocumentLike } from "../shared/actor-model.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
 
@@ -14,4 +15,5 @@ export interface InsertFeatSelectionDependencies {
     draft?: DraftState,
     steps?: PendingStep[]
   ) => Promise<EmbeddedItemSource | null>;
+  resolveCampaignFeatSlot?: (sectionId: string, slotId: string) => CampaignFeatSlotAuthority | null;
 }

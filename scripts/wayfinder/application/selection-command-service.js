@@ -85,13 +85,18 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
         }
     }
     if (step.slotKind === "class" && previousSelection?.uuid !== selection.uuid) {
-        const previousClassSlug = await deps.resolveSelectionSlug(previousSelection);
-        const nextClassSlug = await deps.resolveSelectionSlug(selection);
+        const [previousClassSlug, nextClassSlug, previousClassHasSpellcasting, nextClassHasSpellcasting] = await Promise.all([
+            deps.resolveSelectionSlug(previousSelection),
+            deps.resolveSelectionSlug(selection),
+            deps.resolveSelectionClassHasSpellcasting(previousSelection),
+            deps.resolveSelectionClassHasSpellcasting(selection),
+        ]);
         const boostReset = deps.resetClassBoostDraft();
         if (boostReset) {
             state.recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);
         }
-        if (previousClassSlug !== nextClassSlug) {
+        const spellcastingCapabilityChanged = previousClassHasSpellcasting !== nextClassHasSpellcasting;
+        if (previousClassSlug !== nextClassSlug || spellcastingCapabilityChanged) {
             const invalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classFeat);
             const archetypeFeatInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.archetypeFeat);
             const deityInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.deity);
@@ -100,6 +105,12 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
             const classChoiceInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.classChoice);
             const trainingInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.skillTraining);
             const spellInvalidated = deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.spellChoice);
+            const ancestryFeatInvalidated = spellcastingCapabilityChanged
+                ? deps.invalidateSelectionsByPrefix(SLOT_PREFIXES.ancestryFeat)
+                : [];
+            const campaignAncestryFeatInvalidated = spellcastingCapabilityChanged
+                ? await deps.invalidateCampaignFeatSelectionsByFeatType("ancestry")
+                : [];
             const singletonInvalidated = [
                 ...(await deps.invalidateSingletonChoicesBySource("class")),
                 ...(await deps.invalidateSingletonChoicesBySource("deity")),
@@ -119,12 +130,17 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
                 classChoiceInvalidated.length > 0 ||
                 trainingInvalidated.length > 0 ||
                 spellInvalidated.length > 0 ||
+                ancestryFeatInvalidated.length > 0 ||
+                campaignAncestryFeatInvalidated.length > 0 ||
                 singletonInvalidated.length > 0 ||
                 grantInvalidated.length > 0 ||
                 boostReset) {
+                const featScope = ancestryFeatInvalidated.length > 0 || campaignAncestryFeatInvalidated.length > 0
+                    ? "native ancestry feat, campaign ancestry feat, class feat, and Free Archetype"
+                    : "class feat, and Free Archetype";
                 statusNote = boostReset
-                    ? "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, related singleton choices, spell, class feat, and Free Archetype selections for review."
-                    : "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, related singleton choices, spell, class feat, and Free Archetype selections for review.";
+                    ? `Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, related singleton choices, spell, ${featScope} selections for review.`
+                    : `Class changed. Wayfinder marked drafted deity, class training, class path, class choice, related singleton choices, spell, ${featScope} selections for review.`;
             }
         }
         else if (boostReset) {

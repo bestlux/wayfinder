@@ -158,6 +158,17 @@ export async function resolveSelectionSlug(
   return deps.extractDocumentSlug(document);
 }
 
+export async function resolveSelectionClassHasSpellcasting(
+  selection: SelectionRef | null,
+  deps: Pick<SharedContextDependencies, "fetchSelectionDocument" | "extractDocumentSlug">
+): Promise<boolean> {
+  if (!selection) {
+    return false;
+  }
+
+  return classDocumentHasSpellcasting(await deps.fetchSelectionDocument(selection));
+}
+
 export async function hasDedicationFeatInContext(args: HasDedicationContextDependencies): Promise<boolean> {
   const projected = await buildProjectedArchetypeFeats(args);
   return projected.some((feat) => feat.traits.includes("dedication"));

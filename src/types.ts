@@ -1,9 +1,10 @@
 import type { SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
-import type { PendingStep } from "./wayfinder/domain/step-types.js";
+import type { CampaignFeatFilter as CampaignFeatFilterType, PendingStep } from "./wayfinder/domain/step-types.js";
 
 export type { DraftDecision, SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
 export type {
   BoostStep,
+  CampaignFeatFilter,
   CampaignFeatMeta,
   ChoicePredicate,
   ClassArchetypeMeta,
@@ -134,12 +135,16 @@ export interface CampaignFeatSlotSnapshot {
   id: string;
   level: number;
   fulfilled: boolean;
+  filter: CampaignFeatFilterSnapshot | null;
 }
+
+export type CampaignFeatFilterSnapshot = CampaignFeatFilterType;
 
 export interface CampaignFeatSectionSnapshot {
   id: string;
   label: string;
   supported: string[];
+  filter: CampaignFeatFilterSnapshot;
   slots: CampaignFeatSlotSnapshot[];
 }
 

@@ -1481,19 +1481,41 @@ describe("actor-updater selection application", () => {
         sectionLabel: "Ancestry Paragon",
         groupSlotId: "ancestry-paragon-third-level-slot",
         supported: ["ancestry"],
+        filter: { categories: ["ancestry"], traits: [], omitTraits: [], conjunction: "or" },
       },
     };
 
     await insertFeatSelection(actor, selection, step, {
       fetchSelectionDocument,
-      createEmbeddedSource: async () => ({ name: "Cooperative Nature", type: "feat", system: {}, flags: {} }),
+      createEmbeddedSource: async () => ({
+        name: "Cooperative Nature",
+        type: "feat",
+        system: { category: "ancestry", traits: { value: ["human"] } },
+        flags: {},
+      }),
+      resolveCampaignFeatSlot: () => ({
+        sectionId: "xdy_ancestryparagon",
+        supported: ["ancestry"],
+        filter: { categories: ["ancestry"], traits: [], omitTraits: [], conjunction: "or" },
+        slot: {
+          id: "ancestry-paragon-third-level-slot",
+          level: 3,
+          fulfilled: false,
+          filter: null,
+        },
+      }),
     });
 
     expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
       {
         name: "Cooperative Nature",
         type: "feat",
-        system: { location: "ancestry-paragon-third-level-slot", level: { taken: 3 } },
+        system: {
+          category: "ancestry",
+          traits: { value: ["human"] },
+          location: "ancestry-paragon-third-level-slot",
+          level: { taken: 3 },
+        },
         flags: {},
       },
     ]);
@@ -1518,15 +1540,108 @@ describe("actor-updater selection application", () => {
         sectionLabel: "Ancestry Paragon",
         groupSlotId: "xdy_ancestryparagon-1",
         supported: ["ancestry"],
+        filter: { categories: ["ancestry"], traits: [], omitTraits: [], conjunction: "or" },
       },
     };
 
     await expect(
       insertFeatSelection(actor, selection, step, {
         fetchSelectionDocument,
-        createEmbeddedSource: async () => ({ name: "Cooperative Nature", type: "feat", system: {}, flags: {} }),
+        createEmbeddedSource: async () => ({
+          name: "Cooperative Nature",
+          type: "feat",
+          system: { category: "ancestry", traits: { value: ["human"] } },
+          flags: {},
+        }),
+        resolveCampaignFeatSlot: () => null,
       })
-    ).rejects.toThrow("campaign feat group is unavailable");
+    ).rejects.toThrow("campaign feat slot configuration changed");
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("refuses a stale campaign slot id after PF2E renames the configured slot", async () => {
+    const actor = {
+      feats: { get: () => ({ slots: {} }) },
+      createEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const selection = selectionRef(
+      "campaign-feat-xdy_ancestryparagon-level-3",
+      "feat",
+      "cooperative-nature",
+      "Cooperative Nature",
+      "ancestry"
+    );
+    const step: PendingStep = {
+      ...featStep("campaign-feat-xdy_ancestryparagon-level-3", "campaign-feat", 3, ["ancestry"]),
+      campaignFeat: {
+        sectionId: "xdy_ancestryparagon",
+        sectionLabel: "Ancestry Paragon",
+        groupSlotId: "old-slot-id",
+        supported: ["ancestry"],
+        filter: { categories: ["ancestry"], traits: [], omitTraits: [], conjunction: "or" },
+      },
+    };
+
+    await expect(
+      insertFeatSelection(actor, selection, step, {
+        fetchSelectionDocument,
+        createEmbeddedSource: async () => ({
+          name: "Cooperative Nature",
+          type: "feat",
+          system: { category: "ancestry", traits: { value: ["human"] } },
+          flags: {},
+        }),
+        resolveCampaignFeatSlot: () => null,
+      })
+    ).rejects.toThrow("campaign feat slot configuration changed");
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("rechecks current PF2E campaign filters before embedding a drafted feat", async () => {
+    const actor = {
+      feats: { get: () => ({ slots: {} }) },
+      createEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const selection = selectionRef(
+      "campaign-feat-filtered-level-1",
+      "feat",
+      "rare-human-feat",
+      "Rare Human Feat",
+      "ancestry"
+    );
+    const step: PendingStep = {
+      ...featStep("campaign-feat-filtered-level-1", "campaign-feat", 1, ["ancestry"]),
+      campaignFeat: {
+        sectionId: "filtered",
+        sectionLabel: "Filtered",
+        groupSlotId: "filtered-1",
+        supported: ["ancestry"],
+        filter: { categories: ["ancestry"], traits: ["human"], omitTraits: [], conjunction: "and" },
+      },
+    };
+
+    await expect(
+      insertFeatSelection(actor, selection, step, {
+        fetchSelectionDocument,
+        createEmbeddedSource: async () => ({
+          name: "Rare Human Feat",
+          type: "feat",
+          system: { category: "ancestry", traits: { value: ["human", "rare"] } },
+          flags: {},
+        }),
+        resolveCampaignFeatSlot: () => ({
+          sectionId: "filtered",
+          supported: ["ancestry"],
+          filter: {
+            categories: ["ancestry"],
+            traits: ["human"],
+            omitTraits: ["rare"],
+            conjunction: "and",
+          },
+          slot: { id: "filtered-1", level: 1, fulfilled: false, filter: null },
+        }),
+      })
+    ).rejects.toThrow("no longer matches PF2E's current slot filters");
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
   });
 

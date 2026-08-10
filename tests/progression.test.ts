@@ -193,10 +193,12 @@ describe("progression", () => {
       id: "xdy_ancestryparagon",
       label: "Ancestry Paragon",
       supported: ["ancestry"],
+      filter: { categories: ["ancestry"], traits: [], omitTraits: [], conjunction: "or" as const },
       slots: [1, 3, 7, 11, 15, 19].map((level) => ({
         id: `xdy_ancestryparagon-${level}`,
         level,
         fulfilled: false,
+        filter: null,
       })),
     };
     const level3 = buildSteps(makeSnapshot({ campaignFeatSections: [section] }), 1, 3);
@@ -234,7 +236,8 @@ describe("progression", () => {
             id: "xdy_dualclass",
             label: "Dual Class",
             supported: ["class"],
-            slots: [{ id: "xdy_dualclass-1", level: 1, fulfilled: false }],
+            filter: { categories: ["class"], traits: [], omitTraits: [], conjunction: "or" },
+            slots: [{ id: "xdy_dualclass-1", level: 1, fulfilled: false, filter: null }],
           },
         ],
       }),
@@ -254,9 +257,10 @@ describe("progression", () => {
             id: "bonus-ancestry",
             label: "Bonus Ancestry",
             supported: ["ancestry"],
+            filter: { categories: ["ancestry"], traits: [], omitTraits: [], conjunction: "or" },
             slots: [
-              { id: "bonus-ancestry-first", level: 1, fulfilled: false },
-              { id: "bonus-ancestry-second", level: 1, fulfilled: false },
+              { id: "bonus-ancestry-first", level: 1, fulfilled: false, filter: null },
+              { id: "bonus-ancestry-second", level: 1, fulfilled: false, filter: null },
             ],
           },
         ],
@@ -270,6 +274,56 @@ describe("progression", () => {
       "campaign-feat-bonus-ancestry-bonus-ancestry-second-level-1",
     ]);
     expect(steps.every((step) => step.slotId.endsWith("-level-1"))).toBe(true);
+  });
+
+  it("prioritizes a campaign slot filter over its group filter", () => {
+    const [step] = buildSteps(
+      makeSnapshot({
+        campaignFeatSections: [
+          {
+            id: "mixed",
+            label: "Mixed",
+            supported: ["ancestry", "class"],
+            filter: {
+              categories: ["ancestry", "class"],
+              traits: ["human", "fighter"],
+              omitTraits: ["rare"],
+              conjunction: "or",
+            },
+            slots: [
+              {
+                id: "mixed-1",
+                level: 1,
+                fulfilled: false,
+                filter: {
+                  categories: ["ancestry"],
+                  traits: ["human"],
+                  omitTraits: ["legacy"],
+                  conjunction: "and",
+                },
+              },
+            ],
+          },
+        ],
+      }),
+      1,
+      1
+    ).filter((candidate) => candidate.slotKind === "campaign-feat");
+
+    expect(step?.filters).toEqual({
+      itemType: "feat",
+      featTypes: ["ancestry"],
+      traits: ["human"],
+      omitTraits: ["legacy"],
+      traitConjunction: "and",
+      maxLevel: 1,
+    });
+    expect(step?.campaignFeat?.filter).toEqual({
+      categories: ["ancestry"],
+      traits: ["human"],
+      omitTraits: ["legacy"],
+      conjunction: "and",
+    });
   });
 
   it("schedules standard and gradual ability boosts through level 20 for a blank build", () => {

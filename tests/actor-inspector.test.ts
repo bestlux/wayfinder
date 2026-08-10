@@ -127,7 +127,24 @@ describe("actor-inspector", () => {
               id: "xdy_ancestryparagon",
               label: "Ancestry Paragon",
               supported: ["ancestry"],
-              slots: [1, 3, 7, 11, 15, 19],
+              filter: {
+                categories: ["ancestry"],
+                traits: ["human"],
+                omitTraits: ["rare"],
+                conjunction: "and",
+              },
+              slots: [
+                {
+                  id: "xdy_ancestryparagon-1",
+                  level: 1,
+                  filter: { categories: ["ancestry"], traits: ["human"], conjunction: "and" },
+                },
+                3,
+                7,
+                11,
+                15,
+                19,
+              ],
             },
           ]
         : false
@@ -143,11 +160,18 @@ describe("actor-inspector", () => {
             id: "xdy_ancestryparagon",
             label: "Ancestry Paragon",
             supported: ["ancestry"],
+            filter: {
+              categories: ["ancestry"],
+              traits: ["human"],
+              omitTraits: ["rare"],
+              conjunction: "and",
+            },
             slots: {
               "xdy_ancestryparagon-1": {
                 id: "xdy_ancestryparagon-1",
                 level: 1,
                 feat: {},
+                filter: { categories: ["ancestry"], traits: ["human"], conjunction: "and" },
               },
             },
           },
@@ -160,13 +184,29 @@ describe("actor-inspector", () => {
         id: "xdy_ancestryparagon",
         label: "Ancestry Paragon",
         supported: ["ancestry"],
+        filter: {
+          categories: ["ancestry"],
+          traits: ["human"],
+          omitTraits: ["rare"],
+          conjunction: "and",
+        },
         slots: [
-          { id: "xdy_ancestryparagon-1", level: 1, fulfilled: true },
-          { id: "xdy_ancestryparagon-3", level: 3, fulfilled: false },
-          { id: "xdy_ancestryparagon-7", level: 7, fulfilled: false },
-          { id: "xdy_ancestryparagon-11", level: 11, fulfilled: false },
-          { id: "xdy_ancestryparagon-15", level: 15, fulfilled: false },
-          { id: "xdy_ancestryparagon-19", level: 19, fulfilled: false },
+          {
+            id: "xdy_ancestryparagon-1",
+            level: 1,
+            fulfilled: true,
+            filter: {
+              categories: ["ancestry"],
+              traits: ["human"],
+              omitTraits: [],
+              conjunction: "and",
+            },
+          },
+          { id: "xdy_ancestryparagon-3", level: 3, fulfilled: false, filter: null },
+          { id: "xdy_ancestryparagon-7", level: 7, fulfilled: false, filter: null },
+          { id: "xdy_ancestryparagon-11", level: 11, fulfilled: false, filter: null },
+          { id: "xdy_ancestryparagon-15", level: 15, fulfilled: false, filter: null },
+          { id: "xdy_ancestryparagon-19", level: 19, fulfilled: false, filter: null },
         ],
       },
     ]);
@@ -226,6 +266,28 @@ describe("actor-inspector", () => {
       },
     });
     expect(inspectActor(actor).campaignFeatSections).toEqual([]);
+  });
+
+  it("rejects every ambiguous campaign section sharing a normalized id", () => {
+    vi.stubGlobal("game", {
+      settings: {
+        get: () => [
+          { id: " duplicate ", label: "First", supported: ["ancestry"], slots: [1] },
+          { id: "duplicate", label: "Second", supported: ["class"], slots: [1] },
+          { id: "unique", label: "Unique", supported: ["ancestry"], slots: [1] },
+        ],
+      },
+    });
+
+    const snapshot = inspectActor({
+      items: [],
+      feats: new Map([
+        ["duplicate", { id: "duplicate", label: "Duplicate", supported: ["ancestry"], slots: {} }],
+        ["unique", { id: "unique", label: "Unique", supported: ["ancestry"], slots: {} }],
+      ]),
+    });
+
+    expect(snapshot.campaignFeatSections.map((section) => section.id)).toEqual(["unique"]);
   });
 });
 

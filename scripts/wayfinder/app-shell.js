@@ -17,7 +17,7 @@ import { buildSkillPane } from "./application/build-skill-pane-service.js";
 import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection, setTrainingRuleSelection, syncLanguageChoiceSelections, syncSkillTrainingSelections, toggleAncestryMode, toggleBoostChoice, toggleSkillIncreaseSelection, toggleTrainingSkillSelection, toggleVoluntaryChoice, toggleVoluntaryEnabled, toggleVoluntaryLegacy, } from "./application/draft-adjustment-service.js";
 import { applyDraftLifecycle, buildSaveDraftUpdate, createClearedDraftResult, } from "./application/draft-lifecycle-service.js";
 import { buildExistingCharacterHistory, withExistingCharacterHistory, } from "./application/existing-character-history-service.js";
-import { buildContextNote, buildOptionContext, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
+import { buildContextNote, buildOptionContext, resolveSelectionClassHasSpellcasting, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
 import { chooseSelectionOption, selectClassArchetypeValue, selectClassChoiceValue, selectSingletonChoiceValue, toggleLanguageChoiceValue, toggleSpellChoiceSelection, } from "./application/selection-command-service.js";
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
 import { buildWayfinderContext } from "./application/wayfinder-context-service.js";
@@ -440,6 +440,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 extractDocumentSlug,
             }),
             resolveSelectionSlug: (selection) => resolveSelectionSlug(selection, {
+                fetchSelectionDocument,
+                extractDocumentSlug,
+            }),
+            resolveSelectionClassHasSpellcasting: (selection) => resolveSelectionClassHasSpellcasting(selection, {
                 fetchSelectionDocument,
                 extractDocumentSlug,
             }),

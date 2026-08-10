@@ -1,16 +1,18 @@
+import { campaignFeatAllowsCandidate, resolveCampaignFeatSlotSetting, } from "../campaign-feat-sections.js";
 import { fetchSelectionDocument } from "../pack/access.js";
 import { stampSelectionFlags } from "./selection-flags.js";
 import { createEmbeddedSource } from "./selection-source-application.js";
 const DEFAULT_INSERT_DEPS = {
     fetchSelectionDocument,
     createEmbeddedSource: (selection, draft, steps) => createEmbeddedSource(selection, draft, steps),
+    resolveCampaignFeatSlot: resolveCampaignFeatSlotSetting,
 };
 export async function insertFeatSelection(actor, selection, step, deps = DEFAULT_INSERT_DEPS, draft, steps = []) {
     const source = await deps.createEmbeddedSource(selection, draft, steps);
     if (!source) {
         return;
     }
-    const slotData = resolveFeatSlotData(actor, selection, step);
+    const slotData = resolveFeatSlotData(actor, selection, step, source, deps.resolveCampaignFeatSlot ?? resolveCampaignFeatSlotSetting);
     if (slotData) {
         applyFeatSlotData(source, slotData, step);
     }
@@ -28,7 +30,7 @@ function applyFeatSlotData(source, slotData, step) {
         system.level.taken = step.level;
     }
 }
-function resolveFeatSlotData(actor, selection, step) {
+function resolveFeatSlotData(actor, selection, step, source, resolveCampaignFeatSlot) {
     const groupId = resolveFeatGroupId(selection, step);
     if (!groupId) {
         return null;
@@ -36,7 +38,17 @@ function resolveFeatSlotData(actor, selection, step) {
     const group = (typeof actor?.feats?.get === "function" ? actor.feats.get(groupId) : actor?.feats?.[groupId]);
     if (step?.slotKind === "campaign-feat") {
         const campaignFeat = step.campaignFeat;
-        if (!campaignFeat || !group) {
+        if (!campaignFeat) {
+            throw new Error("PF2E's campaign feat metadata is unavailable; the draft cannot be applied safely.");
+        }
+        const authority = resolveCampaignFeatSlot(campaignFeat.sectionId, campaignFeat.groupSlotId);
+        if (!authority || authority.slot.level !== step.level) {
+            throw new Error("PF2E's campaign feat slot configuration changed; the draft cannot be applied safely.");
+        }
+        if (!campaignFeatAllowsCandidate(authority.supported, authority.filter, featCategory(source), featTraits(source))) {
+            throw new Error("The campaign feat no longer matches PF2E's current slot filters; the draft cannot be applied safely.");
+        }
+        if (!group) {
             throw new Error("PF2E's campaign feat group is unavailable; the draft cannot be applied safely.");
         }
         const slot = group.slots?.[campaignFeat.groupSlotId];
@@ -67,6 +79,25 @@ function resolveFeatSlotData(actor, selection, step) {
         groupId,
         slotId: matchingLevel?.id ?? firstOpen?.id ?? null,
     };
+}
+function featCategory(source) {
+    const system = source.system;
+    const category = normalizedString(system?.category);
+    if (category) {
+        return category;
+    }
+    const featType = system?.featType;
+    return normalizedString(featType?.value);
+}
+function featTraits(source) {
+    const system = source.system;
+    const traits = system?.traits;
+    return Array.isArray(traits?.value)
+        ? Array.from(new Set(traits.value.map(normalizedString).filter((value) => !!value)))
+        : [];
+}
+function normalizedString(value) {
+    return typeof value === "string" && value.trim().length > 0 ? value.trim().toLowerCase() : null;
 }
 function resolveFeatGroupId(selection, step) {
     switch (step?.slotKind) {

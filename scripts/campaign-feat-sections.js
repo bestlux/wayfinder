@@ -30,6 +30,37 @@ export function campaignFeatStepId(section, slot) {
     const slotIdentity = sharesLevel ? `-${encodeURIComponent(slot.id)}` : "";
     return `campaign-feat-${section.id}${slotIdentity}-level-${slot.level}`;
 }
+export function resolveCampaignFeatSlotSetting(sectionId, slotId) {
+    const section = readCampaignFeatSectionSettings().find((candidate) => candidate.id === sectionId);
+    const slot = section?.slots.find((candidate) => candidate.id === slotId);
+    if (!section || !slot) {
+        return null;
+    }
+    return {
+        sectionId: section.id,
+        supported: section.supported,
+        filter: slot.filter ?? section.filter,
+        slot,
+    };
+}
+export function campaignFeatAllowsCandidate(supported, filter, category, traits) {
+    if (supported.length > 0 && (!category || !supported.includes(category))) {
+        return false;
+    }
+    if (filter.categories.length > 0 && (!category || !filter.categories.includes(category))) {
+        return false;
+    }
+    const normalizedTraits = new Set(traits.map(normalizeIdentifier).filter(Boolean));
+    if (filter.omitTraits.some((trait) => normalizedTraits.has(trait))) {
+        return false;
+    }
+    if (filter.traits.length === 0) {
+        return true;
+    }
+    return filter.conjunction === "and"
+        ? filter.traits.every((trait) => normalizedTraits.has(trait))
+        : filter.traits.some((trait) => normalizedTraits.has(trait));
+}
 function campaignFeatGroups(actor, configuredSections) {
     const feats = actor?.feats;
     if (!feats || (typeof feats !== "object" && typeof feats !== "function")) {
@@ -68,7 +99,13 @@ function normalizeActorSection(group, configured) {
     if (!id || !label) {
         return [];
     }
-    const actorSlots = normalizeActorSlots(group.slots, id);
+    const supported = normalizeSupported(group.supported);
+    const effectiveSupported = supported.length > 0 ? supported : (configured?.supported ?? []);
+    const groupFilter = normalizeFilter(group.filter, effectiveSupported) ?? configured?.filter;
+    if (!groupFilter) {
+        return [];
+    }
+    const actorSlots = normalizeActorSlots(group.slots, id, effectiveSupported);
     const slotsById = new Map();
     for (const slot of configured?.slots ?? []) {
         slotsById.set(slot.id, slot);
@@ -76,12 +113,12 @@ function normalizeActorSection(group, configured) {
     for (const slot of actorSlots) {
         slotsById.set(slot.id, slot);
     }
-    const supported = normalizeSupported(group.supported);
     return [
         {
             id,
             label,
-            supported: supported.length > 0 ? supported : (configured?.supported ?? []),
+            supported: effectiveSupported,
+            filter: groupFilter,
             slots: Array.from(slotsById.values()).sort((left, right) => left.level - right.level || left.id.localeCompare(right.id)),
         },
     ];
@@ -94,7 +131,11 @@ function readCampaignFeatSectionSettings() {
             return [];
         }
         const value = settings.get("pf2e", "campaignFeatSections");
-        return Array.isArray(value) ? value.flatMap(normalizeSettingSection) : [];
+        if (!Array.isArray(value)) {
+            return [];
+        }
+        const duplicateIds = duplicateSectionIds(value);
+        return value.flatMap(normalizeSettingSection).filter((section) => !duplicateIds.has(section.id));
     }
     catch {
         return [];
@@ -109,22 +150,25 @@ function normalizeSettingSection(value) {
     const label = stringValue(section.label);
     const supportedIsValid = section.supported === undefined ||
         (Array.isArray(section.supported) && section.supported.every((entry) => stringValue(entry).length > 0));
-    if (!id || !label || CORE_FEAT_GROUP_IDS.has(id) || !supportedIsValid || !Array.isArray(section.slots)) {
+    const supported = normalizeSupported(section.supported);
+    const filter = normalizeFilter(section.filter, supported);
+    if (!id || !label || CORE_FEAT_GROUP_IDS.has(id) || !supportedIsValid || !filter || !Array.isArray(section.slots)) {
         return [];
     }
-    const slots = section.slots.flatMap((slot) => normalizeConfiguredSlot(slot, id));
+    const slots = section.slots.flatMap((slot) => normalizeConfiguredSlot(slot, id, supported));
     return slots.length === section.slots.length && slots.length > 0
         ? [
             {
                 id,
                 label,
-                supported: normalizeSupported(section.supported),
+                supported,
+                filter,
                 slots,
             },
         ]
         : [];
 }
-function normalizeActorSlots(value, groupId) {
+function normalizeActorSlots(value, groupId, supported) {
     if (!value || typeof value !== "object") {
         return [];
     }
@@ -134,7 +178,8 @@ function normalizeActorSlots(value, groupId) {
         }
         const record = slot;
         const level = campaignLevel(record.level);
-        if (level === null) {
+        const filter = record.filter === undefined ? null : normalizeFilter(record.filter, supported);
+        if (level === null || (record.filter !== undefined && !filter)) {
             return [];
         }
         return [
@@ -142,19 +187,21 @@ function normalizeActorSlots(value, groupId) {
                 id: stringValue(record.id) || `${groupId}-${level}`,
                 level,
                 fulfilled: Boolean(record.feat),
+                filter,
             },
         ];
     });
 }
-function normalizeConfiguredSlot(value, groupId) {
+function normalizeConfiguredSlot(value, groupId, supported) {
     const record = value && typeof value === "object" ? value : null;
     const rawLevel = record?.level ?? value;
     const level = typeof rawLevel === "number" ? campaignLevel(rawLevel) : null;
     const configuredId = stringValue(record?.id);
+    const filter = record?.filter === undefined ? null : normalizeFilter(record.filter, supported);
     if (record && record.id !== undefined && !configuredId) {
         return [];
     }
-    if (level === null) {
+    if (level === null || (record?.filter !== undefined && !filter)) {
         return [];
     }
     return [
@@ -162,13 +209,55 @@ function normalizeConfiguredSlot(value, groupId) {
             id: configuredId || `${groupId}-${level}`,
             level,
             fulfilled: false,
+            filter,
         },
     ];
 }
 function normalizeSupported(value) {
     return Array.isArray(value)
-        ? Array.from(new Set(value.map(stringValue).filter((entry) => entry.length > 0)))
+        ? Array.from(new Set(value.map(normalizeIdentifier).filter((entry) => entry.length > 0)))
         : [];
+}
+function normalizeFilter(value, fallbackCategories) {
+    if (value === undefined) {
+        return {
+            categories: [...fallbackCategories],
+            traits: [],
+            omitTraits: [],
+            conjunction: "or",
+        };
+    }
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value;
+    const categories = normalizeFilterList(record.categories, fallbackCategories);
+    const traits = normalizeFilterList(record.traits, []);
+    const omitTraits = normalizeFilterList(record.omitTraits, []);
+    const conjunction = record.conjunction ?? "or";
+    if (!categories || !traits || !omitTraits || (conjunction !== "or" && conjunction !== "and")) {
+        return null;
+    }
+    return { categories, traits, omitTraits, conjunction };
+}
+function normalizeFilterList(value, fallback) {
+    if (value === undefined) {
+        return [...fallback];
+    }
+    if (!Array.isArray(value) || value.some((entry) => !normalizeIdentifier(entry))) {
+        return null;
+    }
+    return Array.from(new Set(value.map(normalizeIdentifier)));
+}
+function duplicateSectionIds(values) {
+    const counts = new Map();
+    for (const value of values) {
+        const id = stringValue(value?.id);
+        if (id) {
+            counts.set(id, (counts.get(id) ?? 0) + 1);
+        }
+    }
+    return new Set(Array.from(counts).flatMap(([id, count]) => (count > 1 ? [id] : [])));
 }
 function campaignLevel(value) {
     const numeric = Number(value);
@@ -176,5 +265,8 @@ function campaignLevel(value) {
 }
 function stringValue(value) {
     return typeof value === "string" ? value.trim() : "";
+}
+function normalizeIdentifier(value) {
+    return stringValue(value).toLowerCase();
 }
 //# sourceMappingURL=campaign-feat-sections.js.map

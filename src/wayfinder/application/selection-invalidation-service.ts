@@ -67,12 +67,14 @@ export function createSelectionInvalidationService(
         cleared += invalidateByPrefix(SLOT_PREFIXES.classChoice).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.skillTraining).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.spellChoice).length;
+        cleared += invalidateByPrefix(SLOT_PREFIXES.ancestryFeat).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.classFeat).length;
         cleared += invalidateByPrefix(SLOT_PREFIXES.archetypeFeat).length;
         cleared += invalidateSingletonChoicesBySourceSync("class").length;
         cleared += invalidateSingletonChoicesBySourceSync("deity").length;
         cleared += invalidateGrantSelectionsByDependencySync("class").length;
         cleared += invalidateFlagChoicesByDependencySync("class").length;
+        cleared += invalidateCampaignFeatSelectionsByFeatTypeSync("ancestry").length;
       } else if (getSlotIdKind(slotId) === "class-archetype") {
         cleared += invalidateByPrefix(SLOT_PREFIXES.archetypeFeat).length;
       } else if (getSlotIdKind(slotId) === "ancestry-feat") {

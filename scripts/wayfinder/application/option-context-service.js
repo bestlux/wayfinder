@@ -61,6 +61,12 @@ export async function resolveSelectionSlug(selection, deps) {
     const document = await deps.fetchSelectionDocument(selection);
     return deps.extractDocumentSlug(document);
 }
+export async function resolveSelectionClassHasSpellcasting(selection, deps) {
+    if (!selection) {
+        return false;
+    }
+    return classDocumentHasSpellcasting(await deps.fetchSelectionDocument(selection));
+}
 export async function hasDedicationFeatInContext(args) {
     const projected = await buildProjectedArchetypeFeats(args);
     return projected.some((feat) => feat.traits.includes("dedication"));

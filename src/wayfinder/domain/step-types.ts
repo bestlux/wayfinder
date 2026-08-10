@@ -69,8 +69,18 @@ export interface StepFilters {
   uuidPredicates?: Record<string, ChoicePredicate[]>;
   contextPredicate?: ChoicePredicate[];
   featTypes?: string[];
+  traits?: string[];
+  omitTraits?: string[];
+  traitConjunction?: "or" | "and";
   maxLevel?: number;
   predicate?: ChoicePredicate[];
+}
+
+export interface CampaignFeatFilter {
+  categories: string[];
+  traits: string[];
+  omitTraits: string[];
+  conjunction: "or" | "and";
 }
 
 export interface CampaignFeatMeta {
@@ -78,6 +88,7 @@ export interface CampaignFeatMeta {
   sectionLabel: string;
   groupSlotId: string;
   supported: string[];
+  filter: CampaignFeatFilter;
 }
 
 export interface ClassBranchMeta {

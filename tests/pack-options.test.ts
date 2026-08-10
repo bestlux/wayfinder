@@ -147,6 +147,7 @@ describe("pack options dependency filtering", () => {
           sectionLabel: "Ancestry Paragon",
           groupSlotId: "xdy_ancestryparagon-1",
           supported: ["ancestry"],
+          filter: { categories: ["ancestry"], traits: [], omitTraits: [], conjunction: "or" },
         },
       }
     );
@@ -181,6 +182,7 @@ describe("pack options dependency filtering", () => {
             sectionLabel: id,
             groupSlotId: `${id}-1`,
             supported,
+            filter: { categories: supported, traits: [], omitTraits: [], conjunction: "or" },
           },
         }
       );
@@ -192,6 +194,63 @@ describe("pack options dependency filtering", () => {
     expect((await getOptionsForStep(campaignStep(["mythic"], "custom"), context)).map((option) => option.name)).toEqual(
       ["Mythic Feat"]
     );
+  });
+
+  it("applies ancestry legality per candidate in a mixed campaign section", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("cooperative-nature", "Cooperative Nature", "ancestry", ["human"], false),
+      featEntry("sky-herd-guard", "Sky Herd Guard", "ancestry", ["sarangay"], false),
+      featEntry("fighter-feat", "Fighter Feat", "class", ["fighter"], false),
+    ]);
+    const step = createPickItemStep(
+      "campaign-feat",
+      1,
+      "Mixed Campaign",
+      "",
+      { itemType: "feat", featTypes: ["ancestry", "class"], maxLevel: 1 },
+      {
+        slotId: "campaign-feat-mixed-level-1",
+        campaignFeat: {
+          sectionId: "mixed",
+          sectionLabel: "Mixed Campaign",
+          groupSlotId: "mixed-1",
+          supported: ["ancestry", "class"],
+          filter: {
+            categories: ["ancestry", "class"],
+            traits: [],
+            omitTraits: [],
+            conjunction: "or",
+          },
+        },
+      }
+    );
+
+    const options = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      ancestrySlug: "human",
+      ancestryTraits: ["human"],
+      classSlug: "wizard",
+    });
+
+    expect(options.map((option) => option.name)).toEqual(["Cooperative Nature", "Fighter Feat"]);
+  });
+
+  it("enforces native campaign trait inclusion, omission, and conjunction filters", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("human-fighter", "Human Fighter", "class", ["human", "fighter"], false),
+      featEntry("human-only", "Human Only", "class", ["human"], false),
+      featEntry("human-fighter-rare", "Human Fighter Rare", "class", ["human", "fighter", "rare"], false),
+    ]);
+    const step = createPickItemStep("campaign-feat", 1, "Filtered Campaign", "", {
+      itemType: "feat",
+      featTypes: ["class"],
+      traits: ["human", "fighter"],
+      omitTraits: ["rare"],
+      traitConjunction: "and",
+      maxLevel: 1,
+    });
+
+    expect((await getOptionsForStep(step, EMPTY_CONTEXT)).map((option) => option.name)).toEqual(["Human Fighter"]);
   });
 
   it("keeps Human ancestry feats whose ChoiceSet is handled by a follow-up grant choice", async () => {

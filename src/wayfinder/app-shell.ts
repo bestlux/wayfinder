@@ -51,6 +51,7 @@ import {
 import {
   buildContextNote,
   buildOptionContext,
+  resolveSelectionClassHasSpellcasting,
   resolveSelectionSlug,
   resolveSelectionTraits,
 } from "./application/option-context-service.js";
@@ -607,6 +608,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }),
       resolveSelectionSlug: (selection) =>
         resolveSelectionSlug(selection, {
+          fetchSelectionDocument,
+          extractDocumentSlug,
+        }),
+      resolveSelectionClassHasSpellcasting: (selection) =>
+        resolveSelectionClassHasSpellcasting(selection, {
           fetchSelectionDocument,
           extractDocumentSlug,
         }),

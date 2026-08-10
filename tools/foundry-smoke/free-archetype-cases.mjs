@@ -84,6 +84,9 @@ export const freeArchetypeSmokeCases = [
     classFeats: ["Nimble Dodge", "Trap Finder", "Mobility"],
     keyAbility: "dex",
     lockedOutDedication: "Archer Dedication",
+    preferredSelections: {
+      "class-branch-rogues-racket-level-1": ["Thief", "Scoundrel"],
+    },
     preferredSkills: ["acrobatics", "stealth", "thievery", "deception", "diplomacy", "society", "athletics"],
   }),
   freeArchetypeCase({

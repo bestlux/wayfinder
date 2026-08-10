@@ -447,7 +447,7 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
         return;
       }
       const options = await modules.getOptionsForStep(step, optionContext);
-      assertExpectedPickerOptions(options, step, smokeCase);
+      assertExpectedPickerOptions(options, step, smokeCase, optionContext, draft);
       const option = pickOption(options, step, smokeCase);
       if (!option) {
         notes.classifications.push(`${step.slotId}: no live compendium option matched supported filters`);
@@ -623,7 +623,7 @@ function isCurriculumSpellChoiceStep(step) {
   );
 }
 
-function assertExpectedPickerOptions(options, step, smokeCase) {
+function assertExpectedPickerOptions(options, step, smokeCase, optionContext, draft) {
   const expectation = smokeCase.expectedPickerOptions?.[step.slotId];
   if (!expectation) {
     return;
@@ -633,11 +633,21 @@ function assertExpectedPickerOptions(options, step, smokeCase) {
   const missing = (expectation.present ?? []).filter((name) => !optionNames.has(name));
   const forbidden = (expectation.absent ?? []).filter((name) => optionNames.has(name));
   if (missing.length > 0 || forbidden.length > 0) {
+    const available = Array.from(optionNames).sort((left, right) => left.localeCompare(right));
     throw new Error(
       [
         `${step.slotId} picker legality expectation failed.`,
         missing.length > 0 ? `Missing: ${missing.join(", ")}.` : "",
         forbidden.length > 0 ? `Unexpected: ${forbidden.join(", ")}.` : "",
+        `Available (${available.length}): ${available.join(", ") || "none"}.`,
+        `Projected archetypes: ${JSON.stringify(optionContext.projectedArchetypeFeats ?? [])}.`,
+        `Draft feats: ${JSON.stringify(
+          Object.fromEntries(
+            Object.entries(draft.selections)
+              .filter(([, selection]) => selection?.itemType === "feat")
+              .map(([slotId, selection]) => [slotId, selection.name]),
+          ),
+        )}.`,
       ]
         .filter(Boolean)
         .join(" "),
@@ -875,15 +885,17 @@ function isTrainingComplete(draft, step) {
 }
 
 function pickOption(options, step, smokeCase) {
-  const preferred = [
-    ...(smokeCase.preferredSelections?.[step.slotId] ?? []),
-    ...(smokeCase.preferredSelections?.[step.slotKind] ?? []),
-  ];
+  const required = smokeCase.preferredSelections?.[step.slotId] ?? [];
+  const preferred = [...required, ...(smokeCase.preferredSelections?.[step.slotKind] ?? [])];
   for (const name of preferred) {
     const found = options.find((option) => namesMatch(option.name, name));
     if (found) {
       return found;
     }
+  }
+
+  if (required.length > 0) {
+    return null;
   }
 
   if (step.slotKind === "class-feat") {

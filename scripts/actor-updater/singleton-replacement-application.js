@@ -4,14 +4,13 @@ import { selectedClassArchetypeSelection } from "../wayfinder/class-archetype/re
 import { SINGLETON_ITEM_TYPES } from "./selection-constants.js";
 import { createEmbeddedSource } from "./selection-source-application.js";
 export async function replaceSingletonItem(actor, selection, draft, steps, deps) {
-    const existing = listActorItems(actor).filter((item) => item?.type === selection.itemType);
-    const existingIds = existing.map((item) => item.id).filter((id) => typeof id === "string");
-    if (existingIds.length > 0 && typeof actor.deleteEmbeddedDocuments === "function") {
-        await actor.deleteEmbeddedDocuments("Item", existingIds);
-    }
     const source = await createEmbeddedSource(selection, draft, steps, deps);
-    if (source && typeof actor.createEmbeddedDocuments === "function") {
-        await actor.createEmbeddedDocuments("Item", [source]);
+    if (!source) {
+        throw unresolvedSingletonSourceError(selection);
+    }
+    const existing = listActorItems(actor).filter((item) => item?.type === selection.itemType);
+    if (typeof actor.createEmbeddedDocuments === "function") {
+        await createSingletonReplacements(actor, [source], existing, selection.name);
     }
 }
 export async function replaceSingletonItems(actor, selections, draft, steps, deps) {
@@ -23,17 +22,117 @@ export async function replaceSingletonItems(actor, selections, draft, steps, dep
     const classArchetypeSelection = replacesClass ? selectedClassArchetypeSelection(draft) : null;
     const batchedSelections = [...singletonSelections, ...(classArchetypeSelection ? [classArchetypeSelection] : [])];
     const selectedTypes = new Set(singletonSelections.map((selection) => selection.itemType));
-    const sources = (await Promise.all(batchedSelections.map((selection) => createEmbeddedSource(selection, draft, steps, deps)))).filter((source) => !!source);
+    const preparedSources = await Promise.all(batchedSelections.map(async (selection) => ({
+        selection,
+        source: await createEmbeddedSource(selection, draft, steps, deps),
+    })));
+    const unresolvedSelection = preparedSources.find(({ source }) => !source)?.selection;
+    if (unresolvedSelection) {
+        throw unresolvedSingletonSourceError(unresolvedSelection);
+    }
+    const sources = preparedSources.map(({ source }) => source);
     const existing = listActorItems(actor).filter((item) => selectedTypes.has(item?.type ?? "") ||
         (replacesClass &&
             typeof item?.flags?.[MODULE_ID]?.slotId === "string" &&
             item.flags[MODULE_ID].slotId.startsWith("class-archetype-")));
-    const existingIds = existing.map((item) => item.id).filter((id) => typeof id === "string");
-    if (existingIds.length > 0 && typeof actor.deleteEmbeddedDocuments === "function") {
-        await actor.deleteEmbeddedDocuments("Item", existingIds);
-    }
     if (sources.length > 0 && typeof actor.createEmbeddedDocuments === "function") {
-        await actor.createEmbeddedDocuments("Item", sources);
+        await createSingletonReplacements(actor, sources, existing, singletonSelections.map(({ name }) => name).join(", "));
     }
+}
+async function createSingletonReplacements(actor, sources, existing, replacementName) {
+    const existingSources = existing.map(snapshotEmbeddedItemSource);
+    const requestedSourceIds = new Set(sources.map(embeddedSourceId).filter((id) => !!id));
+    const obsoleteNonSingletonIds = existing
+        .filter((item) => !SINGLETON_ITEM_TYPES.has(item.type ?? ""))
+        .map((item) => item.id)
+        .filter((id) => typeof id === "string");
+    let createdItems = [];
+    try {
+        const created = await actor.createEmbeddedDocuments?.("Item", sources);
+        createdItems = created ?? [];
+        const createdSourceIds = new Set((created ?? []).map(embeddedSourceId).filter((id) => !!id));
+        const missingSourceId = sources.map(embeddedSourceId).find((id) => !id || !createdSourceIds.has(id));
+        if (missingSourceId !== undefined) {
+            throw new Error(`Cannot replace ${replacementName}: PF2E did not create every selected item${missingSourceId ? ` (${missingSourceId})` : ""}.`);
+        }
+        if (obsoleteNonSingletonIds.length > 0) {
+            if (typeof actor.deleteEmbeddedDocuments !== "function") {
+                throw new Error(`Cannot replace ${replacementName}: actor cannot remove the previous class archetype.`);
+            }
+            await actor.deleteEmbeddedDocuments("Item", obsoleteNonSingletonIds);
+        }
+    }
+    catch (creationError) {
+        try {
+            await compensateSingletonReplacement(actor, requestedSourceIds, createdItems, existing, existingSources);
+        }
+        catch (compensationError) {
+            throw new AggregateError([creationError, compensationError], `Cannot replace ${replacementName}, and restoring the actor's previous selections also failed.`, { cause: compensationError });
+        }
+        throw creationError;
+    }
+}
+async function compensateSingletonReplacement(actor, requestedSourceIds, createdItems, existingItems, existingSources) {
+    const originalIds = new Set(existingItems.map((item) => item.id).filter((id) => typeof id === "string"));
+    const currentItems = listActorItems(actor);
+    const currentIds = new Set(currentItems.map((item) => item.id).filter((id) => typeof id === "string"));
+    const originalStateIsIntact = [...originalIds].every((id) => currentIds.has(id));
+    const replacementIds = new Set([...createdItems, ...currentItems]
+        .filter((item) => {
+        const sourceId = embeddedSourceId(item);
+        return ((typeof item.id === "string" && originalIds.has(item.id)) || (!!sourceId && requestedSourceIds.has(sourceId)));
+    })
+        .map((item) => item.id)
+        .filter((id) => typeof id === "string"));
+    const createdReplacementIds = [...replacementIds].filter((id) => !originalIds.has(id));
+    if (originalStateIsIntact && createdReplacementIds.length === 0) {
+        return;
+    }
+    let cleanupError = null;
+    if (replacementIds.size > 0) {
+        try {
+            if (typeof actor.deleteEmbeddedDocuments !== "function") {
+                throw new Error("Actor cannot remove partially created singleton replacements.");
+            }
+            await actor.deleteEmbeddedDocuments("Item", [...replacementIds]);
+        }
+        catch (error) {
+            cleanupError = error;
+        }
+    }
+    if (existingSources.length > 0) {
+        try {
+            await actor.createEmbeddedDocuments?.("Item", existingSources);
+        }
+        catch (restoreError) {
+            throw new AggregateError([...(cleanupError ? [cleanupError] : []), restoreError], "Could not fully restore the actor's previous singleton selections.", { cause: restoreError });
+        }
+    }
+    if (cleanupError) {
+        throw new Error("Could not remove partially created singleton replacements.", { cause: cleanupError });
+    }
+}
+function snapshotEmbeddedItemSource(item) {
+    const toObject = item.toObject;
+    if (typeof toObject === "function") {
+        return toObject.call(item);
+    }
+    const source = { ...item, _id: item.id };
+    delete source.id;
+    return source;
+}
+function embeddedSourceId(source) {
+    if (typeof source.sourceId === "string") {
+        return source.sourceId ?? null;
+    }
+    const coreSourceId = source.flags?.core?.sourceId;
+    if (typeof coreSourceId === "string") {
+        return coreSourceId;
+    }
+    const compendiumSource = source._stats?.compendiumSource;
+    return typeof compendiumSource === "string" ? compendiumSource : null;
+}
+function unresolvedSingletonSourceError(selection) {
+    return new Error(`Cannot replace ${selection.name}: source document ${selection.uuid} could not be resolved.`);
 }
 //# sourceMappingURL=singleton-replacement-application.js.map

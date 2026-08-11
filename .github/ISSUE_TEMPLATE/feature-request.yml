@@ -1,0 +1,34 @@
+name: Feature request or suggestion
+description: Suggest an improvement to Wayfinder's character-building workflow.
+title: "[Suggestion]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing an idea. GitHub issues are public, so please do not include private player, actor, or world information.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem or friction did you encounter?
+      description: Describe the moment in the character-building workflow, not just the proposed feature.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What outcome would help?
+      description: Tell us what you expected Wayfinder to make easier or clearer.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional. What do you do today, or what other approach might work?
+  - type: input
+    id: context
+    attributes:
+      label: Relevant character or table context
+      description: Optional. Include class, level, variant rules, or experience level without private information.

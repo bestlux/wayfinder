@@ -13,7 +13,7 @@ import {
 } from "../src/actor-updater/selection-application";
 import { MODULE_ID } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
-import type { ActorLike, EmbeddedItemSource } from "../src/shared/actor-model";
+import type { ActorItemLike, ActorLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import type { PendingStep, SelectionRef } from "../src/types";
 import { createClassArchetypeStep, createPickItemStep } from "../src/wayfinder/domain/step-types";
 
@@ -25,7 +25,7 @@ describe("actor-updater selection application", () => {
         { id: "ancestry-2", type: "ancestry" },
       ],
       deleteEmbeddedDocuments: vi.fn(async () => []),
-      createEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async (_type: "Item", sources: EmbeddedItemSource[]) => sources),
     };
     const selection = selectionRef("ancestry-level-1", "ancestry", "human", "Human");
 
@@ -41,7 +41,7 @@ describe("actor-updater selection application", () => {
       stripPreselectedClassBranchEntries: vi.fn(),
     });
 
-    expect(actor.deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["ancestry-1", "ancestry-2"]);
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
     expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
       {
         name: "Human",
@@ -60,6 +60,26 @@ describe("actor-updater selection application", () => {
         },
       },
     ]);
+  });
+
+  it("keeps the existing singleton when its selected source cannot be resolved", async () => {
+    const actor = {
+      items: [{ id: "ancestry-1", type: "ancestry" }],
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const selection = selectionRef("ancestry-level-1", "ancestry", "missing", "Missing Ancestry");
+
+    await expect(
+      replaceSingletonItem(actor, selection, createEmptyDraft(1), [], {
+        fetchSelectionDocument: async () => null,
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      })
+    ).rejects.toThrow(`Cannot replace Missing Ancestry: source document ${selection.uuid} could not be resolved.`);
+
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
   });
 
   it("batches multiple singleton replacements into one embedded create operation", async () => {
@@ -91,11 +111,216 @@ describe("actor-updater selection application", () => {
       stripPreselectedClassBranchEntries: vi.fn(),
     });
 
-    expect(actor.deleteEmbeddedDocuments).toHaveBeenCalledTimes(1);
-    expect(actor.deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["old-ancestry", "old-heritage"]);
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
     expect(actor.createEmbeddedDocuments).toHaveBeenCalledTimes(1);
     const createdSources = actor.createEmbeddedDocuments.mock.calls[0]?.[1];
     expect(createdSources?.map((source) => source.name)).toEqual(["Elf", "Ancient Elf", "Acolyte", "Rogue"]);
+  });
+
+  it("keeps every existing singleton when any batched source cannot be resolved", async () => {
+    const actor = {
+      items: [
+        { id: "old-ancestry", type: "ancestry" },
+        { id: "old-background", type: "background" },
+      ],
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const selections = [
+      selectionRef("ancestry-level-1", "ancestry", "elf", "Elf"),
+      selectionRef("background-level-1", "background", "missing", "Missing Background"),
+    ];
+
+    await expect(
+      replaceSingletonItems(actor, selections, createEmptyDraft(1), [], {
+        fetchSelectionDocument: async (selection) =>
+          selection.documentId === "missing"
+            ? null
+            : {
+                toObject: () => ({
+                  name: selection.name,
+                  type: selection.itemType,
+                }),
+              },
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      })
+    ).rejects.toThrow(
+      `Cannot replace Missing Background: source document ${selections[1]?.uuid} could not be resolved.`
+    );
+
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("restores the previous singleton batch when PF2E rejects replacement creation", async () => {
+    const oldClassSource: EmbeddedItemSource = {
+      _id: "old-class",
+      name: "Fighter",
+      type: "class",
+      system: { rules: [] },
+    };
+    const actor: ActorLike = {
+      items: [
+        {
+          id: "old-class",
+          name: "Fighter",
+          type: "class",
+          toObject: () => oldClassSource,
+        },
+      ],
+    };
+    const createEmbeddedDocuments = vi
+      .fn<ActorLike["createEmbeddedDocuments"]>()
+      .mockImplementationOnce(async () => {
+        actor.items = [];
+        throw new Error("PF2E creation failed");
+      })
+      .mockImplementationOnce(async (_type, sources) => sources);
+    actor.createEmbeddedDocuments = createEmbeddedDocuments;
+    const selection = selectionRef("class-level-1", "class", "wizard", "Wizard");
+
+    await expect(
+      replaceSingletonItems(actor, [selection], createEmptyDraft(1), [], {
+        fetchSelectionDocument: async () => ({
+          toObject: () => ({ name: "Wizard", type: "class", system: { rules: [] } }),
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      })
+    ).rejects.toThrow("PF2E creation failed");
+
+    expect(createEmbeddedDocuments).toHaveBeenCalledTimes(2);
+    expect(createEmbeddedDocuments.mock.calls[1]?.[1]).toEqual([oldClassSource]);
+  });
+
+  it("restores the previous singleton batch when PF2E creates only part of the replacement", async () => {
+    const oldAncestrySource: EmbeddedItemSource = { _id: "old-ancestry", name: "Dwarf", type: "ancestry" };
+    const oldClassSource: EmbeddedItemSource = { _id: "old-class", name: "Fighter", type: "class" };
+    const actor: ActorLike = {
+      items: [
+        {
+          id: "old-ancestry",
+          name: "Dwarf",
+          type: "ancestry",
+          toObject: () => oldAncestrySource,
+        },
+        {
+          id: "old-class",
+          name: "Fighter",
+          type: "class",
+          toObject: () => oldClassSource,
+        },
+      ],
+    };
+    const createEmbeddedDocuments = vi
+      .fn<ActorLike["createEmbeddedDocuments"]>()
+      .mockImplementationOnce(async (_type, sources) => {
+        const created = sources.slice(0, 1).map((source) => ({
+          ...source,
+          id: "new-ancestry",
+          sourceId: source.flags?.core?.sourceId as string,
+        }));
+        actor.items = created;
+        return created;
+      })
+      .mockImplementationOnce(async (_type, sources) => sources);
+    const deleteEmbeddedDocuments = vi.fn(async () => {
+      actor.items = [];
+      return [];
+    });
+    actor.createEmbeddedDocuments = createEmbeddedDocuments;
+    actor.deleteEmbeddedDocuments = deleteEmbeddedDocuments;
+    const selections = [
+      selectionRef("ancestry-level-1", "ancestry", "elf", "Elf"),
+      selectionRef("class-level-1", "class", "wizard", "Wizard"),
+    ];
+
+    await expect(
+      replaceSingletonItems(actor, selections, createEmptyDraft(1), [], {
+        fetchSelectionDocument: async (selection) => ({
+          toObject: () => ({ name: selection.name, type: selection.itemType }),
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      })
+    ).rejects.toThrow(`PF2E did not create every selected item (${selections[1]?.uuid})`);
+
+    expect(createEmbeddedDocuments).toHaveBeenCalledTimes(2);
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["new-ancestry"]);
+    expect(createEmbeddedDocuments.mock.calls[1]?.[1]).toEqual([oldAncestrySource, oldClassSource]);
+  });
+
+  it("removes a partially created class archetype before restoring the previous batch", async () => {
+    const oldClassSource: EmbeddedItemSource = {
+      _id: "old-class",
+      name: "Fighter",
+      type: "class",
+      flags: { core: { sourceId: "Compendium.pf2e.classes.Item.old-fighter" } },
+    };
+    const oldAncestrySource: EmbeddedItemSource = {
+      _id: "old-ancestry",
+      name: "Dwarf",
+      type: "ancestry",
+      flags: { core: { sourceId: "Compendium.pf2e.ancestries.Item.old-dwarf" } },
+    };
+    const oldArchetypeSource: EmbeddedItemSource = {
+      _id: "old-archetype",
+      name: "Old Class Archetype",
+      type: "feat",
+      flags: {
+        core: { sourceId: "Compendium.pf2e.classfeatures.Item.old-archetype" },
+        [MODULE_ID]: { slotId: "class-archetype-doctrine-level-1" },
+      },
+    };
+    const oldItems: ActorItemLike[] = [
+      { ...oldClassSource, id: "old-class", toObject: () => oldClassSource },
+      { ...oldAncestrySource, id: "old-ancestry", toObject: () => oldAncestrySource },
+      { ...oldArchetypeSource, id: "old-archetype", toObject: () => oldArchetypeSource },
+    ];
+    const actor: ActorLike = { items: oldItems };
+    const createEmbeddedDocuments = vi
+      .fn<ActorLike["createEmbeddedDocuments"]>()
+      .mockImplementationOnce(async (_type, sources) => {
+        const created = sources
+          .filter((source) => source.type !== "ancestry")
+          .map((source, index) => ({
+            ...source,
+            id: `new-${index}`,
+            sourceId: source.flags?.core?.sourceId as string,
+          }));
+        actor.items = [oldItems[2] as ActorItemLike, ...created];
+        return created;
+      })
+      .mockImplementationOnce(async (_type, sources) =>
+        sources.map((source, index) => ({ ...source, id: `restored-${index}` }))
+      );
+    const deleteEmbeddedDocuments = vi.fn(async (_type: "Item", ids: string[]) => {
+      actor.items = (actor.items as ActorItemLike[]).filter((item) => !ids.includes(item.id ?? ""));
+      return [];
+    });
+    actor.createEmbeddedDocuments = createEmbeddedDocuments;
+    actor.deleteEmbeddedDocuments = deleteEmbeddedDocuments;
+    const draft = createEmptyDraft(1);
+    draft.classArchetypeChoices["class-archetype-doctrine-level-1"] = "battle-creed";
+    const selections = [
+      selectionRef("class-level-1", "class", "cleric", "Cleric"),
+      selectionRef("ancestry-level-1", "ancestry", "elf", "Elf"),
+    ];
+
+    await expect(
+      replaceSingletonItems(actor, selections, draft, [], {
+        fetchSelectionDocument: async (selection) => ({
+          toObject: () => ({ name: selection.name, type: selection.itemType }),
+        }),
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      })
+    ).rejects.toThrow(`PF2E did not create every selected item (${selections[1]?.uuid})`);
+
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledTimes(1);
+    expect(new Set(deleteEmbeddedDocuments.mock.calls[0]?.[1])).toEqual(new Set(["old-archetype", "new-0", "new-1"]));
+    expect(createEmbeddedDocuments.mock.calls[1]?.[1]).toEqual([oldClassSource, oldAncestrySource, oldArchetypeSource]);
   });
 
   it("creates a selected class archetype in the same embedded batch as its class", async () => {

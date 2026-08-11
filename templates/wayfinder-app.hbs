@@ -180,7 +180,16 @@
   {{/if}}
 
   <footer class="wayfinder-footer">
-    <button type="button" class="footer-clear" data-wayfinder-action="clear-draft">Clear Draft</button>
+    <div class="footer-support">
+      <button type="button" class="footer-clear" data-wayfinder-action="clear-draft">Clear Draft</button>
+      <a
+        class="footer-feedback"
+        href="https://github.com/bestlux/wayfinder/issues/new/choose"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="{{localize "wayfinder-pf2e.App.FeedbackAria"}}"
+      >{{localize "wayfinder-pf2e.App.Feedback"}}</a>
+    </div>
     <div class="footer-actions">
       <button type="button" class="secondary" data-wayfinder-action="save-draft">Save Draft</button>
       <button type="button" class="primary" data-wayfinder-action="apply-draft" {{#unless canApplyDraft}}disabled{{/unless}}>Apply Changes</button>

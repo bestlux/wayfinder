@@ -15,6 +15,8 @@
       "ApplyConfirmYes": "Apply",
       "ApplyConfirmNo": "Cancel",
       "ClearDraft": "Clear Draft",
+      "Feedback": "Feedback",
+      "FeedbackAria": "Report an issue or suggest an idea",
       "IncreaseTarget": "Increase target level",
       "DecreaseTarget": "Decrease target level",
       "Guidance": "Wayfinder handles the picks — ancestry, feats, class branches, spells. Ability boosts and skill increases are walked through here too. Anything Wayfinder can't model cleanly hands off to your character sheet."

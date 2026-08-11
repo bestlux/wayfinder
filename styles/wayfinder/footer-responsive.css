@@ -9,7 +9,14 @@
   border-top: 1px solid rgba(95, 77, 57, 0.18);
 }
 
-.footer-clear {
+.footer-support {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.footer-clear,
+.footer-feedback {
   padding: 0.25rem 0.4rem;
   border: none;
   border-radius: var(--wf-radius);
@@ -24,7 +31,12 @@
     background-color var(--wf-transition);
 }
 
-.footer-clear:hover {
+.footer-feedback {
+  text-decoration: none;
+}
+
+.footer-clear:hover,
+.footer-feedback:hover {
   color: var(--wf-primary);
   background: rgba(94, 0, 0, 0.05);
 }
@@ -109,6 +121,7 @@
   }
 
   .footer-actions,
+  .footer-support,
   .step-nav-controls {
     flex-wrap: wrap;
   }

@@ -1,0 +1,72 @@
+name: Bug report
+description: Tell us about behavior that is broken, incorrect, or surprising.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Wayfinder. GitHub issues are public. Please remove actor names, world URLs, player names, access keys, and other private information from text, screenshots, and logs.
+  - type: input
+    id: wayfinder-version
+    attributes:
+      label: Wayfinder version
+      placeholder: Shown in Foundry's Manage Modules screen
+    validations:
+      required: true
+  - type: input
+    id: foundry-version
+    attributes:
+      label: Foundry VTT version
+      placeholder: 14.364
+    validations:
+      required: true
+  - type: input
+    id: pf2e-version
+    attributes:
+      label: PF2E system version
+      placeholder: 8.4.0
+    validations:
+      required: true
+  - type: input
+    id: character
+    attributes:
+      label: Character context
+      description: Include the target level and relevant class, ancestry, archetype, or variant rules.
+      placeholder: Level 3 Rogue, Human, Free Archetype off
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you select or do before the problem appeared?
+      placeholder: |
+        1. Open Wayfinder on a blank character.
+        2. Set the target level to 3.
+        3. Select ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or logs
+      description: Optional. Remove private information before attaching anything.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed private player, actor, world, and credential information from this public report.
+          required: true

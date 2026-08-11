@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 - 2026-08-10
+
+- Applying a stale draft no longer removes an existing ancestry, heritage, background, or class when its replacement source cannot be resolved or PF2E rejects creation. Wayfinder validates the entire singleton batch before mutation, lets PF2E own singular-item replacement, and restores the previous batch if creation fails.
+- Wayfinder's footer now links directly to public bug-report and suggestion forms. The forms ask for useful reproduction context and warn reporters to remove private actor, player, world, and credential information; Wayfinder does not transmit actor or world data.
+
 ## 0.7.0 - 2026-08-10
 
 - **PF2E 8.4 fix:** applying a Summoner no longer hangs. PF2E 8.4 changed the eidolon's tradition choice to a form Wayfinder did not recognize, so it was never offered or answered and PF2E waited on it indefinitely, leaving the character partly built. Apply now also fails with a clear message rather than waiting without end.

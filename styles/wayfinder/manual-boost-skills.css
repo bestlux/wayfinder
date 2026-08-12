@@ -613,6 +613,52 @@
   white-space: nowrap;
 }
 
+.language-approval-options {
+  margin-top: 0.2rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(95, 77, 57, 0.14);
+}
+
+.language-approval-options summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.45rem;
+  color: var(--wf-primary);
+  cursor: pointer;
+  font: 600 0.9rem / 1.2 var(--serif, serif);
+}
+
+.language-approval-options summary::before {
+  content: "▸";
+  color: var(--wf-ink-soft);
+  font-size: 0.72rem;
+}
+
+.language-approval-options[open] summary::before {
+  content: "▾";
+}
+
+.language-approval-options summary:focus-visible {
+  outline: 2px solid rgba(94, 0, 0, 0.22);
+  outline-offset: 3px;
+}
+
+.language-approval-summary-note {
+  color: var(--wf-accent-contrast);
+  font: 700 0.58rem / 1.2 var(--sans-serif, sans-serif);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.language-approval-note {
+  margin: 0.4rem 0 0.35rem;
+}
+
+.language-choice-grid .skill-training-choice {
+  width: 100%;
+}
+
 .skill-training-choice-ability {
   color: var(--wf-ink-soft);
   font: 700 0.58rem / 1 var(--sans-serif, sans-serif);

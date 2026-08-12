@@ -350,6 +350,13 @@ export interface SingletonChoiceStepPane {
   }>;
 }
 
+interface LanguageChoiceOptionPane {
+  value: string;
+  label: string;
+  requiresGmApproval: boolean;
+  selected: boolean;
+}
+
 export interface LanguageChoiceStepPane {
   kind: "language-choice";
   isPickItem: false;
@@ -375,12 +382,10 @@ export interface LanguageChoiceStepPane {
   remainingCount: number;
   sourceName: string;
   grantedLanguages: string[];
-  options: Array<{
-    value: string;
-    label: string;
-    requiresGmApproval: boolean;
-    selected: boolean;
-  }>;
+  sourceOptions: LanguageChoiceOptionPane[];
+  approvalOptions: LanguageChoiceOptionPane[];
+  approvalOptionCount: number;
+  approvalOptionsOpen: boolean;
 }
 
 export interface SpellChoiceStepPane {

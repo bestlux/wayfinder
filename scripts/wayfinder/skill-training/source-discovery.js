@@ -3,6 +3,7 @@ import { getConfiguredSkills, getSkillAbility, resolveSkillLabel, } from "../cla
 import { formatSlug } from "../formatting.js";
 import { toNonEmptyString } from "../rule-data.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
+const LORE_NAME_PATTERN = String.raw `[A-Z][A-Za-z'’.-]*(?:\s+(?:[A-Z][A-Za-z'’.-]*|of|the|and))*\s+Lore`;
 export function discoverSourceSkillTrainingMeta(args) {
     const configuredSkills = getConfiguredSkills();
     const fixedSkills = [];
@@ -192,7 +193,7 @@ function discoverDescriptionTrainingMeta(args) {
             options: buildFilteredSkillOptions(args.localize, args.configuredSkills, []),
         }));
     }
-    const fixedLoreOrCustomMatch = /\b([A-Za-z][A-Za-z' -]+ Lore) skill or a Lore skill (?:associated with|related to|specializing in)\s+([^.;]+)/i.exec(descriptionText);
+    const fixedLoreOrCustomMatch = new RegExp(String.raw `\b(?:either\s+)?(?:the\s+)?(${LORE_NAME_PATTERN})(?:\s+skill)?\s+or\s+(?:a|the)\s+Lore skill\s+(?:associated with|related to|specializing in|for)\s+([^.;]+)`, "u").exec(descriptionText);
     if (fixedLoreOrCustomMatch) {
         loreChoices.push(createLoreChoice({
             key: `${args.source.sourceItemType}:${args.sourceSlug}:derived-lore-or-1`,
@@ -213,7 +214,7 @@ function discoverDescriptionTrainingMeta(args) {
             allowCustom: true,
         }));
     }
-    const fixedLoreAlternatives = Array.from(descriptionText.matchAll(/\b([A-Za-z][A-Za-z' -]+ Lore)\b\s+or\s+\b([A-Za-z][A-Za-z' -]+ Lore)\b/gi));
+    const fixedLoreAlternatives = Array.from(descriptionText.matchAll(new RegExp(String.raw `\b(${LORE_NAME_PATTERN})\s+or\s+(${LORE_NAME_PATTERN})\b`, "gu")));
     for (const [index, match] of fixedLoreAlternatives.entries()) {
         loreChoices.push(createLoreChoice({
             key: `${args.source.sourceItemType}:${args.sourceSlug}:derived-lore-choice-${index + 1}`,

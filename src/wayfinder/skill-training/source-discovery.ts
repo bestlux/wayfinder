@@ -45,6 +45,8 @@ interface DerivedTrainingMeta {
   loreChoices: SkillTrainingLoreChoiceMeta[];
 }
 
+const LORE_NAME_PATTERN = String.raw`[A-Z][A-Za-z'’.-]*(?:\s+(?:[A-Z][A-Za-z'’.-]*|of|the|and))*\s+Lore`;
+
 export function discoverSourceSkillTrainingMeta(args: {
   sources: SkillTrainingSourceContext[];
   localize: (value: string) => string;
@@ -294,10 +296,10 @@ function discoverDescriptionTrainingMeta(args: {
     );
   }
 
-  const fixedLoreOrCustomMatch =
-    /\b([A-Za-z][A-Za-z' -]+ Lore) skill or a Lore skill (?:associated with|related to|specializing in)\s+([^.;]+)/i.exec(
-      descriptionText
-    );
+  const fixedLoreOrCustomMatch = new RegExp(
+    String.raw`\b(?:either\s+)?(?:the\s+)?(${LORE_NAME_PATTERN})(?:\s+skill)?\s+or\s+(?:a|the)\s+Lore skill\s+(?:associated with|related to|specializing in|for)\s+([^.;]+)`,
+    "u"
+  ).exec(descriptionText);
   if (fixedLoreOrCustomMatch) {
     loreChoices.push(
       createLoreChoice({
@@ -325,7 +327,7 @@ function discoverDescriptionTrainingMeta(args: {
   }
 
   const fixedLoreAlternatives = Array.from(
-    descriptionText.matchAll(/\b([A-Za-z][A-Za-z' -]+ Lore)\b\s+or\s+\b([A-Za-z][A-Za-z' -]+ Lore)\b/gi)
+    descriptionText.matchAll(new RegExp(String.raw`\b(${LORE_NAME_PATTERN})\s+or\s+(${LORE_NAME_PATTERN})\b`, "gu"))
   );
   for (const [index, match] of fixedLoreAlternatives.entries()) {
     loreChoices.push(

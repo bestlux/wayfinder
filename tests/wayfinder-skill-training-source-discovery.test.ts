@@ -158,6 +158,91 @@ describe("wayfinder skill training source discovery", () => {
     });
   });
 
+  it("discovers Night Watch's fixed-or-contextual Lore choice without capturing sentence prose", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "background",
+          sourceSelection: selection("background-level-1", "night-watch", "Night Watch", "background"),
+          sourceDocument: {
+            name: "Night Watch",
+            system: {
+              slug: "night-watch",
+              description: {
+                value:
+                  "<p>You're trained in the Intimidation skill and either Legal Lore or the Lore skill for your home settlement. You gain the Quick Coercion skill feat.</p>",
+              },
+              trainedSkills: {
+                value: ["intimidation"],
+                lore: [],
+              },
+              rules: [],
+            },
+          },
+        },
+      ],
+      localize: (value) => value,
+    });
+
+    expect(training).toMatchObject({
+      fixedSkills: ["intimidation"],
+      fixedLores: [],
+      loreChoices: [
+        {
+          sourceLabel: "Night Watch",
+          placeholder: "home settlement Lore",
+          suggestions: ["Legal Lore"],
+          allowCustom: true,
+        },
+      ],
+    });
+  });
+
+  it("preserves explicit fixed Lore alternatives from Guard and Driver", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "background",
+          sourceSelection: selection("background-level-1", "guard", "Guard", "background"),
+          sourceDocument: {
+            name: "Guard",
+            system: {
+              slug: "guard",
+              description: {
+                value:
+                  "<p>You're trained in the Intimidation skill and the Legal Lore or Warfare Lore skill. You gain the Quick Coercion skill feat.</p>",
+              },
+              trainedSkills: { value: ["intimidation"], lore: [] },
+              rules: [],
+            },
+          },
+        },
+        {
+          sourceItemType: "background",
+          sourceSelection: selection("background-level-1", "driver", "Driver", "background"),
+          sourceDocument: {
+            name: "Driver",
+            system: {
+              slug: "driver",
+              description: {
+                value:
+                  "<p>You're trained in the Acrobatics skill and either the Driving Lore or Piloting Lore skill. You gain the Assurance skill feat with the chosen lore.</p>",
+              },
+              trainedSkills: { value: ["acrobatics"], lore: [] },
+              rules: [],
+            },
+          },
+        },
+      ],
+      localize: (value) => value,
+    });
+
+    expect(training.loreChoices).toMatchObject([
+      { sourceLabel: "Guard", suggestions: ["Legal Lore", "Warfare Lore"], allowCustom: false },
+      { sourceLabel: "Driver", suggestions: ["Driving Lore", "Piloting Lore"], allowCustom: false },
+    ]);
+  });
+
   it("normalizes explicit UUID labels when deriving Additional Lore grants", () => {
     const training = discoverSourceSkillTrainingMeta({
       sources: [

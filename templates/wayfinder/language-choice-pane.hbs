@@ -40,29 +40,63 @@
       <header class="skill-training-block-header">
         <div>
           <p class="eyebrow">Choose additional languages</p>
-          <h5>Available options</h5>
+          <h5>Available for {{activePane.sourceName}}</h5>
         </div>
       </header>
 
-      <div class="skill-training-choice-list class-choice-list">
-        {{#each activePane.options}}
-          <button
-            type="button"
-            class="skill-training-choice class-choice-option{{#if selected}} selected{{/if}}"
-            data-wayfinder-action="toggle-language-choice"
-            data-step-id="{{@root.activePane.stepId}}"
-            data-value="{{value}}"
-          >
-            <span class="skill-training-choice-copy class-choice-copy">
-              <span class="skill-training-choice-name">{{label}}</span>
-              {{#if requiresGmApproval}}
-                <span class="context-note">GM approval required</span>
-              {{/if}}
-            </span>
-            <span class="skill-training-choice-action">{{#if selected}}Chosen{{else}}Choose{{/if}}</span>
-          </button>
-        {{/each}}
-      </div>
+      {{#if activePane.sourceOptions.length}}
+        <div class="skill-training-choice-list skill-training-choice-grid class-choice-list language-choice-grid">
+          {{#each activePane.sourceOptions}}
+            <button
+              type="button"
+              class="skill-training-choice skill-training-choice-option class-choice-option{{#if selected}} selected{{/if}}"
+              data-wayfinder-action="toggle-language-choice"
+              data-step-id="{{@root.activePane.stepId}}"
+              data-value="{{value}}"
+              aria-pressed="{{selected}}"
+              title="{{label}}"
+            >
+              <span class="skill-training-choice-copy class-choice-copy">
+                <span class="skill-training-choice-name">{{label}}</span>
+              </span>
+              <span class="skill-training-choice-action">{{#if selected}}Chosen{{else}}Choose{{/if}}</span>
+            </button>
+          {{/each}}
+        </div>
+      {{else}}
+        <p class="context-note">This source doesn't offer any additional languages without GM approval.</p>
+      {{/if}}
+
+      {{#if activePane.approvalOptions.length}}
+        <details class="language-approval-options"{{#if activePane.approvalOptionsOpen}} open{{/if}}>
+          <summary>
+            <span>Other languages ({{activePane.approvalOptionCount}})</span>
+            <span class="language-approval-summary-note">GM approval required</span>
+          </summary>
+          <p class="context-note language-approval-note" id="{{activePane.stepId}}-gm-approval-note">
+            Ask your GM before choosing one of these campaign languages.
+          </p>
+          <div class="skill-training-choice-list skill-training-choice-grid class-choice-list language-choice-grid">
+            {{#each activePane.approvalOptions}}
+              <button
+                type="button"
+                class="skill-training-choice skill-training-choice-option class-choice-option{{#if selected}} selected{{/if}}"
+                data-wayfinder-action="toggle-language-choice"
+                data-step-id="{{@root.activePane.stepId}}"
+                data-value="{{value}}"
+                aria-pressed="{{selected}}"
+                aria-describedby="{{@root.activePane.stepId}}-gm-approval-note"
+                title="{{label}}"
+              >
+                <span class="skill-training-choice-copy class-choice-copy">
+                  <span class="skill-training-choice-name">{{label}}</span>
+                </span>
+                <span class="skill-training-choice-action">{{#if selected}}Chosen{{else}}Choose{{/if}}</span>
+              </button>
+            {{/each}}
+          </div>
+        </details>
+      {{/if}}
     </section>
   </article>
 </section>

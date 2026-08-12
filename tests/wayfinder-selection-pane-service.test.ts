@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
-import type { OptionContext, OptionRecord, PendingStep, SelectionRef } from "../src/types";
+import type { LanguageChoiceStep, OptionContext, OptionRecord, PendingStep, SelectionRef } from "../src/types";
 import { buildSelectionPane } from "../src/wayfinder/application/build-selection-pane-service";
+import { buildLanguageChoicePane } from "../src/wayfinder/panes/language-choice-pane";
 
 const EMPTY_CONTEXT: OptionContext = {
   ancestrySlug: null,
@@ -415,10 +416,25 @@ describe("wayfinder selection pane service", () => {
     expect(pane.selectedValues).toEqual(["draconic"]);
     expect(pane.grantedLanguages).toEqual(["Common"]);
     expect(pane.requiredCount).toBe(2);
-    expect(pane.options).toEqual([
+    expect(pane.sourceOptions).toEqual([
       { value: "draconic", label: "Draconic", selected: true, requiresGmApproval: false },
+    ]);
+    expect(pane.approvalOptions).toEqual([
       { value: "dwarven", label: "Dwarven", selected: false, requiresGmApproval: true },
     ]);
+    expect(pane.approvalOptionCount).toBe(1);
+    expect(pane.approvalOptionsOpen).toBe(false);
+  });
+
+  it("opens the language approval group when it contains a drafted selection", async () => {
+    const step = languageChoiceStep();
+    const pane = buildLanguageChoicePane({
+      step,
+      selectedValues: ["dwarven"],
+      selectedLabel: "1/2 chosen",
+    });
+
+    expect(pane.approvalOptionsOpen).toBe(true);
   });
 
   it("builds a class-branch pane from branch selections instead of generic selections", async () => {
@@ -727,5 +743,29 @@ function selection(slotId: string, itemType: string, documentId: string): Select
     featType: null,
     name: documentId,
     level: 1,
+  };
+}
+
+function languageChoiceStep(): LanguageChoiceStep {
+  return {
+    id: "language-choice-level-1",
+    level: 1,
+    kind: "language-choice",
+    slotKind: "language-choice",
+    title: "Bonus languages",
+    description: "",
+    required: true,
+    slotId: "language-choice-level-1",
+    languageChoice: {
+      slotId: "language-choice-level-1",
+      sourceItemType: "ancestry",
+      sourceName: "Human",
+      grantedLanguages: ["common"],
+      count: 2,
+      options: [
+        { value: "draconic", label: "Draconic", requiresGmApproval: false },
+        { value: "dwarven", label: "Dwarven", requiresGmApproval: true },
+      ],
+    },
   };
 }

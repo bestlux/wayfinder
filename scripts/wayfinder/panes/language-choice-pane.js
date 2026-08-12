@@ -1,6 +1,12 @@
 export function buildLanguageChoicePane(args) {
     const { step, selectedValues, selectedLabel } = args;
     const languageChoice = step.languageChoice;
+    const options = languageChoice.options.map((option) => ({
+        ...option,
+        selected: selectedValues.includes(option.value),
+    }));
+    const sourceOptions = options.filter((option) => !option.requiresGmApproval);
+    const approvalOptions = options.filter((option) => option.requiresGmApproval);
     return {
         kind: "language-choice",
         isPickItem: false,
@@ -26,10 +32,10 @@ export function buildLanguageChoicePane(args) {
         remainingCount: Math.max(0, languageChoice.count - selectedValues.length),
         sourceName: languageChoice.sourceName,
         grantedLanguages: languageChoice.grantedLanguages,
-        options: languageChoice.options.map((option) => ({
-            ...option,
-            selected: selectedValues.includes(option.value),
-        })),
+        sourceOptions,
+        approvalOptions,
+        approvalOptionCount: approvalOptions.length,
+        approvalOptionsOpen: approvalOptions.some((option) => option.selected),
     };
 }
 //# sourceMappingURL=language-choice-pane.js.map

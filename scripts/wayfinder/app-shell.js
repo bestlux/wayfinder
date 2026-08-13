@@ -3,6 +3,7 @@ import { applyDraftToActor } from "../actor-updater.js";
 import { getEffectiveBuildState, getEffectiveSingletonDocument, listActorItems } from "../build-state.js";
 import { MODULE_ID, MODULE_TITLE, STATE_FLAG } from "../constants.js";
 import { createEmptyDraft, normalizeDraft, normalizeState } from "../draft-service.js";
+import { FeedbackSupportApp } from "../feedback-support-app.js";
 import { fetchSelectionDocument } from "../pack/access.js";
 import { getOptionsForStep, resolveSelection } from "../pack/options.js";
 import { getPickerInfoState } from "../pack/picker-state.js";
@@ -264,6 +265,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 break;
             case "import-existing-history":
                 await this.#importExistingHistory();
+                break;
+            case "open-feedback":
+                FeedbackSupportApp.open();
                 break;
             case "clear-draft":
                 await this.#clearDraft();

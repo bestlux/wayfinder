@@ -16,10 +16,25 @@
       "ClearDraft": "清除草稿",
       "Feedback": "反馈",
       "FeedbackAria": "报告问题或提出建议",
+      "FeedbackTooltip": "了解如何报告问题或提出建议",
       "IncreaseTarget": "提高目标等级",
       "DecreaseTarget": "降低目标等级",
       "NoPending": "寻路仪引导步骤均已完成。但角色卡中仍可能保留系统原生或手动选项。",
       "Guidance": "寻路仪负责处理如族裔，专长，职业分支，法术等构筑选项，以及属性提升和技能提升。寻路仪无法准确模拟的内容将交给你的角色卡处理。"
+    },
+    "Feedback": {
+      "Title": "寻路仪反馈与支持",
+      "Eyebrow": "反馈与支持",
+      "Heading": "我们能如何提供帮助？",
+      "Intro": "请选择最符合您反馈内容的表单。每个表单都会提示填写有助于我们处理问题的详细信息。",
+      "ExternalTitle": "GitHub将在新的浏览器标签页中打开",
+      "ExternalBody": "提交反馈需要GitHub账户。您的问题或建议将在寻路仪代码库中公开显示。",
+      "BugTitle": "报告问题",
+      "BugHint": "请描述发生的情况以及如何重现。",
+      "FeatureTitle": "提出建议",
+      "FeatureHint": "请说明需求以及理想的结果。",
+      "Privacy": "提交前请移除角色、玩家、世界、凭据和邀请等隐私信息。",
+      "Chooser": "查看全部问题类型"
     },
     "Notifications": {
       "SavedDraft": "寻路仪草稿已保存。",
@@ -33,6 +48,11 @@
       "ApplyFailed": "无法应用变更。你的草稿内容未变—请重新检查并重试。"
     },
     "Settings": {
+      "Feedback": {
+        "Name": "反馈与支持",
+        "Label": "打开反馈",
+        "Hint": "无需打开角色卡即可报告寻路仪问题或提出改进建议。"
+      },
       "ExtraPacks": {
         "Name": "额外PF2e合集包白名单",
         "Hint": "输入以半角逗号分隔的合集包ID或通配符，以检索PF2e官方合集包外的补充合集包。使用“my-module.*”可包含一个模组的全部合集包，使用“*”可包含全部已安装的合集包。"

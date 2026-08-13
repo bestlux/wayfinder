@@ -49,6 +49,7 @@ export function parseWayfinderAction(element) {
         case "save-draft":
         case "apply-draft":
         case "import-existing-history":
+        case "open-feedback":
         case "clear-draft":
             return { type: action };
         case "preview-option":

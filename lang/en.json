@@ -17,11 +17,31 @@
       "ClearDraft": "Clear Draft",
       "Feedback": "Feedback",
       "FeedbackAria": "Report an issue or suggest an idea",
+      "FeedbackTooltip": "Learn how to report an issue or suggest an idea",
       "IncreaseTarget": "Increase target level",
       "DecreaseTarget": "Decrease target level",
       "Guidance": "Wayfinder handles the picks — ancestry, feats, class branches, spells. Ability boosts and skill increases are walked through here too. Anything Wayfinder can't model cleanly hands off to your character sheet."
     },
+    "Feedback": {
+      "Title": "Wayfinder feedback and support",
+      "Eyebrow": "Feedback and support",
+      "Heading": "How can we help?",
+      "Intro": "Choose the form that best matches what you want to share. Each form includes prompts for the details that help us respond.",
+      "ExternalTitle": "GitHub opens in a new browser tab",
+      "ExternalBody": "Submitting feedback requires a GitHub account. Your report or suggestion will be visible publicly in the Wayfinder repository.",
+      "BugTitle": "Report a problem",
+      "BugHint": "Describe what happened and how to reproduce it.",
+      "FeatureTitle": "Suggest an idea",
+      "FeatureHint": "Explain the need and what a good outcome would look like.",
+      "Privacy": "Remove private actor, player, world, credential, and invite information before submitting.",
+      "Chooser": "View all issue options"
+    },
     "Settings": {
+      "Feedback": {
+        "Name": "Feedback and support",
+        "Label": "Open feedback",
+        "Hint": "Report a Wayfinder issue or suggest an improvement from outside a character sheet."
+      },
       "ExtraPacks": {
         "Name": "Extra PF2E compendium allowlist",
         "Hint": "Comma-separated compendium ids or wildcards to search in addition to the official PF2E packs. Use my-module.* for every compendium in one module, or * for every installed compendium."

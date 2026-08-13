@@ -182,13 +182,14 @@
   <footer class="wayfinder-footer">
     <div class="footer-support">
       <button type="button" class="footer-clear" data-wayfinder-action="clear-draft">Clear Draft</button>
-      <a
+      <button
+        type="button"
         class="footer-feedback"
-        href="https://github.com/bestlux/wayfinder/issues/new/choose"
-        target="_blank"
-        rel="noopener noreferrer"
+        data-wayfinder-action="open-feedback"
+        data-tooltip="{{localize "wayfinder-pf2e.App.FeedbackTooltip"}}"
+        title="{{localize "wayfinder-pf2e.App.FeedbackTooltip"}}"
         aria-label="{{localize "wayfinder-pf2e.App.FeedbackAria"}}"
-      >{{localize "wayfinder-pf2e.App.Feedback"}}</a>
+      >{{localize "wayfinder-pf2e.App.Feedback"}}</button>
     </div>
     <div class="footer-actions">
       <button type="button" class="secondary" data-wayfinder-action="save-draft">Save Draft</button>

@@ -1,9 +1,11 @@
 # Changelog
 
-## 0.7.1 - 2026-08-10
+## 0.7.1 - 2026-08-12
 
 - Applying a stale draft no longer removes an existing ancestry, heritage, background, or class when its replacement source cannot be resolved or PF2E rejects creation. Wayfinder validates the entire singleton batch before mutation, lets PF2E own singular-item replacement, and restores the previous batch if creation fails.
-- Wayfinder's footer now links directly to public bug-report and suggestion forms. The forms ask for useful reproduction context and warn reporters to remove private actor, player, world, and credential information; Wayfinder does not transmit actor or world data.
+- Wayfinder now includes structured public bug-report and suggestion forms. The forms ask for useful reproduction context and warn reporters to remove private actor, player, world, and credential information; Wayfinder does not transmit actor or world data.
+- Feedback now explains that GitHub will open in a new tab and that submissions are public before offering separate bug-report and suggestion forms. The same support panel is available to players and GMs from Foundry's module settings.
+- Night Watch and similar backgrounds now parse named-or-contextual Lore choices correctly, and bonus languages place the GM-approval catalogue behind one compact disclosure with equal-sized options.
 
 ## 0.7.0 - 2026-08-10
 

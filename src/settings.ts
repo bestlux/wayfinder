@@ -1,7 +1,20 @@
 import { MODULE_ID, SETTINGS } from "./constants.js";
 import { normalizeSpellRarityCeiling, type SpellRarityCeiling } from "./wayfinder/spell-choice/rarity-access.js";
 
-export function registerSettings(args: { onSpellRarityCeilingChange?: () => void } = {}): void {
+export function registerSettings(
+  args: { feedbackMenuType?: unknown; onSpellRarityCeilingChange?: () => void } = {}
+): void {
+  if (args.feedbackMenuType) {
+    game.settings.registerMenu(MODULE_ID, "feedback", {
+      name: "wayfinder-pf2e.Settings.Feedback.Name",
+      label: "wayfinder-pf2e.Settings.Feedback.Label",
+      hint: "wayfinder-pf2e.Settings.Feedback.Hint",
+      icon: "fa-solid fa-comment-dots",
+      type: args.feedbackMenuType,
+      restricted: false,
+    });
+  }
+
   game.settings.register(MODULE_ID, SETTINGS.extraPacks, {
     name: "wayfinder-pf2e.Settings.ExtraPacks.Name",
     hint: "wayfinder-pf2e.Settings.ExtraPacks.Hint",

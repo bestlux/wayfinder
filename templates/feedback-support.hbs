@@ -1,0 +1,46 @@
+<section class="feedback-support-sheet">
+  <header class="feedback-support-header">
+    <p class="eyebrow">{{localize "wayfinder-pf2e.Feedback.Eyebrow"}}</p>
+    <h2>{{localize "wayfinder-pf2e.Feedback.Heading"}}</h2>
+    <p>{{localize "wayfinder-pf2e.Feedback.Intro"}}</p>
+  </header>
+
+  <div class="feedback-external-note" role="note">
+    <i class="fa-brands fa-github" aria-hidden="true"></i>
+    <div>
+      <strong>{{localize "wayfinder-pf2e.Feedback.ExternalTitle"}}</strong>
+      <p>{{localize "wayfinder-pf2e.Feedback.ExternalBody"}}</p>
+    </div>
+  </div>
+
+  <div class="feedback-destinations">
+    <a class="feedback-destination" href="{{urls.bug}}" target="_blank" rel="noopener noreferrer">
+      <i class="fa-solid fa-bug" aria-hidden="true"></i>
+      <span>
+        <strong>{{localize "wayfinder-pf2e.Feedback.BugTitle"}}</strong>
+        <small>{{localize "wayfinder-pf2e.Feedback.BugHint"}}</small>
+      </span>
+      <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+    </a>
+
+    <a class="feedback-destination" href="{{urls.feature}}" target="_blank" rel="noopener noreferrer">
+      <i class="fa-solid fa-lightbulb" aria-hidden="true"></i>
+      <span>
+        <strong>{{localize "wayfinder-pf2e.Feedback.FeatureTitle"}}</strong>
+        <small>{{localize "wayfinder-pf2e.Feedback.FeatureHint"}}</small>
+      </span>
+      <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+    </a>
+  </div>
+
+  <p class="feedback-privacy-note">
+    <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+    {{localize "wayfinder-pf2e.Feedback.Privacy"}}
+  </p>
+
+  <footer class="feedback-support-footer">
+    <a href="{{urls.chooser}}" target="_blank" rel="noopener noreferrer">
+      {{localize "wayfinder-pf2e.Feedback.Chooser"}}
+    </a>
+  </footer>
+</section>

@@ -114,6 +114,16 @@ describe("wayfinder actions", () => {
     });
   });
 
+  it("parses the feedback support action", () => {
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "open-feedback",
+        },
+      } as any)
+    ).toEqual({ type: "open-feedback" });
+  });
+
   it("rejects incomplete action datasets", () => {
     expect(
       parseWayfinderAction({

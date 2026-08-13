@@ -10,6 +10,7 @@ describe("Wayfinder settings", () => {
       settings: {
         get: vi.fn(),
         register: vi.fn(),
+        registerMenu: vi.fn(),
       },
     };
   });
@@ -36,6 +37,25 @@ describe("Wayfinder settings", () => {
         },
         default: "common",
         onChange: onSpellRarityCeilingChange,
+      })
+    );
+  });
+
+  it("registers feedback support for both players and GMs", () => {
+    class FeedbackMenu {}
+
+    registerSettings({ feedbackMenuType: FeedbackMenu });
+
+    expect(testGlobals.game.settings.registerMenu).toHaveBeenCalledWith(
+      MODULE_ID,
+      "feedback",
+      expect.objectContaining({
+        name: "wayfinder-pf2e.Settings.Feedback.Name",
+        label: "wayfinder-pf2e.Settings.Feedback.Label",
+        hint: "wayfinder-pf2e.Settings.Feedback.Hint",
+        icon: "fa-solid fa-comment-dots",
+        type: FeedbackMenu,
+        restricted: false,
       })
     );
   });

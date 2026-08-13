@@ -27,6 +27,7 @@
       "Eyebrow": "Feedback and support",
       "Heading": "How can we help?",
       "Intro": "Choose the form that best matches what you want to share. Each form includes prompts for the details that help us respond.",
+      "DestinationLabel": "Choose a feedback form",
       "ExternalTitle": "GitHub opens in a new browser tab",
       "ExternalBody": "Submitting feedback requires a GitHub account. Your report or suggestion will be visible publicly in the Wayfinder repository.",
       "BugTitle": "Report a problem",

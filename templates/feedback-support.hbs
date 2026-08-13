@@ -1,8 +1,13 @@
 <section class="feedback-support-sheet">
   <header class="feedback-support-header">
-    <p class="eyebrow">{{localize "wayfinder-pf2e.Feedback.Eyebrow"}}</p>
-    <h2>{{localize "wayfinder-pf2e.Feedback.Heading"}}</h2>
-    <p>{{localize "wayfinder-pf2e.Feedback.Intro"}}</p>
+    <span class="feedback-support-mark" aria-hidden="true">
+      <i class="fa-solid fa-comment-dots"></i>
+    </span>
+    <div>
+      <p class="eyebrow">{{localize "wayfinder-pf2e.Feedback.Eyebrow"}}</p>
+      <h2>{{localize "wayfinder-pf2e.Feedback.Heading"}}</h2>
+      <p>{{localize "wayfinder-pf2e.Feedback.Intro"}}</p>
+    </div>
   </header>
 
   <div class="feedback-external-note" role="note">
@@ -13,25 +18,29 @@
     </div>
   </div>
 
-  <div class="feedback-destinations">
+  <nav class="feedback-destinations" aria-label="{{localize "wayfinder-pf2e.Feedback.DestinationLabel"}}">
     <a class="feedback-destination" href="{{urls.bug}}" target="_blank" rel="noopener noreferrer">
-      <i class="fa-solid fa-bug" aria-hidden="true"></i>
+      <span class="feedback-destination-icon" aria-hidden="true">
+        <i class="fa-solid fa-bug"></i>
+      </span>
       <span>
         <strong>{{localize "wayfinder-pf2e.Feedback.BugTitle"}}</strong>
         <small>{{localize "wayfinder-pf2e.Feedback.BugHint"}}</small>
       </span>
-      <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+      <i class="feedback-destination-arrow fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
     </a>
 
     <a class="feedback-destination" href="{{urls.feature}}" target="_blank" rel="noopener noreferrer">
-      <i class="fa-solid fa-lightbulb" aria-hidden="true"></i>
+      <span class="feedback-destination-icon" aria-hidden="true">
+        <i class="fa-solid fa-lightbulb"></i>
+      </span>
       <span>
         <strong>{{localize "wayfinder-pf2e.Feedback.FeatureTitle"}}</strong>
         <small>{{localize "wayfinder-pf2e.Feedback.FeatureHint"}}</small>
       </span>
-      <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+      <i class="feedback-destination-arrow fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
     </a>
-  </div>
+  </nav>
 
   <p class="feedback-privacy-note">
     <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
@@ -41,6 +50,7 @@
   <footer class="feedback-support-footer">
     <a href="{{urls.chooser}}" target="_blank" rel="noopener noreferrer">
       {{localize "wayfinder-pf2e.Feedback.Chooser"}}
+      <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
     </a>
   </footer>
 </section>

@@ -28,7 +28,6 @@ export class FeedbackSupportApp extends foundry.applications.api.HandlebarsAppli
   static PARTS = {
     main: {
       template: `modules/${MODULE_ID}/templates/feedback-support.hbs`,
-      root: true,
     },
   };
 

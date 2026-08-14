@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-08-10.
+Last updated: 2026-08-14.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -22,6 +22,8 @@ To pass harness arguments through npm on this machine, use an extra separator:
 npm run smoke:foundry -- -- --list
 npm run smoke:foundry -- -- --case wizard-l1-l5-apply-rerun
 npm run smoke:foundry -- -- --free-archetype on --case free-archetype-fighter-archer-dedication
+npm run smoke:foundry -- -- --campaign-feat-sections ancestry-paragon --case ancestry-paragon-fighter-l1-l5-apply-rerun
+npm run smoke:foundry -- -- --gradual-boosts on --case gradual-boosts-fighter-l1-l5-apply-rerun
 ```
 
 The harness:
@@ -42,6 +44,18 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-08-14 Release 0.7.1 Full Matrix
+
+The exact `v0.7.1` candidate passed 54 live apply/rerun executions representing 53 unique scenarios against Foundry VTT 14.364 / PF2E 8.4.0 in `testing-world`, with zero classified/manual cases and zero failures:
+
+- `.wayfinder-smoke/release-0.7.1-rc-baseline`: 41 direct baseline and depth scenarios.
+- `.wayfinder-smoke/release-0.7.1-rc-incremental`: eight executions—one repeated Fighter control plus seven unique existing-character upgrades.
+- `.wayfinder-smoke/release-0.7.1-rc-free-archetype`: three Free Archetype paths with the variant enabled.
+- `.wayfinder-smoke/release-0.7.1-rc-ancestry-paragon`: one Ancestry Paragon campaign-section path.
+- `.wayfinder-smoke/release-0.7.1-rc-gradual-boosts`: one Gradual Ability Boosts path.
+
+Every artifact reports Wayfinder 0.7.1, Foundry 14.364, and PF2E 8.4.0. The candidate also received focused live checks for the Night Watch contextual Lore choice, the compact bonus-language approval disclosure, feedback links from the app and Foundry settings, and safe singleton replacement failure behavior.
 
 ## 2026-08-10 Release 0.7.0 Full Matrix
 
@@ -208,5 +222,5 @@ These cases first applied a level 1 actor, reopened Wayfinder against that exist
 - Standalone filtered no-grant `ChoiceSet` rules are guided through flag-choice steps when filters resolve to supported item types and required actor placeholders are known from draft context. Same-item class-choice option predicates are guided when later choices depend on earlier same-source class-choice roll options.
 - Remaining embedded-`ChoiceSet` caveats are selected-item and equipment predicates, dynamic flags-path choices, and cross-item dependency graphs.
 - Battle Creed, Way of the Spellshot, and Palatine Detective are guided through the dedicated class-archetype lane. Other class-archetype branch options stay filtered until a complete profile is registered.
-- Free Archetype uses PF2E's separate `archetype` feat group and native dedication/archetype candidate split. Wayfinder does not yet exhaustively prove access, prerequisites, archetype-family membership, dedication lockouts, or Free Archetype combinations with registered class-archetype profiles; those choices require GM confirmation.
+- Free Archetype uses PF2E's separate `archetype` feat group. Wayfinder checks duplicate and own-class dedications, the ordinary two-feat dedication lockout, resolved archetype-family membership, and supported skill-rank prerequisites against projected draft state. Access entries, prose prerequisites, unresolved families, campaign permission, and feats whose text rewrites the lockout remain visible GM-confirmation boundaries.
 - Daily preparations, starting gear beyond class-feature grants, purchasing, retraining, and table-specific campaign systems remain PF2E-native/manual.

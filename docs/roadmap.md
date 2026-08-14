@@ -1,102 +1,110 @@
 # Wayfinder Roadmap
 
-Written 2026-07-26, after the 0.6.0 release. This supersedes `agents/v1-backlog.md` (complete) as the forward-looking plan. The product brief and design vision in `agents/` remain the standing contract for scope philosophy and feel; this document says what to build next and — just as deliberately — what not to build.
+Updated 2026-08-14 after the 0.7.1 release. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
-The v1 backlog is finished. All 27 classes have a verified guided path from blank level 1 through level 5, spell choices land in prepared, spontaneous, spellbook, bounded, and innate destinations, three class archetypes are guided end-to-end, and Free Archetype has its own lane. The live smoke harness — 46 apply-and-rerun cases inside a real Foundry world — is a rigor bar almost no Foundry module clears. The UI honors the design vision: the rail, the dossier line, the preview pane, and the trait pills read as PF2E-native, and the honesty posture (GM-approval boundaries, graceful handoffs, public coverage matrices) is a real brand, not a disclaimer.
+Wayfinder 0.7.1 guides all 27 PF2E classes from a blank level-1 actor through level 5 along one maintained path. Five representative profiles are verified through level 10 and Fighter through level 20. The current live release matrix contains 53 unique apply-and-rerun scenarios against Foundry VTT 14.364 and PF2E 8.4.0.
 
-Twelve of fourteen GitHub issues are closed, most within days. The two open ones are the map to what's next:
+The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, and Gradual Ability Boosts. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation.
 
-- **#16** (same-level skill increase doesn't refresh feat eligibility) is the third bug in the same family as #15 — each pane re-derives "what does the draft imply so far" on its own, and the derivations drift.
-- **#7** (class archetypes) already has a ranked, phased plan in `docs/issue-backlog-2026-07-26.md`.
+GMs currently have world settings for supplemental Item packs and the spell-rarity ceiling. Players and GMs can open the Feedback panel from Wayfinder or Foundry settings. Three GitHub issues remain open:
 
-The honest gaps in the core promise, before any new feature:
+- [#23 — prepare and execute actor mutations safely](https://github.com/bestlux/wayfinder/issues/23) is the 0.7.2 release focus.
+- [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) is a draft-editing improvement, not an apply-correctness prerequisite.
+- [#7 — class archetypes at level 1](https://github.com/bestlux/wayfinder/issues/7) remains a parallel, profile-by-profile expansion track.
 
-1. **Projection drift.** There is no single "projected character state at step N" that every eligibility check reads. Skills→increases (#15) and skills→feats (#16) both broke on this seam; boosts→feat prerequisites and spell-rank gating sit on the same fault line.
-2. **Verified depth stops at level 5.** The machinery schedules boosts at 10/15/20 and skill increases through 19, but the promise — and the evidence — end at 5. Mid-campaign tables are running unverified paths.
-3. **Archetype legality is a shrug.** Dedications appear in feat pools, but prerequisites, the two-feats-before-a-new-dedication rule, and family membership are all "confirm with your GM" boundaries. That's honest, but it's the biggest remaining source of *avoidable* GM confirmation.
-4. **Variant coverage is incomplete.** Free Archetype shipped; Gradual Ability Boosts (a product-brief "Native" commitment) does not exist; ABP/Stamina/PWoL awareness labels don't either.
-5. **The ending is an anticlimax.** Creation ends with "No Wayfinder-guided steps are pending." The design vision promised "Valeria is ready for her first adventure." There is no completion moment, no summary, and no explicit equipment handoff.
-6. **The GM surface is one text field.** A comma-separated allowlist is the entire GM experience of a module whose differentiator is "it knows your table."
+The largest remaining product gaps are starting equipment and wealth, a satisfying character-completion chapter, and high-level caster evidence beyond level 10. The largest correctness gap is that apply still crosses several PF2E mutation phases without one shared prepared plan.
 
-## The thesis, sharpened
+## Product thesis
 
-Wayfinder owns the journey from **blank actor to table-ready character**, inside the world where that character will play. Three tests for any proposed feature:
+Wayfinder owns the journey from **blank actor to table-ready character** inside the world where that character will play. A proposed feature belongs when all three statements are true:
 
-1. **Is it part of becoming table-ready?** Creation and progression, yes. Ongoing play (daily preps, downtime economy, retraining) — no.
-2. **Does living inside Foundry make Wayfinder better at it than Pathbuilder?** World context, direct actor writes, GM settings.
-3. **Can Wayfinder own it confidently, or does it become a second product?** One guided flow, one quality bar. Anything that needs its own UI paradigm is a sibling module, not a feature.
+1. It is part of becoming table-ready, rather than ongoing play.
+2. Foundry world context or direct actor integration makes the experience meaningfully better than a standalone planner.
+3. Wayfinder can guide it confidently without becoming a second rules engine or a separate product.
 
-## Feature verdicts
+This includes creation and progression choices, starting equipment, identity, and a clear completion state. It excludes daily preparations, downtime commerce, rune management, retraining, NPC construction, and image editing.
 
-Candidate ideas, judged against the thesis:
+## Release train
 
-| Candidate | Verdict | Why |
-| --- | --- | --- |
-| Starting wealth & shopping | **Yes — flagship** | Buying starting gear *is* a creation step in the CRB. It is the last forced trip to the native sheet on the common path. |
-| Backstory, appearance, character details | **Yes — as the Identity Epilogue** | PF2E's biography fields are the natural destination; "a place where players discover who their character is" is the stated vision. Cheap, deeply on-brand. |
-| Portrait & token image | **Thin version only** | Setting a portrait and prototype token belongs to creation and is something Pathbuilder *cannot* do. Building an image editor does not — Tokenizer already owns that. Pick, apply, done; offer Tokenizer if installed. |
-| Archetype legality (incl. Free Archetype) | **Yes — core correctness work** | Turns the largest "confirm with your GM" surface into verified filtering. Shared engine serves the class-feat lane and the FA lane. |
-| Class archetypes (#7) | **Yes — keep the ranked plan** | Substrate first, then Bloodrager and Vindicator, per `docs/issue-backlog-2026-07-26.md`. |
-| NPC builder for GMs | **No — cut** | PF2E NPCs are stat-block creatures built from GM Core creature tables, not PC rules. Different data model, different user, different UI — a second product wearing Wayfinder's name. If demand persists, it's a sibling module. |
-| Token-maker editing (frames, layers, crops) | **No — cut** | Owning image manipulation fails test 3. Integrate, don't rebuild. |
-| Pathbuilder import/export | **No — unchanged** | The product promise is that you never needed the export. |
-| Daily preparations, downtime shopping, retraining | **No / defer** | Ongoing-play surfaces fail test 1. Retraining is the only one that might return, post-1.0. |
+### 0.7.2 — Apply Safety Bridge
 
-The GM does get investment — not an NPC builder, but a real settings surface: starting-wealth policy, source allowlists with a picker instead of a text field, and visibility into the approval boundaries their players are hitting.
+The release is centered on issue #23. Before the first actor write, Wayfinder should prepare the selected sources, authoritative feat slots, choice targets, spell destinations, and campaign authority it can validate. Execution should expose named mutation phases, preserve the draft on failure, serialize retries, and compensate only where PF2E hooks make a narrow reversal safe.
 
-## The road to 1.0
+This bridge deliberately precedes equipment. Starting wealth adds batch inventory and currency writes; those operations should join an established preparation/execution model instead of creating another mutation path.
 
-Three arcs. Each is shippable in slices, keeps the smoke harness green, and ends with the module more trustworthy than it started.
+Only beta-discovered correctness regressions should join 0.7.2. Draft-editing polish from #22 can follow in another 0.7.x patch if real-player testing shows it is urgent.
 
-### Arc 1 — Trust (0.7.x): make the math load-bearing
+### 0.8.0 — Starting Equipment and Wealth
 
-The correctness arc. No new surfaces; the existing ones stop having asterisks.
+The short discovery is recorded in [Starting Equipment and Wealth Discovery](architecture/starting-equipment-and-wealth.md). The recommended first release is creation-time acquisition, not a persistent shop.
 
-**Status (2026-07-27): all four items delivered.** Projection consolidated behind one shared helper and shipped in 0.6.1 with the general-slot skill-feat fix; archetype legality now filters both feat lanes against projected state; Gradual Ability Boosts mirrors PF2E's own allowance formula; depth verified to level 10 across five profiles and to level 20 for one. Remaining Arc 1 debt: high-level *caster* verification (spell ranks 6–9, level-19/20 caster milestones) and the spell-deficit audit for existing characters that issue #18 tracks publicly.
+At level 1:
 
-1. **One projection, many readers.** Fix #16 by consolidating, not patching: a single projected-state service (skills, boosts, feats, languages, known spells, dedications) computed per step position, consumed by every pane and eligibility filter. #15 and #16 become regression tests of the same seam.
-2. **Archetype legality v1.** Prerequisite checking against projected state, the two-feats-before-a-new-dedication rule, duplicate-dedication lockouts, and family membership where PF2E data expresses it. Boundaries that survive stay explicitly labeled; the rest become real filters.
-3. **Depth verification.** Extend the smoke matrix: a representative class set (one martial, one prepared, one spontaneous, one bounded, one skill-monkey) verified L1→10, and at least one class L1→20. Boosts at 10/15/20 and high-rank spell scheduling get evidence, and the README's promise moves past level 5.
-4. **Gradual Ability Boosts.** The last unmet "Native" variant commitment from the product brief, plus awareness labels for ABP/Stamina/PWoL.
+- Start from the official 15 gp budget.
+- Offer the structured Adventurer's Pack and a searchable equipment picker with quantity, price, Bulk, hands, traits, rarity, level, and source context.
+- Provide clearly labeled suggestions based on class proficiencies and trained skills. Remaster PF2E removed class kits, so Wayfinder must not describe suggestions as official class loadouts.
+- Keep a running budget and apply the purchased physical items plus remaining currency as one prepared acquisition batch.
 
-### Arc 2 — Finish the character (0.8–0.9): the table-ready arc
+Above level 1:
 
-The feature arc. When it ends, the common official path never leaves Wayfinder.
+- Use PF2E's Character Wealth lump sum as the 0.8.0 budget.
+- Support a custom starting amount as an explicit GM override, not an inferred house rule.
+- Show the permanent-items-plus-currency alternative as a documented handoff until its item-level allowance model ships.
 
-**0.8 — Starting wealth & shop.**
+GM policy should cover wealth mode, custom amounts, rarity ceiling, and supplemental sources. The first slice is for blank or new-character inventory; an actor with meaningful existing equipment receives an explicit PF2E-sheet handoff. Existing inventory is never cleared, repriced, or silently replaced.
 
-- Level 1: class kits as one-click starting loadouts, plus a guided purchase step against starting currency.
-- Above level 1: the GM Core character-wealth flow — the lump-sum-currency vs. permanent-items-plus-currency choice, with item-level caps from the official table.
-- GM settings: wealth mode (official table / lump sum only / custom amounts), rarity ceiling, source filtering reusing the existing allowlist machinery.
-- Scope fence: this is *creation-time acquisition only*. No ongoing shop, no rune transfer, no economy. The shop pane reuses the picker grammar (search, filters, preview) with a running budget in the rail.
+Scope fence: no selling, merchant inventory, downtime shopping, rune transfer, automatic loadout optimization, or ongoing economy. Automatic Bonus Progression can change recommendations, but it does not justify a second equipment rules engine in 0.8.0.
 
-**0.9 — Identity Epilogue & the completion moment.**
+### 0.8.1 — Equipment beta stabilization
 
-- A final narrative chapter after the mechanical steps: name, age, pronouns, physical description, backstory, edicts & anathema, deity details — written to the PF2E biography fields the sheet already renders. Prompts nudge, never require; second person, present tense.
-- Portrait & token: Foundry FilePicker, apply to portrait and prototype token, dynamic token ring settings where Foundry supports them. If Tokenizer is installed, offer it for editing.
-- The completion state the design vision promised: a summary of who this character became — dossier line grown into a full sentence, key choices recapped — and explicit handoffs for anything that remains. "Seren Auviel is ready for her first adventure."
+Add the Character Wealth permanent-items-plus-currency path with its separate item-level allowances and fundamental-rune decisions. Reserve the same release for real-player findings: price and stacking edge cases, containers and nested kit contents, actor-size adjustments, granted equipment conflicts, unusual physical-item types, and GM policy wording. Expand suggested loadouts only when evidence supports reusable rules rather than class-name tables.
 
-### Arc 3 — Widen the gates (parallel / post-1.0)
+### 0.9.0 — Identity Epilogue and completion
 
-Breadth work that never blocks the arcs above:
+Add an optional final chapter for name, pronouns, age, appearance, backstory, edicts and anathema, deity notes, portrait, and prototype token. Write to PF2E and Foundry fields the sheet already owns. File selection is in scope; image editing is not.
 
-- Class archetypes per the ranked #7 plan: shared substrate (training replacement policy, selector-independent discovery, generalized grants), then Bloodrager and Vindicator, then the substrate proofs and complex rewrites.
-- Deeper Free Archetype adjudication as the legality engine matures.
-- Coverage-matrix upkeep as PF2E ships new content.
+Replace the current anticlimactic empty state with a reviewable completion summary: key choices, equipment and remaining currency, honest handoffs, and a character-specific closing message. Issue #22 fits this arc if it has not already shipped as beta-driven 0.7.x polish.
 
-### What 1.0 means
+### Parallel breadth — class archetypes
 
-Wayfinder 1.0 is declared when a player can take a blank actor to an equipped, portraited, backstoried, mechanically verified character — at level 1 or above — without a single required trip to the native sheet on the common official path; when verified depth reaches at least level 10; and when archetype legality is filtered, not disclaimed, for core cases. That is the release to showcase loudly: module listing refresh, real screenshots of the epilogue and shop, and a community post that leads with the honesty posture as the differentiator.
+Continue #7 without blocking the main release train. Each profile needs complete planning, apply, rerun, and live evidence; a `class-archetype` tag alone is not a support claim. Prioritize shared training/grant substrate, then the most requested and structurally regular profiles.
+
+## What 1.0 means
+
+Wayfinder 1.0 is the first release where a player can take a blank official PF2E character to a mechanically complete, equipped, identified, and reviewable actor without a required trip to another sheet tab on the common path.
+
+The release gate is evidence, not feature count:
+
+- all 27 classes retain a maintained level-1-to-5 path;
+- representative martial, skill-heavy, prepared, spontaneous, and bounded profiles remain verified through level 10;
+- at least one prepared and one spontaneous caster are verified through ranks 6–10 and the level-19/20 milestones;
+- starting wealth and equipment apply idempotently through the shared prepared mutation model;
+- core archetype legality is filtered from projected state, with remaining prose or campaign judgments labeled before selection;
+- failures preserve the draft and do not leave a silently partial actor;
+- the completion review names every remaining native or GM handoff;
+- real-player beta testing has completed a documented soak period without an unresolved release-blocking data-loss or partial-apply defect.
+
+Class-archetype breadth beyond the registered profiles is valuable but does not block 1.0 when unsupported profiles remain honestly hidden. A full generic PF2E rule-element interpreter is not a 1.0 goal.
 
 ## Non-goals
 
-Held deliberately, revisited only at 1.0: NPC/creature building, token image editing, Pathbuilder import/export, daily preparations, downtime economy and rune management, retraining, homebrew content *authoring* (allowlisted homebrew content remains supported), and non-PF2E systems.
+- NPC or creature building
+- Pathbuilder import/export
+- daily preparations and alchemical daily allocation
+- downtime commerce, selling, rune management, or merchant simulation
+- retraining
+- image editing
+- homebrew content authoring
+- non-PF2E systems
 
-## Docs housekeeping
+Allowlisted third-party Item packs remain supported where their documents use rule shapes Wayfinder can validate.
 
-- The v1 backlog, research digest, and implementation notes in `agents/` were removed on 2026-07-26 — the v1 plan shipped in full, and their capability snapshots no longer matched the code. This file is their successor.
-- `agents/product-brief.md` and `agents/design-vision.md` remain canonical for scope philosophy and feel. The design vision needs no revision — Arc 2 exists to finish honoring it.
-- `docs/issue-backlog-2026-07-26.md` remains the tactical plan for #7 and the template for future issue-triage snapshots.
-- Coverage matrices in `docs/coverage/` stay evidence-first; Arc 1's depth work extends them past level 5.
+## Documentation contract
+
+- [README.md](../README.md) is the player-facing overview and current support promise.
+- [Coverage matrices](coverage/) are evidence-first references, not roadmap promises.
+- [Development](development.md) and [release packaging](release-packaging.md) are maintainer how-to guides.
+- [Architecture notes](architecture/) explain current module ownership and design decisions.
+- [The 2026-07-26 issue backlog](issue-backlog-2026-07-26.md) is a historical triage snapshot; live issue state is on GitHub.

@@ -1,5 +1,7 @@
 # Ranked GitHub Issue Backlog — 2026-07-26
 
+> **Historical snapshot.** Issues #10–#15 shipped in 0.6.0 and are closed. Issue #7 remains open; the current open queue is #7, #22, and #23. See the [roadmap](roadmap.md) and [live GitHub issues](https://github.com/bestlux/wayfinder/issues) for current priorities. The ranking below is preserved as the evidence and decisions recorded on 2026-07-26.
+
 This review covers every open GitHub issue as of 2026-07-26: #15, #14, #13, #12, #11, #10, and #7.
 
 The ranking weighs rules and data correctness first, then whether the issue blocks a core build path, affected-user breadth, implementation confidence, and dependency cost. Issues #10–#15 target v0.6.0 and must not be closed until the release tag and published artifacts are verified. Issue #7 remains open by design.

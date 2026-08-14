@@ -48,9 +48,12 @@ Before making the repository public or submitting a Foundry package listing:
 
 1. Bump `package.json` and `module.json` to the same version.
 2. Add a `CHANGELOG.md` section for the version.
-3. Run `npm run check`.
-4. Commit, tag the commit as `vX.Y.Z`, and push the tag.
-5. `.github/workflows/release.yml` validates the repo, builds the package, attaches the release manifest and zip to the GitHub Release, and uses the extracted changelog section as the GitHub Release body.
+3. Build the exact candidate and run the current release smoke matrix in Foundry. Record the candidate version, Foundry/PF2E versions, scenario count, failures, and artifact directories in `docs/coverage/beta-readiness-smoke.md`.
+4. Run `npm run check`.
+5. Run the CI-style packaging command above and inspect `dist/release/package-manifest.json`, the generated release manifest, and extracted notes.
+6. Commit and push the release commit. Tag that exact commit as `vX.Y.Z`, then push the tag.
+7. `.github/workflows/release.yml` validates the repo, builds the package, attaches the release manifest and zip to the GitHub Release, and uses the extracted changelog section as the GitHub Release body.
+8. Verify the workflow, tag, GitHub Release, `module.json`, `module.zip`, package manifest, and version-specific asset URLs independently before announcing the release or closing a release-blocked issue.
 
 ## Foundry package listing
 

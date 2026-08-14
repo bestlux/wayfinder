@@ -1,5 +1,7 @@
 # AP And Side-Book Level 1 Audit
 
+> **Historical audit snapshot (2026-05-08).** Counts, examples, and live evidence below describe the repository and PF2E data at the time of the audit. Later releases added config-backed choices, broader connected-choice handling, all-class smoke coverage, Free Archetype, campaign feat sections, and structured archetype legality. Use the [level-1 matrix](level1-coverage-matrix.md) and [release smoke log](beta-readiness-smoke.md) for current support claims.
+
 This audit maps non-core PF2E level-1 content against Wayfinder's current rule-support seams.
 
 It is intentionally content-shape focused. The goal is not bespoke Adventure Path support; it is to decide which side-book and AP rule patterns already fit the generic Wayfinder workflows, which reasonable patterns deserve new generic support, and which content should stay PF2E-native or manual for now.

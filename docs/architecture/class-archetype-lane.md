@@ -12,6 +12,8 @@ Three profiles are registered and guided through level 5:
 
 The release matrix passed live apply/rerun smoke on 2026-07-11 against Foundry VTT 14.364 and PF2E 8.3.0: 35 direct level-1-to-5 cases plus seven incremental existing-character cases, with 42 passing, zero classified/manual, and zero failed. Direct and incremental cases cover all three registered profiles; Battle Creed also retains its skill and static-grant fallback cases. Artifact: `.wayfinder-smoke/release-0.4.0-full-4`.
 
+The current release evidence is Wayfinder 0.7.1 against Foundry VTT 14.364 and PF2E 8.4.0: 54 executions representing 53 unique scenarios, including all three registered profiles and three Free Archetype paths, with zero classified/manual and zero failed. See [the release smoke log](../coverage/beta-readiness-smoke.md). The older artifacts below remain the focused evidence for the lane's initial implementation.
+
 ## Why this is a separate lane
 
 A class archetype is a level-1 class-construction decision. It can replace class features, change spellcasting, reserve later class-feat slots, and grant a dedication. An ordinary class branch only chooses one option under an existing selector; it does not own those cross-cutting changes.
@@ -118,7 +120,7 @@ Free Archetype is implemented as a separate variant progression path with these 
 - mirror PF2E's dedication-before/follow-up-after candidate split and share duplicate filtering with ordinary feat lanes;
 - keep class-archetype forced feats in whichever slot PF2E rules name. Battle Harbinger Dedication remains a normal level-2 class feat even when Free Archetype is enabled.
 
-The lane intentionally stops short of a second archetype rules engine. Access, exhaustive prerequisites, archetype-family membership, dedication lockouts, and combinations with registered class-archetype profiles remain a visible GM-confirmation boundary. The class-archetype registry and projected-feat context inform the picker, but a registered class-archetype profile does not move its forced dedication into a Free Archetype slot.
+The lane intentionally stops short of a second archetype rules engine. Shared structured legality now blocks duplicate and own-class dedications, enforces the ordinary two-feat lockout, requires resolved follow-up family membership, and checks supported skill-rank prerequisites against projected draft state. Access, prose prerequisites, unresolved families, campaign permission, and feats whose text changes the ordinary lockout remain visible GM-confirmation boundaries. The class-archetype registry and projected-feat context inform the picker, but a registered class-archetype profile does not move its forced dedication into a Free Archetype slot.
 
 ## Acceptance gates
 
@@ -143,7 +145,7 @@ Live release gates completed on 2026-07-11:
 5. Retain Battle Creed's both-skills-trained, actor-owned Toughness, and same-draft Shielded Fortune conflict cases.
 6. Run Free Archetype separately so its additional slots cannot mask class-feat or class-archetype regressions.
 
-The latest baseline artifact is `.wayfinder-smoke/release-0.5.0-baseline-final`; the focused Free Archetype overlay is `.wayfinder-smoke/release-0.5.0-free-archetype-final`.
+The historical baseline artifacts are `.wayfinder-smoke/release-0.5.0-baseline-final` and `.wayfinder-smoke/release-0.5.0-free-archetype-final`. Current full-release evidence is recorded under the five `.wayfinder-smoke/release-0.7.1-rc-*` artifacts listed in the release smoke log.
 
 ## Adding another class archetype
 

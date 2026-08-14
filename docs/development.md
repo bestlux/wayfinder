@@ -32,6 +32,16 @@ $env:FOUNDRY_SMOKE_WORLD_ID = "<expected local world id>"
 npm run smoke:foundry
 ```
 
+The harness logs into an active world as the configured Foundry world user; it does not need Foundry's setup-administrator password. Use a disposable GM account because smoke cases create and remove actors.
+
+Focused variant examples:
+
+```powershell
+npm run smoke:foundry -- -- --free-archetype on --case free-archetype-fighter-archer-dedication
+npm run smoke:foundry -- -- --campaign-feat-sections ancestry-paragon --case ancestry-paragon-fighter-l1-l5-apply-rerun
+npm run smoke:foundry -- -- --gradual-boosts on --case gradual-boosts-fighter-l1-l5-apply-rerun
+```
+
 See [coverage/beta-readiness-smoke.md](coverage/beta-readiness-smoke.md) for harness setup, safety rules, and the current launch matrix.
 
 ## Architecture

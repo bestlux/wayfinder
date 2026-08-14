@@ -22,7 +22,7 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 - **Native Free Archetype slots.** When PF2E's Free Archetype variant is enabled, Wayfinder adds separate even-level archetype choices without consuming normal class feats.
 - **Earlier picks filter later ones.** You stop scrolling past feats and options you can't take anyway.
 - **Beginner-friendly, veteran-fast.** Each step explains what you're choosing; experienced players just search, pick, next.
-- **Respects your table.** Rarity and source filters on every picker, with optional GM allowlists for non-official packs.
+- **Respects your table.** Rarity and source filters on every picker, with a GM spell-rarity ceiling and optional allowlists for non-official packs.
 - **Resumable drafts.** Progress is saved on the actor, so you can leave mid-build and come back later.
 - **Honest about its limits.** When Wayfinder can't model a step confidently, it says so and points you at the right native PF2E control instead of silently guessing.
 
@@ -94,7 +94,7 @@ These stay in the native PF2E sheet for now, and Wayfinder will tell you so when
 
 ## Feedback
 
-The **Feedback** button in Wayfinder's footer is the shortest path — it opens the right form with your Wayfinder, Foundry, and PF2E versions already filled in. You can also go straight to [GitHub issues](https://github.com/bestlux/wayfinder/issues) to [report a problem](https://github.com/bestlux/wayfinder/issues/new?template=bug-report.yml) or [suggest an idea](https://github.com/bestlux/wayfinder/issues/new?template=feature-request.yml), or reach the maintainer on Discord: `bestlux`.
+The **Feedback** button in Wayfinder's footer is the shortest path — it opens the right form with your Wayfinder, Foundry, and PF2E versions already filled in. The same panel is available under **PF2e - Wayfinder Character Builder** in Foundry's module settings. You can also go straight to [GitHub issues](https://github.com/bestlux/wayfinder/issues) to [report a problem](https://github.com/bestlux/wayfinder/issues/new?template=bug-report.yml) or [suggest an idea](https://github.com/bestlux/wayfinder/issues/new?template=feature-request.yml), or reach the maintainer on Discord: `bestlux`.
 
 If Wayfinder handed a step back to the PF2E sheet, check the [coverage matrices](docs/coverage) first — that step may not be guided yet rather than broken.
 

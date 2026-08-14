@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.3 - 2026-08-14
+
+- Verified Wayfinder against Foundry VTT 14 Stable 8 (14.366) and PF2E 8.4.0, including creation, level-up, campaign variants, and interrupted Apply recovery.
+- Updated Foundry compatibility metadata so Stable 8's package delivery system can select the release using its exact tested core version.
+
 ## 0.7.2 - 2026-08-14
 
 - Applying a draft now checks its selected sources, current PF2E choices, feat slots, and spell destinations before changing the character whenever those details are available.

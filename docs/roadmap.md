@@ -1,10 +1,10 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-14 for the 0.7.2 release. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-08-14 for the 0.7.3 release. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
-Wayfinder 0.7.2 guides all 27 PF2E classes from a blank level-1 actor through level 5 along one maintained path. Five representative profiles are verified through level 10 and Fighter through level 20. The current live release matrix contains 54 unique scenarios against Foundry VTT 14.364 and PF2E 8.4.0, including a deliberate late-phase Apply failure and clean retry.
+Wayfinder 0.7.3 guides all 27 PF2E classes from a blank level-1 actor through level 5 along one maintained path. Five representative profiles are verified through level 10 and Fighter through level 20. The current live release matrix contains 54 unique scenarios against Foundry VTT 14.366 and PF2E 8.4.0, including a deliberate late-phase Apply failure and clean retry.
 
 The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, and Gradual Ability Boosts. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation.
 
@@ -26,6 +26,10 @@ Wayfinder owns the journey from **blank actor to table-ready character** inside 
 This includes creation and progression choices, starting equipment, identity, and a clear completion state. It excludes daily preparations, downtime commerce, rune management, retraining, NPC construction, and image editing.
 
 ## Release train
+
+### 0.7.3 — Foundry 14 Stable 8 compatibility
+
+Wayfinder is verified against Foundry 14 build 366 and advertises that exact build in its package compatibility metadata. The release smoke harness supports Stable 8's username-autocomplete world login as well as the earlier Foundry 14 selector, and the full release matrix confirms that Foundry's package-delivery and login changes do not alter Wayfinder's character-building or Apply behavior.
 
 ### 0.7.2 — Apply Safety Bridge
 

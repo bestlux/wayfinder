@@ -529,7 +529,12 @@ async function login(page, { foundryUrl, password, user }) {
       throw new Error("FOUNDRY_USER is required when the browser is not already logged in.");
     }
 
-    await page.locator('select[name="userid"]').selectOption({ label: user });
+    const legacyUserSelect = page.locator('select[name="userid"]');
+    if ((await legacyUserSelect.count()) > 0) {
+      await legacyUserSelect.selectOption({ label: user });
+    } else {
+      await page.locator('input[name="username"]').fill(user);
+    }
     await page.locator('input[name="password"]').fill(password);
     await page.locator('button[name="join"]').click();
   }
@@ -561,6 +566,7 @@ function buildMarkdownSummary(result) {
 - Finished: ${result.finishedAt}
 - World: ${result.world}
 - User: ${result.user}
+- Foundry: ${result.foundryVersion ?? "unknown"}
 - PF2E: ${result.pf2eVersion}
 - Wayfinder: ${result.moduleId} ${result.moduleVersion ?? "unknown"} (active: ${result.moduleActive})
 - Free Archetype: mode ${result.freeArchetypeVariant?.mode ?? "unchanged"}, effective ${result.freeArchetypeVariant?.effective ?? "unknown"}, restored ${result.freeArchetypeVariant?.restored ?? "unknown"}

@@ -42,10 +42,33 @@
     </a>
   </nav>
 
+  {{#if hasPrefill}}
+    <p class="feedback-prefill-note">
+      <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+      {{localize "wayfinder-pf2e.Feedback.Prefill"}}
+    </p>
+  {{/if}}
+
   <p class="feedback-privacy-note">
     <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
     {{localize "wayfinder-pf2e.Feedback.Privacy"}}
   </p>
+
+  <aside class="feedback-fallbacks">
+    <strong>{{localize "wayfinder-pf2e.Feedback.FallbacksTitle"}}</strong>
+    <p>
+      <a href="{{urls.coverage}}" target="_blank" rel="noopener noreferrer">
+        {{localize "wayfinder-pf2e.Feedback.CoverageLink"}}
+        <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+      </a>
+      {{localize "wayfinder-pf2e.Feedback.CoverageHint"}}
+    </p>
+    <p class="feedback-discord">
+      <i class="fa-brands fa-discord" aria-hidden="true"></i>
+      {{localize "wayfinder-pf2e.Feedback.Discord"}}
+      <code>{{discordHandle}}</code>
+    </p>
+  </aside>
 
   <footer class="feedback-support-footer">
     <a href="{{urls.chooser}}" target="_blank" rel="noopener noreferrer">

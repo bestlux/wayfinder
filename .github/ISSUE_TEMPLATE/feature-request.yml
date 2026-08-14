@@ -1,5 +1,5 @@
-name: Feature request or suggestion
-description: Suggest an improvement to Wayfinder's character-building workflow.
+name: Suggest an idea
+description: Something that would make building a character in Wayfinder easier.
 title: "[Suggestion]: "
 labels:
   - enhancement
@@ -7,28 +7,31 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for sharing an idea. GitHub issues are public, so please do not include private player, actor, or world information.
+        Thanks for thinking about this. You don't need a polished proposal — the moment that annoyed you is the useful part.
+
+        **This issue will be public**, so leave out player names, world links, and anything else private.
   - type: textarea
     id: problem
     attributes:
-      label: What problem or friction did you encounter?
-      description: Describe the moment in the character-building workflow, not just the proposed feature.
+      label: What got in your way?
+      description: Describe the point in the build where you got stuck or slowed down. That's more useful to me than the feature itself.
     validations:
       required: true
   - type: textarea
     id: outcome
     attributes:
-      label: What outcome would help?
-      description: Tell us what you expected Wayfinder to make easier or clearer.
+      label: What would you like Wayfinder to do?
+      description: Your best guess is fine. It doesn't have to be the right answer.
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives considered
-      description: Optional. What do you do today, or what other approach might work?
+      label: What do you do instead right now?
+      description: Optional. Knowing your workaround tells me how much this is costing you.
   - type: input
     id: context
     attributes:
-      label: Relevant character or table context
-      description: Optional. Include class, level, variant rules, or experience level without private information.
+      label: Anything about your character or table?
+      description: Optional. Class, level, variant rules, how long you've played PF2E — no private details.
+      placeholder: Level 5 Wizard, Free Archetype on, new to PF2E

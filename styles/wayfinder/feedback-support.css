@@ -139,6 +139,8 @@
 
 .wayfinder-feedback .feedback-external-note p,
 .wayfinder-feedback .feedback-privacy-note,
+.wayfinder-feedback .feedback-prefill-note,
+.wayfinder-feedback .feedback-fallbacks p,
 .wayfinder-feedback .feedback-destination small {
   color: var(--wf-ink-soft);
   font: 0.75rem / 1.4 var(--sans-serif, sans-serif);
@@ -228,16 +230,89 @@
   font: 600 1rem / 1.15 var(--serif, "Signika", serif);
 }
 
-.wayfinder-feedback .feedback-privacy-note {
+.wayfinder-feedback .feedback-privacy-note,
+.wayfinder-feedback .feedback-prefill-note {
   display: flex;
   gap: 0.5rem;
   align-items: flex-start;
+  margin: 0;
   padding: 0 0.1rem;
 }
 
-.wayfinder-feedback .feedback-privacy-note i {
+.wayfinder-feedback .feedback-privacy-note i,
+.wayfinder-feedback .feedback-prefill-note i {
   margin-top: 0.14rem;
   color: var(--wf-secondary);
+}
+
+.wayfinder-feedback .feedback-prefill-note {
+  margin-top: -0.35rem;
+  color: var(--wf-accent-contrast);
+}
+
+.wayfinder-feedback .feedback-prefill-note i {
+  color: var(--wf-accent-contrast);
+}
+
+.wayfinder-feedback .feedback-fallbacks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px dashed rgba(95, 77, 57, 0.32);
+  border-radius: var(--wf-radius);
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.wayfinder-feedback .feedback-fallbacks strong {
+  color: var(--wf-ink);
+  font: 700 0.8rem / 1.25 var(--sans-serif, sans-serif);
+}
+
+.wayfinder-feedback .feedback-fallbacks p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.wayfinder-feedback .feedback-fallbacks a {
+  color: var(--wf-secondary);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.wayfinder-feedback .feedback-fallbacks a:hover,
+.wayfinder-feedback .feedback-fallbacks a:focus-visible {
+  color: var(--wf-primary);
+  text-decoration: underline;
+}
+
+.wayfinder-feedback .feedback-fallbacks a:focus-visible {
+  outline: 2px solid rgba(94, 0, 0, 0.26);
+  outline-offset: 2px;
+}
+
+.wayfinder-feedback .feedback-fallbacks a i {
+  font-size: 0.55rem;
+}
+
+.wayfinder-feedback .feedback-discord {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.wayfinder-feedback .feedback-discord i {
+  color: var(--wf-secondary);
+}
+
+.wayfinder-feedback .feedback-discord code {
+  padding: 0.05rem 0.3rem;
+  border: 1px solid rgba(95, 77, 57, 0.26);
+  border-radius: var(--wf-radius);
+  background: rgba(233, 215, 161, 0.34);
+  color: var(--wf-ink);
+  font-size: 0.72rem;
+  user-select: all;
 }
 
 .wayfinder-feedback .feedback-support-footer {

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Reporting a problem no longer means hunting down three version numbers. The Feedback panel prefills your Wayfinder, Foundry, and PF2E versions into the bug form, so the report arrives accurate and you type less.
+- The feedback flow now speaks to players rather than to a bug tracker. "Steps to reproduce", "Expected behavior", and "Actual behavior" became "What were you doing?" and "What happened, and what did you expect instead?", and the bug form asks for one merged account instead of two separate ones.
+- Feedback offers a way out for people who don't want a GitHub account or aren't sure they found a bug: the panel and the issue chooser now point at the coverage matrices and at the maintainer's Discord handle.
+- The privacy warning names what actually leaks — player names and world invite links in screenshots — instead of listing abstract categories.
+- The footer's Feedback button now has an accessible name that contains its visible label, so voice-control users can activate it by saying "Feedback".
+
 ## 0.7.1 - 2026-08-12
 
 - Applying a stale draft no longer removes an existing ancestry, heritage, background, or class when its replacement source cannot be resolved or PF2E rejects creation. Wayfinder validates the entire singleton batch before mutation, lets PF2E own singular-item replacement, and restores the previous batch if creation fails.

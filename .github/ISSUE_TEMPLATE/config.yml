@@ -1,1 +1,8 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Not sure Wayfinder supports your build yet?
+    url: https://github.com/bestlux/wayfinder/tree/master/docs/coverage
+    about: The coverage matrices list which choices Wayfinder guides today. A step it hands back to the PF2E sheet may simply not be covered yet.
+  - name: Prefer not to use GitHub?
+    url: https://github.com/bestlux/wayfinder#feedback
+    about: You can reach the maintainer on Discord instead — the readme has the handle.

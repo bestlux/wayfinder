@@ -16,32 +16,37 @@
       "ApplyConfirmNo": "Cancel",
       "ClearDraft": "Clear Draft",
       "Feedback": "Feedback",
-      "FeedbackAria": "Report an issue or suggest an idea",
-      "FeedbackTooltip": "Learn how to report an issue or suggest an idea",
+      "FeedbackAria": "Feedback — report a problem or suggest an idea",
+      "FeedbackTooltip": "Report a problem or suggest an idea",
       "IncreaseTarget": "Increase target level",
       "DecreaseTarget": "Decrease target level",
       "Guidance": "Wayfinder handles the picks — ancestry, feats, class branches, spells. Ability boosts and skill increases are walked through here too. Anything Wayfinder can't model cleanly hands off to your character sheet."
     },
     "Feedback": {
-      "Title": "Wayfinder feedback and support",
-      "Eyebrow": "Feedback and support",
-      "Heading": "How can we help?",
-      "Intro": "Choose the form that best matches what you want to share. Each form includes prompts for the details that help us respond.",
-      "DestinationLabel": "Choose a feedback form",
-      "ExternalTitle": "GitHub opens in a new browser tab",
-      "ExternalBody": "Submitting feedback requires a GitHub account. Your report or suggestion will be visible publicly in the Wayfinder repository.",
+      "Title": "Wayfinder feedback",
+      "Eyebrow": "Wayfinder",
+      "Heading": "Tell me what happened",
+      "Intro": "Two ways to reach me. Pick whichever sounds closer — I'd rather get a rough report than none at all.",
+      "DestinationLabel": "Ways to send feedback",
+      "ExternalTitle": "These go to GitHub, and they're public",
+      "ExternalBody": "You'll need a free GitHub account to post, and anyone can read what you write. Opens in a new browser tab.",
       "BugTitle": "Report a problem",
-      "BugHint": "Describe what happened and how to reproduce it.",
+      "BugHint": "Something did the wrong thing, or nothing at all.",
       "FeatureTitle": "Suggest an idea",
-      "FeatureHint": "Explain the need and what a good outcome would look like.",
-      "Privacy": "Remove private actor, player, world, credential, and invite information before submitting.",
-      "Chooser": "View all issue options"
+      "FeatureHint": "Something that would make building easier.",
+      "Prefill": "Your Wayfinder, Foundry, and PF2E versions are filled in for you.",
+      "Privacy": "Screenshots often catch player names and your world's invite link — worth a look before you post.",
+      "FallbacksTitle": "Not sure it's a bug?",
+      "CoverageLink": "Check what Wayfinder guides today",
+      "CoverageHint": "— a step Wayfinder hands back to the PF2E sheet may simply not be covered yet.",
+      "Discord": "Prefer not to use GitHub? Find me on Discord as",
+      "Chooser": "Other ways to file this"
     },
     "Settings": {
       "Feedback": {
-        "Name": "Feedback and support",
+        "Name": "Feedback",
         "Label": "Open feedback",
-        "Hint": "Report a Wayfinder issue or suggest an improvement from outside a character sheet."
+        "Hint": "Report a problem or suggest an idea without opening a character sheet first."
       },
       "ExtraPacks": {
         "Name": "Extra PF2E compendium allowlist",

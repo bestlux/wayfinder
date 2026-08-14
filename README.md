@@ -94,9 +94,9 @@ These stay in the native PF2E sheet for now, and Wayfinder will tell you so when
 
 ## Feedback
 
-Bug reports and feature requests: [GitHub issues](https://github.com/bestlux/wayfinder/issues). You can also reach the maintainer on Discord: `bestlux`.
+The **Feedback** button in Wayfinder's footer is the shortest path — it opens the right form with your Wayfinder, Foundry, and PF2E versions already filled in. You can also go straight to [GitHub issues](https://github.com/bestlux/wayfinder/issues) to [report a problem](https://github.com/bestlux/wayfinder/issues/new?template=bug-report.yml) or [suggest an idea](https://github.com/bestlux/wayfinder/issues/new?template=feature-request.yml), or reach the maintainer on Discord: `bestlux`.
 
-When reporting a bug, the Foundry version, PF2E system version, and the class/ancestry combination involved make it much faster to reproduce.
+If Wayfinder handed a step back to the PF2E sheet, check the [coverage matrices](docs/coverage) first — that step may not be guided yet rather than broken.
 
 ## Development
 

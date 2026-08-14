@@ -1,9 +1,16 @@
 import { MODULE_ID } from "./constants.js";
-export const FEEDBACK_URLS = {
-    bug: "https://github.com/bestlux/wayfinder/issues/new?template=bug-report.yml",
-    feature: "https://github.com/bestlux/wayfinder/issues/new?template=feature-request.yml",
-    chooser: "https://github.com/bestlux/wayfinder/issues/new/choose",
-};
+import { buildBugReportUrl, DISCORD_HANDLE, FEEDBACK_URLS } from "./feedback-links.js";
+export { FEEDBACK_URLS } from "./feedback-links.js";
+function readVersions() {
+    if (typeof game === "undefined") {
+        return {};
+    }
+    return {
+        wayfinder: game.modules?.get?.(MODULE_ID)?.version,
+        foundry: game.version,
+        pf2e: game.system?.id === "pf2e" ? game.system?.version : undefined,
+    };
+}
 export class FeedbackSupportApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
     static DEFAULT_OPTIONS = {
         id: `${MODULE_ID}-feedback`,
@@ -29,8 +36,14 @@ export class FeedbackSupportApp extends foundry.applications.api.HandlebarsAppli
         new FeedbackSupportApp().render(true);
     }
     async _prepareContext() {
+        const versions = readVersions();
         return {
-            urls: FEEDBACK_URLS,
+            urls: {
+                ...FEEDBACK_URLS,
+                bug: buildBugReportUrl(versions),
+            },
+            discordHandle: DISCORD_HANDLE,
+            hasPrefill: Boolean(versions.wayfinder || versions.foundry || versions.pf2e),
         };
     }
 }

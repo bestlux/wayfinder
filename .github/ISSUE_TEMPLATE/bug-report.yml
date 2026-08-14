@@ -1,5 +1,5 @@
-name: Bug report
-description: Tell us about behavior that is broken, incorrect, or surprising.
+name: Report a problem
+description: Something in Wayfinder did the wrong thing, or nothing at all.
 title: "[Bug]: "
 labels:
   - bug
@@ -7,39 +7,46 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve Wayfinder. GitHub issues are public. Please remove actor names, world URLs, player names, access keys, and other private information from text, screenshots, and logs.
+        Thanks for taking the time. Fill in what you can — a rough report beats no report.
+
+        **This issue will be public.** Before you post, check your text and screenshots for player names, your world's URL or invite link, and anything else you'd rather not share.
+
+        Not sure Wayfinder supports your build yet? The [coverage matrices](https://github.com/bestlux/wayfinder/tree/master/docs/coverage) list what's guided today — a step Wayfinder hands back to the PF2E sheet may simply not be covered yet.
   - type: input
     id: wayfinder-version
     attributes:
       label: Wayfinder version
-      placeholder: Shown in Foundry's Manage Modules screen
+      description: Filled in for you if you came here from Wayfinder's Feedback button. Otherwise it's on Foundry's Manage Modules screen.
+      placeholder: "0.7.1"
     validations:
       required: true
   - type: input
     id: foundry-version
     attributes:
       label: Foundry VTT version
-      placeholder: 14.364
+      description: Filled in for you if you came here from Wayfinder's Feedback button.
+      placeholder: "14.364"
     validations:
       required: true
   - type: input
     id: pf2e-version
     attributes:
       label: PF2E system version
-      placeholder: 8.4.0
+      description: Filled in for you if you came here from Wayfinder's Feedback button.
+      placeholder: "8.4.0"
     validations:
       required: true
   - type: input
     id: character
     attributes:
-      label: Character context
-      description: Include the target level and relevant class, ancestry, archetype, or variant rules.
+      label: What were you building?
+      description: Level, class, ancestry, and any archetype or variant rules your table uses.
       placeholder: Level 3 Rogue, Human, Free Archetype off
   - type: textarea
     id: steps
     attributes:
-      label: Steps to reproduce
-      description: What did you select or do before the problem appeared?
+      label: What were you doing?
+      description: Walk me through what you clicked, so I can land on the same screen you did.
       placeholder: |
         1. Open Wayfinder on a blank character.
         2. Set the target level to 3.
@@ -47,26 +54,24 @@ body:
     validations:
       required: true
   - type: textarea
-    id: expected
+    id: outcome
     attributes:
-      label: Expected behavior
-    validations:
-      required: true
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual behavior
+      label: What happened, and what did you expect instead?
+      description: Both halves help — the second one is often where the real bug is hiding.
+      placeholder: |
+        Wayfinder offered me Dual-Weapon Warrior feats, but I don't have that dedication.
+        I expected the list to only show feats I'm actually eligible for.
     validations:
       required: true
   - type: textarea
     id: evidence
     attributes:
-      label: Screenshots or logs
-      description: Optional. Remove private information before attaching anything.
+      label: Screenshots or console errors
+      description: Optional, and always welcome. F12 opens your browser's console if there's a red error in there. Same privacy check applies.
   - type: checkboxes
     id: privacy
     attributes:
-      label: Privacy check
+      label: Before you post
       options:
-        - label: I removed private player, actor, world, and credential information from this public report.
+        - label: I checked my text and screenshots for player names, world links, and invite codes.
           required: true

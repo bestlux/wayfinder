@@ -1,10 +1,18 @@
 import { MODULE_ID } from "./constants.js";
+import { buildBugReportUrl, DISCORD_HANDLE, FEEDBACK_URLS, type FeedbackVersions } from "./feedback-links.js";
 
-export const FEEDBACK_URLS = {
-  bug: "https://github.com/bestlux/wayfinder/issues/new?template=bug-report.yml",
-  feature: "https://github.com/bestlux/wayfinder/issues/new?template=feature-request.yml",
-  chooser: "https://github.com/bestlux/wayfinder/issues/new/choose",
-} as const;
+export { FEEDBACK_URLS } from "./feedback-links.js";
+
+function readVersions(): Partial<FeedbackVersions> {
+  if (typeof game === "undefined") {
+    return {};
+  }
+  return {
+    wayfinder: game.modules?.get?.(MODULE_ID)?.version,
+    foundry: game.version,
+    pf2e: game.system?.id === "pf2e" ? game.system?.version : undefined,
+  };
+}
 
 export class FeedbackSupportApp extends foundry.applications.api.HandlebarsApplicationMixin(
   foundry.applications.api.ApplicationV2
@@ -36,8 +44,14 @@ export class FeedbackSupportApp extends foundry.applications.api.HandlebarsAppli
   }
 
   protected async _prepareContext(): Promise<Record<string, unknown>> {
+    const versions = readVersions();
     return {
-      urls: FEEDBACK_URLS,
+      urls: {
+        ...FEEDBACK_URLS,
+        bug: buildBugReportUrl(versions),
+      },
+      discordHandle: DISCORD_HANDLE,
+      hasPrefill: Boolean(versions.wayfinder || versions.foundry || versions.pf2e),
     };
   }
 }

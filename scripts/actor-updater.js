@@ -16,6 +16,7 @@ export function applyDraftToActor(actor, draft, steps, options = {}) {
         const prepared = await prepareDraftApplication(actor, draft, steps, {
             validateActorAuthority: options.validateActorAuthority,
             validateSelectionEligibility: options.validateSelectionEligibility,
+            validSkillSlugs: options.validSkillSlugs,
         });
         const result = await executePreparedDraftApplication(prepared, {
             beforePhase: options.beforePhase,

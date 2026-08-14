@@ -13,6 +13,7 @@ export function discoverSingletonChoiceMeta(args) {
         sourceLevel,
         localize,
         activeRollOptions: args.activeRollOptions,
+        selectedChoices: args.selectedChoices,
     }).map((choice) => ({
         slotId: choice.slotId,
         sourceItemType,
@@ -44,7 +45,8 @@ export function discoverSingletonChoiceSpecs(args) {
         if (isGrantSelectorChoice(rules, flag)) {
             return [];
         }
-        const options = resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, args.activeRollOptions ?? new Set());
+        const slotId = `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`;
+        const options = resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, args.activeRollOptions ?? new Set(), args.selectedChoices?.[slotId]);
         if (!options ||
             options.options.length === 0 ||
             (!includeTrainingChoices && shouldSkipSingletonChoice(args.sourceItemType, options.optionDomain))) {
@@ -53,7 +55,7 @@ export function discoverSingletonChoiceSpecs(args) {
         return [
             {
                 sourceRuleIndex,
-                slotId: `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`,
+                slotId,
                 flag,
                 prompt: resolvePrompt(rule.prompt, localize),
                 predicate: extractPredicate(rule.predicate),
@@ -76,11 +78,12 @@ function shouldSkipSingletonChoice(sourceItemType, optionDomain) {
 function extractPredicate(value) {
     return Array.isArray(value) ? value.filter(isChoicePredicate) : [];
 }
-function resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, activeRollOptions) {
+function resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, activeRollOptions, selectedValue) {
     if (Array.isArray(rule.choices)) {
         const options = rule.choices
             .filter((choice) => isRecord(choice))
-            .filter((choice) => matchesChoiceSetRulePredicate(choice, activeRollOptions))
+            .filter((choice) => (typeof choice.value === "string" && choice.value === selectedValue) ||
+            matchesChoiceSetRulePredicate(choice, activeRollOptions))
             .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
             .map((choice) => {
             const rawValue = String(choice.value).trim();

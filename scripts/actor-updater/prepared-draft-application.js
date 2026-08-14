@@ -29,7 +29,8 @@ export class DraftApplyPhaseError extends Error {
     completedReceipts;
     partialReceipt;
     constructor(phase, completedReceipts, partialReceipt, cause) {
-        super(`Wayfinder apply failed during ${phase}.`, { cause });
+        const detail = cause instanceof Error && cause.message ? ` ${cause.message}` : "";
+        super(`Wayfinder apply failed during ${phase}.${detail}`, { cause });
         this.name = "DraftApplyPhaseError";
         this.phase = phase;
         this.completedReceipts = cloneData(completedReceipts);
@@ -96,7 +97,7 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
             !usesNativeGrantItemCreation(step));
     });
     await validateMutationCapabilities(actor, selections, steps);
-    validateDraftChoiceValues(actor, draft, steps);
+    validateDraftChoiceValues(actor, draft, steps, deps.validSkillSlugs);
     const sources = await prepareSourceCatalog(actor, draft, steps, selections, deps);
     await validateSelectedEligibility(draft, steps, selections, deps);
     await validatePersistenceTargets(actor, draft, steps, deps);
@@ -117,8 +118,13 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
         sources,
     };
 }
-function validateDraftChoiceValues(actor, draft, steps) {
+function validateDraftChoiceValues(actor, draft, steps, configuredSkillSlugs) {
     const activeSlotIds = new Set(steps.map((step) => step.slotId));
+    const validSkillSlugs = new Set([
+        ...PF2E_SKILL_SLUGS,
+        ...Object.keys(actor.system?.skills ?? {}),
+        ...(configuredSkillSlugs ?? []),
+    ]);
     const activeRankDraft = {
         skillIncreases: Object.fromEntries(Object.entries(draft.skillIncreases).filter(([slotId]) => activeSlotIds.has(slotId))),
         skillTrainings: Object.fromEntries(Object.entries(draft.skillTrainings).filter(([slotId]) => activeSlotIds.has(slotId))),
@@ -141,11 +147,11 @@ function validateDraftChoiceValues(actor, draft, steps) {
             }
         }
         else if (step.kind === "skill-training") {
-            validateTrainingChoices(draft, step);
+            validateTrainingChoices(draft, step, validSkillSlugs);
         }
         else if (step.kind === "skill-increase") {
             const selected = draft.skillIncreases[step.slotId];
-            if (selected && !PF2E_SKILL_SLUGS.has(selected))
+            if (selected && !validSkillSlugs.has(selected))
                 throw staleChoiceError(step);
             if (selected) {
                 const ranks = projectDraftSkillRanks({
@@ -172,12 +178,12 @@ function assertListedChoice(step, selected, options) {
         throw staleChoiceError(step);
     }
 }
-function validateTrainingChoices(draft, step) {
+function validateTrainingChoices(draft, step, validSkillSlugs) {
     const training = draft.skillTrainings[step.slotId];
     if (!training)
         return;
     if (training.additional.length > step.training.additionalCount ||
-        training.additional.some((slug) => !PF2E_SKILL_SLUGS.has(slug))) {
+        training.additional.some((slug) => !validSkillSlugs.has(slug))) {
         throw staleChoiceError(step);
     }
     for (const choice of step.training.choiceRules) {
@@ -479,6 +485,10 @@ async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps)
     const sourcesByUuid = new Map();
     const documentsByUuid = new Map();
     const expectedSelections = [];
+    const nonMaterializedSelectionKeys = new Set(steps.flatMap((step) => {
+        const selection = step.kind === "pick-item" && step.flagChoice ? draft.selections[step.slotId] : null;
+        return selection ? [sourceCatalogKey(selection)] : [];
+    }));
     const campaignAuthorities = new Map();
     for (const step of steps) {
         if (step.slotKind === "campaign-feat" && step.campaignFeat) {
@@ -494,7 +504,9 @@ async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps)
         const selection = pending[index];
         if (!selection || sourcesByKey.has(sourceCatalogKey(selection)))
             continue;
-        expectedSelections.push(selection);
+        if (!nonMaterializedSelectionKeys.has(sourceCatalogKey(selection))) {
+            expectedSelections.push(selection);
+        }
         const existing = listActorItems(actor).find((item) => itemMatchesSourceId(item, selection.uuid));
         const document = await deps.fetchSelectionDocument(selection);
         const existingSource = existing ? snapshotActorItemSource(existing) : null;
@@ -713,14 +725,17 @@ function effectiveChoiceFlag(rule, source) {
         .join("");
 }
 function validateSpellDestinations(actor, draft, steps) {
+    const plannedDestinationKeys = new Set();
     for (const step of steps) {
-        if (step.kind !== "spell-choice" ||
-            !step.spellChoice.reuseExistingEntryOnly ||
-            (draft.spellChoices[step.slotId]?.length ?? 0) === 0) {
+        if (step.kind !== "spell-choice" || (draft.spellChoices[step.slotId]?.length ?? 0) === 0) {
+            continue;
+        }
+        if (!step.spellChoice.reuseExistingEntryOnly) {
+            plannedDestinationKeys.add(step.spellChoice.destination.key);
             continue;
         }
         const entry = findSpellcastingEntryForChoice(actor, step.spellChoice);
-        if (!entry?.id) {
+        if (!entry?.id && !plannedDestinationKeys.has(step.spellChoice.destination.key)) {
             throw new Error(`Cannot place ${step.title}: its PF2E spellcasting destination is unavailable.`);
         }
     }

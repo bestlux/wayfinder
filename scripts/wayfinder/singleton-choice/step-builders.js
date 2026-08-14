@@ -16,6 +16,7 @@ export function buildSingletonChoiceStepsFromRules(args) {
         extractSlug,
         localize,
         activeRollOptions: args.activeRollOptions,
+        selectedChoices: args.selectedChoices,
     }).map((choice) => createSingletonChoiceStep(sourceLevel, choice, {
         title: formatChoiceFlag(choice.flag),
         description: choice.prompt ?? `Choose the ${formatChoiceFlag(choice.flag).toLowerCase()} this ${sourceItemType} grants.`,

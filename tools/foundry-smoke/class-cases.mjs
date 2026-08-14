@@ -1296,3 +1296,22 @@ export const gradualBoostsSmokeCases = [
     forbiddenBoostBatchLevels: [2, 3, 4],
   },
 ];
+
+export const applySafetySmokeCases = [
+  {
+    ...classCase({
+      className: "Fighter",
+      classSlug: "fighter",
+      keyAbility: "str",
+      expectedStepIds: ["class-choice-fighter-weapon-mastery-fighterWeaponMastery-level-5"],
+      preferredSelections: {
+        "class-feat": ["Reactive Shield", "Intimidating Strike", "Quick Reversal"],
+        "skill-feat": ["Cat Fall", "Forager", "Acrobatic Performer", "Group Impression", "Quick Jump"],
+      },
+      preferredSkills: ["athletics", "acrobatics", "survival", "intimidation", "religion", "stealth"],
+    }),
+    id: "fighter-apply-safety-failure-retry",
+    label: "Fighter late apply failure and idempotent retry",
+    applySafetyFailurePhase: "source-flag-restoration",
+  },
+];

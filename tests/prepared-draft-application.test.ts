@@ -6,7 +6,7 @@ import {
 } from "../src/actor-updater/prepared-draft-application";
 import { createEmptyDraft } from "../src/draft-service";
 import type { ActorItemLike, EmbeddedItemSource } from "../src/shared/actor-model";
-import type { PendingStep } from "../src/types";
+import type { PendingStep, SpellChoiceStep } from "../src/types";
 import { buildActorHarness, classSelectionStep, selection, setGamePacks } from "./support/actor-updater-fixtures";
 
 const PHASE_IDS: DraftApplyPhase[] = [
@@ -132,6 +132,46 @@ describe("prepared draft application", () => {
       prepareDraftApplication(cappedHarness.actor as never, cappedDraft, [skillIncreaseStep(3)])
     ).rejects.toThrow("Skill increase 3 changed after this draft was prepared");
     expect(cappedHarness.actor.update).not.toHaveBeenCalled();
+
+    const configuredHarness = buildActorHarness();
+    const configuredDraft = createEmptyDraft(3);
+    configuredDraft.skillIncreases["skill-increase-level-3"] = "warfare-lore";
+    await expect(
+      prepareDraftApplication(configuredHarness.actor as never, configuredDraft, [skillIncreaseStep(3)], {
+        validSkillSlugs: new Set(["warfare-lore"]),
+      })
+    ).resolves.toBeDefined();
+  });
+
+  it("prepares but does not expect a flag-choice value to become an actor item", async () => {
+    const { actor } = buildActorHarness();
+    setGamePacks({
+      "pf2e.feats-srd": {
+        "multifarious-muse": {
+          name: "Multifarious Muse",
+          type: "feat",
+          system: {
+            rules: [{ key: "ChoiceSet", flag: "muse", choices: [{ value: "enigma", label: "Enigma" }] }],
+          },
+        },
+      },
+      "pf2e.classfeatures": {
+        enigma: { name: "Enigma", type: "feat", system: { category: "classfeature" } },
+      },
+    });
+    const draft = createEmptyDraft(2);
+    const slotId = "flag-choice-none-feat-multifarious-muse-muse-level-2";
+    draft.selections[slotId] = selection(slotId, "pf2e.classfeatures", "enigma", "feat", "Enigma");
+    const step = flagChoiceStep();
+
+    const prepared = await prepareDraftApplication(actor as never, draft, [step]);
+
+    expect(prepared.sources.expectedSelections.map((entry) => entry.uuid)).not.toContain(
+      "Compendium.pf2e.classfeatures.Item.enigma"
+    );
+    expect(prepared.sources.expectedSelections.map((entry) => entry.uuid)).toContain(
+      "Compendium.pf2e.feats-srd.Item.multifarious-muse"
+    );
   });
 
   it("rejects spell over-selection before resolving or mutating documents", async () => {
@@ -146,6 +186,37 @@ describe("prepared draft application", () => {
     await expect(prepareDraftApplication(actor as never, draft, [step])).rejects.toThrow(
       "Wizard cantrips changed after this draft was prepared"
     );
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("accepts a reuse-only spell step when an earlier selected step prepares the destination", async () => {
+    const { actor } = buildActorHarness();
+    setGamePacks({
+      "pf2e.spells-srd": {
+        guidance: { name: "Guidance", type: "spell", system: { level: { value: 0 } } },
+        fear: { name: "Fear", type: "spell", system: { level: { value: 1 } } },
+      },
+    });
+    const draft = createEmptyDraft(2);
+    const initialStep = spellChoiceStep(1);
+    const laterStep = {
+      ...spellChoiceStep(1),
+      id: "spell-choice-witch-familiar-level-2",
+      level: 2,
+      slotId: "spell-choice-witch-familiar-level-2",
+      title: "Level 2 witch familiar spells",
+      spellChoice: {
+        ...spellChoiceStep(1).spellChoice,
+        slotId: "spell-choice-witch-familiar-level-2",
+        reuseExistingEntryOnly: true,
+      },
+    } satisfies PendingStep;
+    draft.spellChoices[initialStep.slotId] = [
+      selection(initialStep.slotId, "pf2e.spells-srd", "guidance", "spell", "Guidance"),
+    ];
+    draft.spellChoices[laterStep.slotId] = [selection(laterStep.slotId, "pf2e.spells-srd", "fear", "spell", "Fear")];
+
+    await expect(prepareDraftApplication(actor as never, draft, [initialStep, laterStep])).resolves.toBeDefined();
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
   });
 
@@ -553,7 +624,7 @@ function skillIncreaseStep(level: number): PendingStep {
   };
 }
 
-function spellChoiceStep(count: number): PendingStep {
+function spellChoiceStep(count: number): SpellChoiceStep {
   return {
     id: "spell-choice-wizard-cantrips-level-1",
     level: 1,
@@ -588,6 +659,36 @@ function spellChoiceStep(count: number): PendingStep {
       curriculumSpellNames: [],
       additionalAllowedSpellNames: [],
       restrictToCommon: true,
+    },
+  };
+}
+
+function flagChoiceStep(): PendingStep {
+  const slotId = "flag-choice-none-feat-multifarious-muse-muse-level-2";
+  return {
+    id: slotId,
+    level: 2,
+    kind: "pick-item",
+    slotKind: "flag-choice",
+    title: "Choose a muse",
+    description: "",
+    required: true,
+    slotId,
+    filters: { itemType: "feat" },
+    flagChoice: {
+      slotId,
+      sourceItemType: "feat",
+      sourcePackId: "pf2e.feats-srd",
+      sourceDocumentId: "multifarious-muse",
+      sourceUuid: "Compendium.pf2e.feats-srd.Item.multifarious-muse",
+      sourceName: "Multifarious Muse",
+      sourceRuleIndex: 0,
+      flag: "muse",
+      prompt: "Choose a muse",
+      itemType: "feat",
+      selectionValue: "uuid",
+      dependsOn: "class",
+      filters: { itemType: "feat" },
     },
   };
 }

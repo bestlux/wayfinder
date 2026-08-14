@@ -77,6 +77,7 @@ async function loadWayfinderModules(moduleId) {
     packOptions,
     pickerState,
     optionContext,
+    skillPane,
     planService,
     actorUpdater,
     draftLifecycle,
@@ -92,6 +93,7 @@ async function loadWayfinderModules(moduleId) {
     import(`/modules/${moduleId}/scripts/pack/options.js`),
     import(`/modules/${moduleId}/scripts/pack/picker-state.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/option-context-service.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/application/build-skill-pane-service.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/plan-service.js`),
     import(`/modules/${moduleId}/scripts/actor-updater.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/draft-lifecycle-service.js`),
@@ -104,6 +106,7 @@ async function loadWayfinderModules(moduleId) {
     applyDraftLifecycle: draftLifecycle.applyDraftLifecycle,
     applyDraftToActor: actorUpdater.applyDraftToActor,
     buildOptionContext: optionContext.buildOptionContext,
+    buildSkillPane: skillPane.buildSkillPane,
     buildWayfinderAppPlan: planBuilder.buildWayfinderAppPlan,
     createEmptyDraft: draftService.createEmptyDraft,
     extractDocumentSlug: slug.extractDocumentSlug,
@@ -126,6 +129,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
   const warnings = [];
   const classifications = [];
   const failures = [];
+  let applySafetyEvidence = null;
 
   try {
     actor = await Actor.create({
@@ -154,6 +158,18 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
 
     const dialogsBefore = dialogCount();
     await actor.setFlag(moduleId, "draft", draft);
+    if (smokeCase.applySafetyFailurePhase && failures.length === 0) {
+      applySafetyEvidence = await runApplySafetyFailureProbe({
+        actor,
+        draft,
+        failures,
+        moduleId,
+        modules,
+        phase: smokeCase.applySafetyFailurePhase,
+        steps: plan.steps,
+        timeoutMs: smokeCase.applyTimeoutMs ?? 45000,
+      });
+    }
     const lifecycleResult = failures.length
       ? { kind: "warning", warning: "missing-selections" }
       : await withTimeout(
@@ -164,11 +180,11 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
             steps: plan.steps,
             isStepComplete: (step) => isStepComplete(actor, draft, step, modules),
             confirmApply: () => true,
-            applyDraftToActor: () =>
+            applyDraftToActor: (finalActorUpdate) =>
               modules.applyDraftToActor(actor, draft, plan.steps, {
-                deferActorUpdate: true,
+                finalActorUpdate,
+                validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
               }),
-            updateActor: (update) => actor.update(update),
             now: () => new Date().toISOString(),
           }),
           smokeCase.applyTimeoutMs ?? 45000,
@@ -203,6 +219,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
         dialogsAfter,
         dialogsBefore,
         fillIterations: fillResult.iterations,
+        applySafety: applySafetyEvidence,
         incompleteBeforeApply: incompleteBeforeApply.map(stepSummary),
         preStepIds: plan.steps.map((step) => step.slotId),
         rerunStepIds: rerunPlan.steps.map((step) => step.slotId),
@@ -227,6 +244,54 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
       await actor.delete();
     }
   }
+}
+
+async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, modules, phase, steps, timeoutMs }) {
+  let injected = false;
+  let caught = null;
+  try {
+    await withTimeout(
+      modules.applyDraftLifecycle({
+        actorName: actor.name,
+        currentLevel: 1,
+        draft,
+        steps,
+        isStepComplete: (step) => isStepComplete(actor, draft, step, modules),
+        confirmApply: () => true,
+        applyDraftToActor: (finalActorUpdate) =>
+          modules.applyDraftToActor(actor, draft, steps, {
+            finalActorUpdate,
+            validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
+            beforePhase: (currentPhase) => {
+              if (!injected && currentPhase === phase) {
+                injected = true;
+                throw new Error("Intentional Wayfinder smoke failure.");
+              }
+            },
+          }),
+        now: () => new Date().toISOString(),
+      }),
+      timeoutMs,
+      `${actor.name} intentional failure timed out`,
+    );
+  } catch (error) {
+    caught = error;
+  }
+
+  const message = caught instanceof Error ? caught.message : String(caught ?? "");
+  const draftRetained = actor.getFlag(moduleId, "draft") !== null;
+  const levelUnchanged = Number(actor.system?.details?.level?.value ?? 1) === 1;
+  if (!injected || !message.includes(`during ${phase}`)) {
+    failures.push(`Apply safety probe did not report the injected ${phase} failure.`);
+  }
+  if (!draftRetained) {
+    failures.push("Apply safety probe cleared the draft after a failed apply.");
+  }
+  if (!levelUnchanged) {
+    failures.push("Apply safety probe finalized the target level after a failed apply.");
+  }
+
+  return { draftRetained, injectedPhase: phase, levelUnchanged, message };
 }
 
 async function runIncrementalExistingCase(smokeCase, modules, { keepActors, moduleId, prefix }) {
@@ -403,7 +468,7 @@ async function completeDraft(actor, draft, smokeCase, modules) {
       await fillStep(actor, draft, step, plan.steps, smokeCase, modules, { classifications, warnings });
       const stepChanged = before !== JSON.stringify(draft);
       changed = changed || stepChanged;
-      if (stepChanged && step.kind === "class-branch") {
+      if (stepChanged && requiresPlanRefresh(step)) {
         refreshAfterStep = step;
         break;
       }
@@ -434,6 +499,10 @@ async function completeDraft(actor, draft, smokeCase, modules) {
 
   warnings.push("Draft fill reached iteration limit.");
   return { classifications, iterations, warnings };
+}
+
+function requiresPlanRefresh(step) {
+  return ["class-archetype", "class-branch", "class-choice", "singleton-choice"].includes(step.kind);
 }
 
 async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes) {
@@ -531,10 +600,10 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
       return;
     }
     case "skill-training":
-      fillSkillTraining(draft, step, smokeCase);
+      await fillSkillTraining(actor, draft, step, smokeCase, modules);
       return;
     case "skill-increase":
-      fillSkillIncrease(draft, step, smokeCase);
+      await fillSkillIncrease(actor, draft, step, smokeCase, modules);
       return;
     case "boost": {
       const batchLevel = String(step.boost?.batchLevel ?? step.level);
@@ -749,11 +818,11 @@ async function applyCompletedDraft(actor, draft, steps, modules, moduleId) {
       steps,
       isStepComplete: (step) => isStepComplete(actor, draft, step, modules),
       confirmApply: () => true,
-      applyDraftToActor: () =>
+      applyDraftToActor: (finalActorUpdate) =>
         modules.applyDraftToActor(actor, draft, steps, {
-          deferActorUpdate: true,
+          finalActorUpdate,
+          validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
         }),
-      updateActor: (update) => actor.update(update),
       now: () => new Date().toISOString(),
     }),
     45000,
@@ -768,12 +837,16 @@ function readActorCompletedStepIds(actor, moduleId) {
     : [];
 }
 
-function fillSkillTraining(draft, step, smokeCase) {
+async function fillSkillTraining(actor, draft, step, smokeCase, modules) {
   const preferred = smokeCase.preferredSkills ?? [];
   const used = new Set([...step.training.fixedSkills]);
   const ruleChoices = {};
   const loreChoices = {};
   const additional = [];
+  const pane = await buildCurrentSkillPane(actor, draft, step, modules);
+  const availableAdditional = new Set(
+    (pane?.additionalSkills ?? []).filter((option) => !option.disabled).map((option) => option.slug),
+  );
 
   for (const choice of step.training.choiceRules) {
     const options = [...choice.options, ...(choice.fallbackOptions ?? [])].map((option) => option.slug);
@@ -798,7 +871,7 @@ function fillSkillTraining(draft, step, smokeCase) {
       break;
     }
 
-    if (!used.has(skill)) {
+    if (!used.has(skill) && availableAdditional.has(skill)) {
       additional.push(skill);
       used.add(skill);
     }
@@ -809,7 +882,7 @@ function fillSkillTraining(draft, step, smokeCase) {
       break;
     }
 
-    if (!used.has(option)) {
+    if (!used.has(option) && availableAdditional.has(option)) {
       additional.push(option);
       used.add(option);
     }
@@ -818,17 +891,36 @@ function fillSkillTraining(draft, step, smokeCase) {
   draft.skillTrainings[step.slotId] = { additional, loreChoices, ruleChoices };
 }
 
-function fillSkillIncrease(draft, step, smokeCase) {
+async function buildCurrentSkillPane(actor, draft, step, modules) {
+  return modules.buildSkillPane(step, draft, {
+    baseSkillRanks: Object.fromEntries(
+      Object.entries(actor.system?.skills ?? {}).map(([slug, data]) => [slug, Number(data?.rank ?? 0)]),
+    ),
+    resolveDocument: async (itemType) => {
+      const selection = draft.selections[`${itemType}-level-1`];
+      return selection ? modules.fetchSelectionDocument(selection) : null;
+    },
+    configSkills: CONFIG.PF2E?.skills ?? null,
+    localize: (value) => game.i18n.localize(value),
+    isTrainingStepComplete: () => false,
+  });
+}
+
+async function fillSkillIncrease(actor, draft, step, smokeCase, modules) {
+  const pane = await buildCurrentSkillPane(actor, draft, step, modules);
+  const available = new Set((pane?.skills ?? []).filter((skill) => !skill.disabled).map((skill) => skill.slug));
   const explicit = smokeCase.expectedSkillIncreaseSelections?.[step.slotId];
-  if (typeof explicit === "string" && explicit.length > 0) {
+  if (typeof explicit === "string" && explicit.length > 0 && available.has(explicit)) {
     draft.skillIncreases[step.slotId] = explicit;
     return;
   }
 
   const preferred = smokeCase.preferredSkills ?? [];
   const existing = new Set(Object.values(draft.skillIncreases));
-  const selection = preferred.find((skill) => !existing.has(skill)) ?? preferred[0] ?? "athletics";
-  draft.skillIncreases[step.slotId] = selection;
+  const selection = preferred.find((skill) => available.has(skill) && !existing.has(skill));
+  if (selection) {
+    draft.skillIncreases[step.slotId] = selection;
+  }
 }
 
 function validateDraftPlanExpectations(steps, draft, smokeCase, failures) {

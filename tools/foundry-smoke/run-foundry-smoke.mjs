@@ -5,7 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
-import { gradualBoostsSmokeCases, smokeCases } from "./class-cases.mjs";
+import { applySafetySmokeCases, gradualBoostsSmokeCases, smokeCases } from "./class-cases.mjs";
 import { ancestryParagonSection, campaignFeatSmokeCases } from "./campaign-feat-cases.mjs";
 import { freeArchetypeSmokeCases } from "./free-archetype-cases.mjs";
 import { validateSmokeSafety } from "./safety.mjs";
@@ -20,6 +20,7 @@ const allSmokeCases = [
   ...freeArchetypeSmokeCases,
   ...campaignFeatSmokeCases,
   ...gradualBoostsSmokeCases,
+  ...applySafetySmokeCases,
 ];
 const defaultChromePaths = [
   "C:/Program Files/Google/Chrome/Application/chrome.exe",

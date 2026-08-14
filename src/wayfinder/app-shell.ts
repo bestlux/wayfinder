@@ -1141,6 +1141,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           applyDraftToActor(this.actor, draft, plan.steps, {
             finalActorUpdate,
             validateActorAuthority: canUseWayfinder,
+            validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
             validateSelectionEligibility: (selection, step) =>
               this.#validateSelectionEligibility(selection, step, draft, plan.steps, snapshot.skillRanks),
           }).then(() => undefined),

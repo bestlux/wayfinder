@@ -17,6 +17,7 @@ export interface ApplyDraftOptions {
   finalActorUpdate?: Record<string, unknown>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
   validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
+  validSkillSlugs?: ReadonlySet<string>;
 }
 
 const inFlightByActor = new WeakMap<object, Map<string, Promise<Record<string, unknown>>>>();
@@ -43,6 +44,7 @@ export function applyDraftToActor(
       const prepared = await prepareDraftApplication(actor, draft, steps, {
         validateActorAuthority: options.validateActorAuthority,
         validateSelectionEligibility: options.validateSelectionEligibility,
+        validSkillSlugs: options.validSkillSlugs,
       });
       const result = await executePreparedDraftApplication(prepared, {
         beforePhase: options.beforePhase,

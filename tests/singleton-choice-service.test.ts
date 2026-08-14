@@ -193,6 +193,57 @@ describe("singleton-choice-service", () => {
       "singleton-choice-background-magical-experiment-energy2-level-1",
     ]);
   });
+
+  it("keeps the drafted option visible when its own roll option satisfies a not predicate", async () => {
+    const draft = createEmptyDraft(1);
+    const slotId = "singleton-choice-feat-energized-spark-energizedSpark-level-1";
+    draft.singletonChoices[slotId] = "air";
+
+    const steps = await buildSingletonChoiceSteps({
+      draft,
+      targetLevel: 1,
+      sources: [
+        {
+          sourceItemType: "feat" as const,
+          sourceSelection: selection("class-feat-level-1", "feat", "energized-spark", "Energized Spark"),
+          sourceDocument: {
+            name: "Energized Spark",
+            system: {
+              slug: "energized-spark",
+              level: { value: 1 },
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "energizedSpark",
+                  rollOption: "energized-spark",
+                  choices: [
+                    { value: "air", label: "Air", predicate: [{ not: "energized-spark:air" }] },
+                    { value: "cold", label: "Cold", predicate: [{ not: "energized-spark:cold" }] },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+      activeRollOptions: new Set(["energized-spark:air"]),
+      extractSlug: (document) => (document as { system?: { slug?: string } })?.system?.slug ?? null,
+      localize: (value) => value,
+      readExistingSingletonChoiceSelection: () => null,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        slotId,
+        singletonChoice: {
+          options: [
+            { value: "air", label: "Air" },
+            { value: "cold", label: "Cold" },
+          ],
+        },
+      },
+    ]);
+  });
 });
 
 function selection(slotId: string, itemType: string, documentId: string, name = documentId): SelectionRef {

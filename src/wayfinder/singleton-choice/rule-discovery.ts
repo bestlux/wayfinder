@@ -48,6 +48,7 @@ export function discoverSingletonChoiceMeta(args: {
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
   activeRollOptions?: ReadonlySet<string>;
+  selectedChoices?: Readonly<Record<string, string>>;
 }): SingletonChoiceMeta[] {
   const { sourceItemType, sourceDocument, sourceSelection, sourceLevel, extractSlug, localize } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
@@ -58,6 +59,7 @@ export function discoverSingletonChoiceMeta(args: {
     sourceLevel,
     localize,
     activeRollOptions: args.activeRollOptions,
+    selectedChoices: args.selectedChoices,
   }).map(
     (choice) =>
       ({
@@ -85,6 +87,7 @@ export function discoverSingletonChoiceSpecs(args: {
   localize: (value: string) => string;
   includeTrainingChoices?: boolean;
   activeRollOptions?: ReadonlySet<string>;
+  selectedChoices?: Readonly<Record<string, string>>;
 }): SingletonChoiceSpec[] {
   const { sourceItemType, sourceDocument, sourceSlug, sourceLevel, localize, includeTrainingChoices = false } = args;
   const level = sourceLevel ?? documentFeatureLevel(sourceDocument);
@@ -103,12 +106,15 @@ export function discoverSingletonChoiceSpecs(args: {
       return [];
     }
 
+    const slotId = `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`;
+
     const options = resolveChoiceOptions(
       rule,
       localize,
       configuredSkills,
       sourceItemType,
-      args.activeRollOptions ?? new Set()
+      args.activeRollOptions ?? new Set(),
+      args.selectedChoices?.[slotId]
     );
     if (
       !options ||
@@ -121,7 +127,7 @@ export function discoverSingletonChoiceSpecs(args: {
     return [
       {
         sourceRuleIndex,
-        slotId: `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`,
+        slotId,
         flag,
         prompt: resolvePrompt(rule.prompt, localize),
         predicate: extractPredicate(rule.predicate),
@@ -161,14 +167,19 @@ function resolveChoiceOptions(
   localize: (value: string) => string,
   configuredSkills: SkillConfigMap,
   sourceItemType: SingletonChoiceSourceItemType,
-  activeRollOptions: ReadonlySet<string>
+  activeRollOptions: ReadonlySet<string>,
+  selectedValue?: string
 ): { optionDomain: "generic" | "skill" | "lore"; options: SingletonChoiceSpec["options"] } | null {
   if (Array.isArray(rule.choices)) {
     const options = rule.choices
       .filter((choice): choice is { label?: unknown; value?: unknown; img?: unknown } & Record<string, unknown> =>
         isRecord(choice)
       )
-      .filter((choice) => matchesChoiceSetRulePredicate(choice, activeRollOptions))
+      .filter(
+        (choice) =>
+          (typeof choice.value === "string" && choice.value === selectedValue) ||
+          matchesChoiceSetRulePredicate(choice, activeRollOptions)
+      )
       .filter((choice) => typeof choice.value === "string" && choice.value.length > 0)
       .map((choice) => {
         const rawValue = String(choice.value).trim();

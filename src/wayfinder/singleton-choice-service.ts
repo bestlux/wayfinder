@@ -32,6 +32,7 @@ export async function buildSingletonChoiceSteps(params: BuildSingletonChoiceStep
         extractSlug: params.extractSlug,
         localize: params.localize,
         activeRollOptions,
+        selectedChoices: params.draft.singletonChoices,
       })
     );
     changed = addSelectedRollOptions(

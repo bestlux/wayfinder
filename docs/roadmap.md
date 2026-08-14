@@ -14,7 +14,7 @@ GMs currently have world settings for supplemental Item packs and the spell-rari
 - [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) is a draft-editing improvement, not an apply-correctness prerequisite.
 - [#7 — class archetypes at level 1](https://github.com/bestlux/wayfinder/issues/7) remains a parallel, profile-by-profile expansion track.
 
-The largest remaining product gaps are starting equipment and wealth, a satisfying character-completion chapter, and high-level caster evidence beyond level 10. The largest correctness gap is that apply still crosses several PF2E mutation phases without one shared prepared plan.
+The largest remaining product gaps are starting equipment and wealth, a satisfying character-completion chapter, and high-level caster evidence beyond level 10. The 0.7.2 work branch now puts the existing apply path behind one prepared plan; release still requires review and live failure/retry evidence before issue #23 can be considered shipped.
 
 ## Product thesis
 
@@ -31,6 +31,8 @@ This includes creation and progression choices, starting equipment, identity, an
 ### 0.7.2 — Apply Safety Bridge
 
 The release is centered on issue #23. Before the first actor write, Wayfinder should prepare the selected sources, authoritative feat slots, choice targets, spell destinations, and campaign authority it can validate. Execution should expose named mutation phases, preserve the draft on failure, serialize retries, and compensate only where PF2E hooks make a narrow reversal safe.
+
+Implementation status: the work branch retains prepared sources instead of resolving them again during execution, validates scalar and item choices, pins campaign authority, verifies PF2E-created outcomes and planned feat locations before finalization, serializes the final actor update and draft clear with every earlier phase, and records phase receipts. The remaining release gate is adversarial review plus live Apply/failure/retry smoke on the exact candidate.
 
 This bridge deliberately precedes equipment. Starting wealth adds batch inventory and currency writes; those operations should join an established preparation/execution model instead of creating another mutation path.
 

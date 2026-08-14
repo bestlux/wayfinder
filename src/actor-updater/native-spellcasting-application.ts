@@ -1,6 +1,6 @@
 import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
-import type { ActorItemLike, ActorLike, SpellSlotGroupLike } from "../shared/actor-model.js";
+import type { ActorItemLike, ActorLike, EmbeddedItemSource, SpellSlotGroupLike } from "../shared/actor-model.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 import type { DraftState, SelectionRef } from "../types.js";
@@ -18,16 +18,33 @@ import {
 
 const BATTLE_CREED_UUID = "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5";
 
-export async function syncNativeClassSpellcasting(actor: ActorLike, draft: DraftState): Promise<void> {
+type SpellSourceFactory = (selection: SelectionRef, draft?: DraftState) => Promise<EmbeddedItemSource | null>;
+
+export async function syncNativeClassSpellcasting(
+  actor: ActorLike,
+  draft: DraftState,
+  sourceFactory: SpellSourceFactory = createEmbeddedSource
+): Promise<void> {
   const classSlug = getCurrentClassSlug(actor, draft);
   if (classSlug !== "cleric") {
     return;
   }
 
-  await syncClericSpellcasting(actor, draft);
+  await syncClericSpellcasting(actor, draft, sourceFactory);
 }
 
-async function syncClericSpellcasting(actor: ActorLike, draft: DraftState): Promise<void> {
+export function nativeSpellcastingSourceSelections(actor: ActorLike, draft: DraftState): SelectionRef[] {
+  if (getCurrentClassSlug(actor, draft) !== "cleric") return [];
+  if (hasBattleCreed(actor, draft)) return battleFontSpellSelections("prepared");
+  const divineFont = resolveClericDivineFont(actor, draft);
+  return divineFont ? [divineFontSpellSelection("prepared", divineFont)] : [];
+}
+
+async function syncClericSpellcasting(
+  actor: ActorLike,
+  draft: DraftState,
+  sourceFactory: SpellSourceFactory
+): Promise<void> {
   const usesBattleCreed = hasBattleCreed(actor, draft);
   const preparedEntry = await ensureSpellcastingEntryFromSource(
     actor,
@@ -54,7 +71,7 @@ async function syncClericSpellcasting(actor: ActorLike, draft: DraftState): Prom
   }
 
   if (usesBattleCreed) {
-    await syncBattleFont(actor, draft);
+    await syncBattleFont(actor, draft, sourceFactory);
     return;
   }
 
@@ -85,7 +102,8 @@ async function syncClericSpellcasting(actor: ActorLike, draft: DraftState): Prom
     actor,
     fontEntry,
     [divineFontSpellSelection(fontEntry.id, divineFont)],
-    fontKey
+    fontKey,
+    sourceFactory
   );
   if (!fontSpell?.id) {
     return;
@@ -112,7 +130,7 @@ function hasBattleCreed(actor: ActorLike, draft: DraftState): boolean {
   );
 }
 
-async function syncBattleFont(actor: ActorLike, draft: DraftState): Promise<void> {
+async function syncBattleFont(actor: ActorLike, draft: DraftState, sourceFactory: SpellSourceFactory): Promise<void> {
   const fontEntry = await ensureSpellcastingEntryFromSource(actor, createBattleFontEntrySource(actor, draft), {
     destinationKey: "cleric-battle-font",
     matches: (item: ActorItemLike) => isClericFontEntry(item),
@@ -126,7 +144,8 @@ async function syncBattleFont(actor: ActorLike, draft: DraftState): Promise<void
     actor,
     fontEntry,
     battleFontSpellSelections(fontEntry.id),
-    "cleric-battle-font"
+    "cleric-battle-font",
+    sourceFactory
   );
   if (fontSpells.length !== 2) {
     return;
@@ -196,7 +215,8 @@ async function reconcileClericFontSpells(
   actor: ActorLike,
   entry: ActorItemLike,
   desiredSelections: SelectionRef[],
-  destinationKey: string
+  destinationKey: string,
+  sourceFactory: SpellSourceFactory
 ): Promise<ActorItemLike[]> {
   if (typeof entry.id !== "string") {
     return [];
@@ -228,7 +248,7 @@ async function reconcileClericFontSpells(
       continue;
     }
 
-    const source = await createEmbeddedSource(desiredSelection);
+    const source = await sourceFactory(desiredSelection);
     if (!source) {
       continue;
     }

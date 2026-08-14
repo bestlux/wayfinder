@@ -1,129 +1,84 @@
-import { applyBoostDraft } from "./actor-updater/boost-application.js";
-import { applyLanguageChoiceDraft } from "./actor-updater/language-choice-application.js";
-import { syncNativeClassSpellcasting } from "./actor-updater/native-spellcasting-application.js";
 import {
-  createEmbeddedSource,
-  createSingletonGrantItems,
-  createSingletonSystemGrantItems,
-  featSelections,
-  hasSourceId,
-  insertFeatSelection,
-  orderSelections,
-  preflightFeatSelection,
-  replaceSingletonItems,
-  restoreSingletonSourceSlotFlags,
-  singletonSelections,
-} from "./actor-updater/selection-application.js";
-import { applySingletonChoiceDraft } from "./actor-updater/singleton-choice-application.js";
-import { applySpellChoiceDraft } from "./actor-updater/spell-choice-application.js";
-import { applySkillIncreaseDraft, applyTrainingDraft } from "./actor-updater/training-application.js";
-import { applyClassArchetypeDraft } from "./class-archetype-service.js";
-import { applyClassBranchDraft } from "./class-branch-service.js";
-import { applyClassFeatureChoiceDraft } from "./class-feature-choice-service.js";
-import { fetchSelectionDocument } from "./pack/access.js";
+  type DraftApplyPhase,
+  executePreparedDraftApplication,
+  prepareDraftApplication,
+} from "./actor-updater/prepared-draft-application.js";
 import type { SelectorActorLike } from "./selector-application.js";
 import type { ActorLike } from "./shared/actor-model.js";
-import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
-import type { DraftState, PendingStep } from "./types.js";
+import type { DraftState, PendingStep, SelectionRef } from "./types.js";
 
 type DraftMutationActor = SelectorActorLike &
   ActorLike & {
     update?: ActorLike["update"];
   };
 
-interface ApplyDraftOptions {
-  deferActorUpdate?: boolean;
+export interface ApplyDraftOptions {
+  beforePhase?: (phase: DraftApplyPhase) => void | Promise<void>;
+  finalActorUpdate?: Record<string, unknown>;
+  validateActorAuthority?: (actor: DraftMutationActor) => boolean;
+  validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
 }
 
-export async function applyDraftToActor(
+const inFlightByActor = new WeakMap<object, Map<string, Promise<Record<string, unknown>>>>();
+const queueByActor = new WeakMap<object, Promise<void>>();
+
+export function applyDraftToActor(
   actor: DraftMutationActor,
   draft: DraftState,
   steps: PendingStep[],
   options: ApplyDraftOptions = {}
 ): Promise<Record<string, unknown>> {
-  const selections = orderSelections(draft, steps);
-  const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
-  const deferredActorUpdate: Record<string, unknown> = {};
-  const pendingFeatSelections = featSelections(selections).filter((selection) => {
-    const step = stepsBySlotId.get(selection.slotId);
-    return (
-      !!step && !(step.kind === "pick-item" && step.slotKind === "flag-choice") && !usesNativeGrantItemCreation(step)
-    );
-  });
-
-  for (const selection of pendingFeatSelections) {
-    await preflightFeatSelection(actor, selection, stepsBySlotId.get(selection.slotId) ?? null);
+  const actorKey = actor as object;
+  const operationKey = draftApplyOperationKey(draft, steps);
+  const actorOperations = inFlightByActor.get(actorKey) ?? new Map<string, Promise<Record<string, unknown>>>();
+  const inFlight = actorOperations.get(operationKey);
+  if (inFlight !== undefined) {
+    return inFlight;
   }
 
-  await replaceSingletonItems(actor, singletonSelections(selections), draft, steps);
-  await createSingletonSystemGrantItems(actor, draft, steps);
-  await createSingletonGrantItems(actor, draft, steps);
-  refreshActorData(actor);
+  const previous = queueByActor.get(actorKey) ?? Promise.resolve();
+  const promise = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const prepared = await prepareDraftApplication(actor, draft, steps, {
+        validateActorAuthority: options.validateActorAuthority,
+        validateSelectionEligibility: options.validateSelectionEligibility,
+      });
+      const result = await executePreparedDraftApplication(prepared, {
+        beforePhase: options.beforePhase,
+        finalActorUpdate: options.finalActorUpdate,
+      });
+      return result.actorUpdate;
+    });
 
-  await applySingletonChoiceDraft(actor, draft, steps);
-  await applyLanguageChoiceDraft(actor, draft, steps);
-  const projectedTrainingRanks = await applyTrainingDraft(actor, draft, steps);
-  await applyClassArchetypeDraft(actor, draft, steps, {
-    createEmbeddedSource,
-    fetchSelectionDocument,
-  });
-  await applyClassBranchDraft(actor, draft, steps, {
-    createEmbeddedSource,
-    fetchSelectionDocument,
-  });
-  await applyClassFeatureChoiceDraft(actor, draft, steps, {
-    createEmbeddedSource,
-    fetchSelectionDocument,
-  });
-  await syncNativeClassSpellcasting(actor, draft);
-
-  for (const selection of pendingFeatSelections) {
-    const step = stepsBySlotId.get(selection.slotId);
-    if (!step || hasSourceId(actor, selection.uuid)) {
-      continue;
+  actorOperations.set(operationKey, promise);
+  inFlightByActor.set(actorKey, actorOperations);
+  const settled = promise.then(
+    () => undefined,
+    () => undefined
+  );
+  queueByActor.set(actorKey, settled);
+  void settled.finally(() => {
+    if (actorOperations.get(operationKey) === promise) {
+      actorOperations.delete(operationKey);
     }
-
-    await insertFeatSelection(actor, selection, step, undefined, draft, steps);
-  }
-
-  await applySingletonChoiceDraft(actor, draft, steps);
-  await applySpellChoiceDraft(actor, draft, steps);
-  await syncNativeClassSpellcasting(actor, draft);
-  const boostResult = await applyBoostDraft(actor, draft, undefined, {
-    persistActorUpdate: !options.deferActorUpdate,
-  });
-  Object.assign(deferredActorUpdate, boostResult.actorUpdate);
-  await applySkillIncreaseDraft(actor, draft, projectedTrainingRanks);
-  await restoreSingletonSourceSlotFlags(actor, draft);
-
-  const currentLevel = Number(actor?.system?.details?.level?.value ?? 1) || 1;
-  if (draft.targetLevel > currentLevel) {
-    const levelUpdate = {
-      "system.details.level.value": draft.targetLevel,
-    };
-    Object.assign(deferredActorUpdate, levelUpdate);
-    if (!options.deferActorUpdate && typeof actor.update === "function") {
-      await actor.update(levelUpdate);
+    if (actorOperations.size === 0 && inFlightByActor.get(actorKey) === actorOperations) {
+      inFlightByActor.delete(actorKey);
     }
-  }
+    if (queueByActor.get(actorKey) === settled) {
+      queueByActor.delete(actorKey);
+    }
+  });
 
-  return deferredActorUpdate;
+  return promise;
 }
 
-function refreshActorData(actor: DraftMutationActor): void {
-  if (hasPreparedPf2eFlagAlias(actor)) {
-    return;
-  }
-
-  actor.prepareData?.();
+function draftApplyOperationKey(draft: DraftState, steps: PendingStep[]): string {
+  return JSON.stringify({
+    draft,
+    steps,
+  });
 }
 
-function hasPreparedPf2eFlagAlias(actor: DraftMutationActor): boolean {
-  const flags = actor.flags;
-  if (!flags || typeof flags !== "object") {
-    return false;
-  }
-
-  const descriptor = Object.getOwnPropertyDescriptor(flags, "system");
-  return !!descriptor && descriptor.configurable === false;
-}
+export type { DraftApplyPhase } from "./actor-updater/prepared-draft-application.js";
+export { DraftApplyPhaseError } from "./actor-updater/prepared-draft-application.js";

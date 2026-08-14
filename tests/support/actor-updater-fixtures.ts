@@ -83,6 +83,9 @@ export function buildActorHarness(options: ActorHarnessOptions = {}) {
     items: {
       contents: [...(options.items ?? [])] as ActorItemLike[],
     },
+    feats: {
+      get: (groupId: string) => (["ancestry", "class", "skill", "general"].includes(groupId) ? { slots: {} } : null),
+    },
     createEmbeddedDocuments: vi.fn(async (_type: string, sources: EmbeddedItemSource[]) => {
       const created = sources.map((source) => {
         const item: ActorItemLike = {

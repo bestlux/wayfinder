@@ -516,6 +516,16 @@ function primeActorSystem(actor: ReturnType<typeof buildActorHarness>["actor"]):
   const details = (system.details ??= {}) as Record<string, unknown>;
   details.languages = { value: [] };
   system.skills = {};
+  actor.feats = {
+    get: (groupId: string) => ({
+      slots: Object.fromEntries(
+        Array.from({ length: 20 }, (_, index) => {
+          const level = index + 1;
+          return [`${groupId}-${level}`, { id: `${groupId}-${level}`, level, feat: null }];
+        })
+      ),
+    }),
+  };
 }
 
 function readPreparedIds(

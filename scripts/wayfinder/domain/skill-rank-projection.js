@@ -1,3 +1,10 @@
+export function maxProficiencyRank(level) {
+    if (level >= 15)
+        return 4;
+    if (level >= 7)
+        return 3;
+    return 2;
+}
 export function projectDraftSkillRanks(options) {
     const projected = normalizeBaseSkillRanks(options.baseSkillRanks);
     const operations = [

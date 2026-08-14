@@ -53,7 +53,7 @@ interface SelectorReference {
   name: string;
 }
 
-interface SelectorRuleDocumentLike {
+export interface SelectorRuleDocumentLike {
   system?: {
     rules?: LooseRecord[];
   };
@@ -616,7 +616,7 @@ function applyManualChoiceSelections(source: EmbeddedItemSource, choices: Record
   }
 }
 
-function readManualStaticItemGrants(source: EmbeddedItemSource): Array<{
+export function readManualStaticItemGrants(source: EmbeddedItemSource): Array<{
   key: string;
   uuid: string;
   choices: Record<string, string>;
@@ -652,7 +652,7 @@ function readManualStaticItemGrants(source: EmbeddedItemSource): Array<{
   });
 }
 
-function selectionFromManualStaticGrant(
+export function selectionFromManualStaticGrant(
   grant: { key: string; uuid: string },
   parentSlotId: string
 ): SelectionRef | null {

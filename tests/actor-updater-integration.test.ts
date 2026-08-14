@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { applyDraftToActor } from "../src/actor-updater";
 import { createEmptyDraft } from "../src/draft-service";
+import type { ActorItemLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import type { PendingStep } from "../src/types";
 import {
   buildActorHarness,
@@ -337,6 +338,12 @@ describe("actor-updater integration", () => {
 
   it("preseeds feat-owned grant choices for PF2E native GrantItem creation", async () => {
     const { actor, createdItems } = buildActorHarness();
+    simulateNativeGrant(actor, "Compendium.pf2e.feats-srd.Item.general-training", {
+      name: "Additional Lore",
+      type: "feat",
+      flags: { core: { sourceId: "Compendium.pf2e.feats-srd.Item.additional-lore" } },
+      system: { category: "general", level: { value: 1 }, rules: [] },
+    });
     actor.feats = {
       get(groupId: string) {
         return {
@@ -429,10 +436,8 @@ describe("actor-updater integration", () => {
       (item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.general-training"
     );
 
-    expect(createdItems.filter((item) => item?.type === "feat")).toHaveLength(1);
-    expect(createdItems.some((item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.additional-lore")).toBe(
-      false
-    );
+    expect(createdItems.filter((item) => item?.type === "feat")).toHaveLength(2);
+    expect(createdItems.some((item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.additional-lore")).toBe(true);
     expect(createdItems.find((item) => item?.type === "lore")?.name).toBe("engineering Lore");
     expect(generalTraining?.system?.location).toBe("ancestry-1");
     expect(generalTraining?.system?.rules).toEqual([
@@ -454,6 +459,12 @@ describe("actor-updater integration", () => {
 
   it("leaves simple feat-owned grants to PF2E native GrantItem application", async () => {
     const { actor, createdItems } = buildActorHarness();
+    simulateNativeGrant(actor, "Compendium.pf2e.feats-srd.Item.general-training", {
+      name: "Forager",
+      type: "feat",
+      flags: { core: { sourceId: "Compendium.pf2e.feats-srd.Item.forager" } },
+      system: { category: "skill", level: { value: 1 }, rules: [] },
+    });
     actor.feats = {
       get(groupId: string) {
         return {
@@ -527,7 +538,7 @@ describe("actor-updater integration", () => {
       (item) => item?.sourceId === "Compendium.pf2e.feats-srd.Item.general-training"
     );
 
-    expect(createdItems).toHaveLength(1);
+    expect(createdItems).toHaveLength(2);
     expect(generalTraining?.system?.location).toBe("ancestry-1");
     expect(generalTraining?.system?.rules).toEqual([
       expect.objectContaining({
@@ -545,6 +556,12 @@ describe("actor-updater integration", () => {
 
   it("leaves static UUID singleton grants to PF2E native GrantItem application", async () => {
     const { actor, createdItems } = buildActorHarness();
+    simulateNativeGrant(actor, "Compendium.pf2e.backgrounds.Item.wanderlust", {
+      name: "Titan Swing",
+      type: "feat",
+      flags: { core: { sourceId: "Compendium.pf2e.feats-srd.Item.titan-swing" } },
+      system: { category: "class", level: { value: 2 } },
+    });
     setGamePacks({
       "pf2e.backgrounds": {
         wanderlust: {
@@ -601,7 +618,7 @@ describe("actor-updater integration", () => {
     await applyDraftToActor(actor as any, draft, [backgroundSelectionStep(), wanderlustStaticGrantStep()]);
 
     const wanderlust = createdItems.find((item) => item?.sourceId === "Compendium.pf2e.backgrounds.Item.wanderlust");
-    expect(createdItems.map((item) => item.name)).toEqual(["Wanderlust"]);
+    expect(createdItems.map((item) => item.name)).toEqual(["Wanderlust", "Titan Swing"]);
     expect(wanderlust?.system?.rules).toEqual([
       expect.objectContaining({
         key: "ChoiceSet",
@@ -1075,12 +1092,14 @@ describe("actor-updater integration", () => {
 
     await applyDraftToActor(actor as any, draft, []);
 
-    expect(actor.update).toHaveBeenCalledWith({
-      "system.details.level.value": 3,
-    });
+    expect(actor.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "system.details.level.value": 3,
+      })
+    );
   });
 
-  it("can defer actor-level build updates for lifecycle finalization", async () => {
+  it("combines actor-level build updates with lifecycle finalization", async () => {
     const { actor } = buildActorHarness();
     setGamePacks({
       "pf2e.ancestries": {
@@ -1154,10 +1173,16 @@ describe("actor-updater integration", () => {
       actor as any,
       draft,
       [ancestrySelectionStep(), backgroundSelectionStep(), classSelectionStep()],
-      { deferActorUpdate: true }
+      {
+        finalActorUpdate: { "flags.wayfinder-pf2e.draft": null },
+      }
     );
 
-    expect(actor.update).not.toHaveBeenCalled();
+    expect(actor.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "flags.wayfinder-pf2e.draft": null,
+      })
+    );
     expect(actorUpdate).toMatchObject({
       "system.build": {
         attributes: {
@@ -1356,15 +1381,14 @@ describe("actor-updater integration", () => {
     draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "arcana";
     draft.skillIncreases["skill-increase-level-3"] = "arcana";
 
-    await applyDraftToActor(actor as any, draft, [heritageSingletonSkillChoiceStep()]);
+    await applyDraftToActor(actor as any, draft, [heritageSingletonSkillChoiceStep(), skillIncreaseStep(3)]);
 
-    const updateCalls = actor.update.mock.calls.map(([updates]) => updates as Record<string, unknown>);
-    expect(updateCalls).toContainEqual({
-      "system.skills.arcana.rank": 1,
-    });
-    expect(updateCalls).toContainEqual({
-      "system.skills.arcana.rank": 2,
-    });
+    expect(actor.update).toHaveBeenCalledTimes(1);
+    expect(actor.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "system.skills.arcana.rank": 2,
+      })
+    );
   });
 
   it("preseeds heritage skill-training choices before creating the heritage item", async () => {
@@ -1427,6 +1451,38 @@ describe("actor-updater integration", () => {
     expect((heritage?.system?.rules as Array<Record<string, unknown>> | undefined)?.[0]?.selection).toBe("society");
   });
 });
+
+function skillIncreaseStep(level: number): PendingStep {
+  const slotId = `skill-increase-level-${level}`;
+  return {
+    id: slotId,
+    level,
+    kind: "skill-increase",
+    slotKind: "skill-increase",
+    title: `Skill increase ${level}`,
+    description: "",
+    required: true,
+    slotId,
+  };
+}
+
+function simulateNativeGrant(
+  actor: ReturnType<typeof buildActorHarness>["actor"],
+  parentSourceId: string,
+  childSource: EmbeddedItemSource
+): void {
+  const createItems = actor.createEmbeddedDocuments.getMockImplementation() as (
+    type: string,
+    sources: EmbeddedItemSource[]
+  ) => Promise<ActorItemLike[]>;
+  actor.createEmbeddedDocuments.mockImplementation(async (type, sources) => {
+    const created = await createItems(type, sources);
+    if (sources.some((source) => source.flags?.core?.sourceId === parentSourceId)) {
+      await createItems(type, [childSource]);
+    }
+    return created;
+  });
+}
 
 function heritageSingletonSkillChoiceStep(): PendingStep {
   return {

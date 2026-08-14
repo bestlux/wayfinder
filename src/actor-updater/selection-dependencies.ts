@@ -6,6 +6,7 @@ export interface CreateEmbeddedSourceDependencies {
   fetchSelectionDocument: (selection: SelectionRef) => Promise<SelectionDocumentLike | null>;
   stripPreselectedClassFeatureEntries: (source: EmbeddedItemSource, draft: DraftState, steps: PendingStep[]) => void;
   stripPreselectedClassBranchEntries: (source: EmbeddedItemSource, draft: DraftState, steps: PendingStep[]) => void;
+  resolvePreparedSource?: (selection: SelectionRef) => EmbeddedItemSource | null;
 }
 
 export interface InsertFeatSelectionDependencies {

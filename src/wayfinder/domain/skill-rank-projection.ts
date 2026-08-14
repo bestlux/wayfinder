@@ -12,6 +12,12 @@ type SkillRankOperation = {
   slotId: string;
 };
 
+export function maxProficiencyRank(level: number): number {
+  if (level >= 15) return 4;
+  if (level >= 7) return 3;
+  return 2;
+}
+
 export function projectDraftSkillRanks(options: ProjectDraftSkillRanksOptions): Record<string, number> {
   const projected = normalizeBaseSkillRanks(options.baseSkillRanks);
   const operations: SkillRankOperation[] = [

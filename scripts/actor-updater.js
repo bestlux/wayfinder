@@ -1,86 +1,50 @@
-import { applyBoostDraft } from "./actor-updater/boost-application.js";
-import { applyLanguageChoiceDraft } from "./actor-updater/language-choice-application.js";
-import { syncNativeClassSpellcasting } from "./actor-updater/native-spellcasting-application.js";
-import { createEmbeddedSource, createSingletonGrantItems, createSingletonSystemGrantItems, featSelections, hasSourceId, insertFeatSelection, orderSelections, preflightFeatSelection, replaceSingletonItems, restoreSingletonSourceSlotFlags, singletonSelections, } from "./actor-updater/selection-application.js";
-import { applySingletonChoiceDraft } from "./actor-updater/singleton-choice-application.js";
-import { applySpellChoiceDraft } from "./actor-updater/spell-choice-application.js";
-import { applySkillIncreaseDraft, applyTrainingDraft } from "./actor-updater/training-application.js";
-import { applyClassArchetypeDraft } from "./class-archetype-service.js";
-import { applyClassBranchDraft } from "./class-branch-service.js";
-import { applyClassFeatureChoiceDraft } from "./class-feature-choice-service.js";
-import { fetchSelectionDocument } from "./pack/access.js";
-import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
-export async function applyDraftToActor(actor, draft, steps, options = {}) {
-    const selections = orderSelections(draft, steps);
-    const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
-    const deferredActorUpdate = {};
-    const pendingFeatSelections = featSelections(selections).filter((selection) => {
-        const step = stepsBySlotId.get(selection.slotId);
-        return (!!step && !(step.kind === "pick-item" && step.slotKind === "flag-choice") && !usesNativeGrantItemCreation(step));
-    });
-    for (const selection of pendingFeatSelections) {
-        await preflightFeatSelection(actor, selection, stepsBySlotId.get(selection.slotId) ?? null);
+import { executePreparedDraftApplication, prepareDraftApplication, } from "./actor-updater/prepared-draft-application.js";
+const inFlightByActor = new WeakMap();
+const queueByActor = new WeakMap();
+export function applyDraftToActor(actor, draft, steps, options = {}) {
+    const actorKey = actor;
+    const operationKey = draftApplyOperationKey(draft, steps);
+    const actorOperations = inFlightByActor.get(actorKey) ?? new Map();
+    const inFlight = actorOperations.get(operationKey);
+    if (inFlight !== undefined) {
+        return inFlight;
     }
-    await replaceSingletonItems(actor, singletonSelections(selections), draft, steps);
-    await createSingletonSystemGrantItems(actor, draft, steps);
-    await createSingletonGrantItems(actor, draft, steps);
-    refreshActorData(actor);
-    await applySingletonChoiceDraft(actor, draft, steps);
-    await applyLanguageChoiceDraft(actor, draft, steps);
-    const projectedTrainingRanks = await applyTrainingDraft(actor, draft, steps);
-    await applyClassArchetypeDraft(actor, draft, steps, {
-        createEmbeddedSource,
-        fetchSelectionDocument,
+    const previous = queueByActor.get(actorKey) ?? Promise.resolve();
+    const promise = previous
+        .catch(() => undefined)
+        .then(async () => {
+        const prepared = await prepareDraftApplication(actor, draft, steps, {
+            validateActorAuthority: options.validateActorAuthority,
+            validateSelectionEligibility: options.validateSelectionEligibility,
+        });
+        const result = await executePreparedDraftApplication(prepared, {
+            beforePhase: options.beforePhase,
+            finalActorUpdate: options.finalActorUpdate,
+        });
+        return result.actorUpdate;
     });
-    await applyClassBranchDraft(actor, draft, steps, {
-        createEmbeddedSource,
-        fetchSelectionDocument,
-    });
-    await applyClassFeatureChoiceDraft(actor, draft, steps, {
-        createEmbeddedSource,
-        fetchSelectionDocument,
-    });
-    await syncNativeClassSpellcasting(actor, draft);
-    for (const selection of pendingFeatSelections) {
-        const step = stepsBySlotId.get(selection.slotId);
-        if (!step || hasSourceId(actor, selection.uuid)) {
-            continue;
+    actorOperations.set(operationKey, promise);
+    inFlightByActor.set(actorKey, actorOperations);
+    const settled = promise.then(() => undefined, () => undefined);
+    queueByActor.set(actorKey, settled);
+    void settled.finally(() => {
+        if (actorOperations.get(operationKey) === promise) {
+            actorOperations.delete(operationKey);
         }
-        await insertFeatSelection(actor, selection, step, undefined, draft, steps);
-    }
-    await applySingletonChoiceDraft(actor, draft, steps);
-    await applySpellChoiceDraft(actor, draft, steps);
-    await syncNativeClassSpellcasting(actor, draft);
-    const boostResult = await applyBoostDraft(actor, draft, undefined, {
-        persistActorUpdate: !options.deferActorUpdate,
-    });
-    Object.assign(deferredActorUpdate, boostResult.actorUpdate);
-    await applySkillIncreaseDraft(actor, draft, projectedTrainingRanks);
-    await restoreSingletonSourceSlotFlags(actor, draft);
-    const currentLevel = Number(actor?.system?.details?.level?.value ?? 1) || 1;
-    if (draft.targetLevel > currentLevel) {
-        const levelUpdate = {
-            "system.details.level.value": draft.targetLevel,
-        };
-        Object.assign(deferredActorUpdate, levelUpdate);
-        if (!options.deferActorUpdate && typeof actor.update === "function") {
-            await actor.update(levelUpdate);
+        if (actorOperations.size === 0 && inFlightByActor.get(actorKey) === actorOperations) {
+            inFlightByActor.delete(actorKey);
         }
-    }
-    return deferredActorUpdate;
+        if (queueByActor.get(actorKey) === settled) {
+            queueByActor.delete(actorKey);
+        }
+    });
+    return promise;
 }
-function refreshActorData(actor) {
-    if (hasPreparedPf2eFlagAlias(actor)) {
-        return;
-    }
-    actor.prepareData?.();
+function draftApplyOperationKey(draft, steps) {
+    return JSON.stringify({
+        draft,
+        steps,
+    });
 }
-function hasPreparedPf2eFlagAlias(actor) {
-    const flags = actor.flags;
-    if (!flags || typeof flags !== "object") {
-        return false;
-    }
-    const descriptor = Object.getOwnPropertyDescriptor(flags, "system");
-    return !!descriptor && descriptor.configurable === false;
-}
+export { DraftApplyPhaseError } from "./actor-updater/prepared-draft-application.js";
 //# sourceMappingURL=actor-updater.js.map

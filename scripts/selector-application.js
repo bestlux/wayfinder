@@ -406,7 +406,7 @@ function applyManualChoiceSelections(source, choices) {
         }
     }
 }
-function readManualStaticItemGrants(source) {
+export function readManualStaticItemGrants(source) {
     const grants = source.flags?.[MODULE_ID]?.manualStaticItemGrants;
     if (!Array.isArray(grants)) {
         return [];
@@ -431,7 +431,7 @@ function readManualStaticItemGrants(source) {
         ];
     });
 }
-function selectionFromManualStaticGrant(grant, parentSlotId) {
+export function selectionFromManualStaticGrant(grant, parentSlotId) {
     const parsed = parseCompendiumItemUuid(grant.uuid);
     if (!parsed) {
         return null;

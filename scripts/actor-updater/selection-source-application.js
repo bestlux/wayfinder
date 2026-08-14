@@ -14,6 +14,9 @@ export const DEFAULT_CREATE_DEPS = {
     stripPreselectedClassBranchEntries,
 };
 export async function createEmbeddedSource(selection, draft, steps = [], deps = DEFAULT_CREATE_DEPS) {
+    if (deps.resolvePreparedSource) {
+        return deps.resolvePreparedSource(selection);
+    }
     const document = await deps.fetchSelectionDocument(selection);
     if (!document) {
         return null;

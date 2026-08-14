@@ -20,10 +20,8 @@ export async function applyDraftLifecycle(args) {
             kind: "cancelled",
         };
     }
-    const actorUpdate = (await args.applyDraftToActor()) ?? {};
     const completedStepIds = mergeCompletedStepIds(args.existingCompletedStepIds ?? [], args.steps);
-    await args.updateActor({
-        ...actorUpdate,
+    await args.applyDraftToActor({
         [DRAFT_FLAG]: null,
         [STATE_FLAG]: {
             ...createEmptyState(),

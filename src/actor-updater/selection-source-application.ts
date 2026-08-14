@@ -35,6 +35,9 @@ export async function createEmbeddedSource(
   steps: PendingStep[] = [],
   deps: CreateEmbeddedSourceDependencies = DEFAULT_CREATE_DEPS
 ): Promise<EmbeddedItemSource | null> {
+  if (deps.resolvePreparedSource) {
+    return deps.resolvePreparedSource(selection);
+  }
   const document = await deps.fetchSelectionDocument(selection);
   if (!document) {
     return null;

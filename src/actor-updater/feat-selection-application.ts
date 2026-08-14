@@ -1,10 +1,12 @@
+import { listActorItems } from "../build-state.js";
 import {
   type CampaignFeatSlotAuthority,
   campaignFeatAllowsCandidate,
   resolveCampaignFeatSlotSetting,
 } from "../campaign-feat-sections.js";
 import { fetchSelectionDocument } from "../pack/access.js";
-import type { ActorLike, FeatSlotLike, LooseRecord } from "../shared/actor-model.js";
+import type { ActorItemLike, ActorLike, FeatSlotLike, LooseRecord } from "../shared/actor-model.js";
+import { itemMatchesSourceId } from "../shared/source-id.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
 import type { InsertFeatSelectionDependencies } from "./selection-dependencies.js";
 import { stampSelectionFlags } from "./selection-flags.js";
@@ -52,13 +54,10 @@ export async function preflightFeatSelection(
   step: PendingStep | null,
   deps: InsertFeatSelectionDependencies = DEFAULT_INSERT_DEPS
 ): Promise<void> {
-  if (step?.slotKind !== "campaign-feat") {
-    return;
-  }
-
-  const source = await deps.fetchSelectionDocument(selection);
+  const existing = (listActorItems(actor) as ActorItemLike[]).find((item) => itemMatchesSourceId(item, selection.uuid));
+  const source = existing ?? (await deps.fetchSelectionDocument(selection));
   if (!source) {
-    throw new Error("The selected campaign feat is unavailable; the draft cannot be applied safely.");
+    throw new Error(`The selected feat ${selection.name} is unavailable; the draft cannot be applied safely.`);
   }
 
   resolveFeatSlotData(
@@ -120,7 +119,7 @@ function resolveFeatSlotData(
     }
 
     const slot = group.slots?.[campaignFeat.groupSlotId];
-    if (slot && (slot.level !== step.level || slot.feat)) {
+    if (slot && (slot.level !== step.level || (slot.feat && !featSlotAlreadySatisfied(actor, slot, selection)))) {
       throw new Error("PF2E's campaign feat slot is unavailable; the draft cannot be applied safely.");
     }
 
@@ -142,7 +141,7 @@ function resolveFeatSlotData(
   }
 
   if (!group) {
-    return { groupId, slotId: null };
+    throw new Error(`PF2E's ${groupId} feat group is unavailable; the draft cannot be applied safely.`);
   }
 
   const slots = Object.values(group.slots ?? {});
@@ -150,7 +149,7 @@ function resolveFeatSlotData(
   const matchingLevel = slots.find((slot) => slot.level === step?.level && !slot.feat);
   const canonicalSlotId = canonicalCoreFeatSlotId(groupId, step);
   const canonicalSlot = canonicalSlotId ? group.slots?.[canonicalSlotId] : null;
-  if (canonicalSlot?.feat) {
+  if (canonicalSlot?.feat && !featSlotAlreadySatisfied(actor, canonicalSlot, selection)) {
     throw new Error(`PF2E's ${groupId} feat slot at level ${step?.level} is already occupied.`);
   }
   if (matchingLevel || canonicalSlotId) {
@@ -165,6 +164,15 @@ function resolveFeatSlotData(
     groupId,
     slotId: firstOpen?.id ?? null,
   };
+}
+
+function featSlotAlreadySatisfied(actor: ActorLike, slot: FeatSlotLike, selection: SelectionRef): boolean {
+  const slotFeat = slot.feat;
+  const item =
+    slotFeat && typeof slotFeat === "object"
+      ? (slotFeat as ActorItemLike)
+      : (listActorItems(actor) as ActorItemLike[]).find((candidate) => candidate.id === slotFeat);
+  return !!item && itemMatchesSourceId(item, selection.uuid);
 }
 
 function canonicalCoreFeatSlotId(groupId: string, step: PendingStep | null): string | null {

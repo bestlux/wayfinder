@@ -13,7 +13,6 @@ describe("wayfinder draft lifecycle service", () => {
     const draft = createEmptyDraft(3);
     const confirmApply = vi.fn(() => true);
     const applyDraftToActor = vi.fn(async () => undefined);
-    const updateActor = vi.fn(async () => undefined);
     const steps = [step("ancestry-level-1"), step("class-level-1")];
 
     const result = await applyDraftLifecycle({
@@ -24,7 +23,6 @@ describe("wayfinder draft lifecycle service", () => {
       isStepComplete: async (pendingStep) => pendingStep.id !== "class-level-1",
       confirmApply,
       applyDraftToActor,
-      updateActor,
     });
 
     expect(result).toEqual({
@@ -33,14 +31,12 @@ describe("wayfinder draft lifecycle service", () => {
     });
     expect(confirmApply).not.toHaveBeenCalled();
     expect(applyDraftToActor).not.toHaveBeenCalled();
-    expect(updateActor).not.toHaveBeenCalled();
   });
 
   it("refuses to apply when there are no Wayfinder-guided steps", async () => {
     const draft = createEmptyDraft(1);
     const confirmApply = vi.fn(() => true);
     const applyDraftToActor = vi.fn(async () => undefined);
-    const updateActor = vi.fn(async () => undefined);
 
     const result = await applyDraftLifecycle({
       actorName: "Kyra",
@@ -50,7 +46,6 @@ describe("wayfinder draft lifecycle service", () => {
       isStepComplete: async () => true,
       confirmApply,
       applyDraftToActor,
-      updateActor,
     });
 
     expect(result).toEqual({
@@ -59,14 +54,12 @@ describe("wayfinder draft lifecycle service", () => {
     });
     expect(confirmApply).not.toHaveBeenCalled();
     expect(applyDraftToActor).not.toHaveBeenCalled();
-    expect(updateActor).not.toHaveBeenCalled();
   });
 
   it("cancels the apply flow when confirmation is declined", async () => {
     const draft = createEmptyDraft(4);
     const confirmApply = vi.fn(() => false);
     const applyDraftToActor = vi.fn(async () => undefined);
-    const updateActor = vi.fn(async () => undefined);
     const steps = [step("ancestry-level-1"), step("class-level-1")];
 
     const result = await applyDraftLifecycle({
@@ -77,7 +70,6 @@ describe("wayfinder draft lifecycle service", () => {
       isStepComplete: async () => true,
       confirmApply,
       applyDraftToActor,
-      updateActor,
     });
 
     expect(result).toEqual({
@@ -85,7 +77,6 @@ describe("wayfinder draft lifecycle service", () => {
     });
     expect(confirmApply).toHaveBeenCalledWith("Apply 2 Wayfinder step(s) to Valeros?");
     expect(applyDraftToActor).not.toHaveBeenCalled();
-    expect(updateActor).not.toHaveBeenCalled();
   });
 
   it("applies the draft, persists completion state, and returns a reset draft", async () => {
@@ -98,28 +89,9 @@ describe("wayfinder draft lifecycle service", () => {
     };
     const confirmApply = vi.fn(() => true);
     const order: string[] = [];
-    const applyDraftToActor = vi.fn(async () => {
+    const applyDraftToActor = vi.fn(async (update: Record<string, unknown>) => {
       order.push("apply");
-      return {
-        "system.build": {
-          attributes: {
-            boosts: {
-              1: ["dex", "con", "int", "wis"],
-            },
-          },
-        },
-      };
-    });
-    const updateActor = vi.fn(async (update: Record<string, unknown>) => {
-      order.push("update");
       expect(update).toEqual({
-        "system.build": {
-          attributes: {
-            boosts: {
-              1: ["dex", "con", "int", "wis"],
-            },
-          },
-        },
         [DRAFT_FLAG]: null,
         [STATE_FLAG]: {
           ...createEmptyState(),
@@ -141,7 +113,6 @@ describe("wayfinder draft lifecycle service", () => {
       isStepComplete: async () => true,
       confirmApply,
       applyDraftToActor,
-      updateActor,
       now: () => "2026-04-19T21:30:00.000Z",
     });
 
@@ -150,7 +121,7 @@ describe("wayfinder draft lifecycle service", () => {
       throw new Error("expected applied result");
     }
     expect(confirmApply).toHaveBeenCalledWith("Apply 2 Wayfinder step(s) to Kyra?");
-    expect(order).toEqual(["apply", "update"]);
+    expect(order).toEqual(["apply"]);
     expect(result.nextDraft.targetLevel).toBe(1);
     expect(result.nextDraft.selections).toEqual({});
     expect(result.nextDraft.classChoices).toEqual({});
@@ -165,10 +136,6 @@ describe("wayfinder draft lifecycle service", () => {
     });
     const applyDraftToActor = vi.fn(async () => {
       order.push("apply");
-      return undefined;
-    });
-    const updateActor = vi.fn(async () => {
-      order.push("update");
     });
 
     const result = await applyDraftLifecycle({
@@ -179,17 +146,37 @@ describe("wayfinder draft lifecycle service", () => {
       isStepComplete: async () => true,
       confirmApply,
       applyDraftToActor,
-      updateActor,
     });
 
     expect(result.kind).toBe("applied");
     expect(confirmApply).toHaveBeenCalledWith("Apply 1 Wayfinder step(s) to Ezren?");
-    expect(order).toEqual(["confirm", "apply", "update"]);
+    expect(order).toEqual(["confirm", "apply"]);
+  });
+
+  it("does not clear the saved draft when actor application fails", async () => {
+    const draft = createEmptyDraft(2);
+    draft.manual["ancestry-level-1"] = true;
+
+    await expect(
+      applyDraftLifecycle({
+        actorName: "Ezren",
+        currentLevel: 1,
+        draft,
+        steps: [step("ancestry-level-1")],
+        isStepComplete: async () => true,
+        confirmApply: () => true,
+        applyDraftToActor: async () => {
+          throw new Error("injected phase failure");
+        },
+      })
+    ).rejects.toThrow("injected phase failure");
+
+    expect(draft.manual["ancestry-level-1"]).toBe(true);
   });
 
   it("preserves previously completed step ids during incremental applies", async () => {
     const draft = createEmptyDraft(5);
-    const updateActor = vi.fn(async () => undefined);
+    const applyDraftToActor = vi.fn(async () => undefined);
 
     await applyDraftLifecycle({
       actorName: "Seelah",
@@ -199,12 +186,11 @@ describe("wayfinder draft lifecycle service", () => {
       steps: [step("class-feat-level-2"), step("class-feat-level-2")],
       isStepComplete: async () => true,
       confirmApply: () => true,
-      applyDraftToActor: async () => undefined,
-      updateActor,
+      applyDraftToActor,
       now: () => "2026-04-19T21:30:00.000Z",
     });
 
-    expect(updateActor).toHaveBeenCalledWith(
+    expect(applyDraftToActor).toHaveBeenCalledWith(
       expect.objectContaining({
         [STATE_FLAG]: expect.objectContaining({
           completedStepIds: ["ancestry-level-1", "class-level-1", "class-feat-level-2"],

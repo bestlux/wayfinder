@@ -887,12 +887,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 steps: plan.steps,
                 isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
                 confirmApply: confirmWayfinderApply,
-                applyDraftToActor: () => applyDraftToActor(this.actor, draft, plan.steps, {
-                    deferActorUpdate: true,
-                }),
-                updateActor: async (update) => {
-                    await this.actor.update(update);
-                },
+                applyDraftToActor: (finalActorUpdate) => applyDraftToActor(this.actor, draft, plan.steps, {
+                    finalActorUpdate,
+                    validateActorAuthority: canUseWayfinder,
+                    validateSelectionEligibility: (selection, step) => this.#validateSelectionEligibility(selection, step, draft, plan.steps, snapshot.skillRanks),
+                }).then(() => undefined),
             });
         }
         catch (error) {
@@ -919,6 +918,41 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#recentlyInvalidatedStepIds.clear();
         ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.Applied"));
         await this.close({ animate: false });
+    }
+    async #validateSelectionEligibility(selection, step, draft, steps, skillRanks) {
+        const normalizedUuid = selection.uuid.trim().toLowerCase();
+        const alreadyApplied = listActorItems(this.actor).some((item) => {
+            if (sourceIdOf(item)?.trim().toLowerCase() !== normalizedUuid)
+                return false;
+            const wayfinderFlags = item?.flags?.[MODULE_ID];
+            if (wayfinderFlags?.slotId === selection.slotId)
+                return true;
+            if (step.kind !== "spell-choice")
+                return false;
+            const entry = findSpellcastingEntryForChoice(this.actor, step.spellChoice);
+            return typeof entry?.id === "string" && actorItemLocationId(item) === entry.id;
+        });
+        if (alreadyApplied)
+            return true;
+        if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {
+            return true;
+        }
+        const optionContext = await buildOptionContext({
+            draft,
+            steps,
+            excludedFeatSlotId: step.slotId,
+            maximumFeatLevel: step.level,
+            skillRanks,
+            resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+            listActorItems: () => listActorItems(this.actor),
+            fetchSelectionDocument,
+            extractDocumentSlug,
+        });
+        const optionStep = step.kind === "spell-choice"
+            ? withRestrictedSpellRarityAccess(step, getSpellRarityCeilingSetting(), draft.spellRarityAccess[step.slotId] === true)
+            : step;
+        const options = await getOptionsForStep(optionStep, optionContext);
+        return options.some((option) => option.uuid.trim().toLowerCase() === normalizedUuid);
     }
     async #importExistingHistory() {
         const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));

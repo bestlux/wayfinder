@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Draft application now prepares and retains every discoverable compendium source, validates current choices before writing, verifies PF2E-created items and planned feat slots before finalization, and executes through named per-actor phases.
+- Actor-level skill, boost, language, level, completion-state, and draft-clearing updates now share one serialized finalization phase. A failed retry cannot increment a skill twice or race a previous Apply operation's final update.
+- Apply failures identify their phase and retain exact created, deleted, and updated item IDs for narrow diagnosis or phase-owned compensation; the saved draft remains available for review and retry.
+
 ## 0.7.1 - 2026-08-14
 
 - Applying a stale draft no longer removes an existing ancestry, heritage, background, or class when its replacement source cannot be resolved or PF2E rejects creation. Wayfinder validates the entire singleton batch before mutation, lets PF2E own singular-item replacement, and restores the previous batch if creation fails.

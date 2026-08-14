@@ -3,7 +3,7 @@ import { MODULE_ID } from "../constants.js";
 import { queueRuleSelectionUpdate } from "../shared/pf2e-item-source.js";
 import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
-export async function applyTrainingDraft(actor, draft, steps) {
+export async function applyTrainingDraft(actor, draft, steps, options = {}) {
     const projectedRanks = {};
     for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
         const rank = Number(data?.rank ?? 0);
@@ -77,13 +77,13 @@ export async function applyTrainingDraft(actor, draft, steps) {
         return rank > current;
     })
         .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]);
-    if (skillUpdates.length > 0 && typeof actor.update === "function") {
+    if (options.persistActorUpdate !== false && skillUpdates.length > 0 && typeof actor.update === "function") {
         await actor.update(Object.fromEntries(skillUpdates));
     }
     await reconcileTrainingLore(actor, actorItems, Array.from(desiredTrainingLores.values()));
     return projectedRanks;
 }
-export async function applySkillIncreaseDraft(actor, draft, baseRanks) {
+export async function applySkillIncreaseDraft(actor, draft, baseRanks, options = {}) {
     const projectedRanks = baseRanks ? { ...baseRanks } : {};
     if (!baseRanks) {
         for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
@@ -91,7 +91,9 @@ export async function applySkillIncreaseDraft(actor, draft, baseRanks) {
             projectedRanks[slug] = Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
         }
     }
-    const sortedEntries = Object.entries(draft.skillIncreases).sort(([left], [right]) => compareSkillIncreaseSlotIds(left, right));
+    const sortedEntries = Object.entries(draft.skillIncreases)
+        .filter(([slotId]) => !options.activeSlotIds || options.activeSlotIds.has(slotId))
+        .sort(([left], [right]) => compareSkillIncreaseSlotIds(left, right));
     const increasedSlugs = new Set();
     for (const [, slug] of sortedEntries) {
         if (typeof slug !== "string" || !slug) {
@@ -108,9 +110,16 @@ export async function applySkillIncreaseDraft(actor, draft, baseRanks) {
         return rank > baseline;
     })
         .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]);
-    if (updates.length > 0 && typeof actor.update === "function") {
-        await actor.update(Object.fromEntries(updates));
+    const actorUpdate = Object.fromEntries(updates);
+    if (options.persistActorUpdate !== false && updates.length > 0 && typeof actor.update === "function") {
+        await actor.update(actorUpdate);
     }
+    return actorUpdate;
+}
+export function buildTrainingActorUpdate(actor, projectedRanks) {
+    return Object.fromEntries(Object.entries(projectedRanks)
+        .filter(([slug, rank]) => rank > readActorSkillRank(actor, slug))
+        .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]));
 }
 function compareSkillIncreaseSlotIds(left, right) {
     const leftLevel = skillIncreaseLevelFromSlotId(left);

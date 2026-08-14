@@ -1797,6 +1797,75 @@ describe("actor-updater selection application", () => {
     ]);
   });
 
+  it("treats the same Wayfinder campaign selection as satisfied during retry preflight", async () => {
+    const selection = selectionRef(
+      "campaign-feat-xdy_ancestryparagon-level-3",
+      "feat",
+      "cooperative-nature",
+      "Cooperative Nature",
+      "ancestry"
+    );
+    const step: PendingStep = {
+      ...featStep("campaign-feat-xdy_ancestryparagon-level-3", "campaign-feat", 3, ["ancestry"]),
+      campaignFeat: {
+        sectionId: "xdy_ancestryparagon",
+        sectionLabel: "Ancestry Paragon",
+        groupSlotId: "ancestry-paragon-third-level-slot",
+        supported: ["ancestry"],
+        filter: { categories: ["ancestry"], traits: [], omitTraits: [], conjunction: "or" },
+      },
+    };
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: "existing-campaign-feat",
+            type: "feat",
+            flags: { core: { sourceId: selection.uuid } },
+            system: { category: "ancestry", traits: { value: ["human"] } },
+          },
+        ],
+      },
+      feats: {
+        get: () => ({
+          slots: {
+            "ancestry-paragon-third-level-slot": {
+              id: "ancestry-paragon-third-level-slot",
+              level: 3,
+              feat: "existing-campaign-feat",
+            },
+          },
+        }),
+      },
+    };
+
+    await expect(
+      preflightFeatSelection(actor, selection, step, {
+        fetchSelectionDocument: async () => ({
+          name: "Cooperative Nature",
+          system: { category: "ancestry", traits: { value: ["human"] } },
+          toObject: () => ({
+            name: "Cooperative Nature",
+            type: "feat",
+            system: { category: "ancestry", traits: { value: ["human"] } },
+          }),
+        }),
+        createEmbeddedSource: async () => null,
+        resolveCampaignFeatSlot: () => ({
+          sectionId: "xdy_ancestryparagon",
+          supported: ["ancestry"],
+          filter: { categories: ["ancestry"], traits: [], omitTraits: [], conjunction: "or" },
+          slot: {
+            id: "ancestry-paragon-third-level-slot",
+            level: 3,
+            fulfilled: true,
+            filter: null,
+          },
+        }),
+      })
+    ).resolves.toBeUndefined();
+  });
+
   it("refuses a campaign feat selection after PF2E removes the section group", async () => {
     const actor = {
       feats: { get: () => null },
@@ -1961,6 +2030,19 @@ describe("actor-updater selection application", () => {
       })
     ).rejects.toThrow("no longer matches PF2E's current slot filters");
     expect(createEmbeddedSource).not.toHaveBeenCalled();
+  });
+
+  it("refuses a core feat selection when PF2E's feat group is unavailable", async () => {
+    const selection = selectionRef("class-feat-level-2", "feat", "reach-spell", "Reach Spell", "class");
+    const step = featStep("class-feat-level-2", "class-feat", 2, ["class"]);
+
+    await expect(
+      preflightFeatSelection({ feats: { get: () => null } }, selection, step, {
+        fetchSelectionDocument,
+        createEmbeddedSource: async () => null,
+        resolveCampaignFeatSlot: () => null,
+      })
+    ).rejects.toThrow("class feat group is unavailable");
   });
 
   it("preserves preselected feat sources during slotted feat creation", async () => {
@@ -2334,7 +2416,7 @@ describe("actor-updater selection application", () => {
     ]);
   });
 
-  it("falls back to raw feat creation when PF2E slot insertion is unavailable", async () => {
+  it("refuses raw feat creation when PF2E slot authority is unavailable", async () => {
     const actor = {
       feats: undefined,
       createEmbeddedDocuments: vi.fn(async () => []),
@@ -2342,33 +2424,23 @@ describe("actor-updater selection application", () => {
     const selection = selectionRef("general-feat-level-3", "feat", "toughness", "Toughness", "general");
     const step = featStep("general-feat-level-3", "general-feat", 3, ["general"]);
 
-    await insertFeatSelection(actor, selection, step, {
-      fetchSelectionDocument: async () => ({
-        id: "toughness",
-        name: "Toughness",
-        toObject: () => ({ name: "Toughness", type: "feat", system: { location: null } }),
-      }),
-      createEmbeddedSource: async () => ({
-        name: "Toughness",
-        type: "feat",
-        system: {},
-        flags: {},
-      }),
-    });
+    await expect(
+      insertFeatSelection(actor, selection, step, {
+        fetchSelectionDocument: async () => ({
+          id: "toughness",
+          name: "Toughness",
+          toObject: () => ({ name: "Toughness", type: "feat", system: { location: null } }),
+        }),
+        createEmbeddedSource: async () => ({
+          name: "Toughness",
+          type: "feat",
+          system: {},
+          flags: {},
+        }),
+      })
+    ).rejects.toThrow("general feat group is unavailable");
 
-    expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("Item", [
-      {
-        name: "Toughness",
-        type: "feat",
-        system: {
-          location: "general",
-          level: {
-            taken: 3,
-          },
-        },
-        flags: {},
-      },
-    ]);
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
   });
 
   it("orders selections by step order and detects existing source ids", () => {

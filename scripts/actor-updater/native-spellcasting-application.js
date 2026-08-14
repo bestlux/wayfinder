@@ -7,14 +7,22 @@ import { SLOT_IDS } from "../wayfinder/slot-ids.js";
 import { createEmbeddedSource } from "./selection-application.js";
 import { createBattleFontEntrySource, createClericFontEntrySource, createClericPreparedEntrySource, ensureSpellcastingEntryFromSource, spellLocationId, syncSpellcastingEntry, } from "./spellcasting-entry-support.js";
 const BATTLE_CREED_UUID = "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5";
-export async function syncNativeClassSpellcasting(actor, draft) {
+export async function syncNativeClassSpellcasting(actor, draft, sourceFactory = createEmbeddedSource) {
     const classSlug = getCurrentClassSlug(actor, draft);
     if (classSlug !== "cleric") {
         return;
     }
-    await syncClericSpellcasting(actor, draft);
+    await syncClericSpellcasting(actor, draft, sourceFactory);
 }
-async function syncClericSpellcasting(actor, draft) {
+export function nativeSpellcastingSourceSelections(actor, draft) {
+    if (getCurrentClassSlug(actor, draft) !== "cleric")
+        return [];
+    if (hasBattleCreed(actor, draft))
+        return battleFontSpellSelections("prepared");
+    const divineFont = resolveClericDivineFont(actor, draft);
+    return divineFont ? [divineFontSpellSelection("prepared", divineFont)] : [];
+}
+async function syncClericSpellcasting(actor, draft, sourceFactory) {
     const usesBattleCreed = hasBattleCreed(actor, draft);
     const preparedEntry = await ensureSpellcastingEntryFromSource(actor, createClericPreparedEntrySource(actor, draft, usesBattleCreed ? "battle-creed" : "standard"), {
         destinationKey: "cleric-divine-prepared",
@@ -34,7 +42,7 @@ async function syncClericSpellcasting(actor, draft) {
         return;
     }
     if (usesBattleCreed) {
-        await syncBattleFont(actor, draft);
+        await syncBattleFont(actor, draft, sourceFactory);
         return;
     }
     const divineFont = resolveClericDivineFont(actor, draft);
@@ -52,7 +60,7 @@ async function syncClericSpellcasting(actor, draft) {
         return;
     }
     await pruneExtraClericFontEntries(actor, fontEntry.id);
-    const [fontSpell] = await reconcileClericFontSpells(actor, fontEntry, [divineFontSpellSelection(fontEntry.id, divineFont)], fontKey);
+    const [fontSpell] = await reconcileClericFontSpells(actor, fontEntry, [divineFontSpellSelection(fontEntry.id, divineFont)], fontKey, sourceFactory);
     if (!fontSpell?.id) {
         return;
     }
@@ -71,7 +79,7 @@ function hasBattleCreed(actor, draft) {
     return (isBattleCreedSelected(draft) ||
         listActorItems(actor).some((item) => itemMatchesSourceId(item, BATTLE_CREED_UUID)));
 }
-async function syncBattleFont(actor, draft) {
+async function syncBattleFont(actor, draft, sourceFactory) {
     const fontEntry = await ensureSpellcastingEntryFromSource(actor, createBattleFontEntrySource(actor, draft), {
         destinationKey: "cleric-battle-font",
         matches: (item) => isClericFontEntry(item),
@@ -80,7 +88,7 @@ async function syncBattleFont(actor, draft) {
         return;
     }
     await pruneExtraClericFontEntries(actor, fontEntry.id);
-    const fontSpells = await reconcileClericFontSpells(actor, fontEntry, battleFontSpellSelections(fontEntry.id), "cleric-battle-font");
+    const fontSpells = await reconcileClericFontSpells(actor, fontEntry, battleFontSpellSelections(fontEntry.id), "cleric-battle-font", sourceFactory);
     if (fontSpells.length !== 2) {
         return;
     }
@@ -126,7 +134,7 @@ async function pruneExtraClericFontEntries(actor, keepEntryId) {
         await actor.deleteEmbeddedDocuments("Item", deleteIds);
     }
 }
-async function reconcileClericFontSpells(actor, entry, desiredSelections, destinationKey) {
+async function reconcileClericFontSpells(actor, entry, desiredSelections, destinationKey, sourceFactory) {
     if (typeof entry.id !== "string") {
         return [];
     }
@@ -150,7 +158,7 @@ async function reconcileClericFontSpells(actor, entry, desiredSelections, destin
         if (keptByUuid.has(desiredSelection.uuid)) {
             continue;
         }
-        const source = await createEmbeddedSource(desiredSelection);
+        const source = await sourceFactory(desiredSelection);
         if (!source) {
             continue;
         }

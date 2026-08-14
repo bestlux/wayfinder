@@ -1,5 +1,6 @@
 import { PROFICIENCY_CODES, PROFICIENCY_LABELS, SKILL_LABELS } from "../../constants.js";
 import type { DraftState, PendingStep } from "../../types.js";
+import { maxProficiencyRank } from "../domain/skill-rank-projection.js";
 import { formatSlug } from "../formatting.js";
 import type { SkillIncreaseStepPane, SkillTrainingStepPane } from "../view-models.js";
 
@@ -275,10 +276,4 @@ export function compareSkillIncreaseSlotIds(left: string, right: string): number
 export function skillIncreaseLevelFromSlotId(slotId: string): number {
   const match = /skill-increase-level-(\d+)/.exec(slotId);
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
-}
-
-export function maxProficiencyRank(level: number): number {
-  if (level >= 15) return 4;
-  if (level >= 7) return 3;
-  return 2;
 }

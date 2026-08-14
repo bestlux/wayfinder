@@ -14,7 +14,16 @@ import type { DraftState, PendingStep, SelectionRef, SpellChoiceMeta } from "../
 import { createEmbeddedSource, stampSelectionFlags } from "./selection-application.js";
 import { ensureSpellcastingEntry, spellLocationId } from "./spellcasting-entry-support.js";
 
-export async function applySpellChoiceDraft(actor: ActorLike, draft: DraftState, steps: PendingStep[]): Promise<void> {
+export async function applySpellChoiceDraft(
+  actor: ActorLike,
+  draft: DraftState,
+  steps: PendingStep[],
+  sourceFactory: (
+    selection: SelectionRef,
+    draft?: DraftState,
+    steps?: PendingStep[]
+  ) => Promise<EmbeddedItemSource | null> = createEmbeddedSource
+): Promise<void> {
   const stepMap = new Map(steps.map((step) => [step.slotId, step]));
 
   for (const [slotId, selections] of Object.entries(draft.spellChoices)) {
@@ -38,7 +47,7 @@ export async function applySpellChoiceDraft(actor: ActorLike, draft: DraftState,
         continue;
       }
 
-      const source = await createEmbeddedSource(selection);
+      const source = await sourceFactory(selection, draft, steps);
       if (!source) {
         continue;
       }

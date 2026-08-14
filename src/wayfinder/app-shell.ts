@@ -19,7 +19,14 @@ import { getSpellRarityCeilingSetting } from "../settings.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
-import type { AbilityKey, DraftState, PendingStep, PickerFilterKind, PickerFilterState } from "../types.js";
+import type {
+  AbilityKey,
+  DraftState,
+  PendingStep,
+  PickerFilterKind,
+  PickerFilterState,
+  SelectionRef,
+} from "../types.js";
 import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
 import { buildSkillPane } from "./application/build-skill-pane-service.js";
@@ -1130,13 +1137,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         steps: plan.steps,
         isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
         confirmApply: confirmWayfinderApply,
-        applyDraftToActor: () =>
+        applyDraftToActor: (finalActorUpdate) =>
           applyDraftToActor(this.actor, draft, plan.steps, {
-            deferActorUpdate: true,
-          }),
-        updateActor: async (update) => {
-          await this.actor.update(update);
-        },
+            finalActorUpdate,
+            validateActorAuthority: canUseWayfinder,
+            validateSelectionEligibility: (selection, step) =>
+              this.#validateSelectionEligibility(selection, step, draft, plan.steps, snapshot.skillRanks),
+          }).then(() => undefined),
       });
     } catch (error) {
       console.error("PF2E Wayfinder failed to apply draft", error);
@@ -1166,6 +1173,50 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#recentlyInvalidatedStepIds.clear();
     ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.Applied"));
     await this.close({ animate: false });
+  }
+
+  async #validateSelectionEligibility(
+    selection: SelectionRef,
+    step: PendingStep,
+    draft: DraftState,
+    steps: PendingStep[],
+    skillRanks: Record<string, number>
+  ): Promise<boolean> {
+    const normalizedUuid = selection.uuid.trim().toLowerCase();
+    const alreadyApplied = listActorItems(this.actor).some((item) => {
+      if (sourceIdOf(item)?.trim().toLowerCase() !== normalizedUuid) return false;
+      const wayfinderFlags = (item?.flags as Record<string, { slotId?: unknown }> | undefined)?.[MODULE_ID];
+      if (wayfinderFlags?.slotId === selection.slotId) return true;
+      if (step.kind !== "spell-choice") return false;
+      const entry = findSpellcastingEntryForChoice(this.actor, step.spellChoice);
+      return typeof entry?.id === "string" && actorItemLocationId(item) === entry.id;
+    });
+    if (alreadyApplied) return true;
+
+    if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {
+      return true;
+    }
+    const optionContext = await buildOptionContext({
+      draft,
+      steps,
+      excludedFeatSlotId: step.slotId,
+      maximumFeatLevel: step.level,
+      skillRanks,
+      resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+      listActorItems: () => listActorItems(this.actor),
+      fetchSelectionDocument,
+      extractDocumentSlug,
+    });
+    const optionStep =
+      step.kind === "spell-choice"
+        ? withRestrictedSpellRarityAccess(
+            step,
+            getSpellRarityCeilingSetting(),
+            draft.spellRarityAccess[step.slotId] === true
+          )
+        : step;
+    const options = await getOptionsForStep(optionStep, optionContext);
+    return options.some((option) => option.uuid.trim().toLowerCase() === normalizedUuid);
   }
 
   async #importExistingHistory(): Promise<void> {

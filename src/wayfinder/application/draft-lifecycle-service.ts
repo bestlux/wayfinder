@@ -11,8 +11,7 @@ export interface ApplyDraftLifecycleArgs {
   steps: PendingStep[];
   isStepComplete: (step: PendingStep) => Promise<boolean>;
   confirmApply?: (message: string) => boolean | Promise<boolean>;
-  applyDraftToActor: () => Promise<Record<string, unknown> | void>;
-  updateActor: (update: Record<string, unknown>) => Promise<void>;
+  applyDraftToActor: (finalActorUpdate: Record<string, unknown>) => Promise<void>;
   now?: () => string;
 }
 
@@ -45,10 +44,8 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
     };
   }
 
-  const actorUpdate = (await args.applyDraftToActor()) ?? {};
   const completedStepIds = mergeCompletedStepIds(args.existingCompletedStepIds ?? [], args.steps);
-  await args.updateActor({
-    ...actorUpdate,
+  await args.applyDraftToActor({
     [DRAFT_FLAG]: null,
     [STATE_FLAG]: {
       ...createEmptyState(),

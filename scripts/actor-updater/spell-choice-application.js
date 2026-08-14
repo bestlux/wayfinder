@@ -5,7 +5,7 @@ import { sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { createEmbeddedSource, stampSelectionFlags } from "./selection-application.js";
 import { ensureSpellcastingEntry, spellLocationId } from "./spellcasting-entry-support.js";
-export async function applySpellChoiceDraft(actor, draft, steps) {
+export async function applySpellChoiceDraft(actor, draft, steps, sourceFactory = createEmbeddedSource) {
     const stepMap = new Map(steps.map((step) => [step.slotId, step]));
     for (const [slotId, selections] of Object.entries(draft.spellChoices)) {
         const step = stepMap.get(slotId);
@@ -24,7 +24,7 @@ export async function applySpellChoiceDraft(actor, draft, steps) {
             if (hasSpellSourceInEntry(actor, selection.uuid, entryId)) {
                 continue;
             }
-            const source = await createEmbeddedSource(selection);
+            const source = await sourceFactory(selection, draft, steps);
             if (!source) {
                 continue;
             }

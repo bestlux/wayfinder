@@ -55,6 +55,8 @@ Use these seams:
 
 If a new class flow changes actor items, spellcasting state, or granted selections, put the mutation logic on the apply side. `app-shell.ts` should gather intent and trigger services, not own rules mutation policy.
 
+Every new compendium-backed mutation must also register its source with `prepared-draft-application.ts`; execution may consume the retained prepared source but must not perform a fresh pack lookup after actor writes begin. Add a named phase only when the operation cannot fit an existing phase, and make its prewrite authority, retry behavior, receipt, and failure-injection contract explicit.
+
 ## Required Tests For A New Class Flow
 
 At minimum, add coverage in the seam where the new behavior lives.
@@ -62,6 +64,7 @@ At minimum, add coverage in the seam where the new behavior lives.
 - Add or extend a contributor test when the new class changes contributor routing or class-specific spell-choice composition.
 - Add a direct `rule-discovery` or step-builder test when the new flow depends on class-choice rule parsing.
 - Add or extend apply-side tests under `tests/actor-updater-*.test.ts` when the flow changes granted items, spellcasting, or draft application behavior.
+- Exercise the prepared source catalogue and inject a failure at the relevant named phase; prove the draft survives and a serialized retry reaches the intended state without duplicate grants or relative actor updates.
 - Add a plan-builder or service-level regression test when the flow must appear in the user-visible Wayfinder plan.
 - Run `npm run check` before closing the slice.
 

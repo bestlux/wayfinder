@@ -9,7 +9,8 @@ import type { DraftState, PendingStep, SkillTrainingPersistenceMeta } from "../t
 export async function applyTrainingDraft(
   actor: ActorLike,
   draft: DraftState,
-  steps: PendingStep[]
+  steps: PendingStep[],
+  options: { persistActorUpdate?: boolean } = {}
 ): Promise<Record<string, number>> {
   const projectedRanks: Record<string, number> = {};
   for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
@@ -100,7 +101,7 @@ export async function applyTrainingDraft(
     })
     .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank] as const);
 
-  if (skillUpdates.length > 0 && typeof actor.update === "function") {
+  if (options.persistActorUpdate !== false && skillUpdates.length > 0 && typeof actor.update === "function") {
     await actor.update(Object.fromEntries(skillUpdates));
   }
 
@@ -112,8 +113,9 @@ export async function applyTrainingDraft(
 export async function applySkillIncreaseDraft(
   actor: ActorLike,
   draft: DraftState,
-  baseRanks?: Record<string, number>
-): Promise<void> {
+  baseRanks?: Record<string, number>,
+  options: { persistActorUpdate?: boolean; activeSlotIds?: ReadonlySet<string> } = {}
+): Promise<Record<string, unknown>> {
   const projectedRanks: Record<string, number> = baseRanks ? { ...baseRanks } : {};
   if (!baseRanks) {
     for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
@@ -122,9 +124,9 @@ export async function applySkillIncreaseDraft(
     }
   }
 
-  const sortedEntries = Object.entries(draft.skillIncreases).sort(([left], [right]) =>
-    compareSkillIncreaseSlotIds(left, right)
-  );
+  const sortedEntries = Object.entries(draft.skillIncreases)
+    .filter(([slotId]) => !options.activeSlotIds || options.activeSlotIds.has(slotId))
+    .sort(([left], [right]) => compareSkillIncreaseSlotIds(left, right));
   const increasedSlugs = new Set<string>();
 
   for (const [, slug] of sortedEntries) {
@@ -146,9 +148,23 @@ export async function applySkillIncreaseDraft(
     })
     .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank] as const);
 
-  if (updates.length > 0 && typeof actor.update === "function") {
-    await actor.update(Object.fromEntries(updates));
+  const actorUpdate = Object.fromEntries(updates);
+  if (options.persistActorUpdate !== false && updates.length > 0 && typeof actor.update === "function") {
+    await actor.update(actorUpdate);
   }
+
+  return actorUpdate;
+}
+
+export function buildTrainingActorUpdate(
+  actor: ActorLike,
+  projectedRanks: Record<string, number>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(projectedRanks)
+      .filter(([slug, rank]) => rank > readActorSkillRank(actor, slug))
+      .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank])
+  );
 }
 
 function compareSkillIncreaseSlotIds(left: string, right: string): number {

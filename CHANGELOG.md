@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.7.2 - 2026-08-14
 
-- Draft application now prepares and retains every discoverable compendium source, validates current choices before writing, verifies PF2E-created items and planned feat slots before finalization, and executes through named per-actor phases.
-- Actor-level skill, boost, language, level, completion-state, and draft-clearing updates now share one serialized finalization phase. A failed retry cannot increment a skill twice or race a previous Apply operation's final update.
-- Apply failures identify their phase and retain exact created, deleted, and updated item IDs for narrow diagnosis or phase-owned compensation; the saved draft remains available for review and retry.
+- Applying a draft now checks its selected sources, current PF2E choices, feat slots, and spell destinations before changing the character whenever those details are available.
+- Rapid or repeated Apply actions are handled one at a time. Retrying after an interrupted Apply no longer repeats skill increases or races an earlier update.
+- If PF2E rejects a later item or spell operation, Wayfinder keeps the draft for review and retry instead of marking an incomplete character as finished. The error now identifies where Apply stopped so a GM can diagnose the result more safely.
 
 ## 0.7.1 - 2026-08-14
 

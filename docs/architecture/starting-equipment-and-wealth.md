@@ -1,6 +1,6 @@
 # Starting Equipment and Wealth Discovery
 
-Status: product and architecture decision for the planned 0.8.0 slice. Evidence inspected 2026-08-14 in local PF2E source at commit `821012d8215` and Wayfinder 0.7.1.
+Status: product and architecture decision for the planned 0.8.0 slice. Evidence inspected 2026-08-14 in local PF2E source at commit `821012d8215` and the Wayfinder 0.7.2 apply model.
 
 ## Decision
 

@@ -45,6 +45,19 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
+## 2026-08-14 Release 0.7.2 Full Matrix
+
+The exact `v0.7.2` candidate passed 55 live executions representing 54 unique scenarios against Foundry VTT 14.364 / PF2E 8.4.0 in `testing-world`, with zero classified/manual cases and zero failures:
+
+- `.wayfinder-smoke/release-0.7.2-rc-baseline-green`: 41 direct baseline and depth scenarios.
+- `.wayfinder-smoke/release-0.7.2-rc-incremental`: eight executions—one repeated Fighter control plus seven unique existing-character upgrades.
+- `.wayfinder-smoke/release-0.7.2-rc-free-archetype`: three Free Archetype paths with the variant enabled.
+- `.wayfinder-smoke/release-0.7.2-rc-ancestry-paragon`: one Ancestry Paragon campaign-section path.
+- `.wayfinder-smoke/release-0.7.2-rc-gradual-boosts`: one Gradual Ability Boosts path.
+- `.wayfinder-smoke/release-0.7.2-rc-apply-safety`: one deliberate late-phase Apply failure and retry.
+
+Every artifact reports Wayfinder 0.7.2, Foundry 14.364, and PF2E 8.4.0. The Apply-safety probe failed intentionally at `source-flag-restoration`, confirmed that the draft remained saved and the actor remained level 1, then retried the same draft successfully to level 5 with no duplicate slot IDs, duplicate source IDs, or repeated skill increases.
+
 ## 2026-08-14 Release 0.7.1 Full Matrix
 
 The exact `v0.7.1` candidate passed 54 live apply/rerun executions representing 53 unique scenarios against Foundry VTT 14.364 / PF2E 8.4.0 in `testing-world`, with zero classified/manual cases and zero failures:

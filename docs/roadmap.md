@@ -1,20 +1,19 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-14 after the 0.7.1 release. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-08-14 for the 0.7.2 release. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
-Wayfinder 0.7.1 guides all 27 PF2E classes from a blank level-1 actor through level 5 along one maintained path. Five representative profiles are verified through level 10 and Fighter through level 20. The current live release matrix contains 53 unique apply-and-rerun scenarios against Foundry VTT 14.364 and PF2E 8.4.0.
+Wayfinder 0.7.2 guides all 27 PF2E classes from a blank level-1 actor through level 5 along one maintained path. Five representative profiles are verified through level 10 and Fighter through level 20. The current live release matrix contains 54 unique scenarios against Foundry VTT 14.364 and PF2E 8.4.0, including a deliberate late-phase Apply failure and clean retry.
 
 The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, and Gradual Ability Boosts. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation.
 
-GMs currently have world settings for supplemental Item packs and the spell-rarity ceiling. Players and GMs can open the Feedback panel from Wayfinder or Foundry settings. Three GitHub issues remain open:
+GMs currently have world settings for supplemental Item packs and the spell-rarity ceiling. Players and GMs can open the Feedback panel from Wayfinder or Foundry settings. With issue #23 completed in 0.7.2, the remaining open work is:
 
-- [#23 — prepare and execute actor mutations safely](https://github.com/bestlux/wayfinder/issues/23) is the 0.7.2 release focus.
 - [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) is a draft-editing improvement, not an apply-correctness prerequisite.
 - [#7 — class archetypes at level 1](https://github.com/bestlux/wayfinder/issues/7) remains a parallel, profile-by-profile expansion track.
 
-The largest remaining product gaps are starting equipment and wealth, a satisfying character-completion chapter, and high-level caster evidence beyond level 10. The 0.7.2 work branch now puts the existing apply path behind one prepared plan; release still requires review and live failure/retry evidence before issue #23 can be considered shipped.
+The largest remaining product gaps are starting equipment and wealth, a satisfying character-completion chapter, and high-level caster evidence beyond level 10. The apply path now prepares supported authority and sources before writing, executes named per-actor phases, verifies outcomes, and retains the draft when a phase fails.
 
 ## Product thesis
 
@@ -32,7 +31,7 @@ This includes creation and progression choices, starting equipment, identity, an
 
 The release is centered on issue #23. Before the first actor write, Wayfinder should prepare the selected sources, authoritative feat slots, choice targets, spell destinations, and campaign authority it can validate. Execution should expose named mutation phases, preserve the draft on failure, serialize retries, and compensate only where PF2E hooks make a narrow reversal safe.
 
-Implementation status: the work branch retains prepared sources instead of resolving them again during execution, validates scalar and item choices, pins campaign authority, verifies PF2E-created outcomes and planned feat locations before finalization, serializes the final actor update and draft clear with every earlier phase, and records phase receipts. The remaining release gate is adversarial review plus live Apply/failure/retry smoke on the exact candidate.
+Shipped in 0.7.2: Wayfinder retains prepared sources instead of resolving them again during execution, validates scalar and item choices, pins campaign authority, verifies PF2E-created outcomes and planned feat locations before finalization, serializes the final actor update and draft clear with every earlier phase, and records phase receipts. The exact candidate passed adversarial review and a live failure/retry probe in addition to the full release matrix.
 
 This bridge deliberately precedes equipment. Starting wealth adds batch inventory and currency writes; those operations should join an established preparation/execution model instead of creating another mutation path.
 

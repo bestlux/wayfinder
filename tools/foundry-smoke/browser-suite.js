@@ -1,4 +1,4 @@
-/* global Actor, CONFIG, CONST, document, game */
+/* global Actor, CONFIG, CONST, Hooks, document, game */
 
 globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
   cases,
@@ -226,6 +226,193 @@ globalThis.__cleanupWayfinderPickerProfile = async function cleanupWayfinderPick
   }
   await actor.delete();
   return { deleted: true, actorCountAfter: game.actors.size };
+};
+
+globalThis.__prepareWayfinderOwnerProbe = async function prepareWayfinderOwnerProbe({
+  allowDestructive = false,
+  expectedWorldId = "",
+  fixturePrefix,
+  moduleId,
+  playerName,
+  runId,
+}) {
+  if (!allowDestructive || !String(expectedWorldId ?? "").trim()) {
+    throw new Error("Owner probe setup requires destructive cleanup opt-in and an exact expected world id.");
+  }
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (!game.user?.isGM) {
+    throw new Error("Owner probe setup must run as a current GM.");
+  }
+  const moduleRecord = game.modules.get(moduleId);
+  if (!moduleRecord?.active) {
+    throw new Error(`${moduleId} is not active in this world.`);
+  }
+  const player = game.users.find((user) => user.name === playerName);
+  if (!player || player.isGM || player.id === game.user.id) {
+    throw new Error("Owner probe requires a distinct, pre-existing non-GM player.");
+  }
+  const fixtureName = `${fixturePrefix} - owner-probe-${runId}`;
+  const actor = await Actor.create({
+    name: fixtureName,
+    type: "character",
+    ownership: fixtureOwnershipFor(player),
+    system: { details: { level: { value: 1 } } },
+  });
+  try {
+    await enforceFixtureOwnership(actor, player);
+    await actor.setFlag(moduleId, "smokeOwnerProbe", { runId });
+    return {
+      actorId: actor.id,
+      fixtureName,
+      playerId: player.id,
+      runId,
+      session: {
+        role: Number(game.user.role),
+        isGM: Boolean(game.user.isGM),
+        distinctPlayerResolved: true,
+      },
+      runtime: smokeRuntime(moduleRecord, expectedWorldId),
+    };
+  } catch (error) {
+    await actor.delete();
+    throw error;
+  }
+};
+
+globalThis.__runWayfinderOwnerProbe = async function runWayfinderOwnerProbe({
+  actorId,
+  expectedPlayerId,
+  expectedWorldId,
+  moduleId,
+  runId,
+}) {
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (game.user?.isGM || game.user?.id !== expectedPlayerId) {
+    throw new Error("Owner probe UI lane must run as the exact prepared non-GM player.");
+  }
+  const moduleRecord = game.modules.get(moduleId);
+  if (!moduleRecord?.active) {
+    throw new Error(`${moduleId} is not active in this world.`);
+  }
+  const actor = game.actors.get(actorId);
+  if (!actor || actor.getFlag(moduleId, "smokeOwnerProbe")?.runId !== runId) {
+    throw new Error("Owner probe player session could not resolve the exact guarded actor.");
+  }
+  const modules = await loadWayfinderModules(moduleId);
+  const sheet = actor.sheet;
+  let app = null;
+  let probeError = null;
+  let renderedApp = null;
+  const renderHookId = Hooks.on("renderWayfinderApp", (candidate) => {
+    if (candidate instanceof modules.WayfinderApp && candidate.actor?.id === actor.id) {
+      renderedApp = candidate;
+    }
+  });
+  const ui = {
+    actorSheetOpened: false,
+    launchControlFound: false,
+    launchControlClicked: false,
+    actorBoundAppOpened: false,
+    renderLifecycleCompleted: false,
+    appClosed: false,
+    actorSheetClosed: false,
+  };
+  try {
+    await sheet.render(true);
+    const sheetRoot = await waitForCondition(() => rootElementOf(sheet.element), 10000, "Actor sheet did not open.");
+    ui.actorSheetOpened = true;
+    const launchControl = await waitForCondition(
+      () => sheetRoot.querySelector(".wayfinder-launch"),
+      10000,
+      "Wayfinder launch control did not render on the actor sheet.",
+    );
+    ui.launchControlFound = true;
+    launchControl.click();
+    ui.launchControlClicked = true;
+    app = await waitForCondition(
+      () =>
+        Object.values(actor.apps ?? {}).find(
+          (candidate) => candidate instanceof modules.WayfinderApp && candidate.actor?.id === actor.id,
+        ) ?? null,
+      10000,
+      "Actor-bound Wayfinder app did not open from the sheet control.",
+    );
+    await waitForCondition(
+      () => (renderedApp === app && rootElementOf(app.element)?.isConnected ? true : null),
+      10000,
+      "Actor-bound Wayfinder app did not complete its render lifecycle.",
+    );
+    ui.renderLifecycleCompleted = true;
+    ui.actorBoundAppOpened = true;
+  } catch (error) {
+    probeError = error;
+  } finally {
+    try {
+      if (app) {
+        await app.close({ animate: false });
+        ui.appClosed = !rootElementOf(app.element)?.isConnected;
+      }
+    } catch (error) {
+      probeError ??= error;
+    }
+    try {
+      await sheet.close();
+      ui.actorSheetClosed = await waitForCondition(
+        () => (!rootElementOf(sheet.element)?.isConnected ? true : null),
+        10000,
+        "Actor sheet did not finish closing.",
+      );
+    } catch (error) {
+      probeError ??= error;
+    }
+    Hooks.off("renderWayfinderApp", renderHookId);
+  }
+  if (probeError) throw probeError;
+
+  return {
+    session: { role: Number(game.user.role), isGM: Boolean(game.user.isGM) },
+    authority: {
+      noneLevel: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE,
+      ownerLevel: CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER,
+      defaultOwnershipLevel: Number(actor.ownership?.default),
+      explicitOwnershipLevel: Number(actor.ownership?.[game.user.id]),
+      isOwner: Boolean(actor.isOwner),
+      ownerPermission: Boolean(actor.testUserPermission(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER)),
+      canUpdate: Boolean(actor.canUserModify(game.user, "update")),
+    },
+    ui,
+    runtime: smokeRuntime(moduleRecord, expectedWorldId),
+  };
+};
+
+globalThis.__cleanupWayfinderOwnerProbe = async function cleanupWayfinderOwnerProbe({
+  actorId,
+  allowDestructive = false,
+  expectedWorldId = "",
+  fixtureName,
+  moduleId,
+  runId,
+}) {
+  if (!allowDestructive || !String(expectedWorldId ?? "").trim()) {
+    throw new Error("Owner probe cleanup requires destructive opt-in and an exact expected world id.");
+  }
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (!game.user?.isGM) {
+    throw new Error("Owner probe cleanup must run as a current GM.");
+  }
+  const actor = game.actors.get(actorId);
+  const exactFixtureMatched = Boolean(
+    actor && actor.name === fixtureName && actor.getFlag(moduleId, "smokeOwnerProbe")?.runId === runId,
+  );
+  if (!exactFixtureMatched) {
+    throw new Error("Owner probe cleanup refused an actor that did not match the exact guarded fixture.");
+  }
+  await actor.delete();
+  return {
+    exactFixtureMatched: true,
+    actorDeleted: true,
+    actorMissingAfterCleanup: !game.actors.has(actorId),
+  };
 };
 
 async function loadWayfinderModules(moduleId) {
@@ -1345,6 +1532,21 @@ function emptyAcquisitionEvidence() {
   };
 }
 
+function smokeRuntime(moduleRecord, expectedWorldId) {
+  return {
+    foundryVersion: game.version ?? null,
+    moduleVersion: moduleRecord.version ?? moduleRecord.manifest?.version ?? null,
+    pf2eVersion: game.system?.version ?? null,
+    guardedWorldMatched: String(game.world?.id ?? "") === String(expectedWorldId ?? ""),
+  };
+}
+
+function rootElementOf(value) {
+  if (value?.querySelector) return value;
+  if (value?.[0]?.querySelector) return value[0];
+  return null;
+}
+
 function validateAppliedCase({
   actorEvidence,
   dialogsAfter,
@@ -1769,6 +1971,16 @@ function wait(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+async function waitForCondition(read, timeoutMs, label) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const value = read();
+    if (value) return value;
+    await wait(50);
+  }
+  throw new Error(label);
 }
 
 function withTimeout(promise, ms, label) {

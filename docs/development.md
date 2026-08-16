@@ -42,6 +42,20 @@ npm run smoke:foundry -- -- --campaign-feat-sections ancestry-paragon --case anc
 npm run smoke:foundry -- -- --gradual-boosts on --case gradual-boosts-fighter-l1-l5-apply-rerun
 ```
 
+The actor-owner canary uses the GM session above plus a distinct, pre-existing non-GM user in a second browser
+context:
+
+```powershell
+$env:FOUNDRY_SMOKE_PLAYER_USER = "<dedicated non-GM user>"
+$env:FOUNDRY_SMOKE_PLAYER_PASSWORD = "<local password if needed>"
+npm run smoke:foundry:owner
+```
+
+The GM creates and removes one exact guarded actor; the player opens Wayfinder through the real actor-sheet
+control. The probe never creates users or changes roles, and its artifacts omit user, actor, credential, cookie, and
+storage identities. Every attempt uses a fresh exclusive artifact directory and publishes a hash-bound completion
+record last, including an explicit non-qualifying record when a guarded runtime stage fails.
+
 See [coverage/beta-readiness-smoke.md](coverage/beta-readiness-smoke.md) for harness setup, safety rules, and the current launch matrix.
 
 ## Architecture

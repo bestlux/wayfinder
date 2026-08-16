@@ -107,13 +107,34 @@ Acceptance:
 
 Outcome: evolve the live harness from source-UUID presence checks into semantic batch evidence.
 
-Acceptance:
+This story has two dependency-safe gates. `WF-080-03A` is the Wave 0 harness foundation; `WF-080-03B` remains open
+until the real acquisition executor and equipment overlay exist.
 
-- Replace blanket duplicate-source rejection with assertions aware of quantity, stacking intent, grant ancestry, and acquisition identity.
-- Define evidence fields for user role, policy source/version/fingerprint, item quantity, source UUID, actual item ID, container ID, batch/line/entry IDs, pre/target/observed currency, spent/remaining value, manifest identity, and failure snapshot.
+#### WF-080-03A — Evidence and actor-owner foundation
+
+- Replace blanket duplicate-source rejection with schema-versioned assertions aware of quantity, stacking intent,
+  grant ancestry, slot/destination identity, and acquisition identity.
+- Capture current user role, actor authority, item quantity/source/runtime/container facts, aggregate currency, and a
+  complete nullable acquisition envelope. Acquisition cases fail closed unless policy, ledger, manifest, failure, and
+  actor observations reconcile.
+- Make unreviewed classifications fail qualification. A review is source-controlled, bound to the exact finding
+  digest, recorded with GM role/time/reason, and can qualify only in a current GM evidence session.
+- Provide a guarded two-browser-context canary: a GM creates one exact actor with default `NONE` and explicit player
+  `OWNER`; a distinct non-GM opens the actor sheet and launches the actor-bound Wayfinder app through the real UI;
+  the player context closes before exact GM cleanup.
+- Never provision users or change roles. Owner-probe artifacts omit user, actor, credential, cookie, and storage
+  identities.
+
+#### WF-080-03B — Acquisition tracer completion
+
+- Define evidence fields for user role, policy source/version/fingerprint, item quantity, source UUID, actual item ID,
+  container ID, batch/line/entry IDs, pre/budget/target/observed currency, spent/remaining value, manifest identity, and
+  failure snapshot.
 - Add failure injection after item N, before currency, during currency convergence, and during final manifest/state persistence; whole-phase-only injection is insufficient.
 - Drive the equipment overlay through real UI controls and a real non-GM actor-owner session, not only imported application internals in one GM session.
-- Make classified findings fail qualification unless explicitly reviewed and recorded.
+- Populate and reconcile the contract from real acquisition state; nullable foundation fields are not completion evidence.
+- This gate is exercised by `WF-080-24` and recorded in `WF-080-51`; it must not be simulated before the owning item,
+  currency, and manifest boundaries exist.
 
 ### WF-080-04 — Restricted-access authority and reviewable spell claims
 
@@ -317,7 +338,7 @@ Acceptance:
 
 ### WF-080-24 — Forced-failure tracer and retry gate
 
-Depends on: `WF-080-23`, `WF-080-03`.
+Depends on: `WF-080-23`, `WF-080-03A`.
 
 Outcome: prove the safety contract live before expanding the rule surface.
 
@@ -482,7 +503,7 @@ Acceptance:
 
 ### WF-080-51 — Live Foundry release matrix
 
-Depends on: `WF-080-03`, `WF-080-50`, immutable candidate build.
+Depends on: `WF-080-03B`, `WF-080-50`, immutable candidate build.
 
 Run the existing 55 executions / 54 unique scenarios under one default reviewed equipment disposition. Do not multiply every GM option across that matrix.
 

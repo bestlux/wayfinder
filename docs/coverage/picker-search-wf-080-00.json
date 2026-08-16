@@ -1,0 +1,846 @@
+{
+  "schemaVersion": 1,
+  "storyId": "WF-080-00",
+  "scenario": {
+    "profileId": "wizard-level-5-spell-search",
+    "smokeCaseId": "wizard-l1-l5-apply-rerun",
+    "stepId": "spell-choice-wizard-spellbook-level-5",
+    "locale": "en",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "appWidths": [
+      1240,
+      1180,
+      980,
+      760
+    ],
+    "querySequence": [
+      "f",
+      "fa",
+      "fal",
+      "fals",
+      "false"
+    ],
+    "optionCount": 401,
+    "resultCount": 1,
+    "packPolicy": {
+      "officialSpellPack": "pf2e.spells-srd",
+      "additionalSourcePacks": "",
+      "spellRarityCeiling": "common",
+      "observedPackIds": [
+        "pf2e.spells-srd"
+      ]
+    }
+  },
+  "qualification": {
+    "requiredRuns": 2,
+    "passed": true,
+    "scenarioSha256": "f6592b1b84ec0b9e55beb7715a9839fe25ff9cfae3444e27b86217cf43e6df6f",
+    "qualifiedProfileSha256": "1f5fe1571fd31c57185bfa433aee6efedc93d2b0b7cb4187b456bf23c7f13905",
+    "budgetEnvelope": {
+      "maxP95MsPerWidth": 75,
+      "maxDomElementCount": 325,
+      "maxResultDomElementCount": 12,
+      "maxImageRequestsPerSample": 0,
+      "maxLongTaskCountPerWidth": 0
+    }
+  },
+  "baseline": {
+    "id": "pre-fix-baseline",
+    "startedAt": "2026-08-16T06:02:50.721Z",
+    "finishedAt": "2026-08-16T06:05:12.243Z",
+    "raw": {
+      "sha256": "4f4dc8f17fb6924d3714c10c78be266e78961ebb56ef1a7e4b5ba39b39350853",
+      "bytes": 13063674
+    },
+    "candidate": {
+      "gitSha": "12c632df232dbf878406835d060b87175f8de1fc",
+      "gitDescribe": "v0.7.3-5-g12c632d",
+      "clean": true,
+      "dirtyPathCount": 0
+    },
+    "driver": {
+      "gitSha": "b6f04a763acb2f033d1b43d60dc9443ac92529d4",
+      "inputsClean": true,
+      "dirtyInputCount": 0,
+      "inputFileCount": 7,
+      "manifestSha256": "79a83b3451ddaed645aeb04efcbc987344ef44ea5fd04bca69ecc4239e1c5aae"
+    },
+    "servedModule": {
+      "fileCount": 153,
+      "totalBytes": 955092,
+      "manifestSha256": "6727d7d805184189455f75649763d7b17d73bd2746bf6de5feb58fbeef6144e6",
+      "routeFailureCountSupported": false,
+      "routeFailureCount": null
+    },
+    "runtime": {
+      "foundryVersion": "14.366",
+      "pf2eVersion": "8.4.0",
+      "moduleVersion": "0.7.3",
+      "locale": "en"
+    },
+    "browser": {
+      "version": "151.0.7922.138",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "headless": null
+    },
+    "environmentCapture": "partial",
+    "environment": null,
+    "fixture": {
+      "guardedWorldMatched": true,
+      "createdActorDelta": 1,
+      "cleanupRestoredBaseline": true,
+      "optionCount": 401,
+      "resultCount": 1,
+      "restrictedRarityAccess": false,
+      "packPolicy": {
+        "officialSpellPack": "pf2e.spells-srd",
+        "additionalSourcePacks": "",
+        "spellRarityCeiling": "common",
+        "observedPackIds": [
+          "pf2e.spells-srd"
+        ]
+      }
+    },
+    "samples": {
+      "warmup": 8,
+      "measured": 120,
+      "failedAll": 128,
+      "failedMeasured": 120
+    },
+    "semanticValidation": {
+      "passed": false,
+      "failureCount": 128
+    },
+    "timing": {
+      "p50Ms": 16.299999997019768,
+      "p75Ms": 17.399999998509884,
+      "p95Ms": 20,
+      "maxMs": 23.100000001490116
+    },
+    "longTasks": {
+      "count": 51,
+      "totalMs": 2726,
+      "maxMs": 61
+    },
+    "counterSupport": {
+      "planBuild": false,
+      "previewHydration": false,
+      "longTask": true
+    },
+    "counterRanges": {
+      "searchInputReplacementCount": {
+        "min": 5,
+        "max": 5
+      },
+      "shellReplacementCount": {
+        "min": 5,
+        "max": 5
+      },
+      "fullRenderCallCount": {
+        "min": 5,
+        "max": 5
+      },
+      "fullPrepareContextCount": {
+        "min": 5,
+        "max": 5
+      },
+      "pickerPartRenderCallCount": {
+        "min": 0,
+        "max": 0
+      },
+      "pickerPartPrepareContextCount": {
+        "min": 0,
+        "max": 0
+      },
+      "packIndexReadCount": {
+        "min": 0,
+        "max": 0
+      },
+      "packDocumentReadCount": {
+        "min": 880,
+        "max": 880
+      },
+      "planBuildCount": {
+        "min": 0,
+        "max": 0
+      },
+      "previewHydrationCount": {
+        "min": 0,
+        "max": 0
+      },
+      "focusLossCount": {
+        "min": 1,
+        "max": 1
+      },
+      "caretMismatchCount": {
+        "min": 0,
+        "max": 0
+      },
+      "staleFlashCount": {
+        "min": 0,
+        "max": 0
+      },
+      "staleRenderCommitCount": {
+        "min": 0,
+        "max": 0
+      },
+      "imageRequestCount": {
+        "min": 0,
+        "max": 0
+      },
+      "domElementCount": {
+        "min": 319,
+        "max": 319
+      },
+      "resultDomElementCount": {
+        "min": 22,
+        "max": 22
+      },
+      "observedResultCount": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    "byWidth": [
+      {
+        "appWidthPx": 1240,
+        "actualAppWidthPx": {
+          "min": 1240,
+          "max": 1240
+        },
+        "windowContentWidthPx": {
+          "min": 1238,
+          "max": 1238
+        },
+        "sampleCount": 30,
+        "failedSampleCount": 30,
+        "p50Ms": 16.100000001490116,
+        "p75Ms": 17.5,
+        "p95Ms": 20.399999998509884,
+        "maxDomElementCount": 319,
+        "maxResultDomElementCount": 22,
+        "maxResultCount": 1,
+        "maxImageRequestsPerSample": 0,
+        "longTaskCount": 13,
+        "maxLongTaskMs": 60
+      },
+      {
+        "appWidthPx": 1180,
+        "actualAppWidthPx": {
+          "min": 1180,
+          "max": 1180
+        },
+        "windowContentWidthPx": {
+          "min": 1178,
+          "max": 1178
+        },
+        "sampleCount": 30,
+        "failedSampleCount": 30,
+        "p50Ms": 16.5,
+        "p75Ms": 17.399999998509884,
+        "p95Ms": 18.799999997019768,
+        "maxDomElementCount": 319,
+        "maxResultDomElementCount": 22,
+        "maxResultCount": 1,
+        "maxImageRequestsPerSample": 0,
+        "longTaskCount": 17,
+        "maxLongTaskMs": 61
+      },
+      {
+        "appWidthPx": 980,
+        "actualAppWidthPx": {
+          "min": 980,
+          "max": 980
+        },
+        "windowContentWidthPx": {
+          "min": 978,
+          "max": 978
+        },
+        "sampleCount": 30,
+        "failedSampleCount": 30,
+        "p50Ms": 16.100000001490116,
+        "p75Ms": 16.899999998509884,
+        "p95Ms": 19.5,
+        "maxDomElementCount": 319,
+        "maxResultDomElementCount": 22,
+        "maxResultCount": 1,
+        "maxImageRequestsPerSample": 0,
+        "longTaskCount": 11,
+        "maxLongTaskMs": 58
+      },
+      {
+        "appWidthPx": 760,
+        "actualAppWidthPx": {
+          "min": 760,
+          "max": 760
+        },
+        "windowContentWidthPx": {
+          "min": 758,
+          "max": 758
+        },
+        "sampleCount": 30,
+        "failedSampleCount": 30,
+        "p50Ms": 16.200000002980232,
+        "p75Ms": 17.5,
+        "p95Ms": 22.100000001490116,
+        "maxDomElementCount": 319,
+        "maxResultDomElementCount": 22,
+        "maxResultCount": 1,
+        "maxImageRequestsPerSample": 0,
+        "longTaskCount": 10,
+        "maxLongTaskMs": 60
+      }
+    ],
+    "budgetValidation": {
+      "configured": false,
+      "passed": false,
+      "failureCount": 0
+    }
+  },
+  "qualifiedRuns": [
+    {
+      "id": "qualified-candidate-1",
+      "startedAt": "2026-08-16T07:09:52.387Z",
+      "finishedAt": "2026-08-16T07:12:00.541Z",
+      "raw": {
+        "sha256": "c247be620415b765ba20c1a5a112eb5bebeb68f3bd213d9d1317ba83e026c5b9",
+        "bytes": 20355036
+      },
+      "candidate": {
+        "gitSha": "b18ea42906d8e4ed7757dab445676cd58e22f44d",
+        "gitDescribe": "v0.7.3-12-gb18ea42",
+        "clean": true,
+        "dirtyPathCount": 0
+      },
+      "driver": {
+        "gitSha": "b18ea42906d8e4ed7757dab445676cd58e22f44d",
+        "inputsClean": true,
+        "dirtyInputCount": 0,
+        "inputFileCount": 7,
+        "manifestSha256": "45ddbddf22aa6f3256a5754674faecc4db87960163e4c0a97bd882cded144d81"
+      },
+      "servedModule": {
+        "fileCount": 155,
+        "totalBytes": 969287,
+        "manifestSha256": "d1f16a4511bfb5f7e58b500d0a5a74981112a94588fa596c73603f72f675516d",
+        "routeFailureCountSupported": true,
+        "routeFailureCount": 0
+      },
+      "runtime": {
+        "foundryVersion": "14.366",
+        "pf2eVersion": "8.4.0",
+        "moduleVersion": "0.7.3",
+        "locale": "en"
+      },
+      "browser": {
+        "version": "151.0.7922.138",
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "headless": true
+      },
+      "environmentCapture": "full",
+      "environment": {
+        "capture": "full",
+        "nodeVersion": "v22.23.2",
+        "playwrightCoreVersion": "1.59.1",
+        "os": {
+          "platform": "win32",
+          "release": "10.0.26100",
+          "arch": "x64"
+        },
+        "cpu": {
+          "model": "AMD Ryzen 9 9950X3D 16-Core Processor",
+          "logicalProcessorCount": 32
+        }
+      },
+      "fixture": {
+        "guardedWorldMatched": true,
+        "createdActorDelta": 1,
+        "cleanupRestoredBaseline": true,
+        "optionCount": 401,
+        "resultCount": 1,
+        "restrictedRarityAccess": false,
+        "packPolicy": {
+          "officialSpellPack": "pf2e.spells-srd",
+          "additionalSourcePacks": "",
+          "spellRarityCeiling": "common",
+          "observedPackIds": [
+            "pf2e.spells-srd"
+          ]
+        }
+      },
+      "samples": {
+        "warmup": 8,
+        "measured": 120,
+        "failedAll": 0,
+        "failedMeasured": 0
+      },
+      "semanticValidation": {
+        "passed": true,
+        "failureCount": 0
+      },
+      "timing": {
+        "p50Ms": 47.899999998509884,
+        "p75Ms": 49.400000005960464,
+        "p95Ms": 52.399999998509884,
+        "maxMs": 55.900000005960464
+      },
+      "longTasks": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": null
+      },
+      "counterSupport": {
+        "planBuild": true,
+        "previewHydration": true,
+        "longTask": true
+      },
+      "counterRanges": {
+        "searchInputReplacementCount": {
+          "min": 0,
+          "max": 0
+        },
+        "shellReplacementCount": {
+          "min": 0,
+          "max": 0
+        },
+        "fullRenderCallCount": {
+          "min": 0,
+          "max": 0
+        },
+        "fullPrepareContextCount": {
+          "min": 0,
+          "max": 0
+        },
+        "pickerPartRenderCallCount": {
+          "min": 1,
+          "max": 1
+        },
+        "pickerPartPrepareContextCount": {
+          "min": 1,
+          "max": 1
+        },
+        "packIndexReadCount": {
+          "min": 0,
+          "max": 0
+        },
+        "packDocumentReadCount": {
+          "min": 0,
+          "max": 0
+        },
+        "planBuildCount": {
+          "min": 0,
+          "max": 0
+        },
+        "previewHydrationCount": {
+          "min": 0,
+          "max": 0
+        },
+        "focusLossCount": {
+          "min": 0,
+          "max": 0
+        },
+        "caretMismatchCount": {
+          "min": 0,
+          "max": 0
+        },
+        "staleFlashCount": {
+          "min": 0,
+          "max": 0
+        },
+        "staleRenderCommitCount": {
+          "min": 0,
+          "max": 0
+        },
+        "imageRequestCount": {
+          "min": 0,
+          "max": 0
+        },
+        "domElementCount": {
+          "min": 320,
+          "max": 320
+        },
+        "resultDomElementCount": {
+          "min": 11,
+          "max": 11
+        },
+        "observedResultCount": {
+          "min": 1,
+          "max": 1
+        }
+      },
+      "byWidth": [
+        {
+          "appWidthPx": 1240,
+          "actualAppWidthPx": {
+            "min": 1240,
+            "max": 1240
+          },
+          "windowContentWidthPx": {
+            "min": 1238,
+            "max": 1238
+          },
+          "sampleCount": 30,
+          "failedSampleCount": 0,
+          "p50Ms": 49.29999999701977,
+          "p75Ms": 50.399999998509884,
+          "p95Ms": 54.600000001490116,
+          "maxDomElementCount": 320,
+          "maxResultDomElementCount": 11,
+          "maxResultCount": 1,
+          "maxImageRequestsPerSample": 0,
+          "longTaskCount": 0,
+          "maxLongTaskMs": null
+        },
+        {
+          "appWidthPx": 1180,
+          "actualAppWidthPx": {
+            "min": 1180,
+            "max": 1180
+          },
+          "windowContentWidthPx": {
+            "min": 1178,
+            "max": 1178
+          },
+          "sampleCount": 30,
+          "failedSampleCount": 0,
+          "p50Ms": 46.399999998509884,
+          "p75Ms": 48.29999999701977,
+          "p95Ms": 50.80000000447035,
+          "maxDomElementCount": 320,
+          "maxResultDomElementCount": 11,
+          "maxResultCount": 1,
+          "maxImageRequestsPerSample": 0,
+          "longTaskCount": 0,
+          "maxLongTaskMs": null
+        },
+        {
+          "appWidthPx": 980,
+          "actualAppWidthPx": {
+            "min": 980,
+            "max": 980
+          },
+          "windowContentWidthPx": {
+            "min": 978,
+            "max": 978
+          },
+          "sampleCount": 30,
+          "failedSampleCount": 0,
+          "p50Ms": 46.29999999701977,
+          "p75Ms": 48.399999998509884,
+          "p95Ms": 49.599999994039536,
+          "maxDomElementCount": 320,
+          "maxResultDomElementCount": 11,
+          "maxResultCount": 1,
+          "maxImageRequestsPerSample": 0,
+          "longTaskCount": 0,
+          "maxLongTaskMs": null
+        },
+        {
+          "appWidthPx": 760,
+          "actualAppWidthPx": {
+            "min": 760,
+            "max": 760
+          },
+          "windowContentWidthPx": {
+            "min": 758,
+            "max": 758
+          },
+          "sampleCount": 30,
+          "failedSampleCount": 0,
+          "p50Ms": 46.80000000447035,
+          "p75Ms": 49.79999999701977,
+          "p95Ms": 52.399999998509884,
+          "maxDomElementCount": 320,
+          "maxResultDomElementCount": 11,
+          "maxResultCount": 1,
+          "maxImageRequestsPerSample": 0,
+          "longTaskCount": 0,
+          "maxLongTaskMs": null
+        }
+      ],
+      "budgetValidation": {
+        "configured": true,
+        "passed": true,
+        "failureCount": 0
+      }
+    },
+    {
+      "id": "qualified-candidate-2",
+      "startedAt": "2026-08-16T07:12:18.988Z",
+      "finishedAt": "2026-08-16T07:14:27.176Z",
+      "raw": {
+        "sha256": "b0d72e1c4df8b57e8b07f8ab48f43cea1a0bb5d408916154ab1c46649cd3c66b",
+        "bytes": 20354417
+      },
+      "candidate": {
+        "gitSha": "b18ea42906d8e4ed7757dab445676cd58e22f44d",
+        "gitDescribe": "v0.7.3-12-gb18ea42",
+        "clean": true,
+        "dirtyPathCount": 0
+      },
+      "driver": {
+        "gitSha": "b18ea42906d8e4ed7757dab445676cd58e22f44d",
+        "inputsClean": true,
+        "dirtyInputCount": 0,
+        "inputFileCount": 7,
+        "manifestSha256": "45ddbddf22aa6f3256a5754674faecc4db87960163e4c0a97bd882cded144d81"
+      },
+      "servedModule": {
+        "fileCount": 155,
+        "totalBytes": 969287,
+        "manifestSha256": "d1f16a4511bfb5f7e58b500d0a5a74981112a94588fa596c73603f72f675516d",
+        "routeFailureCountSupported": true,
+        "routeFailureCount": 0
+      },
+      "runtime": {
+        "foundryVersion": "14.366",
+        "pf2eVersion": "8.4.0",
+        "moduleVersion": "0.7.3",
+        "locale": "en"
+      },
+      "browser": {
+        "version": "151.0.7922.138",
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "headless": true
+      },
+      "environmentCapture": "full",
+      "environment": {
+        "capture": "full",
+        "nodeVersion": "v22.23.2",
+        "playwrightCoreVersion": "1.59.1",
+        "os": {
+          "platform": "win32",
+          "release": "10.0.26100",
+          "arch": "x64"
+        },
+        "cpu": {
+          "model": "AMD Ryzen 9 9950X3D 16-Core Processor",
+          "logicalProcessorCount": 32
+        }
+      },
+      "fixture": {
+        "guardedWorldMatched": true,
+        "createdActorDelta": 1,
+        "cleanupRestoredBaseline": true,
+        "optionCount": 401,
+        "resultCount": 1,
+        "restrictedRarityAccess": false,
+        "packPolicy": {
+          "officialSpellPack": "pf2e.spells-srd",
+          "additionalSourcePacks": "",
+          "spellRarityCeiling": "common",
+          "observedPackIds": [
+            "pf2e.spells-srd"
+          ]
+        }
+      },
+      "samples": {
+        "warmup": 8,
+        "measured": 120,
+        "failedAll": 0,
+        "failedMeasured": 0
+      },
+      "semanticValidation": {
+        "passed": true,
+        "failureCount": 0
+      },
+      "timing": {
+        "p50Ms": 49,
+        "p75Ms": 50,
+        "p95Ms": 52.19999999552965,
+        "maxMs": 54.69999999552965
+      },
+      "longTasks": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": null
+      },
+      "counterSupport": {
+        "planBuild": true,
+        "previewHydration": true,
+        "longTask": true
+      },
+      "counterRanges": {
+        "searchInputReplacementCount": {
+          "min": 0,
+          "max": 0
+        },
+        "shellReplacementCount": {
+          "min": 0,
+          "max": 0
+        },
+        "fullRenderCallCount": {
+          "min": 0,
+          "max": 0
+        },
+        "fullPrepareContextCount": {
+          "min": 0,
+          "max": 0
+        },
+        "pickerPartRenderCallCount": {
+          "min": 1,
+          "max": 1
+        },
+        "pickerPartPrepareContextCount": {
+          "min": 1,
+          "max": 1
+        },
+        "packIndexReadCount": {
+          "min": 0,
+          "max": 0
+        },
+        "packDocumentReadCount": {
+          "min": 0,
+          "max": 0
+        },
+        "planBuildCount": {
+          "min": 0,
+          "max": 0
+        },
+        "previewHydrationCount": {
+          "min": 0,
+          "max": 0
+        },
+        "focusLossCount": {
+          "min": 0,
+          "max": 0
+        },
+        "caretMismatchCount": {
+          "min": 0,
+          "max": 0
+        },
+        "staleFlashCount": {
+          "min": 0,
+          "max": 0
+        },
+        "staleRenderCommitCount": {
+          "min": 0,
+          "max": 0
+        },
+        "imageRequestCount": {
+          "min": 0,
+          "max": 0
+        },
+        "domElementCount": {
+          "min": 320,
+          "max": 320
+        },
+        "resultDomElementCount": {
+          "min": 11,
+          "max": 11
+        },
+        "observedResultCount": {
+          "min": 1,
+          "max": 1
+        }
+      },
+      "byWidth": [
+        {
+          "appWidthPx": 1240,
+          "actualAppWidthPx": {
+            "min": 1240,
+            "max": 1240
+          },
+          "windowContentWidthPx": {
+            "min": 1238,
+            "max": 1238
+          },
+          "sampleCount": 30,
+          "failedSampleCount": 0,
+          "p50Ms": 50.100000001490116,
+          "p75Ms": 51.599999994039536,
+          "p95Ms": 53.79999999701977,
+          "maxDomElementCount": 320,
+          "maxResultDomElementCount": 11,
+          "maxResultCount": 1,
+          "maxImageRequestsPerSample": 0,
+          "longTaskCount": 0,
+          "maxLongTaskMs": null
+        },
+        {
+          "appWidthPx": 1180,
+          "actualAppWidthPx": {
+            "min": 1180,
+            "max": 1180
+          },
+          "windowContentWidthPx": {
+            "min": 1178,
+            "max": 1178
+          },
+          "sampleCount": 30,
+          "failedSampleCount": 0,
+          "p50Ms": 47.600000001490116,
+          "p75Ms": 49.80000000447035,
+          "p95Ms": 51.5,
+          "maxDomElementCount": 320,
+          "maxResultDomElementCount": 11,
+          "maxResultCount": 1,
+          "maxImageRequestsPerSample": 0,
+          "longTaskCount": 0,
+          "maxLongTaskMs": null
+        },
+        {
+          "appWidthPx": 980,
+          "actualAppWidthPx": {
+            "min": 980,
+            "max": 980
+          },
+          "windowContentWidthPx": {
+            "min": 978,
+            "max": 978
+          },
+          "sampleCount": 30,
+          "failedSampleCount": 0,
+          "p50Ms": 47.600000001490116,
+          "p75Ms": 49.600000001490116,
+          "p95Ms": 51,
+          "maxDomElementCount": 320,
+          "maxResultDomElementCount": 11,
+          "maxResultCount": 1,
+          "maxImageRequestsPerSample": 0,
+          "longTaskCount": 0,
+          "maxLongTaskMs": null
+        },
+        {
+          "appWidthPx": 760,
+          "actualAppWidthPx": {
+            "min": 760,
+            "max": 760
+          },
+          "windowContentWidthPx": {
+            "min": 758,
+            "max": 758
+          },
+          "sampleCount": 30,
+          "failedSampleCount": 0,
+          "p50Ms": 47.20000000298023,
+          "p75Ms": 49.5,
+          "p95Ms": 50.70000000298023,
+          "maxDomElementCount": 320,
+          "maxResultDomElementCount": 11,
+          "maxResultCount": 1,
+          "maxImageRequestsPerSample": 0,
+          "longTaskCount": 0,
+          "maxLongTaskMs": null
+        }
+      ],
+      "budgetValidation": {
+        "configured": true,
+        "passed": true,
+        "failureCount": 0
+      }
+    }
+  ]
+}

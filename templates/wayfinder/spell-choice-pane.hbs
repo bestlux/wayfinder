@@ -53,27 +53,73 @@
           {{/if}}
         </div>
 
-        {{#if activePane.rarityAccess.available}}
-          <div class="spell-rarity-access{{#if activePane.rarityAccess.granted}} is-granted{{/if}}">
+        {{#if activePane.rarityAccess.visible}}
+          <section class="spell-rarity-access is-{{activePane.rarityAccess.state}}" aria-label="Restricted-spell player attestation">
+            <div class="spell-rarity-access-heading">
+              <strong>Player attestation</strong>
+              {{#if (eq activePane.rarityAccess.state "unresolved")}}<span>Needs review</span>{{/if}}
+              {{#if (eq activePane.rarityAccess.state "stale")}}<span>Stale</span>{{/if}}
+              {{#if (eq activePane.rarityAccess.state "unused")}}<span>Not currently needed</span>{{/if}}
+              {{#if (eq activePane.rarityAccess.state "attested")}}<span>Recorded</span>{{/if}}
+            </div>
+
+            {{#if activePane.rarityAccess.reason}}
+              <dl class="spell-rarity-attestation-details">
+                <div><dt>Claimed basis</dt><dd>{{activePane.rarityAccess.basisLabel}}</dd></div>
+                <div><dt>Reason</dt><dd>{{activePane.rarityAccess.reason}}</dd></div>
+                <div><dt>Recorded by</dt><dd>{{activePane.rarityAccess.authorName}}</dd></div>
+                <div><dt>Recorded at</dt><dd><time datetime="{{activePane.rarityAccess.attestedAt}}">{{activePane.rarityAccess.attestedAt}}</time></dd></div>
+              </dl>
+            {{/if}}
+
+            <p class="spell-rarity-attestation-disclaimer">
+              This is a player claim, not verified GM authorization.
+            </p>
             <button
               type="button"
-              class="secondary compact{{#if activePane.rarityAccess.granted}} is-selected{{/if}}"
+              class="secondary{{#if activePane.rarityAccess.granted}} is-selected{{/if}}"
               data-wayfinder-action="toggle-spell-rarity-access"
               data-step-id="{{activePane.stepId}}"
-              aria-pressed="{{#if activePane.rarityAccess.granted}}true{{else}}false{{/if}}"
+              aria-describedby="{{activePane.rarityAccess.descriptionId}}"
               {{#if activePane.rarityAccess.locked}}disabled{{/if}}
             >
-              {{#if activePane.rarityAccess.granted}}
-                <i class="fa-solid fa-unlock"></i> Restricted rarities included
+              {{#if (eq activePane.rarityAccess.state "attested")}}
+                <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove player attestation
               {{else}}
-                <i class="fa-solid fa-lock"></i> Include restricted rarities
+                {{#if (eq activePane.rarityAccess.state "unused")}}
+                  <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove unused attestation
+                {{else}}
+                  <i class="fa-solid fa-pen" aria-hidden="true"></i> Record player attestation
+                {{/if}}
               {{/if}}
             </button>
-            <p>
-              Spells above the world's default rarity ceiling require rules access or GM approval.
-              {{#if activePane.rarityAccess.locked}}Clear this step's spells to change access.{{/if}}
+            {{#if (eq activePane.rarityAccess.state "unresolved")}}
+              <button
+                type="button"
+                class="secondary"
+                data-wayfinder-action="remove-spell-rarity-attestation"
+                data-step-id="{{activePane.stepId}}"
+                aria-describedby="{{activePane.rarityAccess.descriptionId}}"
+              >
+                <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove migrated attestation
+              </button>
+            {{/if}}
+            {{#if (eq activePane.rarityAccess.state "stale")}}
+              <button
+                type="button"
+                class="secondary"
+                data-wayfinder-action="remove-spell-rarity-attestation"
+                data-step-id="{{activePane.stepId}}"
+                aria-describedby="{{activePane.rarityAccess.descriptionId}}"
+              >
+                <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove stale attestation
+              </button>
+            {{/if}}
+            <p id="{{activePane.rarityAccess.descriptionId}}">
+              Spells above the world's default rarity ceiling require character or rules Access, or permission reported by the player.
+              {{#if activePane.rarityAccess.locked}}Clear this step's spells before removing the attestation.{{/if}}
             </p>
-          </div>
+          </section>
         {{/if}}
       </div>
 

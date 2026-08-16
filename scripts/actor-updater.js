@@ -4,7 +4,8 @@ import { cloneData } from "./shared/cloning.js";
 const inFlightByActor = new WeakMap();
 const operationIdentityByReference = new WeakMap();
 let nextOperationIdentity = 1;
-export function applyDraftToActor(actor, draft, steps, options = {}) {
+export function applyDraftToActor(actor, draft, steps, options) {
+    assertRequiredActorAuthority(actor, options?.validateActorAuthority);
     const actorKey = actor;
     const draftSnapshot = cloneData(draft);
     const stepSnapshots = cloneData(steps);
@@ -22,15 +23,16 @@ export function applyDraftToActor(actor, draft, steps, options = {}) {
         await options.beforePrepare?.();
         const prepared = await prepareDraftApplication(actor, draftSnapshot, stepSnapshots, {
             validateActorAuthority: options.validateActorAuthority,
+            spellRarityCeiling: options.spellRarityCeiling,
             validateSelectionEligibility: options.validateSelectionEligibility,
             validSkillSlugs: options.validSkillSlugs,
         });
-        const resolvedFinalActorUpdate = options.resolveFinalActorUpdate
-            ? cloneData(await options.resolveFinalActorUpdate())
-            : finalActorUpdate;
         const result = await executePreparedDraftApplication(prepared, {
             onCheckpoint: options.onCheckpoint,
-            finalActorUpdate: resolvedFinalActorUpdate,
+            finalActorUpdate,
+            resolveFinalActorUpdate: options.resolveFinalActorUpdate,
+            beforeFinalActorUpdate: options.beforeFinalActorUpdate,
+            persistFinalActorUpdate: options.persistFinalActorUpdate,
         });
         return result.actorUpdate;
     });
@@ -49,11 +51,13 @@ export function applyDraftToActor(actor, draft, steps, options = {}) {
     return promise;
 }
 export function finalizeRecoveredDraftOnActor(actor, options) {
+    assertRequiredActorAuthority(actor, options?.validateActorAuthority);
     return enqueueActorOperation(actor, async () => {
         await options.beforeFinalize?.();
-        const finalActorUpdate = cloneData(await options.resolveFinalActorUpdate());
         const result = await executeRecoveredDraftFinalization(actor, {
-            finalActorUpdate,
+            resolveFinalActorUpdate: options.resolveFinalActorUpdate,
+            beforeFinalActorUpdate: options.beforeFinalActorUpdate,
+            persistFinalActorUpdate: options.persistFinalActorUpdate,
             onCheckpoint: options.onCheckpoint,
             recoveryActorUpdate: cloneData(options.recoveryActorUpdate),
             validateActorAuthority: options.validateActorAuthority,
@@ -61,15 +65,23 @@ export function finalizeRecoveredDraftOnActor(actor, options) {
         return result.actorUpdate;
     });
 }
+function assertRequiredActorAuthority(actor, validateActorAuthority) {
+    if (!validateActorAuthority || !validateActorAuthority(actor)) {
+        throw new Error("The current user can no longer modify this PF2E character.");
+    }
+}
 function draftApplyOperationKey(draft, steps, options) {
     return JSON.stringify({
         draft,
         steps,
         finalActorUpdate: options.finalActorUpdate ?? null,
         beforePrepare: operationIdentity(options.beforePrepare),
+        beforeFinalActorUpdate: operationIdentity(options.beforeFinalActorUpdate),
+        persistFinalActorUpdate: operationIdentity(options.persistFinalActorUpdate),
         onCheckpoint: operationIdentity(options.onCheckpoint),
         resolveFinalActorUpdate: operationIdentity(options.resolveFinalActorUpdate),
         validateActorAuthority: operationIdentity(options.validateActorAuthority),
+        spellRarityCeiling: options.spellRarityCeiling,
         validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),
         validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,
     });

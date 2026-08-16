@@ -73,6 +73,7 @@ export interface DraftState {
   applyAttemptStepIds: string[];
   applyCompletedStepIds: string[];
   applyRecoveryActorUpdate: Record<string, unknown>;
+  applySpellRarityAttestations: AppliedSpellRarityAttestation[];
   selections: Record<string, SelectionRef>;
   boosts: BoostDraftState;
   manual: Record<string, boolean>;
@@ -84,7 +85,7 @@ export interface DraftState {
   languageChoices: Record<string, string[]>;
   classChoices: Record<string, string>;
   spellChoices: Record<string, SelectionRef[]>;
-  spellRarityAccess: Record<string, true>;
+  spellRarityAttestations: Record<string, SpellRarityAttestation>;
   updatedAt: string | null;
 }
 
@@ -94,6 +95,49 @@ export interface ModuleState {
   lastTargetLevel: number | null;
   completedStepIds: string[];
   existingCharacterHistory: ExistingCharacterHistory | null;
+  lastAppliedSpellRarityAttestations: AppliedSpellRarityAttestation[];
+}
+
+export type SpellRarityAttestationBasis = "rules-access" | "reported-gm-permission";
+
+export interface SpellRarityAttestationSubject {
+  actorId: string;
+  slotId: string;
+  stepId: string;
+  targetLevel: number;
+  stepLevel: number;
+  destinationKey: string;
+  stepRarityCeiling: "common" | "uncommon" | "rare" | "unique";
+  worldRarityCeiling: "common" | "uncommon" | "rare" | "unique";
+}
+
+export interface UnresolvedSpellRarityAccess {
+  version: 1;
+  kind: "spell-rarity-access";
+  trust: "player-attestation";
+  status: "unresolved";
+  slotId: string;
+  migratedFrom: "legacy-boolean";
+}
+
+export interface AttestedSpellRarityAccess {
+  version: 1;
+  kind: "spell-rarity-access";
+  trust: "player-attestation";
+  status: "attested";
+  subject: SpellRarityAttestationSubject;
+  claimedBasis: SpellRarityAttestationBasis;
+  reason: string;
+  authorUserId: string;
+  authorName: string;
+  attestedAt: string;
+}
+
+export type SpellRarityAttestation = UnresolvedSpellRarityAccess | AttestedSpellRarityAccess;
+
+export interface AppliedSpellRarityAttestation extends AttestedSpellRarityAccess {
+  subjectLabel: string;
+  selectedSpells: SelectionRef[];
 }
 
 export interface ExistingCharacterHistoryEntry {

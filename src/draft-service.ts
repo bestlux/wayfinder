@@ -1,11 +1,13 @@
 import { cloneData } from "./shared/cloning.js";
 import type {
   AbilityKey,
+  AppliedSpellRarityAttestation,
   BoostDraftState,
   DraftState,
   ExistingCharacterHistory,
   ExistingCharacterHistoryEntry,
   ModuleState,
+  SpellRarityAttestation,
 } from "./types.js";
 import {
   classArchetypeProfile,
@@ -13,9 +15,13 @@ import {
   STANDARD_CLASS_PATH,
 } from "./wayfinder/class-archetype/registry.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
+import {
+  normalizeAppliedSpellRarityAttestation,
+  normalizeSpellRarityAttestation,
+} from "./wayfinder/spell-choice/rarity-attestation.js";
 
-const DRAFT_VERSION = 11;
-const STATE_VERSION = 2;
+const DRAFT_VERSION = 13;
+const STATE_VERSION = 3;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
   return {
@@ -24,6 +30,7 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     applyAttemptStepIds: [],
     applyCompletedStepIds: [],
     applyRecoveryActorUpdate: {},
+    applySpellRarityAttestations: [],
     selections: {},
     boosts: createEmptyBoostDraft(),
     manual: {},
@@ -35,7 +42,7 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     languageChoices: {},
     classChoices: {},
     spellChoices: {},
-    spellRarityAccess: {},
+    spellRarityAttestations: {},
     updatedAt: null,
   };
 }
@@ -47,6 +54,7 @@ export function createEmptyState(): ModuleState {
     lastTargetLevel: null,
     completedStepIds: [],
     existingCharacterHistory: null,
+    lastAppliedSpellRarityAttestations: [],
   };
 }
 
@@ -64,7 +72,10 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
   const skillTrainings = sanitizeSkillTrainings(draft.skillTrainings);
   const classChoices = sanitizeClassChoices(draft.classChoices);
   const spellChoices = sanitizeSpellChoices(draft.spellChoices);
-  const spellRarityAccess = sanitizeSpellRarityAccess(draft.spellRarityAccess);
+  const spellRarityAttestationSource = Object.prototype.hasOwnProperty.call(draft, "spellRarityAttestations")
+    ? draft.spellRarityAttestations
+    : (draft as Partial<DraftState> & { spellRarityAccess?: unknown }).spellRarityAccess;
+  const spellRarityAttestations = sanitizeSpellRarityAttestations(spellRarityAttestationSource);
   if (migratedClassArchetypeProfiles.length > 0) {
     clearLegacyClassArchetypeDependentState({
       branchSelections,
@@ -73,7 +84,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
       selections,
       skillTrainings,
       spellChoices,
-      spellRarityAccess,
+      spellRarityAttestations,
       projectedStaticGrantUuids: new Set(
         migratedClassArchetypeProfiles.flatMap((profile) =>
           profile.projectedFeatGrants.flatMap((grant) => grant.staticFeatGrants.map((selection) => selection.uuid))
@@ -88,6 +99,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     applyAttemptStepIds: sanitizeStepIds(draft.applyAttemptStepIds),
     applyCompletedStepIds: sanitizeStepIds(draft.applyCompletedStepIds),
     applyRecoveryActorUpdate: sanitizeRecoveryActorUpdate(draft.applyRecoveryActorUpdate),
+    applySpellRarityAttestations: sanitizeAppliedSpellRarityAttestations(draft.applySpellRarityAttestations),
     selections,
     boosts: sanitizeBoosts(draft.boosts),
     manual,
@@ -99,7 +111,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     languageChoices: sanitizeChoiceListValues(draft.languageChoices),
     classChoices,
     spellChoices,
-    spellRarityAccess,
+    spellRarityAttestations,
     updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
   };
 }
@@ -116,14 +128,14 @@ function clearLegacyClassArchetypeDependentState(state: {
   selections: DraftState["selections"];
   skillTrainings: DraftState["skillTrainings"];
   spellChoices: DraftState["spellChoices"];
-  spellRarityAccess: DraftState["spellRarityAccess"];
+  spellRarityAttestations: DraftState["spellRarityAttestations"];
   projectedStaticGrantUuids: ReadonlySet<string>;
 }): void {
   clearMatchingKeys(state.branchSelections, () => true);
   clearMatchingKeys(state.classChoices, (slotId) => slotId.startsWith(SLOT_PREFIXES.classChoice));
   clearMatchingKeys(state.skillTrainings, (slotId) => slotId.startsWith(SLOT_PREFIXES.skillTraining));
   clearMatchingKeys(state.spellChoices, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
-  clearMatchingKeys(state.spellRarityAccess, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
+  clearMatchingKeys(state.spellRarityAttestations, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
   clearMatchingKeys(state.manual, (slotId) =>
     [
       SLOT_PREFIXES.classBranch,
@@ -163,7 +175,22 @@ export function normalizeState(raw: unknown): ModuleState {
       ? state.completedStepIds.filter((value): value is string => typeof value === "string")
       : [],
     existingCharacterHistory: sanitizeExistingCharacterHistory(state.existingCharacterHistory),
+    lastAppliedSpellRarityAttestations: sanitizeAppliedSpellRarityAttestations(
+      state.lastAppliedSpellRarityAttestations
+    ),
   };
+}
+
+function sanitizeAppliedSpellRarityAttestations(raw: unknown): AppliedSpellRarityAttestation[] {
+  if (!Array.isArray(raw)) return [];
+  const byIdentity = new Map<string, AppliedSpellRarityAttestation>();
+  for (const value of raw) {
+    const attestation = normalizeAppliedSpellRarityAttestation(value);
+    if (attestation) {
+      byIdentity.set(`${attestation.subject.actorId}:${attestation.subject.slotId}`, attestation);
+    }
+  }
+  return [...byIdentity.values()];
 }
 
 function sanitizeExistingCharacterHistory(raw: unknown): ExistingCharacterHistory | null {
@@ -369,13 +396,16 @@ function sanitizeSpellChoices(raw: unknown): DraftState["spellChoices"] {
   return result;
 }
 
-function sanitizeSpellRarityAccess(raw: unknown): DraftState["spellRarityAccess"] {
+function sanitizeSpellRarityAttestations(raw: unknown): DraftState["spellRarityAttestations"] {
   if (!isRecord(raw)) {
     return {};
   }
 
   return Object.fromEntries(
-    Object.entries(raw).filter((entry): entry is [string, true] => entry[0].length > 0 && entry[1] === true)
+    Object.entries(raw).flatMap(([slotId, value]): Array<[string, SpellRarityAttestation]> => {
+      const attestation = normalizeSpellRarityAttestation(slotId, value);
+      return attestation ? [[slotId, attestation]] : [];
+    })
   );
 }
 

@@ -132,3 +132,49 @@
 .wayfinder-app .history-entry.review i {
   color: var(--wf-warn);
 }
+.wayfinder-attestation-receipt {
+  flex: 0 1 auto;
+  min-block-size: 0;
+  max-block-size: min(24rem, 40cqh);
+  overflow: auto;
+  margin: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid var(--wf-rule);
+  border-radius: var(--wf-radius);
+  background: rgba(255, 252, 245, 0.72);
+}
+
+.wayfinder-attestation-receipt h3,
+.wayfinder-attestation-receipt h4,
+.wayfinder-attestation-receipt p {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.wayfinder-attestation-receipt article {
+  margin-top: 0.65rem;
+}
+
+.wayfinder-attestation-receipt dl {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.4rem 0 0;
+}
+
+.wayfinder-attestation-receipt dl > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.3fr) minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.wayfinder-attestation-receipt dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.wayfinder-attestation-receipt .attestation-disclaimer {
+  color: var(--wf-primary);
+  font-weight: 700;
+}

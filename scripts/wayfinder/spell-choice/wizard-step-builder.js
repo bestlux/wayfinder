@@ -38,7 +38,7 @@ export function buildWizardSpellChoiceSteps(params) {
         cantrip: true,
         curriculumSpellNames: [],
         additionalAllowedSpellNames: [],
-        restrictToCommon: false,
+        restrictToCommon: true,
         destination: WIZARD_SPELLBOOK_DESTINATION,
     }));
     addStep(makeSpellChoiceStep({
@@ -55,7 +55,7 @@ export function buildWizardSpellChoiceSteps(params) {
         cantrip: false,
         curriculumSpellNames: [],
         additionalAllowedSpellNames: [],
-        restrictToCommon: false,
+        restrictToCommon: true,
         destination: WIZARD_SPELLBOOK_DESTINATION,
     }));
     if (isUnifiedTheory) {
@@ -74,7 +74,7 @@ export function buildWizardSpellChoiceSteps(params) {
             curriculumSpellNames: [],
             requiresCurriculum: false,
             additionalAllowedSpellNames: [],
-            restrictToCommon: false,
+            restrictToCommon: true,
             destination: WIZARD_SPELLBOOK_DESTINATION,
         }));
     }
@@ -114,7 +114,7 @@ export function buildWizardSpellChoiceSteps(params) {
             cantrip: false,
             curriculumSpellNames: [],
             additionalAllowedSpellNames: [],
-            restrictToCommon: false,
+            restrictToCommon: true,
             destination: WIZARD_SPELLBOOK_DESTINATION,
         }));
         if (!isUnifiedTheory && level >= 3 && level % 2 === 1 && maxRank <= 9) {

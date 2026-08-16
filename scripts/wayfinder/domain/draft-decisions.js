@@ -93,7 +93,10 @@ export function listDraftDecisions(draft) {
     });
 }
 export function listDraftDecisionSlotIds(draft) {
-    return Array.from(new Set(listDraftDecisions(draft).map((decision) => decision.slotId)));
+    return Array.from(new Set([
+        ...listDraftDecisions(draft).map((decision) => decision.slotId),
+        ...Object.keys(draft.spellRarityAttestations),
+    ]));
 }
 export function readDraftStepDecision(draft, step) {
     const slotId = step.slotId;

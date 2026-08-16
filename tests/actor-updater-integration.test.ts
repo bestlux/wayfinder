@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { applyDraftToActor } from "../src/actor-updater";
+import { applyDraftToActor as applyDraftToActorWithAuthority } from "../src/actor-updater";
 import { createEmptyDraft } from "../src/draft-service";
 import type { ActorItemLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import type { PendingStep } from "../src/types";
@@ -13,6 +13,23 @@ import {
   setGamePacks,
   testGlobals,
 } from "./support/actor-updater-fixtures";
+
+const TEST_ACTOR_AUTHORITY = () => true;
+const TEST_SELECTION_ELIGIBILITY = () => true;
+
+function applyDraftToActor(
+  actor: Parameters<typeof applyDraftToActorWithAuthority>[0],
+  draft: Parameters<typeof applyDraftToActorWithAuthority>[1],
+  steps: Parameters<typeof applyDraftToActorWithAuthority>[2],
+  options: Partial<Parameters<typeof applyDraftToActorWithAuthority>[3]> = {}
+) {
+  return applyDraftToActorWithAuthority(actor, draft, steps, {
+    validateActorAuthority: TEST_ACTOR_AUTHORITY,
+    spellRarityCeiling: "common",
+    validateSelectionEligibility: TEST_SELECTION_ELIGIBILITY,
+    ...options,
+  });
+}
 
 describe("actor-updater integration", () => {
   it("rejects stale campaign policy before mutating singleton actor items", async () => {

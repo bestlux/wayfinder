@@ -115,11 +115,13 @@ function classCase({
   className,
   classSlug,
   keyAbility,
+  expectedAppliedSpellRarityAttestations = [],
   expectedStepIds = [],
   expectedSpellChoiceCounts,
   preferredSelections = {},
   preferredSkills = commonSkills,
   deityName,
+  spellRarityAttestations = {},
   spellChoiceMode,
 }) {
   return {
@@ -132,6 +134,8 @@ function classCase({
     keyAbility,
     targetLevel: 5,
     spellChoiceMode,
+    spellRarityAttestations,
+    expectedAppliedSpellRarityAttestations,
     expectedStepIds,
     expectedSpellChoiceCounts,
     preferredSelections: {
@@ -1031,6 +1035,38 @@ export const smokeCases = [
     className: "Wizard",
     classSlug: "wizard",
     keyAbility: "int",
+    spellRarityAttestations: {
+      "spell-choice-wizard-spellbook-level-5": {
+        claimedBasis: "rules-access",
+        reason: "Wayfinder smoke fixture attests rules Access to Mind Reading.",
+        expectedRestrictedSpellUuid: "Compendium.pf2e.spells-srd.Item.KHnhPHL4x1AQHfbC",
+        expectedWorldRarityCeiling: "common",
+      },
+    },
+    expectedAppliedSpellRarityAttestations: [
+      {
+        slotId: "spell-choice-wizard-spellbook-level-5",
+        stepId: "spell-choice-wizard-spellbook-level-5",
+        stepLevel: 5,
+        destinationKey: "wizard-arcane-prepared",
+        stepRarityCeiling: "common",
+        worldRarityCeiling: "common",
+        claimedBasis: "rules-access",
+        reason: "Wayfinder smoke fixture attests rules Access to Mind Reading.",
+        selectedSpells: [
+          {
+            uuid: "Compendium.pf2e.spells-srd.Item.KHnhPHL4x1AQHfbC",
+            name: "Mind Reading",
+            level: 3,
+          },
+          {
+            uuid: "Compendium.pf2e.spells-srd.Item.sxQZ6yqTn0czJxVd",
+            name: "Fireball",
+            level: 3,
+          },
+        ],
+      },
+    ],
     expectedStepIds: [
       "class-branch-arcane-school-level-1",
       "class-branch-arcane-thesis-level-1",
@@ -1044,9 +1080,13 @@ export const smokeCases = [
       "spell-choice-wizard-curriculum-rank-3-level-5",
       "spell-choice-wizard-spellbook-level-5",
     ],
+    expectedSpellChoiceCounts: {
+      "spell-choice-wizard-spellbook-level-5": 2,
+    },
     preferredSelections: {
       "class-feat": ["Reach Spell", "Counterspell", "Cantrip Expansion"],
       "skill-feat": ["Recognize Spell", "Cat Fall", "Forager", "Acrobatic Performer"],
+      "spell-choice-wizard-spellbook-level-5": ["Mind Reading", "Fireball"],
     },
     preferredSkills: ["arcana", "crafting", "society", "occultism", "religion", "medicine", "nature"],
   }),
@@ -1316,11 +1356,12 @@ export const applySafetySmokeCases = [
       level: 1,
       itemCount: 0,
       moduleState: {
-        version: 2,
+        version: 3,
         lastAppliedAt: null,
         lastTargetLevel: null,
         completedStepIds: [],
         existingCharacterHistory: null,
+        lastAppliedSpellRarityAttestations: [],
       },
     },
     expectedPreStepIds: [

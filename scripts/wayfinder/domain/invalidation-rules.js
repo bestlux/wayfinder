@@ -31,7 +31,10 @@ export function clearSelectionState(state, slotId, hooks) {
     return hadDecision || clearedTransientState ? 1 : 0;
 }
 export function invalidateSelectionState(state, slotId, hooks) {
-    if (clearSelectionState(state, slotId, hooks) === 0) {
+    const clearedSelection = clearSelectionState(state, slotId, hooks);
+    const clearedAttestation = Object.prototype.hasOwnProperty.call(state.draft.spellRarityAttestations, slotId);
+    delete state.draft.spellRarityAttestations[slotId];
+    if (clearedSelection === 0 && !clearedAttestation) {
         return [];
     }
     state.recentlyInvalidatedStepIds.add(slotId);

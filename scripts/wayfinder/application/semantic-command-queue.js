@@ -1,9 +1,13 @@
 export class SemanticCommandQueue {
     #tail = Promise.resolve();
     #barrierActive = false;
+    #pendingCommandCount = 0;
     #terminal = false;
     get barrierActive() {
         return this.#barrierActive;
+    }
+    get busy() {
+        return this.#barrierActive || this.#pendingCommandCount > 0;
     }
     get terminal() {
         return this.#terminal;
@@ -48,9 +52,17 @@ export class SemanticCommandQueue {
         this.#barrierActive = true;
     }
     #append(command) {
+        this.#pendingCommandCount += 1;
         const result = this.#tail.catch(() => undefined).then(command);
-        this.#tail = result.then(() => undefined, () => undefined);
-        return result;
+        const tracked = result.then((value) => {
+            this.#pendingCommandCount -= 1;
+            return value;
+        }, (error) => {
+            this.#pendingCommandCount -= 1;
+            throw error;
+        });
+        this.#tail = tracked.then(() => undefined, () => undefined);
+        return tracked;
     }
 }
 //# sourceMappingURL=semantic-command-queue.js.map

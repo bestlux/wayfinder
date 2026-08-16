@@ -221,6 +221,62 @@ describe("wayfinder selection command service", () => {
     ).toBeUndefined();
   });
 
+  it("removes feat-derived spell state when an ancestry replacement removes its source feat", async () => {
+    const derivedSpellSlotId = "spell-choice-feat-adapted-cantrip-level-1";
+    const draft = createEmptyDraft(1);
+    draft.selections[SLOT_IDS.ancestry] = selection(SLOT_IDS.ancestry, "ancestry", "human", "Human");
+    draft.selections["ancestry-feat-level-1"] = {
+      ...selection("ancestry-feat-level-1", "feat", "adapted-cantrip", "Adapted Cantrip"),
+      featType: "ancestry",
+    };
+    draft.spellChoices[derivedSpellSlotId] = [selection(derivedSpellSlotId, "spell", "detect-magic", "Detect Magic")];
+    draft.spellRarityAttestations[derivedSpellSlotId] = {
+      version: 1,
+      kind: "spell-rarity-access",
+      trust: "player-attestation",
+      status: "unresolved",
+      slotId: derivedSpellSlotId,
+      migratedFrom: "legacy-boolean",
+    };
+    const invalidateOrphanedSpellChoices = vi.fn(async () => {
+      expect(draft.selections["ancestry-feat-level-1"]).toBeUndefined();
+      delete draft.spellChoices[derivedSpellSlotId];
+      delete draft.spellRarityAttestations[derivedSpellSlotId];
+      return [derivedSpellSlotId];
+    });
+
+    await chooseSelectionOption(commandState(draft), ancestryStep(), "test.pack:dwarf", {
+      resolveSelection: async () => selection(SLOT_IDS.ancestry, "ancestry", "dwarf", "Dwarf"),
+      hasDuplicateDraftSelection: () => false,
+      resolveSelectionTraits: async () => [],
+      resolveSelectionSlug: async () => null,
+      resolveSelectionClassHasSpellcasting: async () => false,
+      invalidateSelection: () => [],
+      invalidateSelectionsByPrefix: (prefix) => {
+        if (prefix !== SLOT_PREFIXES.ancestryFeat) return [];
+        delete draft.selections["ancestry-feat-level-1"];
+        return ["ancestry-feat-level-1"];
+      },
+      invalidateSingletonChoicesBySource: async () => [],
+      invalidateGrantSelectionsBySource: async () => [],
+      invalidateGrantSelectionsByDependency: async () => [],
+      invalidateFlagChoicesBySource: async () => [],
+      invalidateFlagChoicesByDependency: async () => [],
+      invalidateCampaignFeatSelectionsByFeatType: async () => [],
+      invalidateClassChoicesByDependency: async () => [],
+      invalidateBranchSelectionsByDependency: async () => [],
+      invalidateSpellChoicesByDependency: async () => [],
+      invalidateOrphanedSpellChoices,
+      resetAncestryBoostDraft: () => false,
+      resetBackgroundBoostDraft: () => false,
+      resetClassBoostDraft: () => false,
+    });
+
+    expect(invalidateOrphanedSpellChoices).toHaveBeenCalledOnce();
+    expect(draft.spellChoices[derivedSpellSlotId]).toBeUndefined();
+    expect(draft.spellRarityAttestations[derivedSpellSlotId]).toBeUndefined();
+  });
+
   it("keeps the previous class when transition metadata cannot be resolved", async () => {
     const draft = createEmptyDraft(1);
     draft.selections[SLOT_IDS.class] = selection(SLOT_IDS.class, "class", "wizard", "Wizard");
@@ -1048,6 +1104,20 @@ function spellChoiceStep(slotId: string, destinationKey: string, tradition: stri
       additionalAllowedSpellNames: [],
       restrictToCommon: true,
     },
+  };
+}
+
+function ancestryStep(): PendingStep {
+  return {
+    id: SLOT_IDS.ancestry,
+    level: 1,
+    kind: "pick-item",
+    slotKind: "ancestry",
+    title: "Ancestry",
+    description: "",
+    required: true,
+    slotId: SLOT_IDS.ancestry,
+    filters: { itemType: "ancestry" },
   };
 }
 

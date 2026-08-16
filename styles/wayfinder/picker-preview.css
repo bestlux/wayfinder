@@ -180,9 +180,10 @@
 
 .spell-rarity-access {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0.4rem;
-  padding: 0.28rem 0.35rem;
+  padding: 0.5rem;
   border: 1px solid rgba(95, 77, 57, 0.2);
   border-radius: var(--wf-radius);
   background: rgba(255, 252, 245, 0.55);
@@ -193,8 +194,28 @@
   background: rgba(152, 81, 61, 0.08);
 }
 
+.spell-rarity-access.is-unresolved,
+.spell-rarity-access.is-stale {
+  border-color: rgba(152, 81, 61, 0.55);
+  background: rgba(152, 81, 61, 0.08);
+}
+
+.spell-rarity-access-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.spell-rarity-access-heading span {
+  color: var(--wf-primary);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
 .spell-rarity-access button {
-  flex: 0 0 auto;
+  align-self: flex-start;
+  min-height: 2rem;
 }
 
 .spell-rarity-access p {
@@ -202,6 +223,29 @@
   color: var(--wf-ink-soft);
   font-size: 0.62rem;
   line-height: 1.25;
+}
+
+.spell-rarity-attestation-details {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+  font-size: 0.68rem;
+}
+
+.spell-rarity-attestation-details > div {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 0.35fr) minmax(0, 1fr);
+  gap: 0.4rem;
+}
+
+.spell-rarity-attestation-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.spell-rarity-access .spell-rarity-attestation-disclaimer {
+  color: var(--wf-primary);
+  font-weight: 700;
 }
 
 /* ── Search ────────────────────────────────────────────── */

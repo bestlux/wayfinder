@@ -56,7 +56,7 @@ export function buildWizardSpellChoiceSteps(params: BuildWizardSpellChoiceStepsP
       cantrip: true,
       curriculumSpellNames: [],
       additionalAllowedSpellNames: [],
-      restrictToCommon: false,
+      restrictToCommon: true,
       destination: WIZARD_SPELLBOOK_DESTINATION,
     })
   );
@@ -76,7 +76,7 @@ export function buildWizardSpellChoiceSteps(params: BuildWizardSpellChoiceStepsP
       cantrip: false,
       curriculumSpellNames: [],
       additionalAllowedSpellNames: [],
-      restrictToCommon: false,
+      restrictToCommon: true,
       destination: WIZARD_SPELLBOOK_DESTINATION,
     })
   );
@@ -98,7 +98,7 @@ export function buildWizardSpellChoiceSteps(params: BuildWizardSpellChoiceStepsP
         curriculumSpellNames: [],
         requiresCurriculum: false,
         additionalAllowedSpellNames: [],
-        restrictToCommon: false,
+        restrictToCommon: true,
         destination: WIZARD_SPELLBOOK_DESTINATION,
       })
     );
@@ -143,7 +143,7 @@ export function buildWizardSpellChoiceSteps(params: BuildWizardSpellChoiceStepsP
         cantrip: false,
         curriculumSpellNames: [],
         additionalAllowedSpellNames: [],
-        restrictToCommon: false,
+        restrictToCommon: true,
         destination: WIZARD_SPELLBOOK_DESTINATION,
       })
     );

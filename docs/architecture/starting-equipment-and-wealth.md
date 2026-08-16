@@ -134,6 +134,8 @@ Players may request an equipment exception but cannot approve it. An approval re
 
 Restricted spell access remains a player attestation rather than being silently converted into equipment's GM-approval model. The current bare Boolean must migrate to a reviewable record containing author, timestamp, subject/slot, claimed basis, and reason. It is labeled as a player claim, appears in final review, and survives draft clear in the Apply receipt. A spell attestation can never satisfy an equipment exception.
 
+Wave 0 establishes the strict current-GM principal primitive and keeps it separate from actor-owner Apply capability. Equipment request and approval records are introduced only after stable acquisition draft identity and material policy facts exist; the principal primitive alone is not an approval store.
+
 ## Interaction contract
 
 The chapter follows this order:

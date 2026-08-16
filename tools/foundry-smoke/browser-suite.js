@@ -53,7 +53,7 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
   };
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     startedAt,
     finishedAt: new Date().toISOString(),
     foundryVersion: game.version ?? null,
@@ -141,8 +141,13 @@ globalThis.__prepareWayfinderPickerProfile = async function prepareWayfinderPick
     }
 
     const optionContext = await buildPickerContext(actor, draft, step, plan.steps, modules);
-    const spellRarityCeiling = String(game.settings.get(moduleId, "spellRarityCeiling") ?? "common");
-    const restrictedSpellRarityAccess = draft.spellRarityAccess[step.slotId] === true;
+    const spellRarityCeiling = modules.getSpellRarityCeilingSetting();
+    const restrictedSpellRarityAccess = modules.evaluateSpellRarityAttestation(
+      actor.id,
+      draft,
+      step,
+      spellRarityCeiling,
+    ).granted;
     const optionStep = modules.withRestrictedSpellRarityAccess(
       step,
       spellRarityCeiling,
@@ -433,6 +438,9 @@ async function loadWayfinderModules(moduleId) {
     slug,
     sourceId,
     spellRarityAccess,
+    spellRarityAttestation,
+    permissions,
+    settings,
     wayfinderApp,
   ] = await Promise.all([
     import(`/modules/${moduleId}/scripts/draft-service.js`),
@@ -451,22 +459,35 @@ async function loadWayfinderModules(moduleId) {
     import(`/modules/${moduleId}/scripts/shared/slug.js`),
     import(`/modules/${moduleId}/scripts/shared/source-id.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/spell-choice/rarity-access.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/spell-choice/rarity-attestation.js`),
+    import(`/modules/${moduleId}/scripts/permissions.js`),
+    import(`/modules/${moduleId}/scripts/settings.js`),
     import(`/modules/${moduleId}/scripts/wayfinder-app.js`),
   ]);
 
   return {
     applyDraftLifecycle: draftLifecycle.applyDraftLifecycle,
     applyDraftToActor: actorUpdater.applyDraftToActor,
+    finalizeRecoveredDraftOnActor: actorUpdater.finalizeRecoveredDraftOnActor,
+    buildAppliedSpellRarityAttestations: spellRarityAttestation.buildAppliedSpellRarityAttestations,
     buildApplyAttemptDraft: draftLifecycle.buildApplyAttemptDraft,
+    buildSpellRarityAttestationReviewLines: spellRarityAttestation.buildSpellRarityAttestationReviewLines,
     buildOptionContext: optionContext.buildOptionContext,
     buildSkillPane: skillPane.buildSkillPane,
     buildWayfinderAppPlan: planBuilder.buildWayfinderAppPlan,
     createEmptyDraft: draftService.createEmptyDraft,
+    createSpellRarityAttestation: spellRarityAttestation.createSpellRarityAttestation,
+    assertCanUseWayfinder: permissions.assertCanUseWayfinder,
+    canUseWayfinder: permissions.canUseWayfinder,
+    evaluateSpellRarityAttestation: spellRarityAttestation.evaluateSpellRarityAttestation,
+    frozenSpellRarityAttestationForStep: spellRarityAttestation.frozenSpellRarityAttestationForStep,
     extractDocumentSlug: slug.extractDocumentSlug,
     fetchSelectionDocument: packAccess.fetchSelectionDocument,
     getEffectiveBuildState: buildState.getEffectiveBuildState,
     getEffectiveSingletonDocument: buildState.getEffectiveSingletonDocument,
     getOptionsForStep: packOptions.getOptionsForStep,
+    getSpellRarityCeilingSetting: settings.getSpellRarityCeilingSetting,
+    hasApplyRecoveryState: draftLifecycle.hasApplyRecoveryState,
     getPickerBlockedState: pickerState.getPickerBlockedState,
     inspectActor: actorInspector.inspectActor,
     evaluateWayfinderStep: planService.evaluateWayfinderStep,
@@ -474,6 +495,8 @@ async function loadWayfinderModules(moduleId) {
     listActorItems: buildState.listActorItems,
     normalizeDraft: draftService.normalizeDraft,
     normalizeState: draftService.normalizeState,
+    listSpellRarityAttestationProblems: spellRarityAttestation.listSpellRarityAttestationProblems,
+    listSpellRarityRecoveryProblems: spellRarityAttestation.listSpellRarityRecoveryProblems,
     resolveSelection: packOptions.resolveSelection,
     sourceIdOf: sourceId.sourceIdOf,
     withRestrictedSpellRarityAccess: spellRarityAccess.withRestrictedSpellRarityAccess,
@@ -550,29 +573,15 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
         }
       }
     }
-    const lifecycleResult = failures.length
-      ? { kind: "warning", warning: "missing-selections" }
-      : await withTimeout(
-          modules.applyDraftLifecycle({
-            actorName: actor.name,
-            currentLevel: 1,
-            draft: draftForApply,
-            steps: stepsForApply,
-            evaluateStep: (step) => evaluateStep(actor, draftForApply, step, modules),
-            confirmApply: () => true,
-            beforeApply: async (applyAttemptDraft) => {
-              await actor.setFlag(moduleId, "draft", applyAttemptDraft);
-            },
-            applyDraftToActor: (buildFinalActorUpdate) =>
-              modules.applyDraftToActor(actor, draftForApply, stepsForApply, {
-                finalActorUpdate: buildFinalActorUpdate(),
-                validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
-              }),
-            now: () => new Date().toISOString(),
-          }),
-          smokeCase.applyTimeoutMs ?? 45000,
-          `${smokeCase.id} apply timed out`,
-        );
+    const applyOutcome = failures.length
+      ? {
+          lifecycleResult: { kind: "warning", warning: "missing-selections" },
+          applyReview: emptyApplyReviewEvidence(),
+        }
+      : await applyCompletedDraft(actor, draftForApply, stepsForApply, modules, moduleId, {
+          timeoutMs: smokeCase.applyTimeoutMs ?? 45000,
+        });
+    const { applyReview, lifecycleResult } = applyOutcome;
 
     await wait(1500);
     console.log(`WFSMOKE ${smokeCase.id} rerun check`);
@@ -600,6 +609,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
       rerunPlan,
       smokeCase,
     });
+    validateApplyReviewEvidence(applyReview, smokeCase.expectedAppliedSpellRarityAttestations ?? [], failures);
 
     return {
       id: smokeCase.id,
@@ -612,6 +622,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
         dialogsAfter,
         dialogsBefore,
         fillIterations: fillResult.iterations,
+        applyReview,
         applySafety: applySafetyEvidence,
         incompleteBeforeApply: incompleteBeforeApply.map(stepSummary),
         preStepIds: plan.steps.map((step) => step.slotId),
@@ -628,7 +639,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
       status: "fail",
       actor: actor ? collectActorEvidence(actor, modules, moduleId) : null,
       classifications,
-      evidence: { acquisition: emptyAcquisitionEvidence() },
+      evidence: { acquisition: emptyAcquisitionEvidence(), applyReview: emptyApplyReviewEvidence() },
       failures: [errorToString(error)],
       warnings,
     };
@@ -656,6 +667,7 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
   const preApplyModuleState = structuredClone(modules.normalizeState(actor.getFlag(moduleId, "state")));
   const preApplyItems = actorItemSnapshots(actor, modules);
   const preApplyItemIds = [...preApplyItems.keys()].sort();
+  const applyContext = buildSpellRarityApplyContext(actor, draft, steps, modules);
   let matchingOccurrence = 0;
   let injectedCheckpoint = null;
   let caught = null;
@@ -667,13 +679,22 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
         draft,
         steps,
         evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
-        confirmApply: () => true,
+        additionalBlockers: applyContext.additionalBlockers,
+        appliedSpellRarityAttestations: applyContext.appliedSpellRarityAttestations,
+        reviewLines: applyContext.reviewLines,
+        confirmApply: applyContext.confirmApply,
         beforeApply: async (applyAttemptDraft) => {
+          modules.assertCanUseWayfinder(actor);
           await actor.setFlag(moduleId, "draft", applyAttemptDraft);
         },
         applyDraftToActor: (buildFinalActorUpdate) =>
           modules.applyDraftToActor(actor, draft, steps, {
-            finalActorUpdate: buildFinalActorUpdate(),
+            resolveFinalActorUpdate: buildFinalActorUpdate,
+            beforeFinalActorUpdate: () => modules.assertCanUseWayfinder(actor),
+            validateActorAuthority: modules.canUseWayfinder,
+            spellRarityCeiling: modules.getSpellRarityCeilingSetting(),
+            validateSelectionEligibility: (selection, step) =>
+              validateSmokeSelectionEligibility(actor, draft, steps, selection, step, modules, moduleId),
             validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
             onCheckpoint: (checkpoint) => {
               if (checkpoint.checkpointId !== checkpointId) return;
@@ -897,9 +918,13 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
 
     const dialogsBefore = dialogCount();
     await actor.setFlag(moduleId, "draft", initialDraft);
-    const initialLifecycleResult = failures.length
-      ? { kind: "warning", warning: "missing-selections" }
+    const initialApplyOutcome = failures.length
+      ? {
+          lifecycleResult: { kind: "warning", warning: "missing-selections" },
+          applyReview: emptyApplyReviewEvidence(),
+        }
       : await applyCompletedDraft(actor, initialDraft, initialPlan.steps, modules, moduleId);
+    const initialLifecycleResult = initialApplyOutcome.lifecycleResult;
     if (initialLifecycleResult.kind !== "applied") {
       failures.push(`Initial apply lifecycle returned ${initialLifecycleResult.kind}`);
     }
@@ -924,9 +949,20 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
     }
 
     await actor.setFlag(moduleId, "draft", incrementalDraft);
-    const incrementalLifecycleResult = failures.length
-      ? { kind: "warning", warning: "missing-selections" }
+    const incrementalApplyOutcome = failures.length
+      ? {
+          lifecycleResult: { kind: "warning", warning: "missing-selections" },
+          applyReview: emptyApplyReviewEvidence(),
+        }
       : await applyCompletedDraft(actor, incrementalDraft, incrementalPlan.steps, modules, moduleId);
+    const incrementalLifecycleResult = incrementalApplyOutcome.lifecycleResult;
+    validateApplyReviewEvidence(
+      incrementalApplyOutcome.applyReview,
+      (smokeCase.expectedAppliedSpellRarityAttestations ?? []).filter(
+        (attestation) => attestation.stepLevel > 1,
+      ),
+      failures,
+    );
 
     await wait(1500);
     const dialogsAfter = dialogCount();
@@ -954,6 +990,7 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
       classifications,
       evidence: {
         acquisition: emptyAcquisitionEvidence(),
+        applyReview: incrementalApplyOutcome.applyReview,
         dialogsAfter,
         dialogsBefore,
         incrementalIncompleteBeforeApply: incrementalIncomplete.map(stepSummary),
@@ -973,7 +1010,7 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
       status: "fail",
       actor: actor ? collectActorEvidence(actor, modules, moduleId) : null,
       classifications,
-      evidence: { acquisition: emptyAcquisitionEvidence() },
+      evidence: { acquisition: emptyAcquisitionEvidence(), applyReview: emptyApplyReviewEvidence() },
       failures: [errorToString(error)],
       warnings,
     };
@@ -1143,12 +1180,54 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
     case "spell-choice": {
       assertExpectedSpellChoiceCount(step, smokeCase);
       const optionContext = await buildPickerContext(actor, draft, step, planSteps, modules);
-      const blocked = modules.getPickerBlockedState(step, optionContext);
+      const attestationConfig = smokeCase.spellRarityAttestations?.[step.slotId];
+      const worldRarityCeiling = modules.getSpellRarityCeilingSetting();
+      if (attestationConfig && !draft.spellRarityAttestations[step.slotId]) {
+        if (worldRarityCeiling !== attestationConfig.expectedWorldRarityCeiling) {
+          throw new Error(
+            `${step.slotId}: expected spell rarity ceiling ${attestationConfig.expectedWorldRarityCeiling}, observed ${worldRarityCeiling}.`,
+          );
+        }
+        const restrictedSpellUuid = String(attestationConfig.expectedRestrictedSpellUuid ?? "").toLowerCase();
+        const optionsBeforeAttestation = await modules.getOptionsForStep(step, optionContext);
+        if (
+          !restrictedSpellUuid ||
+          optionsBeforeAttestation.some((option) => option.uuid.toLowerCase() === restrictedSpellUuid)
+        ) {
+          throw new Error(`${step.slotId}: restricted spell was eligible before the player attestation.`);
+        }
+        draft.spellRarityAttestations[step.slotId] = modules.createSpellRarityAttestation({
+          actorId: actor.id,
+          step,
+          targetLevel: draft.targetLevel,
+          worldRarityCeiling,
+          claimedBasis: attestationConfig.claimedBasis,
+          reason: attestationConfig.reason,
+          authorUserId: game.user.id,
+          authorName: game.user.name,
+          attestedAt: new Date().toISOString(),
+        });
+      }
+      const effectiveStep = modules.withRestrictedSpellRarityAccess(
+        step,
+        worldRarityCeiling,
+        modules.evaluateSpellRarityAttestation(actor.id, draft, step, worldRarityCeiling).granted,
+      );
+      const blocked = modules.getPickerBlockedState(effectiveStep, optionContext);
       if (blocked) {
         notes.classifications.push(`${step.slotId}: picker blocked: ${blocked.title}`);
         return;
       }
-      const options = await modules.getOptionsForStep(step, optionContext);
+      const options = await modules.getOptionsForStep(effectiveStep, optionContext);
+      if (
+        attestationConfig?.expectedRestrictedSpellUuid &&
+        !options.some(
+          (option) =>
+            option.uuid.toLowerCase() === String(attestationConfig.expectedRestrictedSpellUuid).toLowerCase(),
+        )
+      ) {
+        throw new Error(`${step.slotId}: attested restricted spell did not become eligible.`);
+      }
       if (isCurriculumSpellChoiceStep(step)) {
         console.log(
           `WFSMOKE ${smokeCase.id} curriculum fill ${step.slotId} ${JSON.stringify({
@@ -1165,7 +1244,7 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
       const selectedOptions = pickOptions(options, step, smokeCase, step.spellChoice.count);
       const selections = (
         await Promise.all(
-          selectedOptions.map((option) => modules.resolveSelection(option.value, step, optionContext)),
+          selectedOptions.map((option) => modules.resolveSelection(option.value, effectiveStep, optionContext)),
         )
       ).filter(Boolean);
       if (selections.length === step.spellChoice.count) {
@@ -1385,9 +1464,102 @@ async function incompleteSteps(actor, draft, steps, modules) {
   return results;
 }
 
-async function applyCompletedDraft(actor, draft, steps, modules, moduleId) {
+function buildSpellRarityApplyContext(actor, draft, steps, modules) {
+  const worldRarityCeiling = modules.getSpellRarityCeilingSetting();
+  const recovering = modules.hasApplyRecoveryState(draft);
+  const computed = modules.buildAppliedSpellRarityAttestations(
+    actor.id,
+    draft,
+    recovering ? undefined : steps,
+    recovering ? undefined : worldRarityCeiling,
+  );
+  const appliedSpellRarityAttestations =
+    recovering && draft.applySpellRarityAttestations.length > 0
+      ? structuredClone(draft.applySpellRarityAttestations)
+      : computed;
+  const problems = recovering
+    ? modules.listSpellRarityRecoveryProblems(actor.id, draft)
+    : modules.listSpellRarityAttestationProblems(actor.id, draft, steps, worldRarityCeiling);
+  const additionalBlockers = problems.map((problem) => ({
+    code: "access-attestation",
+    stepId: problem.stepId,
+    slotId: problem.slotId,
+    title: problem.title,
+    message: problem.message,
+  }));
+  const reviewLines = modules.buildSpellRarityAttestationReviewLines(appliedSpellRarityAttestations);
+  const applyReview = emptyApplyReviewEvidence(reviewLines);
+  return {
+    additionalBlockers,
+    appliedSpellRarityAttestations,
+    applyReview,
+    confirmApply(message) {
+      applyReview.confirmationMessage = typeof message === "string" ? message : null;
+      return true;
+    },
+    reviewLines,
+  };
+}
+
+function emptyApplyReviewEvidence(reviewLines = []) {
+  return {
+    confirmationMessage: null,
+    reviewLines: [...reviewLines],
+  };
+}
+
+function validateApplyReviewEvidence(applyReview, expectedAttestations, failures) {
+  const expectedCount = Array.isArray(expectedAttestations) ? expectedAttestations.length : 0;
+  if (
+    typeof applyReview?.confirmationMessage !== "string" ||
+    !Array.isArray(applyReview?.reviewLines) ||
+    applyReview.reviewLines.length !== expectedCount ||
+    !applyReview.reviewLines.every((line) => applyReview.confirmationMessage.includes(line)) ||
+    (expectedCount > 0 && !applyReview.confirmationMessage.includes("Player attestation — not GM authorization"))
+  ) {
+    failures.push("Apply confirmation did not prove the complete spell-attestation review disclosure.");
+  }
+}
+
+async function validateSmokeSelectionEligibility(actor, draft, steps, selection, step, modules, moduleId) {
+  const normalizedUuid = String(selection?.uuid ?? "").trim().toLowerCase();
+  if (!normalizedUuid) return false;
+  const alreadyApplied = modules.listActorItems(actor).some((item) => {
+    if (String(modules.sourceIdOf(item) ?? "").trim().toLowerCase() !== normalizedUuid) return false;
+    return item.flags?.[moduleId]?.slotId === selection.slotId;
+  });
+  if (alreadyApplied) return true;
+  if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {
+    return true;
+  }
+
+  const recovering = modules.hasApplyRecoveryState(draft);
+  let spellRarityCeiling = modules.getSpellRarityCeilingSetting();
+  if (recovering && step.kind === "spell-choice" && draft.spellRarityAttestations[step.slotId]) {
+    const frozen = modules.frozenSpellRarityAttestationForStep(actor.id, draft, step);
+    if (frozen) {
+      spellRarityCeiling = frozen.subject.worldRarityCeiling;
+    } else if (spellRarityCeiling !== "unique") {
+      return false;
+    }
+  }
+  const optionContext = await buildPickerContext(actor, draft, step, steps, modules);
+  const effectiveStep =
+    step.kind === "spell-choice"
+      ? modules.withRestrictedSpellRarityAccess(
+          step,
+          spellRarityCeiling,
+          modules.evaluateSpellRarityAttestation(actor.id, draft, step, spellRarityCeiling).granted,
+        )
+      : step;
+  const options = await modules.getOptionsForStep(effectiveStep, optionContext);
+  return options.some((option) => option.uuid.trim().toLowerCase() === normalizedUuid);
+}
+
+async function applyCompletedDraft(actor, draft, steps, modules, moduleId, { timeoutMs = 45000 } = {}) {
   const snapshot = modules.inspectActor(actor);
-  return withTimeout(
+  const applyContext = buildSpellRarityApplyContext(actor, draft, steps, modules);
+  const lifecycleResult = await withTimeout(
     modules.applyDraftLifecycle({
       actorName: actor.name,
       currentLevel: snapshot.level,
@@ -1395,17 +1567,40 @@ async function applyCompletedDraft(actor, draft, steps, modules, moduleId) {
       existingCompletedStepIds: readActorCompletedStepIds(actor, moduleId),
       steps,
       evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
-      confirmApply: () => true,
+      additionalBlockers: applyContext.additionalBlockers,
+      appliedSpellRarityAttestations: applyContext.appliedSpellRarityAttestations,
+      reviewLines: applyContext.reviewLines,
+      confirmApply: applyContext.confirmApply,
+      beforeApply: async (applyAttemptDraft) => {
+        modules.assertCanUseWayfinder(actor);
+        await actor.setFlag(moduleId, "draft", applyAttemptDraft);
+      },
       applyDraftToActor: (buildFinalActorUpdate) =>
         modules.applyDraftToActor(actor, draft, steps, {
-          finalActorUpdate: buildFinalActorUpdate(),
+          resolveFinalActorUpdate: () =>
+            buildFinalActorUpdate(modules.normalizeState(actor.getFlag(moduleId, "state"))),
+          beforeFinalActorUpdate: () => modules.assertCanUseWayfinder(actor),
+          validateActorAuthority: modules.canUseWayfinder,
+          spellRarityCeiling: modules.getSpellRarityCeilingSetting(),
+          validateSelectionEligibility: (selection, step) =>
+            validateSmokeSelectionEligibility(actor, draft, steps, selection, step, modules, moduleId),
           validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
+        }),
+      finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) =>
+        modules.finalizeRecoveredDraftOnActor(actor, {
+          beforeFinalize: () => modules.assertCanUseWayfinder(actor),
+          beforeFinalActorUpdate: () => modules.assertCanUseWayfinder(actor),
+          recoveryActorUpdate,
+          resolveFinalActorUpdate: () =>
+            buildFinalActorUpdate(modules.normalizeState(actor.getFlag(moduleId, "state"))),
+          validateActorAuthority: modules.canUseWayfinder,
         }),
       now: () => new Date().toISOString(),
     }),
-    45000,
+    timeoutMs,
     `${actor.name} apply timed out`,
   );
+  return { applyReview: applyContext.applyReview, lifecycleResult };
 }
 
 function readActorCompletedStepIds(actor, moduleId) {

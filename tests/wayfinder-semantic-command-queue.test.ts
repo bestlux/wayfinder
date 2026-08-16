@@ -21,6 +21,27 @@ describe("Wayfinder semantic command queue", () => {
     expect(order).toEqual(["first-start", "first-end", "second"]);
   });
 
+  it("stays busy until every queued semantic command settles", async () => {
+    const queue = new SemanticCommandQueue();
+    const firstBarrier = deferred<void>();
+    const secondBarrier = deferred<void>();
+    const first = queue.enqueue(async () => {
+      await firstBarrier.promise;
+    });
+    const second = queue.enqueue(async () => {
+      await secondBarrier.promise;
+    });
+
+    expect(queue.busy).toBe(true);
+    firstBarrier.resolve();
+    await first;
+    expect(queue.busy).toBe(true);
+
+    secondBarrier.resolve();
+    await second;
+    expect(queue.busy).toBe(false);
+  });
+
   it("activates a barrier immediately but runs it after earlier commands", async () => {
     const queue = new SemanticCommandQueue();
     const firstBarrier = deferred<void>();
@@ -94,6 +115,7 @@ describe("Wayfinder semantic command queue", () => {
 
     await expect(failed).rejects.toThrow("failed");
     await expect(recovered).resolves.toBe("recovered");
+    expect(queue.busy).toBe(false);
   });
 });
 

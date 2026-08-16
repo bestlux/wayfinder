@@ -5,6 +5,7 @@ import { buildPickItemPane, resolvePreviewValue, selectedSelection, selectedValu
 import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
 import { canGrantRestrictedSpellRarityAccess, withRestrictedSpellRarityAccess, } from "../spell-choice/rarity-access.js";
+import { evaluateSpellRarityAttestation, spellRarityAttestationBasisLabel, } from "../spell-choice/rarity-attestation.js";
 import { createPickerRenderSession, derivePickerRenderProjection, } from "./picker-render-session.js";
 export async function buildSelectionPane(step, effectiveBuildState, deps) {
     const selectedLabel = async () => deps.stepEvaluation?.status ?? deps.resolveStepStatus(step, effectiveBuildState);
@@ -43,7 +44,10 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
     }
     const optionContext = await deps.resolveOptionContext(step);
     const spellRarityCeiling = deps.spellRarityCeiling ?? "common";
-    const spellRarityAccessGranted = step.kind === "spell-choice" && deps.draft.spellRarityAccess[step.slotId] === true;
+    const spellRarityAttestation = step.kind === "spell-choice"
+        ? evaluateSpellRarityAttestation(deps.actorId ?? "", deps.draft, step, spellRarityCeiling)
+        : { state: "none", granted: false, attestation: null };
+    const spellRarityAccessGranted = spellRarityAttestation.granted;
     const optionStep = withRestrictedSpellRarityAccess(step, spellRarityCeiling, spellRarityAccessGranted);
     const options = await deps.getOptionsForStep(optionStep, optionContext);
     const filterKinds = step.kind === "spell-choice" ? ["rank", "rarity", "source"] : ["rarity", "source"];
@@ -91,9 +95,22 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
             modeLabel: getStepModeLabel(step.kind),
             previewValue,
             rarityAccess: {
+                visible: canGrantRestrictedSpellRarityAccess(step, spellRarityCeiling) || spellRarityAttestation.state !== "none",
                 available: canGrantRestrictedSpellRarityAccess(step, spellRarityCeiling),
                 granted: spellRarityAccessGranted,
-                locked: selectedSelections.length > 0,
+                locked: spellRarityAccessGranted && selectedSelections.length > 0,
+                state: spellRarityAttestation.state,
+                basisLabel: spellRarityAttestation.attestation?.status === "attested"
+                    ? spellRarityAttestationBasisLabel(spellRarityAttestation.attestation.claimedBasis)
+                    : null,
+                reason: spellRarityAttestation.attestation?.status === "attested" ? spellRarityAttestation.attestation.reason : null,
+                authorName: spellRarityAttestation.attestation?.status === "attested"
+                    ? spellRarityAttestation.attestation.authorName
+                    : null,
+                attestedAt: spellRarityAttestation.attestation?.status === "attested"
+                    ? spellRarityAttestation.attestation.attestedAt
+                    : null,
+                descriptionId: `wayfinder-spell-attestation-note-${deps.actorId ?? "unknown"}-${step.id}`,
             },
         });
         deps.onPickerRenderSession?.(createPickerRenderSession(renderInputs, pane, previewValue));

@@ -11,6 +11,13 @@ export async function applyDraftLifecycle(args) {
             blockers: [],
         };
     }
+    if ((args.additionalBlockers?.length ?? 0) > 0) {
+        return {
+            kind: "warning",
+            warning: "draft-not-ready",
+            blockers: cloneData(args.additionalBlockers ?? []),
+        };
+    }
     if (!recoveryOnly) {
         const readiness = await evaluateWayfinderDraftReadiness(args.steps, args.evaluateStep);
         if (!readiness.ready) {
@@ -22,14 +29,14 @@ export async function applyDraftLifecycle(args) {
         }
     }
     const confirmed = (await args.confirmApply?.(recoveryOnly
-        ? buildRecoveryFinalizationConfirmationMessage(args.actorName)
-        : buildApplyConfirmationMessage(args.actorName, args.steps.length))) ?? true;
+        ? buildRecoveryFinalizationConfirmationMessage(args.actorName, args.reviewLines)
+        : buildApplyConfirmationMessage(args.actorName, args.steps.length, args.reviewLines))) ?? true;
     if (!confirmed) {
         return {
             kind: "cancelled",
         };
     }
-    const applyAttemptDraft = buildApplyAttemptDraft(args.draft, args.steps);
+    const applyAttemptDraft = buildApplyAttemptDraft(args.draft, args.steps, args.appliedSpellRarityAttestations ?? []);
     await args.beforeApply?.(applyAttemptDraft);
     const appliedAt = (args.now ?? defaultNow)();
     const buildFinalActorUpdate = (currentState) => {
@@ -44,6 +51,7 @@ export async function applyDraftLifecycle(args) {
                 existingCharacterHistory: currentState
                     ? currentState.existingCharacterHistory
                     : (args.existingCharacterHistory ?? null),
+                lastAppliedSpellRarityAttestations: cloneData(applyAttemptDraft.applySpellRarityAttestations),
             },
         };
     };
@@ -61,18 +69,23 @@ export async function applyDraftLifecycle(args) {
         nextDraft: normalizeDraft(null, args.currentLevel),
     };
 }
-export function buildApplyAttemptDraft(draft, steps) {
+export function buildApplyAttemptDraft(draft, steps, appliedSpellRarityAttestations = []) {
     const nextDraft = cloneData(draft);
+    const alreadyRecovering = hasApplyRecoveryState(draft);
     const currentStepIds = steps.map((step) => step.id);
     const currentStepIdSet = new Set(currentStepIds);
     nextDraft.applyCompletedStepIds = mergeCompletedStepIds(nextDraft.applyCompletedStepIds, nextDraft.applyAttemptStepIds.filter((stepId) => !currentStepIdSet.has(stepId)));
     nextDraft.applyAttemptStepIds = mergeCompletedStepIds([], currentStepIds);
+    if (!alreadyRecovering) {
+        nextDraft.applySpellRarityAttestations = cloneData(appliedSpellRarityAttestations);
+    }
     return nextDraft;
 }
 export function hasApplyRecoveryState(draft) {
     return (draft.applyAttemptStepIds.length > 0 ||
         draft.applyCompletedStepIds.length > 0 ||
-        Object.keys(draft.applyRecoveryActorUpdate).length > 0);
+        Object.keys(draft.applyRecoveryActorUpdate).length > 0 ||
+        draft.applySpellRarityAttestations.length > 0);
 }
 export class WayfinderRecoveryDraftConflictError extends Error {
     constructor() {
@@ -94,7 +107,9 @@ export function assertRecoveryDraftWriteAllowed(liveDraft, candidateDraft) {
         liveDraft.applyCompletedStepIds.every((stepId) => candidateDraft.applyCompletedStepIds.includes(stepId)) &&
         [...liveRecoveryStepIds].every((stepId) => candidateRecoveryStepIds.has(stepId)) &&
         Object.entries(liveDraft.applyRecoveryActorUpdate).every(([path, value]) => path in candidateDraft.applyRecoveryActorUpdate &&
-            JSON.stringify(candidateDraft.applyRecoveryActorUpdate[path]) === JSON.stringify(value));
+            JSON.stringify(candidateDraft.applyRecoveryActorUpdate[path]) === JSON.stringify(value)) &&
+        JSON.stringify(liveDraft.applySpellRarityAttestations) ===
+            JSON.stringify(candidateDraft.applySpellRarityAttestations);
     if (!preservesRecovery) {
         throw new WayfinderRecoveryDraftConflictError();
     }
@@ -104,6 +119,7 @@ function semanticDraftFingerprint(draft) {
     semanticDraft.applyAttemptStepIds = [];
     semanticDraft.applyCompletedStepIds = [];
     semanticDraft.applyRecoveryActorUpdate = {};
+    semanticDraft.applySpellRarityAttestations = [];
     semanticDraft.updatedAt = null;
     return JSON.stringify(semanticDraft);
 }
@@ -150,7 +166,7 @@ export function countDraftLosses(draft, currentLevel) {
     count += Object.keys(draft.classChoices).length;
     count += Object.values(draft.languageChoices).reduce((total, values) => total + values.length, 0);
     count += Object.values(draft.spellChoices).reduce((total, values) => total + values.length, 0);
-    count += Object.values(draft.spellRarityAccess).filter(Boolean).length;
+    count += Object.keys(draft.spellRarityAttestations).length;
     for (const training of Object.values(draft.skillTrainings)) {
         count += Object.keys(training.ruleChoices).length;
         count += training.additional.length;
@@ -175,11 +191,13 @@ export function buildClearDraftConfirmationMessage(discardedDecisionCount) {
     const noun = discardedDecisionCount === 1 ? "decision" : "decisions";
     return `Clear ${discardedDecisionCount} drafted ${noun}? This cannot be undone.`;
 }
-function buildApplyConfirmationMessage(actorName, stepCount) {
-    return `Apply ${stepCount} Wayfinder step(s) to ${actorName}?`;
+export function buildApplyConfirmationMessage(actorName, stepCount, reviewLines = []) {
+    const heading = `Apply ${stepCount} Wayfinder step(s) to ${actorName}?`;
+    return reviewLines.length > 0 ? `${heading}\n\n${reviewLines.join("\n")}` : heading;
 }
-function buildRecoveryFinalizationConfirmationMessage(actorName) {
-    return `Finish recording the recovered Wayfinder Apply for ${actorName}? No build steps remain to reapply.`;
+function buildRecoveryFinalizationConfirmationMessage(actorName, reviewLines = []) {
+    const heading = `Finish recording the recovered Wayfinder Apply for ${actorName}? No build steps remain to reapply.`;
+    return reviewLines.length > 0 ? `${heading}\n\n${reviewLines.join("\n")}` : heading;
 }
 function defaultNow() {
     return new Date().toISOString();

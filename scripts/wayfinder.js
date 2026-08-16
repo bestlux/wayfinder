@@ -2,7 +2,8 @@ import { MODULE_ID } from "./constants.js";
 import { FeedbackSupportApp } from "./feedback-support-app.js";
 import { registerSettings } from "./settings.js";
 import { preloadHandlebarsTemplates } from "./shared/foundry-compat.js";
-import { registerSheetControls, rerenderOpenWayfinderApps } from "./sheet-controls.js";
+import { registerSheetControls, registerWayfinderActorRefresh, rerenderOpenWayfinderApps } from "./sheet-controls.js";
+import { registerPersistedDraftWriteGuardHook } from "./wayfinder/application/draft-write-guard.js";
 Hooks.once("init", () => {
     registerSettings({
         feedbackMenuType: FeedbackSupportApp,
@@ -23,7 +24,9 @@ Hooks.once("init", () => {
         `modules/${MODULE_ID}/templates/wayfinder/pick-results.hbs`,
         `modules/${MODULE_ID}/templates/wayfinder/spell-choice-results.hbs`,
     ]);
+    registerPersistedDraftWriteGuardHook();
     registerSheetControls();
+    registerWayfinderActorRefresh();
     console.log(`${MODULE_ID} | initialized`);
 });
 //# sourceMappingURL=wayfinder.js.map

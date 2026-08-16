@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { canUseWayfinder } from "../src/permissions";
+import { assertCanUseWayfinder, canUseWayfinder, WayfinderActorAuthorityError } from "../src/permissions";
+import {
+  requireCurrentGmPrincipal,
+  WayfinderGmCommandAuthorityError,
+} from "../src/wayfinder/application/gm-command-authority";
 
 beforeEach(() => {
   (globalThis as any).game = {
@@ -48,5 +52,24 @@ describe("canUseWayfinder", () => {
       })
     ).toBe(true);
     expect(testUserPermission).toHaveBeenCalled();
+  });
+
+  it("fails closed when actor authority is lost", () => {
+    expect(() => assertCanUseWayfinder({ type: "character", isOwner: false, permission: 0 })).toThrow(
+      WayfinderActorAuthorityError
+    );
+  });
+});
+
+describe("GM command authority", () => {
+  it("requires a current GM identity rather than actor ownership or role metadata", () => {
+    expect(requireCurrentGmPrincipal({ id: "gm-1", isGM: true, role: 4 })).toEqual({
+      userId: "gm-1",
+      isGM: true,
+    });
+    expect(() => requireCurrentGmPrincipal({ id: "owner-1", isGM: false, role: 4, isOwner: true })).toThrow(
+      WayfinderGmCommandAuthorityError
+    );
+    expect(() => requireCurrentGmPrincipal({ id: "", isGM: true })).toThrow(WayfinderGmCommandAuthorityError);
   });
 });

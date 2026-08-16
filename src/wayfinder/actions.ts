@@ -29,6 +29,7 @@ export type WayfinderAction =
   | { type: "select-class-choice"; stepId: string; value: string }
   | { type: "toggle-spell-choice"; stepId: string; value: string }
   | { type: "toggle-spell-rarity-access"; stepId: string }
+  | { type: "remove-spell-rarity-attestation"; stepId: string }
   | { type: "clear-option"; stepId: string }
   | { type: "target-up" }
   | { type: "target-down" }
@@ -148,6 +149,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
         : null;
     case "clear-picker-filters":
     case "toggle-spell-rarity-access":
+    case "remove-spell-rarity-attestation":
       return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
     case "toggle-ancestry-mode":
     case "toggle-voluntary-enabled":
@@ -212,6 +214,7 @@ export function isDraftMutationAction(action: WayfinderAction): boolean {
     case "select-class-choice":
     case "toggle-spell-choice":
     case "toggle-spell-rarity-access":
+    case "remove-spell-rarity-attestation":
     case "clear-option":
     case "target-up":
     case "target-down":

@@ -39,4 +39,16 @@ describe("wayfinder spell picker layout", () => {
     expect(spellTemplate).toContain("Remove {{activePane.excessCount}} extra spell");
     expect(pickerStyles).toMatch(/\.spell-selected-summary\.is-invalid,[^}]*\.spell-selected-summary\.is-excess\s*\{/s);
   });
+
+  it("presents restricted access as a reviewable player attestation", () => {
+    expect(spellTemplate).toContain('aria-label="Restricted-spell player attestation"');
+    expect(spellTemplate).toContain("Player attestation");
+    expect(spellTemplate).toContain("This is a player claim, not verified GM authorization.");
+    expect(spellTemplate).toContain("permission reported by the player");
+    expect(spellTemplate).toContain("<dl");
+    expect(spellTemplate).toContain('<time datetime="{{activePane.rarityAccess.attestedAt}}">');
+    expect(spellTemplate).not.toContain("aria-pressed");
+    expect(spellTemplate).not.toContain("Restricted rarities included");
+    expect(pickerStyles).toMatch(/\.spell-rarity-access button\s*\{[^}]*min-height:\s*2rem;/s);
+  });
 });

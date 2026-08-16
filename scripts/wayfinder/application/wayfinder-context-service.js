@@ -1,4 +1,5 @@
 import { modeLabel } from "../plan-service.js";
+import { spellRarityAttestationBasisLabel } from "../spell-choice/rarity-attestation.js";
 export async function buildWayfinderContext(args) {
     const summary = buildSummaryItems(args.summaryDocuments);
     const dossierLine = summary
@@ -53,6 +54,17 @@ export async function buildWayfinderContext(args) {
         canGoNext: activeStepIndex >= 0 && activeStepIndex < args.steps.length - 1,
         canImportExistingHistory: args.canImportExistingHistory ?? false,
         existingCharacterHistory: buildExistingCharacterHistoryView(args.existingCharacterHistory ?? null),
+        lastAppliedSpellRarityAttestations: (args.lastAppliedSpellRarityAttestations ?? [])
+            .filter((attestation) => attestation.subject.actorId === args.actorId)
+            .map((attestation) => ({
+            stepId: attestation.subject.stepId,
+            subjectLabel: attestation.subjectLabel,
+            basisLabel: spellRarityAttestationBasisLabel(attestation.claimedBasis),
+            reason: attestation.reason,
+            authorName: attestation.authorName,
+            attestedAt: attestation.attestedAt,
+            selectedSpellNames: attestation.selectedSpells.map((spell) => spell.name).join(", ") || "None",
+        })),
         draftSave,
         lifecycleBusy,
     };

@@ -1,4 +1,6 @@
+import { MODULE_ID } from "./constants.js";
 import { canUseWayfinder } from "./permissions.js";
+import { actorUpdateTouchesWayfinderDraft } from "./wayfinder/application/external-draft-refresh-service.js";
 import { WayfinderApp } from "./wayfinder-app.js";
 
 export function registerSheetControls(): void {
@@ -39,6 +41,14 @@ export function registerSheetControls(): void {
   };
 
   Hooks.on("renderActorSheet", inject);
+}
+
+export function registerWayfinderActorRefresh(): void {
+  Hooks.on("updateActor", (actor: any, changes: unknown) => {
+    if (actorUpdateTouchesWayfinderDraft(changes, MODULE_ID)) {
+      WayfinderApp.refreshDraftFromActorUpdate(actor);
+    }
+  });
 }
 
 export function rerenderOpenWayfinderApps(): void {

@@ -123,7 +123,7 @@ export interface ActorLike extends LooseRecord {
   createEmbeddedDocuments?: (type: "Item", sources: EmbeddedItemSource[]) => Promise<ActorItemLike[]>;
   deleteEmbeddedDocuments?: (type: "Item", ids: string[]) => Promise<unknown>;
   updateEmbeddedDocuments?: (type: "Item", updates: LooseRecord[]) => Promise<unknown>;
-  update?: (updates: LooseRecord) => Promise<unknown>;
+  update?: (updates: LooseRecord, operation?: LooseRecord) => Promise<unknown>;
   prepareData?: () => void;
 }
 

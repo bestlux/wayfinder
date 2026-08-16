@@ -204,6 +204,113 @@ describe("Foundry smoke evidence contract", () => {
     }
   });
 
+  it("qualifies an exact nonempty spell-attestation receipt and captured Apply review", () => {
+    const result = qualifySmokeResult(spellAttestationResult(), [spellAttestationDefinition()]);
+
+    expect(result.qualification).toMatchObject({ passed: true, unreviewedFindingCount: 0 });
+  });
+
+  it("rejects malformed or contextually foreign spell-attestation receipts", () => {
+    const mutations = [
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.version = 2;
+      },
+      (input: any) => {
+        delete input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations;
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.unexpected = true;
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].subject.actorId =
+          "copied-actor";
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].subject.targetLevel = 4;
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].subject.stepLevel = 4;
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].subject.destinationKey =
+          "different-destination";
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].unexpected = true;
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].subject.unexpected = true;
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].selectedSpells[0].unexpected = true;
+      },
+      (input: any) => {
+        const selected =
+          input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].selectedSpells;
+        selected.push(structuredClone(selected[0]));
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].selectedSpells[0].itemType =
+          "feat";
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].selectedSpells[0].name =
+          "Wrong Spell";
+      },
+      (input: any) => {
+        input.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations[0].selectedSpells[0].packId =
+          "wrong.pack";
+      },
+    ];
+    for (const mutate of mutations) {
+      const input = spellAttestationResult() as any;
+      mutate(input);
+
+      const result = qualifySmokeResult(input, [spellAttestationDefinition()]);
+
+      expect(result.qualification.passed).toBe(false);
+      expect(findingCodes(result)).toContain("character-build-state-mismatch");
+    }
+  });
+
+  it("binds spell-attestation expectations to basis, reason, ceilings, and selected spell UUIDs", () => {
+    for (const mutate of [
+      (definition: any) => {
+        definition.expectedAppliedSpellRarityAttestations[0].claimedBasis = "reported-gm-permission";
+      },
+      (definition: any) => {
+        definition.expectedAppliedSpellRarityAttestations[0].reason = "Different reason";
+      },
+      (definition: any) => {
+        definition.expectedAppliedSpellRarityAttestations[0].stepRarityCeiling = "uncommon";
+      },
+      (definition: any) => {
+        definition.expectedAppliedSpellRarityAttestations[0].selectedSpells[0].uuid = "different-uuid";
+      },
+    ]) {
+      const definition = spellAttestationDefinition() as any;
+      mutate(definition);
+
+      const result = qualifySmokeResult(spellAttestationResult(), [definition]);
+
+      expect(result.qualification.passed).toBe(false);
+      expect(findingCodes(result)).toContain("character-build-state-mismatch");
+    }
+  });
+
+  it("rejects retained drafts and incomplete Apply confirmation disclosure", () => {
+    const retained = spellAttestationResult() as any;
+    retained.cases[0].actor.moduleDraftAfterApply = { version: 13 };
+    const missingDisclosure = spellAttestationResult() as any;
+    missingDisclosure.cases[0].evidence.applyReview.confirmationMessage = "Apply to actor?";
+
+    const retainedResult = qualifySmokeResult(retained, [spellAttestationDefinition()]);
+    const disclosureResult = qualifySmokeResult(missingDisclosure, [spellAttestationDefinition()]);
+
+    expect(findingCodes(retainedResult)).toContain("character-build-state-mismatch");
+    expect(findingCodes(disclosureResult)).toContain("apply-review-evidence-mismatch");
+  });
+
   it("requires complete policy, currency, and manifest evidence for an acquisition success", () => {
     const smokeCase = resultFixture().cases[0];
     expect(validateAcquisitionEvidence(smokeCase).map((finding: { code: string }) => finding.code)).toEqual(
@@ -828,7 +935,7 @@ describe("Foundry smoke evidence contract", () => {
     expect(nonGm.qualification.passed).toBe(false);
   });
 
-  it("rejects evidence without the schema-v2 user role record", () => {
+  it("rejects evidence without the schema-v3 user role record", () => {
     const input = resultFixture();
     (input as { user: unknown }).user = "GM";
     expect(() => qualifySmokeResult(input)).toThrow(/complete user role record/u);
@@ -932,6 +1039,10 @@ function resultFixture(
         classifications: overrides.classifications ?? [],
         evidence: {
           acquisition: emptyAcquisitionEvidence(),
+          applyReview: {
+            confirmationMessage: "Apply 1 step to Actor?",
+            reviewLines: [],
+          },
           preStepIds: ["step"],
           rerunStepIds: [],
         },
@@ -1154,22 +1265,97 @@ function phaseReceipt(phase: string) {
 
 function emptyModuleState() {
   return {
-    version: 2,
+    version: 3,
     lastAppliedAt: null,
     lastTargetLevel: null,
     completedStepIds: [],
     existingCharacterHistory: null,
+    lastAppliedSpellRarityAttestations: [],
   };
 }
 
 function appliedModuleState() {
   return {
-    version: 2,
+    version: 3,
     lastAppliedAt: "2026-08-16T12:00:00.000Z",
     lastTargetLevel: 5,
     completedStepIds: ["step"],
     existingCharacterHistory: null,
+    lastAppliedSpellRarityAttestations: [],
   };
+}
+
+function spellAttestationDefinition() {
+  return {
+    id: "case",
+    targetLevel: 5,
+    expectedAppliedSpellRarityAttestations: [
+      {
+        slotId: "step",
+        stepId: "step",
+        stepLevel: 5,
+        destinationKey: "wizard-spellbook",
+        stepRarityCeiling: "common",
+        worldRarityCeiling: "common",
+        claimedBasis: "rules-access",
+        reason: "The character has rules Access.",
+        selectedSpells: [
+          {
+            uuid: "Compendium.pf2e.spells-srd.Item.restricted",
+            name: "Restricted Spell",
+            level: 3,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function spellAttestationResult() {
+  const result = resultFixture();
+  const attestation = {
+    version: 1,
+    kind: "spell-rarity-access",
+    trust: "player-attestation",
+    status: "attested",
+    subject: {
+      actorId: "actor-id",
+      slotId: "step",
+      stepId: "step",
+      targetLevel: 5,
+      stepLevel: 5,
+      destinationKey: "wizard-spellbook",
+      stepRarityCeiling: "common",
+      worldRarityCeiling: "common",
+    },
+    claimedBasis: "rules-access",
+    reason: "The character has rules Access.",
+    authorUserId: "user-id",
+    authorName: "User",
+    attestedAt: "2026-08-16T11:59:00.000Z",
+    subjectLabel: "Level 5 spellbook additions",
+    selectedSpells: [
+      {
+        slotId: "step",
+        packId: "pf2e.spells-srd",
+        documentId: "restricted",
+        uuid: "Compendium.pf2e.spells-srd.Item.restricted",
+        itemType: "spell",
+        featType: null,
+        name: "Restricted Spell",
+        level: 3,
+        slug: "restricted-spell",
+      },
+    ],
+  };
+  result.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations = [attestation];
+  const reviewLine =
+    "Player attestation — not GM authorization: Level 5 spellbook additions; Character or rules Access; Restricted Spell; recorded by User at 2026-08-16T11:59:00.000Z; reason: The character has rules Access.";
+  result.cases[0].evidence.applyReview = {
+    confirmationMessage: `Apply 1 step to Actor?\n\n${reviewLine}`,
+    reviewLines: [reviewLine],
+  };
+  return result;
 }
 
 function findingCodes(result: any): string[] {

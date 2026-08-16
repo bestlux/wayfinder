@@ -82,6 +82,7 @@ export function parseWayfinderAction(element) {
                 : null;
         case "clear-picker-filters":
         case "toggle-spell-rarity-access":
+        case "remove-spell-rarity-attestation":
             return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
         case "toggle-ancestry-mode":
         case "toggle-voluntary-enabled":
@@ -145,6 +146,7 @@ export function isDraftMutationAction(action) {
         case "select-class-choice":
         case "toggle-spell-choice":
         case "toggle-spell-rarity-access":
+        case "remove-spell-rarity-attestation":
         case "clear-option":
         case "target-up":
         case "target-down":

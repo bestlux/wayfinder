@@ -1,8 +1,9 @@
 import { cloneData } from "./shared/cloning.js";
 import { classArchetypeProfile, migrateLegacyClassArchetypeBranches, STANDARD_CLASS_PATH, } from "./wayfinder/class-archetype/registry.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
-const DRAFT_VERSION = 11;
-const STATE_VERSION = 2;
+import { normalizeAppliedSpellRarityAttestation, normalizeSpellRarityAttestation, } from "./wayfinder/spell-choice/rarity-attestation.js";
+const DRAFT_VERSION = 13;
+const STATE_VERSION = 3;
 export function createEmptyDraft(targetLevel = 1) {
     return {
         version: DRAFT_VERSION,
@@ -10,6 +11,7 @@ export function createEmptyDraft(targetLevel = 1) {
         applyAttemptStepIds: [],
         applyCompletedStepIds: [],
         applyRecoveryActorUpdate: {},
+        applySpellRarityAttestations: [],
         selections: {},
         boosts: createEmptyBoostDraft(),
         manual: {},
@@ -21,7 +23,7 @@ export function createEmptyDraft(targetLevel = 1) {
         languageChoices: {},
         classChoices: {},
         spellChoices: {},
-        spellRarityAccess: {},
+        spellRarityAttestations: {},
         updatedAt: null,
     };
 }
@@ -32,6 +34,7 @@ export function createEmptyState() {
         lastTargetLevel: null,
         completedStepIds: [],
         existingCharacterHistory: null,
+        lastAppliedSpellRarityAttestations: [],
     };
 }
 export function normalizeDraft(raw, fallbackTargetLevel) {
@@ -44,7 +47,10 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
     const skillTrainings = sanitizeSkillTrainings(draft.skillTrainings);
     const classChoices = sanitizeClassChoices(draft.classChoices);
     const spellChoices = sanitizeSpellChoices(draft.spellChoices);
-    const spellRarityAccess = sanitizeSpellRarityAccess(draft.spellRarityAccess);
+    const spellRarityAttestationSource = Object.prototype.hasOwnProperty.call(draft, "spellRarityAttestations")
+        ? draft.spellRarityAttestations
+        : draft.spellRarityAccess;
+    const spellRarityAttestations = sanitizeSpellRarityAttestations(spellRarityAttestationSource);
     if (migratedClassArchetypeProfiles.length > 0) {
         clearLegacyClassArchetypeDependentState({
             branchSelections,
@@ -53,7 +59,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
             selections,
             skillTrainings,
             spellChoices,
-            spellRarityAccess,
+            spellRarityAttestations,
             projectedStaticGrantUuids: new Set(migratedClassArchetypeProfiles.flatMap((profile) => profile.projectedFeatGrants.flatMap((grant) => grant.staticFeatGrants.map((selection) => selection.uuid)))),
         });
     }
@@ -63,6 +69,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
         applyAttemptStepIds: sanitizeStepIds(draft.applyAttemptStepIds),
         applyCompletedStepIds: sanitizeStepIds(draft.applyCompletedStepIds),
         applyRecoveryActorUpdate: sanitizeRecoveryActorUpdate(draft.applyRecoveryActorUpdate),
+        applySpellRarityAttestations: sanitizeAppliedSpellRarityAttestations(draft.applySpellRarityAttestations),
         selections,
         boosts: sanitizeBoosts(draft.boosts),
         manual,
@@ -74,7 +81,7 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
         languageChoices: sanitizeChoiceListValues(draft.languageChoices),
         classChoices,
         spellChoices,
-        spellRarityAccess,
+        spellRarityAttestations,
         updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
     };
 }
@@ -88,7 +95,7 @@ function clearLegacyClassArchetypeDependentState(state) {
     clearMatchingKeys(state.classChoices, (slotId) => slotId.startsWith(SLOT_PREFIXES.classChoice));
     clearMatchingKeys(state.skillTrainings, (slotId) => slotId.startsWith(SLOT_PREFIXES.skillTraining));
     clearMatchingKeys(state.spellChoices, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
-    clearMatchingKeys(state.spellRarityAccess, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
+    clearMatchingKeys(state.spellRarityAttestations, (slotId) => slotId.startsWith(SLOT_PREFIXES.spellChoice));
     clearMatchingKeys(state.manual, (slotId) => [
         SLOT_PREFIXES.classBranch,
         SLOT_PREFIXES.classChoice,
@@ -121,7 +128,20 @@ export function normalizeState(raw) {
             ? state.completedStepIds.filter((value) => typeof value === "string")
             : [],
         existingCharacterHistory: sanitizeExistingCharacterHistory(state.existingCharacterHistory),
+        lastAppliedSpellRarityAttestations: sanitizeAppliedSpellRarityAttestations(state.lastAppliedSpellRarityAttestations),
     };
+}
+function sanitizeAppliedSpellRarityAttestations(raw) {
+    if (!Array.isArray(raw))
+        return [];
+    const byIdentity = new Map();
+    for (const value of raw) {
+        const attestation = normalizeAppliedSpellRarityAttestation(value);
+        if (attestation) {
+            byIdentity.set(`${attestation.subject.actorId}:${attestation.subject.slotId}`, attestation);
+        }
+    }
+    return [...byIdentity.values()];
 }
 function sanitizeExistingCharacterHistory(raw) {
     if (!isRecord(raw) || raw.version !== 1 || typeof raw.importedAt !== "string") {
@@ -289,11 +309,14 @@ function sanitizeSpellChoices(raw) {
     }
     return result;
 }
-function sanitizeSpellRarityAccess(raw) {
+function sanitizeSpellRarityAttestations(raw) {
     if (!isRecord(raw)) {
         return {};
     }
-    return Object.fromEntries(Object.entries(raw).filter((entry) => entry[0].length > 0 && entry[1] === true));
+    return Object.fromEntries(Object.entries(raw).flatMap(([slotId, value]) => {
+        const attestation = normalizeSpellRarityAttestation(slotId, value);
+        return attestation ? [[slotId, attestation]] : [];
+    }));
 }
 function sanitizeSpellSelection(slotId, value) {
     if (!isRecord(value)) {

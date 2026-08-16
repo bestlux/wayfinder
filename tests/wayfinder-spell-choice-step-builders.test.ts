@@ -45,6 +45,16 @@ describe("wayfinder spell-choice step builders", () => {
     ]);
     expect(steps[2]?.spellChoice?.curriculumSpellNames).toEqual(["Breathe Fire", "Force Barrage"]);
     expect(steps[5]?.spellChoice?.curriculumSpellNames).toEqual(["Mist"]);
+    expect(
+      steps
+        .filter((step) => step.slotId.includes("wizard-spellbook"))
+        .every((step) => step.spellChoice?.restrictToCommon === true)
+    ).toBe(true);
+    expect(
+      steps
+        .filter((step) => step.slotId.includes("wizard-curriculum"))
+        .every((step) => step.spellChoice?.restrictToCommon === false)
+    ).toBe(true);
   });
 
   it("parses curriculum spells from labeled compendium UUIDs", async () => {
@@ -230,6 +240,9 @@ describe("wayfinder spell-choice step builders", () => {
     });
 
     expect(steps.map((step) => step.slotId)).toContain("spell-choice-wizard-unified-rank-1-level-1");
+    expect(
+      steps.find((step) => step.slotId === "spell-choice-wizard-unified-rank-1-level-1")?.spellChoice?.restrictToCommon
+    ).toBe(true);
     expect(steps.map((step) => step.slotId)).not.toContain("spell-choice-wizard-curriculum-rank-1-level-1");
     expect(steps.map((step) => step.slotId)).not.toContain("spell-choice-wizard-curriculum-rank-2-level-3");
     expect(

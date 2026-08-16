@@ -11,11 +11,12 @@ import type { SelectionRef } from "../src/types";
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 11,
+      version: 13,
       targetLevel: 4,
       applyAttemptStepIds: [],
       applyCompletedStepIds: [],
       applyRecoveryActorUpdate: {},
+      applySpellRarityAttestations: [],
       selections: {},
       boosts: {
         ancestry: {
@@ -48,18 +49,19 @@ describe("draft-service", () => {
       languageChoices: {},
       classChoices: {},
       spellChoices: {},
-      spellRarityAccess: {},
+      spellRarityAttestations: {},
       updatedAt: null,
     });
   });
 
   it("creates an empty module state", () => {
     expect(createEmptyState()).toEqual({
-      version: 2,
+      version: 3,
       lastAppliedAt: null,
       lastTargetLevel: null,
       completedStepIds: [],
       existingCharacterHistory: null,
+      lastAppliedSpellRarityAttestations: [],
     });
   });
 
@@ -213,8 +215,15 @@ describe("draft-service", () => {
         },
       ],
     });
-    expect(draft.spellRarityAccess).toEqual({
-      wizard: true,
+    expect(draft.spellRarityAttestations).toEqual({
+      wizard: {
+        version: 1,
+        kind: "spell-rarity-access",
+        trust: "player-attestation",
+        status: "unresolved",
+        slotId: "wizard",
+        migratedFrom: "legacy-boolean",
+      },
     });
     expect(draft.boosts).toEqual({
       ancestry: {
@@ -246,7 +255,7 @@ describe("draft-service", () => {
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(11);
+    expect(patched.version).toBe(13);
     expect(patched.updatedAt).not.toBeNull();
   });
 
@@ -458,7 +467,7 @@ describe("draft-service", () => {
         },
       })
     ).toEqual({
-      version: 2,
+      version: 3,
       lastAppliedAt: "2026-04-08T00:00:00.000Z",
       lastTargetLevel: 20,
       completedStepIds: ["a", "b"],
@@ -478,6 +487,7 @@ describe("draft-service", () => {
           },
         ],
       },
+      lastAppliedSpellRarityAttestations: [],
     });
   });
 });

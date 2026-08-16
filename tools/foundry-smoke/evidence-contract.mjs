@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const SMOKE_EVIDENCE_SCHEMA_VERSION = 2;
+export const SMOKE_EVIDENCE_SCHEMA_VERSION = 3;
 
 const VALID_STACKING_INTENTS = new Set(["aggregate", "separate"]);
 const APPLY_PHASE_IDS = Object.freeze([
@@ -66,9 +66,58 @@ const MODULE_STATE_KEYS = [
   "completedStepIds",
   "existingCharacterHistory",
   "lastAppliedAt",
+  "lastAppliedSpellRarityAttestations",
   "lastTargetLevel",
   "version",
 ];
+const APPLY_REVIEW_KEYS = ["confirmationMessage", "reviewLines"];
+const APPLIED_SPELL_ATTESTATION_KEYS = [
+  "attestedAt",
+  "authorName",
+  "authorUserId",
+  "claimedBasis",
+  "kind",
+  "reason",
+  "selectedSpells",
+  "status",
+  "subject",
+  "subjectLabel",
+  "trust",
+  "version",
+];
+const SPELL_ATTESTATION_SUBJECT_KEYS = [
+  "actorId",
+  "destinationKey",
+  "slotId",
+  "stepId",
+  "stepLevel",
+  "stepRarityCeiling",
+  "targetLevel",
+  "worldRarityCeiling",
+];
+const SPELL_SELECTION_REQUIRED_KEYS = [
+  "documentId",
+  "featType",
+  "itemType",
+  "level",
+  "name",
+  "packId",
+  "slotId",
+  "uuid",
+];
+const SPELL_SELECTION_ALLOWED_KEYS = [...SPELL_SELECTION_REQUIRED_KEYS, "slug"];
+const EXPECTED_SPELL_ATTESTATION_KEYS = [
+  "claimedBasis",
+  "destinationKey",
+  "reason",
+  "selectedSpells",
+  "slotId",
+  "stepId",
+  "stepLevel",
+  "stepRarityCeiling",
+  "worldRarityCeiling",
+];
+const EXPECTED_SPELL_SELECTION_KEYS = ["level", "name", "uuid"];
 
 export function assertIncrementalSmokeCasesSupported(caseDefinitions) {
   const unsupported = caseDefinitions
@@ -96,6 +145,7 @@ export function qualifySmokeResult(resultInput, caseDefinitions = []) {
       ...actorEvidenceFindings(smokeCase.actor, definition.sourceGroupExpectations ?? []),
       ...definitionActorOutcomeFindings(smokeCase.actor, definition),
       ...applySafetyEvidenceFindings(smokeCase, definition),
+      ...(caseKind === "character-build" ? characterBuildEvidenceFindings(smokeCase, definition) : []),
       ...acquisitionEnvelopeFindings(smokeCase),
       ...(caseKind === "acquisition" ? acquisitionEvidenceFindings(smokeCase) : []),
     ];
@@ -275,6 +325,65 @@ function caseShapeFindings(smokeCase) {
   return findings;
 }
 
+function characterBuildEvidenceFindings(smokeCase, definition) {
+  const subject = String(smokeCase?.id ?? "case");
+  const actor = smokeCase?.actor;
+  const evidence = smokeCase?.evidence;
+  const expectedStepIds = Array.isArray(evidence?.preStepIds)
+    ? evidence.preStepIds
+    : Array.isArray(evidence?.initialStepIds) && Array.isArray(evidence?.incrementalStepIds)
+      ? Array.from(new Set([...evidence.initialStepIds, ...evidence.incrementalStepIds]))
+      : null;
+  const expectedAttestations = definition?.expectedAppliedSpellRarityAttestations ?? [];
+  const targetLevel = definition?.targetLevel ?? actor?.levelAfterApply;
+  const findings = [];
+  if (
+    !nonEmptyString(actor?.id) ||
+    !Number.isSafeInteger(targetLevel) ||
+    targetLevel < 1 ||
+    !nonEmptyUniqueStringArray(expectedStepIds) ||
+    actor?.levelAfterApply !== targetLevel ||
+    actor?.moduleDraftAfterApply !== null ||
+    !finalModuleStateMatches(actor?.moduleStateAfterApply, {
+      actorId: actor.id,
+      targetLevel,
+      expectedStepIds,
+      expectedExistingCharacterHistory: definition?.expectedExistingCharacterHistory ?? null,
+      expectedAppliedSpellRarityAttestations: expectedAttestations,
+    })
+  ) {
+    findings.push(
+      finding(
+        "character-build-state-mismatch",
+        subject,
+        "Character-build evidence must include the exact final module state and spell-attestation receipt for this actor."
+      )
+    );
+  }
+
+  const applyReview = evidence?.applyReview;
+  const appliedAttestations = actor?.moduleStateAfterApply?.lastAppliedSpellRarityAttestations;
+  const expectedReviewLines = validAppliedSpellRarityAttestations(appliedAttestations)
+    ? appliedAttestations.map(spellRarityAttestationReviewLine)
+    : null;
+  if (
+    !exactObjectKeys(applyReview, APPLY_REVIEW_KEYS) ||
+    !nonEmptyString(applyReview.confirmationMessage) ||
+    !Array.isArray(expectedReviewLines) ||
+    !structuredValueEquals(applyReview.reviewLines, expectedReviewLines) ||
+    !expectedReviewLines.every((line) => applyReview.confirmationMessage.includes(line))
+  ) {
+    findings.push(
+      finding(
+        "apply-review-evidence-mismatch",
+        subject,
+        "Character-build evidence must prove the exact spell-attestation disclosure shown at Apply confirmation."
+      )
+    );
+  }
+  return findings;
+}
+
 function applySafetyEvidenceFindings(smokeCase, definition) {
   const subject = String(smokeCase?.id ?? "case");
   const requestedTarget = definition?.applySafetyFailureCheckpoint;
@@ -402,12 +511,13 @@ function applySafetyEvidenceFindings(smokeCase, definition) {
       failureState.draftPresent === false &&
       failureState.observedLevel === definition.targetLevel &&
       failureState.stateLastTargetLevel === definition.targetLevel &&
-      finalModuleStateMatches(
-        failureState.observedModuleState,
-        definition.targetLevel,
-        expectedFailureCompletedStepIds,
-        expectedPreApply.moduleState
-      )
+      finalModuleStateMatches(failureState.observedModuleState, {
+        actorId: smokeCase?.actor?.id,
+        targetLevel: definition.targetLevel,
+        expectedStepIds: expectedFailureCompletedStepIds,
+        expectedExistingCharacterHistory: expectedPreApply.moduleState.existingCharacterHistory,
+        expectedAppliedSpellRarityAttestations: definition.expectedAppliedSpellRarityAttestations ?? [],
+      })
     : failureState?.expected === "pre-final" &&
       validPreApplyLevel &&
       preApplyBaselineMatches &&
@@ -613,12 +723,13 @@ function applySafetyEvidenceFindings(smokeCase, definition) {
   const finalActorStateValid =
     smokeCase?.actor?.moduleDraftAfterApply === null &&
     smokeCase?.actor?.levelAfterApply === definition.targetLevel &&
-    finalModuleStateMatches(
-      smokeCase?.actor?.moduleStateAfterApply,
-      definition.targetLevel,
-      expectedCompletedStepIds,
-      expectedPreApply.moduleState
-    ) &&
+    finalModuleStateMatches(smokeCase?.actor?.moduleStateAfterApply, {
+      actorId: smokeCase?.actor?.id,
+      targetLevel: definition.targetLevel,
+      expectedStepIds: expectedCompletedStepIds,
+      expectedExistingCharacterHistory: expectedPreApply.moduleState.existingCharacterHistory,
+      expectedAppliedSpellRarityAttestations: definition.expectedAppliedSpellRarityAttestations ?? [],
+    }) &&
     Array.isArray(smokeCase?.evidence?.rerunStepIds) &&
     smokeCase.evidence.rerunStepIds.length === 0;
   if (
@@ -909,14 +1020,81 @@ function validModuleStateSnapshot(value) {
     value &&
     typeof value === "object" &&
     exactObjectKeys(value, MODULE_STATE_KEYS) &&
-    Number.isSafeInteger(value.version) &&
-    value.version >= 1 &&
+    value.version === 3 &&
     (value.lastAppliedAt === null ||
       (nonEmptyString(value.lastAppliedAt) && Number.isFinite(Date.parse(value.lastAppliedAt)))) &&
     (value.lastTargetLevel === null ||
       (Number.isSafeInteger(value.lastTargetLevel) && value.lastTargetLevel >= 1)) &&
-    uniqueStringArray(value.completedStepIds)
+    uniqueStringArray(value.completedStepIds) &&
+    validAppliedSpellRarityAttestations(value.lastAppliedSpellRarityAttestations)
   );
+}
+
+function validAppliedSpellRarityAttestations(value) {
+  if (!Array.isArray(value)) return false;
+  const identities = new Set();
+  for (const attestation of value) {
+    if (
+      !exactObjectKeys(attestation, APPLIED_SPELL_ATTESTATION_KEYS) ||
+      attestation.version !== 1 ||
+      attestation.kind !== "spell-rarity-access" ||
+      attestation.trust !== "player-attestation" ||
+      attestation.status !== "attested" ||
+      !boundedText(attestation.subjectLabel, 200) ||
+      !["rules-access", "reported-gm-permission"].includes(attestation.claimedBasis) ||
+      !boundedText(attestation.reason, 500) ||
+      !boundedText(attestation.authorUserId, 200) ||
+      !boundedText(attestation.authorName, 200) ||
+      !nonEmptyString(attestation.attestedAt) ||
+      !Number.isFinite(Date.parse(attestation.attestedAt)) ||
+      !exactObjectKeys(attestation.subject, SPELL_ATTESTATION_SUBJECT_KEYS) ||
+      !boundedText(attestation.subject.actorId, 200) ||
+      !boundedText(attestation.subject.slotId, 200) ||
+      !boundedText(attestation.subject.stepId, 200) ||
+      !Number.isSafeInteger(attestation.subject.targetLevel) ||
+      attestation.subject.targetLevel < 1 ||
+      attestation.subject.targetLevel > 20 ||
+      !Number.isSafeInteger(attestation.subject.stepLevel) ||
+      attestation.subject.stepLevel < 1 ||
+      attestation.subject.stepLevel > 20 ||
+      !boundedText(attestation.subject.destinationKey, 200) ||
+      !["common", "uncommon", "rare", "unique"].includes(attestation.subject.stepRarityCeiling) ||
+      !["common", "uncommon", "rare", "unique"].includes(attestation.subject.worldRarityCeiling) ||
+      !Array.isArray(attestation.selectedSpells) ||
+      attestation.selectedSpells.length === 0
+    ) {
+      return false;
+    }
+    const identity = `${attestation.subject.actorId}:${attestation.subject.slotId}`;
+    if (identities.has(identity)) return false;
+    identities.add(identity);
+    const spellUuids = new Set();
+    for (const spell of attestation.selectedSpells) {
+      const keys = spell && typeof spell === "object" && !Array.isArray(spell) ? Object.keys(spell) : [];
+      if (
+        !SPELL_SELECTION_REQUIRED_KEYS.every((key) => keys.includes(key)) ||
+        keys.some((key) => !SPELL_SELECTION_ALLOWED_KEYS.includes(key)) ||
+        spell.slotId !== attestation.subject.slotId ||
+        !boundedText(spell.packId, 200) ||
+        !boundedText(spell.documentId, 200) ||
+        !boundedText(spell.uuid, 500) ||
+        spell.uuid !== `Compendium.${spell.packId}.Item.${spell.documentId}` ||
+        spell.itemType !== "spell" ||
+        spell.featType !== null ||
+        !boundedText(spell.name, 200) ||
+        (spell.level !== null &&
+          (!Number.isSafeInteger(spell.level) || spell.level < 0 || spell.level > 10)) ||
+        (Object.hasOwn(spell, "slug") &&
+          spell.slug !== null &&
+          !boundedText(spell.slug, 200)) ||
+        spellUuids.has(spell.uuid)
+      ) {
+        return false;
+      }
+      spellUuids.add(spell.uuid);
+    }
+  }
+  return true;
 }
 
 function validExpectedPreApplyBaseline(value) {
@@ -940,23 +1118,117 @@ function exactModuleStateMatches(value, expected) {
     value.lastTargetLevel === expected.lastTargetLevel &&
     JSON.stringify([...value.completedStepIds].sort()) ===
       JSON.stringify([...expected.completedStepIds].sort()) &&
-    structuredValueEquals(value.existingCharacterHistory, expected.existingCharacterHistory)
+    structuredValueEquals(value.existingCharacterHistory, expected.existingCharacterHistory) &&
+    structuredValueEquals(
+      value.lastAppliedSpellRarityAttestations,
+      expected.lastAppliedSpellRarityAttestations
+    )
   );
 }
 
-function finalModuleStateMatches(value, targetLevel, expectedStepIds, expectedPreApplyModuleState) {
+function finalModuleStateMatches(
+  value,
+  {
+    actorId,
+    targetLevel,
+    expectedStepIds,
+    expectedExistingCharacterHistory,
+    expectedAppliedSpellRarityAttestations,
+  }
+) {
   return (
     validModuleStateSnapshot(value) &&
-    validModuleStateSnapshot(expectedPreApplyModuleState) &&
+    nonEmptyString(actorId) &&
     nonEmptyString(value.lastAppliedAt) &&
     Number.isFinite(Date.parse(value.lastAppliedAt)) &&
-    value.version === expectedPreApplyModuleState.version &&
+    value.version === 3 &&
     value.lastTargetLevel === targetLevel &&
     uniqueStringArray(expectedStepIds) &&
     expectedStepIds.length > 0 &&
     JSON.stringify([...expectedStepIds].sort()) === JSON.stringify([...value.completedStepIds].sort()) &&
-    structuredValueEquals(value.existingCharacterHistory, expectedPreApplyModuleState.existingCharacterHistory)
+    structuredValueEquals(value.existingCharacterHistory, expectedExistingCharacterHistory) &&
+    appliedSpellRarityAttestationsMatch(
+      value.lastAppliedSpellRarityAttestations,
+      actorId,
+      targetLevel,
+      expectedStepIds,
+      expectedAppliedSpellRarityAttestations
+    )
   );
+}
+
+function appliedSpellRarityAttestationsMatch(value, actorId, targetLevel, expectedStepIds, expected) {
+  if (!validAppliedSpellRarityAttestations(value) || !Array.isArray(expected)) return false;
+  if (value.length !== expected.length) return false;
+  const expectedBySlotId = new Map();
+  for (const entry of expected) {
+    if (
+      !exactObjectKeys(entry, EXPECTED_SPELL_ATTESTATION_KEYS) ||
+      !boundedText(entry.slotId, 200) ||
+      !boundedText(entry.stepId, 200) ||
+      !boundedText(entry.destinationKey, 200) ||
+      !Number.isSafeInteger(entry.stepLevel) ||
+      entry.stepLevel < 1 ||
+      entry.stepLevel > 20 ||
+      !["common", "uncommon", "rare", "unique"].includes(entry.stepRarityCeiling) ||
+      !["common", "uncommon", "rare", "unique"].includes(entry.worldRarityCeiling) ||
+      !["rules-access", "reported-gm-permission"].includes(entry.claimedBasis) ||
+      !boundedText(entry.reason, 500) ||
+      !validExpectedSpellSelections(entry.selectedSpells) ||
+      expectedBySlotId.has(entry.slotId)
+    ) {
+      return false;
+    }
+    expectedBySlotId.set(entry.slotId, entry);
+  }
+  return value.every((attestation) => {
+    const expectedAttestation = expectedBySlotId.get(attestation.subject.slotId);
+    return (
+      expectedAttestation !== undefined &&
+      attestation.subject.actorId === actorId &&
+      attestation.subject.targetLevel === targetLevel &&
+      attestation.subject.stepId === expectedAttestation.stepId &&
+      attestation.subject.stepLevel === expectedAttestation.stepLevel &&
+      attestation.subject.destinationKey === expectedAttestation.destinationKey &&
+      attestation.subject.stepRarityCeiling === expectedAttestation.stepRarityCeiling &&
+      attestation.subject.worldRarityCeiling === expectedAttestation.worldRarityCeiling &&
+      expectedStepIds.includes(attestation.subject.stepId) &&
+      expectedStepIds.includes(attestation.subject.slotId) &&
+      attestation.claimedBasis === expectedAttestation.claimedBasis &&
+      attestation.reason === expectedAttestation.reason &&
+      structuredValueEquals(
+        attestation.selectedSpells
+          .map(({ uuid, name, level }) => ({ uuid, name, level }))
+          .sort((left, right) => left.uuid.localeCompare(right.uuid)),
+        [...expectedAttestation.selectedSpells].sort((left, right) => left.uuid.localeCompare(right.uuid))
+      )
+    );
+  });
+}
+
+function validExpectedSpellSelections(value) {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (selection) =>
+        exactObjectKeys(selection, EXPECTED_SPELL_SELECTION_KEYS) &&
+        boundedText(selection.uuid, 500) &&
+        boundedText(selection.name, 200) &&
+        (selection.level === null ||
+          (Number.isSafeInteger(selection.level) && selection.level >= 0 && selection.level <= 10))
+    ) &&
+    new Set(value.map((selection) => selection.uuid)).size === value.length
+  );
+}
+
+function spellRarityAttestationReviewLine(attestation) {
+  const basis =
+    attestation.claimedBasis === "rules-access"
+      ? "Character or rules Access"
+      : "GM permission reported by player";
+  const spells = attestation.selectedSpells.map((spell) => spell.name).join(", ") || "no selected spells";
+  return `Player attestation — not GM authorization: ${attestation.subjectLabel}; ${basis}; ${spells}; recorded by ${attestation.authorName} at ${attestation.attestedAt}; reason: ${attestation.reason}`;
 }
 
 function structuredValueEquals(left, right) {
@@ -1987,6 +2259,10 @@ function summarizeCases(cases) {
 
 function nonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function boundedText(value, maximumLength) {
+  return nonEmptyString(value) && value.trim().length <= maximumLength;
 }
 
 function manifestReconciliationFindings(items, manifest, subject) {

@@ -359,9 +359,16 @@ export interface SpellChoiceStepPane {
   destinationLabel: string;
   sourceName: string;
   rarityAccess: {
+    visible: boolean;
     available: boolean;
     granted: boolean;
     locked: boolean;
+    state: "none" | "unresolved" | "stale" | "attested" | "unused";
+    basisLabel: string | null;
+    reason: string | null;
+    authorName: string | null;
+    attestedAt: string | null;
+    descriptionId: string;
   };
   filterGroups: PickerFilterGroupPane[];
   selectedSpells: Array<{

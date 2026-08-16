@@ -126,7 +126,66 @@ describe("wayfinder invalidation helpers", () => {
     ]);
     expect(scrollById.size).toBe(0);
   });
+
+  it("preserves player attestations on ordinary spell clear but removes them on dependency invalidation", () => {
+    const slotId = "spell-choice-wizard-level-1";
+    const draft = createEmptyDraft(1);
+    draft.spellChoices[slotId] = [selection(slotId, "spell", "forbidding-ward")];
+    draft.spellRarityAttestations[slotId] = unresolvedAttestation(slotId);
+    const state = {
+      draft,
+      previewValueByStepId: new Map<string, string>(),
+      pickerFiltersByStepId: new Map<string, PickerFilterState>(),
+      recentlyInvalidatedStepIds: new Set<string>(),
+      scrollById: new Map<string, number>(),
+    };
+    const hooks = {
+      resetAncestryBoostDraft: () => false,
+      resetBackgroundBoostDraft: () => false,
+      resetClassBoostDraft: () => false,
+    };
+
+    expect(clearSelectionState(state, slotId, hooks)).toBe(1);
+    expect(draft.spellChoices[slotId]).toBeUndefined();
+    expect(draft.spellRarityAttestations[slotId]).toEqual(unresolvedAttestation(slotId));
+
+    expect(invalidateSelectionState(state, slotId, hooks)).toEqual([slotId]);
+    expect(draft.spellRarityAttestations[slotId]).toBeUndefined();
+  });
+
+  it("includes attestation-only spell slots in prefix invalidation", () => {
+    const slotId = "spell-choice-wizard-level-1";
+    const draft = createEmptyDraft(1);
+    draft.spellRarityAttestations[slotId] = unresolvedAttestation(slotId);
+    const state = {
+      draft,
+      previewValueByStepId: new Map<string, string>(),
+      pickerFiltersByStepId: new Map<string, PickerFilterState>(),
+      recentlyInvalidatedStepIds: new Set<string>(),
+      scrollById: new Map<string, number>(),
+    };
+
+    expect(
+      invalidateSelectionsByPrefix(state, SLOT_PREFIXES.spellChoice, {
+        resetAncestryBoostDraft: () => false,
+        resetBackgroundBoostDraft: () => false,
+        resetClassBoostDraft: () => false,
+      })
+    ).toEqual([slotId]);
+    expect(draft.spellRarityAttestations).toEqual({});
+  });
 });
+
+function unresolvedAttestation(slotId: string) {
+  return {
+    version: 1 as const,
+    kind: "spell-rarity-access" as const,
+    trust: "player-attestation" as const,
+    status: "unresolved" as const,
+    slotId,
+    migratedFrom: "legacy-boolean" as const,
+  };
+}
 
 function selection(slotId: string, itemType: string, documentId: string) {
   return {

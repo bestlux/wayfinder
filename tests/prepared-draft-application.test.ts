@@ -1,22 +1,69 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  applyDraftToActor,
+  applyDraftToActor as applyDraftToActorWithAuthority,
   type DraftApplyCheckpointHook,
   type DraftApplyPhase,
   DraftApplyPhaseError,
-  finalizeRecoveredDraftOnActor,
+  finalizeRecoveredDraftOnActor as finalizeRecoveredDraftOnActorWithAuthority,
 } from "../src/actor-updater";
 import {
   executePreparedDraftApplication,
-  prepareDraftApplication,
+  prepareDraftApplication as prepareDraftApplicationWithAuthority,
 } from "../src/actor-updater/prepared-draft-application";
+import { DRAFT_FLAG } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
 import type { ActorItemLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import { enqueueActorOperation } from "../src/shared/actor-operation-queue";
 import type { PendingStep, SpellChoiceStep } from "../src/types";
+import {
+  capturePersistedDraftPrecondition,
+  evaluatePersistedDraftWriteGuardHook,
+  PersistedDraftWriteGuard,
+  updateActorWithPersistedDraftPrecondition,
+  WayfinderDraftWriteConflictError,
+} from "../src/wayfinder/application/draft-write-guard";
 import { WayfinderDraftNotReadyError } from "../src/wayfinder/domain/step-evaluation";
 import { createLanguageChoiceStep } from "../src/wayfinder/domain/step-types";
 import { buildActorHarness, classSelectionStep, selection, setGamePacks } from "./support/actor-updater-fixtures";
+
+const TEST_ACTOR_AUTHORITY = () => true;
+const TEST_SELECTION_ELIGIBILITY = () => true;
+
+function prepareDraftApplication(
+  actor: Parameters<typeof prepareDraftApplicationWithAuthority>[0],
+  draft: Parameters<typeof prepareDraftApplicationWithAuthority>[1],
+  steps: Parameters<typeof prepareDraftApplicationWithAuthority>[2],
+  options: Parameters<typeof prepareDraftApplicationWithAuthority>[3] = {}
+) {
+  return prepareDraftApplicationWithAuthority(actor, draft, steps, {
+    validateActorAuthority: TEST_ACTOR_AUTHORITY,
+    ...options,
+  });
+}
+
+function applyDraftToActor(
+  actor: Parameters<typeof applyDraftToActorWithAuthority>[0],
+  draft: Parameters<typeof applyDraftToActorWithAuthority>[1],
+  steps: Parameters<typeof applyDraftToActorWithAuthority>[2],
+  options: Partial<Parameters<typeof applyDraftToActorWithAuthority>[3]> = {}
+) {
+  return applyDraftToActorWithAuthority(actor, draft, steps, {
+    validateActorAuthority: TEST_ACTOR_AUTHORITY,
+    spellRarityCeiling: "common",
+    validateSelectionEligibility: TEST_SELECTION_ELIGIBILITY,
+    ...options,
+  });
+}
+
+function finalizeRecoveredDraftOnActor(
+  actor: Parameters<typeof finalizeRecoveredDraftOnActorWithAuthority>[0],
+  options: Omit<Parameters<typeof finalizeRecoveredDraftOnActorWithAuthority>[1], "validateActorAuthority">
+) {
+  return finalizeRecoveredDraftOnActorWithAuthority(actor, {
+    validateActorAuthority: TEST_ACTOR_AUTHORITY,
+    ...options,
+  });
+}
 
 const PHASE_IDS: DraftApplyPhase[] = [
   "singleton-replacements",
@@ -394,6 +441,65 @@ describe("prepared draft application", () => {
     ]);
   });
 
+  it("preserves a final-boundary draft conflict as the phase-error cause without writing", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    const conflict = new WayfinderDraftWriteConflictError();
+
+    await expect(
+      executePreparedDraftApplication(prepared, {
+        beforeFinalActorUpdate: () => {
+          throw conflict;
+        },
+        resolveFinalActorUpdate: () => ({ "flags.test.applied": true }),
+      })
+    ).rejects.toMatchObject({
+      phase: "finalize-actor",
+      failureKind: "operation",
+      checkpoint: { checkpointId: "write:final-actor-update:before" },
+      cause: conflict,
+      partialReceipt: { actorUpdatePaths: [] },
+    });
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("rechecks selected spell eligibility immediately before the spell mutation phase", async () => {
+    const { actor } = buildActorHarness();
+    setGamePacks({
+      "pf2e.spells-srd": {
+        "detect-magic": { name: "Detect Magic", type: "spell", system: { level: { value: 0 } } },
+      },
+    });
+    const draft = createEmptyDraft(1);
+    const step = spellChoiceStep(1);
+    draft.spellChoices[step.slotId] = [
+      selection(step.slotId, "pf2e.spells-srd", "detect-magic", "spell", "Detect Magic"),
+    ];
+    let eligible = true;
+    const validateSelectionEligibility = vi.fn(() => eligible);
+    const prepared = await prepareDraftApplication(actor as never, draft, [step], {
+      validateSelectionEligibility,
+    });
+    expect(validateSelectionEligibility).toHaveBeenCalledTimes(1);
+
+    await expect(
+      executePreparedDraftApplication(prepared, {
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.checkpointId === "phase:spell-choices:before") {
+            eligible = false;
+          }
+        },
+      })
+    ).rejects.toMatchObject({
+      phase: "spell-choices",
+      failureKind: "operation",
+      checkpoint: null,
+    });
+    expect(validateSelectionEligibility).toHaveBeenCalledTimes(2);
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
   it.each([
     "before",
     "after",
@@ -492,6 +598,22 @@ describe("prepared draft application", () => {
     expect(actor.update).not.toHaveBeenCalled();
   });
 
+  it("requires an authority validator at the actor-updater facade", () => {
+    const { actor } = buildActorHarness();
+    expect(() => applyDraftToActorWithAuthority(actor as never, createEmptyDraft(1), [], undefined as never)).toThrow(
+      "current user can no longer modify this PF2E character"
+    );
+  });
+
+  it("requires an authority validator at the prepared boundary", async () => {
+    const { actor } = buildActorHarness();
+    await expect(prepareDraftApplicationWithAuthority(actor as never, createEmptyDraft(1), [])).rejects.toThrow(
+      "current user can no longer modify this PF2E character"
+    );
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
   it("records a completed phase receipt before emitting its after checkpoint", async () => {
     const { actor } = buildActorHarness();
     const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
@@ -581,6 +703,34 @@ describe("prepared draft application", () => {
     release?.();
     await Promise.all([first, second]);
     expect(secondStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not coalesce otherwise-identical applies with distinct final persistence executors", async () => {
+    const { actor } = buildActorHarness();
+    const draft = createEmptyDraft(1);
+    let release: (() => void) | null = null;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const firstPersistence = vi.fn(async (actorUpdate: Record<string, unknown>) => {
+      await barrier;
+      return actor.update(actorUpdate);
+    });
+    const secondPersistence = vi.fn((actorUpdate: Record<string, unknown>) => actor.update(actorUpdate));
+
+    const first = applyDraftToActor(actor as never, draft, [], {
+      persistFinalActorUpdate: firstPersistence,
+    });
+    const second = applyDraftToActor(actor as never, draft, [], {
+      persistFinalActorUpdate: secondPersistence,
+    });
+
+    expect(second).not.toBe(first);
+    await vi.waitFor(() => expect(firstPersistence).toHaveBeenCalledOnce());
+    expect(secondPersistence).not.toHaveBeenCalled();
+    release?.();
+    await Promise.all([first, second]);
+    expect(secondPersistence).toHaveBeenCalledOnce();
   });
 
   it("serializes different drafts for the same actor", async () => {
@@ -1158,6 +1308,81 @@ describe("prepared draft application", () => {
       "write:final-actor-update:after",
       "phase:finalize-actor:after",
     ]);
+  });
+
+  it("vetoes recovered finalization when another draft propagates at pre-update", async () => {
+    const { actor } = buildActorHarness();
+    const initial = createEmptyDraft(5);
+    initial.applyAttemptStepIds = ["class-level-1"];
+    const external = structuredClone(initial);
+    external.applyAttemptStepIds = ["background-level-1"];
+    let persisted: unknown = initial;
+    const guard = new PersistedDraftWriteGuard(initial);
+    Object.assign(actor, { getFlag: () => persisted });
+    actor.update.mockImplementation(async (update: Record<string, unknown>, operation?: Record<string, unknown>) => {
+      persisted = external;
+      if (evaluatePersistedDraftWriteGuardHook(actor as never, update, operation) === false) {
+        return undefined;
+      }
+      persisted = update[DRAFT_FLAG];
+      return actor;
+    });
+
+    const apply = finalizeRecoveredDraftOnActor(actor as never, {
+      recoveryActorUpdate: {},
+      resolveFinalActorUpdate: () => ({ [DRAFT_FLAG]: null }),
+      beforeFinalActorUpdate: () => guard.assertCurrent(initial),
+      persistFinalActorUpdate: (actorUpdate) =>
+        updateActorWithPersistedDraftPrecondition(
+          actor as never,
+          actorUpdate,
+          capturePersistedDraftPrecondition(actor as never, 5, guard)
+        ),
+    });
+
+    await expect(apply).rejects.toMatchObject({
+      phase: "finalize-actor",
+      checkpoint: expect.objectContaining({ checkpointId: "write:final-actor-update:before" }),
+      cause: expect.any(WayfinderDraftWriteConflictError),
+    });
+    expect(persisted).toBe(external);
+  });
+
+  it("vetoes normal Apply when another draft propagates at pre-update", async () => {
+    const { actor } = buildActorHarness();
+    const initial = createEmptyDraft(5);
+    initial.applyAttemptStepIds = ["class-level-1"];
+    const external = structuredClone(initial);
+    external.applyAttemptStepIds = ["background-level-1"];
+    let persisted: unknown = initial;
+    const guard = new PersistedDraftWriteGuard(initial);
+    Object.assign(actor, { getFlag: () => persisted });
+    actor.update.mockImplementation(async (update: Record<string, unknown>, operation?: Record<string, unknown>) => {
+      persisted = external;
+      if (evaluatePersistedDraftWriteGuardHook(actor as never, update, operation) === false) {
+        return undefined;
+      }
+      persisted = update[DRAFT_FLAG];
+      return actor;
+    });
+
+    const apply = applyDraftToActor(actor as never, initial, [], {
+      finalActorUpdate: { [DRAFT_FLAG]: null },
+      beforeFinalActorUpdate: () => guard.assertCurrent(initial),
+      persistFinalActorUpdate: (actorUpdate) =>
+        updateActorWithPersistedDraftPrecondition(
+          actor as never,
+          actorUpdate,
+          capturePersistedDraftPrecondition(actor as never, 5, guard)
+        ),
+    });
+
+    await expect(apply).rejects.toMatchObject({
+      phase: "finalize-actor",
+      checkpoint: expect.objectContaining({ checkpointId: "write:final-actor-update:before" }),
+      cause: expect.any(WayfinderDraftWriteConflictError),
+    });
+    expect(persisted).toBe(external);
   });
 
   it("carries deferred actor paths from a partial Apply into recovery-only finalization", async () => {

@@ -4,6 +4,7 @@ import { createEmptyDraft } from "../src/draft-service";
 import type { LanguageChoiceStep, OptionContext, OptionRecord, PendingStep, SelectionRef } from "../src/types";
 import { buildSelectionPane } from "../src/wayfinder/application/build-selection-pane-service";
 import { buildLanguageChoicePane } from "../src/wayfinder/panes/language-choice-pane";
+import { createSpellRarityAttestation } from "../src/wayfinder/spell-choice/rarity-attestation";
 
 const EMPTY_CONTEXT: OptionContext = {
   ancestrySlug: null,
@@ -618,16 +619,22 @@ describe("wayfinder selection pane service", () => {
       selectedLabel: "Added to draft",
     });
     expect(pane.rarityAccess).toEqual({
+      visible: true,
       available: true,
       granted: false,
-      locked: true,
+      locked: false,
+      state: "none",
+      basisLabel: null,
+      reason: null,
+      authorName: null,
+      attestedAt: null,
+      descriptionId: "wayfinder-spell-attestation-note-unknown-spell-choice-cleric-rank-1-level-1",
     });
   });
 
   it("explicitly grants restricted spell access without changing other spell policy", async () => {
     const draft = createEmptyDraft(1);
     const slotId = "spell-choice-witch-cantrips-level-1";
-    draft.spellRarityAccess[slotId] = true;
     const step: PendingStep = {
       id: slotId,
       level: 1,
@@ -664,9 +671,21 @@ describe("wayfinder selection pane service", () => {
         restrictToCommon: true,
       },
     };
+    draft.spellRarityAttestations[slotId] = createSpellRarityAttestation({
+      actorId: "actor-1",
+      step,
+      targetLevel: 1,
+      worldRarityCeiling: "common",
+      claimedBasis: "rules-access",
+      reason: "Witch patron grants Access.",
+      authorUserId: "user-1",
+      authorName: "Player",
+      attestedAt: "2026-08-16T12:00:00.000Z",
+    });
     let optionStep: PendingStep | null = null;
 
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
+      actorId: "actor-1",
       draft,
       searchByStepId: new Map(),
       pickerFiltersByStepId: new Map(),
@@ -701,9 +720,16 @@ describe("wayfinder selection pane service", () => {
       maxRank: 0,
     });
     expect(pane?.kind === "spell-choice" && pane.rarityAccess).toEqual({
+      visible: true,
       available: true,
       granted: true,
       locked: false,
+      state: "attested",
+      basisLabel: "Character or rules Access",
+      reason: "Witch patron grants Access.",
+      authorName: "Player",
+      attestedAt: "2026-08-16T12:00:00.000Z",
+      descriptionId: "wayfinder-spell-attestation-note-actor-1-spell-choice-witch-cantrips-level-1",
     });
     expect(pane?.kind === "spell-choice" && pane.options[0]?.rankLabel).toBe("Cantrip");
   });

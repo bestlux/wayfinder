@@ -29,6 +29,14 @@ export function createSelectionInvalidationService(
 
   const invalidateByPrefix = (prefix: string): string[] => invalidateSelectionsByPrefix(state, prefix, resetHooks);
   const invalidate = (slotId: string): string[] => invalidateSelectionState(state, slotId, resetHooks);
+  const invalidateOrphanedSpellChoicesForSteps = (steps: readonly PendingStep[]): string[] => {
+    const activeSpellSlotIds = new Set(steps.flatMap((step) => (step.kind === "spell-choice" ? [step.slotId] : [])));
+    const candidateSlotIds = new Set([
+      ...Object.keys(state.draft.spellChoices),
+      ...Object.keys(state.draft.spellRarityAttestations),
+    ]);
+    return [...candidateSlotIds].flatMap((slotId) => (activeSpellSlotIds.has(slotId) ? [] : invalidate(slotId)));
+  };
 
   return {
     clearSelection(slotId: string): number {
@@ -116,6 +124,14 @@ export function createSelectionInvalidationService(
       return invalidateMatchingPlanSteps(await deps.buildPlan(), invalidate, (step) => {
         return step.kind === "spell-choice" && step.spellChoice?.dependsOn === dependency;
       });
+    },
+
+    invalidateOrphanedSpellChoicesForSteps(steps: readonly PendingStep[]): string[] {
+      return invalidateOrphanedSpellChoicesForSteps(steps);
+    },
+
+    async invalidateOrphanedSpellChoices(): Promise<string[]> {
+      return invalidateOrphanedSpellChoicesForSteps((await deps.buildPlan()).steps);
     },
 
     async invalidateClassChoicesByDependency(dependency: "class" | "deity"): Promise<string[]> {

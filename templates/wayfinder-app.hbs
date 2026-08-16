@@ -179,6 +179,26 @@
     </section>
   {{/if}}
 
+  {{#if lastAppliedSpellRarityAttestations.length}}
+    <section class="wayfinder-attestation-receipt" aria-label="Last Apply player spell attestations">
+      <p class="eyebrow">Last Apply receipt</p>
+      <h3>Player spell attestations</h3>
+      <p class="attestation-disclaimer">Player attestation — not GM authorization.</p>
+      {{#each lastAppliedSpellRarityAttestations}}
+        <article>
+          <h4>{{subjectLabel}}</h4>
+          <dl>
+            <div><dt>Claimed basis</dt><dd>{{basisLabel}}</dd></div>
+            <div><dt>Reason</dt><dd>{{reason}}</dd></div>
+            <div><dt>Recorded by</dt><dd>{{authorName}}</dd></div>
+            <div><dt>Recorded at</dt><dd><time datetime="{{attestedAt}}">{{attestedAt}}</time></dd></div>
+            <div><dt>Selected spells</dt><dd>{{selectedSpellNames}}</dd></div>
+          </dl>
+        </article>
+      {{/each}}
+    </section>
+  {{/if}}
+
   <footer class="wayfinder-footer">
     <div class="footer-support">
       <button type="button" class="footer-clear" data-wayfinder-action="clear-draft" {{#if lifecycleBusy}}disabled{{/if}}>Clear Draft</button>

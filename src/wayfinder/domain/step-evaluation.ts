@@ -12,7 +12,13 @@ import { getStepModeLabel } from "./step-types.js";
 
 export type WayfinderStepReadinessState = "complete" | "incomplete" | "excess" | "invalid";
 
-export type WayfinderStepIssueCode = "missing-choice" | "too-many-choices" | "manual-review" | "dependency-review";
+export type WayfinderStepIssueCode =
+  | "missing-choice"
+  | "too-many-choices"
+  | "manual-review"
+  | "dependency-review"
+  | "access-attestation"
+  | "selection-ineligible";
 
 export interface WayfinderStepIssue {
   code: WayfinderStepIssueCode;

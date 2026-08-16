@@ -18,3 +18,16 @@ export function canUseWayfinder(actor: any): boolean {
 
   return false;
 }
+
+export class WayfinderActorAuthorityError extends Error {
+  constructor() {
+    super("The current user can no longer modify this PF2E character.");
+    this.name = "WayfinderActorAuthorityError";
+  }
+}
+
+export function assertCanUseWayfinder(actor: unknown): void {
+  if (!canUseWayfinder(actor)) {
+    throw new WayfinderActorAuthorityError();
+  }
+}

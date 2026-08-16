@@ -58,7 +58,7 @@
       },
       "SpellRarityCeiling": {
         "Name": "Player max eligible rarity",
-        "Hint": "Spells up to this rarity appear without the per-step access control. Players can include higher rarities per step with GM approval unless Unique is selected. Tradition, rank, cantrip, curriculum, and fixed spell restrictions still apply.",
+        "Hint": "Spells up to this rarity appear without a per-step attestation. For higher rarities, players must record character or rules Access, or GM permission reported by the player, unless Unique is selected. This record is not verified GM authorization. Tradition, rank, cantrip, curriculum, and fixed spell restrictions still apply.",
         "Choices": {
           "Common": "Common",
           "Uncommon": "Uncommon",

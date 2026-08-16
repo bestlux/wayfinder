@@ -43,6 +43,7 @@ interface ChooseSelectionOptionDependencies {
   invalidateClassChoicesByDependency: (dependency: "class" | "deity") => Promise<string[]>;
   invalidateBranchSelectionsByDependency: (dependency: "class" | "deity") => Promise<string[]>;
   invalidateSpellChoicesByDependency: (dependency: "class" | "class-branch") => Promise<string[]>;
+  invalidateOrphanedSpellChoices?: () => Promise<string[]>;
   resetAncestryBoostDraft: () => boolean;
   resetBackgroundBoostDraft: () => boolean;
   resetClassBoostDraft: () => boolean;
@@ -312,6 +313,13 @@ export async function chooseSelectionOption(
       step.branch?.flag === "arcaneSchool"
     ) {
       statusNote = "Arcane school changed. Wayfinder marked dependent school choices for review.";
+    }
+  }
+
+  if (previousSelection?.uuid !== selection.uuid) {
+    const invalidatedSpellChoices = (await deps.invalidateOrphanedSpellChoices?.()) ?? [];
+    if (invalidatedSpellChoices.length > 0 && !statusNote) {
+      statusNote = "Wayfinder removed spell choices and player attestations from vanished steps.";
     }
   }
 

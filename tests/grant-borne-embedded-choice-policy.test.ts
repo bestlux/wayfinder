@@ -759,6 +759,7 @@ async function buildGrantSteps(
       applyAttemptStepIds: [],
       applyCompletedStepIds: [],
       applyRecoveryActorUpdate: {},
+      applySpellRarityAttestations: [],
       selections: {},
       boosts: {
         ancestry: {
@@ -781,7 +782,7 @@ async function buildGrantSteps(
       languageChoices: {},
       classChoices: {},
       spellChoices: {},
-      spellRarityAccess: {},
+      spellRarityAttestations: {},
       updatedAt: null,
     },
     targetLevel: 2,

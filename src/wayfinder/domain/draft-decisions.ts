@@ -126,7 +126,12 @@ export function listDraftDecisions(draft: DraftState): DraftDecision[] {
 }
 
 export function listDraftDecisionSlotIds(draft: DraftState): string[] {
-  return Array.from(new Set(listDraftDecisions(draft).map((decision) => decision.slotId)));
+  return Array.from(
+    new Set([
+      ...listDraftDecisions(draft).map((decision) => decision.slotId),
+      ...Object.keys(draft.spellRarityAttestations),
+    ])
+  );
 }
 
 export function readDraftStepDecision(draft: DraftState, step: DraftDecisionStep): DraftDecision | null {

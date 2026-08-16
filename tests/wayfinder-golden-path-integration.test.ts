@@ -1,12 +1,26 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { inspectActor } from "../src/actor-inspector";
-import { applyDraftToActor } from "../src/actor-updater";
+import { applyDraftToActor as applyDraftToActorWithAuthority } from "../src/actor-updater";
 import { getEffectiveSingletonDocument } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 import { fetchSelectionDocument } from "../src/pack/access";
 import type { DraftState, PendingStep, SelectionRef } from "../src/types";
 import { buildWayfinderAppPlan } from "../src/wayfinder/application/wayfinder-plan-builder-service";
 import { buildActorHarness, selection, setGamePacks } from "./support/actor-updater-fixtures";
+
+const TEST_ACTOR_AUTHORITY = () => true;
+
+function applyDraftToActor(
+  actor: Parameters<typeof applyDraftToActorWithAuthority>[0],
+  draft: Parameters<typeof applyDraftToActorWithAuthority>[1],
+  steps: Parameters<typeof applyDraftToActorWithAuthority>[2]
+) {
+  return applyDraftToActorWithAuthority(actor, draft, steps, {
+    validateActorAuthority: TEST_ACTOR_AUTHORITY,
+    spellRarityCeiling: "common",
+    validateSelectionEligibility: () => true,
+  });
+}
 
 const ALL_ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 const testGlobals = globalThis as typeof globalThis & { CONFIG?: any };

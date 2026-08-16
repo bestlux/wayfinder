@@ -1,6 +1,12 @@
-import type { ExistingCharacterHistory, ExistingCharacterHistoryEntry, PendingStep } from "../../types.js";
+import type {
+  AppliedSpellRarityAttestation,
+  ExistingCharacterHistory,
+  ExistingCharacterHistoryEntry,
+  PendingStep,
+} from "../../types.js";
 import { type WayfinderDraftReadiness, type WayfinderStepIssue } from "../domain/step-evaluation.js";
 import { modeLabel } from "../plan-service.js";
+import { spellRarityAttestationBasisLabel } from "../spell-choice/rarity-attestation.js";
 import type { ActivePane, StepNavRow, SummaryItem } from "../view-models.js";
 import type { DraftSaveState } from "./draft-persistence-service.js";
 
@@ -17,6 +23,7 @@ export interface WayfinderSummaryDocuments {
 }
 
 export interface BuildWayfinderContextArgs {
+  actorId: string;
   actorName: string;
   currentLevel: number;
   targetLevel: number;
@@ -29,6 +36,7 @@ export interface BuildWayfinderContextArgs {
   readiness: WayfinderDraftReadiness;
   canImportExistingHistory?: boolean;
   existingCharacterHistory?: ExistingCharacterHistory | null;
+  lastAppliedSpellRarityAttestations?: AppliedSpellRarityAttestation[];
   draftSaveState?: DraftSaveState;
   lifecycleBusy?: boolean;
 }
@@ -55,6 +63,7 @@ export interface WayfinderTemplateContext {
   canGoNext: boolean;
   canImportExistingHistory: boolean;
   existingCharacterHistory: ExistingCharacterHistoryView | null;
+  lastAppliedSpellRarityAttestations: AppliedSpellRarityAttestationView[];
   draftSave: DraftSaveView;
   lifecycleBusy: boolean;
 }
@@ -79,6 +88,16 @@ export interface ExistingCharacterHistoryView {
     level: number;
     entries: Array<ExistingCharacterHistoryEntry & { mapped: boolean; review: boolean }>;
   }>;
+}
+
+export interface AppliedSpellRarityAttestationView {
+  stepId: string;
+  subjectLabel: string;
+  basisLabel: string;
+  reason: string;
+  authorName: string;
+  attestedAt: string;
+  selectedSpellNames: string;
 }
 
 export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Promise<WayfinderTemplateContext> {
@@ -137,6 +156,17 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
     canGoNext: activeStepIndex >= 0 && activeStepIndex < args.steps.length - 1,
     canImportExistingHistory: args.canImportExistingHistory ?? false,
     existingCharacterHistory: buildExistingCharacterHistoryView(args.existingCharacterHistory ?? null),
+    lastAppliedSpellRarityAttestations: (args.lastAppliedSpellRarityAttestations ?? [])
+      .filter((attestation) => attestation.subject.actorId === args.actorId)
+      .map((attestation) => ({
+        stepId: attestation.subject.stepId,
+        subjectLabel: attestation.subjectLabel,
+        basisLabel: spellRarityAttestationBasisLabel(attestation.claimedBasis),
+        reason: attestation.reason,
+        authorName: attestation.authorName,
+        attestedAt: attestation.attestedAt,
+        selectedSpellNames: attestation.selectedSpells.map((spell) => spell.name).join(", ") || "None",
+      })),
     draftSave,
     lifecycleBusy,
   };

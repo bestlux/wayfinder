@@ -13,7 +13,7 @@ import { FeedbackSupportApp } from "../feedback-support-app.js";
 import { fetchSelectionDocument } from "../pack/access.js";
 import { getOptionsForStep, resolveSelection } from "../pack/options.js";
 import { getPickerInfoState } from "../pack/picker-state.js";
-import { canUseWayfinder } from "../permissions.js";
+import { assertCanUseWayfinder, canUseWayfinder, WayfinderActorAuthorityError } from "../permissions.js";
 import type { SelectorActorLike } from "../selector-application.js";
 import { getSpellRarityCeilingSetting } from "../settings.js";
 import { enqueueActorOperation } from "../shared/actor-operation-queue.js";
@@ -28,6 +28,7 @@ import type {
   PickerFilterKind,
   PickerFilterState,
   SelectionRef,
+  SpellRarityAttestationBasis,
 } from "../types.js";
 import {
   bindWayfinderInteractions,
@@ -68,16 +69,21 @@ import {
 import { DraftPersistenceCoordinator, type DraftSaveState } from "./application/draft-persistence-service.js";
 import {
   assertDraftSideEffectAllowed,
+  assertFailedApplyRecoveryCandidateCurrent,
+  captureDraftSideEffectPrecondition,
+  capturePersistedDraftPrecondition,
   clearDraftWithWriteGuard,
   PersistedDraftWriteGuard,
   readPersistedDraftSnapshot,
   saveDraftWithWriteGuard,
+  updateActorWithPersistedDraftPrecondition,
   WayfinderDraftWriteConflictError,
 } from "./application/draft-write-guard.js";
 import {
   buildExistingCharacterHistory,
   withExistingCharacterHistory,
 } from "./application/existing-character-history-service.js";
+import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
 import {
   buildContextNote,
   buildOptionContext,
@@ -117,7 +123,20 @@ import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
 import { emptyPickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
 import { evaluateWayfinderStep, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
-import { canGrantRestrictedSpellRarityAccess, withRestrictedSpellRarityAccess } from "./spell-choice/rarity-access.js";
+import {
+  canGrantRestrictedSpellRarityAccess,
+  type SpellRarityCeiling,
+  withRestrictedSpellRarityAccess,
+} from "./spell-choice/rarity-access.js";
+import {
+  buildAppliedSpellRarityAttestations,
+  buildSpellRarityAttestationReviewLines,
+  createSpellRarityAttestation,
+  evaluateSpellRarityAttestation,
+  frozenSpellRarityAttestationForStep,
+  listSpellRarityAttestationProblems,
+  listSpellRarityRecoveryProblems,
+} from "./spell-choice/rarity-attestation.js";
 import { buildHistoricalSpellChoicePlanningNote } from "./spell-choice-service.js";
 import type { ActivePane, ManualStepPane } from "./view-models.js";
 
@@ -178,6 +197,12 @@ interface DialogV2Like {
     window?: { title: string };
     yes?: { default?: boolean; icon?: string; label: string };
     no?: { default?: boolean; icon?: string; label: string };
+  }) => Promise<unknown>;
+  input?: (config: {
+    content: string;
+    modal?: boolean;
+    window?: { title: string };
+    ok?: { icon?: string; label: string };
   }) => Promise<unknown>;
 }
 
@@ -273,6 +298,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
   }
 
+  static refreshDraftFromActorUpdate(actor: WayfinderActorLike): void {
+    for (const app of this.#openApps) {
+      if (app.actor.id === actor.id) {
+        app.#queueExternalDraftRefresh();
+      }
+    }
+  }
+
   constructor(options: { actor: WayfinderActorLike }) {
     super({
       uniqueId: `${MODULE_ID}-${options.actor.id}`,
@@ -364,9 +397,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const draft = this.#ensureDraft(snapshot.level);
     const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
     const plan = await this._buildRenderPlan(snapshot, draft);
+    if (!this.#semanticCommands.busy && !hasApplyRecoveryState(draft)) {
+      const orphanedSpellChoices = this.#selectionInvalidationService(draft).invalidateOrphanedSpellChoicesForSteps(
+        plan.steps
+      );
+      if (orphanedSpellChoices.length > 0) {
+        this.#statusNote = "Wayfinder removed spell choices and player attestations from vanished steps.";
+        this.#draftDidChange();
+      }
+    }
     const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
     const readiness = await evaluateWayfinderDraftReadiness(plan.steps, (step) =>
-      this.#evaluateStep(step, effectiveBuildState, draft)
+      this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks)
     );
     const evaluationsByStepId = new Map(
       plan.steps.map((step, index) => [step.id, readiness.evaluations[index] as WayfinderStepEvaluation])
@@ -395,6 +437,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     });
     return Object.assign(
       await buildWayfinderContext({
+        actorId: this.actor.id,
         actorName: this.actor.name,
         currentLevel: snapshot.level,
         targetLevel: plan.targetLevel,
@@ -413,6 +456,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         readiness,
         canImportExistingHistory: !snapshot.isBlank,
         existingCharacterHistory: state.existingCharacterHistory,
+        lastAppliedSpellRarityAttestations: state.lastAppliedSpellRarityAttestations,
         draftSaveState: this.#draftPersistence.state,
         lifecycleBusy: this.#semanticCommands.barrierActive,
       }),
@@ -739,9 +783,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       case "toggle-spell-rarity-access":
         await this.#toggleSpellRarityAccess(action.stepId);
         break;
+      case "remove-spell-rarity-attestation":
+        await this.#removeSpellRarityAttestation(action.stepId);
+        break;
       case "clear-option":
         this.#statusNote = null;
-        this.#selectionInvalidationService().clearSelection(action.stepId);
+        {
+          const invalidation = this.#selectionInvalidationService();
+          invalidation.clearSelection(action.stepId);
+          await invalidation.invalidateOrphanedSpellChoices();
+        }
         this.render(false);
         break;
       case "target-up":
@@ -863,7 +914,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#draft = normalizeDraft(this.actor.getFlag(MODULE_ID, "draft"), defaultTargetLevel);
       this.#draftPersistence.initialize(this.#draft);
     } else {
-      this.#adoptLiveRecoveryDraft(defaultTargetLevel);
+      this.#reconcileLiveRecoveryDraft(defaultTargetLevel);
     }
     return this.#draft;
   }
@@ -965,6 +1016,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     const selectionPane = await buildSelectionPane(step, effectiveBuildState, {
+      actorId: this.actor.id,
       draft: this.#requireDraft(),
       searchByStepId: this.#searchByStepId,
       pickerFiltersByStepId: this.#pickerFiltersByStepId,
@@ -1032,7 +1084,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           withRestrictedSpellRarityAccess(
             selectionStep,
             getSpellRarityCeilingSetting(),
-            draft.spellRarityAccess[selectionStep.slotId] === true
+            this.#spellRarityAccessGranted(draft, selectionStep)
           ),
           optionContext
         );
@@ -1064,6 +1116,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       invalidateClassChoicesByDependency: invalidation.invalidateClassChoicesByDependency,
       invalidateBranchSelectionsByDependency: invalidation.invalidateBranchSelectionsByDependency,
       invalidateSpellChoicesByDependency: invalidation.invalidateSpellChoicesByDependency,
+      invalidateOrphanedSpellChoices: invalidation.invalidateOrphanedSpellChoices,
       resetAncestryBoostDraft: () => this.#resetAncestryBoostDraft(),
       resetBackgroundBoostDraft: () => this.#resetBackgroundBoostDraft(),
       resetClassBoostDraft: () => this.#resetClassBoostDraft(),
@@ -1208,7 +1261,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           withRestrictedSpellRarityAccess(
             selectionStep,
             getSpellRarityCeilingSetting(),
-            draft.spellRarityAccess[selectionStep.slotId] === true
+            this.#spellRarityAccessGranted(draft, selectionStep)
           ),
           optionContext
         );
@@ -1244,23 +1297,75 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const draft = this.#requireDraft();
     const plan = await this.#buildPlan(inspectActor(this.actor), draft);
     const step = plan.steps.find((entry) => entry.id === stepId);
-    if (!step || !canGrantRestrictedSpellRarityAccess(step, getSpellRarityCeilingSetting())) {
+    if (!step) {
       return;
     }
 
-    if ((draft.spellChoices[step.slotId] ?? []).length > 0) {
-      ui.notifications.warn("Clear the spells chosen for this step before changing rarity access.");
+    const worldRarityCeiling = getSpellRarityCeilingSetting();
+    const evaluation = evaluateSpellRarityAttestation(this.actor.id, draft, step, worldRarityCeiling);
+    if (evaluation.granted) {
+      if ((draft.spellChoices[step.slotId] ?? []).length > 0) {
+        ui.notifications.warn("Clear the spells chosen for this step before removing its player attestation.");
+        return;
+      }
+      delete draft.spellRarityAttestations[step.slotId];
+      this.#statusNote = "The restricted-spell player attestation was removed.";
+      this.render(false);
       return;
     }
 
-    if (draft.spellRarityAccess[step.slotId] === true) {
-      delete draft.spellRarityAccess[step.slotId];
-      this.#statusNote = "Restricted spell rarities are hidden for this step.";
-    } else {
-      draft.spellRarityAccess[step.slotId] = true;
-      this.#statusNote =
-        "Restricted spell rarities are available for this step. Choose only options granted by the rules or approved by the GM.";
+    if (!canGrantRestrictedSpellRarityAccess(step, worldRarityCeiling)) {
+      if (evaluation.attestation) {
+        delete draft.spellRarityAttestations[step.slotId];
+        this.#statusNote = "The obsolete restricted-spell player attestation was removed.";
+        this.render(false);
+      }
+      return;
     }
+
+    const input = await requestSpellRarityAttestationInput();
+    if (!input) return;
+    const currentUser = game.user;
+    if (!currentUser?.id || !currentUser.name) {
+      ui.notifications.warn("Wayfinder could not identify the user recording this player attestation.");
+      return;
+    }
+    try {
+      draft.spellRarityAttestations[step.slotId] = createSpellRarityAttestation({
+        actorId: this.actor.id,
+        step,
+        targetLevel: draft.targetLevel,
+        worldRarityCeiling,
+        claimedBasis: input.claimedBasis,
+        reason: input.reason,
+        authorUserId: currentUser.id,
+        authorName: currentUser.name,
+        attestedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("PF2E Wayfinder could not record the restricted-spell player attestation", error);
+      ui.notifications.warn("Enter a reason before recording this player attestation.");
+      return;
+    }
+    this.#statusNote =
+      "Restricted spell rarities are available through a player attestation. This is not GM authorization.";
+    this.render(false);
+  }
+
+  async #removeSpellRarityAttestation(stepId: string): Promise<void> {
+    this.#statusNote = null;
+    const draft = this.#requireDraft();
+    const step = (await this.#buildPlan(inspectActor(this.actor), draft)).steps.find((entry) => entry.id === stepId);
+    if (!step) return;
+    const attestation = draft.spellRarityAttestations[step.slotId];
+    if (!attestation) return;
+    const evaluation = evaluateSpellRarityAttestation(this.actor.id, draft, step, getSpellRarityCeilingSetting());
+    if (evaluation.granted && (draft.spellChoices[step.slotId] ?? []).length > 0) {
+      ui.notifications.warn("Clear the spells chosen for this step before removing its player attestation.");
+      return;
+    }
+    delete draft.spellRarityAttestations[step.slotId];
+    this.#statusNote = "The restricted-spell player attestation was removed.";
     this.render(false);
   }
 
@@ -1330,8 +1435,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const plan = await this.#buildPlan();
     const trainingChanged = syncSkillTrainingSelections(this.#draftAdjustmentState(), plan.steps);
     const languageChanged = syncLanguageChoiceSelections(this.#draftAdjustmentState(), effectiveBuildState, plan.steps);
+    const spellAttestationsChanged =
+      (await this.#selectionInvalidationService().invalidateOrphanedSpellChoices()).length > 0;
 
-    if (trainingChanged && languageChanged) {
+    if (spellAttestationsChanged) {
+      this.#statusNote =
+        "Wayfinder removed a player spell attestation whose subject is no longer in the projected build.";
+    } else if (trainingChanged && languageChanged) {
       this.#statusNote =
         "Wayfinder marked drafted skill training and language choices for review after the projected build changed.";
     } else if (trainingChanged) {
@@ -1478,10 +1588,55 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   async #evaluateStep(
     step: PendingStep,
     effectiveBuildState?: EffectiveBuildState,
-    draft = this.#requireDraft()
+    draft = this.#requireDraft(),
+    steps?: PendingStep[],
+    skillRanks?: Record<string, number>
   ): Promise<WayfinderStepEvaluation> {
     const buildState = effectiveBuildState ?? (await getEffectiveBuildState(this.actor, draft));
-    return evaluateWayfinderStep(step, draft, this.#recentlyInvalidatedStepIds, buildState);
+    const evaluation = await evaluateWayfinderStep(step, draft, this.#recentlyInvalidatedStepIds, buildState);
+    if (step.kind !== "spell-choice") {
+      return evaluation;
+    }
+
+    const attestation = evaluateSpellRarityAttestation(this.actor.id, draft, step, getSpellRarityCeilingSetting());
+    if (attestation.state === "unresolved" || attestation.state === "stale") {
+      const message =
+        attestation.state === "unresolved"
+          ? `${step.title}: review the migrated restricted-spell player attestation before Apply.`
+          : `${step.title}: re-record or remove the stale restricted-spell player attestation.`;
+      return {
+        state: "invalid",
+        complete: false,
+        status: "Review player attestation",
+        issue: {
+          code: "access-attestation",
+          stepId: step.id,
+          slotId: step.slotId,
+          title: step.title,
+          message,
+        },
+      };
+    }
+
+    if (evaluation.complete && steps && skillRanks) {
+      for (const selection of draft.spellChoices[step.slotId] ?? []) {
+        if (!(await this.#validateSelectionEligibility(selection, step, draft, steps, skillRanks))) {
+          return {
+            state: "invalid",
+            complete: false,
+            status: "Selected spell no longer eligible",
+            issue: {
+              code: "selection-ineligible",
+              stepId: step.id,
+              slotId: step.slotId,
+              title: step.title,
+              message: `${step.title}: a selected spell no longer satisfies the current source, rank, or access policy.`,
+            },
+          };
+        }
+      }
+    }
+    return evaluation;
   }
 
   #isTrainingStepComplete(step: PendingStep): boolean {
@@ -1495,11 +1650,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (!adjustDraftTargetLevel(draft, snapshot.level, delta)) {
       return;
     }
+    if ((await this.#selectionInvalidationService(draft).invalidateOrphanedSpellChoices()).length > 0) {
+      this.#statusNote = "Wayfinder removed player spell attestations whose steps are no longer in the plan.";
+    }
     this.render(false);
   }
 
   async #saveDraft(): Promise<void> {
-    this.#adoptLiveRecoveryDraft();
+    if (this.#reconcileLiveRecoveryDraft() === "conflict") return;
     try {
       this.#draftPersistence.schedule(this.#requireDraft(), { force: true });
       if (this.#draftPersistence.state.phase === "error") {
@@ -1516,7 +1674,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   async #retryDraftSave(): Promise<void> {
-    this.#adoptLiveRecoveryDraft();
+    if (this.#reconcileLiveRecoveryDraft() === "conflict") return;
     try {
       this.#draftPersistence.schedule(this.#requireDraft());
       await this.#draftPersistence.retry();
@@ -1533,12 +1691,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     draft.applyAttemptStepIds = [];
     draft.applyCompletedStepIds = [];
     draft.applyRecoveryActorUpdate = {};
+    draft.applySpellRarityAttestations = [];
     this.#draftPersistence.schedule(draft);
     this.#patchDraftSaveStatus(this.#draftPersistence.state);
   }
 
   #allowDraftMutation(): boolean {
-    this.#adoptLiveRecoveryDraft();
+    if (this.#reconcileLiveRecoveryDraft() === "conflict") {
+      return false;
+    }
     if (!hasApplyRecoveryState(this.#requireDraft())) {
       return true;
     }
@@ -1549,16 +1710,89 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return false;
   }
 
-  #adoptLiveRecoveryDraft(defaultTargetLevel = inspectActor(this.actor).level): boolean {
+  #reconcileLiveRecoveryDraft(
+    defaultTargetLevel = inspectActor(this.actor).level
+  ): "none" | "acknowledge" | "adopt" | "conflict" {
     const liveDraft = normalizeDraft(this.actor.getFlag(MODULE_ID, "draft"), defaultTargetLevel);
     if (!hasApplyRecoveryState(liveDraft) || JSON.stringify(liveDraft) === JSON.stringify(this.#draft)) {
-      return false;
+      return "none";
     }
+    const decision = decideExternalDraftRefresh({
+      localDraft: this.#draft,
+      liveDraft,
+      currentLevel: defaultTargetLevel,
+      saveState: this.#draftPersistence.state,
+      lifecycleBusy: this.#semanticCommands.busy,
+    });
+    if (decision === "acknowledge") {
+      this.#draftWriteGuard.acceptCurrent(liveDraft);
+      return decision;
+    }
+    if (decision === "adopt") {
+      this.#draft = liveDraft;
+      this.#draftWriteGuard.acceptCurrent(liveDraft);
+      this.#draftPersistence.reset(liveDraft);
+      return decision;
+    }
+    this.#statusNote =
+      "This actor has a partial-Apply recovery draft from another client. Wayfinder kept your local work unsaved; reopen before continuing.";
+    return "conflict";
+  }
 
-    this.#draft = liveDraft;
-    this.#draftWriteGuard.acceptCurrent(liveDraft);
-    this.#draftPersistence.reset(liveDraft);
-    return true;
+  #queueExternalDraftRefresh(): void {
+    const queued = this.#semanticCommands.enqueue(async () => this.#refreshPersistedDraft());
+    if (queued !== null) {
+      void queued.catch((error: unknown) => {
+        console.error("PF2E Wayfinder failed to reconcile an externally updated draft", error);
+      });
+    }
+  }
+
+  async #refreshPersistedDraft(): Promise<void> {
+    let deferredOnce = false;
+    while (true) {
+      const currentLevel = inspectActor(this.actor).level;
+      const liveDraft = readPersistedDraftSnapshot(this.actor, currentLevel);
+      const decision = decideExternalDraftRefresh({
+        localDraft: this.#draft,
+        liveDraft,
+        currentLevel,
+        saveState: this.#draftPersistence.state,
+        lifecycleBusy: this.#semanticCommands.barrierActive,
+      });
+
+      if (decision === "defer" && !deferredOnce) {
+        deferredOnce = true;
+        await this.#draftPersistence.flush().catch(() => undefined);
+        continue;
+      }
+
+      if (decision === "acknowledge") {
+        this.#draftWriteGuard.acceptCurrent(liveDraft);
+        return;
+      }
+      if (decision === "conflict" || decision === "defer") {
+        this.#statusNote =
+          "This actor's draft changed in another client while local work was pending. Reopen Wayfinder before saving over it.";
+        ui.notifications.warn("Wayfinder detected a newer draft in another client and kept your local work unsaved.");
+        this.render(false);
+        return;
+      }
+
+      const nextDraft = liveDraft ?? createEmptyDraft(currentLevel);
+      this.#draft = nextDraft;
+      this.#draftWriteGuard.acceptCurrent(liveDraft);
+      this.#draftPersistence.reset(nextDraft);
+      this.#activeStepId = null;
+      this.#searchByStepId.clear();
+      this.#pickerFiltersByStepId.clear();
+      this.#openPickerFilterMenu = null;
+      this.#previewValueByStepId.clear();
+      this.#recentlyInvalidatedStepIds.clear();
+      this.#statusNote = "Draft refreshed from another client.";
+      this.render(false);
+      return;
+    }
   }
 
   #onDraftSaveStateChange(state: DraftSaveState): void {
@@ -1611,13 +1845,38 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   async #applyDraft(): Promise<boolean> {
     this.#statusNote = null;
-    this.#adoptLiveRecoveryDraft();
+    if (this.#reconcileLiveRecoveryDraft() === "conflict") {
+      ui.notifications.warn("Wayfinder kept your local work because another client has a recovery draft.");
+      return false;
+    }
     const snapshot = inspectActor(this.actor);
     const draft = cloneData(this.#requireDraft());
     const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
     const plan = await this.#buildPlan(snapshot, draft);
     const steps = cloneData(plan.steps);
     const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
+    const spellRarityCeiling = getSpellRarityCeilingSetting();
+    const recovering = hasApplyRecoveryState(draft);
+    const computedSpellRarityAttestations = buildAppliedSpellRarityAttestations(
+      this.actor.id,
+      draft,
+      recovering ? undefined : steps,
+      recovering ? undefined : spellRarityCeiling
+    );
+    const appliedSpellRarityAttestations = recovering
+      ? cloneData(draft.applySpellRarityAttestations)
+      : computedSpellRarityAttestations;
+    const spellRarityBlockers = (
+      recovering
+        ? listSpellRarityRecoveryProblems(this.actor.id, draft)
+        : listSpellRarityAttestationProblems(this.actor.id, draft, steps, spellRarityCeiling)
+    ).map((problem) => ({
+      code: "access-attestation" as const,
+      stepId: problem.stepId,
+      slotId: problem.slotId,
+      title: problem.title,
+      message: problem.message,
+    }));
     const applyCandidate = { value: null as DraftState | null };
     let finalizedDespiteApplyError = false;
     let result: ApplyDraftLifecycleResult;
@@ -1628,8 +1887,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         draft,
         existingCompletedStepIds: state.completedStepIds,
         existingCharacterHistory: state.existingCharacterHistory,
+        appliedSpellRarityAttestations,
         steps,
-        evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft),
+        evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks),
+        additionalBlockers: spellRarityBlockers,
+        reviewLines: buildSpellRarityAttestationReviewLines(appliedSpellRarityAttestations),
         confirmApply: confirmWayfinderApply,
         beforeApply: (applyAttemptDraft) =>
           persistApplyCandidateIfCurrent(
@@ -1645,6 +1907,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
             },
             async () => {
+              assertCanUseWayfinder(this.actor);
               this.#draftPersistence.schedule(applyAttemptDraft, { force: true });
               await this.#draftPersistence.pauseAndFlush();
               applyCandidate.value = cloneData(applyAttemptDraft);
@@ -1668,10 +1931,25 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             },
             resolveFinalActorUpdate: () =>
               buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state"))),
+            beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
+            persistFinalActorUpdate: (actorUpdate) =>
+              updateActorWithPersistedDraftPrecondition(
+                this.actor,
+                actorUpdate,
+                capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)
+              ),
             validateActorAuthority: canUseWayfinder,
+            spellRarityCeiling,
             validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
             validateSelectionEligibility: (selection, step) =>
-              this.#validateSelectionEligibility(selection, step, draft, steps, snapshot.skillRanks),
+              this.#validateSelectionEligibility(
+                selection,
+                step,
+                draft,
+                steps,
+                snapshot.skillRanks,
+                this.#applySpellRarityCeiling(draft, step, recovering)
+              ),
           }).then(() => undefined),
         finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) =>
           finalizeRecoveredDraftOnActor(this.actor, {
@@ -1691,6 +1969,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             },
             resolveFinalActorUpdate: () =>
               buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state"))),
+            beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
+            persistFinalActorUpdate: (actorUpdate) =>
+              updateActorWithPersistedDraftPrecondition(
+                this.actor,
+                actorUpdate,
+                capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)
+              ),
             recoveryActorUpdate,
             validateActorAuthority: canUseWayfinder,
           }).then(() => undefined),
@@ -1698,13 +1983,36 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     } catch (error) {
       this.#draftPersistence.resume();
       const persistedApplyCandidate = applyCandidate.value;
-      if (error instanceof WayfinderDraftWriteConflictError) {
+      let draftWriteConflict =
+        error instanceof WayfinderDraftWriteConflictError
+          ? error
+          : error instanceof DraftApplyPhaseError && error.cause instanceof WayfinderDraftWriteConflictError
+            ? error.cause
+            : null;
+      if (!draftWriteConflict && persistedApplyCandidate) {
+        const currentSnapshot = inspectActor(this.actor);
+        const currentDraft = readPersistedDraftSnapshot(this.actor, currentSnapshot.level);
+        try {
+          assertFailedApplyRecoveryCandidateCurrent(
+            this.#draftWriteGuard,
+            currentDraft,
+            error instanceof DraftApplyPhaseError ? error.phase : null
+          );
+        } catch (candidateConflict) {
+          if (candidateConflict instanceof WayfinderDraftWriteConflictError) {
+            draftWriteConflict = candidateConflict;
+          } else {
+            throw candidateConflict;
+          }
+        }
+      }
+      if (draftWriteConflict) {
         const currentSnapshot = inspectActor(this.actor);
         const currentDraft = readPersistedDraftSnapshot(this.actor, currentSnapshot.level);
         this.#draftWriteGuard.acceptCurrent(currentDraft);
         this.#draft = currentDraft ? cloneData(currentDraft) : createEmptyDraft(currentSnapshot.level);
-        this.#statusNote = error.message;
-        ui.notifications.warn(error.message);
+        this.#statusNote = draftWriteConflict.message;
+        ui.notifications.warn(draftWriteConflict.message);
         this.render(false);
         return false;
       }
@@ -1757,6 +2065,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.render(false);
         return false;
       }
+      if (error instanceof WayfinderActorAuthorityError) {
+        this.#statusNote = error.message;
+        ui.notifications.warn(error.message);
+        this.render(false);
+        return false;
+      }
       if (error instanceof WayfinderApplyDriftError) {
         this.#statusNote = error.message;
         ui.notifications.warn(error.message);
@@ -1805,13 +2119,28 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#draftWriteGuard.assertCurrent(readPersistedDraftSnapshot(this.actor, currentSnapshot.level));
   }
 
+  #spellRarityAccessGranted(draft: DraftState, step: PendingStep): boolean {
+    return evaluateSpellRarityAttestation(this.actor.id, draft, step, getSpellRarityCeilingSetting()).granted;
+  }
+
+  #applySpellRarityCeiling(draft: DraftState, step: PendingStep, recovering: boolean): SpellRarityCeiling | null {
+    if (recovering && step.kind === "spell-choice" && draft.spellRarityAttestations[step.slotId]) {
+      const frozen = frozenSpellRarityAttestationForStep(this.actor.id, draft, step);
+      if (frozen) return frozen.subject.worldRarityCeiling;
+      return getSpellRarityCeilingSetting() === "unique" ? "unique" : null;
+    }
+    return getSpellRarityCeilingSetting();
+  }
+
   async #validateSelectionEligibility(
     selection: SelectionRef,
     step: PendingStep,
     draft: DraftState,
     steps: PendingStep[],
-    skillRanks: Record<string, number>
+    skillRanks: Record<string, number>,
+    spellRarityCeiling: SpellRarityCeiling | null = getSpellRarityCeilingSetting()
   ): Promise<boolean> {
+    if (spellRarityCeiling === null) return false;
     const normalizedUuid = selection.uuid.trim().toLowerCase();
     const alreadyApplied = listActorItems(this.actor).some((item) => {
       if (sourceIdOf(item)?.trim().toLowerCase() !== normalizedUuid) return false;
@@ -1841,8 +2170,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       step.kind === "spell-choice"
         ? withRestrictedSpellRarityAccess(
             step,
-            getSpellRarityCeilingSetting(),
-            draft.spellRarityAccess[step.slotId] === true
+            spellRarityCeiling,
+            evaluateSpellRarityAttestation(this.actor.id, draft, step, spellRarityCeiling).granted
           )
         : step;
     const options = await getOptionsForStep(optionStep, optionContext);
@@ -1854,11 +2183,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       gradualBoostsEnabled: inspectActor(this.actor).gradualBoostsEnabled,
     });
     await enqueueActorOperation(this.actor, async () => {
-      assertDraftSideEffectAllowed(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard);
+      const currentLevel = inspectActor(this.actor).level;
+      assertDraftSideEffectAllowed(this.actor, currentLevel, this.#draftWriteGuard);
       const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
-      await this.actor.update({
-        [STATE_FLAG]: withExistingCharacterHistory(state, history),
-      });
+      await updateActorWithPersistedDraftPrecondition(
+        this.actor,
+        { [STATE_FLAG]: withExistingCharacterHistory(state, history) },
+        captureDraftSideEffectPrecondition(this.actor, currentLevel, this.#draftWriteGuard)
+      );
     });
     const mappedCount = history.entries.filter((entry) => entry.status === "mapped").length;
     const reviewCount = history.entries.length - mappedCount;
@@ -2007,7 +2339,7 @@ async function confirmWayfinderApply(message: string): Promise<boolean> {
     const escapeHTML = foundryApi.utils?.escapeHTML ?? fallbackEscapeHtml;
     const result = await dialog.confirm({
       window: { title: "wayfinder-pf2e.App.ApplyConfirmTitle" },
-      content: `<p>${escapeHTML(message)}</p>`,
+      content: `<p style="white-space: pre-line">${escapeHTML(message)}</p>`,
       modal: true,
       yes: { label: "wayfinder-pf2e.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
       no: { label: "wayfinder-pf2e.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
@@ -2016,6 +2348,59 @@ async function confirmWayfinderApply(message: string): Promise<boolean> {
   }
 
   return typeof globalThis.confirm === "function" ? globalThis.confirm(message) : true;
+}
+
+interface SpellRarityAttestationInput {
+  claimedBasis: SpellRarityAttestationBasis;
+  reason: string;
+}
+
+async function requestSpellRarityAttestationInput(): Promise<SpellRarityAttestationInput | null> {
+  const foundryApi = foundry as unknown as FoundryDialogApiLike;
+  const dialog = foundryApi.applications?.api?.DialogV2;
+  if (dialog?.input) {
+    const result = await dialog.input({
+      window: { title: "Record restricted-spell player attestation" },
+      modal: true,
+      content: `
+        <fieldset class="wayfinder-attestation-input">
+          <legend>Claimed basis</legend>
+          <label><input type="radio" name="claimedBasis" value="rules-access" checked> Character or rules Access</label>
+          <label><input type="radio" name="claimedBasis" value="reported-gm-permission"> GM permission reported by player</label>
+        </fieldset>
+        <label class="wayfinder-attestation-reason">
+          Reason
+          <textarea name="reason" required maxlength="500" aria-describedby="wayfinder-attestation-disclaimer"></textarea>
+        </label>
+        <p id="wayfinder-attestation-disclaimer">This is a player claim, not verified GM authorization.</p>
+      `,
+      ok: { label: "Record player attestation", icon: "fa-solid fa-pen" },
+    });
+    if (!isRecord(result)) return null;
+    return normalizeSpellRarityAttestationInput(result.claimedBasis, result.reason);
+  }
+
+  if (typeof globalThis.prompt !== "function") return null;
+  const reason = globalThis.prompt(
+    "Describe the character or rules Access supporting restricted spell selection. This records a player claim, not GM authorization."
+  );
+  return normalizeSpellRarityAttestationInput("rules-access", reason);
+}
+
+function normalizeSpellRarityAttestationInput(
+  claimedBasis: unknown,
+  reason: unknown
+): SpellRarityAttestationInput | null {
+  if (
+    (claimedBasis !== "rules-access" && claimedBasis !== "reported-gm-permission") ||
+    typeof reason !== "string" ||
+    reason.trim().length === 0 ||
+    reason.trim().length > 500
+  ) {
+    ui.notifications.warn("Enter a reason before recording this player attestation.");
+    return null;
+  }
+  return { claimedBasis, reason: reason.trim() };
 }
 
 async function confirmWayfinderClear(message: string): Promise<boolean> {
@@ -2051,6 +2436,10 @@ function fallbackEscapeHtml(value: string): string {
         return "&#39;";
     }
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isWizardArcaneSchoolItem(item: BuildStateActorItem | null | undefined): item is ArcaneSchoolActorItemLike {

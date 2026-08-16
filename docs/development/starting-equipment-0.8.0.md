@@ -1,6 +1,6 @@
 # 0.8.0 Starting Equipment Implementation Plan
 
-Status: implementation-ready planning baseline, updated 2026-08-15 after adversarial review and direct PF2E source review. No 0.8.0 production code is implied by this document.
+Status: active implementation plan, updated 2026-08-16 after adversarial review and direct PF2E source review. Story completion still requires the acceptance and release evidence named below.
 
 Architecture and rules contracts:
 
@@ -132,7 +132,9 @@ until the real acquisition executor and equipment overlay exist.
   only when the intended flag value is already durable. This rejects propagated stale-window erasure, recovery
   truncation, Clear-after-confirmation races, and post-finalization resurrection. Foundry provides no cross-browser
   compare-and-swap primitive, so two clients that both read the same old value before either update remain a declared
-  last-writer-wins residual; the guard fails closed as soon as either update propagates.
+  last-writer-wins residual. An options-scoped `preUpdateActor` guard repeats the fingerprint check at Foundry's final
+  local pre-dispatch boundary and fails closed when a competing update has propagated by then; it is not a server-side
+  compare-and-swap and cannot reject two genuinely concurrent same-old writes.
 - Provide a guarded two-browser-context canary: a GM creates one exact actor with default `NONE` and explicit player
   `OWNER`; a distinct non-GM opens the actor sheet and launches the actor-bound Wayfinder app through the real UI;
   the player context closes before exact GM cleanup.
@@ -150,18 +152,35 @@ until the real acquisition executor and equipment overlay exist.
 - This gate is exercised by `WF-080-24` and recorded in `WF-080-51`; it must not be simulated before the owning item,
   currency, and manifest boundaries exist.
 
-### WF-080-04 — Restricted-access authority and reviewable spell claims
+### WF-080-04A — Restricted-spell attestations and authority foundation
 
-Outcome: equipment uses real GM authority while spell rarity preserves its intended player-attestation model without remaining invisible.
+Outcome: spell rarity preserves its intended player-attestation model without remaining invisible, while Apply and future equipment commands gain authority seams that cannot mistake actor ownership or player claims for GM authorization.
 
 Acceptance:
 
-- Introduce focused GM-command authorization that checks current GM status in the command and again during Apply; UI visibility is not enforcement.
+- Introduce a focused current-GM principal assertion for future GM commands, distinct from actor ownership and player attestations.
+- Require current actor authority before persisting an Apply candidate and recheck it inside the serialized prepared-Apply operation; UI visibility is not enforcement.
 - Migrate each existing spell-access Boolean to an unresolved player claim, never to retroactive GM approval.
 - A spell claim records author, timestamp, subject/slot, claimed basis, and reason; it is visibly labeled as a player attestation.
-- Claims appear in final review and durable Apply outcome evidence.
+- Missing, unresolved, stale, orphaned, and newly ineligible spell claims block Apply before source resolution or actor writes.
+- Claims appear in final review and durable Apply outcome evidence after the draft clears.
 - Equipment exception requests and GM approvals are different typed records; a spell claim cannot satisfy an equipment rule.
-- Tests cover request, approve, revoke, stale facts, non-GM denial, Apply recheck, and multi-client refresh.
+- A clean open client adopts an externally updated draft; a dirty or lifecycle-busy client preserves local work and fails closed through the persisted-draft write guard.
+- Tests cover migration, attestation/revocation, stale facts, actor-authority denial, Apply recheck, durable evidence, and multi-client refresh/conflict.
+
+### WF-080-04B — Equipment request and GM-approval lifecycle
+
+Depends on: `WF-080-12`, `WF-080-13`, `WF-080-23`.
+
+Outcome: equipment exceptions use real GM-controlled records bound to stable acquisition identity and material policy facts.
+
+Acceptance:
+
+- Implement player request, current-GM approve/revoke, and stale-facts transitions as equipment-specific typed records.
+- Store authoritative approvals outside owner-writable draft evidence; a copied requester, author, role, or spell attestation is never authority.
+- Recheck approver authority, actor/draft scope, item facts, policy facts, and revocation immediately before Apply writes.
+- Refresh request and approval state across distinct player and GM clients without letting a stale client overwrite a newer decision.
+- Exercise request, approve, revoke, stale facts, non-GM denial, Apply recheck, and refresh in the guarded two-role browser lane.
 
 ### WF-080-05 — Pane discriminant cleanup
 
@@ -393,7 +412,7 @@ Acceptance:
 
 ### WF-080-32 — GM override and equipment-exception lifecycle
 
-Depends on: `WF-080-04`, `WF-080-13`, `WF-080-23`.
+Depends on: `WF-080-04B`, `WF-080-13`, `WF-080-23`.
 
 Acceptance:
 

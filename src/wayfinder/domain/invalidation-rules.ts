@@ -49,7 +49,10 @@ export function clearSelectionState(state: DraftInteractionState, slotId: string
 }
 
 export function invalidateSelectionState(state: DraftInteractionState, slotId: string, hooks: ResetHooks): string[] {
-  if (clearSelectionState(state, slotId, hooks) === 0) {
+  const clearedSelection = clearSelectionState(state, slotId, hooks);
+  const clearedAttestation = Object.prototype.hasOwnProperty.call(state.draft.spellRarityAttestations, slotId);
+  delete state.draft.spellRarityAttestations[slotId];
+  if (clearedSelection === 0 && !clearedAttestation) {
     return [];
   }
 

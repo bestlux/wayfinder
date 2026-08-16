@@ -8,6 +8,14 @@ export function createSelectionInvalidationService(state, deps) {
     };
     const invalidateByPrefix = (prefix) => invalidateSelectionsByPrefix(state, prefix, resetHooks);
     const invalidate = (slotId) => invalidateSelectionState(state, slotId, resetHooks);
+    const invalidateOrphanedSpellChoicesForSteps = (steps) => {
+        const activeSpellSlotIds = new Set(steps.flatMap((step) => (step.kind === "spell-choice" ? [step.slotId] : [])));
+        const candidateSlotIds = new Set([
+            ...Object.keys(state.draft.spellChoices),
+            ...Object.keys(state.draft.spellRarityAttestations),
+        ]);
+        return [...candidateSlotIds].flatMap((slotId) => (activeSpellSlotIds.has(slotId) ? [] : invalidate(slotId)));
+    };
     return {
         clearSelection(slotId) {
             let cleared = clearSelectionState(state, slotId, resetHooks);
@@ -96,6 +104,12 @@ export function createSelectionInvalidationService(state, deps) {
             return invalidateMatchingPlanSteps(await deps.buildPlan(), invalidate, (step) => {
                 return step.kind === "spell-choice" && step.spellChoice?.dependsOn === dependency;
             });
+        },
+        invalidateOrphanedSpellChoicesForSteps(steps) {
+            return invalidateOrphanedSpellChoicesForSteps(steps);
+        },
+        async invalidateOrphanedSpellChoices() {
+            return invalidateOrphanedSpellChoicesForSteps((await deps.buildPlan()).steps);
         },
         async invalidateClassChoicesByDependency(dependency) {
             return invalidateMatchingPlanSteps(await deps.buildPlan(), invalidate, (step) => {

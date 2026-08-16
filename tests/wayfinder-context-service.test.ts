@@ -12,6 +12,7 @@ describe("wayfinder context service", () => {
     ];
 
     const context = await buildWayfinderContext({
+      actorId: "actor-1",
       actorName: "Kyra",
       currentLevel: 1,
       targetLevel: 2,
@@ -79,6 +80,7 @@ describe("wayfinder context service", () => {
     const steps = [step("class-level-1", "Class")];
 
     const context = await buildWayfinderContext({
+      actorId: "actor-1",
       actorName: "Valeros",
       currentLevel: 1,
       targetLevel: 1,
@@ -115,6 +117,7 @@ describe("wayfinder context service", () => {
 
   it("disables apply when there are no Wayfinder-guided steps", async () => {
     const context = await buildWayfinderContext({
+      actorId: "actor-1",
       actorName: "Valeros",
       currentLevel: 1,
       targetLevel: 1,
@@ -139,8 +142,80 @@ describe("wayfinder context service", () => {
     expect(context.applyBlocker).toBeNull();
   });
 
+  it("builds a durable player-attestation receipt view without approval vocabulary", async () => {
+    const context = await buildWayfinderContext({
+      actorId: "actor-1",
+      actorName: "Ezren",
+      currentLevel: 1,
+      targetLevel: 1,
+      steps: [],
+      activeStep: null,
+      activePane: null,
+      statusNote: null,
+      summaryDocuments: {
+        ancestry: null,
+        heritage: null,
+        background: null,
+        classDocument: null,
+        deity: null,
+      },
+      readiness: await evaluateWayfinderDraftReadiness([], async (pendingStep) =>
+        blockedEvaluation(pendingStep, "missing-choice", "Missing")
+      ),
+      lastAppliedSpellRarityAttestations: [
+        {
+          version: 1,
+          kind: "spell-rarity-access",
+          trust: "player-attestation",
+          status: "attested",
+          subject: {
+            actorId: "actor-1",
+            slotId: "spell-choice-wizard-level-1",
+            stepId: "spell-choice-wizard-level-1",
+            targetLevel: 1,
+            stepLevel: 1,
+            destinationKey: "wizard-spellbook",
+            stepRarityCeiling: "common",
+            worldRarityCeiling: "common",
+          },
+          claimedBasis: "reported-gm-permission",
+          reason: "The player reports campaign permission.",
+          authorUserId: "user-1",
+          authorName: "Player One",
+          attestedAt: "2026-08-16T12:34:56.000Z",
+          subjectLabel: "Wizard spellbook",
+          selectedSpells: [
+            {
+              slotId: "spell-choice-wizard-level-1",
+              packId: "pf2e.spells-srd",
+              documentId: "forbidding-ward",
+              uuid: "Compendium.pf2e.spells-srd.Item.forbidding-ward",
+              itemType: "spell",
+              featType: null,
+              name: "Forbidding Ward",
+              level: 1,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(context.lastAppliedSpellRarityAttestations).toEqual([
+      {
+        stepId: "spell-choice-wizard-level-1",
+        subjectLabel: "Wizard spellbook",
+        basisLabel: "GM permission reported by player",
+        reason: "The player reports campaign permission.",
+        authorName: "Player One",
+        attestedAt: "2026-08-16T12:34:56.000Z",
+        selectedSpellNames: "Forbidding Ward",
+      },
+    ]);
+  });
+
   it("groups imported existing-character history by level and exposes review counts", async () => {
     const context = await buildWayfinderContext({
+      actorId: "actor-1",
       actorName: "Ezren",
       currentLevel: 5,
       targetLevel: 5,
@@ -207,6 +282,7 @@ describe("wayfinder context service", () => {
   it("keeps readiness separate while save errors and lifecycle barriers gate Apply", async () => {
     const steps = [step("class-level-1", "Class")];
     const base = {
+      actorId: "actor-1",
       actorName: "Ezren",
       currentLevel: 1,
       targetLevel: 1,

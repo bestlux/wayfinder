@@ -314,6 +314,9 @@ async function main() {
         ...incrementalCases.map((smokeCase) => ({
           ...smokeCase,
           id: `${smokeCase.id}-incremental-existing`,
+          expectedAppliedSpellRarityAttestations: (
+            smokeCase.expectedAppliedSpellRarityAttestations ?? []
+          ).filter((attestation) => attestation.stepLevel > 1),
         })),
       ]);
     } finally {

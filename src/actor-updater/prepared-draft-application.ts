@@ -25,6 +25,11 @@ import {
   evaluateWayfinderStep,
   WayfinderDraftNotReadyError,
 } from "../wayfinder/domain/step-evaluation.js";
+import type { SpellRarityCeiling } from "../wayfinder/spell-choice/rarity-access.js";
+import {
+  listSpellRarityAttestationProblems,
+  listSpellRarityRecoveryProblems,
+} from "../wayfinder/spell-choice/rarity-attestation.js";
 import { applyBoostDraft } from "./boost-application.js";
 import { createSingletonGrantItems } from "./explicit-grant-application.js";
 import { buildLanguageChoiceUpdate } from "./language-choice-application.js";
@@ -106,6 +111,7 @@ export interface PreparedDraftApplication {
   stepsBySlotId: ReadonlyMap<string, PendingStep>;
   deferredActorUpdate: Record<string, unknown>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
+  validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
   sources: PreparedSourceCatalog;
 }
 
@@ -138,6 +144,7 @@ export interface PrepareDraftApplicationDependencies {
   ) => Promise<void>;
   validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
+  spellRarityCeiling?: SpellRarityCeiling;
   validSkillSlugs?: ReadonlySet<string>;
   resolveCampaignFeatSlot: (sectionId: string, slotId: string) => CampaignFeatSlotAuthority | null;
 }
@@ -145,6 +152,9 @@ export interface PrepareDraftApplicationDependencies {
 export interface ExecutePreparedDraftApplicationOptions {
   onCheckpoint?: DraftApplyCheckpointHook;
   finalActorUpdate?: Record<string, unknown>;
+  resolveFinalActorUpdate?: () => Record<string, unknown> | Promise<Record<string, unknown>>;
+  beforeFinalActorUpdate?: () => void | Promise<void>;
+  persistFinalActorUpdate?: (actorUpdate: Record<string, unknown>) => Promise<unknown>;
 }
 
 export interface ExecuteRecoveredDraftFinalizationOptions extends ExecutePreparedDraftApplicationOptions {
@@ -190,7 +200,7 @@ export class DraftApplyPhaseError extends Error {
 }
 
 type DraftMutationActor = SelectorActorLike & {
-  update?: (updates: Record<string, unknown>) => Promise<unknown>;
+  update?: (updates: Record<string, unknown>, operation?: Record<string, unknown>) => Promise<unknown>;
 };
 
 const PHASE_IDS: readonly DraftApplyPhase[] = [
@@ -250,6 +260,25 @@ export async function prepareDraftApplication(
 
   const draft = cloneData(draftInput);
   const steps = cloneData(stepsInput);
+  const spellRarityProblems = hasDraftRecoveryState(draft)
+    ? listSpellRarityRecoveryProblems(typeof actor.id === "string" ? actor.id : "", draft)
+    : listSpellRarityAttestationProblems(
+        typeof actor.id === "string" ? actor.id : "",
+        draft,
+        steps,
+        deps.spellRarityCeiling ?? "common"
+      );
+  if (spellRarityProblems.length > 0) {
+    throw new WayfinderDraftNotReadyError(
+      spellRarityProblems.map((problem) => ({
+        code: "access-attestation",
+        stepId: problem.stepId,
+        slotId: problem.slotId,
+        title: problem.title,
+        message: problem.message,
+      }))
+    );
+  }
   await assertDraftBackedStepsReady(steps, draft);
   const boostSteps = steps.filter((step) => step.kind === "boost");
   if (boostSteps.length > 0) {
@@ -276,8 +305,8 @@ export async function prepareDraftApplication(
 
   await validateMutationCapabilities(actor, selections, steps);
   validateDraftChoiceValues(actor, draft, steps, deps.validSkillSlugs);
+  await validateSelectedEligibility(draft, steps, selections, deps.validateSelectionEligibility);
   const sources = await prepareSourceCatalog(actor, draft, steps, selections, deps);
-  await validateSelectedEligibility(draft, steps, selections, deps);
   await validatePersistenceTargets(actor, draft, steps, deps);
   validateSpellDestinations(actor, draft, steps);
 
@@ -303,6 +332,7 @@ export async function prepareDraftApplication(
       ...buildLanguageChoiceUpdate(draft, steps),
     },
     validateActorAuthority: deps.validateActorAuthority,
+    validateSelectionEligibility: deps.validateSelectionEligibility,
     sources,
   };
 }
@@ -400,9 +430,9 @@ async function validateSelectedEligibility(
   draft: DraftState,
   steps: PendingStep[],
   activeSelections: SelectionRef[],
-  deps: PrepareDraftApplicationDependencies
+  validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>
 ): Promise<void> {
-  if (!deps.validateSelectionEligibility) return;
+  if (!validateSelectionEligibility) return;
   const selectionsBySlot = new Map<string, SelectionRef[]>();
   for (const selection of activeSelections) {
     selectionsBySlot.set(selection.slotId, [...(selectionsBySlot.get(selection.slotId) ?? []), selection]);
@@ -416,7 +446,7 @@ async function validateSelectedEligibility(
 
   for (const step of steps) {
     for (const selection of selectionsBySlot.get(step.slotId) ?? []) {
-      if (!(await deps.validateSelectionEligibility(selection, step))) {
+      if (!(await validateSelectionEligibility(selection, step))) {
         throw new Error(
           `${selection.name} is no longer eligible for ${step.title}; the draft cannot be applied safely.`
         );
@@ -535,6 +565,7 @@ export async function executePreparedDraftApplication(
           await applySingletonChoiceDraft(prepared.actor, prepared.draft, prepared.steps);
           break;
         case "spell-choices":
+          await validateSpellSelections(prepared);
           await applySpellChoiceDraft(
             prepared.actor,
             prepared.draft,
@@ -627,27 +658,33 @@ async function executeFinalActorPhase(
 
   try {
     await emitCheckpoint(buildPhaseCheckpoint(phase, "before"));
+    const beforeWrite = buildWriteCheckpoint(phase, "final-actor-update", "before", 1);
+    await emitCheckpoint(beforeWrite);
+    operationFailureCheckpoint = beforeWrite;
+    await options.beforeFinalActorUpdate?.();
+    const finalActorUpdate = options.resolveFinalActorUpdate
+      ? cloneData(await options.resolveFinalActorUpdate())
+      : cloneData(options.finalActorUpdate ?? {});
     const actorUpdate = {
       ...deferredActorUpdate,
-      ...(options.finalActorUpdate ?? {}),
+      ...finalActorUpdate,
     };
     const intendedActorUpdate = cloneData(actorUpdate);
     const intendedActorUpdatePaths = Object.keys(intendedActorUpdate);
-    const finalActorUpdatePaths = Object.keys(options.finalActorUpdate ?? {});
+    const finalActorUpdatePaths = Object.keys(finalActorUpdate);
     if (!actor.update) {
       if (intendedActorUpdatePaths.length > 0) {
         throw new Error("The actor cannot persist Wayfinder's final update.");
       }
     } else {
       const preexistingConvergedPaths = convergedActorUpdatePaths(actor, intendedActorUpdate, intendedActorUpdatePaths);
-      const beforeWrite = buildWriteCheckpoint(phase, "final-actor-update", "before", 1);
-      await emitCheckpoint(beforeWrite);
-      operationFailureCheckpoint = beforeWrite;
       let updatedActor: unknown;
       let updateRejected = false;
       let updateFailure: unknown;
       try {
-        updatedActor = await actor.update(actorUpdate);
+        updatedActor = options.persistFinalActorUpdate
+          ? await options.persistFinalActorUpdate(actorUpdate)
+          : await actor.update(actorUpdate);
       } catch (error) {
         updateRejected = true;
         updateFailure = error;
@@ -699,6 +736,30 @@ async function executeFinalActorPhase(
       deferredActorUpdate
     );
   }
+}
+
+async function validateSpellSelections(prepared: PreparedDraftApplication): Promise<void> {
+  const validateSelectionEligibility = prepared.validateSelectionEligibility;
+  if (!validateSelectionEligibility) return;
+  for (const step of prepared.steps) {
+    if (step.kind !== "spell-choice") continue;
+    for (const selection of prepared.draft.spellChoices[step.slotId] ?? []) {
+      if (!(await validateSelectionEligibility(selection, step))) {
+        throw new Error(
+          `${selection.name} is no longer eligible for ${step.title}; the draft cannot be applied safely.`
+        );
+      }
+    }
+  }
+}
+
+function hasDraftRecoveryState(draft: DraftState): boolean {
+  return (
+    draft.applyAttemptStepIds.length > 0 ||
+    draft.applyCompletedStepIds.length > 0 ||
+    Object.keys(draft.applyRecoveryActorUpdate).length > 0 ||
+    draft.applySpellRarityAttestations.length > 0
+  );
 }
 
 function buildPhaseCheckpoint(phase: DraftApplyPhase, boundary: "before" | "after"): DraftApplyCheckpoint {
@@ -936,7 +997,7 @@ function assertActorAuthority(
   actor: DraftMutationActor,
   validateActorAuthority?: (actor: DraftMutationActor) => boolean
 ): void {
-  if (validateActorAuthority && !validateActorAuthority(actor)) {
+  if (!validateActorAuthority || !validateActorAuthority(actor)) {
     throw new Error("The current user can no longer modify this PF2E character.");
   }
 }

@@ -2,11 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { DRAFT_FLAG, STATE_FLAG } from "../src/constants";
 import { createEmptyDraft, createEmptyState } from "../src/draft-service";
 import { enqueueActorOperation } from "../src/shared/actor-operation-queue";
-import type { PendingStep } from "../src/types";
+import type { AppliedSpellRarityAttestation, PendingStep } from "../src/types";
 import {
   applyDraftLifecycle,
   assertRecoveryDraftWriteAllowed,
   type BuildApplyFinalActorUpdate,
+  buildApplyAttemptDraft,
   buildClearDraftConfirmationMessage,
   buildSaveDraftUpdate,
   clearDraftLifecycle,
@@ -49,6 +50,7 @@ describe("wayfinder draft lifecycle service", () => {
     };
     live.applyCompletedStepIds = ["ancestry-level-1"];
     live.applyAttemptStepIds = ["class-level-1", "background-level-1"];
+    live.applySpellRarityAttestations = [spellAttestationEvidence()];
 
     expect(() => assertRecoveryDraftWriteAllowed(live, structuredClone(live))).not.toThrow();
 
@@ -67,6 +69,37 @@ describe("wayfinder draft lifecycle service", () => {
     const truncated = structuredClone(live);
     truncated.applyAttemptStepIds = ["background-level-1"];
     expect(() => assertRecoveryDraftWriteAllowed(live, truncated)).toThrow(WayfinderRecoveryDraftConflictError);
+
+    const tamperedAttestation = structuredClone(live);
+    tamperedAttestation.applySpellRarityAttestations[0]!.reason = "Changed after the partial Apply.";
+    expect(() => assertRecoveryDraftWriteAllowed(live, tamperedAttestation)).toThrow(
+      WayfinderRecoveryDraftConflictError
+    );
+  });
+
+  it("freezes the original Apply attestation evidence across a rebuilt retry", () => {
+    const frozenEvidence = spellAttestationEvidence();
+    const draft = createEmptyDraft(1);
+    draft.applyAttemptStepIds = ["spell-choice-wizard-level-1"];
+    draft.applySpellRarityAttestations = [frozenEvidence];
+    const replacementEvidence = structuredClone(frozenEvidence);
+    replacementEvidence.reason = "A newly recomputed reason that must not replace the frozen receipt.";
+
+    const retry = buildApplyAttemptDraft(draft, [step("class-level-1")], [replacementEvidence]);
+
+    expect(retry.applySpellRarityAttestations).toEqual([frozenEvidence]);
+    expect(retry.applySpellRarityAttestations).not.toBe(draft.applySpellRarityAttestations);
+    replacementEvidence.selectedSpells[0]!.name = "Changed after capture";
+    expect(retry.applySpellRarityAttestations[0]?.selectedSpells[0]?.name).toBe("Forbidding Ward");
+  });
+
+  it("preserves an intentionally empty frozen attestation receipt across recovery", () => {
+    const draft = createEmptyDraft(1);
+    draft.applyAttemptStepIds = ["class-level-1"];
+
+    const retry = buildApplyAttemptDraft(draft, [step("background-level-1")], [spellAttestationEvidence()]);
+
+    expect(retry.applySpellRarityAttestations).toEqual([]);
   });
 
   it("re-reads the live recovery draft inside the actor queue before saving", async () => {
@@ -154,9 +187,11 @@ describe("wayfinder draft lifecycle service", () => {
 
   it("finalizes a zero-step recovery without rerunning the prepared Apply path", async () => {
     const draft = createEmptyDraft(5);
+    const frozenEvidence = spellAttestationEvidence();
     draft.applyCompletedStepIds = ["ancestry-level-1"];
     draft.applyAttemptStepIds = ["class-level-1"];
     draft.applyRecoveryActorUpdate = { "system.skills.arcana.rank": 1 };
+    draft.applySpellRarityAttestations = [frozenEvidence];
     const order: string[] = [];
     const applyDraftToActor = vi.fn(async () => {
       order.push("apply");
@@ -171,6 +206,7 @@ describe("wayfinder draft lifecycle service", () => {
             [STATE_FLAG]: expect.objectContaining({
               completedStepIds: ["ancestry-level-1", "class-level-1"],
               lastTargetLevel: 5,
+              lastAppliedSpellRarityAttestations: [frozenEvidence],
             }),
           })
         );
@@ -186,12 +222,16 @@ describe("wayfinder draft lifecycle service", () => {
       confirmApply: (message) => {
         order.push("confirm");
         expect(message).toContain("No build steps remain to reapply");
+        expect(message).toContain("Player attestation — not GM authorization");
         return true;
       },
+      appliedSpellRarityAttestations: [],
+      reviewLines: ["Player attestation — not GM authorization: Wizard spells"],
       beforeApply: async (attempt) => {
         order.push("persist");
         expect(attempt.applyCompletedStepIds).toEqual(["ancestry-level-1", "class-level-1"]);
         expect(attempt.applyAttemptStepIds).toEqual([]);
+        expect(attempt.applySpellRarityAttestations).toEqual([frozenEvidence]);
       },
       applyDraftToActor,
       finalizeRecoveredDraft,
@@ -408,6 +448,68 @@ describe("wayfinder draft lifecycle service", () => {
     expect(applyDraftToActor).not.toHaveBeenCalled();
   });
 
+  it("blocks draft-level attestation issues before confirmation or candidate persistence", async () => {
+    const confirmApply = vi.fn(() => true);
+    const beforeApply = vi.fn(async () => undefined);
+    const applyDraftToActor = vi.fn(async () => undefined);
+    const blocker = {
+      code: "access-attestation" as const,
+      stepId: "spell-choice-wizard-level-1",
+      slotId: "spell-choice-wizard-level-1",
+      title: "Wizard spells",
+      message: "Review the migrated player attestation.",
+    };
+
+    const result = await applyDraftLifecycle({
+      actorName: "Ezren",
+      currentLevel: 1,
+      draft: createEmptyDraft(1),
+      steps: [step("spell-choice-wizard-level-1")],
+      evaluateStep: async () => readyEvaluation(),
+      additionalBlockers: [blocker],
+      confirmApply,
+      beforeApply,
+      applyDraftToActor,
+    });
+
+    expect(result).toEqual({ kind: "warning", warning: "draft-not-ready", blockers: [blocker] });
+    expect(confirmApply).not.toHaveBeenCalled();
+    expect(beforeApply).not.toHaveBeenCalled();
+    expect(applyDraftToActor).not.toHaveBeenCalled();
+  });
+
+  it("reviews and atomically retains player-attestation evidence in the final state", async () => {
+    const evidence = spellAttestationEvidence();
+    const confirmApply = vi.fn(() => true);
+    let finalUpdate: Record<string, unknown> | null = null;
+
+    await applyDraftLifecycle({
+      actorName: "Ezren",
+      currentLevel: 1,
+      draft: createEmptyDraft(1),
+      steps: [step("spell-choice-wizard-level-1")],
+      evaluateStep: async () => readyEvaluation(),
+      appliedSpellRarityAttestations: [evidence],
+      reviewLines: ["Player attestation — not GM authorization: Wizard spells"],
+      confirmApply,
+      applyDraftToActor: async (buildUpdate) => {
+        finalUpdate = buildUpdate();
+      },
+    });
+
+    expect(confirmApply).toHaveBeenCalledWith(
+      "Apply 1 Wayfinder step(s) to Ezren?\n\nPlayer attestation — not GM authorization: Wizard spells"
+    );
+    expect(finalUpdate).toEqual(
+      expect.objectContaining({
+        [DRAFT_FLAG]: null,
+        [STATE_FLAG]: expect.objectContaining({
+          lastAppliedSpellRarityAttestations: [evidence],
+        }),
+      })
+    );
+  });
+
   it("does not apply when the confirmed candidate cannot be flushed", async () => {
     const applyDraftToActor = vi.fn(async () => undefined);
     await expect(
@@ -546,7 +648,14 @@ describe("wayfinder draft lifecycle service", () => {
   it("cancels Clear without touching persistence and describes discarded choices", async () => {
     const draft = createEmptyDraft(3);
     draft.manual.one = true;
-    draft.spellRarityAccess.spells = true;
+    draft.spellRarityAttestations.spells = {
+      version: 1,
+      kind: "spell-rarity-access",
+      trust: "player-attestation",
+      status: "unresolved",
+      slotId: "spells",
+      migratedFrom: "legacy-boolean",
+    };
     draft.boosts.levels[1] = ["str", "dex"];
     const confirmClear = vi.fn(() => false);
     const clearPersistedDraft = vi.fn(async () => undefined);
@@ -621,7 +730,14 @@ describe("wayfinder draft lifecycle service", () => {
       loreChoices: { lore: "Library Lore" },
     };
     draft.languageChoices.languages = ["draconic"];
-    draft.spellRarityAccess.spells = true;
+    draft.spellRarityAttestations.spells = {
+      version: 1,
+      kind: "spell-rarity-access",
+      trust: "player-attestation",
+      status: "unresolved",
+      slotId: "spells",
+      migratedFrom: "legacy-boolean",
+    };
     draft.boosts.ancestry.modeTouched = true;
     draft.boosts.ancestry.voluntary.touched = true;
     draft.boosts.ancestry.voluntary.flaws = ["str"];
@@ -633,6 +749,43 @@ describe("wayfinder draft lifecycle service", () => {
     expect(buildClearDraftConfirmationMessage(1)).toContain("1 drafted decision?");
   });
 });
+
+function spellAttestationEvidence(): AppliedSpellRarityAttestation {
+  return {
+    version: 1,
+    kind: "spell-rarity-access",
+    trust: "player-attestation",
+    status: "attested",
+    subject: {
+      actorId: "actor-1",
+      slotId: "spell-choice-wizard-level-1",
+      stepId: "spell-choice-wizard-level-1",
+      targetLevel: 1,
+      stepLevel: 1,
+      destinationKey: "wizard-spellbook",
+      stepRarityCeiling: "common",
+      worldRarityCeiling: "common",
+    },
+    claimedBasis: "rules-access",
+    reason: "Wizard feature grants Access.",
+    authorUserId: "user-1",
+    authorName: "Player One",
+    attestedAt: "2026-08-16T12:34:56.000Z",
+    subjectLabel: "Wizard spells",
+    selectedSpells: [
+      {
+        slotId: "spell-choice-wizard-level-1",
+        packId: "pf2e.spells-srd",
+        documentId: "forbidding-ward",
+        uuid: "Compendium.pf2e.spells-srd.Item.forbidding-ward",
+        itemType: "spell",
+        featType: null,
+        name: "Forbidding Ward",
+        level: 1,
+      },
+    ],
+  };
+}
 
 function step(id: string): PendingStep {
   return {

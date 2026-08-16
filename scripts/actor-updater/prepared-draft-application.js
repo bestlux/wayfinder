@@ -13,6 +13,7 @@ import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { activeClassArchetypeProfile } from "../wayfinder/class-archetype/registry.js";
 import { maxProficiencyRank, projectDraftSkillRanks } from "../wayfinder/domain/skill-rank-projection.js";
 import { assertDraftBackedStepsReady, evaluateWayfinderDraftReadiness, evaluateWayfinderStep, WayfinderDraftNotReadyError, } from "../wayfinder/domain/step-evaluation.js";
+import { listSpellRarityAttestationProblems, listSpellRarityRecoveryProblems, } from "../wayfinder/spell-choice/rarity-attestation.js";
 import { applyBoostDraft } from "./boost-application.js";
 import { createSingletonGrantItems } from "./explicit-grant-application.js";
 import { buildLanguageChoiceUpdate } from "./language-choice-application.js";
@@ -94,6 +95,18 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
     assertActorAuthority(actor, deps.validateActorAuthority);
     const draft = cloneData(draftInput);
     const steps = cloneData(stepsInput);
+    const spellRarityProblems = hasDraftRecoveryState(draft)
+        ? listSpellRarityRecoveryProblems(typeof actor.id === "string" ? actor.id : "", draft)
+        : listSpellRarityAttestationProblems(typeof actor.id === "string" ? actor.id : "", draft, steps, deps.spellRarityCeiling ?? "common");
+    if (spellRarityProblems.length > 0) {
+        throw new WayfinderDraftNotReadyError(spellRarityProblems.map((problem) => ({
+            code: "access-attestation",
+            stepId: problem.stepId,
+            slotId: problem.slotId,
+            title: problem.title,
+            message: problem.message,
+        })));
+    }
     await assertDraftBackedStepsReady(steps, draft);
     const boostSteps = steps.filter((step) => step.kind === "boost");
     if (boostSteps.length > 0) {
@@ -115,8 +128,8 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
     });
     await validateMutationCapabilities(actor, selections, steps);
     validateDraftChoiceValues(actor, draft, steps, deps.validSkillSlugs);
+    await validateSelectedEligibility(draft, steps, selections, deps.validateSelectionEligibility);
     const sources = await prepareSourceCatalog(actor, draft, steps, selections, deps);
-    await validateSelectedEligibility(draft, steps, selections, deps);
     await validatePersistenceTargets(actor, draft, steps, deps);
     validateSpellDestinations(actor, draft, steps);
     for (const selection of pendingFeatSelections) {
@@ -135,6 +148,7 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
             ...buildLanguageChoiceUpdate(draft, steps),
         },
         validateActorAuthority: deps.validateActorAuthority,
+        validateSelectionEligibility: deps.validateSelectionEligibility,
         sources,
     };
 }
@@ -218,8 +232,8 @@ function validateTrainingChoices(draft, step, validSkillSlugs) {
 function staleChoiceError(step) {
     return new Error(`${step.title} changed after this draft was prepared; review that choice before applying.`);
 }
-async function validateSelectedEligibility(draft, steps, activeSelections, deps) {
-    if (!deps.validateSelectionEligibility)
+async function validateSelectedEligibility(draft, steps, activeSelections, validateSelectionEligibility) {
+    if (!validateSelectionEligibility)
         return;
     const selectionsBySlot = new Map();
     for (const selection of activeSelections) {
@@ -233,7 +247,7 @@ async function validateSelectedEligibility(draft, steps, activeSelections, deps)
     }
     for (const step of steps) {
         for (const selection of selectionsBySlot.get(step.slotId) ?? []) {
-            if (!(await deps.validateSelectionEligibility(selection, step))) {
+            if (!(await validateSelectionEligibility(selection, step))) {
                 throw new Error(`${selection.name} is no longer eligible for ${step.title}; the draft cannot be applied safely.`);
             }
         }
@@ -323,6 +337,7 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                     await applySingletonChoiceDraft(prepared.actor, prepared.draft, prepared.steps);
                     break;
                 case "spell-choices":
+                    await validateSpellSelections(prepared);
                     await applySpellChoiceDraft(prepared.actor, prepared.draft, prepared.steps, prepared.sources.createEmbeddedSource);
                     break;
                 case "native-spellcasting-after-spells":
@@ -385,13 +400,20 @@ async function executeFinalActorPhase(actor, deferredActorUpdate, options, compl
     };
     try {
         await emitCheckpoint(buildPhaseCheckpoint(phase, "before"));
+        const beforeWrite = buildWriteCheckpoint(phase, "final-actor-update", "before", 1);
+        await emitCheckpoint(beforeWrite);
+        operationFailureCheckpoint = beforeWrite;
+        await options.beforeFinalActorUpdate?.();
+        const finalActorUpdate = options.resolveFinalActorUpdate
+            ? cloneData(await options.resolveFinalActorUpdate())
+            : cloneData(options.finalActorUpdate ?? {});
         const actorUpdate = {
             ...deferredActorUpdate,
-            ...(options.finalActorUpdate ?? {}),
+            ...finalActorUpdate,
         };
         const intendedActorUpdate = cloneData(actorUpdate);
         const intendedActorUpdatePaths = Object.keys(intendedActorUpdate);
-        const finalActorUpdatePaths = Object.keys(options.finalActorUpdate ?? {});
+        const finalActorUpdatePaths = Object.keys(finalActorUpdate);
         if (!actor.update) {
             if (intendedActorUpdatePaths.length > 0) {
                 throw new Error("The actor cannot persist Wayfinder's final update.");
@@ -399,14 +421,13 @@ async function executeFinalActorPhase(actor, deferredActorUpdate, options, compl
         }
         else {
             const preexistingConvergedPaths = convergedActorUpdatePaths(actor, intendedActorUpdate, intendedActorUpdatePaths);
-            const beforeWrite = buildWriteCheckpoint(phase, "final-actor-update", "before", 1);
-            await emitCheckpoint(beforeWrite);
-            operationFailureCheckpoint = beforeWrite;
             let updatedActor;
             let updateRejected = false;
             let updateFailure;
             try {
-                updatedActor = await actor.update(actorUpdate);
+                updatedActor = options.persistFinalActorUpdate
+                    ? await options.persistFinalActorUpdate(actorUpdate)
+                    : await actor.update(actorUpdate);
             }
             catch (error) {
                 updateRejected = true;
@@ -450,6 +471,26 @@ async function executeFinalActorPhase(actor, deferredActorUpdate, options, compl
         const receiptCompletedBeforeFailure = checkpointFailure?.kind === "phase" && checkpointFailure.boundary === "after";
         throw new DraftApplyPhaseError(phase, receiptCompletedBeforeFailure ? [...completedReceipts, partialReceipt] : completedReceipts, partialReceipt, checkpointFailure ?? operationFailureCheckpoint, checkpointFailure ? "checkpoint-hook" : "operation", error, deferredActorUpdate);
     }
+}
+async function validateSpellSelections(prepared) {
+    const validateSelectionEligibility = prepared.validateSelectionEligibility;
+    if (!validateSelectionEligibility)
+        return;
+    for (const step of prepared.steps) {
+        if (step.kind !== "spell-choice")
+            continue;
+        for (const selection of prepared.draft.spellChoices[step.slotId] ?? []) {
+            if (!(await validateSelectionEligibility(selection, step))) {
+                throw new Error(`${selection.name} is no longer eligible for ${step.title}; the draft cannot be applied safely.`);
+            }
+        }
+    }
+}
+function hasDraftRecoveryState(draft) {
+    return (draft.applyAttemptStepIds.length > 0 ||
+        draft.applyCompletedStepIds.length > 0 ||
+        Object.keys(draft.applyRecoveryActorUpdate).length > 0 ||
+        draft.applySpellRarityAttestations.length > 0);
 }
 function buildPhaseCheckpoint(phase, boundary) {
     return Object.freeze({
@@ -652,7 +693,7 @@ function actorItemLocation(item) {
     return null;
 }
 function assertActorAuthority(actor, validateActorAuthority) {
-    if (validateActorAuthority && !validateActorAuthority(actor)) {
+    if (!validateActorAuthority || !validateActorAuthority(actor)) {
         throw new Error("The current user can no longer modify this PF2E character.");
     }
 }

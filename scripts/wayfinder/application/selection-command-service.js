@@ -213,6 +213,12 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
             statusNote = "Arcane school changed. Wayfinder marked dependent school choices for review.";
         }
     }
+    if (previousSelection?.uuid !== selection.uuid) {
+        const invalidatedSpellChoices = (await deps.invalidateOrphanedSpellChoices?.()) ?? [];
+        if (invalidatedSpellChoices.length > 0 && !statusNote) {
+            statusNote = "Wayfinder removed spell choices and player attestations from vanished steps.";
+        }
+    }
     state.previewValueByStepId.set(step.id, rawValue);
     return changedResult({ statusNote, shouldAdvance: true });
 }

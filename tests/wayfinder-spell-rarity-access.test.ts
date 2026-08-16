@@ -147,7 +147,18 @@ describe("spell rarity access", () => {
     ]);
     expect(pane.options.map((option) => option.name)).toEqual(["Common Spell"]);
     expect(pane.selectedCount).toBe(1);
-    expect(pane.rarityAccess).toEqual({ available: true, granted: false, locked: true });
+    expect(pane.rarityAccess).toEqual({
+      visible: true,
+      available: true,
+      granted: false,
+      locked: false,
+      state: "none",
+      basisLabel: null,
+      reason: null,
+      authorName: null,
+      attestedAt: null,
+      descriptionId: "wayfinder-spell-attestation-note-unknown-spell-choice-witch-cantrips-level-1",
+    });
     expect(await isWayfinderStepComplete(step, draft, {} as EffectiveBuildState)).toBe(true);
   });
 

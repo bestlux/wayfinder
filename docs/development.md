@@ -53,7 +53,7 @@ The codebase is organized so new features land in focused seams instead of growi
 - `src/actor-updater/` — apply-side mutations and spellcasting sync.
 - `src/build-state.ts` and `src/shared/` — effective document resolution and reusable helpers.
 
-When adding a new class flow, start with [the class-flow guide](architecture/adding-a-class-flow.md). For current ownership boundaries and cleanup guardrails, see [the architecture maintenance notes](architecture/maintenance.md). When in doubt, prefer extending one of those seams over adding more responsibility to `app-shell.ts` or the large choice services.
+When adding a new class flow, start with [the class-flow guide](architecture/adding-a-class-flow.md). For current ownership boundaries and cleanup guardrails, see [the architecture maintenance notes](architecture/maintenance.md). The accepted Starting Equipment design is split between its [architecture](architecture/starting-equipment-and-wealth.md), [rules-assurance contract](architecture/starting-equipment-rules-assurance.md), and [0.8.0 implementation plan](development/starting-equipment-0.8.0.md). When in doubt, prefer extending one of those seams over adding more responsibility to `app-shell.ts` or the large choice services.
 
 ## Release and packaging
 

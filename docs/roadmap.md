@@ -1,6 +1,6 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-14 for the 0.7.3 release. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-08-15 for the accepted 0.8.0 Starting Equipment and Wealth plan. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
@@ -10,7 +10,7 @@ The common mechanical path now includes ancestry, heritage, background, class, s
 
 GMs currently have world settings for supplemental Item packs and the spell-rarity ceiling. Players and GMs can open the Feedback panel from Wayfinder or Foundry settings. With issue #23 completed in 0.7.2, the remaining open work is:
 
-- [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) is a draft-editing improvement, not an apply-correctness prerequisite.
+- [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) is a draft-editing improvement, not an apply-correctness prerequisite. Its shared readiness and review work now belongs in the 0.8.0 foundation because an equipment cart must remain editable while over budget or otherwise incomplete.
 - [#7 — class archetypes at level 1](https://github.com/bestlux/wayfinder/issues/7) remains a parallel, profile-by-profile expansion track.
 
 The largest remaining product gaps are starting equipment and wealth, a satisfying character-completion chapter, and high-level caster evidence beyond level 10. The apply path now prepares supported authority and sources before writing, executes named per-actor phases, verifies outcomes, and retains the draft when a phase fails.
@@ -33,44 +33,58 @@ Wayfinder is verified against Foundry 14 build 366 and advertises that exact bui
 
 ### 0.7.2 — Apply Safety Bridge
 
-The release is centered on issue #23. Before the first actor write, Wayfinder should prepare the selected sources, authoritative feat slots, choice targets, spell destinations, and campaign authority it can validate. Execution should expose named mutation phases, preserve the draft on failure, serialize retries, and compensate only where PF2E hooks make a narrow reversal safe.
+The release centered on issue #23. Before the first actor write, Wayfinder prepares the selected sources, authoritative feat slots, choice targets, spell destinations, and campaign authority it can validate. Execution exposes named mutation phases, preserves the draft on failure, serializes retries, and compensates only where PF2E hooks make a narrow reversal safe.
 
 Shipped in 0.7.2: Wayfinder retains prepared sources instead of resolving them again during execution, validates scalar and item choices, pins campaign authority, verifies PF2E-created outcomes and planned feat locations before finalization, serializes the final actor update and draft clear with every earlier phase, and records phase receipts. The exact candidate passed adversarial review and a live failure/retry probe in addition to the full release matrix.
 
 This bridge deliberately precedes equipment. Starting wealth adds batch inventory and currency writes; those operations should join an established preparation/execution model instead of creating another mutation path.
 
-Only beta-discovered correctness regressions should join 0.7.2. Draft-editing polish from #22 can follow in another 0.7.x patch if real-player testing shows it is urgent.
+### Pre-0.8 hardening wave
+
+Before equipment branches into catalogue, ledger, and Apply work, land independently reviewable improvements for picker measurement and scoped search rendering, truthful draft persistence and Clear protection, shared readiness evaluation, equipment-capable smoke evidence, and restricted-access authority. These are development milestones, not an automatic 0.7.4 release.
+
+Cut a 0.7.4 patch only if this wave produces a coherent fix for users of 0.7.3—most plausibly autosave/Clear durability—or if 0.8.0 is materially delayed. Equipment-only infrastructure does not justify another public release.
 
 ### 0.8.0 — Starting Equipment and Wealth
 
-The short discovery is recorded in [Starting Equipment and Wealth Discovery](architecture/starting-equipment-and-wealth.md). The recommended first release is creation-time acquisition, not a persistent shop.
+The accepted design is recorded in [Starting Equipment and Wealth Architecture](architecture/starting-equipment-and-wealth.md), its provenance contract lives in [Starting Equipment Rules Assurance](architecture/starting-equipment-rules-assurance.md), and the sequenced build work lives in the [0.8.0 implementation plan](development/starting-equipment-0.8.0.md). The release is creation-time acquisition, not a persistent shop.
 
-At level 1:
+Rules and policy:
 
-- Start from the official 15 gp budget.
-- Offer the structured Adventurer's Pack and a searchable equipment picker with quantity, price, Bulk, hands, traits, rarity, level, and source context.
-- Provide clearly labeled suggestions based on class proficiencies and trained skills. Remaster PF2E removed class kits, so Wayfinder must not describe suggestions as official class loadouts.
-- Keep a running budget and apply the purchased physical items plus remaining currency as one prepared acquisition batch.
+- Generate the remastered Character Wealth numbers from a pinned PF2E fixture with explicit source provenance and compatibility-smoke drift checks. Prose legality rules receive separate citations and semantic tests because the installed journal contains the table but not those rules.
+- Support both official higher-level recipes in 0.8.0: permanent items plus currency, and the optional lump-sum alternative. A GM can fix the recipe or let the actor owner choose between the enabled official recipes.
+- Support an absolute custom lump sum as a GM-authoritative per-draft override. Do not expose arbitrary permanent-item schedules.
+- Keep Common as the default blanket availability inside GM-approved equipment sources. A source-backed character Access can authorize its named restricted item; other rarity/source exceptions require a real GM-authoritative command, not an owner-controlled trust toggle.
+- Snapshot the effective policy for explanation and drift diagnostics. Apply re-evaluates current policy and blocks only when a selected item, allowance, budget, authority, or expected outcome materially changed.
 
-Above level 1:
+Acquisition experience:
 
-- Use PF2E's Character Wealth lump sum as the 0.8.0 budget.
-- Support a custom starting amount as an explicit GM override, not an inferred house rule.
-- Show the permanent-items-plus-currency alternative as a documented handoff until its item-level allowance model ships.
+- Start level-1 characters from the official 15 gp budget. At higher levels, show permanent-item allowances separately from residual currency, including its consumable/lower-level-item restriction, or the selected lump-sum budget.
+- Offer the structured Adventurer's Pack and a searchable equipment catalogue with quantity, price, Bulk, hands, traits, rarity, level, source, availability, and allowance context.
+- Reconcile physical equipment explicitly granted by the same planned class build in a separate no-charge lane; never infer that arbitrary existing inventory was “PF2E-granted.”
+- Recommended cuttable expansion: offer the cited Quick Equipment Packages that remain in Player Core and Player Core 2 even though PF2E no longer exposes remaster class-kit documents. Unreviewed classes receive no implied package, and Wayfinder-derived suggestions remain 0.8.1 work.
+- Treat `keep all currency` as a positive completed disposition, not a blocked empty cart.
+- Protect draft work with truthful persistence state, default-cancel Clear confirmation, actionable readiness reasons, Apply progress, and a reviewable success receipt.
 
-GM policy should cover wealth mode, custom amounts, rarity ceiling, and supplemental sources. The first slice is for blank or new-character inventory; an actor with meaningful existing equipment receives an explicit PF2E-sheet handoff. Existing inventory is never cleared, repriced, or silently replaced.
+Apply and trust:
 
-Scope fence: no selling, merchant inventory, downtime shopping, rune transfer, automatic loadout optimization, or ongoing economy. Automatic Bonus Progression can change recommendations, but it does not justify a second equipment rules engine in 0.8.0.
+- Replace guessed “new character” eligibility with an economic baseline captured before mutation. Above level 1, economic emptiness is necessary but not sufficient: a recorded, currently authorized new/replacement start-context claim is also required. Economically empty actors and source-backed grants from the same prepared build can then use world policy; any unresolved or foreign physical inventory or currency receives an explicit PF2E-sheet handoff in 0.8.0. Existing inventory is never cleared, repriced, merged into, or silently replaced.
+- Pre-aggregate equivalent planned items, expand kits, preserve container links, and insert a deliberate non-stacking batch with stable batch and per-entry identity. Currency converges to an absolute aggregate target through PF2E inventory operations.
+- Persist and verify the successful acquisition manifest before—or in the same ordered final write as—draft clear, and retain it on the actor afterward. It supports audit, retry diagnosis, and a future reversal feature; player-facing post-Apply undo is not part of 0.8.0.
+- Record restricted-spell access as a reviewable attestation with author and time instead of leaving the current saved boolean invisible. Equipment exceptions use GM authority rather than attestation.
+- Measure the current spell picker before setting equipment performance limits. Search must settle on the final query and avoid rebuilding the character plan, rereading an unchanged pack index, or rehydrating an unchanged preview.
+
+Scope fence: no selling, merchant inventory, downtime shopping, rune transfer, automatic loadout optimization, ongoing economy, additive acquisition into existing inventory, or custom permanent-item schedules. Automatic Bonus Progression changes eligibility and guidance through PF2E's actual mode; Wayfinder does not invent a replacement wealth table.
 
 ### 0.8.1 — Equipment beta stabilization
 
-Add the Character Wealth permanent-items-plus-currency path with its separate item-level allowances and fundamental-rune decisions. Reserve the same release for real-player findings: price and stacking edge cases, containers and nested kit contents, actor-size adjustments, granted equipment conflicts, unusual physical-item types, and GM policy wording. Expand suggested loadouts only when evidence supports reusable rules rather than class-name tables.
+Respond to real-player findings after both official funding recipes ship: unusual physical-item types, third-party price/stacking shapes, translated compendium behavior, granted-equipment conflicts, GM policy wording, and evidence-based suggestion refinements. Consider a separately designed custom permanent-item schedule, additive existing-inventory flow, or conditional batch reversal only when their safety contracts are explicit; none is implied by 0.8.0.
 
 ### 0.9.0 — Identity Epilogue and completion
 
 Add an optional final chapter for name, pronouns, age, appearance, backstory, edicts and anathema, deity notes, portrait, and prototype token. Write to PF2E and Foundry fields the sheet already owns. File selection is in scope; image editing is not.
 
-Replace the current anticlimactic empty state with a reviewable completion summary: key choices, equipment and remaining currency, honest handoffs, and a character-specific closing message. Issue #22 fits this arc if it has not already shipped as beta-driven 0.7.x polish.
+Replace the current anticlimactic empty state with a reviewable completion summary: key choices, equipment and remaining currency, honest handoffs, and a character-specific closing message.
 
 ### Parallel breadth — class archetypes
 
@@ -112,4 +126,5 @@ Allowlisted third-party Item packs remain supported where their documents use ru
 - [Coverage matrices](coverage/) are evidence-first references, not roadmap promises.
 - [Development](development.md) and [release packaging](release-packaging.md) are maintainer how-to guides.
 - [Architecture notes](architecture/) explain current module ownership and design decisions.
+- [Development plans](development/) sequence accepted but unreleased work and define its verification gates.
 - [The 2026-07-26 issue backlog](issue-backlog-2026-07-26.md) is a historical triage snapshot; live issue state is on GitHub.

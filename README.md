@@ -68,7 +68,7 @@ PF2E's Free Archetype variant is guided through its own even-level feat lane, ap
 
 Both that lane and ordinary class-feat slots share one archetype legality check. Wayfinder verifies that a new dedication is not a duplicate and not your own class's multiclass dedication, that an existing dedication is not still owed two feats from its archetype, that an archetype feat belongs to a family you actually have a dedication for, and that supported skill-rank prerequisites are met — counting choices you have only drafted, not just applied. This is stricter than PF2E's own picker, which checks only whether you have any dedication at all.
 
-Some things still can't be verified from data, and Wayfinder shows those options rather than hiding them on a guess: dedications whose own text changes the lockout rule, feats whose archetype family can't be resolved, access entries, campaign permission, and prerequisites written as prose (feat, class-feature, and attribute requirements). The picker names that boundary so you and your GM can confirm.
+Some things still can't be verified from data, and Wayfinder shows those options rather than hiding them on a guess: dedications whose own text changes the lockout rule, feats whose archetype family can't be resolved, access entries, campaign permission, and prerequisites written as prose (feat, class-feature, and attribute requirements). Some dedication benefits and follow-on choices also exist only in prose and may still need manual setup on the PF2E sheet. Every dedication preview names that boundary so you and your GM can review the feat before and after applying it.
 
 <details>
 <summary><strong>All 27 classes, verified through level 5</strong></summary>
@@ -87,7 +87,7 @@ These stay in the native PF2E sheet for now, and Wayfinder will tell you so when
 
 - Starting gear and item purchasing
 - Daily preparations
-- Archetype requirements that only exist as prose — access entries, campaign permission, feat/class-feature/attribute prerequisites, and dedications whose own text rewrites the lockout rule
+- Archetype requirements or benefits that only exist as prose — access entries, campaign permission, feat/class-feature/attribute prerequisites, manual follow-on setup, and dedications whose own text rewrites the lockout rule
 - Class archetypes other than Battle Creed, Way of the Spellshot, and Palatine Detective
 - Retroactive spell reconciliation for characters levelled outside Wayfinder — their earlier spell choices are treated as settled, and Wayfinder says so
 - Retraining and table-specific campaign systems

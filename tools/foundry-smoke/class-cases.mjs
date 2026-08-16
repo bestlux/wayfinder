@@ -642,6 +642,63 @@ export const smokeCases = [
       classSlug: "fighter",
       keyAbility: "str",
       expectedStepIds: [
+        "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+        "spell-choice-feat-necromancer-dedication-cantrip-level-1",
+      ],
+      expectedSpellChoiceCounts: {
+        "spell-choice-feat-necromancer-dedication-cantrip-level-1": 4,
+      },
+      preferredSelections: {
+        "grant-choice-class-heritage-ancient-elf-ancientElf-level-1": ["Necromancer Dedication"],
+        "spell-choice-feat-necromancer-dedication-cantrip-level-1": [
+          "Daze",
+          "Detect Magic",
+          "Guidance",
+          "Shield",
+        ],
+        "class-feat": ["Double Slice", "Reactive Shield"],
+      },
+      preferredSkills: ["athletics", "acrobatics", "survival", "intimidation"],
+    }),
+    id: "fighter-ancient-elf-necromancer-l1-apply-rerun",
+    label: "Ancient Elf Fighter with Necromancer Dedication level 1 apply/rerun",
+    targetLevel: 1,
+    ancestryName: "Elf",
+    heritageName: "Ancient Elf",
+    ancestryBoosts: { "0": "dex", "1": "int", "2": "str" },
+    expectedSkillRanks: { occultism: 1 },
+    expectedItemNames: [
+      "Necromancer Dedication",
+      "Necromancer Dirge",
+      "Daze",
+      "Detect Magic",
+      "Guidance",
+      "Shield",
+    ],
+    expectedSpellcastingEntries: {
+      "necromancer-occult-dirge": {
+        ability: "int",
+        prepared: "prepared",
+        proficiencyRank: 1,
+        proficiencySlug: "",
+        tradition: "occult",
+        slots: { slot0: 2 },
+        preparedSlots: { slot0: [null, null] },
+      },
+    },
+    expectedItemDestinations: {
+      Daze: "necromancer-occult-dirge",
+      "Detect Magic": "necromancer-occult-dirge",
+      Guidance: "necromancer-occult-dirge",
+      Shield: "necromancer-occult-dirge",
+    },
+  },
+  {
+    ...classCase({
+      className: "Fighter",
+      classSlug: "fighter",
+      keyAbility: "str",
+      expectedStepIds: [
         "class-choice-fighter-weapon-mastery-fighterWeaponMastery-level-5",
         "singleton-choice-feat-samsaran-weapon-memory-weaponOne-level-1",
         "singleton-choice-feat-samsaran-weapon-memory-weaponTwo-level-1",

@@ -33,6 +33,7 @@ describe("class archetype spell choice steps", () => {
               type: "spellbook",
               key: "spellshot-arcane-spellbook",
               entryReuse: "key-only",
+              preparedCantripSlots: 2,
               tradition: "arcane",
               ability: "int",
               prepared: "prepared",

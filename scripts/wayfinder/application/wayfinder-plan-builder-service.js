@@ -488,9 +488,6 @@ async function resolveGrantChoiceSources(draft, targetLevel, args, deps) {
 async function resolveFlagChoiceSources(draft, targetLevel, args, deps) {
     return resolveGrantChoiceSources(draft, targetLevel, args, deps);
 }
-function isAncestryFeatSelection(selection) {
-    return selection.itemType === "feat" && selection.featType === "ancestry";
-}
 function isGrantChoiceSourceFeatSelection(selection) {
     return selection.itemType === "feat" && selection.featType !== "classfeature";
 }
@@ -745,9 +742,9 @@ function selectionFromClassFeatureItem(item) {
 }
 async function resolveSpellChoiceFeatSources(draft, targetLevel, args, deps) {
     const featSelections = dedupeSelectionsByUuid([
-        ...Object.values(draft.selections).filter(isAncestryFeatSelection),
+        ...Object.values(draft.selections).filter(isFeatSourceSelection),
         ...projectedClassArchetypeFeatSelections(draft, targetLevel),
-        ...readExistingSkillTrainingFeatSelections(args.actor).filter(isAncestryFeatSelection),
+        ...readExistingSkillTrainingFeatSelections(args.actor).filter(isFeatSourceSelection),
     ]);
     const documents = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
     return featSelections.flatMap((sourceSelection, index) => {

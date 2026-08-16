@@ -229,6 +229,7 @@ export interface SpellChoiceDestination {
   type: "spellbook" | "prepared" | "spontaneous" | "innate";
   key: string;
   entryReuse?: "compatible" | "key-only";
+  preparedCantripSlots?: number;
   label: string;
   entryName: string;
   tradition: string;

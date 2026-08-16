@@ -460,6 +460,35 @@ describe("wayfinder skill pane service", () => {
     expect(pane.choiceSections[0]?.prompt).toBe("Choose a skill");
     expect(pane.choiceSections[0]?.options.map((option) => option.slug)).toEqual(["arcana", "occultism", "stealth"]);
     expect(pane.additionalSkills).toEqual([]);
+
+    draft.skillTrainings[step.slotId] = trainingDraft({ "feat:fighter-dedication:skill": "arcana" }, []);
+    const staleFallbackPane = await buildSkillPane(step, draft, {
+      baseSkillRanks: {
+        acrobatics: 1,
+        arcana: 1,
+        athletics: 1,
+      },
+      resolveDocument: async () => null,
+      configSkills: {
+        acrobatics: { label: "Acrobatics" },
+        arcana: { label: "Arcana" },
+        athletics: { label: "Athletics" },
+        occultism: { label: "Occultism" },
+        stealth: { label: "Stealth" },
+      },
+      localize: (value) => value,
+      isTrainingStepComplete: () => true,
+    });
+    expect(staleFallbackPane?.kind).toBe("skill-training");
+    if (!staleFallbackPane || staleFallbackPane.kind !== "skill-training") {
+      throw new Error("Expected a skill-training pane");
+    }
+    expect(staleFallbackPane.completed).toBe(false);
+    expect(staleFallbackPane.choiceSections[0]?.selectedSlug).toBeNull();
+    expect(staleFallbackPane.choiceSections[0]?.options.find((option) => option.slug === "arcana")).toMatchObject({
+      selected: false,
+      disabled: true,
+    });
   });
 
   it("keeps conditional dedication choices narrow after selecting one preferred skill", async () => {
@@ -530,6 +559,70 @@ describe("wayfinder skill pane service", () => {
     expect(pane.choiceSections[0]?.prompt).toBe("Choose Acrobatics or Athletics");
     expect(pane.choiceSections[0]?.options.map((option) => option.slug)).toEqual(["acrobatics", "athletics"]);
     expect(pane.choiceSections[0]?.options.find((option) => option.slug === "athletics")?.selected).toBe(true);
+  });
+
+  it("does not keep a stale fallback selected after the preferred skill becomes available again", async () => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-fighter-level-1"] = trainingDraft(
+      { "feat:necromancer-dedication:skill": "arcana" },
+      ["athletics"]
+    );
+    const step: PendingStep = {
+      id: "skill-training-fighter-level-1",
+      level: 1,
+      kind: "skill-training",
+      slotKind: "skill-training",
+      title: "Fighter training",
+      description: "",
+      required: true,
+      slotId: "skill-training-fighter-level-1",
+      training: {
+        classSlug: "fighter",
+        className: "Fighter",
+        fixedSkills: [],
+        fixedLores: [],
+        choiceRules: [
+          {
+            key: "feat:necromancer-dedication:skill",
+            flag: "feat:necromancer-dedication:skill",
+            prompt: "Choose Occultism",
+            sourceLabel: "Necromancer Dedication",
+            options: [{ slug: "occultism", label: "Occultism" }],
+            fallbackPrompt: "Choose a skill",
+            fallbackOptions: [
+              { slug: "arcana", label: "Arcana" },
+              { slug: "occultism", label: "Occultism" },
+              { slug: "stealth", label: "Stealth" },
+            ],
+            persistence: null,
+          },
+        ],
+        loreChoices: [],
+        additionalCount: 1,
+      },
+    };
+
+    const pane = await buildSkillPane(step, draft, {
+      baseSkillRanks: { occultism: 0 },
+      resolveDocument: async () => null,
+      configSkills: {
+        arcana: { label: "Arcana" },
+        athletics: { label: "Athletics" },
+        occultism: { label: "Occultism" },
+        stealth: { label: "Stealth" },
+      },
+      localize: (value) => value,
+      isTrainingStepComplete: () => true,
+    });
+
+    expect(pane?.kind).toBe("skill-training");
+    if (!pane || pane.kind !== "skill-training") {
+      throw new Error("Expected a skill-training pane");
+    }
+    expect(pane.completed).toBe(false);
+    expect(pane.choiceSections[0]?.prompt).toBe("Choose Occultism");
+    expect(pane.choiceSections[0]?.selectedSlug).toBeNull();
+    expect(pane.choiceSections[0]?.options.map((option) => option.slug)).toEqual(["occultism"]);
   });
 
   it("builds a skill-increase pane with localized labels and level cap handling", async () => {

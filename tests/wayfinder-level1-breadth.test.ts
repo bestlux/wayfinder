@@ -489,7 +489,7 @@ describe("wayfinder level 1 breadth coverage", () => {
         ancestryTraits: ["elf"],
         classSlug: "wizard",
       },
-      ["Fighter Dedication", "Rogue Dedication"]
+      ["Fighter Dedication", "Necromancer Dedication", "Rogue Dedication"]
     );
 
     const nascentPlan = await buildPlan(
@@ -657,6 +657,44 @@ describe("wayfinder level 1 breadth coverage", () => {
             sourceItemType: "feat",
             sourceUuid: "Compendium.pf2e.feats-srd.Item.fighter-dedication",
           }),
+        }),
+      ])
+    );
+  });
+
+  it("projects an Ancient Elf Necromancer Dedication into its dirge and training choices", async () => {
+    const draft = createBaseDraft({ ancestryId: "elf", heritageId: "ancient-elf", classId: "fighter" });
+    draft.selections["grant-choice-class-heritage-ancient-elf-ancientElf-level-1"] = selection(
+      "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+      "pf2e.feats-srd",
+      "Tt6WVxyR4YjmvZLO",
+      "feat",
+      "Necromancer Dedication",
+      "class"
+    );
+
+    const plan = await buildPlan(buildActor(), draft);
+    expect(expectStep(plan, "spell-choice-feat-necromancer-dedication-cantrip-level-1")).toMatchObject({
+      level: 1,
+      title: "Necromancer dirge cantrips",
+      spellChoice: {
+        count: 4,
+        restrictToCommon: true,
+        destination: {
+          key: "necromancer-occult-dirge",
+          tradition: "occult",
+          ability: "int",
+          preparedCantripSlots: 2,
+        },
+      },
+    });
+    expect(expectTrainingStep(plan, "fighter").training.choiceRules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceLabel: "Necromancer Dedication",
+          prompt: "Choose Occultism",
+          options: [{ slug: "occultism", label: "Occultism" }],
+          fallbackPrompt: "Choose a skill",
         }),
       ])
     );
@@ -1057,6 +1095,25 @@ function buildLevel1Packs(): Record<string, Record<string, PackDocumentDefinitio
               ],
             },
           ],
+        }
+      ),
+      Tt6WVxyR4YjmvZLO: featDocument(
+        "Necromancer Dedication",
+        "necromancer-dedication",
+        "class",
+        ["necromancer", "dedication", "multiclass"],
+        {
+          level: {
+            value: 2,
+          },
+          description: {
+            value:
+              "<p>You can cast spells like a necromancer, gaining a dirge with four common occult cantrips of your choice. You can prepare two cantrips each day from your dirge. You are trained in the spell attack modifier and spell DC statistics. Your key spellcasting attribute for necromancer archetype spells is Intelligence, and they are occult necromancer spells. You become trained in Occultism; if you were already trained in Occultism, you instead become trained in a skill of your choice.</p>",
+          },
+          publication: {
+            title: "Pathfinder Impossible Magic",
+          },
+          rules: [],
         }
       ),
       "rogue-dedication": featDocument(

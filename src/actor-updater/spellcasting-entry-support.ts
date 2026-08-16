@@ -336,6 +336,13 @@ function buildSpellcastingEntrySlots(
   actor: ActorLike,
   draft: DraftState
 ): Record<string, { max: number; value: number; prepared: Array<{ id: string | null; expended: boolean }> }> {
+  const preparedCantripSlots = spellChoice.destination.preparedCantripSlots;
+  if (typeof preparedCantripSlots === "number" && Number.isInteger(preparedCantripSlots) && preparedCantripSlots > 0) {
+    return {
+      slot0: makePreparedSlotGroup(preparedCantripSlots),
+    };
+  }
+
   if (spellChoice.destination.key === "wizard-arcane-prepared") {
     return buildWizardSpellcastingSlots(actor, draft);
   }
@@ -350,12 +357,6 @@ function buildSpellcastingEntrySlots(
 
   if (spellChoice.destination.key === "animist-divine-prepared") {
     return buildAnimistPreparedSlots(actor, draft);
-  }
-
-  if (spellChoice.destination.key === "spellshot-arcane-spellbook") {
-    return {
-      slot0: makePreparedSlotGroup(2),
-    };
   }
 
   if (spellChoice.destination.type === "spontaneous") {

@@ -19,6 +19,7 @@ import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
 import { activeClassArchetypeProfile } from "../wayfinder/class-archetype/registry.js";
 import { maxProficiencyRank, projectDraftSkillRanks } from "../wayfinder/domain/skill-rank-projection.js";
+import { isActiveSkillTrainingChoice } from "../wayfinder/domain/skill-training-choice-availability.js";
 import {
   assertDraftBackedStepsReady,
   evaluateWayfinderDraftReadiness,
@@ -357,6 +358,12 @@ function validateDraftChoiceValues(
       Object.entries(draft.skillTrainings).filter(([slotId]) => activeSlotIds.has(slotId))
     ),
   };
+  const baseSkillRanks = Object.fromEntries(
+    Object.entries(actor.system?.skills ?? {}).map(([slug, data]) => [
+      slug,
+      Number((data as { rank?: unknown })?.rank ?? 0),
+    ])
+  );
   for (const step of steps) {
     if (step.kind === "singleton-choice") {
       assertListedChoice(step, draft.singletonChoices[step.slotId], step.singletonChoice.options);
@@ -371,18 +378,22 @@ function validateDraftChoiceValues(
         throw staleChoiceError(step);
       }
     } else if (step.kind === "skill-training") {
-      validateTrainingChoices(draft, step, validSkillSlugs);
+      validateTrainingChoices(
+        draft,
+        step,
+        validSkillSlugs,
+        projectDraftSkillRanks({
+          baseSkillRanks,
+          draft: activeRankDraft,
+          beforeSlotId: step.slotId,
+        })
+      );
     } else if (step.kind === "skill-increase") {
       const selected = draft.skillIncreases[step.slotId];
       if (selected && !validSkillSlugs.has(selected)) throw staleChoiceError(step);
       if (selected) {
         const ranks = projectDraftSkillRanks({
-          baseSkillRanks: Object.fromEntries(
-            Object.entries(actor.system?.skills ?? {}).map(([slug, data]) => [
-              slug,
-              Number((data as { rank?: unknown })?.rank ?? 0),
-            ])
-          ),
+          baseSkillRanks,
           draft: activeRankDraft,
           beforeSlotId: step.slotId,
         });
@@ -401,7 +412,8 @@ function assertListedChoice(step: PendingStep, selected: string | undefined, opt
 function validateTrainingChoices(
   draft: DraftState,
   step: PendingStep & { kind: "skill-training" },
-  validSkillSlugs: ReadonlySet<string>
+  validSkillSlugs: ReadonlySet<string>,
+  projectedRanks: Readonly<Record<string, number>>
 ): void {
   const training = draft.skillTrainings[step.slotId];
   if (!training) return;
@@ -411,8 +423,9 @@ function validateTrainingChoices(
   for (const choice of step.training.choiceRules) {
     const selected = training.ruleChoices[choice.key];
     if (!selected) continue;
-    const allowed = [...choice.options, ...(choice.fallbackOptions ?? [])].some((option) => option.slug === selected);
-    if (!allowed) throw staleChoiceError(step);
+    if (!isActiveSkillTrainingChoice(step.training, training, choice, projectedRanks, selected)) {
+      throw staleChoiceError(step);
+    }
   }
   for (const choice of step.training.loreChoices) {
     const selected = training.loreChoices[choice.key];

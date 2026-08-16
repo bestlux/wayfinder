@@ -1617,12 +1617,16 @@ async function fillSkillTraining(actor, draft, step, smokeCase, modules) {
   const loreChoices = {};
   const additional = [];
   const pane = await buildCurrentSkillPane(actor, draft, step, modules);
+  const choiceSections = new Map((pane?.choiceSections ?? []).map((section) => [section.key, section]));
   const availableAdditional = new Set(
     (pane?.additionalSkills ?? []).filter((option) => !option.disabled).map((option) => option.slug),
   );
 
   for (const choice of step.training.choiceRules) {
-    const options = [...choice.options, ...(choice.fallbackOptions ?? [])].map((option) => option.slug);
+    const section = choiceSections.get(choice.key);
+    const options = section
+      ? section.options.filter((option) => !option.disabled || option.selected).map((option) => option.slug)
+      : choice.options.map((option) => option.slug);
     const explicitSelection =
       smokeCase.preferredRuleChoices?.[choice.key] ?? smokeCase.preferredRuleChoices?.[choice.flag];
     const selection =
@@ -1853,6 +1857,7 @@ function collectActorEvidence(actor, modules, moduleId) {
           ? {
               ability: item.system?.ability?.value ?? null,
               prepared: item.system?.prepared?.value ?? null,
+              proficiencyRank: Number(item.system?.proficiency?.value ?? 0),
               proficiencySlug: item.system?.proficiency?.slug ?? null,
               slots: Object.fromEntries(
                 Object.entries(item.system?.slots ?? {}).map(([slotKey, group]) => [
@@ -2211,6 +2216,11 @@ function validateActorExpectations(actorEvidence, smokeCase, failures) {
     if (expectation.proficiencySlug !== undefined && entry.spellcasting.proficiencySlug !== expectation.proficiencySlug) {
       failures.push(
         `${destinationKey} proficiency slug is ${entry.spellcasting.proficiencySlug ?? "missing"}, expected ${expectation.proficiencySlug}`,
+      );
+    }
+    if (expectation.proficiencyRank !== undefined && entry.spellcasting.proficiencyRank !== expectation.proficiencyRank) {
+      failures.push(
+        `${destinationKey} proficiency rank is ${entry.spellcasting.proficiencyRank ?? "missing"}, expected ${expectation.proficiencyRank}`,
       );
     }
     for (const field of ["ability", "prepared", "tradition"]) {

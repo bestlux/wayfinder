@@ -4,6 +4,9 @@ import type { DraftState, OptionRecord, PendingStep, SelectionRef } from "../../
 import { buildPreviewDetails, formatSlug } from "../formatting.js";
 import type { PickStepPane, PreviewPane } from "../view-models.js";
 
+export const DEDICATION_SUPPORT_DISCLOSURE =
+  "Dedication support varies. Wayfinder applies supported choices, but some prose-only benefits may require manual setup on the PF2E sheet. Review this feat before and after applying.";
+
 export function buildPickItemPane(args: {
   step: PendingStep;
   search: string;
@@ -84,7 +87,7 @@ export async function buildPreview(option: OptionRecord | null, selectedValue: s
       tags: [],
       details: [],
       description: "",
-      disclosure: option.disclosure,
+      disclosure: buildPreviewDisclosure(option.disclosure, option.traits),
       selected: option.value === selectedValue,
       selectedLabel: option.value === selectedValue ? "Selected" : "Choose for draft",
       value: option.value,
@@ -92,19 +95,32 @@ export async function buildPreview(option: OptionRecord | null, selectedValue: s
   }
 
   const system = document.system ?? {};
+  const traits = Array.isArray(system.traits?.value)
+    ? system.traits.value.map((trait: string) => formatSlug(trait))
+    : [];
   return {
     title: document.name,
     img: document.img,
     source: system.publication?.title?.trim() || option.source,
     rarity: system.traits?.rarity ?? option.rarity,
-    tags: Array.isArray(system.traits?.value) ? system.traits.value.map((trait: string) => formatSlug(trait)) : [],
+    tags: traits,
     details: buildPreviewDetails(document),
     description: await enrichHtml(String(system.description?.value ?? ""), { async: true }),
-    disclosure: option.disclosure,
+    disclosure: buildPreviewDisclosure(option.disclosure, traits),
     selected: option.value === selectedValue,
     selectedLabel: option.value === selectedValue ? "Selected" : "Choose for draft",
     value: option.value,
   };
+}
+
+export function buildPreviewDisclosure(existingDisclosure: string | null | undefined, traits: string[]): string | null {
+  const parts = [existingDisclosure?.trim() ?? ""];
+  if (traits.some((trait) => trait.trim().toLowerCase() === "dedication")) {
+    parts.push(DEDICATION_SUPPORT_DISCLOSURE);
+  }
+
+  const disclosure = parts.filter(Boolean).join(" ");
+  return disclosure.length > 0 ? disclosure : null;
 }
 
 export function selectedSelection(step: PendingStep, draft: DraftState): SelectionRef | null {

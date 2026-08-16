@@ -42,7 +42,7 @@ import {
   WayfinderApplyDriftError,
 } from "./application/apply-candidate-service.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
-import { buildSkillPane } from "./application/build-skill-pane-service.js";
+import { buildSkillPane, projectSkillRanks } from "./application/build-skill-pane-service.js";
 import {
   adjustDraftTargetLevel,
   type DraftAdjustmentState,
@@ -1373,6 +1373,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#statusNote = null;
     const step = await this.#findPlanStepBySlotId(stepId);
     if (toggleTrainingSkillSelection(this.#draftAdjustmentState(), step ?? null, slug)) {
+      await this.#syncDependentChoicesAfterBuildChange();
       this.render(false);
     }
   }
@@ -1433,7 +1434,27 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   async #syncDependentChoicesAfterBuildChange(): Promise<void> {
     const effectiveBuildState = await getEffectiveBuildState(this.actor, this.#requireDraft());
     const plan = await this.#buildPlan();
-    const trainingChanged = syncSkillTrainingSelections(this.#draftAdjustmentState(), plan.steps);
+    const baseSkillRanks = inspectActor(this.actor).skillRanks;
+    const projectedSkillRanksByStepId = Object.fromEntries(
+      await Promise.all(
+        plan.steps.flatMap((step) =>
+          step.kind === "skill-training"
+            ? [
+                projectSkillRanks(this.#requireDraft(), step.slotId, {
+                  baseSkillRanks,
+                  resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+                  localize: (value) => game.i18n.localize(value),
+                }).then((ranks) => [step.slotId, ranks] as const),
+              ]
+            : []
+        )
+      )
+    );
+    const trainingChanged = syncSkillTrainingSelections(
+      this.#draftAdjustmentState(),
+      plan.steps,
+      projectedSkillRanksByStepId
+    );
     const languageChanged = syncLanguageChoiceSelections(this.#draftAdjustmentState(), effectiveBuildState, plan.steps);
     const spellAttestationsChanged =
       (await this.#selectionInvalidationService().invalidateOrphanedSpellChoices()).length > 0;

@@ -1,9 +1,35 @@
 import { selectionTakenLevel } from "../selection-level.js";
 import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helpers.js";
+const NECROMANCER_DEDICATION_UUID = "Compendium.pf2e.feats-srd.Item.Tt6WVxyR4YjmvZLO";
 export function buildFeatSpellChoiceSteps(args) {
     const classProfile = classSpellcastingProfile(args.effectiveClassDocument, args.extractSlug);
     const steps = [];
     for (const source of args.featSources) {
+        if (source.sourceSelection.uuid === NECROMANCER_DEDICATION_UUID) {
+            appendFeatSpellChoiceStep({
+                steps,
+                draft: args.draft,
+                readExistingSpellChoiceSelections: args.readExistingSpellChoiceSelections,
+                source,
+                title: "Necromancer dirge cantrips",
+                description: "Choose the four common occult cantrips in your necromancer dirge. You can prepare two each day.",
+                classSlug: null,
+                dependsOn: null,
+                count: 4,
+                destination: {
+                    type: "spellbook",
+                    key: "necromancer-occult-dirge",
+                    entryReuse: "key-only",
+                    preparedCantripSlots: 2,
+                    label: "Necromancer dirge",
+                    entryName: "Necromancer Dirge",
+                    tradition: "occult",
+                    ability: "int",
+                    prepared: "prepared",
+                },
+            });
+            continue;
+        }
         if (classProfile && isAdaptedCantripDocument(source.sourceDocument)) {
             appendFeatSpellChoiceStep({
                 steps,
@@ -69,7 +95,7 @@ function appendFeatSpellChoiceStep(args) {
         },
         classSlug: args.classSlug,
         dependsOn: args.dependsOn,
-        count: 1,
+        count: args.count ?? 1,
         minRank: 0,
         maxRank: 0,
         cantrip: true,

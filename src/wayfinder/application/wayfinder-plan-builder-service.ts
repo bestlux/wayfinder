@@ -714,10 +714,6 @@ async function resolveFlagChoiceSources(
   return resolveGrantChoiceSources(draft, targetLevel, args, deps);
 }
 
-function isAncestryFeatSelection(selection: SelectionRef): boolean {
-  return selection.itemType === "feat" && selection.featType === "ancestry";
-}
-
 function isGrantChoiceSourceFeatSelection(selection: SelectionRef): boolean {
   return selection.itemType === "feat" && selection.featType !== "classfeature";
 }
@@ -1082,9 +1078,9 @@ async function resolveSpellChoiceFeatSources(
   deps: BuildWayfinderAppPlanDependencies
 ) {
   const featSelections = dedupeSelectionsByUuid([
-    ...Object.values(draft.selections).filter(isAncestryFeatSelection),
+    ...Object.values(draft.selections).filter(isFeatSourceSelection),
     ...projectedClassArchetypeFeatSelections(draft, targetLevel),
-    ...readExistingSkillTrainingFeatSelections(args.actor).filter(isAncestryFeatSelection),
+    ...readExistingSkillTrainingFeatSelections(args.actor).filter(isFeatSourceSelection),
   ]);
   const documents = await Promise.all(featSelections.map((selection) => deps.fetchSelectionDocument(selection)));
 

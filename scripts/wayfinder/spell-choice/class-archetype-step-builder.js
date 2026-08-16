@@ -30,6 +30,7 @@ export function buildSpellshotSpellChoiceSteps(params) {
             type: "spellbook",
             key: "spellshot-arcane-spellbook",
             entryReuse: "key-only",
+            preparedCantripSlots: 2,
             label: "Spellshot spellbook",
             entryName: "Spellshot Spellbook",
             tradition: "arcane",

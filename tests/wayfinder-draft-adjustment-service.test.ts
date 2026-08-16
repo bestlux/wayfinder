@@ -361,9 +361,76 @@ describe("wayfinder draft adjustment service", () => {
       },
     ];
 
-    expect(syncSkillTrainingSelections(state, steps)).toBe(true);
+    expect(syncSkillTrainingSelections(state, steps, {})).toBe(true);
     expect(draft.skillTrainings["skill-training-wizard-level-1"]?.additional).toEqual(["arcana"]);
     expect(state.recentlyInvalidatedStepIds.has("skill-training-wizard-level-1")).toBe(true);
+  });
+
+  it("retains a valid dedication fallback skill when the preferred skill is already trained", () => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-fighter-level-1"] = {
+      ruleChoices: { "feat:necromancer-dedication:dedication-skill-1": "arcana" },
+      additional: [],
+      loreChoices: {},
+    };
+    const state = adjustmentState(draft);
+    const steps = [necromancerTrainingStep()];
+
+    expect(
+      syncSkillTrainingSelections(state, steps, {
+        "skill-training-fighter-level-1": { occultism: 1 },
+      })
+    ).toBe(false);
+    expect(draft.skillTrainings["skill-training-fighter-level-1"]?.ruleChoices).toEqual({
+      "feat:necromancer-dedication:dedication-skill-1": "arcana",
+    });
+    expect(state.recentlyInvalidatedStepIds).toEqual(new Set());
+  });
+
+  it("clears a dedication fallback skill when its preferred skill becomes available again", () => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-fighter-level-1"] = {
+      ruleChoices: { "feat:necromancer-dedication:dedication-skill-1": "arcana" },
+      additional: ["athletics"],
+      loreChoices: {},
+    };
+    const state = adjustmentState(draft);
+
+    expect(
+      syncSkillTrainingSelections(state, [necromancerTrainingStep()], {
+        "skill-training-fighter-level-1": { occultism: 0 },
+      })
+    ).toBe(true);
+    expect(draft.skillTrainings["skill-training-fighter-level-1"]?.ruleChoices).toEqual({});
+    expect(state.recentlyInvalidatedStepIds).toEqual(new Set(["skill-training-fighter-level-1"]));
+  });
+
+  it.each([
+    {
+      label: "already trained",
+      additional: ["athletics"],
+      ranks: { occultism: 1, arcana: 1 },
+    },
+    {
+      label: "reserved elsewhere in the step",
+      additional: ["arcana"],
+      ranks: { occultism: 1, arcana: 0 },
+    },
+  ])("clears a dedication fallback that is $label", ({ additional, ranks }) => {
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-fighter-level-1"] = {
+      ruleChoices: { "feat:necromancer-dedication:dedication-skill-1": "arcana" },
+      additional,
+      loreChoices: {},
+    };
+    const state = adjustmentState(draft);
+
+    expect(
+      syncSkillTrainingSelections(state, [necromancerTrainingStep()], {
+        "skill-training-fighter-level-1": ranks,
+      })
+    ).toBe(true);
+    expect(draft.skillTrainings["skill-training-fighter-level-1"]?.ruleChoices).toEqual({});
   });
 
   it("updates manual completion and training rule choices, and clamps target level changes", () => {
@@ -393,5 +460,41 @@ function adjustmentState(draft = createEmptyDraft(1), invalidatedStepIds: string
   return {
     draft,
     recentlyInvalidatedStepIds: new Set(invalidatedStepIds),
+  };
+}
+
+function necromancerTrainingStep(): PendingStep {
+  return {
+    id: "skill-training-fighter-level-1",
+    level: 1,
+    kind: "skill-training",
+    slotKind: "skill-training",
+    title: "Fighter skill training",
+    description: "",
+    required: true,
+    slotId: "skill-training-fighter-level-1",
+    training: {
+      classSlug: "fighter",
+      className: "Fighter",
+      fixedSkills: [],
+      fixedLores: [],
+      choiceRules: [
+        {
+          key: "feat:necromancer-dedication:dedication-skill-1",
+          flag: "feat:necromancer-dedication:dedication-skill-1",
+          prompt: "Choose Occultism",
+          sourceLabel: "Necromancer Dedication",
+          options: [{ slug: "occultism", label: "Occultism" }],
+          fallbackPrompt: "Choose a skill",
+          fallbackOptions: [
+            { slug: "arcana", label: "Arcana" },
+            { slug: "society", label: "Society" },
+          ],
+          persistence: null,
+        },
+      ],
+      loreChoices: [],
+      additionalCount: 3,
+    },
   };
 }

@@ -1,5 +1,6 @@
 import { PROFICIENCY_CODES, PROFICIENCY_LABELS, SKILL_LABELS } from "../../constants.js";
 import { maxProficiencyRank } from "../domain/skill-rank-projection.js";
+import { activeSkillTrainingChoiceOptions, isActiveSkillTrainingChoice, } from "../domain/skill-training-choice-availability.js";
 import { formatSlug } from "../formatting.js";
 export function buildSkillIncreasePane(step, draft, projectedRanks, skillEntries) {
     const selectedSkill = draft.skillIncreases[step.slotId] ?? null;
@@ -75,6 +76,7 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
             };
         })
         : [];
+    let hasInvalidRuleChoice = false;
     const choiceSections = metadata.choiceRules.map((choiceRule) => {
         const selectedSlug = selectedRuleChoices[choiceRule.key];
         const reservedByOtherChoices = new Set([
@@ -84,18 +86,15 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
                 .filter(([key, slug]) => key !== choiceRule.key && typeof slug === "string" && slug.length > 0)
                 .map(([, slug]) => slug),
         ]);
-        const fallbackOptions = Array.isArray(choiceRule.fallbackOptions) && choiceRule.fallbackOptions.length > 0
-            ? choiceRule.fallbackOptions
-            : [];
-        const selectedIsPrimary = !!selectedSlug && choiceRule.options.some((option) => option.slug === selectedSlug);
-        const selectedIsFallbackOnly = !!selectedSlug && !selectedIsPrimary && fallbackOptions.some((option) => option.slug === selectedSlug);
-        const useFallbackOptions = fallbackOptions.length > 0 &&
-            (primaryOptionsFullyUnavailable(choiceRule.options, reservedByOtherChoices, projectedRanks, selectedSlug) ||
-                selectedIsFallbackOnly);
-        const visibleOptions = useFallbackOptions ? fallbackOptions : choiceRule.options;
+        const visibleOptions = activeSkillTrainingChoiceOptions(metadata, training, choiceRule, projectedRanks);
+        const useFallbackOptions = visibleOptions === choiceRule.fallbackOptions;
+        const activeSelectedSlug = selectedSlug && isActiveSkillTrainingChoice(metadata, training, choiceRule, projectedRanks, selectedSlug)
+            ? selectedSlug
+            : null;
+        hasInvalidRuleChoice ||= !!selectedSlug && !activeSelectedSlug;
         const options = visibleOptions.map((option) => {
             const currentRank = Math.min(4, Math.max(0, projectedRanks[option.slug] ?? 0));
-            const selected = option.slug === selectedSlug;
+            const selected = option.slug === activeSelectedSlug;
             const disabledReason = selected
                 ? null
                 : reservedByOtherChoices.has(option.slug)
@@ -121,8 +120,8 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
             key: choiceRule.key,
             prompt: useFallbackOptions ? (choiceRule.fallbackPrompt ?? choiceRule.prompt) : choiceRule.prompt,
             sourceLabel: choiceRule.sourceLabel,
-            selectedSlug,
-            selectedLabel: selectedSlug ? (SKILL_LABELS[selectedSlug] ?? formatSlug(selectedSlug)) : null,
+            selectedSlug: activeSelectedSlug,
+            selectedLabel: activeSelectedSlug ? (SKILL_LABELS[activeSelectedSlug] ?? formatSlug(activeSelectedSlug)) : null,
             unavailableLegend: unavailableReasons.length > 0 ? `Dimmed options: ${unavailableReasons.join("; ")}` : null,
             options,
         };
@@ -145,9 +144,9 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
     const fixedLabels = metadata.fixedSkills.map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug));
     const fixedLoreLabels = metadata.fixedLores;
     const selectedLabels = [
-        ...Object.values(selectedRuleChoices)
-            .filter((slug) => typeof slug === "string" && slug.length > 0)
-            .map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug)),
+        ...choiceSections
+            .map((section) => section.selectedLabel)
+            .filter((label) => typeof label === "string" && label.length > 0),
         ...training.additional.map((slug) => SKILL_LABELS[slug] ?? formatSlug(slug)),
         ...Object.values(training.loreChoices)
             .filter((value) => typeof value === "string" && value.trim().length > 0)
@@ -163,7 +162,7 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
         modeLabel: "Skill Training",
         title: step.title,
         description: step.description,
-        completed: deps.isTrainingStepComplete(step),
+        completed: deps.isTrainingStepComplete(step) && !hasInvalidRuleChoice,
         selectedLabel: selectedLabels.length > 0
             ? `${selectedLabels.length}/${totalChoiceCount} chosen`
             : "Choose starting skill training",
@@ -176,14 +175,6 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
         additionalRemaining: Math.max(0, metadata.additionalCount - training.additional.length),
         additionalSkills,
     };
-}
-function primaryOptionsFullyUnavailable(options, reservedByOtherChoices, projectedRanks, selectedSlug) {
-    return options.every((option) => {
-        if (option.slug === selectedSlug) {
-            return false;
-        }
-        return reservedByOtherChoices.has(option.slug) || (projectedRanks[option.slug] ?? 0) >= 1;
-    });
 }
 function emptyTrainingDraft() {
     return { ruleChoices: {}, additional: [], loreChoices: {} };

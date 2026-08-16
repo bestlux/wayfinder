@@ -275,6 +275,12 @@ export function spellLocationId(item) {
     return location && location.length > 0 ? location : null;
 }
 function buildSpellcastingEntrySlots(spellChoice, actor, draft) {
+    const preparedCantripSlots = spellChoice.destination.preparedCantripSlots;
+    if (typeof preparedCantripSlots === "number" && Number.isInteger(preparedCantripSlots) && preparedCantripSlots > 0) {
+        return {
+            slot0: makePreparedSlotGroup(preparedCantripSlots),
+        };
+    }
     if (spellChoice.destination.key === "wizard-arcane-prepared") {
         return buildWizardSpellcastingSlots(actor, draft);
     }
@@ -286,11 +292,6 @@ function buildSpellcastingEntrySlots(spellChoice, actor, draft) {
     }
     if (spellChoice.destination.key === "animist-divine-prepared") {
         return buildAnimistPreparedSlots(actor, draft);
-    }
-    if (spellChoice.destination.key === "spellshot-arcane-spellbook") {
-        return {
-            slot0: makePreparedSlotGroup(2),
-        };
     }
     if (spellChoice.destination.type === "spontaneous") {
         return buildSpontaneousSpellcastingSlots(actor, draft, spellChoice.destination.key);

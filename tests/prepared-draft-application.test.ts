@@ -199,6 +199,29 @@ describe("prepared draft application", () => {
     ).resolves.toBeDefined();
   });
 
+  it.each([
+    { label: "preferred skill is available", ranks: { occultism: 0, arcana: 0 } },
+    { label: "fallback skill is already trained", ranks: { occultism: 1, arcana: 1 } },
+  ])("rejects a stale dedication fallback when the $label", async ({ ranks }) => {
+    const { actor } = buildActorHarness();
+    actor.system = {
+      ...actor.system,
+      skills: { occultism: { rank: ranks.occultism }, arcana: { rank: ranks.arcana } },
+    };
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings["skill-training-fighter-level-1"] = {
+      ruleChoices: { "feat:necromancer-dedication:dedication-skill-1": "arcana" },
+      additional: ["athletics"],
+      loreChoices: {},
+    };
+
+    await expect(prepareDraftApplication(actor as never, draft, [necromancerTrainingStep()])).rejects.toThrow(
+      "Fighter skill training changed after this draft was prepared"
+    );
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
   it("prepares but does not expect a flag-choice value to become an actor item", async () => {
     const { actor } = buildActorHarness();
     setGamePacks({
@@ -1523,6 +1546,42 @@ function skillIncreaseStep(level: number): PendingStep {
     description: "",
     required: true,
     slotId,
+  };
+}
+
+function necromancerTrainingStep(): PendingStep {
+  return {
+    id: "skill-training-fighter-level-1",
+    level: 1,
+    kind: "skill-training",
+    slotKind: "skill-training",
+    title: "Fighter skill training",
+    description: "",
+    required: true,
+    slotId: "skill-training-fighter-level-1",
+    training: {
+      classSlug: "fighter",
+      className: "Fighter",
+      fixedSkills: [],
+      fixedLores: [],
+      choiceRules: [
+        {
+          key: "feat:necromancer-dedication:dedication-skill-1",
+          flag: "feat:necromancer-dedication:dedication-skill-1",
+          prompt: "Choose Occultism",
+          sourceLabel: "Necromancer Dedication",
+          options: [{ slug: "occultism", label: "Occultism" }],
+          fallbackPrompt: "Choose a skill",
+          fallbackOptions: [
+            { slug: "arcana", label: "Arcana" },
+            { slug: "society", label: "Society" },
+          ],
+          persistence: null,
+        },
+      ],
+      loreChoices: [],
+      additionalCount: 1,
+    },
   };
 }
 

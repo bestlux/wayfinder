@@ -152,6 +152,62 @@ describe("actor-updater spell choice application", () => {
     ).toHaveLength(4);
   });
 
+  it("creates a Necromancer dirge with four occult cantrips and two open preparation slots", async () => {
+    const { actor } = buildActorHarness();
+    const cantrips = ["daze", "detect-magic", "forbidding-ward", "shield"];
+    setGamePacks({
+      "pf2e.spells-srd": Object.fromEntries(
+        cantrips.map((slug) => [
+          slug,
+          {
+            name: slug,
+            type: "spell",
+            system: {
+              level: { value: 1 },
+              traits: { traditions: ["occult"], value: ["cantrip"] },
+            },
+          },
+        ])
+      ),
+    });
+
+    const slotId = "spell-choice-feat-necromancer-dedication-cantrip-level-1";
+    const draft = createEmptyDraft(1);
+    draft.spellChoices[slotId] = cantrips.map((slug) => selection(slotId, "pf2e.spells-srd", slug, "spell", slug));
+
+    await applySpellChoiceDraft(actor as any, draft, [spellChoiceStep(slotId, necromancerSpellChoice(slotId))]);
+
+    const entry = actor.items.contents.find(
+      (item) => item.flags?.["wayfinder-pf2e"]?.destinationKey === "necromancer-occult-dirge"
+    );
+    expect(entry).toMatchObject({
+      name: "Necromancer Dirge",
+      system: {
+        ability: { value: "int" },
+        prepared: { value: "prepared" },
+        proficiency: { value: 1 },
+        slots: {
+          slot0: {
+            max: 2,
+            prepared: [
+              { id: null, expended: false },
+              { id: null, expended: false },
+            ],
+          },
+        },
+        tradition: { value: "occult" },
+      },
+    });
+    expect(
+      actor.items.contents.filter(
+        (item) =>
+          item.type === "spell" &&
+          typeof item.system?.location === "object" &&
+          item.system.location?.value === entry?.id
+      )
+    ).toHaveLength(4);
+  });
+
   it("does not adopt an unrelated compatible entry as the Spellshot spellbook", async () => {
     const unrelatedEntry = {
       id: "unrelated-arcane-entry",
@@ -1330,11 +1386,43 @@ function spellshotSpellChoice(slotId: string): SpellChoiceMeta {
       type: "spellbook",
       key: "spellshot-arcane-spellbook",
       entryReuse: "key-only",
+      preparedCantripSlots: 2,
       label: "Spellshot spellbook",
       entryName: "Spellshot Spellbook",
       tradition: "arcane",
       ability: "int",
       prepared: "prepared",
+    },
+    count: 4,
+    minRank: 0,
+    maxRank: 0,
+    cantrip: true,
+    curriculumSpellNames: [],
+    requiresCurriculum: false,
+    additionalAllowedSpellNames: [],
+    restrictToCommon: true,
+  };
+}
+
+function necromancerSpellChoice(slotId: string): SpellChoiceMeta {
+  return {
+    slotId,
+    sourcePackId: "pf2e.feats-srd",
+    sourceDocumentId: "Tt6WVxyR4YjmvZLO",
+    sourceUuid: "Compendium.pf2e.feats-srd.Item.Tt6WVxyR4YjmvZLO",
+    sourceName: "Necromancer Dedication",
+    classSlug: null,
+    dependsOn: null,
+    destination: {
+      type: "spellbook",
+      key: "necromancer-occult-dirge",
+      entryReuse: "key-only",
+      label: "Necromancer dirge",
+      entryName: "Necromancer Dirge",
+      tradition: "occult",
+      ability: "int",
+      prepared: "prepared",
+      preparedCantripSlots: 2,
     },
     count: 4,
     minRank: 0,

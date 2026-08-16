@@ -98,6 +98,61 @@ describe("wayfinder feat spell-choice step builder", () => {
       },
     });
   });
+
+  it("builds Necromancer Dedication's four-cantrip occult dirge at the level the feat was taken", () => {
+    const draft = createEmptyDraft(1);
+    const steps = buildFeatSpellChoiceSteps({
+      draft,
+      effectiveClassDocument: null,
+      featSources: [
+        {
+          sourceSelection: {
+            slotId: "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+            packId: "pf2e.feats-srd",
+            documentId: "Tt6WVxyR4YjmvZLO",
+            uuid: "Compendium.pf2e.feats-srd.Item.Tt6WVxyR4YjmvZLO",
+            itemType: "feat",
+            featType: "class",
+            name: "Necromancer Dedication",
+            level: 1,
+          },
+          sourceDocument: necromancerDedicationDocument(),
+        },
+      ],
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+      readExistingSpellChoiceSelections: () => [],
+    });
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({
+      kind: "spell-choice",
+      level: 1,
+      slotId: "spell-choice-feat-necromancer-dedication-cantrip-level-1",
+      title: "Necromancer dirge cantrips",
+      description: expect.stringContaining("prepare two"),
+      spellChoice: {
+        sourceUuid: "Compendium.pf2e.feats-srd.Item.Tt6WVxyR4YjmvZLO",
+        classSlug: null,
+        dependsOn: null,
+        count: 4,
+        minRank: 0,
+        maxRank: 0,
+        cantrip: true,
+        restrictToCommon: true,
+        destination: {
+          type: "spellbook",
+          key: "necromancer-occult-dirge",
+          entryReuse: "key-only",
+          label: "Necromancer dirge",
+          entryName: "Necromancer Dirge",
+          tradition: "occult",
+          ability: "int",
+          prepared: "prepared",
+          preparedCantripSlots: 2,
+        },
+      },
+    });
+  });
 });
 
 function adaptedCantripDocument(): unknown {
@@ -131,6 +186,20 @@ function arcaneTattoosDocument(): unknown {
           },
         },
       ],
+    },
+  };
+}
+
+function necromancerDedicationDocument(): unknown {
+  return {
+    name: "Necromancer Dedication",
+    system: {
+      slug: "necromancer-dedication",
+      description: {
+        value:
+          "<p>You can cast spells like a necromancer, gaining a dirge with four common occult cantrips of your choice. You can prepare two cantrips each day from your dirge.</p>",
+      },
+      rules: [],
     },
   };
 }

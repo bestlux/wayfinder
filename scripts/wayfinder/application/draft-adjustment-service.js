@@ -1,3 +1,4 @@
+import { isActiveSkillTrainingChoice } from "../domain/skill-training-choice-availability.js";
 import { SLOT_IDS } from "../slot-ids.js";
 export function setManualStepComplete(state, stepId, complete) {
     state.draft.manual[stepId] = complete;
@@ -217,7 +218,7 @@ export function syncLanguageChoiceSelections(state, effectiveBuildState, steps) 
     state.recentlyInvalidatedStepIds.add(SLOT_IDS.languageChoice);
     return true;
 }
-export function syncSkillTrainingSelections(state, steps) {
+export function syncSkillTrainingSelections(state, steps, projectedSkillRanksByStepId) {
     let changed = false;
     for (const step of steps) {
         if (step.kind !== "skill-training") {
@@ -238,7 +239,8 @@ export function syncSkillTrainingSelections(state, steps) {
                 return false;
             }
             const choice = step.training.choiceRules.find((entry) => entry.key === key);
-            return !!choice?.options.some((option) => option.slug === value);
+            return (!!choice &&
+                isActiveSkillTrainingChoice(step.training, current, choice, projectedSkillRanksByStepId[step.slotId] ?? {}, value));
         }));
         if (Object.keys(validRuleChoices).length !== Object.keys(current.ruleChoices).length) {
             current.ruleChoices = validRuleChoices;

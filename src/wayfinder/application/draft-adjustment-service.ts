@@ -1,5 +1,6 @@
 import type { EffectiveBuildState } from "../../build-state.js";
 import type { AbilityKey, DraftState, PendingStep } from "../../types.js";
+import { isActiveSkillTrainingChoice } from "../domain/skill-training-choice-availability.js";
 import { SLOT_IDS } from "../slot-ids.js";
 
 type BoostRecord = Record<string, { value: AbilityKey[]; selected: AbilityKey | null }>;
@@ -294,7 +295,11 @@ export function syncLanguageChoiceSelections(
   return true;
 }
 
-export function syncSkillTrainingSelections(state: DraftAdjustmentState, steps: PendingStep[]): boolean {
+export function syncSkillTrainingSelections(
+  state: DraftAdjustmentState,
+  steps: PendingStep[],
+  projectedSkillRanksByStepId: Readonly<Record<string, Readonly<Record<string, number>>>>
+): boolean {
   let changed = false;
 
   for (const step of steps) {
@@ -321,7 +326,16 @@ export function syncSkillTrainingSelections(state: DraftAdjustmentState, steps: 
         }
 
         const choice = step.training.choiceRules.find((entry) => entry.key === key);
-        return !!choice?.options.some((option) => option.slug === value);
+        return (
+          !!choice &&
+          isActiveSkillTrainingChoice(
+            step.training,
+            current,
+            choice,
+            projectedSkillRanksByStepId[step.slotId] ?? {},
+            value
+          )
+        );
       })
     );
     if (Object.keys(validRuleChoices).length !== Object.keys(current.ruleChoices).length) {

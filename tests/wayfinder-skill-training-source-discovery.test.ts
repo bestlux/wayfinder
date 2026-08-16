@@ -739,6 +739,42 @@ describe("wayfinder skill training source discovery", () => {
     ]);
   });
 
+  it("discovers Necromancer Dedication's Occultism training and trained-skill fallback", () => {
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: selection(
+            "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+            "Tt6WVxyR4YjmvZLO",
+            "Necromancer Dedication"
+          ),
+          sourceDocument: {
+            name: "Necromancer Dedication",
+            system: {
+              slug: "necromancer-dedication",
+              description: {
+                value:
+                  "<p>You become trained in Occultism; if you were already trained in Occultism, you instead become trained in a skill of your choice.</p>",
+              },
+              rules: [],
+            },
+          },
+        },
+      ],
+      localize: (value) => value.replace(/^PF2E\.Skill\./, ""),
+    });
+
+    expect(training.choiceRules).toMatchObject([
+      {
+        sourceLabel: "Necromancer Dedication",
+        prompt: "Choose Occultism",
+        options: [{ slug: "occultism", label: "Occultism" }],
+        fallbackPrompt: "Choose a skill",
+      },
+    ]);
+  });
+
   it("treats a selected class archetype as a persisted training source", () => {
     const training = discoverSourceSkillTrainingMeta({
       sources: [

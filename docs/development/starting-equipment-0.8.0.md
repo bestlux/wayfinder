@@ -204,11 +204,13 @@ Outcome: deterministic runtime data for all 20 remaster Character Wealth rows.
 Acceptance:
 
 - Implement the pinned extractor, negative Party Treasure fixture, pre-remaster rejection, exact header/provenance assertions, and level-1/level-5 canaries from the [rules assurance contract](../architecture/starting-equipment-rules-assurance.md).
-- Emit a versioned generated artifact with source and artifact digests.
+- Emit a versioned generated artifact with separately scoped source-page, selected-table, fixture, semantic-data, and artifact digests.
 - Exhaustively test all 20 levels, denomination parsing, ordered allowance buckets, duplicate/missing/malformed rows, and deterministic regeneration.
 - Add a clean-tree drift check.
-- Installed-journal compatibility produces an explicit `match`, `diff`, or `unavailable` result. Anything other than a reviewed `match` blocks compatibility sign-off and never changes runtime values.
+- Installed-journal compatibility produces an explicit `match`, `diff`, or `unavailable` result; `diff` is classified as structural or semantic. Anything other than a reviewed `match` blocks compatibility sign-off and never changes runtime values.
 - Record attribution/license treatment before merge.
+
+Implementation note (2026-08-16): the extractor, generated artifact, runtime facade, clean-tree check, and live compatibility probe are implemented. The attribution gate remains open because a GM-Core-only ORC notice would not accurately describe the mixed ORC/OGL provenance already present in the product; see the rules-assurance contract. This story is not release-complete until that product-wide notice decision is resolved.
 
 ### WF-080-11 — Cited semantic wealth policy
 

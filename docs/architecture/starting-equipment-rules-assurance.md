@@ -17,7 +17,7 @@ Starting equipment uses three kinds of source material, and each has a different
 | Cart-legality rules | Individually cited GM Core and Player Core prose | Execute versioned semantic policy | Per-rule provenance ledger and focused semantic tests |
 | Quick Equipment Packages | Cited Player Core guidance, if the expansion ships | Resolve package entries against installed Item documents | Source/edition labels, price checks, and no claim of completeness |
 
-The repository does not depend on a user's PDFs at runtime and must not check private rulebook files into source. During planning on 2026-08-15, the relevant pages were reviewed from licensed local copies: Player Core pages 25, 267–270; Player Core 2 pages 58, 75, 103, and 277; and GM Core pages 9, 22–23, 61, 67, and 83–85.
+The repository does not depend on a user's PDFs at runtime and must not check private rulebook files into source. During planning on 2026-08-15, the relevant pages were reviewed from licensed local copies: Player Core pages 25, 267–270; Player Core 2 pages 58, 75, 103, and 277; and GM Core pages 9, 22–23, 59, 61, 67, and 83–85.
 
 ## Generated Character Wealth policy
 
@@ -28,7 +28,9 @@ The initial generator fixture is the remastered PF2E 8.4.0 GM Screen journal at 
 - upstream path: `packs/pf2e/journals/gm-screen.json`;
 - journal ID: `S55aqwWIzpQRFhcq`;
 - page ID: `Dae8LHdXZuBv06Jk`; and
-- printed source attribution: GM Core pages 59/61.
+- journal footer attribution: GM Core pages 59/61;
+- Party Treasure printed rule page: GM Core page 59; and
+- Character Wealth printed rule page: GM Core page 61.
 
 PF2E's immediately preceding Party Treasure table has similar cell grammar, 20 plausible level rows, and a Currency column. The extractor cannot identify Character Wealth from row shape alone.
 
@@ -45,7 +47,7 @@ Generation fails unless the fixture satisfies every structural assertion:
 - level 1 has no permanent allowance, 15 gp currency, and a 15 gp lump sum; and
 - level 5 has 4th×1, 3rd×2, 2nd×1, and 1st×2, plus 50 gp, or a 270 gp lump sum.
 
-A negative fixture proves that Party Treasure is rejected. A pre-remaster Character Wealth shape is also rejected rather than silently accepted as another valid policy.
+The checked-in fixture contains only normalized mechanics and provenance, never raw journal HTML or surrounding prose. Capture reads the exact upstream document at the pinned commit, validates the complete page and selected table digests, and emits the normalized fixture. A small synthetic negative fixture proves that the Party Treasure heading is rejected; another removes the remaster table marker to prove that a pre-remaster shape is not silently accepted.
 
 ### Generated provenance
 
@@ -55,9 +57,14 @@ The checked-in artifact includes:
 - PF2E version and commit;
 - journal and page IDs;
 - normalized table identity;
-- source-content digest;
+- full upstream page digest;
+- selected raw table digest;
+- normalized fixture digest;
+- normalized semantic-data digest;
 - generator version; and
 - generated-artifact digest.
+
+Digest scopes are intentionally distinct. The source and table digests bind extraction to reviewed upstream bytes. The fixture digest binds the complete checked-in generator input. The semantic-data digest covers normalized rows only and is the identity consumed by later draft and policy stories. The artifact digest covers the complete generated payload except its own digest. A provenance-only refresh therefore does not falsely invalidate an otherwise identical acquisition draft.
 
 Generation is deterministic. CI regenerates into a comparison target and fails when the checked-in artifact is stale. The runtime never parses journal HTML and never changes policy merely because PF2E was updated.
 
@@ -66,9 +73,15 @@ Generation is deterministic. CI regenerates into a comparison target and fails w
 Compatibility smoke locates and structurally validates the installed Character Wealth table, normalizes it through the same semantic representation, and compares it with the checked-in artifact.
 
 - Exact semantic equality qualifies the installed PF2E version for this rule surface.
-- A structural or semantic difference is a review-gated compatibility finding.
+- A `diff` result is additionally classified as `structural` or `semantic` for review; both are compatibility findings.
 - A mismatch does not become an automatic migration, localized HTML fallback, or silent behavior change.
 - Advancing the generated policy requires an explicit source-review change with updated provenance and tests.
+
+### Attribution and license treatment
+
+The normalized Character Wealth rows are derived from Pathfinder GM Core game mechanics, but this story does not add a GM-Core-only ORC notice to the product. An attribution review found that the existing Wayfinder product also embodies mechanics from multiple other ORC works and at least one older OGL-era source. Under the ORC's single-system `Work` definition, a notice scoped as though Character Wealth were the product's only adapted rules surface would be misleading; PF2E 8.4.0's own notice is also incomplete for several current books and retains a placeholder author credit for Guns & Gears Remastered.
+
+Accordingly, this technical story records the source and normalized-data provenance without pretending to settle the repository-wide license. Publication or release of this branch remains blocked on a good-faith product-wide source ledger, complete upstream credits, and an explicit ORC/OGL treatment reviewed for the actual shipped mechanics. Raw journal HTML, surrounding prose, compendium documents, and private PDFs remain excluded from the repository. This is an engineering release gate, not legal advice.
 
 ## Cited semantic policy
 

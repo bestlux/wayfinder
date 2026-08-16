@@ -21,8 +21,11 @@
     "audit:embedded-choices": "node tools/foundry-smoke/audit-embedded-choices.mjs",
     "smoke:foundry": "node tools/foundry-smoke/run-foundry-smoke.mjs",
     "smoke:foundry:owner": "node tools/foundry-smoke/run-owner-access-probe.mjs",
+    "smoke:character-wealth": "node tools/foundry-smoke/run-character-wealth-compatibility.mjs",
     "profile:picker": "node tools/foundry-interaction/run-picker-profile.mjs",
-    "check": "npm run format:check && npm run lint && npm run build && npm test && npm run check:strict",
+    "generate:character-wealth": "node tools/starting-equipment/generate-character-wealth.mjs",
+    "check:character-wealth": "node tools/starting-equipment/generate-character-wealth.mjs --check",
+    "check": "npm run format:check && npm run lint && npm run check:character-wealth && npm run build && npm test && npm run check:strict",
     "test": "vitest run",
     "test:watch": "vitest"
   },

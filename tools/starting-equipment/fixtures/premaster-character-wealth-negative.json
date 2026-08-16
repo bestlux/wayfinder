@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "synthetic-character-wealth-negative",
+  "baseFixture": "pf2e-8.4.0-character-wealth-policy.json",
+  "mutation": {
+    "id": "premaster-table-class"
+  }
+}

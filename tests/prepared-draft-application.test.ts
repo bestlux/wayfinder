@@ -440,7 +440,7 @@ describe("prepared draft application", () => {
     expect(actor.update).not.toHaveBeenCalled();
   });
 
-  it("shares a concurrent apply of the same draft for one actor", async () => {
+  it("does not share concurrent applies with different operation options", async () => {
     const { actor } = buildActorHarness();
     const draft = createEmptyDraft(1);
     let release: (() => void) | null = null;
@@ -457,11 +457,11 @@ describe("prepared draft application", () => {
       validateSelectionEligibility: () => false,
     });
 
-    expect(second).toBe(first);
+    expect(second).not.toBe(first);
     await vi.waitFor(() => expect(firstPhase).toHaveBeenCalledTimes(1));
     release?.();
     await Promise.all([first, second]);
-    expect(actor.update).toHaveBeenCalledTimes(1);
+    expect(actor.update).toHaveBeenCalledTimes(2);
   });
 
   it("serializes different drafts for the same actor", async () => {
@@ -495,7 +495,38 @@ describe("prepared draft application", () => {
     expect(order).toEqual(["first-start", "first-end", "second-start"]);
   });
 
-  it("shares an operation even when a different draft is already queued", async () => {
+  it("uses invocation-time draft, steps, and final update for queued Apply", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { arcana: { rank: 0 }, diplomacy: { rank: 0 } } };
+    let release: (() => void) | null = null;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = applyDraftToActor(actor as never, createEmptyDraft(1), [], {
+      beforePhase: (phase) => (phase === "singleton-replacements" ? barrier : undefined),
+    });
+    const draft = createEmptyDraft(3);
+    draft.skillIncreases["skill-increase-level-3"] = "arcana";
+    const steps = [skillIncreaseStep(3)];
+    const finalActorUpdate = { "flags.test.snapshot": "original" };
+
+    const queued = applyDraftToActor(actor as never, draft, steps, { finalActorUpdate });
+    draft.skillIncreases["skill-increase-level-3"] = "diplomacy";
+    steps.splice(0, 1);
+    finalActorUpdate["flags.test.snapshot"] = "mutated";
+    release?.();
+    await Promise.all([first, queued]);
+
+    expect(actor.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        "flags.test.snapshot": "original",
+        "system.skills.arcana.rank": 1,
+      })
+    );
+    expect(actor.update).not.toHaveBeenCalledWith(expect.objectContaining({ "system.skills.diplomacy.rank": 1 }));
+  });
+
+  it("keeps semantically different repeats distinct while another draft is queued", async () => {
     const { actor } = buildActorHarness();
     const firstDraft = createEmptyDraft(1);
     const secondDraft = createEmptyDraft(2);
@@ -512,7 +543,7 @@ describe("prepared draft application", () => {
       finalActorUpdate: { "flags.wayfinder-pf2e.state.lastAppliedAt": "later" },
     });
 
-    expect(repeatedFirst).toBe(first);
+    expect(repeatedFirst).not.toBe(first);
     release?.();
     await Promise.all([first, second, repeatedFirst]);
   });

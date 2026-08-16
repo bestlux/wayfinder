@@ -1,3 +1,4 @@
+import { cloneData } from "./shared/cloning.js";
 import type {
   AbilityKey,
   BoostDraftState,
@@ -197,7 +198,7 @@ function sanitizeExistingCharacterHistory(raw: unknown): ExistingCharacterHistor
 
 export function buildDraftPatch(draft: DraftState): DraftState {
   return {
-    ...draft,
+    ...cloneData(draft),
     version: DRAFT_VERSION,
     updatedAt: new Date().toISOString(),
   };

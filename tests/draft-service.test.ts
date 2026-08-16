@@ -232,6 +232,31 @@ describe("draft-service", () => {
     expect(patched.updatedAt).not.toBeNull();
   });
 
+  it("builds a persisted draft patch without nested aliases", () => {
+    const draft = createEmptyDraft(2);
+    draft.selections.ancestry = rawSelection("ancestry", "pf2e.ancestries", "human", "Human", null);
+    draft.boosts.levels[1] = ["str"];
+    draft.skillTrainings.training = { ruleChoices: {}, additional: ["arcana"], loreChoices: {} };
+    draft.languageChoices.languages = ["draconic"];
+    draft.spellChoices.spells = [rawSelection("spells", "pf2e.spells-srd", "detect-magic", "Detect Magic", null)];
+
+    const patched = buildDraftPatch(draft);
+    draft.selections.ancestry.name = "Mutated source";
+    draft.boosts.levels[1]?.push("dex");
+    draft.skillTrainings.training?.additional.push("athletics");
+    draft.languageChoices.languages?.push("elven");
+    draft.spellChoices.spells?.push(rawSelection("spells", "pf2e.spells-srd", "shield", "Shield", null));
+
+    expect(patched.selections.ancestry?.name).toBe("Human");
+    expect(patched.boosts.levels[1]).toEqual(["str"]);
+    expect(patched.skillTrainings.training?.additional).toEqual(["arcana"]);
+    expect(patched.languageChoices.languages).toEqual(["draconic"]);
+    expect(patched.spellChoices.spells).toHaveLength(1);
+
+    patched.boosts.levels[1]?.push("con");
+    expect(draft.boosts.levels[1]).toEqual(["str", "dex"]);
+  });
+
   it("preserves a temporarily over-selected spell choice through save and reopen", () => {
     const slotId = "spell-choice-wizard-rank-1-level-1";
     const draft = createEmptyDraft(1);

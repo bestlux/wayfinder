@@ -1,3 +1,4 @@
+import { cloneData } from "./shared/cloning.js";
 import { classArchetypeProfile, migrateLegacyClassArchetypeBranches, STANDARD_CLASS_PATH, } from "./wayfinder/class-archetype/registry.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
 const DRAFT_VERSION = 9;
@@ -148,7 +149,7 @@ function sanitizeExistingCharacterHistory(raw) {
 }
 export function buildDraftPatch(draft) {
     return {
-        ...draft,
+        ...cloneData(draft),
         version: DRAFT_VERSION,
         updatedAt: new Date().toISOString(),
     };

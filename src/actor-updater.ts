@@ -5,6 +5,8 @@ import {
 } from "./actor-updater/prepared-draft-application.js";
 import type { SelectorActorLike } from "./selector-application.js";
 import type { ActorLike } from "./shared/actor-model.js";
+import { enqueueActorOperation } from "./shared/actor-operation-queue.js";
+import { cloneData } from "./shared/cloning.js";
 import type { DraftState, PendingStep, SelectionRef } from "./types.js";
 
 type DraftMutationActor = SelectorActorLike &
@@ -21,7 +23,8 @@ export interface ApplyDraftOptions {
 }
 
 const inFlightByActor = new WeakMap<object, Map<string, Promise<Record<string, unknown>>>>();
-const queueByActor = new WeakMap<object, Promise<void>>();
+const operationIdentityByReference = new WeakMap<object, number>();
+let nextOperationIdentity = 1;
 
 export function applyDraftToActor(
   actor: DraftMutationActor,
@@ -30,56 +33,73 @@ export function applyDraftToActor(
   options: ApplyDraftOptions = {}
 ): Promise<Record<string, unknown>> {
   const actorKey = actor as object;
-  const operationKey = draftApplyOperationKey(draft, steps);
+  const draftSnapshot = cloneData(draft);
+  const stepSnapshots = cloneData(steps);
+  const finalActorUpdate = options.finalActorUpdate ? cloneData(options.finalActorUpdate) : undefined;
+  const operationKey = draftApplyOperationKey(draftSnapshot, stepSnapshots, {
+    ...options,
+    finalActorUpdate,
+  });
   const actorOperations = inFlightByActor.get(actorKey) ?? new Map<string, Promise<Record<string, unknown>>>();
   const inFlight = actorOperations.get(operationKey);
   if (inFlight !== undefined) {
     return inFlight;
   }
 
-  const previous = queueByActor.get(actorKey) ?? Promise.resolve();
-  const promise = previous
-    .catch(() => undefined)
-    .then(async () => {
-      const prepared = await prepareDraftApplication(actor, draft, steps, {
-        validateActorAuthority: options.validateActorAuthority,
-        validateSelectionEligibility: options.validateSelectionEligibility,
-        validSkillSlugs: options.validSkillSlugs,
-      });
-      const result = await executePreparedDraftApplication(prepared, {
-        beforePhase: options.beforePhase,
-        finalActorUpdate: options.finalActorUpdate,
-      });
-      return result.actorUpdate;
+  const promise = enqueueActorOperation(actorKey, async () => {
+    const prepared = await prepareDraftApplication(actor, draftSnapshot, stepSnapshots, {
+      validateActorAuthority: options.validateActorAuthority,
+      validateSelectionEligibility: options.validateSelectionEligibility,
+      validSkillSlugs: options.validSkillSlugs,
     });
+    const result = await executePreparedDraftApplication(prepared, {
+      beforePhase: options.beforePhase,
+      finalActorUpdate,
+    });
+    return result.actorUpdate;
+  });
 
   actorOperations.set(operationKey, promise);
   inFlightByActor.set(actorKey, actorOperations);
-  const settled = promise.then(
-    () => undefined,
-    () => undefined
-  );
-  queueByActor.set(actorKey, settled);
-  void settled.finally(() => {
-    if (actorOperations.get(operationKey) === promise) {
-      actorOperations.delete(operationKey);
-    }
-    if (actorOperations.size === 0 && inFlightByActor.get(actorKey) === actorOperations) {
-      inFlightByActor.delete(actorKey);
-    }
-    if (queueByActor.get(actorKey) === settled) {
-      queueByActor.delete(actorKey);
-    }
-  });
+  void promise
+    .finally(() => {
+      if (actorOperations.get(operationKey) === promise) {
+        actorOperations.delete(operationKey);
+      }
+      if (actorOperations.size === 0 && inFlightByActor.get(actorKey) === actorOperations) {
+        inFlightByActor.delete(actorKey);
+      }
+    })
+    .catch(() => undefined);
 
   return promise;
 }
 
-function draftApplyOperationKey(draft: DraftState, steps: PendingStep[]): string {
+function draftApplyOperationKey(draft: DraftState, steps: PendingStep[], options: ApplyDraftOptions): string {
   return JSON.stringify({
     draft,
     steps,
+    finalActorUpdate: options.finalActorUpdate ?? null,
+    beforePhase: operationIdentity(options.beforePhase),
+    validateActorAuthority: operationIdentity(options.validateActorAuthority),
+    validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),
+    validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,
   });
+}
+
+function operationIdentity(value: object | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const existing = operationIdentityByReference.get(value);
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const identity = nextOperationIdentity++;
+  operationIdentityByReference.set(value, identity);
+  return identity;
 }
 
 export type { DraftApplyPhase } from "./actor-updater/prepared-draft-application.js";

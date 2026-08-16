@@ -12,11 +12,17 @@
         </label>
 
         {{#if activePane.selectedSpells.length}}
-          <section class="spell-selected-summary" aria-label="Selected spells">
+          <section class="spell-selected-summary is-{{activePane.selectionState}}" aria-label="Selected spells" aria-invalid="{{#if activePane.excessCount}}true{{else}}false{{/if}}">
             <div class="spell-selected-summary-heading">
               <span>Selected</span>
               <span>{{activePane.selectedCount}} / {{activePane.requiredCount}}</span>
             </div>
+
+            {{#if activePane.excessCount}}
+              <p class="spell-selection-error">
+                Remove {{activePane.excessCount}} extra spell{{#unless (eq activePane.excessCount 1)}}s{{/unless}} before Apply.
+              </p>
+            {{/if}}
 
             <div class="spell-selected-list" data-wayfinder-scroll-id="{{activePane.stepId}}:selected-spells">
               {{#each activePane.selectedSpells}}

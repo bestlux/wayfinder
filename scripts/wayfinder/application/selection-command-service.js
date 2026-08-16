@@ -400,12 +400,9 @@ export async function toggleSpellChoiceSelection(state, step, rawValue, deps) {
         return warningResult("duplicate-selection");
     }
     const requiredCount = step.spellChoice?.count ?? 0;
-    if (nextSelections.length >= requiredCount) {
-        return warningResult("spell-choice-full");
-    }
     nextSelections.push(selection);
     state.recentlyInvalidatedStepIds.delete(step.slotId);
-    return nextSelections.length >= requiredCount
+    return nextSelections.length === requiredCount
         ? changedResult({ shouldAdvance: true })
         : changedResult({ shouldRender: true });
 }

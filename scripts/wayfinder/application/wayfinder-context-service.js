@@ -7,28 +7,36 @@ export async function buildWayfinderContext(args) {
         .filter(Boolean)
         .join(" • ") || "Creation path in progress";
     const activeStepIndex = args.activeStep ? args.steps.findIndex((step) => step.id === args.activeStep?.id) : -1;
-    const stepRows = await Promise.all(args.steps.map(async (step, index) => {
-        const complete = await args.isStepComplete(step);
+    const readiness = args.readiness;
+    if (readiness.evaluations.length !== args.steps.length) {
+        throw new Error("Wayfinder readiness did not evaluate every planned step.");
+    }
+    const stepRows = readiness.evaluations.map((evaluation, index) => {
+        const step = args.steps[index];
+        if (!step) {
+            throw new Error(`Missing Wayfinder step for readiness evaluation ${index}.`);
+        }
         return {
             id: step.id,
             index: index + 1,
             level: step.level,
             title: step.title,
             active: step.id === args.activeStep?.id,
-            complete,
-            invalidated: args.recentlyInvalidatedStepIds.has(step.slotId) && !complete,
+            complete: evaluation.complete,
+            invalidated: evaluation.state === "invalid" || evaluation.state === "excess",
             modeLabel: modeLabel(step.kind),
-            status: await args.getStepStatus(step),
+            status: evaluation.status,
             firstInLevel: index === 0 || args.steps[index - 1]?.level !== step.level,
         };
-    }));
+    });
     return {
         actorName: args.actorName,
         dossierLine,
         currentLevel: args.currentLevel,
         targetLevel: args.targetLevel,
         hasPendingSteps: args.steps.length > 0,
-        canApplyDraft: args.steps.length > 0,
+        canApplyDraft: readiness.ready,
+        applyBlocker: readiness.firstBlocker,
         guidance: "Review one decision at a time, keep the draft coherent, and let earlier choices narrow what comes next.",
         summary,
         stepCount: args.steps.length,

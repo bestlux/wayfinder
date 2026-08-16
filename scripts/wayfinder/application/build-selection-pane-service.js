@@ -7,6 +7,7 @@ import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
 import { canGrantRestrictedSpellRarityAccess, withRestrictedSpellRarityAccess, } from "../spell-choice/rarity-access.js";
 export async function buildSelectionPane(step, effectiveBuildState, deps) {
+    const selectedLabel = async () => deps.stepEvaluation?.status ?? deps.resolveStepStatus(step, effectiveBuildState);
     if (step.kind === "class-choice" || step.kind === "class-archetype") {
         const selectedValue = step.kind === "class-archetype"
             ? (deps.draft.classArchetypeChoices[step.slotId] ?? null)
@@ -15,7 +16,7 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
         return buildClassChoicePane({
             step,
             selectedValue,
-            selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+            selectedLabel: await selectedLabel(),
             blocked,
             blockedTitle: blocked ? "Choose a deity first" : null,
             blockedMessage: blocked
@@ -27,14 +28,14 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
         return buildSingletonChoicePane({
             step,
             selectedValue: deps.draft.singletonChoices[step.slotId] ?? null,
-            selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+            selectedLabel: await selectedLabel(),
         });
     }
     if (step.kind === "language-choice") {
         return buildLanguageChoicePane({
             step,
             selectedValues: deps.draft.languageChoices[step.slotId] ?? [],
-            selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+            selectedLabel: await selectedLabel(),
         });
     }
     if (step.kind !== "spell-choice" && step.kind !== "pick-item" && step.kind !== "class-branch") {
@@ -78,7 +79,8 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
             search,
             activeFilterCount: activePickerFilterCount(filterState),
             selectedSelections,
-            selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+            selectedLabel: await selectedLabel(),
+            selectionState: deps.stepEvaluation?.state,
             filterGroups,
             visibleOptions,
             infoState,

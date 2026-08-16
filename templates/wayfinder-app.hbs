@@ -114,7 +114,7 @@
           <header class="stage-bar">
             <div class="stage-bar-copy">
               <span class="stage-bar-step">Step {{activeStepIndex}}</span>
-              <h3>{{activePane.title}}</h3>
+              <h3 tabindex="-1" data-wayfinder-step-heading="{{activePane.stepId}}">{{activePane.title}}</h3>
               <span class="step-badge">Level {{activePane.level}} · {{activePane.modeLabel}}</span>
             </div>
 
@@ -190,9 +190,15 @@
         aria-label="{{localize "wayfinder-pf2e.App.FeedbackAria"}}"
       >{{localize "wayfinder-pf2e.App.Feedback"}}</button>
     </div>
+    {{#if applyBlocker}}
+      <button type="button" class="footer-readiness" data-wayfinder-action="select-step" data-step-id="{{applyBlocker.stepId}}">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        <span>{{applyBlocker.message}}</span>
+      </button>
+    {{/if}}
     <div class="footer-actions">
       <button type="button" class="secondary" data-wayfinder-action="save-draft">Save Draft</button>
-      <button type="button" class="primary" data-wayfinder-action="apply-draft" {{#unless canApplyDraft}}disabled{{/unless}}>Apply Changes</button>
+      <button type="button" class="primary" data-wayfinder-action="apply-draft" {{#unless canApplyDraft}}disabled{{/unless}} {{#if applyBlocker}}aria-label="Apply Changes unavailable. {{applyBlocker.message}}"{{/if}}>Apply Changes</button>
     </div>
   </footer>
 </section>

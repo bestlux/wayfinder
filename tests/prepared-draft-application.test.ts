@@ -7,6 +7,8 @@ import {
 import { createEmptyDraft } from "../src/draft-service";
 import type { ActorItemLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import type { PendingStep, SpellChoiceStep } from "../src/types";
+import { WayfinderDraftNotReadyError } from "../src/wayfinder/domain/step-evaluation";
+import { createLanguageChoiceStep } from "../src/wayfinder/domain/step-types";
 import { buildActorHarness, classSelectionStep, selection, setGamePacks } from "./support/actor-updater-fixtures";
 
 const PHASE_IDS: DraftApplyPhase[] = [
@@ -176,6 +178,7 @@ describe("prepared draft application", () => {
 
   it("rejects spell over-selection before resolving or mutating documents", async () => {
     const { actor } = buildActorHarness();
+    const fetchSelectionDocument = vi.fn();
     const draft = createEmptyDraft(1);
     const step = spellChoiceStep(1);
     draft.spellChoices[step.slotId] = [
@@ -183,10 +186,47 @@ describe("prepared draft application", () => {
       selection(step.slotId, "pf2e.spells-srd", "guidance", "spell", "Guidance"),
     ];
 
-    await expect(prepareDraftApplication(actor as never, draft, [step])).rejects.toThrow(
-      "Wizard cantrips changed after this draft was prepared"
-    );
+    await expect(
+      prepareDraftApplication(actor as never, draft, [step], { fetchSelectionDocument })
+    ).rejects.toMatchObject({
+      name: "WayfinderDraftNotReadyError",
+      blockers: [expect.objectContaining({ code: "too-many-choices", stepId: step.id })],
+    });
+    expect(fetchSelectionDocument).not.toHaveBeenCalled();
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing scalar choice before resolving or mutating documents", async () => {
+    const { actor } = buildActorHarness();
+    const fetchSelectionDocument = vi.fn();
+
+    await expect(
+      prepareDraftApplication(actor as never, createEmptyDraft(1), [classSelectionStep()], {
+        fetchSelectionDocument,
+      })
+    ).rejects.toBeInstanceOf(WayfinderDraftNotReadyError);
+
+    expect(fetchSelectionDocument).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects an underfilled language choice before resolving or mutating documents", async () => {
+    const { actor } = buildActorHarness();
+    const fetchSelectionDocument = vi.fn();
+    const step = languageChoiceStep();
+    const draft = createEmptyDraft(1);
+    draft.languageChoices[step.slotId] = ["draconic"];
+
+    await expect(
+      prepareDraftApplication(actor as never, draft, [step], { fetchSelectionDocument })
+    ).rejects.toMatchObject({
+      blockers: [expect.objectContaining({ code: "missing-choice", stepId: step.id })],
+    });
+
+    expect(fetchSelectionDocument).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
   });
 
   it("accepts a reuse-only spell step when an earlier selected step prepares the destination", async () => {
@@ -383,6 +423,23 @@ describe("prepared draft application", () => {
     expect(actor.update).not.toHaveBeenCalled();
   });
 
+  it("shares the same mandatory readiness rejection for coalesced actor operations", async () => {
+    const { actor } = buildActorHarness();
+    const draft = createEmptyDraft(1);
+    const steps = [classSelectionStep()];
+
+    const first = applyDraftToActor(actor as never, draft, steps);
+    const second = applyDraftToActor(actor as never, draft, steps);
+
+    expect(second).toBe(first);
+    await expect(first).rejects.toBeInstanceOf(WayfinderDraftNotReadyError);
+    await expect(second).rejects.toBeInstanceOf(WayfinderDraftNotReadyError);
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
   it("shares a concurrent apply of the same draft for one actor", async () => {
     const { actor } = buildActorHarness();
     const draft = createEmptyDraft(1);
@@ -534,7 +591,7 @@ describe("prepared draft application", () => {
     actor.update.mockRejectedValueOnce(new Error("final update failed"));
 
     await expect(
-      applyDraftToActor(actor as never, draft, [skillIncreaseStep(3)], {
+      applyDraftToActor(actor as never, draft, [], {
         finalActorUpdate: { "flags.wayfinder-pf2e.draft": null },
       })
     ).rejects.toMatchObject({ phase: "finalize-actor" });
@@ -661,6 +718,20 @@ function spellChoiceStep(count: number): SpellChoiceStep {
       restrictToCommon: true,
     },
   };
+}
+
+function languageChoiceStep() {
+  return createLanguageChoiceStep(1, {
+    slotId: "language-choice-level-1",
+    sourceItemType: "ancestry",
+    sourceName: "Human",
+    grantedLanguages: ["common"],
+    count: 2,
+    options: [
+      { value: "draconic", label: "Draconic", requiresGmApproval: false },
+      { value: "dwarven", label: "Dwarven", requiresGmApproval: false },
+    ],
+  });
 }
 
 function flagChoiceStep(): PendingStep {

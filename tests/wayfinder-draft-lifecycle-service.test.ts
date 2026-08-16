@@ -7,6 +7,7 @@ import {
   buildSaveDraftUpdate,
   createClearedDraftResult,
 } from "../src/wayfinder/application/draft-lifecycle-service";
+import type { WayfinderStepEvaluation } from "../src/wayfinder/domain/step-evaluation";
 
 describe("wayfinder draft lifecycle service", () => {
   it("refuses to apply when any planned step is incomplete", async () => {
@@ -20,14 +21,21 @@ describe("wayfinder draft lifecycle service", () => {
       currentLevel: 2,
       draft,
       steps,
-      isStepComplete: async (pendingStep) => pendingStep.id !== "class-level-1",
+      evaluateStep: async (pendingStep) =>
+        pendingStep.id === "class-level-1" ? blockedEvaluation(pendingStep) : readyEvaluation(),
       confirmApply,
       applyDraftToActor,
     });
 
     expect(result).toEqual({
       kind: "warning",
-      warning: "missing-selections",
+      warning: "draft-not-ready",
+      blockers: [
+        expect.objectContaining({
+          code: "missing-choice",
+          stepId: "class-level-1",
+        }),
+      ],
     });
     expect(confirmApply).not.toHaveBeenCalled();
     expect(applyDraftToActor).not.toHaveBeenCalled();
@@ -43,7 +51,7 @@ describe("wayfinder draft lifecycle service", () => {
       currentLevel: 1,
       draft,
       steps: [],
-      isStepComplete: async () => true,
+      evaluateStep: async () => readyEvaluation(),
       confirmApply,
       applyDraftToActor,
     });
@@ -51,6 +59,7 @@ describe("wayfinder draft lifecycle service", () => {
     expect(result).toEqual({
       kind: "warning",
       warning: "no-pending-steps",
+      blockers: [],
     });
     expect(confirmApply).not.toHaveBeenCalled();
     expect(applyDraftToActor).not.toHaveBeenCalled();
@@ -67,7 +76,7 @@ describe("wayfinder draft lifecycle service", () => {
       currentLevel: 3,
       draft,
       steps,
-      isStepComplete: async () => true,
+      evaluateStep: async () => readyEvaluation(),
       confirmApply,
       applyDraftToActor,
     });
@@ -110,7 +119,7 @@ describe("wayfinder draft lifecycle service", () => {
       draft,
       existingCharacterHistory,
       steps,
-      isStepComplete: async () => true,
+      evaluateStep: async () => readyEvaluation(),
       confirmApply,
       applyDraftToActor,
       now: () => "2026-04-19T21:30:00.000Z",
@@ -143,7 +152,7 @@ describe("wayfinder draft lifecycle service", () => {
       currentLevel: 1,
       draft,
       steps: [step("ancestry-level-1")],
-      isStepComplete: async () => true,
+      evaluateStep: async () => readyEvaluation(),
       confirmApply,
       applyDraftToActor,
     });
@@ -163,7 +172,7 @@ describe("wayfinder draft lifecycle service", () => {
         currentLevel: 1,
         draft,
         steps: [step("ancestry-level-1")],
-        isStepComplete: async () => true,
+        evaluateStep: async () => readyEvaluation(),
         confirmApply: () => true,
         applyDraftToActor: async () => {
           throw new Error("injected phase failure");
@@ -184,7 +193,7 @@ describe("wayfinder draft lifecycle service", () => {
       draft,
       existingCompletedStepIds: ["ancestry-level-1", "class-level-1"],
       steps: [step("class-feat-level-2"), step("class-feat-level-2")],
-      isStepComplete: async () => true,
+      evaluateStep: async () => readyEvaluation(),
       confirmApply: () => true,
       applyDraftToActor,
       now: () => "2026-04-19T21:30:00.000Z",
@@ -231,5 +240,24 @@ function step(id: string): PendingStep {
     description: "",
     required: true,
     slotId: id,
+  };
+}
+
+function readyEvaluation(): WayfinderStepEvaluation {
+  return { state: "complete", complete: true, status: "Ready to apply", issue: null };
+}
+
+function blockedEvaluation(pendingStep: PendingStep): WayfinderStepEvaluation {
+  return {
+    state: "incomplete",
+    complete: false,
+    status: "Choose one",
+    issue: {
+      code: "missing-choice",
+      stepId: pendingStep.id,
+      slotId: pendingStep.slotId,
+      title: pendingStep.title,
+      message: `${pendingStep.title}: choose one.`,
+    },
   };
 }

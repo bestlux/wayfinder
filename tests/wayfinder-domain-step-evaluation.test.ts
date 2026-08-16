@@ -1,16 +1,40 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
-import { getWayfinderStepStatus, isWayfinderStepComplete } from "../src/wayfinder/domain/step-evaluation";
+import type { SelectionRef } from "../src/types";
+import {
+  evaluateWayfinderDraftReadiness,
+  evaluateWayfinderStep,
+  getWayfinderStepStatus,
+  isWayfinderStepComplete,
+} from "../src/wayfinder/domain/step-evaluation";
 import {
   createBoostStep,
   createClassArchetypeStep,
   createClassChoiceStep,
+  createLanguageChoiceStep,
+  createSkillTrainingStep,
   createSpellChoiceStep,
   getStepModeLabel,
 } from "../src/wayfinder/domain/step-types";
 
 describe("wayfinder domain step evaluation", () => {
+  it("evaluates every planned step once and fails closed on an inconsistent result", async () => {
+    const steps = [createManualStep("first"), createManualStep("second")];
+    const evaluateStep = vi.fn(async (step: (typeof steps)[number]) => ({
+      state: "incomplete" as const,
+      complete: false as const,
+      status: "Choose one",
+      issue: null,
+      step,
+    }));
+
+    const readiness = await evaluateWayfinderDraftReadiness(steps, evaluateStep as never);
+
+    expect(evaluateStep).toHaveBeenCalledTimes(2);
+    expect(readiness.ready).toBe(false);
+  });
+
   it("treats explicit Standard as a complete class-archetype decision", async () => {
     const draft = createEmptyDraft(1);
     const step = createClassArchetypeStep(1, {
@@ -36,16 +60,8 @@ describe("wayfinder domain step evaluation", () => {
     });
     draft.classArchetypeChoices[step.slotId] = "standard";
 
-    expect(
-      await isWayfinderStepComplete(step, draft, {} as EffectiveBuildState, {
-        isTrainingStepComplete: () => false,
-      })
-    ).toBe(true);
-    expect(
-      await getWayfinderStepStatus(step, draft, new Set(), {} as EffectiveBuildState, {
-        isTrainingStepComplete: () => false,
-      })
-    ).toBe("Standard class path");
+    expect(await isWayfinderStepComplete(step, draft, {} as EffectiveBuildState)).toBe(true);
+    expect(await getWayfinderStepStatus(step, draft, new Set(), {} as EffectiveBuildState)).toBe("Standard class path");
     expect(getStepModeLabel(step.kind)).toBe("Class Archetype");
   });
 
@@ -68,11 +84,7 @@ describe("wayfinder domain step evaluation", () => {
     });
     draft.classChoices[step.slotId] = "holy";
 
-    expect(
-      await getWayfinderStepStatus(step, draft, new Set<string>(), {} as EffectiveBuildState, {
-        isTrainingStepComplete: () => false,
-      })
-    ).toBe("Holy");
+    expect(await getWayfinderStepStatus(step, draft, new Set<string>(), {} as EffectiveBuildState)).toBe("Holy");
     expect(getStepModeLabel(step.kind)).toBe("Class Choice");
   });
 
@@ -103,29 +115,98 @@ describe("wayfinder domain step evaluation", () => {
       additionalAllowedSpellNames: [],
       restrictToCommon: false,
     });
-    draft.spellChoices[step.slotId] = [
-      {
-        slotId: step.slotId,
-        packId: "pf2e.spells-srd",
-        documentId: "magic-missile",
-        uuid: "Compendium.pf2e.spells-srd.Item.magic-missile",
-        itemType: "spell",
-        featType: null,
-        name: "Magic Missile",
-        level: 1,
-      },
-    ];
+    draft.spellChoices[step.slotId] = [spellSelection(step.slotId, "magic-missile", "Magic Missile")];
+    expect(await isWayfinderStepComplete(step, draft, {} as EffectiveBuildState)).toBe(false);
+    expect(await getWayfinderStepStatus(step, draft, new Set<string>(), {} as EffectiveBuildState)).toBe("1/2 chosen");
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
+      state: "incomplete",
+      complete: false,
+      issue: { code: "missing-choice", message: "Wizard spellbook: choose 1 more spell." },
+    });
 
-    expect(
-      await isWayfinderStepComplete(step, draft, {} as EffectiveBuildState, {
-        isTrainingStepComplete: () => false,
-      })
-    ).toBe(false);
-    expect(
-      await getWayfinderStepStatus(step, draft, new Set<string>(), {} as EffectiveBuildState, {
-        isTrainingStepComplete: () => false,
-      })
-    ).toBe("1/2 chosen");
+    draft.spellChoices[step.slotId]?.push(spellSelection(step.slotId, "fear", "Fear"));
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toEqual({
+      state: "complete",
+      complete: true,
+      status: "Ready to apply",
+      issue: null,
+    });
+
+    draft.spellChoices[step.slotId]?.push(spellSelection(step.slotId, "force-barrage", "Force Barrage"));
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
+      state: "excess",
+      complete: false,
+      status: "3/2 chosen · remove 1",
+      issue: { code: "too-many-choices", message: "Wizard spellbook: remove 1 extra spell choice." },
+    });
+
+    draft.spellChoices[step.slotId]?.pop();
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
+      state: "complete",
+      complete: true,
+      issue: null,
+    });
+  });
+
+  it("classifies incomplete, complete, and excess language choices", async () => {
+    const draft = createEmptyDraft(1);
+    const step = createLanguageChoiceStep(1, {
+      slotId: "language-choice-level-1",
+      sourceItemType: "ancestry",
+      sourceName: "Human",
+      grantedLanguages: ["common"],
+      count: 2,
+      options: [
+        { value: "draconic", label: "Draconic", requiresGmApproval: false },
+        { value: "dwarven", label: "Dwarven", requiresGmApproval: false },
+        { value: "elven", label: "Elven", requiresGmApproval: false },
+      ],
+    });
+
+    draft.languageChoices[step.slotId] = ["draconic"];
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
+      state: "incomplete",
+      issue: { code: "missing-choice", message: "Bonus languages: choose 1 more language." },
+    });
+
+    draft.languageChoices[step.slotId]?.push("dwarven");
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
+      state: "complete",
+      complete: true,
+      issue: null,
+    });
+
+    draft.languageChoices[step.slotId]?.push("elven");
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
+      state: "excess",
+      status: "3/2 chosen · remove 1",
+      issue: { code: "too-many-choices", message: "Bonus languages: remove 1 extra language choice." },
+    });
+  });
+
+  it("reports an overfilled training draft as excess with corrective copy", async () => {
+    const draft = createEmptyDraft(1);
+    const step = createSkillTrainingStep(1, "Wizard training", "", {
+      classSlug: "wizard",
+      className: "Wizard",
+      fixedSkills: ["arcana"],
+      fixedLores: [],
+      choiceRules: [],
+      loreChoices: [],
+      additionalCount: 1,
+    });
+    draft.skillTrainings[step.slotId] = {
+      ruleChoices: {},
+      additional: ["society", "occultism"],
+      loreChoices: {},
+    };
+
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
+      state: "excess",
+      complete: false,
+      status: "2/1 chosen · remove 1",
+      issue: { code: "too-many-choices", message: "Wizard training: remove 1 extra training choice." },
+    });
   });
 
   it("keeps earlier gradual boost steps complete as their shared native batch grows", async () => {
@@ -149,10 +230,34 @@ describe("wayfinder domain step evaluation", () => {
       requiredCount: 2,
       grantCount: 1,
     });
-    const deps = { isTrainingStepComplete: () => false };
-
-    expect(await isWayfinderStepComplete(level2, draft, buildState, deps)).toBe(true);
-    expect(await isWayfinderStepComplete(level3, draft, buildState, deps)).toBe(true);
-    expect(await getWayfinderStepStatus(level2, draft, new Set(), buildState, deps)).toBe("Ready to apply");
+    expect(await isWayfinderStepComplete(level2, draft, buildState)).toBe(true);
+    expect(await isWayfinderStepComplete(level3, draft, buildState)).toBe(true);
+    expect(await getWayfinderStepStatus(level2, draft, new Set(), buildState)).toBe("Ready to apply");
   });
 });
+
+function spellSelection(slotId: string, documentId: string, name: string): SelectionRef {
+  return {
+    slotId,
+    packId: "pf2e.spells-srd",
+    documentId,
+    uuid: `Compendium.pf2e.spells-srd.Item.${documentId}`,
+    itemType: "spell",
+    featType: null,
+    name,
+    level: 1,
+  };
+}
+
+function createManualStep(id: string) {
+  return {
+    id,
+    level: 1,
+    kind: "manual" as const,
+    slotKind: "class" as const,
+    title: id,
+    description: "",
+    required: true,
+    slotId: id,
+  };
+}

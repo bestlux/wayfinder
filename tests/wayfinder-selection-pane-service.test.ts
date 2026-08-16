@@ -591,6 +591,8 @@ describe("wayfinder selection pane service", () => {
     }
     expect(pane.selectedCount).toBe(1);
     expect(pane.remainingCount).toBe(1);
+    expect(pane.excessCount).toBe(0);
+    expect(pane.selectionState).toBe("incomplete");
     expect(pane.selectedSpells).toEqual([
       {
         value: "test.pack:heal",

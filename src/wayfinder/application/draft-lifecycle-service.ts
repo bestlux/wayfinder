@@ -1,6 +1,11 @@
 import { DRAFT_FLAG, STATE_FLAG } from "../../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../../draft-service.js";
 import type { DraftState, ExistingCharacterHistory, PendingStep } from "../../types.js";
+import {
+  evaluateWayfinderDraftReadiness,
+  type WayfinderStepEvaluation,
+  type WayfinderStepIssue,
+} from "../domain/step-evaluation.js";
 
 export interface ApplyDraftLifecycleArgs {
   actorName: string;
@@ -9,14 +14,14 @@ export interface ApplyDraftLifecycleArgs {
   existingCompletedStepIds?: string[];
   existingCharacterHistory?: ExistingCharacterHistory | null;
   steps: PendingStep[];
-  isStepComplete: (step: PendingStep) => Promise<boolean>;
+  evaluateStep: (step: PendingStep) => Promise<WayfinderStepEvaluation>;
   confirmApply?: (message: string) => boolean | Promise<boolean>;
   applyDraftToActor: (finalActorUpdate: Record<string, unknown>) => Promise<void>;
   now?: () => string;
 }
 
 export type ApplyDraftLifecycleResult =
-  | { kind: "warning"; warning: "missing-selections" | "no-pending-steps" }
+  | { kind: "warning"; warning: "draft-not-ready" | "no-pending-steps"; blockers: WayfinderStepIssue[] }
   | { kind: "cancelled" }
   | { kind: "applied"; nextDraft: DraftState };
 
@@ -25,14 +30,16 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
     return {
       kind: "warning",
       warning: "no-pending-steps",
+      blockers: [],
     };
   }
 
-  const completion = await Promise.all(args.steps.map((step) => args.isStepComplete(step)));
-  if (completion.some((value) => !value)) {
+  const readiness = await evaluateWayfinderDraftReadiness(args.steps, args.evaluateStep);
+  if (!readiness.ready) {
     return {
       kind: "warning",
-      warning: "missing-selections",
+      warning: "draft-not-ready",
+      blockers: readiness.blockers,
     };
   }
 

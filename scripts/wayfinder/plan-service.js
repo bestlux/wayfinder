@@ -1,6 +1,6 @@
 import { buildProgressionPlan, sortPendingSteps } from "../progression.js";
 import { dedupeChoiceRuleSteps } from "./domain/choice-rule-ownership.js";
-import { getWayfinderStepStatus as getDomainStepStatus, isWayfinderStepComplete as isDomainStepComplete, } from "./domain/step-evaluation.js";
+import { evaluateWayfinderStep as evaluateDomainStep, getWayfinderStepStatus as getDomainStepStatus, isWayfinderStepComplete as isDomainStepComplete, } from "./domain/step-evaluation.js";
 import { getStepModeLabel } from "./domain/step-types.js";
 export async function buildWayfinderPlan(snapshot, draft, deps) {
     const plan = buildProgressionPlan(snapshot, draft.targetLevel);
@@ -57,11 +57,14 @@ export async function resolveActiveStep(steps, activeStepId, isStepComplete) {
     nextIncomplete ??= steps[0];
     return { activeStep: nextIncomplete, activeStepId: nextIncomplete.id };
 }
-export async function isWayfinderStepComplete(step, draft, effectiveBuildState, deps) {
-    return isDomainStepComplete(step, draft, effectiveBuildState, deps);
+export async function isWayfinderStepComplete(step, draft, effectiveBuildState) {
+    return isDomainStepComplete(step, draft, effectiveBuildState);
 }
-export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState, deps) {
-    return getDomainStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState, deps);
+export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState) {
+    return getDomainStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState);
+}
+export async function evaluateWayfinderStep(step, draft, recentlyInvalidatedStepIds, effectiveBuildState) {
+    return evaluateDomainStep(step, draft, recentlyInvalidatedStepIds, effectiveBuildState);
 }
 export function modeLabel(kind) {
     return getStepModeLabel(kind);

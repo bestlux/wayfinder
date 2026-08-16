@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PendingStep } from "../src/types";
 import { buildWayfinderContext } from "../src/wayfinder/application/wayfinder-context-service";
+import { evaluateWayfinderDraftReadiness, type WayfinderStepEvaluation } from "../src/wayfinder/domain/step-evaluation";
 
 describe("wayfinder context service", () => {
   it("builds summary rows, dossier text, and navigation state for the active step", async () => {
@@ -18,7 +19,6 @@ describe("wayfinder context service", () => {
       activeStep: steps[1] ?? null,
       activePane: { kind: "manual", title: "Class" } as never,
       statusNote: "Class changed.",
-      recentlyInvalidatedStepIds: new Set(["deity-level-1"]),
       summaryDocuments: {
         ancestry: { name: "Human" },
         heritage: { name: "Half-Elf" },
@@ -26,8 +26,11 @@ describe("wayfinder context service", () => {
         classDocument: { name: "Cleric" },
         deity: { name: "Sarenrae" },
       },
-      isStepComplete: async (pendingStep) => pendingStep.id !== "deity-level-1",
-      getStepStatus: async (pendingStep) => `${pendingStep.title} ready`,
+      readiness: await evaluateWayfinderDraftReadiness(steps, async (pendingStep) =>
+        pendingStep.id === "deity-level-1"
+          ? blockedEvaluation(pendingStep, "dependency-review", `${pendingStep.title} ready`)
+          : readyEvaluation(`${pendingStep.title} ready`)
+      ),
     });
 
     expect(context.dossierLine).toBe("Human • Half-Elf • Scholar • Cleric • Sarenrae");
@@ -42,6 +45,8 @@ describe("wayfinder context service", () => {
     expect(context.completedCount).toBe(2);
     expect(context.canGoPrevious).toBe(true);
     expect(context.canGoNext).toBe(true);
+    expect(context.canApplyDraft).toBe(false);
+    expect(context.applyBlocker).toMatchObject({ stepId: "deity-level-1", code: "dependency-review" });
     expect(context.steps).toEqual([
       expect.objectContaining({
         id: "ancestry-level-1",
@@ -81,7 +86,6 @@ describe("wayfinder context service", () => {
       activeStep: null,
       activePane: null,
       statusNote: null,
-      recentlyInvalidatedStepIds: new Set<string>(),
       summaryDocuments: {
         ancestry: null,
         heritage: null,
@@ -89,8 +93,9 @@ describe("wayfinder context service", () => {
         classDocument: null,
         deity: null,
       },
-      isStepComplete: async () => false,
-      getStepStatus: async () => "Missing",
+      readiness: await evaluateWayfinderDraftReadiness(steps, async (pendingStep) =>
+        blockedEvaluation(pendingStep, "missing-choice", "Missing")
+      ),
     });
 
     expect(context.dossierLine).toBe("Creation path in progress");
@@ -104,7 +109,8 @@ describe("wayfinder context service", () => {
     expect(context.canGoPrevious).toBe(false);
     expect(context.canGoNext).toBe(false);
     expect(context.hasPendingSteps).toBe(true);
-    expect(context.canApplyDraft).toBe(true);
+    expect(context.canApplyDraft).toBe(false);
+    expect(context.applyBlocker?.message).toBe("Class: Missing.");
   });
 
   it("disables apply when there are no Wayfinder-guided steps", async () => {
@@ -116,7 +122,6 @@ describe("wayfinder context service", () => {
       activeStep: null,
       activePane: null,
       statusNote: null,
-      recentlyInvalidatedStepIds: new Set<string>(),
       summaryDocuments: {
         ancestry: null,
         heritage: null,
@@ -124,12 +129,14 @@ describe("wayfinder context service", () => {
         classDocument: null,
         deity: null,
       },
-      isStepComplete: async () => false,
-      getStepStatus: async () => "Missing",
+      readiness: await evaluateWayfinderDraftReadiness([], async (pendingStep) =>
+        blockedEvaluation(pendingStep, "missing-choice", "Missing")
+      ),
     });
 
     expect(context.hasPendingSteps).toBe(false);
     expect(context.canApplyDraft).toBe(false);
+    expect(context.applyBlocker).toBeNull();
   });
 
   it("groups imported existing-character history by level and exposes review counts", async () => {
@@ -141,7 +148,6 @@ describe("wayfinder context service", () => {
       activeStep: null,
       activePane: null,
       statusNote: null,
-      recentlyInvalidatedStepIds: new Set<string>(),
       summaryDocuments: {
         ancestry: { name: "Human" },
         heritage: { name: "Versatile Heritage" },
@@ -149,8 +155,9 @@ describe("wayfinder context service", () => {
         classDocument: { name: "Wizard" },
         deity: null,
       },
-      isStepComplete: async () => false,
-      getStepStatus: async () => "Missing",
+      readiness: await evaluateWayfinderDraftReadiness([], async (pendingStep) =>
+        blockedEvaluation(pendingStep, "missing-choice", "Missing")
+      ),
       canImportExistingHistory: true,
       existingCharacterHistory: {
         version: 1,
@@ -208,5 +215,28 @@ function step(id: string, title: string): PendingStep {
     description: "",
     required: true,
     slotId: id,
+  };
+}
+
+function readyEvaluation(status: string): WayfinderStepEvaluation {
+  return { state: "complete", complete: true, status, issue: null };
+}
+
+function blockedEvaluation(
+  step: PendingStep,
+  code: "missing-choice" | "dependency-review",
+  status: string
+): WayfinderStepEvaluation {
+  return {
+    state: code === "dependency-review" ? "invalid" : "incomplete",
+    complete: false,
+    status,
+    issue: {
+      code,
+      stepId: step.id,
+      slotId: step.slotId,
+      title: step.title,
+      message: `${step.title}: ${status}.`,
+    },
   };
 }

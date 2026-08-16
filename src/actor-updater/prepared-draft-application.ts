@@ -1,4 +1,4 @@
-import { listActorItems } from "../build-state.js";
+import { getEffectiveBuildState, listActorItems } from "../build-state.js";
 import { type CampaignFeatSlotAuthority, resolveCampaignFeatSlotSetting } from "../campaign-feat-sections.js";
 import { applyClassArchetypeDraft } from "../class-archetype-service.js";
 import { applyClassBranchDraft, createBranchSelectorSelection } from "../class-branch-service.js";
@@ -19,6 +19,12 @@ import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
 import { activeClassArchetypeProfile } from "../wayfinder/class-archetype/registry.js";
 import { maxProficiencyRank, projectDraftSkillRanks } from "../wayfinder/domain/skill-rank-projection.js";
+import {
+  assertDraftBackedStepsReady,
+  evaluateWayfinderDraftReadiness,
+  evaluateWayfinderStep,
+  WayfinderDraftNotReadyError,
+} from "../wayfinder/domain/step-evaluation.js";
 import { applyBoostDraft } from "./boost-application.js";
 import { createSingletonGrantItems } from "./explicit-grant-application.js";
 import { buildLanguageChoiceUpdate } from "./language-choice-application.js";
@@ -208,6 +214,17 @@ export async function prepareDraftApplication(
 
   const draft = cloneData(draftInput);
   const steps = cloneData(stepsInput);
+  await assertDraftBackedStepsReady(steps, draft);
+  const boostSteps = steps.filter((step) => step.kind === "boost");
+  if (boostSteps.length > 0) {
+    const effectiveBuildState = await getEffectiveBuildState(actor, draft);
+    const boostReadiness = await evaluateWayfinderDraftReadiness(boostSteps, (step) =>
+      evaluateWayfinderStep(step, draft, new Set(), effectiveBuildState)
+    );
+    if (!boostReadiness.ready) {
+      throw new WayfinderDraftNotReadyError(boostReadiness.blockers);
+    }
+  }
   const activeSlotIds = new Set(steps.map((step) => step.slotId));
   const stepsBySlotId = new Map(steps.map((step) => [step.slotId, step]));
   const selections = orderSelections(draft, steps).filter((selection) => activeSlotIds.has(selection.slotId));
@@ -281,7 +298,7 @@ function validateDraftChoiceValues(
     } else if (step.kind === "language-choice") {
       const selected = draft.languageChoices[step.slotId] ?? [];
       const allowed = new Set(step.languageChoice.options.map((option) => option.value));
-      if (selected.length > step.languageChoice.count || selected.some((value) => !allowed.has(value))) {
+      if (selected.some((value) => !allowed.has(value))) {
         throw staleChoiceError(step);
       }
     } else if (step.kind === "skill-training") {
@@ -302,9 +319,6 @@ function validateDraftChoiceValues(
         });
         if ((ranks[selected] ?? 0) >= maxProficiencyRank(step.level)) throw staleChoiceError(step);
       }
-    } else if (step.kind === "spell-choice") {
-      const selected = draft.spellChoices[step.slotId] ?? [];
-      if (selected.length !== step.spellChoice.count) throw staleChoiceError(step);
     }
   }
 }
@@ -322,10 +336,7 @@ function validateTrainingChoices(
 ): void {
   const training = draft.skillTrainings[step.slotId];
   if (!training) return;
-  if (
-    training.additional.length > step.training.additionalCount ||
-    training.additional.some((slug) => !validSkillSlugs.has(slug))
-  ) {
+  if (training.additional.some((slug) => !validSkillSlugs.has(slug))) {
     throw staleChoiceError(step);
   }
   for (const choice of step.training.choiceRules) {

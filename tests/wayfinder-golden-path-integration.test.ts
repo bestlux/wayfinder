@@ -30,6 +30,21 @@ describe("wayfinder golden path integration", () => {
       "ancestry",
       "Human"
     );
+    draft.selections["heritage-level-1"] = selection(
+      "heritage-level-1",
+      "pf2e.heritages",
+      "versatile-human",
+      "heritage",
+      "Versatile Human"
+    );
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      "pf2e.feats-srd",
+      "natural-ambition",
+      "feat",
+      "Natural Ambition",
+      "ancestry"
+    );
     draft.selections["background-level-1"] = selection(
       "background-level-1",
       "pf2e.backgrounds",
@@ -329,6 +344,21 @@ describe("wayfinder golden path integration", () => {
       "ancestry",
       "Human"
     );
+    draft.selections["heritage-level-1"] = selection(
+      "heritage-level-1",
+      "pf2e.heritages",
+      "versatile-human",
+      "heritage",
+      "Versatile Human"
+    );
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      "pf2e.feats-srd",
+      "natural-ambition",
+      "feat",
+      "Natural Ambition",
+      "ancestry"
+    );
     draft.selections["background-level-1"] = selection(
       "background-level-1",
       "pf2e.backgrounds",
@@ -350,6 +380,7 @@ describe("wayfinder golden path integration", () => {
     draft.boosts.levels["1"] = ["str", "con", "dex", "wis"];
 
     const plan = await buildPlan(actor, draft);
+    const trainingStep = expectSkillTrainingStep(plan, "cleric");
     const sanctificationStep = expectClassChoiceStep(plan, "class-choice-deity-cleric-sanctification-level-1");
     const divineFontStep = expectClassChoiceStep(plan, "class-choice-divine-font-divineFont-level-1");
     const clericSpellStep = expectSpellStep(plan, "spell-choice-cleric-rank-1-level-1");
@@ -361,6 +392,11 @@ describe("wayfinder golden path integration", () => {
 
     draft.classChoices[sanctificationStep.slotId] = "holy";
     draft.classChoices[divineFontStep.slotId] = "harm";
+    draft.skillTrainings[trainingStep.slotId] = {
+      ruleChoices: {},
+      additional: ["medicine", "society"],
+      loreChoices: {},
+    };
     draft.spellChoices["spell-choice-cleric-cantrips-level-1"] = [
       spellSelection("spell-choice-cleric-cantrips-level-1", "divine-lance", "Divine Lance", 0),
       spellSelection("spell-choice-cleric-cantrips-level-1", "guidance", "Guidance", 0),
@@ -569,6 +605,13 @@ function buildGoldenPathPacks() {
       ),
     },
     "pf2e.heritages": {
+      "versatile-human": {
+        name: "Versatile Human",
+        type: "heritage",
+        system: {
+          slug: "versatile-human",
+        },
+      },
       "arctic-elf": {
         name: "Arctic Elf",
         type: "heritage",
@@ -701,6 +744,17 @@ function buildGoldenPathPacks() {
       },
     },
     "pf2e.feats-srd": {
+      "natural-ambition": {
+        name: "Natural Ambition",
+        type: "feat",
+        system: {
+          slug: "natural-ambition",
+          featType: {
+            value: "ancestry",
+          },
+          rules: [],
+        },
+      },
       "elven-lore": {
         name: "Elven Lore",
         type: "feat",

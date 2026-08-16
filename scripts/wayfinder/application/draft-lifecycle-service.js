@@ -1,17 +1,20 @@
 import { DRAFT_FLAG, STATE_FLAG } from "../../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../../draft-service.js";
+import { evaluateWayfinderDraftReadiness, } from "../domain/step-evaluation.js";
 export async function applyDraftLifecycle(args) {
     if (args.steps.length === 0) {
         return {
             kind: "warning",
             warning: "no-pending-steps",
+            blockers: [],
         };
     }
-    const completion = await Promise.all(args.steps.map((step) => args.isStepComplete(step)));
-    if (completion.some((value) => !value)) {
+    const readiness = await evaluateWayfinderDraftReadiness(args.steps, args.evaluateStep);
+    if (!readiness.ready) {
         return {
             kind: "warning",
-            warning: "missing-selections",
+            warning: "draft-not-ready",
+            blockers: readiness.blockers,
         };
     }
     const confirmed = (await args.confirmApply?.(buildApplyConfirmationMessage(args.actorName, args.steps.length))) ?? true;

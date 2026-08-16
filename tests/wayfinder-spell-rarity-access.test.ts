@@ -148,11 +148,7 @@ describe("spell rarity access", () => {
     expect(pane.options.map((option) => option.name)).toEqual(["Common Spell"]);
     expect(pane.selectedCount).toBe(1);
     expect(pane.rarityAccess).toEqual({ available: true, granted: false, locked: true });
-    expect(
-      await isWayfinderStepComplete(step, draft, {} as EffectiveBuildState, {
-        isTrainingStepComplete: () => false,
-      })
-    ).toBe(true);
+    expect(await isWayfinderStepComplete(step, draft, {} as EffectiveBuildState)).toBe(true);
   });
 
   it("does not rewrite a step that already permits its defined spell pool", () => {

@@ -1,4 +1,5 @@
 import type { OptionRecord, PendingStep, SelectionRef } from "../../types.js";
+import type { WayfinderStepReadinessState } from "../domain/step-evaluation.js";
 import type { PreviewPane, SpellChoiceStepPane } from "../view-models.js";
 import { spellRankLabel } from "./picker-filters.js";
 
@@ -8,6 +9,7 @@ export function buildSpellChoicePane(args: {
   activeFilterCount: number;
   selectedSelections: SelectionRef[];
   selectedLabel: string | null;
+  selectionState?: WayfinderStepReadinessState;
   filterGroups: SpellChoiceStepPane["filterGroups"];
   visibleOptions: OptionRecord[];
   infoState: SpellChoiceStepPane["infoState"];
@@ -23,6 +25,7 @@ export function buildSpellChoicePane(args: {
     activeFilterCount,
     selectedSelections,
     selectedLabel,
+    selectionState,
     filterGroups,
     visibleOptions,
     infoState,
@@ -34,6 +37,7 @@ export function buildSpellChoicePane(args: {
   } = args;
   const selectedValues = selectedSelections.map((selection) => `${selection.packId}:${selection.documentId}`);
   const requiredCount = step.spellChoice?.count ?? 0;
+  const excessCount = Math.max(0, selectedValues.length - requiredCount);
 
   return {
     kind: "spell-choice",
@@ -51,6 +55,10 @@ export function buildSpellChoicePane(args: {
     selectedCount: selectedValues.length,
     requiredCount,
     remainingCount: Math.max(0, requiredCount - selectedValues.length),
+    excessCount,
+    selectionState:
+      selectionState ??
+      (excessCount > 0 ? "excess" : selectedValues.length === requiredCount ? "complete" : "incomplete"),
     resultCount: visibleOptions.length,
     contextNote,
     infoState,

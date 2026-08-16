@@ -69,10 +69,7 @@ describe("wayfinder plan service", () => {
       step,
       createEmptyDraft(1),
       new Set(["heritage-level-1"]),
-      {} as EffectiveBuildState,
-      {
-        isTrainingStepComplete: () => false,
-      }
+      {} as EffectiveBuildState
     );
 
     expect(status).toBe("Needs attention");

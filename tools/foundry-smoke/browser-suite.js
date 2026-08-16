@@ -116,7 +116,7 @@ async function loadWayfinderModules(moduleId) {
     getOptionsForStep: packOptions.getOptionsForStep,
     getPickerBlockedState: pickerState.getPickerBlockedState,
     inspectActor: actorInspector.inspectActor,
-    isWayfinderStepComplete: planService.isWayfinderStepComplete,
+    evaluateWayfinderStep: planService.evaluateWayfinderStep,
     isWizardArcaneSchoolSlotId: slotIds.isWizardArcaneSchoolSlotId,
     listActorItems: buildState.listActorItems,
     resolveSelection: packOptions.resolveSelection,
@@ -178,7 +178,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
             currentLevel: 1,
             draft,
             steps: plan.steps,
-            isStepComplete: (step) => isStepComplete(actor, draft, step, modules),
+            evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
             confirmApply: () => true,
             applyDraftToActor: (finalActorUpdate) =>
               modules.applyDraftToActor(actor, draft, plan.steps, {
@@ -256,7 +256,7 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
         currentLevel: 1,
         draft,
         steps,
-        isStepComplete: (step) => isStepComplete(actor, draft, step, modules),
+        evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
         confirmApply: () => true,
         applyDraftToActor: (finalActorUpdate) =>
           modules.applyDraftToActor(actor, draft, steps, {
@@ -791,10 +791,12 @@ async function buildPickerContext(actor, draft, step, planSteps, modules) {
 }
 
 async function isStepComplete(actor, draft, step, modules) {
+  return (await evaluateStep(actor, draft, step, modules)).complete;
+}
+
+async function evaluateStep(actor, draft, step, modules) {
   const effectiveBuildState = await modules.getEffectiveBuildState(actor, draft);
-  return modules.isWayfinderStepComplete(step, draft, effectiveBuildState, {
-    isTrainingStepComplete: (trainingStep) => isTrainingComplete(draft, trainingStep),
-  });
+  return modules.evaluateWayfinderStep(step, draft, new Set(), effectiveBuildState);
 }
 
 async function incompleteSteps(actor, draft, steps, modules) {
@@ -816,7 +818,7 @@ async function applyCompletedDraft(actor, draft, steps, modules, moduleId) {
       draft,
       existingCompletedStepIds: readActorCompletedStepIds(actor, moduleId),
       steps,
-      isStepComplete: (step) => isStepComplete(actor, draft, step, modules),
+      evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
       confirmApply: () => true,
       applyDraftToActor: (finalActorUpdate) =>
         modules.applyDraftToActor(actor, draft, steps, {
@@ -961,19 +963,6 @@ function validateDraftPlanExpectations(steps, draft, smokeCase, failures) {
       failures.push(`${slotId} selected ${actualSlug ?? "nothing"}, expected ${expectedSlug}`);
     }
   }
-}
-
-function isTrainingComplete(draft, step) {
-  const training = draft.skillTrainings[step.slotId];
-  if (!training) {
-    return false;
-  }
-
-  return (
-    step.training.choiceRules.every((rule) => typeof training.ruleChoices[rule.key] === "string") &&
-    training.additional.length === step.training.additionalCount &&
-    step.training.loreChoices.every((choice) => typeof training.loreChoices[choice.key] === "string")
-  );
 }
 
 function pickOption(options, step, smokeCase) {

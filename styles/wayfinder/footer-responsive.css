@@ -15,6 +15,32 @@
   gap: 0.25rem;
 }
 
+.footer-readiness {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  min-width: 0;
+  max-width: min(34rem, 52vw);
+  padding: 0.28rem 0.45rem;
+  border: 1px solid rgba(153, 36, 36, 0.32);
+  border-radius: var(--wf-radius);
+  background: rgba(153, 36, 36, 0.06);
+  color: #8f1f1f;
+  font: 600 0.66rem / 1.2 var(--sans-serif, sans-serif);
+  text-align: left;
+}
+
+.footer-readiness:hover {
+  border-color: rgba(153, 36, 36, 0.52);
+  background: rgba(153, 36, 36, 0.1);
+}
+
+.footer-readiness span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .footer-clear,
 .footer-feedback {
   padding: 0.25rem 0.4rem;

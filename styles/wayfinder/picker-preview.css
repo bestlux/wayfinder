@@ -59,6 +59,20 @@
   border-top: 1px solid rgba(95, 77, 57, 0.12);
 }
 
+.spell-selected-summary.is-invalid,
+.spell-selected-summary.is-excess {
+  padding: 0.28rem 0.35rem 0.35rem;
+  border: 1px solid rgba(153, 36, 36, 0.42);
+  border-radius: var(--wf-radius);
+  background: rgba(153, 36, 36, 0.07);
+}
+
+.spell-selection-error {
+  margin: 0;
+  color: #8f1f1f;
+  font: 700 0.64rem / 1.25 var(--sans-serif, sans-serif);
+}
+
 .spell-selected-summary-heading {
   display: flex;
   align-items: baseline;

@@ -8,6 +8,7 @@ import type {
   PickerFilterState,
   PickerInfoState,
 } from "../../types.js";
+import type { WayfinderStepEvaluation } from "../domain/step-evaluation.js";
 import { getStepModeLabel } from "../domain/step-types.js";
 import { buildClassChoicePane } from "../panes/class-choice-pane.js";
 import { buildLanguageChoicePane } from "../panes/language-choice-pane.js";
@@ -52,6 +53,7 @@ interface BuildSelectionPaneDependencies {
   resolveDeityDocument: () => Promise<unknown | null>;
   buildContextNote: (step: PendingStep, context: OptionContext) => Promise<string | null>;
   resolveStepStatus: (step: PendingStep, effectiveBuildState: EffectiveBuildState) => Promise<string>;
+  stepEvaluation?: WayfinderStepEvaluation;
   getOptionsForStep: (step: PendingStep, context: OptionContext) => Promise<OptionRecord[]>;
   getPickerInfoState: (
     step: PendingStep,
@@ -70,6 +72,8 @@ export async function buildSelectionPane(
   effectiveBuildState: EffectiveBuildState,
   deps: BuildSelectionPaneDependencies
 ): Promise<SelectionPane | null> {
+  const selectedLabel = async (): Promise<string> =>
+    deps.stepEvaluation?.status ?? deps.resolveStepStatus(step, effectiveBuildState);
   if (step.kind === "class-choice" || step.kind === "class-archetype") {
     const selectedValue =
       step.kind === "class-archetype"
@@ -80,7 +84,7 @@ export async function buildSelectionPane(
     return buildClassChoicePane({
       step,
       selectedValue,
-      selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+      selectedLabel: await selectedLabel(),
       blocked,
       blockedTitle: blocked ? "Choose a deity first" : null,
       blockedMessage: blocked
@@ -93,7 +97,7 @@ export async function buildSelectionPane(
     return buildSingletonChoicePane({
       step,
       selectedValue: deps.draft.singletonChoices[step.slotId] ?? null,
-      selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+      selectedLabel: await selectedLabel(),
     });
   }
 
@@ -101,7 +105,7 @@ export async function buildSelectionPane(
     return buildLanguageChoicePane({
       step,
       selectedValues: deps.draft.languageChoices[step.slotId] ?? [],
-      selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+      selectedLabel: await selectedLabel(),
     });
   }
 
@@ -168,7 +172,8 @@ export async function buildSelectionPane(
       search,
       activeFilterCount: activePickerFilterCount(filterState),
       selectedSelections,
-      selectedLabel: await deps.resolveStepStatus(step, effectiveBuildState),
+      selectedLabel: await selectedLabel(),
+      selectionState: deps.stepEvaluation?.state,
       filterGroups,
       visibleOptions,
       infoState,

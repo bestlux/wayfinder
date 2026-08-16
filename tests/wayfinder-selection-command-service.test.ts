@@ -968,6 +968,34 @@ describe("wayfinder selection command service", () => {
     expect(draft.spellChoices[step.slotId]?.map((entry) => entry.documentId)).toEqual(["heal", "bless"]);
     expect(state.recentlyInvalidatedStepIds.has(step.slotId)).toBe(false);
   });
+
+  it("allows a spell choice to become temporarily over-selected without advancing again", async () => {
+    const step = spellChoiceStep("spell-choice-palatine-occult", "palatine-detective-occult-innate", "occult");
+    const draft = createEmptyDraft(1);
+    draft.spellChoices[step.slotId] = [selection(step.slotId, "spell", "guidance", "Guidance")];
+    const state = commandState(draft);
+
+    const added = await toggleSpellChoiceSelection(state, step, "test.pack:bless", {
+      resolveSelection: async () => selection(step.slotId, "spell", "bless", "Bless"),
+      selectionExistsOnActor: () => false,
+    });
+
+    expect(added).toMatchObject({
+      kind: "changed",
+      shouldAdvance: false,
+      shouldRender: true,
+      warning: null,
+    });
+    expect(draft.spellChoices[step.slotId]?.map((entry) => entry.documentId)).toEqual(["guidance", "bless"]);
+
+    const corrected = await toggleSpellChoiceSelection(state, step, "test.pack:bless", {
+      resolveSelection: async () => null,
+      selectionExistsOnActor: () => false,
+    });
+
+    expect(corrected).toMatchObject({ kind: "changed", shouldAdvance: false, shouldRender: true });
+    expect(draft.spellChoices[step.slotId]?.map((entry) => entry.documentId)).toEqual(["guidance"]);
+  });
 });
 
 function commandState(

@@ -23,11 +23,12 @@ import { chooseSelectionOption, selectClassArchetypeValue, selectClassChoiceValu
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
 import { buildWayfinderContext } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
+import { evaluateWayfinderDraftReadiness, isTrainingStepCompleteFromDraft, WayfinderDraftNotReadyError, } from "./domain/step-evaluation.js";
 import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
 import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
 import { emptyPickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
-import { getWayfinderStepStatus, isWayfinderStepComplete, resolveActiveStep } from "./plan-service.js";
+import { evaluateWayfinderStep, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
 import { canGrantRestrictedSpellRarityAccess, withRestrictedSpellRarityAccess } from "./spell-choice/rarity-access.js";
 import { buildHistoricalSpellChoicePlanningNote } from "./spell-choice-service.js";
@@ -63,6 +64,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #previewValueByStepId = new Map();
     #scrollById = new Map();
     #pendingSearchFocus = null;
+    #pendingStepFocusId = null;
     #recentlyInvalidatedStepIds = new Set();
     #statusNote = null;
     static open(actor) {
@@ -101,8 +103,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
         const plan = await this.#buildPlan(snapshot, draft);
         const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
-        const activeStep = await this.#resolveActiveStep(plan.steps, effectiveBuildState);
-        const activePane = activeStep ? await this.#buildActivePane(activeStep, effectiveBuildState, plan.steps) : null;
+        const readiness = await evaluateWayfinderDraftReadiness(plan.steps, (step) => this.#evaluateStep(step, effectiveBuildState, draft));
+        const evaluationsByStepId = new Map(plan.steps.map((step, index) => [step.id, readiness.evaluations[index]]));
+        const activeStep = await this.#resolveActiveStep(plan.steps, evaluationsByStepId);
+        const activeEvaluation = activeStep ? evaluationsByStepId.get(activeStep.id) : null;
+        const activePane = activeStep && activeEvaluation
+            ? await this.#buildActivePane(activeStep, activeEvaluation, effectiveBuildState, plan.steps)
+            : null;
         const [effectiveAncestry, effectiveHeritage, effectiveBackground, effectiveClass, effectiveDeity] = await Promise.all([
             getEffectiveSingletonDocument(this.actor, draft, "ancestry"),
             getEffectiveSingletonDocument(this.actor, draft, "heritage"),
@@ -124,7 +131,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             activePane,
             statusNote: this.#statusNote,
             planningNote,
-            recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
             summaryDocuments: {
                 ancestry: effectiveAncestry,
                 heritage: effectiveHeritage,
@@ -132,8 +138,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 classDocument: effectiveClass,
                 deity: effectiveDeity,
             },
-            isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
-            getStepStatus: (step) => this.#stepStatus(step, effectiveBuildState),
+            readiness,
             canImportExistingHistory: !snapshot.isBlank,
             existingCharacterHistory: state.existingCharacterHistory,
         });
@@ -151,6 +156,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             onManualChange: this.#onManualChange,
             onLoreInputChange: this.#onLoreInputChange,
         }, this.#scrollById, this.#pendingSearchFocus).pendingSearchFocus;
+        const pendingStepFocusId = this.#pendingStepFocusId;
+        const stepHeading = root.querySelector("[data-wayfinder-step-heading]");
+        if (pendingStepFocusId && stepHeading?.dataset.wayfinderStepHeading === pendingStepFocusId) {
+            stepHeading.focus();
+        }
+        if (pendingStepFocusId) {
+            this.#pendingStepFocusId = null;
+        }
         WayfinderApp.#openApps.add(this);
     }
     _tearDown(options) {
@@ -177,6 +190,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         switch (action.type) {
             case "select-step":
                 this.#activeStepId = action.stepId;
+                this.#pendingStepFocusId = action.stepId;
                 this.render(false);
                 break;
             case "previous-step":
@@ -346,12 +360,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             localize: (value) => game.i18n.localize(value),
         }, slotId);
     }
-    async #resolveActiveStep(steps, effectiveBuildState) {
-        const resolved = await resolveActiveStep(steps, this.#activeStepId, (step) => this.#isStepComplete(step, effectiveBuildState));
+    async #resolveActiveStep(steps, evaluationsByStepId) {
+        const resolved = await resolveActiveStep(steps, this.#activeStepId, async (step) => evaluationsByStepId.get(step.id)?.complete === true);
         this.#activeStepId = resolved.activeStepId;
         return resolved.activeStep;
     }
-    async #buildActivePane(step, effectiveBuildState, planSteps) {
+    async #buildActivePane(step, stepEvaluation, effectiveBuildState, planSteps) {
         if (step.kind === "manual") {
             const pane = {
                 kind: "manual",
@@ -363,14 +377,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 title: step.title,
                 description: step.description,
                 completed: this.#requireDraft().manual[step.slotId] === true,
-                selectedLabel: await this.#stepStatus(step, effectiveBuildState),
+                selectedLabel: stepEvaluation.status,
             };
             return pane;
         }
         if (step.kind === "boost") {
             return buildBoostPane(step, effectiveBuildState, {
-                isStepComplete: (paneStep, buildState) => this.#isStepComplete(paneStep, buildState),
-                stepStatus: (paneStep, buildState) => this.#stepStatus(paneStep, buildState),
+                isStepComplete: async () => stepEvaluation.complete,
+                stepStatus: async () => stepEvaluation.status,
                 abilityLabel: (attribute) => this.#abilityLabel(attribute),
             });
         }
@@ -406,7 +420,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             buildContextNote: (paneStep, context) => buildContextNote(paneStep, context, {
                 resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
             }),
-            resolveStepStatus: (paneStep, buildState) => this.#stepStatus(paneStep, buildState),
+            resolveStepStatus: async () => stepEvaluation.status,
+            stepEvaluation,
             getOptionsForStep,
             getPickerInfoState,
             buildPreview,
@@ -795,9 +810,6 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             else if (result.warning === "language-choice-full") {
                 ui.notifications.warn("This language step is already full. Remove one before adding another.");
             }
-            else if (result.warning === "spell-choice-full") {
-                ui.notifications.warn("This spell choice is already full. Remove one before adding another.");
-            }
             return;
         }
         if (result.kind !== "changed") {
@@ -812,39 +824,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             this.render(false);
         }
     }
-    async #isStepComplete(step, effectiveBuildState) {
-        const draft = this.#requireDraft();
+    async #evaluateStep(step, effectiveBuildState, draft = this.#requireDraft()) {
         const buildState = effectiveBuildState ?? (await getEffectiveBuildState(this.actor, draft));
-        return isWayfinderStepComplete(step, draft, buildState, {
-            isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep),
-        });
-    }
-    async #stepStatus(step, effectiveBuildState) {
-        const draft = this.#requireDraft();
-        const buildState = effectiveBuildState ?? (await getEffectiveBuildState(this.actor, draft));
-        return getWayfinderStepStatus(step, draft, this.#recentlyInvalidatedStepIds, buildState, {
-            isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep),
-        });
+        return evaluateWayfinderStep(step, draft, this.#recentlyInvalidatedStepIds, buildState);
     }
     #isTrainingStepComplete(step) {
-        const training = step.training;
-        if (!training) {
-            return false;
-        }
-        const draftTraining = this.#requireDraft().skillTrainings[step.slotId];
-        if (!draftTraining) {
-            return false;
-        }
-        const choiceComplete = training.choiceRules.every((rule) => {
-            const selection = draftTraining.ruleChoices[rule.key];
-            return typeof selection === "string" && selection.length > 0;
-        });
-        const additionalComplete = draftTraining.additional.length === training.additionalCount;
-        const loreComplete = training.loreChoices.every((choice) => {
-            const selection = draftTraining.loreChoices[choice.key];
-            return typeof selection === "string" && selection.trim().length > 0;
-        });
-        return choiceComplete && additionalComplete && loreComplete;
+        return step.kind === "skill-training" && isTrainingStepCompleteFromDraft(step, this.#requireDraft());
     }
     async #adjustTargetLevel(delta) {
         this.#statusNote = null;
@@ -877,7 +862,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 existingCompletedStepIds: readActorCompletedStepIds(this.actor),
                 existingCharacterHistory: normalizeState(this.actor.getFlag(MODULE_ID, "state")).existingCharacterHistory,
                 steps: plan.steps,
-                isStepComplete: (step) => this.#isStepComplete(step, effectiveBuildState),
+                evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft),
                 confirmApply: confirmWayfinderApply,
                 applyDraftToActor: (finalActorUpdate) => applyDraftToActor(this.actor, draft, plan.steps, {
                     finalActorUpdate,
@@ -888,6 +873,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             });
         }
         catch (error) {
+            if (error instanceof WayfinderDraftNotReadyError) {
+                const blocker = error.blockers[0];
+                this.#activeStepId = blocker?.stepId ?? this.#activeStepId;
+                this.#pendingStepFocusId = blocker?.stepId ?? null;
+                this.#statusNote = blocker?.message ?? error.message;
+                ui.notifications.warn(game.i18n.localize("wayfinder-pf2e.Notifications.MissingSelections"));
+                this.render(false);
+                return;
+            }
             console.error("PF2E Wayfinder failed to apply draft", error);
             this.#statusNote =
                 "Wayfinder could not apply this draft. The draft was kept for review; details are in the console.";
@@ -896,6 +890,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             return;
         }
         if (result.kind === "warning") {
+            this.#statusNote = result.blockers[0]?.message ?? null;
             const notificationKey = result.warning === "no-pending-steps"
                 ? "wayfinder-pf2e.Notifications.NoPendingSteps"
                 : "wayfinder-pf2e.Notifications.MissingSelections";

@@ -6,6 +6,7 @@ import {
   normalizeDraft,
   normalizeState,
 } from "../src/draft-service";
+import type { SelectionRef } from "../src/types";
 
 describe("draft-service", () => {
   it("creates an empty draft", () => {
@@ -231,6 +232,43 @@ describe("draft-service", () => {
     expect(patched.updatedAt).not.toBeNull();
   });
 
+  it("preserves a temporarily over-selected spell choice through save and reopen", () => {
+    const slotId = "spell-choice-wizard-rank-1-level-1";
+    const draft = createEmptyDraft(1);
+    draft.spellChoices[slotId] = [
+      rawSelection(slotId, "pf2e.spells-srd", "fear", "Fear", null),
+      rawSelection(slotId, "pf2e.spells-srd", "force-barrage", "Force Barrage", null),
+      rawSelection(slotId, "pf2e.spells-srd", "grease", "Grease", null),
+    ];
+
+    const reopened = normalizeDraft(JSON.parse(JSON.stringify(buildDraftPatch(draft))), 1);
+
+    expect(reopened.spellChoices[slotId]?.map((selection) => selection.documentId)).toEqual([
+      "fear",
+      "force-barrage",
+      "grease",
+    ]);
+    expect(reopened.updatedAt).not.toBeNull();
+  });
+
+  it("preserves an overfilled training choice through save and reopen", () => {
+    const slotId = "skill-training-wizard-level-1";
+    const draft = createEmptyDraft(1);
+    draft.skillTrainings[slotId] = {
+      ruleChoices: {},
+      additional: ["society", "occultism"],
+      loreChoices: {},
+    };
+
+    const reopened = normalizeDraft(JSON.parse(JSON.stringify(buildDraftPatch(draft))), 1);
+
+    expect(reopened.skillTrainings[slotId]).toEqual({
+      ruleChoices: {},
+      additional: ["society", "occultism"],
+      loreChoices: {},
+    });
+  });
+
   it("clears incompatible class state when migrating a legacy Battle Creed branch", () => {
     const draft = normalizeDraft(
       {
@@ -387,7 +425,13 @@ describe("draft-service", () => {
   });
 });
 
-function rawSelection(slotId: string, packId: string, documentId: string, name: string, featType: string | null) {
+function rawSelection(
+  slotId: string,
+  packId: string,
+  documentId: string,
+  name: string,
+  featType: string | null
+): SelectionRef {
   return {
     slotId,
     packId,

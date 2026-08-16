@@ -9,7 +9,7 @@ describe("wayfinder spell picker layout", () => {
   it("keeps only the browser header and selected summary sticky while notes and filters scroll", () => {
     const headerStart = spellTemplate.indexOf('<header class="browser-header">');
     const headerEnd = spellTemplate.indexOf("</header>", headerStart);
-    const selectedSummary = spellTemplate.indexOf('class="spell-selected-summary"', headerStart);
+    const selectedSummary = spellTemplate.indexOf('class="spell-selected-summary', headerStart);
     const browserNotes = spellTemplate.indexOf('class="spell-browser-notes"', headerStart);
     const filterBar = spellTemplate.indexOf('class="picker-filter-bar"', headerStart);
 
@@ -28,5 +28,13 @@ describe("wayfinder spell picker layout", () => {
     );
     expect(spellTemplate).toContain('data-wayfinder-action="toggle-spell-choice"');
     expect(spellTemplate).toContain('aria-label="Remove {{name}}"');
+  });
+
+  it("identifies an excess selection and exposes a direct correction action", () => {
+    expect(spellTemplate).toContain('aria-invalid="{{#if activePane.excessCount}}true{{else}}false{{/if}}"');
+    expect(spellTemplate).toContain('class="spell-selection-error"');
+    expect(spellTemplate).not.toContain('class="spell-selection-error" role="alert"');
+    expect(spellTemplate).toContain("Remove {{activePane.excessCount}} extra spell");
+    expect(pickerStyles).toMatch(/\.spell-selected-summary\.is-invalid,[^}]*\.spell-selected-summary\.is-excess\s*\{/s);
   });
 });

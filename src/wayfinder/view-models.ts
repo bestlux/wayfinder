@@ -351,6 +351,8 @@ export interface SpellChoiceStepPane {
   selectedCount: number;
   requiredCount: number;
   remainingCount: number;
+  excessCount: number;
+  selectionState: "incomplete" | "complete" | "excess" | "invalid";
   resultCount: number;
   contextNote: string | null;
   infoState: PickerInfoState | null;

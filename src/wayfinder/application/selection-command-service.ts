@@ -10,7 +10,7 @@ export interface SelectionCommandState {
   recentlyInvalidatedStepIds: Set<string>;
 }
 
-export type SelectionCommandWarning = "duplicate-selection" | "language-choice-full" | "spell-choice-full";
+export type SelectionCommandWarning = "duplicate-selection" | "language-choice-full";
 
 export interface SelectionCommandResult {
   kind: "noop" | "warning" | "changed";
@@ -576,13 +576,9 @@ export async function toggleSpellChoiceSelection(
   }
 
   const requiredCount = step.spellChoice?.count ?? 0;
-  if (nextSelections.length >= requiredCount) {
-    return warningResult("spell-choice-full");
-  }
-
   nextSelections.push(selection);
   state.recentlyInvalidatedStepIds.delete(step.slotId);
-  return nextSelections.length >= requiredCount
+  return nextSelections.length === requiredCount
     ? changedResult({ shouldAdvance: true })
     : changedResult({ shouldRender: true });
 }

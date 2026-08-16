@@ -2,7 +2,7 @@ import { MODULE_ID, SETTINGS } from "./constants.js";
 import { normalizeSpellRarityCeiling, type SpellRarityCeiling } from "./wayfinder/spell-choice/rarity-access.js";
 
 export function registerSettings(
-  args: { feedbackMenuType?: unknown; onSpellRarityCeilingChange?: () => void } = {}
+  args: { feedbackMenuType?: unknown; onExtraPacksChange?: () => void; onSpellRarityCeilingChange?: () => void } = {}
 ): void {
   if (args.feedbackMenuType) {
     game.settings.registerMenu(MODULE_ID, "feedback", {
@@ -22,6 +22,7 @@ export function registerSettings(
     config: true,
     type: String,
     default: "",
+    onChange: args.onExtraPacksChange,
   });
 
   game.settings.register(MODULE_ID, SETTINGS.spellRarityCeiling, {

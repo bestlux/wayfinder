@@ -33,6 +33,10 @@ export class PickerSearchScheduler {
     return this.#sourceRevision;
   }
 
+  get viewRevision(): number {
+    return this.#viewRevision;
+  }
+
   schedule(stepId: string, query: string): PickerSearchRequest | null {
     if (this.#disposed) {
       return null;

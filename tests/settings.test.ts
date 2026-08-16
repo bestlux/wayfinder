@@ -41,6 +41,19 @@ describe("Wayfinder settings", () => {
     );
   });
 
+  it("rerenders open Wayfinder apps when the picker pack policy changes", () => {
+    const onExtraPacksChange = vi.fn();
+    registerSettings({ onExtraPacksChange });
+
+    expect(testGlobals.game.settings.register).toHaveBeenCalledWith(
+      MODULE_ID,
+      SETTINGS.extraPacks,
+      expect.objectContaining({
+        onChange: onExtraPacksChange,
+      })
+    );
+  });
+
   it("registers feedback support for both players and GMs", () => {
     class FeedbackMenu {}
 

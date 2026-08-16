@@ -24,6 +24,8 @@ import { applyDraftLifecycle, buildSaveDraftUpdate, clearDraftLifecycle, } from 
 import { DraftPersistenceCoordinator } from "./application/draft-persistence-service.js";
 import { buildExistingCharacterHistory, withExistingCharacterHistory, } from "./application/existing-character-history-service.js";
 import { buildContextNote, buildOptionContext, resolveSelectionClassHasSpellcasting, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
+import { derivePickerRenderSession } from "./application/picker-render-session.js";
+import { PickerSearchScheduler } from "./application/picker-search-scheduler.js";
 import { chooseSelectionOption, selectClassArchetypeValue, selectClassChoiceValue, selectSingletonChoiceValue, toggleLanguageChoiceValue, toggleSpellChoiceSelection, } from "./application/selection-command-service.js";
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
 import { SemanticCommandQueue } from "./application/semantic-command-queue.js";
@@ -38,6 +40,10 @@ import { evaluateWayfinderStep, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
 import { canGrantRestrictedSpellRarityAccess, withRestrictedSpellRarityAccess } from "./spell-choice/rarity-access.js";
 import { buildHistoricalSpellChoicePlanningNote } from "./spell-choice-service.js";
+const PICKER_COUNT_PART = "picker-count";
+const PICKER_RESULTS_PART = "picker-results";
+const PICKER_SEARCH_PARTS = [PICKER_COUNT_PART, PICKER_RESULTS_PART];
+const PICKER_SEARCH_DELAY_MS = 40;
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
     static #openApps = new Set();
     static DEFAULT_OPTIONS = {
@@ -77,6 +83,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #semanticCommands = new SemanticCommandQueue();
     #closePromise = null;
     #lastDraftSavePhase = "idle";
+    #pickerRenderSession = null;
+    #pickerSearchScheduler = new PickerSearchScheduler({
+        delayMs: PICKER_SEARCH_DELAY_MS,
+        render: (request) => this.#renderPickerSearch(request),
+        onError: (error) => {
+            console.error("PF2E Wayfinder picker search render failed", error);
+            ui.notifications.error("Wayfinder could not update these search results. Reopen the window and try again.");
+        },
+    });
     static open(actor) {
         if (!canUseWayfinder(actor)) {
             ui.notifications.warn(game.i18n.localize("wayfinder-pf2e.Notifications.OwnerOnly"));
@@ -113,7 +128,61 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     get title() {
         return `${MODULE_TITLE}: ${this.actor.name}`;
     }
-    async _prepareContext() {
+    _configureRenderOptions(options) {
+        if (!isPickerSearchRender(options)) {
+            options.wayfinderPickerSourceRevision = this.#pickerSearchScheduler.invalidateSource();
+            options.wayfinderPickerViewRevision = this.#pickerSearchScheduler.viewRevision;
+        }
+        super._configureRenderOptions(options);
+    }
+    _configureRenderParts(options) {
+        const parts = super._configureRenderParts(options);
+        if (!isPickerSearchRender(options)) {
+            return parts;
+        }
+        const isSpellChoice = this.#pickerRenderSession?.session.basePane.kind === "spell-choice";
+        parts[PICKER_COUNT_PART] = {
+            template: `modules/${MODULE_ID}/templates/wayfinder/picker-result-count.hbs`,
+        };
+        parts[PICKER_RESULTS_PART] = {
+            template: `modules/${MODULE_ID}/templates/wayfinder/${isSpellChoice ? "spell-choice-results" : "pick-results"}.hbs`,
+        };
+        return parts;
+    }
+    _canRender(options) {
+        if (super._canRender(options) === false) {
+            return false;
+        }
+        const request = pickerSearchRequest(options);
+        if (!request) {
+            return;
+        }
+        if (!this.#canCommitPickerSearch(request)) {
+            return false;
+        }
+    }
+    async _prepareContext(options = {}) {
+        const pickerRequest = pickerSearchRequest(options);
+        if (pickerRequest) {
+            const session = this.#pickerRenderSession?.session;
+            if (!session || !this.#canCommitPickerSearch(pickerRequest)) {
+                options.wayfinderSkippedReplacement = true;
+                return {
+                    wayfinderRenderScope: "picker-search",
+                    activePane: null,
+                    pickerRequest,
+                };
+            }
+            return {
+                wayfinderRenderScope: "picker-search",
+                activePane: derivePickerRenderSession(session, {
+                    search: pickerRequest.query,
+                    filterState: this.#pickerFiltersByStepId.get(pickerRequest.stepId),
+                    openFilterKind: this.#openPickerFilterMenu?.stepId === pickerRequest.stepId ? this.#openPickerFilterMenu.filterKind : null,
+                }),
+                pickerRequest,
+            };
+        }
         const snapshot = inspectActor(this.actor);
         const draft = this.#ensureDraft(snapshot.level);
         const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
@@ -123,8 +192,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const evaluationsByStepId = new Map(plan.steps.map((step, index) => [step.id, readiness.evaluations[index]]));
         const activeStep = await this.#resolveActiveStep(plan.steps, evaluationsByStepId);
         const activeEvaluation = activeStep ? evaluationsByStepId.get(activeStep.id) : null;
+        let pickerRenderSession = null;
         const activePane = activeStep && activeEvaluation
-            ? await this.#buildActivePane(activeStep, activeEvaluation, effectiveBuildState, plan.steps)
+            ? await this.#buildActivePane(activeStep, activeEvaluation, effectiveBuildState, plan.steps, (session) => {
+                pickerRenderSession = session;
+            })
             : null;
         const [effectiveAncestry, effectiveHeritage, effectiveBackground, effectiveClass, effectiveDeity] = await Promise.all([
             getEffectiveSingletonDocument(this.actor, draft, "ancestry"),
@@ -138,7 +210,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             effectiveClassDocument: effectiveClass,
             extractSlug: extractDocumentSlug,
         });
-        return buildWayfinderContext({
+        return Object.assign(await buildWayfinderContext({
             actorName: this.actor.name,
             currentLevel: snapshot.level,
             targetLevel: plan.targetLevel,
@@ -159,14 +231,62 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             existingCharacterHistory: state.existingCharacterHistory,
             draftSaveState: this.#draftPersistence.state,
             lifecycleBusy: this.#semanticCommands.barrierActive,
+        }), {
+            wayfinderRenderScope: "full",
+            pickerRenderSession,
+            pickerSourceRevision: numericRenderOption(options.wayfinderPickerSourceRevision),
         });
+    }
+    _replaceHTML(result, content, options) {
+        const pickerRequest = pickerSearchRequest(options);
+        if (pickerRequest) {
+            if (!this.#canCommitPickerSearch(pickerRequest) || !hasPickerPartTargets(content, pickerRequest.stepId)) {
+                options.wayfinderSkippedReplacement = true;
+                return;
+            }
+            super._replaceHTML(result, content, options);
+            return;
+        }
+        const startingViewRevision = numericRenderOption(options.wayfinderPickerViewRevision);
+        if (!options.isFirstRender && startingViewRevision !== this.#pickerSearchScheduler.viewRevision) {
+            options.wayfinderSkippedReplacement = true;
+            queueMicrotask(() => {
+                if (this.actor.apps[this.id] === this) {
+                    void this.render(false).catch((error) => {
+                        console.error("PF2E Wayfinder failed to refresh a stale full render", error);
+                    });
+                }
+            });
+            return;
+        }
+        super._replaceHTML(result, content, options);
     }
     async _onRender(context, options) {
         await super._onRender(context, options);
+        if (options.wayfinderSkippedReplacement) {
+            return;
+        }
         const root = this.element;
         if (!(root instanceof HTMLElement)) {
             return;
         }
+        if (context.wayfinderRenderScope === "picker-search") {
+            const results = root.querySelector(`[data-application-part="${PICKER_RESULTS_PART}"]`);
+            if (results) {
+                bindWayfinderInteractions(results, {
+                    onActionClick: this.#onActionClick,
+                    onSearchInput: this.#onSearchInput,
+                    onScrollableScroll: this.#onScrollableScroll,
+                    onManualChange: this.#onManualChange,
+                    onLoreInputChange: this.#onLoreInputChange,
+                }, this.#scrollById, null);
+            }
+            this.#pendingSearchFocus = null;
+            return;
+        }
+        this.#pickerRenderSession = context.pickerRenderSession
+            ? { sourceRevision: context.pickerSourceRevision, session: context.pickerRenderSession }
+            : null;
         this.#pendingSearchFocus = bindWayfinderInteractions(root, {
             onActionClick: this.#onActionClick,
             onSearchInput: this.#onSearchInput,
@@ -243,6 +363,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
     }
     #finalizeClosedState() {
+        this.#pickerSearchScheduler.dispose();
         this.#semanticCommands.completeTerminalOperation();
         this.#draftPersistence.dispose();
         _a.#openApps.delete(this);
@@ -420,11 +541,29 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (!stepId) {
             return;
         }
-        this.#rememberInteractiveState(input);
         this.#openPickerFilterMenu = null;
         this.#searchByStepId.set(stepId, input.value);
-        this.render(false);
+        this.#pickerSearchScheduler.schedule(stepId, input.value);
     };
+    async #renderPickerSearch(request) {
+        if (!this.#canCommitPickerSearch(request)) {
+            return;
+        }
+        await this.render({
+            parts: [...PICKER_SEARCH_PARTS],
+            wayfinderPickerRequest: request,
+        });
+    }
+    #canCommitPickerSearch(request) {
+        const prepared = this.#pickerRenderSession;
+        const root = this.element;
+        return (this.#pickerSearchScheduler.isCurrent(request) &&
+            prepared?.sourceRevision === request.sourceRevision &&
+            prepared.session.basePane.stepId === request.stepId &&
+            this.#searchByStepId.get(request.stepId) === request.query &&
+            root instanceof HTMLElement &&
+            hasPickerPartTargets(root, request.stepId));
+    }
     #onScrollableScroll = (event) => {
         const scrollable = event.currentTarget;
         const scrollId = scrollable?.dataset.wayfinderScrollId;
@@ -524,7 +663,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#activeStepId = resolved.activeStepId;
         return resolved.activeStep;
     }
-    async #buildActivePane(step, stepEvaluation, effectiveBuildState, planSteps) {
+    async #buildActivePane(step, stepEvaluation, effectiveBuildState, planSteps, onPickerRenderSession) {
         if (step.kind === "manual") {
             const pane = {
                 kind: "manual",
@@ -585,6 +724,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             getPickerInfoState,
             buildPreview: (...args) => this._buildRenderPreview(...args),
             matchesSearch,
+            onPickerRenderSession,
         });
         if (selectionPane) {
             return selectionPane;
@@ -1288,6 +1428,35 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 }
 _a = WayfinderApp;
+function isPickerSearchRender(options) {
+    return pickerSearchRequest(options) !== null;
+}
+function pickerSearchRequest(options) {
+    if (options.parts?.length !== PICKER_SEARCH_PARTS.length ||
+        !PICKER_SEARCH_PARTS.every((partId, index) => options.parts?.[index] === partId)) {
+        return null;
+    }
+    const candidate = options.wayfinderPickerRequest;
+    if (!candidate ||
+        !Number.isInteger(candidate.viewRevision) ||
+        !Number.isInteger(candidate.sourceRevision) ||
+        typeof candidate.stepId !== "string" ||
+        typeof candidate.query !== "string") {
+        return null;
+    }
+    return candidate;
+}
+function numericRenderOption(value) {
+    return Number.isInteger(value) ? Number(value) : -1;
+}
+function hasPickerPartTargets(root, stepId) {
+    const countTargets = [...root.querySelectorAll(`[data-application-part="${PICKER_COUNT_PART}"]`)];
+    const resultTargets = [...root.querySelectorAll(`[data-application-part="${PICKER_RESULTS_PART}"]`)];
+    return (countTargets.length === 1 &&
+        resultTargets.length === 1 &&
+        countTargets[0]?.dataset.stepId === stepId &&
+        resultTargets[0]?.dataset.stepId === stepId);
+}
 function actorItemLocationId(item) {
     const rawLocation = item?.system?.location;
     if (typeof rawLocation === "string") {

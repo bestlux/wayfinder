@@ -18,6 +18,7 @@ export function registerSettings(args = {}) {
         config: true,
         type: String,
         default: "",
+        onChange: args.onExtraPacksChange,
     });
     game.settings.register(MODULE_ID, SETTINGS.spellRarityCeiling, {
         name: "wayfinder-pf2e.Settings.SpellRarityCeiling.Name",

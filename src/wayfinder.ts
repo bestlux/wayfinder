@@ -7,6 +7,7 @@ import { registerSheetControls, rerenderOpenWayfinderApps } from "./sheet-contro
 Hooks.once("init", () => {
   registerSettings({
     feedbackMenuType: FeedbackSupportApp,
+    onExtraPacksChange: rerenderOpenWayfinderApps,
     onSpellRarityCeilingChange: rerenderOpenWayfinderApps,
   });
   void preloadHandlebarsTemplates([

@@ -76,6 +76,8 @@ import {
   resolveSelectionSlug,
   resolveSelectionTraits,
 } from "./application/option-context-service.js";
+import { derivePickerRenderSession, type PickerRenderSession } from "./application/picker-render-session.js";
+import { type PickerSearchRequest, PickerSearchScheduler } from "./application/picker-search-scheduler.js";
 import {
   chooseSelectionOption,
   type SelectionCommandResult,
@@ -136,6 +138,24 @@ interface ArcaneSchoolDocumentLike {
 type FetchedSelectionDocument = NonNullable<Awaited<ReturnType<typeof fetchSelectionDocument>>>;
 type ArcaneSchoolActorItemLike = BuildStateActorItem & ArcaneSchoolDocumentLike;
 type ArcaneSchoolSourceLike = FetchedSelectionDocument | ArcaneSchoolActorItemLike;
+type PickerSearchRenderContext = {
+  wayfinderRenderScope: "picker-search";
+  activePane: ReturnType<typeof derivePickerRenderSession> | null;
+  pickerRequest: PickerSearchRequest;
+};
+type FullWayfinderRenderContext = WayfinderTemplateContext & {
+  wayfinderRenderScope: "full";
+  pickerRenderSession: PickerRenderSession | null;
+  pickerSourceRevision: number;
+};
+type WayfinderRenderContext = FullWayfinderRenderContext | PickerSearchRenderContext;
+type WayfinderRenderOptions = Record<string, unknown> & {
+  parts?: string[];
+  wayfinderPickerRequest?: PickerSearchRequest;
+  wayfinderPickerSourceRevision?: number;
+  wayfinderPickerViewRevision?: number;
+  wayfinderSkippedReplacement?: boolean;
+};
 type WayfinderGlobals = typeof globalThis & {
   CONFIG?: {
     PF2E?: Pf2eConfigLike;
@@ -162,6 +182,11 @@ interface FoundryDialogApiLike {
     escapeHTML?: (value: string) => string;
   };
 }
+
+const PICKER_COUNT_PART = "picker-count";
+const PICKER_RESULTS_PART = "picker-results";
+const PICKER_SEARCH_PARTS = [PICKER_COUNT_PART, PICKER_RESULTS_PART] as const;
+const PICKER_SEARCH_DELAY_MS = 40;
 
 export class WayfinderApp extends foundry.applications.api.HandlebarsApplicationMixin(
   foundry.applications.api.ApplicationV2
@@ -207,6 +232,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #semanticCommands = new SemanticCommandQueue();
   #closePromise: Promise<this> | null = null;
   #lastDraftSavePhase: DraftSaveState["phase"] = "idle";
+  #pickerRenderSession: { sourceRevision: number; session: PickerRenderSession } | null = null;
+  #pickerSearchScheduler = new PickerSearchScheduler({
+    delayMs: PICKER_SEARCH_DELAY_MS,
+    render: (request) => this.#renderPickerSearch(request),
+    onError: (error) => {
+      console.error("PF2E Wayfinder picker search render failed", error);
+      ui.notifications.error("Wayfinder could not update these search results. Reopen the window and try again.");
+    },
+  });
 
   static open(actor: WayfinderActorLike): void {
     if (!canUseWayfinder(actor)) {
@@ -252,7 +286,67 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return `${MODULE_TITLE}: ${this.actor.name}`;
   }
 
-  async _prepareContext(): Promise<WayfinderTemplateContext> {
+  _configureRenderOptions(options: WayfinderRenderOptions): void {
+    if (!isPickerSearchRender(options)) {
+      options.wayfinderPickerSourceRevision = this.#pickerSearchScheduler.invalidateSource();
+      options.wayfinderPickerViewRevision = this.#pickerSearchScheduler.viewRevision;
+    }
+    super._configureRenderOptions(options);
+  }
+
+  _configureRenderParts(options: WayfinderRenderOptions): Record<string, unknown> {
+    const parts = super._configureRenderParts(options) as Record<string, unknown>;
+    if (!isPickerSearchRender(options)) {
+      return parts;
+    }
+
+    const isSpellChoice = this.#pickerRenderSession?.session.basePane.kind === "spell-choice";
+    parts[PICKER_COUNT_PART] = {
+      template: `modules/${MODULE_ID}/templates/wayfinder/picker-result-count.hbs`,
+    };
+    parts[PICKER_RESULTS_PART] = {
+      template: `modules/${MODULE_ID}/templates/wayfinder/${isSpellChoice ? "spell-choice-results" : "pick-results"}.hbs`,
+    };
+    return parts;
+  }
+
+  _canRender(options: WayfinderRenderOptions): false | void {
+    if (super._canRender(options) === false) {
+      return false;
+    }
+    const request = pickerSearchRequest(options);
+    if (!request) {
+      return;
+    }
+    if (!this.#canCommitPickerSearch(request)) {
+      return false;
+    }
+  }
+
+  async _prepareContext(options: WayfinderRenderOptions = {}): Promise<WayfinderRenderContext> {
+    const pickerRequest = pickerSearchRequest(options);
+    if (pickerRequest) {
+      const session = this.#pickerRenderSession?.session;
+      if (!session || !this.#canCommitPickerSearch(pickerRequest)) {
+        options.wayfinderSkippedReplacement = true;
+        return {
+          wayfinderRenderScope: "picker-search",
+          activePane: null,
+          pickerRequest,
+        };
+      }
+      return {
+        wayfinderRenderScope: "picker-search",
+        activePane: derivePickerRenderSession(session, {
+          search: pickerRequest.query,
+          filterState: this.#pickerFiltersByStepId.get(pickerRequest.stepId),
+          openFilterKind:
+            this.#openPickerFilterMenu?.stepId === pickerRequest.stepId ? this.#openPickerFilterMenu.filterKind : null,
+        }),
+        pickerRequest,
+      };
+    }
+
     const snapshot = inspectActor(this.actor);
     const draft = this.#ensureDraft(snapshot.level);
     const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
@@ -266,9 +360,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     );
     const activeStep = await this.#resolveActiveStep(plan.steps, evaluationsByStepId);
     const activeEvaluation = activeStep ? evaluationsByStepId.get(activeStep.id) : null;
+    let pickerRenderSession: PickerRenderSession | null = null;
     const activePane =
       activeStep && activeEvaluation
-        ? await this.#buildActivePane(activeStep, activeEvaluation, effectiveBuildState, plan.steps)
+        ? await this.#buildActivePane(activeStep, activeEvaluation, effectiveBuildState, plan.steps, (session) => {
+            pickerRenderSession = session;
+          })
         : null;
     const [effectiveAncestry, effectiveHeritage, effectiveBackground, effectiveClass, effectiveDeity] =
       await Promise.all([
@@ -283,36 +380,97 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       effectiveClassDocument: effectiveClass,
       extractSlug: extractDocumentSlug,
     });
-    return buildWayfinderContext({
-      actorName: this.actor.name,
-      currentLevel: snapshot.level,
-      targetLevel: plan.targetLevel,
-      steps: plan.steps,
-      activeStep,
-      activePane,
-      statusNote: this.#statusNote,
-      planningNote,
-      summaryDocuments: {
-        ancestry: effectiveAncestry,
-        heritage: effectiveHeritage,
-        background: effectiveBackground,
-        classDocument: effectiveClass,
-        deity: effectiveDeity,
-      },
-      readiness,
-      canImportExistingHistory: !snapshot.isBlank,
-      existingCharacterHistory: state.existingCharacterHistory,
-      draftSaveState: this.#draftPersistence.state,
-      lifecycleBusy: this.#semanticCommands.barrierActive,
-    });
+    return Object.assign(
+      await buildWayfinderContext({
+        actorName: this.actor.name,
+        currentLevel: snapshot.level,
+        targetLevel: plan.targetLevel,
+        steps: plan.steps,
+        activeStep,
+        activePane,
+        statusNote: this.#statusNote,
+        planningNote,
+        summaryDocuments: {
+          ancestry: effectiveAncestry,
+          heritage: effectiveHeritage,
+          background: effectiveBackground,
+          classDocument: effectiveClass,
+          deity: effectiveDeity,
+        },
+        readiness,
+        canImportExistingHistory: !snapshot.isBlank,
+        existingCharacterHistory: state.existingCharacterHistory,
+        draftSaveState: this.#draftPersistence.state,
+        lifecycleBusy: this.#semanticCommands.barrierActive,
+      }),
+      {
+        wayfinderRenderScope: "full" as const,
+        pickerRenderSession,
+        pickerSourceRevision: numericRenderOption(options.wayfinderPickerSourceRevision),
+      }
+    );
   }
 
-  async _onRender(context: unknown, options: unknown): Promise<void> {
+  _replaceHTML(result: Record<string, HTMLElement>, content: HTMLElement, options: WayfinderRenderOptions): void {
+    const pickerRequest = pickerSearchRequest(options);
+    if (pickerRequest) {
+      if (!this.#canCommitPickerSearch(pickerRequest) || !hasPickerPartTargets(content, pickerRequest.stepId)) {
+        options.wayfinderSkippedReplacement = true;
+        return;
+      }
+      super._replaceHTML(result, content, options);
+      return;
+    }
+
+    const startingViewRevision = numericRenderOption(options.wayfinderPickerViewRevision);
+    if (!options.isFirstRender && startingViewRevision !== this.#pickerSearchScheduler.viewRevision) {
+      options.wayfinderSkippedReplacement = true;
+      queueMicrotask(() => {
+        if (this.actor.apps[this.id] === this) {
+          void this.render(false).catch((error: unknown) => {
+            console.error("PF2E Wayfinder failed to refresh a stale full render", error);
+          });
+        }
+      });
+      return;
+    }
+
+    super._replaceHTML(result, content, options);
+  }
+
+  async _onRender(context: WayfinderRenderContext, options: WayfinderRenderOptions): Promise<void> {
     await super._onRender(context, options);
+    if (options.wayfinderSkippedReplacement) {
+      return;
+    }
     const root = this.element;
     if (!(root instanceof HTMLElement)) {
       return;
     }
+
+    if (context.wayfinderRenderScope === "picker-search") {
+      const results = root.querySelector<HTMLElement>(`[data-application-part="${PICKER_RESULTS_PART}"]`);
+      if (results) {
+        bindWayfinderInteractions(
+          results,
+          {
+            onActionClick: this.#onActionClick,
+            onSearchInput: this.#onSearchInput,
+            onScrollableScroll: this.#onScrollableScroll,
+            onManualChange: this.#onManualChange,
+            onLoreInputChange: this.#onLoreInputChange,
+          },
+          this.#scrollById,
+          null
+        );
+      }
+      this.#pendingSearchFocus = null;
+      return;
+    }
+
+    this.#pickerRenderSession = context.pickerRenderSession
+      ? { sourceRevision: context.pickerSourceRevision, session: context.pickerRenderSession }
+      : null;
 
     this.#pendingSearchFocus = bindWayfinderInteractions(
       root,
@@ -399,6 +557,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   #finalizeClosedState(): void {
+    this.#pickerSearchScheduler.dispose();
     this.#semanticCommands.completeTerminalOperation();
     this.#draftPersistence.dispose();
     WayfinderApp.#openApps.delete(this);
@@ -588,11 +747,33 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
-    this.#rememberInteractiveState(input);
     this.#openPickerFilterMenu = null;
     this.#searchByStepId.set(stepId, input.value);
-    this.render(false);
+    this.#pickerSearchScheduler.schedule(stepId, input.value);
   };
+
+  async #renderPickerSearch(request: PickerSearchRequest): Promise<void> {
+    if (!this.#canCommitPickerSearch(request)) {
+      return;
+    }
+    await this.render({
+      parts: [...PICKER_SEARCH_PARTS],
+      wayfinderPickerRequest: request,
+    });
+  }
+
+  #canCommitPickerSearch(request: PickerSearchRequest): boolean {
+    const prepared = this.#pickerRenderSession;
+    const root = this.element;
+    return (
+      this.#pickerSearchScheduler.isCurrent(request) &&
+      prepared?.sourceRevision === request.sourceRevision &&
+      prepared.session.basePane.stepId === request.stepId &&
+      this.#searchByStepId.get(request.stepId) === request.query &&
+      root instanceof HTMLElement &&
+      hasPickerPartTargets(root, request.stepId)
+    );
+  }
 
   #onScrollableScroll = (event: Event): void => {
     const scrollable = event.currentTarget as HTMLElement | null;
@@ -717,7 +898,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     step: PendingStep,
     stepEvaluation: WayfinderStepEvaluation,
     effectiveBuildState: EffectiveBuildState,
-    planSteps: PendingStep[]
+    planSteps: PendingStep[],
+    onPickerRenderSession?: (session: PickerRenderSession) => void
   ): Promise<ActivePane> {
     if (step.kind === "manual") {
       const pane: ManualStepPane = {
@@ -784,6 +966,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       getPickerInfoState,
       buildPreview: (...args) => this._buildRenderPreview(...args),
       matchesSearch,
+      onPickerRenderSession,
     });
     if (selectionPane) {
       return selectionPane;
@@ -1611,6 +1794,46 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.render(false);
     }
   }
+}
+
+function isPickerSearchRender(options: WayfinderRenderOptions): boolean {
+  return pickerSearchRequest(options) !== null;
+}
+
+function pickerSearchRequest(options: WayfinderRenderOptions): PickerSearchRequest | null {
+  if (
+    options.parts?.length !== PICKER_SEARCH_PARTS.length ||
+    !PICKER_SEARCH_PARTS.every((partId, index) => options.parts?.[index] === partId)
+  ) {
+    return null;
+  }
+
+  const candidate = options.wayfinderPickerRequest;
+  if (
+    !candidate ||
+    !Number.isInteger(candidate.viewRevision) ||
+    !Number.isInteger(candidate.sourceRevision) ||
+    typeof candidate.stepId !== "string" ||
+    typeof candidate.query !== "string"
+  ) {
+    return null;
+  }
+  return candidate;
+}
+
+function numericRenderOption(value: unknown): number {
+  return Number.isInteger(value) ? Number(value) : -1;
+}
+
+function hasPickerPartTargets(root: HTMLElement, stepId: string): boolean {
+  const countTargets = [...root.querySelectorAll<HTMLElement>(`[data-application-part="${PICKER_COUNT_PART}"]`)];
+  const resultTargets = [...root.querySelectorAll<HTMLElement>(`[data-application-part="${PICKER_RESULTS_PART}"]`)];
+  return (
+    countTargets.length === 1 &&
+    resultTargets.length === 1 &&
+    countTargets[0]?.dataset.stepId === stepId &&
+    resultTargets[0]?.dataset.stepId === stepId
+  );
 }
 
 function actorItemLocationId(item: BuildStateActorItem): string | null {

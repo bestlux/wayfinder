@@ -17,6 +17,9 @@ export class PickerSearchScheduler {
     get sourceRevision() {
         return this.#sourceRevision;
     }
+    get viewRevision() {
+        return this.#viewRevision;
+    }
     schedule(stepId, query) {
         if (this.#disposed) {
             return null;

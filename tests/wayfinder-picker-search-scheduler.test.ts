@@ -61,6 +61,7 @@ describe("PickerSearchScheduler", () => {
 
     expect(first?.query).toBe(second?.query);
     expect(first?.viewRevision).not.toBe(second?.viewRevision);
+    expect(scheduler.viewRevision).toBe(second?.viewRevision);
     expect(first && scheduler.isCurrent(first)).toBe(false);
     expect(second && scheduler.isCurrent(second)).toBe(true);
   });

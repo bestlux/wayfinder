@@ -67,6 +67,160 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
   };
 };
 
+globalThis.__prepareWayfinderPickerProfile = async function prepareWayfinderPickerProfile({
+  allowDestructive = false,
+  expectedWorldId = "",
+  fixturePrefix,
+  moduleId,
+  profile,
+  smokeCase,
+}) {
+  const normalizedWorldId = String(expectedWorldId ?? "").trim();
+  if (!allowDestructive || !normalizedWorldId) {
+    throw new Error(
+      "Picker profiling requires destructive fixture cleanup opt-in and an exact expected Foundry world id.",
+    );
+  }
+  assertExpectedWorldId(game.world?.id, normalizedWorldId);
+
+  const moduleRecord = game.modules.get(moduleId);
+  if (!moduleRecord?.active) {
+    throw new Error(`${moduleId} is not active in this world.`);
+  }
+  await cleanupActors(fixturePrefix);
+  const actorCountBefore = game.actors.size;
+
+  const modules = await loadWayfinderModules(moduleId);
+  let actor = null;
+  try {
+    actor = await Actor.create({
+      name: `${fixturePrefix} - ${profile.id}`,
+      type: "character",
+      ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER },
+      system: { details: { level: { value: 1 } } },
+    });
+    const failures = [];
+    await seedActorSkillRanks(actor, smokeCase);
+    await seedActorItems(actor, smokeCase, failures);
+    if (failures.length > 0) {
+      throw new Error(failures.join(" "));
+    }
+
+    const draft = modules.createEmptyDraft(smokeCase.targetLevel);
+    await seedCreationDraft(draft, smokeCase);
+    const fillResult = await completeDraft(actor, draft, smokeCase, modules, {
+      skipStepIds: new Set([profile.stepId]),
+    });
+    if (fillResult.classifications.length > 0 || fillResult.warnings.length > 0) {
+      throw new Error(
+        `Picker profile fixture did not fill deterministically: ${[
+          ...fillResult.classifications,
+          ...fillResult.warnings,
+        ].join(" ")}`,
+      );
+    }
+
+    const plan = await buildPlan(actor, draft, modules);
+    const step = plan.steps.find((entry) => entry.slotId === profile.stepId);
+    if (step?.kind !== "spell-choice") {
+      throw new Error(`Picker profile step ${profile.stepId} is not a live spell-choice step.`);
+    }
+    const incomplete = await incompleteSteps(actor, draft, plan.steps, modules);
+    const unexpectedIncomplete = incomplete.filter((entry) => entry.slotId !== profile.stepId);
+    if (unexpectedIncomplete.length > 0) {
+      throw new Error(
+        `Picker profile has unexpected incomplete steps: ${unexpectedIncomplete.map((entry) => entry.slotId).join(", ")}.`,
+      );
+    }
+
+    const optionContext = await buildPickerContext(actor, draft, step, plan.steps, modules);
+    const spellRarityCeiling = String(game.settings.get(moduleId, "spellRarityCeiling") ?? "common");
+    const restrictedSpellRarityAccess = draft.spellRarityAccess[step.slotId] === true;
+    const optionStep = modules.withRestrictedSpellRarityAccess(
+      step,
+      spellRarityCeiling,
+      restrictedSpellRarityAccess,
+    );
+    const options = await modules.getOptionsForStep(optionStep, optionContext);
+    const finalQuery = profile.querySequence.at(-1) ?? "";
+    const normalizedQuery = finalQuery.trim().toLowerCase();
+    const expectedResults = options
+      .filter((option) =>
+        [option.name, option.source ?? "", option.rarity ?? ""].some((value) =>
+          value.toLowerCase().includes(normalizedQuery),
+        ),
+      )
+      .map((option) => ({ name: option.name, value: option.value }));
+    if (options.length === 0 || expectedResults.length === 0) {
+      throw new Error(
+        `Picker profile needs non-empty live options and final results; options=${options.length}, final=${expectedResults.length}.`,
+      );
+    }
+
+    await actor.setFlag(moduleId, "draft", draft);
+    modules.WayfinderApp.open(actor);
+    const app = Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp);
+    if (!app) {
+      throw new Error("Picker profile could not resolve the actor-bound Wayfinder app.");
+    }
+    await app.render(true);
+    app.element?.setAttribute("data-wayfinder-profile-actor-id", actor.id);
+
+    return {
+      appElementId: app.element?.id ?? app.id,
+      actorId: actor.id,
+      actorName: actor.name,
+      actorCountBefore,
+      actorCountAfterCreate: game.actors.size,
+      stepId: step.slotId,
+      restrictedSpellRarityAccess,
+      optionCount: options.length,
+      expectedResultCount: expectedResults.length,
+      expectedResultNames: expectedResults.map((entry) => entry.name),
+      expectedResultValues: expectedResults.map((entry) => entry.value),
+      packPolicy: {
+        officialSpellPack: "pf2e.spells-srd",
+        additionalSourcePacks: String(game.settings.get(moduleId, "additionalSourcePacks") ?? ""),
+        spellRarityCeiling,
+        observedPackIds: [...new Set(options.map((option) => option.packId))].sort(),
+      },
+      runtime: {
+        foundryVersion: game.version ?? null,
+        locale: game.i18n?.lang ?? null,
+        moduleVersion: moduleRecord.version ?? moduleRecord.manifest?.version ?? null,
+        pf2eVersion: game.system?.version ?? null,
+        worldId: game.world?.id ?? null,
+      },
+    };
+  } catch (error) {
+    if (actor) {
+      await actor.delete();
+    }
+    throw error;
+  }
+};
+
+globalThis.__cleanupWayfinderPickerProfile = async function cleanupWayfinderPickerProfile({
+  actorId,
+  allowDestructive = false,
+  expectedWorldId = "",
+}) {
+  if (!allowDestructive) {
+    throw new Error("Picker profile fixture deletion requires destructive opt-in.");
+  }
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  const actor = game.actors.get(actorId);
+  if (!actor) {
+    return { deleted: false };
+  }
+
+  for (const app of Object.values(actor.apps ?? {})) {
+    await app.close?.({ animate: false });
+  }
+  await actor.delete();
+  return { deleted: true, actorCountAfter: game.actors.size };
+};
+
 async function loadWayfinderModules(moduleId) {
   const [
     draftService,
@@ -84,6 +238,8 @@ async function loadWayfinderModules(moduleId) {
     slotIds,
     slug,
     sourceId,
+    spellRarityAccess,
+    wayfinderApp,
   ] = await Promise.all([
     import(`/modules/${moduleId}/scripts/draft-service.js`),
     import(`/modules/${moduleId}/scripts/actor-inspector.js`),
@@ -100,6 +256,8 @@ async function loadWayfinderModules(moduleId) {
     import(`/modules/${moduleId}/scripts/wayfinder/slot-ids.js`),
     import(`/modules/${moduleId}/scripts/shared/slug.js`),
     import(`/modules/${moduleId}/scripts/shared/source-id.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/spell-choice/rarity-access.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder-app.js`),
   ]);
 
   return {
@@ -121,6 +279,8 @@ async function loadWayfinderModules(moduleId) {
     listActorItems: buildState.listActorItems,
     resolveSelection: packOptions.resolveSelection,
     sourceIdOf: sourceId.sourceIdOf,
+    withRestrictedSpellRarityAccess: spellRarityAccess.withRestrictedSpellRarityAccess,
+    WayfinderApp: wayfinderApp.WayfinderApp,
   };
 }
 
@@ -448,7 +608,7 @@ async function seedCreationDraft(draft, smokeCase) {
   }
 }
 
-async function completeDraft(actor, draft, smokeCase, modules) {
+async function completeDraft(actor, draft, smokeCase, modules, { skipStepIds = new Set() } = {}) {
   const warnings = [];
   let classifications = [];
   let iterations = 0;
@@ -460,7 +620,7 @@ async function completeDraft(actor, draft, smokeCase, modules) {
     let refreshAfterStep = null;
 
     for (const step of plan.steps) {
-      if (await isStepComplete(actor, draft, step, modules)) {
+      if (skipStepIds.has(step.slotId) || (await isStepComplete(actor, draft, step, modules))) {
         continue;
       }
 
@@ -486,7 +646,9 @@ async function completeDraft(actor, draft, smokeCase, modules) {
         modules,
       );
     }
-    const remaining = await incompleteSteps(actor, draft, nextPlan.steps, modules);
+    const remaining = (await incompleteSteps(actor, draft, nextPlan.steps, modules)).filter(
+      (step) => !skipStepIds.has(step.slotId),
+    );
     if (remaining.length === 0) {
       return { classifications, iterations: iterations + 1, warnings };
     }

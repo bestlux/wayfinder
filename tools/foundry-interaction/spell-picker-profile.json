@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "wizard-level-5-spell-search",
+  "description": "Wizard level 5 spellbook picker search on the canonical live smoke fixture.",
+  "smokeCaseId": "wizard-l1-l5-apply-rerun",
+  "stepId": "spell-choice-wizard-spellbook-level-5",
+  "locale": "en",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "appWidths": [1240, 1180, 980, 760],
+  "querySequence": ["f", "fa", "fal", "fals", "false"],
+  "expectedPackPolicy": {
+    "additionalSourcePacks": "",
+    "spellRarityCeiling": "common",
+    "observedPackIds": ["pf2e.spells-srd"]
+  },
+  "expectedOptionCount": 401,
+  "expectedResultValues": ["pf2e.spells-srd:8ViwItUgwT4lOvvb"],
+  "expectedRuntime": {
+    "foundryVersion": "14.366",
+    "pf2eVersion": "8.4.0"
+  },
+  "keyDelayMs": 8,
+  "settleTimeoutMs": 15000,
+  "postSettleMs": 350,
+  "warmupSamplesPerWidth": 2,
+  "measuredSamplesPerWidth": 30,
+  "expectedPickerRenderCount": 1,
+  "budgets": null
+}

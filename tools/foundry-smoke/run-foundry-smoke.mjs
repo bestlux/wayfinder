@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +7,11 @@ import { chromium } from "playwright-core";
 import { applySafetySmokeCases, gradualBoostsSmokeCases, smokeCases } from "./class-cases.mjs";
 import { ancestryParagonSection, campaignFeatSmokeCases } from "./campaign-feat-cases.mjs";
 import { freeArchetypeSmokeCases } from "./free-archetype-cases.mjs";
+import {
+  closeFoundryBrowser,
+  loginToFoundryWorld,
+  resolveFoundryChromePath,
+} from "./browser-session.mjs";
 import { validateSmokeSafety } from "./safety.mjs";
 
 const MODULE_ID = "wayfinder-pf2e";
@@ -21,12 +25,6 @@ const allSmokeCases = [
   ...campaignFeatSmokeCases,
   ...gradualBoostsSmokeCases,
   ...applySafetySmokeCases,
-];
-const defaultChromePaths = [
-  "C:/Program Files/Google/Chrome/Application/chrome.exe",
-  "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-  "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
 ];
 
 function usage() {
@@ -197,15 +195,6 @@ function resolveOutDir(value) {
   return path.resolve(repoRoot, value || path.join(defaultArtifactRoot, normalizeTimestamp()));
 }
 
-function resolveChromePath() {
-  const configured = process.env.FOUNDRY_CHROME_PATH;
-  if (configured) {
-    return configured;
-  }
-
-  return defaultChromePaths.find((entry) => existsSync(entry)) ?? "";
-}
-
 function selectedCases(caseIds, { defaultAll = true } = {}) {
   const ids = Array.from(new Set(caseIds));
   if (ids.length === 0) {
@@ -235,7 +224,7 @@ async function main() {
     return;
   }
 
-  const chromePath = resolveChromePath();
+  const chromePath = resolveFoundryChromePath();
   if (!chromePath) {
     throw new Error("Could not find Chrome or Edge. Set FOUNDRY_CHROME_PATH to a browser executable.");
   }
@@ -272,7 +261,7 @@ async function main() {
   });
 
   try {
-    await login(page, {
+    await loginToFoundryWorld(page, {
       foundryUrl,
       password: process.env.FOUNDRY_PASSWORD ?? "",
       user: process.env.FOUNDRY_USER ?? "",
@@ -340,7 +329,7 @@ async function main() {
       process.exitCode = 1;
     }
   } finally {
-    await closeBrowser(context, browser);
+    await closeFoundryBrowser(context, browser);
   }
 }
 
@@ -522,27 +511,6 @@ async function restoreVariants(page, variantStates) {
   if (restoreError) throw restoreError;
 }
 
-async function login(page, { foundryUrl, password, user }) {
-  await page.goto(`${foundryUrl.replace(/\/$/u, "")}/join`, { waitUntil: "networkidle" });
-  if (page.url().includes("/join")) {
-    if (!user) {
-      throw new Error("FOUNDRY_USER is required when the browser is not already logged in.");
-    }
-
-    const legacyUserSelect = page.locator('select[name="userid"]');
-    if ((await legacyUserSelect.count()) > 0) {
-      await legacyUserSelect.selectOption({ label: user });
-    } else {
-      await page.locator('input[name="username"]').fill(user);
-    }
-    await page.locator('input[name="password"]').fill(password);
-    await page.locator('button[name="join"]').click();
-  }
-
-  await page.waitForURL(/\/game/u, { timeout: 30000 });
-  await page.waitForFunction(() => globalThis.game?.ready === true, null, { timeout: 60000 });
-}
-
 async function writeArtifacts(outDir, result) {
   await writeFile(path.join(outDir, "foundry-smoke-results.json"), `${JSON.stringify(result, null, 2)}\n`);
   await writeFile(path.join(outDir, "foundry-smoke-summary.md"), buildMarkdownSummary(result));
@@ -601,18 +569,6 @@ function printSummary(result, outDir) {
     const notes = entry.failures.length > 0 ? `: ${entry.failures.join("; ")}` : "";
     console.log(`${entry.status.toUpperCase()} ${entry.id}${notes}`);
   }
-}
-
-async function closeBrowser(context, browser) {
-  await Promise.race([
-    (async () => {
-      await context.close();
-      await browser.close();
-    })(),
-    new Promise((resolve) => {
-      setTimeout(resolve, 5000);
-    }),
-  ]);
 }
 
 function errorToString(error) {

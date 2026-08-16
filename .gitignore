@@ -6,6 +6,7 @@ dist/
 .tmp/
 .worktrees/
 .wayfinder-smoke/
+.wayfinder-interaction/
 .env
 .env.*
 !.env.example

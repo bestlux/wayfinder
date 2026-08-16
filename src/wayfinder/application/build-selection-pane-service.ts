@@ -13,12 +13,6 @@ import { getStepModeLabel } from "../domain/step-types.js";
 import { buildClassChoicePane } from "../panes/class-choice-pane.js";
 import { buildLanguageChoicePane } from "../panes/language-choice-pane.js";
 import { buildPickItemPane, resolvePreviewValue, selectedSelection, selectedValueFor } from "../panes/pick-pane.js";
-import {
-  activePickerFilterCount,
-  buildPickerFilterGroups,
-  matchesPickerFilters,
-  normalizePickerFilterState,
-} from "../panes/picker-filters.js";
 import { buildSingletonChoicePane } from "../panes/singleton-choice-pane.js";
 import { buildSpellChoicePane } from "../panes/spell-pane.js";
 import {
@@ -34,6 +28,12 @@ import type {
   SingletonChoiceStepPane,
   SpellChoiceStepPane,
 } from "../view-models.js";
+import {
+  createPickerRenderSession,
+  derivePickerRenderProjection,
+  type PickerRenderInputs,
+  type PickerRenderSession,
+} from "./picker-render-session.js";
 
 type SelectionPane =
   | ClassChoiceStepPane
@@ -65,6 +65,7 @@ interface BuildSelectionPaneDependencies {
   ) => PickerInfoState | null;
   buildPreview: (option: OptionRecord | null, selectedValue: string) => Promise<PreviewPane | null>;
   matchesSearch: (option: OptionRecord, search: string) => boolean;
+  onPickerRenderSession?: (session: PickerRenderSession) => void;
 }
 
 export async function buildSelectionPane(
@@ -118,30 +119,23 @@ export async function buildSelectionPane(
   const spellRarityAccessGranted = step.kind === "spell-choice" && deps.draft.spellRarityAccess[step.slotId] === true;
   const optionStep = withRestrictedSpellRarityAccess(step, spellRarityCeiling, spellRarityAccessGranted);
   const options = await deps.getOptionsForStep(optionStep, optionContext);
-  const search = deps.searchByStepId.get(step.id) ?? "";
-  const filterState = normalizePickerFilterState(deps.pickerFiltersByStepId.get(step.id));
-  const searchedOptions = options.filter((option) => deps.matchesSearch(option, search));
   const filterKinds: PickerFilterKind[] =
     step.kind === "spell-choice" ? ["rank", "rarity", "source"] : ["rarity", "source"];
   const openFilterKind = deps.openPickerFilterMenu?.stepId === step.id ? deps.openPickerFilterMenu.filterKind : null;
-  const filterGroups = buildPickerFilterGroups(searchedOptions, filterState, filterKinds)
-    .filter((group) => group.options.length > 1 || group.selectedCount > 0)
-    .map((group) => ({
-      ...group,
-      isOpen: group.key === openFilterKind,
-    }));
-  const filteredOptions = searchedOptions.filter((option) =>
-    matchesPickerFilters(option, filterState, undefined, filterKinds)
-  );
-  const infoState = deps.getPickerInfoState(
+  const renderInputs: PickerRenderInputs = {
     step,
     optionContext,
-    options.length,
-    filteredOptions.length,
-    search,
-    activePickerFilterCount(filterState) > 0
-  );
-  const visibleOptions = infoState?.tone === "blocked" ? [] : filteredOptions;
+    options,
+    filterKinds,
+    getPickerInfoState: deps.getPickerInfoState,
+    matchesSearch: deps.matchesSearch,
+  };
+  const renderState = {
+    search: deps.searchByStepId.get(step.id) ?? "",
+    filterState: deps.pickerFiltersByStepId.get(step.id),
+    openFilterKind,
+  };
+  const projection = derivePickerRenderProjection(renderInputs, renderState);
   const contextNote = await deps.buildContextNote(step, optionContext);
 
   if (step.kind === "spell-choice") {
@@ -149,7 +143,7 @@ export async function buildSelectionPane(
     const selectedValues = selectedSelections.map((selection) => `${selection.packId}:${selection.documentId}`);
     const previewValue = resolvePreviewValue(
       step.id,
-      visibleOptions,
+      projection.visibleOptions,
       options,
       selectedValues[0] ?? "",
       deps.previewValueByStepId
@@ -167,16 +161,16 @@ export async function buildSelectionPane(
         }
       : null;
 
-    return buildSpellChoicePane({
+    const pane = buildSpellChoicePane({
       step,
-      search,
-      activeFilterCount: activePickerFilterCount(filterState),
+      search: projection.search,
+      activeFilterCount: projection.activeFilterCount,
       selectedSelections,
       selectedLabel: await selectedLabel(),
       selectionState: deps.stepEvaluation?.state,
-      filterGroups,
-      visibleOptions,
-      infoState,
+      filterGroups: projection.filterGroups,
+      visibleOptions: projection.visibleOptions,
+      infoState: projection.infoState,
       contextNote,
       preview,
       modeLabel: getStepModeLabel(step.kind),
@@ -187,26 +181,36 @@ export async function buildSelectionPane(
         locked: selectedSelections.length > 0,
       },
     });
+    deps.onPickerRenderSession?.(createPickerRenderSession(renderInputs, pane, previewValue));
+    return pane;
   }
 
   const selectedValue = selectedValueFor(step, deps.draft);
-  const previewValue = resolvePreviewValue(step.id, visibleOptions, options, selectedValue, deps.previewValueByStepId);
+  const previewValue = resolvePreviewValue(
+    step.id,
+    projection.visibleOptions,
+    options,
+    selectedValue,
+    deps.previewValueByStepId
+  );
   const preview = previewValue
     ? await deps.buildPreview(options.find((option) => option.value === previewValue) ?? null, selectedValue)
     : null;
 
-  return buildPickItemPane({
+  const pane = buildPickItemPane({
     step,
-    search,
-    activeFilterCount: activePickerFilterCount(filterState),
+    search: projection.search,
+    activeFilterCount: projection.activeFilterCount,
     selectedValue,
     selectedLabel: selectedSelection(step, deps.draft)?.name ?? null,
-    filterGroups,
-    visibleOptions,
-    infoState,
+    filterGroups: projection.filterGroups,
+    visibleOptions: projection.visibleOptions,
+    infoState: projection.infoState,
     contextNote,
     preview,
     modeLabel: getStepModeLabel(step.kind),
     previewValue,
   });
+  deps.onPickerRenderSession?.(createPickerRenderSession(renderInputs, pane, previewValue));
+  return pane;
 }

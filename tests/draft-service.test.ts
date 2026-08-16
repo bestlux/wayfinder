@@ -11,8 +11,11 @@ import type { SelectionRef } from "../src/types";
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 9,
+      version: 11,
       targetLevel: 4,
+      applyAttemptStepIds: [],
+      applyCompletedStepIds: [],
+      applyRecoveryActorUpdate: {},
       selections: {},
       boosts: {
         ancestry: {
@@ -64,6 +67,15 @@ describe("draft-service", () => {
     const draft = normalizeDraft(
       {
         targetLevel: 99,
+        applyAttemptStepIds: ["ancestry-level-1", "", 2, "ancestry-level-1", "class-level-1"],
+        applyCompletedStepIds: ["heritage-level-1", "", "heritage-level-1"],
+        applyRecoveryActorUpdate: {
+          "system.skills.arcana.rank": 1,
+          "system.build": { attributes: { boosts: { 1: ["int"] } } },
+          "": true,
+          _id: "injected",
+          name: "Injected actor name",
+        },
         selections: {
           keep: {
             packId: "pf2e.feats-srd",
@@ -158,6 +170,12 @@ describe("draft-service", () => {
     );
 
     expect(draft.targetLevel).toBe(20);
+    expect(draft.applyAttemptStepIds).toEqual(["ancestry-level-1", "class-level-1"]);
+    expect(draft.applyCompletedStepIds).toEqual(["heritage-level-1"]);
+    expect(draft.applyRecoveryActorUpdate).toEqual({
+      "system.skills.arcana.rank": 1,
+      "system.build": { attributes: { boosts: { 1: ["int"] } } },
+    });
     expect(Object.keys(draft.selections)).toEqual(["keep"]);
     expect(draft.selections.keep.uuid).toBe("Compendium.pf2e.feats-srd.Item.abc");
     expect(draft.manual).toEqual({
@@ -228,12 +246,15 @@ describe("draft-service", () => {
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(9);
+    expect(patched.version).toBe(11);
     expect(patched.updatedAt).not.toBeNull();
   });
 
   it("builds a persisted draft patch without nested aliases", () => {
     const draft = createEmptyDraft(2);
+    draft.applyAttemptStepIds = ["ancestry-level-1"];
+    draft.applyCompletedStepIds = ["heritage-level-1"];
+    draft.applyRecoveryActorUpdate = { "system.build": { attributes: { boosts: { 1: ["str"] } } } };
     draft.selections.ancestry = rawSelection("ancestry", "pf2e.ancestries", "human", "Human", null);
     draft.boosts.levels[1] = ["str"];
     draft.skillTrainings.training = { ruleChoices: {}, additional: ["arcana"], loreChoices: {} };
@@ -241,6 +262,12 @@ describe("draft-service", () => {
     draft.spellChoices.spells = [rawSelection("spells", "pf2e.spells-srd", "detect-magic", "Detect Magic", null)];
 
     const patched = buildDraftPatch(draft);
+    draft.applyAttemptStepIds.push("class-level-1");
+    draft.applyCompletedStepIds.push("background-level-1");
+    const recoveryBuild = draft.applyRecoveryActorUpdate["system.build"] as {
+      attributes: { boosts: Record<number, string[]> };
+    };
+    recoveryBuild.attributes.boosts[1]?.push("dex");
     draft.selections.ancestry.name = "Mutated source";
     draft.boosts.levels[1]?.push("dex");
     draft.skillTrainings.training?.additional.push("athletics");
@@ -248,6 +275,11 @@ describe("draft-service", () => {
     draft.spellChoices.spells?.push(rawSelection("spells", "pf2e.spells-srd", "shield", "Shield", null));
 
     expect(patched.selections.ancestry?.name).toBe("Human");
+    expect(patched.applyAttemptStepIds).toEqual(["ancestry-level-1"]);
+    expect(patched.applyCompletedStepIds).toEqual(["heritage-level-1"]);
+    expect(patched.applyRecoveryActorUpdate).toEqual({
+      "system.build": { attributes: { boosts: { 1: ["str"] } } },
+    });
     expect(patched.boosts.levels[1]).toEqual(["str"]);
     expect(patched.skillTrainings.training?.additional).toEqual(["arcana"]);
     expect(patched.languageChoices.languages).toEqual(["draconic"]);

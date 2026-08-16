@@ -1,12 +1,15 @@
 import { cloneData } from "./shared/cloning.js";
 import { classArchetypeProfile, migrateLegacyClassArchetypeBranches, STANDARD_CLASS_PATH, } from "./wayfinder/class-archetype/registry.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
-const DRAFT_VERSION = 9;
+const DRAFT_VERSION = 11;
 const STATE_VERSION = 2;
 export function createEmptyDraft(targetLevel = 1) {
     return {
         version: DRAFT_VERSION,
         targetLevel: clampLevel(targetLevel),
+        applyAttemptStepIds: [],
+        applyCompletedStepIds: [],
+        applyRecoveryActorUpdate: {},
         selections: {},
         boosts: createEmptyBoostDraft(),
         manual: {},
@@ -57,6 +60,9 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
     return {
         version: DRAFT_VERSION,
         targetLevel: clampLevel(typeof draft.targetLevel === "number" ? draft.targetLevel : fallbackTargetLevel),
+        applyAttemptStepIds: sanitizeStepIds(draft.applyAttemptStepIds),
+        applyCompletedStepIds: sanitizeStepIds(draft.applyCompletedStepIds),
+        applyRecoveryActorUpdate: sanitizeRecoveryActorUpdate(draft.applyRecoveryActorUpdate),
         selections,
         boosts: sanitizeBoosts(draft.boosts),
         manual,
@@ -71,6 +77,11 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
         spellRarityAccess,
         updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
     };
+}
+function sanitizeRecoveryActorUpdate(value) {
+    if (!isRecord(value))
+        return {};
+    return Object.fromEntries(Object.entries(cloneData(value)).filter(([path]) => path.startsWith("system.")));
 }
 function clearLegacyClassArchetypeDependentState(state) {
     clearMatchingKeys(state.branchSelections, () => true);
@@ -177,6 +188,12 @@ function createEmptyBoostDraft() {
         },
         levels: {},
     };
+}
+function sanitizeStepIds(raw) {
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    return Array.from(new Set(raw.filter((value) => typeof value === "string" && value.length > 0)));
 }
 function sanitizeSelections(raw) {
     if (!isRecord(raw)) {

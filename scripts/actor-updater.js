@@ -1,4 +1,4 @@
-import { executePreparedDraftApplication, prepareDraftApplication, } from "./actor-updater/prepared-draft-application.js";
+import { executePreparedDraftApplication, executeRecoveredDraftFinalization, prepareDraftApplication, } from "./actor-updater/prepared-draft-application.js";
 import { enqueueActorOperation } from "./shared/actor-operation-queue.js";
 import { cloneData } from "./shared/cloning.js";
 const inFlightByActor = new WeakMap();
@@ -29,7 +29,7 @@ export function applyDraftToActor(actor, draft, steps, options = {}) {
             ? cloneData(await options.resolveFinalActorUpdate())
             : finalActorUpdate;
         const result = await executePreparedDraftApplication(prepared, {
-            beforePhase: options.beforePhase,
+            onCheckpoint: options.onCheckpoint,
             finalActorUpdate: resolvedFinalActorUpdate,
         });
         return result.actorUpdate;
@@ -48,13 +48,26 @@ export function applyDraftToActor(actor, draft, steps, options = {}) {
         .catch(() => undefined);
     return promise;
 }
+export function finalizeRecoveredDraftOnActor(actor, options) {
+    return enqueueActorOperation(actor, async () => {
+        await options.beforeFinalize?.();
+        const finalActorUpdate = cloneData(await options.resolveFinalActorUpdate());
+        const result = await executeRecoveredDraftFinalization(actor, {
+            finalActorUpdate,
+            onCheckpoint: options.onCheckpoint,
+            recoveryActorUpdate: cloneData(options.recoveryActorUpdate),
+            validateActorAuthority: options.validateActorAuthority,
+        });
+        return result.actorUpdate;
+    });
+}
 function draftApplyOperationKey(draft, steps, options) {
     return JSON.stringify({
         draft,
         steps,
         finalActorUpdate: options.finalActorUpdate ?? null,
         beforePrepare: operationIdentity(options.beforePrepare),
-        beforePhase: operationIdentity(options.beforePhase),
+        onCheckpoint: operationIdentity(options.onCheckpoint),
         resolveFinalActorUpdate: operationIdentity(options.resolveFinalActorUpdate),
         validateActorAuthority: operationIdentity(options.validateActorAuthority),
         validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),

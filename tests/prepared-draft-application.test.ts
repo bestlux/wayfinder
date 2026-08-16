@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { applyDraftToActor, type DraftApplyPhase, DraftApplyPhaseError } from "../src/actor-updater";
+import {
+  applyDraftToActor,
+  type DraftApplyCheckpointHook,
+  type DraftApplyPhase,
+  DraftApplyPhaseError,
+  finalizeRecoveredDraftOnActor,
+} from "../src/actor-updater";
 import {
   executePreparedDraftApplication,
   prepareDraftApplication,
@@ -343,10 +349,10 @@ describe("prepared draft application", () => {
 
     await expect(
       executePreparedDraftApplication(prepared, {
-        beforePhase: (phase) => {
+        onCheckpoint: atPhaseStart((phase) => {
           observed.push(phase);
           if (phase === "class-branches") throw new Error("injected failure");
-        },
+        }),
       })
     ).rejects.toMatchObject({
       name: "DraftApplyPhaseError",
@@ -362,6 +368,68 @@ describe("prepared draft application", () => {
     });
     expect(observed.at(-1)).toBe("class-branches");
     expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("emits stable phase and final actor write checkpoints in execution order", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    const checkpointIds: string[] = [];
+
+    await executePreparedDraftApplication(prepared, {
+      finalActorUpdate: { "flags.test.applied": true },
+      onCheckpoint: (checkpoint) => {
+        checkpointIds.push(checkpoint.checkpointId);
+      },
+    });
+
+    expect(checkpointIds.slice(0, 2)).toEqual([
+      "phase:singleton-replacements:before",
+      "phase:singleton-replacements:after",
+    ]);
+    expect(checkpointIds.slice(-4)).toEqual([
+      "phase:finalize-actor:before",
+      "write:final-actor-update:before",
+      "write:final-actor-update:after",
+      "phase:finalize-actor:after",
+    ]);
+  });
+
+  it.each([
+    "before",
+    "after",
+  ] as const)("attaches the exact final actor write %s checkpoint to injected failures", async (boundary) => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    let failure: DraftApplyPhaseError | null = null;
+
+    try {
+      await executePreparedDraftApplication(prepared, {
+        finalActorUpdate: { "flags.test.applied": true },
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.checkpointId === `write:final-actor-update:${boundary}`) {
+            throw new Error("injected checkpoint failure");
+          }
+        },
+      });
+    } catch (error) {
+      failure = error as DraftApplyPhaseError;
+    }
+
+    expect(failure).toMatchObject({
+      phase: "finalize-actor",
+      failureKind: "checkpoint-hook",
+      checkpoint: {
+        checkpointId: `write:final-actor-update:${boundary}`,
+        kind: "write",
+        operation: "final-actor-update",
+        ordinal: 1,
+        boundary,
+      },
+      partialReceipt: {
+        actorUpdatePaths: boundary === "after" ? expect.arrayContaining(["flags.test.applied"]) : [],
+      },
+    });
+    expect(actor.update).toHaveBeenCalledTimes(boundary === "after" ? 1 : 0);
   });
 
   it.each(PHASE_IDS)("stops at the injected %s boundary without finalizing", async (failedPhase) => {
@@ -387,10 +455,10 @@ describe("prepared draft application", () => {
     let failure: DraftApplyPhaseError | null = null;
     try {
       await executePreparedDraftApplication(prepared, {
-        beforePhase: (phase) => {
+        onCheckpoint: atPhaseStart((phase) => {
           observed.push(phase);
           if (phase === failedPhase) throw new Error("injected failure");
-        },
+        }),
       });
     } catch (error) {
       failure = error as DraftApplyPhaseError;
@@ -424,6 +492,26 @@ describe("prepared draft application", () => {
     expect(actor.update).not.toHaveBeenCalled();
   });
 
+  it("records a completed phase receipt before emitting its after checkpoint", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+
+    await expect(
+      executePreparedDraftApplication(prepared, {
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.checkpointId === "phase:singleton-replacements:after") {
+            throw new Error("after-phase failure");
+          }
+        },
+      })
+    ).rejects.toMatchObject({
+      phase: "singleton-replacements",
+      failureKind: "checkpoint-hook",
+      checkpoint: { checkpointId: "phase:singleton-replacements:after" },
+      completedPhases: ["singleton-replacements"],
+    });
+  });
+
   it("shares the same mandatory readiness rejection for coalesced actor operations", async () => {
     const { actor } = buildActorHarness();
     const draft = createEmptyDraft(1);
@@ -451,7 +539,7 @@ describe("prepared draft application", () => {
     const firstPhase = vi.fn(async () => barrier);
 
     const first = applyDraftToActor(actor as never, draft, [], {
-      beforePhase: (phase) => (phase === "singleton-replacements" ? firstPhase() : undefined),
+      onCheckpoint: atPhaseStart((phase) => (phase === "singleton-replacements" ? firstPhase() : undefined)),
     });
     const second = applyDraftToActor(actor as never, draft, [], {
       finalActorUpdate: { "flags.wayfinder-pf2e.state.lastAppliedAt": "different-timestamp" },
@@ -465,6 +553,36 @@ describe("prepared draft application", () => {
     expect(actor.update).toHaveBeenCalledTimes(2);
   });
 
+  it("does not coalesce otherwise-identical applies with distinct checkpoint hooks", async () => {
+    const { actor } = buildActorHarness();
+    const draft = createEmptyDraft(1);
+    let release: (() => void) | null = null;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const firstStarted = vi.fn();
+    const secondStarted = vi.fn();
+    const first = applyDraftToActor(actor as never, draft, [], {
+      onCheckpoint: atPhaseStart(async (phase) => {
+        if (phase !== "singleton-replacements") return;
+        firstStarted();
+        await barrier;
+      }),
+    });
+    const second = applyDraftToActor(actor as never, draft, [], {
+      onCheckpoint: atPhaseStart((phase) => {
+        if (phase === "singleton-replacements") secondStarted();
+      }),
+    });
+
+    expect(second).not.toBe(first);
+    await vi.waitFor(() => expect(firstStarted).toHaveBeenCalledTimes(1));
+    expect(secondStarted).not.toHaveBeenCalled();
+    release?.();
+    await Promise.all([first, second]);
+    expect(secondStarted).toHaveBeenCalledTimes(1);
+  });
+
   it("serializes different drafts for the same actor", async () => {
     const { actor } = buildActorHarness();
     const firstDraft = createEmptyDraft(1);
@@ -476,18 +594,18 @@ describe("prepared draft application", () => {
     });
 
     const first = applyDraftToActor(actor as never, firstDraft, [], {
-      beforePhase: async (phase) => {
+      onCheckpoint: atPhaseStart(async (phase) => {
         if (phase === "singleton-replacements") {
           order.push("first-start");
           await barrier;
           order.push("first-end");
         }
-      },
+      }),
     });
     const second = applyDraftToActor(actor as never, secondDraft, [], {
-      beforePhase: (phase) => {
+      onCheckpoint: atPhaseStart((phase) => {
         if (phase === "singleton-replacements") order.push("second-start");
-      },
+      }),
     });
 
     await vi.waitFor(() => expect(order).toEqual(["first-start"]));
@@ -509,9 +627,9 @@ describe("prepared draft application", () => {
       order.push("save-end");
     });
     const apply = applyDraftToActor(actor as never, createEmptyDraft(1), [], {
-      beforePhase: (phase) => {
+      onCheckpoint: atPhaseStart((phase) => {
         if (phase === "singleton-replacements") order.push("apply-start");
-      },
+      }),
     });
 
     await vi.waitFor(() => expect(order).toEqual(["save-start"]));
@@ -572,7 +690,7 @@ describe("prepared draft application", () => {
       release = resolve;
     });
     const first = applyDraftToActor(actor as never, createEmptyDraft(1), [], {
-      beforePhase: (phase) => (phase === "singleton-replacements" ? barrier : undefined),
+      onCheckpoint: atPhaseStart((phase) => (phase === "singleton-replacements" ? barrier : undefined)),
     });
     const draft = createEmptyDraft(3);
     draft.skillIncreases["skill-increase-level-3"] = "arcana";
@@ -605,7 +723,7 @@ describe("prepared draft application", () => {
     });
 
     const first = applyDraftToActor(actor as never, firstDraft, [], {
-      beforePhase: (phase) => (phase === "singleton-replacements" ? barrier : undefined),
+      onCheckpoint: atPhaseStart((phase) => (phase === "singleton-replacements" ? barrier : undefined)),
     });
     const second = applyDraftToActor(actor as never, secondDraft, []);
     const repeatedFirst = applyDraftToActor(actor as never, firstDraft, [], {
@@ -627,11 +745,11 @@ describe("prepared draft application", () => {
     });
     const run = (name: string, actor: unknown) =>
       applyDraftToActor(actor as never, createEmptyDraft(1), [], {
-        beforePhase: async (phase) => {
+        onCheckpoint: atPhaseStart(async (phase) => {
           if (phase !== "singleton-replacements") return;
           started.add(name);
           await barrier;
-        },
+        }),
       });
 
     const first = run("first", firstHarness.actor);
@@ -648,20 +766,25 @@ describe("prepared draft application", () => {
     const barrier = new Promise<void>((resolve) => {
       release = resolve;
     });
-    actor.update.mockImplementationOnce(async () => {
+    const persistUpdate = actor.update.getMockImplementation() as
+      | ((updates: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    actor.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
       order.push("first-finalize-start");
       await barrier;
+      if (!persistUpdate) throw new Error("Actor update harness is unavailable");
+      const result = await persistUpdate(updates);
       order.push("first-finalize-end");
-      return {};
+      return result;
     });
 
     const first = applyDraftToActor(actor as never, createEmptyDraft(1), [], {
       finalActorUpdate: { "flags.test.operation": "first" },
     });
     const second = applyDraftToActor(actor as never, createEmptyDraft(2), [], {
-      beforePhase: (phase) => {
+      onCheckpoint: atPhaseStart((phase) => {
         if (phase === "singleton-replacements") order.push("second-start");
-      },
+      }),
       finalActorUpdate: { "flags.test.operation": "second" },
     });
 
@@ -676,9 +799,9 @@ describe("prepared draft application", () => {
     const draft = createEmptyDraft(1);
 
     const apply = applyDraftToActor(actor as never, draft, [], {
-      beforePhase: (phase) => {
+      onCheckpoint: atPhaseStart((phase) => {
         if (phase === "singleton-replacements") throw new Error("stop");
-      },
+      }),
     });
 
     await expect(apply).rejects.toBeInstanceOf(DraftApplyPhaseError);
@@ -694,12 +817,388 @@ describe("prepared draft application", () => {
       applyDraftToActor(actor as never, draft, [], {
         finalActorUpdate: { "flags.wayfinder-pf2e.draft": null },
       })
-    ).rejects.toMatchObject({ phase: "finalize-actor" });
+    ).rejects.toMatchObject({
+      phase: "finalize-actor",
+      failureKind: "operation",
+      checkpoint: { checkpointId: "write:final-actor-update:before" },
+      partialReceipt: { actorUpdatePaths: [] },
+    });
 
     await applyDraftToActor(actor as never, draft, [], {
       finalActorUpdate: { "flags.wayfinder-pf2e.draft": null },
     });
     expect(actor.update).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a vetoed final actor update but accepts an already-converged no-op", async () => {
+    const vetoed = buildActorHarness();
+    vetoed.actor.update.mockResolvedValueOnce(undefined);
+    const vetoedCheckpoints: string[] = [];
+
+    await expect(
+      applyDraftToActor(vetoed.actor as never, createEmptyDraft(1), [], {
+        finalActorUpdate: { "flags.test.applied": true },
+        onCheckpoint: (checkpoint) => {
+          vetoedCheckpoints.push(checkpoint.checkpointId);
+        },
+      })
+    ).rejects.toMatchObject({
+      failureKind: "operation",
+      checkpoint: { checkpointId: "write:final-actor-update:before" },
+      partialReceipt: { actorUpdatePaths: [] },
+    });
+    expect(vetoedCheckpoints).not.toContain("write:final-actor-update:after");
+
+    const converged = buildActorHarness();
+    converged.actor.flags = { test: { applied: true } };
+    converged.actor.update.mockResolvedValueOnce(undefined);
+    const convergedCheckpoints: string[] = [];
+    await expect(
+      applyDraftToActor(converged.actor as never, createEmptyDraft(1), [], {
+        finalActorUpdate: { "flags.test.applied": true },
+        onCheckpoint: (checkpoint) => {
+          convergedCheckpoints.push(checkpoint.checkpointId);
+        },
+      })
+    ).resolves.toBeDefined();
+    expect(convergedCheckpoints).toContain("write:final-actor-update:after");
+  });
+
+  it("rejects resolved updates that omit lifecycle state and reports only exactly converged paths", async () => {
+    const stripped = buildActorHarness();
+    stripped.actor.update.mockImplementationOnce(async () => stripped.actor);
+    await expect(
+      applyDraftToActor(stripped.actor as never, createEmptyDraft(1), [], {
+        finalActorUpdate: { "flags.test.applied": true },
+      })
+    ).rejects.toMatchObject({
+      failureKind: "operation",
+      checkpoint: { checkpointId: "write:final-actor-update:before" },
+      partialReceipt: { actorUpdatePaths: expect.not.arrayContaining(["flags.test.applied"]) },
+    });
+
+    const partial = buildActorHarness();
+    partial.actor.update.mockImplementationOnce(async () => {
+      partial.actor.flags = { test: { applied: true } };
+      return partial.actor;
+    });
+    await expect(
+      applyDraftToActor(partial.actor as never, createEmptyDraft(1), [], {
+        finalActorUpdate: {
+          "flags.test.applied": true,
+          "flags.test.completed": true,
+        },
+      })
+    ).rejects.toMatchObject({
+      checkpoint: { checkpointId: "write:final-actor-update:before" },
+      partialReceipt: {
+        actorUpdatePaths: expect.arrayContaining(["flags.test.applied"]),
+      },
+    });
+  });
+
+  it("classifies a mutate-then-reject update at the durable after boundary", async () => {
+    const { actor } = buildActorHarness();
+    const persistUpdate = actor.update.getMockImplementation() as
+      | ((updates: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    actor.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
+      if (!persistUpdate) throw new Error("Actor update harness is unavailable");
+      await persistUpdate(updates);
+      throw new Error("late Foundry update failure");
+    });
+
+    await expect(
+      applyDraftToActor(actor as never, createEmptyDraft(1), [], {
+        finalActorUpdate: { "flags.test.applied": true },
+      })
+    ).rejects.toMatchObject({
+      failureKind: "operation",
+      checkpoint: { checkpointId: "write:final-actor-update:after" },
+      partialReceipt: { actorUpdatePaths: expect.arrayContaining(["flags.test.applied"]) },
+    });
+  });
+
+  it.each([
+    undefined,
+    null,
+    false,
+    0,
+    "",
+  ])("preserves a falsy mutate-then-reject reason (%s) as an operation failure", async (reason) => {
+    const { actor } = buildActorHarness();
+    const persistUpdate = actor.update.getMockImplementation() as
+      | ((updates: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    actor.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
+      if (!persistUpdate) throw new Error("Actor update harness is unavailable");
+      await persistUpdate(updates);
+      throw reason;
+    });
+
+    await expect(
+      applyDraftToActor(actor as never, createEmptyDraft(1), [], {
+        finalActorUpdate: { "flags.test.applied": true },
+      })
+    ).rejects.toMatchObject({
+      failureKind: "operation",
+      checkpoint: { checkpointId: "write:final-actor-update:after" },
+    });
+  });
+
+  it("does not let a deferred-only no-op excuse an undefined actor update", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, test: { value: 1 } };
+    actor.update.mockResolvedValueOnce(undefined);
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    prepared.deferredActorUpdate["system.test.value"] = 1;
+
+    await expect(executePreparedDraftApplication(prepared)).rejects.toMatchObject({
+      failureKind: "operation",
+      checkpoint: { checkpointId: "write:final-actor-update:before" },
+    });
+  });
+
+  it("rejects a resolved update that persists lifecycle flags but strips deferred build state", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    prepared.deferredActorUpdate["system.details.level.value"] = 2;
+    actor.update.mockImplementationOnce(async () => {
+      actor.flags = { test: { applied: true } };
+      return actor;
+    });
+
+    await expect(
+      executePreparedDraftApplication(prepared, {
+        finalActorUpdate: { "flags.test.applied": true },
+      })
+    ).rejects.toMatchObject({
+      failureKind: "operation",
+      checkpoint: { checkpointId: "write:final-actor-update:before" },
+      partialReceipt: {
+        actorUpdatePaths: ["flags.test.applied"],
+      },
+    });
+  });
+
+  it("fails finalization when an actor with a pending update loses its update method", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    prepared.deferredActorUpdate["system.details.level.value"] = 2;
+    actor.update = undefined;
+
+    await expect(executePreparedDraftApplication(prepared)).rejects.toMatchObject({
+      failureKind: "operation",
+      phase: "finalize-actor",
+    });
+  });
+
+  it("accepts PF2E's set normalization for the complete language update", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    prepared.deferredActorUpdate["system.details.languages.value"] = ["common", "draconic"];
+    actor.update.mockImplementationOnce(async () => {
+      (actor.system.details as Record<string, unknown>).languages = {
+        value: new Set(["draconic", "common"]),
+      };
+      return actor;
+    });
+
+    await expect(executePreparedDraftApplication(prepared)).resolves.toBeDefined();
+  });
+
+  it("checks language convergence against PF2E's raw source instead of granted prepared languages", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    prepared.deferredActorUpdate["system.details.languages.value"] = ["draconic"];
+    const persistUpdate = actor.update.getMockImplementation() as
+      | ((updates: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    actor.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
+      if (!persistUpdate) throw new Error("Actor update harness is unavailable");
+      await persistUpdate(updates);
+      captureRawActorSource(actor);
+      (actor.system.details as Record<string, unknown>).languages = {
+        value: new Set(["common", "draconic"]),
+      };
+      return actor;
+    });
+
+    await expect(executePreparedDraftApplication(prepared)).resolves.toBeDefined();
+  });
+
+  it("rejects stale raw language source even when PF2E's prepared set contains the requested language", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    prepared.deferredActorUpdate["system.details.languages.value"] = ["draconic"];
+    const persistUpdate = actor.update.getMockImplementation() as
+      | ((updates: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    actor.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
+      if (!persistUpdate) throw new Error("Actor update harness is unavailable");
+      await persistUpdate(updates);
+      const rawSource = captureRawActorSource(actor);
+      ((rawSource.system as Record<string, unknown>).details as Record<string, unknown>).languages = {
+        value: ["common"],
+      };
+      (actor.system.details as Record<string, unknown>).languages = {
+        value: new Set(["common", "draconic"]),
+      };
+      return actor;
+    });
+
+    await expect(executePreparedDraftApplication(prepared)).rejects.toMatchObject({
+      failureKind: "operation",
+      checkpoint: { checkpointId: "write:final-actor-update:before" },
+    });
+  });
+
+  it("checks skill convergence against raw source instead of a rule-upgraded prepared rank", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    prepared.deferredActorUpdate["system.skills.athletics.rank"] = 1;
+    const persistUpdate = actor.update.getMockImplementation() as
+      | ((updates: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    actor.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
+      if (!persistUpdate) throw new Error("Actor update harness is unavailable");
+      await persistUpdate(updates);
+      captureRawActorSource(actor);
+      actor.system = { ...actor.system, skills: { athletics: { rank: 2 } } };
+      return actor;
+    });
+
+    await expect(executePreparedDraftApplication(prepared)).resolves.toBeDefined();
+  });
+
+  it("rejects a prepared skill rank that converged only through a rule effect", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    prepared.deferredActorUpdate["system.skills.athletics.rank"] = 2;
+    const persistUpdate = actor.update.getMockImplementation() as
+      | ((updates: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    actor.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
+      if (!persistUpdate) throw new Error("Actor update harness is unavailable");
+      await persistUpdate(updates);
+      const rawSource = captureRawActorSource(actor);
+      ((rawSource.system as Record<string, unknown>).skills as Record<string, unknown>).athletics = { rank: 0 };
+      actor.system = { ...actor.system, skills: { athletics: { rank: 2 } } };
+      return actor;
+    });
+
+    await expect(executePreparedDraftApplication(prepared)).rejects.toMatchObject({
+      failureKind: "operation",
+      checkpoint: { checkpointId: "write:final-actor-update:before" },
+      partialReceipt: { actorUpdatePaths: [] },
+    });
+  });
+
+  it("checks build-array convergence against raw source before PF2E preparation reshapes it", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+    prepared.deferredActorUpdate["system.build"] = {
+      attributes: { boosts: { 1: ["str"], 5: [], 10: [], 15: [], 20: [] } },
+    };
+    const persistUpdate = actor.update.getMockImplementation() as
+      | ((updates: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    actor.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
+      if (!persistUpdate) throw new Error("Actor update harness is unavailable");
+      await persistUpdate(updates);
+      captureRawActorSource(actor);
+      actor.system = { ...actor.system, build: { attributes: { boosts: { 1: [] } } } };
+      return actor;
+    });
+
+    await expect(executePreparedDraftApplication(prepared)).resolves.toBeDefined();
+  });
+
+  it("does not report Foundry's injected document id as a confirmed update path", async () => {
+    const { actor } = buildActorHarness();
+    const persistUpdate = actor.update.getMockImplementation() as
+      | ((updates: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    actor.update.mockImplementationOnce(async (updates: Record<string, unknown>) => {
+      updates._id = "foundry-injected-id";
+      if (!persistUpdate) throw new Error("Actor update harness is unavailable");
+      return persistUpdate(updates);
+    });
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(1), []);
+
+    const result = await executePreparedDraftApplication(prepared, {
+      finalActorUpdate: { "flags.test.applied": true },
+    });
+    const finalReceipt = result.receipts.at(-1);
+
+    expect(finalReceipt?.actorUpdatePaths).toContain("flags.test.applied");
+    expect(finalReceipt?.actorUpdatePaths).not.toContain("_id");
+  });
+
+  it("finalizes a recovered draft without running any prepared mutation phase", async () => {
+    const { actor } = buildActorHarness();
+    const checkpoints: string[] = [];
+
+    await finalizeRecoveredDraftOnActor(actor as never, {
+      recoveryActorUpdate: { "system.skills.arcana.rank": 1 },
+      resolveFinalActorUpdate: () => ({ "flags.test.recovered": true }),
+      onCheckpoint: (checkpoint) => {
+        checkpoints.push(checkpoint.checkpointId);
+      },
+    });
+
+    expect(actor.update).toHaveBeenCalledOnce();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.system.skills?.arcana?.rank).toBe(1);
+    expect(checkpoints).toEqual([
+      "phase:finalize-actor:before",
+      "write:final-actor-update:before",
+      "write:final-actor-update:after",
+      "phase:finalize-actor:after",
+    ]);
+  });
+
+  it("carries deferred actor paths from a partial Apply into recovery-only finalization", async () => {
+    const { actor } = buildActorHarness();
+    const prepared = await prepareDraftApplication(actor as never, createEmptyDraft(5), []);
+    prepared.deferredActorUpdate["system.skills.arcana.rank"] = 1;
+    let failure: DraftApplyPhaseError | null = null;
+
+    try {
+      await executePreparedDraftApplication(prepared, {
+        onCheckpoint: atPhaseStart((phase) => {
+          if (phase === "source-flag-restoration") throw new Error("late failure");
+        }),
+      });
+    } catch (error) {
+      expect(error).toBeInstanceOf(DraftApplyPhaseError);
+      failure = error as DraftApplyPhaseError;
+    }
+
+    expect(failure?.recoveryActorUpdate).toEqual(
+      expect.objectContaining({
+        "system.details.level.value": 5,
+        "system.skills.arcana.rank": 1,
+        "system.build": expect.any(Object),
+      })
+    );
+    prepared.deferredActorUpdate["system.skills.arcana.rank"] = 4;
+    expect(failure?.recoveryActorUpdate).toEqual(
+      expect.objectContaining({ "system.skills.arcana.rank": 1, "system.build": expect.any(Object) })
+    );
+
+    await finalizeRecoveredDraftOnActor(actor as never, {
+      recoveryActorUpdate: { ...failure?.recoveryActorUpdate },
+      resolveFinalActorUpdate: () => ({ "flags.test.recovered": true }),
+    });
+
+    expect(actor.system.skills?.arcana?.rank).toBe(1);
+    expect(actor.system.details?.level?.value).toBe(5);
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
   });
 
   it("retries a late failure without applying a skill increase twice", async () => {
@@ -710,9 +1209,9 @@ describe("prepared draft application", () => {
 
     await expect(
       applyDraftToActor(actor as never, draft, [], {
-        beforePhase: (phase) => {
+        onCheckpoint: atPhaseStart((phase) => {
           if (phase === "source-flag-restoration") throw new Error("late failure");
-        },
+        }),
       })
     ).rejects.toBeInstanceOf(DraftApplyPhaseError);
     expect(actor.system.skills?.arcana?.rank).toBe(0);
@@ -754,9 +1253,9 @@ describe("prepared draft application", () => {
 
     await expect(
       applyDraftToActor(actor as never, draft, [classSelectionStep()], {
-        beforePhase: (phase) => {
+        onCheckpoint: atPhaseStart((phase) => {
           if (phase === "source-flag-restoration") throw new Error("late failure");
-        },
+        }),
       })
     ).rejects.toMatchObject({ phase: "source-flag-restoration" });
 
@@ -766,6 +1265,27 @@ describe("prepared draft application", () => {
     ]);
   });
 });
+
+function atPhaseStart(callback: (phase: DraftApplyPhase) => void | Promise<void>): DraftApplyCheckpointHook {
+  return (checkpoint) => {
+    if (checkpoint.kind === "phase" && checkpoint.boundary === "before") {
+      return callback(checkpoint.phase);
+    }
+  };
+}
+
+function captureRawActorSource(actor: {
+  system?: unknown;
+  flags?: unknown;
+  _source?: unknown;
+}): Record<string, unknown> {
+  const rawSource = {
+    system: structuredClone(actor.system),
+    flags: structuredClone(actor.flags ?? {}),
+  };
+  actor._source = rawSource;
+  return rawSource;
+}
 
 function skillIncreaseStep(level: number): PendingStep {
   const slotId = `skill-increase-level-${level}`;

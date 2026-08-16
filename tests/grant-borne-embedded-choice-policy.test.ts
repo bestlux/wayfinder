@@ -756,6 +756,9 @@ async function buildGrantSteps(
     draft: {
       version: 1,
       targetLevel: 2,
+      applyAttemptStepIds: [],
+      applyCompletedStepIds: [],
+      applyRecoveryActorUpdate: {},
       selections: {},
       boosts: {
         ancestry: {

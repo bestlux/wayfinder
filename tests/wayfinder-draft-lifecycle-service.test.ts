@@ -1,19 +1,102 @@
 import { describe, expect, it, vi } from "vitest";
 import { DRAFT_FLAG, STATE_FLAG } from "../src/constants";
 import { createEmptyDraft, createEmptyState } from "../src/draft-service";
+import { enqueueActorOperation } from "../src/shared/actor-operation-queue";
 import type { PendingStep } from "../src/types";
 import {
   applyDraftLifecycle,
+  assertRecoveryDraftWriteAllowed,
   type BuildApplyFinalActorUpdate,
   buildClearDraftConfirmationMessage,
   buildSaveDraftUpdate,
   clearDraftLifecycle,
   countDraftLosses,
   createClearedDraftResult,
+  hasApplyRecoveryState,
+  WayfinderRecoveryDraftConflictError,
 } from "../src/wayfinder/application/draft-lifecycle-service";
+import {
+  PersistedDraftWriteGuard,
+  saveDraftWithWriteGuard,
+  WayfinderDraftWriteConflictError,
+} from "../src/wayfinder/application/draft-write-guard";
 import type { WayfinderStepEvaluation } from "../src/wayfinder/domain/step-evaluation";
 
 describe("wayfinder draft lifecycle service", () => {
+  it("locks any persisted in-flight or partially completed Apply for exact recovery", () => {
+    const ordinary = createEmptyDraft(5);
+    const inFlight = createEmptyDraft(5);
+    const partial = createEmptyDraft(5);
+    inFlight.applyAttemptStepIds = ["class-level-1"];
+    partial.applyCompletedStepIds = ["ancestry-level-1"];
+
+    expect(hasApplyRecoveryState(ordinary)).toBe(false);
+    expect(hasApplyRecoveryState(inFlight)).toBe(true);
+    expect(hasApplyRecoveryState(partial)).toBe(true);
+  });
+
+  it("allows only semantic-preserving, monotonic writes over a live recovery draft", () => {
+    const live = createEmptyDraft(5);
+    live.selections["class-level-1"] = {
+      packId: "pf2e.classes",
+      documentId: "fighter",
+      uuid: "Compendium.pf2e.classes.Item.fighter",
+      name: "Fighter",
+      slotId: "class-level-1",
+      itemType: "class",
+      featType: null,
+      level: 1,
+    };
+    live.applyCompletedStepIds = ["ancestry-level-1"];
+    live.applyAttemptStepIds = ["class-level-1", "background-level-1"];
+
+    expect(() => assertRecoveryDraftWriteAllowed(live, structuredClone(live))).not.toThrow();
+
+    const reclassified = structuredClone(live);
+    reclassified.applyCompletedStepIds.push("class-level-1");
+    reclassified.applyAttemptStepIds = ["background-level-1"];
+    expect(() => assertRecoveryDraftWriteAllowed(live, reclassified)).not.toThrow();
+
+    const stale = createEmptyDraft(5);
+    expect(() => assertRecoveryDraftWriteAllowed(live, stale)).toThrow(WayfinderRecoveryDraftConflictError);
+
+    const divergent = structuredClone(live);
+    divergent.targetLevel = 4;
+    expect(() => assertRecoveryDraftWriteAllowed(live, divergent)).toThrow(WayfinderRecoveryDraftConflictError);
+
+    const truncated = structuredClone(live);
+    truncated.applyAttemptStepIds = ["background-level-1"];
+    expect(() => assertRecoveryDraftWriteAllowed(live, truncated)).toThrow(WayfinderRecoveryDraftConflictError);
+  });
+
+  it("re-reads the live recovery draft inside the actor queue before saving", async () => {
+    const actorKey = {};
+    const stale = createEmptyDraft(5);
+    const recovery = createEmptyDraft(5);
+    recovery.applyAttemptStepIds = ["class-level-1"];
+    let persisted: unknown = stale;
+    const update = vi.fn(async (actorUpdate: Record<string, unknown>) => {
+      persisted = actorUpdate[DRAFT_FLAG];
+    });
+    const actor = {
+      getFlag: () => persisted,
+      update,
+    };
+    const guard = new PersistedDraftWriteGuard(stale);
+
+    const establishRecovery = enqueueActorOperation(actorKey, async () => {
+      persisted = recovery;
+    });
+    const staleSave = enqueueActorOperation(actorKey, () => saveDraftWithWriteGuard(actor, stale, 5, guard));
+    await establishRecovery;
+    await expect(staleSave).rejects.toBeInstanceOf(WayfinderDraftWriteConflictError);
+    expect(update).not.toHaveBeenCalled();
+
+    guard.acceptCurrent(recovery);
+    await saveDraftWithWriteGuard(actor, recovery, 5, guard);
+    expect(update).toHaveBeenCalledOnce();
+  });
+
   it("refuses to apply when any planned step is incomplete", async () => {
     const draft = createEmptyDraft(3);
     const confirmApply = vi.fn(() => true);
@@ -67,6 +150,58 @@ describe("wayfinder draft lifecycle service", () => {
     });
     expect(confirmApply).not.toHaveBeenCalled();
     expect(applyDraftToActor).not.toHaveBeenCalled();
+  });
+
+  it("finalizes a zero-step recovery without rerunning the prepared Apply path", async () => {
+    const draft = createEmptyDraft(5);
+    draft.applyCompletedStepIds = ["ancestry-level-1"];
+    draft.applyAttemptStepIds = ["class-level-1"];
+    draft.applyRecoveryActorUpdate = { "system.skills.arcana.rank": 1 };
+    const order: string[] = [];
+    const applyDraftToActor = vi.fn(async () => {
+      order.push("apply");
+    });
+    const finalizeRecoveredDraft = vi.fn(
+      async (recoveryActorUpdate: Record<string, unknown>, buildFinalActorUpdate: BuildApplyFinalActorUpdate) => {
+        order.push("finalize");
+        expect(recoveryActorUpdate).toEqual({ "system.skills.arcana.rank": 1 });
+        expect(buildFinalActorUpdate()).toEqual(
+          expect.objectContaining({
+            [DRAFT_FLAG]: null,
+            [STATE_FLAG]: expect.objectContaining({
+              completedStepIds: ["ancestry-level-1", "class-level-1"],
+              lastTargetLevel: 5,
+            }),
+          })
+        );
+      }
+    );
+
+    const result = await applyDraftLifecycle({
+      actorName: "Valeros",
+      currentLevel: 5,
+      draft,
+      steps: [],
+      evaluateStep: async () => readyEvaluation(),
+      confirmApply: (message) => {
+        order.push("confirm");
+        expect(message).toContain("No build steps remain to reapply");
+        return true;
+      },
+      beforeApply: async (attempt) => {
+        order.push("persist");
+        expect(attempt.applyCompletedStepIds).toEqual(["ancestry-level-1", "class-level-1"]);
+        expect(attempt.applyAttemptStepIds).toEqual([]);
+      },
+      applyDraftToActor,
+      finalizeRecoveredDraft,
+      now: () => "2026-08-16T12:00:00.000Z",
+    });
+
+    expect(result.kind).toBe("applied");
+    expect(order).toEqual(["confirm", "persist", "finalize"]);
+    expect(applyDraftToActor).not.toHaveBeenCalled();
+    expect(finalizeRecoveredDraft).toHaveBeenCalledOnce();
   });
 
   it("cancels the apply flow when confirmation is declined", async () => {
@@ -165,6 +300,58 @@ describe("wayfinder draft lifecycle service", () => {
     expect(result.kind).toBe("applied");
     expect(confirmApply).toHaveBeenCalledWith("Apply 1 Wayfinder step(s) to Ezren?");
     expect(order).toEqual(["confirm", "apply"]);
+  });
+
+  it("retains the full persisted Apply attempt across a rebuilt partial retry", async () => {
+    const draft = createEmptyDraft(5);
+    draft.applyAttemptStepIds = [
+      "ancestry-level-1",
+      "ability-boosts-level-2",
+      "ability-boosts-level-3",
+      "class-feat-level-2",
+    ];
+    const remainingSteps = [step("language-choice-level-1"), step("ability-boosts-level-4")];
+    let persistedAttempt = createEmptyDraft(1);
+    let buildFinalActorUpdate: BuildApplyFinalActorUpdate | null = null;
+
+    await applyDraftLifecycle({
+      actorName: "Valeros",
+      currentLevel: 1,
+      draft,
+      existingCompletedStepIds: ["prior-completed-step"],
+      steps: remainingSteps,
+      evaluateStep: async () => readyEvaluation(),
+      confirmApply: () => true,
+      beforeApply: async (applyAttemptDraft) => {
+        persistedAttempt = applyAttemptDraft;
+      },
+      applyDraftToActor: async (buildUpdate) => {
+        buildFinalActorUpdate = buildUpdate;
+      },
+    });
+
+    expect(persistedAttempt.applyCompletedStepIds).toEqual([
+      "ancestry-level-1",
+      "ability-boosts-level-2",
+      "ability-boosts-level-3",
+      "class-feat-level-2",
+    ]);
+    expect(persistedAttempt.applyAttemptStepIds).toEqual(["language-choice-level-1", "ability-boosts-level-4"]);
+    expect(buildFinalActorUpdate?.()).toEqual(
+      expect.objectContaining({
+        [STATE_FLAG]: expect.objectContaining({
+          completedStepIds: [
+            "prior-completed-step",
+            "ancestry-level-1",
+            "ability-boosts-level-2",
+            "ability-boosts-level-3",
+            "class-feat-level-2",
+            "language-choice-level-1",
+            "ability-boosts-level-4",
+          ],
+        }),
+      })
+    );
   });
 
   it("flushes the confirmed candidate before applying it", async () => {

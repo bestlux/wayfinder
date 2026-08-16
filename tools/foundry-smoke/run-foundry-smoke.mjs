@@ -7,7 +7,7 @@ import { chromium } from "playwright-core";
 import { applySafetySmokeCases, gradualBoostsSmokeCases, smokeCases } from "./class-cases.mjs";
 import { ancestryParagonSection, campaignFeatSmokeCases } from "./campaign-feat-cases.mjs";
 import { freeArchetypeSmokeCases } from "./free-archetype-cases.mjs";
-import { qualifySmokeResult } from "./evidence-contract.mjs";
+import { assertIncrementalSmokeCasesSupported, qualifySmokeResult } from "./evidence-contract.mjs";
 import {
   closeFoundryBrowser,
   loginToFoundryWorld,
@@ -232,6 +232,7 @@ async function main() {
 
   const cases = selectedCases(options.caseIds);
   const incrementalCases = selectedCases(options.incrementalCaseIds, { defaultAll: false });
+  assertIncrementalSmokeCasesSupported(incrementalCases);
   const foundryUrl = process.env.FOUNDRY_URL || "http://localhost:30000";
   const headless = options.headed ? false : envFlag("FOUNDRY_SMOKE_HEADLESS", true);
   const safety = validateSmokeSafety({

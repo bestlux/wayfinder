@@ -119,6 +119,20 @@ until the real acquisition executor and equipment overlay exist.
   actor observations reconcile.
 - Make unreviewed classifications fail qualification. A review is source-controlled, bound to the exact finding
   digest, recorded with GM role/time/reason, and can qualify only in a current GM evidence session.
+- Replace the whole-phase failure callback with typed execution checkpoints. Wave 0 emits the real phase and final
+  actor-write boundaries; acquisition-owned item, currency, and manifest checkpoints are added only with their real
+  executor in `WF-080-03B`.
+- Persist the exact attempted and already-materialized step identities after an interrupted Apply. A recovery draft is
+  read-only except for Save and exact Apply retry until it converges, so target or choice edits cannot diverge from
+  partial actor mutations. The ledger also carries the exact deferred PF2E actor paths that a partial final update did
+  not durably converge. A zero-step retry replays those paths and only then writes final lifecycle state; it does not
+  rerun item, spell, boost, or source phases.
+- Draft Save, recovery persistence, and Clear re-read the actor flag inside the actor-operation queue, compare it to
+  the window's last accepted fingerprint, and require an exact post-write readback. A lost acknowledgement succeeds
+  only when the intended flag value is already durable. This rejects propagated stale-window erasure, recovery
+  truncation, Clear-after-confirmation races, and post-finalization resurrection. Foundry provides no cross-browser
+  compare-and-swap primitive, so two clients that both read the same old value before either update remain a declared
+  last-writer-wins residual; the guard fails closed as soon as either update propagates.
 - Provide a guarded two-browser-context canary: a GM creates one exact actor with default `NONE` and explicit player
   `OWNER`; a distinct non-GM opens the actor sheet and launches the actor-bound Wayfinder app through the real UI;
   the player context closes before exact GM cleanup.

@@ -70,6 +70,9 @@ export interface BoostDraftState {
 export interface DraftState {
   version: number;
   targetLevel: number;
+  applyAttemptStepIds: string[];
+  applyCompletedStepIds: string[];
+  applyRecoveryActorUpdate: Record<string, unknown>;
   selections: Record<string, SelectionRef>;
   boosts: BoostDraftState;
   manual: Record<string, boolean>;

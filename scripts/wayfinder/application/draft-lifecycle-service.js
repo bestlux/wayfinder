@@ -1,32 +1,39 @@
 import { DRAFT_FLAG, STATE_FLAG } from "../../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../../draft-service.js";
+import { cloneData } from "../../shared/cloning.js";
 import { evaluateWayfinderDraftReadiness, } from "../domain/step-evaluation.js";
 export async function applyDraftLifecycle(args) {
-    if (args.steps.length === 0) {
+    const recoveryOnly = args.steps.length === 0 && hasApplyRecoveryState(args.draft);
+    if (args.steps.length === 0 && !recoveryOnly) {
         return {
             kind: "warning",
             warning: "no-pending-steps",
             blockers: [],
         };
     }
-    const readiness = await evaluateWayfinderDraftReadiness(args.steps, args.evaluateStep);
-    if (!readiness.ready) {
-        return {
-            kind: "warning",
-            warning: "draft-not-ready",
-            blockers: readiness.blockers,
-        };
+    if (!recoveryOnly) {
+        const readiness = await evaluateWayfinderDraftReadiness(args.steps, args.evaluateStep);
+        if (!readiness.ready) {
+            return {
+                kind: "warning",
+                warning: "draft-not-ready",
+                blockers: readiness.blockers,
+            };
+        }
     }
-    const confirmed = (await args.confirmApply?.(buildApplyConfirmationMessage(args.actorName, args.steps.length))) ?? true;
+    const confirmed = (await args.confirmApply?.(recoveryOnly
+        ? buildRecoveryFinalizationConfirmationMessage(args.actorName)
+        : buildApplyConfirmationMessage(args.actorName, args.steps.length))) ?? true;
     if (!confirmed) {
         return {
             kind: "cancelled",
         };
     }
-    await args.beforeApply?.();
+    const applyAttemptDraft = buildApplyAttemptDraft(args.draft, args.steps);
+    await args.beforeApply?.(applyAttemptDraft);
     const appliedAt = (args.now ?? defaultNow)();
-    await args.applyDraftToActor((currentState) => {
-        const completedStepIds = mergeCompletedStepIds(currentState?.completedStepIds ?? args.existingCompletedStepIds ?? [], args.steps);
+    const buildFinalActorUpdate = (currentState) => {
+        const completedStepIds = mergeCompletedStepIds(currentState?.completedStepIds ?? args.existingCompletedStepIds ?? [], [...applyAttemptDraft.applyCompletedStepIds, ...applyAttemptDraft.applyAttemptStepIds]);
         return {
             [DRAFT_FLAG]: null,
             [STATE_FLAG]: {
@@ -39,16 +46,71 @@ export async function applyDraftLifecycle(args) {
                     : (args.existingCharacterHistory ?? null),
             },
         };
-    });
+    };
+    if (recoveryOnly) {
+        if (!args.finalizeRecoveredDraft) {
+            throw new Error("Wayfinder cannot finalize this recovery draft safely.");
+        }
+        await args.finalizeRecoveredDraft(cloneData(applyAttemptDraft.applyRecoveryActorUpdate), buildFinalActorUpdate);
+    }
+    else {
+        await args.applyDraftToActor(buildFinalActorUpdate);
+    }
     return {
         kind: "applied",
         nextDraft: normalizeDraft(null, args.currentLevel),
     };
 }
-function mergeCompletedStepIds(existingStepIds, steps) {
+export function buildApplyAttemptDraft(draft, steps) {
+    const nextDraft = cloneData(draft);
+    const currentStepIds = steps.map((step) => step.id);
+    const currentStepIdSet = new Set(currentStepIds);
+    nextDraft.applyCompletedStepIds = mergeCompletedStepIds(nextDraft.applyCompletedStepIds, nextDraft.applyAttemptStepIds.filter((stepId) => !currentStepIdSet.has(stepId)));
+    nextDraft.applyAttemptStepIds = mergeCompletedStepIds([], currentStepIds);
+    return nextDraft;
+}
+export function hasApplyRecoveryState(draft) {
+    return (draft.applyAttemptStepIds.length > 0 ||
+        draft.applyCompletedStepIds.length > 0 ||
+        Object.keys(draft.applyRecoveryActorUpdate).length > 0);
+}
+export class WayfinderRecoveryDraftConflictError extends Error {
+    constructor() {
+        super("This actor has a newer partial-Apply recovery draft. Reopen Wayfinder before changing or saving it.");
+        this.name = "WayfinderRecoveryDraftConflictError";
+    }
+}
+export function assertRecoveryDraftWriteAllowed(liveDraft, candidateDraft) {
+    if (!hasApplyRecoveryState(liveDraft)) {
+        return;
+    }
+    const liveRecoveryStepIds = new Set([...liveDraft.applyCompletedStepIds, ...liveDraft.applyAttemptStepIds]);
+    const candidateRecoveryStepIds = new Set([
+        ...candidateDraft.applyCompletedStepIds,
+        ...candidateDraft.applyAttemptStepIds,
+    ]);
+    const preservesRecovery = hasApplyRecoveryState(candidateDraft) &&
+        semanticDraftFingerprint(liveDraft) === semanticDraftFingerprint(candidateDraft) &&
+        liveDraft.applyCompletedStepIds.every((stepId) => candidateDraft.applyCompletedStepIds.includes(stepId)) &&
+        [...liveRecoveryStepIds].every((stepId) => candidateRecoveryStepIds.has(stepId)) &&
+        Object.entries(liveDraft.applyRecoveryActorUpdate).every(([path, value]) => path in candidateDraft.applyRecoveryActorUpdate &&
+            JSON.stringify(candidateDraft.applyRecoveryActorUpdate[path]) === JSON.stringify(value));
+    if (!preservesRecovery) {
+        throw new WayfinderRecoveryDraftConflictError();
+    }
+}
+function semanticDraftFingerprint(draft) {
+    const semanticDraft = buildDraftPatch(draft);
+    semanticDraft.applyAttemptStepIds = [];
+    semanticDraft.applyCompletedStepIds = [];
+    semanticDraft.applyRecoveryActorUpdate = {};
+    semanticDraft.updatedAt = null;
+    return JSON.stringify(semanticDraft);
+}
+function mergeCompletedStepIds(existingStepIds, nextStepIds) {
     return Array.from(new Set([
         ...existingStepIds.filter((stepId) => typeof stepId === "string" && stepId.length > 0),
-        ...steps.map((step) => step.id),
+        ...nextStepIds.filter((stepId) => typeof stepId === "string" && stepId.length > 0),
     ]));
 }
 export function buildSaveDraftUpdate(draft) {
@@ -115,6 +177,9 @@ export function buildClearDraftConfirmationMessage(discardedDecisionCount) {
 }
 function buildApplyConfirmationMessage(actorName, stepCount) {
     return `Apply ${stepCount} Wayfinder step(s) to ${actorName}?`;
+}
+function buildRecoveryFinalizationConfirmationMessage(actorName) {
+    return `Finish recording the recovered Wayfinder Apply for ${actorName}? No build steps remain to reapply.`;
 }
 function defaultNow() {
     return new Date().toISOString();

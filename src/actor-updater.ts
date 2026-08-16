@@ -1,6 +1,7 @@
 import {
-  type DraftApplyPhase,
+  type DraftApplyCheckpointHook,
   executePreparedDraftApplication,
+  executeRecoveredDraftFinalization,
   prepareDraftApplication,
 } from "./actor-updater/prepared-draft-application.js";
 import type { SelectorActorLike } from "./selector-application.js";
@@ -16,12 +17,20 @@ type DraftMutationActor = SelectorActorLike &
 
 export interface ApplyDraftOptions {
   beforePrepare?: () => void | Promise<void>;
-  beforePhase?: (phase: DraftApplyPhase) => void | Promise<void>;
+  onCheckpoint?: DraftApplyCheckpointHook;
   finalActorUpdate?: Record<string, unknown>;
   resolveFinalActorUpdate?: () => Record<string, unknown> | Promise<Record<string, unknown>>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
   validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
   validSkillSlugs?: ReadonlySet<string>;
+}
+
+export interface FinalizeRecoveredDraftOptions {
+  beforeFinalize?: () => void | Promise<void>;
+  onCheckpoint?: DraftApplyCheckpointHook;
+  recoveryActorUpdate: Record<string, unknown>;
+  resolveFinalActorUpdate: () => Record<string, unknown> | Promise<Record<string, unknown>>;
+  validateActorAuthority?: (actor: DraftMutationActor) => boolean;
 }
 
 const inFlightByActor = new WeakMap<object, Map<string, Promise<Record<string, unknown>>>>();
@@ -59,7 +68,7 @@ export function applyDraftToActor(
       ? cloneData(await options.resolveFinalActorUpdate())
       : finalActorUpdate;
     const result = await executePreparedDraftApplication(prepared, {
-      beforePhase: options.beforePhase,
+      onCheckpoint: options.onCheckpoint,
       finalActorUpdate: resolvedFinalActorUpdate,
     });
     return result.actorUpdate;
@@ -81,13 +90,30 @@ export function applyDraftToActor(
   return promise;
 }
 
+export function finalizeRecoveredDraftOnActor(
+  actor: DraftMutationActor,
+  options: FinalizeRecoveredDraftOptions
+): Promise<Record<string, unknown>> {
+  return enqueueActorOperation(actor as object, async () => {
+    await options.beforeFinalize?.();
+    const finalActorUpdate = cloneData(await options.resolveFinalActorUpdate());
+    const result = await executeRecoveredDraftFinalization(actor, {
+      finalActorUpdate,
+      onCheckpoint: options.onCheckpoint,
+      recoveryActorUpdate: cloneData(options.recoveryActorUpdate),
+      validateActorAuthority: options.validateActorAuthority,
+    });
+    return result.actorUpdate;
+  });
+}
+
 function draftApplyOperationKey(draft: DraftState, steps: PendingStep[], options: ApplyDraftOptions): string {
   return JSON.stringify({
     draft,
     steps,
     finalActorUpdate: options.finalActorUpdate ?? null,
     beforePrepare: operationIdentity(options.beforePrepare),
-    beforePhase: operationIdentity(options.beforePhase),
+    onCheckpoint: operationIdentity(options.onCheckpoint),
     resolveFinalActorUpdate: operationIdentity(options.resolveFinalActorUpdate),
     validateActorAuthority: operationIdentity(options.validateActorAuthority),
     validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),
@@ -110,5 +136,10 @@ function operationIdentity(value: object | undefined): number | null {
   return identity;
 }
 
-export type { DraftApplyPhase } from "./actor-updater/prepared-draft-application.js";
+export type {
+  DraftApplyCheckpoint,
+  DraftApplyCheckpointHook,
+  DraftApplyPhase,
+  DraftApplyWriteOperation,
+} from "./actor-updater/prepared-draft-application.js";
 export { DraftApplyPhaseError } from "./actor-updater/prepared-draft-application.js";

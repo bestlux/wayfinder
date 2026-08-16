@@ -457,6 +457,7 @@ async function loadWayfinderModules(moduleId) {
   return {
     applyDraftLifecycle: draftLifecycle.applyDraftLifecycle,
     applyDraftToActor: actorUpdater.applyDraftToActor,
+    buildApplyAttemptDraft: draftLifecycle.buildApplyAttemptDraft,
     buildOptionContext: optionContext.buildOptionContext,
     buildSkillPane: skillPane.buildSkillPane,
     buildWayfinderAppPlan: planBuilder.buildWayfinderAppPlan,
@@ -471,6 +472,8 @@ async function loadWayfinderModules(moduleId) {
     evaluateWayfinderStep: planService.evaluateWayfinderStep,
     isWizardArcaneSchoolSlotId: slotIds.isWizardArcaneSchoolSlotId,
     listActorItems: buildState.listActorItems,
+    normalizeDraft: draftService.normalizeDraft,
+    normalizeState: draftService.normalizeState,
     resolveSelection: packOptions.resolveSelection,
     sourceIdOf: sourceId.sourceIdOf,
     withRestrictedSpellRarityAccess: spellRarityAccess.withRestrictedSpellRarityAccess,
@@ -497,6 +500,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
     await seedActorItems(actor, smokeCase, failures);
 
     const draft = modules.createEmptyDraft(smokeCase.targetLevel);
+    let draftForApply = draft;
     await seedCreationDraft(draft, smokeCase);
     console.log(`WFSMOKE ${smokeCase.id} fill start`);
     const fillResult = await completeDraft(actor, draft, smokeCase, modules);
@@ -505,6 +509,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
 
     console.log(`WFSMOKE ${smokeCase.id} plan/apply start`);
     const plan = await buildPlan(actor, draft, modules);
+    let stepsForApply = plan.steps;
     validateDraftPlanExpectations(plan.steps, draft, smokeCase, failures);
     const incompleteBeforeApply = await incompleteSteps(actor, draft, plan.steps, modules);
     if (incompleteBeforeApply.length > 0) {
@@ -513,17 +518,37 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
 
     const dialogsBefore = dialogCount();
     await actor.setFlag(moduleId, "draft", draft);
-    if (smokeCase.applySafetyFailurePhase && failures.length === 0) {
-      applySafetyEvidence = await runApplySafetyFailureProbe({
+    if (smokeCase.applySafetyFailureCheckpoint && failures.length === 0) {
+      const probe = await runApplySafetyFailureProbe({
         actor,
         draft,
         failures,
         moduleId,
         modules,
-        phase: smokeCase.applySafetyFailurePhase,
+        target: smokeCase.applySafetyFailureCheckpoint,
         steps: plan.steps,
         timeoutMs: smokeCase.applyTimeoutMs ?? 45000,
       });
+      applySafetyEvidence = probe.evidence;
+      if (probe.retryDraft) {
+        draftForApply = probe.retryDraft;
+        if (probe.evidence?.failureState?.expected === "pre-final") {
+          const retryPlan = await buildPlan(actor, draftForApply, modules);
+          stepsForApply = retryPlan.steps;
+          draftForApply = modules.buildApplyAttemptDraft(draftForApply, stepsForApply);
+          await actor.setFlag(moduleId, "draft", draftForApply);
+          probe.evidence.failureState.recoveredPlanStepIds = stepsForApply.map((step) => step.slotId);
+          probe.evidence.retryPlan = {
+            strategy: "rebuild-from-recovered-draft",
+            stepIds: stepsForApply.map((step) => step.slotId),
+          };
+        } else {
+          probe.evidence.retryPlan = {
+            strategy: "lost-ack-replay",
+            stepIds: stepsForApply.map((step) => step.slotId),
+          };
+        }
+      }
     }
     const lifecycleResult = failures.length
       ? { kind: "warning", warning: "missing-selections" }
@@ -531,12 +556,15 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
           modules.applyDraftLifecycle({
             actorName: actor.name,
             currentLevel: 1,
-            draft,
-            steps: plan.steps,
-            evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
+            draft: draftForApply,
+            steps: stepsForApply,
+            evaluateStep: (step) => evaluateStep(actor, draftForApply, step, modules),
             confirmApply: () => true,
+            beforeApply: async (applyAttemptDraft) => {
+              await actor.setFlag(moduleId, "draft", applyAttemptDraft);
+            },
             applyDraftToActor: (buildFinalActorUpdate) =>
-              modules.applyDraftToActor(actor, draft, plan.steps, {
+              modules.applyDraftToActor(actor, draftForApply, stepsForApply, {
                 finalActorUpdate: buildFinalActorUpdate(),
                 validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
               }),
@@ -552,6 +580,16 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
     const rerunDraft = modules.createEmptyDraft(smokeCase.targetLevel);
     const rerunPlan = await buildPlan(actor, rerunDraft, modules);
     const actorEvidence = collectActorEvidence(actor, modules, moduleId);
+    if (applySafetyEvidence) {
+      applySafetyEvidence.retry = {
+        lifecycleKind: lifecycleResult.kind,
+        draftCleared: actorEvidence.moduleDraftAfterApply === null,
+        targetLevelReached: actorEvidence.levelAfterApply === smokeCase.targetLevel,
+        rerunStepCount: rerunPlan.steps.length,
+        preRetryItemIds: [...(applySafetyEvidence.failureState?.observedItemIds ?? [])],
+        postRetryItemIds: actorEvidence.items.map((item) => item.id).sort(),
+      };
+    }
     validateAppliedCase({
       actorEvidence,
       dialogsAfter,
@@ -601,25 +639,51 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
   }
 }
 
-async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, modules, phase, steps, timeoutMs }) {
-  let injected = false;
+async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, modules, target, steps, timeoutMs }) {
+  const checkpointId = String(target?.checkpointId ?? "");
+  const occurrence = Number(target?.occurrence);
+  const writeTarget = checkpointId.startsWith("write:");
+  if (!checkpointId || !Number.isInteger(occurrence) || occurrence < 1 || (!writeTarget && occurrence !== 1)) {
+    failures.push("Apply safety probe has an invalid checkpoint target.");
+    return { evidence: null, retryDraft: null };
+  }
+  const preApplyLevelValue = actor.system?.details?.level?.value;
+  const preApplyLevel = typeof preApplyLevelValue === "number" ? preApplyLevelValue : null;
+  if (preApplyLevel === null) {
+    failures.push("Apply safety probe could not capture the actor's pre-apply level.");
+    return { evidence: null, retryDraft: null };
+  }
+  const preApplyModuleState = structuredClone(modules.normalizeState(actor.getFlag(moduleId, "state")));
+  const preApplyItems = actorItemSnapshots(actor, modules);
+  const preApplyItemIds = [...preApplyItems.keys()].sort();
+  let matchingOccurrence = 0;
+  let injectedCheckpoint = null;
   let caught = null;
   try {
     await withTimeout(
       modules.applyDraftLifecycle({
         actorName: actor.name,
-        currentLevel: 1,
+        currentLevel: preApplyLevel,
         draft,
         steps,
         evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
         confirmApply: () => true,
+        beforeApply: async (applyAttemptDraft) => {
+          await actor.setFlag(moduleId, "draft", applyAttemptDraft);
+        },
         applyDraftToActor: (buildFinalActorUpdate) =>
           modules.applyDraftToActor(actor, draft, steps, {
             finalActorUpdate: buildFinalActorUpdate(),
             validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
-            beforePhase: (currentPhase) => {
-              if (!injected && currentPhase === phase) {
-                injected = true;
+            onCheckpoint: (checkpoint) => {
+              if (checkpoint.checkpointId !== checkpointId) return;
+              matchingOccurrence += 1;
+              if (!injectedCheckpoint && matchingOccurrence === occurrence) {
+                if (checkpoint.kind === "write" && checkpoint.ordinal !== occurrence) {
+                  failures.push("Apply safety checkpoint occurrence did not match its write ordinal.");
+                  return;
+                }
+                injectedCheckpoint = checkpointSummary(checkpoint);
                 throw new Error("Intentional Wayfinder smoke failure.");
               }
             },
@@ -634,19 +698,173 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
   }
 
   const message = caught instanceof Error ? caught.message : String(caught ?? "");
-  const draftRetained = actor.getFlag(moduleId, "draft") !== null;
-  const levelUnchanged = Number(actor.system?.details?.level?.value ?? 1) === 1;
-  if (!injected || !message.includes(`during ${phase}`)) {
-    failures.push(`Apply safety probe did not report the injected ${phase} failure.`);
+  const observedCheckpoint = checkpointSummary(caught?.checkpoint);
+  const persistedDraft = actor.getFlag(moduleId, "draft");
+  const persistedDraftHasIdentity =
+    persistedDraft !== null &&
+    typeof persistedDraft === "object" &&
+    persistedDraft.version === draft.version &&
+    persistedDraft.targetLevel === draft.targetLevel;
+  const recoveredDraft =
+    persistedDraftHasIdentity
+      ? modules.normalizeDraft(persistedDraft, preApplyLevel)
+      : null;
+  const expectedDraft = modules.normalizeDraft(
+    {
+      ...draft,
+      applyAttemptStepIds: Array.from(
+        new Set([...(draft.applyAttemptStepIds ?? []), ...steps.map((step) => step.id)])
+      ),
+    },
+    preApplyLevel
+  );
+  const draftRecovered = recoveredDraft !== null && JSON.stringify(recoveredDraft) === JSON.stringify(expectedDraft);
+  const levelValue = actor.system?.details?.level?.value;
+  const observedLevel = typeof levelValue === "number" ? levelValue : null;
+  const observedModuleState = structuredClone(modules.normalizeState(actor.getFlag(moduleId, "state")));
+  const stateLastTargetLevel =
+    typeof observedModuleState.lastTargetLevel === "number" ? observedModuleState.lastTargetLevel : null;
+  const observedItems = actorItemSnapshots(actor, modules);
+  const observedItemIds = [...observedItems.keys()].sort();
+  const postFinalCheckpoint =
+    checkpointId === "write:final-actor-update:after" || checkpointId === "phase:finalize-actor:after";
+  const failureState = {
+    expected: postFinalCheckpoint ? "post-final" : "pre-final",
+    preApplyLevel,
+    observedLevel,
+    draftPresent: persistedDraft !== null,
+    draftMatchesAttempt: draftRecovered,
+    preApplyItemIds,
+    observedItemIds,
+    changedItemIds: changedActorItemIds(preApplyItems, observedItems),
+    preApplyModuleState,
+    observedModuleState,
+    stateLastTargetLevel,
+  };
+  if (
+    !injectedCheckpoint ||
+    observedCheckpoint?.checkpointId !== checkpointId ||
+    !message.includes(`at ${checkpointId}`)
+  ) {
+    failures.push(`Apply safety probe did not report the injected ${checkpointId} checkpoint.`);
   }
-  if (!draftRetained) {
-    failures.push("Apply safety probe cleared the draft after a failed apply.");
-  }
-  if (!levelUnchanged) {
-    failures.push("Apply safety probe finalized the target level after a failed apply.");
+  if (postFinalCheckpoint) {
+    const completedStepIds = Array.isArray(observedModuleState.completedStepIds)
+      ? observedModuleState.completedStepIds
+      : [];
+    if (
+      persistedDraft !== null ||
+      observedLevel !== draft.targetLevel ||
+      stateLastTargetLevel !== draft.targetLevel ||
+      typeof observedModuleState.lastAppliedAt !== "string" ||
+      !Number.isFinite(Date.parse(observedModuleState.lastAppliedAt)) ||
+      !steps.every((step) => completedStepIds.includes(step.id))
+    ) {
+      failures.push("Apply safety post-final checkpoint did not observe the durable finalized actor state.");
+    }
+  } else {
+    if (
+      !draftRecovered ||
+      observedLevel === null ||
+      observedLevel !== preApplyLevel ||
+      JSON.stringify(observedModuleState) !== JSON.stringify(preApplyModuleState)
+    ) {
+      failures.push("Apply safety pre-final checkpoint did not recover the exact unchanged persisted draft state.");
+    }
   }
 
-  return { draftRetained, injectedPhase: phase, levelUnchanged, message };
+  return {
+    evidence: {
+      target: { checkpointId, occurrence },
+      matchingOccurrence,
+      injectedCheckpoint,
+      observedCheckpoint,
+      failureKind: typeof caught?.failureKind === "string" ? caught.failureKind : null,
+      completedReceipts: Array.isArray(caught?.completedReceipts)
+        ? caught.completedReceipts.map(applyPhaseReceiptSummary)
+        : [],
+      partialReceipt: applyPhaseReceiptSummary(caught?.partialReceipt),
+      failureState,
+      message,
+    },
+    retryDraft: postFinalCheckpoint ? expectedDraft : draftRecovered ? recoveredDraft : null,
+  };
+}
+
+function checkpointSummary(value) {
+  if (
+    !value ||
+    typeof value.checkpointId !== "string" ||
+    typeof value.kind !== "string" ||
+    typeof value.phase !== "string" ||
+    typeof value.boundary !== "string"
+  ) {
+    return null;
+  }
+  const phaseCheckpoint = value.kind === "phase";
+  const writeCheckpoint = value.kind === "write";
+  if (
+    (!phaseCheckpoint && !writeCheckpoint) ||
+    (phaseCheckpoint &&
+      value.operation !== undefined &&
+      value.operation !== null) ||
+    (phaseCheckpoint && value.ordinal !== undefined && value.ordinal !== null) ||
+    (writeCheckpoint && (typeof value.operation !== "string" || !Number.isInteger(value.ordinal)))
+  ) {
+    return null;
+  }
+  return {
+    checkpointId: value.checkpointId,
+    kind: value.kind,
+    phase: value.phase,
+    boundary: value.boundary,
+    operation: writeCheckpoint ? value.operation : null,
+    ordinal: writeCheckpoint ? value.ordinal : null,
+  };
+}
+
+function applyPhaseReceiptSummary(value) {
+  if (!value || typeof value.phase !== "string") return null;
+  const identityFields = [
+    value.createdItemIds,
+    value.deletedItemIds,
+    value.updatedItemIds,
+    value.actorUpdatePaths,
+  ];
+  if (
+    identityFields.some(
+      (entries) => !Array.isArray(entries) || entries.some((entry) => typeof entry !== "string")
+    )
+  ) {
+    return null;
+  }
+  return {
+    phase: value.phase,
+    createdItemIds: [...value.createdItemIds],
+    deletedItemIds: [...value.deletedItemIds],
+    updatedItemIds: [...value.updatedItemIds],
+    actorUpdatePaths: [...value.actorUpdatePaths],
+  };
+}
+
+function actorItemSnapshots(actor, modules) {
+  return new Map(
+    modules
+      .listActorItems(actor)
+      .flatMap((item) => {
+        const id = item?.id;
+        if (typeof id !== "string" || id.length === 0) return [];
+        const source = typeof item.toObject === "function" ? item.toObject() : item;
+        return [[id, JSON.stringify(source)]];
+      })
+      .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+  );
+}
+
+function changedActorItemIds(before, after) {
+  return [...before.keys()]
+    .filter((itemId) => after.has(itemId) && before.get(itemId) !== after.get(itemId))
+    .sort();
 }
 
 async function runIncrementalExistingCase(smokeCase, modules, { keepActors, moduleId, prefix }) {
@@ -1679,6 +1897,10 @@ function validateIncrementalCase({
 }
 
 function validateActorExpectations(actorEvidence, smokeCase, failures) {
+  if (Number.isSafeInteger(smokeCase.expectedItemCount) && actorEvidence.itemCount !== smokeCase.expectedItemCount) {
+    failures.push(`Actor item count is ${actorEvidence.itemCount}, expected ${smokeCase.expectedItemCount}`);
+  }
+
   const expectedItemNames = Array.isArray(smokeCase.expectedItemNames) ? smokeCase.expectedItemNames : [];
   const missingItemNames = expectedItemNames.filter(
     (name) => !actorEvidence.items.some((item) => item.name === name),

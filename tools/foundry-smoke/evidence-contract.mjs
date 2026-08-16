@@ -3,6 +3,83 @@ import { createHash } from "node:crypto";
 export const SMOKE_EVIDENCE_SCHEMA_VERSION = 2;
 
 const VALID_STACKING_INTENTS = new Set(["aggregate", "separate"]);
+const APPLY_PHASE_IDS = Object.freeze([
+  "singleton-replacements",
+  "singleton-system-grants",
+  "singleton-explicit-grants",
+  "singleton-choice-persistence-early",
+  "skill-training-items",
+  "class-archetype",
+  "class-branches",
+  "class-feature-choices",
+  "native-spellcasting-before-feats",
+  "feat-selections",
+  "singleton-choice-persistence-late",
+  "spell-choices",
+  "native-spellcasting-after-spells",
+  "boost-item-updates",
+  "source-flag-restoration",
+  "verify-outcome",
+  "finalize-actor",
+]);
+const VALID_APPLY_PHASES = new Set(APPLY_PHASE_IDS);
+const VALID_APPLY_WRITE_OPERATIONS = new Set(["final-actor-update"]);
+const REVIEWABLE_FINDING_CODES = new Set(["manual-classification"]);
+const REQUIRED_FINAL_ACTOR_UPDATE_PATHS = [
+  "flags.wayfinder-pf2e.draft",
+  "flags.wayfinder-pf2e.state",
+];
+const ACTOR_AUTHORITY_KEYS = [
+  "canUpdate",
+  "defaultOwnershipLevel",
+  "explicitOwnershipLevel",
+  "isOwner",
+  "ownerPermission",
+];
+const ACQUISITION_EVIDENCE_KEYS = ["currency", "failureSnapshot", "manifest", "policy"];
+const ACQUISITION_CURRENCY_KEYS = [
+  "budgetCopper",
+  "observedCopper",
+  "preCopper",
+  "remainingCopper",
+  "spentCopper",
+  "targetCopper",
+];
+const ITEM_EVIDENCE_KEYS = [
+  "acquisition",
+  "containerId",
+  "destinationKey",
+  "grantAncestryIds",
+  "grantedById",
+  "id",
+  "isCurrency",
+  "isPhysical",
+  "location",
+  "name",
+  "quantity",
+  "slotId",
+  "sourceId",
+  "trainingKey",
+  "type",
+];
+const MODULE_STATE_KEYS = [
+  "completedStepIds",
+  "existingCharacterHistory",
+  "lastAppliedAt",
+  "lastTargetLevel",
+  "version",
+];
+
+export function assertIncrementalSmokeCasesSupported(caseDefinitions) {
+  const unsupported = caseDefinitions
+    .filter((definition) => definition?.applySafetyFailureCheckpoint)
+    .map((definition) => definition.id);
+  if (unsupported.length > 0) {
+    throw new Error(
+      `Apply safety cases cannot run through --incremental-case; use --case instead: ${unsupported.join(", ")}`
+    );
+  }
+}
 
 export function qualifySmokeResult(resultInput, caseDefinitions = []) {
   const result = structuredClone(resultInput);
@@ -17,6 +94,9 @@ export function qualifySmokeResult(resultInput, caseDefinitions = []) {
       ...caseShapeFindings(smokeCase),
       ...classificationFindings(smokeCase),
       ...actorEvidenceFindings(smokeCase.actor, definition.sourceGroupExpectations ?? []),
+      ...definitionActorOutcomeFindings(smokeCase.actor, definition),
+      ...applySafetyEvidenceFindings(smokeCase, definition),
+      ...acquisitionEnvelopeFindings(smokeCase),
       ...(caseKind === "acquisition" ? acquisitionEvidenceFindings(smokeCase) : []),
     ];
     findings.push(...reviewRecordFindings(findings, definition.reviewedFindings ?? [], result.user.isGM));
@@ -134,7 +214,10 @@ function assertSmokeResultShape(result) {
     !nonEmptyString(user.id) ||
     !nonEmptyString(user.name) ||
     !Number.isInteger(user.role) ||
-    typeof user.isGM !== "boolean"
+    user.role < 0 ||
+    user.role > 4 ||
+    typeof user.isGM !== "boolean" ||
+    user.isGM !== (user.role >= 3)
   ) {
     throw new Error("Foundry smoke evidence must contain a complete user role record.");
   }
@@ -192,9 +275,773 @@ function caseShapeFindings(smokeCase) {
   return findings;
 }
 
+function applySafetyEvidenceFindings(smokeCase, definition) {
+  const subject = String(smokeCase?.id ?? "case");
+  const requestedTarget = definition?.applySafetyFailureCheckpoint;
+  const evidence = smokeCase?.evidence?.applySafety;
+  if (requestedTarget === undefined || requestedTarget === null) {
+    return evidence === undefined || evidence === null
+      ? []
+      : [
+          finding(
+            "unexpected-apply-safety-evidence",
+            subject,
+            "Smoke case emitted Apply safety evidence without a requested checkpoint target."
+          ),
+        ];
+  }
+
+  const parsedExpected = parseCheckpointId(requestedTarget.checkpointId);
+  const expectedOccurrence = requestedTarget.occurrence;
+  if (
+    !parsedExpected ||
+    !Number.isSafeInteger(expectedOccurrence) ||
+    expectedOccurrence < 1 ||
+    (parsedExpected.kind === "phase" && expectedOccurrence !== 1) ||
+    (parsedExpected.kind === "write" && parsedExpected.operation === "final-actor-update" && expectedOccurrence !== 1) ||
+    !Number.isSafeInteger(definition?.targetLevel) ||
+    definition.targetLevel < 1 ||
+    !validExpectedPreApplyBaseline(definition?.expectedPreApply) ||
+    !Number.isSafeInteger(definition?.expectedItemCount) ||
+    definition.expectedItemCount < 0 ||
+    !uniqueStringArray(definition?.expectedItemIdentities) ||
+    definition.expectedItemIdentities.length !== definition.expectedItemCount ||
+    !uniqueStringArray(definition?.expectedItemSemanticIdentities) ||
+    definition.expectedItemSemanticIdentities.length !== definition.expectedItemCount ||
+    !validExactSkillRanks(definition?.expectedExactSkillRanks) ||
+    !validAbilityBoostState(definition?.expectedAbilityBoosts) ||
+    !nonEmptyUniqueStringArray(definition?.expectedFinalActorUpdatePaths) ||
+    !REQUIRED_FINAL_ACTOR_UPDATE_PATHS.every((path) => definition.expectedFinalActorUpdatePaths.includes(path)) ||
+    !nonEmptyUniqueStringArray(definition?.expectedPreStepIds) ||
+    !nonEmptyUniqueStringArray(definition?.expectedRetryStepIds) ||
+    !definition?.expectedCompletedReceiptCounts ||
+    typeof definition.expectedCompletedReceiptCounts !== "object" ||
+    Array.isArray(definition.expectedCompletedReceiptCounts) ||
+    !definition?.expectedCompletedReceiptIdentities ||
+    typeof definition.expectedCompletedReceiptIdentities !== "object" ||
+    Array.isArray(definition.expectedCompletedReceiptIdentities)
+  ) {
+    return [
+      finding(
+        "invalid-apply-safety-definition",
+        subject,
+        "Apply safety definition needs a supported checkpoint, exact fixture outcomes, and pinned final actor paths."
+      ),
+    ];
+  }
+  const expected = {
+    ...parsedExpected,
+    ordinal: parsedExpected.kind === "write" ? expectedOccurrence : null,
+  };
+  if (!evidence || typeof evidence !== "object") {
+    return [
+      finding(
+        "missing-apply-safety-evidence",
+        subject,
+        "Requested Apply safety checkpoint has no structured browser evidence."
+      ),
+    ];
+  }
+
+  const findings = [];
+  if (
+    evidence.target?.checkpointId !== requestedTarget.checkpointId ||
+    evidence.target?.occurrence !== expectedOccurrence
+  ) {
+    findings.push(
+      finding(
+        "apply-safety-target-mismatch",
+        subject,
+        "Apply safety evidence target does not match the requested checkpoint and occurrence."
+      )
+    );
+  }
+  if (evidence.matchingOccurrence !== expectedOccurrence) {
+    findings.push(
+      finding(
+        "apply-safety-occurrence-mismatch",
+        subject,
+        "Apply safety injection did not occur at the requested matching occurrence."
+      )
+    );
+  }
+  findings.push(
+    ...checkpointEvidenceFindings(evidence.injectedCheckpoint, expected, subject, "injected"),
+    ...checkpointEvidenceFindings(evidence.observedCheckpoint, expected, subject, "observed")
+  );
+  const postFinalCheckpoint =
+    expected.checkpointId === "write:final-actor-update:after" ||
+    expected.checkpointId === "phase:finalize-actor:after";
+  const failureState = evidence.failureState;
+  const validPreApplyLevel = Number.isSafeInteger(failureState?.preApplyLevel) && failureState.preApplyLevel >= 1;
+  const preStepIds = smokeCase?.evidence?.preStepIds;
+  const validFailureItemSnapshots =
+    uniqueStringArray(failureState?.preApplyItemIds) &&
+    uniqueStringArray(failureState?.observedItemIds) &&
+    uniqueStringArray(failureState?.changedItemIds);
+  const validFailureModuleSnapshots =
+    validModuleStateSnapshot(failureState?.preApplyModuleState) &&
+    validModuleStateSnapshot(failureState?.observedModuleState);
+  const expectedPreApply = definition.expectedPreApply;
+  const preApplyBaselineMatches =
+    validPreApplyLevel &&
+    failureState.preApplyLevel === expectedPreApply.level &&
+    uniqueStringArray(failureState?.preApplyItemIds) &&
+    failureState.preApplyItemIds.length === expectedPreApply.itemCount &&
+    exactModuleStateMatches(failureState?.preApplyModuleState, expectedPreApply.moduleState);
+  const expectedFailureCompletedStepIds =
+    uniqueStringArray(expectedPreApply.moduleState.completedStepIds) && uniqueStringArray(preStepIds)
+      ? Array.from(new Set([...expectedPreApply.moduleState.completedStepIds, ...preStepIds]))
+      : [];
+  const validFailureState = postFinalCheckpoint
+    ? failureState?.expected === "post-final" &&
+      validPreApplyLevel &&
+      preApplyBaselineMatches &&
+      validFailureItemSnapshots &&
+      validFailureModuleSnapshots &&
+      failureState.draftPresent === false &&
+      failureState.observedLevel === definition.targetLevel &&
+      failureState.stateLastTargetLevel === definition.targetLevel &&
+      finalModuleStateMatches(
+        failureState.observedModuleState,
+        definition.targetLevel,
+        expectedFailureCompletedStepIds,
+        expectedPreApply.moduleState
+      )
+    : failureState?.expected === "pre-final" &&
+      validPreApplyLevel &&
+      preApplyBaselineMatches &&
+      validFailureItemSnapshots &&
+      validFailureModuleSnapshots &&
+      failureState.draftPresent === true &&
+      failureState.draftMatchesAttempt === true &&
+      failureState.observedLevel === failureState.preApplyLevel &&
+      failureState.stateLastTargetLevel === failureState.observedModuleState.lastTargetLevel &&
+      JSON.stringify(failureState.observedModuleState) === JSON.stringify(failureState.preApplyModuleState);
+  if (!validFailureState) {
+    findings.push(
+      finding(
+        "apply-safety-state-mismatch",
+        subject,
+        "Apply safety failure state does not match its pre-final or post-final checkpoint boundary."
+      )
+    );
+  }
+  if (evidence.failureKind !== "checkpoint-hook") {
+    findings.push(
+      finding(
+        "apply-safety-failure-kind-mismatch",
+        subject,
+        "Apply safety evidence must prove a failure thrown by the requested checkpoint hook."
+      )
+    );
+  }
+  if (!nonEmptyString(evidence.message) || !evidence.message.includes(`at ${requestedTarget.checkpointId}`)) {
+    findings.push(
+      finding(
+        "apply-safety-error-mismatch",
+        subject,
+        "Apply safety error must identify the exact injected checkpoint."
+      )
+    );
+  }
+
+  if (!Array.isArray(evidence.completedReceipts)) {
+    findings.push(
+      finding(
+        "invalid-apply-safety-receipts",
+        subject,
+        "Apply safety evidence must contain structured completed phase receipts."
+      )
+    );
+  } else {
+    const completedPhases = [];
+    for (const receipt of evidence.completedReceipts) {
+      findings.push(...applyReceiptFindings(receipt, subject, "completed"));
+      if (nonEmptyString(receipt?.phase)) completedPhases.push(receipt.phase);
+    }
+    const completedPhaseCount =
+      APPLY_PHASE_IDS.indexOf(expected.phase) +
+      (expected.kind === "phase" && expected.boundary === "after" ? 1 : 0);
+    const expectedCompletedPhases = APPLY_PHASE_IDS.slice(0, completedPhaseCount);
+    if (
+      new Set(completedPhases).size !== completedPhases.length ||
+      JSON.stringify(completedPhases) !== JSON.stringify(expectedCompletedPhases)
+    ) {
+      findings.push(
+        finding(
+          "apply-safety-completed-receipt-mismatch",
+          subject,
+          "Completed receipts must exactly cover the ordered phases before the interrupted checkpoint."
+        )
+      );
+    }
+    const expectedReceiptCounts = definition.expectedCompletedReceiptCounts;
+    const configuredPhases = Object.keys(expectedReceiptCounts);
+    if (JSON.stringify(configuredPhases) !== JSON.stringify(expectedCompletedPhases)) {
+      findings.push(
+        finding(
+          "invalid-apply-safety-receipt-definition",
+          subject,
+          "Apply safety definitions must pin receipt counts for every completed phase in order."
+        )
+      );
+    } else {
+      for (const receipt of evidence.completedReceipts) {
+        const receiptPhase = receipt?.phase;
+        const expectedCounts = nonEmptyString(receiptPhase) ? expectedReceiptCounts[receiptPhase] : null;
+        const validCounts =
+          expectedCounts &&
+          [expectedCounts.created, expectedCounts.deleted, expectedCounts.updated].every(
+            (count) => Number.isSafeInteger(count) && count >= 0
+          );
+        if (
+          !validCounts ||
+          receipt?.createdItemIds?.length !== expectedCounts.created ||
+          receipt?.deletedItemIds?.length !== expectedCounts.deleted ||
+          receipt?.updatedItemIds?.length !== expectedCounts.updated
+        ) {
+          findings.push(
+            finding(
+              "apply-safety-receipt-count-mismatch",
+              `${subject}:${String(receiptPhase ?? "invalid")}`,
+              `Apply safety receipt ${String(receiptPhase ?? "invalid")} does not match its pinned mutation counts.`
+            )
+          );
+        }
+      }
+    }
+    findings.push(
+      ...applyReceiptIdentityFindings(
+        evidence.completedReceipts,
+        definition.expectedCompletedReceiptIdentities,
+        smokeCase?.actor?.items,
+        subject
+      )
+    );
+  }
+  findings.push(...applyReceiptFindings(evidence.partialReceipt, subject, "partial"));
+  if (evidence.partialReceipt?.phase !== expected.phase) {
+    findings.push(
+      finding(
+        "apply-safety-partial-phase-mismatch",
+        subject,
+        "Partial receipt phase must match the interrupted checkpoint phase."
+      )
+    );
+  }
+  const partialItemDeltaFields = [
+    evidence.partialReceipt?.createdItemIds,
+    evidence.partialReceipt?.deletedItemIds,
+    evidence.partialReceipt?.updatedItemIds,
+  ];
+  const partialMustHaveNoItemDelta =
+    expected.kind === "write" || (expected.kind === "phase" && expected.boundary === "before");
+  if (
+    partialMustHaveNoItemDelta &&
+    partialItemDeltaFields.some((entries) => !Array.isArray(entries) || entries.length > 0)
+  ) {
+    findings.push(
+      finding(
+        "apply-safety-partial-item-boundary-mismatch",
+        subject,
+        "A phase-before or final-write partial receipt cannot claim item mutations at that boundary."
+      )
+    );
+  }
+  const confirmedFinalPaths = Array.isArray(evidence.partialReceipt?.actorUpdatePaths)
+    ? evidence.partialReceipt.actorUpdatePaths
+    : [];
+  const finalPathsMatch = postFinalCheckpoint
+    ? uniqueStringArray(confirmedFinalPaths) &&
+      JSON.stringify([...confirmedFinalPaths].sort()) ===
+        JSON.stringify([...definition.expectedFinalActorUpdatePaths].sort())
+    : confirmedFinalPaths.length === 0;
+  if (!finalPathsMatch) {
+    findings.push(
+      finding(
+        "apply-safety-final-write-receipt-mismatch",
+        subject,
+        "Apply safety receipt does not match whether the final actor write had converged."
+      )
+    );
+  }
+  findings.push(
+    ...applyReceiptStateFindings({
+      completedReceipts: evidence.completedReceipts,
+      changedItemIds: failureState?.changedItemIds,
+      expected,
+      observedItemIds: failureState?.observedItemIds,
+      partialReceipt: evidence.partialReceipt,
+      preApplyItemIds: failureState?.preApplyItemIds,
+      subject,
+    })
+  );
+  const retryPlanStepIds = evidence.retryPlan?.stepIds;
+  const retryPlanSourceStepIds = postFinalCheckpoint ? preStepIds : failureState?.recoveredPlanStepIds;
+  const retryPlanValid =
+    evidence.retryPlan?.strategy === (postFinalCheckpoint ? "lost-ack-replay" : "rebuild-from-recovered-draft") &&
+    uniqueStringArray(preStepIds) &&
+    uniqueStringArray(retryPlanStepIds) &&
+    uniqueStringArray(retryPlanSourceStepIds) &&
+    JSON.stringify(preStepIds) === JSON.stringify(definition.expectedPreStepIds) &&
+    JSON.stringify(retryPlanStepIds) === JSON.stringify(definition.expectedRetryStepIds) &&
+    JSON.stringify(retryPlanStepIds) === JSON.stringify(retryPlanSourceStepIds);
+  const expectedCompletedStepIds =
+    uniqueStringArray(expectedPreApply.moduleState.completedStepIds) &&
+    uniqueStringArray(preStepIds) &&
+    uniqueStringArray(retryPlanStepIds)
+      ? Array.from(
+          new Set([
+            ...expectedPreApply.moduleState.completedStepIds,
+            ...preStepIds,
+            ...retryPlanStepIds,
+          ])
+        )
+      : [];
+  const finalActorItemIds = Array.isArray(smokeCase?.actor?.items)
+    ? smokeCase.actor.items.map((item) => item?.id)
+    : null;
+  const retryItemSnapshotsValid =
+    uniqueStringArray(evidence.retry?.preRetryItemIds) &&
+    uniqueStringArray(evidence.retry?.postRetryItemIds) &&
+    uniqueStringArray(finalActorItemIds) &&
+    JSON.stringify(evidence.retry.preRetryItemIds) ===
+      JSON.stringify([...(failureState?.observedItemIds ?? [])].sort()) &&
+    JSON.stringify(evidence.retry.postRetryItemIds) === JSON.stringify([...finalActorItemIds].sort());
+  const retryItemOutcomeValid = retryItemSnapshotsValid;
+  const finalActorStateValid =
+    smokeCase?.actor?.moduleDraftAfterApply === null &&
+    smokeCase?.actor?.levelAfterApply === definition.targetLevel &&
+    finalModuleStateMatches(
+      smokeCase?.actor?.moduleStateAfterApply,
+      definition.targetLevel,
+      expectedCompletedStepIds,
+      expectedPreApply.moduleState
+    ) &&
+    Array.isArray(smokeCase?.evidence?.rerunStepIds) &&
+    smokeCase.evidence.rerunStepIds.length === 0;
+  if (
+    evidence.retry?.lifecycleKind !== "applied" ||
+    evidence.retry?.draftCleared !== true ||
+    evidence.retry?.targetLevelReached !== true ||
+    evidence.retry?.rerunStepCount !== 0 ||
+    !retryPlanValid ||
+    !retryItemOutcomeValid ||
+    !finalActorStateValid
+  ) {
+    findings.push(
+      finding(
+        "apply-safety-retry-mismatch",
+        subject,
+        "Apply safety retry must converge to one applied, cleared, target-level result with no rerun steps."
+      )
+    );
+  }
+  return findings;
+}
+
+function checkpointEvidenceFindings(value, expected, subject, label) {
+  const parsed = parseCheckpointId(value?.checkpointId);
+  const commonMatches =
+    parsed &&
+    value.checkpointId === expected.checkpointId &&
+    value.kind === expected.kind &&
+    value.phase === expected.phase &&
+    value.boundary === expected.boundary;
+  const detailMatches =
+    expected.kind === "phase"
+      ? value?.operation === null && value?.ordinal === null
+      : value?.operation === expected.operation && value?.ordinal === expected.ordinal;
+  if (commonMatches && detailMatches) return [];
+  return [
+    finding(
+      `invalid-apply-safety-${label}-checkpoint`,
+      subject,
+      `Apply safety ${label} checkpoint does not match the requested structured boundary.`
+    ),
+  ];
+}
+
+function applyReceiptFindings(value, subject, kind) {
+  const valid =
+    value &&
+    VALID_APPLY_PHASES.has(value.phase) &&
+    [value.createdItemIds, value.deletedItemIds, value.updatedItemIds, value.actorUpdatePaths].every(
+      (entries) => uniqueStringArray(entries)
+    );
+  if (!valid) {
+    return [
+      finding(
+        `invalid-apply-safety-${kind}-receipt`,
+        subject,
+        `Apply safety ${kind} receipt is missing a phase or string identity arrays.`
+      ),
+    ];
+  }
+
+  const findings = [];
+  const mutationSets = [
+    new Set(value.createdItemIds),
+    new Set(value.deletedItemIds),
+    new Set(value.updatedItemIds),
+  ];
+  if (
+    [...mutationSets[0]].some((itemId) => mutationSets[1].has(itemId) || mutationSets[2].has(itemId)) ||
+    [...mutationSets[1]].some((itemId) => mutationSets[2].has(itemId))
+  ) {
+    findings.push(
+      finding(
+        "apply-safety-overlapping-receipt-items",
+        `${subject}:${value.phase}`,
+        `Apply safety receipt ${value.phase} places one item in multiple mutation buckets.`
+      )
+    );
+  }
+  if (value.phase !== "finalize-actor" && value.actorUpdatePaths.length > 0) {
+    findings.push(
+      finding(
+        "apply-safety-unexpected-actor-update-paths",
+        `${subject}:${value.phase}`,
+        "Only the finalize-actor receipt may claim actor update paths."
+      )
+    );
+  }
+  return findings;
+}
+
+function applyReceiptIdentityFindings(receipts, expectedByPhase, actorItems, subject) {
+  if (!Array.isArray(receipts) || !Array.isArray(actorItems)) {
+    return [
+      finding(
+        "invalid-apply-safety-receipt-identities",
+        subject,
+        "Apply safety receipt identity checks require receipt and actor item arrays."
+      ),
+    ];
+  }
+
+  const itemsById = new Map(actorItems.map((item) => [item?.id, item]));
+  const findings = [];
+  const buckets = [
+    ["created", "createdItemIds"],
+    ["deleted", "deletedItemIds"],
+    ["updated", "updatedItemIds"],
+  ];
+  for (const receipt of receipts) {
+    if (applyReceiptFindings(receipt, subject, "completed").length > 0) continue;
+    const expected = expectedByPhase[receipt.phase] ?? {};
+    for (const [expectedKey, receiptKey] of buckets) {
+      const expectedIdentities = expected[expectedKey] ?? [];
+      if (!uniqueStringArray(expectedIdentities)) {
+        findings.push(
+          finding(
+            "invalid-apply-safety-receipt-identity-definition",
+            `${subject}:${receipt.phase}:${expectedKey}`,
+            `Pinned ${receipt.phase} ${expectedKey} identities must be a unique string array.`
+          )
+        );
+        continue;
+      }
+      const actualIdentities = [];
+      for (const itemId of receipt[receiptKey]) {
+        const item = itemsById.get(itemId);
+        if (!item) {
+          findings.push(
+            finding(
+              "missing-apply-safety-receipt-item-identity",
+              `${subject}:${receipt.phase}:${itemId}`,
+              `Receipt item ${itemId} has no final actor identity evidence.`
+            )
+          );
+          continue;
+        }
+        actualIdentities.push(receiptItemIdentity(item));
+      }
+      if (
+        JSON.stringify(actualIdentities.sort()) !== JSON.stringify([...expectedIdentities].sort())
+      ) {
+        findings.push(
+          finding(
+            "apply-safety-receipt-identity-mismatch",
+            `${subject}:${receipt.phase}:${expectedKey}`,
+            `Receipt ${receipt.phase} ${expectedKey} items do not match their pinned semantic identities.`
+          )
+        );
+      }
+    }
+  }
+  return findings;
+}
+
+function receiptItemIdentity(item) {
+  return [item?.type ?? "", item?.slotId ?? "", item?.sourceId ?? "", item?.name ?? ""].join("|");
+}
+
+function outcomeItemIdentity(item, allItems) {
+  const relatedIdentity = (value) => {
+    if (!nonEmptyString(value)) return "";
+    const related = allItems.find((candidate) => candidate?.id === value);
+    if (!related) return `literal:${value}`;
+    return nonEmptyString(related.sourceId)
+      ? `source:${related.sourceId}`
+      : `item:${related.type ?? ""}:${related.slotId ?? ""}:${related.name ?? ""}`;
+  };
+  return [
+    receiptItemIdentity(item),
+    `destination=${item?.destinationKey ?? ""}`,
+    `location=${relatedIdentity(item?.location)}`,
+    `training=${item?.trainingKey ?? ""}`,
+    `grant=${Array.isArray(item?.grantAncestryIds) ? item.grantAncestryIds.map(relatedIdentity).join(">") : ""}`,
+    `container=${relatedIdentity(item?.containerId)}`,
+    `quantity=${item?.quantity ?? ""}`,
+    `physical=${item?.isPhysical ?? ""}`,
+    `currency=${item?.isCurrency ?? ""}`,
+  ].join("::");
+}
+
+function applyReceiptStateFindings({
+  changedItemIds,
+  completedReceipts,
+  expected,
+  observedItemIds,
+  partialReceipt,
+  preApplyItemIds,
+  subject,
+}) {
+  if (
+    !Array.isArray(completedReceipts) ||
+    completedReceipts.some((receipt) => applyReceiptFindings(receipt, subject, "completed").length > 0) ||
+    !uniqueStringArray(changedItemIds) ||
+    !uniqueStringArray(preApplyItemIds) ||
+    !uniqueStringArray(observedItemIds) ||
+    applyReceiptFindings(partialReceipt, subject, "partial").length > 0
+  ) {
+    return [
+      finding(
+        "invalid-apply-safety-item-snapshots",
+        subject,
+        "Apply safety receipts require unique before/failure item snapshots and a structured partial receipt."
+      ),
+    ];
+  }
+
+  const phaseAfter = expected.kind === "phase" && expected.boundary === "after";
+  if (
+    phaseAfter &&
+    JSON.stringify(completedReceipts.at(-1) ?? null) !== JSON.stringify(partialReceipt)
+  ) {
+    return [
+      finding(
+        "apply-safety-after-receipt-mismatch",
+        subject,
+        "A phase-after partial receipt must repeat the already-completed phase receipt exactly."
+      ),
+    ];
+  }
+
+  const findings = [];
+  const itemIds = new Set(preApplyItemIds);
+  const receipts = phaseAfter ? completedReceipts : [...completedReceipts, partialReceipt];
+  const reportedUpdatedItemIds = new Set();
+  for (const receipt of receipts) {
+    for (const itemId of receipt.deletedItemIds) {
+      if (!itemIds.delete(itemId)) {
+        findings.push(
+          finding(
+            "apply-safety-impossible-deleted-item",
+            `${subject}:${receipt.phase}:${itemId}`,
+            `Receipt ${receipt.phase} deletes item ${itemId}, which was not present.`
+          )
+        );
+      }
+    }
+    for (const itemId of receipt.createdItemIds) {
+      if (itemIds.has(itemId)) {
+        findings.push(
+          finding(
+            "apply-safety-impossible-created-item",
+            `${subject}:${receipt.phase}:${itemId}`,
+            `Receipt ${receipt.phase} creates item ${itemId}, which was already present.`
+          )
+        );
+      }
+      itemIds.add(itemId);
+    }
+    for (const itemId of receipt.updatedItemIds) {
+      reportedUpdatedItemIds.add(itemId);
+      if (!itemIds.has(itemId)) {
+        findings.push(
+          finding(
+            "apply-safety-impossible-updated-item",
+            `${subject}:${receipt.phase}:${itemId}`,
+            `Receipt ${receipt.phase} updates item ${itemId}, which was not present.`
+          )
+        );
+      }
+    }
+  }
+  for (const itemId of changedItemIds) {
+    if (!reportedUpdatedItemIds.has(itemId)) {
+      findings.push(
+        finding(
+          "apply-safety-missing-updated-item-receipt",
+          `${subject}:${itemId}`,
+          `Actor item ${itemId} changed by the failed Apply but no receipt reported the update.`
+        )
+      );
+    }
+  }
+  if (JSON.stringify([...itemIds].sort()) !== JSON.stringify([...observedItemIds].sort())) {
+    findings.push(
+      finding(
+        "apply-safety-item-reconciliation-mismatch",
+        subject,
+        "Apply safety receipts do not reconcile the pre-apply and observed failure item sets."
+      )
+    );
+  }
+  return findings;
+}
+
+function validModuleStateSnapshot(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    exactObjectKeys(value, MODULE_STATE_KEYS) &&
+    Number.isSafeInteger(value.version) &&
+    value.version >= 1 &&
+    (value.lastAppliedAt === null ||
+      (nonEmptyString(value.lastAppliedAt) && Number.isFinite(Date.parse(value.lastAppliedAt)))) &&
+    (value.lastTargetLevel === null ||
+      (Number.isSafeInteger(value.lastTargetLevel) && value.lastTargetLevel >= 1)) &&
+    uniqueStringArray(value.completedStepIds)
+  );
+}
+
+function validExpectedPreApplyBaseline(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    Number.isSafeInteger(value.level) &&
+    value.level >= 1 &&
+    Number.isSafeInteger(value.itemCount) &&
+    value.itemCount >= 0 &&
+    validModuleStateSnapshot(value.moduleState)
+  );
+}
+
+function exactModuleStateMatches(value, expected) {
+  return (
+    validModuleStateSnapshot(value) &&
+    validModuleStateSnapshot(expected) &&
+    value.version === expected.version &&
+    value.lastAppliedAt === expected.lastAppliedAt &&
+    value.lastTargetLevel === expected.lastTargetLevel &&
+    JSON.stringify([...value.completedStepIds].sort()) ===
+      JSON.stringify([...expected.completedStepIds].sort()) &&
+    structuredValueEquals(value.existingCharacterHistory, expected.existingCharacterHistory)
+  );
+}
+
+function finalModuleStateMatches(value, targetLevel, expectedStepIds, expectedPreApplyModuleState) {
+  return (
+    validModuleStateSnapshot(value) &&
+    validModuleStateSnapshot(expectedPreApplyModuleState) &&
+    nonEmptyString(value.lastAppliedAt) &&
+    Number.isFinite(Date.parse(value.lastAppliedAt)) &&
+    value.version === expectedPreApplyModuleState.version &&
+    value.lastTargetLevel === targetLevel &&
+    uniqueStringArray(expectedStepIds) &&
+    expectedStepIds.length > 0 &&
+    JSON.stringify([...expectedStepIds].sort()) === JSON.stringify([...value.completedStepIds].sort()) &&
+    structuredValueEquals(value.existingCharacterHistory, expectedPreApplyModuleState.existingCharacterHistory)
+  );
+}
+
+function structuredValueEquals(left, right) {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((entry, index) => structuredValueEquals(entry, right[index]))
+    );
+  }
+  if (!left || typeof left !== "object" || !right || typeof right !== "object") return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return (
+    JSON.stringify(leftKeys) === JSON.stringify(rightKeys) &&
+    leftKeys.every((key) => structuredValueEquals(left[key], right[key]))
+  );
+}
+
+function uniqueStringArray(value) {
+  return Array.isArray(value) && value.every(nonEmptyString) && new Set(value).size === value.length;
+}
+
+function nonEmptyUniqueStringArray(value) {
+  return uniqueStringArray(value) && value.length > 0;
+}
+
+function parseCheckpointId(value) {
+  if (!nonEmptyString(value)) return null;
+  const parts = value.split(":");
+  if (parts.length === 3 && parts[0] === "phase" && VALID_APPLY_PHASES.has(parts[1])) {
+    const boundary = parts[2];
+    if (boundary !== "before" && boundary !== "after") return null;
+    return { checkpointId: value, kind: "phase", phase: parts[1], boundary, operation: null };
+  }
+  if (parts.length === 3 && parts[0] === "write" && VALID_APPLY_WRITE_OPERATIONS.has(parts[1])) {
+    const boundary = parts[2];
+    if (boundary !== "before" && boundary !== "after") return null;
+    return { checkpointId: value, kind: "write", phase: "finalize-actor", boundary, operation: parts[1] };
+  }
+  return null;
+}
+
 function actorEvidenceFindings(actorEvidence, expectations) {
   if (!actorEvidence) return [];
   const findings = [];
+  const actorSubject = String(actorEvidence.id ?? "actor");
+  if (!nonEmptyString(actorEvidence.id)) {
+    findings.push(finding("missing-actor-id", actorSubject, "Actor evidence must include the observed Foundry actor ID."));
+  }
+  const authority = actorEvidence.authority;
+  const validAuthority =
+    exactObjectKeys(authority, ACTOR_AUTHORITY_KEYS) &&
+    [authority.explicitOwnershipLevel, authority.defaultOwnershipLevel].every(
+      (level) => Number.isSafeInteger(level) && level >= 0 && level <= 3
+    ) &&
+    [authority.canUpdate, authority.isOwner, authority.ownerPermission].every((value) => typeof value === "boolean");
+  if (!validAuthority) {
+    findings.push(
+      finding(
+        "invalid-actor-authority",
+        actorSubject,
+        "Actor evidence must include a complete Foundry ownership and update-authority snapshot."
+      )
+    );
+  } else if (authority.canUpdate !== true || authority.isOwner !== true || authority.ownerPermission !== true) {
+    findings.push(
+      finding(
+        "insufficient-actor-authority",
+        actorSubject,
+        "The smoke actor must be updateable and owned by the user executing the case."
+      )
+    );
+  }
+  if (!Array.isArray(actorEvidence.items) || actorEvidence.itemCount !== actorEvidence.items.length) {
+    findings.push(
+      finding(
+        "invalid-actor-item-envelope",
+        actorSubject,
+        "Actor evidence must include an item array and its exact observed item count."
+      )
+    );
+  }
   if (!Number.isSafeInteger(actorEvidence.currencyCopper) || actorEvidence.currencyCopper < 0) {
     findings.push(
       finding(
@@ -211,15 +1058,258 @@ function actorEvidenceFindings(actorEvidence, expectations) {
   return findings;
 }
 
+function definitionActorOutcomeFindings(actorEvidence, definition) {
+  const configured =
+    definition?.expectedItemCount !== undefined ||
+    definition?.expectedItemIdentities !== undefined ||
+    definition?.expectedItemSemanticIdentities !== undefined ||
+    definition?.expectedItemNameCounts !== undefined ||
+    definition?.expectedSkillRanks !== undefined ||
+    definition?.expectedExactSkillRanks !== undefined ||
+    definition?.expectedAbilityBoosts !== undefined ||
+    definition?.expectedBoostBatchCounts !== undefined;
+  if (!configured) return [];
+
+  const subject = String(definition?.id ?? actorEvidence?.id ?? "actor");
+  const items = actorEvidence?.items;
+  const findings = [];
+  if (!Array.isArray(items)) {
+    return [finding("invalid-defined-actor-outcome", subject, "Defined actor outcomes require an item array.")];
+  }
+
+  if (definition.expectedItemCount !== undefined) {
+    if (!Number.isSafeInteger(definition.expectedItemCount) || definition.expectedItemCount < 0) {
+      findings.push(
+        finding("invalid-defined-item-count", subject, "Expected actor item count must be a nonnegative integer.")
+      );
+    } else if (items.length !== definition.expectedItemCount || actorEvidence.itemCount !== items.length) {
+      findings.push(
+        finding(
+          "defined-item-count-mismatch",
+          subject,
+          `Actor item evidence does not match the pinned count ${definition.expectedItemCount}.`
+        )
+      );
+    }
+  }
+
+  if (definition.expectedItemIdentities !== undefined) {
+    const expectedIdentities = definition.expectedItemIdentities;
+    const actualIdentities = items.map(receiptItemIdentity).sort();
+    if (
+      !uniqueStringArray(expectedIdentities) ||
+      JSON.stringify(actualIdentities) !== JSON.stringify([...expectedIdentities].sort())
+    ) {
+      findings.push(
+        finding(
+          "defined-item-identity-mismatch",
+          subject,
+          "Actor items do not match the pinned final type, slot, source, and name identities."
+        )
+      );
+    }
+  }
+
+  if (definition.expectedItemSemanticIdentities !== undefined) {
+    const expectedIdentities = definition.expectedItemSemanticIdentities;
+    const actualIdentities = items.map((item) => outcomeItemIdentity(item, items)).sort();
+    if (
+      !uniqueStringArray(expectedIdentities) ||
+      JSON.stringify(actualIdentities) !== JSON.stringify([...expectedIdentities].sort())
+    ) {
+      findings.push(
+        finding(
+          "defined-item-semantic-identity-mismatch",
+          subject,
+          "Actor items do not match the pinned placement, training, grant, container, and quantity identities."
+        )
+      );
+    }
+  }
+
+  for (const [name, expectedCount] of Object.entries(definition.expectedItemNameCounts ?? {})) {
+    const actualCount = items.filter((item) => item?.name === name).length;
+    if (!Number.isSafeInteger(expectedCount) || expectedCount < 0 || actualCount !== expectedCount) {
+      findings.push(
+        finding(
+          "defined-item-name-count-mismatch",
+          `${subject}:${name}`,
+          `Actor item count for ${name} does not match its pinned outcome.`
+        )
+      );
+    }
+  }
+
+  for (const [slug, expectedRank] of Object.entries(definition.expectedSkillRanks ?? {})) {
+    if (
+      !Number.isSafeInteger(expectedRank) ||
+      expectedRank < 0 ||
+      actorEvidence?.skillRanks?.[slug] !== expectedRank
+    ) {
+      findings.push(
+        finding(
+          "defined-skill-rank-mismatch",
+          `${subject}:${slug}`,
+          `Actor skill rank ${slug} does not match its pinned outcome.`
+        )
+      );
+    }
+  }
+
+  if (definition.expectedExactSkillRanks !== undefined) {
+    const actualSkillRanks = actorEvidence?.skillRanks;
+    if (
+      !validExactSkillRanks(definition.expectedExactSkillRanks) ||
+      !validExactSkillRanks(actualSkillRanks) ||
+      !structuredValueEquals(
+        Object.fromEntries(Object.entries(actualSkillRanks).sort(([left], [right]) => left.localeCompare(right))),
+        Object.fromEntries(
+          Object.entries(definition.expectedExactSkillRanks).sort(([left], [right]) => left.localeCompare(right))
+        )
+      )
+    ) {
+      findings.push(
+        finding(
+          "defined-exact-skill-ranks-mismatch",
+          subject,
+          "Actor skill ranks do not match the pinned complete skill-rank outcome."
+        )
+      );
+    }
+  }
+
+  if (
+    definition.expectedAbilityBoosts !== undefined &&
+    !abilityBoostStatesEqual(actorEvidence?.abilityBoosts, definition.expectedAbilityBoosts)
+  ) {
+    findings.push(
+      finding(
+        "defined-ability-boosts-mismatch",
+        subject,
+        "Actor ability boosts do not match the pinned complete boost outcome."
+      )
+    );
+  }
+
+  for (const [batchLevel, expectedCount] of Object.entries(definition.expectedBoostBatchCounts ?? {})) {
+    const boosts = actorEvidence?.abilityBoosts?.[batchLevel];
+    if (
+      !Number.isSafeInteger(expectedCount) ||
+      expectedCount < 0 ||
+      !Array.isArray(boosts) ||
+      boosts.length !== expectedCount
+    ) {
+      findings.push(
+        finding(
+          "defined-boost-count-mismatch",
+          `${subject}:${batchLevel}`,
+          `Actor boost batch ${batchLevel} does not match its pinned outcome.`
+        )
+      );
+    }
+  }
+
+  return findings;
+}
+
+function exactObjectKeys(value, expectedKeys) {
+  return (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expectedKeys].sort())
+  );
+}
+
+function validExactSkillRanks(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.entries(value).every(
+      ([slug, rank]) => nonEmptyString(slug) && Number.isSafeInteger(rank) && rank >= 0
+    )
+  );
+}
+
+function validAbilityBoostState(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.entries(value).every(
+      ([key, entry]) =>
+        nonEmptyString(key) &&
+        (nonEmptyString(entry) || (uniqueStringArray(entry) && entry.every((ability) => nonEmptyString(ability))))
+    )
+  );
+}
+
+function abilityBoostStatesEqual(actual, expected) {
+  if (!validAbilityBoostState(actual) || !validAbilityBoostState(expected)) return false;
+  const normalize = (value) =>
+    Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, Array.isArray(entry) ? [...entry].sort() : entry])
+    );
+  return structuredValueEquals(normalize(actual), normalize(expected));
+}
+
 function itemShapeFindings(item, allItems) {
   const findings = [];
   const subject = String(item?.id ?? item?.name ?? "item");
+  const hasCompleteEnvelope = ITEM_EVIDENCE_KEYS.every((field) => Object.hasOwn(item ?? {}, field));
+  if (!hasCompleteEnvelope) {
+    findings.push(
+      finding(
+        "incomplete-item-evidence",
+        subject,
+        "Every observed item must include the complete nullable identity, placement, quantity, and acquisition envelope."
+      )
+    );
+  }
   if (!nonEmptyString(item?.id)) {
     findings.push(finding("missing-item-id", subject, "Every observed item must have an actual Foundry item ID."));
+  }
+  if (!nonEmptyString(item?.name) || !nonEmptyString(item?.type)) {
+    findings.push(finding("invalid-item-document-identity", subject, "Every observed item needs a name and document type."));
+  }
+  if (item?.sourceId !== null && !nonEmptyString(item?.sourceId)) {
+    findings.push(finding("invalid-item-source-id", subject, "Item source ID must be a nonempty string or null."));
+  }
+  for (const field of ["slotId", "destinationKey", "trainingKey", "location", "containerId", "grantedById"]) {
+    if (item?.[field] !== null && !nonEmptyString(item?.[field])) {
+      findings.push(
+        finding("invalid-item-nullable-identity", `${subject}:${field}`, `Item ${field} must be a nonempty string or null.`)
+      );
+    }
+  }
+  if (typeof item?.isPhysical !== "boolean" || typeof item?.isCurrency !== "boolean") {
+    findings.push(
+      finding("invalid-item-kind-evidence", subject, "Item physical and currency facts must be explicit booleans.")
+    );
+  }
+  if (item?.isCurrency === true && item?.isPhysical !== true) {
+    findings.push(
+      finding("invalid-currency-item-kind", subject, "A currency item must be an explicit physical document.")
+    );
+  }
+  if (!uniqueStringArray(item?.grantAncestryIds)) {
+    findings.push(
+      finding("invalid-grant-ancestry", subject, "Item grant ancestry must be a unique array of observed item IDs.")
+    );
+  } else {
+    findings.push(...grantAncestryFindings(item, allItems));
   }
   if (item?.isPhysical === true && (!Number.isSafeInteger(item.quantity) || item.quantity < 1)) {
     findings.push(
       finding("invalid-item-quantity", subject, `Physical item ${subject} must have a positive integer quantity.`)
+    );
+  }
+  if (item?.isPhysical === false && item?.quantity !== null) {
+    findings.push(
+      finding("invalid-nonphysical-quantity", subject, `Nonphysical item ${subject} must record null quantity.`)
     );
   }
   if (item?.containerId !== null && item?.containerId !== undefined) {
@@ -270,6 +1360,58 @@ function itemShapeFindings(item, allItems) {
           "missing-acquisition-source",
           subject,
           `Acquisition item ${subject} must retain its source UUID.`
+        )
+      );
+    }
+  }
+  return findings;
+}
+
+function grantAncestryFindings(item, allItems) {
+  const findings = [];
+  const subject = String(item?.id ?? item?.name ?? "item");
+  const ancestry = item.grantAncestryIds;
+  const itemsById = new Map(allItems.map((candidate) => [candidate?.id, candidate]));
+  if (item.grantedById === null) {
+    if (ancestry.length > 0) {
+      findings.push(
+        finding(
+          "orphaned-grant-ancestry",
+          subject,
+          `Item ${subject} records grant ancestry without a direct granted-by item.`
+        )
+      );
+    }
+    return findings;
+  }
+  if (!nonEmptyString(item.grantedById) || ancestry[0] !== item.grantedById) {
+    findings.push(
+      finding(
+        "grant-parent-mismatch",
+        subject,
+        `Item ${subject} grant ancestry must begin with its direct granted-by item.`
+      )
+    );
+  }
+  for (const [index, ancestorId] of ancestry.entries()) {
+    const ancestor = itemsById.get(ancestorId);
+    if (!ancestor || ancestorId === item.id) {
+      findings.push(
+        finding(
+          "missing-grant-ancestor",
+          `${subject}:${ancestorId}`,
+          `Item ${subject} references a grant ancestor that is absent or self-referential.`
+        )
+      );
+      continue;
+    }
+    const expectedNextId = ancestry[index + 1] ?? null;
+    if ((ancestor.grantedById ?? null) !== expectedNextId) {
+      findings.push(
+        finding(
+          "grant-ancestry-chain-mismatch",
+          `${subject}:${ancestorId}`,
+          `Item ${subject} grant ancestry does not match the observed parent chain.`
         )
       );
     }
@@ -360,6 +1502,56 @@ function sourceExpectationFindings(sourceGroups, expectation) {
         `Source ${sourceId} was expected to aggregate into one document.`
       )
     );
+  }
+  return findings;
+}
+
+function acquisitionEnvelopeFindings(smokeCase) {
+  const acquisition = smokeCase?.evidence?.acquisition;
+  const subject = String(smokeCase?.id ?? "case");
+  if (!exactObjectKeys(acquisition, ACQUISITION_EVIDENCE_KEYS)) {
+    return [
+      finding(
+        "invalid-acquisition-envelope",
+        subject,
+        "Every smoke case must include the complete nullable acquisition evidence envelope."
+      ),
+    ];
+  }
+
+  const findings = [];
+  if (!exactObjectKeys(acquisition.currency, ACQUISITION_CURRENCY_KEYS)) {
+    findings.push(
+      finding(
+        "invalid-acquisition-currency-envelope",
+        subject,
+        "Acquisition evidence must include every nullable currency ledger field."
+      )
+    );
+  } else if (
+    Object.values(acquisition.currency).some(
+      (value) => value !== null && (!Number.isSafeInteger(value) || value < 0)
+    )
+  ) {
+    findings.push(
+      finding(
+        "invalid-acquisition-currency-envelope-value",
+        subject,
+        "Nullable acquisition currency fields must be null or nonnegative copper integers."
+      )
+    );
+  }
+  for (const field of ["policy", "manifest", "failureSnapshot"]) {
+    const value = acquisition[field];
+    if (value !== null && (!value || typeof value !== "object" || Array.isArray(value))) {
+      findings.push(
+        finding(
+          "invalid-acquisition-envelope-value",
+          `${subject}:${field}`,
+          `Acquisition ${field} must be a structured object or null.`
+        )
+      );
+    }
   }
   return findings;
 }
@@ -692,11 +1884,17 @@ function applyFindingReviews(findings, reviews) {
       });
     }
   }
-  return findings.map((entry) => ({ ...entry, review: reviewsById.get(entry.id) ?? null }));
+  return findings.map((entry) => ({
+    ...entry,
+    review: REVIEWABLE_FINDING_CODES.has(entry.code) ? (reviewsById.get(entry.id) ?? null) : null,
+  }));
 }
 
 function reviewRecordFindings(findings, reviews, reviewingUserIsGM) {
   const findingIds = new Set(findings.map((entry) => entry.id));
+  const reviewableFindingIds = new Set(
+    findings.filter((entry) => REVIEWABLE_FINDING_CODES.has(entry.code)).map((entry) => entry.id)
+  );
   const seenReviewIds = new Set();
   const reviewFindings = [];
   if (reviews.length > 0 && reviewingUserIsGM !== true) {
@@ -729,6 +1927,14 @@ function reviewRecordFindings(findings, reviews, reviewingUserIsGM) {
     if (!findingIds.has(review.findingId)) {
       reviewFindings.push(
         finding("unused-review-record", subject, `Review ${review.findingId} does not match an observed finding.`)
+      );
+    } else if (!reviewableFindingIds.has(review.findingId)) {
+      reviewFindings.push(
+        finding(
+          "non-reviewable-review-record",
+          subject,
+          `Review ${review.findingId} targets structural evidence that cannot be waived.`
+        )
       );
     }
     if (seenReviewIds.has(review.findingId)) {
@@ -820,12 +2026,12 @@ function manifestReconciliationFindings(items, manifest, subject) {
         )
       );
     }
-    if (!Array.isArray(entry.actualItemIds) || entry.actualItemIds.length === 0) {
+    if (!nonEmptyUniqueStringArray(entry.actualItemIds)) {
       findings.push(
         finding(
           "missing-manifest-item-ids",
           `${subject}:${entryId}`,
-          `Manifest entry ${entryId} needs observed actor item IDs.`
+          `Manifest entry ${entryId} needs unique observed actor item IDs.`
         )
       );
       continue;

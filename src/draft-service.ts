@@ -14,13 +14,16 @@ import {
 } from "./wayfinder/class-archetype/registry.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
 
-const DRAFT_VERSION = 9;
+const DRAFT_VERSION = 11;
 const STATE_VERSION = 2;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
   return {
     version: DRAFT_VERSION,
     targetLevel: clampLevel(targetLevel),
+    applyAttemptStepIds: [],
+    applyCompletedStepIds: [],
+    applyRecoveryActorUpdate: {},
     selections: {},
     boosts: createEmptyBoostDraft(),
     manual: {},
@@ -82,6 +85,9 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
   return {
     version: DRAFT_VERSION,
     targetLevel: clampLevel(typeof draft.targetLevel === "number" ? draft.targetLevel : fallbackTargetLevel),
+    applyAttemptStepIds: sanitizeStepIds(draft.applyAttemptStepIds),
+    applyCompletedStepIds: sanitizeStepIds(draft.applyCompletedStepIds),
+    applyRecoveryActorUpdate: sanitizeRecoveryActorUpdate(draft.applyRecoveryActorUpdate),
     selections,
     boosts: sanitizeBoosts(draft.boosts),
     manual,
@@ -96,6 +102,11 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     spellRarityAccess,
     updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
   };
+}
+
+function sanitizeRecoveryActorUpdate(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(Object.entries(cloneData(value)).filter(([path]) => path.startsWith("system.")));
 }
 
 function clearLegacyClassArchetypeDependentState(state: {
@@ -227,6 +238,14 @@ function createEmptyBoostDraft(): BoostDraftState {
     },
     levels: {},
   };
+}
+
+function sanitizeStepIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return Array.from(new Set(raw.filter((value): value is string => typeof value === "string" && value.length > 0)));
 }
 
 function sanitizeSelections(raw: unknown): DraftState["selections"] {

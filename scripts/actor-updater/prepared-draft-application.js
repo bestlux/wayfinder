@@ -26,17 +26,24 @@ import { spellLocationId } from "./spellcasting-entry-support.js";
 import { applySkillIncreaseDraft, applyTrainingDraft, buildTrainingActorUpdate } from "./training-application.js";
 export class DraftApplyPhaseError extends Error {
     phase;
+    checkpoint;
+    failureKind;
     completedPhases;
     completedReceipts;
     partialReceipt;
-    constructor(phase, completedReceipts, partialReceipt, cause) {
+    recoveryActorUpdate;
+    constructor(phase, completedReceipts, partialReceipt, checkpoint, failureKind, cause, recoveryActorUpdate = {}) {
         const detail = cause instanceof Error && cause.message ? ` ${cause.message}` : "";
-        super(`Wayfinder apply failed during ${phase}.${detail}`, { cause });
+        const checkpointDetail = checkpoint ? ` at ${checkpoint.checkpointId}` : "";
+        super(`Wayfinder apply failed during ${phase}${checkpointDetail}.${detail}`, { cause });
         this.name = "DraftApplyPhaseError";
         this.phase = phase;
         this.completedReceipts = cloneData(completedReceipts);
         this.completedPhases = this.completedReceipts.map((receipt) => receipt.phase);
         this.partialReceipt = partialReceipt;
+        this.recoveryActorUpdate = Object.freeze(cloneData(recoveryActorUpdate));
+        this.checkpoint = checkpoint ? cloneData(checkpoint) : null;
+        this.failureKind = failureKind;
     }
 }
 const PHASE_IDS = [
@@ -123,7 +130,10 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
         selections,
         pendingFeatSelections,
         stepsBySlotId,
-        deferredActorUpdate: buildLanguageChoiceUpdate(draft, steps),
+        deferredActorUpdate: {
+            ...cloneData(draft.applyRecoveryActorUpdate),
+            ...buildLanguageChoiceUpdate(draft, steps),
+        },
         validateActorAuthority: deps.validateActorAuthority,
         sources,
     };
@@ -231,12 +241,34 @@ async function validateSelectedEligibility(draft, steps, activeSelections, deps)
 }
 export async function executePreparedDraftApplication(prepared, options = {}) {
     assertActorAuthority(prepared.actor, prepared.validateActorAuthority);
+    // The target level is part of the final actor transaction even though it is
+    // intentionally persisted only by the finalize phase. Seed it before any
+    // phase can fail so recovery-only finalization can replay the complete
+    // deferred update after an otherwise-empty rebuilt plan.
+    addLevelUpdate(prepared);
     const receipts = [];
     let projectedTrainingRanks = {};
     for (const phase of prepared.phaseIds) {
+        if (phase === "finalize-actor") {
+            const receipt = await executeFinalActorPhase(prepared.actor, prepared.deferredActorUpdate, options, receipts);
+            receipts.push(receipt);
+            continue;
+        }
         const beforeItems = snapshotPhaseItems(prepared.actor);
+        let failedCheckpoint = null;
+        const operationFailureCheckpoint = null;
+        const confirmedActorUpdatePaths = [];
+        const emitCheckpoint = async (checkpoint) => {
+            try {
+                await options.onCheckpoint?.(checkpoint);
+            }
+            catch (error) {
+                failedCheckpoint = checkpoint;
+                throw error;
+            }
+        };
         try {
-            await options.beforePhase?.(phase);
+            await emitCheckpoint(buildPhaseCheckpoint(phase, "before"));
             switch (phase) {
                 case "singleton-replacements":
                     await replaceSingletonItems(prepared.actor, singletonSelections(prepared.selections), prepared.draft, prepared.steps, prepared.sources.createDependencies);
@@ -310,34 +342,132 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                 }
                 case "source-flag-restoration":
                     await restoreSingletonSourceSlotFlags(prepared.actor, prepared.draft);
-                    addLevelUpdate(prepared);
                     break;
                 case "verify-outcome":
                     verifyPreparedOutcome(prepared);
                     break;
-                case "finalize-actor":
-                    await prepared.actor.update?.({
-                        ...prepared.deferredActorUpdate,
-                        ...(options.finalActorUpdate ?? {}),
-                    });
-                    break;
             }
-            receipts.push(buildPhaseReceipt(phase, beforeItems, prepared.actor, {
-                ...prepared.deferredActorUpdate,
-                ...(options.finalActorUpdate ?? {}),
-            }));
+            receipts.push(buildPhaseReceipt(phase, beforeItems, prepared.actor, confirmedActorUpdatePaths));
+            await emitCheckpoint(buildPhaseCheckpoint(phase, "after"));
         }
         catch (error) {
-            throw new DraftApplyPhaseError(phase, receipts, buildPhaseReceipt(phase, beforeItems, prepared.actor, {
-                ...prepared.deferredActorUpdate,
-                ...(options.finalActorUpdate ?? {}),
-            }), error);
+            throw new DraftApplyPhaseError(phase, receipts, buildPhaseReceipt(phase, beforeItems, prepared.actor, confirmedActorUpdatePaths), failedCheckpoint ?? operationFailureCheckpoint, failedCheckpoint ? "checkpoint-hook" : "operation", error, prepared.deferredActorUpdate);
         }
     }
     return {
         actorUpdate: { ...prepared.deferredActorUpdate },
         receipts,
     };
+}
+export async function executeRecoveredDraftFinalization(actor, options) {
+    assertActorAuthority(actor, options.validateActorAuthority);
+    const recoveryActorUpdate = cloneData(options.recoveryActorUpdate);
+    const receipt = await executeFinalActorPhase(actor, recoveryActorUpdate, options, []);
+    return {
+        actorUpdate: recoveryActorUpdate,
+        receipts: [receipt],
+    };
+}
+async function executeFinalActorPhase(actor, deferredActorUpdate, options, completedReceipts) {
+    const phase = "finalize-actor";
+    const beforeItems = snapshotPhaseItems(actor);
+    let failedCheckpoint = null;
+    let operationFailureCheckpoint = null;
+    let confirmedActorUpdatePaths = [];
+    const emitCheckpoint = async (checkpoint) => {
+        try {
+            await options.onCheckpoint?.(checkpoint);
+        }
+        catch (error) {
+            failedCheckpoint = checkpoint;
+            throw error;
+        }
+    };
+    try {
+        await emitCheckpoint(buildPhaseCheckpoint(phase, "before"));
+        const actorUpdate = {
+            ...deferredActorUpdate,
+            ...(options.finalActorUpdate ?? {}),
+        };
+        const intendedActorUpdate = cloneData(actorUpdate);
+        const intendedActorUpdatePaths = Object.keys(intendedActorUpdate);
+        const finalActorUpdatePaths = Object.keys(options.finalActorUpdate ?? {});
+        if (!actor.update) {
+            if (intendedActorUpdatePaths.length > 0) {
+                throw new Error("The actor cannot persist Wayfinder's final update.");
+            }
+        }
+        else {
+            const preexistingConvergedPaths = convergedActorUpdatePaths(actor, intendedActorUpdate, intendedActorUpdatePaths);
+            const beforeWrite = buildWriteCheckpoint(phase, "final-actor-update", "before", 1);
+            await emitCheckpoint(beforeWrite);
+            operationFailureCheckpoint = beforeWrite;
+            let updatedActor;
+            let updateRejected = false;
+            let updateFailure;
+            try {
+                updatedActor = await actor.update(actorUpdate);
+            }
+            catch (error) {
+                updateRejected = true;
+                updateFailure = error;
+            }
+            const observedConvergedPaths = convergedActorUpdatePaths(actor, intendedActorUpdate, intendedActorUpdatePaths);
+            const newlyConvergedPaths = observedConvergedPaths.filter((path) => !preexistingConvergedPaths.includes(path));
+            const intendedUpdateConverged = intendedActorUpdatePaths.length > 0 &&
+                intendedActorUpdatePaths.every((path) => observedConvergedPaths.includes(path));
+            const finalUpdateConverged = finalActorUpdatePaths.length > 0 &&
+                finalActorUpdatePaths.every((path) => observedConvergedPaths.includes(path));
+            if (updateRejected) {
+                if (intendedUpdateConverged) {
+                    confirmedActorUpdatePaths = observedConvergedPaths;
+                    operationFailureCheckpoint = buildWriteCheckpoint(phase, "final-actor-update", "after", 1);
+                }
+                else {
+                    confirmedActorUpdatePaths = newlyConvergedPaths;
+                }
+                throw updateFailure;
+            }
+            if (!intendedUpdateConverged) {
+                confirmedActorUpdatePaths = newlyConvergedPaths;
+                throw new Error("PF2E did not persist Wayfinder's complete final actor update.");
+            }
+            if (updatedActor === undefined && (finalActorUpdatePaths.length === 0 || !finalUpdateConverged)) {
+                confirmedActorUpdatePaths = newlyConvergedPaths;
+                throw new Error("PF2E vetoed Wayfinder's final actor update.");
+            }
+            confirmedActorUpdatePaths = observedConvergedPaths;
+            operationFailureCheckpoint = null;
+            await emitCheckpoint(buildWriteCheckpoint(phase, "final-actor-update", "after", 1));
+        }
+        const receipt = buildPhaseReceipt(phase, beforeItems, actor, confirmedActorUpdatePaths);
+        await emitCheckpoint(buildPhaseCheckpoint(phase, "after"));
+        return receipt;
+    }
+    catch (error) {
+        const partialReceipt = buildPhaseReceipt(phase, beforeItems, actor, confirmedActorUpdatePaths);
+        const checkpointFailure = failedCheckpoint;
+        const receiptCompletedBeforeFailure = checkpointFailure?.kind === "phase" && checkpointFailure.boundary === "after";
+        throw new DraftApplyPhaseError(phase, receiptCompletedBeforeFailure ? [...completedReceipts, partialReceipt] : completedReceipts, partialReceipt, checkpointFailure ?? operationFailureCheckpoint, checkpointFailure ? "checkpoint-hook" : "operation", error, deferredActorUpdate);
+    }
+}
+function buildPhaseCheckpoint(phase, boundary) {
+    return Object.freeze({
+        checkpointId: `phase:${phase}:${boundary}`,
+        kind: "phase",
+        phase,
+        boundary,
+    });
+}
+function buildWriteCheckpoint(phase, operation, boundary, ordinal) {
+    return Object.freeze({
+        checkpointId: `write:${operation}:${boundary}`,
+        kind: "write",
+        phase,
+        operation,
+        boundary,
+        ordinal,
+    });
 }
 function snapshotPhaseItems(actor) {
     return new Map(listActorItems(actor).flatMap((item) => {
@@ -358,14 +488,57 @@ function snapshotPhaseItems(actor) {
         ];
     }));
 }
-function buildPhaseReceipt(phase, before, actor, actorUpdate) {
+function convergedActorUpdatePaths(actor, actorUpdate, intendedPaths) {
+    return intendedPaths.filter((path) => {
+        const expected = actorUpdate[path];
+        const convergenceSource = actor && typeof actor === "object" && "_source" in actor && actor._source && typeof actor._source === "object"
+            ? actor._source
+            : actor;
+        const { actual, forcedDeletion } = readActorUpdatePath(convergenceSource, path);
+        return forcedDeletion ? actual === undefined : actorUpdatePathConverged(path, actual, expected);
+    });
+}
+function actorUpdatePathConverged(path, actual, expected) {
+    if (path === "system.details.languages.value" && Array.isArray(expected)) {
+        const actualValues = actual instanceof Set ? [...actual] : actual;
+        return (Array.isArray(actualValues) && JSON.stringify([...actualValues].sort()) === JSON.stringify([...expected].sort()));
+    }
+    return containsExpectedValue(actual, expected);
+}
+function readActorUpdatePath(source, path) {
+    const segments = path.split(".");
+    let cursor = source;
+    for (const segment of segments.slice(0, -1)) {
+        if (!cursor || typeof cursor !== "object")
+            return { actual: undefined, forcedDeletion: false };
+        cursor = cursor[segment];
+    }
+    const leaf = segments.at(-1) ?? "";
+    const forcedDeletion = leaf.startsWith("-=");
+    const key = forcedDeletion ? leaf.slice(2) : leaf;
+    const actual = cursor && typeof cursor === "object" ? cursor[key] : undefined;
+    return { actual, forcedDeletion };
+}
+function containsExpectedValue(actual, expected) {
+    if (Object.is(actual, expected))
+        return true;
+    if (Array.isArray(expected)) {
+        return (Array.isArray(actual) &&
+            actual.length === expected.length &&
+            expected.every((entry, index) => containsExpectedValue(actual[index], entry)));
+    }
+    if (!expected || typeof expected !== "object" || !actual || typeof actual !== "object")
+        return false;
+    return Object.entries(expected).every(([key, value]) => containsExpectedValue(actual[key], value));
+}
+function buildPhaseReceipt(phase, before, actor, confirmedActorUpdatePaths) {
     const after = snapshotPhaseItems(actor);
     return {
         phase,
         createdItemIds: [...after.keys()].filter((id) => !before.has(id)),
         deletedItemIds: [...before.keys()].filter((id) => !after.has(id)),
         updatedItemIds: [...after.keys()].filter((id) => before.has(id) && before.get(id) !== after.get(id)),
-        actorUpdatePaths: phase === "finalize-actor" ? Object.keys(actorUpdate) : [],
+        actorUpdatePaths: phase === "finalize-actor" ? [...confirmedActorUpdatePaths] : [],
     };
 }
 function verifyPreparedOutcome(prepared) {

@@ -1,5 +1,6 @@
 import { DRAFT_FLAG, STATE_FLAG } from "../../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../../draft-service.js";
+import { cloneData } from "../../shared/cloning.js";
 import type { DraftState, ExistingCharacterHistory, ModuleState, PendingStep } from "../../types.js";
 import {
   evaluateWayfinderDraftReadiness,
@@ -16,8 +17,12 @@ export interface ApplyDraftLifecycleArgs {
   steps: PendingStep[];
   evaluateStep: (step: PendingStep) => Promise<WayfinderStepEvaluation>;
   confirmApply?: (message: string) => boolean | Promise<boolean>;
-  beforeApply?: () => Promise<void>;
+  beforeApply?: (applyAttemptDraft: DraftState) => Promise<void>;
   applyDraftToActor: (buildFinalActorUpdate: BuildApplyFinalActorUpdate) => Promise<void>;
+  finalizeRecoveredDraft?: (
+    recoveryActorUpdate: Record<string, unknown>,
+    buildFinalActorUpdate: BuildApplyFinalActorUpdate
+  ) => Promise<void>;
   now?: () => string;
 }
 
@@ -30,7 +35,8 @@ export type ApplyDraftLifecycleResult =
   | { kind: "applied"; nextDraft: DraftState };
 
 export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promise<ApplyDraftLifecycleResult> {
-  if (args.steps.length === 0) {
+  const recoveryOnly = args.steps.length === 0 && hasApplyRecoveryState(args.draft);
+  if (args.steps.length === 0 && !recoveryOnly) {
     return {
       kind: "warning",
       warning: "no-pending-steps",
@@ -38,30 +44,37 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
     };
   }
 
-  const readiness = await evaluateWayfinderDraftReadiness(args.steps, args.evaluateStep);
-  if (!readiness.ready) {
-    return {
-      kind: "warning",
-      warning: "draft-not-ready",
-      blockers: readiness.blockers,
-    };
+  if (!recoveryOnly) {
+    const readiness = await evaluateWayfinderDraftReadiness(args.steps, args.evaluateStep);
+    if (!readiness.ready) {
+      return {
+        kind: "warning",
+        warning: "draft-not-ready",
+        blockers: readiness.blockers,
+      };
+    }
   }
 
   const confirmed =
-    (await args.confirmApply?.(buildApplyConfirmationMessage(args.actorName, args.steps.length))) ?? true;
+    (await args.confirmApply?.(
+      recoveryOnly
+        ? buildRecoveryFinalizationConfirmationMessage(args.actorName)
+        : buildApplyConfirmationMessage(args.actorName, args.steps.length)
+    )) ?? true;
   if (!confirmed) {
     return {
       kind: "cancelled",
     };
   }
 
-  await args.beforeApply?.();
+  const applyAttemptDraft = buildApplyAttemptDraft(args.draft, args.steps);
+  await args.beforeApply?.(applyAttemptDraft);
 
   const appliedAt = (args.now ?? defaultNow)();
-  await args.applyDraftToActor((currentState) => {
+  const buildFinalActorUpdate: BuildApplyFinalActorUpdate = (currentState) => {
     const completedStepIds = mergeCompletedStepIds(
       currentState?.completedStepIds ?? args.existingCompletedStepIds ?? [],
-      args.steps
+      [...applyAttemptDraft.applyCompletedStepIds, ...applyAttemptDraft.applyAttemptStepIds]
     );
     return {
       [DRAFT_FLAG]: null,
@@ -75,7 +88,15 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
           : (args.existingCharacterHistory ?? null),
       },
     };
-  });
+  };
+  if (recoveryOnly) {
+    if (!args.finalizeRecoveredDraft) {
+      throw new Error("Wayfinder cannot finalize this recovery draft safely.");
+    }
+    await args.finalizeRecoveredDraft(cloneData(applyAttemptDraft.applyRecoveryActorUpdate), buildFinalActorUpdate);
+  } else {
+    await args.applyDraftToActor(buildFinalActorUpdate);
+  }
 
   return {
     kind: "applied",
@@ -83,11 +104,72 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
   };
 }
 
-function mergeCompletedStepIds(existingStepIds: string[], steps: PendingStep[]): string[] {
+export function buildApplyAttemptDraft(draft: DraftState, steps: PendingStep[]): DraftState {
+  const nextDraft = cloneData(draft);
+  const currentStepIds = steps.map((step) => step.id);
+  const currentStepIdSet = new Set(currentStepIds);
+  nextDraft.applyCompletedStepIds = mergeCompletedStepIds(
+    nextDraft.applyCompletedStepIds,
+    nextDraft.applyAttemptStepIds.filter((stepId) => !currentStepIdSet.has(stepId))
+  );
+  nextDraft.applyAttemptStepIds = mergeCompletedStepIds([], currentStepIds);
+  return nextDraft;
+}
+
+export function hasApplyRecoveryState(draft: DraftState): boolean {
+  return (
+    draft.applyAttemptStepIds.length > 0 ||
+    draft.applyCompletedStepIds.length > 0 ||
+    Object.keys(draft.applyRecoveryActorUpdate).length > 0
+  );
+}
+
+export class WayfinderRecoveryDraftConflictError extends Error {
+  constructor() {
+    super("This actor has a newer partial-Apply recovery draft. Reopen Wayfinder before changing or saving it.");
+    this.name = "WayfinderRecoveryDraftConflictError";
+  }
+}
+
+export function assertRecoveryDraftWriteAllowed(liveDraft: DraftState, candidateDraft: DraftState): void {
+  if (!hasApplyRecoveryState(liveDraft)) {
+    return;
+  }
+
+  const liveRecoveryStepIds = new Set([...liveDraft.applyCompletedStepIds, ...liveDraft.applyAttemptStepIds]);
+  const candidateRecoveryStepIds = new Set([
+    ...candidateDraft.applyCompletedStepIds,
+    ...candidateDraft.applyAttemptStepIds,
+  ]);
+  const preservesRecovery =
+    hasApplyRecoveryState(candidateDraft) &&
+    semanticDraftFingerprint(liveDraft) === semanticDraftFingerprint(candidateDraft) &&
+    liveDraft.applyCompletedStepIds.every((stepId) => candidateDraft.applyCompletedStepIds.includes(stepId)) &&
+    [...liveRecoveryStepIds].every((stepId) => candidateRecoveryStepIds.has(stepId)) &&
+    Object.entries(liveDraft.applyRecoveryActorUpdate).every(
+      ([path, value]) =>
+        path in candidateDraft.applyRecoveryActorUpdate &&
+        JSON.stringify(candidateDraft.applyRecoveryActorUpdate[path]) === JSON.stringify(value)
+    );
+  if (!preservesRecovery) {
+    throw new WayfinderRecoveryDraftConflictError();
+  }
+}
+
+function semanticDraftFingerprint(draft: DraftState): string {
+  const semanticDraft = buildDraftPatch(draft);
+  semanticDraft.applyAttemptStepIds = [];
+  semanticDraft.applyCompletedStepIds = [];
+  semanticDraft.applyRecoveryActorUpdate = {};
+  semanticDraft.updatedAt = null;
+  return JSON.stringify(semanticDraft);
+}
+
+function mergeCompletedStepIds(existingStepIds: string[], nextStepIds: string[]): string[] {
   return Array.from(
     new Set([
       ...existingStepIds.filter((stepId) => typeof stepId === "string" && stepId.length > 0),
-      ...steps.map((step) => step.id),
+      ...nextStepIds.filter((stepId) => typeof stepId === "string" && stepId.length > 0),
     ])
   );
 }
@@ -178,6 +260,10 @@ export function buildClearDraftConfirmationMessage(discardedDecisionCount: numbe
 
 function buildApplyConfirmationMessage(actorName: string, stepCount: number): string {
   return `Apply ${stepCount} Wayfinder step(s) to ${actorName}?`;
+}
+
+function buildRecoveryFinalizationConfirmationMessage(actorName: string): string {
+  return `Finish recording the recovered Wayfinder Apply for ${actorName}? No build steps remain to reapply.`;
 }
 
 function defaultNow(): string {

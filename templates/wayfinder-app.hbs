@@ -181,7 +181,7 @@
 
   <footer class="wayfinder-footer">
     <div class="footer-support">
-      <button type="button" class="footer-clear" data-wayfinder-action="clear-draft">Clear Draft</button>
+      <button type="button" class="footer-clear" data-wayfinder-action="clear-draft" {{#if lifecycleBusy}}disabled{{/if}}>Clear Draft</button>
       <button
         type="button"
         class="footer-feedback"
@@ -190,6 +190,19 @@
         aria-label="{{localize "wayfinder-pf2e.App.FeedbackAria"}}"
       >{{localize "wayfinder-pf2e.App.Feedback"}}</button>
     </div>
+    <div
+      class="footer-save-status {{draftSave.phase}}"
+      data-wayfinder-save-status
+      data-phase="{{draftSave.phase}}"
+      role="{{#if draftSave.error}}alert{{else}}status{{/if}}"
+      aria-live="{{draftSave.live}}"
+      aria-atomic="true"
+      {{#unless draftSave.visible}}hidden{{/unless}}
+    >
+      <i class="fa-solid {{#if draftSave.saving}}fa-spinner fa-spin{{else}}{{#if draftSave.saved}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}}{{/if}}" aria-hidden="true"></i>
+      <span data-wayfinder-save-message>{{localize draftSave.labelKey}}</span>
+      <button type="button" class="footer-save-retry" data-wayfinder-action="retry-draft-save" {{#unless draftSave.retryable}}hidden{{/unless}}>{{localize "wayfinder-pf2e.App.DraftSaveRetry"}}</button>
+    </div>
     {{#if applyBlocker}}
       <button type="button" class="footer-readiness" data-wayfinder-action="select-step" data-step-id="{{applyBlocker.stepId}}">
         <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
@@ -197,8 +210,8 @@
       </button>
     {{/if}}
     <div class="footer-actions">
-      <button type="button" class="secondary" data-wayfinder-action="save-draft">Save Draft</button>
-      <button type="button" class="primary" data-wayfinder-action="apply-draft" {{#unless canApplyDraft}}disabled{{/unless}} {{#if applyBlocker}}aria-label="Apply Changes unavailable. {{applyBlocker.message}}"{{/if}}>Apply Changes</button>
+      <button type="button" class="secondary" data-wayfinder-action="save-draft" {{#if lifecycleBusy}}disabled{{/if}}>Save Draft</button>
+      <button type="button" class="primary" data-wayfinder-action="apply-draft" data-wayfinder-readiness-ready="{{readinessReady}}" {{#unless canApplyDraft}}disabled{{/unless}} {{#if applyBlocker}}aria-label="Apply Changes unavailable. {{applyBlocker.message}}"{{/if}}>Apply Changes</button>
     </div>
   </footer>
 </section>

@@ -203,6 +203,62 @@ describe("wayfinder context service", () => {
       ],
     });
   });
+
+  it("keeps readiness separate while save errors and lifecycle barriers gate Apply", async () => {
+    const steps = [step("class-level-1", "Class")];
+    const base = {
+      actorName: "Ezren",
+      currentLevel: 1,
+      targetLevel: 1,
+      steps,
+      activeStep: steps[0] ?? null,
+      activePane: null,
+      statusNote: null,
+      summaryDocuments: {
+        ancestry: null,
+        heritage: null,
+        background: null,
+        classDocument: null,
+        deity: null,
+      },
+      readiness: await evaluateWayfinderDraftReadiness(steps, async () => readyEvaluation("Ready")),
+    };
+
+    const saving = await buildWayfinderContext({
+      ...base,
+      draftSaveState: {
+        phase: "saving",
+        revision: 2,
+        durableRevision: 1,
+        retryable: false,
+        message: null,
+      },
+    });
+    const failed = await buildWayfinderContext({
+      ...base,
+      draftSaveState: {
+        phase: "error",
+        revision: 2,
+        durableRevision: 1,
+        retryable: true,
+        message: "save failed",
+      },
+    });
+    const busy = await buildWayfinderContext({ ...base, lifecycleBusy: true });
+
+    expect(saving).toMatchObject({
+      readinessReady: true,
+      canApplyDraft: true,
+      draftSave: { labelKey: "wayfinder-pf2e.App.DraftSaving" },
+    });
+    expect(failed).toMatchObject({
+      readinessReady: true,
+      canApplyDraft: false,
+      draftSave: { error: true, retryable: true, live: "assertive" },
+    });
+    expect(failed.applyBlocker).toBeNull();
+    expect(busy).toMatchObject({ readinessReady: true, canApplyDraft: false, lifecycleBusy: true });
+  });
 });
 
 function step(id: string, title: string): PendingStep {

@@ -47,6 +47,7 @@ export function parseWayfinderAction(element) {
         case "target-up":
         case "target-down":
         case "save-draft":
+        case "retry-draft-save":
         case "apply-draft":
         case "import-existing-history":
         case "open-feedback":
@@ -124,6 +125,32 @@ export function parseWayfinderAction(element) {
             return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
         default:
             return null;
+    }
+}
+export function isDraftMutationAction(action) {
+    switch (action.type) {
+        case "select-option":
+        case "toggle-ancestry-mode":
+        case "toggle-voluntary-enabled":
+        case "toggle-voluntary-legacy":
+        case "toggle-boost-choice":
+        case "toggle-voluntary-choice":
+        case "select-skill-increase":
+        case "select-training-rule":
+        case "toggle-training-skill":
+        case "select-training-lore-suggestion":
+        case "toggle-language-choice":
+        case "select-singleton-choice":
+        case "select-class-archetype":
+        case "select-class-choice":
+        case "toggle-spell-choice":
+        case "toggle-spell-rarity-access":
+        case "clear-option":
+        case "target-up":
+        case "target-down":
+            return true;
+        default:
+            return false;
     }
 }
 //# sourceMappingURL=actions.js.map

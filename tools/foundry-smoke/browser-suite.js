@@ -180,9 +180,9 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
             steps: plan.steps,
             evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
             confirmApply: () => true,
-            applyDraftToActor: (finalActorUpdate) =>
+            applyDraftToActor: (buildFinalActorUpdate) =>
               modules.applyDraftToActor(actor, draft, plan.steps, {
-                finalActorUpdate,
+                finalActorUpdate: buildFinalActorUpdate(),
                 validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
               }),
             now: () => new Date().toISOString(),
@@ -258,9 +258,9 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
         steps,
         evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
         confirmApply: () => true,
-        applyDraftToActor: (finalActorUpdate) =>
+        applyDraftToActor: (buildFinalActorUpdate) =>
           modules.applyDraftToActor(actor, draft, steps, {
-            finalActorUpdate,
+            finalActorUpdate: buildFinalActorUpdate(),
             validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
             beforePhase: (currentPhase) => {
               if (!injected && currentPhase === phase) {
@@ -820,9 +820,9 @@ async function applyCompletedDraft(actor, draft, steps, modules, moduleId) {
       steps,
       evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
       confirmApply: () => true,
-      applyDraftToActor: (finalActorUpdate) =>
+      applyDraftToActor: (buildFinalActorUpdate) =>
         modules.applyDraftToActor(actor, draft, steps, {
-          finalActorUpdate,
+          finalActorUpdate: buildFinalActorUpdate(),
           validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
         }),
       now: () => new Date().toISOString(),

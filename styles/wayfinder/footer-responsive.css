@@ -15,6 +15,37 @@
   gap: 0.25rem;
 }
 
+.footer-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 5.5rem;
+  color: var(--wf-ink-soft);
+  font: 600 0.7rem / 1 var(--sans-serif, sans-serif);
+}
+
+.footer-save-status[hidden] {
+  display: none;
+}
+
+.footer-save-status.saved {
+  color: #315f3b;
+}
+
+.footer-save-status.error {
+  color: #8f1f1f;
+}
+
+.footer-save-retry {
+  padding: 0.2rem 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: var(--wf-radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
 .footer-readiness {
   display: inline-flex;
   align-items: center;
@@ -150,6 +181,15 @@
   .footer-support,
   .step-nav-controls {
     flex-wrap: wrap;
+  }
+
+  .wayfinder-footer {
+    flex-wrap: wrap;
+  }
+
+  .footer-save-status {
+    order: 3;
+    width: 100%;
   }
 
   .boost-ability-grid,

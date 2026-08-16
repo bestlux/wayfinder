@@ -35,14 +35,15 @@ export class DraftPersistenceCoordinator {
             draft: snapshot,
         };
     }
-    schedule(draft) {
+    schedule(draft, options = {}) {
         this.#assertUsable();
         if (!this.#accepting) {
             throw new Error("Wayfinder draft persistence is paused.");
         }
         const snapshot = cloneData(draft);
         const fingerprint = draftFingerprint(snapshot);
-        if (fingerprint === this.#lastFingerprint) {
+        if (fingerprint === this.#lastFingerprint &&
+            (!options.force || this.#pending !== null || this.#state.phase === "saving")) {
             return this.#state.revision;
         }
         const revision = this.#state.revision + 1;

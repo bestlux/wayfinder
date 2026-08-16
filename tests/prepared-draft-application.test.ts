@@ -6,6 +6,7 @@ import {
 } from "../src/actor-updater/prepared-draft-application";
 import { createEmptyDraft } from "../src/draft-service";
 import type { ActorItemLike, EmbeddedItemSource } from "../src/shared/actor-model";
+import { enqueueActorOperation } from "../src/shared/actor-operation-queue";
 import type { PendingStep, SpellChoiceStep } from "../src/types";
 import { WayfinderDraftNotReadyError } from "../src/wayfinder/domain/step-evaluation";
 import { createLanguageChoiceStep } from "../src/wayfinder/domain/step-types";
@@ -493,6 +494,74 @@ describe("prepared draft application", () => {
     release?.();
     await Promise.all([first, second]);
     expect(order).toEqual(["first-start", "first-end", "second-start"]);
+  });
+
+  it("shares the actor queue with generic draft persistence writes", async () => {
+    const { actor } = buildActorHarness();
+    const order: string[] = [];
+    let release: (() => void) | null = null;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const save = enqueueActorOperation(actor, async () => {
+      order.push("save-start");
+      await barrier;
+      order.push("save-end");
+    });
+    const apply = applyDraftToActor(actor as never, createEmptyDraft(1), [], {
+      beforePhase: (phase) => {
+        if (phase === "singleton-replacements") order.push("apply-start");
+      },
+    });
+
+    await vi.waitFor(() => expect(order).toEqual(["save-start"]));
+    release?.();
+    await Promise.all([save, apply]);
+    expect(order).toEqual(["save-start", "save-end", "apply-start"]);
+  });
+
+  it("revalidates and resolves the final update inside the actor queue after earlier writes", async () => {
+    const { actor } = buildActorHarness();
+    let queuedState = "before";
+    let release: (() => void) | null = null;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const earlierWrite = enqueueActorOperation(actor, async () => {
+      await barrier;
+      queuedState = "after";
+    });
+    const beforePrepare = vi.fn(() => {
+      expect(queuedState).toBe("after");
+    });
+    const apply = applyDraftToActor(actor as never, createEmptyDraft(1), [], {
+      beforePrepare,
+      resolveFinalActorUpdate: () => ({ "flags.test.queuedState": queuedState }),
+    });
+
+    release?.();
+    await Promise.all([earlierWrite, apply]);
+
+    expect(beforePrepare).toHaveBeenCalledTimes(1);
+    expect(actor.update).toHaveBeenLastCalledWith(expect.objectContaining({ "flags.test.queuedState": "after" }));
+  });
+
+  it("performs no apply mutation when in-queue candidate validation fails", async () => {
+    const { actor } = buildActorHarness();
+
+    await expect(
+      applyDraftToActor(actor as never, createEmptyDraft(1), [], {
+        beforePrepare: () => {
+          throw new Error("candidate drifted");
+        },
+        resolveFinalActorUpdate: () => ({ "flags.test.applied": true }),
+      })
+    ).rejects.toThrow("candidate drifted");
+
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
   });
 
   it("uses invocation-time draft, steps, and final update for queued Apply", async () => {

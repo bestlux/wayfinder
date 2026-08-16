@@ -33,6 +33,7 @@ export type WayfinderAction =
   | { type: "target-up" }
   | { type: "target-down" }
   | { type: "save-draft" }
+  | { type: "retry-draft-save" }
   | { type: "apply-draft" }
   | { type: "import-existing-history" }
   | { type: "open-feedback" }
@@ -42,7 +43,7 @@ interface InteractionHandlers {
   onActionClick: (event: Event) => void | Promise<void>;
   onSearchInput: (event: Event) => void;
   onScrollableScroll: (event: Event) => void;
-  onManualChange: (event: Event) => void;
+  onManualChange: (event: Event) => void | Promise<void>;
   onLoreInputChange: (event: Event) => void | Promise<void>;
 }
 
@@ -112,6 +113,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
     case "target-up":
     case "target-down":
     case "save-draft":
+    case "retry-draft-save":
     case "apply-draft":
     case "import-existing-history":
     case "open-feedback":
@@ -189,5 +191,32 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
       return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
     default:
       return null;
+  }
+}
+
+export function isDraftMutationAction(action: WayfinderAction): boolean {
+  switch (action.type) {
+    case "select-option":
+    case "toggle-ancestry-mode":
+    case "toggle-voluntary-enabled":
+    case "toggle-voluntary-legacy":
+    case "toggle-boost-choice":
+    case "toggle-voluntary-choice":
+    case "select-skill-increase":
+    case "select-training-rule":
+    case "toggle-training-skill":
+    case "select-training-lore-suggestion":
+    case "toggle-language-choice":
+    case "select-singleton-choice":
+    case "select-class-archetype":
+    case "select-class-choice":
+    case "toggle-spell-choice":
+    case "toggle-spell-rarity-access":
+    case "clear-option":
+    case "target-up":
+    case "target-down":
+      return true;
+    default:
+      return false;
   }
 }

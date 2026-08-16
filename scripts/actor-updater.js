@@ -19,14 +19,18 @@ export function applyDraftToActor(actor, draft, steps, options = {}) {
         return inFlight;
     }
     const promise = enqueueActorOperation(actorKey, async () => {
+        await options.beforePrepare?.();
         const prepared = await prepareDraftApplication(actor, draftSnapshot, stepSnapshots, {
             validateActorAuthority: options.validateActorAuthority,
             validateSelectionEligibility: options.validateSelectionEligibility,
             validSkillSlugs: options.validSkillSlugs,
         });
+        const resolvedFinalActorUpdate = options.resolveFinalActorUpdate
+            ? cloneData(await options.resolveFinalActorUpdate())
+            : finalActorUpdate;
         const result = await executePreparedDraftApplication(prepared, {
             beforePhase: options.beforePhase,
-            finalActorUpdate,
+            finalActorUpdate: resolvedFinalActorUpdate,
         });
         return result.actorUpdate;
     });
@@ -49,7 +53,9 @@ function draftApplyOperationKey(draft, steps, options) {
         draft,
         steps,
         finalActorUpdate: options.finalActorUpdate ?? null,
+        beforePrepare: operationIdentity(options.beforePrepare),
         beforePhase: operationIdentity(options.beforePhase),
+        resolveFinalActorUpdate: operationIdentity(options.resolveFinalActorUpdate),
         validateActorAuthority: operationIdentity(options.validateActorAuthority),
         validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),
         validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,

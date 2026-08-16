@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const appTemplate = readFileSync(resolve("templates/wayfinder-app.hbs"), "utf8");
+const appSource = readFileSync(resolve("src/wayfinder/app-shell.ts"), "utf8");
 const footerStyles = readFileSync(resolve("styles/wayfinder/footer-responsive.css"), "utf8");
 
 describe("wayfinder readiness UI", () => {
@@ -14,5 +15,21 @@ describe("wayfinder readiness UI", () => {
     expect(appTemplate).toContain("{{applyBlocker.message}}");
     expect(appTemplate).toContain('aria-label="Apply Changes unavailable. {{applyBlocker.message}}"');
     expect(footerStyles).toMatch(/\.footer-readiness\s*\{/);
+  });
+
+  it("exposes truthful autosave state and a retry action without replacing readiness", () => {
+    expect(appTemplate).toContain("data-wayfinder-save-status");
+    expect(appTemplate).toContain('aria-live="{{draftSave.live}}"');
+    expect(appTemplate).toContain("data-wayfinder-save-message");
+    expect(appTemplate).toContain('data-wayfinder-action="retry-draft-save"');
+    expect(appTemplate).toContain('data-wayfinder-readiness-ready="{{readinessReady}}"');
+    expect(footerStyles).toMatch(/\.footer-save-status\s*\{/);
+    expect(footerStyles).toMatch(/\.footer-save-status\.error\s*\{/);
+    expect(footerStyles).toMatch(/\.footer-save-retry\s*\{/);
+  });
+
+  it("keeps draft-protected close handling in the Foundry window", () => {
+    expect(appSource).toMatch(/_canDetach\(\): boolean \{\s*return false;\s*\}/);
+    expect(appSource).toContain("this.#finalizeClosedState();");
   });
 });

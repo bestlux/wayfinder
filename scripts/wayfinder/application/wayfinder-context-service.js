@@ -8,6 +8,8 @@ export async function buildWayfinderContext(args) {
         .join(" • ") || "Creation path in progress";
     const activeStepIndex = args.activeStep ? args.steps.findIndex((step) => step.id === args.activeStep?.id) : -1;
     const readiness = args.readiness;
+    const draftSave = buildDraftSaveView(args.draftSaveState);
+    const lifecycleBusy = args.lifecycleBusy ?? false;
     if (readiness.evaluations.length !== args.steps.length) {
         throw new Error("Wayfinder readiness did not evaluate every planned step.");
     }
@@ -35,7 +37,8 @@ export async function buildWayfinderContext(args) {
         currentLevel: args.currentLevel,
         targetLevel: args.targetLevel,
         hasPendingSteps: args.steps.length > 0,
-        canApplyDraft: readiness.ready,
+        canApplyDraft: readiness.ready && !draftSave.error && !lifecycleBusy,
+        readinessReady: readiness.ready,
         applyBlocker: readiness.firstBlocker,
         guidance: "Review one decision at a time, keep the draft coherent, and let earlier choices narrow what comes next.",
         summary,
@@ -50,6 +53,27 @@ export async function buildWayfinderContext(args) {
         canGoNext: activeStepIndex >= 0 && activeStepIndex < args.steps.length - 1,
         canImportExistingHistory: args.canImportExistingHistory ?? false,
         existingCharacterHistory: buildExistingCharacterHistoryView(args.existingCharacterHistory ?? null),
+        draftSave,
+        lifecycleBusy,
+    };
+}
+export function buildDraftSaveView(state) {
+    const phase = state?.phase ?? "idle";
+    return {
+        phase,
+        visible: phase !== "idle",
+        saving: phase === "saving",
+        saved: phase === "saved",
+        error: phase === "error",
+        retryable: state?.retryable ?? false,
+        labelKey: phase === "saving"
+            ? "wayfinder-pf2e.App.DraftSaving"
+            : phase === "saved"
+                ? "wayfinder-pf2e.App.DraftSavedState"
+                : phase === "error"
+                    ? "wayfinder-pf2e.App.DraftSaveFailed"
+                    : "",
+        live: phase === "error" ? "assertive" : "polite",
     };
 }
 function buildExistingCharacterHistoryView(history) {

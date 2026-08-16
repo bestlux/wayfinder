@@ -4,7 +4,11 @@ import { createEmptyDraft, createEmptyState } from "../src/draft-service";
 import type { PendingStep } from "../src/types";
 import {
   applyDraftLifecycle,
+  type BuildApplyFinalActorUpdate,
+  buildClearDraftConfirmationMessage,
   buildSaveDraftUpdate,
+  clearDraftLifecycle,
+  countDraftLosses,
   createClearedDraftResult,
 } from "../src/wayfinder/application/draft-lifecycle-service";
 import type { WayfinderStepEvaluation } from "../src/wayfinder/domain/step-evaluation";
@@ -98,8 +102,9 @@ describe("wayfinder draft lifecycle service", () => {
     };
     const confirmApply = vi.fn(() => true);
     const order: string[] = [];
-    const applyDraftToActor = vi.fn(async (update: Record<string, unknown>) => {
+    const applyDraftToActor = vi.fn(async (buildFinalActorUpdate: BuildApplyFinalActorUpdate) => {
       order.push("apply");
+      const update = buildFinalActorUpdate();
       expect(update).toEqual({
         [DRAFT_FLAG]: null,
         [STATE_FLAG]: {
@@ -162,6 +167,79 @@ describe("wayfinder draft lifecycle service", () => {
     expect(order).toEqual(["confirm", "apply"]);
   });
 
+  it("flushes the confirmed candidate before applying it", async () => {
+    const order: string[] = [];
+    const result = await applyDraftLifecycle({
+      actorName: "Ezren",
+      currentLevel: 1,
+      draft: createEmptyDraft(2),
+      steps: [step("ancestry-level-1")],
+      evaluateStep: async () => readyEvaluation(),
+      confirmApply: async () => {
+        order.push("confirm");
+        return true;
+      },
+      beforeApply: async () => {
+        order.push("flush");
+      },
+      applyDraftToActor: async () => {
+        order.push("apply");
+      },
+    });
+
+    expect(result.kind).toBe("applied");
+    expect(order).toEqual(["confirm", "flush", "apply"]);
+  });
+
+  it("does not flush an invalid or cancelled candidate", async () => {
+    const beforeApply = vi.fn(async () => undefined);
+    const applyDraftToActor = vi.fn(async () => undefined);
+    const draft = createEmptyDraft(2);
+
+    await applyDraftLifecycle({
+      actorName: "Ezren",
+      currentLevel: 1,
+      draft,
+      steps: [step("ancestry-level-1")],
+      evaluateStep: async (pendingStep) => blockedEvaluation(pendingStep),
+      confirmApply: () => true,
+      beforeApply,
+      applyDraftToActor,
+    });
+    await applyDraftLifecycle({
+      actorName: "Ezren",
+      currentLevel: 1,
+      draft,
+      steps: [step("ancestry-level-1")],
+      evaluateStep: async () => readyEvaluation(),
+      confirmApply: () => false,
+      beforeApply,
+      applyDraftToActor,
+    });
+
+    expect(beforeApply).not.toHaveBeenCalled();
+    expect(applyDraftToActor).not.toHaveBeenCalled();
+  });
+
+  it("does not apply when the confirmed candidate cannot be flushed", async () => {
+    const applyDraftToActor = vi.fn(async () => undefined);
+    await expect(
+      applyDraftLifecycle({
+        actorName: "Ezren",
+        currentLevel: 1,
+        draft: createEmptyDraft(2),
+        steps: [step("ancestry-level-1")],
+        evaluateStep: async () => readyEvaluation(),
+        confirmApply: () => true,
+        beforeApply: async () => {
+          throw new Error("save failed");
+        },
+        applyDraftToActor,
+      })
+    ).rejects.toThrow("save failed");
+    expect(applyDraftToActor).not.toHaveBeenCalled();
+  });
+
   it("does not clear the saved draft when actor application fails", async () => {
     const draft = createEmptyDraft(2);
     draft.manual["ancestry-level-1"] = true;
@@ -185,7 +263,7 @@ describe("wayfinder draft lifecycle service", () => {
 
   it("preserves previously completed step ids during incremental applies", async () => {
     const draft = createEmptyDraft(5);
-    const applyDraftToActor = vi.fn(async () => undefined);
+    let buildFinalActorUpdate: BuildApplyFinalActorUpdate | null = null;
 
     await applyDraftLifecycle({
       actorName: "Seelah",
@@ -195,15 +273,64 @@ describe("wayfinder draft lifecycle service", () => {
       steps: [step("class-feat-level-2"), step("class-feat-level-2")],
       evaluateStep: async () => readyEvaluation(),
       confirmApply: () => true,
-      applyDraftToActor,
+      applyDraftToActor: async (buildUpdate) => {
+        buildFinalActorUpdate = buildUpdate;
+      },
       now: () => "2026-04-19T21:30:00.000Z",
     });
 
-    expect(applyDraftToActor).toHaveBeenCalledWith(
+    expect(buildFinalActorUpdate?.()).toEqual(
       expect.objectContaining({
         [STATE_FLAG]: expect.objectContaining({
           completedStepIds: ["ancestry-level-1", "class-level-1", "class-feat-level-2"],
         }),
+      })
+    );
+  });
+
+  it("merges completion and history from the state read inside the actor transaction", async () => {
+    const latestHistory = {
+      version: 1 as const,
+      importedAt: "2026-08-15T04:00:00.000Z",
+      actorLevel: 3,
+      entries: [],
+    };
+    let buildFinalActorUpdate: BuildApplyFinalActorUpdate | null = null;
+
+    await applyDraftLifecycle({
+      actorName: "Seelah",
+      currentLevel: 1,
+      draft: createEmptyDraft(3),
+      existingCompletedStepIds: ["ancestry-level-1"],
+      steps: [step("class-feat-level-2")],
+      evaluateStep: async () => readyEvaluation(),
+      confirmApply: () => true,
+      applyDraftToActor: async (buildUpdate) => {
+        buildFinalActorUpdate = buildUpdate;
+      },
+      now: () => "2026-08-15T04:30:00.000Z",
+    });
+
+    const update = buildFinalActorUpdate?.({
+      completedStepIds: ["ancestry-level-1", "class-level-1"],
+      existingCharacterHistory: latestHistory,
+    });
+    expect(update).toEqual(
+      expect.objectContaining({
+        [STATE_FLAG]: expect.objectContaining({
+          completedStepIds: ["ancestry-level-1", "class-level-1", "class-feat-level-2"],
+          existingCharacterHistory: latestHistory,
+        }),
+      })
+    );
+
+    const clearedHistoryUpdate = buildFinalActorUpdate?.({
+      completedStepIds: ["ancestry-level-1", "class-level-1"],
+      existingCharacterHistory: null,
+    });
+    expect(clearedHistoryUpdate).toEqual(
+      expect.objectContaining({
+        [STATE_FLAG]: expect.objectContaining({ existingCharacterHistory: null }),
       })
     );
   });
@@ -227,6 +354,96 @@ describe("wayfinder draft lifecycle service", () => {
         [DRAFT_FLAG]: null,
       },
     });
+  });
+
+  it("cancels Clear without touching persistence and describes discarded choices", async () => {
+    const draft = createEmptyDraft(3);
+    draft.manual.one = true;
+    draft.spellRarityAccess.spells = true;
+    draft.boosts.levels[1] = ["str", "dex"];
+    const confirmClear = vi.fn(() => false);
+    const clearPersistedDraft = vi.fn(async () => undefined);
+
+    const result = await clearDraftLifecycle({
+      currentLevel: 1,
+      draft,
+      confirmClear,
+      clearPersistedDraft,
+    });
+
+    expect(result).toEqual({ kind: "cancelled" });
+    expect(confirmClear).toHaveBeenCalledWith("Clear 5 drafted decisions? This cannot be undone.");
+    expect(clearPersistedDraft).not.toHaveBeenCalled();
+  });
+
+  it("returns a replacement draft only after Clear persistence succeeds", async () => {
+    const draft = createEmptyDraft(2);
+    draft.manual.one = true;
+    const order: string[] = [];
+    const result = await clearDraftLifecycle({
+      currentLevel: 1,
+      draft,
+      confirmClear: async () => {
+        order.push("confirm");
+        return true;
+      },
+      clearPersistedDraft: async () => {
+        order.push("clear");
+      },
+    });
+
+    expect(order).toEqual(["confirm", "clear"]);
+    expect(result).toMatchObject({
+      kind: "cleared",
+      discardedDecisionCount: 2,
+      nextDraft: { targetLevel: 1, manual: {} },
+    });
+  });
+
+  it("does not manufacture a replacement when Clear persistence fails", async () => {
+    const draft = createEmptyDraft(1);
+    draft.manual.one = true;
+    await expect(
+      clearDraftLifecycle({
+        currentLevel: 1,
+        draft,
+        confirmClear: () => true,
+        clearPersistedDraft: async () => {
+          throw new Error("clear failed");
+        },
+      })
+    ).rejects.toThrow("clear failed");
+    expect(draft.manual.one).toBe(true);
+  });
+
+  it("counts all current draft loss surfaces", () => {
+    const draft = createEmptyDraft(2);
+    draft.selections.ancestry = {
+      slotId: "ancestry",
+      packId: "pf2e.ancestries",
+      documentId: "human",
+      uuid: "Compendium.pf2e.ancestries.Item.human",
+      itemType: "ancestry",
+      featType: null,
+      name: "Human",
+      level: 1,
+    };
+    draft.skillTrainings.training = {
+      ruleChoices: { skill: "arcana" },
+      additional: ["society"],
+      loreChoices: { lore: "Library Lore" },
+    };
+    draft.languageChoices.languages = ["draconic"];
+    draft.spellRarityAccess.spells = true;
+    draft.boosts.ancestry.modeTouched = true;
+    draft.boosts.ancestry.voluntary.touched = true;
+    draft.boosts.ancestry.voluntary.flaws = ["str"];
+    draft.boosts.background.selectedBoosts.background = "wis";
+    draft.boosts.class.keyAbility = "int";
+
+    expect(countDraftLosses(draft, 1)).toBe(12);
+    expect(buildClearDraftConfirmationMessage(0)).toBe("Clear this empty Wayfinder draft?");
+    expect(buildClearDraftConfirmationMessage(1)).toContain("1 drafted decision?");
   });
 });
 

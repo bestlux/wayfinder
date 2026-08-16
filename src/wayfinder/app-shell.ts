@@ -7,7 +7,7 @@ import type {
 } from "../build-state/document-types.js";
 import type { EffectiveBuildState } from "../build-state.js";
 import { getEffectiveBuildState, getEffectiveSingletonDocument, listActorItems } from "../build-state.js";
-import { MODULE_ID, MODULE_TITLE, STATE_FLAG } from "../constants.js";
+import { DRAFT_FLAG, MODULE_ID, MODULE_TITLE, STATE_FLAG } from "../constants.js";
 import { createEmptyDraft, normalizeDraft, normalizeState } from "../draft-service.js";
 import { FeedbackSupportApp } from "../feedback-support-app.js";
 import { fetchSelectionDocument } from "../pack/access.js";
@@ -16,6 +16,8 @@ import { getPickerInfoState } from "../pack/picker-state.js";
 import { canUseWayfinder } from "../permissions.js";
 import type { SelectorActorLike } from "../selector-application.js";
 import { getSpellRarityCeilingSetting } from "../settings.js";
+import { enqueueActorOperation } from "../shared/actor-operation-queue.js";
+import { cloneData } from "../shared/cloning.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
@@ -27,7 +29,17 @@ import type {
   PickerFilterState,
   SelectionRef,
 } from "../types.js";
-import { bindWayfinderInteractions, parseWayfinderAction } from "./actions.js";
+import {
+  bindWayfinderInteractions,
+  isDraftMutationAction,
+  parseWayfinderAction,
+  type WayfinderAction,
+} from "./actions.js";
+import {
+  assertApplyCandidateCurrent,
+  persistApplyCandidateIfCurrent,
+  WayfinderApplyDriftError,
+} from "./application/apply-candidate-service.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
 import { buildSkillPane } from "./application/build-skill-pane-service.js";
 import {
@@ -50,8 +62,9 @@ import {
   type ApplyDraftLifecycleResult,
   applyDraftLifecycle,
   buildSaveDraftUpdate,
-  createClearedDraftResult,
+  clearDraftLifecycle,
 } from "./application/draft-lifecycle-service.js";
+import { DraftPersistenceCoordinator, type DraftSaveState } from "./application/draft-persistence-service.js";
 import {
   buildExistingCharacterHistory,
   withExistingCharacterHistory,
@@ -74,7 +87,12 @@ import {
   toggleSpellChoiceSelection,
 } from "./application/selection-command-service.js";
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
-import { buildWayfinderContext, type WayfinderTemplateContext } from "./application/wayfinder-context-service.js";
+import { SemanticCommandQueue } from "./application/semantic-command-queue.js";
+import {
+  buildDraftSaveView,
+  buildWayfinderContext,
+  type WayfinderTemplateContext,
+} from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
 import {
   evaluateWayfinderDraftReadiness,
@@ -185,6 +203,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #pendingStepFocusId: string | null = null;
   #recentlyInvalidatedStepIds = new Set<string>();
   #statusNote: string | null = null;
+  #draftPersistence: DraftPersistenceCoordinator;
+  #semanticCommands = new SemanticCommandQueue();
+  #closePromise: Promise<this> | null = null;
+  #lastDraftSavePhase: DraftSaveState["phase"] = "idle";
 
   static open(actor: WayfinderActorLike): void {
     if (!canUseWayfinder(actor)) {
@@ -212,6 +234,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       uniqueId: `${MODULE_ID}-${options.actor.id}`,
     });
     this.actor = options.actor;
+    this.#draftPersistence = new DraftPersistenceCoordinator({
+      saveDraft: (draft) =>
+        enqueueActorOperation(this.actor, async () => {
+          await this.actor.update(buildSaveDraftUpdate(draft));
+        }),
+      onStateChange: (state) => this.#onDraftSaveStateChange(state),
+    });
     this.actor.apps[this.id] = this;
   }
 
@@ -273,6 +302,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       readiness,
       canImportExistingHistory: !snapshot.isBlank,
       existingCharacterHistory: state.existingCharacterHistory,
+      draftSaveState: this.#draftPersistence.state,
+      lifecycleBusy: this.#semanticCommands.barrierActive,
     });
   }
 
@@ -304,13 +335,74 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#pendingStepFocusId = null;
     }
     WayfinderApp.#openApps.add(this);
+    this.#patchDraftSaveStatus(this.#draftPersistence.state);
   }
 
   _tearDown(options: unknown): void {
     try {
       super._tearDown(options);
     } finally {
-      WayfinderApp.#openApps.delete(this);
+      this.#finalizeClosedState();
+    }
+  }
+
+  _canDetach(): boolean {
+    return false;
+  }
+
+  close(options: Record<string, unknown> = {}): Promise<this> {
+    if (this.#closePromise !== null) {
+      return this.#closePromise;
+    }
+
+    const closing = this.#closeWithPersistence(options);
+    this.#closePromise = closing;
+    void closing
+      .finally(() => {
+        if (this.#closePromise === closing) {
+          this.#closePromise = null;
+        }
+      })
+      .catch(() => undefined);
+    return closing;
+  }
+
+  async #closeWithPersistence(options: Record<string, unknown>): Promise<this> {
+    const barrier = await this.#semanticCommands.acquireBarrier();
+    if (barrier === "acquired") {
+      try {
+        await this.#draftPersistence.pauseAndFlush();
+      } catch (error) {
+        this.#draftPersistence.resume();
+        this.#semanticCommands.releaseBarrier();
+        this.#statusNote =
+          "Wayfinder could not save the latest draft, so the window stayed open. Retry the save first.";
+        this.#patchDraftSaveStatus(this.#draftPersistence.state);
+        ui.notifications.error("Wayfinder kept this window open because the latest draft could not be saved.");
+        console.error("PF2E Wayfinder failed to save before close", error);
+        this.render(false);
+        return this;
+      }
+    }
+
+    try {
+      const closed = (await super.close(options)) as this;
+      this.#finalizeClosedState();
+      return closed;
+    } catch (error) {
+      if (barrier === "acquired") {
+        this.#draftPersistence.resume();
+        this.#semanticCommands.releaseBarrier();
+      }
+      throw error;
+    }
+  }
+
+  #finalizeClosedState(): void {
+    this.#semanticCommands.completeTerminalOperation();
+    this.#draftPersistence.dispose();
+    WayfinderApp.#openApps.delete(this);
+    if (this.actor.apps[this.id] === this) {
       delete this.actor.apps[this.id];
     }
   }
@@ -329,6 +421,72 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#openPickerFilterMenu = null;
     }
 
+    if (isDraftMutationAction(action)) {
+      const queued = this.#semanticCommands.enqueue(async () => {
+        const before = draftFingerprint(this.#draft);
+        try {
+          await this.#dispatchAction(action);
+        } finally {
+          if (draftFingerprint(this.#draft) !== before) {
+            this.#draftDidChange();
+          }
+        }
+      });
+      if (queued !== null) {
+        await queued;
+      }
+      return;
+    }
+
+    if (action.type === "save-draft" || action.type === "retry-draft-save") {
+      const queued = this.#semanticCommands.enqueue(() =>
+        action.type === "retry-draft-save" ? this.#retryDraftSave() : this.#saveDraft()
+      );
+      if (queued !== null) {
+        await queued;
+      }
+      return;
+    }
+
+    if (action.type === "apply-draft") {
+      const apply = this.#semanticCommands.runBarrier(() => this.#applyDraft());
+      if (apply !== null) {
+        const applied = await apply;
+        if (applied) {
+          await this.close({ animate: false });
+        } else {
+          this.render(false);
+        }
+      }
+      return;
+    }
+
+    if (action.type === "clear-draft") {
+      const clear = this.#semanticCommands.runBarrier(() => this.#clearDraft());
+      if (clear !== null) {
+        await clear;
+        this.render(false);
+      }
+      return;
+    }
+
+    if (action.type === "import-existing-history") {
+      const queued = this.#semanticCommands.enqueue(() => this.#importExistingHistory());
+      if (queued !== null) {
+        await queued;
+      }
+      return;
+    }
+
+    if (action.type === "open-feedback") {
+      FeedbackSupportApp.open();
+      return;
+    }
+
+    await this.#dispatchAction(action);
+  };
+
+  async #dispatchAction(action: WayfinderAction): Promise<void> {
     switch (action.type) {
       case "select-step":
         this.#activeStepId = action.stepId;
@@ -414,22 +572,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         await this.#adjustTargetLevel(-1);
         break;
       case "save-draft":
-        await this.#saveDraft();
-        break;
+      case "retry-draft-save":
       case "apply-draft":
-        await this.#applyDraft();
-        break;
       case "import-existing-history":
-        await this.#importExistingHistory();
-        break;
       case "open-feedback":
-        FeedbackSupportApp.open();
-        break;
       case "clear-draft":
-        await this.#clearDraft();
         break;
     }
-  };
+  }
 
   #onSearchInput = (event: Event): void => {
     const input = event.currentTarget as HTMLInputElement | null;
@@ -454,16 +604,24 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#scrollById.set(scrollId, scrollable.scrollTop);
   };
 
-  #onManualChange = (event: Event): void => {
+  #onManualChange = async (event: Event): Promise<void> => {
     const input = event.currentTarget as HTMLInputElement | null;
     const stepId = input?.dataset.stepId;
     if (!stepId) {
       return;
     }
 
-    this.#statusNote = null;
-    this.#openPickerFilterMenu = null;
-    if (setManualStepComplete(this.#draftAdjustmentState(), stepId, input.checked)) {
+    const queued = this.#semanticCommands.enqueue(async () => {
+      this.#statusNote = null;
+      this.#openPickerFilterMenu = null;
+      if (setManualStepComplete(this.#draftAdjustmentState(), stepId, input.checked)) {
+        this.#draftDidChange();
+        this.render(false);
+      }
+    });
+    if (queued !== null) {
+      await queued;
+    } else {
       this.render(false);
     }
   };
@@ -476,12 +634,27 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
-    await this.#setTrainingLore(stepId, key, input.value);
+    const queued = this.#semanticCommands.enqueue(async () => {
+      const before = draftFingerprint(this.#draft);
+      try {
+        await this.#setTrainingLore(stepId, key, input.value);
+      } finally {
+        if (draftFingerprint(this.#draft) !== before) {
+          this.#draftDidChange();
+        }
+      }
+    });
+    if (queued !== null) {
+      await queued;
+    } else {
+      this.render(false);
+    }
   };
 
   #ensureDraft(defaultTargetLevel: number): DraftState {
     if (!this.#draft) {
       this.#draft = normalizeDraft(this.actor.getFlag(MODULE_ID, "draft"), defaultTargetLevel);
+      this.#draftPersistence.initialize(this.#draft);
     }
     return this.#draft;
   }
@@ -489,6 +662,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #requireDraft(): DraftState {
     if (!this.#draft) {
       this.#draft = createEmptyDraft(1);
+      this.#draftPersistence.initialize(this.#draft);
     }
     return this.#draft;
   }
@@ -498,8 +672,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       actor: this.actor,
       snapshot,
       draft,
-      resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
-      resolveArcaneSchoolDocument: () => this.#resolveDraftOrActorArcaneSchoolDocument(),
+      resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType, draft),
+      resolveArcaneSchoolDocument: () => this.#resolveDraftOrActorArcaneSchoolDocument(draft),
       localize: (value) => game.i18n.localize(value),
     });
   }
@@ -510,8 +684,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         actor: this.actor,
         snapshot,
         draft,
-        resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
-        resolveArcaneSchoolDocument: () => this.#resolveDraftOrActorArcaneSchoolDocument(),
+        resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType, draft),
+        resolveArcaneSchoolDocument: () => this.#resolveDraftOrActorArcaneSchoolDocument(draft),
         localize: (value) => game.i18n.localize(value),
       },
       slotId
@@ -954,12 +1128,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     return game.i18n.localize(abilities?.[attribute] ?? attribute.toUpperCase());
   }
 
-  async #resolveDraftOrActorDocument(itemType: SingletonItemType): Promise<ResolvedBuildStateDocument | null> {
-    return getEffectiveSingletonDocument(this.actor, this.#requireDraft(), itemType);
+  async #resolveDraftOrActorDocument(
+    itemType: SingletonItemType,
+    draft = this.#requireDraft()
+  ): Promise<ResolvedBuildStateDocument | null> {
+    return getEffectiveSingletonDocument(this.actor, draft, itemType);
   }
 
-  async #resolveDraftOrActorArcaneSchoolDocument(): Promise<ArcaneSchoolSourceLike | null> {
-    const draftSelection = Object.values(this.#requireDraft().branchSelections).find((selection) =>
+  async #resolveDraftOrActorArcaneSchoolDocument(draft = this.#requireDraft()): Promise<ArcaneSchoolSourceLike | null> {
+    const draftSelection = Object.values(draft.branchSelections).find((selection) =>
       isWizardArcaneSchoolSlotId(selection.slotId)
     );
     if (draftSelection) {
@@ -1099,23 +1276,97 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (!adjustDraftTargetLevel(draft, snapshot.level, delta)) {
       return;
     }
-    await this.#saveDraft(false);
     this.render(false);
   }
 
-  async #saveDraft(notify = true): Promise<void> {
-    await this.actor.update(buildSaveDraftUpdate(this.#requireDraft()));
-
-    if (notify) {
+  async #saveDraft(): Promise<void> {
+    try {
+      this.#draftPersistence.schedule(this.#requireDraft(), { force: true });
+      if (this.#draftPersistence.state.phase === "error") {
+        await this.#draftPersistence.retry();
+      } else {
+        await this.#draftPersistence.flush();
+      }
       ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.SavedDraft"));
+    } catch (error) {
+      console.error("PF2E Wayfinder failed to save draft", error);
+      ui.notifications.error("Wayfinder could not save this draft. Review the save status and retry.");
+    }
+    this.render(false);
+  }
+
+  async #retryDraftSave(): Promise<void> {
+    try {
+      this.#draftPersistence.schedule(this.#requireDraft());
+      await this.#draftPersistence.retry();
+      ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.SavedDraft"));
+    } catch (error) {
+      console.error("PF2E Wayfinder failed to retry draft save", error);
+      ui.notifications.error("Wayfinder still could not save this draft.");
+    }
+    this.render(false);
+  }
+
+  #draftDidChange(): void {
+    this.#draftPersistence.schedule(this.#requireDraft());
+    this.#patchDraftSaveStatus(this.#draftPersistence.state);
+  }
+
+  #onDraftSaveStateChange(state: DraftSaveState): void {
+    if (state.phase === "error" && this.#lastDraftSavePhase !== "error") {
+      ui.notifications.error("Wayfinder could not autosave the latest draft. Retry from the footer.");
+    }
+    this.#lastDraftSavePhase = state.phase;
+    this.#patchDraftSaveStatus(state);
+  }
+
+  #patchDraftSaveStatus(state: DraftSaveState): void {
+    const root = this.element;
+    if (!(root instanceof HTMLElement)) {
+      return;
+    }
+
+    const view = buildDraftSaveView(state);
+    const status = root.querySelector<HTMLElement>("[data-wayfinder-save-status]");
+    if (status) {
+      status.hidden = !view.visible;
+      status.dataset.phase = view.phase;
+      status.classList.remove("idle", "saving", "saved", "error");
+      status.classList.add(view.phase);
+      status.setAttribute("role", view.error ? "alert" : "status");
+      status.setAttribute("aria-live", view.live);
+      const message = status.querySelector<HTMLElement>("[data-wayfinder-save-message]");
+      if (message) {
+        message.textContent = game.i18n.localize(view.labelKey);
+      }
+      const icon = status.querySelector<HTMLElement>("i");
+      if (icon) {
+        icon.className = view.saving
+          ? "fa-solid fa-spinner fa-spin"
+          : view.saved
+            ? "fa-solid fa-circle-check"
+            : "fa-solid fa-triangle-exclamation";
+      }
+      const retry = status.querySelector<HTMLButtonElement>("[data-wayfinder-action='retry-draft-save']");
+      if (retry) {
+        retry.hidden = !view.retryable;
+      }
+    }
+
+    const apply = root.querySelector<HTMLButtonElement>("[data-wayfinder-action='apply-draft']");
+    if (apply) {
+      apply.disabled =
+        apply.dataset.wayfinderReadinessReady !== "true" || view.error || this.#semanticCommands.barrierActive;
     }
   }
 
-  async #applyDraft(): Promise<void> {
+  async #applyDraft(): Promise<boolean> {
     this.#statusNote = null;
     const snapshot = inspectActor(this.actor);
-    const draft = this.#requireDraft();
+    const draft = cloneData(this.#requireDraft());
+    const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
     const plan = await this.#buildPlan(snapshot, draft);
+    const steps = cloneData(plan.steps);
     const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
     let result: ApplyDraftLifecycleResult;
     try {
@@ -1123,21 +1374,53 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         actorName: this.actor.name,
         currentLevel: snapshot.level,
         draft,
-        existingCompletedStepIds: readActorCompletedStepIds(this.actor),
-        existingCharacterHistory: normalizeState(this.actor.getFlag(MODULE_ID, "state")).existingCharacterHistory,
-        steps: plan.steps,
+        existingCompletedStepIds: state.completedStepIds,
+        existingCharacterHistory: state.existingCharacterHistory,
+        steps,
         evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft),
         confirmApply: confirmWayfinderApply,
-        applyDraftToActor: (finalActorUpdate) =>
-          applyDraftToActor(this.actor, draft, plan.steps, {
-            finalActorUpdate,
+        beforeApply: () =>
+          persistApplyCandidateIfCurrent(
+            {
+              actorSnapshot: snapshot,
+              stateSnapshot: state,
+              draftSnapshot: draft,
+              stepSnapshots: steps,
+              currentDraft: () => this.#draft,
+              inspectCurrentActor: () => inspectActor(this.actor),
+              readCurrentState: () => normalizeState(this.actor.getFlag(MODULE_ID, "state")),
+              buildCurrentSteps: async (currentSnapshot, currentDraft) =>
+                (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
+            },
+            async () => {
+              this.#draftPersistence.schedule(draft, { force: true });
+              await this.#draftPersistence.pauseAndFlush();
+            }
+          ),
+        applyDraftToActor: (buildFinalActorUpdate) =>
+          applyDraftToActor(this.actor, draft, steps, {
+            beforePrepare: () =>
+              assertApplyCandidateCurrent({
+                actorSnapshot: snapshot,
+                stateSnapshot: state,
+                draftSnapshot: draft,
+                stepSnapshots: steps,
+                currentDraft: () => this.#draft,
+                inspectCurrentActor: () => inspectActor(this.actor),
+                readCurrentState: () => normalizeState(this.actor.getFlag(MODULE_ID, "state")),
+                buildCurrentSteps: async (currentSnapshot, currentDraft) =>
+                  (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
+              }),
+            resolveFinalActorUpdate: () =>
+              buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state"))),
             validateActorAuthority: canUseWayfinder,
             validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
             validateSelectionEligibility: (selection, step) =>
-              this.#validateSelectionEligibility(selection, step, draft, plan.steps, snapshot.skillRanks),
+              this.#validateSelectionEligibility(selection, step, draft, steps, snapshot.skillRanks),
           }).then(() => undefined),
       });
     } catch (error) {
+      this.#draftPersistence.resume();
       if (error instanceof WayfinderDraftNotReadyError) {
         const blocker = error.blockers[0];
         this.#activeStepId = blocker?.stepId ?? this.#activeStepId;
@@ -1145,17 +1428,24 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#statusNote = blocker?.message ?? error.message;
         ui.notifications.warn(game.i18n.localize("wayfinder-pf2e.Notifications.MissingSelections"));
         this.render(false);
-        return;
+        return false;
+      }
+      if (error instanceof WayfinderApplyDriftError) {
+        this.#statusNote = error.message;
+        ui.notifications.warn(error.message);
+        this.render(false);
+        return false;
       }
       console.error("PF2E Wayfinder failed to apply draft", error);
       this.#statusNote =
         "Wayfinder could not apply this draft. The draft was kept for review; details are in the console.";
       ui.notifications.error(game.i18n.localize("wayfinder-pf2e.Notifications.ApplyFailed"));
       this.render(false);
-      return;
+      return false;
     }
 
     if (result.kind === "warning") {
+      this.#draftPersistence.resume();
       this.#statusNote = result.blockers[0]?.message ?? null;
       const notificationKey =
         result.warning === "no-pending-steps"
@@ -1163,18 +1453,21 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           : "wayfinder-pf2e.Notifications.MissingSelections";
       ui.notifications.warn(game.i18n.localize(notificationKey));
       this.render(false);
-      return;
+      return false;
     }
 
     if (result.kind === "cancelled") {
+      this.#draftPersistence.resume();
       ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.ApplyCancelled"));
-      return;
+      return false;
     }
 
+    this.#draftPersistence.completeTerminalOperation();
+    this.#semanticCommands.completeTerminalOperation();
     this.#draft = result.nextDraft;
     this.#recentlyInvalidatedStepIds.clear();
     ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.Applied"));
-    await this.close({ animate: false });
+    return true;
   }
 
   async #validateSelectionEligibility(
@@ -1204,7 +1497,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       excludedFeatSlotId: step.slotId,
       maximumFeatLevel: step.level,
       skillRanks,
-      resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+      resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType, draft),
       listActorItems: () => listActorItems(this.actor),
       fetchSelectionDocument,
       extractDocumentSlug,
@@ -1222,12 +1515,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   async #importExistingHistory(): Promise<void> {
-    const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
     const history = await buildExistingCharacterHistory(this.actor, {
       gradualBoostsEnabled: inspectActor(this.actor).gradualBoostsEnabled,
     });
-    await this.actor.update({
-      [STATE_FLAG]: withExistingCharacterHistory(state, history),
+    await enqueueActorOperation(this.actor, async () => {
+      const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
+      await this.actor.update({
+        [STATE_FLAG]: withExistingCharacterHistory(state, history),
+      });
     });
     const mappedCount = history.entries.filter((entry) => entry.status === "mapped").length;
     const reviewCount = history.entries.length - mappedCount;
@@ -1239,14 +1534,40 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   async #clearDraft(): Promise<void> {
     this.#statusNote = null;
     const snapshot = inspectActor(this.actor);
-    const cleared = createClearedDraftResult(snapshot.level);
-    this.#draft = cleared.nextDraft;
+    const draft = this.#requireDraft();
+    let result: Awaited<ReturnType<typeof clearDraftLifecycle>>;
+    try {
+      result = await clearDraftLifecycle({
+        currentLevel: snapshot.level,
+        draft,
+        confirmClear: confirmWayfinderClear,
+        clearPersistedDraft: () =>
+          this.#draftPersistence.discardAndRun(() =>
+            enqueueActorOperation(this.actor, async () => {
+              await this.actor.update({ [DRAFT_FLAG]: null });
+            })
+          ),
+      });
+    } catch (error) {
+      console.error("PF2E Wayfinder failed to clear draft", error);
+      this.#statusNote =
+        "Wayfinder could not clear this draft. Nothing was removed; retry the save or Clear Draft again.";
+      ui.notifications.error("Wayfinder could not clear the draft. Your choices are still open for review.");
+      this.render(false);
+      return;
+    }
+
+    if (result.kind === "cancelled") {
+      return;
+    }
+
+    this.#draft = result.nextDraft;
+    this.#draftPersistence.reset(result.nextDraft);
     this.#searchByStepId.clear();
     this.#pickerFiltersByStepId.clear();
     this.#openPickerFilterMenu = null;
     this.#previewValueByStepId.clear();
     this.#recentlyInvalidatedStepIds.clear();
-    await this.actor.update(cleared.actorUpdate);
     ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.ClearedDraft"));
     this.render(false);
   }
@@ -1295,12 +1616,8 @@ function actorItemLocationId(item: BuildStateActorItem): string | null {
   return null;
 }
 
-function readActorCompletedStepIds(actor: unknown): string[] {
-  const completedStepIds = (actor as { flags?: { [MODULE_ID]?: { state?: { completedStepIds?: unknown } } } } | null)
-    ?.flags?.[MODULE_ID]?.state?.completedStepIds;
-  return Array.isArray(completedStepIds)
-    ? completedStepIds.filter((stepId): stepId is string => typeof stepId === "string")
-    : [];
+function draftFingerprint(draft: DraftState | null): string {
+  return draft ? JSON.stringify(draft) : "null";
 }
 
 function getPf2eConfig(): Pf2eConfigLike | null {
@@ -1323,6 +1640,24 @@ async function confirmWayfinderApply(message: string): Promise<boolean> {
   }
 
   return typeof globalThis.confirm === "function" ? globalThis.confirm(message) : true;
+}
+
+async function confirmWayfinderClear(message: string): Promise<boolean> {
+  const foundryApi = foundry as unknown as FoundryDialogApiLike;
+  const dialog = foundryApi.applications?.api?.DialogV2;
+  if (dialog) {
+    const escapeHTML = foundryApi.utils?.escapeHTML ?? fallbackEscapeHtml;
+    const result = await dialog.confirm({
+      window: { title: "Clear Wayfinder Draft" },
+      content: `<p>${escapeHTML(message)}</p>`,
+      modal: true,
+      yes: { label: "Clear Draft", icon: "fa-solid fa-trash" },
+      no: { label: "Cancel", icon: "fa-solid fa-xmark", default: true },
+    });
+    return result === true;
+  }
+
+  return typeof globalThis.confirm === "function" ? globalThis.confirm(message) : false;
 }
 
 function fallbackEscapeHtml(value: string): string {

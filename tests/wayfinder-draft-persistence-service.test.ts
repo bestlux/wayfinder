@@ -103,6 +103,18 @@ describe("Wayfinder draft persistence coordinator", () => {
     expect(saveDraft).toHaveBeenCalledTimes(1);
   });
 
+  it("can force an unchanged baseline to become durable", async () => {
+    const saveDraft = vi.fn(async () => undefined);
+    const coordinator = new DraftPersistenceCoordinator({ saveDraft });
+    const draft = createEmptyDraft(1);
+    coordinator.initialize(draft);
+
+    coordinator.schedule(draft, { force: true });
+    await coordinator.flush();
+    expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({ targetLevel: 1 }));
+    expect(coordinator.state).toMatchObject({ phase: "saved", revision: 1, durableRevision: 1 });
+  });
+
   it("pauses new scheduling until persistence is resumed", async () => {
     const coordinator = new DraftPersistenceCoordinator({ saveDraft: async () => undefined });
     const draft = createEmptyDraft(1);

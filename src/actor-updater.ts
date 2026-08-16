@@ -15,8 +15,10 @@ type DraftMutationActor = SelectorActorLike &
   };
 
 export interface ApplyDraftOptions {
+  beforePrepare?: () => void | Promise<void>;
   beforePhase?: (phase: DraftApplyPhase) => void | Promise<void>;
   finalActorUpdate?: Record<string, unknown>;
+  resolveFinalActorUpdate?: () => Record<string, unknown> | Promise<Record<string, unknown>>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
   validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
   validSkillSlugs?: ReadonlySet<string>;
@@ -47,14 +49,18 @@ export function applyDraftToActor(
   }
 
   const promise = enqueueActorOperation(actorKey, async () => {
+    await options.beforePrepare?.();
     const prepared = await prepareDraftApplication(actor, draftSnapshot, stepSnapshots, {
       validateActorAuthority: options.validateActorAuthority,
       validateSelectionEligibility: options.validateSelectionEligibility,
       validSkillSlugs: options.validSkillSlugs,
     });
+    const resolvedFinalActorUpdate = options.resolveFinalActorUpdate
+      ? cloneData(await options.resolveFinalActorUpdate())
+      : finalActorUpdate;
     const result = await executePreparedDraftApplication(prepared, {
       beforePhase: options.beforePhase,
-      finalActorUpdate,
+      finalActorUpdate: resolvedFinalActorUpdate,
     });
     return result.actorUpdate;
   });
@@ -80,7 +86,9 @@ function draftApplyOperationKey(draft: DraftState, steps: PendingStep[], options
     draft,
     steps,
     finalActorUpdate: options.finalActorUpdate ?? null,
+    beforePrepare: operationIdentity(options.beforePrepare),
     beforePhase: operationIdentity(options.beforePhase),
+    resolveFinalActorUpdate: operationIdentity(options.resolveFinalActorUpdate),
     validateActorAuthority: operationIdentity(options.validateActorAuthority),
     validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),
     validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,

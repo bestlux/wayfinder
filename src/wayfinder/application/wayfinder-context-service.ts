@@ -2,6 +2,7 @@ import type { ExistingCharacterHistory, ExistingCharacterHistoryEntry, PendingSt
 import { type WayfinderDraftReadiness, type WayfinderStepIssue } from "../domain/step-evaluation.js";
 import { modeLabel } from "../plan-service.js";
 import type { ActivePane, StepNavRow, SummaryItem } from "../view-models.js";
+import type { DraftSaveState } from "./draft-persistence-service.js";
 
 interface NamedDocument {
   name: string;
@@ -28,6 +29,8 @@ export interface BuildWayfinderContextArgs {
   readiness: WayfinderDraftReadiness;
   canImportExistingHistory?: boolean;
   existingCharacterHistory?: ExistingCharacterHistory | null;
+  draftSaveState?: DraftSaveState;
+  lifecycleBusy?: boolean;
 }
 
 export interface WayfinderTemplateContext {
@@ -37,6 +40,7 @@ export interface WayfinderTemplateContext {
   targetLevel: number;
   hasPendingSteps: boolean;
   canApplyDraft: boolean;
+  readinessReady: boolean;
   applyBlocker: WayfinderStepIssue | null;
   guidance: string;
   summary: SummaryItem[];
@@ -51,6 +55,19 @@ export interface WayfinderTemplateContext {
   canGoNext: boolean;
   canImportExistingHistory: boolean;
   existingCharacterHistory: ExistingCharacterHistoryView | null;
+  draftSave: DraftSaveView;
+  lifecycleBusy: boolean;
+}
+
+export interface DraftSaveView {
+  phase: DraftSaveState["phase"];
+  visible: boolean;
+  saving: boolean;
+  saved: boolean;
+  error: boolean;
+  retryable: boolean;
+  labelKey: string;
+  live: "polite" | "assertive";
 }
 
 export interface ExistingCharacterHistoryView {
@@ -74,6 +91,8 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
       .join(" • ") || "Creation path in progress";
   const activeStepIndex = args.activeStep ? args.steps.findIndex((step) => step.id === args.activeStep?.id) : -1;
   const readiness = args.readiness;
+  const draftSave = buildDraftSaveView(args.draftSaveState);
+  const lifecycleBusy = args.lifecycleBusy ?? false;
   if (readiness.evaluations.length !== args.steps.length) {
     throw new Error("Wayfinder readiness did not evaluate every planned step.");
   }
@@ -102,7 +121,8 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
     currentLevel: args.currentLevel,
     targetLevel: args.targetLevel,
     hasPendingSteps: args.steps.length > 0,
-    canApplyDraft: readiness.ready,
+    canApplyDraft: readiness.ready && !draftSave.error && !lifecycleBusy,
+    readinessReady: readiness.ready,
     applyBlocker: readiness.firstBlocker,
     guidance: "Review one decision at a time, keep the draft coherent, and let earlier choices narrow what comes next.",
     summary,
@@ -117,6 +137,29 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
     canGoNext: activeStepIndex >= 0 && activeStepIndex < args.steps.length - 1,
     canImportExistingHistory: args.canImportExistingHistory ?? false,
     existingCharacterHistory: buildExistingCharacterHistoryView(args.existingCharacterHistory ?? null),
+    draftSave,
+    lifecycleBusy,
+  };
+}
+
+export function buildDraftSaveView(state?: DraftSaveState): DraftSaveView {
+  const phase = state?.phase ?? "idle";
+  return {
+    phase,
+    visible: phase !== "idle",
+    saving: phase === "saving",
+    saved: phase === "saved",
+    error: phase === "error",
+    retryable: state?.retryable ?? false,
+    labelKey:
+      phase === "saving"
+        ? "wayfinder-pf2e.App.DraftSaving"
+        : phase === "saved"
+          ? "wayfinder-pf2e.App.DraftSavedState"
+          : phase === "error"
+            ? "wayfinder-pf2e.App.DraftSaveFailed"
+            : "",
+    live: phase === "error" ? "assertive" : "polite",
   };
 }
 

@@ -23,16 +23,22 @@ export async function applyDraftLifecycle(args) {
             kind: "cancelled",
         };
     }
-    const completedStepIds = mergeCompletedStepIds(args.existingCompletedStepIds ?? [], args.steps);
-    await args.applyDraftToActor({
-        [DRAFT_FLAG]: null,
-        [STATE_FLAG]: {
-            ...createEmptyState(),
-            lastAppliedAt: (args.now ?? defaultNow)(),
-            lastTargetLevel: args.draft.targetLevel,
-            completedStepIds,
-            existingCharacterHistory: args.existingCharacterHistory ?? null,
-        },
+    await args.beforeApply?.();
+    const appliedAt = (args.now ?? defaultNow)();
+    await args.applyDraftToActor((currentState) => {
+        const completedStepIds = mergeCompletedStepIds(currentState?.completedStepIds ?? args.existingCompletedStepIds ?? [], args.steps);
+        return {
+            [DRAFT_FLAG]: null,
+            [STATE_FLAG]: {
+                ...createEmptyState(),
+                lastAppliedAt: appliedAt,
+                lastTargetLevel: args.draft.targetLevel,
+                completedStepIds,
+                existingCharacterHistory: currentState
+                    ? currentState.existingCharacterHistory
+                    : (args.existingCharacterHistory ?? null),
+            },
+        };
     });
     return {
         kind: "applied",
@@ -57,6 +63,55 @@ export function createClearedDraftResult(currentLevel) {
             [DRAFT_FLAG]: null,
         },
     };
+}
+export async function clearDraftLifecycle(args) {
+    const discardedDecisionCount = countDraftLosses(args.draft, args.currentLevel);
+    const confirmed = await args.confirmClear(buildClearDraftConfirmationMessage(discardedDecisionCount));
+    if (!confirmed) {
+        return { kind: "cancelled" };
+    }
+    await args.clearPersistedDraft();
+    return {
+        kind: "cleared",
+        nextDraft: createEmptyDraft(args.currentLevel),
+        discardedDecisionCount,
+    };
+}
+export function countDraftLosses(draft, currentLevel) {
+    let count = draft.targetLevel !== currentLevel ? 1 : 0;
+    count += Object.keys(draft.selections).length;
+    count += Object.values(draft.manual).filter(Boolean).length;
+    count += Object.keys(draft.skillIncreases).length;
+    count += Object.keys(draft.branchSelections).length;
+    count += Object.keys(draft.classArchetypeChoices).length;
+    count += Object.keys(draft.singletonChoices).length;
+    count += Object.keys(draft.classChoices).length;
+    count += Object.values(draft.languageChoices).reduce((total, values) => total + values.length, 0);
+    count += Object.values(draft.spellChoices).reduce((total, values) => total + values.length, 0);
+    count += Object.values(draft.spellRarityAccess).filter(Boolean).length;
+    for (const training of Object.values(draft.skillTrainings)) {
+        count += Object.keys(training.ruleChoices).length;
+        count += training.additional.length;
+        count += Object.keys(training.loreChoices).length;
+    }
+    const ancestry = draft.boosts.ancestry;
+    count += ancestry.modeTouched ? 1 : 0;
+    count += Object.values(ancestry.selectedBoosts).filter((value) => value !== null).length;
+    count += ancestry.alternateBoosts.length;
+    count += ancestry.voluntary.touched ? 1 : 0;
+    count += ancestry.voluntary.flaws.length;
+    count += ancestry.voluntary.boost ? 1 : 0;
+    count += Object.values(draft.boosts.background.selectedBoosts).filter((value) => value !== null).length;
+    count += draft.boosts.class.keyAbility ? 1 : 0;
+    count += Object.values(draft.boosts.levels).reduce((total, values) => total + values.length, 0);
+    return count;
+}
+export function buildClearDraftConfirmationMessage(discardedDecisionCount) {
+    if (discardedDecisionCount === 0) {
+        return "Clear this empty Wayfinder draft?";
+    }
+    const noun = discardedDecisionCount === 1 ? "decision" : "decisions";
+    return `Clear ${discardedDecisionCount} drafted ${noun}? This cannot be undone.`;
 }
 function buildApplyConfirmationMessage(actorName, stepCount) {
     return `Apply ${stepCount} Wayfinder step(s) to ${actorName}?`;

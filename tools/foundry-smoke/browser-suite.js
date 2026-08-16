@@ -53,6 +53,7 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
   };
 
   return {
+    schemaVersion: 2,
     startedAt,
     finishedAt: new Date().toISOString(),
     foundryVersion: game.version ?? null,
@@ -61,7 +62,12 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
     moduleVersion: moduleRecord.version ?? moduleRecord.manifest?.version ?? null,
     pf2eVersion: game.system?.version ?? null,
     summary,
-    user: game.user?.name ?? null,
+    user: {
+      id: game.user?.id ?? null,
+      name: game.user?.name ?? null,
+      role: Number(game.user?.role),
+      isGM: Boolean(game.user?.isGM),
+    },
     world: game.world?.id ?? null,
     cases: results,
   };
@@ -96,9 +102,10 @@ globalThis.__prepareWayfinderPickerProfile = async function prepareWayfinderPick
     actor = await Actor.create({
       name: `${fixturePrefix} - ${profile.id}`,
       type: "character",
-      ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER },
+      ownership: fixtureOwnershipFor(game.user),
       system: { details: { level: { value: 1 } } },
     });
+    await enforceFixtureOwnership(actor, game.user);
     const failures = [];
     await seedActorSkillRanks(actor, smokeCase);
     await seedActorItems(actor, smokeCase, failures);
@@ -295,9 +302,10 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
     actor = await Actor.create({
       name: `${prefix} - ${smokeCase.id}`,
       type: "character",
-      ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER },
+      ownership: fixtureOwnershipFor(game.user),
       system: { details: { level: { value: 1 } } },
     });
+    await enforceFixtureOwnership(actor, game.user);
     await seedActorSkillRanks(actor, smokeCase);
     await seedActorItems(actor, smokeCase, failures);
 
@@ -359,7 +367,6 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
     const actorEvidence = collectActorEvidence(actor, modules, moduleId);
     validateAppliedCase({
       actorEvidence,
-      classifications,
       dialogsAfter,
       dialogsBefore,
       failures,
@@ -376,6 +383,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
       actor: actorEvidence,
       classifications,
       evidence: {
+        acquisition: emptyAcquisitionEvidence(),
         dialogsAfter,
         dialogsBefore,
         fillIterations: fillResult.iterations,
@@ -395,7 +403,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
       status: "fail",
       actor: actor ? collectActorEvidence(actor, modules, moduleId) : null,
       classifications,
-      evidence: {},
+      evidence: { acquisition: emptyAcquisitionEvidence() },
       failures: [errorToString(error)],
       warnings,
     };
@@ -464,9 +472,10 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
     actor = await Actor.create({
       name: `${prefix} - incremental - ${smokeCase.id}`,
       type: "character",
-      ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER },
+      ownership: fixtureOwnershipFor(game.user),
       system: { details: { level: { value: 1 } } },
     });
+    await enforceFixtureOwnership(actor, game.user);
 
     const initialCase = { ...smokeCase, targetLevel: 1 };
     const initialDraft = modules.createEmptyDraft(initialCase.targetLevel);
@@ -521,7 +530,6 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
     const actorEvidence = collectActorEvidence(actor, modules, moduleId);
     validateIncrementalCase({
       actorEvidence,
-      classifications,
       dialogsAfter,
       dialogsBefore,
       failures,
@@ -540,6 +548,7 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
       actor: actorEvidence,
       classifications,
       evidence: {
+        acquisition: emptyAcquisitionEvidence(),
         dialogsAfter,
         dialogsBefore,
         incrementalIncompleteBeforeApply: incrementalIncomplete.map(stepSummary),
@@ -559,7 +568,7 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
       status: "fail",
       actor: actor ? collectActorEvidence(actor, modules, moduleId) : null,
       classifications,
-      evidence: {},
+      evidence: { acquisition: emptyAcquisitionEvidence() },
       failures: [errorToString(error)],
       warnings,
     };
@@ -1203,68 +1212,87 @@ function pickInlineOption(options, step, smokeCase) {
 }
 
 function collectActorEvidence(actor, modules, moduleId) {
-  const items = modules.listActorItems(actor).map((item) => ({
-    id: item.id,
-    name: item.name,
-    slotId: item.flags?.[moduleId]?.slotId ?? null,
-    destinationKey: item.flags?.[moduleId]?.destinationKey ?? null,
-    grantedById: item.flags?.pf2e?.grantedBy?.id ?? null,
-    grantRules: (Array.isArray(item.system?.rules) ? item.system.rules : []).flatMap((rule) =>
-      rule?.key === "GrantItem"
-        ? [
-            {
-              allowDuplicate: rule.allowDuplicate ?? null,
-              flag: rule.flag ?? null,
-              uuid: rule.uuid ?? null,
-            },
-          ]
-        : [],
-    ),
-    location:
-      typeof item.system?.location === "string" ? item.system.location : (item.system?.location?.value ?? null),
-    ruleSelections: item.flags?.pf2e?.rulesSelections ?? {},
-    sourceId: modules.sourceIdOf(item),
-    traits: Array.isArray(item.system?.traits?.value) ? item.system.traits.value : [],
-    spellcasting:
-      item.type === "spellcastingEntry"
-        ? {
-            ability: item.system?.ability?.value ?? null,
-            prepared: item.system?.prepared?.value ?? null,
-            proficiencySlug: item.system?.proficiency?.slug ?? null,
-            slots: Object.fromEntries(
-              Object.entries(item.system?.slots ?? {}).map(([slotKey, group]) => [
-                slotKey,
-                {
-                  max: Number(group?.max ?? 0),
-                  prepared: Array.isArray(group?.prepared)
-                    ? group.prepared.map((slot) => slot?.id ?? null)
-                    : [],
-                },
-              ]),
-            ),
-            tradition: item.system?.tradition?.value ?? null,
-          }
-        : null,
-    trainingKey: item.flags?.[moduleId]?.trainingKey ?? null,
-    type: item.type,
-  }));
+  const rawItems = modules.listActorItems(actor);
+  const itemsById = new Map(rawItems.flatMap((item) => (item.id ? [[item.id, item]] : [])));
+  const items = rawItems.map((item) => {
+    const isPhysical = Boolean(item.isOfType?.("physical"));
+    const isCurrency = Boolean(
+      item.isCoinage || (item.type === "treasure" && ["coins", "coin"].includes(item.system?.stackGroup)),
+    );
+    const acquisition = normalizeAcquisitionIdentity(item.flags?.[moduleId]?.acquisition);
+    return {
+      id: item.id,
+      name: item.name,
+      slotId: item.flags?.[moduleId]?.slotId ?? null,
+      destinationKey: item.flags?.[moduleId]?.destinationKey ?? null,
+      grantedById: item.flags?.pf2e?.grantedBy?.id ?? null,
+      grantAncestryIds: collectGrantAncestryIds(item, itemsById),
+      grantRules: (Array.isArray(item.system?.rules) ? item.system.rules : []).flatMap((rule) =>
+        rule?.key === "GrantItem"
+          ? [
+              {
+                allowDuplicate: rule.allowDuplicate ?? null,
+                flag: rule.flag ?? null,
+                uuid: rule.uuid ?? null,
+              },
+            ]
+          : [],
+      ),
+      acquisition,
+      containerId: typeof item.system?.containerId === "string" ? item.system.containerId || null : null,
+      isCurrency,
+      isPhysical,
+      location:
+        typeof item.system?.location === "string" ? item.system.location : (item.system?.location?.value ?? null),
+      quantity: isPhysical ? Number(item.quantity ?? item.system?.quantity) : null,
+      ruleSelections: item.flags?.pf2e?.rulesSelections ?? {},
+      sourceId: modules.sourceIdOf(item),
+      traits: Array.isArray(item.system?.traits?.value) ? item.system.traits.value : [],
+      spellcasting:
+        item.type === "spellcastingEntry"
+          ? {
+              ability: item.system?.ability?.value ?? null,
+              prepared: item.system?.prepared?.value ?? null,
+              proficiencySlug: item.system?.proficiency?.slug ?? null,
+              slots: Object.fromEntries(
+                Object.entries(item.system?.slots ?? {}).map(([slotKey, group]) => [
+                  slotKey,
+                  {
+                    max: Number(group?.max ?? 0),
+                    prepared: Array.isArray(group?.prepared)
+                      ? group.prepared.map((slot) => slot?.id ?? null)
+                      : [],
+                  },
+                ]),
+              ),
+              tradition: item.system?.tradition?.value ?? null,
+            }
+          : null,
+      trainingKey: item.flags?.[moduleId]?.trainingKey ?? null,
+      type: item.type,
+    };
+  });
   // Lore items are identified by slotId + trainingKey in the apply-side
   // reconciler, so multiple lores may legitimately share one training slot.
   const slotIds = items
     .map((item) => (item.trainingKey ? `${item.slotId}:${item.trainingKey}` : item.slotId))
     .filter(Boolean);
-  const sourceIds = items
-    .map((item) =>
-      item.sourceId ? (item.type === "spell" ? `${item.sourceId}@${item.location ?? "unplaced"}` : item.sourceId) : null,
-    )
-    .filter(Boolean);
   const abilityBoosts = actor.toObject?.().system?.build?.attributes?.boosts ?? {};
 
   return {
     abilityBoosts,
+    authority: {
+      canUpdate: Boolean(actor.canUserModify?.(game.user, "update")),
+      explicitOwnershipLevel: Number(actor.ownership?.[game.user?.id] ?? CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE),
+      defaultOwnershipLevel: Number(actor.ownership?.default ?? CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE),
+      isOwner: Boolean(actor.isOwner),
+      ownerPermission: Boolean(
+        actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER),
+      ),
+    },
+    currencyCopper: Number(actor.inventory?.currency?.copperValue),
     id: actor.id,
     duplicateSlotIds: duplicates(slotIds),
-    duplicateSourceIds: duplicates(sourceIds),
     itemCount: items.length,
     items: items.sort((left, right) =>
       `${left.slotId ?? ""}:${left.name}`.localeCompare(`${right.slotId ?? ""}:${right.name}`),
@@ -1278,9 +1306,47 @@ function collectActorEvidence(actor, modules, moduleId) {
   };
 }
 
+function collectGrantAncestryIds(item, itemsById) {
+  const ancestry = [];
+  const visited = new Set();
+  let parentId = item.flags?.pf2e?.grantedBy?.id ?? null;
+  while (typeof parentId === "string" && parentId.length > 0 && !visited.has(parentId)) {
+    ancestry.push(parentId);
+    visited.add(parentId);
+    parentId = itemsById.get(parentId)?.flags?.pf2e?.grantedBy?.id ?? null;
+  }
+  return ancestry;
+}
+
+function normalizeAcquisitionIdentity(value) {
+  if (!value || typeof value !== "object") return null;
+  return {
+    draftId: value.draftId ?? null,
+    batchId: value.batchId ?? null,
+    lineId: value.lineId ?? null,
+    entryId: value.entryId ?? null,
+    stackingIntent: value.stackingIntent ?? null,
+  };
+}
+
+function emptyAcquisitionEvidence() {
+  return {
+    policy: null,
+    currency: {
+      preCopper: null,
+      budgetCopper: null,
+      targetCopper: null,
+      observedCopper: null,
+      spentCopper: null,
+      remainingCopper: null,
+    },
+    manifest: null,
+    failureSnapshot: null,
+  };
+}
+
 function validateAppliedCase({
   actorEvidence,
-  classifications,
   dialogsAfter,
   dialogsBefore,
   failures,
@@ -1327,10 +1393,6 @@ function validateAppliedCase({
     failures.push(`Duplicate Wayfinder slot ids: ${unexpectedDuplicateSlotIds.join(", ")}`);
   }
 
-  if (actorEvidence.duplicateSourceIds.length > 0) {
-    failures.push(`Duplicate source ids: ${actorEvidence.duplicateSourceIds.join(", ")}`);
-  }
-
   if (dialogsAfter > dialogsBefore) {
     failures.push(`Native dialog count increased from ${dialogsBefore} to ${dialogsAfter}`);
   }
@@ -1339,14 +1401,10 @@ function validateAppliedCase({
     failures.push(`Rerun still has pending steps: ${rerunPlan.steps.map((step) => step.slotId).join(", ")}`);
   }
 
-  if (classifications.length > 0) {
-    failures.push("Case has unsupported/manual classifications; apply should not have proceeded.");
-  }
 }
 
 function validateIncrementalCase({
   actorEvidence,
-  classifications,
   dialogsAfter,
   dialogsBefore,
   failures,
@@ -1408,10 +1466,6 @@ function validateIncrementalCase({
     failures.push(`Duplicate Wayfinder slot ids: ${unexpectedDuplicateSlotIds.join(", ")}`);
   }
 
-  if (actorEvidence.duplicateSourceIds.length > 0) {
-    failures.push(`Duplicate source ids: ${actorEvidence.duplicateSourceIds.join(", ")}`);
-  }
-
   if (dialogsAfter > dialogsBefore) {
     failures.push(`Native dialog count increased from ${dialogsBefore} to ${dialogsAfter}`);
   }
@@ -1420,9 +1474,6 @@ function validateIncrementalCase({
     failures.push(`Rerun still has pending steps: ${rerunPlan.steps.map((step) => step.slotId).join(", ")}`);
   }
 
-  if (classifications.length > 0) {
-    failures.push("Case has unsupported/manual classifications; incremental apply should not have proceeded.");
-  }
 }
 
 function validateActorExpectations(actorEvidence, smokeCase, failures) {
@@ -1607,6 +1658,32 @@ function assertExpectedWorldId(actualWorldId, expectedWorldId) {
   const actual = String(actualWorldId ?? "").trim();
   if (actual !== expected) {
     throw new Error(`Foundry smoke expected world ${expected}, but connected to ${actual || "<unknown>"}.`);
+  }
+}
+
+function fixtureOwnershipFor(user) {
+  if (!user?.id) {
+    throw new Error("Foundry smoke fixture creation requires a current user id.");
+  }
+  return {
+    default: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE,
+    [user.id]: CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER,
+  };
+}
+
+async function enforceFixtureOwnership(actor, user) {
+  const ownership = fixtureOwnershipFor(user);
+  if (
+    actor.ownership?.default !== ownership.default ||
+    actor.ownership?.[user.id] !== ownership[user.id]
+  ) {
+    await actor.update({ ownership });
+  }
+  if (
+    actor.ownership?.default !== ownership.default ||
+    actor.ownership?.[user.id] !== ownership[user.id]
+  ) {
+    throw new Error("Foundry smoke fixture ownership did not reach the requested explicit-owner state.");
   }
 }
 

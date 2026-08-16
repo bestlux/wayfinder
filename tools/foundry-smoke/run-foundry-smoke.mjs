@@ -7,6 +7,7 @@ import { chromium } from "playwright-core";
 import { applySafetySmokeCases, gradualBoostsSmokeCases, smokeCases } from "./class-cases.mjs";
 import { ancestryParagonSection, campaignFeatSmokeCases } from "./campaign-feat-cases.mjs";
 import { freeArchetypeSmokeCases } from "./free-archetype-cases.mjs";
+import { qualifySmokeResult } from "./evidence-contract.mjs";
 import {
   closeFoundryBrowser,
   loginToFoundryWorld,
@@ -307,6 +308,13 @@ async function main() {
           moduleId: MODULE_ID,
         },
       );
+      result = qualifySmokeResult(result, [
+        ...cases,
+        ...incrementalCases.map((smokeCase) => ({
+          ...smokeCase,
+          id: `${smokeCase.id}-incremental-existing`,
+        })),
+      ]);
     } finally {
       try {
         campaignFeatSections.restored = await restoreCampaignFeatSections(page, campaignFeatSections);
@@ -325,7 +333,7 @@ async function main() {
     await writeArtifacts(outDir, result);
     printSummary(result, outDir);
 
-    if (result.summary.failed > 0) {
+    if (!result.qualification.passed) {
       process.exitCode = 1;
     }
   } finally {
@@ -533,7 +541,7 @@ function buildMarkdownSummary(result) {
 - Started: ${result.startedAt}
 - Finished: ${result.finishedAt}
 - World: ${result.world}
-- User: ${result.user}
+- User: ${result.user.name} (role ${result.user.role}, GM ${result.user.isGM})
 - Foundry: ${result.foundryVersion ?? "unknown"}
 - PF2E: ${result.pf2eVersion}
 - Wayfinder: ${result.moduleId} ${result.moduleVersion ?? "unknown"} (active: ${result.moduleActive})

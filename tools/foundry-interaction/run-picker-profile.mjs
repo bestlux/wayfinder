@@ -425,10 +425,7 @@ function inspectGitCandidate(root, requestedRef) {
     requestedRef: requestedRef || null,
     gitSha: git(root, ["rev-parse", "HEAD"]),
     gitDescribe: git(root, ["describe", "--always", "--dirty", "--tags"]),
-    dirtyPaths: git(root, ["status", "--porcelain"])
-      .split(/\r?\n/u)
-      .filter(Boolean)
-      .map((line) => line.slice(3)),
+    dirtyPaths: gitStatusPaths(root),
   };
 }
 
@@ -458,7 +455,10 @@ async function inspectDriver(profilePath) {
 }
 
 function gitStatusPaths(root) {
-  return git(root, ["status", "--porcelain", "--untracked-files=all"])
+  return execFileSync("git", ["-C", root, "status", "--porcelain", "--untracked-files=all"], {
+    encoding: "utf8",
+  })
+    .trimEnd()
     .split(/\r?\n/u)
     .filter(Boolean)
     .map((line) => line.slice(3));

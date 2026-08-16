@@ -88,6 +88,16 @@ export function validatePickerSample(sample, profile) {
   if ((sample.packDocumentReadCount ?? 0) > 0) {
     failures.push(`Search hydrated pack documents ${sample.packDocumentReadCount} time(s).`);
   }
+  if (sample.planBuildCounterSupported !== true) {
+    failures.push("This Wayfinder candidate did not expose the render-plan execution counter.");
+  } else if ((sample.planBuildCount ?? 0) > 0) {
+    failures.push(`Search rebuilt the Wayfinder plan ${sample.planBuildCount} time(s).`);
+  }
+  if (sample.previewHydrationCounterSupported !== true) {
+    failures.push("This Wayfinder candidate did not expose the preview-hydration execution counter.");
+  } else if ((sample.previewHydrationCount ?? 0) > 0) {
+    failures.push(`Search hydrated the active preview ${sample.previewHydrationCount} time(s).`);
+  }
   if (Math.abs((sample.actualAppWidth ?? sample.requestedAppWidth) - sample.requestedAppWidth) > 2) {
     failures.push(
       `App width settled at ${sample.actualAppWidth}px, expected ${sample.requestedAppWidth}px within 2px.`

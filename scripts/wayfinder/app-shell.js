@@ -117,7 +117,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const snapshot = inspectActor(this.actor);
         const draft = this.#ensureDraft(snapshot.level);
         const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
-        const plan = await this.#buildPlan(snapshot, draft);
+        const plan = await this._buildRenderPlan(snapshot, draft);
         const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
         const readiness = await evaluateWayfinderDraftReadiness(plan.steps, (step) => this.#evaluateStep(step, effectiveBuildState, draft));
         const evaluationsByStepId = new Map(plan.steps.map((step, index) => [step.id, readiness.evaluations[index]]));
@@ -493,6 +493,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         return this.#draft;
     }
+    _buildRenderPlan(snapshot, draft) {
+        return this.#buildPlan(snapshot, draft);
+    }
+    _buildRenderPreview(...args) {
+        return buildPreview(...args);
+    }
     async #buildPlan(snapshot = inspectActor(this.actor), draft = this.#requireDraft()) {
         return buildWayfinderAppPlan({
             actor: this.actor,
@@ -577,7 +583,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             stepEvaluation,
             getOptionsForStep,
             getPickerInfoState,
-            buildPreview,
+            buildPreview: (...args) => this._buildRenderPreview(...args),
             matchesSearch,
         });
         if (selectionPane) {

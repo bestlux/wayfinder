@@ -121,6 +121,10 @@ describe("Foundry picker profile results", () => {
         pickerPartPrepareContextCount: 2,
         packIndexReadCount: 1,
         packDocumentReadCount: 1,
+        planBuildCount: 1,
+        planBuildCounterSupported: false,
+        previewHydrationCount: 1,
+        previewHydrationCounterSupported: false,
         searchInputReplacementCount: 1,
         shellReplacementCount: 1,
       },
@@ -138,8 +142,26 @@ describe("Foundry picker profile results", () => {
         expect.stringContaining("picker-part context"),
         expect.stringContaining("live pack indexes"),
         expect.stringContaining("pack documents"),
+        expect.stringContaining("render-plan execution counter"),
+        expect.stringContaining("preview-hydration execution counter"),
       ])
     );
+  });
+
+  it("rejects executed plan construction and preview hydration during steady search", () => {
+    const failures = validatePickerSample(
+      {
+        ...validSample(),
+        planBuildCount: 1,
+        previewHydrationCount: 1,
+      },
+      profile
+    );
+
+    expect(failures).toEqual([
+      "Search rebuilt the Wayfinder plan 1 time(s).",
+      "Search hydrated the active preview 1 time(s).",
+    ]);
   });
 
   it("summarizes only measured samples by configured app width", () => {
@@ -232,6 +254,10 @@ function validSample() {
     pickerPartPrepareContextCount: 1,
     packIndexReadCount: 0,
     packDocumentReadCount: 0,
+    planBuildCount: 0,
+    planBuildCounterSupported: true,
+    previewHydrationCount: 0,
+    previewHydrationCounterSupported: true,
     failures: [],
   };
 }

@@ -19,8 +19,12 @@ globalThis.__wayfinderPickerProfile = {
         fullRender: 0,
         packDocument: 0,
         packIndex: 0,
+        planBuild: 0,
+        planBuildCounterSupported: typeof app._buildRenderPlan === "function",
         pickerPrepareContext: 0,
         pickerRender: 0,
+        previewHydration: 0,
+        previewHydrationCounterSupported: typeof app._buildRenderPreview === "function",
       };
       const prepareContext = app._prepareContext.bind(app);
       const render = app.render.bind(app);
@@ -33,6 +37,20 @@ globalThis.__wayfinderPickerProfile = {
         appCounters[isPickerPartsRequest(args[0]) ? "pickerRender" : "fullRender"] += 1;
         return render(...args);
       };
+      if (appCounters.planBuildCounterSupported) {
+        const buildRenderPlan = app._buildRenderPlan.bind(app);
+        app._buildRenderPlan = (...args) => {
+          appCounters.planBuild += 1;
+          return buildRenderPlan(...args);
+        };
+      }
+      if (appCounters.previewHydrationCounterSupported) {
+        const buildRenderPreview = app._buildRenderPreview.bind(app);
+        app._buildRenderPreview = (...args) => {
+          appCounters.previewHydration += 1;
+          return buildRenderPreview(...args);
+        };
+      }
       instrumentPackReads();
     }
     return this.inspect();
@@ -254,6 +272,10 @@ globalThis.__wayfinderPickerProfile = {
       pickerPartRenderCallCount: appCounters.pickerRender - sample.counterStart.pickerRender,
       packIndexReadCount: appCounters.packIndex - sample.counterStart.packIndex,
       packDocumentReadCount: appCounters.packDocument - sample.counterStart.packDocument,
+      planBuildCount: appCounters.planBuild - sample.counterStart.planBuild,
+      planBuildCounterSupported: appCounters.planBuildCounterSupported,
+      previewHydrationCount: appCounters.previewHydration - sample.counterStart.previewHydration,
+      previewHydrationCounterSupported: appCounters.previewHydrationCounterSupported,
       actualAppWidth: root.getBoundingClientRect().width,
       windowContentWidth: root.querySelector(".window-content")?.getBoundingClientRect().width ?? null,
     };
@@ -393,10 +415,12 @@ function pickerSnapshot(expectedResultValues, finalQuery) {
 }
 
 function currentRoot() {
-  const appRoot = currentApp()?.element;
-  const root = appRoot ?? document.querySelector(ROOT_SELECTOR);
+  if (!fixtureActorId) {
+    throw new Error("Picker profile is not configured for a fixture actor.");
+  }
+  const root = currentApp()?.element;
   if (!root || root.nodeType !== 1) {
-    throw new Error("Wayfinder app is not rendered.");
+    throw new Error(`The actor-bound Wayfinder app for ${fixtureActorId} is not rendered.`);
   }
   return root;
 }

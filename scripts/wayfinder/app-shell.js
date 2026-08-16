@@ -355,15 +355,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (step.kind === "manual") {
             const pane = {
                 kind: "manual",
-                isPickItem: false,
-                isManual: true,
-                isBoost: false,
-                isSkillIncrease: false,
-                isSkillTraining: false,
-                isSingletonChoice: false,
-                isLanguageChoice: false,
-                isClassChoice: false,
-                isSpellChoice: false,
+                templateKind: "manual",
                 stepId: step.id,
                 slotId: step.slotId,
                 level: step.level,

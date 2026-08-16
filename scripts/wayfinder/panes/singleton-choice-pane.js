@@ -6,15 +6,7 @@ export function buildSingletonChoicePane(args) {
     }
     return {
         kind: "singleton-choice",
-        isPickItem: false,
-        isManual: false,
-        isBoost: false,
-        isSkillIncrease: false,
-        isSkillTraining: false,
-        isSingletonChoice: true,
-        isLanguageChoice: false,
-        isClassChoice: false,
-        isSpellChoice: false,
+        templateKind: "singleton-choice",
         stepId: step.id,
         slotId: step.slotId,
         level: step.level,

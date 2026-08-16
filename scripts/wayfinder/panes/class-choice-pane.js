@@ -7,15 +7,7 @@ export function buildClassChoicePane(args) {
     const dependsOn = step.kind === "class-archetype" ? "class" : step.classChoice.dependsOn;
     return {
         kind: step.kind,
-        isPickItem: false,
-        isManual: false,
-        isBoost: false,
-        isSkillIncrease: false,
-        isSkillTraining: false,
-        isSingletonChoice: false,
-        isLanguageChoice: false,
-        isClassChoice: true,
-        isSpellChoice: false,
+        templateKind: "class-choice",
         stepId: step.id,
         slotId: step.slotId,
         level: step.level,

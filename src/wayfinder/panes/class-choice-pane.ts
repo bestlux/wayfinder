@@ -18,15 +18,7 @@ export function buildClassChoicePane(args: {
 
   return {
     kind: step.kind,
-    isPickItem: false,
-    isManual: false,
-    isBoost: false,
-    isSkillIncrease: false,
-    isSkillTraining: false,
-    isSingletonChoice: false,
-    isLanguageChoice: false,
-    isClassChoice: true,
-    isSpellChoice: false,
+    templateKind: "class-choice",
     stepId: step.id,
     slotId: step.slotId,
     level: step.level,

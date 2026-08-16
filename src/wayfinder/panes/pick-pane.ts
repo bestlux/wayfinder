@@ -34,15 +34,7 @@ export function buildPickItemPane(args: {
   } = args;
   return {
     kind: "pick-item",
-    isPickItem: true,
-    isManual: false,
-    isBoost: false,
-    isSkillIncrease: false,
-    isSkillTraining: false,
-    isSingletonChoice: false,
-    isLanguageChoice: false,
-    isClassChoice: false,
-    isSpellChoice: false,
+    templateKind: "pick-item",
     stepId: step.id,
     slotId: step.slotId,
     level: step.level,

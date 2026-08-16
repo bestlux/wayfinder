@@ -51,15 +51,7 @@ export function buildSkillIncreasePane(
 
   return {
     kind: "skill-increase",
-    isPickItem: false,
-    isManual: false,
-    isBoost: false,
-    isSkillIncrease: true,
-    isSkillTraining: false,
-    isSingletonChoice: false,
-    isLanguageChoice: false,
-    isClassChoice: false,
-    isSpellChoice: false,
+    templateKind: "skill-increase",
     stepId: step.id,
     slotId: step.slotId,
     level: step.level,
@@ -209,15 +201,7 @@ export function buildSkillTrainingPane(
 
   return {
     kind: "skill-training",
-    isPickItem: false,
-    isManual: false,
-    isBoost: false,
-    isSkillIncrease: false,
-    isSkillTraining: true,
-    isSingletonChoice: false,
-    isLanguageChoice: false,
-    isClassChoice: false,
-    isSpellChoice: false,
+    templateKind: "skill-training",
     stepId: step.id,
     slotId: step.slotId,
     level: step.level,

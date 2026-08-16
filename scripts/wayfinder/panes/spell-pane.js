@@ -5,15 +5,7 @@ export function buildSpellChoicePane(args) {
     const requiredCount = step.spellChoice?.count ?? 0;
     return {
         kind: "spell-choice",
-        isPickItem: false,
-        isManual: false,
-        isBoost: false,
-        isSkillIncrease: false,
-        isSkillTraining: false,
-        isSingletonChoice: false,
-        isLanguageChoice: false,
-        isClassChoice: false,
-        isSpellChoice: true,
+        templateKind: "spell-choice",
         stepId: step.id,
         slotId: step.slotId,
         level: step.level,

@@ -135,39 +135,39 @@
             </div>
           {{/if}}
 
-          {{#if activePane.isManual}}
+          {{#if (eq activePane.templateKind "manual")}}
             {{> "modules/wayfinder-pf2e/templates/wayfinder/manual-pane.hbs"}}
           {{/if}}
 
-          {{#if activePane.isBoost}}
+          {{#if (eq activePane.templateKind "boost")}}
             {{> "modules/wayfinder-pf2e/templates/wayfinder/boost-pane.hbs"}}
           {{/if}}
 
-          {{#if activePane.isSkillIncrease}}
+          {{#if (eq activePane.templateKind "skill-increase")}}
             {{> "modules/wayfinder-pf2e/templates/wayfinder/skill-increase-pane.hbs"}}
           {{/if}}
 
-          {{#if activePane.isSkillTraining}}
+          {{#if (eq activePane.templateKind "skill-training")}}
             {{> "modules/wayfinder-pf2e/templates/wayfinder/skill-training-pane.hbs"}}
           {{/if}}
 
-          {{#if activePane.isSingletonChoice}}
+          {{#if (eq activePane.templateKind "singleton-choice")}}
             {{> "modules/wayfinder-pf2e/templates/wayfinder/singleton-choice-pane.hbs"}}
           {{/if}}
 
-          {{#if activePane.isLanguageChoice}}
+          {{#if (eq activePane.templateKind "language-choice")}}
             {{> "modules/wayfinder-pf2e/templates/wayfinder/language-choice-pane.hbs"}}
           {{/if}}
 
-          {{#if activePane.isClassChoice}}
+          {{#if (eq activePane.templateKind "class-choice")}}
             {{> "modules/wayfinder-pf2e/templates/wayfinder/class-choice-pane.hbs"}}
           {{/if}}
 
-          {{#if activePane.isSpellChoice}}
+          {{#if (eq activePane.templateKind "spell-choice")}}
             {{> "modules/wayfinder-pf2e/templates/wayfinder/spell-choice-pane.hbs"}}
           {{/if}}
 
-          {{#if activePane.isPickItem}}
+          {{#if (eq activePane.templateKind "pick-item")}}
             {{> "modules/wayfinder-pf2e/templates/wayfinder/pick-pane.hbs"}}
           {{/if}}
         {{/if}}

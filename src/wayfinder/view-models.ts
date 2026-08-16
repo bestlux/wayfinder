@@ -59,17 +59,20 @@ export interface PickerFilterGroupPane {
   }>;
 }
 
+export type PaneTemplateKind =
+  | "pick-item"
+  | "manual"
+  | "boost"
+  | "skill-increase"
+  | "skill-training"
+  | "singleton-choice"
+  | "language-choice"
+  | "class-choice"
+  | "spell-choice";
+
 export interface PickStepPane {
   kind: "pick-item";
-  isPickItem: true;
-  isManual: false;
-  isBoost: false;
-  isSkillIncrease: false;
-  isSkillTraining: false;
-  isSingletonChoice: false;
-  isLanguageChoice: false;
-  isClassChoice: false;
-  isSpellChoice: false;
+  templateKind: "pick-item";
   stepId: string;
   slotId: string;
   level: number;
@@ -90,15 +93,7 @@ export interface PickStepPane {
 
 export interface ManualStepPane {
   kind: "manual";
-  isPickItem: false;
-  isManual: true;
-  isBoost: false;
-  isSkillIncrease: false;
-  isSkillTraining: false;
-  isSingletonChoice: false;
-  isLanguageChoice: false;
-  isClassChoice: false;
-  isSpellChoice: false;
+  templateKind: "manual";
   stepId: string;
   slotId: string;
   level: number;
@@ -139,15 +134,7 @@ export interface BoostAbilitySummary {
 
 export interface BoostStepPane {
   kind: "boost";
-  isPickItem: false;
-  isManual: false;
-  isBoost: true;
-  isSkillIncrease: false;
-  isSkillTraining: false;
-  isSingletonChoice: false;
-  isLanguageChoice: false;
-  isClassChoice: false;
-  isSpellChoice: false;
+  templateKind: "boost";
   stepId: string;
   slotId: string;
   level: number;
@@ -202,15 +189,7 @@ export interface SkillOption {
 
 export interface SkillIncreaseStepPane {
   kind: "skill-increase";
-  isPickItem: false;
-  isManual: false;
-  isBoost: false;
-  isSkillIncrease: true;
-  isSkillTraining: false;
-  isSingletonChoice: false;
-  isLanguageChoice: false;
-  isClassChoice: false;
-  isSpellChoice: false;
+  templateKind: "skill-increase";
   stepId: string;
   slotId: string;
   level: number;
@@ -258,15 +237,7 @@ export interface SkillTrainingLoreChoicePane {
 
 export interface SkillTrainingStepPane {
   kind: "skill-training";
-  isPickItem: false;
-  isManual: false;
-  isBoost: false;
-  isSkillIncrease: false;
-  isSkillTraining: true;
-  isSingletonChoice: false;
-  isLanguageChoice: false;
-  isClassChoice: false;
-  isSpellChoice: false;
+  templateKind: "skill-training";
   stepId: string;
   slotId: string;
   level: number;
@@ -287,15 +258,7 @@ export interface SkillTrainingStepPane {
 
 export interface ClassChoiceStepPane {
   kind: "class-choice" | "class-archetype";
-  isPickItem: false;
-  isManual: false;
-  isBoost: false;
-  isSkillIncrease: false;
-  isSkillTraining: false;
-  isSingletonChoice: false;
-  isLanguageChoice: false;
-  isClassChoice: true;
-  isSpellChoice: false;
+  templateKind: "class-choice";
   stepId: string;
   slotId: string;
   level: number;
@@ -322,15 +285,7 @@ export interface ClassChoiceStepPane {
 
 export interface SingletonChoiceStepPane {
   kind: "singleton-choice";
-  isPickItem: false;
-  isManual: false;
-  isBoost: false;
-  isSkillIncrease: false;
-  isSkillTraining: false;
-  isSingletonChoice: true;
-  isLanguageChoice: false;
-  isClassChoice: false;
-  isSpellChoice: false;
+  templateKind: "singleton-choice";
   stepId: string;
   slotId: string;
   level: number;
@@ -359,15 +314,7 @@ interface LanguageChoiceOptionPane {
 
 export interface LanguageChoiceStepPane {
   kind: "language-choice";
-  isPickItem: false;
-  isManual: false;
-  isBoost: false;
-  isSkillIncrease: false;
-  isSkillTraining: false;
-  isSingletonChoice: false;
-  isLanguageChoice: true;
-  isClassChoice: false;
-  isSpellChoice: false;
+  templateKind: "language-choice";
   stepId: string;
   slotId: string;
   level: number;
@@ -390,15 +337,7 @@ export interface LanguageChoiceStepPane {
 
 export interface SpellChoiceStepPane {
   kind: "spell-choice";
-  isPickItem: false;
-  isManual: false;
-  isBoost: false;
-  isSkillIncrease: false;
-  isSkillTraining: false;
-  isSingletonChoice: false;
-  isLanguageChoice: false;
-  isClassChoice: false;
-  isSpellChoice: true;
+  templateKind: "spell-choice";
   stepId: string;
   slotId: string;
   level: number;

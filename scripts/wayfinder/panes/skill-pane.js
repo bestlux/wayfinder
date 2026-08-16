@@ -29,15 +29,7 @@ export function buildSkillIncreasePane(step, draft, projectedRanks, skillEntries
         : "Choose one skill";
     return {
         kind: "skill-increase",
-        isPickItem: false,
-        isManual: false,
-        isBoost: false,
-        isSkillIncrease: true,
-        isSkillTraining: false,
-        isSingletonChoice: false,
-        isLanguageChoice: false,
-        isClassChoice: false,
-        isSpellChoice: false,
+        templateKind: "skill-increase",
         stepId: step.id,
         slotId: step.slotId,
         level: step.level,
@@ -164,15 +156,7 @@ export function buildSkillTrainingPane(step, draft, projectedRanks, skillEntries
     const totalChoiceCount = metadata.choiceRules.length + metadata.additionalCount + metadata.loreChoices.length;
     return {
         kind: "skill-training",
-        isPickItem: false,
-        isManual: false,
-        isBoost: false,
-        isSkillIncrease: false,
-        isSkillTraining: true,
-        isSingletonChoice: false,
-        isLanguageChoice: false,
-        isClassChoice: false,
-        isSpellChoice: false,
+        templateKind: "skill-training",
         stepId: step.id,
         slotId: step.slotId,
         level: step.level,

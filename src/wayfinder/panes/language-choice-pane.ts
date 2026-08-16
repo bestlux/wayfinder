@@ -17,15 +17,7 @@ export function buildLanguageChoicePane(args: {
 
   return {
     kind: "language-choice",
-    isPickItem: false,
-    isManual: false,
-    isBoost: false,
-    isSkillIncrease: false,
-    isSkillTraining: false,
-    isSingletonChoice: false,
-    isLanguageChoice: true,
-    isClassChoice: false,
-    isSpellChoice: false,
+    templateKind: "language-choice",
     stepId: step.id,
     slotId: step.slotId,
     level: step.level,

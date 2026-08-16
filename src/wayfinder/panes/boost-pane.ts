@@ -43,15 +43,7 @@ export async function buildBoostPane(
 
   return {
     kind: "boost",
-    isPickItem: false,
-    isManual: false,
-    isBoost: true,
-    isSkillIncrease: false,
-    isSkillTraining: false,
-    isSingletonChoice: false,
-    isLanguageChoice: false,
-    isClassChoice: false,
-    isSpellChoice: false,
+    templateKind: "boost",
     stepId: step.id,
     slotId: step.slotId,
     level: step.level,

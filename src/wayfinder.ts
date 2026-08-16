@@ -19,6 +19,9 @@ Hooks.once("init", () => {
     `modules/${MODULE_ID}/templates/wayfinder/class-choice-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/spell-choice-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/pick-pane.hbs`,
+    `modules/${MODULE_ID}/templates/wayfinder/picker-result-count.hbs`,
+    `modules/${MODULE_ID}/templates/wayfinder/pick-results.hbs`,
+    `modules/${MODULE_ID}/templates/wayfinder/spell-choice-results.hbs`,
   ]);
   registerSheetControls();
   console.log(`${MODULE_ID} | initialized`);

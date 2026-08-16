@@ -1,10 +1,8 @@
 <section class="selection-stage spell-selection-stage">
   <section class="option-browser">
-    <div class="option-browser-scroll" data-wayfinder-option-list data-step-id="{{activePane.stepId}}" data-wayfinder-rendered-query="{{activePane.search}}" data-wayfinder-result-count="{{activePane.resultCount}}" data-wayfinder-scroll-id="{{activePane.stepId}}:options">
+    <div class="option-browser-scroll" data-step-id="{{activePane.stepId}}" data-wayfinder-scroll-id="{{activePane.stepId}}:options">
       <header class="browser-header">
-        <div class="browser-header-row">
-          <h4>{{activePane.resultCount}} matching spell{{#unless (eq activePane.resultCount 1)}}s{{/unless}}</h4>
-        </div>
+        {{> "modules/wayfinder-pf2e/templates/wayfinder/picker-result-count.hbs"}}
 
         <label class="search-shell">
           <i class="fa-solid fa-magnifying-glass"></i>
@@ -79,86 +77,7 @@
         {{/if}}
       </div>
 
-      {{#if activePane.filterGroups.length}}
-        <div class="picker-filter-bar">
-          {{#each activePane.filterGroups}}
-            <section class="picker-filter-menu{{#if isOpen}} is-open{{/if}}" data-wayfinder-filter-menu data-step-id="{{../activePane.stepId}}" data-filter-kind="{{key}}">
-              <button type="button" class="picker-filter-trigger{{#if selectedCount}} is-active{{/if}}{{#if isOpen}} is-open{{/if}}" data-wayfinder-action="toggle-picker-filter-menu" data-step-id="{{../activePane.stepId}}" data-filter-kind="{{key}}" aria-expanded="{{#if isOpen}}true{{else}}false{{/if}}">
-                <span class="picker-filter-trigger-copy">
-                  <span class="picker-filter-label">{{label}}</span>
-                  <span class="picker-filter-summary">{{summaryLabel}}</span>
-                </span>
-
-                <span class="picker-filter-trigger-meta">
-                  {{#if selectedCount}}
-                    <span class="picker-filter-badge">{{selectedCount}}</span>
-                  {{/if}}
-                  <i class="fa-solid fa-chevron-down"></i>
-                </span>
-              </button>
-
-              {{#if isOpen}}
-                <div class="picker-filter-panel">
-                  <div class="picker-filter-panel-header">
-                    <span class="picker-filter-panel-title">{{label}}</span>
-                    <span class="picker-filter-panel-summary">{{summaryLabel}}</span>
-                  </div>
-
-                  <div class="picker-filter-options" data-wayfinder-scroll-id="{{../activePane.stepId}}:filter:{{key}}">
-                    {{#each options}}
-                      <button type="button" class="picker-filter-option{{#if selected}} is-selected{{/if}}" data-wayfinder-action="toggle-picker-filter" data-step-id="{{../../activePane.stepId}}" data-filter-kind="{{../key}}" data-value="{{value}}">
-                        <span class="picker-filter-check">{{#if selected}}<i class="fa-solid fa-check"></i>{{/if}}</span>
-                        <span class="picker-filter-option-label">{{label}}</span>
-                        <span class="picker-filter-count">{{count}}</span>
-                      </button>
-                    {{/each}}
-                  </div>
-                </div>
-              {{/if}}
-            </section>
-          {{/each}}
-
-          {{#if activePane.activeFilterCount}}
-            <button type="button" class="secondary compact picker-filter-clear" data-wayfinder-action="clear-picker-filters" data-step-id="{{activePane.stepId}}">
-              Clear filters
-            </button>
-          {{/if}}
-        </div>
-      {{/if}}
-
-      {{#if activePane.options.length}}
-        <div class="option-list">
-          {{#each activePane.options}}
-            <article class="option-row{{#if previewing}} previewing{{/if}}{{#if selected}} selected{{/if}}">
-              <button type="button" class="option-main" data-wayfinder-action="preview-option" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
-                <img src="{{img}}" alt="{{name}}" />
-                <span class="option-copy">
-                  <span class="option-title-row">
-                    <span class="option-name">{{name}}</span>
-                    <span class="option-rank">{{rankLabel}}</span>
-                    {{#if rarity}}
-                      <span class="option-rarity rarity-{{rarity}}">{{rarity}}</span>
-                    {{/if}}
-                  </span>
-                  <span class="option-source">{{sourceLabel}}</span>
-                </span>
-              </button>
-
-              <button type="button" class="option-select{{#if selected}} is-selected{{/if}}" data-wayfinder-action="toggle-spell-choice" data-step-id="{{../activePane.stepId}}" data-value="{{value}}">
-                {{#if selected}}<i class="fa-solid fa-check"></i> Added{{else}}Add{{/if}}
-              </button>
-            </article>
-          {{/each}}
-        </div>
-      {{else}}
-        {{#if activePane.infoState}}
-          <div class="picker-state picker-state-{{activePane.infoState.tone}}">
-            <p class="eyebrow">{{activePane.infoState.eyebrow}}</p>
-            <h4>{{activePane.infoState.title}}</h4>
-            <p>{{activePane.infoState.message}}</p>
-          </div>
-        {{/if}}
-      {{/if}}
+      {{> "modules/wayfinder-pf2e/templates/wayfinder/spell-choice-results.hbs"}}
     </div>
   </section>
 

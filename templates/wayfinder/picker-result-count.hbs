@@ -1,0 +1,7 @@
+<div class="browser-header-row" data-application-part="picker-count" data-step-id="{{activePane.stepId}}">
+  {{#if (eq activePane.templateKind "spell-choice")}}
+    <h4>{{activePane.resultCount}} matching spell{{#unless (eq activePane.resultCount 1)}}s{{/unless}}</h4>
+  {{else}}
+    <h4>{{activePane.resultCount}} matching choice{{#unless (eq activePane.resultCount 1)}}s{{/unless}}</h4>
+  {{/if}}
+</div>

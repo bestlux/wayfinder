@@ -28,5 +28,11 @@
   "warmupSamplesPerWidth": 2,
   "measuredSamplesPerWidth": 30,
   "expectedPickerRenderCount": 1,
-  "budgets": null
+  "budgets": {
+    "maxP95MsPerWidth": 75,
+    "maxDomElementCount": 325,
+    "maxResultDomElementCount": 12,
+    "maxImageRequestsPerSample": 0,
+    "maxLongTaskCountPerWidth": 0
+  }
 }

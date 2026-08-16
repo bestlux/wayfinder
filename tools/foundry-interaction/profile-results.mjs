@@ -16,6 +16,38 @@ export function validatePickerSample(sample, profile) {
   const finalQuery = profile.querySequence.at(-1) ?? "";
   const expectedQueries = profile.querySequence;
 
+  requireFiniteNonnegative(failures, sample.requestedAppWidth, "Requested app width");
+  requireFiniteNonnegative(failures, sample.actualAppWidth, "Actual app width");
+  requireFiniteNonnegative(failures, sample.windowContentWidth, "Window-content width");
+  for (const [label, value] of [
+    ["Expected result count", sample.expectedResultCount],
+    ["Observed result count", sample.observedResultCount],
+    ["DOM element count", sample.domElementCount],
+    ["Result DOM element count", sample.resultDomElementCount],
+    ["Image request count", sample.imageRequestCount],
+    ["Focus-loss count", sample.focusLossCount],
+    ["Caret-mismatch count", sample.caretMismatchCount],
+    ["Stale-flash count", sample.staleFlashCount],
+    ["Stale-render-commit count", sample.staleRenderCommitCount],
+    ["Search-input-replacement count", sample.searchInputReplacementCount],
+    ["Shell-replacement count", sample.shellReplacementCount],
+    ["Full-render count", sample.fullRenderCallCount],
+    ["Full-context-preparation count", sample.fullPrepareContextCount],
+    ["Picker-part-render count", sample.pickerPartRenderCallCount],
+    ["Picker-part-context-preparation count", sample.pickerPartPrepareContextCount],
+    ["Pack-index-read count", sample.packIndexReadCount],
+    ["Pack-document-read count", sample.packDocumentReadCount],
+    ["Plan-build count", sample.planBuildCount],
+    ["Preview-hydration count", sample.previewHydrationCount],
+  ]) {
+    requireNonnegativeInteger(failures, value, label);
+  }
+  if (!Array.isArray(sample.longTasks)) {
+    failures.push("Long Task entries were not recorded as an array.");
+  } else if (sample.longTasks.some((task) => !Number.isFinite(task?.duration) || task.duration < 0)) {
+    failures.push("Long Task entries contained a missing, nonfinite, or negative duration.");
+  }
+
   if (!sample.finalInputObserved) {
     failures.push(`Final query ${JSON.stringify(finalQuery)} never reached the input handler.`);
   }
@@ -32,6 +64,18 @@ export function validatePickerSample(sample, profile) {
   }
   if (sample.observedResultCount !== sample.expectedResultCount) {
     failures.push(`Observed ${sample.observedResultCount} results, expected ${sample.expectedResultCount}.`);
+  }
+  if (
+    Array.isArray(profile.expectedResultValues) &&
+    !sameStrings(sample.expectedResultValues ?? [], profile.expectedResultValues)
+  ) {
+    failures.push("The sample result oracle did not match the frozen profile identities or ordering.");
+  }
+  if (
+    Array.isArray(profile.expectedResultValues) &&
+    sample.expectedResultCount !== profile.expectedResultValues.length
+  ) {
+    failures.push("The sample result count oracle did not match the frozen profile.");
   }
   if (!sameStrings(sample.observedResultValues ?? [], sample.expectedResultValues ?? [])) {
     failures.push("The final visible result identities did not match the expected filtered options.");
@@ -196,6 +240,78 @@ export function summarizePickerProfile(profile, samples) {
   };
 }
 
+export function validatePickerBudgets(profile, summary, options = {}) {
+  const budgets = profile.budgets;
+  if (budgets === null || budgets === undefined) {
+    return {
+      configured: false,
+      passed: false,
+      failures: [],
+    };
+  }
+
+  const failures = validatePickerBudgetConfiguration(profile);
+  if (failures.length > 0) {
+    return { configured: true, passed: false, failures };
+  }
+
+  for (const requestedAppWidth of profile.appWidths ?? []) {
+    const entry = (summary.byWidth ?? []).find((candidate) => candidate.requestedAppWidth === requestedAppWidth);
+    if (!entry) {
+      failures.push(`${requestedAppWidth}px has no measured summary.`);
+      continue;
+    }
+    const width = `${entry.requestedAppWidth}px`;
+    if (
+      options.requireQualificationSamples !== false &&
+      (!Number.isInteger(entry.sampleCount) || entry.sampleCount < 30)
+    ) {
+      failures.push(`${width} recorded ${entry.sampleCount ?? 0} measured samples; qualification requires at least 30.`);
+    }
+    checkBudget(failures, width, "p95 duration", entry.p95Ms, budgets.maxP95MsPerWidth, "ms");
+    checkBudget(failures, width, "DOM element count", entry.maxDomElementCount, budgets.maxDomElementCount);
+    checkBudget(
+      failures,
+      width,
+      "result DOM element count",
+      entry.maxResultDomElementCount,
+      budgets.maxResultDomElementCount
+    );
+    checkBudget(
+      failures,
+      width,
+      "image requests per sample",
+      entry.maxImageRequestsPerSample,
+      budgets.maxImageRequestsPerSample
+    );
+    checkBudget(failures, width, "long-task count", entry.longTaskCount, budgets.maxLongTaskCountPerWidth);
+  }
+
+  return {
+    configured: true,
+    passed: failures.length === 0,
+    failures,
+  };
+}
+
+export function validatePickerBudgetConfiguration(profile) {
+  if (profile.budgets === null || profile.budgets === undefined) {
+    return [];
+  }
+  const limits = [
+    ["maxP95MsPerWidth", profile.budgets.maxP95MsPerWidth],
+    ["maxDomElementCount", profile.budgets.maxDomElementCount],
+    ["maxResultDomElementCount", profile.budgets.maxResultDomElementCount],
+    ["maxImageRequestsPerSample", profile.budgets.maxImageRequestsPerSample],
+    ["maxLongTaskCountPerWidth", profile.budgets.maxLongTaskCountPerWidth],
+  ];
+  return limits.flatMap(([name, value]) =>
+    Number.isFinite(value) && value >= 0
+      ? []
+      : [`Picker budget ${name} must be a finite nonnegative number.`]
+  );
+}
+
 export function buildPickerProfileMarkdown(result) {
   const rows = result.summary.byWidth.map((entry) =>
     [
@@ -217,6 +333,7 @@ export function buildPickerProfileMarkdown(result) {
       (sample) =>
         `- ${sample.requestedAppWidth}px ${sample.sampleKind} #${sample.sampleIndex}: ${sample.failures.join(" ")}`
     );
+  const budgetFailures = result.budgetValidation?.failures ?? [];
 
   return `# Wayfinder Picker Interaction Profile
 
@@ -230,7 +347,13 @@ export function buildPickerProfileMarkdown(result) {
 - Catalogue: ${result.fixture.optionCount} eligible options; ${result.fixture.expectedResultCount} final results
 - Samples: ${result.summary.measuredSampleCount} measured; ${result.summary.failedSampleCount} failed semantic validation
 - Aggregate duration: p50 ${formatMetric(result.summary.p50Ms)} ms, p75 ${formatMetric(result.summary.p75Ms)} ms, p95 ${formatMetric(result.summary.p95Ms)} ms
-- Budgets: ${result.profile.budgets === null ? "not frozen; this run is measurement evidence" : "configured in the profile"}
+- Budgets: ${
+    result.budgetValidation?.configured
+      ? result.budgetValidation.passed
+        ? "passed"
+        : "failed"
+      : "not frozen; this run is measurement evidence"
+  }
 
 | App width | Samples | Failed | p50 ms | p75 ms | p95 ms | Long tasks | Max DOM elements | Max results | Image requests |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -239,6 +362,10 @@ ${rows.map((row) => `| ${row} |`).join("\n")}
 ## Semantic failures
 
 ${failures.length > 0 ? failures.join("\n") : "None."}
+
+## Budget failures
+
+${budgetFailures.length > 0 ? budgetFailures.map((failure) => `- ${failure}`).join("\n") : "None."}
 `;
 }
 
@@ -261,9 +388,32 @@ function summarizeSamples(requestedAppWidth, samples) {
     ),
     longTaskCount: samples.reduce((total, sample) => total + (sample.longTasks?.length ?? 0), 0),
     imageRequestCount: samples.reduce((total, sample) => total + (sample.imageRequestCount ?? 0), 0),
+    maxImageRequestsPerSample: maximum(samples.map((sample) => sample.imageRequestCount)),
     maxDomElementCount: maximum(samples.map((sample) => sample.domElementCount)),
+    maxResultDomElementCount: maximum(samples.map((sample) => sample.resultDomElementCount)),
     maxResultCount: maximum(samples.map((sample) => sample.observedResultCount)),
+    maxLongTaskMs: maximum(samples.flatMap((sample) => (sample.longTasks ?? []).map((task) => task.duration))),
   };
+}
+
+function checkBudget(failures, width, label, observed, limit, unit = "") {
+  if (!Number.isFinite(observed)) {
+    failures.push(`${width} did not record a finite ${label}.`);
+  } else if (observed > limit) {
+    failures.push(`${width} ${label} was ${observed}${unit}, above the ${limit}${unit} budget.`);
+  }
+}
+
+function requireFiniteNonnegative(failures, value, label) {
+  if (!Number.isFinite(value) || value < 0) {
+    failures.push(`${label} was missing, nonfinite, or negative.`);
+  }
+}
+
+function requireNonnegativeInteger(failures, value, label) {
+  if (!Number.isInteger(value) || value < 0) {
+    failures.push(`${label} was missing, nonintegral, or negative.`);
+  }
 }
 
 function maximum(values) {

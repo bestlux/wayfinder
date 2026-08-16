@@ -3,6 +3,8 @@ import {
   buildPickerProfileMarkdown,
   percentile,
   summarizePickerProfile,
+  validatePickerBudgetConfiguration,
+  validatePickerBudgets,
   validatePickerFixture,
   validatePickerSample,
 } from "../tools/foundry-interaction/profile-results.mjs";
@@ -77,6 +79,19 @@ describe("Foundry picker profile results", () => {
     );
 
     expect(failures).toContain("The final visible result identities did not match the expected filtered options.");
+  });
+
+  it("binds each sample oracle to the frozen profile identities", () => {
+    const failures = validatePickerSample(
+      {
+        ...validSample(),
+        expectedResultValues: ["pf2e.spells-srd:wrong"],
+        observedResultValues: ["pf2e.spells-srd:wrong"],
+      },
+      { ...profile, expectedResultValues: ["pf2e.spells-srd:force-barrage"] }
+    );
+
+    expect(failures).toContain("The sample result oracle did not match the frozen profile identities or ordering.");
   });
 
   it("reports dropped input, stale flashes, result drift, and focus loss independently", () => {
@@ -198,6 +213,142 @@ describe("Foundry picker profile results", () => {
     });
   });
 
+  it("qualifies each width independently at the exact frozen boundaries", () => {
+    const budgetProfile = {
+      ...profile,
+      budgets: {
+        maxP95MsPerWidth: 30,
+        maxDomElementCount: 800,
+        maxResultDomElementCount: 12,
+        maxImageRequestsPerSample: 0,
+        maxLongTaskCountPerWidth: 0,
+      },
+    };
+    const samples = budgetProfile.appWidths.flatMap((requestedAppWidth) =>
+      Array.from({ length: 30 }, (_, index) => ({
+        ...validSample(),
+        requestedAppWidth,
+        sampleIndex: index + 1,
+        durationMs: 30,
+      }))
+    );
+    const summary = summarizePickerProfile(budgetProfile, samples);
+
+    expect(validatePickerBudgets(budgetProfile, summary)).toEqual({
+      configured: true,
+      passed: true,
+      failures: [],
+    });
+  });
+
+  it("fails one slow or structurally expensive width without hiding it in aggregate metrics", () => {
+    const budgetProfile = {
+      ...profile,
+      budgets: {
+        maxP95MsPerWidth: 30,
+        maxDomElementCount: 800,
+        maxResultDomElementCount: 12,
+        maxImageRequestsPerSample: 0,
+        maxLongTaskCountPerWidth: 0,
+      },
+    };
+    const summary = {
+      p95Ms: 20,
+      byWidth: [
+        {
+          requestedAppWidth: 1240,
+          sampleCount: 30,
+          p95Ms: 31,
+          maxDomElementCount: 801,
+          maxResultDomElementCount: 13,
+          maxImageRequestsPerSample: 1,
+          longTaskCount: 1,
+        },
+        {
+          requestedAppWidth: 760,
+          sampleCount: 29,
+          p95Ms: 20,
+          maxDomElementCount: 800,
+          maxResultDomElementCount: 12,
+          maxImageRequestsPerSample: 0,
+          longTaskCount: 0,
+        },
+      ],
+    };
+
+    expect(validatePickerBudgets(budgetProfile, summary).failures).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("1240px p95 duration"),
+        expect.stringContaining("1240px DOM element count"),
+        expect.stringContaining("1240px result DOM element count"),
+        expect.stringContaining("1240px image requests per sample"),
+        expect.stringContaining("1240px long-task count"),
+        expect.stringContaining("760px recorded 29 measured samples"),
+      ])
+    );
+  });
+
+  it("keeps development sample overrides useful without weakening qualification", () => {
+    const budgetProfile = {
+      ...profile,
+      appWidths: [1240],
+      budgets: {
+        maxP95MsPerWidth: 30,
+        maxDomElementCount: 800,
+        maxResultDomElementCount: 12,
+        maxImageRequestsPerSample: 0,
+        maxLongTaskCountPerWidth: 0,
+      },
+    };
+    const summary = summarizePickerProfile(budgetProfile, [validSample()]);
+
+    expect(validatePickerBudgets(budgetProfile, summary).passed).toBe(false);
+    expect(validatePickerBudgets(budgetProfile, summary, { requireQualificationSamples: false })).toMatchObject({
+      configured: true,
+      passed: true,
+      failures: [],
+    });
+  });
+
+  it("fails closed when structural measurements or long-task entries are missing", () => {
+    const missing = validatePickerSample(
+      {
+        ...validSample(),
+        windowContentWidth: undefined,
+        domElementCount: Number.NaN,
+        resultDomElementCount: undefined,
+        imageRequestCount: undefined,
+        longTasks: undefined,
+      },
+      profile
+    );
+    expect(missing).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Window-content width"),
+        expect.stringContaining("DOM element count"),
+        expect.stringContaining("Result DOM element count"),
+        expect.stringContaining("Image request count"),
+        expect.stringContaining("Long Task entries"),
+      ])
+    );
+
+    expect(validatePickerSample({ ...validSample(), longTasks: [{ duration: Number.NaN }] }, profile)).toContain(
+      "Long Task entries contained a missing, nonfinite, or negative duration."
+    );
+  });
+
+  it("marks an unfrozen profile as measurement-only and rejects malformed limits", () => {
+    const summary = summarizePickerProfile(profile, []);
+    expect(validatePickerBudgets(profile, summary)).toEqual({ configured: false, passed: false, failures: [] });
+
+    const malformed = validatePickerBudgets({ ...profile, budgets: { maxP95MsPerWidth: Number.NaN } }, summary);
+    expect(malformed).toMatchObject({ configured: true, passed: false });
+    expect(malformed.failures).toEqual(expect.arrayContaining([expect.stringContaining("finite nonnegative")]));
+    expect(validatePickerBudgetConfiguration({ ...profile, budgets: { maxP95MsPerWidth: Number.NaN } })).toEqual(
+      expect.arrayContaining([expect.stringContaining("maxP95MsPerWidth")])
+    );
+  });
+
   it("renders candidate, runtime, diagnostics, and semantic failures into Markdown", () => {
     const samples = [{ ...validSample(), sampleKind: "measured", failures: ["lost focus"] }];
     const summary = summarizePickerProfile({ ...profile, appWidths: [1240] }, samples);
@@ -223,6 +374,7 @@ function validSample() {
   return {
     requestedAppWidth: 1240,
     actualAppWidth: 1240,
+    windowContentWidth: 1238,
     sampleIndex: 1,
     sampleKind: "measured",
     durationMs: 25,
@@ -243,6 +395,8 @@ function validSample() {
     staleFlashCount: 0,
     staleRenderCommitCount: 0,
     rootReplacementCount: 0,
+    searchInputReplacementCount: 0,
+    shellReplacementCount: 0,
     domElementCount: 800,
     resultDomElementCount: 12,
     imageRequestCount: 0,

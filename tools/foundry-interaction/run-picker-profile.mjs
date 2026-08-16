@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { arch as osArch, cpus, release as osRelease } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
@@ -16,6 +17,8 @@ import {
 import {
   buildPickerProfileMarkdown,
   summarizePickerProfile,
+  validatePickerBudgetConfiguration,
+  validatePickerBudgets,
   validatePickerFixture,
   validatePickerSample,
 } from "./profile-results.mjs";
@@ -87,11 +90,13 @@ async function main() {
   const servedFiles = new Map();
   const candidateRouteFailures = [];
   const startedAt = new Date().toISOString();
+  const headless = options.headed ? false : envFlag("FOUNDRY_INTERACTION_HEADLESS", true);
   const browser = await chromium.launch({
     executablePath: chromePath,
-    headless: options.headed ? false : envFlag("FOUNDRY_INTERACTION_HEADLESS", true),
+    headless,
   });
   const browserVersion = browser.version();
+  const playwrightVersion = await packageVersion(path.join(repoRoot, "node_modules", "playwright-core", "package.json"));
   const context = await browser.newContext({ viewport: profile.viewport });
   const page = await context.newPage();
   let fixture = null;
@@ -271,27 +276,49 @@ async function main() {
     actorCountAfterCreate: fixture.actorCountAfterCreate,
     actorCountAfterCleanup: cleanup.actorCountAfter,
   };
+  const summary = summarizePickerProfile(profile, samples);
+  const developmentOverride = options.samples !== null || options.warmups !== null;
+  const budgetValidation = validatePickerBudgets(profile, summary, {
+    requireQualificationSamples: !developmentOverride,
+  });
   const result = {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    runMode: developmentOverride ? "development-override" : "qualification",
     startedAt,
     finishedAt: new Date().toISOString(),
     profile,
     candidate,
     driver,
-    browser: { version: browserVersion, viewport: profile.viewport },
+    browser: { version: browserVersion, viewport: profile.viewport, headless },
+    environment: {
+      capture: "full",
+      nodeVersion: process.version,
+      playwrightCoreVersion: playwrightVersion,
+      os: {
+        platform: process.platform,
+        release: osRelease(),
+        arch: osArch(),
+      },
+      cpu: {
+        model: cpus()[0]?.model.trim() || "unknown",
+        logicalProcessorCount: cpus().length,
+      },
+    },
     runtime: fixture.runtime,
     fixture: sanitizedFixture,
     servedModuleFiles: Array.from(servedFiles.values()).sort((left, right) => left.path.localeCompare(right.path)),
+    candidateRouteFailureCount: candidateRouteFailures.length,
     samples,
-    summary: summarizePickerProfile(profile, samples),
+    summary,
+    budgetValidation,
   };
   await writeFile(path.join(outDir, "picker-profile-results.json"), `${JSON.stringify(result, null, 2)}\n`);
   await writeFile(path.join(outDir, "picker-profile-summary.md"), buildPickerProfileMarkdown(result));
   console.log(`Picker profile artifacts: ${path.relative(repoRoot, outDir)}`);
   console.log(
-    `Measured ${result.summary.measuredSampleCount} samples; ${result.summary.failedSampleCount} semantic failures; p95 ${formatMetric(result.summary.p95Ms)}ms.`,
+    `Measured ${result.summary.measuredSampleCount} samples; ${result.summary.failedSampleCount} semantic failures; p95 ${formatMetric(result.summary.p95Ms)}ms; budgets ${budgetValidation.configured ? (budgetValidation.passed ? "passed" : "failed") : "not frozen"}.`,
   );
-  if (result.summary.failedSampleCount > 0) {
+  if (result.summary.failedSampleCount > 0 || (budgetValidation.configured && !budgetValidation.passed)) {
     process.exitCode = 1;
   }
 }
@@ -359,6 +386,10 @@ function validateProfile(profile, options) {
   }
   if (!options.samples && profile.measuredSamplesPerWidth < 30) {
     throw new Error("Committed picker profiles require at least 30 measured samples per width.");
+  }
+  const budgetFailures = validatePickerBudgetConfiguration(profile);
+  if (budgetFailures.length > 0) {
+    throw new Error(budgetFailures.join(" "));
   }
   if (!options.allowDestructive || !options.expectedWorldId) {
     throw new Error(
@@ -441,16 +472,18 @@ async function inspectDriver(profilePath) {
   ];
   const dirtyPaths = gitStatusPaths(repoRoot);
   const inputPaths = files.map((filePath) => path.relative(repoRoot, filePath).replaceAll(path.sep, "/"));
+  const fileRecords = await Promise.all(
+    files.map(async (filePath) => ({
+      path: path.relative(repoRoot, filePath).replaceAll(path.sep, "/"),
+      sha256: sha256(await readFile(filePath)),
+    })),
+  );
   return {
     gitSha: git(repoRoot, ["rev-parse", "HEAD"]),
     dirtyPaths,
     dirtyInputPaths: dirtyPaths.filter((dirtyPath) => inputPaths.includes(dirtyPath.replaceAll(path.sep, "/"))),
-    files: await Promise.all(
-      files.map(async (filePath) => ({
-        path: path.relative(repoRoot, filePath).replaceAll(path.sep, "/"),
-        sha256: sha256(await readFile(filePath)),
-      })),
-    ),
+    inputSetSha256: sha256(JSON.stringify(fileRecords)),
+    files: fileRecords,
   };
 }
 
@@ -531,6 +564,11 @@ function formatMetric(value) {
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function packageVersion(packagePath) {
+  const packageData = JSON.parse(await readFile(packagePath, "utf8"));
+  return typeof packageData.version === "string" ? packageData.version : "unknown";
 }
 
 main().catch((error) => {

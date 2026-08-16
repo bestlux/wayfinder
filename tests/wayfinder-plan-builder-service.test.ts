@@ -548,7 +548,7 @@ describe("wayfinder plan builder service", () => {
     expect(buildClassFeatSteps).toHaveBeenCalledWith({
       effectiveClassDocument: classDocument,
       targetLevel: 4,
-      fulfilledCount: 2,
+      fulfilledCount: 0,
       fulfilledStepIds: ["class-feat-level-2", "skill-feat-level-1"],
       reservedStepIds: [],
     });

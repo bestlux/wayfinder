@@ -63,6 +63,30 @@ describe("wayfinder level-up depth", () => {
     expect(slotIds(plan, "skill-feat")).toEqual(["skill-feat-level-3", "skill-feat-level-4"]);
     expect(slotIds(plan, "class-feat")).toEqual(["class-feat-level-2", "class-feat-level-4"]);
   });
+
+  it("does not let an unslotted granted class feat consume a class-feat milestone", async () => {
+    const classDocument = wizardClassDocument();
+    const actor = {
+      ...actorWithItems([
+        singletonItem("ancestry", "Human"),
+        singletonItem("heritage", "Versatile Human"),
+        singletonItem("background", "Acolyte"),
+        singletonItem("class", "Wizard", classDocument.system),
+        featItem("Reach Spell", "class", "grant-choice-class-classfeature-experimental-spellshaping-feat-level-1"),
+      ]),
+      feats: {
+        class: {
+          slots: {},
+        },
+      },
+    };
+    const draft = createEmptyDraft(5);
+
+    const plan = await buildPlan(actor, classDocument, draft);
+
+    expect(inspectActor(actor).featCounts.class).toBe(1);
+    expect(slotIds(plan, "class-feat")).toEqual(["class-feat-level-2", "class-feat-level-4"]);
+  });
 });
 
 async function buildPlan(actor: unknown, classDocument: Record<string, unknown>, draft = createEmptyDraft(1)) {
@@ -144,6 +168,23 @@ function rogueClassDocument() {
       },
       skillFeatLevels: {
         value: [1, 2, 3, 4, 5, 6, 7, 8],
+      },
+      items: {},
+    },
+  };
+}
+
+function wizardClassDocument() {
+  return {
+    name: "Wizard",
+    type: "class",
+    system: {
+      slug: "wizard",
+      classFeatLevels: {
+        value: [2, 4, 6, 8, 10],
+      },
+      skillFeatLevels: {
+        value: [2, 4, 6, 8, 10],
       },
       items: {},
     },

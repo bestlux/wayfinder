@@ -152,7 +152,7 @@ export async function buildWayfinderAppPlan(
       deps.buildClassFeatSteps({
         effectiveClassDocument: await args.resolveDocument("class"),
         targetLevel,
-        fulfilledCount: planSnapshot.featCounts.class,
+        fulfilledCount: countAppliedWayfinderSlotSelections(args.actor, "class-feat"),
         fulfilledStepIds: planSnapshot.fulfilledStepIds,
         reservedStepIds: reservedClassFeatSlotIds(classArchetypeDraft),
       }),

@@ -7,7 +7,7 @@
 [![Latest release](https://img.shields.io/github/v/release/bestlux/wayfinder?label=release&color=2b6cb0)](https://github.com/bestlux/wayfinder/releases/latest)
 ![Foundry VTT v14](https://img.shields.io/badge/Foundry%20VTT-v14-e26a26)
 ![PF2E 8.1+](https://img.shields.io/badge/PF2E%20system-8.1%2B-8a2422)
-[![Legal](https://img.shields.io/badge/legal-layered%20notices-6b7280)](LEGAL.md)
+[![Legal](https://img.shields.io/badge/legal-notices-6b7280)](LEGAL.md)
 
 </div>
 
@@ -93,7 +93,7 @@ The current product direction and planned arcs live in [docs/roadmap.md](docs/ro
 
 ## Legal & attribution
 
-[LEGAL.md](LEGAL.md) is the entry point for Wayfinder's layered notices. It separates the terms for original Wayfinder software from the [ORC notice](licenses/ORC-NOTICE.md), retained [OGL 1.0a material](licenses/OPEN-GAME-LICENSE-1.0A.md), [third-party notices](licenses/THIRD-PARTY-NOTICES.md), and the packaged [rules-source ledger](licenses/rules-sources.json).
+[LEGAL.md](LEGAL.md) is the entry point for Wayfinder's notices. It separates the terms for original Wayfinder software from the [ORC notice](licenses/ORC-NOTICE.md), retained [OGL 1.0a material](licenses/OPEN-GAME-LICENSE-1.0A.md), and [third-party notices](licenses/THIRD-PARTY-NOTICES.md).
 
 Wayfinder uses trademarks and/or copyrights owned by Paizo Inc., used under Paizo's Community Use Policy (paizo.com/licenses/communityuse). We are expressly prohibited from charging you to use or access this content. Wayfinder is not published, endorsed, or specifically approved by Paizo. For more information about Paizo Inc. and Paizo products, visit paizo.com.
 

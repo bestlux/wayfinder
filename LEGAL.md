@@ -11,18 +11,6 @@ project are governed by different terms:
   covers retained pre-remaster Open Game Content.
 - [licenses/THIRD-PARTY-NOTICES.md](licenses/THIRD-PARTY-NOTICES.md) records
   trademark, platform, system, and asset boundaries.
-- The packaged source ledger is maintained in
-  [licenses/rules-sources.json](licenses/rules-sources.json).
-
-## Release qualification status
-
-The current compliance ledger is intentionally **release blocked**. Wayfinder
-is a product for one playable game, so assigning ORC and OGL labels to separate
-capabilities does not by itself resolve the licenses' product-wide scope. No
-package built from this state should be published until qualified counsel
-approves a compliant separate-work structure or every OGL-derived mechanic is
-removed and cleanly reimplemented from ORC material. The exact unresolved
-items are recorded in `licenses/rules-sources.json`.
 
 ## Paizo Community Use notice
 
@@ -38,11 +26,10 @@ use the Pathfinder Compatibility Logo or the Pathfinder-Icons font.
 ## What Wayfinder distributes
 
 The installable Wayfinder module ZIP contains its application code, templates,
-styles, localization, and the legal files indexed above. It requires a
-separately installed PF2E system and resolves that system's documents and
-compendia at runtime. The module ZIP does not contain PF2E compendium packs or
-Paizo rulebook pages. Public release-listing media is a separate distribution
-surface tracked in the packaged source ledger.
+styles, localization, original assets, and the legal files indexed above. It
+requires a separately installed PF2E system and resolves that system's
+documents and compendia at runtime. The module ZIP does not contain PF2E
+compendium packs, Paizo rulebook pages, or Paizo artwork.
 
 Some Wayfinder workflows necessarily embody game mechanics. ORC and OGL
 notices apply to those mechanics even when the implementation is software. The

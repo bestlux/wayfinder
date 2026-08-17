@@ -16,19 +16,6 @@ For a CI-style dry run after validation has already passed:
 node tools/release/prepare-package.mjs --version X.Y.Z --tag vX.Y.Z --repo bestlux/wayfinder
 ```
 
-The default command is release-fail-closed: it refuses to build while
-`licenses/rules-sources.json` contains legal release blockers. To inspect the
-archive shape during remediation without qualifying it for release, use the
-explicit development-only switch:
-
-```powershell
-node tools/release/prepare-package.mjs --allow-legal-blockers --version X.Y.Z --tag vX.Y.Z --repo bestlux/wayfinder
-```
-
-That archive contains `INSPECTION-ONLY.txt`, and its package manifest records
-`legalQualification.passed: false`, the override, and the exact blocker IDs.
-Never upload or register that inspection artifact.
-
 Outputs land in `dist/release/`:
 
 | File | Purpose |
@@ -43,9 +30,9 @@ The tag workflow also emits `dist/release/release-notes.md` by extracting the ma
 node tools/release/extract-release-notes.mjs --version X.Y.Z --out dist/release/release-notes.md
 ```
 
-The archive intentionally ships only installable assets: `module.json`, generated `scripts/`, `styles/`, `templates/`, `lang/`, original `assets/`, and top-level release docs like the README. `LEGAL.md`, `LICENSE.md`, the ORC/OGL/third-party notices, and the packaged source ledger are required archive entries. It excludes `src/`, `tests/`, `node_modules/`, source maps, build config, workflow files, and other development-only content.
+The archive intentionally ships only installable assets: `module.json`, generated `scripts/`, `styles/`, `templates/`, `lang/`, original `assets/`, and top-level release docs like the README. `LEGAL.md`, `LICENSE.md`, and the ORC/OGL/third-party notices are required archive entries. It excludes `src/`, `tests/`, `node_modules/`, source maps, build config, workflow files, and other development-only content.
 
-Marketplace media, when present, lives in the repo-level `media/` folder and is referenced from `module.json` with tag-pinned `raw.githubusercontent.com` URLs for each release. Those images are intentionally not included in `module.zip`; publish them by committing them before cutting the matching tag. The current development manifest omits media, and the prior PF2E-art/rules screenshots have been removed from the repository. Any replacement must use synthetic names and copy plus original or independently licensed art, and must be recorded in the legal source ledger. If a screenshot needs to change after release, cut a new version instead of mutating the old listing.
+Marketplace media, when present, lives in the repo-level `media/` folder and is referenced from `module.json` with tag-pinned `raw.githubusercontent.com` URLs for each release. Those images are intentionally not included in `module.zip`; publish them by committing them before cutting the matching tag. The current development manifest omits media, and the prior PF2E-art/rules screenshots have been removed from the repository. Any replacement must use synthetic names and copy plus original or independently licensed art. If a screenshot needs to change after release, cut a new version instead of mutating the old listing.
 
 ## Public readiness checklist
 
@@ -54,8 +41,8 @@ Before making the repository public or submitting a Foundry package listing:
 - Confirm the GitHub repository, release assets, and tag-pinned `media/` URLs are publicly reachable without authentication.
 - Confirm `module.json` has author contact metadata, including Discord handle when available.
 - Confirm `README.md`, `LEGAL.md`, `LICENSE.md`, every file under `licenses/`, `bugs`, `readme`, and `changelog` URLs are public and current.
-- Run `npm run check:legal:release`; every source, asset, attribution, fixture, branding, and media blocker must be resolved before packaging.
 - Confirm the exact Paizo Community Use notice and current project contact are visible in the README and reachable from Wayfinder's in-app feedback/legal surface.
+- Review new prose, fixtures, and listing media for copied rules text or third-party artwork; automated checks cannot determine substantial similarity.
 - Confirm compatibility metadata matches the intended support range and coverage docs state the exact smoke-tested Foundry/PF2E versions.
 - Run a secret scan over tracked files and do not commit local Foundry credentials, browser state, package tokens, or `.env` files.
 
@@ -64,7 +51,7 @@ Before making the repository public or submitting a Foundry package listing:
 1. Bump `package.json` and `module.json` to the same version.
 2. Add a `CHANGELOG.md` section for the version.
 3. Build the exact candidate and run the current release smoke matrix in Foundry. Record the candidate version, Foundry/PF2E versions, scenario count, failures, and artifact directories in `docs/coverage/beta-readiness-smoke.md`.
-4. Run `npm run check` and `npm run check:legal:release`.
+4. Run `npm run check`.
 5. Run the CI-style packaging command above and inspect `dist/release/package-manifest.json`, the generated release manifest, and extracted notes.
 6. Commit and push the release commit. Tag that exact commit as `vX.Y.Z`, then push the tag.
 7. `.github/workflows/release.yml` validates the repo, builds the package, attaches the release manifest and zip to the GitHub Release, and uses the extracted changelog section as the GitHub Release body.

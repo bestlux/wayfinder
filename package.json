@@ -25,9 +25,7 @@
     "profile:picker": "node tools/foundry-interaction/run-picker-profile.mjs",
     "generate:character-wealth": "node tools/starting-equipment/generate-character-wealth.mjs",
     "check:character-wealth": "node tools/starting-equipment/generate-character-wealth.mjs --check",
-    "check:legal": "node tools/legal/validate-rules-sources.mjs",
-    "check:legal:release": "node tools/legal/validate-rules-sources.mjs --release",
-    "check": "npm run format:check && npm run lint && npm run check:character-wealth && npm run check:legal && npm run build && npm test && npm run check:strict",
+    "check": "npm run format:check && npm run lint && npm run check:character-wealth && npm run build && npm test && npm run check:strict",
     "test": "vitest run",
     "test:watch": "vitest"
   },

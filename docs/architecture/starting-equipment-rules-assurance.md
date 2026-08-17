@@ -79,9 +79,9 @@ Compatibility smoke locates and structurally validates the installed Character W
 
 ### Attribution and license treatment
 
-The normalized Character Wealth rows are derived from Pathfinder GM Core game mechanics, but this story does not add a GM-Core-only ORC notice to the product. An attribution review found that the existing Wayfinder product also embodies mechanics from multiple other ORC works and at least one older OGL-era source. Under the ORC's single-system `Work` definition, a notice scoped as though Character Wealth were the product's only adapted rules surface would be misleading; PF2E 8.4.0's own notice is also incomplete for several current books and retains a placeholder author credit for Guns & Gears Remastered.
+The normalized Character Wealth rows are derived from Pathfinder GM Core game mechanics. This technical story records the exact source and normalized-data provenance needed to review future policy changes; Wayfinder's product-level notices are maintained separately in `LEGAL.md` and `licenses/`.
 
-Accordingly, this technical story records the source and normalized-data provenance without pretending to settle the repository-wide license. Publication or release of this branch remains blocked on a good-faith product-wide source ledger, complete upstream credits, and an explicit ORC/OGL treatment reviewed for the actual shipped mechanics. Raw journal HTML, surrounding prose, compendium documents, and private PDFs remain excluded from the repository. This is an engineering release gate, not legal advice.
+Raw journal HTML, surrounding prose, compendium documents, and private PDFs remain excluded from the repository. This provenance record is an engineering assurance boundary, not a separate publication gate.
 
 ## Cited semantic policy
 

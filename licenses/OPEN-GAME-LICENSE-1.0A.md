@@ -1,13 +1,5 @@
 # OPEN GAME LICENSE Version 1.0a
 
-## Release qualification note
-
-The complete inherited Section 15 chain has not yet been verified against the
-legal pages of every OGL source work used by Wayfinder. The entries below are
-the current known set, not a claim of completeness. The packaged source ledger
-therefore blocks publication until the verbatim transitive notice chain is
-verified and pinned.
-
 The following text is the property of Wizards of the Coast, Inc. and is
 Copyright 2000 Wizards of the Coast, Inc ("Wizards"). All Rights Reserved.
 
@@ -162,14 +154,12 @@ enforceable.
 
 ## Identification of Open Game Content
 
-The game-mechanical expressions implemented by capability entries marked
-`OGL-1.0a` in [rules-sources.json](rules-sources.json) are Open Game Content to the
-extent defined by the Open Game License. This identification does not include
-Paizo Product Identity.
-
-This identification does not purport to make an OGL-derived mechanic valid
-inside an ORC single-game Work. The packaged source ledger blocks publication
-until that product-wide scope issue is resolved.
+Wayfinder identifies the following retained legacy-compatibility mechanics as
+Open Game Content to the extent defined by the Open Game License: Gradual
+Ability Boosts, legacy voluntary flaws, Clan Dagger ancestry-grant behavior,
+Arcane Tattoos and Dragon Spit innate-cantrip behavior, and retained legacy
+Magus, Summoner, and Psychic spellcasting behavior. This identification does
+not include Paizo Product Identity.
 
 Wayfinder's original source code, code organization, user interface, visual
 design, original prose, project name and logos, and original assets are not

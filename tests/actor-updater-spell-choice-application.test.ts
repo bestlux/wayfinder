@@ -88,7 +88,7 @@ describe("actor-updater spell choice application", () => {
         classSlug: "unreviewed-class",
         destination: { ...base.destination, key: "unreviewed-destination" },
       })
-    ).toThrow(/no reviewed publication mapping/i);
+    ).toThrow(/no publication mapping/i);
   });
 
   it("repairs Wayfinder-owned entry metadata without claiming native entries", async () => {

@@ -327,7 +327,7 @@ export function spellcastingEntryPublication(
     case "wizard":
       return generatedEntryPublication("Pathfinder Player Core", "ORC", true);
     default:
-      throw new Error(`Wayfinder has no reviewed publication mapping for spellcasting destination ${destinationKey}.`);
+      throw new Error(`Wayfinder has no publication mapping for spellcasting destination ${destinationKey}.`);
   }
 }
 

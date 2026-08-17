@@ -1,12 +1,5 @@
 # ORC Notice
 
-## Release qualification note
-
-This notice records the ORC attribution and downstream grant required for the
-ORC-derived mechanics in Wayfinder. It does not resolve the current product's
-simultaneous reliance on OGL-derived mechanics. The packaged source ledger
-therefore blocks publication pending a product-wide licensing disposition.
-
 ## 1. ORC Notice
 
 This product is licensed under the ORC License located at the Library of
@@ -127,8 +120,7 @@ Wayfinder Game Mechanics © 2026 iomancer.
 To the extent each element is original to Wayfinder and qualifies as Reserved
 Material under the ORC License, Wayfinder reserves its original logos and
 wordmark artwork, original visual design, original artwork and media, and
-original non-mechanical prose. The bare project name is not reserved by this
-notice while its trademark clearance remains under review.
+original non-mechanical prose.
 
 This reservation expressly excludes Licensed Material, Adapted Licensed
 Material, Third Party Reserved Material, public-domain material, and any

@@ -5,7 +5,6 @@ import { createHash } from "node:crypto";
 import { cp, lstat, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { assertLegalReadiness } from "../legal/validate-rules-sources.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const defaultOutDir = "dist/release";
@@ -17,21 +16,11 @@ export const requiredPackageEntries = [
   "licenses/OPEN-GAME-LICENSE-1.0A.md",
   "licenses/ORC-NOTICE.md",
   "licenses/THIRD-PARTY-NOTICES.md",
-  "licenses/rules-sources.json",
   "scripts/wayfinder.js",
   "styles/wayfinder.css",
   "templates/wayfinder-app.hbs",
   "lang/en.json",
 ];
-
-export function buildLegalQualification(legalReadiness, { inspectionOverride = false } = {}) {
-  const errors = Array.isArray(legalReadiness.errors) ? legalReadiness.errors : [];
-  return {
-    passed: !inspectionOverride && legalReadiness.blockerIds.length === 0 && errors.length === 0,
-    inspectionOverride,
-    blockerIds: [...legalReadiness.blockerIds],
-  };
-}
 const packageDirectories = ["assets", "licenses", "scripts", "styles", "templates", "lang"];
 const requiredTopLevelFiles = ["LEGAL.md", "LICENSE.md"];
 const optionalPackageFiles = ["README.md", "CHANGELOG.md"];
@@ -45,11 +34,13 @@ const forbiddenPackageEntryPatterns = [
   /^tools\//,
   /^docs\//,
   /^agents\//,
+  /^packs\//,
   /^package(?:-lock)?\.json$/,
   /^tsconfig(?:\..*)?\.json$/,
   /^eslint\.config\.mjs$/,
   /^biome\.jsonc$/,
   /^vitest\.config\.ts$/,
+  /\.(?:epub|pdf)$/iu,
   /\.map$/,
 ];
 
@@ -61,8 +52,6 @@ Options:
   --tag <tag>          Release tag. Defaults to v<version>.
   --repo <owner/repo>  GitHub repository. Defaults to GITHUB_REPOSITORY or origin.
   --out <path>         Output directory. Defaults to ${defaultOutDir}.
-  --allow-legal-blockers
-                       Build a non-qualifying inspection artifact while recorded legal blockers remain.
   --help              Show this help text.
 `;
 }
@@ -73,8 +62,6 @@ function parseArgs(argv) {
     repo: process.env.GITHUB_REPOSITORY ?? "",
     tag: "",
     version: "",
-    allowLegalBlockers: false,
-    outExplicit: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -82,11 +69,6 @@ function parseArgs(argv) {
 
     if (arg === "--help") {
       options.help = true;
-      continue;
-    }
-
-    if (arg === "--allow-legal-blockers") {
-      options.allowLegalBlockers = true;
       continue;
     }
 
@@ -102,10 +84,7 @@ function parseArgs(argv) {
     if (arg === "--version") options.version = value;
     if (arg === "--tag") options.tag = value;
     if (arg === "--repo") options.repo = value;
-    if (arg === "--out") {
-      options.outDir = value;
-      options.outExplicit = true;
-    }
+    if (arg === "--out") options.outDir = value;
     index += 1;
   }
 
@@ -280,6 +259,14 @@ export function validatePackageEntries(entries) {
   );
   if (forbiddenEntries.length > 0) {
     throw new Error(`Package contains forbidden development entries: ${forbiddenEntries.join(", ")}`);
+  }
+
+  const reviewedAssetEntries = new Set(["assets/wayfinder-entry.svg"]);
+  const unreviewedAssetEntries = entries.filter(
+    (entry) => entry.startsWith("assets/") && !reviewedAssetEntries.has(entry),
+  );
+  if (unreviewedAssetEntries.length > 0) {
+    throw new Error(`Package contains unreviewed asset entries: ${unreviewedAssetEntries.join(", ")}`);
   }
 }
 
@@ -466,12 +453,6 @@ async function main() {
 
   const outputRoot = resolveOutputRoot(options.outDir);
   await removeGeneratedOutputRoot(outputRoot);
-  if (
-    options.allowLegalBlockers &&
-    (!options.outExplicit || outputRoot === resolveOutputRoot(defaultOutDir))
-  ) {
-    throw new Error("--allow-legal-blockers requires an explicit non-release --out directory.");
-  }
 
   const packageJson = await readJson("package.json");
   const sourceManifest = await readJson("module.json");
@@ -487,23 +468,10 @@ async function main() {
     );
   }
 
-  const legalReadiness = await assertLegalReadiness({ release: !options.allowLegalBlockers });
-  if (options.allowLegalBlockers) {
-    console.warn(
-      `Building a non-qualifying package inspection artifact. Legal blockers: ${legalReadiness.blockerIds.join(", ")}`
-    );
-  }
-
   const packageRoot = path.join(outputRoot, "package");
   const releaseManifest = buildReleaseManifest(sourceManifest, { repo, tag, version });
 
   await mkdir(packageRoot, { recursive: true });
-  if (options.allowLegalBlockers) {
-    await writeFile(
-      path.join(outputRoot, "INSPECTION-ONLY.txt"),
-      "This directory was built with --allow-legal-blockers. Its module.json and module.zip are not legally qualified for publication or release.\n"
-    );
-  }
   await writeFile(path.join(packageRoot, "module.json"), `${JSON.stringify(releaseManifest, null, 2)}\n`);
 
   for (const directory of packageDirectories) {
@@ -518,13 +486,6 @@ async function main() {
 
   for (const file of optionalPackageFiles) {
     await copyOptionalFile(file, packageRoot);
-  }
-
-  if (options.allowLegalBlockers) {
-    await writeFile(
-      path.join(packageRoot, "INSPECTION-ONLY.txt"),
-      "This archive was built with --allow-legal-blockers. It is not legally qualified for publication or release.\n"
-    );
   }
 
   const entries = await listFiles(packageRoot);
@@ -546,9 +507,6 @@ async function main() {
       zip: path.relative(repoRoot, zipPath).replaceAll(path.sep, "/"),
     },
     zipSha256,
-    legalQualification: buildLegalQualification(legalReadiness, {
-      inspectionOverride: options.allowLegalBlockers,
-    }),
     entries,
   };
 

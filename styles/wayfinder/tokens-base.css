@@ -48,7 +48,8 @@
   padding: 0.3rem;
   border: 1px solid rgba(233, 215, 161, 0.16);
   background:
-    url("/systems/pf2e/assets/sheet/border-pattern.webp") repeat-x top,
+    linear-gradient(90deg, transparent 0 6%, rgba(233, 215, 161, 0.28) 6% 8%, transparent 8% 14%) top / 72px 4px
+    repeat-x,
     linear-gradient(180deg, #190f11 0%, #281618 100%);
   color: var(--wf-ink);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);

@@ -12,6 +12,16 @@ import { findSpellcastingEntryForChoice, magusMaxSpellRank, wizardMaxSpellRank }
 import type { DraftState, PendingStep } from "../types.js";
 import { SLOT_IDS } from "../wayfinder/slot-ids.js";
 
+const WAYFINDER_ENTRY_ICON = "modules/wayfinder-pf2e/assets/wayfinder-entry.svg";
+const GENERATED_SPELLCASTING_ENTRY_VERSION = 1;
+
+interface GeneratedEntryPublication {
+  title: string;
+  authors: string;
+  license: "OGL" | "ORC";
+  remaster: boolean;
+}
+
 export async function ensureSpellcastingEntry(
   actor: ActorLike,
   step: PendingStep,
@@ -66,10 +76,11 @@ export function createSpellcastingEntrySource(
   actor: ActorLike,
   draft: DraftState
 ): EmbeddedItemSource {
+  const publication = spellcastingEntryPublication(spellChoice);
   return {
     name: spellChoice.destination.entryName,
     type: "spellcastingEntry",
-    img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
+    img: WAYFINDER_ENTRY_ICON,
     system: {
       ability: {
         value: spellChoice.destination.ability,
@@ -88,11 +99,7 @@ export function createSpellcastingEntrySource(
         slug: "",
         value: 1,
       },
-      publication: {
-        license: "ORC",
-        remaster: true,
-        title: "",
-      },
+      ...(publication ? { publication } : {}),
       rules: [],
       showSlotlessLevels: {
         value: true,
@@ -112,6 +119,7 @@ export function createSpellcastingEntrySource(
       [MODULE_ID]: {
         importedBy: MODULE_ID,
         destinationKey: spellChoice.destination.key,
+        generatedSpellcastingEntry: GENERATED_SPELLCASTING_ENTRY_VERSION,
       },
     },
   };
@@ -125,7 +133,7 @@ export function createClericPreparedEntrySource(
   return {
     name: "Divine Prepared Spells",
     type: "spellcastingEntry",
-    img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
+    img: WAYFINDER_ENTRY_ICON,
     system: {
       ability: {
         value: "wis",
@@ -144,11 +152,10 @@ export function createClericPreparedEntrySource(
         slug: "",
         value: 1,
       },
-      publication: {
-        license: "ORC",
-        remaster: true,
-        title: "",
-      },
+      publication:
+        profile === "battle-creed"
+          ? generatedEntryPublication("Pathfinder Lost Omens Divine Mysteries", "ORC", true)
+          : generatedEntryPublication("Pathfinder Player Core", "ORC", true),
       rules: [],
       showSlotlessLevels: {
         value: true,
@@ -171,6 +178,7 @@ export function createClericPreparedEntrySource(
       [MODULE_ID]: {
         importedBy: MODULE_ID,
         destinationKey: "cleric-divine-prepared",
+        generatedSpellcastingEntry: GENERATED_SPELLCASTING_ENTRY_VERSION,
       },
     },
   };
@@ -180,7 +188,7 @@ export function createBattleFontEntrySource(actor: ActorLike, draft: DraftState)
   return {
     name: "Battle Font",
     type: "spellcastingEntry",
-    img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
+    img: WAYFINDER_ENTRY_ICON,
     system: {
       ability: {
         value: "wis",
@@ -199,11 +207,7 @@ export function createBattleFontEntrySource(actor: ActorLike, draft: DraftState)
         slug: "cleric",
         value: 1,
       },
-      publication: {
-        license: "ORC",
-        remaster: true,
-        title: "",
-      },
+      publication: generatedEntryPublication("Pathfinder Lost Omens Divine Mysteries", "ORC", true),
       rules: [],
       showSlotlessLevels: {
         value: false,
@@ -223,6 +227,7 @@ export function createBattleFontEntrySource(actor: ActorLike, draft: DraftState)
       [MODULE_ID]: {
         importedBy: MODULE_ID,
         destinationKey: "cleric-battle-font",
+        generatedSpellcastingEntry: GENERATED_SPELLCASTING_ENTRY_VERSION,
       },
     },
   };
@@ -239,7 +244,7 @@ export function createClericFontEntrySource(
   return {
     name: entryName,
     type: "spellcastingEntry",
-    img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
+    img: WAYFINDER_ENTRY_ICON,
     system: {
       ability: {
         value: "wis",
@@ -258,11 +263,7 @@ export function createClericFontEntrySource(
         slug: "",
         value: 1,
       },
-      publication: {
-        license: "ORC",
-        remaster: true,
-        title: "",
-      },
+      publication: generatedEntryPublication("Pathfinder Player Core", "ORC", true),
       rules: [],
       showSlotlessLevels: {
         value: false,
@@ -282,9 +283,60 @@ export function createClericFontEntrySource(
       [MODULE_ID]: {
         importedBy: MODULE_ID,
         destinationKey,
+        generatedSpellcastingEntry: GENERATED_SPELLCASTING_ENTRY_VERSION,
       },
     },
   };
+}
+
+export function spellcastingEntryPublication(
+  spellChoice: NonNullable<PendingStep["spellChoice"]>
+): GeneratedEntryPublication | null {
+  const destinationKey = spellChoice.destination.key;
+  if (destinationKey === "necromancer-occult-dirge") {
+    return generatedEntryPublication("Pathfinder Impossible Magic", "ORC", true);
+  }
+  if (destinationKey === "spellshot-arcane-spellbook") {
+    return generatedEntryPublication("Pathfinder Guns & Gears", "ORC", true);
+  }
+  if (destinationKey.startsWith("palatine-detective-")) {
+    return generatedEntryPublication("Pathfinder Lost Omens Divine Mysteries", "ORC", true);
+  }
+  if (destinationKey.startsWith("feat-") && spellChoice.sourcePublication) {
+    return { ...spellChoice.sourcePublication };
+  }
+  if (destinationKey.startsWith("feat-")) {
+    throw new Error(`Wayfinder cannot create ${destinationKey} without source publication metadata.`);
+  }
+
+  switch (spellChoice.classSlug) {
+    case "magus":
+    case "summoner":
+      return generatedEntryPublication("Pathfinder Impossible Magic", "ORC", true);
+    case "psychic":
+      return generatedEntryPublication("Pathfinder Dark Archive (Remastered)", "ORC", true);
+    case "oracle":
+    case "sorcerer":
+      return generatedEntryPublication("Pathfinder Player Core 2", "ORC", true);
+    case "animist":
+      return generatedEntryPublication("Pathfinder War of Immortals", "ORC", true);
+    case "bard":
+    case "cleric":
+    case "druid":
+    case "witch":
+    case "wizard":
+      return generatedEntryPublication("Pathfinder Player Core", "ORC", true);
+    default:
+      throw new Error(`Wayfinder has no reviewed publication mapping for spellcasting destination ${destinationKey}.`);
+  }
+}
+
+function generatedEntryPublication(
+  title: string,
+  license: GeneratedEntryPublication["license"],
+  remaster: boolean
+): GeneratedEntryPublication {
+  return { title, authors: "", license, remaster };
 }
 
 export async function syncSpellcastingEntry(
@@ -300,24 +352,37 @@ export async function syncSpellcastingEntry(
   const desiredFlags = desiredSource.flags ?? {};
   const desiredProficiency = desiredSystem.proficiency as { slug?: unknown } | undefined;
   const mergedSlots = mergeSpellcastingEntrySlots(entry?.system?.slots, desiredSystem.slots ?? {});
-  await actor.updateEmbeddedDocuments("Item", [
-    {
-      _id: entry.id,
-      name: desiredSource.name,
-      "system.ability.value": desiredSystem.ability?.value ?? "",
-      "system.prepared.flexible": desiredSystem.prepared?.flexible ?? false,
-      "system.prepared.value": desiredSystem.prepared?.value ?? "",
-      "system.proficiency.slug": typeof desiredProficiency?.slug === "string" ? desiredProficiency.slug : "",
-      "system.showSlotlessLevels.value": desiredSystem.showSlotlessLevels?.value ?? true,
-      "system.slots": mergedSlots,
-      "system.tradition.value": desiredSystem.tradition?.value ?? "",
-      [`flags.${MODULE_ID}.destinationKey`]: desiredFlags?.[MODULE_ID]?.destinationKey ?? null,
-      [`flags.${MODULE_ID}.importedBy`]: desiredFlags?.[MODULE_ID]?.importedBy ?? MODULE_ID,
-    },
-  ]);
+  const publicationManaged =
+    entry.flags?.[MODULE_ID]?.generatedSpellcastingEntry === GENERATED_SPELLCASTING_ENTRY_VERSION;
+  const update: Record<string, unknown> = {
+    _id: entry.id,
+    name: desiredSource.name,
+    "system.ability.value": desiredSystem.ability?.value ?? "",
+    "system.prepared.flexible": desiredSystem.prepared?.flexible ?? false,
+    "system.prepared.value": desiredSystem.prepared?.value ?? "",
+    "system.proficiency.slug": typeof desiredProficiency?.slug === "string" ? desiredProficiency.slug : "",
+    "system.showSlotlessLevels.value": desiredSystem.showSlotlessLevels?.value ?? true,
+    "system.slots": mergedSlots,
+    "system.tradition.value": desiredSystem.tradition?.value ?? "",
+    [`flags.${MODULE_ID}.destinationKey`]: desiredFlags?.[MODULE_ID]?.destinationKey ?? null,
+  };
+  if (publicationManaged) {
+    update.img = desiredSource.img ?? WAYFINDER_ENTRY_ICON;
+    if (Object.hasOwn(desiredSystem, "publication")) {
+      update["system.publication"] = desiredSystem.publication;
+    }
+    update[`flags.${MODULE_ID}.importedBy`] = MODULE_ID;
+  }
+  await actor.updateEmbeddedDocuments("Item", [update]);
   entry.name = desiredSource.name;
   entry.system ??= {};
   entry.system.slots = mergedSlots;
+  if (publicationManaged) {
+    entry.img = desiredSource.img ?? WAYFINDER_ENTRY_ICON;
+    if (Object.hasOwn(desiredSystem, "publication")) {
+      entry.system.publication = desiredSystem.publication;
+    }
+  }
 }
 
 export function spellLocationId(item: ActorItemLike): string | null {

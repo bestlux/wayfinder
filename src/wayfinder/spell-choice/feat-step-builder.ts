@@ -1,4 +1,4 @@
-import type { PendingStep, SelectionRef } from "../../types.js";
+import type { PendingStep, SelectionRef, SpellChoicePublication } from "../../types.js";
 import { selectionTakenLevel } from "../selection-level.js";
 import { appendPendingSpellChoiceStep, makeSpellChoiceStep } from "./step-helpers.js";
 import type { ReadExistingSpellChoiceSelections, SpellChoiceClassDocument, SpellChoiceDocumentLike } from "./types.js";
@@ -123,6 +123,7 @@ function appendFeatSpellChoiceStep(args: {
 }): void {
   const sourceSlug = extractSourceSlug(args.source.sourceDocument) ?? args.source.sourceSelection.documentId;
   const level = selectionTakenLevel(args.source.sourceSelection);
+  const sourcePublication = extractSourcePublication(args.source.sourceDocument);
   appendPendingSpellChoiceStep(
     args.steps,
     makeSpellChoiceStep({
@@ -136,6 +137,7 @@ function appendFeatSpellChoiceStep(args: {
         sourceUuid: args.source.sourceSelection.uuid,
         sourceName: args.source.sourceSelection.name,
       },
+      ...(sourcePublication ? { sourcePublication } : {}),
       classSlug: args.classSlug,
       dependsOn: args.dependsOn,
       count: args.count ?? 1,
@@ -152,6 +154,36 @@ function appendFeatSpellChoiceStep(args: {
     args.draft,
     args.readExistingSpellChoiceSelections
   );
+}
+
+function extractSourcePublication(document: unknown): SpellChoicePublication | null {
+  const publication = (
+    document as {
+      system?: {
+        publication?: {
+          title?: unknown;
+          authors?: unknown;
+          license?: unknown;
+          remaster?: unknown;
+        };
+      };
+    } | null
+  )?.system?.publication;
+  if (
+    typeof publication?.title !== "string" ||
+    publication.title.trim().length === 0 ||
+    typeof publication.authors !== "string" ||
+    (publication.license !== "OGL" && publication.license !== "ORC") ||
+    typeof publication.remaster !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    title: publication.title.trim(),
+    authors: publication.authors,
+    license: publication.license,
+    remaster: publication.remaster,
+  };
 }
 
 function extractSourceSlug(document: unknown): string | null {

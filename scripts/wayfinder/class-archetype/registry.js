@@ -105,7 +105,7 @@ const WAY_OF_THE_SPELLSHOT = {
     value: "way-of-the-spellshot",
     label: "Way of the Spellshot",
     detail: "Follow the Way of the Spellshot. This replaces your normal gunslinger's way, uses Intelligence for your class DC, and adds arcane spellcasting through Spellshot Dedication.",
-    img: "systems/pf2e/icons/features/classes/way-of-the-spellshot.webp",
+    img: "modules/wayfinder-pf2e/assets/wayfinder-entry.svg",
     decisionSlotId: "class-archetype-gunslingers-way-level-1",
     classSlug: "gunslinger",
     selectorTag: "gunslinger-way",

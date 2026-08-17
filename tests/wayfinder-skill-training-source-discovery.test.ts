@@ -308,19 +308,19 @@ describe("wayfinder skill training source discovery", () => {
       sources: [
         {
           sourceItemType: "feat",
-          sourceSelection: selection("feat-slot", "xenoarchaeologist", "Xenoarchaeologist"),
+          sourceSelection: selection("feat-slot", "delve-scholar", "Delve Scholar"),
           sourceDocument: {
-            name: "Xenoarchaeologist",
+            name: "Delve Scholar",
             system: {
-              slug: "xenoarchaeologist",
+              slug: "delve-scholar",
               description: {
                 value:
-                  "<p>You gain the @UUID[Compendium.sf2e.feats.Item.Additional Lore]{ Additional Lore} general feat in Delve Lore.</p>",
+                  "<p>You gain the @UUID[Compendium.synthetic.feats.Item.additional-lore]{Additional Lore} general feat in Delve Lore.</p>",
               },
               rules: [
                 {
                   key: "GrantItem",
-                  uuid: "Compendium.sf2e.feats.Item.Additional Lore",
+                  uuid: "Compendium.synthetic.feats.Item.additional-lore",
                 },
               ],
             },

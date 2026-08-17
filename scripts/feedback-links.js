@@ -1,4 +1,5 @@
 const ISSUE_BASE = "https://github.com/bestlux/wayfinder/issues/new";
+export const LEGAL_ATTRIBUTION_PATH = "modules/wayfinder-pf2e/LEGAL.md";
 export const FEEDBACK_URLS = {
     bug: `${ISSUE_BASE}?template=bug-report.yml`,
     feature: `${ISSUE_BASE}?template=feature-request.yml`,
@@ -6,6 +7,12 @@ export const FEEDBACK_URLS = {
     coverage: "https://github.com/bestlux/wayfinder/tree/master/docs/coverage",
 };
 export const DISCORD_HANDLE = "bestlux";
+export function buildLegalAttributionUrl(getRoute = typeof foundry !== "undefined" &&
+    typeof foundry.utils?.getRoute === "function"
+    ? foundry.utils.getRoute
+    : undefined) {
+    return getRoute ? getRoute(LEGAL_ATTRIBUTION_PATH) : LEGAL_ATTRIBUTION_PATH;
+}
 /**
  * GitHub issue forms accept prefilled values as query parameters keyed by field id,
  * so a reporter never has to hunt down version numbers Wayfinder already knows.

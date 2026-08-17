@@ -8,6 +8,7 @@ interface CreateSpellChoiceStepArgs {
   title: string;
   description: string;
   source: SourceRef;
+  sourcePublication?: SpellChoiceMeta["sourcePublication"];
   classSlug: string | null;
   dependsOn: "class" | "class-branch" | null;
   count: number;
@@ -43,6 +44,7 @@ export function makeSpellChoiceStep(args: CreateSpellChoiceStepArgs): PendingSte
     sourceDocumentId: args.source.sourceDocumentId,
     sourceUuid: args.source.sourceUuid,
     sourceName: args.source.sourceName,
+    ...(args.sourcePublication ? { sourcePublication: { ...args.sourcePublication } } : {}),
     classSlug: args.classSlug,
     dependsOn: args.dependsOn,
     destination: { ...args.destination },

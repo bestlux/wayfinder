@@ -1,0 +1,594 @@
+{
+  "schemaVersion": 1,
+  "project": "wayfinder-pf2e",
+  "lastVerified": "2026-08-16",
+  "traceabilityStatus": "partial-audit-release-blocked",
+  "downstreamAttribution": "Wayfinder Game Mechanics © 2026 iomancer.",
+  "policies": {
+    "paizoCommunityUse": "https://downloads.paizo.com/CommunityUsePolicy.pdf",
+    "orc": "https://downloads.paizo.com/ORC_LicenseFINAL.pdf",
+    "ogl": "licenses/OPEN-GAME-LICENSE-1.0A.md",
+    "foundryPackageDevelopment": "https://foundryvtt.com/article/license/"
+  },
+  "works": [
+    {
+      "key": "player-core",
+      "title": "Pathfinder Player Core",
+      "license": "ORC",
+      "noticeFile": "licenses/ORC-NOTICE.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/ORCLicense.md#L10",
+        "https://paizo.com/products/btq02eoj"
+      ],
+      "status": "verified"
+    },
+    {
+      "key": "gm-core",
+      "title": "Pathfinder GM Core",
+      "license": "ORC",
+      "noticeFile": "licenses/ORC-NOTICE.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/ORCLicense.md#L12",
+        "tools/starting-equipment/fixtures/pf2e-8.4.0-character-wealth-policy.json"
+      ],
+      "status": "verified"
+    },
+    {
+      "key": "player-core-2",
+      "title": "Pathfinder Player Core 2",
+      "license": "ORC",
+      "noticeFile": "licenses/ORC-NOTICE.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/ORCLicense.md#L14"
+      ],
+      "status": "verified"
+    },
+    {
+      "key": "war-of-immortals",
+      "title": "Pathfinder War of Immortals",
+      "license": "ORC",
+      "noticeFile": "licenses/ORC-NOTICE.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/ORCLicense.md#L25"
+      ],
+      "status": "verified"
+    },
+    {
+      "key": "rage-of-elements",
+      "title": "Pathfinder Rage of Elements",
+      "license": "ORC",
+      "noticeFile": "licenses/ORC-NOTICE.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/ORCLicense.md#L19"
+      ],
+      "status": "provenance-review"
+    },
+    {
+      "key": "guns-gears-remastered",
+      "title": "Pathfinder Guns & Gears Remastered",
+      "license": "ORC",
+      "noticeFile": "licenses/ORC-NOTICE.md",
+      "attributionEvidence": ["https://store.paizo.com/pathfinder-guns-gears-remastered/"],
+      "status": "notice-page-needed"
+    },
+    {
+      "key": "divine-mysteries",
+      "title": "Pathfinder Lost Omens Divine Mysteries",
+      "license": "ORC",
+      "noticeFile": "licenses/ORC-NOTICE.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/ORCLicense.md#L78"
+      ],
+      "status": "verified"
+    },
+    {
+      "key": "impossible-magic",
+      "title": "Pathfinder Impossible Magic",
+      "license": "ORC",
+      "noticeFile": "licenses/ORC-NOTICE.md",
+      "attributionEvidence": [
+        "https://store.paizo.com/pathfinder-impossible-magic/",
+        "https://2e.aonprd.com/Licenses.aspx",
+        "https://2e.aonprd.com/Sources.aspx?ID=355"
+      ],
+      "status": "notice-page-needed"
+    },
+    {
+      "key": "dark-archive-remastered",
+      "title": "Pathfinder Dark Archive (Remastered)",
+      "license": "ORC",
+      "noticeFile": "licenses/ORC-NOTICE.md",
+      "attributionEvidence": [
+        "https://2e.aonprd.com/Licenses.aspx",
+        "https://store.paizo.com/pathfinder-dark-archive-remastered/"
+      ],
+      "status": "notice-page-needed"
+    },
+    {
+      "key": "core-rulebook",
+      "title": "Pathfinder Core Rulebook (Second Edition)",
+      "license": "OGL-1.0a",
+      "noticeFile": "licenses/OPEN-GAME-LICENSE-1.0A.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/OpenGameLicense.md#L38"
+      ],
+      "status": "notice-page-needed"
+    },
+    {
+      "key": "gamemastery-guide",
+      "title": "Pathfinder Gamemastery Guide",
+      "license": "OGL-1.0a",
+      "noticeFile": "licenses/OPEN-GAME-LICENSE-1.0A.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/OpenGameLicense.md#L39"
+      ],
+      "status": "notice-page-needed"
+    },
+    {
+      "key": "secrets-of-magic",
+      "title": "Secrets of Magic",
+      "license": "OGL-1.0a",
+      "noticeFile": "licenses/OPEN-GAME-LICENSE-1.0A.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/OpenGameLicense.md#L103"
+      ],
+      "status": "notice-page-needed"
+    },
+    {
+      "key": "dark-archive",
+      "title": "Pathfinder Dark Archive",
+      "license": "OGL-1.0a",
+      "noticeFile": "licenses/OPEN-GAME-LICENSE-1.0A.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/OpenGameLicense.md#L113"
+      ],
+      "status": "notice-page-needed"
+    },
+    {
+      "key": "lost-omens-character-guide",
+      "title": "Pathfinder Lost Omens Character Guide (Second Edition)",
+      "license": "OGL-1.0a",
+      "noticeFile": "licenses/OPEN-GAME-LICENSE-1.0A.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/OpenGameLicense.md#L400"
+      ],
+      "status": "notice-page-needed"
+    },
+    {
+      "key": "lost-omens-ancestry-guide",
+      "title": "Pathfinder Lost Omens Ancestry Guide (Second Edition)",
+      "license": "OGL-1.0a",
+      "noticeFile": "licenses/OPEN-GAME-LICENSE-1.0A.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/OpenGameLicense.md#L404"
+      ],
+      "status": "notice-page-needed"
+    },
+    {
+      "key": "book-of-the-dead",
+      "title": "Pathfinder Book of the Dead",
+      "license": "OGL-1.0a",
+      "noticeFile": "licenses/OPEN-GAME-LICENSE-1.0A.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/OpenGameLicense.md#L110"
+      ],
+      "status": "notice-page-needed"
+    },
+    {
+      "key": "adventure-path-151",
+      "title": "Pathfinder Adventure Path #151: The Show Must Go On",
+      "license": "OGL-1.0a",
+      "noticeFile": "licenses/OPEN-GAME-LICENSE-1.0A.md",
+      "attributionEvidence": [
+        "https://github.com/foundryvtt/pf2e/blob/90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1/static/licenses/OpenGameLicense.md"
+      ],
+      "status": "notice-page-needed"
+    }
+  ],
+  "capabilities": [
+    {
+      "capabilityId": "core-character-progression",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Core level, ability, skill, proficiency, language, and feat-lane progression.",
+      "codeRefs": [
+        "src/progression.ts",
+        "src/ability-boost-progression.ts",
+        "src/wayfinder/domain/skill-rank-projection.ts"
+      ],
+      "sourceWorks": ["player-core"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": ["PF2E 7.10.1 remaster-targeted implementation history"],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "core-build-and-language-allocation",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Standard and alternate ancestry boosts, skill taxonomy, bonus languages, and skill materialization.",
+      "codeRefs": [
+        "src/build-state.ts",
+        "src/build-state/ability-projection.ts",
+        "src/wayfinder/language-choice-service.ts",
+        "src/actor-updater/training-application.ts"
+      ],
+      "sourceWorks": ["player-core"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": ["commits 947df80f and fda5bd15 against the PF2E remaster lane"],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "free-archetype-variant",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Free Archetype feat cadence and separate archetype slots.",
+      "codeRefs": ["src/progression.ts"],
+      "sourceWorks": ["gm-core"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": ["Pathfinder GM Core variant rule"],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "archetype-dedication-legality",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Default dedication lockout, archetype-family matching, current-class restrictions, and supported exception handling.",
+      "codeRefs": ["src/pack/archetype-legality.ts", "src/pack/predicates.ts"],
+      "sourceWorks": ["player-core-2"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": [
+        "Current remaster dedication rules plus dynamic exception prose from installed PF2E documents"
+      ],
+      "status": "provenance-review"
+    },
+    {
+      "capabilityId": "character-wealth",
+      "shipped": true,
+      "surfaceKind": "generated-normalization",
+      "behavior": "Normalized Character Wealth values for levels 1 through 20.",
+      "codeRefs": [
+        "src/wayfinder/domain/character-wealth-policy.generated.ts",
+        "src/wayfinder/domain/character-wealth-policy.ts"
+      ],
+      "sourceWorks": ["gm-core"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": [
+        "tools/starting-equipment/fixtures/pf2e-8.4.0-character-wealth-policy.json",
+        "PF2E 8.4.0 commit 90132e99cb2c7617e4f0131b6010c6ee6f8ec5b1"
+      ],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "player-core-casters-and-feats",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Bard, Cleric, Druid, Witch, and Wizard spell schedules; Divine Font; Adapted Cantrip; and spell rarity/access policy.",
+      "codeRefs": [
+        "src/wayfinder/classes/caster-contributors.ts",
+        "src/wayfinder/spell-choice/cleric-step-builder.ts",
+        "src/wayfinder/spell-choice/wizard-step-builder.ts",
+        "src/wayfinder/spell-choice/witch-step-builder.ts",
+        "src/wayfinder/spell-choice/feat-step-builder.ts",
+        "src/actor-updater/native-spellcasting-application.ts"
+      ],
+      "sourceWorks": ["player-core"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": ["PF2E remaster publication metadata"],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "player-core-2-casters",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Oracle and Sorcerer spellcasting progression and repertoire construction.",
+      "codeRefs": ["src/wayfinder/classes/caster-contributors.ts", "src/wayfinder/spell-choice/spontaneous-step-builder.ts"],
+      "sourceWorks": ["player-core-2"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": ["PF2E remaster publication metadata"],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "animist-spellcasting",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Animist prepared spell progression and spellcasting entry structure.",
+      "codeRefs": ["src/wayfinder/classes/caster-contributors.ts", "src/actor-updater/spellcasting-entry-support.ts"],
+      "sourceWorks": ["war-of-immortals"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": ["PF2E remaster publication metadata"],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "kineticist-gate-element-context",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Six kineticist gate elements used to project gate choices and later context.",
+      "codeRefs": ["src/wayfinder/application/wayfinder-plan-builder-service.ts"],
+      "sourceWorks": ["rage-of-elements"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": ["PF2E global ORC notice conflicts with PF2E 8.4.0 kineticist item metadata marked OGL"],
+      "status": "provenance-review"
+    },
+    {
+      "capabilityId": "divine-mysteries-class-archetypes",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Battle Creed and Palatine Detective replacement profiles and spell choices.",
+      "codeRefs": [
+        "src/wayfinder/class-archetype/registry.ts",
+        "src/wayfinder/spell-choice/class-archetype-step-builder.ts"
+      ],
+      "sourceWorks": ["divine-mysteries"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": ["PF2E remaster publication metadata"],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "spellshot-class-archetype",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Way of the Spellshot replacement profile and arcane spellbook progression.",
+      "codeRefs": [
+        "src/wayfinder/class-archetype/registry.ts",
+        "src/wayfinder/spell-choice/class-archetype-step-builder.ts"
+      ],
+      "sourceWorks": ["guns-gears-remastered"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": ["implemented after PF2E remaster publication metadata was available"],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "necromancer-dirge",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Necromancer Dedication dirge cantrip selection and prepared capacity.",
+      "codeRefs": ["src/wayfinder/spell-choice/feat-step-builder.ts", "src/actor-updater/spellcasting-entry-support.ts"],
+      "sourceWorks": ["impossible-magic"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": ["commit 9acd646 after the Impossible Magic release"],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "gradual-ability-boosts",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Legacy Gradual Ability Boosts variant schedule.",
+      "codeRefs": ["src/ability-boost-progression.ts", "src/wayfinder/panes/boost-pane.ts"],
+      "sourceWorks": ["gamemastery-guide"],
+      "licenses": ["OGL-1.0a"],
+      "provenanceEvidence": ["Pathfinder Gamemastery Guide page 182"],
+      "status": "counsel-review"
+    },
+    {
+      "capabilityId": "legacy-voluntary-flaws",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Legacy two-flaw and one-boost ancestry compatibility path.",
+      "codeRefs": ["src/build-state.ts", "src/actor-updater/boost-application.ts", "templates/wayfinder/boost-pane.hbs"],
+      "sourceWorks": ["core-rulebook"],
+      "licenses": ["OGL-1.0a"],
+      "provenanceEvidence": ["legacy PF2E source schema and Core Rulebook compatibility"],
+      "status": "counsel-review"
+    },
+    {
+      "capabilityId": "clan-dagger-manual-grant",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Materializes the legacy Clan Dagger ancestry grant and its rule choices.",
+      "codeRefs": ["src/actor-updater/manual-system-item-grants.ts"],
+      "sourceWorks": ["core-rulebook"],
+      "licenses": ["OGL-1.0a"],
+      "provenanceEvidence": ["PF2E 8.4.0 item metadata: OGL, non-remaster, Pathfinder Core Rulebook"],
+      "status": "counsel-review"
+    },
+    {
+      "capabilityId": "feat-innate-arcane-cantrip-grants",
+      "shipped": true,
+      "surfaceKind": "hardcoded-mechanics",
+      "behavior": "Arcane Tattoos and Dragon Spit innate cantrip selections.",
+      "codeRefs": ["src/wayfinder/spell-choice/feat-step-builder.ts"],
+      "sourceWorks": ["lost-omens-character-guide"],
+      "licenses": ["OGL-1.0a"],
+      "provenanceEvidence": ["PF2E 8.4.0 item publication metadata; commit 6cac1aba"],
+      "status": "counsel-review"
+    },
+    {
+      "capabilityId": "magus-spellcasting",
+      "shipped": true,
+      "surfaceKind": "mixed-provenance-mechanics",
+      "behavior": "Magus bounded preparation, spellbook, and slot progression.",
+      "codeRefs": ["src/wayfinder/spell-choice/magus-step-builder.ts", "src/shared/spellcasting.ts", "src/actor-updater/spellcasting-entry-support.ts"],
+      "sourceWorks": ["secrets-of-magic", "impossible-magic"],
+      "licenses": ["OGL-1.0a", "ORC"],
+      "provenanceEvidence": ["initial implementation commit cee630a before Impossible Magic; remaster adjustments in August 2026"],
+      "status": "counsel-review"
+    },
+    {
+      "capabilityId": "summoner-spellcasting",
+      "shipped": true,
+      "surfaceKind": "mixed-provenance-mechanics",
+      "behavior": "Summoner bounded repertoire and slot progression.",
+      "codeRefs": ["src/wayfinder/classes/caster-contributors.ts", "src/actor-updater/spellcasting-entry-support.ts"],
+      "sourceWorks": ["secrets-of-magic", "impossible-magic"],
+      "licenses": ["OGL-1.0a", "ORC"],
+      "provenanceEvidence": ["initial implementation commit cee630a before Impossible Magic; remaster adjustments in August 2026"],
+      "status": "counsel-review"
+    },
+    {
+      "capabilityId": "psychic-spellcasting",
+      "shipped": true,
+      "surfaceKind": "mixed-provenance-mechanics",
+      "behavior": "Psychic repertoire, amps-adjacent progression boundaries, and slot progression.",
+      "codeRefs": ["src/wayfinder/classes/caster-contributors.ts", "src/actor-updater/spellcasting-entry-support.ts"],
+      "sourceWorks": ["dark-archive", "dark-archive-remastered"],
+      "licenses": ["OGL-1.0a", "ORC"],
+      "provenanceEvidence": ["legacy Dark Archive implementation followed by August 2026 remaster adjustments"],
+      "status": "counsel-review"
+    },
+    {
+      "capabilityId": "pf2e-runtime-schema-adapter",
+      "shipped": true,
+      "surfaceKind": "runtime-interface",
+      "behavior": "Reads installed PF2E documents, pack identifiers, rule elements, source flags, and actor update paths.",
+      "codeRefs": ["src/constants.ts", "src/shared/pf2e-item-source.ts", "src/actor-updater/prepared-draft-application.ts"],
+      "sourceWorks": [],
+      "licenses": [],
+      "provenanceEvidence": ["runtime interoperability; no PF2E compendium or source package redistribution"],
+      "status": "resolved"
+    },
+    {
+      "capabilityId": "public-rule-parser-fixtures",
+      "shipped": false,
+      "surfaceKind": "source-repository-test-fixture",
+      "behavior": "Parser regressions exercise source-derived prose and structured rule examples in the public development repository.",
+      "codeRefs": [
+        "tests/wayfinder-skill-training-source-discovery.test.ts",
+        "tests/pack-options.test.ts",
+        "tests/fixtures/grant-borne-dedications.ts"
+      ],
+      "sourceWorks": [
+        "player-core",
+        "player-core-2",
+        "guns-gears-remastered",
+        "divine-mysteries",
+        "impossible-magic",
+        "lost-omens-character-guide",
+        "lost-omens-ancestry-guide",
+        "book-of-the-dead",
+        "adventure-path-151"
+      ],
+      "licenses": ["ORC", "OGL-1.0a"],
+      "provenanceEvidence": [
+        "Known fixture corpus inventory is partial and remains release-blocking until every excerpt is mapped or replaced with synthetic text"
+      ],
+      "status": "provenance-review"
+    },
+    {
+      "capabilityId": "repeatable-and-heightened-selection-policy",
+      "shipped": true,
+      "surfaceKind": "blocked-rule-mismatch",
+      "behavior": "Current UUID-level duplicate rejection does not yet model repeatable feat limits or every expressly allowed heightened spell duplicate.",
+      "codeRefs": [
+        "src/wayfinder/application/selection-command-service.ts",
+        "src/wayfinder/app-shell.ts"
+      ],
+      "sourceWorks": ["player-core"],
+      "licenses": ["ORC"],
+      "provenanceEvidence": [
+        "PF2E system maxTakable and spell-rank data show that a blanket UUID-only duplicate rule is incomplete"
+      ],
+      "status": "provenance-review"
+    }
+  ],
+  "assets": [
+    {
+      "assetId": "wayfinder-entry-icon",
+      "shipped": true,
+      "paths": ["assets/wayfinder-entry.svg"],
+      "basis": "original-wayfinder",
+      "status": "resolved"
+    },
+    {
+      "assetId": "wayfinder-css-frame",
+      "shipped": true,
+      "paths": [
+        "styles/wayfinder/tokens-base.css",
+        "styles/wayfinder/shell-layout.css",
+        "styles/wayfinder/feedback-support.css"
+      ],
+      "basis": "original-css-replacing-unlicensed-pf2e-sheet-image-references",
+      "status": "resolved"
+    },
+    {
+      "assetId": "legacy-release-listing-media",
+      "shipped": false,
+      "paths": ["module.json", "README.md"],
+      "basis": "legacy-third-party listing files and every manifest/readme reference removed from the current tree",
+      "status": "resolved"
+    },
+    {
+      "assetId": "wayfinder-project-name",
+      "shipped": true,
+      "paths": ["module.json", "README.md"],
+      "basis": "project-brand-with-nominative-pf2e-compatibility-reference-and-third-party-game-software-trademark-clearance-risk",
+      "evidence": [
+        "https://tsdr.uspto.gov/#caseNumber=88648494&caseSearchType=US_APPLICATION&caseType=DEFAULT&searchType=statusSearch",
+        "https://ised-isde.canada.ca/cipo/trademark-search/2258614"
+      ],
+      "status": "counsel-review"
+    },
+    {
+      "assetId": "wayfinder-ui-trade-dress",
+      "shipped": true,
+      "paths": [
+        "styles/wayfinder/tokens-base.css",
+        "styles/wayfinder/shell-layout.css",
+        "styles/wayfinder/picker-preview.css"
+      ],
+      "basis": "original-interface-implementation-requiring-comparative-trade-dress-review",
+      "status": "counsel-review"
+    }
+  ],
+  "releaseBlockers": [
+    {
+      "id": "verify-complete-ogl-section-15-chain",
+      "status": "open",
+      "summary": "Verify the complete inherited OGL Section 15 chain for every retained OGL source work.",
+      "resolution": "Transcribe the exact transitive COPYRIGHT NOTICE text from each source work's legal page, retain evidence for those pages, and pin the reviewed notice set before publication."
+    },
+    {
+      "id": "verify-guns-gears-remastered-notice",
+      "status": "open",
+      "summary": "Verify the exact ORC legal-page attribution for Pathfinder Guns & Gears Remastered.",
+      "resolution": "Provide the book's ORC/copyright page or obtain Paizo confirmation; reconcile it with the official store credit used provisionally."
+    },
+    {
+      "id": "verify-impossible-magic-notice",
+      "status": "open",
+      "summary": "Verify the exact ORC legal-page attribution for Pathfinder Impossible Magic.",
+      "resolution": "Provide the book's ORC/copyright page or obtain Paizo confirmation; reconcile it with the official store and AoN credits used provisionally."
+    },
+    {
+      "id": "verify-dark-archive-remastered-notice",
+      "status": "open",
+      "summary": "Verify the exact ORC legal-page attribution for Pathfinder Dark Archive (Remastered).",
+      "resolution": "Provide the book's ORC/copyright page or obtain Paizo confirmation; reconcile it with the AoN credit used provisionally."
+    },
+    {
+      "id": "resolve-mixed-caster-provenance",
+      "status": "open",
+      "summary": "Resolve mixed OGL-to-ORC provenance for Magus, Summoner, and Psychic mechanics.",
+      "resolution": "Retain the dual notices after counsel review or perform and record a clean remaster-source reimplementation."
+    },
+    {
+      "id": "resolve-orc-ogl-product-scope",
+      "status": "open",
+      "summary": "Resolve the product-wide incompatibility between an ORC single-game Work and retained OGL-only mechanics.",
+      "resolution": "Before any publication, obtain qualified counsel on a genuinely separate-work structure or remove and cleanly reimplement every OGL-derived mechanic from ORC sources. Capability-level labels alone do not resolve the conflict."
+    },
+    {
+      "id": "resolve-rage-of-elements-metadata-conflict",
+      "status": "open",
+      "summary": "Resolve PF2E's conflicting ORC global notice and OGL Kineticist publication metadata.",
+      "resolution": "Confirm the source work's legal-page designation and update the capability and notice mapping."
+    },
+    {
+      "id": "complete-hardcoded-rules-and-fixture-audit",
+      "status": "open",
+      "summary": "Complete the per-source inventory for prose interpreters, special eligibility rules, and public source-repository fixtures.",
+      "resolution": "Map remaining hardcoded mechanics and redistributed fixture excerpts to exact source works before declaring the ledger exhaustive."
+    },
+    {
+      "id": "clear-wayfinder-project-name",
+      "status": "open",
+      "summary": "Resolve the potential WAYFINDER game-software trademark conflict and clearance risk before wider distribution.",
+      "resolution": "Obtain focused trademark clearance or rename the project; do not treat Paizo Community Use permission as permission from unrelated mark owners."
+    },
+    {
+      "id": "review-wayfinder-ui-trade-dress",
+      "status": "open",
+      "summary": "Review whether Wayfinder's combined parchment, color, typography, and statline treatment is too close to Paizo trade dress.",
+      "resolution": "Document a comparative design review and restyle any elements that could make the module look like an official Paizo interface."
+    }
+  ]
+}

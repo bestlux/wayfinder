@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Wayfinder spellcasting entry</title>
+  <desc id="desc">An original open-book and route-line icon.</desc>
+  <defs>
+    <linearGradient id="background" x1="18" y1="12" x2="108" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#23346f"/>
+      <stop offset="1" stop-color="#111a42"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="32" y1="40" x2="95" y2="92" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff8df"/>
+      <stop offset="1" stop-color="#e9d7a1"/>
+    </linearGradient>
+  </defs>
+  <rect x="7" y="7" width="114" height="114" rx="24" fill="url(#background)"/>
+  <rect x="11" y="11" width="106" height="106" rx="20" fill="none" stroke="#d8bd76" stroke-width="4"/>
+  <path d="M25 38c15-5 27-2 39 7 12-9 24-12 39-7v54c-14-4-26-1-39 8-13-9-25-12-39-8V38Z" fill="url(#paper)" stroke="#5e0000" stroke-linejoin="round" stroke-width="4"/>
+  <path d="M64 45v55" fill="none" stroke="#8f7b67" stroke-linecap="round" stroke-width="3"/>
+  <path d="M39 75c6-13 15-17 25-10 10 7 18 2 25-12" fill="none" stroke="#5e0000" stroke-linecap="round" stroke-width="5"/>
+  <circle cx="39" cy="75" r="5" fill="#5e0000"/>
+  <path d="m84 47 8 5-7 6" fill="none" stroke="#5e0000" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+</svg>

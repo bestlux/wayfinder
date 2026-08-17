@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildBugReportUrl, FEEDBACK_URLS } from "../src/feedback-links.js";
+import {
+  buildBugReportUrl,
+  buildLegalAttributionUrl,
+  FEEDBACK_URLS,
+  LEGAL_ATTRIBUTION_PATH,
+} from "../src/feedback-links.js";
 
 const shellTemplate = readFileSync(resolve("templates/wayfinder-app.hbs"), "utf8");
 const supportTemplate = readFileSync(resolve("templates/feedback-support.hbs"), "utf8");
@@ -38,8 +43,8 @@ describe("wayfinder feedback surface", () => {
     expect(featureRequestForm).toContain("name: Suggest an idea");
     expect(supportTemplate).toContain('href="{{urls.bug}}"');
     expect(supportTemplate).toContain('href="{{urls.feature}}"');
-    expect(supportTemplate.match(/target="_blank"/g)).toHaveLength(4);
-    expect(supportTemplate.match(/rel="noopener noreferrer"/g)).toHaveLength(4);
+    expect(supportTemplate.match(/target="_blank"/g)).toHaveLength(5);
+    expect(supportTemplate.match(/rel="noopener noreferrer"/g)).toHaveLength(5);
   });
 
   it("prefills the versions the bug form would otherwise make the reporter hunt down", () => {
@@ -59,6 +64,8 @@ describe("wayfinder feedback surface", () => {
     expect(supportTemplate).toContain('href="{{urls.coverage}}"');
     expect(supportTemplate).toContain("wayfinder-pf2e.Feedback.Discord");
     expect(FEEDBACK_URLS.coverage).toContain("/docs/coverage");
+    expect(LEGAL_ATTRIBUTION_PATH).toBe("modules/wayfinder-pf2e/LEGAL.md");
+    expect(buildLegalAttributionUrl((path) => `/vtt/${path}`)).toBe("/vtt/modules/wayfinder-pf2e/LEGAL.md");
     expect(issueTemplateConfig).toContain("contact_links:");
     expect(issueTemplateConfig).toContain("docs/coverage");
   });
@@ -79,7 +86,7 @@ describe("wayfinder feedback surface", () => {
       expect(localization["wayfinder-pf2e"].App.FeedbackTooltip).toBeTruthy();
       expect(localization["wayfinder-pf2e"].Feedback.ExternalBody).toBeTruthy();
       expect(localization["wayfinder-pf2e"].Settings.Feedback.Hint).toBeTruthy();
-      for (const key of ["Prefill", "FallbacksTitle", "CoverageLink", "CoverageHint", "Discord"]) {
+      for (const key of ["Prefill", "FallbacksTitle", "CoverageLink", "CoverageHint", "Discord", "Legal"]) {
         expect(localization["wayfinder-pf2e"].Feedback[key]).toBeTruthy();
       }
     }

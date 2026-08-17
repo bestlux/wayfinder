@@ -237,12 +237,20 @@ export interface SpellChoiceDestination {
   prepared: "prepared" | "spontaneous" | "innate";
 }
 
+export interface SpellChoicePublication {
+  title: string;
+  authors: string;
+  license: "OGL" | "ORC";
+  remaster: boolean;
+}
+
 export interface SpellChoiceMeta {
   slotId: string;
   sourcePackId: string | null;
   sourceDocumentId: string | null;
   sourceUuid: string | null;
   sourceName: string;
+  sourcePublication?: SpellChoicePublication;
   classSlug: string | null;
   dependsOn: "class" | "class-branch" | null;
   destination: SpellChoiceDestination;

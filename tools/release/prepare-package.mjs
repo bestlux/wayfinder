@@ -2,21 +2,39 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { assertLegalReadiness } from "../legal/validate-rules-sources.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const defaultOutDir = "dist/release";
-const requiredPackageEntries = [
+export const requiredPackageEntries = [
   "module.json",
+  "LEGAL.md",
+  "LICENSE.md",
+  "assets/wayfinder-entry.svg",
+  "licenses/OPEN-GAME-LICENSE-1.0A.md",
+  "licenses/ORC-NOTICE.md",
+  "licenses/THIRD-PARTY-NOTICES.md",
+  "licenses/rules-sources.json",
   "scripts/wayfinder.js",
   "styles/wayfinder.css",
   "templates/wayfinder-app.hbs",
   "lang/en.json",
 ];
-const packageDirectories = ["scripts", "styles", "templates", "lang"];
-const optionalPackageFiles = ["README.md", "LICENSE", "LICENSE.md", "CHANGELOG.md"];
+
+export function buildLegalQualification(legalReadiness, { inspectionOverride = false } = {}) {
+  const errors = Array.isArray(legalReadiness.errors) ? legalReadiness.errors : [];
+  return {
+    passed: !inspectionOverride && legalReadiness.blockerIds.length === 0 && errors.length === 0,
+    inspectionOverride,
+    blockerIds: [...legalReadiness.blockerIds],
+  };
+}
+const packageDirectories = ["assets", "licenses", "scripts", "styles", "templates", "lang"];
+const requiredTopLevelFiles = ["LEGAL.md", "LICENSE.md"];
+const optionalPackageFiles = ["README.md", "CHANGELOG.md"];
 const forbiddenPackageEntryPatterns = [
   /^src\//,
   /^tests\//,
@@ -43,6 +61,8 @@ Options:
   --tag <tag>          Release tag. Defaults to v<version>.
   --repo <owner/repo>  GitHub repository. Defaults to GITHUB_REPOSITORY or origin.
   --out <path>         Output directory. Defaults to ${defaultOutDir}.
+  --allow-legal-blockers
+                       Build a non-qualifying inspection artifact while recorded legal blockers remain.
   --help              Show this help text.
 `;
 }
@@ -53,6 +73,8 @@ function parseArgs(argv) {
     repo: process.env.GITHUB_REPOSITORY ?? "",
     tag: "",
     version: "",
+    allowLegalBlockers: false,
+    outExplicit: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -60,6 +82,11 @@ function parseArgs(argv) {
 
     if (arg === "--help") {
       options.help = true;
+      continue;
+    }
+
+    if (arg === "--allow-legal-blockers") {
+      options.allowLegalBlockers = true;
       continue;
     }
 
@@ -75,7 +102,10 @@ function parseArgs(argv) {
     if (arg === "--version") options.version = value;
     if (arg === "--tag") options.tag = value;
     if (arg === "--repo") options.repo = value;
-    if (arg === "--out") options.outDir = value;
+    if (arg === "--out") {
+      options.outDir = value;
+      options.outExplicit = true;
+    }
     index += 1;
   }
 
@@ -131,11 +161,36 @@ function resolveOutputRoot(targetPath) {
     throw new Error(`Output path must be inside the repository: ${targetPath}`);
   }
 
-  if (relativeToDist.startsWith("..") || path.isAbsolute(relativeToDist)) {
-    throw new Error(`Output path must be inside the generated dist directory: ${targetPath}`);
+  if (relativeToDist === "" || relativeToDist.startsWith("..") || path.isAbsolute(relativeToDist)) {
+    throw new Error(`Output path must be a child of the generated dist directory: ${targetPath}`);
   }
 
   return resolved;
+}
+
+async function removeGeneratedOutputRoot(outputRoot) {
+  const distRoot = path.join(repoRoot, "dist");
+  let cursor = outputRoot;
+
+  while (true) {
+    try {
+      const entry = await lstat(cursor);
+      if (entry.isSymbolicLink()) {
+        throw new Error(`Refusing to remove a generated output path through a symbolic link or junction: ${cursor}`);
+      }
+    } catch (error) {
+      if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
+    }
+
+    if (cursor === distRoot) break;
+    const parent = path.dirname(cursor);
+    if (parent === cursor || path.relative(distRoot, parent).startsWith("..")) {
+      throw new Error(`Generated output path escaped the dist directory: ${outputRoot}`);
+    }
+    cursor = parent;
+  }
+
+  await rm(outputRoot, { force: true, recursive: true });
 }
 
 async function pathExists(targetPath) {
@@ -162,6 +217,14 @@ async function copyOptionalFile(relativePath, packageRoot) {
   const source = path.join(repoRoot, relativePath);
   if (!(await pathExists(source))) return;
 
+  await cp(source, path.join(packageRoot, relativePath));
+}
+
+async function copyRequiredFile(relativePath, packageRoot) {
+  const source = path.join(repoRoot, relativePath);
+  if (!(await pathExists(source))) {
+    throw new Error(`Missing required package file: ${relativePath}`);
+  }
   await cp(source, path.join(packageRoot, relativePath));
 }
 
@@ -206,7 +269,7 @@ async function pruneSourceMaps(packageRoot) {
   }
 }
 
-function validatePackageEntries(entries) {
+export function validatePackageEntries(entries) {
   const missingEntries = requiredPackageEntries.filter((entry) => !entries.includes(entry));
   if (missingEntries.length > 0) {
     throw new Error(`Package is missing required entries: ${missingEntries.join(", ")}`);
@@ -220,7 +283,7 @@ function validatePackageEntries(entries) {
   }
 }
 
-function buildReleaseManifest(sourceManifest, { repo, tag, version }) {
+export function buildReleaseManifest(sourceManifest, { repo, tag, version }) {
   const repositoryUrl = "https://github.com/" + repo;
   const rawMediaBaseUrl = "https://raw.githubusercontent.com/" + repo + "/" + tag + "/media/";
   const media = Array.isArray(sourceManifest.media)
@@ -401,6 +464,15 @@ async function main() {
     return;
   }
 
+  const outputRoot = resolveOutputRoot(options.outDir);
+  await removeGeneratedOutputRoot(outputRoot);
+  if (
+    options.allowLegalBlockers &&
+    (!options.outExplicit || outputRoot === resolveOutputRoot(defaultOutDir))
+  ) {
+    throw new Error("--allow-legal-blockers requires an explicit non-release --out directory.");
+  }
+
   const packageJson = await readJson("package.json");
   const sourceManifest = await readJson("module.json");
   const version = options.version || requireString(packageJson.version, "package.json version");
@@ -415,22 +487,44 @@ async function main() {
     );
   }
 
-  const outputRoot = resolveOutputRoot(options.outDir);
+  const legalReadiness = await assertLegalReadiness({ release: !options.allowLegalBlockers });
+  if (options.allowLegalBlockers) {
+    console.warn(
+      `Building a non-qualifying package inspection artifact. Legal blockers: ${legalReadiness.blockerIds.join(", ")}`
+    );
+  }
+
   const packageRoot = path.join(outputRoot, "package");
   const releaseManifest = buildReleaseManifest(sourceManifest, { repo, tag, version });
 
-  await rm(outputRoot, { force: true, recursive: true });
   await mkdir(packageRoot, { recursive: true });
+  if (options.allowLegalBlockers) {
+    await writeFile(
+      path.join(outputRoot, "INSPECTION-ONLY.txt"),
+      "This directory was built with --allow-legal-blockers. Its module.json and module.zip are not legally qualified for publication or release.\n"
+    );
+  }
   await writeFile(path.join(packageRoot, "module.json"), `${JSON.stringify(releaseManifest, null, 2)}\n`);
 
   for (const directory of packageDirectories) {
     await copyDirectory(directory, packageRoot);
   }
 
+  for (const file of requiredTopLevelFiles) {
+    await copyRequiredFile(file, packageRoot);
+  }
+
   await pruneSourceMaps(packageRoot);
 
   for (const file of optionalPackageFiles) {
     await copyOptionalFile(file, packageRoot);
+  }
+
+  if (options.allowLegalBlockers) {
+    await writeFile(
+      path.join(packageRoot, "INSPECTION-ONLY.txt"),
+      "This archive was built with --allow-legal-blockers. It is not legally qualified for publication or release.\n"
+    );
   }
 
   const entries = await listFiles(packageRoot);
@@ -452,6 +546,9 @@ async function main() {
       zip: path.relative(repoRoot, zipPath).replaceAll(path.sep, "/"),
     },
     zipSha256,
+    legalQualification: buildLegalQualification(legalReadiness, {
+      inspectionOverride: options.allowLegalBlockers,
+    }),
     entries,
   };
 
@@ -463,7 +560,10 @@ async function main() {
   console.log(`Created ${path.relative(repoRoot, zipPath)} (${entries.length} files, sha256 ${zipSha256})`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

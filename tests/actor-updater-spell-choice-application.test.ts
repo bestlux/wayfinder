@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { applySpellChoiceDraft } from "../src/actor-updater/spell-choice-application";
-import { createSpellcastingEntrySource } from "../src/actor-updater/spellcasting-entry-support";
+import {
+  createSpellcastingEntrySource,
+  spellcastingEntryPublication,
+  syncSpellcastingEntry,
+} from "../src/actor-updater/spellcasting-entry-support";
 import { createEmptyDraft } from "../src/draft-service";
 import type { SpellChoiceMeta } from "../src/types";
 import {
@@ -13,6 +17,169 @@ import {
 } from "./support/actor-updater-fixtures";
 
 describe("actor-updater spell choice application", () => {
+  it("records reviewed source-license metadata on generated spellcasting entries", () => {
+    const base = wizardSpellChoice("spell-choice-wizard-spellbook-level-1", 1, 0, 0, true);
+    expect(spellcastingEntryPublication(base)).toMatchObject({
+      title: "Pathfinder Player Core",
+      license: "ORC",
+      remaster: true,
+    });
+    expect(spellcastingEntryPublication({ ...base, classSlug: "magus" })).toMatchObject({
+      title: "Pathfinder Impossible Magic",
+      license: "ORC",
+      remaster: true,
+    });
+    expect(spellcastingEntryPublication({ ...base, classSlug: "psychic" })).toMatchObject({
+      title: "Pathfinder Dark Archive (Remastered)",
+      license: "ORC",
+      remaster: true,
+    });
+    expect(
+      spellcastingEntryPublication({
+        ...base,
+        classSlug: null,
+        destination: { ...base.destination, key: "necromancer-occult-dirge" },
+      })
+    ).toMatchObject({ title: "Pathfinder Impossible Magic", license: "ORC", remaster: true });
+    expect(
+      spellcastingEntryPublication({
+        ...base,
+        classSlug: null,
+        sourceUuid: "Compendium.pf2e.feats-srd.Item.Dq4JSejEdCzGNeTc",
+        sourcePublication: {
+          title: "Pathfinder Lost Omens Character Guide",
+          authors: "",
+          license: "OGL",
+          remaster: false,
+        },
+        destination: { ...base.destination, key: "feat-arcane-tattoos-innate-arcane" },
+      })
+    ).toMatchObject({
+      title: "Pathfinder Lost Omens Character Guide",
+      license: "OGL",
+      remaster: false,
+    });
+    const customFeatChoice: SpellChoiceMeta = {
+      ...base,
+      classSlug: null,
+      sourceUuid: "Compendium.third-party.feats.Item.custom-innate-feat",
+      sourcePublication: {
+        title: "Third Party Spell Options",
+        authors: "Example Author",
+        license: "ORC",
+        remaster: true,
+      },
+      destination: { ...base.destination, key: "feat-custom-innate-arcane" },
+    };
+    expect(spellcastingEntryPublication(customFeatChoice)).toEqual(customFeatChoice.sourcePublication);
+    const customSource = createSpellcastingEntrySource(
+      customFeatChoice,
+      { system: { details: { level: { value: 1 } } } },
+      createEmptyDraft(1)
+    );
+    expect(customSource.system?.publication).toEqual(customFeatChoice.sourcePublication);
+    expect(customSource.flags?.["wayfinder-pf2e"]?.generatedSpellcastingEntry).toBe(1);
+    expect(() => spellcastingEntryPublication({ ...customFeatChoice, sourcePublication: undefined })).toThrow(
+      /without source publication metadata/i
+    );
+    expect(() =>
+      spellcastingEntryPublication({
+        ...base,
+        classSlug: "unreviewed-class",
+        destination: { ...base.destination, key: "unreviewed-destination" },
+      })
+    ).toThrow(/no reviewed publication mapping/i);
+  });
+
+  it("repairs Wayfinder-owned entry metadata without claiming native entries", async () => {
+    const desiredSource = createSpellcastingEntrySource(
+      wizardSpellChoice("spell-choice-wizard-spellbook-level-1", 1, 0, 0, true),
+      { system: { details: { level: { value: 1 } } } },
+      createEmptyDraft(1)
+    );
+    const ownedEntry = {
+      id: "owned-entry",
+      type: "spellcastingEntry",
+      img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
+      flags: {
+        "wayfinder-pf2e": {
+          importedBy: "wayfinder-pf2e",
+          destinationKey: "wizard-arcane-prepared",
+          generatedSpellcastingEntry: 1,
+        },
+      },
+      system: { slots: {}, publication: { title: "", license: "ORC", remaster: true } },
+    };
+    const nativeEntry = {
+      id: "native-entry",
+      type: "spellcastingEntry",
+      img: "native-entry.svg",
+      flags: {
+        "wayfinder-pf2e": {
+          importedBy: "wayfinder-pf2e",
+          destinationKey: "legacy-adopted-native-entry",
+        },
+      },
+      system: { slots: {}, publication: { title: "Native source", license: "ORC", remaster: true } },
+    };
+    const { actor } = buildActorHarness({ items: [ownedEntry, nativeEntry] });
+
+    await syncSpellcastingEntry(actor, ownedEntry, desiredSource);
+    await syncSpellcastingEntry(actor, nativeEntry, desiredSource);
+
+    expect(ownedEntry.img).toBe("modules/wayfinder-pf2e/assets/wayfinder-entry.svg");
+    expect(ownedEntry.system.publication).toMatchObject({ title: "Pathfinder Player Core", license: "ORC" });
+    expect(nativeEntry.img).toBe("native-entry.svg");
+    expect(nativeEntry.system.publication).toMatchObject({ title: "Native source" });
+    const nativeUpdate = actor.updateEmbeddedDocuments.mock.calls[1]?.[1]?.[0];
+    expect(nativeUpdate).not.toHaveProperty("img");
+    expect(nativeUpdate).not.toHaveProperty("system.publication");
+    expect(nativeUpdate).not.toHaveProperty("flags.wayfinder-pf2e.importedBy");
+  });
+
+  it("updates source publication only on entries carrying the creation-only management marker", async () => {
+    const customFeatChoice: SpellChoiceMeta = {
+      ...wizardSpellChoice("spell-choice-custom-feat", 1, 0, 0, true),
+      classSlug: null,
+      sourceUuid: "Compendium.third-party.feats.Item.custom-innate-feat",
+      sourcePublication: {
+        title: "Third Party Spell Options",
+        authors: "Example Author",
+        license: "ORC",
+        remaster: true,
+      },
+      destination: {
+        ...wizardSpellChoice("spell-choice-custom-feat", 1, 0, 0, true).destination,
+        key: "feat-custom-innate-arcane",
+      },
+    };
+    const desiredSource = createSpellcastingEntrySource(
+      customFeatChoice,
+      { system: { details: { level: { value: 1 } } } },
+      createEmptyDraft(1)
+    );
+    const ownedEntry = {
+      id: "owned-custom-entry",
+      type: "spellcastingEntry",
+      flags: {
+        "wayfinder-pf2e": {
+          importedBy: "wayfinder-pf2e",
+          destinationKey: "feat-custom-innate-arcane",
+          generatedSpellcastingEntry: 1,
+        },
+      },
+      system: { slots: {}, publication: { title: "", license: "ORC", remaster: true } },
+    };
+    const { actor } = buildActorHarness({ items: [ownedEntry] });
+
+    await syncSpellcastingEntry(actor, ownedEntry, desiredSource);
+
+    expect(actor.updateEmbeddedDocuments.mock.calls[0]?.[1]?.[0]).toMatchObject({
+      "system.publication": customFeatChoice.sourcePublication,
+    });
+    expect(ownedEntry.system.publication).toEqual(customFeatChoice.sourcePublication);
+  });
+
   it("models a single rank-10 Wizard slot at level 19", () => {
     const draft = createEmptyDraft(19);
     const source = createSpellcastingEntrySource(
@@ -705,12 +872,13 @@ describe("actor-updater spell choice application", () => {
       expect.objectContaining({
         name: "Arcane Prepared Spells",
         type: "spellcastingEntry",
-        flags: {
-          "wayfinder-pf2e": {
+        flags: expect.objectContaining({
+          "wayfinder-pf2e": expect.objectContaining({
             importedBy: "wayfinder-pf2e",
             destinationKey: "wizard-arcane-prepared",
-          },
-        },
+            generatedSpellcastingEntry: 1,
+          }),
+        }),
         system: expect.objectContaining({
           showSlotlessLevels: {
             value: true,

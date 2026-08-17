@@ -7,13 +7,11 @@
 [![Latest release](https://img.shields.io/github/v/release/bestlux/wayfinder?label=release&color=2b6cb0)](https://github.com/bestlux/wayfinder/releases/latest)
 ![Foundry VTT v14](https://img.shields.io/badge/Foundry%20VTT-v14-e26a26)
 ![PF2E 8.1+](https://img.shields.io/badge/PF2E%20system-8.1%2B-8a2422)
-[![License](https://img.shields.io/badge/license-all%20rights%20reserved-6b7280)](LICENSE.md)
-
-![Wayfinder character builder inside Foundry](media/cover.webp)
+[![Legal](https://img.shields.io/badge/legal-layered%20notices-6b7280)](LEGAL.md)
 
 </div>
 
-Character creation and leveling in PF2E means juggling class tables, compendium browsers, feat slots, boosts, spell lists, and source exceptions. Wayfinder turns all of that into a single guided flow you open straight from the character sheet — think Pathbuilder, but living inside your game world. It knows which sources your GM enabled, narrows each picker using the rules it can verify, and writes the result directly to the actor. No JSON export, no re-import, no sheet-mismatch cleanup.
+Character creation and leveling in PF2E means juggling class tables, compendium browsers, feat slots, boosts, spell lists, and source exceptions. Wayfinder turns all of that into a single guided flow you open straight from the character sheet. It knows which sources your GM enabled, narrows each picker using the rules it can verify, and writes the result directly to the actor. No JSON export, no re-import, no sheet-mismatch cleanup.
 
 ## Highlights
 
@@ -25,15 +23,6 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 - **Respects your table.** Rarity and source filters on every picker, with a GM spell-rarity ceiling and optional allowlists for non-official packs.
 - **Resumable drafts.** Progress is saved on the actor, so you can leave mid-build and come back later.
 - **Honest about its limits.** When Wayfinder can't model a step confidently, it says so and points you at the right native PF2E control instead of silently guessing.
-
-## Screenshots
-
-| | |
-| :---: | :---: |
-| ![Guided character creation](media/screenshot-creation.webp) | ![Filtered feat picker](media/screenshot-feat-picker.webp) |
-| *Guided level-1 creation — ancestry through boosts in one flow* | *Feat picker with rarity and source filters* |
-| ![Spell choice flow](media/screenshot-spell-choice.webp) | ![Level-up draft](media/screenshot-levelup.webp) |
-| *Spell choices land in the right spellcasting entry* | *Level-up drafts surface only what you still need to choose* |
 
 ## Installation
 
@@ -102,10 +91,10 @@ If Wayfinder handed a step back to the PF2E sheet, check the [coverage matrices]
 
 The current product direction and planned arcs live in [docs/roadmap.md](docs/roadmap.md). Build, test, local-linking, and smoke-harness instructions live in [docs/development.md](docs/development.md). Release packaging is documented in [docs/release-packaging.md](docs/release-packaging.md).
 
-## License & credits
+## Legal & attribution
 
-Wayfinder is distributed under the terms in [LICENSE.md](LICENSE.md). It is currently all-rights-reserved software with permission to install and run the published module in Foundry Virtual Tabletop.
+[LEGAL.md](LEGAL.md) is the entry point for Wayfinder's layered notices. It separates the terms for original Wayfinder software from the [ORC notice](licenses/ORC-NOTICE.md), retained [OGL 1.0a material](licenses/OPEN-GAME-LICENSE-1.0A.md), [third-party notices](licenses/THIRD-PARTY-NOTICES.md), and the packaged [rules-source ledger](licenses/rules-sources.json).
 
-Wayfinder does not redistribute PF2E compendium data. It reads from the installed PF2E system and reuses the system's actor/item application paths wherever it can.
+Wayfinder uses trademarks and/or copyrights owned by Paizo Inc., used under Paizo's Community Use Policy (paizo.com/licenses/communityuse). We are expressly prohibited from charging you to use or access this content. Wayfinder is not published, endorsed, or specifically approved by Paizo. For more information about Paizo Inc. and Paizo products, visit paizo.com.
 
-Pathfinder Second Edition and related trademarks are owned by Paizo Inc. Foundry Virtual Tabletop is owned by Foundry Gaming LLC. Wayfinder is an independent module, not affiliated with or endorsed by either.
+Wayfinder is free and unofficial. It requires an independently installed PF2E system and does not package PF2E compendium packs or Paizo rulebook pages. Foundry Virtual Tabletop is owned by Foundry Gaming LLC; Wayfinder is not affiliated with or endorsed by Foundry Gaming LLC or the PF2E system team.

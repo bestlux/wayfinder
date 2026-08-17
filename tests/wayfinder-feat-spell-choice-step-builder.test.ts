@@ -89,6 +89,11 @@ describe("wayfinder feat spell-choice step builder", () => {
         classSlug: null,
         dependsOn: null,
         allowedSpellSlugs: ["shield", "tanglevine", "daze"],
+        sourcePublication: {
+          title: "Pathfinder Lost Omens Character Guide",
+          license: "OGL",
+          remaster: false,
+        },
         destination: {
           type: "innate",
           key: "feat-arcane-tattoos-innate-arcane",
@@ -164,6 +169,12 @@ function adaptedCantripDocument(): unknown {
         value:
           "<p>Choose one cantrip from a magical tradition other than your own. You can cast this cantrip as a spell of your class's tradition.</p>",
       },
+      publication: {
+        title: "Pathfinder Player Core",
+        authors: "",
+        license: "ORC",
+        remaster: true,
+      },
     },
   };
 }
@@ -186,6 +197,12 @@ function arcaneTattoosDocument(): unknown {
           },
         },
       ],
+      publication: {
+        title: "Pathfinder Lost Omens Character Guide",
+        authors: "",
+        license: "OGL",
+        remaster: false,
+      },
     },
   };
 }
@@ -200,6 +217,12 @@ function necromancerDedicationDocument(): unknown {
           "<p>You can cast spells like a necromancer, gaining a dirge with four common occult cantrips of your choice. You can prepare two cantrips each day from your dirge.</p>",
       },
       rules: [],
+      publication: {
+        title: "Pathfinder Impossible Magic",
+        authors: "",
+        license: "ORC",
+        remaster: true,
+      },
     },
   };
 }

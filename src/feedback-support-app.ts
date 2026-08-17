@@ -1,5 +1,11 @@
 import { MODULE_ID } from "./constants.js";
-import { buildBugReportUrl, DISCORD_HANDLE, FEEDBACK_URLS, type FeedbackVersions } from "./feedback-links.js";
+import {
+  buildBugReportUrl,
+  buildLegalAttributionUrl,
+  DISCORD_HANDLE,
+  FEEDBACK_URLS,
+  type FeedbackVersions,
+} from "./feedback-links.js";
 
 export { FEEDBACK_URLS } from "./feedback-links.js";
 
@@ -49,6 +55,7 @@ export class FeedbackSupportApp extends foundry.applications.api.HandlebarsAppli
       urls: {
         ...FEEDBACK_URLS,
         bug: buildBugReportUrl(versions),
+        legal: buildLegalAttributionUrl(),
       },
       discordHandle: DISCORD_HANDLE,
       hasPrefill: Boolean(versions.wayfinder || versions.foundry || versions.pf2e),

@@ -34,6 +34,7 @@ export type {
   SlotKind,
   SpellChoiceDestination,
   SpellChoiceMeta,
+  SpellChoicePublication,
   SpellChoiceStep,
   StaticGrantReplacementMeta,
   StepFilters,

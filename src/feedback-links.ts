@@ -1,4 +1,5 @@
 const ISSUE_BASE = "https://github.com/bestlux/wayfinder/issues/new";
+export const LEGAL_ATTRIBUTION_PATH = "modules/wayfinder-pf2e/LEGAL.md";
 
 export const FEEDBACK_URLS = {
   bug: `${ISSUE_BASE}?template=bug-report.yml`,
@@ -13,6 +14,15 @@ export interface FeedbackVersions {
   wayfinder: string;
   foundry: string;
   pf2e: string;
+}
+
+export function buildLegalAttributionUrl(
+  getRoute: ((path: string) => string) | undefined = typeof foundry !== "undefined" &&
+  typeof foundry.utils?.getRoute === "function"
+    ? foundry.utils.getRoute
+    : undefined
+): string {
+  return getRoute ? getRoute(LEGAL_ATTRIBUTION_PATH) : LEGAL_ATTRIBUTION_PATH;
 }
 
 /**

@@ -4,6 +4,7 @@ export interface ActorModuleFlags extends LooseRecord {
   importedBy?: unknown;
   slotId?: unknown;
   destinationKey?: unknown;
+  generatedSpellcastingEntry?: unknown;
 }
 
 export interface ActorItemFlags extends LooseRecord {

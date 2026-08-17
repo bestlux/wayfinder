@@ -72,6 +72,7 @@ describe("actor-updater native spellcasting application", () => {
           [MODULE_ID]: {
             importedBy: MODULE_ID,
             destinationKey: "cleric-divine-prepared",
+            generatedSpellcastingEntry: 1,
           },
         },
         system: expect.objectContaining({
@@ -98,6 +99,7 @@ describe("actor-updater native spellcasting application", () => {
           [MODULE_ID]: {
             importedBy: MODULE_ID,
             destinationKey: "cleric-divine-font-harm",
+            generatedSpellcastingEntry: 1,
           },
         },
       }),

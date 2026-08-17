@@ -11,6 +11,7 @@ export function makeSpellChoiceStep(args) {
         sourceDocumentId: args.source.sourceDocumentId,
         sourceUuid: args.source.sourceUuid,
         sourceName: args.source.sourceName,
+        ...(args.sourcePublication ? { sourcePublication: { ...args.sourcePublication } } : {}),
         classSlug: args.classSlug,
         dependsOn: args.dependsOn,
         destination: { ...args.destination },

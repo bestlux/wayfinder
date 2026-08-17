@@ -1,0 +1,177 @@
+# OPEN GAME LICENSE Version 1.0a
+
+## Release qualification note
+
+The complete inherited Section 15 chain has not yet been verified against the
+legal pages of every OGL source work used by Wayfinder. The entries below are
+the current known set, not a claim of completeness. The packaged source ledger
+therefore blocks publication until the verbatim transitive notice chain is
+verified and pinned.
+
+The following text is the property of Wizards of the Coast, Inc. and is
+Copyright 2000 Wizards of the Coast, Inc ("Wizards"). All Rights Reserved.
+
+1. Definitions: (a) "Contributors" means the copyright and/or trademark
+owners who have contributed Open Game Content; (b) "Derivative Material"
+means copyrighted material including derivative works and translations
+(including into other computer languages), potation, modification, correction,
+addition, extension, upgrade, improvement, compilation, abridgment or other
+form in which an existing work may be recast, transformed or adapted; (c)
+"Distribute" means to reproduce, license, rent, lease, sell, broadcast,
+publicly display, transmit or otherwise distribute; (d) "Open Game Content"
+means the game mechanic and includes the methods, procedures, processes and
+routines to the extent such content does not embody the Product Identity and is
+an enhancement over the prior art and any additional content clearly
+identified as Open Game Content by the Contributor, and means any work covered
+by this License, including translations and derivative works under copyright
+law, but specifically excludes Product Identity. (e) "Product Identity" means
+product and product line names, logos and identifying marks including trade
+dress; artifacts; creatures characters; stories, storylines, plots, thematic
+elements, dialogue, incidents, language, artwork, symbols, designs,
+depictions, likenesses, formats, poses, concepts, themes and graphic,
+photographic and other visual or audio representations; names and descriptions
+of characters, spells, enchantments, personalities, teams, personas,
+likenesses and special abilities; places, locations, environments, creatures,
+equipment, magical or supernatural abilities or effects, logos, symbols, or
+graphic designs; and any other trademark or registered trademark clearly
+identified as Product identity by the owner of the Product Identity, and which
+specifically excludes the Open Game Content; (f) "Trademark" means the logos,
+names, mark, sign, motto, designs that are used by a Contributor to identify
+itself or its products or the associated products contributed to the Open Game
+License by the Contributor (g) "Use", "Used" or "Using" means to use,
+Distribute, copy, edit, format, modify, translate and otherwise create
+Derivative Material of Open Game Content. (h) "You" or "Your" means the
+licensee in terms of this agreement.
+
+2. The License: This License applies to any Open Game Content that contains a
+notice indicating that the Open Game Content may only be Used under and in
+terms of this License. You must affix such a notice to any Open Game Content
+that you Use. No terms may be added to or subtracted from this License except
+as described by the License itself. No other terms or conditions may be
+applied to any Open Game Content distributed using this License.
+
+3. Offer and Acceptance: By Using the Open Game Content You indicate Your
+acceptance of the terms of this License.
+
+4. Grant and Consideration: In consideration for agreeing to use this License,
+the Contributors grant You a perpetual, worldwide, royalty-free, non-exclusive
+license with the exact terms of this License to Use, the Open Game Content.
+
+5. Representation of Authority to Contribute: If You are contributing original
+material as Open Game Content, You represent that Your Contributions are Your
+original creation and/or You have sufficient rights to grant the rights
+conveyed by this License.
+
+6. Notice of License Copyright: You must update the COPYRIGHT NOTICE portion of
+this License to include the exact text of the COPYRIGHT NOTICE of any Open Game
+Content You are copying, modifying or distributing, and You must add the title,
+the copyright date, and the copyright holder's name to the COPYRIGHT NOTICE of
+any original Open Game Content you Distribute.
+
+7. Use of Product Identity: You agree not to Use any Product Identity,
+including as an indication as to compatibility, except as expressly licensed
+in another, independent Agreement with the owner of each element of that
+Product Identity. You agree not to indicate compatibility or co-adaptability
+with any Trademark or Registered Trademark in conjunction with a work
+containing Open Game Content except as expressly licensed in another,
+independent Agreement with the owner of such Trademark or Registered
+Trademark. The use of any Product Identity in Open Game Content does not
+constitute a challenge to the ownership of that Product Identity. The owner of
+any Product Identity used in Open Game Content shall retain all rights, title
+and interest in and to that Product Identity.
+
+8. Identification: If you distribute Open Game Content You must clearly
+indicate which portions of the work that you are distributing are Open Game
+Content.
+
+9. Updating the License: Wizards or its designated Agents may publish updated
+versions of this License. You may use any authorized version of this License to
+copy, modify and distribute any Open Game Content originally distributed under
+any version of this License.
+
+10. Copy of this License: You MUST include a copy of this License with every
+copy of the Open Game Content You Distribute.
+
+11. Use of Contributor Credits: You may not market or advertise the Open Game
+Content using the name of any Contributor unless You have written permission
+from the Contributor to do so.
+
+12. Inability to Comply: If it is impossible for You to comply with any of the
+terms of this License with respect to some or all of the Open Game Content due
+to statute, judicial order, or governmental regulation then You may not Use any
+Open Game Material so affected.
+
+13. Termination: This License will terminate automatically if You fail to
+comply with all terms herein and fail to cure such breach within 30 days of
+becoming aware of the breach. All sublicenses shall survive the termination of
+this License.
+
+14. Reformation: If any provision of this License is held to be unenforceable,
+such provision shall be reformed only to the extent necessary to make it
+enforceable.
+
+15. COPYRIGHT NOTICE
+
+- Open Game License v 1.0 Copyright 2000, Wizards of the Coast, Inc.
+- Pathfinder Core Rulebook (Second Edition) © 2019, Paizo Inc.; Designers:
+  Logan Bonner, Jason Bulmahn, Stephen Radney-MacFarland, and Mark Seifter.
+- Pathfinder Gamemastery Guide © 2020, Paizo Inc.; Authors: Alexander Augunas,
+  Jesse Benner, John Bennett, Logan Bonner, Clinton J. Boomer, Jason Bulmahn,
+  James Case, Paris Crenshaw, Jesse Decker, Robert N. Emerson, Eleanor Ferron,
+  Jaym Gates, Matthew Goetz, T.H. Gulliver, Kev Hamilton, Sasha Laranoa
+  Harving, BJ Hensley, Vanessa Hoskins, Brian R. James, Jason LeMaitre, Lyz
+  Liddell, Luis Loza, Colm Lundberg, Ron Lundeen, Stephen Radney-MacFarland,
+  Jessica Redekop, Alistair Rigg, Mark Seifter, Owen K.C. Stephens, Amber
+  Stewart, Christina Stiles, Landon Winkler, and Linda Zayas-Palmer.
+- Secrets of Magic © 2021, Paizo Inc.; Authors: Amirali Attar Olyaee, Kate
+  Baker, Minty Belmont, Logan Bonner, James Case, Jessica Catalan, John Compton,
+  Katina Davis, Jesse Decker, Chris Eng, Eleanor Ferron, Leo Glass, Joan Hong,
+  Vanessa Hoskins, Jason Keeley, Joshua Kim, Luis Loza, Ron Lundeen, Liane
+  Merciel, David N. Ross, Ianara Natividad, Chesley Oxendine, Stephen
+  Radney-MacFarland, Shiv Ramdas, Mikhail Rekun, Simone D. Sallé, Michael
+  Sayre, Mark Seifter, Sen H.H.S., Shay Snow, Kendra Leigh Speedling, Tan Shao
+  Han, Calliope Lee Taylor, Mari Tokuda, Jason Tondro, Clark Valentine, Ruvaid
+  Virk, Andrew White, Landon Winkler, Tonya Woldridge, and Isis Wozniakowska.
+- Pathfinder Dark Archive © 2022, Paizo Inc.; Authors: James Case, Mikhail
+  Rekun, Mark Seifter, Rigby Bendele, Logan Bonner, Dan Cascone, Jessica
+  Catalan, Banana Chan, Kay Hashimoto, Sen H.H.S., Patrick Hurley, Joshua Kim,
+  Avi Kool, Daniel Kwan, Kendra Leigh Speedling, Luis Loza, Ron Lundeen, Liane
+  Merciel, Jacob W. Michaels, Andrew Mullen, Quinn Murphy, K. Tessa Newton,
+  Patrick Renie, Solomon St. John, Michael Sayre, Shay Snow, Alex Speidel,
+  Geoffrey Suthers, Ruvaid Virk, Jabari Weathers, and Isis Wozniakowska.
+- Pathfinder Lost Omens Character Guide (Second Edition) © 2019, Paizo Inc.;
+  Authors: John Compton, Sasha Lindley Hall, Amanda Hamon, Mike Kimmel, Luis
+  Loza, Ron Lundeen, Matt Morris, Patchen Mortimer, Andrew Mullen, Mikhail
+  Rekun, Micheal Sayre, Owen K.C. Stephens, Isabelle Thorne, and Linda
+  Zayas-Palmer.
+- Pathfinder Lost Omens Ancestry Guide (Second Edition) © 2021, Paizo Inc.;
+  Authors: Calder CaDavid, James Case, Jessica Catalan, Eleanor Ferron, Lyz
+  Liddell, Luis Loza, Ron Lundeen, Patchen Mortimer, Andrew Mullen, Samantha
+  Phelan, Jessica Redekop, Mikhail Rekun, David N. Ross, Mark Seifter, Owen K.C.
+  Stephens, Isabelle Thorne, and Linda Zayas-Palmer.
+- Pathfinder Book of the Dead © 2022, Paizo Inc.; Authors: Brian Bauman, Tineke
+  Bolleman. Logan Bonner, Jason Bulmahn, Jessica Catalan, John Compton, Chris
+  Eng, Logan Harper, Michelle Jones, Jason Keeley, Luis Loza, Ron Lundeen,
+  Liane Merciel, Patchen Mortimer, Quinn Murphy, Jessica Redekop, Mikhail Rekun,
+  Solomon St. John, Michael Sayre, Mark Seifter, Sen.H.H.S., Kendra Leigh
+  Speedling, Jason Tondro, Andrew White.
+- Pathfinder Adventure Path #151: The Show Must Go On © 2020, Paizo Inc.;
+  Authors: Jason Tondro, with Andrew Mullen, Patrick Renie, David N. Ross, and
+  Michael Sayre.
+- Wayfinder Game Mechanics © 2026 iomancer.
+
+## Identification of Open Game Content
+
+The game-mechanical expressions implemented by capability entries marked
+`OGL-1.0a` in [rules-sources.json](rules-sources.json) are Open Game Content to the
+extent defined by the Open Game License. This identification does not include
+Paizo Product Identity.
+
+This identification does not purport to make an OGL-derived mechanic valid
+inside an ORC single-game Work. The packaged source ledger blocks publication
+until that product-wide scope issue is resolved.
+
+Wayfinder's original source code, code organization, user interface, visual
+design, original prose, project name and logos, and original assets are not
+designated as Open Game Content by this notice, except to the extent a specific
+expression necessarily constitutes Open Game Content under the License.

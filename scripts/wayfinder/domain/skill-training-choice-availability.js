@@ -1,15 +1,20 @@
-export function activeSkillTrainingChoiceOptions(metadata, training, choiceRule, projectedRanks) {
+export function activeSkillTrainingChoiceOptions(metadata, training, choiceRule, projectedRanks, allowRecoveredSelection = false) {
     const fallbackOptions = choiceRule.fallbackOptions ?? [];
     if (fallbackOptions.length === 0) {
         return choiceRule.options;
     }
     const reservedByOtherChoices = reservedSkillSlugs(metadata, training, choiceRule);
-    const primaryOptionsUnavailable = choiceRule.options.every((option) => reservedByOtherChoices.has(option.slug) || (projectedRanks[option.slug] ?? 0) >= 1);
+    const recoveredSelection = allowRecoveredSelection ? training.ruleChoices[choiceRule.key] : null;
+    const primaryOptionsUnavailable = choiceRule.options.every((option) => reservedByOtherChoices.has(option.slug) ||
+        ((projectedRanks[option.slug] ?? 0) >= 1 && option.slug !== recoveredSelection));
     return primaryOptionsUnavailable ? fallbackOptions : choiceRule.options;
 }
-export function isActiveSkillTrainingChoice(metadata, training, choiceRule, projectedRanks, slug) {
-    const activeOption = activeSkillTrainingChoiceOptions(metadata, training, choiceRule, projectedRanks).some((option) => option.slug === slug);
-    return (activeOption && !reservedSkillSlugs(metadata, training, choiceRule).has(slug) && (projectedRanks[slug] ?? 0) < 1);
+export function isActiveSkillTrainingChoice(metadata, training, choiceRule, projectedRanks, slug, allowRecoveredSelection = false) {
+    const activeOption = activeSkillTrainingChoiceOptions(metadata, training, choiceRule, projectedRanks, allowRecoveredSelection).some((option) => option.slug === slug);
+    const alreadyAppliedRecoverySelection = allowRecoveredSelection && training.ruleChoices[choiceRule.key] === slug;
+    return (activeOption &&
+        !reservedSkillSlugs(metadata, training, choiceRule).has(slug) &&
+        ((projectedRanks[slug] ?? 0) < 1 || alreadyAppliedRecoverySelection));
 }
 function reservedSkillSlugs(metadata, training, choiceRule) {
     return new Set([

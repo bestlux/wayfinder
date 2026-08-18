@@ -386,7 +386,8 @@ function validateDraftChoiceValues(
           baseSkillRanks,
           draft: activeRankDraft,
           beforeSlotId: step.slotId,
-        })
+        }),
+        hasDraftRecoveryState(draft)
       );
     } else if (step.kind === "skill-increase") {
       const selected = draft.skillIncreases[step.slotId];
@@ -413,7 +414,8 @@ function validateTrainingChoices(
   draft: DraftState,
   step: PendingStep & { kind: "skill-training" },
   validSkillSlugs: ReadonlySet<string>,
-  projectedRanks: Readonly<Record<string, number>>
+  projectedRanks: Readonly<Record<string, number>>,
+  allowRecoveredSelection: boolean
 ): void {
   const training = draft.skillTrainings[step.slotId];
   if (!training) return;
@@ -423,7 +425,9 @@ function validateTrainingChoices(
   for (const choice of step.training.choiceRules) {
     const selected = training.ruleChoices[choice.key];
     if (!selected) continue;
-    if (!isActiveSkillTrainingChoice(step.training, training, choice, projectedRanks, selected)) {
+    if (
+      !isActiveSkillTrainingChoice(step.training, training, choice, projectedRanks, selected, allowRecoveredSelection)
+    ) {
       throw staleChoiceError(step);
     }
   }

@@ -222,6 +222,23 @@ describe("prepared draft application", () => {
     expect(actor.update).not.toHaveBeenCalled();
   });
 
+  it("accepts an exact skill choice that the same locked recovery draft already applied", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = {
+      ...actor.system,
+      skills: { occultism: { rank: 1 }, arcana: { rank: 1 } },
+    };
+    const draft = createEmptyDraft(1);
+    draft.applyAttemptStepIds = ["skill-training-fighter-level-1"];
+    draft.skillTrainings["skill-training-fighter-level-1"] = {
+      ruleChoices: { "feat:necromancer-dedication:dedication-skill-1": "arcana" },
+      additional: ["athletics"],
+      loreChoices: {},
+    };
+
+    await expect(prepareDraftApplication(actor as never, draft, [necromancerTrainingStep()])).resolves.toBeDefined();
+  });
+
   it("prepares but does not expect a flag-choice value to become an actor item", async () => {
     const { actor } = buildActorHarness();
     setGamePacks({

@@ -190,7 +190,7 @@ function validateDraftChoiceValues(actor, draft, steps, configuredSkillSlugs) {
                 baseSkillRanks,
                 draft: activeRankDraft,
                 beforeSlotId: step.slotId,
-            }));
+            }), hasDraftRecoveryState(draft));
         }
         else if (step.kind === "skill-increase") {
             const selected = draft.skillIncreases[step.slotId];
@@ -213,7 +213,7 @@ function assertListedChoice(step, selected, options) {
         throw staleChoiceError(step);
     }
 }
-function validateTrainingChoices(draft, step, validSkillSlugs, projectedRanks) {
+function validateTrainingChoices(draft, step, validSkillSlugs, projectedRanks, allowRecoveredSelection) {
     const training = draft.skillTrainings[step.slotId];
     if (!training)
         return;
@@ -224,7 +224,7 @@ function validateTrainingChoices(draft, step, validSkillSlugs, projectedRanks) {
         const selected = training.ruleChoices[choice.key];
         if (!selected)
             continue;
-        if (!isActiveSkillTrainingChoice(step.training, training, choice, projectedRanks, selected)) {
+        if (!isActiveSkillTrainingChoice(step.training, training, choice, projectedRanks, selected, allowRecoveredSelection)) {
             throw staleChoiceError(step);
         }
     }

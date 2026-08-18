@@ -47,7 +47,7 @@ Wayfinder is a planning layer on top of the PF2E system, not a replacement for i
 
 ## Class support
 
-Every one of the 27 PF2E classes has a verified guided path from a blank level-1 character through level 5 — including class branches (instincts, doctrines, bloodlines, mysteries, and the rest), feat milestones, skill training, boosts, and spellcasting setup for prepared, spontaneous, spellbook, and bounded casters.
+Wayfinder has a verified guided path from a blank level-1 character through level 5 for the 27 classes listed below — including class branches (instincts, doctrines, bloodlines, mysteries, and the rest), feat milestones, skill training, boosts, and spellcasting setup for prepared, spontaneous, spellbook, and bounded casters. PF2E 8.4 also introduced Necromancer and Runesmith as base classes; those two are not yet modeled as complete class paths. Necromancer Dedication's supported Ancient Elf follow-on is separate from base-class support.
 
 Five representative profiles are verified further, to level 10: a martial (Fighter), a prepared caster (Wizard), a spontaneous caster (Bard), a bounded caster (Magus), and a skill-heavy class (Investigator). One class — Fighter — is verified to level 20. Those runs check more than a clean apply: the ability-boost milestones at levels 10, 15, and 20 each spend four boosts into PF2E's native build data, skill increases land at the expected proficiency ranks through legendary, and caster pickers offer the spell ranks their progression allows. High-level *caster* play above level 10 is not yet proven — spell ranks 6 through 9 and the level-19/20 caster milestones remain unverified.
 
@@ -60,7 +60,7 @@ Both that lane and ordinary class-feat slots share one archetype legality check.
 Some things still can't be verified from data, and Wayfinder shows those options rather than hiding them on a guess: dedications whose own text changes the lockout rule, feats whose archetype family can't be resolved, access entries, campaign permission, and prerequisites written as prose (feat, class-feature, and attribute requirements). Some dedication benefits and follow-on choices also exist only in prose and may still need manual setup on the PF2E sheet. Every dedication preview names that boundary so you and your GM can review the feat before and after applying it.
 
 <details>
-<summary><strong>All 27 classes, verified through level 5</strong></summary>
+<summary><strong>27 maintained classes, verified through level 5</strong></summary>
 
 Alchemist · Animist · Barbarian · Bard · Champion · Cleric · Commander · Druid · Exemplar · Fighter · Guardian · Gunslinger · Inventor · Investigator · Kineticist · Magus · Monk · Oracle · Psychic · Ranger · Rogue · Sorcerer · Summoner · Swashbuckler · Thaumaturge · Witch · Wizard
 
@@ -75,6 +75,7 @@ Each class is verified by a live in-Foundry test that builds a character from bl
 These stay in the native PF2E sheet for now, and Wayfinder will tell you so when they come up:
 
 - Starting gear and item purchasing
+- Necromancer and Runesmith base-class paths
 - Daily preparations
 - Archetype requirements or benefits that only exist as prose — access entries, campaign permission, feat/class-feature/attribute prerequisites, manual follow-on setup, and dedications whose own text rewrites the lockout rule
 - Class archetypes other than Battle Creed, Way of the Spellshot, and Palatine Detective

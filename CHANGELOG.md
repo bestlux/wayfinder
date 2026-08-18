@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.4 - 2026-08-18
+
+- GMs can now configure supplemental PF2E Item compendia through a searchable checklist that reports relevant ancestry, heritage, background, class, feat, spell, and deity counts. Existing exact IDs and wildcard settings remain reviewable and removable even when their packs are unavailable.
+- Third-party character content is filtered more defensively. Wayfinder discovers ancestry and class identities from enabled sources, isolates feats to the matching ancestry or class, quarantines ambiguous heritages and unsupported predicates, and clearly identifies choices whose custom mechanics still require manual review.
+- Drafts autosave transactionally, Apply commands are serialized, and interrupted or multi-client Apply attempts preserve a durable recovery ledger instead of silently clearing or replaying partial work.
+- Restricted spell access is captured as a reviewable player attestation and shown again at final confirmation and in the last-Apply receipt. The record is explicitly evidence supplied by the player, not verified GM authorization.
+- Ancient Elf and similar grant-choice paths now surface Necromancer Dedication's dirge cantrips and skill fallback, and granted class feats no longer hide later class-feat milestones during incremental leveling.
+- Large feat and spell searches render only the changing picker regions and discard superseded work, keeping rapid typing responsive without allowing stale results to replace newer ones.
+- Completed characters keep their current and target levels visible in Wayfinder, so the next level can be planned directly instead of reopening to a blank workflow.
+- Wayfinder now uses original module styling and icons for its generated spellcasting entries and includes an in-app Legal & Attribution link alongside the packaged notices.
+- PF2E 8.4's Necromancer and Runesmith base classes are not yet complete Wayfinder class paths; the supported Necromancer Dedication follow-on does not imply base-class coverage.
+
 ## 0.7.3 - 2026-08-14
 
 - Verified Wayfinder against Foundry VTT 14 Stable 8 (14.366) and PF2E 8.4.0, including creation, level-up, campaign variants, and interrupted Apply recovery.

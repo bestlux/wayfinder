@@ -1,10 +1,10 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-15 for the accepted 0.8.0 Starting Equipment and Wealth plan. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-08-18 for the 0.7.4 compatibility release and accepted 0.8.0 Starting Equipment and Wealth plan. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
-Wayfinder 0.7.3 guides all 27 PF2E classes from a blank level-1 actor through level 5 along one maintained path. Five representative profiles are verified through level 10 and Fighter through level 20. The current live release matrix contains 54 unique scenarios against Foundry VTT 14.366 and PF2E 8.4.0, including a deliberate late-phase Apply failure and clean retry.
+Wayfinder 0.7.4 guides 27 maintained PF2E classes from a blank level-1 actor through level 5 along one maintained path. PF2E 8.4's newer Necromancer and Runesmith base classes remain outside that maintained class matrix. Five representative profiles are verified through level 10 and Fighter through level 20. The current live release matrix contains 54 unique scenarios against Foundry VTT 14.366 and PF2E 8.4.0, including a deliberate late-phase Apply failure and clean retry.
 
 The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, and Gradual Ability Boosts. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation.
 
@@ -39,11 +39,9 @@ Shipped in 0.7.2: Wayfinder retains prepared sources instead of resolving them a
 
 This bridge deliberately precedes equipment. Starting wealth adds batch inventory and currency writes; those operations should join an established preparation/execution model instead of creating another mutation path.
 
-### Pre-0.8 hardening wave
+### 0.7.4 — Pre-equipment compatibility and workflow hardening
 
-Before equipment branches into catalogue, ledger, and Apply work, land independently reviewable improvements for picker measurement and scoped search rendering, truthful draft persistence and Clear protection, shared readiness evaluation, equipment-capable smoke evidence, and restricted-access authority. These are development milestones, not an automatic 0.7.4 release.
-
-Cut a 0.7.4 patch only if this wave produces a coherent fix for users of 0.7.3—most plausibly autosave/Clear durability—or if 0.8.0 is materially delayed. Equipment-only infrastructure does not justify another public release.
+Before equipment branches into catalogue, ledger, and Apply work, 0.7.4 ships independently useful improvements: measured and scoped picker rendering, truthful draft persistence and Clear protection, shared readiness evaluation, interrupted-Apply recovery, restricted-spell attestations, a searchable GM compendium source manager, and fail-closed third-party filtering. The generated Character Wealth policy remains internal foundation; this release does not claim the 0.8.0 equipment experience.
 
 ### 0.8.0 — Starting Equipment and Wealth
 

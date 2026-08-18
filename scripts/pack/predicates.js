@@ -102,32 +102,68 @@ function matchesChoicePredicateString(statement, entry, context) {
     return false;
 }
 function evaluateStaticPredicate(predicate, evaluateString) {
+    return evaluateStaticPredicateValue(predicate, evaluateString) === true;
+}
+function evaluateStaticPredicateValue(predicate, evaluateString) {
     if (typeof predicate === "string") {
-        return evaluateString(predicate) === true;
+        return evaluateString(predicate);
     }
     if (Array.isArray(predicate)) {
-        return predicate.every((entry) => evaluateStaticPredicate(entry, evaluateString));
+        return everyPredicate(predicate, evaluateString);
     }
     const comparison = evaluateComparisonPredicate(predicate, evaluateString);
     if (comparison !== null) {
         return comparison;
     }
     if (Array.isArray(predicate.and)) {
-        return predicate.and.every((entry) => evaluateStaticPredicate(entry, evaluateString));
+        return everyPredicate(predicate.and, evaluateString);
+    }
+    if (Array.isArray(predicate.nand)) {
+        return negatePredicate(everyPredicate(predicate.nand, evaluateString));
     }
     if (Array.isArray(predicate.or)) {
-        return predicate.or.some((entry) => evaluateStaticPredicate(entry, evaluateString));
+        return somePredicate(predicate.or, evaluateString);
+    }
+    if (Array.isArray(predicate.xor)) {
+        const values = predicate.xor.map((entry) => evaluateStaticPredicateValue(entry, evaluateString));
+        if (values.includes("unknown")) {
+            return "unknown";
+        }
+        return values.filter((value) => value === true).length === 1;
     }
     if (Array.isArray(predicate.nor)) {
-        return predicate.nor.every((entry) => evaluateStringOrTree(entry, evaluateString) === false);
+        return negatePredicate(somePredicate(predicate.nor, evaluateString));
     }
     if (predicate.not) {
-        return evaluateStringOrTree(predicate.not, evaluateString) === false;
+        return negatePredicate(evaluateStaticPredicateValue(predicate.not, evaluateString));
     }
-    return true;
+    if (predicate.if && predicate.then) {
+        const condition = evaluateStaticPredicateValue(predicate.if, evaluateString);
+        const consequence = evaluateStaticPredicateValue(predicate.then, evaluateString);
+        if (condition === false) {
+            return true;
+        }
+        if (condition === true) {
+            return consequence;
+        }
+        return "unknown";
+    }
+    if (Array.isArray(predicate.iff)) {
+        const values = predicate.iff.map((entry) => evaluateStaticPredicateValue(entry, evaluateString));
+        const knownValues = values.filter((value) => value !== "unknown");
+        if (knownValues.includes(true) && knownValues.includes(false)) {
+            return false;
+        }
+        if (values.includes("unknown")) {
+            return "unknown";
+        }
+        return knownValues.every(Boolean) || knownValues.every((value) => !value);
+    }
+    return "unknown";
 }
 function evaluateComparisonPredicate(predicate, evaluateString) {
     for (const [operator, comparator] of [
+        ["eq", predicate.eq],
         ["lt", predicate.lt],
         ["lte", predicate.lte],
         ["gt", predicate.gt],
@@ -140,41 +176,24 @@ function evaluateComparisonPredicate(predicate, evaluateString) {
         if (typeof left !== "string" || (typeof right !== "number" && typeof right !== "string")) {
             return false;
         }
+        if (operator === "eq" && typeof right === "string") {
+            return left === right;
+        }
         const resolved = evaluateString(`${operator}:${left}:${right}`);
-        return resolved === true;
+        return resolved;
     }
     return null;
 }
-function evaluateStringOrTree(predicate, evaluateString) {
-    if (typeof predicate === "string") {
-        return evaluateString(predicate);
-    }
-    if (Array.isArray(predicate)) {
-        return predicate.every((entry) => evaluateStringOrTree(entry, evaluateString) === true) ? true : "unknown";
-    }
-    if (Array.isArray(predicate.or)) {
-        if (predicate.or.some((entry) => evaluateStringOrTree(entry, evaluateString) === true)) {
-            return true;
-        }
-        return predicate.or.every((entry) => evaluateStringOrTree(entry, evaluateString) === false) ? false : "unknown";
-    }
-    if (Array.isArray(predicate.and)) {
-        if (predicate.and.some((entry) => evaluateStringOrTree(entry, evaluateString) === false)) {
-            return false;
-        }
-        return predicate.and.every((entry) => evaluateStringOrTree(entry, evaluateString) === true) ? true : "unknown";
-    }
-    if (Array.isArray(predicate.nor)) {
-        if (predicate.nor.some((entry) => evaluateStringOrTree(entry, evaluateString) === true)) {
-            return false;
-        }
-        return predicate.nor.every((entry) => evaluateStringOrTree(entry, evaluateString) === false) ? true : "unknown";
-    }
-    if (predicate.not) {
-        const value = evaluateStringOrTree(predicate.not, evaluateString);
-        return value === "unknown" ? "unknown" : !value;
-    }
-    return true;
+function everyPredicate(predicates, evaluateString) {
+    const values = predicates.map((entry) => evaluateStaticPredicateValue(entry, evaluateString));
+    return values.includes(false) ? false : values.includes("unknown") ? "unknown" : true;
+}
+function somePredicate(predicates, evaluateString) {
+    const values = predicates.map((entry) => evaluateStaticPredicateValue(entry, evaluateString));
+    return values.includes(true) ? true : values.includes("unknown") ? "unknown" : false;
+}
+function negatePredicate(value) {
+    return value === "unknown" ? "unknown" : !value;
 }
 function evaluateStaticPredicateString(statement, entry, context) {
     const trimmed = statement.trim().toLowerCase();
@@ -201,7 +220,7 @@ function evaluateStaticPredicateString(statement, entry, context) {
     if (trimmed.startsWith("item:")) {
         return matchesChoicePredicateString(statement, entry, context);
     }
-    const comparisonMatch = /^(lt|lte|gt|gte):item:level:(\d+)$/.exec(trimmed);
+    const comparisonMatch = /^(eq|lt|lte|gt|gte):item:level:(-?\d+(?:\.\d+)?)$/.exec(trimmed);
     if (comparisonMatch) {
         const level = numericOrNull(entry?.system?.level?.value);
         const expected = Number(comparisonMatch[2]);
@@ -217,6 +236,8 @@ function evaluateStaticPredicateString(statement, entry, context) {
                 return level > expected;
             case "gte":
                 return level >= expected;
+            case "eq":
+                return level === expected;
         }
     }
     return "unknown";

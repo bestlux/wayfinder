@@ -2,6 +2,17 @@ import { extractDocumentSlug } from "../shared/slug.js";
 import type { PackIndexEntry } from "./access.js";
 
 export function numericOrNull(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!/^-?(?:\d+\.?\d*|\.\d+)$/.test(normalized)) {
+      return null;
+    }
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }

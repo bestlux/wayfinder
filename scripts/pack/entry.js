@@ -1,5 +1,14 @@
 import { extractDocumentSlug } from "../shared/slug.js";
 export function numericOrNull(value) {
+    if (typeof value !== "number" && typeof value !== "string") {
+        return null;
+    }
+    if (typeof value === "string") {
+        const normalized = value.trim();
+        if (!/^-?(?:\d+\.?\d*|\.\d+)$/.test(normalized)) {
+            return null;
+        }
+    }
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
 }

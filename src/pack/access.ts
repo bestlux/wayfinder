@@ -115,6 +115,16 @@ export async function fetchSelectionDocument(selection: SelectionRef): Promise<P
 }
 
 export function clearPackServiceCache(): void {
+  invalidatePackSourceCaches();
+}
+
+/**
+ * Invalidates every cache derived from the currently enabled compendium sources.
+ *
+ * Settings and Foundry document hooks can call this before rerendering pickers so
+ * newly enabled or edited packs cannot reuse stale indexes or identity catalogs.
+ */
+export function invalidatePackSourceCaches(): void {
   indexCache.clear();
   traitCatalogCache.clear();
 }

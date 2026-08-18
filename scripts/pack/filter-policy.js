@@ -65,7 +65,7 @@ export function matchesFilters(entry, packId, step, context, traitCatalog) {
     }
     if (typeof filters.maxLevel === "number") {
         const level = numericOrNull(entry?.system?.level?.value);
-        if (level !== null && level > filters.maxLevel) {
+        if (level === null || !Number.isInteger(level) || level < 0 || level > filters.maxLevel) {
             return false;
         }
     }
@@ -110,20 +110,17 @@ export async function getTraitCatalog(slotKind) {
     if (slotKind === "spell-choice" || slotKind === "archetype-feat") {
         return new Set();
     }
-    const cacheKey = slotKind === "class-feat" ? "class" : "ancestry-heritage";
+    const catalogKind = slotKind === "class-feat" ? "class" : "ancestry-heritage";
+    const configuredTraits = getConfiguredTraitCatalog(catalogKind);
+    const packIds = catalogKind === "class"
+        ? resolvePackIds("class")
+        : mergePackIds(resolvePackIds("ancestry"), resolvePackIds("heritage"));
+    const cacheKey = identityCatalogCacheKey(catalogKind, configuredTraits, packIds);
     const cached = getCachedTraitCatalog(cacheKey);
     if (cached) {
         return cached;
     }
-    const configuredTraits = getConfiguredTraitCatalog(cacheKey);
-    if (configuredTraits.size > 0) {
-        cacheTraitCatalog(cacheKey, configuredTraits);
-        return configuredTraits;
-    }
-    const packIds = cacheKey === "class"
-        ? resolvePackIds("class")
-        : mergePackIds(resolvePackIds("ancestry"), resolvePackIds("heritage"));
-    const traits = new Set();
+    const traits = new Set(configuredTraits);
     for (const packId of packIds) {
         const pack = getGamePack(packId);
         if (!pack) {
@@ -131,6 +128,9 @@ export async function getTraitCatalog(slotKind) {
         }
         const index = await getPackIndex(pack, packId);
         for (const entry of index) {
+            if (!isRootIdentityDocument(entry, catalogKind)) {
+                continue;
+            }
             const slug = extractEntrySlug(entry);
             if (slug) {
                 traits.add(slug);
@@ -139,6 +139,15 @@ export async function getTraitCatalog(slotKind) {
     }
     cacheTraitCatalog(cacheKey, traits);
     return traits;
+}
+function identityCatalogCacheKey(kind, configuredTraits, packIds) {
+    const configuredSignature = Array.from(configuredTraits).sort().join(",");
+    const packSignature = [...packIds].sort().join(",");
+    return `${kind}|configured:${configuredSignature}|packs:${packSignature}`;
+}
+function isRootIdentityDocument(entry, kind) {
+    const itemType = stringOrNull(entry.type)?.trim().toLowerCase();
+    return kind === "class" ? itemType === "class" : itemType === "ancestry" || itemType === "heritage";
 }
 function isAncestryCampaignFeatCandidate(step, entry) {
     return step.slotKind === "campaign-feat" && resolveFeatType(entry) === "ancestry";

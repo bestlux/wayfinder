@@ -106,6 +106,45 @@ export function matchesFilters(entry, packId, step, context, traitCatalog) {
     }
     return true;
 }
+export async function getPackageAncestryCatalog() {
+    const catalog = new Map();
+    for (const packId of resolvePackIds("ancestry")) {
+        const pack = getGamePack(packId);
+        if (!pack) {
+            continue;
+        }
+        const packageId = packageIdFromPackId(packId);
+        const packageAncestries = catalog.get(packageId) ?? new Set();
+        for (const entry of await getPackIndex(pack, packId)) {
+            if (stringOrNull(entry.type)?.trim().toLowerCase() !== "ancestry") {
+                continue;
+            }
+            const slug = extractEntrySlug(entry);
+            if (slug) {
+                packageAncestries.add(slug);
+            }
+        }
+        catalog.set(packageId, packageAncestries);
+    }
+    return catalog;
+}
+export function matchesHeritageContext(entry, packId, context, packageAncestries) {
+    if (!context.ancestrySlug) {
+        return true;
+    }
+    const heritageAncestrySlug = stringOrNull(entry?.system?.ancestry?.slug);
+    if (heritageAncestrySlug) {
+        return heritageAncestrySlug === context.ancestrySlug;
+    }
+    if (OFFICIAL_PACKS.heritage.some((officialPackId) => officialPackId === packId)) {
+        return true;
+    }
+    const inferredAncestries = packageAncestries.get(packageIdFromPackId(packId));
+    return inferredAncestries?.size === 1 && inferredAncestries.has(context.ancestrySlug);
+}
+function packageIdFromPackId(packId) {
+    return packId.split(".", 1)[0] ?? packId;
+}
 export async function getTraitCatalog(slotKind) {
     if (slotKind === "spell-choice" || slotKind === "archetype-feat") {
         return new Set();

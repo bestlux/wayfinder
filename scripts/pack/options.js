@@ -1,9 +1,10 @@
+import { OFFICIAL_PACKS } from "../constants.js";
 import { toCompendiumItemUuid } from "../shared/compendium.js";
 import { resolveStaticGrantChoiceSources } from "../wayfinder/static-grant-choice-sources.js";
 import { fetchSelectionDocument, getGamePack, getPackIndex } from "./access.js";
 import { buildStaticGrantChoiceDisclosure, classifyEmbeddedChoices } from "./embedded-choice-policy.js";
 import { extractEntrySlug, extractEntryTraits, numericOrNull, resolveFeatType, stringOrNull } from "./entry.js";
-import { getTraitCatalog, matchesFilters, resolvePackIds } from "./filter-policy.js";
+import { getPackageAncestryCatalog, getTraitCatalog, matchesFilters, matchesHeritageContext, resolvePackIds, } from "./filter-policy.js";
 const EMPTY_OPTION_CONTEXT = {
     ancestrySlug: null,
     ancestryTraits: [],
@@ -20,6 +21,7 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
     }
     const packIds = resolvePackIds(step.slotKind, step.filters);
     const traitCatalog = await getTraitCatalog(step.slotKind);
+    const packageAncestries = step.slotKind === "heritage" ? await getPackageAncestryCatalog() : new Map();
     const results = [];
     for (const packId of packIds) {
         const pack = getGamePack(packId);
@@ -29,6 +31,9 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
         const index = await getPackIndex(pack, packId);
         for (const entry of index) {
             if (!matchesFilters(entry, packId, step, context, traitCatalog)) {
+                continue;
+            }
+            if (step.slotKind === "heritage" && !matchesHeritageContext(entry, packId, context, packageAncestries)) {
                 continue;
             }
             const level = numericOrNull(entry?.system?.level?.value);
@@ -56,7 +61,10 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
                     slug,
                     traits,
                     rarity: stringOrNull(entry?.system?.traits?.rarity),
-                    source: stringOrNull(entry?.system?.publication?.title),
+                    source: stringOrNull(entry?.system?.publication?.title) ??
+                        stringOrNull(pack.metadata?.label) ??
+                        stringOrNull(pack.title) ??
+                        stringOrNull(pack.metadata?.packageName),
                     label: level === null ? name : `${name} (Level ${level})`,
                 },
             });
@@ -64,9 +72,17 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
     }
     const enriched = await Promise.all(results.map(async ({ entry, option }) => ({
         ...option,
-        disclosure: await resolveStaticGrantDisclosure(entry, option, context),
+        disclosure: await resolveOptionDisclosure(entry, option, context, step),
     })));
     return dedupeAndSort(enriched);
+}
+async function resolveOptionDisclosure(entry, option, context, step) {
+    const disclosures = [await resolveStaticGrantDisclosure(entry, option, context)];
+    if (step.slotKind === "class" && !OFFICIAL_PACKS.class.some((officialPackId) => officialPackId === option.packId)) {
+        disclosures.push("Third-party class: Wayfinder uses structured PF2E data and generic milestones, but custom spellcasting, resources, and prose-only restrictions may require manual setup and rules review.");
+    }
+    const combined = disclosures.filter((disclosure) => !!disclosure).join(" ");
+    return combined || null;
 }
 async function resolveStaticGrantDisclosure(entry, option, context) {
     const sourceSelection = {

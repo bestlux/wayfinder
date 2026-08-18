@@ -174,8 +174,35 @@
       </main>
     </section>
   {{else}}
-    <section class="wayfinder-empty">
-      <p>{{localize "wayfinder-pf2e.App.NoPending"}}</p>
+    <section class="wayfinder-empty wayfinder-empty-planner">
+      <div class="empty-planner-copy">
+        <p class="eyebrow">Wayfinder</p>
+        <h2>{{actorName}}</h2>
+        <p>{{localize "wayfinder-pf2e.App.NoPending"}}</p>
+        <small>Raise the target level to plan this character's next advancement.</small>
+      </div>
+
+      <div class="empty-planner-levels" aria-label="Character level planning">
+        <div class="level-card">
+          <div class="level-badge">
+            <span class="level-label">Cur</span>
+            <strong>{{currentLevel}}</strong>
+          </div>
+          <div class="level-badge target">
+            <span class="level-label">Tgt</span>
+            <strong>{{targetLevel}}</strong>
+          </div>
+        </div>
+
+        <div class="target-controls">
+          <button type="button" class="icon" data-wayfinder-action="target-down" aria-label="Lower target level">
+            <i class="fa-solid fa-minus"></i>
+          </button>
+          <button type="button" class="icon" data-wayfinder-action="target-up" aria-label="Raise target level">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
+      </div>
     </section>
   {{/if}}
 

@@ -2,9 +2,6 @@ type SlugDocument = {
   name?: unknown;
   system?: {
     slug?: unknown;
-    ancestry?: {
-      slug?: unknown;
-    };
   };
 };
 
@@ -36,7 +33,6 @@ export function extractDocumentSlug(document: unknown): string | null {
   return (
     normalizedSlug((slugDocument as { slug?: unknown } | null | undefined)?.slug) ??
     normalizedSlug(slugDocument?.system?.slug) ??
-    normalizedSlug(slugDocument?.system?.ancestry?.slug) ??
     slugifyName(slugDocument?.name)
   );
 }

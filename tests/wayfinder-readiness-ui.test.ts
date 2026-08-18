@@ -32,4 +32,15 @@ describe("wayfinder readiness UI", () => {
     expect(appSource).toMatch(/_canDetach\(\): boolean \{\s*return false;\s*\}/);
     expect(appSource).toContain("this.#finalizeClosedState();");
   });
+
+  it("keeps target-level planning available when no guided steps are pending", () => {
+    const emptyBranch = appTemplate.slice(
+      appTemplate.indexOf('{{else}}\n    <section class="wayfinder-empty wayfinder-empty-planner">')
+    );
+
+    expect(emptyBranch).toContain("{{currentLevel}}");
+    expect(emptyBranch).toContain("{{targetLevel}}");
+    expect(emptyBranch).toContain('data-wayfinder-action="target-down"');
+    expect(emptyBranch).toContain('data-wayfinder-action="target-up"');
+  });
 });

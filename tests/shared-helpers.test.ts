@@ -27,9 +27,9 @@ describe("shared helper modules", () => {
     expect(
       extractDocumentSlug({
         system: { ancestry: { slug: " Human " } },
-        name: "Ignored Name",
+        name: "Skilled Human",
       })
-    ).toBe("human");
+    ).toBe("skilled-human");
     expect(extractDocumentSlug({ name: "Battle Oracle" })).toBe("battle-oracle");
   });
 

@@ -98,6 +98,62 @@ describe("pack options dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Ancient Elf", "Changeling"]);
   });
 
+  it("infers an unlinked third-party heritage only when its package exposes one ancestry", async () => {
+    testGlobals.game.settings.get = () => "single-ancestry.*";
+    setPack("single-ancestry.ancestries", [ancestryEntry("dungeon", "Dungeon")]);
+    setPack("single-ancestry.heritages", [heritageEntry("tower", "Tower", null)]);
+
+    const heritageStep = makeStep("heritage", { itemType: "heritage" });
+    const forDungeon = await getOptionsForStep(heritageStep, {
+      ...EMPTY_CONTEXT,
+      ancestrySlug: "dungeon",
+      ancestryTraits: ["dungeon"],
+    });
+    const forOutsider = await getOptionsForStep(heritageStep, {
+      ...EMPTY_CONTEXT,
+      ancestrySlug: "evil-eye",
+      ancestryTraits: ["evil-eye"],
+    });
+
+    expect(forDungeon.map((option) => option.name)).toEqual(["Tower"]);
+    expect(forOutsider).toEqual([]);
+  });
+
+  it("hides an ambiguous unlinked heritage when its package exposes several ancestries", async () => {
+    testGlobals.game.settings.get = () => "many-ancestries.*";
+    setPack("many-ancestries.ancestries", [ancestryEntry("evil-eye", "Evil Eye"), ancestryEntry("angel", "Angel")]);
+    setPack("many-ancestries.heritages", [heritageEntry("unclear", "Unclear Heritage", null)]);
+
+    const options = await getOptionsForStep(makeStep("heritage", { itemType: "heritage" }), {
+      ...EMPTY_CONTEXT,
+      ancestrySlug: "evil-eye",
+      ancestryTraits: ["evil-eye"],
+    });
+
+    expect(options).toEqual([]);
+  });
+
+  it("uses the compendium label when an option has no publication title", async () => {
+    testGlobals.game.settings.get = () => "homebrew.ancestries";
+    const entries = [ancestryEntry("star-eye", "Star Eye")];
+    delete entries[0].system.publication;
+    setPack("homebrew.ancestries", entries, [], "Homebrew Ancestries");
+
+    const options = await getOptionsForStep(makeStep("ancestry", { itemType: "ancestry" }));
+
+    expect(options[0]?.source).toBe("Homebrew Ancestries");
+  });
+
+  it("discloses generic and manual support boundaries for third-party classes", async () => {
+    testGlobals.game.settings.get = () => "homebrew.classes";
+    setPack("homebrew.classes", [classEntry("star-caller", "Star Caller")]);
+
+    const options = await getOptionsForStep(makeStep("class", { itemType: "class" }));
+
+    expect(options[0]?.disclosure).toContain("Third-party class");
+    expect(options[0]?.disclosure).toContain("prose-only restrictions");
+  });
+
   it("filters ancestry feats from drafted ancestry and versatile heritage traits even when pack slugs are missing", async () => {
     setPack("pf2e.ancestries", [ancestryEntry("human", "Human", false), ancestryEntry("sarangay", "Sarangay", false)]);
     setPack("pf2e.heritages", [heritageEntry("dhampir", "Dhampir", null, false)]);
@@ -2342,9 +2398,9 @@ function productionFeatStep(slotId: string): PendingStep {
   return step;
 }
 
-function setPack(id: string, entries: any[], folders: any[] = []): void {
+function setPack(id: string, entries: any[], folders: any[] = [], label?: string): void {
   testGlobals.game.packs.set(id, {
-    metadata: { id },
+    metadata: { id, label },
     folders: new Map(folders.map((folder) => [folder.id, folder])),
     getIndex: async () => entries,
   });

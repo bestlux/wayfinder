@@ -492,6 +492,54 @@
   color: var(--wf-ink);
 }
 
+.wayfinder-app .wayfinder-empty-planner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.1rem;
+  padding: 1rem 1.15rem;
+  border-style: solid;
+}
+
+.empty-planner-copy {
+  min-width: 0;
+}
+
+.empty-planner-copy h2,
+.empty-planner-copy p,
+.empty-planner-copy small {
+  margin: 0;
+}
+
+.empty-planner-copy h2 {
+  color: var(--wf-primary);
+  font: 700 1.25rem / 1.15 var(--serif, serif);
+}
+
+.empty-planner-copy p {
+  margin-top: 0.25rem;
+}
+
+.empty-planner-copy small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--wf-ink-soft);
+}
+
+.empty-planner-levels {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .wayfinder-app .wayfinder-empty-planner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 /* ── Shared Button Base ────────────────────────────────── */
 
 .primary,

@@ -19,7 +19,6 @@ export function extractDocumentSlug(document) {
     const slugDocument = document;
     return (normalizedSlug(slugDocument?.slug) ??
         normalizedSlug(slugDocument?.system?.slug) ??
-        normalizedSlug(slugDocument?.system?.ancestry?.slug) ??
         slugifyName(slugDocument?.name));
 }
 //# sourceMappingURL=slug.js.map

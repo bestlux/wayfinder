@@ -2,7 +2,12 @@ import { MODULE_ID, SETTINGS } from "./constants.js";
 import { normalizeSpellRarityCeiling, type SpellRarityCeiling } from "./wayfinder/spell-choice/rarity-access.js";
 
 export function registerSettings(
-  args: { feedbackMenuType?: unknown; onExtraPacksChange?: () => void; onSpellRarityCeilingChange?: () => void } = {}
+  args: {
+    compendiumSourcesMenuType?: unknown;
+    feedbackMenuType?: unknown;
+    onExtraPacksChange?: () => void;
+    onSpellRarityCeilingChange?: () => void;
+  } = {}
 ): void {
   if (args.feedbackMenuType) {
     game.settings.registerMenu(MODULE_ID, "feedback", {
@@ -15,11 +20,23 @@ export function registerSettings(
     });
   }
 
+  if (args.compendiumSourcesMenuType) {
+    game.settings.registerMenu(MODULE_ID, "compendiumSources", {
+      name: "wayfinder-pf2e.Settings.CompendiumSources.Name",
+      label: "wayfinder-pf2e.Settings.CompendiumSources.Label",
+      hint: "wayfinder-pf2e.Settings.CompendiumSources.Hint",
+      icon: "fa-solid fa-books",
+      type: args.compendiumSourcesMenuType,
+      restricted: true,
+    });
+  }
+
   game.settings.register(MODULE_ID, SETTINGS.extraPacks, {
     name: "wayfinder-pf2e.Settings.ExtraPacks.Name",
     hint: "wayfinder-pf2e.Settings.ExtraPacks.Hint",
     scope: "world",
-    config: true,
+    config: false,
+    restricted: true,
     type: String,
     default: "",
     onChange: args.onExtraPacksChange,

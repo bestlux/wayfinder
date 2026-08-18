@@ -57,6 +57,11 @@
         "Name": "Extra PF2E compendium allowlist",
         "Hint": "Comma-separated compendium ids or wildcards to search in addition to the official PF2E packs. Use my-module.* for every compendium in one module, or * for every installed compendium."
       },
+      "CompendiumSources": {
+        "Name": "Wayfinder content sources",
+        "Label": "Configure compendia",
+        "Hint": "Choose which additional PF2E Item compendia Wayfinder searches and review the character-building content found in each one."
+      },
       "SpellRarityCeiling": {
         "Name": "Player max eligible rarity",
         "Hint": "Spells up to this rarity appear without a per-step attestation. For higher rarities, players must record character or rules Access, or GM permission reported by the player, unless Unique is selected. This record is not verified GM authorization. Tradition, rank, cantrip, curriculum, and fixed spell restrictions still apply.",
@@ -66,6 +71,69 @@
           "Rare": "Rare",
           "Unique": "Unique"
         }
+      }
+    },
+    "CompendiumSources": {
+      "Title": "Wayfinder content sources",
+      "Eyebrow": "GM configuration",
+      "Heading": "Choose additional compendia",
+      "Intro": "Official PF2E sources are always available. Enable only the additional Item compendia your campaign uses.",
+      "EnabledSummary": "optional packs enabled",
+      "Guidance": "Counts describe PF2E item types found in each compendium; they do not guarantee that every third-party or prose-based rule is fully automated. Players should still confirm unusual options with their GM.",
+      "GlobalWildcardTitle": "Every Item compendium is currently enabled",
+      "LegacyPatternTitle": "Legacy wildcard sources need review",
+      "LegacyPatternBody": "The existing setting contains: {patterns}. The current matches are checked below. Saving replaces these patterns with the exact packs you approve, so future packs are not enabled automatically.",
+      "UnmatchedLegacyPatterns": "These patterns currently match no available Item compendium. They remain checked below and stay saved until you clear them: {patterns}",
+      "SearchLabel": "Search compendia",
+      "SearchPlaceholder": "Search name, module, or pack id…",
+      "ContentFilterLabel": "Filter by content",
+      "SortLabel": "Sort compendia",
+      "SelectedOnly": "Selected only",
+      "BulkActions": "Bulk source actions",
+      "SelectVisible": "Select visible",
+      "ClearVisible": "Clear visible",
+      "Refresh": "Refresh counts",
+      "Scanning": "Scanning compendium indexes…",
+      "ScanErrors": "Some counts could not be read",
+      "ListLabel": "Available Item compendia",
+      "BuiltIn": "Built in",
+      "Unavailable": "Unavailable",
+      "UnavailablePackage": "Unavailable saved source",
+      "UnmatchedLegacyPackage": "Unmatched legacy source pattern",
+      "UnmatchedPattern": "Unmatched pattern",
+      "LegacyPatternRetained": "Retained until cleared",
+      "CountFailed": "Count failed",
+      "CountsUnavailable": "Counts unavailable",
+      "SourceUnavailable": "Source is not currently available",
+      "Pending": "Scanning…",
+      "NoRelevantItems": "No supported character items found",
+      "NoItemPacks": "No Item compendia are available in this world.",
+      "SaveNote": "Changing sources never removes items already applied to actors. Open drafts using a disabled source may need review.",
+      "Cancel": "Cancel",
+      "Save": "Save sources",
+      "Saved": "Wayfinder content sources saved.",
+      "GmOnly": "Only a GM can configure Wayfinder content sources.",
+      "Filters": {
+        "All": "All Item compendia",
+        "Relevant": "Character content only",
+        "Ancestry": "Has ancestries or heritages",
+        "Feat": "Has feats",
+        "Spell": "Has spells"
+      },
+      "Sorts": {
+        "Package": "Sort: package and name",
+        "Relevant": "Sort: relevant item count",
+        "Selected": "Sort: selected first"
+      },
+      "Counts": {
+        "Ancestries": "ancestries",
+        "Heritages": "heritages",
+        "Backgrounds": "backgrounds",
+        "Classes": "classes",
+        "Feats": "feats",
+        "Spells": "spells",
+        "Deities": "deities",
+        "Other": "other items"
       }
     },
     "Notifications": {

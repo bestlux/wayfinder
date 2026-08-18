@@ -1,3 +1,4 @@
+import { CompendiumSourceConfigApp } from "./compendium-source-config-app.js";
 import { MODULE_ID } from "./constants.js";
 import { FeedbackSupportApp } from "./feedback-support-app.js";
 import { registerPackSourceCacheInvalidation } from "./pack/cache-invalidation.js";
@@ -7,6 +8,7 @@ import { registerSheetControls, registerWayfinderActorRefresh, rerenderOpenWayfi
 import { registerPersistedDraftWriteGuardHook } from "./wayfinder/application/draft-write-guard.js";
 Hooks.once("init", () => {
     registerSettings({
+        compendiumSourcesMenuType: CompendiumSourceConfigApp,
         feedbackMenuType: FeedbackSupportApp,
         onExtraPacksChange: rerenderOpenWayfinderApps,
         onSpellRarityCeilingChange: rerenderOpenWayfinderApps,

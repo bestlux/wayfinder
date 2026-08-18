@@ -1,0 +1,183 @@
+<section class="source-config-sheet">
+  <header class="source-config-header">
+    <div>
+      <p class="source-config-eyebrow">{{localize "wayfinder-pf2e.CompendiumSources.Eyebrow"}}</p>
+      <h2>{{localize "wayfinder-pf2e.CompendiumSources.Heading"}}</h2>
+      <p>{{localize "wayfinder-pf2e.CompendiumSources.Intro"}}</p>
+    </div>
+    <div class="source-config-summary" aria-live="polite">
+      <strong><span data-source-selected-count>{{selectedOptionalCount}}</span> / {{optionalCount}}</strong>
+      <span>{{localize "wayfinder-pf2e.CompendiumSources.EnabledSummary"}}</span>
+    </div>
+  </header>
+
+  <div class="source-config-guidance" role="note">
+    <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+    <span>{{localize "wayfinder-pf2e.CompendiumSources.Guidance"}}</span>
+  </div>
+
+  {{#if hasLegacyPatterns}}
+    <div class="source-config-warning {{#if hasGlobalWildcard}}source-config-warning-danger{{/if}}" role="alert">
+      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      <div>
+        <strong>
+          {{#if hasGlobalWildcard}}
+            {{localize "wayfinder-pf2e.CompendiumSources.GlobalWildcardTitle"}}
+          {{else}}
+            {{localize "wayfinder-pf2e.CompendiumSources.LegacyPatternTitle"}}
+          {{/if}}
+        </strong>
+        <p>{{localize "wayfinder-pf2e.CompendiumSources.LegacyPatternBody" patterns=legacyPatterns}}</p>
+        {{#if hasUnmatchedLegacyPatterns}}
+          <p class="source-config-unmatched-patterns">
+            {{localize
+              "wayfinder-pf2e.CompendiumSources.UnmatchedLegacyPatterns"
+              patterns=unmatchedLegacyPatterns
+            }}
+          </p>
+        {{/if}}
+      </div>
+    </div>
+  {{/if}}
+
+  <div class="source-config-toolbar">
+    <label class="source-config-search">
+      <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+      <span class="sr-only">{{localize "wayfinder-pf2e.CompendiumSources.SearchLabel"}}</span>
+      <input
+        type="search"
+        value="{{searchTerm}}"
+        placeholder="{{localize "wayfinder-pf2e.CompendiumSources.SearchPlaceholder"}}"
+        data-source-search
+      />
+    </label>
+    <label>
+      <span class="sr-only">{{localize "wayfinder-pf2e.CompendiumSources.ContentFilterLabel"}}</span>
+      <select data-source-content-filter>
+        {{#each filters}}
+          <option value="{{value}}" {{#if selected}}selected{{/if}}>{{localize label}}</option>
+        {{/each}}
+      </select>
+    </label>
+    <label>
+      <span class="sr-only">{{localize "wayfinder-pf2e.CompendiumSources.SortLabel"}}</span>
+      <select data-source-sort>
+        {{#each sorts}}
+          <option value="{{value}}" {{#if selected}}selected{{/if}}>{{localize label}}</option>
+        {{/each}}
+      </select>
+    </label>
+    <label class="source-config-selected-only">
+      <input type="checkbox" {{#if selectedOnly}}checked{{/if}} data-source-selected-only />
+      <span>{{localize "wayfinder-pf2e.CompendiumSources.SelectedOnly"}}</span>
+    </label>
+  </div>
+
+  <div class="source-config-actions" aria-label="{{localize "wayfinder-pf2e.CompendiumSources.BulkActions"}}">
+    <button type="button" data-action="select-visible">
+      <i class="fa-solid fa-square-check" aria-hidden="true"></i>
+      {{localize "wayfinder-pf2e.CompendiumSources.SelectVisible"}}
+    </button>
+    <button type="button" data-action="clear-visible">
+      <i class="fa-regular fa-square" aria-hidden="true"></i>
+      {{localize "wayfinder-pf2e.CompendiumSources.ClearVisible"}}
+    </button>
+    <button type="button" data-action="refresh-counts">
+      <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+      {{localize "wayfinder-pf2e.CompendiumSources.Refresh"}}
+    </button>
+    <span class="source-config-scan-state" aria-live="polite">
+      {{#if scanning}}
+        <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+        {{localize "wayfinder-pf2e.CompendiumSources.Scanning"}}
+      {{else if hasErrors}}
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        {{localize "wayfinder-pf2e.CompendiumSources.ScanErrors"}}
+      {{/if}}
+    </span>
+  </div>
+
+  <div class="source-config-list" role="list" aria-label="{{localize "wayfinder-pf2e.CompendiumSources.ListLabel"}}">
+    {{#each rows}}
+      <article
+        class="source-config-row {{#if official}}source-config-row-official{{/if}} {{#if unavailable}}source-config-row-unavailable{{/if}}"
+        role="listitem"
+        data-source-row
+        data-source-search="{{searchText}}"
+        data-source-relevant="{{counts.relevantTotal}}"
+        data-source-official="{{official}}"
+        data-source-kinds="{{#each badges}}{{kind}} {{/each}}"
+      >
+        <label class="source-config-check">
+          <input
+            type="checkbox"
+            data-source-pack-id="{{id}}"
+            data-source-legacy-pattern="{{legacyPattern}}"
+            {{#if selected}}checked{{/if}}
+            {{#unless selectable}}disabled{{/unless}}
+          />
+          <span class="sr-only">{{title}}</span>
+        </label>
+        <div class="source-config-identity">
+          <div class="source-config-title-line">
+            <strong>{{title}}</strong>
+            {{#if official}}
+              <span class="source-config-status source-config-status-official">
+                <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                {{localize "wayfinder-pf2e.CompendiumSources.BuiltIn"}}
+              </span>
+            {{/if}}
+            {{#if unavailable}}
+              <span class="source-config-status source-config-status-error">
+                {{localize "wayfinder-pf2e.CompendiumSources.Unavailable"}}
+              </span>
+            {{else if legacyPattern}}
+              <span class="source-config-status source-config-status-error">
+                {{localize "wayfinder-pf2e.CompendiumSources.UnmatchedPattern"}}
+              </span>
+            {{else if (eq status "error")}}
+              <span class="source-config-status source-config-status-error">
+                {{localize "wayfinder-pf2e.CompendiumSources.CountFailed"}}
+              </span>
+            {{/if}}
+          </div>
+          <span class="source-config-package">{{packageTitle}} · <code>{{id}}</code></span>
+        </div>
+        <div class="source-config-counts">
+          {{#if (eq status "pending")}}
+            <span class="source-config-count-pending">{{localize "wayfinder-pf2e.CompendiumSources.Pending"}}</span>
+          {{else if legacyPattern}}
+            <span class="source-config-count-pending">{{localize "wayfinder-pf2e.CompendiumSources.LegacyPatternRetained"}}</span>
+          {{else if (eq status "error")}}
+            <span class="source-config-count-pending">{{localize "wayfinder-pf2e.CompendiumSources.CountsUnavailable"}}</span>
+          {{else if (eq status "unavailable")}}
+            <span class="source-config-count-pending">{{localize "wayfinder-pf2e.CompendiumSources.SourceUnavailable"}}</span>
+          {{else}}
+            {{#each badges}}
+              <span class="source-config-count source-config-count-{{kind}}">
+                <strong>{{count}}</strong> {{label}}
+              </span>
+            {{else}}
+              <span class="source-config-count source-config-count-empty">
+                {{localize "wayfinder-pf2e.CompendiumSources.NoRelevantItems"}}
+              </span>
+            {{/each}}
+          {{/if}}
+        </div>
+      </article>
+    {{else}}
+      <p class="source-config-empty">{{localize "wayfinder-pf2e.CompendiumSources.NoItemPacks"}}</p>
+    {{/each}}
+  </div>
+
+  <footer class="source-config-footer">
+    <p>{{localize "wayfinder-pf2e.CompendiumSources.SaveNote"}}</p>
+    <div>
+      <button type="button" data-action="cancel">{{localize "wayfinder-pf2e.CompendiumSources.Cancel"}}</button>
+      <button type="submit" class="source-config-save">
+        <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+        {{localize "wayfinder-pf2e.CompendiumSources.Save"}}
+      </button>
+    </div>
+  </footer>
+</section>

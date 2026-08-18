@@ -49,7 +49,28 @@ describe("Wayfinder settings", () => {
       MODULE_ID,
       SETTINGS.extraPacks,
       expect.objectContaining({
+        config: false,
+        restricted: true,
         onChange: onExtraPacksChange,
+      })
+    );
+  });
+
+  it("registers the compendium source chooser as a GM-only settings menu", () => {
+    class CompendiumSourcesMenu {}
+
+    registerSettings({ compendiumSourcesMenuType: CompendiumSourcesMenu });
+
+    expect(testGlobals.game.settings.registerMenu).toHaveBeenCalledWith(
+      MODULE_ID,
+      "compendiumSources",
+      expect.objectContaining({
+        name: "wayfinder-pf2e.Settings.CompendiumSources.Name",
+        label: "wayfinder-pf2e.Settings.CompendiumSources.Label",
+        hint: "wayfinder-pf2e.Settings.CompendiumSources.Hint",
+        icon: "fa-solid fa-books",
+        type: CompendiumSourcesMenu,
+        restricted: true,
       })
     );
   });

@@ -1,0 +1,359 @@
+.wayfinder-source-config {
+  --wf-source-ink: #251e16;
+  --wf-source-muted: #6d6153;
+  --wf-source-paper: #f6f0e3;
+  --wf-source-rule: #baa991;
+  --wf-source-primary: #5e0000;
+  color: var(--wf-source-ink);
+}
+
+.wayfinder-source-config .window-content {
+  padding: 0.5rem !important;
+  overflow: hidden;
+  background: linear-gradient(180deg, #201315, #321a1c);
+}
+
+.wayfinder-source-config .source-config-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  height: 100%;
+  padding: 1rem;
+  border: 1px solid rgba(95, 77, 57, 0.45);
+  background:
+    radial-gradient(circle at 90% 0, rgba(233, 215, 161, 0.32), transparent 28%),
+    linear-gradient(180deg, #faf4e8, #f0e5d2);
+  overflow: hidden;
+}
+
+.wayfinder-source-config .source-config-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid rgba(95, 77, 57, 0.25);
+}
+
+.wayfinder-source-config .source-config-header h2,
+.wayfinder-source-config .source-config-header p,
+.wayfinder-source-config .source-config-warning p,
+.wayfinder-source-config .source-config-footer p {
+  margin: 0;
+}
+
+.wayfinder-source-config .source-config-header h2 {
+  margin-bottom: 0.25rem;
+  color: var(--wf-source-primary);
+  font: 600 1.45rem / 1.1 var(--serif, "Signika", serif);
+}
+
+.wayfinder-source-config .source-config-header > div:first-child > p:last-child,
+.wayfinder-source-config .source-config-footer p {
+  color: var(--wf-source-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.wayfinder-source-config .source-config-eyebrow {
+  margin-bottom: 0.2rem !important;
+  color: #8b5a19;
+  font: 700 0.58rem / 1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.wayfinder-source-config .source-config-summary {
+  display: grid;
+  min-width: 8rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(94, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+
+.wayfinder-source-config .source-config-summary strong {
+  color: var(--wf-source-primary);
+  font-size: 1.1rem;
+}
+
+.wayfinder-source-config .source-config-summary span:last-child {
+  color: var(--wf-source-muted);
+  font-size: 0.68rem;
+}
+
+.wayfinder-source-config .source-config-guidance,
+.wayfinder-source-config .source-config-warning {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: start;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(23, 31, 105, 0.22);
+  border-left: 3px solid rgba(23, 31, 105, 0.7);
+  background: rgba(255, 255, 255, 0.38);
+  color: var(--wf-source-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.wayfinder-source-config .source-config-warning {
+  border-color: rgba(139, 90, 25, 0.35);
+  border-left-color: #8b5a19;
+  background: rgba(233, 215, 161, 0.35);
+  color: var(--wf-source-ink);
+}
+
+.wayfinder-source-config .source-config-warning-danger {
+  border-left-color: var(--wf-source-primary);
+  background: rgba(94, 0, 0, 0.08);
+}
+
+.wayfinder-source-config .source-config-warning strong {
+  color: var(--wf-source-primary);
+}
+
+.wayfinder-source-config .source-config-toolbar {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1fr) minmax(9rem, 0.4fr) minmax(9rem, 0.35fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.wayfinder-source-config .source-config-toolbar input[type="search"],
+.wayfinder-source-config .source-config-toolbar select {
+  width: 100%;
+  min-height: 2rem;
+  border: 1px solid var(--wf-source-rule);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--wf-source-ink);
+}
+
+.wayfinder-source-config .source-config-search {
+  position: relative;
+}
+
+.wayfinder-source-config .source-config-search > i {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 0.6rem;
+  color: var(--wf-source-muted);
+  transform: translateY(-50%);
+}
+
+.wayfinder-source-config .source-config-search input {
+  padding-left: 1.8rem;
+}
+
+.wayfinder-source-config .source-config-selected-only {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  white-space: nowrap;
+  color: var(--wf-source-muted);
+  font-size: 0.75rem;
+}
+
+.wayfinder-source-config .source-config-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.wayfinder-source-config .source-config-actions button {
+  width: auto;
+  min-height: 1.8rem;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.72rem;
+}
+
+.wayfinder-source-config .source-config-scan-state {
+  margin-left: auto;
+  color: var(--wf-source-muted);
+  font-size: 0.7rem;
+}
+
+.wayfinder-source-config .source-config-list {
+  flex: 1;
+  min-height: 12rem;
+  border: 1px solid rgba(95, 77, 57, 0.28);
+  background: rgba(255, 255, 255, 0.3);
+  overflow: auto;
+}
+
+.wayfinder-source-config .source-config-row {
+  display: grid;
+  grid-template-columns: 2rem minmax(12rem, 0.8fr) minmax(16rem, 1.2fr);
+  gap: 0.55rem;
+  align-items: center;
+  min-height: 3.3rem;
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid rgba(95, 77, 57, 0.16);
+}
+
+.wayfinder-source-config .source-config-row[hidden] {
+  display: none;
+}
+
+.wayfinder-source-config .source-config-row:hover {
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.wayfinder-source-config .source-config-row-official {
+  background: rgba(23, 31, 105, 0.035);
+}
+
+.wayfinder-source-config .source-config-row-unavailable {
+  background: rgba(94, 0, 0, 0.04);
+}
+
+.wayfinder-source-config .source-config-check {
+  display: grid;
+  place-items: center;
+  margin: 0;
+}
+
+.wayfinder-source-config .source-config-check input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.wayfinder-source-config .source-config-identity {
+  min-width: 0;
+}
+
+.wayfinder-source-config .source-config-title-line {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.wayfinder-source-config .source-config-title-line > strong {
+  overflow: hidden;
+  color: var(--wf-source-ink);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wayfinder-source-config .source-config-package {
+  display: block;
+  overflow: hidden;
+  color: var(--wf-source-muted);
+  font-size: 0.66rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wayfinder-source-config .source-config-package code {
+  color: inherit;
+  font-size: inherit;
+}
+
+.wayfinder-source-config .source-config-status {
+  flex: 0 0 auto;
+  padding: 0.08rem 0.3rem;
+  border: 1px solid rgba(95, 77, 57, 0.28);
+  border-radius: 999px;
+  color: var(--wf-source-muted);
+  font-size: 0.57rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.wayfinder-source-config .source-config-status-official {
+  border-color: rgba(23, 31, 105, 0.25);
+  color: #171f69;
+}
+
+.wayfinder-source-config .source-config-status-error {
+  border-color: rgba(94, 0, 0, 0.3);
+  color: var(--wf-source-primary);
+}
+
+.wayfinder-source-config .source-config-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: flex-end;
+}
+
+.wayfinder-source-config .source-config-count {
+  padding: 0.15rem 0.38rem;
+  border: 1px solid rgba(95, 77, 57, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.46);
+  color: var(--wf-source-muted);
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+
+.wayfinder-source-config .source-config-count strong {
+  color: var(--wf-source-ink);
+}
+
+.wayfinder-source-config .source-config-count-other,
+.wayfinder-source-config .source-config-count-empty,
+.wayfinder-source-config .source-config-count-pending {
+  color: #8a8177;
+}
+
+.wayfinder-source-config .source-config-empty {
+  padding: 2rem;
+  color: var(--wf-source-muted);
+  text-align: center;
+}
+
+.wayfinder-source-config .source-config-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(95, 77, 57, 0.25);
+}
+
+.wayfinder-source-config .source-config-footer > div {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.wayfinder-source-config .source-config-footer button {
+  width: auto;
+  min-width: 6rem;
+}
+
+.wayfinder-source-config .source-config-save {
+  border-color: #3d0000;
+  background: linear-gradient(180deg, #8d1717, #5e0000);
+  color: #fff8e8;
+}
+
+.wayfinder-source-config :is(button, input, select):focus-visible {
+  outline: 2px solid #171f69;
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .wayfinder-source-config .source-config-header,
+  .wayfinder-source-config .source-config-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .wayfinder-source-config .source-config-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .wayfinder-source-config .source-config-row {
+    grid-template-columns: 2rem minmax(0, 1fr);
+  }
+
+  .wayfinder-source-config .source-config-counts {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}

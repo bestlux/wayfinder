@@ -68,6 +68,11 @@
         "Name": "额外PF2e合集包白名单",
         "Hint": "输入以半角逗号分隔的合集包ID或通配符，以检索PF2e官方合集包外的补充合集包。使用“my-module.*”可包含一个模组的全部合集包，使用“*”可包含全部已安装的合集包。"
       },
+      "CompendiumSources": {
+        "Name": "寻路仪内容来源",
+        "Label": "配置合集包",
+        "Hint": "选择寻路仪要检索的额外PF2e物品合集包，并查看各包中的角色构筑内容数量。"
+      },
       "SpellRarityCeiling": {
         "Name": "玩家可选最高稀有度",
         "Hint": "不超过此稀有度的法术无需逐步骤声明即可显示。除非选择独特，若要纳入更高稀有度，玩家必须记录角色或规则赋予的Access，或由玩家报告的GM许可；此记录并非经过验证的GM授权。传承、环位、戏法、课程与固定法术限制仍然适用。",
@@ -77,6 +82,69 @@
           "Rare": "稀有",
           "Unique": "独特"
         }
+      }
+    },
+    "CompendiumSources": {
+      "Title": "寻路仪内容来源",
+      "Eyebrow": "GM配置",
+      "Heading": "选择额外合集包",
+      "Intro": "PF2e官方来源始终可用。请仅启用本战役使用的额外物品合集包。",
+      "EnabledSummary": "个可选包已启用",
+      "Guidance": "数量仅表示各合集包内的PF2e物品类型，并不保证所有第三方规则或文字规则均已完整自动化。特殊选项仍应由玩家与GM确认。",
+      "GlobalWildcardTitle": "当前已启用所有物品合集包",
+      "LegacyPatternTitle": "旧版通配来源需要检查",
+      "LegacyPatternBody": "现有设置包含：{patterns}。当前匹配项已在下方勾选。保存后会改为你批准的确切合集包，今后新增的包不会自动启用。",
+      "UnmatchedLegacyPatterns": "以下模式目前没有匹配任何可用物品合集包。它们会在下方保持勾选，并会一直保留到你将其清除：{patterns}",
+      "SearchLabel": "搜索合集包",
+      "SearchPlaceholder": "搜索名称、模组或合集包ID…",
+      "ContentFilterLabel": "按内容筛选",
+      "SortLabel": "合集包排序",
+      "SelectedOnly": "仅显示已选",
+      "BulkActions": "批量来源操作",
+      "SelectVisible": "选择可见项",
+      "ClearVisible": "清除可见项",
+      "Refresh": "刷新数量",
+      "Scanning": "正在扫描合集包索引…",
+      "ScanErrors": "部分数量无法读取",
+      "ListLabel": "可用物品合集包",
+      "BuiltIn": "内置",
+      "Unavailable": "不可用",
+      "UnavailablePackage": "不可用的已保存来源",
+      "UnmatchedLegacyPackage": "未匹配的旧版来源模式",
+      "UnmatchedPattern": "未匹配模式",
+      "LegacyPatternRetained": "清除前保持保存",
+      "CountFailed": "统计失败",
+      "CountsUnavailable": "数量不可用",
+      "SourceUnavailable": "来源当前不可用",
+      "Pending": "正在扫描…",
+      "NoRelevantItems": "未找到支持的角色物品",
+      "NoItemPacks": "此世界中没有可用的物品合集包。",
+      "SaveNote": "更改来源不会移除已应用到角色的物品。使用已禁用来源的未完成草稿可能需要检查。",
+      "Cancel": "取消",
+      "Save": "保存来源",
+      "Saved": "寻路仪内容来源已保存。",
+      "GmOnly": "只有GM可以配置寻路仪内容来源。",
+      "Filters": {
+        "All": "所有物品合集包",
+        "Relevant": "仅角色内容",
+        "Ancestry": "含族裔或传承",
+        "Feat": "含专长",
+        "Spell": "含法术"
+      },
+      "Sorts": {
+        "Package": "排序：模组与名称",
+        "Relevant": "排序：相关物品数量",
+        "Selected": "排序：已选优先"
+      },
+      "Counts": {
+        "Ancestries": "族裔",
+        "Heritages": "传承",
+        "Backgrounds": "背景",
+        "Classes": "职业",
+        "Feats": "专长",
+        "Spells": "法术",
+        "Deities": "神祇",
+        "Other": "其他物品"
       }
     }
   }

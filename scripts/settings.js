@@ -11,11 +11,22 @@ export function registerSettings(args = {}) {
             restricted: false,
         });
     }
+    if (args.compendiumSourcesMenuType) {
+        game.settings.registerMenu(MODULE_ID, "compendiumSources", {
+            name: "wayfinder-pf2e.Settings.CompendiumSources.Name",
+            label: "wayfinder-pf2e.Settings.CompendiumSources.Label",
+            hint: "wayfinder-pf2e.Settings.CompendiumSources.Hint",
+            icon: "fa-solid fa-books",
+            type: args.compendiumSourcesMenuType,
+            restricted: true,
+        });
+    }
     game.settings.register(MODULE_ID, SETTINGS.extraPacks, {
         name: "wayfinder-pf2e.Settings.ExtraPacks.Name",
         hint: "wayfinder-pf2e.Settings.ExtraPacks.Hint",
         scope: "world",
-        config: true,
+        config: false,
+        restricted: true,
         type: String,
         default: "",
         onChange: args.onExtraPacksChange,

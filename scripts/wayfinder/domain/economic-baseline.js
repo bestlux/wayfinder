@@ -74,7 +74,7 @@ export function evaluateEconomicAdmission(args) {
     if (args.history.completedAcquisitionManifestId) {
         return blocked(baseline, "completed-acquisition", "This actor already has a completed starting-equipment manifest.");
     }
-    if (args.history.previousCharacterAppliedAt) {
+    if (args.history.previousCharacterAppliedAt !== null || args.history.previousTargetLevel !== null) {
         return blocked(baseline, "prior-character-outcome", "This actor already has a completed Wayfinder character outcome and cannot receive starting wealth again.");
     }
     if (args.targetLevel > 1) {
@@ -92,7 +92,10 @@ export function evaluateEconomicAdmission(args) {
     }
     const unresolved = uniqueSorted(reconciliation.unresolvedGrantIds);
     const ambiguous = uniqueSorted(reconciliation.ambiguousGrantIds);
-    const ignoredClassGrantItemIds = new Set(reconciliation.ignoredItemIds);
+    const nativeGrantIds = new Set(args.preparedClassGrantPlan.grants
+        .filter((grant) => grant.materializer === "pf2e-native")
+        .map((grant) => grant.grantId));
+    const ignoredClassGrantItemIds = new Set(reconciliation.entries.flatMap((entry) => entry.status === "resolved" && nativeGrantIds.has(entry.grantId) ? entry.itemIds : []));
     const retry = args.retryExpectation ?? null;
     if (retry && (retry.draftId !== args.draftId || retry.batchId !== args.batchId || !nonEmpty(retry.manifestId))) {
         return blocked(baseline, "retry-identity-mismatch", "The retry expectation belongs to a different draft or batch.");

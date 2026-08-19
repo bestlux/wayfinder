@@ -323,7 +323,7 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
         }
         const beforeItems = snapshotPhaseItems(prepared.actor);
         let failedCheckpoint = null;
-        const operationFailureCheckpoint = null;
+        let operationFailureCheckpoint = null;
         const confirmedActorUpdatePaths = [];
         const emitCheckpoint = async (checkpoint) => {
             try {
@@ -332,6 +332,18 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
             catch (error) {
                 failedCheckpoint = checkpoint;
                 throw error;
+            }
+        };
+        const emitWriteCheckpoint = async (operation, boundary, ordinal) => {
+            const checkpoint = buildWriteCheckpoint(phase, operation, boundary, ordinal);
+            await emitCheckpoint(checkpoint);
+            if (boundary === "before") {
+                operationFailureCheckpoint = checkpoint;
+            }
+            else if (operationFailureCheckpoint?.kind === "write" &&
+                operationFailureCheckpoint.operation === operation &&
+                operationFailureCheckpoint.ordinal === ordinal) {
+                operationFailureCheckpoint = null;
             }
         };
         try {
@@ -429,7 +441,7 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                             actor: prepared.actor,
                             draft: prepared.draft,
                             classGrantPlan: prepared.classGrantPlan,
-                            emitWriteCheckpoint: (operation, boundary, ordinal) => emitCheckpoint(buildWriteCheckpoint(phase, operation, boundary, ordinal)),
+                            emitWriteCheckpoint,
                         });
                     }
                     break;
@@ -465,7 +477,7 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                             actor: prepared.actor,
                             draft: prepared.draft,
                             classGrantPlan: prepared.classGrantPlan,
-                            emitWriteCheckpoint: (operation, boundary, ordinal) => emitCheckpoint(buildWriteCheckpoint(phase, operation, boundary, ordinal)),
+                            emitWriteCheckpoint,
                         });
                     }
                     break;

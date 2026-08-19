@@ -20,6 +20,11 @@ const CONTAINER_ITEM_TYPES = new Set(["backpack", "kit"]);
 const INTERACTIVE_RULE_KEYS = new Set(["ChoiceSet", "GrantItem"]);
 const DENOMINATIONS = ["pp", "gp", "sp", "cp"];
 const COPPER_VALUE = Object.freeze({ pp: 1000, gp: 100, sp: 10, cp: 1 });
+export function fingerprintEquipmentDocument(source) {
+    if (!isRecord(source))
+        throw new TypeError("Equipment document fingerprinting requires a source object.");
+    return fingerprint("equipment-document-v1", source);
+}
 export function createEquipmentAccessRegistry(records = []) {
     const byUuid = new Map();
     for (const record of records) {
@@ -208,7 +213,7 @@ export class EquipmentCatalogueService {
         return Object.freeze({
             source: cloneData(source),
             candidate: stripEvaluation(evaluated),
-            documentFingerprint: fingerprint("equipment-document-v1", source),
+            documentFingerprint: fingerprintEquipmentDocument(source),
             priceFingerprint: fingerprint("equipment-price-v1", evaluated.price),
             available: evaluated.available,
             unavailableReasons: evaluated.unavailableReasons,

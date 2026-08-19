@@ -7,6 +7,7 @@ import {
   finalizeRecoveredDraftOnActor as finalizeRecoveredDraftOnActorWithAuthority,
 } from "../src/actor-updater";
 import {
+  type DraftApplyWriteCheckpointEmitter,
   executePreparedDraftApplication,
   prepareDraftApplication as prepareDraftApplicationWithAuthority,
 } from "../src/actor-updater/prepared-draft-application";
@@ -280,6 +281,125 @@ describe("prepared draft application", () => {
       "resolved",
       "resolved",
     ]);
+  });
+
+  it.each([
+    ["acquisition-items", "embedded-item-create", 2],
+    ["acquisition-currency", "currency-convergence", 3],
+  ] as const)("retains the %s operation checkpoint when the adapter throws after its before boundary", async (failedPhase, operation, ordinal) => {
+    const { actor } = buildActorHarness();
+    Object.assign(actor, { id: "actor-1" });
+    const draft = createEmptyDraft(1);
+    draft.acquisition = {
+      schemaVersion: 2,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const plan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [],
+    });
+    const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
+    const executeAcquisitionItems = async ({
+      emitWriteCheckpoint,
+    }: {
+      emitWriteCheckpoint: DraftApplyWriteCheckpointEmitter;
+    }) => {
+      if (failedPhase !== "acquisition-items") return;
+      await emitWriteCheckpoint("embedded-item-create", "before", ordinal);
+      throw new Error("item adapter failed");
+    };
+    const executeAcquisitionCurrency = async ({
+      emitWriteCheckpoint,
+    }: {
+      emitWriteCheckpoint: DraftApplyWriteCheckpointEmitter;
+    }) => {
+      if (failedPhase !== "acquisition-currency") return;
+      await emitWriteCheckpoint("currency-convergence", "before", ordinal);
+      throw new Error("currency adapter failed");
+    };
+
+    await expect(
+      executePreparedDraftApplication(prepared, {
+        readCurrentAcquisitionHistory: () => ({
+          completedAcquisitionManifest: null,
+          completedAcquisitionManifestCorrupt: false,
+        }),
+        executeAcquisitionItems,
+        executeAcquisitionCurrency,
+        verifyAcquisitionOutcome: () => ({ kind: "completed" }) as never,
+      })
+    ).rejects.toMatchObject({
+      phase: failedPhase,
+      failureKind: "operation",
+      checkpoint: {
+        checkpointId: `write:${operation}:before`,
+        kind: "write",
+        operation,
+        boundary: "before",
+        ordinal,
+      },
+    });
+  });
+
+  it("clears an acquisition operation checkpoint after its matching after boundary", async () => {
+    const { actor } = buildActorHarness();
+    Object.assign(actor, { id: "actor-1" });
+    const draft = createEmptyDraft(1);
+    draft.acquisition = {
+      schemaVersion: 2,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const plan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [],
+    });
+    const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
+
+    await expect(
+      executePreparedDraftApplication(prepared, {
+        readCurrentAcquisitionHistory: () => ({
+          completedAcquisitionManifest: null,
+          completedAcquisitionManifestCorrupt: false,
+        }),
+        executeAcquisitionItems: async ({ emitWriteCheckpoint }) => {
+          await emitWriteCheckpoint("embedded-item-create", "before", 4);
+          await emitWriteCheckpoint("embedded-item-create", "after", 4);
+          throw new Error("post-operation failure");
+        },
+        executeAcquisitionCurrency: () => undefined,
+        verifyAcquisitionOutcome: () => ({ kind: "completed" }) as never,
+      })
+    ).rejects.toMatchObject({
+      phase: "acquisition-items",
+      failureKind: "operation",
+      checkpoint: null,
+    });
   });
 
   it("fails closed when an acquisition draft has no prepared item executor", async () => {

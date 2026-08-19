@@ -161,6 +161,11 @@ export interface EquipmentCatalogueServiceOptions {
   readonly accessRegistry?: EquipmentAccessRegistry;
 }
 
+export function fingerprintEquipmentDocument(source: unknown): string {
+  if (!isRecord(source)) throw new TypeError("Equipment document fingerprinting requires a source object.");
+  return fingerprint("equipment-document-v1", source);
+}
+
 interface CachedPreview {
   readonly previewIdentity: string;
   readonly source: Readonly<Record<string, unknown>> | null;
@@ -388,7 +393,7 @@ export class EquipmentCatalogueService {
     return Object.freeze({
       source: cloneData(source),
       candidate: stripEvaluation(evaluated),
-      documentFingerprint: fingerprint("equipment-document-v1", source),
+      documentFingerprint: fingerprintEquipmentDocument(source),
       priceFingerprint: fingerprint("equipment-price-v1", evaluated.price),
       available: evaluated.available,
       unavailableReasons: evaluated.unavailableReasons,

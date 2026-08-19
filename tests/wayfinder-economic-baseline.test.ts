@@ -280,6 +280,19 @@ describe("economic baseline", () => {
         },
       })
     ).toMatchObject({ kind: "blocked", code: "prior-character-outcome" });
+
+    expect(
+      admission({
+        baseline: baseline(),
+        higherLevelStartEvidence: ownerStartEvidence(),
+        history: {
+          previousCharacterAppliedAt: null,
+          previousTargetLevel: 1,
+          completedAcquisitionManifestId: null,
+          completedAcquisitionManifestCorrupt: false,
+        },
+      })
+    ).toMatchObject({ kind: "blocked", code: "prior-character-outcome" });
   });
 
   it("detects only material baseline changes and performs zero writes on drift", async () => {

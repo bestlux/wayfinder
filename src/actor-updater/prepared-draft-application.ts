@@ -609,7 +609,7 @@ export async function executePreparedDraftApplication(
     }
     const beforeItems = snapshotPhaseItems(prepared.actor);
     let failedCheckpoint: DraftApplyCheckpoint | null = null;
-    const operationFailureCheckpoint: DraftApplyCheckpoint | null = null;
+    let operationFailureCheckpoint: DraftApplyCheckpoint | null = null;
     const confirmedActorUpdatePaths: string[] = [];
     const emitCheckpoint = async (checkpoint: DraftApplyCheckpoint): Promise<void> => {
       try {
@@ -617,6 +617,19 @@ export async function executePreparedDraftApplication(
       } catch (error) {
         failedCheckpoint = checkpoint;
         throw error;
+      }
+    };
+    const emitWriteCheckpoint: DraftApplyWriteCheckpointEmitter = async (operation, boundary, ordinal) => {
+      const checkpoint = buildWriteCheckpoint(phase, operation, boundary, ordinal);
+      await emitCheckpoint(checkpoint);
+      if (boundary === "before") {
+        operationFailureCheckpoint = checkpoint;
+      } else if (
+        operationFailureCheckpoint?.kind === "write" &&
+        operationFailureCheckpoint.operation === operation &&
+        operationFailureCheckpoint.ordinal === ordinal
+      ) {
+        operationFailureCheckpoint = null;
       }
     };
     try {
@@ -751,8 +764,7 @@ export async function executePreparedDraftApplication(
               actor: prepared.actor,
               draft: prepared.draft,
               classGrantPlan: prepared.classGrantPlan!,
-              emitWriteCheckpoint: (operation, boundary, ordinal) =>
-                emitCheckpoint(buildWriteCheckpoint(phase, operation, boundary, ordinal)),
+              emitWriteCheckpoint,
             });
           }
           break;
@@ -792,8 +804,7 @@ export async function executePreparedDraftApplication(
               actor: prepared.actor,
               draft: prepared.draft,
               classGrantPlan: prepared.classGrantPlan!,
-              emitWriteCheckpoint: (operation, boundary, ordinal) =>
-                emitCheckpoint(buildWriteCheckpoint(phase, operation, boundary, ordinal)),
+              emitWriteCheckpoint,
             });
           }
           break;

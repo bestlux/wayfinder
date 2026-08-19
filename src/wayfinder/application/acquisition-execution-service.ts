@@ -13,21 +13,30 @@ import {
   type PreparedAcquisitionIdentityPlanV1,
   prepareAcquisitionIdentityPlan,
 } from "../domain/acquisition-identity.js";
-import { evaluateAcquisitionCompletion, evaluateAcquisitionLedger } from "../domain/acquisition-ledger.js";
+import {
+  createAcquisitionPriceSnapshot,
+  evaluateAcquisitionCompletion,
+  evaluateAcquisitionLedger,
+} from "../domain/acquisition-ledger.js";
 import type {
   AcquisitionDraftState,
   AcquisitionLinePolicyDecision,
   AcquisitionPolicySnapshot,
   AcquisitionPriceSnapshot,
 } from "../domain/acquisition-types.js";
-import type {
-  ClassGrantReconciliationResultV1,
-  PreparedClassGrantPlanV1,
+import {
+  type ClassGrantReconciliationResultV1,
+  type PlannedClassGrantV1,
+  type PreparedClassGrantPlanV1,
+  reconcilePreparedClassGrants,
 } from "../domain/class-grant-reconciliation.js";
 import {
+  assertCompletedAcquisitionManifestMatchesIdentityPlan,
   type CompletedAcquisitionManifestV1,
   type CompletedObservedItemV1,
   createCompletedAcquisitionManifest,
+  manifestsMateriallyEqual,
+  normalizeCompletedAcquisitionManifest,
   type VerifiedAcquisitionOutcomeV1,
 } from "../domain/completed-acquisition-manifest.js";
 import type {
@@ -35,11 +44,13 @@ import type {
   EconomicHistoryFacts,
   EconomicRetryExpectation,
 } from "../domain/economic-baseline.js";
+import { captureObservedClassGrantItems } from "./class-grant-projection-service.js";
 import {
   captureActorEconomicBaseline,
   type EconomicActorLike,
   evaluateActorEconomicAdmission,
 } from "./economic-baseline-service.js";
+import { fingerprintEquipmentDocument } from "./equipment-catalogue-service.js";
 
 type AcquisitionHistoryState = Pick<
   ModuleState,
@@ -51,7 +62,7 @@ export interface ResolvedAcquisitionSource {
   readonly sourceUuid: string;
   readonly documentFingerprint: string;
   readonly priceFingerprint: string;
-  /** Rebuilt from the freshly hydrated PF2E source, never copied from the reviewed line. */
+  /** Fresh base-source price facts; execution reapplies the reviewed target size and quantity. */
   readonly resolvedPrice: AcquisitionPriceSnapshot;
   readonly policyDecision: AcquisitionLinePolicyDecision;
 }
@@ -113,6 +124,7 @@ interface PreparedExecution {
   readonly targetCopper: number;
   readonly handoff: boolean;
   readonly sources: ReadonlyMap<string, EmbeddedItemSource>;
+  readonly persistedRecoveryManifest: CompletedAcquisitionManifestV1 | null;
 }
 
 interface AcquisitionItemObservation {
@@ -153,10 +165,12 @@ export function createAcquisitionExecutionSession(
       assertStableNonAcquisitionItems(prepared.initialBaseline, current, prepared.identityPlan);
       assertCurrencyUnchanged(prepared.initialBaseline, current);
       let observation = observePlannedItems(prepared.identityPlan, current);
+      assertObservedWayfinderItemSizes(actor, prepared, observation);
       let ordinal = 0;
       for (const entry of prepared.identityPlan.entries) {
         const source = prepared.sources.get(entry.entryId);
         if (!source) throw new Error(`Prepared acquisition source ${entry.entryId} is unavailable.`);
+        if (entryMaterializer(entry, prepared.classGrantPlan) === "pf2e-native") continue;
         for (const plannedItem of entry.plannedItems) {
           if (observation.evidence.some((item) => item.plannedItemId === plannedItem.plannedItemId)) continue;
           ordinal += 1;
@@ -175,16 +189,29 @@ export function createAcquisitionExecutionSession(
           if (!observation.evidence.some((item) => item.plannedItemId === plannedItem.plannedItemId)) {
             throw new Error(`PF2E did not create prepared acquisition item ${plannedItem.plannedItemId}.`);
           }
+          assertObservedWayfinderItemSizes(actor, prepared, observation);
           await emitWriteCheckpoint("embedded-item-create", "after", ordinal);
         }
       }
-      assertAllPlannedItemsObserved(prepared.identityPlan, observation);
+      current = captureBaseline(actor, now);
+      const completedObservation = observeCompletedItems(
+        prepared,
+        current,
+        reconcileCurrentClassGrants(actor, prepared.classGrantPlan, "after-acquisition")
+      );
+      assertObservedWayfinderItemSizes(actor, prepared, completedObservation);
+      assertAllPlannedItemsObserved(prepared.identityPlan, completedObservation);
     },
     executeAcquisitionCurrency: async ({ actor, draft, classGrantPlan, emitWriteCheckpoint }) => {
       const execution = requirePreparedExecution(prepared, actor, draft, classGrantPlan);
       let current = captureBaseline(actor, now);
       assertStableNonAcquisitionItems(execution.initialBaseline, current, execution.identityPlan);
-      const observation = observePlannedItems(execution.identityPlan, current);
+      const observation = observeCompletedItems(
+        execution,
+        current,
+        reconcileCurrentClassGrants(actor, execution.classGrantPlan, "final")
+      );
+      assertObservedWayfinderItemSizes(actor, execution, observation);
       if (execution.handoff) {
         if (current.fingerprint !== execution.initialBaseline.fingerprint) {
           throw new Error("Actor wealth changed after the starting-equipment handoff was admitted.");
@@ -201,7 +228,13 @@ export function createAcquisitionExecutionSession(
         else await inventory.removeCurrency(actor, -delta);
         current = captureBaseline(actor, now);
         assertStableNonAcquisitionItems(execution.initialBaseline, current, execution.identityPlan);
-        assertAllPlannedItemsObserved(execution.identityPlan, observePlannedItems(execution.identityPlan, current));
+        const completedObservation = observeCompletedItems(
+          execution,
+          current,
+          reconcileCurrentClassGrants(actor, execution.classGrantPlan, "final")
+        );
+        assertObservedWayfinderItemSizes(actor, execution, completedObservation);
+        assertAllPlannedItemsObserved(execution.identityPlan, completedObservation);
         if (current.currencyCopper !== execution.targetCopper) {
           throw new Error("PF2E did not converge actor currency to the reviewed absolute target.");
         }
@@ -292,8 +325,20 @@ async function prepareExecution(args: {
     acquisition.disposition.kind === "handoff"
       ? acquisition.baseline!.currencyCopper
       : safeCopperAdd(acquisition.baseline!.currencyCopper, identityPlan.ledger.remainingCopper);
-  const retryExpectation = buildRetryExpectation(identityPlan, targetCopper, args.draft);
   const history = await args.dependencies.readHistory();
+  const persistedRecoveryManifest = resolvePersistedRecoveryManifest({
+    history,
+    recoveryFinalization: args.recoveryFinalization === true,
+    actorId,
+    acquisition,
+    identityPlan,
+  });
+  const retryExpectation = buildRetryExpectation(
+    identityPlan,
+    targetCopper,
+    args.classGrantPlan,
+    persistedRecoveryManifest !== null
+  );
   const initialBaseline = captureBaseline(args.actor, args.now);
   const admission = evaluateActorEconomicAdmission({
     actor: args.actor as EconomicActorLike,
@@ -301,14 +346,20 @@ async function prepareExecution(args: {
     batchId: acquisition.batchId,
     targetLevel: acquisition.targetLevel,
     higherLevelStartEvidence: acquisition.policySnapshot!.material.higherLevelStartEvidence,
-    history: economicHistory(history, args.recoveryFinalization === true),
+    history: economicHistory(history, args.recoveryFinalization === true, persistedRecoveryManifest !== null),
     retryExpectation,
     preparedClassGrantPlan: args.classGrantPlan,
     classGrantPhase: "before-acquisition",
     capturedAt: initialBaseline.capturedAt,
   });
   const handoff = acquisition.disposition.kind === "handoff";
-  assertEconomicAdmission(admission, acquisition, initialBaseline);
+  const initialClassGrants = reconcileCurrentClassGrants(args.actor, args.classGrantPlan, "before-acquisition");
+  assertEconomicAdmission(
+    admission,
+    acquisition,
+    initialBaseline,
+    nativeResolvedItemIds(args.classGrantPlan, initialClassGrants)
+  );
 
   const currentPolicy = normalizeAcquisitionPolicySnapshot(
     cloneData(await args.dependencies.resolveCurrentPolicySnapshot({ actor: args.actor, draft: acquisition }))
@@ -321,12 +372,15 @@ async function prepareExecution(args: {
     throw new Error("Current starting-equipment policy differs from the reviewed authority.");
   }
   const sources = new Map<string, EmbeddedItemSource>();
+  const preflightedLineIds = new Set<string>();
   if (!handoff) {
     for (const entry of identityPlan.entries) {
       const resolved = await args.dependencies.resolveSource({ actor: args.actor, draft: acquisition, entry });
       assertResolvedSourceMatches(entry, resolved);
       sources.set(entry.entryId, cloneData(resolved.source));
+      for (const lineId of entry.lineIds) preflightedLineIds.add(lineId);
     }
+    assertPreflightCoversEveryLine(acquisition, preflightedLineIds);
   }
   await args.dependencies.assertApplyAuthority({ actor: args.actor, draft: acquisition });
   const policyAfterPreflight = normalizeAcquisitionPolicySnapshot(
@@ -344,19 +398,39 @@ async function prepareExecution(args: {
     throw new Error("Actor wealth changed during starting-equipment source preflight.");
   }
   const historyAfterPreflight = await args.dependencies.readHistory();
+  const persistedRecoveryManifestAfterPreflight = resolvePersistedRecoveryManifest({
+    history: historyAfterPreflight,
+    recoveryFinalization: args.recoveryFinalization === true,
+    actorId,
+    acquisition,
+    identityPlan,
+  });
+  if (stableJson(persistedRecoveryManifestAfterPreflight) !== stableJson(persistedRecoveryManifest)) {
+    throw new Error("Completed acquisition history changed during source preflight.");
+  }
   const admissionAfterPreflight = evaluateActorEconomicAdmission({
     actor: args.actor as EconomicActorLike,
     draftId: acquisition.draftId,
     batchId: acquisition.batchId,
     targetLevel: acquisition.targetLevel,
     higherLevelStartEvidence: acquisition.policySnapshot!.material.higherLevelStartEvidence,
-    history: economicHistory(historyAfterPreflight, args.recoveryFinalization === true),
+    history: economicHistory(
+      historyAfterPreflight,
+      args.recoveryFinalization === true,
+      persistedRecoveryManifestAfterPreflight !== null
+    ),
     retryExpectation,
     preparedClassGrantPlan: args.classGrantPlan,
     classGrantPhase: "before-acquisition",
     capturedAt: afterPreflight.capturedAt,
   });
-  assertEconomicAdmission(admissionAfterPreflight, acquisition, afterPreflight);
+  const classGrantsAfterPreflight = reconcileCurrentClassGrants(args.actor, args.classGrantPlan, "before-acquisition");
+  assertEconomicAdmission(
+    admissionAfterPreflight,
+    acquisition,
+    afterPreflight,
+    nativeResolvedItemIds(args.classGrantPlan, classGrantsAfterPreflight)
+  );
   const initialObservation = observePlannedItems(identityPlan, initialBaseline);
   if (!handoff && admission.kind === "eligible-retry") {
     const observed = [...initialObservation.observedEntryIds].sort();
@@ -377,6 +451,7 @@ async function prepareExecution(args: {
     targetCopper,
     handoff,
     sources,
+    persistedRecoveryManifest,
   };
 }
 
@@ -390,7 +465,14 @@ function verifyPreparedExecution(args: {
   const { execution } = args;
   const current = captureBaseline(args.actor, args.now);
   assertStableNonAcquisitionItems(execution.initialBaseline, current, execution.identityPlan);
-  const observation = observePlannedItems(execution.identityPlan, current);
+  const freshFinalClassGrants = reconcileCurrentClassGrants(args.actor, execution.classGrantPlan, "final");
+  if (stableJson(freshFinalClassGrants) !== stableJson(args.finalClassGrantReconciliation)) {
+    throw new Error("Final class-grant evidence changed before acquisition verification.");
+  }
+  const observation = execution.handoff
+    ? { evidence: [], observedEntryIds: new Set<string>() }
+    : observeCompletedItems(execution, current, freshFinalClassGrants);
+  assertObservedWayfinderItemSizes(args.actor, execution, observation);
   if (execution.handoff) {
     if (current.fingerprint !== execution.initialBaseline.fingerprint) {
       throw new Error("Actor wealth changed after the starting-equipment handoff was admitted.");
@@ -423,18 +505,22 @@ function verifyPreparedExecution(args: {
         targetCopper: execution.targetCopper,
         observedCopper: current.currencyCopper,
       };
+  const persisted = execution.persistedRecoveryManifest;
   const manifest = createCompletedAcquisitionManifest({
     actorId: execution.actorId,
     draft: execution.draft,
     identityPlan: execution.identityPlan,
-    appliedBy: args.dependencies.readApplyingUser(),
-    appliedAt: args.now(),
+    appliedBy: persisted?.appliedBy ?? args.dependencies.readApplyingUser(),
+    appliedAt: persisted?.appliedAt ?? args.now(),
     currency,
     observedItems: execution.handoff ? [] : observation.evidence,
-    finalClassGrantReconciliation: args.finalClassGrantReconciliation,
-    environment: args.dependencies.readEnvironment(),
+    finalClassGrantReconciliation: freshFinalClassGrants,
+    environment: persisted?.environment ?? args.dependencies.readEnvironment(),
   });
-  return { kind: "completed", identityPlan: execution.identityPlan, manifest };
+  if (persisted && !manifestsMateriallyEqual(manifest, persisted)) {
+    throw new Error("Persisted acquisition outcome differs from freshly verified actor evidence.");
+  }
+  return { kind: "completed", identityPlan: execution.identityPlan, manifest: persisted ?? manifest };
 }
 
 function requirePreparedExecution(
@@ -463,15 +549,31 @@ function assertResolvedSourceMatches(entry: PreparedAcquisitionEntryV1, resolved
   if (resolved.sourceUuid !== entry.sourceUuid) {
     throw new Error(`Acquisition source drifted for ${entry.entryId}.`);
   }
+  assertResolvedSourceIdentity(entry, resolved.source);
   if (resolved.documentFingerprint !== entry.documentFingerprint) {
     throw new Error(`Acquisition document drifted for ${entry.entryId}.`);
+  }
+  if (fingerprintEquipmentDocument(resolved.source) !== entry.documentFingerprint) {
+    throw new Error(`Acquisition source document differs from the reviewed document for ${entry.entryId}.`);
   }
   if (resolved.priceFingerprint !== entry.priceFingerprint) {
     throw new Error(`Acquisition price drifted for ${entry.entryId}.`);
   }
+  const rebuiltPrice = createAcquisitionPriceSnapshot({
+    basePrice: cloneData(resolved.resolvedPrice.basePrice),
+    size: entry.price.size,
+    sizeSensitive: resolved.resolvedPrice.sizeSensitive,
+    preciousMaterial: resolved.resolvedPrice.preciousMaterial,
+    adjustedBulkPriceCopper: resolved.resolvedPrice.adjustedBulkPriceCopper,
+    configurationPriceCopper: resolved.resolvedPrice.configurationPriceCopper,
+    pricePer: resolved.resolvedPrice.pricePer,
+    sourceQuantity: resolved.resolvedPrice.sourceQuantity,
+    requestedQuantity: entry.price.requestedQuantity,
+  });
   if (
-    stableJson(resolved.resolvedPrice) !== stableJson(entry.price) ||
-    resolved.resolvedPrice.materializedQuantity !== entry.quantity
+    rebuiltPrice.ok === false ||
+    stableJson(rebuiltPrice.value) !== stableJson(entry.price) ||
+    rebuiltPrice.value.materializedQuantity !== entry.quantity
   ) {
     throw new Error(`Acquisition resolved-price or quantity drifted for ${entry.entryId}.`);
   }
@@ -483,10 +585,34 @@ function assertResolvedSourceMatches(entry: PreparedAcquisitionEntryV1, resolved
   }
 }
 
+function assertResolvedSourceIdentity(entry: PreparedAcquisitionEntryV1, source: EmbeddedItemSource): void {
+  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.([^.]+)$/.exec(entry.sourceUuid);
+  if (!match || source._id !== match[2]) {
+    throw new Error(`Acquisition source document identity differs for ${entry.entryId}.`);
+  }
+  const statsSourceId = source._stats?.compendiumSource;
+  if (
+    source._stats &&
+    Object.prototype.hasOwnProperty.call(source._stats, "compendiumSource") &&
+    statsSourceId !== entry.sourceUuid
+  ) {
+    throw new Error(`Acquisition source compendium identity differs for ${entry.entryId}.`);
+  }
+  const coreSourceId = source.flags?.core?.sourceId;
+  if (
+    source.flags?.core &&
+    Object.prototype.hasOwnProperty.call(source.flags.core, "sourceId") &&
+    coreSourceId !== entry.sourceUuid
+  ) {
+    throw new Error(`Acquisition source flag identity differs for ${entry.entryId}.`);
+  }
+}
+
 function assertEconomicAdmission(
   admission: ReturnType<typeof evaluateActorEconomicAdmission>,
   acquisition: AcquisitionDraftState,
-  baseline: EconomicBaselineV1
+  baseline: EconomicBaselineV1,
+  ignoredNativeItemIds: ReadonlySet<string>
 ): void {
   if (acquisition.disposition.kind === "handoff") {
     if (admission.kind !== "handoff" || stableJson(admission.handoff) !== stableJson(acquisition.disposition.handoff)) {
@@ -502,7 +628,7 @@ function assertEconomicAdmission(
   if (
     acquisition.disposition.kind !== "handoff" &&
     admission.kind === "eligible-empty" &&
-    acquisition.baseline!.fingerprint !== baseline.fingerprint
+    !economicBaselinesMatchIgnoringItems(acquisition.baseline!, baseline, ignoredNativeItemIds)
   ) {
     throw new Error("Current actor wealth differs from the reviewed economic baseline.");
   }
@@ -520,6 +646,7 @@ function stampAcquisitionSource(
     ...(source.system ?? {}),
     quantity: plannedItem.quantity,
     containerId: null,
+    size: pf2eItemSize(entry.price.size),
   };
   source.flags = { ...(source.flags ?? {}) };
   source.flags.core = { ...(source.flags.core ?? {}), sourceId: plannedItem.sourceUuid };
@@ -550,6 +677,123 @@ async function executeItemWrite(args: {
 }): Promise<void> {
   await args.emitWriteCheckpoint("embedded-item-create", "before", args.ordinal);
   await args.inventory.add(args.actor, args.source, { stack: false, render: false });
+}
+
+function observeCompletedItems(
+  execution: PreparedExecution,
+  baseline: EconomicBaselineV1,
+  classGrantReconciliation: ClassGrantReconciliationResultV1
+): AcquisitionItemObservation {
+  const stamped = observePlannedItems(execution.identityPlan, baseline);
+  const native = observeNativeClassGrantItems(
+    execution.identityPlan,
+    execution.classGrantPlan,
+    baseline,
+    classGrantReconciliation
+  );
+  const byPlannedId = new Map<string, CompletedObservedItemV1>();
+  const actualItemIds = new Set<string>();
+  for (const observed of [...stamped.evidence, ...native.evidence]) {
+    if (byPlannedId.has(observed.plannedItemId) || actualItemIds.has(observed.actualItemId)) {
+      throw new Error("Acquisition item evidence is duplicated across materializers.");
+    }
+    byPlannedId.set(observed.plannedItemId, observed);
+    actualItemIds.add(observed.actualItemId);
+  }
+  return {
+    evidence: execution.identityPlan.entries.flatMap((entry) =>
+      entry.plannedItems.flatMap((planned) => {
+        const observed = byPlannedId.get(planned.plannedItemId);
+        return observed ? [observed] : [];
+      })
+    ),
+    observedEntryIds: new Set([...stamped.observedEntryIds, ...native.observedEntryIds]),
+  };
+}
+
+function observeNativeClassGrantItems(
+  plan: PreparedAcquisitionIdentityPlanV1,
+  classGrantPlan: PreparedClassGrantPlanV1,
+  baseline: EconomicBaselineV1,
+  reconciliation: ClassGrantReconciliationResultV1
+): AcquisitionItemObservation {
+  const reconciledByGrantId = new Map(reconciliation.entries.map((entry) => [entry.grantId, entry]));
+  const evidence: CompletedObservedItemV1[] = [];
+  const observedEntryIds = new Set<string>();
+  for (const entry of plan.entries) {
+    const grant = classGrantForEntry(entry, classGrantPlan);
+    if (!grant || grant.materializer !== "pf2e-native") continue;
+    const reconciled = reconciledByGrantId.get(grant.grantId);
+    if (!reconciled || reconciled.status !== "resolved" || reconciled.itemIds.length !== 1) {
+      throw new Error(`PF2E-native class grant ${grant.grantId} is not resolved exactly once.`);
+    }
+    const planned = entry.plannedItems[0]!;
+    const actual = baseline.physicalItems.find((item) => item.itemId === reconciled.itemIds[0]);
+    if (
+      !actual ||
+      actual.sourceUuid !== planned.sourceUuid ||
+      actual.quantity !== planned.quantity ||
+      actual.containerId !== planned.plannedContainerId
+    ) {
+      throw new Error(`PF2E-native class grant ${grant.grantId} differs from the prepared acquisition entry.`);
+    }
+    evidence.push({
+      plannedItemId: planned.plannedItemId,
+      actualItemId: actual.itemId,
+      actualSourceUuid: planned.sourceUuid,
+      actualQuantity: actual.quantity,
+      plannedContainerId: planned.plannedContainerId,
+      actualContainerId: actual.containerId,
+    });
+    observedEntryIds.add(entry.entryId);
+  }
+  return { evidence, observedEntryIds };
+}
+
+function assertObservedWayfinderItemSizes(
+  actor: unknown,
+  execution: PreparedExecution,
+  observation: AcquisitionItemObservation
+): void {
+  const actualSizes = actorItemSizes(actor);
+  const evidenceByPlannedId = new Map(observation.evidence.map((observed) => [observed.plannedItemId, observed]));
+  for (const entry of execution.identityPlan.entries) {
+    if (entryMaterializer(entry, execution.classGrantPlan) === "pf2e-native") continue;
+    const expectedSize = pf2eItemSize(entry.price.size);
+    for (const planned of entry.plannedItems) {
+      const observed = evidenceByPlannedId.get(planned.plannedItemId);
+      if (!observed) continue;
+      const actual = actualSizes.get(observed.actualItemId);
+      if (!actual || actual.prepared !== expectedSize || actual.raw !== expectedSize) {
+        throw new Error(`PF2E acquisition item ${observed.actualItemId} has the wrong prepared or raw size.`);
+      }
+    }
+  }
+}
+
+function actorItemSizes(actor: unknown): ReadonlyMap<string, { readonly prepared: unknown; readonly raw: unknown }> {
+  if (!isRecord(actor)) throw new TypeError("PF2E acquisition size verification requires an actor.");
+  const sizes = new Map<string, { readonly prepared: unknown; readonly raw: unknown }>();
+  const visit = (item: unknown): void => {
+    if (!isRecord(item) || typeof item.id !== "string" || item.id.length === 0) {
+      throw new TypeError("PF2E acquisition size verification found an item without a stable ID.");
+    }
+    if (sizes.has(item.id)) throw new TypeError("PF2E acquisition size verification found duplicate item IDs.");
+    const system = isRecord(item.system) ? item.system : {};
+    const source = isRecord(item._source) ? item._source : {};
+    const rawSystem = isRecord(source.system) ? source.system : {};
+    sizes.set(item.id, { prepared: system.size, raw: rawSystem.size });
+    for (const child of collectionContents(item.subitems)) visit(child);
+  };
+  for (const item of collectionContents(actor.items)) visit(item);
+  return sizes;
+}
+
+function collectionContents(value: unknown): readonly unknown[] {
+  if (value === null || value === undefined) return [];
+  if (Array.isArray(value)) return value;
+  if (isRecord(value) && Array.isArray(value.contents)) return value.contents;
+  throw new TypeError("PF2E acquisition size verification found a malformed item collection.");
 }
 
 function observePlannedItems(
@@ -616,6 +860,76 @@ function assertAllPlannedItemsObserved(
   }
 }
 
+function classGrantForEntry(
+  entry: PreparedAcquisitionEntryV1,
+  classGrantPlan: PreparedClassGrantPlanV1
+): PlannedClassGrantV1 | null {
+  if (entry.funding.lane !== "class-grant") return null;
+  const grantId = entry.funding.grant.plannedGrantId;
+  const grant = classGrantPlan.grants.find((candidate) => candidate.grantId === grantId);
+  if (!grant || grant.expected.sourceUuid !== entry.sourceUuid || entry.plannedItems.length !== 1) {
+    throw new Error(`Prepared acquisition entry ${entry.entryId} has invalid class-grant authority.`);
+  }
+  return grant;
+}
+
+function entryMaterializer(
+  entry: PreparedAcquisitionEntryV1,
+  classGrantPlan: PreparedClassGrantPlanV1
+): PlannedClassGrantV1["materializer"] {
+  return classGrantForEntry(entry, classGrantPlan)?.materializer ?? "wayfinder-acquisition";
+}
+
+function reconcileCurrentClassGrants(
+  actor: unknown,
+  plan: PreparedClassGrantPlanV1,
+  phase: ClassGrantReconciliationResultV1["phase"]
+): ClassGrantReconciliationResultV1 {
+  return reconcilePreparedClassGrants({
+    plan,
+    actorItems: captureObservedClassGrantItems(actor),
+    phase,
+  });
+}
+
+function nativeResolvedItemIds(
+  plan: PreparedClassGrantPlanV1,
+  reconciliation: ClassGrantReconciliationResultV1
+): ReadonlySet<string> {
+  const nativeGrantIds = new Set(
+    plan.grants.filter((grant) => grant.materializer === "pf2e-native").map((grant) => grant.grantId)
+  );
+  return new Set(
+    reconciliation.entries.flatMap((entry) =>
+      entry.status === "resolved" && nativeGrantIds.has(entry.grantId) ? entry.itemIds : []
+    )
+  );
+}
+
+function economicBaselinesMatchIgnoringItems(
+  reviewed: EconomicBaselineV1,
+  current: EconomicBaselineV1,
+  ignoredItemIds: ReadonlySet<string>
+): boolean {
+  const material = (baseline: EconomicBaselineV1) => ({
+    actorId: baseline.actorId,
+    currencyCopper: baseline.currencyCopper,
+    physicalItems: baseline.physicalItems.filter((item) => !ignoredItemIds.has(item.itemId)),
+  });
+  return stableJson(material(reviewed)) === stableJson(material(current));
+}
+
+function assertPreflightCoversEveryLine(
+  acquisition: AcquisitionDraftState,
+  preflightedLineIds: ReadonlySet<string>
+): void {
+  const expectedLineIds = acquisition.lines.map((line) => line.lineId).sort();
+  const actualLineIds = [...preflightedLineIds].sort();
+  if (stableJson(actualLineIds) !== stableJson(expectedLineIds)) {
+    throw new Error("Acquisition source preflight did not cover every reviewed line exactly once.");
+  }
+}
+
 function assertStableNonAcquisitionItems(
   initial: EconomicBaselineV1,
   current: EconomicBaselineV1,
@@ -641,28 +955,30 @@ function assertCurrencyUnchanged(initial: EconomicBaselineV1, current: EconomicB
 function buildRetryExpectation(
   plan: PreparedAcquisitionIdentityPlanV1,
   expectedCurrencyCopper: number,
-  draft: DraftState
+  classGrantPlan: PreparedClassGrantPlanV1,
+  exactPersistedManifestRecovery: boolean
 ): CurrencyOnlyRetryExpectation {
-  const recoveryPersisted = hasApplyRecoveryState(draft);
   return {
     draftId: plan.subject.draftId,
     batchId: plan.subject.batchId,
     manifestId: plan.subject.manifestId,
     expectedCurrencyCopper,
-    expectedEntries: plan.entries.map((entry) => {
-      const planned = entry.plannedItems[0]!;
-      return {
-        entryId: entry.entryId,
-        plannedItemId: planned.plannedItemId,
-        plannedContainerId: planned.plannedContainerId,
-        lineId: entry.lineIds[0]!,
-        sourceUuid: planned.sourceUuid,
-        quantity: planned.quantity,
-        containerId: planned.plannedContainerId,
-        stackingIntent: entry.stackingIntent,
-      };
-    }),
-    allowCurrencyOnlyConvergence: recoveryPersisted && plan.disposition.kind === "retain-all",
+    expectedEntries: plan.entries
+      .filter((entry) => entryMaterializer(entry, classGrantPlan) !== "pf2e-native")
+      .map((entry) => {
+        const planned = entry.plannedItems[0]!;
+        return {
+          entryId: entry.entryId,
+          plannedItemId: planned.plannedItemId,
+          plannedContainerId: planned.plannedContainerId,
+          lineId: entry.lineIds[0]!,
+          sourceUuid: planned.sourceUuid,
+          quantity: planned.quantity,
+          containerId: planned.plannedContainerId,
+          stackingIntent: entry.stackingIntent,
+        };
+      }),
+    allowCurrencyOnlyConvergence: exactPersistedManifestRecovery && plan.disposition.kind === "retain-all",
   };
 }
 
@@ -679,13 +995,45 @@ function assertWaveTwoIdentityShape(plan: PreparedAcquisitionIdentityPlanV1): vo
   }
 }
 
-function economicHistory(history: AcquisitionHistoryState, recoveringFinalization: boolean): EconomicHistoryFacts {
+function economicHistory(
+  history: AcquisitionHistoryState,
+  recoveringFinalization: boolean,
+  exactPersistedManifestRecovery: boolean
+): EconomicHistoryFacts {
   return {
     previousCharacterAppliedAt: recoveringFinalization ? null : history.lastAppliedAt,
     previousTargetLevel: recoveringFinalization ? null : history.lastTargetLevel,
-    completedAcquisitionManifestId: history.completedAcquisitionManifest?.id ?? null,
+    completedAcquisitionManifestId: exactPersistedManifestRecovery
+      ? null
+      : (history.completedAcquisitionManifest?.id ?? null),
     completedAcquisitionManifestCorrupt: history.completedAcquisitionManifestCorrupt,
   };
+}
+
+function resolvePersistedRecoveryManifest(args: {
+  readonly history: AcquisitionHistoryState;
+  readonly recoveryFinalization: boolean;
+  readonly actorId: string;
+  readonly acquisition: AcquisitionDraftState;
+  readonly identityPlan: PreparedAcquisitionIdentityPlanV1;
+}): CompletedAcquisitionManifestV1 | null {
+  if (!args.recoveryFinalization) return null;
+  if (args.history.completedAcquisitionManifestCorrupt) {
+    throw new Error("Starting-equipment recovery found corrupt completed acquisition evidence.");
+  }
+  if (!args.history.completedAcquisitionManifest) return null;
+  const manifest = normalizeCompletedAcquisitionManifest(args.history.completedAcquisitionManifest);
+  if (!manifest) throw new Error("Starting-equipment recovery found malformed completed acquisition evidence.");
+  if (
+    manifest.actorId !== args.actorId ||
+    manifest.draftId !== args.acquisition.draftId ||
+    manifest.batchId !== args.acquisition.batchId ||
+    manifest.id !== args.acquisition.manifestId
+  ) {
+    throw new Error("Completed acquisition evidence belongs to another actor, draft, batch, or manifest.");
+  }
+  assertCompletedAcquisitionManifestMatchesIdentityPlan(manifest, args.identityPlan);
+  return manifest;
 }
 
 function hasApplyRecoveryState(draft: DraftState): boolean {
@@ -735,6 +1083,18 @@ function safeCopperAdd(left: number, right: number): number {
     throw new RangeError("Starting-equipment absolute currency target is unsafe.");
   }
   return total;
+}
+
+function pf2eItemSize(size: AcquisitionPriceSnapshot["size"]): "tiny" | "sm" | "med" | "lg" | "huge" | "grg" {
+  const sizes = {
+    tiny: "tiny",
+    small: "sm",
+    medium: "med",
+    large: "lg",
+    huge: "huge",
+    gargantuan: "grg",
+  } as const;
+  return sizes[size];
 }
 
 function stableJson(value: unknown): string {

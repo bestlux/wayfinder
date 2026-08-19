@@ -6,6 +6,7 @@ import {
   createAcquisitionExecutionSession,
 } from "../src/wayfinder/application/acquisition-execution-service";
 import { captureObservedClassGrantItems } from "../src/wayfinder/application/class-grant-projection-service";
+import { fingerprintEquipmentDocument } from "../src/wayfinder/application/equipment-catalogue-service";
 import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
 import {
   createAcquisitionPriceSnapshot,
@@ -20,9 +21,16 @@ import type {
 } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
 import {
+  CLASS_GRANT_PROFILE_UUIDS,
+  createPlannedClassGrant,
   createPreparedClassGrantPlan,
+  type PlannedClassGrantV1,
   reconcilePreparedClassGrants,
 } from "../src/wayfinder/domain/class-grant-reconciliation";
+import {
+  type CompletedAcquisitionManifestV1,
+  computeCompletedAcquisitionManifestFingerprint,
+} from "../src/wayfinder/domain/completed-acquisition-manifest";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 
@@ -61,7 +69,7 @@ describe("Wave 2 acquisition execution", () => {
     expect(actor.acquisitionItems()[0]?.quantity).toBe(2);
     expect(actor.addOptions).toEqual([{ stack: false, render: false }]);
     expect(actor.addedSources[0]).not.toHaveProperty("_id");
-    expect(actor.addedSources[0]?.system).toMatchObject({ quantity: 2, containerId: null });
+    expect(actor.addedSources[0]?.system).toMatchObject({ quantity: 2, containerId: null, size: "med" });
     expect(acquisitionIdentity(actor.acquisitionItems()[0]!)).toMatchObject({
       version: 1,
       draftId: "draft-1",
@@ -169,6 +177,23 @@ describe("Wave 2 acquisition execution", () => {
     expect(actor.currencyAdds).toEqual([]);
   });
 
+  it("rejects a relabeled wrong Compendium source before the first item write", async () => {
+    const fixture = reviewedFixture([line()]);
+    const actor = new FakeActor();
+    const session = sessionFor(fixture.acquisition, { drift: "relabeled-source" });
+
+    await expect(
+      session.executeAcquisitionItems({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/source document identity differs/i);
+    expect(actor.addOptions).toEqual([]);
+    expect(actor.currencyAdds).toEqual([]);
+  });
+
   it("rechecks completed acquisition history after asynchronous source preflight", async () => {
     const fixture = reviewedFixture([line()]);
     const actor = new FakeActor();
@@ -247,13 +272,11 @@ describe("Wave 2 acquisition execution", () => {
       line({
         lineId: "line-a",
         sourceUuid: sourceUuid("a"),
-        documentFingerprint: "doc-a",
         priceFingerprint: "price-a",
       }),
       line({
         lineId: "line-b",
         sourceUuid: sourceUuid("b"),
-        documentFingerprint: "doc-b",
         priceFingerprint: "price-b",
       }),
     ]);
@@ -301,6 +324,153 @@ describe("Wave 2 acquisition execution", () => {
     expect(actor.addOptions).toHaveLength(2);
     expect(outcome.manifest.entries).toHaveLength(2);
     expect(outcome.manifest.entries.flatMap((entry) => entry.observedItems)).toHaveLength(2);
+  });
+
+  it("observes a PF2E-native formula book without duplicating it and records its exact manifest ID", async () => {
+    const grant = formulaGrant();
+    const fixture = reviewedFixture(
+      [
+        line({
+          lineId: "line-formula-book",
+          sourceUuid: grant.expected.sourceUuid,
+          priceFingerprint: "formula-price",
+          funding: { lane: "class-grant", grant: { plannedGrantId: grant.grantId } },
+        }),
+      ],
+      "retain-all",
+      [grant]
+    );
+    const actor = new FakeActor();
+    const nativeBook = seedFormulaBookGrant(actor);
+    const events: string[] = [];
+    const session = sessionFor(fixture.acquisition, { events });
+
+    await runItemsAndCurrency(session, actor, fixture);
+    const outcome = await verify(session, actor, fixture);
+
+    expect(actor.addOptions).toEqual([]);
+    expect(actor.acquisitionItems()).toEqual([nativeBook]);
+    expect(acquisitionIdentity(nativeBook)).toBeNull();
+    expect(events.filter((event) => event === "source")).toHaveLength(1);
+    expect(outcome.manifest.entries[0]?.observedItems).toEqual([
+      {
+        plannedItemId: outcome.identityPlan.entries[0]?.plannedItems[0]?.plannedItemId,
+        actualItemId: "native-formula-book",
+        actualSourceUuid: grant.expected.sourceUuid,
+        actualQuantity: 1,
+        plannedContainerId: null,
+        actualContainerId: null,
+      },
+    ]);
+    expect(outcome.manifest.classGrants[0]?.observedItemIds).toEqual(["native-formula-book"]);
+  });
+
+  it("recognizes a partial Titan Mauler retry, preserves one item, and stamps the reviewed large size", async () => {
+    const grant = titanGrant();
+    const fixture = reviewedFixture(
+      [
+        line({
+          lineId: "line-titan",
+          sourceUuid: grant.expected.sourceUuid,
+          priceFingerprint: "titan-price",
+          funding: { lane: "class-grant", grant: { plannedGrantId: grant.grantId } },
+          price: acquisitionPrice("large"),
+        }),
+      ],
+      "retain-all",
+      [grant]
+    );
+    const actor = new FakeActor();
+    const firstSession = sessionFor(fixture.acquisition);
+    await firstSession.executeAcquisitionItems({
+      actor,
+      draft: fixture.draft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+    });
+    expect(actor.addedSources[0]?.system?.size).toBe("lg");
+
+    const recoveryDraft = { ...fixture.draft, applyAttemptStepIds: ["starting-equipment-level-1"] };
+    const retrySession = sessionFor(fixture.acquisition);
+    await retrySession.executeAcquisitionItems({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+    });
+    await retrySession.executeAcquisitionCurrency({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+    });
+    const outcome = await retrySession.verifyAcquisitionOutcome({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      finalClassGrantReconciliation: finalReconciliation(actor, fixture.classGrantPlan),
+    });
+
+    expect(actor.addOptions).toHaveLength(1);
+    expect(actor.acquisitionItems()).toHaveLength(1);
+    expect(acquisitionIdentity(actor.acquisitionItems()[0]!)).toMatchObject({ plannedGrantId: grant.grantId });
+    expect(outcome.manifest.entries[0]?.price).toMatchObject({
+      size: "large",
+      unitPriceCopper: 200,
+      linePriceCopper: 200,
+    });
+    expect(outcome.manifest.entries[0]?.observedItems[0]?.actualItemId).toBe(actor.acquisitionItems()[0]?.id);
+  });
+
+  it("rejects a Titan Mauler insert whose reread size differs from the reviewed target", async () => {
+    const grant = titanGrant();
+    const fixture = reviewedFixture(
+      [
+        line({
+          lineId: "line-titan",
+          sourceUuid: grant.expected.sourceUuid,
+          priceFingerprint: "titan-price",
+          funding: { lane: "class-grant", grant: { plannedGrantId: grant.grantId } },
+          price: acquisitionPrice("large"),
+        }),
+      ],
+      "retain-all",
+      [grant]
+    );
+    const actor = new FakeActor();
+    actor.itemWriteMode = "wrong-size";
+    const session = sessionFor(fixture.acquisition);
+
+    await expect(
+      session.executeAcquisitionItems({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/wrong prepared or raw size/i);
+    expect(actor.addOptions).toHaveLength(1);
+  });
+
+  it("does not attribute target retain-all currency from generic Apply recovery state", async () => {
+    const fixture = reviewedFixture([], "retain-all");
+    const actor = new FakeActor();
+    const firstSession = sessionFor(fixture.acquisition);
+    await runItemsAndCurrency(firstSession, actor, fixture);
+
+    const recoveryDraft = { ...fixture.draft, applyAttemptStepIds: ["starting-equipment-level-1"] };
+    const retrySession = sessionFor(fixture.acquisition);
+    await expect(
+      retrySession.executeAcquisitionItems({
+        actor,
+        draft: recoveryDraft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/economic admission failed/i);
+
+    expect(actor.currencyAdds).toEqual([1_500]);
+    expect(actor.currencyCopper).toBe(1_500);
   });
 
   it("converges currency to the absolute target and rejects a veto after rereading the aggregate", async () => {
@@ -362,13 +532,108 @@ describe("Wave 2 acquisition execution", () => {
     expect(outcome.manifest.entries[0]?.observedItems).toHaveLength(1);
     expect(actor.addOptions).toHaveLength(1);
   });
+
+  it("returns an exact persisted manifest only after freshly verifying its actor outcome", async () => {
+    const fixture = reviewedFixture([line()]);
+    const actor = new FakeActor();
+    const applySession = sessionFor(fixture.acquisition);
+    await runItemsAndCurrency(applySession, actor, fixture);
+    const applied = await verify(applySession, actor, fixture);
+    const persisted = refingerprintManifest(applied.manifest, {
+      appliedBy: { userId: "original-owner", userName: "Original Owner" },
+      appliedAt: "2026-08-19T11:00:00.000Z",
+      environment: { ...ENVIRONMENT, moduleVersion: "0.7.5" },
+    });
+    const recoveryDraft = { ...fixture.draft, applyRecoveryActorUpdate: { "system.details.level.value": 1 } };
+    const recoverySession = sessionFor(fixture.acquisition, {
+      lastAppliedAt: NOW,
+      lastTargetLevel: 1,
+      completedManifest: persisted,
+    });
+
+    const outcome = await recoverySession.prepareRecoveredAcquisitionOutcome({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      finalClassGrantReconciliation: finalReconciliation(actor, fixture.classGrantPlan),
+    });
+
+    expect(outcome.manifest).toEqual(persisted);
+  });
+
+  it("accepts already-converged retain-all currency only with its exact persisted manifest", async () => {
+    const fixture = reviewedFixture([], "retain-all");
+    const actor = new FakeActor();
+    const applySession = sessionFor(fixture.acquisition);
+    await runItemsAndCurrency(applySession, actor, fixture);
+    const applied = await verify(applySession, actor, fixture);
+    const recoveryDraft = { ...fixture.draft, applyRecoveryActorUpdate: { "system.details.level.value": 1 } };
+    const recoverySession = sessionFor(fixture.acquisition, {
+      lastAppliedAt: NOW,
+      lastTargetLevel: 1,
+      completedManifest: applied.manifest,
+    });
+
+    const outcome = await recoverySession.prepareRecoveredAcquisitionOutcome({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      finalClassGrantReconciliation: finalReconciliation(actor, fixture.classGrantPlan),
+    });
+
+    expect(actor.currencyAdds).toEqual([1_500]);
+    expect(outcome.manifest).toEqual(applied.manifest);
+  });
+
+  it("rejects a different completed manifest during recovery", async () => {
+    const fixture = reviewedFixture([line()]);
+    const actor = new FakeActor();
+    const applySession = sessionFor(fixture.acquisition);
+    await runItemsAndCurrency(applySession, actor, fixture);
+    const applied = await verify(applySession, actor, fixture);
+    const different = refingerprintManifest(applied.manifest, { id: "manifest-other" });
+    const recoveryDraft = { ...fixture.draft, applyAttemptStepIds: ["starting-equipment-level-1"] };
+    const recoverySession = sessionFor(fixture.acquisition, { completedManifest: different });
+
+    await expect(
+      recoverySession.prepareRecoveredAcquisitionOutcome({
+        actor,
+        draft: recoveryDraft,
+        classGrantPlan: fixture.classGrantPlan,
+        finalClassGrantReconciliation: finalReconciliation(actor, fixture.classGrantPlan),
+      })
+    ).rejects.toThrow(/another actor, draft, batch, or manifest/i);
+  });
+
+  it("rejects corrupt completed acquisition evidence during recovery", async () => {
+    const fixture = reviewedFixture([line()]);
+    const actor = new FakeActor();
+    const applySession = sessionFor(fixture.acquisition);
+    await runItemsAndCurrency(applySession, actor, fixture);
+    const applied = await verify(applySession, actor, fixture);
+    const recoveryDraft = { ...fixture.draft, applyAttemptStepIds: ["starting-equipment-level-1"] };
+    const recoverySession = sessionFor(fixture.acquisition, {
+      completedManifest: applied.manifest,
+      completedManifestCorrupt: true,
+    });
+
+    await expect(
+      recoverySession.prepareRecoveredAcquisitionOutcome({
+        actor,
+        draft: recoveryDraft,
+        classGrantPlan: fixture.classGrantPlan,
+        finalClassGrantReconciliation: finalReconciliation(actor, fixture.classGrantPlan),
+      })
+    ).rejects.toThrow(/corrupt completed acquisition evidence/i);
+  });
 });
 
 type ReviewedFixture = ReturnType<typeof reviewedFixture>;
 
 function reviewedFixture(
   lines: readonly AcquisitionLineDraft[],
-  disposition: "purchase-ledger" | "retain-all" = "purchase-ledger"
+  disposition: "purchase-ledger" | "retain-all" = "purchase-ledger",
+  plannedClassGrants: readonly PlannedClassGrantV1[] = []
 ) {
   const baseline = createEconomicBaseline({
     actorId: "actor-1",
@@ -388,6 +653,7 @@ function reviewedFixture(
     ...draftBase,
     policySnapshot,
     baseline,
+    plannedClassGrants: [...plannedClassGrants],
     lines: [...lines],
   };
   const classGrantPlan = createPreparedClassGrantPlan({
@@ -395,7 +661,7 @@ function reviewedFixture(
     draftId: unreviewed.draftId,
     batchId: unreviewed.batchId,
     targetLevel: 1,
-    grants: [],
+    grants: plannedClassGrants,
   });
   const ledger = evaluateAcquisitionLedger(unreviewed, classGrantPlan);
   if (!ledger.valid) throw new Error(ledger.blockers.map((entry) => entry.message).join("; "));
@@ -484,23 +750,12 @@ function policy(_baseline: ReturnType<typeof createEconomicBaseline>): Acquisiti
 }
 
 function line(overrides: Partial<AcquisitionLineDraft> = {}): AcquisitionLineDraft {
-  const resolved = createAcquisitionPriceSnapshot({
-    basePrice: { kind: "priced", value: { gp: 1 } },
-    size: "medium",
-    sizeSensitive: true,
-    preciousMaterial: false,
-    adjustedBulkPriceCopper: null,
-    configurationPriceCopper: 0,
-    pricePer: 1,
-    sourceQuantity: 1,
-    requestedQuantity: 1,
-  });
-  if (resolved.ok === false) throw new Error(resolved.message);
+  const selectedSourceUuid = overrides.sourceUuid ?? sourceUuid("item");
   return {
     schemaVersion: 1,
     lineId: "line-1",
-    sourceUuid: sourceUuid("item"),
-    documentFingerprint: "document-1",
+    sourceUuid: selectedSourceUuid,
+    documentFingerprint: fingerprintEquipmentDocument(freshEmbeddedSource(selectedSourceUuid)),
     priceFingerprint: "price-1",
     itemLevel: 0,
     permanence: "permanent",
@@ -519,20 +774,88 @@ function line(overrides: Partial<AcquisitionLineDraft> = {}): AcquisitionLineDra
     },
     funding: { lane: "currency" },
     stackingIntent: "aggregate",
-    price: resolved.value,
+    price: acquisitionPrice(),
     ...overrides,
   };
+}
+
+function acquisitionPrice(size: AcquisitionLineDraft["price"]["size"] = "medium") {
+  const resolved = createAcquisitionPriceSnapshot({
+    basePrice: { kind: "priced", value: { gp: 1 } },
+    size,
+    sizeSensitive: true,
+    preciousMaterial: false,
+    adjustedBulkPriceCopper: null,
+    configurationPriceCopper: 0,
+    pricePer: 1,
+    sourceQuantity: 1,
+    requestedQuantity: 1,
+  });
+  if (resolved.ok === false) throw new Error(resolved.message);
+  return resolved.value;
+}
+
+function formulaGrant(): PlannedClassGrantV1 {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:alchemist-formula-book:class-level-1",
+    profileId: "alchemist-formula-book",
+    origin: { sourceSlotId: "class-level-1", sourceUuid: u.alchemistClass },
+    granterSourceUuid: u.formulaBookFeature,
+    expected: { sourceUuid: u.formulaBookItem, quantity: 1, itemType: "equipment" },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+  });
+}
+
+function titanGrant(): PlannedClassGrantV1 {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:titan-mauler:class-branch-instinct-level-1",
+    profileId: "giant-instinct-titan-mauler",
+    origin: { sourceSlotId: "class-branch-instinct-level-1", sourceUuid: u.giantInstinct },
+    granterSourceUuid: u.giantInstinct,
+    expected: { sourceUuid: sourceUuid("weapon"), quantity: 1, itemType: "weapon" },
+    materializer: "wayfinder-acquisition",
+    eligibilityKind: "catalogue-choice",
+    resaleRule: "zero-until-rune-investment",
+    eligibilityEvidence: {
+      kind: "titan-mauler",
+      documentFingerprint: "titan-candidate-document",
+      lineId: "line-titan",
+      lineDocumentFingerprint: fingerprintEquipmentDocument(freshEmbeddedSource(sourceUuid("weapon"))),
+      linePriceFingerprint: "titan-price",
+      policyFingerprint: "policy-level-1",
+      actorSize: "medium",
+      targetSize: "large",
+      basePriceCopper: 100,
+      weaponCategory: "martial",
+      rangeIncrement: null,
+      rarity: "common",
+      characterAccessRef: null,
+      sourceAllowed: true,
+      quantity: 1,
+      permanence: "permanent",
+      componentKind: "baseline-item",
+    },
+    nativeGrantChainSourceUuids: [],
+  });
 }
 
 function sessionFor(
   acquisition: AcquisitionDraftState,
   options: {
-    readonly drift?: "source" | "document" | "price" | "resolved-price" | "policy";
+    readonly drift?: "source" | "document" | "price" | "resolved-price" | "policy" | "relabeled-source";
     readonly currentPolicy?: AcquisitionPolicySnapshot;
     readonly events?: string[];
     readonly authorityError?: Error;
     readonly lastAppliedAt?: string | null;
     readonly lastTargetLevel?: number | null;
+    readonly completedManifest?: CompletedAcquisitionManifestV1 | null;
+    readonly completedManifestCorrupt?: boolean;
     readonly manifestAppearsAfterFirstHistoryRead?: boolean;
   } = {}
 ) {
@@ -543,21 +866,12 @@ function sessionFor(
       const policyDecision =
         options.drift === "policy" ? { ...entry.policyDecision, rarityBasis: "changed-policy" } : entry.policyDecision;
       return {
-        source: {
-          _id: "compendium-id",
-          name: `Item ${entry.sourceUuid}`,
-          type: "equipment",
-          flags: { core: { sourceId: entry.sourceUuid } },
-          system: { quantity: 1, containerId: null },
-        },
+        source: freshEmbeddedSource(entry.sourceUuid, options.drift === "relabeled-source"),
         sourceUuid: options.drift === "source" ? `${entry.sourceUuid}.changed` : entry.sourceUuid,
         documentFingerprint:
           options.drift === "document" ? `${entry.documentFingerprint}-changed` : entry.documentFingerprint,
         priceFingerprint: options.drift === "price" ? `${entry.priceFingerprint}-changed` : entry.priceFingerprint,
-        resolvedPrice:
-          options.drift === "resolved-price"
-            ? { ...entry.price, unitPriceCopper: entry.price.unitPriceCopper + 1 }
-            : structuredClone(entry.price),
+        resolvedPrice: freshSourcePrice(entry, options.drift === "resolved-price"),
         policyDecision,
       };
     },
@@ -567,8 +881,10 @@ function sessionFor(
         lastAppliedAt: options.lastAppliedAt ?? null,
         lastTargetLevel: options.lastTargetLevel ?? null,
         completedAcquisitionManifest:
-          options.manifestAppearsAfterFirstHistoryRead && historyReads > 1 ? ({ id: "manifest-race" } as never) : null,
-        completedAcquisitionManifestCorrupt: false,
+          options.manifestAppearsAfterFirstHistoryRead && historyReads > 1
+            ? ({ id: "manifest-race" } as never)
+            : (options.completedManifest ?? null),
+        completedAcquisitionManifestCorrupt: options.completedManifestCorrupt ?? false,
       };
     },
     resolveCurrentPolicySnapshot: () => {
@@ -584,6 +900,51 @@ function sessionFor(
     now: () => NOW,
   };
   return createAcquisitionExecutionSession(dependencies);
+}
+
+function refingerprintManifest(
+  manifest: CompletedAcquisitionManifestV1,
+  overrides: Partial<CompletedAcquisitionManifestV1>
+): CompletedAcquisitionManifestV1 {
+  const { fingerprint: _fingerprint, ...material } = {
+    ...structuredClone(manifest),
+    ...structuredClone(overrides),
+  };
+  return {
+    ...material,
+    fingerprint: computeCompletedAcquisitionManifestFingerprint(material),
+  };
+}
+
+function freshEmbeddedSource(sourceId: string, relabeled = false): EmbeddedItemSource {
+  const documentId = sourceId.split(".").at(-1)!;
+  return {
+    _id: relabeled ? `${documentId}-wrong` : documentId,
+    name: `Item ${sourceId}`,
+    type: sourceId === sourceUuid("weapon") ? "weapon" : "equipment",
+    flags: { core: { sourceId: relabeled ? sourceUuid("wrong") : sourceId } },
+    _stats: { compendiumSource: relabeled ? sourceUuid("wrong") : sourceId },
+    system: { quantity: 1, containerId: null, size: "med" },
+  };
+}
+
+function freshSourcePrice(
+  entry: Parameters<AcquisitionExecutionDependencies["resolveSource"]>[0]["entry"],
+  drift: boolean
+) {
+  const resolved = createAcquisitionPriceSnapshot({
+    basePrice: structuredClone(entry.price.basePrice),
+    size: "medium",
+    sizeSensitive: entry.price.sizeSensitive,
+    preciousMaterial: entry.price.preciousMaterial,
+    adjustedBulkPriceCopper: entry.price.adjustedBulkPriceCopper,
+    configurationPriceCopper: entry.price.configurationPriceCopper + (drift ? 1 : 0),
+    pricePer: entry.price.pricePer,
+    sourceQuantity: entry.price.sourceQuantity,
+    requestedQuantity: entry.price.requestedQuantity,
+  });
+  if (resolved.ok === false) throw new Error(resolved.message);
+  return resolved.value;
 }
 
 async function runItemsAndCurrency(
@@ -642,6 +1003,35 @@ function sourceUuid(id: string): string {
   return `Compendium.pf2e.equipment-srd.Item.${id}`;
 }
 
+function seedFormulaBookGrant(actor: FakeActor): FakeItem {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  actor.addObservedItem({
+    id: "native-class",
+    type: "class",
+    sourceId: u.alchemistClass,
+    wayfinderSlotId: "class-level-1",
+  });
+  actor.addObservedItem({
+    id: "native-alchemy-feature",
+    type: "feat",
+    sourceId: u.alchemyFeature,
+    locationItemId: "native-class",
+  });
+  actor.addObservedItem({
+    id: "native-formula-feature",
+    type: "feat",
+    sourceId: u.formulaBookFeature,
+    grantedByItemId: "native-alchemy-feature",
+  });
+  return actor.addObservedItem({
+    id: "native-formula-book",
+    type: "equipment",
+    sourceId: u.formulaBookItem,
+    physical: true,
+    grantedByItemId: "native-formula-feature",
+  });
+}
+
 function actorBaseline(actor: FakeActor) {
   if (actor.acquisitionItems().length > 0) throw new Error("The handoff fixture expects no physical items.");
   return createEconomicBaseline({
@@ -664,11 +1054,13 @@ interface FakeItem extends ActorItemLike {
     readonly quantity: number;
     readonly containerId: string | null;
     readonly category?: string;
+    readonly size?: unknown;
   };
   readonly _source: {
     readonly system: {
       readonly quantity: number;
       readonly containerId: string | null;
+      readonly size?: unknown;
       readonly price?: { readonly value: Record<string, number>; readonly per: number };
     };
   };
@@ -690,7 +1082,7 @@ class FakeActor {
     addCurrency: (coins: { cp?: number }) => Promise<void>;
     removeCurrency: (coins: { cp?: number }) => Promise<void>;
   };
-  itemWriteMode: "normal" | "veto" | "merged" = "normal";
+  itemWriteMode: "normal" | "veto" | "merged" | "wrong-size" = "normal";
   currencyWriteMode: "normal" | "veto" = "normal";
   failBeforeAddOrdinal: number | null = null;
   private addOrdinal = 0;
@@ -711,7 +1103,37 @@ class FakeActor {
   }
 
   acquisitionItems(): FakeItem[] {
-    return this.items.contents.filter((item) => !item.isCurrency);
+    return this.items.contents.filter((item) => !item.isCurrency && item.isOfType("physical"));
+  }
+
+  addObservedItem(args: {
+    readonly id: string;
+    readonly type: string;
+    readonly sourceId: string;
+    readonly physical?: boolean;
+    readonly grantedByItemId?: string | null;
+    readonly locationItemId?: string | null;
+    readonly wayfinderSlotId?: string | null;
+  }): FakeItem {
+    const flags: ActorItemFlags & Record<string, unknown> = {
+      core: { sourceId: args.sourceId },
+    };
+    if (args.grantedByItemId) flags.pf2e = { grantedBy: { id: args.grantedByItemId } };
+    if (args.wayfinderSlotId) flags["wayfinder-pf2e"] = { slotId: args.wayfinderSlotId };
+    const item: FakeItem = {
+      id: args.id,
+      type: args.type,
+      sourceId: args.sourceId,
+      quantity: 1,
+      isCurrency: false,
+      flags,
+      system: { quantity: 1, containerId: null, location: args.locationItemId ?? null },
+      _source: { system: { quantity: 1, containerId: null } },
+      container: null,
+      isOfType: (...types) => (args.physical === true && types.includes("physical")) || types.includes(args.type),
+    };
+    this.items.contents.push(item);
+    return item;
   }
 
   async createEmbeddedDocuments(): Promise<never[]> {
@@ -732,6 +1154,7 @@ class FakeActor {
     const sourceId = String(source.flags?.core?.sourceId ?? "");
     const flags = structuredClone(source.flags ?? {});
     if (this.itemWriteMode === "merged") delete flags["wayfinder-pf2e"];
+    const size = this.itemWriteMode === "wrong-size" ? "med" : source.system?.size;
     const item: FakeItem = {
       id: `item-${this.nextItemId++}`,
       type: String(source.type ?? "equipment"),
@@ -739,8 +1162,8 @@ class FakeActor {
       quantity,
       isCurrency: false,
       flags,
-      system: { quantity, containerId: null },
-      _source: { system: { quantity, containerId: null } },
+      system: { quantity, containerId: null, size },
+      _source: { system: { quantity, containerId: null, size } },
       container: null,
       isOfType: (...types) => types.includes("physical") || types.includes(String(source.type ?? "equipment")),
     };

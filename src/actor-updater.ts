@@ -45,6 +45,7 @@ export interface ApplyDraftOptions {
     steps: readonly PendingStep[]
   ) => PreparedClassGrantPlanV1 | Promise<PreparedClassGrantPlanV1>;
   executeAcquisitionItems?: ExecutePreparedDraftApplicationOptions["executeAcquisitionItems"];
+  executeAcquisitionCurrency?: ExecutePreparedDraftApplicationOptions["executeAcquisitionCurrency"];
   verifyAcquisitionOutcome?: ExecutePreparedDraftApplicationOptions["verifyAcquisitionOutcome"];
   readCurrentAcquisitionHistory?: ExecutePreparedDraftApplicationOptions["readCurrentAcquisitionHistory"];
   acquisitionFinalEvidence?: AcquisitionFinalEvidence;
@@ -88,7 +89,10 @@ export function applyDraftToActor(
   assertRequiredAcquisitionAuthority(actor, draft, options?.assertAcquisitionApplyAuthority);
   if (
     draft.acquisition &&
-    (!options.executeAcquisitionItems || !options.verifyAcquisitionOutcome || !options.readCurrentAcquisitionHistory)
+    (!options.executeAcquisitionItems ||
+      !options.executeAcquisitionCurrency ||
+      !options.verifyAcquisitionOutcome ||
+      !options.readCurrentAcquisitionHistory)
   ) {
     throw new Error("Starting-equipment Apply requires prepared acquisition execution and verification.");
   }
@@ -123,6 +127,7 @@ export function applyDraftToActor(
       beforeFinalActorUpdate: options.beforeFinalActorUpdate,
       persistFinalActorUpdate: options.persistFinalActorUpdate,
       executeAcquisitionItems: options.executeAcquisitionItems,
+      executeAcquisitionCurrency: options.executeAcquisitionCurrency,
       verifyAcquisitionOutcome: options.verifyAcquisitionOutcome,
       readCurrentAcquisitionHistory: options.readCurrentAcquisitionHistory,
       acquisitionFinalEvidence: options.acquisitionFinalEvidence,
@@ -234,6 +239,7 @@ function draftApplyOperationKey(draft: DraftState, steps: PendingStep[], options
     validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,
     prepareClassGrantPlan: operationIdentity(options.prepareClassGrantPlan),
     executeAcquisitionItems: operationIdentity(options.executeAcquisitionItems),
+    executeAcquisitionCurrency: operationIdentity(options.executeAcquisitionCurrency),
     verifyAcquisitionOutcome: operationIdentity(options.verifyAcquisitionOutcome),
     readCurrentAcquisitionHistory: operationIdentity(options.readCurrentAcquisitionHistory),
     acquisitionFinalEvidence: options.acquisitionFinalEvidence ?? null,

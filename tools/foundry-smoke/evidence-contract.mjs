@@ -23,6 +23,7 @@ const APPLY_PHASE_IDS = Object.freeze([
   "acquisition-items",
   "class-grant-reconcile-after-acquisition",
   "class-grant-reconcile-final",
+  "acquisition-currency",
   "verify-outcome",
   "finalize-actor",
 ]);

@@ -10,7 +10,10 @@ export function applyDraftToActor(actor, draft, steps, options) {
     assertRequiredActorAuthority(actor, options?.validateActorAuthority);
     assertRequiredAcquisitionAuthority(actor, draft, options?.assertAcquisitionApplyAuthority);
     if (draft.acquisition &&
-        (!options.executeAcquisitionItems || !options.verifyAcquisitionOutcome || !options.readCurrentAcquisitionHistory)) {
+        (!options.executeAcquisitionItems ||
+            !options.executeAcquisitionCurrency ||
+            !options.verifyAcquisitionOutcome ||
+            !options.readCurrentAcquisitionHistory)) {
         throw new Error("Starting-equipment Apply requires prepared acquisition execution and verification.");
     }
     const actorKey = actor;
@@ -43,6 +46,7 @@ export function applyDraftToActor(actor, draft, steps, options) {
             beforeFinalActorUpdate: options.beforeFinalActorUpdate,
             persistFinalActorUpdate: options.persistFinalActorUpdate,
             executeAcquisitionItems: options.executeAcquisitionItems,
+            executeAcquisitionCurrency: options.executeAcquisitionCurrency,
             verifyAcquisitionOutcome: options.verifyAcquisitionOutcome,
             readCurrentAcquisitionHistory: options.readCurrentAcquisitionHistory,
             acquisitionFinalEvidence: options.acquisitionFinalEvidence,
@@ -141,6 +145,7 @@ function draftApplyOperationKey(draft, steps, options) {
         validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,
         prepareClassGrantPlan: operationIdentity(options.prepareClassGrantPlan),
         executeAcquisitionItems: operationIdentity(options.executeAcquisitionItems),
+        executeAcquisitionCurrency: operationIdentity(options.executeAcquisitionCurrency),
         verifyAcquisitionOutcome: operationIdentity(options.verifyAcquisitionOutcome),
         readCurrentAcquisitionHistory: operationIdentity(options.readCurrentAcquisitionHistory),
         acquisitionFinalEvidence: options.acquisitionFinalEvidence ?? null,

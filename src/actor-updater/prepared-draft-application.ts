@@ -85,6 +85,7 @@ export type DraftApplyPhase =
   | "acquisition-items"
   | "class-grant-reconcile-after-acquisition"
   | "class-grant-reconcile-final"
+  | "acquisition-currency"
   | "verify-outcome"
   | "finalize-actor";
 
@@ -108,6 +109,12 @@ export type DraftApplyCheckpoint = Readonly<
 >;
 
 export type DraftApplyCheckpointHook = (checkpoint: DraftApplyCheckpoint) => void | Promise<void>;
+
+export type DraftApplyWriteCheckpointEmitter = (
+  operation: Exclude<DraftApplyWriteOperation, "final-actor-update">,
+  boundary: "before" | "after",
+  ordinal: number
+) => Promise<void>;
 
 export interface DraftApplyPhaseReceipt {
   phase: DraftApplyPhase;
@@ -186,6 +193,13 @@ export interface ExecutePreparedDraftApplicationOptions {
     readonly actor: DraftMutationActor;
     readonly draft: DraftState;
     readonly classGrantPlan: PreparedClassGrantPlanV1;
+    readonly emitWriteCheckpoint: DraftApplyWriteCheckpointEmitter;
+  }) => void | Promise<void>;
+  executeAcquisitionCurrency?: (args: {
+    readonly actor: DraftMutationActor;
+    readonly draft: DraftState;
+    readonly classGrantPlan: PreparedClassGrantPlanV1;
+    readonly emitWriteCheckpoint: DraftApplyWriteCheckpointEmitter;
   }) => void | Promise<void>;
   verifyAcquisitionOutcome?: (args: {
     readonly actor: DraftMutationActor;
@@ -275,6 +289,7 @@ const PHASE_IDS: readonly DraftApplyPhase[] = [
   "acquisition-items",
   "class-grant-reconcile-after-acquisition",
   "class-grant-reconcile-final",
+  "acquisition-currency",
   "verify-outcome",
   "finalize-actor",
 ];
@@ -736,6 +751,8 @@ export async function executePreparedDraftApplication(
               actor: prepared.actor,
               draft: prepared.draft,
               classGrantPlan: prepared.classGrantPlan!,
+              emitWriteCheckpoint: (operation, boundary, ordinal) =>
+                emitCheckpoint(buildWriteCheckpoint(phase, operation, boundary, ordinal)),
             });
           }
           break;
@@ -764,6 +781,20 @@ export async function executePreparedDraftApplication(
             ) {
               throw new Error("Planned class equipment is missing or ambiguous at final verification.");
             }
+          }
+          break;
+        case "acquisition-currency":
+          if (prepared.draft.acquisition && !options.executeAcquisitionCurrency) {
+            throw new Error("Starting-equipment Apply requires absolute currency convergence.");
+          }
+          if (prepared.draft.acquisition && options.executeAcquisitionCurrency) {
+            await options.executeAcquisitionCurrency({
+              actor: prepared.actor,
+              draft: prepared.draft,
+              classGrantPlan: prepared.classGrantPlan!,
+              emitWriteCheckpoint: (operation, boundary, ordinal) =>
+                emitCheckpoint(buildWriteCheckpoint(phase, operation, boundary, ordinal)),
+            });
           }
           break;
         case "verify-outcome":

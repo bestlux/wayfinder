@@ -98,6 +98,7 @@ const PHASE_IDS: DraftApplyPhase[] = [
   "acquisition-items",
   "class-grant-reconcile-after-acquisition",
   "class-grant-reconcile-final",
+  "acquisition-currency",
   "verify-outcome",
   "finalize-actor",
 ];
@@ -182,6 +183,7 @@ describe("prepared draft application", () => {
         completedAcquisitionManifestCorrupt: false,
       }),
       executeAcquisitionItems: () => undefined,
+      executeAcquisitionCurrency: () => undefined,
       verifyAcquisitionOutcome: () => acquisitionEvidence,
       resolveFinalActorUpdate,
     });
@@ -205,6 +207,7 @@ describe("prepared draft application", () => {
           completedAcquisitionManifestCorrupt: false,
         }),
         executeAcquisitionItems: secondBatchExecutor,
+        executeAcquisitionCurrency: () => undefined,
         verifyAcquisitionOutcome: () => acquisitionEvidence,
       })
     ).rejects.toThrow(/prior or malformed acquisition history/i);
@@ -268,6 +271,7 @@ describe("prepared draft application", () => {
           },
         });
       },
+      executeAcquisitionCurrency: () => undefined,
       verifyAcquisitionOutcome: () => ({ kind: "completed" }) as never,
     });
 

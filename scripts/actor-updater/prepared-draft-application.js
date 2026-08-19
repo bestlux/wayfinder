@@ -76,6 +76,7 @@ const PHASE_IDS = [
     "acquisition-items",
     "class-grant-reconcile-after-acquisition",
     "class-grant-reconcile-final",
+    "acquisition-currency",
     "verify-outcome",
     "finalize-actor",
 ];
@@ -428,6 +429,7 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                             actor: prepared.actor,
                             draft: prepared.draft,
                             classGrantPlan: prepared.classGrantPlan,
+                            emitWriteCheckpoint: (operation, boundary, ordinal) => emitCheckpoint(buildWriteCheckpoint(phase, operation, boundary, ordinal)),
                         });
                     }
                     break;
@@ -452,6 +454,19 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                             reconciliation.entries.some((entry) => entry.status !== "resolved")) {
                             throw new Error("Planned class equipment is missing or ambiguous at final verification.");
                         }
+                    }
+                    break;
+                case "acquisition-currency":
+                    if (prepared.draft.acquisition && !options.executeAcquisitionCurrency) {
+                        throw new Error("Starting-equipment Apply requires absolute currency convergence.");
+                    }
+                    if (prepared.draft.acquisition && options.executeAcquisitionCurrency) {
+                        await options.executeAcquisitionCurrency({
+                            actor: prepared.actor,
+                            draft: prepared.draft,
+                            classGrantPlan: prepared.classGrantPlan,
+                            emitWriteCheckpoint: (operation, boundary, ordinal) => emitCheckpoint(buildWriteCheckpoint(phase, operation, boundary, ordinal)),
+                        });
                     }
                     break;
                 case "verify-outcome":

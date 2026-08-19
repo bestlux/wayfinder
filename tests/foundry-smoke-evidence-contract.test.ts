@@ -973,6 +973,7 @@ const TEST_APPLY_PHASES = [
   "acquisition-items",
   "class-grant-reconcile-after-acquisition",
   "class-grant-reconcile-final",
+  "acquisition-currency",
   "verify-outcome",
   "finalize-actor",
 ];
@@ -1219,6 +1220,7 @@ function finalAfterApplySafetyEvidence() {
     "acquisition-items",
     "class-grant-reconcile-after-acquisition",
     "class-grant-reconcile-final",
+    "acquisition-currency",
     "verify-outcome",
   ];
   return {

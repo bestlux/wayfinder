@@ -60,6 +60,7 @@ export function parseWayfinderAction(element) {
         case "retry-draft-save":
         case "apply-draft":
         case "import-existing-history":
+        case "open-inventory":
         case "open-feedback":
         case "clear-draft":
             return { type: action };

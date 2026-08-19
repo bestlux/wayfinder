@@ -210,6 +210,10 @@
     </section>
   {{/if}}
 
+  {{#if acquisitionReceipt}}
+    {{> "modules/wayfinder-pf2e/templates/wayfinder/acquisition-receipt.hbs"}}
+  {{/if}}
+
   {{#if lastAppliedSpellRarityAttestations.length}}
     <section class="wayfinder-attestation-receipt" aria-label="Last Apply player spell attestations">
       <p class="eyebrow">Last Apply receipt</p>

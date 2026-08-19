@@ -71,7 +71,7 @@ function fundingLabel(lane) {
         case "allowance":
             return "Permanent-item allowance";
         case "class-grant":
-            return "Class grant";
+            return "Automatic build grant";
     }
 }
 function compactSourceLabel(sourceUuid) {

@@ -116,6 +116,12 @@ describe("wayfinder context service", () => {
   });
 
   it("disables apply when there are no Wayfinder-guided steps", async () => {
+    const acquisitionReceipt = {
+      manifestId: "manifest-1",
+      batchId: "batch-1",
+      appliedAt: "2026-08-19T20:00:00.000Z",
+      appliedBy: "Owner",
+    } as never;
     const context = await buildWayfinderContext({
       actorId: "actor-1",
       actorName: "Valeros",
@@ -135,11 +141,13 @@ describe("wayfinder context service", () => {
       readiness: await evaluateWayfinderDraftReadiness([], async (pendingStep) =>
         blockedEvaluation(pendingStep, "missing-choice", "Missing")
       ),
+      acquisitionReceipt,
     });
 
     expect(context.hasPendingSteps).toBe(false);
     expect(context.canApplyDraft).toBe(false);
     expect(context.applyBlocker).toBeNull();
+    expect(context.acquisitionReceipt).toBe(acquisitionReceipt);
   });
 
   it("builds a durable player-attestation receipt view without approval vocabulary", async () => {

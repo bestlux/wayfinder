@@ -47,6 +47,7 @@ export type WayfinderAction =
   | { type: "retry-draft-save" }
   | { type: "apply-draft" }
   | { type: "import-existing-history" }
+  | { type: "open-inventory" }
   | { type: "open-feedback" }
   | { type: "clear-draft" };
 
@@ -139,6 +140,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
     case "retry-draft-save":
     case "apply-draft":
     case "import-existing-history":
+    case "open-inventory":
     case "open-feedback":
     case "clear-draft":
       return { type: action };

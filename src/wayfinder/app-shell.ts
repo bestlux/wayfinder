@@ -38,6 +38,10 @@ import {
   type WayfinderAction,
 } from "./actions.js";
 import {
+  type ActorInventorySheetHost,
+  openActorInventorySheet,
+} from "./application/actor-inventory-navigation-service.js";
+import {
   assertApplyCandidateCurrent,
   persistApplyCandidateIfCurrent,
   WayfinderApplyDriftError,
@@ -81,6 +85,8 @@ import {
   updateActorWithPersistedDraftPrecondition,
   WayfinderDraftWriteConflictError,
 } from "./application/draft-write-guard.js";
+import { getFoundryEquipmentAcquisitionRuntime } from "./application/equipment-acquisition-runtime-service.js";
+import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
 import {
   buildExistingCharacterHistory,
@@ -131,6 +137,7 @@ import {
   type WayfinderStepEvaluation,
 } from "./domain/step-evaluation.js";
 import { hasDuplicateDraftSelection } from "./draft-decisions.js";
+import { buildAcquisitionReceiptViewModel } from "./panes/acquisition-receipt.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
 import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
 import { emptyPickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
@@ -159,7 +166,7 @@ interface Pf2eConfigLike {
   skills?: Record<string, unknown>;
 }
 
-interface WayfinderActorLike extends SelectorActorLike {
+interface WayfinderActorLike extends SelectorActorLike, ActorInventorySheetHost {
   id: string;
   name: string;
   apps: Record<string, unknown>;
@@ -474,6 +481,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       effectiveClassDocument: effectiveClass,
       extractSlug: extractDocumentSlug,
     });
+    const actorItemsById = new Map(
+      listActorItems(this.actor).flatMap((item) => (item.id ? [[item.id, item] as const] : []))
+    );
+    const acquisitionReceipt = state.completedAcquisitionManifest
+      ? await buildAcquisitionReceiptViewModel(state.completedAcquisitionManifest, {
+          resolveItemName: (_sourceUuid, actualItemId) => actorItemsById.get(actualItemId)?.name ?? null,
+          resolveContainerName: (containerId) => actorItemsById.get(containerId)?.name ?? null,
+        })
+      : null;
     return Object.assign(
       await buildWayfinderContext({
         actorId: this.actor.id,
@@ -496,6 +512,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         canImportExistingHistory: !snapshot.isBlank,
         existingCharacterHistory: state.existingCharacterHistory,
         lastAppliedSpellRarityAttestations: state.lastAppliedSpellRarityAttestations,
+        acquisitionReceipt,
         draftSaveState: this.#draftPersistence.state,
         lifecycleBusy: this.#semanticCommands.barrierActive,
       }),
@@ -758,6 +775,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     if (action.type === "open-feedback") {
       FeedbackSupportApp.open();
+      return;
+    }
+
+    if (action.type === "open-inventory") {
+      try {
+        await openActorInventorySheet(this.actor);
+      } catch (error) {
+        console.error("PF2E Wayfinder could not open the actor inventory", error);
+        ui.notifications.warn("Wayfinder could not open this character's PF2E inventory sheet.");
+      }
       return;
     }
 
@@ -2086,6 +2113,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     const snapshot = inspectActor(this.actor);
     const draft = cloneData(this.#requireDraft());
+    const acquisitionSession = draft.acquisition ? this.#createAcquisitionExecutionSession(draft) : null;
     const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
     const plan = await this.#buildPlan(snapshot, draft);
     const steps = cloneData(plan.steps);
@@ -2126,6 +2154,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         steps,
         evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks),
         additionalBlockers: spellRarityBlockers,
+        acquisitionExecutionAvailable: acquisitionSession !== null,
         assertAcquisitionApplyAuthority: () => {
           if (!draft.acquisition) return;
           assertEquipmentApplyAuthority({ actor: this.actor, acquisition: draft.acquisition });
@@ -2152,8 +2181,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
               applyCandidate.value = cloneData(applyAttemptDraft);
             }
           ),
-        applyDraftToActor: (buildFinalActorUpdate) =>
-          applyDraftToActor(this.actor, draft, steps, {
+        applyDraftToActor: (buildFinalActorUpdate) => {
+          return applyDraftToActor(this.actor, draft, steps, {
             beforePrepare: async () => {
               this.#assertPersistedApplyCandidateCurrent();
               await assertApplyCandidateCurrent({
@@ -2195,9 +2224,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
               ),
             prepareClassGrantPlan: (actor, currentDraft, currentSteps) =>
               prepareCurrentClassGrantPlan(actor, currentDraft, currentSteps),
-          }).then(() => undefined),
-        finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) =>
-          finalizeRecoveredDraftOnActor(this.actor, {
+            executeAcquisitionItems: acquisitionSession?.executeAcquisitionItems,
+            executeAcquisitionCurrency: acquisitionSession?.executeAcquisitionCurrency,
+            verifyAcquisitionOutcome: acquisitionSession?.verifyAcquisitionOutcome,
+            readCurrentAcquisitionHistory: acquisitionSession?.readCurrentAcquisitionHistory,
+          }).then(() => undefined);
+        },
+        finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) => {
+          return finalizeRecoveredDraftOnActor(this.actor, {
             beforeFinalize: async () => {
               this.#assertPersistedApplyCandidateCurrent();
               await assertApplyCandidateCurrent({
@@ -2231,14 +2265,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
               ? {
                   kind: "required",
                   preparePlan: (actor) => prepareCurrentClassGrantPlan(actor, draft, steps),
-                  verifyAcquisitionRecovery: () => {
-                    throw new Error(
-                      "Starting-equipment recovery is unavailable until the prepared acquisition executor is active."
-                    );
-                  },
+                  verifyAcquisitionRecovery: ({ actor, plan, finalClassGrantReconciliation }) =>
+                    acquisitionSession!.prepareRecoveredAcquisitionOutcome({
+                      actor,
+                      draft,
+                      classGrantPlan: plan,
+                      finalClassGrantReconciliation,
+                    }),
                 }
               : { kind: "none" },
-          }).then(() => undefined),
+          }).then(() => undefined);
+        },
       });
     } catch (error) {
       this.#draftPersistence.resume();
@@ -2390,6 +2427,19 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#recentlyInvalidatedStepIds.clear();
     ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.Applied"));
     return true;
+  }
+
+  #createAcquisitionExecutionSession(characterDraft: DraftState) {
+    const applyingUser = currentApplyingUser();
+    const environment = currentAcquisitionEnvironment();
+    return createEquipmentAcquisitionExecutionSession({
+      characterDraft,
+      runtime: getFoundryEquipmentAcquisitionRuntime(),
+      readHistory: () => normalizeState(this.actor.getFlag(MODULE_ID, "state")),
+      assertApplyAuthority: ({ actor, draft }) => assertEquipmentApplyAuthority({ actor, acquisition: draft }),
+      readApplyingUser: () => applyingUser,
+      readEnvironment: () => environment,
+    });
   }
 
   #assertPersistedApplyCandidateCurrent(): void {
@@ -2608,6 +2658,32 @@ function draftFingerprint(draft: DraftState | null): string {
 
 function getPf2eConfig(): Pf2eConfigLike | null {
   return (globalThis as WayfinderGlobals).CONFIG?.PF2E ?? null;
+}
+
+function currentApplyingUser(): { readonly userId: string; readonly userName: string } {
+  return {
+    userId: requiredRuntimeLabel(game.user?.id, "applying user ID"),
+    userName: requiredRuntimeLabel(game.user?.name, "applying user name"),
+  };
+}
+
+function currentAcquisitionEnvironment(): {
+  readonly foundryVersion: string;
+  readonly pf2eVersion: string;
+  readonly moduleVersion: string;
+} {
+  return {
+    foundryVersion: requiredRuntimeLabel(game.version, "Foundry version"),
+    pf2eVersion: requiredRuntimeLabel(game.system?.id === "pf2e" ? game.system.version : null, "PF2E version"),
+    moduleVersion: requiredRuntimeLabel(game.modules?.get?.(MODULE_ID)?.version, "Wayfinder version"),
+  };
+}
+
+function requiredRuntimeLabel(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`Starting-equipment Apply requires the current ${label}.`);
+  }
+  return value.trim();
 }
 
 async function confirmWayfinderApply(message: string): Promise<boolean> {

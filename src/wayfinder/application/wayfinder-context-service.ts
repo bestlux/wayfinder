@@ -5,6 +5,7 @@ import type {
   PendingStep,
 } from "../../types.js";
 import { type WayfinderDraftReadiness, type WayfinderStepIssue } from "../domain/step-evaluation.js";
+import type { AcquisitionReceiptViewModel } from "../panes/acquisition-receipt.js";
 import { modeLabel } from "../plan-service.js";
 import { spellRarityAttestationBasisLabel } from "../spell-choice/rarity-attestation.js";
 import type { ActivePane, StepNavRow, SummaryItem } from "../view-models.js";
@@ -37,6 +38,7 @@ export interface BuildWayfinderContextArgs {
   canImportExistingHistory?: boolean;
   existingCharacterHistory?: ExistingCharacterHistory | null;
   lastAppliedSpellRarityAttestations?: AppliedSpellRarityAttestation[];
+  acquisitionReceipt?: AcquisitionReceiptViewModel | null;
   draftSaveState?: DraftSaveState;
   lifecycleBusy?: boolean;
 }
@@ -64,6 +66,7 @@ export interface WayfinderTemplateContext {
   canImportExistingHistory: boolean;
   existingCharacterHistory: ExistingCharacterHistoryView | null;
   lastAppliedSpellRarityAttestations: AppliedSpellRarityAttestationView[];
+  acquisitionReceipt: AcquisitionReceiptViewModel | null;
   draftSave: DraftSaveView;
   lifecycleBusy: boolean;
 }
@@ -167,6 +170,7 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
         attestedAt: attestation.attestedAt,
         selectedSpellNames: attestation.selectedSpells.map((spell) => spell.name).join(", ") || "None",
       })),
+    acquisitionReceipt: args.acquisitionReceipt ?? null,
     draftSave,
     lifecycleBusy,
   };

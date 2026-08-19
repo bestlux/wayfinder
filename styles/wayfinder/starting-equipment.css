@@ -231,6 +231,83 @@
   display: block;
 }
 
+.wayfinder-app .wayfinder-acquisition-receipt {
+  display: grid;
+  flex: 0 1 auto;
+  gap: 10px;
+  min-block-size: 0;
+  max-block-size: min(28rem, 48cqh);
+  overflow: auto;
+  margin: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid var(--wf-rule);
+  border-radius: var(--wf-radius);
+  background: var(--wf-paper);
+}
+
+.wayfinder-app .wayfinder-acquisition-receipt > header,
+.wayfinder-app .wayfinder-acquisition-receipt > footer,
+.wayfinder-app .acquisition-receipt-items article {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wayfinder-app .wayfinder-acquisition-receipt h3,
+.wayfinder-app .wayfinder-acquisition-receipt p,
+.wayfinder-app .wayfinder-acquisition-receipt dl,
+.wayfinder-app .wayfinder-acquisition-receipt ul {
+  margin: 0;
+}
+
+.wayfinder-app .acquisition-receipt-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wayfinder-app .acquisition-receipt-summary > div,
+.wayfinder-app .acquisition-receipt-items article {
+  min-width: 0;
+  padding: 8px;
+  border-radius: var(--wf-radius);
+  background: var(--wf-paper-strong);
+}
+
+.wayfinder-app .acquisition-receipt-summary dt,
+.wayfinder-app .acquisition-receipt-items small,
+.wayfinder-app .wayfinder-acquisition-receipt > footer {
+  color: var(--wf-ink-soft);
+  font-size: 0.76rem;
+}
+
+.wayfinder-app .acquisition-receipt-summary dd {
+  min-width: 0;
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.wayfinder-app .acquisition-receipt-items {
+  display: grid;
+  gap: 5px;
+}
+
+.wayfinder-app .acquisition-receipt-items article > span:first-child,
+.wayfinder-app .acquisition-receipt-items strong,
+.wayfinder-app .acquisition-receipt-items small,
+.wayfinder-app .wayfinder-acquisition-receipt > footer span,
+.wayfinder-app .wayfinder-acquisition-receipt > footer small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wayfinder-app .acquisition-receipt-items strong,
+.wayfinder-app .acquisition-receipt-items small,
+.wayfinder-app .wayfinder-acquisition-receipt > footer small {
+  display: block;
+}
+
 @container (max-width: 760px) {
   .wayfinder-app .equipment-policy-summary,
   .wayfinder-app .equipment-workspace {
@@ -243,6 +320,16 @@
 
   .wayfinder-app .equipment-cart header,
   .wayfinder-app .equipment-cart footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .wayfinder-app .acquisition-receipt-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .wayfinder-app .wayfinder-acquisition-receipt > header,
+  .wayfinder-app .wayfinder-acquisition-receipt > footer {
     align-items: stretch;
     flex-direction: column;
   }

@@ -1,0 +1,57 @@
+<section class="wayfinder-acquisition-receipt" aria-label="Last starting-equipment Apply receipt">
+  <header>
+    <div>
+      <p class="eyebrow">Last Apply receipt</p>
+      <h3>Starting equipment</h3>
+      <p>{{acquisitionReceipt.dispositionLabel}}</p>
+    </div>
+    {{#if acquisitionReceipt.canOpenInventory}}
+      <button type="button" class="secondary" data-wayfinder-action="open-inventory">
+        <i class="fa-solid fa-box-open" aria-hidden="true"></i>
+        Open Inventory
+      </button>
+    {{/if}}
+  </header>
+
+  <dl class="acquisition-receipt-summary">
+    <div><dt>Applied by</dt><dd>{{acquisitionReceipt.appliedBy}}</dd></div>
+    <div><dt>Applied at</dt><dd><time datetime="{{acquisitionReceipt.appliedAt}}">{{acquisitionReceipt.appliedAt}}</time></dd></div>
+    <div><dt>Spent</dt><dd>{{acquisitionReceipt.currency.spentLabel}}</dd></div>
+    <div><dt>Remaining</dt><dd>{{acquisitionReceipt.currency.remainingLabel}}</dd></div>
+  </dl>
+
+  {{#if acquisitionReceipt.itemRows.length}}
+    <div class="acquisition-receipt-items" role="list" aria-label="Created starting equipment">
+      {{#each acquisitionReceipt.itemRows}}
+        <article role="listitem">
+          <span>
+            <strong>{{name}}</strong>
+            <small>{{fundingLabel}}{{#if containerName}} · in {{containerName}}{{/if}}</small>
+          </span>
+          <span>×{{quantity}}</span>
+        </article>
+      {{/each}}
+    </div>
+  {{else}}
+    <p class="acquisition-receipt-empty">No automated item creation was recorded for this Apply.</p>
+  {{/if}}
+
+  {{#if acquisitionReceipt.classGrantRows.length}}
+    <details>
+      <summary>Build-grant evidence</summary>
+      <ul>
+        {{#each acquisitionReceipt.classGrantRows}}
+          <li><code>{{grantId}}</code> · {{status}}</li>
+        {{/each}}
+      </ul>
+    </details>
+  {{/if}}
+
+  <footer>
+    <span>{{acquisitionReceipt.authority.applyLabel}} · {{acquisitionReceipt.authority.recipeChoiceLabel}} · {{acquisitionReceipt.authority.higherLevelStartLabel}}</span>
+    {{#if acquisitionReceipt.authority.judgmentIds.length}}
+      <span>Judgments: {{#each acquisitionReceipt.authority.judgmentIds}}{{#unless @first}}, {{/unless}}<code>{{this}}</code>{{/each}}</span>
+    {{/if}}
+    <small>{{acquisitionReceipt.environmentLabel}}</small>
+  </footer>
+</section>

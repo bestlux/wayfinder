@@ -18,10 +18,14 @@ describe("Wayfinder actions", () => {
     } as unknown as HTMLElement;
 
     expect(parseWayfinderAction(retry)).toEqual({ type: "retry-draft-save" });
+    expect(parseWayfinderAction({ dataset: { wayfinderAction: "open-inventory" } } as unknown as HTMLElement)).toEqual({
+      type: "open-inventory",
+    });
     expect(isDraftMutationAction({ type: "target-up" })).toBe(true);
     expect(isDraftMutationAction({ type: "preview-option", stepId: "step", value: "item" })).toBe(false);
     expect(isDraftMutationAction({ type: "clear-picker-filters", stepId: "step" })).toBe(false);
     expect(isDraftMutationAction({ type: "retain-all-equipment", stepId: "equipment" })).toBe(true);
+    expect(isDraftMutationAction({ type: "open-inventory" })).toBe(false);
     expect(
       isDraftMutationAction({
         type: "toggle-equipment-filter",

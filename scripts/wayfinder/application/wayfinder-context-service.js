@@ -65,6 +65,7 @@ export async function buildWayfinderContext(args) {
             attestedAt: attestation.attestedAt,
             selectedSpellNames: attestation.selectedSpells.map((spell) => spell.name).join(", ") || "None",
         })),
+        acquisitionReceipt: args.acquisitionReceipt ?? null,
         draftSave,
         lifecycleBusy,
     };

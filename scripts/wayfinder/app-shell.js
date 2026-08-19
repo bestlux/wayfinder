@@ -16,6 +16,7 @@ import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { bindWayfinderInteractions, isDraftMutationAction, parseWayfinderAction, } from "./actions.js";
+import { openActorInventorySheet, } from "./application/actor-inventory-navigation-service.js";
 import { assertApplyCandidateCurrent, persistApplyCandidateIfCurrent, WayfinderApplyDriftError, } from "./application/apply-candidate-service.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
 import { buildSkillPane, projectSkillRanks } from "./application/build-skill-pane-service.js";
@@ -24,6 +25,8 @@ import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection
 import { applyDraftLifecycle, buildApplyAttemptDraft, clearDraftLifecycle, hasApplyRecoveryState, } from "./application/draft-lifecycle-service.js";
 import { DraftPersistenceCoordinator } from "./application/draft-persistence-service.js";
 import { assertDraftSideEffectAllowed, assertFailedApplyRecoveryCandidateCurrent, captureDraftSideEffectPrecondition, capturePersistedDraftPrecondition, clearDraftWithWriteGuard, PersistedDraftWriteGuard, readPersistedDraftSnapshot, saveDraftWithWriteGuard, updateActorWithPersistedDraftPrecondition, WayfinderDraftWriteConflictError, } from "./application/draft-write-guard.js";
+import { getFoundryEquipmentAcquisitionRuntime } from "./application/equipment-acquisition-runtime-service.js";
+import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
 import { buildExistingCharacterHistory, withExistingCharacterHistory, } from "./application/existing-character-history-service.js";
 import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
@@ -41,6 +44,7 @@ import { recordClassGrantReconciliations } from "./domain/acquisition-draft.js";
 import { manifestsDescribeSameOutcome } from "./domain/completed-acquisition-manifest.js";
 import { evaluateWayfinderDraftReadiness, isTrainingStepCompleteFromDraft, WayfinderDraftNotReadyError, } from "./domain/step-evaluation.js";
 import { hasDuplicateDraftSelection } from "./draft-decisions.js";
+import { buildAcquisitionReceiptViewModel } from "./panes/acquisition-receipt.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
 import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
 import { emptyPickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
@@ -261,6 +265,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             effectiveClassDocument: effectiveClass,
             extractSlug: extractDocumentSlug,
         });
+        const actorItemsById = new Map(listActorItems(this.actor).flatMap((item) => (item.id ? [[item.id, item]] : [])));
+        const acquisitionReceipt = state.completedAcquisitionManifest
+            ? await buildAcquisitionReceiptViewModel(state.completedAcquisitionManifest, {
+                resolveItemName: (_sourceUuid, actualItemId) => actorItemsById.get(actualItemId)?.name ?? null,
+                resolveContainerName: (containerId) => actorItemsById.get(containerId)?.name ?? null,
+            })
+            : null;
         return Object.assign(await buildWayfinderContext({
             actorId: this.actor.id,
             actorName: this.actor.name,
@@ -282,6 +293,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             canImportExistingHistory: !snapshot.isBlank,
             existingCharacterHistory: state.existingCharacterHistory,
             lastAppliedSpellRarityAttestations: state.lastAppliedSpellRarityAttestations,
+            acquisitionReceipt,
             draftSaveState: this.#draftPersistence.state,
             lifecycleBusy: this.#semanticCommands.barrierActive,
         }), {
@@ -510,6 +522,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         if (action.type === "open-feedback") {
             FeedbackSupportApp.open();
+            return;
+        }
+        if (action.type === "open-inventory") {
+            try {
+                await openActorInventorySheet(this.actor);
+            }
+            catch (error) {
+                console.error("PF2E Wayfinder could not open the actor inventory", error);
+                ui.notifications.warn("Wayfinder could not open this character's PF2E inventory sheet.");
+            }
             return;
         }
         await this.#dispatchAction(action);
@@ -1674,6 +1696,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         const snapshot = inspectActor(this.actor);
         const draft = cloneData(this.#requireDraft());
+        const acquisitionSession = draft.acquisition ? this.#createAcquisitionExecutionSession(draft) : null;
         const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
         const plan = await this.#buildPlan(snapshot, draft);
         const steps = cloneData(plan.steps);
@@ -1707,6 +1730,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 steps,
                 evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks),
                 additionalBlockers: spellRarityBlockers,
+                acquisitionExecutionAvailable: acquisitionSession !== null,
                 assertAcquisitionApplyAuthority: () => {
                     if (!draft.acquisition)
                         return;
@@ -1729,68 +1753,79 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     await this.#draftPersistence.pauseAndFlush();
                     applyCandidate.value = cloneData(applyAttemptDraft);
                 }),
-                applyDraftToActor: (buildFinalActorUpdate) => applyDraftToActor(this.actor, draft, steps, {
-                    beforePrepare: async () => {
-                        this.#assertPersistedApplyCandidateCurrent();
-                        await assertApplyCandidateCurrent({
-                            actorSnapshot: snapshot,
-                            stateSnapshot: state,
-                            draftSnapshot: draft,
-                            stepSnapshots: steps,
-                            currentDraft: () => this.#draft,
-                            inspectCurrentActor: () => inspectActor(this.actor),
-                            readCurrentState: () => normalizeState(this.actor.getFlag(MODULE_ID, "state")),
-                            buildCurrentSteps: async (currentSnapshot, currentDraft) => (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
-                        });
-                    },
-                    resolveFinalActorUpdate: (evidence) => buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state")), evidence),
-                    beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
-                    persistFinalActorUpdate: (actorUpdate) => updateActorWithPersistedDraftPrecondition(this.actor, actorUpdate, capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)),
-                    validateActorAuthority: canUseWayfinder,
-                    assertAcquisitionApplyAuthority: (actor, currentDraft) => {
-                        if (!currentDraft.acquisition)
-                            return;
-                        assertEquipmentApplyAuthority({ actor, acquisition: currentDraft.acquisition });
-                    },
-                    spellRarityCeiling,
-                    validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
-                    validateSelectionEligibility: (selection, step) => this.#validateSelectionEligibility(selection, step, draft, steps, snapshot.skillRanks, this.#applySpellRarityCeiling(draft, step, recovering)),
-                    prepareClassGrantPlan: (actor, currentDraft, currentSteps) => prepareCurrentClassGrantPlan(actor, currentDraft, currentSteps),
-                }).then(() => undefined),
-                finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) => finalizeRecoveredDraftOnActor(this.actor, {
-                    beforeFinalize: async () => {
-                        this.#assertPersistedApplyCandidateCurrent();
-                        await assertApplyCandidateCurrent({
-                            actorSnapshot: snapshot,
-                            stateSnapshot: state,
-                            draftSnapshot: draft,
-                            stepSnapshots: steps,
-                            currentDraft: () => this.#draft,
-                            inspectCurrentActor: () => inspectActor(this.actor),
-                            readCurrentState: () => normalizeState(this.actor.getFlag(MODULE_ID, "state")),
-                            buildCurrentSteps: async (currentSnapshot, currentDraft) => (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
-                        });
-                    },
-                    resolveFinalActorUpdate: (evidence) => buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state")), evidence),
-                    beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
-                    persistFinalActorUpdate: (actorUpdate) => updateActorWithPersistedDraftPrecondition(this.actor, actorUpdate, capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)),
-                    recoveryActorUpdate,
-                    validateActorAuthority: canUseWayfinder,
-                    assertAcquisitionApplyAuthority: (actor) => {
-                        if (!draft.acquisition)
-                            return;
-                        assertEquipmentApplyAuthority({ actor, acquisition: draft.acquisition });
-                    },
-                    classGrantRecovery: draft.acquisition
-                        ? {
-                            kind: "required",
-                            preparePlan: (actor) => prepareCurrentClassGrantPlan(actor, draft, steps),
-                            verifyAcquisitionRecovery: () => {
-                                throw new Error("Starting-equipment recovery is unavailable until the prepared acquisition executor is active.");
-                            },
-                        }
-                        : { kind: "none" },
-                }).then(() => undefined),
+                applyDraftToActor: (buildFinalActorUpdate) => {
+                    return applyDraftToActor(this.actor, draft, steps, {
+                        beforePrepare: async () => {
+                            this.#assertPersistedApplyCandidateCurrent();
+                            await assertApplyCandidateCurrent({
+                                actorSnapshot: snapshot,
+                                stateSnapshot: state,
+                                draftSnapshot: draft,
+                                stepSnapshots: steps,
+                                currentDraft: () => this.#draft,
+                                inspectCurrentActor: () => inspectActor(this.actor),
+                                readCurrentState: () => normalizeState(this.actor.getFlag(MODULE_ID, "state")),
+                                buildCurrentSteps: async (currentSnapshot, currentDraft) => (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
+                            });
+                        },
+                        resolveFinalActorUpdate: (evidence) => buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state")), evidence),
+                        beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
+                        persistFinalActorUpdate: (actorUpdate) => updateActorWithPersistedDraftPrecondition(this.actor, actorUpdate, capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)),
+                        validateActorAuthority: canUseWayfinder,
+                        assertAcquisitionApplyAuthority: (actor, currentDraft) => {
+                            if (!currentDraft.acquisition)
+                                return;
+                            assertEquipmentApplyAuthority({ actor, acquisition: currentDraft.acquisition });
+                        },
+                        spellRarityCeiling,
+                        validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
+                        validateSelectionEligibility: (selection, step) => this.#validateSelectionEligibility(selection, step, draft, steps, snapshot.skillRanks, this.#applySpellRarityCeiling(draft, step, recovering)),
+                        prepareClassGrantPlan: (actor, currentDraft, currentSteps) => prepareCurrentClassGrantPlan(actor, currentDraft, currentSteps),
+                        executeAcquisitionItems: acquisitionSession?.executeAcquisitionItems,
+                        executeAcquisitionCurrency: acquisitionSession?.executeAcquisitionCurrency,
+                        verifyAcquisitionOutcome: acquisitionSession?.verifyAcquisitionOutcome,
+                        readCurrentAcquisitionHistory: acquisitionSession?.readCurrentAcquisitionHistory,
+                    }).then(() => undefined);
+                },
+                finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) => {
+                    return finalizeRecoveredDraftOnActor(this.actor, {
+                        beforeFinalize: async () => {
+                            this.#assertPersistedApplyCandidateCurrent();
+                            await assertApplyCandidateCurrent({
+                                actorSnapshot: snapshot,
+                                stateSnapshot: state,
+                                draftSnapshot: draft,
+                                stepSnapshots: steps,
+                                currentDraft: () => this.#draft,
+                                inspectCurrentActor: () => inspectActor(this.actor),
+                                readCurrentState: () => normalizeState(this.actor.getFlag(MODULE_ID, "state")),
+                                buildCurrentSteps: async (currentSnapshot, currentDraft) => (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
+                            });
+                        },
+                        resolveFinalActorUpdate: (evidence) => buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state")), evidence),
+                        beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
+                        persistFinalActorUpdate: (actorUpdate) => updateActorWithPersistedDraftPrecondition(this.actor, actorUpdate, capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)),
+                        recoveryActorUpdate,
+                        validateActorAuthority: canUseWayfinder,
+                        assertAcquisitionApplyAuthority: (actor) => {
+                            if (!draft.acquisition)
+                                return;
+                            assertEquipmentApplyAuthority({ actor, acquisition: draft.acquisition });
+                        },
+                        classGrantRecovery: draft.acquisition
+                            ? {
+                                kind: "required",
+                                preparePlan: (actor) => prepareCurrentClassGrantPlan(actor, draft, steps),
+                                verifyAcquisitionRecovery: ({ actor, plan, finalClassGrantReconciliation }) => acquisitionSession.prepareRecoveredAcquisitionOutcome({
+                                    actor,
+                                    draft,
+                                    classGrantPlan: plan,
+                                    finalClassGrantReconciliation,
+                                }),
+                            }
+                            : { kind: "none" },
+                    }).then(() => undefined);
+                },
             });
         }
         catch (error) {
@@ -1932,6 +1967,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#recentlyInvalidatedStepIds.clear();
         ui.notifications.info(game.i18n.localize("wayfinder-pf2e.Notifications.Applied"));
         return true;
+    }
+    #createAcquisitionExecutionSession(characterDraft) {
+        const applyingUser = currentApplyingUser();
+        const environment = currentAcquisitionEnvironment();
+        return createEquipmentAcquisitionExecutionSession({
+            characterDraft,
+            runtime: getFoundryEquipmentAcquisitionRuntime(),
+            readHistory: () => normalizeState(this.actor.getFlag(MODULE_ID, "state")),
+            assertApplyAuthority: ({ actor, draft }) => assertEquipmentApplyAuthority({ actor, acquisition: draft }),
+            readApplyingUser: () => applyingUser,
+            readEnvironment: () => environment,
+        });
     }
     #assertPersistedApplyCandidateCurrent() {
         const currentSnapshot = inspectActor(this.actor);
@@ -2111,6 +2158,25 @@ function draftFingerprint(draft) {
 }
 function getPf2eConfig() {
     return globalThis.CONFIG?.PF2E ?? null;
+}
+function currentApplyingUser() {
+    return {
+        userId: requiredRuntimeLabel(game.user?.id, "applying user ID"),
+        userName: requiredRuntimeLabel(game.user?.name, "applying user name"),
+    };
+}
+function currentAcquisitionEnvironment() {
+    return {
+        foundryVersion: requiredRuntimeLabel(game.version, "Foundry version"),
+        pf2eVersion: requiredRuntimeLabel(game.system?.id === "pf2e" ? game.system.version : null, "PF2E version"),
+        moduleVersion: requiredRuntimeLabel(game.modules?.get?.(MODULE_ID)?.version, "Wayfinder version"),
+    };
+}
+function requiredRuntimeLabel(value, label) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+        throw new Error(`Starting-equipment Apply requires the current ${label}.`);
+    }
+    return value.trim();
 }
 async function confirmWayfinderApply(message) {
     const foundryApi = foundry;

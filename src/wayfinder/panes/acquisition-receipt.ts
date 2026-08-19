@@ -142,7 +142,7 @@ function fundingLabel(lane: CompletedAcquisitionManifestV1["entries"][number]["f
     case "allowance":
       return "Permanent-item allowance";
     case "class-grant":
-      return "Class grant";
+      return "Automatic build grant";
   }
 }
 

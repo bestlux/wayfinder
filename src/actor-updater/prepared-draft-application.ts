@@ -17,7 +17,14 @@ import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js"
 import { itemMatchesSourceId } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
+import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
 import { activeClassArchetypeProfile } from "../wayfinder/class-archetype/registry.js";
+import {
+  assertPreparedClassGrantPlanMatches,
+  type ClassGrantReconciliationResultV1,
+  type PreparedClassGrantPlanV1,
+  reconcilePreparedClassGrants,
+} from "../wayfinder/domain/class-grant-reconciliation.js";
 import { maxProficiencyRank, projectDraftSkillRanks } from "../wayfinder/domain/skill-rank-projection.js";
 import { isActiveSkillTrainingChoice } from "../wayfinder/domain/skill-training-choice-availability.js";
 import {
@@ -70,6 +77,10 @@ export type DraftApplyPhase =
   | "native-spellcasting-after-spells"
   | "boost-item-updates"
   | "source-flag-restoration"
+  | "class-grant-reconcile-before-acquisition"
+  | "acquisition-items"
+  | "class-grant-reconcile-after-acquisition"
+  | "class-grant-reconcile-final"
   | "verify-outcome"
   | "finalize-actor";
 
@@ -113,6 +124,7 @@ export interface PreparedDraftApplication {
   deferredActorUpdate: Record<string, unknown>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
   validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
+  classGrantPlan: PreparedClassGrantPlanV1 | null;
   sources: PreparedSourceCatalog;
 }
 
@@ -145,6 +157,11 @@ export interface PrepareDraftApplicationDependencies {
   ) => Promise<void>;
   validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
+  prepareClassGrantPlan?: (
+    actor: DraftMutationActor,
+    draft: DraftState,
+    steps: readonly PendingStep[]
+  ) => PreparedClassGrantPlanV1 | Promise<PreparedClassGrantPlanV1>;
   spellRarityCeiling?: SpellRarityCeiling;
   validSkillSlugs?: ReadonlySet<string>;
   resolveCampaignFeatSlot: (sectionId: string, slotId: string) => CampaignFeatSlotAuthority | null;
@@ -153,19 +170,28 @@ export interface PrepareDraftApplicationDependencies {
 export interface ExecutePreparedDraftApplicationOptions {
   onCheckpoint?: DraftApplyCheckpointHook;
   finalActorUpdate?: Record<string, unknown>;
-  resolveFinalActorUpdate?: () => Record<string, unknown> | Promise<Record<string, unknown>>;
+  resolveFinalActorUpdate?: (evidence: {
+    readonly classGrantReconciliations: readonly ClassGrantReconciliationResultV1[];
+  }) => Record<string, unknown> | Promise<Record<string, unknown>>;
   beforeFinalActorUpdate?: () => void | Promise<void>;
   persistFinalActorUpdate?: (actorUpdate: Record<string, unknown>) => Promise<unknown>;
+  executeAcquisitionItems?: (args: {
+    readonly actor: DraftMutationActor;
+    readonly draft: DraftState;
+    readonly classGrantPlan: PreparedClassGrantPlanV1;
+  }) => void | Promise<void>;
 }
 
 export interface ExecuteRecoveredDraftFinalizationOptions extends ExecutePreparedDraftApplicationOptions {
   recoveryActorUpdate: Record<string, unknown>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
+  classGrantReconciliations?: readonly ClassGrantReconciliationResultV1[];
 }
 
 export interface ExecutePreparedDraftApplicationResult {
   actorUpdate: Record<string, unknown>;
   receipts: DraftApplyPhaseReceipt[];
+  classGrantReconciliations: ClassGrantReconciliationResultV1[];
 }
 
 export class DraftApplyPhaseError extends Error {
@@ -176,6 +202,7 @@ export class DraftApplyPhaseError extends Error {
   readonly completedReceipts: readonly DraftApplyPhaseReceipt[];
   readonly partialReceipt: DraftApplyPhaseReceipt;
   readonly recoveryActorUpdate: Readonly<Record<string, unknown>>;
+  readonly completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[];
 
   constructor(
     phase: DraftApplyPhase,
@@ -184,7 +211,8 @@ export class DraftApplyPhaseError extends Error {
     checkpoint: DraftApplyCheckpoint | null,
     failureKind: "checkpoint-hook" | "operation",
     cause: unknown,
-    recoveryActorUpdate: Record<string, unknown> = {}
+    recoveryActorUpdate: Record<string, unknown> = {},
+    completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[] = []
   ) {
     const detail = cause instanceof Error && cause.message ? ` ${cause.message}` : "";
     const checkpointDetail = checkpoint ? ` at ${checkpoint.checkpointId}` : "";
@@ -195,6 +223,7 @@ export class DraftApplyPhaseError extends Error {
     this.completedPhases = this.completedReceipts.map((receipt) => receipt.phase);
     this.partialReceipt = partialReceipt;
     this.recoveryActorUpdate = Object.freeze(cloneData(recoveryActorUpdate));
+    this.completedClassGrantReconciliations = Object.freeze(cloneData(completedClassGrantReconciliations));
     this.checkpoint = checkpoint ? cloneData(checkpoint) : null;
     this.failureKind = failureKind;
   }
@@ -220,6 +249,10 @@ const PHASE_IDS: readonly DraftApplyPhase[] = [
   "native-spellcasting-after-spells",
   "boost-item-updates",
   "source-flag-restoration",
+  "class-grant-reconcile-before-acquisition",
+  "acquisition-items",
+  "class-grant-reconcile-after-acquisition",
+  "class-grant-reconcile-final",
   "verify-outcome",
   "finalize-actor",
 ];
@@ -308,6 +341,7 @@ export async function prepareDraftApplication(
   validateDraftChoiceValues(actor, draft, steps, deps.validSkillSlugs);
   await validateSelectedEligibility(draft, steps, selections, deps.validateSelectionEligibility);
   const sources = await prepareSourceCatalog(actor, draft, steps, selections, deps);
+  const classGrantPlan = await prepareClassGrantAuthority(actor, draft, steps, deps);
   await validatePersistenceTargets(actor, draft, steps, deps);
   validateSpellDestinations(actor, draft, steps);
 
@@ -334,8 +368,32 @@ export async function prepareDraftApplication(
     },
     validateActorAuthority: deps.validateActorAuthority,
     validateSelectionEligibility: deps.validateSelectionEligibility,
+    classGrantPlan,
     sources,
   };
+}
+
+async function prepareClassGrantAuthority(
+  actor: DraftMutationActor,
+  draft: DraftState,
+  steps: readonly PendingStep[],
+  deps: PrepareDraftApplicationDependencies
+): Promise<PreparedClassGrantPlanV1 | null> {
+  const acquisition = draft.acquisition;
+  if (!acquisition) return null;
+  if (!deps.prepareClassGrantPlan) {
+    throw new Error("Starting-equipment Apply requires current class-grant preparation.");
+  }
+  const plan = await deps.prepareClassGrantPlan(actor, draft, steps);
+  assertPreparedClassGrantPlanMatches({
+    plan,
+    actorId: typeof actor.id === "string" ? actor.id : "",
+    draftId: acquisition.draftId,
+    batchId: acquisition.batchId,
+    targetLevel: acquisition.targetLevel,
+    persistedGrants: acquisition.plannedClassGrants,
+  });
+  return plan;
 }
 
 function validateDraftChoiceValues(
@@ -483,11 +541,18 @@ export async function executePreparedDraftApplication(
   // deferred update after an otherwise-empty rebuilt plan.
   addLevelUpdate(prepared);
   const receipts: DraftApplyPhaseReceipt[] = [];
+  const classGrantReconciliations: ClassGrantReconciliationResultV1[] = [];
   let projectedTrainingRanks: Record<string, number> = {};
 
   for (const phase of prepared.phaseIds) {
     if (phase === "finalize-actor") {
-      const receipt = await executeFinalActorPhase(prepared.actor, prepared.deferredActorUpdate, options, receipts);
+      const receipt = await executeFinalActorPhase(
+        prepared.actor,
+        prepared.deferredActorUpdate,
+        options,
+        receipts,
+        classGrantReconciliations
+      );
       receipts.push(receipt);
       continue;
     }
@@ -615,6 +680,53 @@ export async function executePreparedDraftApplication(
         case "source-flag-restoration":
           await restoreSingletonSourceSlotFlags(prepared.actor, prepared.draft);
           break;
+        case "class-grant-reconcile-before-acquisition":
+          if (prepared.classGrantPlan) {
+            classGrantReconciliations.push(
+              reconcilePreparedClassGrants({
+                plan: prepared.classGrantPlan,
+                actorItems: captureObservedClassGrantItems(prepared.actor),
+                phase: "before-acquisition",
+              })
+            );
+          }
+          break;
+        case "acquisition-items":
+          if (prepared.draft.acquisition && !options.executeAcquisitionItems) {
+            throw new Error("Starting-equipment Apply requires the prepared acquisition executor.");
+          }
+          if (prepared.draft.acquisition && options.executeAcquisitionItems) {
+            await options.executeAcquisitionItems({
+              actor: prepared.actor,
+              draft: prepared.draft,
+              classGrantPlan: prepared.classGrantPlan!,
+            });
+          }
+          break;
+        case "class-grant-reconcile-after-acquisition":
+          if (prepared.classGrantPlan) {
+            classGrantReconciliations.push(
+              reconcilePreparedClassGrants({
+                plan: prepared.classGrantPlan,
+                actorItems: captureObservedClassGrantItems(prepared.actor),
+                phase: "after-acquisition",
+              })
+            );
+          }
+          break;
+        case "class-grant-reconcile-final":
+          if (prepared.classGrantPlan) {
+            const reconciliation = reconcilePreparedClassGrants({
+              plan: prepared.classGrantPlan,
+              actorItems: captureObservedClassGrantItems(prepared.actor),
+              phase: "final",
+            });
+            classGrantReconciliations.push(reconciliation);
+            if (reconciliation.entries.some((entry) => entry.status !== "resolved")) {
+              throw new Error("Planned class equipment is missing or ambiguous at final verification.");
+            }
+          }
+          break;
         case "verify-outcome":
           verifyPreparedOutcome(prepared);
           break;
@@ -629,7 +741,8 @@ export async function executePreparedDraftApplication(
         failedCheckpoint ?? operationFailureCheckpoint,
         failedCheckpoint ? "checkpoint-hook" : "operation",
         error,
-        prepared.deferredActorUpdate
+        prepared.deferredActorUpdate,
+        classGrantReconciliations
       );
     }
   }
@@ -637,6 +750,7 @@ export async function executePreparedDraftApplication(
   return {
     actorUpdate: { ...prepared.deferredActorUpdate },
     receipts,
+    classGrantReconciliations: [...classGrantReconciliations],
   };
 }
 
@@ -646,10 +760,12 @@ export async function executeRecoveredDraftFinalization(
 ): Promise<ExecutePreparedDraftApplicationResult> {
   assertActorAuthority(actor, options.validateActorAuthority);
   const recoveryActorUpdate = cloneData(options.recoveryActorUpdate);
-  const receipt = await executeFinalActorPhase(actor, recoveryActorUpdate, options, []);
+  const classGrantReconciliations = cloneData(options.classGrantReconciliations ?? []);
+  const receipt = await executeFinalActorPhase(actor, recoveryActorUpdate, options, [], classGrantReconciliations);
   return {
     actorUpdate: recoveryActorUpdate,
     receipts: [receipt],
+    classGrantReconciliations: [...classGrantReconciliations],
   };
 }
 
@@ -657,7 +773,8 @@ async function executeFinalActorPhase(
   actor: DraftMutationActor,
   deferredActorUpdate: Record<string, unknown>,
   options: ExecutePreparedDraftApplicationOptions,
-  completedReceipts: readonly DraftApplyPhaseReceipt[]
+  completedReceipts: readonly DraftApplyPhaseReceipt[],
+  completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[]
 ): Promise<DraftApplyPhaseReceipt> {
   const phase = "finalize-actor" as const;
   const beforeItems = snapshotPhaseItems(actor);
@@ -680,7 +797,11 @@ async function executeFinalActorPhase(
     operationFailureCheckpoint = beforeWrite;
     await options.beforeFinalActorUpdate?.();
     const finalActorUpdate = options.resolveFinalActorUpdate
-      ? cloneData(await options.resolveFinalActorUpdate())
+      ? cloneData(
+          await options.resolveFinalActorUpdate({
+            classGrantReconciliations: cloneData(completedClassGrantReconciliations),
+          })
+        )
       : cloneData(options.finalActorUpdate ?? {});
     const actorUpdate = {
       ...deferredActorUpdate,
@@ -750,7 +871,8 @@ async function executeFinalActorPhase(
       checkpointFailure ?? operationFailureCheckpoint,
       checkpointFailure ? "checkpoint-hook" : "operation",
       error,
-      deferredActorUpdate
+      deferredActorUpdate,
+      completedClassGrantReconciliations
     );
   }
 }

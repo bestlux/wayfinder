@@ -3,6 +3,36 @@ import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } f
 import { cloneData } from "../../shared/cloning.js";
 import { evaluateWayfinderDraftReadiness, } from "../domain/step-evaluation.js";
 export async function applyDraftLifecycle(args) {
+    if (args.draft.acquisitionCorrupt) {
+        return {
+            kind: "warning",
+            warning: "draft-not-ready",
+            blockers: [
+                {
+                    code: "dependency-review",
+                    stepId: "starting-equipment",
+                    slotId: "starting-equipment",
+                    title: "Starting equipment recovery",
+                    message: "The saved starting-equipment state is malformed and must be cleared or repaired before Apply.",
+                },
+            ],
+        };
+    }
+    if (args.draft.acquisition && args.acquisitionExecutionAvailable !== true) {
+        return {
+            kind: "warning",
+            warning: "draft-not-ready",
+            blockers: [
+                {
+                    code: "dependency-review",
+                    stepId: "starting-equipment",
+                    slotId: "starting-equipment",
+                    title: "Starting equipment",
+                    message: "Starting-equipment Apply is unavailable until its prepared item executor is active.",
+                },
+            ],
+        };
+    }
     const recoveryOnly = args.steps.length === 0 && hasApplyRecoveryState(args.draft);
     if (args.steps.length === 0 && !recoveryOnly) {
         return {

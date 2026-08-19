@@ -5,11 +5,14 @@ import {
   createAcquisitionDraft,
   normalizeAcquisitionDraft,
   reconcileAcquisitionTargetLevel,
+  recordClassGrantReconciliations,
   recordEconomicAdmission,
+  recordPlannedClassGrants,
 } from "../src/wayfinder/domain/acquisition-draft";
 import { createAcquisitionPriceSnapshot } from "../src/wayfinder/domain/acquisition-ledger";
 import type { AcquisitionDraftState, AcquisitionLineDraft } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
+import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import { buildEquipmentPolicyJudgmentFactsFingerprint } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
@@ -35,19 +38,64 @@ describe("acquisition draft", () => {
     parent.acquisition = acquisition;
     const reopened = normalizeDraft(JSON.parse(JSON.stringify(buildDraftPatch(parent))), 1);
 
-    expect(reopened.version).toBe(14);
+    expect(reopened.version).toBe(15);
     expect(reopened.acquisition?.draftId).toBe("draft-1");
     expect(reopened.acquisition?.batchId).toBe("batch-1");
     expect(reopened.acquisition?.lines.map((line) => line.lineId)).toEqual(["line-1", "line-2"]);
     expect(new Set(reopened.acquisition?.lines.map((line) => line.sourceUuid)).size).toBe(1);
   });
 
+  it("preserves the authoritative planned class-grant envelope through save and reopen", () => {
+    const acquisition = recordPlannedClassGrants(completeDraft(), [formulaGrant()]);
+    const parent = createEmptyDraft(5);
+    parent.acquisition = acquisition;
+
+    const reopened = normalizeDraft(JSON.parse(JSON.stringify(buildDraftPatch(parent))), 1);
+    expect(reopened.acquisition?.plannedClassGrants).toEqual([formulaGrant()]);
+    expect(reopened.acquisition?.disposition).toMatchObject({ kind: "unreviewed", reasons: ["document"] });
+  });
+
+  it("persists only draft-bound class-grant recovery evidence", () => {
+    const grant = formulaGrant();
+    const acquisition = recordClassGrantReconciliations(recordPlannedClassGrants(completeDraft(), [grant]), [
+      {
+        version: 1,
+        draftId: "draft-1",
+        batchId: "batch-1",
+        phase: "before-acquisition",
+        entries: [{ grantId: grant.grantId, status: "pending", itemIds: [] }],
+        ignoredItemIds: [],
+        unresolvedGrantIds: [],
+        ambiguousGrantIds: [],
+      },
+    ]);
+    const parent = createEmptyDraft(5);
+    parent.acquisition = acquisition;
+
+    expect(normalizeDraft(structuredClone(parent), 1).acquisition?.classGrantReconciliations).toEqual(
+      acquisition.classGrantReconciliations
+    );
+    expect(() =>
+      recordClassGrantReconciliations(acquisition, [
+        { ...acquisition.classGrantReconciliations[0]!, draftId: "another-draft" },
+      ])
+    ).toThrow(/does not match/i);
+  });
+
   it("migrates old parent drafts to acquisition null", () => {
     expect(normalizeDraft({ version: 13, targetLevel: 3 }, 1)).toMatchObject({
-      version: 14,
+      version: 15,
       targetLevel: 3,
       acquisition: null,
+      acquisitionCorrupt: false,
     });
+  });
+
+  it("marks a malformed persisted acquisition instead of silently downgrading it to no acquisition", () => {
+    const raw = createEmptyDraft(5) as unknown as Record<string, unknown>;
+    raw.acquisition = { schemaVersion: 1, draftId: "draft-1", batchId: "batch-1" };
+
+    expect(normalizeDraft(raw, 1)).toMatchObject({ acquisition: null, acquisitionCorrupt: true });
   });
 
   it("reconciles parent target drift without churning identity", () => {
@@ -334,4 +382,24 @@ function line(lineId: string): AcquisitionLineDraft {
     stackingIntent: "separate",
     price: price.value,
   };
+}
+
+function formulaGrant() {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:alchemist-formula-book:class-level-1",
+    profileId: "alchemist-formula-book",
+    origin: { sourceSlotId: "class-level-1", sourceUuid: u.alchemistClass },
+    granterSourceUuid: u.formulaBookFeature,
+    expected: {
+      sourceUuid: u.formulaBookItem,
+      quantity: 1,
+      itemType: "equipment",
+    },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+  });
 }

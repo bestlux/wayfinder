@@ -19,6 +19,7 @@ import { bindWayfinderInteractions, isDraftMutationAction, parseWayfinderAction,
 import { assertApplyCandidateCurrent, persistApplyCandidateIfCurrent, WayfinderApplyDriftError, } from "./application/apply-candidate-service.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
 import { buildSkillPane, projectSkillRanks } from "./application/build-skill-pane-service.js";
+import { prepareCurrentClassGrantPlan } from "./application/class-grant-projection-service.js";
 import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection, setTrainingRuleSelection, syncLanguageChoiceSelections, syncSkillTrainingSelections, toggleAncestryMode, toggleBoostChoice, toggleSkillIncreaseSelection, toggleTrainingSkillSelection, toggleVoluntaryChoice, toggleVoluntaryEnabled, toggleVoluntaryLegacy, } from "./application/draft-adjustment-service.js";
 import { applyDraftLifecycle, buildApplyAttemptDraft, clearDraftLifecycle, hasApplyRecoveryState, } from "./application/draft-lifecycle-service.js";
 import { DraftPersistenceCoordinator } from "./application/draft-persistence-service.js";
@@ -33,6 +34,7 @@ import { createSelectionInvalidationService } from "./application/selection-inva
 import { SemanticCommandQueue } from "./application/semantic-command-queue.js";
 import { buildDraftSaveView, buildWayfinderContext, } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
+import { recordClassGrantReconciliations } from "./domain/acquisition-draft.js";
 import { evaluateWayfinderDraftReadiness, isTrainingStepCompleteFromDraft, WayfinderDraftNotReadyError, } from "./domain/step-evaluation.js";
 import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
@@ -1544,13 +1546,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                             buildCurrentSteps: async (currentSnapshot, currentDraft) => (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
                         });
                     },
-                    resolveFinalActorUpdate: () => buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state"))),
+                    resolveFinalActorUpdate: (evidence) => buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state")), evidence),
                     beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
                     persistFinalActorUpdate: (actorUpdate) => updateActorWithPersistedDraftPrecondition(this.actor, actorUpdate, capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)),
                     validateActorAuthority: canUseWayfinder,
                     spellRarityCeiling,
                     validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
                     validateSelectionEligibility: (selection, step) => this.#validateSelectionEligibility(selection, step, draft, steps, snapshot.skillRanks, this.#applySpellRarityCeiling(draft, step, recovering)),
+                    prepareClassGrantPlan: (actor, currentDraft, currentSteps) => prepareCurrentClassGrantPlan(actor, currentDraft, currentSteps),
                 }).then(() => undefined),
                 finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) => finalizeRecoveredDraftOnActor(this.actor, {
                     beforeFinalize: async () => {
@@ -1566,11 +1569,20 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                             buildCurrentSteps: async (currentSnapshot, currentDraft) => (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
                         });
                     },
-                    resolveFinalActorUpdate: () => buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state"))),
+                    resolveFinalActorUpdate: (evidence) => buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state")), evidence),
                     beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
                     persistFinalActorUpdate: (actorUpdate) => updateActorWithPersistedDraftPrecondition(this.actor, actorUpdate, capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)),
                     recoveryActorUpdate,
                     validateActorAuthority: canUseWayfinder,
+                    classGrantRecovery: draft.acquisition
+                        ? {
+                            kind: "required",
+                            preparePlan: (actor) => prepareCurrentClassGrantPlan(actor, draft, steps),
+                            verifyAcquisitionRecovery: () => {
+                                throw new Error("Starting-equipment recovery is unavailable until the prepared acquisition executor is active.");
+                            },
+                        }
+                        : { kind: "none" },
                 }).then(() => undefined),
             });
         }
@@ -1627,6 +1639,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     let recoverableDraft = cloneData(persistedApplyCandidate);
                     if (error instanceof DraftApplyPhaseError) {
                         recoverableDraft.applyRecoveryActorUpdate = cloneData(error.recoveryActorUpdate);
+                        if (recoverableDraft.acquisition) {
+                            recoverableDraft.acquisition = recordClassGrantReconciliations(recoverableDraft.acquisition, error.completedClassGrantReconciliations);
+                        }
                     }
                     if (currentSnapshot.level < recoverableDraft.targetLevel) {
                         try {

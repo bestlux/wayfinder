@@ -2,8 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { MODULE_ID } from "../src/constants";
 import {
   captureActorEconomicBaseline,
+  evaluateActorEconomicAdmission,
   executeWithActorEconomicBaselineRevalidation,
 } from "../src/wayfinder/application/economic-baseline-service";
+import {
+  CLASS_GRANT_PROFILE_UUIDS,
+  createPlannedClassGrant,
+  createPreparedClassGrantPlan,
+} from "../src/wayfinder/domain/class-grant-reconciliation";
 
 describe("economic baseline actor service", () => {
   it("captures physical identity, quantity, container, and source while excluding currency documents", () => {
@@ -20,6 +26,7 @@ describe("economic baseline actor service", () => {
           batchId: "batch-1",
           lineId: "line-1",
           entryId: "entry-1",
+          plannedGrantId: null,
           stackingIntent: "aggregate",
         },
       }),
@@ -95,6 +102,63 @@ describe("economic baseline actor service", () => {
     ]);
   });
 
+  it("admits an exact native class grant only through live authoritative reconciliation", () => {
+    const u = CLASS_GRANT_PROFILE_UUIDS;
+    const book = itemFixture({
+      id: "book",
+      type: "equipment",
+      quantity: 1,
+      sourceId: u.formulaBookItem,
+    });
+    (book.flags as Record<string, unknown>).pf2e = { grantedBy: { id: "formula" } };
+    const actor = actorFixture([
+      book,
+      actorFeat("formula", u.formulaBookFeature, "alchemy"),
+      {
+        ...actorFeat("alchemy", u.alchemyFeature, null),
+        system: { quantity: 1, location: "class" },
+      },
+      {
+        ...actorFeat("class", u.alchemistClass, null),
+        type: "class",
+        flags: { [MODULE_ID]: { slotId: "class-level-1" } },
+      },
+    ]);
+    const grant = createPlannedClassGrant({
+      grantId: "class-grant:alchemist-formula-book:class-level-1",
+      profileId: "alchemist-formula-book",
+      origin: { sourceSlotId: "class-level-1", sourceUuid: u.alchemistClass },
+      granterSourceUuid: u.formulaBookFeature,
+      expected: { sourceUuid: u.formulaBookItem, quantity: 1, itemType: "equipment" },
+      materializer: "pf2e-native",
+      eligibilityKind: "fixed-class-grant",
+      resaleRule: "normal",
+      eligibilityEvidence: { kind: "fixed-native-profile" },
+      nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+    });
+    const result = evaluateActorEconomicAdmission({
+      actor,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      higherLevelStartEvidence: { kind: "not-required" },
+      history: {
+        previousCharacterAppliedAt: null,
+        previousTargetLevel: null,
+        completedAcquisitionManifestId: null,
+      },
+      preparedClassGrantPlan: createPreparedClassGrantPlan({
+        actorId: "actor-1",
+        draftId: "draft-1",
+        batchId: "batch-1",
+        targetLevel: 1,
+        grants: [grant],
+      }),
+      classGrantPhase: "final",
+    });
+    expect(result).toMatchObject({ kind: "eligible-empty" });
+  });
+
   it("re-captures immediately before write and leaves the write untouched on drift", async () => {
     const actor = actorFixture([]);
     const reviewed = captureActorEconomicBaseline(actor, { capturedAt: "2026-08-18T20:00:00.000Z" });
@@ -148,5 +212,17 @@ function itemFixture(options: {
       core: { sourceId: options.sourceId },
       [MODULE_ID]: { acquisition: options.acquisition },
     },
+  };
+}
+
+function actorFeat(id: string, sourceId: string, grantedById: string | null) {
+  return {
+    id,
+    type: "feat",
+    quantity: 1,
+    sourceId,
+    isOfType: (type: string) => type === "feat",
+    system: { quantity: 1 },
+    flags: { pf2e: grantedById ? { grantedBy: { id: grantedById } } : {} },
   };
 }

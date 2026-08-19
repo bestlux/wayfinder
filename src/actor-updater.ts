@@ -1,5 +1,6 @@
 import {
   type DraftApplyCheckpointHook,
+  type ExecutePreparedDraftApplicationOptions,
   executePreparedDraftApplication,
   executeRecoveredDraftFinalization,
   prepareDraftApplication,
@@ -9,6 +10,11 @@ import type { ActorLike } from "./shared/actor-model.js";
 import { enqueueActorOperation } from "./shared/actor-operation-queue.js";
 import { cloneData } from "./shared/cloning.js";
 import type { DraftState, PendingStep, SelectionRef } from "./types.js";
+import { captureObservedClassGrantItems } from "./wayfinder/application/class-grant-projection-service.js";
+import {
+  type PreparedClassGrantPlanV1,
+  reconcilePreparedClassGrants,
+} from "./wayfinder/domain/class-grant-reconciliation.js";
 import type { SpellRarityCeiling } from "./wayfinder/spell-choice/rarity-access.js";
 
 type DraftMutationActor = SelectorActorLike &
@@ -20,13 +26,19 @@ export interface ApplyDraftOptions {
   beforePrepare?: () => void | Promise<void>;
   onCheckpoint?: DraftApplyCheckpointHook;
   finalActorUpdate?: Record<string, unknown>;
-  resolveFinalActorUpdate?: () => Record<string, unknown> | Promise<Record<string, unknown>>;
+  resolveFinalActorUpdate?: ExecutePreparedDraftApplicationOptions["resolveFinalActorUpdate"];
   beforeFinalActorUpdate?: () => void | Promise<void>;
   persistFinalActorUpdate?: (actorUpdate: Record<string, unknown>) => Promise<unknown>;
   validateActorAuthority: (actor: DraftMutationActor) => boolean;
   spellRarityCeiling: SpellRarityCeiling;
   validateSelectionEligibility: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
   validSkillSlugs?: ReadonlySet<string>;
+  prepareClassGrantPlan?: (
+    actor: DraftMutationActor,
+    draft: DraftState,
+    steps: readonly PendingStep[]
+  ) => PreparedClassGrantPlanV1 | Promise<PreparedClassGrantPlanV1>;
+  executeAcquisitionItems?: ExecutePreparedDraftApplicationOptions["executeAcquisitionItems"];
 }
 
 export interface FinalizeRecoveredDraftOptions {
@@ -35,8 +47,20 @@ export interface FinalizeRecoveredDraftOptions {
   persistFinalActorUpdate?: (actorUpdate: Record<string, unknown>) => Promise<unknown>;
   onCheckpoint?: DraftApplyCheckpointHook;
   recoveryActorUpdate: Record<string, unknown>;
-  resolveFinalActorUpdate: () => Record<string, unknown> | Promise<Record<string, unknown>>;
+  resolveFinalActorUpdate: NonNullable<ExecutePreparedDraftApplicationOptions["resolveFinalActorUpdate"]>;
   validateActorAuthority: (actor: DraftMutationActor) => boolean;
+  classGrantRecovery:
+    | { readonly kind: "none" }
+    | {
+        readonly kind: "required";
+        readonly preparePlan: (
+          actor: DraftMutationActor
+        ) => PreparedClassGrantPlanV1 | Promise<PreparedClassGrantPlanV1>;
+        readonly verifyAcquisitionRecovery: (args: {
+          readonly actor: DraftMutationActor;
+          readonly plan: PreparedClassGrantPlanV1;
+        }) => void | Promise<void>;
+      };
 }
 
 const inFlightByActor = new WeakMap<object, Map<string, Promise<Record<string, unknown>>>>();
@@ -50,6 +74,9 @@ export function applyDraftToActor(
   options: ApplyDraftOptions
 ): Promise<Record<string, unknown>> {
   assertRequiredActorAuthority(actor, options?.validateActorAuthority);
+  if (draft.acquisition && !options.executeAcquisitionItems) {
+    throw new Error("Starting-equipment Apply requires the prepared acquisition executor.");
+  }
   const actorKey = actor as object;
   const draftSnapshot = cloneData(draft);
   const stepSnapshots = cloneData(steps);
@@ -71,6 +98,7 @@ export function applyDraftToActor(
       spellRarityCeiling: options.spellRarityCeiling,
       validateSelectionEligibility: options.validateSelectionEligibility,
       validSkillSlugs: options.validSkillSlugs,
+      prepareClassGrantPlan: options.prepareClassGrantPlan,
     });
     const result = await executePreparedDraftApplication(prepared, {
       onCheckpoint: options.onCheckpoint,
@@ -78,6 +106,7 @@ export function applyDraftToActor(
       resolveFinalActorUpdate: options.resolveFinalActorUpdate,
       beforeFinalActorUpdate: options.beforeFinalActorUpdate,
       persistFinalActorUpdate: options.persistFinalActorUpdate,
+      executeAcquisitionItems: options.executeAcquisitionItems,
     });
     return result.actorUpdate;
   });
@@ -105,6 +134,20 @@ export function finalizeRecoveredDraftOnActor(
   assertRequiredActorAuthority(actor, options?.validateActorAuthority);
   return enqueueActorOperation(actor as object, async () => {
     await options.beforeFinalize?.();
+    const classGrantReconciliations = [];
+    if (options.classGrantRecovery.kind === "required") {
+      const plan = await options.classGrantRecovery.preparePlan(actor);
+      const reconciliation = reconcilePreparedClassGrants({
+        plan,
+        actorItems: captureObservedClassGrantItems(actor),
+        phase: "final",
+      });
+      classGrantReconciliations.push(reconciliation);
+      if (reconciliation.entries.some((entry) => entry.status !== "resolved")) {
+        throw new Error("Planned class equipment is missing or ambiguous during recovery finalization.");
+      }
+      await options.classGrantRecovery.verifyAcquisitionRecovery({ actor, plan });
+    }
     const result = await executeRecoveredDraftFinalization(actor, {
       resolveFinalActorUpdate: options.resolveFinalActorUpdate,
       beforeFinalActorUpdate: options.beforeFinalActorUpdate,
@@ -112,6 +155,7 @@ export function finalizeRecoveredDraftOnActor(
       onCheckpoint: options.onCheckpoint,
       recoveryActorUpdate: cloneData(options.recoveryActorUpdate),
       validateActorAuthority: options.validateActorAuthority,
+      classGrantReconciliations,
     });
     return result.actorUpdate;
   });
@@ -140,6 +184,8 @@ function draftApplyOperationKey(draft: DraftState, steps: PendingStep[], options
     spellRarityCeiling: options.spellRarityCeiling,
     validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),
     validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,
+    prepareClassGrantPlan: operationIdentity(options.prepareClassGrantPlan),
+    executeAcquisitionItems: operationIdentity(options.executeAcquisitionItems),
   });
 }
 

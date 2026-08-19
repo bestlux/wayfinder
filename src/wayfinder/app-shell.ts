@@ -43,6 +43,7 @@ import {
 } from "./application/apply-candidate-service.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
 import { buildSkillPane, projectSkillRanks } from "./application/build-skill-pane-service.js";
+import { prepareCurrentClassGrantPlan } from "./application/class-grant-projection-service.js";
 import {
   adjustDraftTargetLevel,
   type DraftAdjustmentState,
@@ -111,6 +112,7 @@ import {
   type WayfinderTemplateContext,
 } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
+import { recordClassGrantReconciliations } from "./domain/acquisition-draft.js";
 import {
   evaluateWayfinderDraftReadiness,
   isTrainingStepCompleteFromDraft,
@@ -1950,8 +1952,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                   (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
               });
             },
-            resolveFinalActorUpdate: () =>
-              buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state"))),
+            resolveFinalActorUpdate: (evidence) =>
+              buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state")), evidence),
             beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
             persistFinalActorUpdate: (actorUpdate) =>
               updateActorWithPersistedDraftPrecondition(
@@ -1971,6 +1973,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 snapshot.skillRanks,
                 this.#applySpellRarityCeiling(draft, step, recovering)
               ),
+            prepareClassGrantPlan: (actor, currentDraft, currentSteps) =>
+              prepareCurrentClassGrantPlan(actor, currentDraft, currentSteps),
           }).then(() => undefined),
         finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) =>
           finalizeRecoveredDraftOnActor(this.actor, {
@@ -1988,8 +1992,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                   (await this.#buildPlan(currentSnapshot, currentDraft)).steps,
               });
             },
-            resolveFinalActorUpdate: () =>
-              buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state"))),
+            resolveFinalActorUpdate: (evidence) =>
+              buildFinalActorUpdate(normalizeState(this.actor.getFlag(MODULE_ID, "state")), evidence),
             beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
             persistFinalActorUpdate: (actorUpdate) =>
               updateActorWithPersistedDraftPrecondition(
@@ -1999,6 +2003,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
               ),
             recoveryActorUpdate,
             validateActorAuthority: canUseWayfinder,
+            classGrantRecovery: draft.acquisition
+              ? {
+                  kind: "required",
+                  preparePlan: (actor) => prepareCurrentClassGrantPlan(actor, draft, steps),
+                  verifyAcquisitionRecovery: () => {
+                    throw new Error(
+                      "Starting-equipment recovery is unavailable until the prepared acquisition executor is active."
+                    );
+                  },
+                }
+              : { kind: "none" },
           }).then(() => undefined),
       });
     } catch (error) {
@@ -2059,6 +2074,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           let recoverableDraft = cloneData(persistedApplyCandidate);
           if (error instanceof DraftApplyPhaseError) {
             recoverableDraft.applyRecoveryActorUpdate = cloneData(error.recoveryActorUpdate);
+            if (recoverableDraft.acquisition) {
+              recoverableDraft.acquisition = recordClassGrantReconciliations(
+                recoverableDraft.acquisition,
+                error.completedClassGrantReconciliations
+              );
+            }
           }
           if (currentSnapshot.level < recoverableDraft.targetLevel) {
             try {

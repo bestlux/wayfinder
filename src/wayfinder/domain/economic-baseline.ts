@@ -1,4 +1,9 @@
 import type { AcquisitionStackingIntent } from "./acquisition-types.js";
+import {
+  type ClassGrantReconciliationResultV1,
+  isClassGrantReconciliationConsistentForPlan,
+  type PreparedClassGrantPlanV1,
+} from "./class-grant-reconciliation.js";
 import type { EquipmentHigherLevelStartEvidence } from "./equipment-policy.js";
 
 export interface AcquisitionIdentityV1 {
@@ -6,6 +11,7 @@ export interface AcquisitionIdentityV1 {
   readonly batchId: string;
   readonly lineId: string;
   readonly entryId: string;
+  readonly plannedGrantId: string | null;
   readonly stackingIntent: AcquisitionStackingIntent;
 }
 
@@ -50,8 +56,8 @@ export interface EconomicHistoryFacts {
 export type EconomicHandoffReason =
   | { readonly code: "foreign-physical-items"; readonly itemIds: readonly string[] }
   | { readonly code: "nonzero-currency"; readonly copper: number }
-  | { readonly code: "unresolved-class-grant"; readonly itemIds: readonly string[] }
-  | { readonly code: "ambiguous-class-grant"; readonly itemIds: readonly string[] };
+  | { readonly code: "unresolved-class-grant"; readonly grantIds: readonly string[] }
+  | { readonly code: "ambiguous-class-grant"; readonly grantIds: readonly string[] };
 
 export interface EconomicHandoffV1 {
   readonly version: 1;
@@ -159,8 +165,8 @@ export function evaluateEconomicAdmission(args: {
   higherLevelStartEvidence: EquipmentHigherLevelStartEvidence;
   history: EconomicHistoryFacts;
   retryExpectation?: EconomicRetryExpectation | null;
-  unresolvedClassGrantItemIds?: readonly string[];
-  ambiguousClassGrantItemIds?: readonly string[];
+  classGrantReconciliation: ClassGrantReconciliationResultV1;
+  preparedClassGrantPlan: PreparedClassGrantPlanV1;
 }): EconomicAdmissionResult {
   const { baseline } = args;
   if (
@@ -197,8 +203,19 @@ export function evaluateEconomicAdmission(args: {
     if (startProblem) return blocked(baseline, startProblem.code, startProblem.message);
   }
 
-  const unresolved = uniqueSorted(args.unresolvedClassGrantItemIds ?? []);
-  const ambiguous = uniqueSorted(args.ambiguousClassGrantItemIds ?? []);
+  const reconciliation = args.classGrantReconciliation;
+  if (
+    !isClassGrantReconciliationConsistentForPlan(reconciliation, args.preparedClassGrantPlan) ||
+    args.preparedClassGrantPlan.subject.actorId !== baseline.actorId ||
+    args.preparedClassGrantPlan.subject.draftId !== args.draftId ||
+    args.preparedClassGrantPlan.subject.batchId !== args.batchId ||
+    args.preparedClassGrantPlan.subject.targetLevel !== args.targetLevel
+  ) {
+    throw new TypeError("The class-grant reconciliation belongs to another draft or batch.");
+  }
+  const unresolved = uniqueSorted(reconciliation.unresolvedGrantIds);
+  const ambiguous = uniqueSorted(reconciliation.ambiguousGrantIds);
+  const ignoredClassGrantItemIds = new Set(reconciliation.ignoredItemIds);
   const retry = args.retryExpectation ?? null;
   if (retry && (retry.draftId !== args.draftId || retry.batchId !== args.batchId)) {
     return blocked(baseline, "retry-identity-mismatch", "The retry expectation belongs to a different draft or batch.");
@@ -211,6 +228,7 @@ export function evaluateEconomicAdmission(args: {
   const observedRetryEntries: string[] = [];
   const foreignItemIds: string[] = [];
   for (const item of baseline.physicalItems) {
+    if (ignoredClassGrantItemIds.has(item.itemId)) continue;
     const identity = item.acquisitionIdentity;
     const expected = identity ? retryEntries.get(identity.entryId) : null;
     if (
@@ -234,8 +252,8 @@ export function evaluateEconomicAdmission(args: {
   if (foreignItemIds.length > 0) {
     handoffReasons.push({ code: "foreign-physical-items", itemIds: uniqueSorted(foreignItemIds) });
   }
-  if (unresolved.length > 0) handoffReasons.push({ code: "unresolved-class-grant", itemIds: unresolved });
-  if (ambiguous.length > 0) handoffReasons.push({ code: "ambiguous-class-grant", itemIds: ambiguous });
+  if (unresolved.length > 0) handoffReasons.push({ code: "unresolved-class-grant", grantIds: unresolved });
+  if (ambiguous.length > 0) handoffReasons.push({ code: "ambiguous-class-grant", grantIds: ambiguous });
   const retryCurrencyMatches =
     !!retry && observedRetryEntries.length > 0 && baseline.currencyCopper === retry.expectedCurrencyCopper;
   if (baseline.currencyCopper !== 0 && !retryCurrencyMatches) {
@@ -289,15 +307,18 @@ export function normalizeAcquisitionIdentity(raw: unknown): AcquisitionIdentityV
     !nonEmpty(raw.batchId) ||
     !nonEmpty(raw.lineId) ||
     !nonEmpty(raw.entryId) ||
+    (raw.plannedGrantId !== null && !nonEmpty(raw.plannedGrantId)) ||
     (raw.stackingIntent !== "aggregate" && raw.stackingIntent !== "separate")
   ) {
     return null;
   }
+  const plannedGrantId = raw.plannedGrantId === null ? null : String(raw.plannedGrantId);
   return {
     draftId: raw.draftId,
     batchId: raw.batchId,
     lineId: raw.lineId,
     entryId: raw.entryId,
+    plannedGrantId,
     stackingIntent: raw.stackingIntent,
   };
 }
@@ -341,9 +362,15 @@ function normalizeHandoffReason(raw: unknown): EconomicHandoffReason | null {
   ) {
     return null;
   }
-  if (!Array.isArray(raw.itemIds) || raw.itemIds.some((itemId) => !nonEmpty(itemId))) return null;
-  const itemIds = uniqueSorted(raw.itemIds as string[]);
-  return itemIds.length > 0 ? { code: raw.code, itemIds } : null;
+  const field = raw.code === "foreign-physical-items" ? "itemIds" : "grantIds";
+  const values = raw[field];
+  if (!Array.isArray(values) || values.some((value) => !nonEmpty(value))) return null;
+  const normalized = uniqueSorted(values as string[]);
+  return normalized.length > 0
+    ? raw.code === "foreign-physical-items"
+      ? { code: raw.code, itemIds: normalized }
+      : { code: raw.code, grantIds: normalized }
+    : null;
 }
 
 function higherLevelStartProblem(

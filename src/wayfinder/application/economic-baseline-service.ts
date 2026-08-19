@@ -1,6 +1,11 @@
 import { MODULE_ID } from "../../constants.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import {
+  type ClassGrantReconciliationResultV1,
+  type PreparedClassGrantPlanV1,
+  reconcilePreparedClassGrants,
+} from "../domain/class-grant-reconciliation.js";
+import {
   createEconomicBaseline,
   type EconomicAdmissionResult,
   type EconomicBaselineDifference,
@@ -12,6 +17,7 @@ import {
   normalizeAcquisitionIdentity,
 } from "../domain/economic-baseline.js";
 import type { EquipmentHigherLevelStartEvidence } from "../domain/equipment-policy.js";
+import { captureObservedClassGrantItems } from "./class-grant-projection-service.js";
 
 interface PhysicalItemLike {
   id?: unknown;
@@ -115,10 +121,15 @@ export function evaluateActorEconomicAdmission(args: {
   higherLevelStartEvidence: EquipmentHigherLevelStartEvidence;
   history: EconomicHistoryFacts;
   retryExpectation?: EconomicRetryExpectation | null;
-  unresolvedClassGrantItemIds?: readonly string[];
-  ambiguousClassGrantItemIds?: readonly string[];
+  preparedClassGrantPlan: PreparedClassGrantPlanV1;
+  classGrantPhase: ClassGrantReconciliationResultV1["phase"];
   capturedAt?: string;
 }): EconomicAdmissionResult {
+  const classGrantReconciliation = reconcilePreparedClassGrants({
+    plan: args.preparedClassGrantPlan,
+    actorItems: captureObservedClassGrantItems(args.actor),
+    phase: args.classGrantPhase,
+  });
   return evaluateEconomicAdmission({
     baseline: captureActorEconomicBaseline(args.actor, { capturedAt: args.capturedAt }),
     draftId: args.draftId,
@@ -127,8 +138,8 @@ export function evaluateActorEconomicAdmission(args: {
     higherLevelStartEvidence: args.higherLevelStartEvidence,
     history: args.history,
     retryExpectation: args.retryExpectation,
-    unresolvedClassGrantItemIds: args.unresolvedClassGrantItemIds,
-    ambiguousClassGrantItemIds: args.ambiguousClassGrantItemIds,
+    classGrantReconciliation,
+    preparedClassGrantPlan: args.preparedClassGrantPlan,
   });
 }
 

@@ -8,6 +8,7 @@ import type {
   ModuleState,
   PendingStep,
 } from "../../types.js";
+import type { ClassGrantReconciliationResultV1 } from "../domain/class-grant-reconciliation.js";
 import {
   evaluateWayfinderDraftReadiness,
   type WayfinderStepEvaluation,
@@ -24,6 +25,7 @@ export interface ApplyDraftLifecycleArgs {
   steps: PendingStep[];
   evaluateStep: (step: PendingStep) => Promise<WayfinderStepEvaluation>;
   additionalBlockers?: WayfinderStepIssue[];
+  acquisitionExecutionAvailable?: boolean;
   reviewLines?: string[];
   confirmApply?: (message: string) => boolean | Promise<boolean>;
   beforeApply?: (applyAttemptDraft: DraftState) => Promise<void>;
@@ -37,7 +39,13 @@ export interface ApplyDraftLifecycleArgs {
 
 export type ApplyFinalStateSnapshot = Pick<ModuleState, "completedStepIds" | "existingCharacterHistory"> &
   Partial<Pick<ModuleState, "lastAppliedSpellRarityAttestations">>;
-export type BuildApplyFinalActorUpdate = (currentState?: ApplyFinalStateSnapshot) => Record<string, unknown>;
+export interface ApplyFinalEvidence {
+  readonly classGrantReconciliations: readonly ClassGrantReconciliationResultV1[];
+}
+export type BuildApplyFinalActorUpdate = (
+  currentState?: ApplyFinalStateSnapshot,
+  evidence?: ApplyFinalEvidence
+) => Record<string, unknown>;
 
 export type ApplyDraftLifecycleResult =
   | { kind: "warning"; warning: "draft-not-ready" | "no-pending-steps"; blockers: WayfinderStepIssue[] }
@@ -45,6 +53,36 @@ export type ApplyDraftLifecycleResult =
   | { kind: "applied"; nextDraft: DraftState };
 
 export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promise<ApplyDraftLifecycleResult> {
+  if (args.draft.acquisitionCorrupt) {
+    return {
+      kind: "warning",
+      warning: "draft-not-ready",
+      blockers: [
+        {
+          code: "dependency-review",
+          stepId: "starting-equipment",
+          slotId: "starting-equipment",
+          title: "Starting equipment recovery",
+          message: "The saved starting-equipment state is malformed and must be cleared or repaired before Apply.",
+        },
+      ],
+    };
+  }
+  if (args.draft.acquisition && args.acquisitionExecutionAvailable !== true) {
+    return {
+      kind: "warning",
+      warning: "draft-not-ready",
+      blockers: [
+        {
+          code: "dependency-review",
+          stepId: "starting-equipment",
+          slotId: "starting-equipment",
+          title: "Starting equipment",
+          message: "Starting-equipment Apply is unavailable until its prepared item executor is active.",
+        },
+      ],
+    };
+  }
   const recoveryOnly = args.steps.length === 0 && hasApplyRecoveryState(args.draft);
   if (args.steps.length === 0 && !recoveryOnly) {
     return {

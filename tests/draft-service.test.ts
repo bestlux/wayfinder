@@ -11,9 +11,10 @@ import type { SelectionRef } from "../src/types";
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 14,
+      version: 15,
       targetLevel: 4,
       acquisition: null,
+      acquisitionCorrupt: false,
       applyAttemptStepIds: [],
       applyCompletedStepIds: [],
       applyRecoveryActorUpdate: {},
@@ -64,6 +65,20 @@ describe("draft-service", () => {
       existingCharacterHistory: null,
       lastAppliedSpellRarityAttestations: [],
     });
+  });
+
+  it("preserves a malformed-acquisition recovery marker across save and reload", () => {
+    const normalized = normalizeDraft(
+      {
+        ...createEmptyDraft(5),
+        acquisition: { schemaVersion: 999 },
+      },
+      5
+    );
+
+    expect(normalized.acquisition).toBeNull();
+    expect(normalized.acquisitionCorrupt).toBe(true);
+    expect(normalizeDraft(structuredClone(normalized), 5).acquisitionCorrupt).toBe(true);
   });
 
   it("sanitizes malformed draft values", () => {
@@ -256,7 +271,7 @@ describe("draft-service", () => {
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(14);
+    expect(patched.version).toBe(15);
     expect(patched.updatedAt).not.toBeNull();
   });
 

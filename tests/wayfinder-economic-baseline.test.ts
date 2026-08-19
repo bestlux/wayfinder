@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CLASS_GRANT_PROFILE_UUIDS,
+  createPlannedClassGrant,
+  createPreparedClassGrantPlan,
+} from "../src/wayfinder/domain/class-grant-reconciliation";
+import {
   compareEconomicBaselines,
   createEconomicBaseline,
   type EconomicPhysicalItemV1,
@@ -51,22 +56,53 @@ describe("economic baseline", () => {
   });
 
   it("routes foreign physical items, currency, and unresolved grants to handoff", () => {
+    const grants = [formulaGrant(), titanGrant()];
     const result = admission({
       baseline: baseline({ currencyCopper: 25, physicalItems: [physical("foreign")] }),
       higherLevelStartEvidence: ownerStartEvidence(),
-      unresolvedClassGrantItemIds: ["unresolved"],
-      ambiguousClassGrantItemIds: ["ambiguous"],
+      classGrantReconciliation: reconciliation({
+        entries: [
+          { grantId: grants[0]!.grantId, status: "unresolved", itemIds: [] },
+          { grantId: grants[1]!.grantId, status: "ambiguous", itemIds: ["candidate-a", "candidate-b"] },
+        ],
+        unresolvedGrantIds: [grants[0]!.grantId],
+        ambiguousGrantIds: [grants[1]!.grantId],
+      }),
+      preparedClassGrantPlan: preparedPlan(grants),
     });
 
     expect(result).toMatchObject({ kind: "handoff", handoff: { kind: "pf2e-sheet" } });
     if (result.kind === "handoff") {
       expect(result.handoff.reasons).toEqual([
         { code: "foreign-physical-items", itemIds: ["foreign"] },
-        { code: "unresolved-class-grant", itemIds: ["unresolved"] },
-        { code: "ambiguous-class-grant", itemIds: ["ambiguous"] },
+        { code: "unresolved-class-grant", grantIds: [grants[0]!.grantId] },
+        { code: "ambiguous-class-grant", grantIds: [grants[1]!.grantId] },
         { code: "nonzero-currency", copper: 25 },
       ]);
     }
+  });
+
+  it("ignores only item IDs resolved by authoritative class-grant reconciliation", () => {
+    const granted = physical("granted-book");
+    const grant = formulaGrant();
+    expect(
+      admission({
+        baseline: baseline({ physicalItems: [granted] }),
+        higherLevelStartEvidence: ownerStartEvidence(),
+        classGrantReconciliation: reconciliation({
+          entries: [{ grantId: grant.grantId, status: "resolved", itemIds: ["granted-book"] }],
+          ignoredItemIds: ["granted-book"],
+        }),
+        preparedClassGrantPlan: preparedPlan([grant]),
+      })
+    ).toMatchObject({ kind: "eligible-empty" });
+
+    expect(
+      admission({
+        baseline: baseline({ physicalItems: [granted] }),
+        higherLevelStartEvidence: ownerStartEvidence(),
+      })
+    ).toMatchObject({ kind: "handoff", handoff: { reasons: [{ code: "foreign-physical-items" }] } });
   });
 
   it("recognizes only exact same-draft and same-batch partial outputs as retry", () => {
@@ -76,6 +112,7 @@ describe("economic baseline", () => {
         batchId: "batch-1",
         lineId: "line-1",
         entryId: "entry-1",
+        plannedGrantId: null,
         stackingIntent: "separate",
       },
     });
@@ -165,6 +202,7 @@ describe("economic baseline", () => {
                 batchId: "batch-1",
                 lineId: "line-1",
                 entryId: "entry-1",
+                plannedGrantId: null,
                 stackingIntent: "aggregate",
               },
             }),
@@ -218,19 +256,109 @@ function admission(
     baseline: Parameters<typeof evaluateEconomicAdmission>[0]["baseline"];
   }
 ) {
+  const draftId = overrides.draftId ?? "draft-1";
+  const batchId = overrides.batchId ?? "batch-1";
+  const targetLevel = overrides.targetLevel ?? 5;
+  const preparedClassGrantPlan =
+    overrides.preparedClassGrantPlan ??
+    createPreparedClassGrantPlan({
+      actorId: overrides.baseline.actorId,
+      draftId,
+      batchId,
+      targetLevel,
+      grants: [],
+    });
   return evaluateEconomicAdmission({
     baseline: overrides.baseline,
-    draftId: "draft-1",
-    batchId: "batch-1",
-    targetLevel: 5,
+    draftId,
+    batchId,
+    targetLevel,
     higherLevelStartEvidence: { kind: "not-required" },
     history: {
       previousCharacterAppliedAt: null,
       previousTargetLevel: null,
       completedAcquisitionManifestId: null,
     },
+    classGrantReconciliation: reconciliation(),
+    preparedClassGrantPlan,
     ...overrides,
   });
+}
+
+function preparedPlan(grants: Parameters<typeof createPreparedClassGrantPlan>[0]["grants"]) {
+  return createPreparedClassGrantPlan({
+    actorId: "actor-1",
+    draftId: "draft-1",
+    batchId: "batch-1",
+    targetLevel: 5,
+    grants,
+  });
+}
+
+function formulaGrant() {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:alchemist-formula-book:class-level-1",
+    profileId: "alchemist-formula-book",
+    origin: { sourceSlotId: "class-level-1", sourceUuid: u.alchemistClass },
+    granterSourceUuid: u.formulaBookFeature,
+    expected: { sourceUuid: u.formulaBookItem, quantity: 1, itemType: "equipment" },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+  });
+}
+
+function titanGrant() {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:titan-mauler:class-branch-instinct-level-1",
+    profileId: "giant-instinct-titan-mauler",
+    origin: { sourceSlotId: "class-branch-instinct-level-1", sourceUuid: u.giantInstinct },
+    granterSourceUuid: u.giantInstinct,
+    expected: { sourceUuid: "Compendium.pf2e.equipment-srd.Item.weapon", quantity: 1, itemType: "weapon" },
+    materializer: "wayfinder-acquisition",
+    eligibilityKind: "catalogue-choice",
+    resaleRule: "zero-until-rune-investment",
+    eligibilityEvidence: {
+      kind: "titan-mauler",
+      documentFingerprint: "weapon-1",
+      lineId: "line-titan",
+      lineDocumentFingerprint: "weapon-line-1",
+      linePriceFingerprint: "weapon-price-1",
+      policyFingerprint: "policy-1",
+      actorSize: "medium",
+      targetSize: "large",
+      basePriceCopper: 900,
+      weaponCategory: "martial",
+      rangeIncrement: null,
+      rarity: "common",
+      characterAccessRef: null,
+      sourceAllowed: true,
+      quantity: 1,
+      permanence: "permanent",
+      componentKind: "baseline-item",
+    },
+    nativeGrantChainSourceUuids: [],
+  });
+}
+
+function reconciliation(
+  overrides: Partial<Parameters<typeof evaluateEconomicAdmission>[0]["classGrantReconciliation"]> = {}
+) {
+  return {
+    version: 1 as const,
+    draftId: "draft-1",
+    batchId: "batch-1",
+    phase: "before-acquisition" as const,
+    entries: [],
+    ignoredItemIds: [],
+    unresolvedGrantIds: [],
+    ambiguousGrantIds: [],
+    ...overrides,
+  };
 }
 
 function baseline(

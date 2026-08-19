@@ -1,3 +1,4 @@
+import { isClassGrantReconciliationConsistentForPlan, } from "./class-grant-reconciliation.js";
 export function createEconomicBaseline(args) {
     if (!nonEmpty(args.actorId) || !validTimestamp(args.capturedAt) || !validCopper(args.currencyCopper)) {
         throw new TypeError("The economic baseline subject, timestamp, or currency is invalid.");
@@ -78,8 +79,17 @@ export function evaluateEconomicAdmission(args) {
         if (startProblem)
             return blocked(baseline, startProblem.code, startProblem.message);
     }
-    const unresolved = uniqueSorted(args.unresolvedClassGrantItemIds ?? []);
-    const ambiguous = uniqueSorted(args.ambiguousClassGrantItemIds ?? []);
+    const reconciliation = args.classGrantReconciliation;
+    if (!isClassGrantReconciliationConsistentForPlan(reconciliation, args.preparedClassGrantPlan) ||
+        args.preparedClassGrantPlan.subject.actorId !== baseline.actorId ||
+        args.preparedClassGrantPlan.subject.draftId !== args.draftId ||
+        args.preparedClassGrantPlan.subject.batchId !== args.batchId ||
+        args.preparedClassGrantPlan.subject.targetLevel !== args.targetLevel) {
+        throw new TypeError("The class-grant reconciliation belongs to another draft or batch.");
+    }
+    const unresolved = uniqueSorted(reconciliation.unresolvedGrantIds);
+    const ambiguous = uniqueSorted(reconciliation.ambiguousGrantIds);
+    const ignoredClassGrantItemIds = new Set(reconciliation.ignoredItemIds);
     const retry = args.retryExpectation ?? null;
     if (retry && (retry.draftId !== args.draftId || retry.batchId !== args.batchId)) {
         return blocked(baseline, "retry-identity-mismatch", "The retry expectation belongs to a different draft or batch.");
@@ -91,6 +101,8 @@ export function evaluateEconomicAdmission(args) {
     const observedRetryEntries = [];
     const foreignItemIds = [];
     for (const item of baseline.physicalItems) {
+        if (ignoredClassGrantItemIds.has(item.itemId))
+            continue;
         const identity = item.acquisitionIdentity;
         const expected = identity ? retryEntries.get(identity.entryId) : null;
         if (retry &&
@@ -112,9 +124,9 @@ export function evaluateEconomicAdmission(args) {
         handoffReasons.push({ code: "foreign-physical-items", itemIds: uniqueSorted(foreignItemIds) });
     }
     if (unresolved.length > 0)
-        handoffReasons.push({ code: "unresolved-class-grant", itemIds: unresolved });
+        handoffReasons.push({ code: "unresolved-class-grant", grantIds: unresolved });
     if (ambiguous.length > 0)
-        handoffReasons.push({ code: "ambiguous-class-grant", itemIds: ambiguous });
+        handoffReasons.push({ code: "ambiguous-class-grant", grantIds: ambiguous });
     const retryCurrencyMatches = !!retry && observedRetryEntries.length > 0 && baseline.currencyCopper === retry.expectedCurrencyCopper;
     if (baseline.currencyCopper !== 0 && !retryCurrencyMatches) {
         handoffReasons.push({ code: "nonzero-currency", copper: baseline.currencyCopper });
@@ -157,14 +169,17 @@ export function normalizeAcquisitionIdentity(raw) {
         !nonEmpty(raw.batchId) ||
         !nonEmpty(raw.lineId) ||
         !nonEmpty(raw.entryId) ||
+        (raw.plannedGrantId !== null && !nonEmpty(raw.plannedGrantId)) ||
         (raw.stackingIntent !== "aggregate" && raw.stackingIntent !== "separate")) {
         return null;
     }
+    const plannedGrantId = raw.plannedGrantId === null ? null : String(raw.plannedGrantId);
     return {
         draftId: raw.draftId,
         batchId: raw.batchId,
         lineId: raw.lineId,
         entryId: raw.entryId,
+        plannedGrantId,
         stackingIntent: raw.stackingIntent,
     };
 }
@@ -203,10 +218,16 @@ function normalizeHandoffReason(raw) {
         raw.code !== "ambiguous-class-grant") {
         return null;
     }
-    if (!Array.isArray(raw.itemIds) || raw.itemIds.some((itemId) => !nonEmpty(itemId)))
+    const field = raw.code === "foreign-physical-items" ? "itemIds" : "grantIds";
+    const values = raw[field];
+    if (!Array.isArray(values) || values.some((value) => !nonEmpty(value)))
         return null;
-    const itemIds = uniqueSorted(raw.itemIds);
-    return itemIds.length > 0 ? { code: raw.code, itemIds } : null;
+    const normalized = uniqueSorted(values);
+    return normalized.length > 0
+        ? raw.code === "foreign-physical-items"
+            ? { code: raw.code, itemIds: normalized }
+            : { code: raw.code, grantIds: normalized }
+        : null;
 }
 function higherLevelStartProblem(evidence, actorId, draftId, targetLevel) {
     if (evidence.kind === "not-required") {

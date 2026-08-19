@@ -1,11 +1,16 @@
 import { executePreparedDraftApplication, executeRecoveredDraftFinalization, prepareDraftApplication, } from "./actor-updater/prepared-draft-application.js";
 import { enqueueActorOperation } from "./shared/actor-operation-queue.js";
 import { cloneData } from "./shared/cloning.js";
+import { captureObservedClassGrantItems } from "./wayfinder/application/class-grant-projection-service.js";
+import { reconcilePreparedClassGrants, } from "./wayfinder/domain/class-grant-reconciliation.js";
 const inFlightByActor = new WeakMap();
 const operationIdentityByReference = new WeakMap();
 let nextOperationIdentity = 1;
 export function applyDraftToActor(actor, draft, steps, options) {
     assertRequiredActorAuthority(actor, options?.validateActorAuthority);
+    if (draft.acquisition && !options.executeAcquisitionItems) {
+        throw new Error("Starting-equipment Apply requires the prepared acquisition executor.");
+    }
     const actorKey = actor;
     const draftSnapshot = cloneData(draft);
     const stepSnapshots = cloneData(steps);
@@ -26,6 +31,7 @@ export function applyDraftToActor(actor, draft, steps, options) {
             spellRarityCeiling: options.spellRarityCeiling,
             validateSelectionEligibility: options.validateSelectionEligibility,
             validSkillSlugs: options.validSkillSlugs,
+            prepareClassGrantPlan: options.prepareClassGrantPlan,
         });
         const result = await executePreparedDraftApplication(prepared, {
             onCheckpoint: options.onCheckpoint,
@@ -33,6 +39,7 @@ export function applyDraftToActor(actor, draft, steps, options) {
             resolveFinalActorUpdate: options.resolveFinalActorUpdate,
             beforeFinalActorUpdate: options.beforeFinalActorUpdate,
             persistFinalActorUpdate: options.persistFinalActorUpdate,
+            executeAcquisitionItems: options.executeAcquisitionItems,
         });
         return result.actorUpdate;
     });
@@ -54,6 +61,20 @@ export function finalizeRecoveredDraftOnActor(actor, options) {
     assertRequiredActorAuthority(actor, options?.validateActorAuthority);
     return enqueueActorOperation(actor, async () => {
         await options.beforeFinalize?.();
+        const classGrantReconciliations = [];
+        if (options.classGrantRecovery.kind === "required") {
+            const plan = await options.classGrantRecovery.preparePlan(actor);
+            const reconciliation = reconcilePreparedClassGrants({
+                plan,
+                actorItems: captureObservedClassGrantItems(actor),
+                phase: "final",
+            });
+            classGrantReconciliations.push(reconciliation);
+            if (reconciliation.entries.some((entry) => entry.status !== "resolved")) {
+                throw new Error("Planned class equipment is missing or ambiguous during recovery finalization.");
+            }
+            await options.classGrantRecovery.verifyAcquisitionRecovery({ actor, plan });
+        }
         const result = await executeRecoveredDraftFinalization(actor, {
             resolveFinalActorUpdate: options.resolveFinalActorUpdate,
             beforeFinalActorUpdate: options.beforeFinalActorUpdate,
@@ -61,6 +82,7 @@ export function finalizeRecoveredDraftOnActor(actor, options) {
             onCheckpoint: options.onCheckpoint,
             recoveryActorUpdate: cloneData(options.recoveryActorUpdate),
             validateActorAuthority: options.validateActorAuthority,
+            classGrantReconciliations,
         });
         return result.actorUpdate;
     });
@@ -84,6 +106,8 @@ function draftApplyOperationKey(draft, steps, options) {
         spellRarityCeiling: options.spellRarityCeiling,
         validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),
         validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,
+        prepareClassGrantPlan: operationIdentity(options.prepareClassGrantPlan),
+        executeAcquisitionItems: operationIdentity(options.executeAcquisitionItems),
     });
 }
 function operationIdentity(value) {

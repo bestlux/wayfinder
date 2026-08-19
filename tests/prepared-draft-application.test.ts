@@ -10,7 +10,7 @@ import {
   executePreparedDraftApplication,
   prepareDraftApplication as prepareDraftApplicationWithAuthority,
 } from "../src/actor-updater/prepared-draft-application";
-import { DRAFT_FLAG } from "../src/constants";
+import { DRAFT_FLAG, MODULE_ID } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
 import type { ActorItemLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import { enqueueActorOperation } from "../src/shared/actor-operation-queue";
@@ -22,6 +22,11 @@ import {
   updateActorWithPersistedDraftPrecondition,
   WayfinderDraftWriteConflictError,
 } from "../src/wayfinder/application/draft-write-guard";
+import {
+  CLASS_GRANT_PROFILE_UUIDS,
+  createPlannedClassGrant,
+  createPreparedClassGrantPlan,
+} from "../src/wayfinder/domain/class-grant-reconciliation";
 import { WayfinderDraftNotReadyError } from "../src/wayfinder/domain/step-evaluation";
 import { createLanguageChoiceStep } from "../src/wayfinder/domain/step-types";
 import { buildActorHarness, classSelectionStep, selection, setGamePacks } from "./support/actor-updater-fixtures";
@@ -57,10 +62,14 @@ function applyDraftToActor(
 
 function finalizeRecoveredDraftOnActor(
   actor: Parameters<typeof finalizeRecoveredDraftOnActorWithAuthority>[0],
-  options: Omit<Parameters<typeof finalizeRecoveredDraftOnActorWithAuthority>[1], "validateActorAuthority">
+  options: Omit<
+    Parameters<typeof finalizeRecoveredDraftOnActorWithAuthority>[1],
+    "validateActorAuthority" | "classGrantRecovery"
+  >
 ) {
   return finalizeRecoveredDraftOnActorWithAuthority(actor, {
     validateActorAuthority: TEST_ACTOR_AUTHORITY,
+    classGrantRecovery: { kind: "none" },
     ...options,
   });
 }
@@ -81,11 +90,241 @@ const PHASE_IDS: DraftApplyPhase[] = [
   "native-spellcasting-after-spells",
   "boost-item-updates",
   "source-flag-restoration",
+  "class-grant-reconcile-before-acquisition",
+  "acquisition-items",
+  "class-grant-reconcile-after-acquisition",
+  "class-grant-reconcile-final",
   "verify-outcome",
   "finalize-actor",
 ];
 
 describe("prepared draft application", () => {
+  it("reconciles an authoritative class grant before, after, and at final verification", async () => {
+    const u = CLASS_GRANT_PROFILE_UUIDS;
+    const { actor } = buildActorHarness({
+      items: [
+        {
+          id: "book",
+          type: "equipment",
+          sourceId: u.formulaBookItem,
+          system: { quantity: 1 },
+          flags: { pf2e: { grantedBy: { id: "formula" } } },
+        },
+        {
+          id: "formula",
+          type: "feat",
+          sourceId: u.formulaBookFeature,
+          system: { quantity: 1 },
+          flags: { pf2e: { grantedBy: { id: "alchemy" } } },
+        },
+        {
+          id: "alchemy",
+          type: "feat",
+          sourceId: u.alchemyFeature,
+          system: { quantity: 1, location: "class" },
+          flags: {},
+        },
+        {
+          id: "class",
+          type: "class",
+          sourceId: u.alchemistClass,
+          system: { quantity: 1 },
+          flags: { [MODULE_ID]: { slotId: "class-level-1" } },
+        },
+      ],
+    });
+    Object.assign(actor, { id: "actor-1" });
+    const grant = createPlannedClassGrant({
+      grantId: "class-grant:alchemist-formula-book:class-level-1",
+      profileId: "alchemist-formula-book",
+      origin: { sourceSlotId: "class-level-1", sourceUuid: u.alchemistClass },
+      granterSourceUuid: u.formulaBookFeature,
+      expected: { sourceUuid: u.formulaBookItem, quantity: 1, itemType: "equipment" },
+      materializer: "pf2e-native",
+      eligibilityKind: "fixed-class-grant",
+      resaleRule: "normal",
+      eligibilityEvidence: { kind: "fixed-native-profile" },
+      nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+    });
+    const draft = createEmptyDraft(1);
+    draft.acquisition = {
+      schemaVersion: 1,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [grant],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const plan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [grant],
+    });
+
+    const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
+    const result = await executePreparedDraftApplication(prepared, { executeAcquisitionItems: () => undefined });
+
+    expect(result.classGrantReconciliations.map((entry) => entry.phase)).toEqual([
+      "before-acquisition",
+      "after-acquisition",
+      "final",
+    ]);
+    expect(result.classGrantReconciliations.every((entry) => entry.entries[0]?.status === "resolved")).toBe(true);
+  });
+
+  it("materializes a Wayfinder class grant between before and after reconciliation", async () => {
+    const { actor } = buildActorHarness();
+    Object.assign(actor, { id: "actor-1" });
+    const grant = titanGrant();
+    const draft = createEmptyDraft(1);
+    draft.acquisition = {
+      schemaVersion: 1,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [grant],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const plan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [grant],
+    });
+    const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
+
+    const result = await executePreparedDraftApplication(prepared, {
+      executeAcquisitionItems: () => {
+        actor.items.contents.push({
+          id: "titan-weapon",
+          type: "weapon",
+          sourceId: grant.expected.sourceUuid,
+          system: { quantity: 1 },
+          flags: {
+            [MODULE_ID]: {
+              acquisition: {
+                draftId: "draft-1",
+                batchId: "batch-1",
+                lineId: "line-titan",
+                entryId: "entry-titan",
+                plannedGrantId: grant.grantId,
+                stackingIntent: "separate",
+              },
+            },
+          },
+        });
+      },
+    });
+
+    expect(result.classGrantReconciliations.map((entry) => entry.entries[0]?.status)).toEqual([
+      "pending",
+      "resolved",
+      "resolved",
+    ]);
+  });
+
+  it("fails closed when an acquisition draft has no prepared item executor", async () => {
+    const { actor } = buildActorHarness();
+    Object.assign(actor, { id: "actor-1" });
+    const draft = createEmptyDraft(1);
+    draft.acquisition = {
+      schemaVersion: 1,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const plan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [],
+    });
+    const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
+
+    await expect(executePreparedDraftApplication(prepared)).rejects.toMatchObject({ phase: "acquisition-items" });
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a production-shaped acquisition Apply before any actor phase when its executor is absent", () => {
+    const { actor } = buildActorHarness();
+    const draft = createEmptyDraft(1);
+    draft.acquisition = {
+      schemaVersion: 1,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+
+    expect(() => applyDraftToActor(actor as never, draft, [classSelectionStep()])).toThrow(
+      /prepared acquisition executor/i
+    );
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks finalization when prepared class equipment is never materialized", async () => {
+    const { actor } = buildActorHarness();
+    Object.assign(actor, { id: "actor-1" });
+    const grant = titanGrant();
+    const draft = createEmptyDraft(1);
+    draft.acquisition = {
+      schemaVersion: 1,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [grant],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const plan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [grant],
+    });
+    const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
+
+    await expect(
+      executePreparedDraftApplication(prepared, { executeAcquisitionItems: () => undefined })
+    ).rejects.toMatchObject({ phase: "class-grant-reconcile-final" });
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
   it("resolves selected sources before the first actor mutation", async () => {
     const { actor } = buildActorHarness();
     setGamePacks({ "pf2e.classes": {} });
@@ -1350,6 +1589,93 @@ describe("prepared draft application", () => {
     ]);
   });
 
+  it("re-prepares and reconciles class grants before recovered finalization", async () => {
+    const u = CLASS_GRANT_PROFILE_UUIDS;
+    const grant = createPlannedClassGrant({
+      grantId: "class-grant:alchemist-formula-book:class-level-1",
+      profileId: "alchemist-formula-book",
+      origin: { sourceSlotId: "class-level-1", sourceUuid: u.alchemistClass },
+      granterSourceUuid: u.formulaBookFeature,
+      expected: { sourceUuid: u.formulaBookItem, quantity: 1, itemType: "equipment" },
+      materializer: "pf2e-native",
+      eligibilityKind: "fixed-class-grant",
+      resaleRule: "normal",
+      eligibilityEvidence: { kind: "fixed-native-profile" },
+      nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+    });
+    const items = [
+      {
+        id: "book",
+        type: "equipment",
+        sourceId: u.formulaBookItem,
+        system: { quantity: 1 },
+        flags: { pf2e: { grantedBy: { id: "formula" } } },
+      },
+      {
+        id: "formula",
+        type: "feat",
+        sourceId: u.formulaBookFeature,
+        system: { quantity: 1 },
+        flags: { pf2e: { grantedBy: { id: "alchemy" } } },
+      },
+      {
+        id: "alchemy",
+        type: "feat",
+        sourceId: u.alchemyFeature,
+        system: { quantity: 1, location: "class" },
+        flags: {},
+      },
+      {
+        id: "class",
+        type: "class",
+        sourceId: u.alchemistClass,
+        system: { quantity: 1 },
+        flags: { [MODULE_ID]: { slotId: "class-level-1" } },
+      },
+    ];
+    const { actor } = buildActorHarness({ items });
+    Object.assign(actor, { id: "actor-1" });
+    const plan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [grant],
+    });
+    const resolveFinalActorUpdate = vi.fn(() => ({ "flags.test.recovered": true }));
+
+    await finalizeRecoveredDraftOnActorWithAuthority(actor as never, {
+      recoveryActorUpdate: {},
+      resolveFinalActorUpdate,
+      validateActorAuthority: TEST_ACTOR_AUTHORITY,
+      classGrantRecovery: {
+        kind: "required",
+        preparePlan: () => plan,
+        verifyAcquisitionRecovery: () => undefined,
+      },
+    });
+
+    expect(resolveFinalActorUpdate).toHaveBeenCalledWith({
+      classGrantReconciliations: [expect.objectContaining({ phase: "final", ignoredItemIds: ["book"] })],
+    });
+
+    const missing = buildActorHarness({ items: items.filter((item) => item.id !== "book") }).actor;
+    Object.assign(missing, { id: "actor-1" });
+    await expect(
+      finalizeRecoveredDraftOnActorWithAuthority(missing as never, {
+        recoveryActorUpdate: {},
+        resolveFinalActorUpdate: () => ({ "flags.test.recovered": true }),
+        validateActorAuthority: TEST_ACTOR_AUTHORITY,
+        classGrantRecovery: {
+          kind: "required",
+          preparePlan: () => plan,
+          verifyAcquisitionRecovery: () => undefined,
+        },
+      })
+    ).rejects.toThrow(/missing or ambiguous/i);
+    expect(missing.update).not.toHaveBeenCalled();
+  });
+
   it("vetoes recovered finalization when another draft propagates at pre-update", async () => {
     const { actor } = buildActorHarness();
     const initial = createEmptyDraft(5);
@@ -1683,4 +2009,42 @@ function flagChoiceStep(): PendingStep {
       filters: { itemType: "feat" },
     },
   };
+}
+
+function titanGrant() {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:titan-mauler:class-branch-instinct-level-1",
+    profileId: "giant-instinct-titan-mauler",
+    origin: { sourceSlotId: "class-branch-instinct-level-1", sourceUuid: u.giantInstinct },
+    granterSourceUuid: u.giantInstinct,
+    expected: {
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.weapon",
+      quantity: 1,
+      itemType: "weapon",
+    },
+    materializer: "wayfinder-acquisition",
+    eligibilityKind: "catalogue-choice",
+    resaleRule: "zero-until-rune-investment",
+    eligibilityEvidence: {
+      kind: "titan-mauler",
+      documentFingerprint: "weapon-document",
+      lineId: "line-titan",
+      lineDocumentFingerprint: "line-document",
+      linePriceFingerprint: "line-price",
+      policyFingerprint: "policy",
+      actorSize: "medium",
+      targetSize: "large",
+      basePriceCopper: 900,
+      weaponCategory: "martial",
+      rangeIncrement: null,
+      rarity: "common",
+      characterAccessRef: null,
+      sourceAllowed: true,
+      quantity: 1,
+      permanence: "permanent",
+      componentKind: "baseline-item",
+    },
+    nativeGrantChainSourceUuids: [],
+  });
 }

@@ -1,4 +1,5 @@
 import type { CharacterWealthPolicyRef } from "./character-wealth-policy.js";
+import type { ClassGrantReconciliationResultV1, PlannedClassGrantV1 } from "./class-grant-reconciliation.js";
 import type { EconomicBaselineV1, EconomicHandoffV1 } from "./economic-baseline.js";
 import type { EffectiveEquipmentPolicySnapshotV1 } from "./equipment-policy.js";
 import type { SEMANTIC_WEALTH_POLICY_REF } from "./semantic-wealth-rule-ledger.js";
@@ -83,9 +84,7 @@ export type AcquisitionPriceInput = Omit<
 >;
 
 export interface AcquisitionClassGrantRef {
-  readonly plannedSourceUuid: string;
-  readonly sourceSlotId: string;
-  readonly expectedItemSourceUuid: string;
+  readonly plannedGrantId: string;
 }
 
 export type AcquisitionFunding =
@@ -144,6 +143,7 @@ export interface AcquisitionMaterialFacts {
   readonly policyFingerprint: string;
   readonly policyMaterial: AcquisitionPolicyMaterialFacts;
   readonly baseline: AcquisitionEconomicBaselineSnapshot;
+  readonly plannedClassGrants: readonly PlannedClassGrantV1[];
   readonly lines: readonly AcquisitionMaterialLineFacts[];
 }
 
@@ -177,6 +177,8 @@ export interface AcquisitionDraftState {
   readonly recipe: AcquisitionRecipeSelection;
   readonly policySnapshot: AcquisitionPolicySnapshot | null;
   readonly baseline: AcquisitionEconomicBaselineSnapshot | null;
+  readonly plannedClassGrants: readonly PlannedClassGrantV1[];
+  readonly classGrantReconciliations: readonly ClassGrantReconciliationResultV1[];
   readonly lines: readonly AcquisitionLineDraft[];
   readonly disposition: AcquisitionDisposition;
 }

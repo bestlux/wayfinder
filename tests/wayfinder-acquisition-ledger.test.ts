@@ -3,7 +3,7 @@ import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draf
 import {
   createAcquisitionPriceSnapshot,
   evaluateAcquisitionCompletion,
-  evaluateAcquisitionLedger,
+  evaluateAcquisitionLedger as evaluateAcquisitionLedgerRaw,
   resolveAcquisitionPrice,
   reviewPurchaseLedger,
   reviewRetainAll,
@@ -16,6 +16,12 @@ import type {
   AcquisitionRecipeSelection,
 } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
+import {
+  CLASS_GRANT_PROFILE_UUIDS,
+  createPlannedClassGrant,
+  createPreparedClassGrantPlan,
+  type PlannedClassGrantV1,
+} from "../src/wayfinder/domain/class-grant-reconciliation";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import { buildEquipmentPolicyJudgmentFactsFingerprint } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
@@ -230,20 +236,23 @@ describe("acquisition ledger", () => {
 
   it("requires complete planned provenance for zero-cost class grants", () => {
     const valid = acquisitionDraft({
+      plannedClassGrants: [fixedGrant()],
       lines: [
         line({
+          sourceUuid: fixedGrant().expected.sourceUuid,
           funding: {
             lane: "class-grant",
-            grant: {
-              plannedSourceUuid: "Compendium.pf2e.classfeatures.Item.source",
-              sourceSlotId: "class-level-1",
-              expectedItemSourceUuid: "Compendium.pf2e.equipment-srd.Item.book",
-            },
+            grant: { plannedGrantId: fixedGrant().grantId },
           },
         }),
       ],
     });
     expect(evaluateAcquisitionLedger(valid)).toMatchObject({ valid: true, spentCopper: 0 });
+
+    const fixedOutsideCatalogue = mutable(structuredClone(valid));
+    fixedOutsideCatalogue.lines[0]!.policyDecision.packId = "blocked.equipment";
+    fixedOutsideCatalogue.lines[0]!.policyDecision.eligible = false;
+    expect(evaluateAcquisitionLedger(fixedOutsideCatalogue)).toMatchObject({ valid: true, spentCopper: 0 });
 
     const invalidQuantity = mutable(structuredClone(valid));
     invalidQuantity.lines[0]!.price = price({ requestedQuantity: 2 });
@@ -256,25 +265,94 @@ describe("acquisition ledger", () => {
     const malformedLine = (malformed.lines as Array<Record<string, unknown>>)[0];
     const malformedFunding = malformedLine?.funding as Record<string, unknown>;
     const malformedGrant = malformedFunding.grant as Record<string, unknown>;
-    delete malformedGrant.plannedSourceUuid;
+    delete malformedGrant.plannedGrantId;
     const normalized = JSON.parse(JSON.stringify(malformed)) as AcquisitionDraftState;
     expect(() => evaluateAcquisitionLedger(normalized)).not.toThrow();
     expect(evaluateAcquisitionLedger(normalized).blockers).toContainEqual(
+      expect.objectContaining({ code: "class-grant-invalid" })
+    );
+
+    const forged = acquisitionDraft({
+      lines: [line({ funding: { lane: "class-grant", grant: { plannedGrantId: "missing" } } })],
+    });
+    expect(evaluateAcquisitionLedger(forged).blockers).toContainEqual(
+      expect.objectContaining({ code: "class-grant-invalid" })
+    );
+
+    const reused = acquisitionDraft({
+      plannedClassGrants: [fixedGrant()],
+      lines: [
+        line({
+          sourceUuid: fixedGrant().expected.sourceUuid,
+          lineId: "line-a",
+          funding: { lane: "class-grant", grant: { plannedGrantId: fixedGrant().grantId } },
+        }),
+        line({
+          sourceUuid: fixedGrant().expected.sourceUuid,
+          lineId: "line-b",
+          funding: { lane: "class-grant", grant: { plannedGrantId: fixedGrant().grantId } },
+        }),
+      ],
+    });
+    expect(evaluateAcquisitionLedger(reused).blockers).toContainEqual(
+      expect.objectContaining({ code: "class-grant-invalid", lineId: "line-b" })
+    );
+
+    const titan = acquisitionDraft({
+      plannedClassGrants: [titanGrant()],
+      lines: [
+        line({
+          sourceUuid: "Compendium.pf2e.equipment-srd.Item.weapon",
+          funding: { lane: "class-grant", grant: { plannedGrantId: titanGrant().grantId } },
+        }),
+      ],
+    });
+    mutable(titan).lines[0]!.policyDecision.packId = "blocked.equipment";
+    mutable(titan).lines[0]!.policyDecision.eligible = false;
+    expect(evaluateAcquisitionLedger(titan).blockers).toContainEqual(
+      expect.objectContaining({ code: "item-ineligible" })
+    );
+  });
+
+  it("never treats the serialized grant description as current authority", () => {
+    const grant = titanGrant();
+    const draft = acquisitionDraft({
+      plannedClassGrants: [grant],
+      lines: [
+        line({
+          sourceUuid: grant.expected.sourceUuid,
+          funding: { lane: "class-grant", grant: { plannedGrantId: grant.grantId } },
+        }),
+      ],
+    });
+    const prepared = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: draft.draftId,
+      batchId: draft.batchId,
+      targetLevel: draft.targetLevel,
+      grants: [grant],
+    });
+    expect(evaluateAcquisitionLedgerRaw(draft).blockers).toContainEqual(
+      expect.objectContaining({ code: "class-grant-invalid" })
+    );
+
+    const forged = mutable(structuredClone(draft));
+    forged.plannedClassGrants[0]!.expected.sourceUuid = "Compendium.pf2e.equipment-srd.Item.expensive";
+    forged.lines[0]!.sourceUuid = "Compendium.pf2e.equipment-srd.Item.expensive";
+    expect(evaluateAcquisitionLedgerRaw(forged, prepared).blockers).toContainEqual(
       expect.objectContaining({ code: "class-grant-invalid" })
     );
   });
 
   it("requires explicit review and permits retain-all with planned zero-spend grants", () => {
     const grantOnly = acquisitionDraft({
+      plannedClassGrants: [fixedGrant()],
       lines: [
         line({
+          sourceUuid: fixedGrant().expected.sourceUuid,
           funding: {
             lane: "class-grant",
-            grant: {
-              plannedSourceUuid: "Compendium.pf2e.classfeatures.Item.source",
-              sourceSlotId: "class-level-1",
-              expectedItemSourceUuid: "Compendium.pf2e.equipment-srd.Item.book",
-            },
+            grant: { plannedGrantId: fixedGrant().grantId },
           },
         }),
       ],
@@ -433,6 +511,7 @@ describe("acquisition ledger", () => {
 function acquisitionDraft(options: {
   lines?: AcquisitionLineDraft[];
   recipe?: AcquisitionRecipeSelection;
+  plannedClassGrants?: PlannedClassGrantV1[];
 }): AcquisitionDraftState {
   const recipe = options.recipe ?? { kind: "permanent-items" };
   return {
@@ -481,8 +560,86 @@ function acquisitionDraft(options: {
       },
     },
     baseline: emptyBaseline("actor-1"),
+    plannedClassGrants: options.plannedClassGrants ?? [],
+    classGrantReconciliations: [],
     lines: options.lines ?? [],
   };
+}
+
+function fixedGrant(): PlannedClassGrantV1 {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:alchemist-formula-book:class-level-1",
+    profileId: "alchemist-formula-book",
+    origin: {
+      sourceSlotId: "class-level-1",
+      sourceUuid: u.alchemistClass,
+    },
+    granterSourceUuid: u.formulaBookFeature,
+    expected: {
+      sourceUuid: u.formulaBookItem,
+      quantity: 1,
+      itemType: "equipment",
+    },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+  });
+}
+
+function titanGrant(): PlannedClassGrantV1 {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:titan-mauler:class-branch-instinct-level-1",
+    profileId: "giant-instinct-titan-mauler",
+    origin: {
+      sourceSlotId: "class-branch-instinct-level-1",
+      sourceUuid: u.giantInstinct,
+    },
+    granterSourceUuid: u.giantInstinct,
+    expected: {
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.weapon",
+      quantity: 1,
+      itemType: "weapon",
+    },
+    materializer: "wayfinder-acquisition",
+    eligibilityKind: "catalogue-choice",
+    resaleRule: "zero-until-rune-investment",
+    eligibilityEvidence: {
+      kind: "titan-mauler",
+      documentFingerprint: "document-1",
+      lineId: "line-1",
+      lineDocumentFingerprint: "document-1",
+      linePriceFingerprint: "price-0",
+      policyFingerprint: "diagnostic-policy-fingerprint",
+      actorSize: "medium",
+      targetSize: "large",
+      basePriceCopper: 900,
+      weaponCategory: "martial",
+      rangeIncrement: null,
+      rarity: "common",
+      characterAccessRef: null,
+      sourceAllowed: true,
+      quantity: 1,
+      permanence: "permanent",
+      componentKind: "baseline-item",
+    },
+    nativeGrantChainSourceUuids: [],
+  });
+}
+
+function evaluateAcquisitionLedger(draft: AcquisitionDraftState) {
+  const actorId = draft.policySnapshot?.material.subject.actorId ?? "actor-1";
+  const prepared = createPreparedClassGrantPlan({
+    actorId,
+    draftId: draft.draftId,
+    batchId: draft.batchId,
+    targetLevel: draft.targetLevel,
+    grants: draft.plannedClassGrants,
+  });
+  return evaluateAcquisitionLedgerRaw(draft, prepared);
 }
 
 function emptyBaseline(actorId: string) {

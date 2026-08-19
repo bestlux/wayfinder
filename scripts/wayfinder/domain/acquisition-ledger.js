@@ -1,7 +1,8 @@
 import { cloneData } from "../../shared/cloning.js";
 import { compareAcquisitionMaterialFacts, isAcquisitionPolicyAuthorityConsistent } from "./acquisition-draft.js";
+import { assertPreparedClassGrantPlanMatches } from "./class-grant-reconciliation.js";
 import { SEMANTIC_WEALTH_POLICY } from "./semantic-wealth-policy.js";
-export function evaluateAcquisitionLedger(draft) {
+export function evaluateAcquisitionLedger(draft, preparedClassGrantPlan) {
     const policy = draft.policySnapshot;
     if (!policy)
         return emptyInvalidLedger("policy-missing", "An effective equipment policy is required.");
@@ -13,13 +14,36 @@ export function evaluateAcquisitionLedger(draft) {
     if (!same(policy.material.resolvedRecipe, draft.recipe)) {
         return emptyInvalidLedger("policy-mismatch", "The reviewed policy recipe does not match the acquisition draft.");
     }
+    if (draft.plannedClassGrants.length > 0 || preparedClassGrantPlan) {
+        if (!preparedClassGrantPlan) {
+            return emptyInvalidLedger("class-grant-invalid", "Class-grant funding requires a freshly prepared authoritative plan.");
+        }
+        try {
+            assertPreparedClassGrantPlanMatches({
+                plan: preparedClassGrantPlan,
+                actorId: policy.material.subject.actorId,
+                draftId: draft.draftId,
+                batchId: draft.batchId,
+                targetLevel: draft.targetLevel,
+                persistedGrants: draft.plannedClassGrants,
+            });
+        }
+        catch {
+            return emptyInvalidLedger("class-grant-invalid", "The persisted class-grant description does not match current prepared authority.");
+        }
+    }
     const blockers = [];
     const allowances = policy.material.allowances;
     const allowanceById = new Map(allowances.map((allowance) => [allowance.allowanceId, allowance]));
     const usedAllowances = new Set();
     const resolvedAllowances = new Map();
+    const authoritativeGrants = preparedClassGrantPlan?.grants ?? [];
+    const plannedGrants = new Map(authoritativeGrants.map((grant) => [grant.grantId, grant]));
+    const usedGrantIds = new Set();
     for (const line of draft.lines) {
-        if (!line.policyDecision.eligible) {
+        const plannedGrant = line.funding.lane === "class-grant" ? plannedGrants.get(line.funding.grant.plannedGrantId) : null;
+        const fixedGrantAuthorizes = plannedGrant?.eligibilityKind === "fixed-class-grant";
+        if (!line.policyDecision.eligible && !fixedGrantAuthorizes) {
             blockers.push(blocker("item-ineligible", line.lineId, "Current equipment policy does not permit this item."));
         }
     }
@@ -100,21 +124,31 @@ export function evaluateAcquisitionLedger(draft) {
             baselineChargedCopper = 0;
         }
         else if (line.funding.lane === "class-grant") {
-            const grant = line.funding.grant;
+            const grant = plannedGrants.get(line.funding.grant.plannedGrantId);
             const funding = SEMANTIC_WEALTH_POLICY.evaluateClassGrantFunding({
-                planned: true,
-                sourceSlotId: grant.sourceSlotId,
-                sourceUuid: grant.plannedSourceUuid,
-                expectedItemUuid: grant.expectedItemSourceUuid,
+                planned: !!grant,
+                sourceSlotId: grant?.origin.sourceSlotId ?? "",
+                sourceUuid: grant?.origin.sourceUuid ?? "",
+                expectedItemUuid: grant?.expected.sourceUuid ?? "",
             });
-            if (!funding.ok ||
+            if (!grant ||
+                !funding.ok ||
+                usedGrantIds.has(line.funding.grant.plannedGrantId) ||
+                line.sourceUuid !== grant?.expected.sourceUuid ||
                 price.value.materializedQuantity !== 1 ||
                 line.componentKind !== "baseline-item" ||
-                line.permanence !== "permanent") {
+                line.permanence !== "permanent" ||
+                (grant.eligibilityEvidence.kind === "titan-mauler" &&
+                    (grant.eligibilityEvidence.lineId !== line.lineId ||
+                        grant.eligibilityEvidence.lineDocumentFingerprint !== line.documentFingerprint ||
+                        grant.eligibilityEvidence.linePriceFingerprint !== line.priceFingerprint ||
+                        grant.eligibilityEvidence.policyFingerprint !== policy.fingerprint))) {
                 blockers.push(blocker("class-grant-invalid", line.lineId, funding.ok
                     ? "A class grant funds exactly one planned permanent baseline item."
                     : (funding.diagnostics[0]?.message ?? "A class grant funds exactly one planned permanent baseline item.")));
             }
+            if (grant)
+                usedGrantIds.add(grant.grantId);
             baselineChargedCopper = 0;
         }
         else {
@@ -144,6 +178,11 @@ export function evaluateAcquisitionLedger(draft) {
             supplementalChargedCopper,
             totalChargedCopper,
         });
+    }
+    for (const grant of authoritativeGrants) {
+        if (!usedGrantIds.has(grant.grantId)) {
+            blockers.push(blocker("class-grant-invalid", null, `Planned class grant ${grant.grantId} has no acquisition line.`));
+        }
     }
     if (spentCopper > policy.material.budgetCopper) {
         blockers.push(blocker("over-budget", null, "The acquisition ledger exceeds its currency budget."));
@@ -278,6 +317,7 @@ export function captureAcquisitionMaterialFacts(draft, resolvedAllowances = new 
                 .sort((left, right) => left.itemLevel - right.itemLevel || left.allowanceId.localeCompare(right.allowanceId)),
         },
         baseline: cloneData(draft.baseline),
+        plannedClassGrants: cloneData(draft.plannedClassGrants),
         lines: draft.lines
             .map((line) => ({
             lineId: line.lineId,

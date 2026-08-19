@@ -1,6 +1,8 @@
 import { MODULE_ID } from "../../constants.js";
 import { sourceIdOf } from "../../shared/source-id.js";
+import { reconcilePreparedClassGrants, } from "../domain/class-grant-reconciliation.js";
 import { createEconomicBaseline, evaluateEconomicAdmission, executeWithEconomicBaselineRevalidation, normalizeAcquisitionIdentity, } from "../domain/economic-baseline.js";
+import { captureObservedClassGrantItems } from "./class-grant-projection-service.js";
 export function captureActorEconomicBaseline(actor, options = {}) {
     if (typeof actor.id !== "string" || actor.id.trim().length === 0) {
         throw new TypeError("Economic baseline capture requires an actor ID.");
@@ -57,6 +59,11 @@ export function captureActorEconomicBaseline(actor, options = {}) {
     });
 }
 export function evaluateActorEconomicAdmission(args) {
+    const classGrantReconciliation = reconcilePreparedClassGrants({
+        plan: args.preparedClassGrantPlan,
+        actorItems: captureObservedClassGrantItems(args.actor),
+        phase: args.classGrantPhase,
+    });
     return evaluateEconomicAdmission({
         baseline: captureActorEconomicBaseline(args.actor, { capturedAt: args.capturedAt }),
         draftId: args.draftId,
@@ -65,8 +72,8 @@ export function evaluateActorEconomicAdmission(args) {
         higherLevelStartEvidence: args.higherLevelStartEvidence,
         history: args.history,
         retryExpectation: args.retryExpectation,
-        unresolvedClassGrantItemIds: args.unresolvedClassGrantItemIds,
-        ambiguousClassGrantItemIds: args.ambiguousClassGrantItemIds,
+        classGrantReconciliation,
+        preparedClassGrantPlan: args.preparedClassGrantPlan,
     });
 }
 export function executeWithActorEconomicBaselineRevalidation(args) {

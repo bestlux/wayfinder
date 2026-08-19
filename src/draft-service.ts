@@ -21,7 +21,7 @@ import {
   normalizeSpellRarityAttestation,
 } from "./wayfinder/spell-choice/rarity-attestation.js";
 
-const DRAFT_VERSION = 14;
+const DRAFT_VERSION = 15;
 const STATE_VERSION = 3;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
@@ -29,6 +29,7 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     version: DRAFT_VERSION,
     targetLevel: clampLevel(targetLevel),
     acquisition: null,
+    acquisitionCorrupt: false,
     applyAttemptStepIds: [],
     applyCompletedStepIds: [],
     applyRecoveryActorUpdate: {},
@@ -64,6 +65,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
   const draft = isRecord(raw) ? (raw as Partial<DraftState>) : {};
   const targetLevel = clampLevel(typeof draft.targetLevel === "number" ? draft.targetLevel : fallbackTargetLevel);
   const acquisition = normalizeAcquisitionDraft(draft.acquisition);
+  const acquisitionCorrupt = draft.acquisitionCorrupt === true || (draft.acquisition != null && acquisition === null);
   const branchSelections = sanitizeSelections(draft.branchSelections);
   const classArchetypeChoices = Object.fromEntries(
     Object.entries(sanitizeChoiceValues(draft.classArchetypeChoices)).filter(
@@ -101,6 +103,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     version: DRAFT_VERSION,
     targetLevel,
     acquisition: acquisition ? reconcileAcquisitionTargetLevel(acquisition, targetLevel) : null,
+    acquisitionCorrupt,
     applyAttemptStepIds: sanitizeStepIds(draft.applyAttemptStepIds),
     applyCompletedStepIds: sanitizeStepIds(draft.applyCompletedStepIds),
     applyRecoveryActorUpdate: sanitizeRecoveryActorUpdate(draft.applyRecoveryActorUpdate),

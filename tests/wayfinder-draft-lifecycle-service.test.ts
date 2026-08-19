@@ -244,6 +244,103 @@ describe("wayfinder draft lifecycle service", () => {
     expect(finalizeRecoveredDraft).toHaveBeenCalledOnce();
   });
 
+  it("blocks acquisition before confirmation or Apply-attempt persistence when no executor is active", async () => {
+    const draft = createEmptyDraft(5);
+    draft.acquisition = {
+      schemaVersion: 1,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 5,
+      recipe: { kind: "lump-sum" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const confirmApply = vi.fn();
+    const beforeApply = vi.fn();
+    const applyDraftToActor = vi.fn();
+
+    const result = await applyDraftLifecycle({
+      actorName: "Valeros",
+      currentLevel: 5,
+      draft,
+      steps: [],
+      evaluateStep: async () => readyEvaluation(),
+      confirmApply,
+      beforeApply,
+      applyDraftToActor,
+    });
+
+    expect(result).toMatchObject({
+      kind: "warning",
+      warning: "draft-not-ready",
+      blockers: [{ code: "dependency-review", slotId: "starting-equipment" }],
+    });
+    expect(confirmApply).not.toHaveBeenCalled();
+    expect(beforeApply).not.toHaveBeenCalled();
+    expect(applyDraftToActor).not.toHaveBeenCalled();
+  });
+
+  it("routes zero-step acquisition recovery through the guarded recovery finalizer", async () => {
+    const draft = createEmptyDraft(5);
+    draft.applyAttemptStepIds = ["starting-equipment"];
+    draft.acquisition = {
+      schemaVersion: 1,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 5,
+      recipe: { kind: "lump-sum" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const finalizeRecoveredDraft = vi.fn();
+
+    const result = await applyDraftLifecycle({
+      actorName: "Valeros",
+      currentLevel: 5,
+      draft,
+      steps: [],
+      acquisitionExecutionAvailable: true,
+      evaluateStep: async () => readyEvaluation(),
+      applyDraftToActor: vi.fn(),
+      finalizeRecoveredDraft,
+    });
+
+    expect(result).toMatchObject({ kind: "applied" });
+    expect(finalizeRecoveredDraft).toHaveBeenCalledOnce();
+  });
+
+  it("blocks malformed acquisition recovery instead of silently treating it as legacy recovery", async () => {
+    const draft = createEmptyDraft(5);
+    draft.acquisitionCorrupt = true;
+    draft.applyAttemptStepIds = ["starting-equipment"];
+    const finalizeRecoveredDraft = vi.fn();
+
+    const result = await applyDraftLifecycle({
+      actorName: "Valeros",
+      currentLevel: 5,
+      draft,
+      steps: [],
+      evaluateStep: async () => readyEvaluation(),
+      applyDraftToActor: vi.fn(),
+      finalizeRecoveredDraft,
+    });
+
+    expect(result).toMatchObject({
+      kind: "warning",
+      warning: "draft-not-ready",
+      blockers: [{ code: "dependency-review", slotId: "starting-equipment" }],
+    });
+    expect(finalizeRecoveredDraft).not.toHaveBeenCalled();
+  });
+
   it("cancels the apply flow when confirmation is declined", async () => {
     const draft = createEmptyDraft(4);
     const confirmApply = vi.fn(() => false);

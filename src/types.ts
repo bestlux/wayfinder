@@ -73,6 +73,7 @@ export interface DraftState {
   version: number;
   targetLevel: number;
   acquisition: AcquisitionDraftState | null;
+  acquisitionCorrupt: boolean;
   applyAttemptStepIds: string[];
   applyCompletedStepIds: string[];
   applyRecoveryActorUpdate: Record<string, unknown>;

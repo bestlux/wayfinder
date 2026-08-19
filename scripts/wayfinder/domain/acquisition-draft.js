@@ -1,3 +1,4 @@
+import { isClassGrantReconciliationConsistent, normalizeClassGrantReconciliationResult, normalizePlannedClassGrant, } from "./class-grant-reconciliation.js";
 import { compareEconomicBaselines, normalizeEconomicBaseline, normalizeEconomicHandoff } from "./economic-baseline.js";
 import { buildEquipmentPolicyJudgmentFactsFingerprint, evaluateEquipmentItemAuthorityFacts, normalizeEquipmentPolicyJudgment, } from "./equipment-policy.js";
 const INVALIDATION_ORDER = [
@@ -29,16 +30,55 @@ export function createAcquisitionDraft(args) {
         recipe,
         policySnapshot: null,
         baseline: null,
+        plannedClassGrants: [],
+        classGrantReconciliations: [],
         lines: [],
         disposition: unreviewed(),
     };
+}
+export function createAcquisitionPolicySnapshot(policy, selectedRecipe) {
+    const recipe = acquisitionRecipeFromEffectivePolicy(policy, selectedRecipe);
+    const allowances = policy.recipe.kind === "permanent-items" ? policy.recipe.allowances.map((allowance) => ({ ...allowance })) : [];
+    const budgetCopper = policy.recipe.kind === "permanent-items" ? policy.recipe.currencyCopper : policy.recipe.budgetCopper;
+    const material = {
+        subject: { actorId: policy.actorId, draftId: policy.draftId, targetLevel: policy.targetLevel },
+        numericPolicyRef: policy.rules.wealth,
+        semanticPolicyRef: policy.rules.semantics,
+        resolvedRecipe: recipe,
+        budgetCopper,
+        allowances,
+        worldRecipePolicy: clone(policy.worldRecipePolicy),
+        sourcePolicy: clone(policy.sourcePolicy),
+        rarityPolicy: clone(policy.rarityPolicy),
+        authorityPolicy: clone(policy.authorityPolicy),
+        higherLevelStartEvidence: clone(policy.higherLevelStartEvidence),
+        abp: clone(policy.abp),
+        gmJudgments: clone(policy.gmJudgments),
+    };
+    const normalized = normalizePolicySnapshot({ version: 1, fingerprint: policy.fingerprint, material });
+    if (!normalized)
+        throw new TypeError("The effective equipment policy cannot be captured for this acquisition.");
+    return normalized;
+}
+export function acquisitionPolicyMaterialMatches(left, right) {
+    return same(left.material, right.material);
 }
 export function normalizeAcquisitionDraft(raw) {
     if (!isRecord(raw) || raw.schemaVersion !== 1 || !nonEmpty(raw.draftId) || !nonEmpty(raw.batchId)) {
         return null;
     }
     const recipe = normalizeRecipe(raw.recipe);
-    if (!validTargetLevel(raw.targetLevel) || !recipe || !Array.isArray(raw.lines))
+    if (!validTargetLevel(raw.targetLevel) ||
+        !recipe ||
+        !Array.isArray(raw.plannedClassGrants) ||
+        !Array.isArray(raw.lines) ||
+        !Array.isArray(raw.classGrantReconciliations))
+        return null;
+    const plannedClassGrants = raw.plannedClassGrants.map(normalizePlannedClassGrant);
+    if (plannedClassGrants.some((grant) => !grant))
+        return null;
+    const normalizedClassGrants = plannedClassGrants;
+    if (new Set(normalizedClassGrants.map((grant) => grant.grantId)).size !== normalizedClassGrants.length)
         return null;
     const lines = raw.lines.map(normalizeLine);
     if (lines.some((line) => !line))
@@ -46,6 +86,11 @@ export function normalizeAcquisitionDraft(raw) {
     const normalizedLines = lines;
     if (new Set(normalizedLines.map((line) => line.lineId)).size !== normalizedLines.length)
         return null;
+    const classGrantReconciliations = raw.classGrantReconciliations.map(normalizeClassGrantReconciliationResult);
+    if (classGrantReconciliations.some((result) => !result) ||
+        !classGrantJournalMatchesPlan(classGrantReconciliations, raw.draftId, raw.batchId, normalizedClassGrants)) {
+        return null;
+    }
     const policySnapshot = normalizePolicySnapshot(raw.policySnapshot);
     if (raw.policySnapshot != null && !policySnapshot)
         return null;
@@ -63,8 +108,10 @@ export function normalizeAcquisitionDraft(raw) {
         recipe,
         policySnapshot,
         baseline,
+        plannedClassGrants: normalizedClassGrants,
+        classGrantReconciliations: classGrantReconciliations,
         lines: normalizedLines,
-        disposition: normalizeDisposition(raw.disposition, normalizedLines, policySnapshot, baseline),
+        disposition: normalizeDisposition(raw.disposition, normalizedLines, policySnapshot, baseline, normalizedClassGrants),
     };
 }
 export function compareAcquisitionMaterialFacts(reviewed, current) {
@@ -76,6 +123,8 @@ export function compareAcquisitionMaterialFacts(reviewed, current) {
     comparePolicyMaterial(reviewed.policyMaterial, current.policyMaterial, reasons);
     if (compareEconomicBaselines(reviewed.baseline, current.baseline).length > 0)
         reasons.add("baseline");
+    if (!same(reviewed.plannedClassGrants, current.plannedClassGrants))
+        reasons.add("document");
     const reviewedLines = new Map(reviewed.lines.map((line) => [line.lineId, line]));
     const currentLines = new Map(current.lines.map((line) => [line.lineId, line]));
     if (reviewedLines.size !== currentLines.size)
@@ -125,7 +174,7 @@ export function reconcileAcquisitionTargetLevel(draft, targetLevel) {
     }
     if (draft.targetLevel === targetLevel)
         return draft;
-    const changed = { ...draft, targetLevel, policySnapshot: null };
+    const changed = { ...draft, targetLevel, policySnapshot: null, classGrantReconciliations: [] };
     if (draft.disposition.kind === "purchase-ledger" || draft.disposition.kind === "retain-all") {
         return invalidateAcquisitionReview(changed, ["target-level"]);
     }
@@ -139,6 +188,40 @@ export function reconcileAcquisitionTargetLevel(draft, targetLevel) {
         })),
         disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: ["target-level"] },
     };
+}
+export function recordPlannedClassGrants(draft, grants) {
+    const normalized = grants.map(normalizePlannedClassGrant);
+    if (normalized.some((grant) => !grant))
+        throw new TypeError("The planned class-grant projection is invalid.");
+    const plannedClassGrants = normalized;
+    plannedClassGrants.sort((left, right) => left.grantId.localeCompare(right.grantId));
+    if (new Set(plannedClassGrants.map((grant) => grant.grantId)).size !== plannedClassGrants.length) {
+        throw new TypeError("The planned class-grant projection contains duplicate grant IDs.");
+    }
+    if (same(draft.plannedClassGrants, plannedClassGrants))
+        return draft;
+    const invalidatedFrom = draft.disposition.kind === "purchase-ledger" || draft.disposition.kind === "retain-all"
+        ? draft.disposition.kind
+        : null;
+    const priorReasons = draft.disposition.kind === "unreviewed" ? draft.disposition.reasons : [];
+    return {
+        ...draft,
+        plannedClassGrants,
+        classGrantReconciliations: [],
+        disposition: {
+            kind: "unreviewed",
+            invalidatedFrom,
+            reasons: INVALIDATION_ORDER.filter((reason) => reason === "document" || priorReasons.includes(reason)),
+        },
+    };
+}
+export function recordClassGrantReconciliations(draft, results) {
+    const normalized = results.map(normalizeClassGrantReconciliationResult);
+    if (normalized.some((result) => !result) ||
+        !classGrantJournalMatchesPlan(normalized, draft.draftId, draft.batchId, draft.plannedClassGrants)) {
+        throw new TypeError("The class-grant recovery evidence does not match this acquisition.");
+    }
+    return { ...draft, classGrantReconciliations: normalized };
 }
 export function recordEconomicAdmission(draft, admission) {
     if (admission.baseline.actorId !== draft.policySnapshot?.material.subject.actorId) {
@@ -275,16 +358,11 @@ function normalizeFunding(raw) {
     }
     if (!hasOnlyKeys(raw, ["lane", "grant"]) || !isRecord(raw.grant))
         return null;
-    return nonEmpty(raw.grant.plannedSourceUuid) &&
-        nonEmpty(raw.grant.sourceSlotId) &&
-        nonEmpty(raw.grant.expectedItemSourceUuid) &&
-        hasOnlyKeys(raw.grant, ["plannedSourceUuid", "sourceSlotId", "expectedItemSourceUuid"])
+    return nonEmpty(raw.grant.plannedGrantId) && hasOnlyKeys(raw.grant, ["plannedGrantId"])
         ? {
             lane: "class-grant",
             grant: {
-                plannedSourceUuid: raw.grant.plannedSourceUuid,
-                sourceSlotId: raw.grant.sourceSlotId,
-                expectedItemSourceUuid: raw.grant.expectedItemSourceUuid,
+                plannedGrantId: raw.grant.plannedGrantId,
             },
         }
         : null;
@@ -675,7 +753,7 @@ function normalizeJudgments(raw) {
 function normalizeBaseline(raw) {
     return normalizeEconomicBaseline(raw);
 }
-function normalizeDisposition(raw, lines, policy, baseline) {
+function normalizeDisposition(raw, lines, policy, baseline, plannedClassGrants) {
     if (!isRecord(raw) || !isOneOf(raw.kind, ["unreviewed", "purchase-ledger", "retain-all", "handoff"])) {
         return unreviewed();
     }
@@ -705,7 +783,7 @@ function normalizeDisposition(raw, lines, policy, baseline) {
             }
             : unreviewed();
     }
-    const review = normalizeReview(raw.review, lines, policy);
+    const review = normalizeReview(raw.review, lines, policy, plannedClassGrants);
     if (!review)
         return { kind: "unreviewed", invalidatedFrom: raw.kind, reasons: ["policy"] };
     if (raw.kind === "purchase-ledger")
@@ -714,7 +792,7 @@ function normalizeDisposition(raw, lines, policy, baseline) {
         ? { kind: "retain-all", retainedCopper: raw.retainedCopper, review }
         : { kind: "unreviewed", invalidatedFrom: "retain-all", reasons: ["budget"] };
 }
-function normalizeReview(raw, lines, policy) {
+function normalizeReview(raw, lines, policy, plannedClassGrants) {
     if (!isRecord(raw) ||
         !nonEmpty(raw.reviewedByUserId) ||
         !nonEmpty(raw.reviewedAt) ||
@@ -722,7 +800,7 @@ function normalizeReview(raw, lines, policy) {
         return null;
     }
     const facts = normalizeMaterialFacts(raw.materialFacts);
-    if (!facts || !policy || facts.lines.length !== lines.length)
+    if (!facts || !policy || facts.lines.length !== lines.length || !same(facts.plannedClassGrants, plannedClassGrants))
         return null;
     return {
         reviewedByUserId: raw.reviewedByUserId,
@@ -742,19 +820,25 @@ function normalizeMaterialFacts(raw) {
         !nonEmpty(raw.policyFingerprint) ||
         !policyMaterial ||
         !baseline ||
+        !Array.isArray(raw.plannedClassGrants) ||
         !Array.isArray(raw.lines)) {
         return null;
     }
     const lines = raw.lines.flatMap(normalizeMaterialLine);
+    const plannedClassGrants = raw.plannedClassGrants.map(normalizePlannedClassGrant);
     if (lines.length !== raw.lines.length || new Set(lines.map((line) => line.lineId)).size !== lines.length) {
         return null;
     }
+    if (plannedClassGrants.some((grant) => !grant) ||
+        new Set(plannedClassGrants.map((grant) => grant?.grantId)).size !== plannedClassGrants.length)
+        return null;
     return {
         targetLevel: raw.targetLevel,
         recipe,
         policyFingerprint: raw.policyFingerprint,
         policyMaterial,
         baseline,
+        plannedClassGrants: plannedClassGrants,
         lines,
     };
 }
@@ -790,6 +874,44 @@ function normalizeMaterialLine(raw) {
             funding,
         },
     ];
+}
+function acquisitionRecipeFromEffectivePolicy(policy, selectedRecipe) {
+    if (policy.recipe.kind === "level-1-equivalent") {
+        if (selectedRecipe.kind === "custom-lump-sum") {
+            throw new TypeError("Level-1 acquisition cannot use a custom lump-sum recipe.");
+        }
+        return { kind: selectedRecipe.kind };
+    }
+    if (policy.recipe.kind === "permanent-items")
+        return { kind: "permanent-items" };
+    if (policy.recipe.kind === "lump-sum")
+        return { kind: "lump-sum" };
+    return {
+        kind: "custom-lump-sum",
+        judgmentRef: policy.recipe.judgment.id,
+        amountCopper: policy.recipe.budgetCopper,
+    };
+}
+function classGrantJournalMatchesPlan(results, draftId, batchId, grants) {
+    const phaseOrder = ["before-acquisition", "after-acquisition", "final"];
+    const grantIds = grants.map((grant) => grant.grantId).sort();
+    let previousPhase = -1;
+    for (const result of results) {
+        const phase = phaseOrder.indexOf(result.phase);
+        if (!isClassGrantReconciliationConsistent(result) ||
+            result.draftId !== draftId ||
+            result.batchId !== batchId ||
+            phase <= previousPhase ||
+            (result.phase !== "before-acquisition" && result.entries.some((entry) => entry.status === "pending")) ||
+            !same(result.entries.map((entry) => entry.grantId).sort(), grantIds)) {
+            return false;
+        }
+        previousPhase = phase;
+    }
+    return true;
+}
+function clone(value) {
+    return structuredClone(value);
 }
 function normalizeRecipe(raw) {
     if (!isRecord(raw) || !isOneOf(raw.kind, ["permanent-items", "lump-sum", "custom-lump-sum"])) {

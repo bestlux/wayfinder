@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-08-14.
+Last updated: 2026-08-18.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,16 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-08-18 Release 0.7.5 Focused Matrix
+
+The exact `v0.7.5` candidate passed three focused live cases against Foundry VTT 14.366 / PF2E 8.4.0 in `testing-world`, with zero classified/manual cases and zero failures:
+
+- `fighter-l1-l5-apply-rerun` — representative level-5 creation, Apply, cleanup, and zero-step rerun;
+- `fighter-ancient-elf-necromancer-l1-apply-rerun` — grant-choice ancestry and prose-backed dedication follow-ons; and
+- `fighter-apply-safety-failure-retry` — deliberate late Apply failure followed by an idempotent retry.
+
+The artifact `.wayfinder-smoke/v0.7.5-release` reports Wayfinder 0.7.5, Foundry 14.366, PF2E 8.4.0, three passes, and a schema-v3 qualification with zero findings. A separate live source-corpus audit exercised every enabled official and Battlezoo ancestry pack: all 78 reviewed player roots remained visible, including unusual aberration, beast, construct, ooze, outsider, object, and untyped ancestries, while synthetic Companion Compendia fixtures proved minion, eidolon, companion-flag, and direct creature-statblock exclusions. This is focused change coverage; the broader 0.7.3 matrix remains the current full-regression live baseline.
 
 ## 2026-08-14 Release 0.7.3 Full Matrix
 

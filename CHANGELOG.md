@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.5 - 2026-08-18
+
+- Supplemental compendia can no longer expose companion, eidolon, and NPC support documents as player ancestries, heritages, or classes merely because those documents reuse PF2E's player-facing item types. The filter uses PF2E build and automation structure rather than names or creature traits, so unusual player options such as Battlezoo's Evil Eye, Slime, Angel, Intelligent Weapon, Dungeon, and Fusion remain available.
+- Compendium settings now describe their counts as raw builder-item documents and explain that Wayfinder independently filters individual player choices, removing the misleading implication that every counted ancestry or heritage document is a valid player option.
+- Added the first dormant 0.8.0 starting-equipment safety-kernel component: a versioned, cited semantic wealth policy. It does not add equipment UI or alter current character Apply behavior.
+
 ## 0.7.4 - 2026-08-18
 
 - GMs can now configure supplemental PF2E Item compendia through a searchable checklist that reports relevant ancestry, heritage, background, class, feat, spell, and deity counts. Existing exact IDs and wildcard settings remain reviewable and removable even when their packs are unavailable.

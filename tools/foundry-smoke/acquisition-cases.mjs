@@ -86,6 +86,50 @@ export const acquisitionSmokeCases = Object.freeze([
       expectedPoint: "item-after",
     },
   }),
+  acquisitionCase({
+    id: "equipment-l1-owner-common-purchase-currency-before-retry",
+    label: "Non-GM owner retries a Dagger purchase before currency convergence",
+    disposition: "purchase-ledger",
+    quantity: 2,
+    failure: {
+      checkpointId: "write:currency-convergence:before",
+      occurrence: 1,
+      expectedPoint: "currency-before",
+    },
+  }),
+  acquisitionCase({
+    id: "equipment-l1-owner-common-purchase-currency-after-retry",
+    label: "Non-GM owner retries a Dagger purchase after currency convergence",
+    disposition: "purchase-ledger",
+    quantity: 2,
+    failure: {
+      checkpointId: "write:currency-convergence:after",
+      occurrence: 1,
+      expectedPoint: "currency-after",
+    },
+  }),
+  acquisitionCase({
+    id: "equipment-l1-owner-common-purchase-final-before-retry",
+    label: "Non-GM owner retries a Dagger purchase before final actor persistence",
+    disposition: "purchase-ledger",
+    quantity: 2,
+    failure: {
+      checkpointId: "write:final-actor-update:before",
+      occurrence: 1,
+      expectedPoint: "final-state-before",
+    },
+  }),
+  acquisitionCase({
+    id: "equipment-l1-owner-common-purchase-final-after-ack",
+    label: "Non-GM owner observes durable convergence after a lost final acknowledgement",
+    disposition: "purchase-ledger",
+    quantity: 2,
+    failure: {
+      checkpointId: "write:final-actor-update:after",
+      occurrence: 1,
+      expectedPoint: "final-state-after",
+    },
+  }),
 ]);
 
 export function acquisitionDefinitionFingerprint(value) {

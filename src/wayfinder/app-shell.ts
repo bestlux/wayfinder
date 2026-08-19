@@ -37,6 +37,7 @@ import {
   parseWayfinderAction,
   type WayfinderAction,
 } from "./actions.js";
+import { acquisitionSmokeCheckpointHookFor } from "./application/acquisition-smoke-driver.js";
 import {
   type ActorInventorySheetHost,
   openActorInventorySheet,
@@ -2138,6 +2139,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     const snapshot = inspectActor(this.actor);
     const draft = cloneData(this.#requireDraft());
+    const acquisitionSmokeCheckpointHook = acquisitionSmokeCheckpointHookFor(this.actor, draft);
     const acquisitionSession = draft.acquisition ? this.#createAcquisitionExecutionSession(draft) : null;
     const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
     const plan = await this.#buildPlan(snapshot, draft);
@@ -2258,6 +2260,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             executeAcquisitionCurrency: acquisitionSession?.executeAcquisitionCurrency,
             verifyAcquisitionOutcome: acquisitionSession?.verifyAcquisitionOutcome,
             readCurrentAcquisitionHistory: acquisitionSession?.readCurrentAcquisitionHistory,
+            onCheckpoint: acquisitionSmokeCheckpointHook,
           }).then(() => undefined);
         },
         finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) => {
@@ -2305,6 +2308,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     }),
                 }
               : { kind: "none" },
+            onCheckpoint: acquisitionSmokeCheckpointHook,
           }).then(() => undefined);
         },
       });

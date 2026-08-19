@@ -107,6 +107,37 @@ async function main() {
 
     try {
       playerContext = await browser.newContext({ viewport: { height: 1000, width: 1440 } });
+      await playerContext.addInitScript(
+        (bootstrap) => {
+          Object.defineProperty(globalThis, "__wayfinderAcquisitionSmokeBootstrap", {
+            configurable: true,
+            enumerable: false,
+            value: Object.freeze(bootstrap),
+            writable: false,
+          });
+        },
+        {
+          schemaVersion: 1,
+          nonce: randomUUID(),
+          createdAt: Date.now(),
+          moduleId: MODULE_ID,
+          worldId: options.expectedWorldId,
+          playerId: setup.playerId,
+          preparedByUserId: setup.reviewSession.userId,
+          runId,
+          bindings: setup.fixtures.map((fixture) => {
+            const smokeCase = cases.find((candidate) => candidate.id === fixture.caseId);
+            if (!smokeCase) throw new Error(`Acquisition fixture ${fixture.caseId} has no exact case definition.`);
+            return {
+              actorId: fixture.actorId,
+              caseId: fixture.caseId,
+              definitionFingerprint: fixture.definitionFingerprint,
+              checkpointTarget: smokeCase.acquisitionCase.failure,
+              caseDefinition: smokeCase,
+            };
+          }),
+        },
+      );
       const playerPage = await playerContext.newPage();
       await loginToFoundryWorld(playerPage, {
         foundryUrl,

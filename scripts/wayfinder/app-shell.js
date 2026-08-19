@@ -16,6 +16,7 @@ import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { bindWayfinderInteractions, isDraftMutationAction, parseWayfinderAction, } from "./actions.js";
+import { acquisitionSmokeCheckpointHookFor } from "./application/acquisition-smoke-driver.js";
 import { openActorInventorySheet, } from "./application/actor-inventory-navigation-service.js";
 import { assertApplyCandidateCurrent, persistApplyCandidateIfCurrent, WayfinderApplyDriftError, } from "./application/apply-candidate-service.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
@@ -1720,6 +1721,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         const snapshot = inspectActor(this.actor);
         const draft = cloneData(this.#requireDraft());
+        const acquisitionSmokeCheckpointHook = acquisitionSmokeCheckpointHookFor(this.actor, draft);
         const acquisitionSession = draft.acquisition ? this.#createAcquisitionExecutionSession(draft) : null;
         const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
         const plan = await this.#buildPlan(snapshot, draft);
@@ -1809,6 +1811,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                         executeAcquisitionCurrency: acquisitionSession?.executeAcquisitionCurrency,
                         verifyAcquisitionOutcome: acquisitionSession?.verifyAcquisitionOutcome,
                         readCurrentAcquisitionHistory: acquisitionSession?.readCurrentAcquisitionHistory,
+                        onCheckpoint: acquisitionSmokeCheckpointHook,
                     }).then(() => undefined);
                 },
                 finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) => {
@@ -1848,6 +1851,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                                 }),
                             }
                             : { kind: "none" },
+                        onCheckpoint: acquisitionSmokeCheckpointHook,
                     }).then(() => undefined);
                 },
             });

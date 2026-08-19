@@ -2382,8 +2382,9 @@ function acquisitionRetryFindings(smokeCase, acquisition, subject) {
     .sort();
   const failureItemIds = Array.isArray(snapshot?.actualItemIds) ? [...snapshot.actualItemIds].sort() : [];
   const expectedDraftBeforeRetry = snapshot?.point !== "final-state-after";
+  const expectedRetryAttempted = snapshot?.point !== "final-state-after";
   const validBase =
-    retry?.attempted === true &&
+    retry?.attempted === expectedRetryAttempted &&
     retry?.converged === true &&
     retry?.batchId === snapshot?.batchId &&
     retry?.batchId === manifest?.batchId &&
@@ -2403,7 +2404,7 @@ function acquisitionRetryFindings(smokeCase, acquisition, subject) {
       finding(
         "acquisition-retry-state-mismatch",
         subject,
-        "Retry evidence must bridge the exact partial batch and currency into one cleared, manifested final outcome."
+        "Recovery evidence must bridge the exact failure state into one cleared, manifested final outcome without claiming a retry after durable final acknowledgement."
       )
     );
   }
@@ -2611,7 +2612,7 @@ function acquisitionDefinitionOutcomeFindings(smokeCase, acquisition, definition
         finding(
           "missing-acquisition-retry-evidence",
           subject,
-          "The forced-failure tracer requires both the partial failure snapshot and final retry evidence."
+          "The forced-failure tracer requires both its failure snapshot and final recovery or lost-ack convergence evidence."
         )
       );
     }

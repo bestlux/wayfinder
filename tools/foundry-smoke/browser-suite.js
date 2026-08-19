@@ -420,6 +420,98 @@ globalThis.__cleanupWayfinderOwnerProbe = async function cleanupWayfinderOwnerPr
   };
 };
 
+const ACQUISITION_BASE_BUILD = Object.freeze([
+  {
+    uuid: "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX",
+    name: "Human",
+    slotId: "ancestry-level-1",
+  },
+  {
+    uuid: "Compendium.pf2e.heritages.Item.KO33MNyY9VqNQmbZ",
+    name: "Wintertouched Human",
+    slotId: "heritage-level-1",
+  },
+  {
+    uuid: "Compendium.pf2e.backgrounds.Item.CAjQrHZZbALE7Qjy",
+    name: "Acolyte",
+    slotId: "background-level-1",
+  },
+  {
+    uuid: "Compendium.pf2e.classes.Item.8zn3cD6GSmoo1LW4",
+    name: "Fighter",
+    slotId: "class-level-1",
+    rulesSelections: { fighterSkill: "athletics" },
+  },
+  {
+    uuid: "Compendium.pf2e.feats-srd.Item.lwLcUHQMOqfaNND4",
+    name: "Cooperative Nature",
+    slotId: "ancestry-feat-level-1",
+  },
+]);
+
+async function prepareAcquisitionBaseBuild(actor, modules, moduleId) {
+  for (const anchor of ACQUISITION_BASE_BUILD) {
+    const document = await modules.resolveUuid(anchor.uuid);
+    if (!document || document.name !== anchor.name || typeof document.toObject !== "function") {
+      throw new Error(`Acquisition tracer base-build source drifted: ${anchor.name}.`);
+    }
+    const source = document.toObject();
+    delete source._id;
+    source.flags = {
+      ...(source.flags ?? {}),
+      [moduleId]: { ...(source.flags?.[moduleId] ?? {}), slotId: anchor.slotId },
+    };
+    if (anchor.rulesSelections) {
+      source.flags.pf2e = {
+        ...(source.flags.pf2e ?? {}),
+        rulesSelections: { ...(source.flags.pf2e?.rulesSelections ?? {}), ...anchor.rulesSelections },
+      };
+      source.flags.system = {
+        ...(source.flags.system ?? {}),
+        rulesSelections: { ...(source.flags.system?.rulesSelections ?? {}), ...anchor.rulesSelections },
+      };
+    }
+    const created = await actor.createEmbeddedDocuments("Item", [source], { render: false });
+    if (!Array.isArray(created) || created.length !== 1) {
+      throw new Error(`Acquisition tracer could not seed ${anchor.name}.`);
+    }
+  }
+
+  const physicalItems = modules.listActorItems(actor).filter((item) => item.isOfType?.("physical"));
+  if (physicalItems.length > 0 || Number(actor.inventory?.currency?.copperValue) !== 0) {
+    throw new Error("Acquisition tracer base build must remain economically empty.");
+  }
+  const emptyDraft = modules.createEmptyDraft(1);
+  const initialPlan = await buildPlan(actor, emptyDraft, modules);
+  const equipmentSteps = initialPlan.steps.filter(
+    (step) => step.kind === "starting-equipment" && step.id === "starting-equipment-level-1",
+  );
+  if (equipmentSteps.length !== 1) {
+    throw new Error("Acquisition tracer base build did not produce the exact level-1 equipment step.");
+  }
+  const precompletedStepIds = initialPlan.steps
+    .filter((step) => step.id !== "starting-equipment-level-1")
+    .map((step) => step.id)
+    .sort();
+  const state = modules.normalizeState(actor.getFlag(moduleId, "state"));
+  if (state.lastAppliedAt !== null || state.completedAcquisitionManifest !== null) {
+    throw new Error("Acquisition tracer base build unexpectedly contains prior Apply history.");
+  }
+  await actor.setFlag(moduleId, "state", {
+    ...state,
+    completedStepIds: [...new Set([...state.completedStepIds, ...precompletedStepIds])].sort(),
+  });
+  const equipmentOnlyPlan = await buildPlan(actor, modules.createEmptyDraft(1), modules);
+  if (
+    equipmentOnlyPlan.steps.length !== 1 ||
+    equipmentOnlyPlan.steps[0]?.id !== "starting-equipment-level-1" ||
+    equipmentOnlyPlan.steps[0]?.kind !== "starting-equipment"
+  ) {
+    throw new Error("Acquisition tracer fixture is not equipment-only after deterministic base-build setup.");
+  }
+  return precompletedStepIds;
+}
+
 globalThis.__prepareWayfinderAcquisitionTracer = async function prepareWayfinderAcquisitionTracer({
   allowDestructive = false,
   cases,
@@ -441,6 +533,15 @@ globalThis.__prepareWayfinderAcquisitionTracer = async function prepareWayfinder
   );
   if (!player) throw new Error("Acquisition tracer setup could not resolve the configured distinct non-GM player.");
   if (!Array.isArray(cases) || cases.length === 0) throw new Error("Acquisition tracer setup requires cases.");
+  const modules = await loadWayfinderModules(moduleId);
+  const runtime = {
+    foundryVersion: String(game.version ?? ""),
+    pf2eVersion: String(game.system?.id === "pf2e" ? game.system.version ?? "" : ""),
+    moduleVersion: String(moduleRecord.version ?? moduleRecord.manifest?.version ?? ""),
+  };
+  if (Object.values(runtime).some((value) => !value)) {
+    throw new Error("Acquisition tracer setup requires exact Foundry, PF2E, and module versions.");
+  }
 
   const fixtures = [];
   try {
@@ -457,20 +558,30 @@ globalThis.__prepareWayfinderAcquisitionTracer = async function prepareWayfinder
         flags: {
           [moduleId]: {
             smokeAcquisitionTracer: {
+              schemaVersion: 1,
+              purpose: "acquisition-ui-smoke",
               runId,
               caseId: smokeCase.id,
               definitionFingerprint: smokeCase.definitionFingerprint,
+              fixtureName,
+              playerId: player.id,
+              preparedByUserId: game.user.id,
+              worldId: expectedWorldId,
+              runtime,
             },
           },
         },
       });
       if (!actor) throw new Error(`Acquisition tracer could not create fixture ${smokeCase.id}.`);
-      fixtures.push({
+      const fixture = {
         actorId: actor.id,
         caseId: smokeCase.id,
         definitionFingerprint: smokeCase.definitionFingerprint,
         fixtureName,
-      });
+      };
+      fixtures.push(fixture);
+      const precompletedStepIds = await prepareAcquisitionBaseBuild(actor, modules, moduleId);
+      fixture.precompletedStepIds = precompletedStepIds;
     }
   } catch (error) {
     for (const fixture of fixtures) {
@@ -484,6 +595,7 @@ globalThis.__prepareWayfinderAcquisitionTracer = async function prepareWayfinder
     fixtures,
     playerId: player.id,
     reviewSession: {
+      userId: game.user.id,
       role: Number(game.user.role),
       isGM: Boolean(game.user.isGM),
       runtime: smokeRuntime(moduleRecord, expectedWorldId),
@@ -511,20 +623,25 @@ globalThis.__runWayfinderAcquisitionTracer = async function runWayfinderAcquisit
   const modules = await loadWayfinderModules(moduleId);
   const fixturesByCase = new Map((fixtures ?? []).map((fixture) => [fixture.caseId, fixture]));
   const results = [];
-  for (const smokeCase of cases ?? []) {
-    const fixture = fixturesByCase.get(smokeCase.id);
-    const actor = fixture ? game.actors.get(fixture.actorId) : null;
-    results.push(
-      await runAcquisitionTracerCase({
-        actor,
-        fixture,
-        moduleId,
-        moduleRecord,
-        modules,
-        runId,
-        smokeCase,
-      }),
-    );
+  const driver = globalThis.__wayfinderAcquisitionSmokeDriver;
+  try {
+    for (const smokeCase of cases ?? []) {
+      const fixture = fixturesByCase.get(smokeCase.id);
+      const actor = fixture ? game.actors.get(fixture.actorId) : null;
+      results.push(
+        await runAcquisitionTracerCase({
+          actor,
+          fixture,
+          moduleId,
+          moduleRecord,
+          modules,
+          runId,
+          smokeCase,
+        }),
+      );
+    }
+  } finally {
+    driver?.revoke?.();
   }
   const summary = {
     classified: 0,
@@ -702,11 +819,13 @@ async function runAcquisitionTracerCase({ actor, fixture, moduleId, moduleRecord
   if (!ui || requiredUiFields.some((field) => ui[field] !== true)) {
     failures.push("Acquisition tracer did not prove the required actor-sheet and Wayfinder UI path.");
   }
-  if (smokeCase.acquisitionCase?.failure && ui?.retryClicked !== true) {
+  const lateAcknowledgement = smokeCase.acquisitionCase?.failure?.expectedPoint === "final-state-after";
+  if (smokeCase.acquisitionCase?.failure && !lateAcknowledgement && ui?.retryClicked !== true) {
     failures.push("Acquisition tracer did not prove the UI retry action after its forced failure.");
   }
   if (
     smokeCase.acquisitionCase?.failure &&
+    !lateAcknowledgement &&
     ["failureVisible", "partialStateVisible", "draftRecoveryVisible"].some(
       (field) => ui?.[field] !== true,
     )
@@ -714,6 +833,12 @@ async function runAcquisitionTracerCase({ actor, fixture, moduleId, moduleRecord
     failures.push(
       "Acquisition tracer did not prove that the owner saw the failure, partial state, and durable recovery state before retry.",
     );
+  }
+  if (
+    lateAcknowledgement &&
+    (ui?.lateAcknowledgementConverged !== true || ui?.retryClicked === true || ui?.draftRecoveryVisible === true)
+  ) {
+    failures.push("Acquisition tracer did not prove truthful durable convergence after the lost final acknowledgement.");
   }
   if (smokeCase.acquisitionCase?.failure && !failureCapture) {
     failures.push("Acquisition tracer did not observe its configured typed failure boundary.");
@@ -801,7 +926,7 @@ function acquisitionEvidenceFromActor({ actorEvidence, failureCapture, manifest,
     : [];
   const retry = failureCapture
     ? {
-        attempted: true,
+        attempted: failureCapture.point !== "final-state-after",
         converged: Boolean(manifest),
         batchId: failureCapture.batchId,
         manifestId: manifest?.id ?? null,
@@ -881,6 +1006,7 @@ async function loadWayfinderModules(moduleId) {
     permissions,
     settings,
     wayfinderApp,
+    foundryCompat,
   ] = await Promise.all([
     import(`/modules/${moduleId}/scripts/draft-service.js`),
     import(`/modules/${moduleId}/scripts/actor-inspector.js`),
@@ -902,6 +1028,7 @@ async function loadWayfinderModules(moduleId) {
     import(`/modules/${moduleId}/scripts/permissions.js`),
     import(`/modules/${moduleId}/scripts/settings.js`),
     import(`/modules/${moduleId}/scripts/wayfinder-app.js`),
+    import(`/modules/${moduleId}/scripts/shared/foundry-compat.js`),
   ]);
 
   return {
@@ -934,6 +1061,7 @@ async function loadWayfinderModules(moduleId) {
     listActorItems: buildState.listActorItems,
     normalizeDraft: draftService.normalizeDraft,
     normalizeState: draftService.normalizeState,
+    resolveUuid: foundryCompat.resolveUuid,
     listSpellRarityAttestationProblems: spellRarityAttestation.listSpellRarityAttestationProblems,
     listSpellRarityRecoveryProblems: spellRarityAttestation.listSpellRarityRecoveryProblems,
     resolveSelection: packOptions.resolveSelection,

@@ -6,6 +6,7 @@ import { invalidatePackSources, registerPackSourceCacheInvalidation } from "./pa
 import { registerSettings } from "./settings.js";
 import { preloadHandlebarsTemplates } from "./shared/foundry-compat.js";
 import { registerSheetControls, registerWayfinderActorRefresh, rerenderOpenWayfinderApps } from "./sheet-controls.js";
+import { registerAcquisitionSmokeDriver } from "./wayfinder/application/acquisition-smoke-driver.js";
 import { registerPersistedDraftWriteGuardHook } from "./wayfinder/application/draft-write-guard.js";
 import {
   invalidateFoundryEquipmentCataloguePack,
@@ -13,6 +14,7 @@ import {
 } from "./wayfinder/application/equipment-acquisition-runtime-service.js";
 
 Hooks.once("init", () => {
+  registerAcquisitionSmokeDriver();
   registerSettings({
     compendiumSourcesMenuType: CompendiumSourceConfigApp,
     equipmentPolicyMenuType: EquipmentPolicyConfigApp,

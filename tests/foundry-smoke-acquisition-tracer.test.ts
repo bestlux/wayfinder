@@ -40,11 +40,15 @@ const browserSuite = readFileSync(resolve("tools/foundry-smoke/browser-suite.js"
 const runner = readFileSync(resolve("tools/foundry-smoke/run-acquisition-tracer.mjs"), "utf8");
 
 describe("Foundry Wave-2 acquisition tracer", () => {
-  it("pins purchase, retain-all, and retry cases to the current PF2E Dagger identity", () => {
+  it("pins purchase, retain-all, retry, and lost-ack cases to the current PF2E Dagger identity", () => {
     expect(acquisitionSmokeCases.map((smokeCase) => smokeCase.id)).toEqual([
       "equipment-l1-owner-common-purchase",
       "equipment-l1-owner-retain-all",
       "equipment-l1-owner-common-purchase-retry",
+      "equipment-l1-owner-common-purchase-currency-before-retry",
+      "equipment-l1-owner-common-purchase-currency-after-retry",
+      "equipment-l1-owner-common-purchase-final-before-retry",
+      "equipment-l1-owner-common-purchase-final-after-ack",
     ]);
     expect(LEVEL_ONE_DAGGER).toMatchObject({
       sourceUuid: "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z",
@@ -161,6 +165,7 @@ describe("Foundry Wave-2 acquisition tracer", () => {
         draftPresent: variant.draftPresent,
       });
       Object.assign(input.cases[0].evidence.acquisition.retry, {
+        attempted: variant.point !== "final-state-after",
         draftPresentBeforeRetry: variant.draftPresent,
         preRetryCurrencyCopper: variant.observedCurrencyCopper,
         checkpoints: variant.retryCheckpoints,
@@ -220,6 +225,10 @@ describe("Foundry Wave-2 acquisition tracer", () => {
     expect(browserSuite).toContain("completedAcquisitionManifest");
     expect(browserSuite).toContain("onFailure: async (error) =>");
     expect(browserSuite).toContain("onRetryCheckpoint: (checkpoint) =>");
+    expect(browserSuite).toContain("driver?.revoke?.()");
+    expect(browserSuite).toContain("prepareAcquisitionBaseBuild");
+    expect(runner).toContain("playerContext.addInitScript");
+    expect(runner).toContain("__wayfinderAcquisitionSmokeBootstrap");
     expect(runner.match(/browser\.newContext\(/gu)).toHaveLength(2);
     expect(runner.indexOf("await playerContext.close();")).toBeLessThan(
       runner.indexOf("globalThis.__cleanupWayfinderAcquisitionTracer")

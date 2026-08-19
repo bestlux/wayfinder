@@ -68,6 +68,9 @@ export function evaluateEconomicAdmission(args) {
         args.targetLevel > 20) {
         throw new TypeError("Economic admission requires a valid actor, acquisition identity, and target level.");
     }
+    if (args.history.completedAcquisitionManifestCorrupt) {
+        return blocked(baseline, "completed-acquisition-manifest-corrupt", "This actor has malformed completed starting-equipment evidence and requires manual review.");
+    }
     if (args.history.completedAcquisitionManifestId) {
         return blocked(baseline, "completed-acquisition", "This actor already has a completed starting-equipment manifest.");
     }
@@ -91,7 +94,7 @@ export function evaluateEconomicAdmission(args) {
     const ambiguous = uniqueSorted(reconciliation.ambiguousGrantIds);
     const ignoredClassGrantItemIds = new Set(reconciliation.ignoredItemIds);
     const retry = args.retryExpectation ?? null;
-    if (retry && (retry.draftId !== args.draftId || retry.batchId !== args.batchId)) {
+    if (retry && (retry.draftId !== args.draftId || retry.batchId !== args.batchId || !nonEmpty(retry.manifestId))) {
         return blocked(baseline, "retry-identity-mismatch", "The retry expectation belongs to a different draft or batch.");
     }
     const retryEntries = new Map(retry?.expectedEntries.map((entry) => [entry.entryId, entry]) ?? []);
@@ -108,7 +111,10 @@ export function evaluateEconomicAdmission(args) {
         if (retry &&
             identity?.draftId === args.draftId &&
             identity.batchId === args.batchId &&
+            identity.manifestId === retry.manifestId &&
             expected?.lineId === identity.lineId &&
+            expected.plannedItemId === identity.plannedItemId &&
+            expected.plannedContainerId === identity.plannedContainerId &&
             expected.stackingIntent === identity.stackingIntent &&
             expected.sourceUuid === item.sourceUuid &&
             expected.quantity === item.quantity &&
@@ -165,20 +171,28 @@ export async function executeWithEconomicBaselineRevalidation(args) {
 }
 export function normalizeAcquisitionIdentity(raw) {
     if (!isRecord(raw) ||
+        raw.version !== 1 ||
         !nonEmpty(raw.draftId) ||
         !nonEmpty(raw.batchId) ||
+        !nonEmpty(raw.manifestId) ||
         !nonEmpty(raw.lineId) ||
         !nonEmpty(raw.entryId) ||
+        !nonEmpty(raw.plannedItemId) ||
+        (raw.plannedContainerId !== null && !nonEmpty(raw.plannedContainerId)) ||
         (raw.plannedGrantId !== null && !nonEmpty(raw.plannedGrantId)) ||
         (raw.stackingIntent !== "aggregate" && raw.stackingIntent !== "separate")) {
         return null;
     }
     const plannedGrantId = raw.plannedGrantId === null ? null : String(raw.plannedGrantId);
     return {
+        version: 1,
         draftId: raw.draftId,
         batchId: raw.batchId,
+        manifestId: raw.manifestId,
         lineId: raw.lineId,
         entryId: raw.entryId,
+        plannedItemId: raw.plannedItemId,
+        plannedContainerId: raw.plannedContainerId,
         plannedGrantId,
         stackingIntent: raw.stackingIntent,
     };

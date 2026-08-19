@@ -1,4 +1,9 @@
 import { cloneData } from "../../shared/cloning.js";
+import {
+  acquisitionPreAggregationMaterial,
+  aggregateRequestedQuantity,
+  canonicalAcquisitionAggregationKey,
+} from "./acquisition-aggregation.js";
 import { compareAcquisitionMaterialFacts, isAcquisitionPolicyAuthorityConsistent } from "./acquisition-draft.js";
 import type {
   AcquisitionDraftState,
@@ -263,6 +268,18 @@ export function evaluateAcquisitionLedger(
     });
   }
 
+  const aggregateAdjustment = reconcileAggregateLineCharges(draft, results, resolvedAllowances, blockers);
+  if (aggregateAdjustment === null) {
+    blockers.push(blocker("unsafe-arithmetic", null, "Aggregated acquisition price exceeds safe arithmetic."));
+  } else {
+    const adjustedSpent = safeAdd(spentCopper, aggregateAdjustment);
+    if (adjustedSpent === null) {
+      blockers.push(blocker("unsafe-arithmetic", null, "Aggregated acquisition total exceeds safe arithmetic."));
+    } else {
+      spentCopper = adjustedSpent;
+    }
+  }
+
   for (const grant of authoritativeGrants) {
     if (!usedGrantIds.has(grant.grantId)) {
       blockers.push(
@@ -285,6 +302,63 @@ export function evaluateAcquisitionLedger(
     blockers,
     materialFacts: captureAcquisitionMaterialFacts(draft, resolvedAllowances),
   };
+}
+
+function reconcileAggregateLineCharges(
+  draft: AcquisitionDraftState,
+  results: AcquisitionLedgerLineResult[],
+  resolvedAllowances: ReadonlyMap<string, string>,
+  blockers: AcquisitionLedgerBlocker[]
+): number | null {
+  const resultIndex = new Map(results.map((result, index) => [result.lineId, index]));
+  const groups = new Map<string, AcquisitionDraftState["lines"]>();
+  for (const line of draft.lines) {
+    if (blockers.some((entry) => entry.lineId === line.lineId) || !resultIndex.has(line.lineId)) continue;
+    const key = canonicalAcquisitionAggregationKey(
+      acquisitionPreAggregationMaterial(line, resolvedAllowances.get(line.lineId) ?? null)
+    );
+    groups.set(key, [...(groups.get(key) ?? []), line]);
+  }
+  let totalAdjustment = 0;
+  for (const lines of groups.values()) {
+    if (lines.length < 2) continue;
+    const first = lines[0]!;
+    const combined = createAcquisitionPriceSnapshot({
+      basePrice: cloneData(first.price.basePrice),
+      size: first.price.size,
+      sizeSensitive: first.price.sizeSensitive,
+      preciousMaterial: first.price.preciousMaterial,
+      adjustedBulkPriceCopper: first.price.adjustedBulkPriceCopper,
+      configurationPriceCopper: first.price.configurationPriceCopper,
+      pricePer: first.price.pricePer,
+      sourceQuantity: first.price.sourceQuantity,
+      requestedQuantity: aggregateRequestedQuantity(lines.map((line) => line.price)),
+    });
+    if (!combined.ok) return null;
+    const combinedPrice = resolveAcquisitionPrice(combined.value);
+    if (!combinedPrice.ok) return null;
+    const baseline = first.funding.lane === "currency" ? combinedPrice.value.baselineCopper : 0;
+    const supplemental = combinedPrice.value.supplementalCopper;
+    const total = safeAdd(baseline, supplemental);
+    if (total === null) return null;
+    const indexes = lines.map((line) => resultIndex.get(line.lineId)!);
+    const current = indexes.reduce((sum, index) => sum + results[index]!.totalChargedCopper, 0);
+    const adjustment = total - current;
+    const targetIndex = indexes[indexes.length - 1]!;
+    const target = results[targetIndex]!;
+    const baselineDelta = baseline - indexes.reduce((sum, index) => sum + results[index]!.baselineChargedCopper, 0);
+    const supplementalDelta =
+      supplemental - indexes.reduce((sum, index) => sum + results[index]!.supplementalChargedCopper, 0);
+    results[targetIndex] = {
+      ...target,
+      baselineChargedCopper: target.baselineChargedCopper + baselineDelta,
+      supplementalChargedCopper: target.supplementalChargedCopper + supplementalDelta,
+      totalChargedCopper: target.totalChargedCopper + adjustment,
+    };
+    totalAdjustment += adjustment;
+    if (!Number.isSafeInteger(totalAdjustment)) return null;
+  }
+  return totalAdjustment;
 }
 
 export function resolveAcquisitionPrice(price: AcquisitionPriceSnapshot): PriceResolution {
@@ -435,16 +509,8 @@ export function captureAcquisitionMaterialFacts(
         permanence: line.permanence,
         componentKind: line.componentKind,
         policyDecision: cloneData(line.policyDecision),
-        funding:
-          line.funding.lane === "allowance" && line.funding.assignment.mode === "automatic"
-            ? {
-                lane: "allowance" as const,
-                assignment: {
-                  mode: "player" as const,
-                  allowanceId: resolvedAllowances.get(line.lineId) ?? "",
-                },
-              }
-            : cloneData(line.funding),
+        funding: cloneData(line.funding),
+        resolvedAllowanceId: resolvedAllowances.get(line.lineId) ?? null,
       }))
       .sort((left, right) => left.lineId.localeCompare(right.lineId)),
   };

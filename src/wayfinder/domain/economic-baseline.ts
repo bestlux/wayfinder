@@ -7,10 +7,14 @@ import {
 import type { EquipmentHigherLevelStartEvidence } from "./equipment-policy.js";
 
 export interface AcquisitionIdentityV1 {
+  readonly version: 1;
   readonly draftId: string;
   readonly batchId: string;
+  readonly manifestId: string;
   readonly lineId: string;
   readonly entryId: string;
+  readonly plannedItemId: string;
+  readonly plannedContainerId: string | null;
   readonly plannedGrantId: string | null;
   readonly stackingIntent: AcquisitionStackingIntent;
 }
@@ -36,9 +40,12 @@ export interface EconomicBaselineV1 {
 export interface EconomicRetryExpectation {
   readonly draftId: string;
   readonly batchId: string;
+  readonly manifestId: string;
   readonly expectedCurrencyCopper: number;
   readonly expectedEntries: readonly {
     readonly entryId: string;
+    readonly plannedItemId: string;
+    readonly plannedContainerId: string | null;
     readonly lineId: string;
     readonly sourceUuid: string;
     readonly quantity: number;
@@ -51,6 +58,7 @@ export interface EconomicHistoryFacts {
   readonly previousCharacterAppliedAt: string | null;
   readonly previousTargetLevel: number | null;
   readonly completedAcquisitionManifestId: string | null;
+  readonly completedAcquisitionManifestCorrupt: boolean;
 }
 
 export type EconomicHandoffReason =
@@ -79,6 +87,7 @@ export type EconomicAdmissionResult =
       readonly baseline: EconomicBaselineV1;
       readonly code:
         | "completed-acquisition"
+        | "completed-acquisition-manifest-corrupt"
         | "prior-character-outcome"
         | "higher-level-start-context-missing"
         | "higher-level-start-context-mismatch"
@@ -179,6 +188,13 @@ export function evaluateEconomicAdmission(args: {
   ) {
     throw new TypeError("Economic admission requires a valid actor, acquisition identity, and target level.");
   }
+  if (args.history.completedAcquisitionManifestCorrupt) {
+    return blocked(
+      baseline,
+      "completed-acquisition-manifest-corrupt",
+      "This actor has malformed completed starting-equipment evidence and requires manual review."
+    );
+  }
   if (args.history.completedAcquisitionManifestId) {
     return blocked(
       baseline,
@@ -217,7 +233,7 @@ export function evaluateEconomicAdmission(args: {
   const ambiguous = uniqueSorted(reconciliation.ambiguousGrantIds);
   const ignoredClassGrantItemIds = new Set(reconciliation.ignoredItemIds);
   const retry = args.retryExpectation ?? null;
-  if (retry && (retry.draftId !== args.draftId || retry.batchId !== args.batchId)) {
+  if (retry && (retry.draftId !== args.draftId || retry.batchId !== args.batchId || !nonEmpty(retry.manifestId))) {
     return blocked(baseline, "retry-identity-mismatch", "The retry expectation belongs to a different draft or batch.");
   }
 
@@ -235,7 +251,10 @@ export function evaluateEconomicAdmission(args: {
       retry &&
       identity?.draftId === args.draftId &&
       identity.batchId === args.batchId &&
+      identity.manifestId === retry.manifestId &&
       expected?.lineId === identity.lineId &&
+      expected.plannedItemId === identity.plannedItemId &&
+      expected.plannedContainerId === identity.plannedContainerId &&
       expected.stackingIntent === identity.stackingIntent &&
       expected.sourceUuid === item.sourceUuid &&
       expected.quantity === item.quantity &&
@@ -303,10 +322,14 @@ export async function executeWithEconomicBaselineRevalidation<T>(args: {
 export function normalizeAcquisitionIdentity(raw: unknown): AcquisitionIdentityV1 | null {
   if (
     !isRecord(raw) ||
+    raw.version !== 1 ||
     !nonEmpty(raw.draftId) ||
     !nonEmpty(raw.batchId) ||
+    !nonEmpty(raw.manifestId) ||
     !nonEmpty(raw.lineId) ||
     !nonEmpty(raw.entryId) ||
+    !nonEmpty(raw.plannedItemId) ||
+    (raw.plannedContainerId !== null && !nonEmpty(raw.plannedContainerId)) ||
     (raw.plannedGrantId !== null && !nonEmpty(raw.plannedGrantId)) ||
     (raw.stackingIntent !== "aggregate" && raw.stackingIntent !== "separate")
   ) {
@@ -314,10 +337,14 @@ export function normalizeAcquisitionIdentity(raw: unknown): AcquisitionIdentityV
   }
   const plannedGrantId = raw.plannedGrantId === null ? null : String(raw.plannedGrantId);
   return {
+    version: 1,
     draftId: raw.draftId,
     batchId: raw.batchId,
+    manifestId: raw.manifestId,
     lineId: raw.lineId,
     entryId: raw.entryId,
+    plannedItemId: raw.plannedItemId,
+    plannedContainerId: raw.plannedContainerId as string | null,
     plannedGrantId,
     stackingIntent: raw.stackingIntent,
   };

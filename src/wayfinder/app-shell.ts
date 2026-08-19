@@ -113,6 +113,7 @@ import {
 } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
 import { recordClassGrantReconciliations } from "./domain/acquisition-draft.js";
+import { manifestsDescribeSameOutcome } from "./domain/completed-acquisition-manifest.js";
 import {
   evaluateWayfinderDraftReadiness,
   isTrainingStepCompleteFromDraft,
@@ -2059,11 +2060,23 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           error instanceof DraftApplyPhaseError &&
           (error.checkpoint?.checkpointId === "write:final-actor-update:after" ||
             error.checkpoint?.checkpointId === "phase:finalize-actor:after");
+        const completedAcquisitionManifest = currentState.completedAcquisitionManifest;
+        const intendedAcquisitionManifest =
+          error instanceof DraftApplyPhaseError && error.intendedFinalActorUpdate
+            ? normalizeState(error.intendedFinalActorUpdate[STATE_FLAG]).completedAcquisitionManifest
+            : null;
+        const acquisitionConverged = persistedApplyCandidate.acquisition
+          ? !currentState.completedAcquisitionManifestCorrupt &&
+            completedAcquisitionManifest !== null &&
+            intendedAcquisitionManifest !== null &&
+            manifestsDescribeSameOutcome(completedAcquisitionManifest, intendedAcquisitionManifest)
+          : true;
         finalizedDespiteApplyError =
           confirmedAfterBoundary &&
           this.actor.getFlag(MODULE_ID, "draft") == null &&
           currentSnapshot.level === persistedApplyCandidate.targetLevel &&
           currentState.lastTargetLevel === persistedApplyCandidate.targetLevel &&
+          acquisitionConverged &&
           [...persistedApplyCandidate.applyCompletedStepIds, ...persistedApplyCandidate.applyAttemptStepIds].every(
             (stepId) => currentState.completedStepIds.includes(stepId)
           );

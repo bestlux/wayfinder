@@ -51,6 +51,10 @@ describe("Foundry smoke lifecycle contract", () => {
     expect(appShell).toContain("clearDraftWithWriteGuard(this.actor, snapshot.level, this.#draftWriteGuard)");
     expect(appShell).toContain("assertDraftSideEffectAllowed(this.actor");
     expect(appShell.match(/this\.#assertPersistedApplyCandidateCurrent\(\)/g)).toHaveLength(4);
+    expect(appShell).toContain("error.intendedFinalActorUpdate[STATE_FLAG]");
+    expect(appShell).toContain(
+      "manifestsDescribeSameOutcome(completedAcquisitionManifest, intendedAcquisitionManifest)"
+    );
     expect(appShell).toContain(
       "error instanceof DraftApplyPhaseError && error.cause instanceof WayfinderDraftWriteConflictError"
     );

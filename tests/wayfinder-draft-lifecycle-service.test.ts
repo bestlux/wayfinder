@@ -247,9 +247,10 @@ describe("wayfinder draft lifecycle service", () => {
   it("blocks acquisition before confirmation or Apply-attempt persistence when no executor is active", async () => {
     const draft = createEmptyDraft(5);
     draft.acquisition = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       draftId: "draft-1",
       batchId: "batch-1",
+      manifestId: "manifest-1",
       targetLevel: 5,
       recipe: { kind: "lump-sum" },
       policySnapshot: null,
@@ -288,9 +289,10 @@ describe("wayfinder draft lifecycle service", () => {
     const draft = createEmptyDraft(5);
     draft.applyAttemptStepIds = ["starting-equipment"];
     draft.acquisition = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       draftId: "draft-1",
       batchId: "batch-1",
+      manifestId: "manifest-1",
       targetLevel: 5,
       recipe: { kind: "lump-sum" },
       policySnapshot: null,

@@ -1,4 +1,5 @@
 import type { AcquisitionDraftState } from "./wayfinder/domain/acquisition-types.js";
+import type { CompletedAcquisitionManifestV1 } from "./wayfinder/domain/completed-acquisition-manifest.js";
 import type { SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
 import type { CampaignFeatFilter as CampaignFeatFilterType, PendingStep } from "./wayfinder/domain/step-types.js";
 
@@ -100,6 +101,8 @@ export interface ModuleState {
   completedStepIds: string[];
   existingCharacterHistory: ExistingCharacterHistory | null;
   lastAppliedSpellRarityAttestations: AppliedSpellRarityAttestation[];
+  completedAcquisitionManifest: CompletedAcquisitionManifestV1 | null;
+  completedAcquisitionManifestCorrupt: boolean;
 }
 
 export type SpellRarityAttestationBasis = "rules-access" | "reported-gm-permission";

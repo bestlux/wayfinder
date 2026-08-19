@@ -8,7 +8,15 @@ import type {
   ModuleState,
   PendingStep,
 } from "../../types.js";
+import { assertPreparedAcquisitionIdentityPlanMatches } from "../domain/acquisition-identity.js";
 import type { ClassGrantReconciliationResultV1 } from "../domain/class-grant-reconciliation.js";
+import {
+  type AcquisitionFinalEvidence,
+  assertCompletedAcquisitionManifestMatchesIdentityPlan,
+  completedClassGrantsMatchFinalReconciliation,
+  manifestsDescribeSameOutcome,
+  normalizeCompletedAcquisitionManifest,
+} from "../domain/completed-acquisition-manifest.js";
 import {
   evaluateWayfinderDraftReadiness,
   type WayfinderStepEvaluation,
@@ -38,9 +46,15 @@ export interface ApplyDraftLifecycleArgs {
 }
 
 export type ApplyFinalStateSnapshot = Pick<ModuleState, "completedStepIds" | "existingCharacterHistory"> &
-  Partial<Pick<ModuleState, "lastAppliedSpellRarityAttestations">>;
+  Partial<
+    Pick<
+      ModuleState,
+      "lastAppliedSpellRarityAttestations" | "completedAcquisitionManifest" | "completedAcquisitionManifestCorrupt"
+    >
+  >;
 export interface ApplyFinalEvidence {
   readonly classGrantReconciliations: readonly ClassGrantReconciliationResultV1[];
+  readonly acquisition: AcquisitionFinalEvidence;
 }
 export type BuildApplyFinalActorUpdate = (
   currentState?: ApplyFinalStateSnapshot,
@@ -127,7 +141,14 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
   await args.beforeApply?.(applyAttemptDraft);
 
   const appliedAt = (args.now ?? defaultNow)();
-  const buildFinalActorUpdate: BuildApplyFinalActorUpdate = (currentState) => {
+  const buildFinalActorUpdate: BuildApplyFinalActorUpdate = (currentState, evidence) => {
+    const completedAcquisitionManifest = resolveCompletedAcquisitionManifest({
+      draft: args.draft,
+      currentState,
+      evidence: evidence?.acquisition ?? { kind: "none" },
+      classGrantReconciliations: evidence?.classGrantReconciliations ?? [],
+    });
+    const finalAppliedAt = args.draft.acquisition ? (completedAcquisitionManifest?.appliedAt ?? appliedAt) : appliedAt;
     const completedStepIds = mergeCompletedStepIds(
       currentState?.completedStepIds ?? args.existingCompletedStepIds ?? [],
       [...applyAttemptDraft.applyCompletedStepIds, ...applyAttemptDraft.applyAttemptStepIds]
@@ -136,13 +157,15 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
       [DRAFT_FLAG]: null,
       [STATE_FLAG]: {
         ...createEmptyState(),
-        lastAppliedAt: appliedAt,
+        lastAppliedAt: finalAppliedAt,
         lastTargetLevel: args.draft.targetLevel,
         completedStepIds,
         existingCharacterHistory: currentState
           ? currentState.existingCharacterHistory
           : (args.existingCharacterHistory ?? null),
         lastAppliedSpellRarityAttestations: cloneData(applyAttemptDraft.applySpellRarityAttestations),
+        completedAcquisitionManifest,
+        completedAcquisitionManifestCorrupt: currentState?.completedAcquisitionManifestCorrupt === true,
       },
     };
   };
@@ -159,6 +182,59 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
     kind: "applied",
     nextDraft: normalizeDraft(null, args.currentLevel),
   };
+}
+
+function resolveCompletedAcquisitionManifest(args: {
+  readonly draft: DraftState;
+  readonly currentState: ApplyFinalStateSnapshot | undefined;
+  readonly evidence: AcquisitionFinalEvidence;
+  readonly classGrantReconciliations: readonly ClassGrantReconciliationResultV1[];
+}): ModuleState["completedAcquisitionManifest"] {
+  const existing = args.currentState?.completedAcquisitionManifest ?? null;
+  if (!args.draft.acquisition) {
+    if (args.evidence.kind !== "none") {
+      throw new Error("A non-acquisition Apply cannot persist starting-equipment completion evidence.");
+    }
+    return cloneData(existing);
+  }
+  if (args.currentState?.completedAcquisitionManifestCorrupt === true) {
+    throw new Error("The actor's completed starting-equipment manifest is malformed and cannot be replaced.");
+  }
+  if (args.evidence.kind !== "completed") {
+    throw new Error("Starting-equipment Apply cannot clear its draft without completed manifest evidence.");
+  }
+  assertPreparedAcquisitionIdentityPlanMatches({
+    plan: args.evidence.identityPlan,
+    actorId: args.evidence.manifest.actorId,
+    draft: args.draft.acquisition,
+  });
+  const candidate = normalizeCompletedAcquisitionManifest(args.evidence.manifest);
+  if (
+    !candidate ||
+    candidate.id !== args.draft.acquisition.manifestId ||
+    candidate.draftId !== args.draft.acquisition.draftId ||
+    candidate.batchId !== args.draft.acquisition.batchId ||
+    candidate.targetLevel !== args.draft.acquisition.targetLevel
+  ) {
+    throw new Error("Starting-equipment completion evidence does not match the current acquisition draft.");
+  }
+  const finalReconciliations = args.classGrantReconciliations.filter((entry) => entry.phase === "final");
+  if (
+    finalReconciliations.length !== 1 ||
+    !completedClassGrantsMatchFinalReconciliation(candidate, finalReconciliations[0]!)
+  ) {
+    throw new Error("Starting-equipment completion evidence differs from final class-grant reconciliation.");
+  }
+  assertCompletedAcquisitionManifestMatchesIdentityPlan(candidate, args.evidence.identityPlan);
+  if (!existing) return candidate;
+  if (
+    existing.id !== candidate.id ||
+    existing.batchId !== candidate.batchId ||
+    !manifestsDescribeSameOutcome(existing, candidate)
+  ) {
+    throw new Error("A completed starting-equipment manifest already exists for another outcome.");
+  }
+  return cloneData(existing);
 }
 
 export function buildApplyAttemptDraft(

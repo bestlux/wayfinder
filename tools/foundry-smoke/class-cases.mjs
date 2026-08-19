@@ -1413,12 +1413,14 @@ export const applySafetySmokeCases = [
       level: 1,
       itemCount: 0,
       moduleState: {
-        version: 3,
+        version: 4,
         lastAppliedAt: null,
         lastTargetLevel: null,
         completedStepIds: [],
         existingCharacterHistory: null,
         lastAppliedSpellRarityAttestations: [],
+        completedAcquisitionManifest: null,
+        completedAcquisitionManifestCorrupt: false,
       },
     },
     expectedPreStepIds: [

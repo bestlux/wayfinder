@@ -62,10 +62,14 @@ describe("class-grant projection service", () => {
             flags: {
               [MODULE_ID]: {
                 acquisition: {
+                  version: 1,
                   draftId: "draft-1",
                   batchId: "batch-1",
+                  manifestId: "manifest-1",
                   lineId: "line-1",
                   entryId: "entry-1",
+                  plannedItemId: "planned-item-1",
+                  plannedContainerId: null,
                   plannedGrantId: "grant-titan",
                   stackingIntent: "separate",
                 },
@@ -396,9 +400,10 @@ describe("class-grant projection service", () => {
     });
     const policy = equipmentPolicy();
     draft.acquisition = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       draftId: "draft-1",
       batchId: "batch-1",
+      manifestId: "manifest-1",
       targetLevel: 1,
       recipe: { kind: "permanent-items" },
       policySnapshot: createAcquisitionPolicySnapshot(policy, { kind: "permanent-items" }),
@@ -570,9 +575,10 @@ function titanLine(): AcquisitionLineDraft {
 
 function titanAcquisition(): AcquisitionDraftState {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     draftId: "draft-1",
     batchId: "batch-1",
+    manifestId: "manifest-1",
     targetLevel: 1,
     recipe: { kind: "permanent-items" },
     policySnapshot: null,

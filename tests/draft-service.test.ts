@@ -58,12 +58,14 @@ describe("draft-service", () => {
 
   it("creates an empty module state", () => {
     expect(createEmptyState()).toEqual({
-      version: 3,
+      version: 4,
       lastAppliedAt: null,
       lastTargetLevel: null,
       completedStepIds: [],
       existingCharacterHistory: null,
       lastAppliedSpellRarityAttestations: [],
+      completedAcquisitionManifest: null,
+      completedAcquisitionManifestCorrupt: false,
     });
   });
 
@@ -483,7 +485,7 @@ describe("draft-service", () => {
         },
       })
     ).toEqual({
-      version: 3,
+      version: 4,
       lastAppliedAt: "2026-04-08T00:00:00.000Z",
       lastTargetLevel: 20,
       completedStepIds: ["a", "b"],
@@ -504,6 +506,8 @@ describe("draft-service", () => {
         ],
       },
       lastAppliedSpellRarityAttestations: [],
+      completedAcquisitionManifest: null,
+      completedAcquisitionManifestCorrupt: false,
     });
   });
 });

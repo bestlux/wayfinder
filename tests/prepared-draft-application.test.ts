@@ -148,9 +148,10 @@ describe("prepared draft application", () => {
     });
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       draftId: "draft-1",
       batchId: "batch-1",
+      manifestId: "manifest-1",
       targetLevel: 1,
       recipe: { kind: "permanent-items" },
       policySnapshot: null,
@@ -169,7 +170,17 @@ describe("prepared draft application", () => {
     });
 
     const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
-    const result = await executePreparedDraftApplication(prepared, { executeAcquisitionItems: () => undefined });
+    const acquisitionEvidence = { kind: "completed", manifest: { id: "manifest-1" } } as never;
+    const resolveFinalActorUpdate = vi.fn(() => ({}));
+    const result = await executePreparedDraftApplication(prepared, {
+      readCurrentAcquisitionHistory: () => ({
+        completedAcquisitionManifest: null,
+        completedAcquisitionManifestCorrupt: false,
+      }),
+      executeAcquisitionItems: () => undefined,
+      verifyAcquisitionOutcome: () => acquisitionEvidence,
+      resolveFinalActorUpdate,
+    });
 
     expect(result.classGrantReconciliations.map((entry) => entry.phase)).toEqual([
       "before-acquisition",
@@ -177,6 +188,23 @@ describe("prepared draft application", () => {
       "final",
     ]);
     expect(result.classGrantReconciliations.every((entry) => entry.entries[0]?.status === "resolved")).toBe(true);
+    expect(resolveFinalActorUpdate).toHaveBeenCalledWith({
+      classGrantReconciliations: expect.any(Array),
+      acquisition: acquisitionEvidence,
+    });
+
+    const secondBatchExecutor = vi.fn();
+    await expect(
+      executePreparedDraftApplication(prepared, {
+        readCurrentAcquisitionHistory: () => ({
+          completedAcquisitionManifest: { id: "prior-manifest" } as never,
+          completedAcquisitionManifestCorrupt: false,
+        }),
+        executeAcquisitionItems: secondBatchExecutor,
+        verifyAcquisitionOutcome: () => acquisitionEvidence,
+      })
+    ).rejects.toThrow(/prior or malformed acquisition history/i);
+    expect(secondBatchExecutor).not.toHaveBeenCalled();
   });
 
   it("materializes a Wayfinder class grant between before and after reconciliation", async () => {
@@ -185,9 +213,10 @@ describe("prepared draft application", () => {
     const grant = titanGrant();
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       draftId: "draft-1",
       batchId: "batch-1",
+      manifestId: "manifest-1",
       targetLevel: 1,
       recipe: { kind: "permanent-items" },
       policySnapshot: null,
@@ -207,6 +236,10 @@ describe("prepared draft application", () => {
     const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
 
     const result = await executePreparedDraftApplication(prepared, {
+      readCurrentAcquisitionHistory: () => ({
+        completedAcquisitionManifest: null,
+        completedAcquisitionManifestCorrupt: false,
+      }),
       executeAcquisitionItems: () => {
         actor.items.contents.push({
           id: "titan-weapon",
@@ -216,10 +249,14 @@ describe("prepared draft application", () => {
           flags: {
             [MODULE_ID]: {
               acquisition: {
+                version: 1,
                 draftId: "draft-1",
                 batchId: "batch-1",
+                manifestId: "manifest-1",
                 lineId: "line-titan",
                 entryId: "entry-titan",
+                plannedItemId: "planned-item-titan",
+                plannedContainerId: null,
                 plannedGrantId: grant.grantId,
                 stackingIntent: "separate",
               },
@@ -227,6 +264,7 @@ describe("prepared draft application", () => {
           },
         });
       },
+      verifyAcquisitionOutcome: () => ({ kind: "completed" }) as never,
     });
 
     expect(result.classGrantReconciliations.map((entry) => entry.entries[0]?.status)).toEqual([
@@ -241,9 +279,10 @@ describe("prepared draft application", () => {
     Object.assign(actor, { id: "actor-1" });
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       draftId: "draft-1",
       batchId: "batch-1",
+      manifestId: "manifest-1",
       targetLevel: 1,
       recipe: { kind: "permanent-items" },
       policySnapshot: null,
@@ -262,7 +301,14 @@ describe("prepared draft application", () => {
     });
     const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
 
-    await expect(executePreparedDraftApplication(prepared)).rejects.toMatchObject({ phase: "acquisition-items" });
+    await expect(
+      executePreparedDraftApplication(prepared, {
+        readCurrentAcquisitionHistory: () => ({
+          completedAcquisitionManifest: null,
+          completedAcquisitionManifestCorrupt: false,
+        }),
+      })
+    ).rejects.toMatchObject({ phase: "acquisition-items" });
     expect(actor.update).not.toHaveBeenCalled();
   });
 
@@ -270,9 +316,10 @@ describe("prepared draft application", () => {
     const { actor } = buildActorHarness();
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       draftId: "draft-1",
       batchId: "batch-1",
+      manifestId: "manifest-1",
       targetLevel: 1,
       recipe: { kind: "permanent-items" },
       policySnapshot: null,
@@ -284,7 +331,7 @@ describe("prepared draft application", () => {
     };
 
     expect(() => applyDraftToActor(actor as never, draft, [classSelectionStep()])).toThrow(
-      /prepared acquisition executor/i
+      /prepared acquisition execution and verification/i
     );
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
     expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
@@ -298,9 +345,10 @@ describe("prepared draft application", () => {
     const grant = titanGrant();
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       draftId: "draft-1",
       batchId: "batch-1",
+      manifestId: "manifest-1",
       targetLevel: 1,
       recipe: { kind: "permanent-items" },
       policySnapshot: null,
@@ -320,7 +368,13 @@ describe("prepared draft application", () => {
     const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
 
     await expect(
-      executePreparedDraftApplication(prepared, { executeAcquisitionItems: () => undefined })
+      executePreparedDraftApplication(prepared, {
+        readCurrentAcquisitionHistory: () => ({
+          completedAcquisitionManifest: null,
+          completedAcquisitionManifestCorrupt: false,
+        }),
+        executeAcquisitionItems: () => undefined,
+      })
     ).rejects.toMatchObject({ phase: "class-grant-reconcile-final" });
     expect(actor.update).not.toHaveBeenCalled();
   });
@@ -1345,6 +1399,7 @@ describe("prepared draft application", () => {
       failureKind: "operation",
       checkpoint: { checkpointId: "write:final-actor-update:after" },
       partialReceipt: { actorUpdatePaths: expect.arrayContaining(["flags.test.applied"]) },
+      intendedFinalActorUpdate: { "flags.test.applied": true },
     });
   });
 
@@ -1651,12 +1706,13 @@ describe("prepared draft application", () => {
       classGrantRecovery: {
         kind: "required",
         preparePlan: () => plan,
-        verifyAcquisitionRecovery: () => undefined,
+        verifyAcquisitionRecovery: () => ({ kind: "completed", manifest: { disposition: "purchase-ledger" } }) as never,
       },
     });
 
     expect(resolveFinalActorUpdate).toHaveBeenCalledWith({
       classGrantReconciliations: [expect.objectContaining({ phase: "final", ignoredItemIds: ["book"] })],
+      acquisition: expect.objectContaining({ kind: "completed" }),
     });
 
     const missing = buildActorHarness({ items: items.filter((item) => item.id !== "book") }).actor;
@@ -1669,7 +1725,8 @@ describe("prepared draft application", () => {
         classGrantRecovery: {
           kind: "required",
           preparePlan: () => plan,
-          verifyAcquisitionRecovery: () => undefined,
+          verifyAcquisitionRecovery: () =>
+            ({ kind: "completed", manifest: { disposition: "purchase-ledger" } }) as never,
         },
       })
     ).rejects.toThrow(/missing or ambiguous/i);

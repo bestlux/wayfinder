@@ -108,10 +108,14 @@ describe("economic baseline", () => {
   it("recognizes only exact same-draft and same-batch partial outputs as retry", () => {
     const retryItem = physical("created", {
       acquisitionIdentity: {
+        version: 1,
         draftId: "draft-1",
         batchId: "batch-1",
+        manifestId: "manifest-1",
         lineId: "line-1",
         entryId: "entry-1",
+        plannedItemId: "planned-item-1",
+        plannedContainerId: null,
         plannedGrantId: null,
         stackingIntent: "separate",
       },
@@ -122,10 +126,13 @@ describe("economic baseline", () => {
       retryExpectation: {
         draftId: "draft-1",
         batchId: "batch-1",
+        manifestId: "manifest-1",
         expectedCurrencyCopper: 500,
         expectedEntries: [
           {
             entryId: "entry-1",
+            plannedItemId: "planned-item-1",
+            plannedContainerId: null,
             lineId: "line-1",
             sourceUuid: retryItem.sourceUuid!,
             quantity: 1,
@@ -143,10 +150,13 @@ describe("economic baseline", () => {
       retryExpectation: {
         draftId: "draft-1",
         batchId: "other-batch",
+        manifestId: "manifest-1",
         expectedCurrencyCopper: 0,
         expectedEntries: [
           {
             entryId: "entry-1",
+            plannedItemId: "planned-item-1",
+            plannedContainerId: null,
             lineId: "line-1",
             sourceUuid: retryItem.sourceUuid!,
             quantity: 1,
@@ -172,6 +182,7 @@ describe("economic baseline", () => {
         retryExpectation: {
           draftId: "draft-1",
           batchId: "batch-1",
+          manifestId: "manifest-1",
           expectedCurrencyCopper: 500,
           expectedEntries: [],
         },
@@ -187,7 +198,21 @@ describe("economic baseline", () => {
         history: {
           previousCharacterAppliedAt: null,
           previousTargetLevel: null,
+          completedAcquisitionManifestId: null,
+          completedAcquisitionManifestCorrupt: true,
+        },
+      })
+    ).toMatchObject({ kind: "blocked", code: "completed-acquisition-manifest-corrupt" });
+
+    expect(
+      admission({
+        baseline: baseline(),
+        higherLevelStartEvidence: ownerStartEvidence(),
+        history: {
+          previousCharacterAppliedAt: null,
+          previousTargetLevel: null,
           completedAcquisitionManifestId: "manifest-1",
+          completedAcquisitionManifestCorrupt: false,
         },
       })
     ).toMatchObject({ kind: "blocked", code: "completed-acquisition" });
@@ -198,10 +223,14 @@ describe("economic baseline", () => {
           physicalItems: [
             physical("created", {
               acquisitionIdentity: {
+                version: 1,
                 draftId: "draft-1",
                 batchId: "batch-1",
+                manifestId: "manifest-1",
                 lineId: "line-1",
                 entryId: "entry-1",
+                plannedItemId: "planned-item-1",
+                plannedContainerId: null,
                 plannedGrantId: null,
                 stackingIntent: "aggregate",
               },
@@ -213,10 +242,12 @@ describe("economic baseline", () => {
           previousCharacterAppliedAt: null,
           previousTargetLevel: null,
           completedAcquisitionManifestId: "manifest-1",
+          completedAcquisitionManifestCorrupt: false,
         },
         retryExpectation: {
           draftId: "draft-1",
           batchId: "batch-1",
+          manifestId: "manifest-1",
           expectedCurrencyCopper: 0,
           expectedEntries: [],
         },
@@ -230,6 +261,7 @@ describe("economic baseline", () => {
           previousCharacterAppliedAt: "2026-08-17T20:00:00.000Z",
           previousTargetLevel: 1,
           completedAcquisitionManifestId: null,
+          completedAcquisitionManifestCorrupt: false,
         },
       })
     ).toMatchObject({ kind: "blocked", code: "prior-character-outcome" });
@@ -278,6 +310,7 @@ function admission(
       previousCharacterAppliedAt: null,
       previousTargetLevel: null,
       completedAcquisitionManifestId: null,
+      completedAcquisitionManifestCorrupt: false,
     },
     classGrantReconciliation: reconciliation(),
     preparedClassGrantPlan,

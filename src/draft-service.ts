@@ -15,6 +15,7 @@ import {
   STANDARD_CLASS_PATH,
 } from "./wayfinder/class-archetype/registry.js";
 import { normalizeAcquisitionDraft, reconcileAcquisitionTargetLevel } from "./wayfinder/domain/acquisition-draft.js";
+import { normalizeCompletedAcquisitionManifest } from "./wayfinder/domain/completed-acquisition-manifest.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
 import {
   normalizeAppliedSpellRarityAttestation,
@@ -22,7 +23,7 @@ import {
 } from "./wayfinder/spell-choice/rarity-attestation.js";
 
 const DRAFT_VERSION = 15;
-const STATE_VERSION = 3;
+const STATE_VERSION = 4;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
   return {
@@ -58,6 +59,8 @@ export function createEmptyState(): ModuleState {
     completedStepIds: [],
     existingCharacterHistory: null,
     lastAppliedSpellRarityAttestations: [],
+    completedAcquisitionManifest: null,
+    completedAcquisitionManifestCorrupt: false,
   };
 }
 
@@ -174,6 +177,10 @@ function clearMatchingKeys<T>(record: Record<string, T>, matches: (key: string) 
 
 export function normalizeState(raw: unknown): ModuleState {
   const state = isRecord(raw) ? (raw as Partial<ModuleState>) : {};
+  const completedAcquisitionManifest = normalizeCompletedAcquisitionManifest(state.completedAcquisitionManifest);
+  const completedAcquisitionManifestCorrupt =
+    state.completedAcquisitionManifestCorrupt === true ||
+    (state.completedAcquisitionManifest != null && completedAcquisitionManifest === null);
 
   return {
     version: STATE_VERSION,
@@ -186,6 +193,8 @@ export function normalizeState(raw: unknown): ModuleState {
     lastAppliedSpellRarityAttestations: sanitizeAppliedSpellRarityAttestations(
       state.lastAppliedSpellRarityAttestations
     ),
+    completedAcquisitionManifest,
+    completedAcquisitionManifestCorrupt,
   };
 }
 

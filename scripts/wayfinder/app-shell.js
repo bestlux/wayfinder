@@ -35,6 +35,7 @@ import { SemanticCommandQueue } from "./application/semantic-command-queue.js";
 import { buildDraftSaveView, buildWayfinderContext, } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
 import { recordClassGrantReconciliations } from "./domain/acquisition-draft.js";
+import { manifestsDescribeSameOutcome } from "./domain/completed-acquisition-manifest.js";
 import { evaluateWayfinderDraftReadiness, isTrainingStepCompleteFromDraft, WayfinderDraftNotReadyError, } from "./domain/step-evaluation.js";
 import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
@@ -1625,11 +1626,22 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 const confirmedAfterBoundary = error instanceof DraftApplyPhaseError &&
                     (error.checkpoint?.checkpointId === "write:final-actor-update:after" ||
                         error.checkpoint?.checkpointId === "phase:finalize-actor:after");
+                const completedAcquisitionManifest = currentState.completedAcquisitionManifest;
+                const intendedAcquisitionManifest = error instanceof DraftApplyPhaseError && error.intendedFinalActorUpdate
+                    ? normalizeState(error.intendedFinalActorUpdate[STATE_FLAG]).completedAcquisitionManifest
+                    : null;
+                const acquisitionConverged = persistedApplyCandidate.acquisition
+                    ? !currentState.completedAcquisitionManifestCorrupt &&
+                        completedAcquisitionManifest !== null &&
+                        intendedAcquisitionManifest !== null &&
+                        manifestsDescribeSameOutcome(completedAcquisitionManifest, intendedAcquisitionManifest)
+                    : true;
                 finalizedDespiteApplyError =
                     confirmedAfterBoundary &&
                         this.actor.getFlag(MODULE_ID, "draft") == null &&
                         currentSnapshot.level === persistedApplyCandidate.targetLevel &&
                         currentState.lastTargetLevel === persistedApplyCandidate.targetLevel &&
+                        acquisitionConverged &&
                         [...persistedApplyCandidate.applyCompletedStepIds, ...persistedApplyCandidate.applyAttemptStepIds].every((stepId) => currentState.completedStepIds.includes(stepId));
                 if (finalizedDespiteApplyError) {
                     this.#draft = createEmptyDraft(currentSnapshot.level);

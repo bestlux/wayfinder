@@ -97,10 +97,14 @@ describe("planned class-grant reconciliation", () => {
   it("requires exact Wayfinder draft, batch, and planned-grant identity for Titan Mauler", () => {
     const grant = titanGrant();
     const exact = observed("weapon", grant.expected.sourceUuid, "weapon", null, {
+      version: 1,
       draftId: "draft-1",
       batchId: "batch-1",
+      manifestId: "manifest-1",
       lineId: "line-1",
       entryId: "entry-1",
+      plannedItemId: "planned-item-1",
+      plannedContainerId: null,
       plannedGrantId: grant.grantId,
       stackingIntent: "separate",
     });
@@ -138,10 +142,14 @@ describe("planned class-grant reconciliation", () => {
   it("marks duplicate authoritative matches ambiguous", () => {
     const grant = titanGrant();
     const identity = {
+      version: 1 as const,
       draftId: "draft-1",
       batchId: "batch-1",
+      manifestId: "manifest-1",
       lineId: "line-1",
       entryId: "entry-1",
+      plannedItemId: "planned-item-1",
+      plannedContainerId: null,
       plannedGrantId: grant.grantId,
       stackingIntent: "separate" as const,
     };
@@ -149,6 +157,7 @@ describe("planned class-grant reconciliation", () => {
     const second = observed("weapon-b", grant.expected.sourceUuid, "weapon", null, {
       ...identity,
       entryId: "entry-2",
+      plannedItemId: "planned-item-2",
     });
     expect(
       reconcilePlannedClassGrants({

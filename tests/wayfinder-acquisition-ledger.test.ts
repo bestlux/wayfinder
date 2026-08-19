@@ -515,7 +515,13 @@ function acquisitionDraft(options: {
 }): AcquisitionDraftState {
   const recipe = options.recipe ?? { kind: "permanent-items" };
   return {
-    ...createAcquisitionDraft({ draftId: "draft-1", batchId: "batch-1", targetLevel: 5, recipe }),
+    ...createAcquisitionDraft({
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 5,
+      recipe,
+    }),
     policySnapshot: {
       version: 1,
       fingerprint: "diagnostic-policy-fingerprint",

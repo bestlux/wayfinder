@@ -1,10 +1,11 @@
 import { cloneData } from "./shared/cloning.js";
 import { classArchetypeProfile, migrateLegacyClassArchetypeBranches, STANDARD_CLASS_PATH, } from "./wayfinder/class-archetype/registry.js";
 import { normalizeAcquisitionDraft, reconcileAcquisitionTargetLevel } from "./wayfinder/domain/acquisition-draft.js";
+import { normalizeCompletedAcquisitionManifest } from "./wayfinder/domain/completed-acquisition-manifest.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
 import { normalizeAppliedSpellRarityAttestation, normalizeSpellRarityAttestation, } from "./wayfinder/spell-choice/rarity-attestation.js";
 const DRAFT_VERSION = 15;
-const STATE_VERSION = 3;
+const STATE_VERSION = 4;
 export function createEmptyDraft(targetLevel = 1) {
     return {
         version: DRAFT_VERSION,
@@ -38,6 +39,8 @@ export function createEmptyState() {
         completedStepIds: [],
         existingCharacterHistory: null,
         lastAppliedSpellRarityAttestations: [],
+        completedAcquisitionManifest: null,
+        completedAcquisitionManifestCorrupt: false,
     };
 }
 export function normalizeDraft(raw, fallbackTargetLevel) {
@@ -128,6 +131,9 @@ function clearMatchingKeys(record, matches) {
 }
 export function normalizeState(raw) {
     const state = isRecord(raw) ? raw : {};
+    const completedAcquisitionManifest = normalizeCompletedAcquisitionManifest(state.completedAcquisitionManifest);
+    const completedAcquisitionManifestCorrupt = state.completedAcquisitionManifestCorrupt === true ||
+        (state.completedAcquisitionManifest != null && completedAcquisitionManifest === null);
     return {
         version: STATE_VERSION,
         lastAppliedAt: typeof state.lastAppliedAt === "string" ? state.lastAppliedAt : null,
@@ -137,6 +143,8 @@ export function normalizeState(raw) {
             : [],
         existingCharacterHistory: sanitizeExistingCharacterHistory(state.existingCharacterHistory),
         lastAppliedSpellRarityAttestations: sanitizeAppliedSpellRarityAttestations(state.lastAppliedSpellRarityAttestations),
+        completedAcquisitionManifest,
+        completedAcquisitionManifestCorrupt,
     };
 }
 function sanitizeAppliedSpellRarityAttestations(raw) {

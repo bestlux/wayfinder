@@ -12,9 +12,14 @@ import { cloneData } from "./shared/cloning.js";
 import type { DraftState, PendingStep, SelectionRef } from "./types.js";
 import { captureObservedClassGrantItems } from "./wayfinder/application/class-grant-projection-service.js";
 import {
+  type ClassGrantReconciliationResultV1,
   type PreparedClassGrantPlanV1,
   reconcilePreparedClassGrants,
 } from "./wayfinder/domain/class-grant-reconciliation.js";
+import type {
+  AcquisitionFinalEvidence,
+  VerifiedAcquisitionOutcomeV1,
+} from "./wayfinder/domain/completed-acquisition-manifest.js";
 import type { SpellRarityCeiling } from "./wayfinder/spell-choice/rarity-access.js";
 
 type DraftMutationActor = SelectorActorLike &
@@ -39,6 +44,9 @@ export interface ApplyDraftOptions {
     steps: readonly PendingStep[]
   ) => PreparedClassGrantPlanV1 | Promise<PreparedClassGrantPlanV1>;
   executeAcquisitionItems?: ExecutePreparedDraftApplicationOptions["executeAcquisitionItems"];
+  verifyAcquisitionOutcome?: ExecutePreparedDraftApplicationOptions["verifyAcquisitionOutcome"];
+  readCurrentAcquisitionHistory?: ExecutePreparedDraftApplicationOptions["readCurrentAcquisitionHistory"];
+  acquisitionFinalEvidence?: AcquisitionFinalEvidence;
 }
 
 export interface FinalizeRecoveredDraftOptions {
@@ -59,7 +67,8 @@ export interface FinalizeRecoveredDraftOptions {
         readonly verifyAcquisitionRecovery: (args: {
           readonly actor: DraftMutationActor;
           readonly plan: PreparedClassGrantPlanV1;
-        }) => void | Promise<void>;
+          readonly finalClassGrantReconciliation: ClassGrantReconciliationResultV1;
+        }) => VerifiedAcquisitionOutcomeV1 | Promise<VerifiedAcquisitionOutcomeV1>;
       };
 }
 
@@ -74,8 +83,11 @@ export function applyDraftToActor(
   options: ApplyDraftOptions
 ): Promise<Record<string, unknown>> {
   assertRequiredActorAuthority(actor, options?.validateActorAuthority);
-  if (draft.acquisition && !options.executeAcquisitionItems) {
-    throw new Error("Starting-equipment Apply requires the prepared acquisition executor.");
+  if (
+    draft.acquisition &&
+    (!options.executeAcquisitionItems || !options.verifyAcquisitionOutcome || !options.readCurrentAcquisitionHistory)
+  ) {
+    throw new Error("Starting-equipment Apply requires prepared acquisition execution and verification.");
   }
   const actorKey = actor as object;
   const draftSnapshot = cloneData(draft);
@@ -107,6 +119,9 @@ export function applyDraftToActor(
       beforeFinalActorUpdate: options.beforeFinalActorUpdate,
       persistFinalActorUpdate: options.persistFinalActorUpdate,
       executeAcquisitionItems: options.executeAcquisitionItems,
+      verifyAcquisitionOutcome: options.verifyAcquisitionOutcome,
+      readCurrentAcquisitionHistory: options.readCurrentAcquisitionHistory,
+      acquisitionFinalEvidence: options.acquisitionFinalEvidence,
     });
     return result.actorUpdate;
   });
@@ -134,7 +149,7 @@ export function finalizeRecoveredDraftOnActor(
   assertRequiredActorAuthority(actor, options?.validateActorAuthority);
   return enqueueActorOperation(actor as object, async () => {
     await options.beforeFinalize?.();
-    const classGrantReconciliations = [];
+    const classGrantReconciliations: ClassGrantReconciliationResultV1[] = [];
     if (options.classGrantRecovery.kind === "required") {
       const plan = await options.classGrantRecovery.preparePlan(actor);
       const reconciliation = reconcilePreparedClassGrants({
@@ -143,10 +158,28 @@ export function finalizeRecoveredDraftOnActor(
         phase: "final",
       });
       classGrantReconciliations.push(reconciliation);
-      if (reconciliation.entries.some((entry) => entry.status !== "resolved")) {
+      const acquisitionFinalEvidence = await options.classGrantRecovery.verifyAcquisitionRecovery({
+        actor,
+        plan,
+        finalClassGrantReconciliation: reconciliation,
+      });
+      if (
+        acquisitionFinalEvidence.manifest.disposition !== "handoff" &&
+        reconciliation.entries.some((entry) => entry.status !== "resolved")
+      ) {
         throw new Error("Planned class equipment is missing or ambiguous during recovery finalization.");
       }
-      await options.classGrantRecovery.verifyAcquisitionRecovery({ actor, plan });
+      const result = await executeRecoveredDraftFinalization(actor, {
+        resolveFinalActorUpdate: options.resolveFinalActorUpdate,
+        beforeFinalActorUpdate: options.beforeFinalActorUpdate,
+        persistFinalActorUpdate: options.persistFinalActorUpdate,
+        onCheckpoint: options.onCheckpoint,
+        recoveryActorUpdate: cloneData(options.recoveryActorUpdate),
+        validateActorAuthority: options.validateActorAuthority,
+        classGrantReconciliations,
+        acquisitionFinalEvidence,
+      });
+      return result.actorUpdate;
     }
     const result = await executeRecoveredDraftFinalization(actor, {
       resolveFinalActorUpdate: options.resolveFinalActorUpdate,
@@ -186,6 +219,9 @@ function draftApplyOperationKey(draft: DraftState, steps: PendingStep[], options
     validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,
     prepareClassGrantPlan: operationIdentity(options.prepareClassGrantPlan),
     executeAcquisitionItems: operationIdentity(options.executeAcquisitionItems),
+    verifyAcquisitionOutcome: operationIdentity(options.verifyAcquisitionOutcome),
+    readCurrentAcquisitionHistory: operationIdentity(options.readCurrentAcquisitionHistory),
+    acquisitionFinalEvidence: options.acquisitionFinalEvidence ?? null,
   });
 }
 

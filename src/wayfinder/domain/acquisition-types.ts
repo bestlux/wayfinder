@@ -135,6 +135,7 @@ export interface AcquisitionMaterialLineFacts {
   readonly componentKind: AcquisitionComponentKind;
   readonly policyDecision: AcquisitionLinePolicyDecision;
   readonly funding: AcquisitionFunding;
+  readonly resolvedAllowanceId: string | null;
 }
 
 export interface AcquisitionMaterialFacts {
@@ -170,9 +171,10 @@ export type AcquisitionDisposition =
     };
 
 export interface AcquisitionDraftState {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly draftId: string;
   readonly batchId: string;
+  readonly manifestId: string;
   readonly targetLevel: number;
   readonly recipe: AcquisitionRecipeSelection;
   readonly policySnapshot: AcquisitionPolicySnapshot | null;

@@ -1,6 +1,8 @@
 import { DRAFT_FLAG, STATE_FLAG } from "../../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../../draft-service.js";
 import { cloneData } from "../../shared/cloning.js";
+import { assertPreparedAcquisitionIdentityPlanMatches } from "../domain/acquisition-identity.js";
+import { assertCompletedAcquisitionManifestMatchesIdentityPlan, completedClassGrantsMatchFinalReconciliation, manifestsDescribeSameOutcome, normalizeCompletedAcquisitionManifest, } from "../domain/completed-acquisition-manifest.js";
 import { evaluateWayfinderDraftReadiness, } from "../domain/step-evaluation.js";
 export async function applyDraftLifecycle(args) {
     if (args.draft.acquisitionCorrupt) {
@@ -69,19 +71,28 @@ export async function applyDraftLifecycle(args) {
     const applyAttemptDraft = buildApplyAttemptDraft(args.draft, args.steps, args.appliedSpellRarityAttestations ?? []);
     await args.beforeApply?.(applyAttemptDraft);
     const appliedAt = (args.now ?? defaultNow)();
-    const buildFinalActorUpdate = (currentState) => {
+    const buildFinalActorUpdate = (currentState, evidence) => {
+        const completedAcquisitionManifest = resolveCompletedAcquisitionManifest({
+            draft: args.draft,
+            currentState,
+            evidence: evidence?.acquisition ?? { kind: "none" },
+            classGrantReconciliations: evidence?.classGrantReconciliations ?? [],
+        });
+        const finalAppliedAt = args.draft.acquisition ? (completedAcquisitionManifest?.appliedAt ?? appliedAt) : appliedAt;
         const completedStepIds = mergeCompletedStepIds(currentState?.completedStepIds ?? args.existingCompletedStepIds ?? [], [...applyAttemptDraft.applyCompletedStepIds, ...applyAttemptDraft.applyAttemptStepIds]);
         return {
             [DRAFT_FLAG]: null,
             [STATE_FLAG]: {
                 ...createEmptyState(),
-                lastAppliedAt: appliedAt,
+                lastAppliedAt: finalAppliedAt,
                 lastTargetLevel: args.draft.targetLevel,
                 completedStepIds,
                 existingCharacterHistory: currentState
                     ? currentState.existingCharacterHistory
                     : (args.existingCharacterHistory ?? null),
                 lastAppliedSpellRarityAttestations: cloneData(applyAttemptDraft.applySpellRarityAttestations),
+                completedAcquisitionManifest,
+                completedAcquisitionManifestCorrupt: currentState?.completedAcquisitionManifestCorrupt === true,
             },
         };
     };
@@ -98,6 +109,48 @@ export async function applyDraftLifecycle(args) {
         kind: "applied",
         nextDraft: normalizeDraft(null, args.currentLevel),
     };
+}
+function resolveCompletedAcquisitionManifest(args) {
+    const existing = args.currentState?.completedAcquisitionManifest ?? null;
+    if (!args.draft.acquisition) {
+        if (args.evidence.kind !== "none") {
+            throw new Error("A non-acquisition Apply cannot persist starting-equipment completion evidence.");
+        }
+        return cloneData(existing);
+    }
+    if (args.currentState?.completedAcquisitionManifestCorrupt === true) {
+        throw new Error("The actor's completed starting-equipment manifest is malformed and cannot be replaced.");
+    }
+    if (args.evidence.kind !== "completed") {
+        throw new Error("Starting-equipment Apply cannot clear its draft without completed manifest evidence.");
+    }
+    assertPreparedAcquisitionIdentityPlanMatches({
+        plan: args.evidence.identityPlan,
+        actorId: args.evidence.manifest.actorId,
+        draft: args.draft.acquisition,
+    });
+    const candidate = normalizeCompletedAcquisitionManifest(args.evidence.manifest);
+    if (!candidate ||
+        candidate.id !== args.draft.acquisition.manifestId ||
+        candidate.draftId !== args.draft.acquisition.draftId ||
+        candidate.batchId !== args.draft.acquisition.batchId ||
+        candidate.targetLevel !== args.draft.acquisition.targetLevel) {
+        throw new Error("Starting-equipment completion evidence does not match the current acquisition draft.");
+    }
+    const finalReconciliations = args.classGrantReconciliations.filter((entry) => entry.phase === "final");
+    if (finalReconciliations.length !== 1 ||
+        !completedClassGrantsMatchFinalReconciliation(candidate, finalReconciliations[0])) {
+        throw new Error("Starting-equipment completion evidence differs from final class-grant reconciliation.");
+    }
+    assertCompletedAcquisitionManifestMatchesIdentityPlan(candidate, args.evidence.identityPlan);
+    if (!existing)
+        return candidate;
+    if (existing.id !== candidate.id ||
+        existing.batchId !== candidate.batchId ||
+        !manifestsDescribeSameOutcome(existing, candidate)) {
+        throw new Error("A completed starting-equipment manifest already exists for another outcome.");
+    }
+    return cloneData(existing);
 }
 export function buildApplyAttemptDraft(draft, steps, appliedSpellRarityAttestations = []) {
     const nextDraft = cloneData(draft);

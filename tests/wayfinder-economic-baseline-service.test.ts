@@ -22,10 +22,14 @@ describe("economic baseline actor service", () => {
         containerId: "backpack",
         sourceId: "Compendium.pf2e.equipment-srd.Item.rope",
         acquisition: {
+          version: 1,
           draftId: "draft-1",
           batchId: "batch-1",
+          manifestId: "manifest-1",
           lineId: "line-1",
           entryId: "entry-1",
+          plannedItemId: "planned-item-1",
+          plannedContainerId: null,
           plannedGrantId: null,
           stackingIntent: "aggregate",
         },
@@ -146,6 +150,7 @@ describe("economic baseline actor service", () => {
         previousCharacterAppliedAt: null,
         previousTargetLevel: null,
         completedAcquisitionManifestId: null,
+        completedAcquisitionManifestCorrupt: false,
       },
       preparedClassGrantPlan: createPreparedClassGrantPlan({
         actorId: "actor-1",

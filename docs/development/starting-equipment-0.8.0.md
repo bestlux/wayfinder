@@ -1,6 +1,6 @@
 # 0.8.0 Starting Equipment Implementation Plan
 
-Status: active implementation plan, updated 2026-08-16 after adversarial review and direct PF2E source review. Story completion still requires the acceptance and release evidence named below.
+Status: active implementation plan, updated 2026-08-19 after Wave 1 safety-kernel completion. Story completion still requires the acceptance and release evidence named below.
 
 Architecture and rules contracts:
 
@@ -194,6 +194,8 @@ Acceptance:
 - Starting equipment can add one new discriminant without modifying every unrelated pane model.
 
 ## Wave 1 — Build the safety kernel
+
+Implementation note (2026-08-19): `WF-080-10` through `WF-080-16` are complete as the executable Wave 1 safety kernel. The generated and semantic rules policies, versioned acquisition ledger, effective GM policy, economic admission/handoff boundary, authoritative class-grant reconciliation, stable transaction identity, and non-replaceable completed manifest are implemented with focused contract coverage. Starting-equipment browsing and mutation remain deliberately unavailable until the Wave 2 tracer supplies the prepared item executor and post-write verifier; ordinary character Apply remains unchanged.
 
 ### WF-080-10 — Generated remaster wealth policy
 

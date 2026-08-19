@@ -45,10 +45,11 @@ const INVALIDATION_ORDER: readonly AcquisitionInvalidationReason[] = [
 export function createAcquisitionDraft(args: {
   draftId: string;
   batchId: string;
+  manifestId: string;
   targetLevel: number;
   recipe: AcquisitionRecipeSelection;
 }): AcquisitionDraftState {
-  if (!nonEmpty(args.draftId) || !nonEmpty(args.batchId)) {
+  if (!nonEmpty(args.draftId) || !nonEmpty(args.batchId) || !nonEmpty(args.manifestId)) {
     throw new TypeError("Acquisition IDs must be created before draft initialization.");
   }
   if (!validTargetLevel(args.targetLevel)) {
@@ -57,9 +58,10 @@ export function createAcquisitionDraft(args: {
   const recipe = normalizeRecipe(args.recipe);
   if (!recipe) throw new TypeError("Acquisition recipe is invalid.");
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     draftId: args.draftId,
     batchId: args.batchId,
+    manifestId: args.manifestId,
     targetLevel: args.targetLevel,
     recipe,
     policySnapshot: null,
@@ -95,7 +97,7 @@ export function createAcquisitionPolicySnapshot(
     abp: clone(policy.abp),
     gmJudgments: clone(policy.gmJudgments),
   };
-  const normalized = normalizePolicySnapshot({ version: 1, fingerprint: policy.fingerprint, material });
+  const normalized = normalizeAcquisitionPolicySnapshot({ version: 1, fingerprint: policy.fingerprint, material });
   if (!normalized) throw new TypeError("The effective equipment policy cannot be captured for this acquisition.");
   return normalized;
 }
@@ -108,7 +110,13 @@ export function acquisitionPolicyMaterialMatches(
 }
 
 export function normalizeAcquisitionDraft(raw: unknown): AcquisitionDraftState | null {
-  if (!isRecord(raw) || raw.schemaVersion !== 1 || !nonEmpty(raw.draftId) || !nonEmpty(raw.batchId)) {
+  if (
+    !isRecord(raw) ||
+    raw.schemaVersion !== 2 ||
+    !nonEmpty(raw.draftId) ||
+    !nonEmpty(raw.batchId) ||
+    !nonEmpty(raw.manifestId)
+  ) {
     return null;
   }
   const recipe = normalizeRecipe(raw.recipe);
@@ -143,7 +151,7 @@ export function normalizeAcquisitionDraft(raw: unknown): AcquisitionDraftState |
     return null;
   }
 
-  const policySnapshot = normalizePolicySnapshot(raw.policySnapshot);
+  const policySnapshot = normalizeAcquisitionPolicySnapshot(raw.policySnapshot);
   if (raw.policySnapshot != null && !policySnapshot) return null;
   const baseline = normalizeBaseline(raw.baseline);
   if (raw.baseline != null && !baseline) return null;
@@ -159,9 +167,10 @@ export function normalizeAcquisitionDraft(raw: unknown): AcquisitionDraftState |
     return null;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     draftId: raw.draftId,
     batchId: raw.batchId,
+    manifestId: raw.manifestId,
     targetLevel: raw.targetLevel,
     recipe,
     policySnapshot,
@@ -417,7 +426,9 @@ function compareLineMaterial(
   }
   if (reviewed.priceFingerprint !== current.priceFingerprint) reasons.add("price");
   if (reviewed.requestedQuantity !== current.requestedQuantity) reasons.add("quantity");
-  if (!same(reviewed.funding, current.funding)) reasons.add("allowance");
+  if (!same(reviewed.funding, current.funding) || reviewed.resolvedAllowanceId !== current.resolvedAllowanceId) {
+    reasons.add("allowance");
+  }
   if (!same(reviewed.policyDecision, current.policyDecision)) reasons.add("policy");
 }
 
@@ -435,9 +446,9 @@ function normalizeLine(raw: unknown): AcquisitionLineDraft | null {
   ) {
     return null;
   }
-  const policyDecision = normalizeLinePolicyDecision(raw.policyDecision);
-  const funding = normalizeFunding(raw.funding);
-  const price = normalizePrice(raw.price);
+  const policyDecision = normalizeAcquisitionLinePolicyDecision(raw.policyDecision);
+  const funding = normalizeAcquisitionFunding(raw.funding);
+  const price = normalizeAcquisitionPriceSnapshot(raw.price);
   if (!policyDecision || !funding || !price) return null;
   return {
     schemaVersion: 1,
@@ -455,7 +466,7 @@ function normalizeLine(raw: unknown): AcquisitionLineDraft | null {
   };
 }
 
-function normalizeFunding(raw: unknown): AcquisitionFunding | null {
+export function normalizeAcquisitionFunding(raw: unknown): AcquisitionFunding | null {
   if (!isRecord(raw) || !isOneOf(raw.lane, ["currency", "allowance", "class-grant"])) return null;
   if (raw.lane === "currency") return hasOnlyKeys(raw, ["lane"]) ? { lane: "currency" } : null;
   if (raw.lane === "allowance") {
@@ -485,7 +496,7 @@ function normalizeFunding(raw: unknown): AcquisitionFunding | null {
     : null;
 }
 
-function normalizeLinePolicyDecision(raw: unknown): AcquisitionLinePolicyDecision | null {
+export function normalizeAcquisitionLinePolicyDecision(raw: unknown): AcquisitionLinePolicyDecision | null {
   const publicationSlug = isRecord(raw) ? raw.publicationSlug : undefined;
   const characterAccessRef = isRecord(raw) ? raw.characterAccessRef : undefined;
   const sourceExceptionJudgmentId = isRecord(raw) ? raw.sourceExceptionJudgmentId : undefined;
@@ -519,7 +530,7 @@ function normalizeLinePolicyDecision(raw: unknown): AcquisitionLinePolicyDecisio
   };
 }
 
-function normalizePrice(raw: unknown): AcquisitionPriceSnapshot | null {
+export function normalizeAcquisitionPriceSnapshot(raw: unknown): AcquisitionPriceSnapshot | null {
   if (!isRecord(raw)) return null;
   const basePrice = normalizeBasePrice(raw.basePrice);
   const adjustedBulkPriceCopper = raw.adjustedBulkPriceCopper;
@@ -575,7 +586,7 @@ function normalizeBasePrice(raw: unknown): AcquisitionBasePriceSnapshot | null {
   return Object.values(value).every(safeNonNegativeInteger) ? { kind: "priced", value } : null;
 }
 
-function normalizePolicySnapshot(raw: unknown): AcquisitionPolicySnapshot | null {
+export function normalizeAcquisitionPolicySnapshot(raw: unknown): AcquisitionPolicySnapshot | null {
   if (raw == null) return null;
   if (!isRecord(raw) || raw.version !== 1 || !nonEmpty(raw.fingerprint)) return null;
   const material = normalizePolicyMaterial(raw.material);
@@ -1019,9 +1030,9 @@ function normalizeMaterialFacts(raw: unknown): AcquisitionMaterialFacts | null {
   ) {
     return null;
   }
-  const lines = raw.lines.flatMap(normalizeMaterialLine);
+  const lines = raw.lines.map(normalizeAcquisitionMaterialLineFacts);
   const plannedClassGrants = raw.plannedClassGrants.map(normalizePlannedClassGrant);
-  if (lines.length !== raw.lines.length || new Set(lines.map((line) => line.lineId)).size !== lines.length) {
+  if (lines.some((line) => !line) || new Set(lines.map((line) => line?.lineId)).size !== lines.length) {
     return null;
   }
   if (
@@ -1036,11 +1047,11 @@ function normalizeMaterialFacts(raw: unknown): AcquisitionMaterialFacts | null {
     policyMaterial,
     baseline,
     plannedClassGrants: plannedClassGrants as NonNullable<(typeof plannedClassGrants)[number]>[],
-    lines,
+    lines: lines as AcquisitionMaterialLineFacts[],
   };
 }
 
-function normalizeMaterialLine(raw: unknown): AcquisitionMaterialLineFacts[] {
+export function normalizeAcquisitionMaterialLineFacts(raw: unknown): AcquisitionMaterialLineFacts | null {
   if (
     !isRecord(raw) ||
     !nonEmpty(raw.lineId) ||
@@ -1053,26 +1064,34 @@ function normalizeMaterialLine(raw: unknown): AcquisitionMaterialLineFacts[] {
     !isOneOf(raw.permanence, ["consumable", "permanent"]) ||
     !isOneOf(raw.componentKind, ["baseline-item", "property-rune", "precious-material"])
   ) {
-    return [];
+    return null;
   }
-  const policyDecision = normalizeLinePolicyDecision(raw.policyDecision);
-  const funding = normalizeFunding(raw.funding);
-  if (!policyDecision || !funding) return [];
-  return [
-    {
-      lineId: raw.lineId,
-      sourceUuid: raw.sourceUuid,
-      documentFingerprint: raw.documentFingerprint,
-      priceFingerprint: raw.priceFingerprint,
-      itemLevel: raw.itemLevel,
-      requestedQuantity: raw.requestedQuantity,
-      stackingIntent: raw.stackingIntent,
-      permanence: raw.permanence,
-      componentKind: raw.componentKind,
-      policyDecision,
-      funding,
-    },
-  ];
+  const policyDecision = normalizeAcquisitionLinePolicyDecision(raw.policyDecision);
+  const funding = normalizeAcquisitionFunding(raw.funding);
+  const resolvedAllowanceId = raw.resolvedAllowanceId;
+  if (
+    !policyDecision ||
+    !funding ||
+    (resolvedAllowanceId !== null && !nonEmpty(resolvedAllowanceId)) ||
+    (funding.lane !== "allowance" && resolvedAllowanceId !== null) ||
+    (funding.lane === "allowance" && resolvedAllowanceId === null)
+  ) {
+    return null;
+  }
+  return {
+    lineId: raw.lineId,
+    sourceUuid: raw.sourceUuid,
+    documentFingerprint: raw.documentFingerprint,
+    priceFingerprint: raw.priceFingerprint,
+    itemLevel: raw.itemLevel,
+    requestedQuantity: raw.requestedQuantity,
+    stackingIntent: raw.stackingIntent,
+    permanence: raw.permanence,
+    componentKind: raw.componentKind,
+    policyDecision,
+    funding,
+    resolvedAllowanceId: resolvedAllowanceId === null ? null : String(resolvedAllowanceId),
+  };
 }
 
 function acquisitionRecipeFromEffectivePolicy(

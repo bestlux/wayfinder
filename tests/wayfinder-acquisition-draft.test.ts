@@ -23,6 +23,7 @@ describe("acquisition draft", () => {
       createAcquisitionDraft({
         draftId: "draft-1",
         batchId: "batch-1",
+        manifestId: "manifest-1",
         targetLevel: 5,
         recipe: { kind: "lump-sum" },
       })
@@ -289,7 +290,13 @@ describe("acquisition draft", () => {
 function completeDraft(): AcquisitionDraftState {
   const recipe = { kind: "permanent-items" } as const;
   return {
-    ...createAcquisitionDraft({ draftId: "draft-1", batchId: "batch-1", targetLevel: 5, recipe }),
+    ...createAcquisitionDraft({
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 5,
+      recipe,
+    }),
     policySnapshot: {
       version: 1,
       fingerprint: "full-policy",

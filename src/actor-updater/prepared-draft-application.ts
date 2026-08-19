@@ -16,7 +16,7 @@ import { cloneData } from "../shared/cloning.js";
 import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
-import type { DraftState, PendingStep, SelectionRef } from "../types.js";
+import type { DraftState, ModuleState, PendingStep, SelectionRef } from "../types.js";
 import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
 import { activeClassArchetypeProfile } from "../wayfinder/class-archetype/registry.js";
 import {
@@ -25,6 +25,10 @@ import {
   type PreparedClassGrantPlanV1,
   reconcilePreparedClassGrants,
 } from "../wayfinder/domain/class-grant-reconciliation.js";
+import type {
+  AcquisitionFinalEvidence,
+  VerifiedAcquisitionOutcomeV1,
+} from "../wayfinder/domain/completed-acquisition-manifest.js";
 import { maxProficiencyRank, projectDraftSkillRanks } from "../wayfinder/domain/skill-rank-projection.js";
 import { isActiveSkillTrainingChoice } from "../wayfinder/domain/skill-training-choice-availability.js";
 import {
@@ -172,6 +176,7 @@ export interface ExecutePreparedDraftApplicationOptions {
   finalActorUpdate?: Record<string, unknown>;
   resolveFinalActorUpdate?: (evidence: {
     readonly classGrantReconciliations: readonly ClassGrantReconciliationResultV1[];
+    readonly acquisition: AcquisitionFinalEvidence;
   }) => Record<string, unknown> | Promise<Record<string, unknown>>;
   beforeFinalActorUpdate?: () => void | Promise<void>;
   persistFinalActorUpdate?: (actorUpdate: Record<string, unknown>) => Promise<unknown>;
@@ -180,6 +185,16 @@ export interface ExecutePreparedDraftApplicationOptions {
     readonly draft: DraftState;
     readonly classGrantPlan: PreparedClassGrantPlanV1;
   }) => void | Promise<void>;
+  verifyAcquisitionOutcome?: (args: {
+    readonly actor: DraftMutationActor;
+    readonly draft: DraftState;
+    readonly classGrantPlan: PreparedClassGrantPlanV1;
+    readonly finalClassGrantReconciliation: ClassGrantReconciliationResultV1;
+  }) => VerifiedAcquisitionOutcomeV1 | Promise<VerifiedAcquisitionOutcomeV1>;
+  acquisitionFinalEvidence?: AcquisitionFinalEvidence;
+  readCurrentAcquisitionHistory?: () =>
+    | Pick<ModuleState, "completedAcquisitionManifest" | "completedAcquisitionManifestCorrupt">
+    | Promise<Pick<ModuleState, "completedAcquisitionManifest" | "completedAcquisitionManifestCorrupt">>;
 }
 
 export interface ExecuteRecoveredDraftFinalizationOptions extends ExecutePreparedDraftApplicationOptions {
@@ -203,6 +218,7 @@ export class DraftApplyPhaseError extends Error {
   readonly partialReceipt: DraftApplyPhaseReceipt;
   readonly recoveryActorUpdate: Readonly<Record<string, unknown>>;
   readonly completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[];
+  readonly intendedFinalActorUpdate: Readonly<Record<string, unknown>> | null;
 
   constructor(
     phase: DraftApplyPhase,
@@ -212,7 +228,8 @@ export class DraftApplyPhaseError extends Error {
     failureKind: "checkpoint-hook" | "operation",
     cause: unknown,
     recoveryActorUpdate: Record<string, unknown> = {},
-    completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[] = []
+    completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[] = [],
+    intendedFinalActorUpdate: Record<string, unknown> | null = null
   ) {
     const detail = cause instanceof Error && cause.message ? ` ${cause.message}` : "";
     const checkpointDetail = checkpoint ? ` at ${checkpoint.checkpointId}` : "";
@@ -224,6 +241,9 @@ export class DraftApplyPhaseError extends Error {
     this.partialReceipt = partialReceipt;
     this.recoveryActorUpdate = Object.freeze(cloneData(recoveryActorUpdate));
     this.completedClassGrantReconciliations = Object.freeze(cloneData(completedClassGrantReconciliations));
+    this.intendedFinalActorUpdate = intendedFinalActorUpdate
+      ? Object.freeze(cloneData(intendedFinalActorUpdate))
+      : null;
     this.checkpoint = checkpoint ? cloneData(checkpoint) : null;
     this.failureKind = failureKind;
   }
@@ -535,6 +555,15 @@ export async function executePreparedDraftApplication(
   options: ExecutePreparedDraftApplicationOptions = {}
 ): Promise<ExecutePreparedDraftApplicationResult> {
   assertActorAuthority(prepared.actor, prepared.validateActorAuthority);
+  if (prepared.draft.acquisition) {
+    if (!options.readCurrentAcquisitionHistory) {
+      throw new Error("Starting-equipment Apply requires a current acquisition history precondition.");
+    }
+    const history = await options.readCurrentAcquisitionHistory();
+    if (history.completedAcquisitionManifestCorrupt || history.completedAcquisitionManifest) {
+      throw new Error("Starting-equipment Apply cannot mutate an actor with prior or malformed acquisition history.");
+    }
+  }
   // The target level is part of the final actor transaction even though it is
   // intentionally persisted only by the finalize phase. Seed it before any
   // phase can fail so recovery-only finalization can replay the complete
@@ -542,6 +571,7 @@ export async function executePreparedDraftApplication(
   addLevelUpdate(prepared);
   const receipts: DraftApplyPhaseReceipt[] = [];
   const classGrantReconciliations: ClassGrantReconciliationResultV1[] = [];
+  let acquisitionFinalEvidence: AcquisitionFinalEvidence = options.acquisitionFinalEvidence ?? { kind: "none" };
   let projectedTrainingRanks: Record<string, number> = {};
 
   for (const phase of prepared.phaseIds) {
@@ -550,6 +580,7 @@ export async function executePreparedDraftApplication(
         prepared.actor,
         prepared.deferredActorUpdate,
         options,
+        acquisitionFinalEvidence,
         receipts,
         classGrantReconciliations
       );
@@ -722,13 +753,33 @@ export async function executePreparedDraftApplication(
               phase: "final",
             });
             classGrantReconciliations.push(reconciliation);
-            if (reconciliation.entries.some((entry) => entry.status !== "resolved")) {
+            if (
+              prepared.draft.acquisition?.disposition.kind !== "handoff" &&
+              reconciliation.entries.some((entry) => entry.status !== "resolved")
+            ) {
               throw new Error("Planned class equipment is missing or ambiguous at final verification.");
             }
           }
           break;
         case "verify-outcome":
           verifyPreparedOutcome(prepared);
+          if (prepared.draft.acquisition) {
+            if (!options.verifyAcquisitionOutcome || !prepared.classGrantPlan) {
+              throw new Error("Starting-equipment Apply requires final acquisition verification.");
+            }
+            const finalClassGrantReconciliation = [...classGrantReconciliations]
+              .reverse()
+              .find((entry) => entry.phase === "final");
+            if (!finalClassGrantReconciliation) {
+              throw new Error("Starting-equipment Apply is missing final class-grant evidence.");
+            }
+            acquisitionFinalEvidence = await options.verifyAcquisitionOutcome({
+              actor: prepared.actor,
+              draft: prepared.draft,
+              classGrantPlan: prepared.classGrantPlan,
+              finalClassGrantReconciliation,
+            });
+          }
           break;
       }
       receipts.push(buildPhaseReceipt(phase, beforeItems, prepared.actor, confirmedActorUpdatePaths));
@@ -761,7 +812,14 @@ export async function executeRecoveredDraftFinalization(
   assertActorAuthority(actor, options.validateActorAuthority);
   const recoveryActorUpdate = cloneData(options.recoveryActorUpdate);
   const classGrantReconciliations = cloneData(options.classGrantReconciliations ?? []);
-  const receipt = await executeFinalActorPhase(actor, recoveryActorUpdate, options, [], classGrantReconciliations);
+  const receipt = await executeFinalActorPhase(
+    actor,
+    recoveryActorUpdate,
+    options,
+    options.acquisitionFinalEvidence ?? { kind: "none" },
+    [],
+    classGrantReconciliations
+  );
   return {
     actorUpdate: recoveryActorUpdate,
     receipts: [receipt],
@@ -773,6 +831,7 @@ async function executeFinalActorPhase(
   actor: DraftMutationActor,
   deferredActorUpdate: Record<string, unknown>,
   options: ExecutePreparedDraftApplicationOptions,
+  acquisitionFinalEvidence: AcquisitionFinalEvidence,
   completedReceipts: readonly DraftApplyPhaseReceipt[],
   completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[]
 ): Promise<DraftApplyPhaseReceipt> {
@@ -781,6 +840,7 @@ async function executeFinalActorPhase(
   let failedCheckpoint: DraftApplyCheckpoint | null = null;
   let operationFailureCheckpoint: DraftApplyCheckpoint | null = null;
   let confirmedActorUpdatePaths: string[] = [];
+  let intendedFinalActorUpdate: Record<string, unknown> | null = null;
   const emitCheckpoint = async (checkpoint: DraftApplyCheckpoint): Promise<void> => {
     try {
       await options.onCheckpoint?.(checkpoint);
@@ -800,6 +860,7 @@ async function executeFinalActorPhase(
       ? cloneData(
           await options.resolveFinalActorUpdate({
             classGrantReconciliations: cloneData(completedClassGrantReconciliations),
+            acquisition: cloneData(acquisitionFinalEvidence),
           })
         )
       : cloneData(options.finalActorUpdate ?? {});
@@ -808,6 +869,7 @@ async function executeFinalActorPhase(
       ...finalActorUpdate,
     };
     const intendedActorUpdate = cloneData(actorUpdate);
+    intendedFinalActorUpdate = cloneData(intendedActorUpdate);
     const intendedActorUpdatePaths = Object.keys(intendedActorUpdate);
     const finalActorUpdatePaths = Object.keys(finalActorUpdate);
     if (!actor.update) {
@@ -872,7 +934,8 @@ async function executeFinalActorPhase(
       checkpointFailure ? "checkpoint-hook" : "operation",
       error,
       deferredActorUpdate,
-      completedClassGrantReconciliations
+      completedClassGrantReconciliations,
+      intendedFinalActorUpdate
     );
   }
 }

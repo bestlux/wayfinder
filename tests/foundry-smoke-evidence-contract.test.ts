@@ -969,6 +969,10 @@ const TEST_APPLY_PHASES = [
   "native-spellcasting-after-spells",
   "boost-item-updates",
   "source-flag-restoration",
+  "class-grant-reconcile-before-acquisition",
+  "acquisition-items",
+  "class-grant-reconcile-after-acquisition",
+  "class-grant-reconcile-final",
   "verify-outcome",
   "finalize-actor",
 ];
@@ -1211,6 +1215,10 @@ function finalAfterApplySafetyEvidence() {
     "native-spellcasting-after-spells",
     "boost-item-updates",
     "source-flag-restoration",
+    "class-grant-reconcile-before-acquisition",
+    "acquisition-items",
+    "class-grant-reconcile-after-acquisition",
+    "class-grant-reconcile-final",
     "verify-outcome",
   ];
   return {
@@ -1265,23 +1273,27 @@ function phaseReceipt(phase: string) {
 
 function emptyModuleState() {
   return {
-    version: 3,
+    version: 4,
     lastAppliedAt: null,
     lastTargetLevel: null,
     completedStepIds: [],
     existingCharacterHistory: null,
     lastAppliedSpellRarityAttestations: [],
+    completedAcquisitionManifest: null,
+    completedAcquisitionManifestCorrupt: false,
   };
 }
 
 function appliedModuleState() {
   return {
-    version: 3,
+    version: 4,
     lastAppliedAt: "2026-08-16T12:00:00.000Z",
     lastTargetLevel: 5,
     completedStepIds: ["step"],
     existingCharacterHistory: null,
     lastAppliedSpellRarityAttestations: [],
+    completedAcquisitionManifest: null,
+    completedAcquisitionManifestCorrupt: false,
   };
 }
 

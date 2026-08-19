@@ -19,6 +19,10 @@ const APPLY_PHASE_IDS = Object.freeze([
   "native-spellcasting-after-spells",
   "boost-item-updates",
   "source-flag-restoration",
+  "class-grant-reconcile-before-acquisition",
+  "acquisition-items",
+  "class-grant-reconcile-after-acquisition",
+  "class-grant-reconcile-final",
   "verify-outcome",
   "finalize-actor",
 ]);
@@ -63,6 +67,8 @@ const ITEM_EVIDENCE_KEYS = [
   "type",
 ];
 const MODULE_STATE_KEYS = [
+  "completedAcquisitionManifest",
+  "completedAcquisitionManifestCorrupt",
   "completedStepIds",
   "existingCharacterHistory",
   "lastAppliedAt",
@@ -1020,7 +1026,12 @@ function validModuleStateSnapshot(value) {
     value &&
     typeof value === "object" &&
     exactObjectKeys(value, MODULE_STATE_KEYS) &&
-    value.version === 3 &&
+    value.version === 4 &&
+    (value.completedAcquisitionManifest === null ||
+      (value.completedAcquisitionManifest &&
+        typeof value.completedAcquisitionManifest === "object" &&
+        !Array.isArray(value.completedAcquisitionManifest))) &&
+    typeof value.completedAcquisitionManifestCorrupt === "boolean" &&
     (value.lastAppliedAt === null ||
       (nonEmptyString(value.lastAppliedAt) && Number.isFinite(Date.parse(value.lastAppliedAt)))) &&
     (value.lastTargetLevel === null ||
@@ -1122,7 +1133,9 @@ function exactModuleStateMatches(value, expected) {
     structuredValueEquals(
       value.lastAppliedSpellRarityAttestations,
       expected.lastAppliedSpellRarityAttestations
-    )
+    ) &&
+    structuredValueEquals(value.completedAcquisitionManifest, expected.completedAcquisitionManifest) &&
+    value.completedAcquisitionManifestCorrupt === expected.completedAcquisitionManifestCorrupt
   );
 }
 
@@ -1141,7 +1154,9 @@ function finalModuleStateMatches(
     nonEmptyString(actorId) &&
     nonEmptyString(value.lastAppliedAt) &&
     Number.isFinite(Date.parse(value.lastAppliedAt)) &&
-    value.version === 3 &&
+    value.version === 4 &&
+    value.completedAcquisitionManifest === null &&
+    value.completedAcquisitionManifestCorrupt === false &&
     value.lastTargetLevel === targetLevel &&
     uniqueStringArray(expectedStepIds) &&
     expectedStepIds.length > 0 &&

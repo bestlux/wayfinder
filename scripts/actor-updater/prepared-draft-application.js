@@ -37,7 +37,8 @@ export class DraftApplyPhaseError extends Error {
     partialReceipt;
     recoveryActorUpdate;
     completedClassGrantReconciliations;
-    constructor(phase, completedReceipts, partialReceipt, checkpoint, failureKind, cause, recoveryActorUpdate = {}, completedClassGrantReconciliations = []) {
+    intendedFinalActorUpdate;
+    constructor(phase, completedReceipts, partialReceipt, checkpoint, failureKind, cause, recoveryActorUpdate = {}, completedClassGrantReconciliations = [], intendedFinalActorUpdate = null) {
         const detail = cause instanceof Error && cause.message ? ` ${cause.message}` : "";
         const checkpointDetail = checkpoint ? ` at ${checkpoint.checkpointId}` : "";
         super(`Wayfinder apply failed during ${phase}${checkpointDetail}.${detail}`, { cause });
@@ -48,6 +49,9 @@ export class DraftApplyPhaseError extends Error {
         this.partialReceipt = partialReceipt;
         this.recoveryActorUpdate = Object.freeze(cloneData(recoveryActorUpdate));
         this.completedClassGrantReconciliations = Object.freeze(cloneData(completedClassGrantReconciliations));
+        this.intendedFinalActorUpdate = intendedFinalActorUpdate
+            ? Object.freeze(cloneData(intendedFinalActorUpdate))
+            : null;
         this.checkpoint = checkpoint ? cloneData(checkpoint) : null;
         this.failureKind = failureKind;
     }
@@ -289,6 +293,15 @@ async function validateSelectedEligibility(draft, steps, activeSelections, valid
 }
 export async function executePreparedDraftApplication(prepared, options = {}) {
     assertActorAuthority(prepared.actor, prepared.validateActorAuthority);
+    if (prepared.draft.acquisition) {
+        if (!options.readCurrentAcquisitionHistory) {
+            throw new Error("Starting-equipment Apply requires a current acquisition history precondition.");
+        }
+        const history = await options.readCurrentAcquisitionHistory();
+        if (history.completedAcquisitionManifestCorrupt || history.completedAcquisitionManifest) {
+            throw new Error("Starting-equipment Apply cannot mutate an actor with prior or malformed acquisition history.");
+        }
+    }
     // The target level is part of the final actor transaction even though it is
     // intentionally persisted only by the finalize phase. Seed it before any
     // phase can fail so recovery-only finalization can replay the complete
@@ -296,10 +309,11 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
     addLevelUpdate(prepared);
     const receipts = [];
     const classGrantReconciliations = [];
+    let acquisitionFinalEvidence = options.acquisitionFinalEvidence ?? { kind: "none" };
     let projectedTrainingRanks = {};
     for (const phase of prepared.phaseIds) {
         if (phase === "finalize-actor") {
-            const receipt = await executeFinalActorPhase(prepared.actor, prepared.deferredActorUpdate, options, receipts, classGrantReconciliations);
+            const receipt = await executeFinalActorPhase(prepared.actor, prepared.deferredActorUpdate, options, acquisitionFinalEvidence, receipts, classGrantReconciliations);
             receipts.push(receipt);
             continue;
         }
@@ -431,13 +445,31 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                             phase: "final",
                         });
                         classGrantReconciliations.push(reconciliation);
-                        if (reconciliation.entries.some((entry) => entry.status !== "resolved")) {
+                        if (prepared.draft.acquisition?.disposition.kind !== "handoff" &&
+                            reconciliation.entries.some((entry) => entry.status !== "resolved")) {
                             throw new Error("Planned class equipment is missing or ambiguous at final verification.");
                         }
                     }
                     break;
                 case "verify-outcome":
                     verifyPreparedOutcome(prepared);
+                    if (prepared.draft.acquisition) {
+                        if (!options.verifyAcquisitionOutcome || !prepared.classGrantPlan) {
+                            throw new Error("Starting-equipment Apply requires final acquisition verification.");
+                        }
+                        const finalClassGrantReconciliation = [...classGrantReconciliations]
+                            .reverse()
+                            .find((entry) => entry.phase === "final");
+                        if (!finalClassGrantReconciliation) {
+                            throw new Error("Starting-equipment Apply is missing final class-grant evidence.");
+                        }
+                        acquisitionFinalEvidence = await options.verifyAcquisitionOutcome({
+                            actor: prepared.actor,
+                            draft: prepared.draft,
+                            classGrantPlan: prepared.classGrantPlan,
+                            finalClassGrantReconciliation,
+                        });
+                    }
                     break;
             }
             receipts.push(buildPhaseReceipt(phase, beforeItems, prepared.actor, confirmedActorUpdatePaths));
@@ -457,19 +489,20 @@ export async function executeRecoveredDraftFinalization(actor, options) {
     assertActorAuthority(actor, options.validateActorAuthority);
     const recoveryActorUpdate = cloneData(options.recoveryActorUpdate);
     const classGrantReconciliations = cloneData(options.classGrantReconciliations ?? []);
-    const receipt = await executeFinalActorPhase(actor, recoveryActorUpdate, options, [], classGrantReconciliations);
+    const receipt = await executeFinalActorPhase(actor, recoveryActorUpdate, options, options.acquisitionFinalEvidence ?? { kind: "none" }, [], classGrantReconciliations);
     return {
         actorUpdate: recoveryActorUpdate,
         receipts: [receipt],
         classGrantReconciliations: [...classGrantReconciliations],
     };
 }
-async function executeFinalActorPhase(actor, deferredActorUpdate, options, completedReceipts, completedClassGrantReconciliations) {
+async function executeFinalActorPhase(actor, deferredActorUpdate, options, acquisitionFinalEvidence, completedReceipts, completedClassGrantReconciliations) {
     const phase = "finalize-actor";
     const beforeItems = snapshotPhaseItems(actor);
     let failedCheckpoint = null;
     let operationFailureCheckpoint = null;
     let confirmedActorUpdatePaths = [];
+    let intendedFinalActorUpdate = null;
     const emitCheckpoint = async (checkpoint) => {
         try {
             await options.onCheckpoint?.(checkpoint);
@@ -488,6 +521,7 @@ async function executeFinalActorPhase(actor, deferredActorUpdate, options, compl
         const finalActorUpdate = options.resolveFinalActorUpdate
             ? cloneData(await options.resolveFinalActorUpdate({
                 classGrantReconciliations: cloneData(completedClassGrantReconciliations),
+                acquisition: cloneData(acquisitionFinalEvidence),
             }))
             : cloneData(options.finalActorUpdate ?? {});
         const actorUpdate = {
@@ -495,6 +529,7 @@ async function executeFinalActorPhase(actor, deferredActorUpdate, options, compl
             ...finalActorUpdate,
         };
         const intendedActorUpdate = cloneData(actorUpdate);
+        intendedFinalActorUpdate = cloneData(intendedActorUpdate);
         const intendedActorUpdatePaths = Object.keys(intendedActorUpdate);
         const finalActorUpdatePaths = Object.keys(finalActorUpdate);
         if (!actor.update) {
@@ -552,7 +587,7 @@ async function executeFinalActorPhase(actor, deferredActorUpdate, options, compl
         const partialReceipt = buildPhaseReceipt(phase, beforeItems, actor, confirmedActorUpdatePaths);
         const checkpointFailure = failedCheckpoint;
         const receiptCompletedBeforeFailure = checkpointFailure?.kind === "phase" && checkpointFailure.boundary === "after";
-        throw new DraftApplyPhaseError(phase, receiptCompletedBeforeFailure ? [...completedReceipts, partialReceipt] : completedReceipts, partialReceipt, checkpointFailure ?? operationFailureCheckpoint, checkpointFailure ? "checkpoint-hook" : "operation", error, deferredActorUpdate, completedClassGrantReconciliations);
+        throw new DraftApplyPhaseError(phase, receiptCompletedBeforeFailure ? [...completedReceipts, partialReceipt] : completedReceipts, partialReceipt, checkpointFailure ?? operationFailureCheckpoint, checkpointFailure ? "checkpoint-hook" : "operation", error, deferredActorUpdate, completedClassGrantReconciliations, intendedFinalActorUpdate);
     }
 }
 async function validateSpellSelections(prepared) {

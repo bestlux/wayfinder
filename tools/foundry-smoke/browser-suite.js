@@ -53,7 +53,7 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
   };
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     startedAt,
     finishedAt: new Date().toISOString(),
     foundryVersion: game.version ?? null,
@@ -419,6 +419,445 @@ globalThis.__cleanupWayfinderOwnerProbe = async function cleanupWayfinderOwnerPr
     actorMissingAfterCleanup: !game.actors.has(actorId),
   };
 };
+
+globalThis.__prepareWayfinderAcquisitionTracer = async function prepareWayfinderAcquisitionTracer({
+  allowDestructive = false,
+  cases,
+  expectedWorldId = "",
+  fixturePrefix,
+  moduleId,
+  playerName,
+  runId,
+}) {
+  if (!allowDestructive || !String(expectedWorldId ?? "").trim()) {
+    throw new Error("Acquisition tracer setup requires destructive opt-in and an exact expected world id.");
+  }
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (!game.user?.isGM) throw new Error("Acquisition tracer setup must run as a current GM.");
+  const moduleRecord = game.modules.get(moduleId);
+  if (!moduleRecord?.active) throw new Error(`${moduleId} is not active in this world.`);
+  const player = game.users.find(
+    (candidate) => candidate.name === playerName && candidate.id !== game.user.id && !candidate.isGM,
+  );
+  if (!player) throw new Error("Acquisition tracer setup could not resolve the configured distinct non-GM player.");
+  if (!Array.isArray(cases) || cases.length === 0) throw new Error("Acquisition tracer setup requires cases.");
+
+  const fixtures = [];
+  try {
+    for (const smokeCase of cases) {
+      const fixtureName = `${fixturePrefix} - acquisition - ${runId} - ${smokeCase.id}`;
+      const actor = await Actor.create({
+        name: fixtureName,
+        type: "character",
+        ownership: {
+          default: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE,
+          [player.id]: CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER,
+        },
+        system: { details: { level: { value: 1 } } },
+        flags: {
+          [moduleId]: {
+            smokeAcquisitionTracer: {
+              runId,
+              caseId: smokeCase.id,
+              definitionFingerprint: smokeCase.definitionFingerprint,
+            },
+          },
+        },
+      });
+      if (!actor) throw new Error(`Acquisition tracer could not create fixture ${smokeCase.id}.`);
+      fixtures.push({
+        actorId: actor.id,
+        caseId: smokeCase.id,
+        definitionFingerprint: smokeCase.definitionFingerprint,
+        fixtureName,
+      });
+    }
+  } catch (error) {
+    for (const fixture of fixtures) {
+      const actor = game.actors.get(fixture.actorId);
+      const marker = actor?.getFlag(moduleId, "smokeAcquisitionTracer");
+      if (actor && marker?.runId === runId && marker?.caseId === fixture.caseId) await actor.delete();
+    }
+    throw error;
+  }
+  return {
+    fixtures,
+    playerId: player.id,
+    reviewSession: {
+      role: Number(game.user.role),
+      isGM: Boolean(game.user.isGM),
+      runtime: smokeRuntime(moduleRecord, expectedWorldId),
+      reviewedCaseIds: [],
+    },
+    runtime: smokeRuntime(moduleRecord, expectedWorldId),
+  };
+};
+
+globalThis.__runWayfinderAcquisitionTracer = async function runWayfinderAcquisitionTracer({
+  cases,
+  expectedPlayerId,
+  expectedWorldId = "",
+  fixtures,
+  moduleId,
+  runId,
+}) {
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  const moduleRecord = game.modules.get(moduleId);
+  if (!moduleRecord?.active) throw new Error(`${moduleId} is not active in this world.`);
+  if (!game.user || game.user.id !== expectedPlayerId || game.user.isGM) {
+    throw new Error("Acquisition tracer execution requires the configured distinct non-GM player.");
+  }
+  const startedAt = new Date().toISOString();
+  const modules = await loadWayfinderModules(moduleId);
+  const fixturesByCase = new Map((fixtures ?? []).map((fixture) => [fixture.caseId, fixture]));
+  const results = [];
+  for (const smokeCase of cases ?? []) {
+    const fixture = fixturesByCase.get(smokeCase.id);
+    const actor = fixture ? game.actors.get(fixture.actorId) : null;
+    results.push(
+      await runAcquisitionTracerCase({
+        actor,
+        fixture,
+        moduleId,
+        moduleRecord,
+        modules,
+        runId,
+        smokeCase,
+      }),
+    );
+  }
+  const summary = {
+    classified: 0,
+    failed: results.filter((entry) => entry.status === "fail").length,
+    passed: results.filter((entry) => entry.status === "pass").length,
+  };
+  return {
+    schemaVersion: 4,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    foundryVersion: game.version ?? null,
+    moduleActive: true,
+    moduleId,
+    moduleVersion: moduleRecord.version ?? moduleRecord.manifest?.version ?? null,
+    pf2eVersion: game.system?.version ?? null,
+    summary,
+    user: {
+      id: game.user.id,
+      name: game.user.name,
+      role: Number(game.user.role),
+      isGM: Boolean(game.user.isGM),
+    },
+    world: game.world?.id ?? null,
+    cases: results,
+  };
+};
+
+globalThis.__collectWayfinderAcquisitionDurability = async function collectWayfinderAcquisitionDurability({
+  cases,
+  expectedWorldId = "",
+  fixtures,
+  moduleId,
+  runId,
+}) {
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (!game.user?.isGM) {
+    throw new Error("Acquisition durability collection must run in the reloaded GM context.");
+  }
+  const moduleRecord = game.modules.get(moduleId);
+  if (!moduleRecord?.active) throw new Error(`${moduleId} is not active in this world.`);
+  const modules = await loadWayfinderModules(moduleId);
+  const fixturesByCase = new Map((fixtures ?? []).map((fixture) => [fixture.caseId, fixture]));
+  return (cases ?? []).map((smokeCase) => {
+    const fixture = fixturesByCase.get(smokeCase.id);
+    const actor = fixture ? game.actors.get(fixture.actorId) : null;
+    const marker = actor?.getFlag(moduleId, "smokeAcquisitionTracer");
+    if (
+      !actor ||
+      actor.name !== fixture?.fixtureName ||
+      marker?.runId !== runId ||
+      marker?.caseId !== smokeCase.id ||
+      marker?.definitionFingerprint !== smokeCase.definitionFingerprint
+    ) {
+      throw new Error("Acquisition durability collection refused a fixture with changed guarded identity.");
+    }
+    const actorEvidence = collectActorEvidence(actor, modules, moduleId);
+    const manifest = structuredClone(
+      actorEvidence.moduleStateAfterApply?.completedAcquisitionManifest ?? null,
+    );
+    const batchItems = manifest?.batchId
+      ? actorEvidence.items.filter((item) => item.acquisition?.batchId === manifest.batchId)
+      : [];
+    return {
+      schemaVersion: 1,
+      source: "gm-context-page-reload",
+      caseId: smokeCase.id,
+      definitionFingerprint: smokeCase.definitionFingerprint,
+      actorId: actor.id,
+      runtime: smokeRuntime(moduleRecord, expectedWorldId),
+      draft: structuredClone(actorEvidence.moduleDraftAfterApply),
+      manifest,
+      manifestCorrupt:
+        actorEvidence.moduleStateAfterApply?.completedAcquisitionManifestCorrupt ?? null,
+      currencyCopper: actorEvidence.currencyCopper,
+      items: structuredClone(batchItems),
+    };
+  });
+};
+
+globalThis.__cleanupWayfinderAcquisitionTracer = async function cleanupWayfinderAcquisitionTracer({
+  allowDestructive = false,
+  expectedWorldId = "",
+  fixtures,
+  moduleId,
+  runId,
+}) {
+  if (!allowDestructive || !String(expectedWorldId ?? "").trim()) {
+    throw new Error("Acquisition tracer cleanup requires destructive opt-in and an exact expected world id.");
+  }
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (!game.user?.isGM) throw new Error("Acquisition tracer cleanup must run as a current GM.");
+  const actors = (fixtures ?? []).map((fixture) => {
+    const actor = game.actors.get(fixture.actorId);
+    const marker = actor?.getFlag(moduleId, "smokeAcquisitionTracer");
+    if (
+      !actor ||
+      actor.name !== fixture.fixtureName ||
+      marker?.runId !== runId ||
+      marker?.caseId !== fixture.caseId ||
+      marker?.definitionFingerprint !== fixture.definitionFingerprint
+    ) {
+      throw new Error("Acquisition tracer cleanup refused a fixture that did not match its exact guarded identity.");
+    }
+    return actor;
+  });
+  for (const actor of actors) await actor.delete();
+  return {
+    exactFixturesMatched: true,
+    actorsDeleted: actors.length,
+    actorsMissingAfterCleanup: actors.every((actor) => !game.actors.has(actor.id)),
+  };
+};
+
+async function runAcquisitionTracerCase({ actor, fixture, moduleId, moduleRecord, modules, runId, smokeCase }) {
+  const failures = [];
+  const warnings = [];
+  if (!actor || !fixture) {
+    return failedAcquisitionTracerCase(smokeCase, null, "Acquisition tracer fixture is missing.");
+  }
+  const marker = actor.getFlag(moduleId, "smokeAcquisitionTracer");
+  if (
+    marker?.runId !== runId ||
+    marker?.caseId !== smokeCase.id ||
+    marker?.definitionFingerprint !== smokeCase.definitionFingerprint
+  ) {
+    return failedAcquisitionTracerCase(smokeCase, collectActorEvidence(actor, modules, moduleId), "Acquisition tracer fixture identity changed.");
+  }
+  if (
+    !actor.isOwner ||
+    !actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER) ||
+    !actor.canUserModify?.(game.user, "update")
+  ) {
+    failures.push("Acquisition tracer actor is not updateable by the current non-GM owner.");
+  }
+  const driver = globalThis.__wayfinderAcquisitionSmokeDriver;
+  if (!driver || typeof driver.runCase !== "function") {
+    failures.push("The installed feature build did not expose the acquisition UI smoke driver.");
+  }
+  const preCopper = Number(actor.inventory?.currency?.copperValue);
+  let failureCapture = null;
+  const retryCheckpoints = [];
+  let driverResult = null;
+  if (failures.length === 0) {
+    try {
+      driverResult = await driver.runCase({
+        actor,
+        caseDefinition: structuredClone(smokeCase),
+        checkpointTarget: structuredClone(smokeCase.acquisitionCase?.failure ?? null),
+        moduleId,
+        onFailure: async (error) => {
+          if (failureCapture) throw new Error("Acquisition UI smoke driver reported more than one failure boundary.");
+          failureCapture = captureAcquisitionFailure(actor, modules, moduleId, error);
+        },
+        onRetryCheckpoint: (checkpoint) => {
+          const summary = checkpointSummary(checkpoint);
+          if (!summary || summary.kind !== "write") {
+            throw new Error("Acquisition UI smoke driver reported a malformed retry write checkpoint.");
+          }
+          retryCheckpoints.push(summary);
+        },
+      });
+    } catch (error) {
+      failures.push(errorToString(error));
+    }
+  }
+  const ui = driverResult?.ui;
+  const requiredUiFields = [
+    "actorSheetOpened",
+    "launchControlClicked",
+    "equipmentPaneOpened",
+    "dispositionReviewed",
+    "applyClicked",
+    "completed",
+  ];
+  if (!ui || requiredUiFields.some((field) => ui[field] !== true)) {
+    failures.push("Acquisition tracer did not prove the required actor-sheet and Wayfinder UI path.");
+  }
+  if (smokeCase.acquisitionCase?.failure && ui?.retryClicked !== true) {
+    failures.push("Acquisition tracer did not prove the UI retry action after its forced failure.");
+  }
+  if (
+    smokeCase.acquisitionCase?.failure &&
+    ["failureVisible", "partialStateVisible", "draftRecoveryVisible"].some(
+      (field) => ui?.[field] !== true,
+    )
+  ) {
+    failures.push(
+      "Acquisition tracer did not prove that the owner saw the failure, partial state, and durable recovery state before retry.",
+    );
+  }
+  if (smokeCase.acquisitionCase?.failure && !failureCapture) {
+    failures.push("Acquisition tracer did not observe its configured typed failure boundary.");
+  }
+  if (!smokeCase.acquisitionCase?.failure && failureCapture) {
+    failures.push("Acquisition tracer observed an unexpected failure boundary.");
+  }
+
+  const actorEvidence = collectActorEvidence(actor, modules, moduleId);
+  const manifest = structuredClone(actorEvidence.moduleStateAfterApply?.completedAcquisitionManifest ?? null);
+  const runtime = smokeRuntime(moduleRecord, game.world?.id ?? "");
+  const acquisition = acquisitionEvidenceFromActor({
+    actorEvidence,
+    failureCapture,
+    manifest,
+    preCopper,
+    retryCheckpoints,
+    runtime,
+    smokeCase,
+  });
+  return {
+    id: smokeCase.id,
+    label: smokeCase.label,
+    status: failures.length > 0 ? "fail" : "pass",
+    actor: actorEvidence,
+    classifications: [],
+    evidence: {
+      acquisition,
+      acquisitionUi: structuredClone(ui ?? null),
+      applyReview: emptyApplyReviewEvidence(),
+    },
+    failures,
+    warnings,
+  };
+}
+
+function captureAcquisitionFailure(actor, modules, moduleId, error) {
+  const actorEvidence = collectActorEvidence(actor, modules, moduleId);
+  const persistedDraft = actor.getFlag(moduleId, "draft");
+  const manifest = actorEvidence.moduleStateAfterApply?.completedAcquisitionManifest ?? null;
+  const batchId = persistedDraft?.acquisition?.batchId ?? manifest?.batchId ?? null;
+  const actualItemIds = actorEvidence.items
+    .filter((item) => item.acquisition?.batchId === batchId)
+    .map((item) => item.id)
+    .sort();
+  const checkpoint = checkpointSummary(error?.checkpoint);
+  return {
+    checkpoint,
+    point: acquisitionFailurePoint(checkpoint),
+    batchId,
+    afterItemIndex: checkpoint?.operation === "embedded-item-create" ? checkpoint.ordinal : null,
+    currencyOperationIndex: checkpoint?.operation === "currency-convergence" && checkpoint.boundary === "after" ? checkpoint.ordinal : null,
+    message: errorToString(error),
+    actualItemIds,
+    observedCurrencyCopper: actorEvidence.currencyCopper,
+    manifestId: manifest?.id ?? null,
+    draftPresent: persistedDraft !== null,
+  };
+}
+
+function acquisitionEvidenceFromActor({ actorEvidence, failureCapture, manifest, preCopper, retryCheckpoints, runtime, smokeCase }) {
+  const currency = manifest?.currency
+    ? structuredClone(manifest.currency)
+    : {
+        preCopper,
+        budgetCopper: null,
+        targetCopper: null,
+        observedCopper: actorEvidence.currencyCopper,
+        spentCopper: null,
+        remainingCopper: null,
+      };
+  const policy = manifest?.policy
+    ? {
+        source: "completed-acquisition-manifest",
+        version: manifest.policy.version,
+        fingerprint: manifest.policy.fingerprint,
+        snapshot: structuredClone(manifest.policy),
+      }
+    : null;
+  const finalBatchItemIds = manifest?.batchId
+    ? actorEvidence.items
+        .filter((item) => item.acquisition?.batchId === manifest.batchId)
+        .map((item) => item.id)
+        .sort()
+    : [];
+  const retry = failureCapture
+    ? {
+        attempted: true,
+        converged: Boolean(manifest),
+        batchId: failureCapture.batchId,
+        manifestId: manifest?.id ?? null,
+        draftPresentBeforeRetry: failureCapture.draftPresent,
+        draftClearedAfterRetry: actorEvidence.moduleDraftAfterApply === null,
+        preRetryItemIds: [...failureCapture.actualItemIds],
+        postRetryItemIds: finalBatchItemIds,
+        preRetryCurrencyCopper: failureCapture.observedCurrencyCopper,
+        postRetryCurrencyCopper: actorEvidence.currencyCopper,
+        checkpoints: retryCheckpoints.map((checkpoint) => structuredClone(checkpoint)),
+      }
+    : null;
+  return {
+    binding: {
+      schemaVersion: 1,
+      caseId: smokeCase.id,
+      definitionFingerprint: smokeCase.definitionFingerprint,
+      executorRole: "non-gm-owner",
+      runtime: {
+        foundryVersion: runtime.foundryVersion,
+        pf2eVersion: runtime.pf2eVersion,
+        moduleVersion: runtime.moduleVersion,
+      },
+    },
+    policy,
+    currency,
+    durability: null,
+    manifest,
+    failureSnapshot: failureCapture ? structuredClone(failureCapture) : null,
+    retry,
+  };
+}
+
+function acquisitionFailurePoint(checkpoint) {
+  if (checkpoint?.operation === "embedded-item-create" && checkpoint.boundary === "after") return "item-after";
+  if (checkpoint?.operation === "currency-convergence") {
+    return checkpoint.boundary === "before" ? "currency-before" : "currency-after";
+  }
+  if (checkpoint?.operation === "final-actor-update") {
+    return checkpoint.boundary === "before" ? "final-state-before" : "final-state-after";
+  }
+  return null;
+}
+
+function failedAcquisitionTracerCase(smokeCase, actor, message) {
+  return {
+    id: smokeCase.id,
+    label: smokeCase.label,
+    status: "fail",
+    actor,
+    classifications: [],
+    evidence: { acquisition: emptyAcquisitionEvidence(), applyReview: emptyApplyReviewEvidence() },
+    failures: [message],
+    warnings: [],
+  };
+}
 
 async function loadWayfinderModules(moduleId) {
   const [
@@ -1926,16 +2365,22 @@ function collectGrantAncestryIds(item, itemsById) {
 function normalizeAcquisitionIdentity(value) {
   if (!value || typeof value !== "object") return null;
   return {
+    version: value.version ?? null,
     draftId: value.draftId ?? null,
     batchId: value.batchId ?? null,
+    manifestId: value.manifestId ?? null,
     lineId: value.lineId ?? null,
     entryId: value.entryId ?? null,
+    plannedItemId: value.plannedItemId ?? null,
+    plannedContainerId: value.plannedContainerId ?? null,
+    plannedGrantId: value.plannedGrantId ?? null,
     stackingIntent: value.stackingIntent ?? null,
   };
 }
 
 function emptyAcquisitionEvidence() {
   return {
+    binding: null,
     policy: null,
     currency: {
       preCopper: null,
@@ -1945,8 +2390,10 @@ function emptyAcquisitionEvidence() {
       spentCopper: null,
       remainingCopper: null,
     },
+    durability: null,
     manifest: null,
     failureSnapshot: null,
+    retry: null,
   };
 }
 

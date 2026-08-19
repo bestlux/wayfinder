@@ -366,6 +366,7 @@ describe("Foundry smoke evidence contract", () => {
       actualItemIds: ["acquired-item"],
       observedCurrencyCopper: 0,
       manifestId: null,
+      draftPresent: true,
     };
     input.cases[0].evidence.acquisition.manifest = null;
     const valid = qualifySmokeResult(input, [{ id: "case", caseKind: "acquisition" }]);
@@ -392,6 +393,7 @@ describe("Foundry smoke evidence contract", () => {
       actualItemIds: ["ghost-item"],
       observedCurrencyCopper: 0,
       manifestId: null,
+      draftPresent: true,
     };
     input.cases[0].evidence.acquisition.manifest = null;
     const result = qualifySmokeResult(input, [{ id: "case", caseKind: "acquisition" }]);
@@ -420,6 +422,7 @@ describe("Foundry smoke evidence contract", () => {
       actualItemIds: ["acquired-item"],
       observedCurrencyCopper: 0,
       manifestId: null,
+      draftPresent: true,
     };
     input.cases[0].evidence.acquisition.manifest = null;
     const result = qualifySmokeResult(input, [{ id: "case", caseKind: "acquisition" }]);
@@ -478,6 +481,33 @@ describe("Foundry smoke evidence contract", () => {
       ])
     );
     expect(rejected.qualification.passed).toBe(false);
+  });
+
+  it("accepts an after-currency checkpoint with a surviving PF2E currency-document delta", () => {
+    const definition = applySafetyDefinition("write:currency-convergence:after");
+    const coin = physicalItem({
+      id: "currency-item",
+      name: "Gold Pieces",
+      type: "treasure",
+      sourceId: "Compendium.pf2e.equipment-srd.Item.gold-pieces",
+      isCurrency: true,
+      quantity: 14,
+    });
+    const expectedIdentity = "treasure||Compendium.pf2e.equipment-srd.Item.gold-pieces|Gold Pieces";
+    Object.assign(definition, {
+      expectedItemCount: 1,
+      expectedItemIdentities: [expectedIdentity],
+      expectedItemSemanticIdentities: [
+        `${expectedIdentity}::destination=::location=::training=::grant=::container=::quantity=14::physical=true::currency=true`,
+      ],
+    });
+    const input = resultFixture({ items: [coin], currencyCopper: 1400 }) as any;
+    input.cases[0].actor.itemCount = 1;
+    input.cases[0].evidence.applySafety = currencyAfterApplySafetyEvidence();
+
+    const result = qualifySmokeResult(input, [definition]);
+    expect(findingCodes(result)).toEqual([]);
+    expect(result.qualification.passed).toBe(true);
   });
 
   it("rejects surplus final actor update paths", () => {
@@ -935,7 +965,7 @@ describe("Foundry smoke evidence contract", () => {
     expect(nonGm.qualification.passed).toBe(false);
   });
 
-  it("rejects evidence without the schema-v3 user role record", () => {
+  it("rejects evidence without the current-schema user role record", () => {
     const input = resultFixture();
     (input as { user: unknown }).user = "GM";
     expect(() => qualifySmokeResult(input)).toThrow(/complete user role record/u);
@@ -979,7 +1009,17 @@ const TEST_APPLY_PHASES = [
 ];
 
 function applySafetyDefinition(checkpointId: string) {
-  const [, phase, boundary] = checkpointId.split(":");
+  const [kind, operationOrPhase, boundary] = checkpointId.split(":");
+  const phase =
+    kind === "write"
+      ? (
+          {
+            "embedded-item-create": "acquisition-items",
+            "currency-convergence": "acquisition-currency",
+            "final-actor-update": "finalize-actor",
+          } as Record<string, string>
+        )[operationOrPhase]
+      : operationOrPhase;
   const completedCount =
     TEST_APPLY_PHASES.indexOf(phase) + (checkpointId.startsWith("phase:") && boundary === "after" ? 1 : 0);
   return {
@@ -1098,6 +1138,7 @@ function successfulAcquisitionResult() {
   });
   const result = resultFixture({ currencyCopper: 500, items: [item] });
   result.cases[0].evidence.acquisition = {
+    binding: null,
     policy: { source: "world", version: "1", fingerprint: "policy-sha256" },
     currency: {
       preCopper: 0,
@@ -1107,6 +1148,7 @@ function successfulAcquisitionResult() {
       spentCopper: 1000,
       remainingCopper: 500,
     },
+    durability: null,
     manifest: {
       id: "manifest-id",
       schemaVersion: 1,
@@ -1124,12 +1166,14 @@ function successfulAcquisitionResult() {
       ],
     },
     failureSnapshot: null,
+    retry: null,
   };
   return result;
 }
 
 function emptyAcquisitionEvidence() {
   return {
+    binding: null,
     policy: null,
     currency: {
       preCopper: null,
@@ -1139,8 +1183,10 @@ function emptyAcquisitionEvidence() {
       spentCopper: null,
       remainingCopper: null,
     },
+    durability: null,
     manifest: null,
     failureSnapshot: null,
+    retry: null,
   };
 }
 
@@ -1188,6 +1234,57 @@ function applySafetyEvidence() {
       postRetryItemIds: [],
     },
     message: `Wayfinder apply failed during singleton-replacements at ${checkpoint.checkpointId}. Intentional failure.`,
+  };
+}
+
+function currencyAfterApplySafetyEvidence() {
+  const checkpoint = {
+    checkpointId: "write:currency-convergence:after",
+    kind: "write",
+    phase: "acquisition-currency",
+    boundary: "after",
+    operation: "currency-convergence",
+    ordinal: 1,
+  };
+  const completedPhases = TEST_APPLY_PHASES.slice(0, TEST_APPLY_PHASES.indexOf("acquisition-currency"));
+  return {
+    target: { checkpointId: checkpoint.checkpointId, occurrence: 1 },
+    matchingOccurrence: 1,
+    injectedCheckpoint: { ...checkpoint },
+    observedCheckpoint: { ...checkpoint },
+    failureKind: "checkpoint-hook",
+    completedReceipts: completedPhases.map(phaseReceipt),
+    partialReceipt: {
+      ...phaseReceipt("acquisition-currency"),
+      createdItemIds: ["currency-item"],
+    },
+    failureState: {
+      expected: "pre-final",
+      preApplyLevel: 1,
+      observedLevel: 1,
+      draftPresent: true,
+      draftMatchesAttempt: true,
+      preApplyItemIds: [],
+      observedItemIds: ["currency-item"],
+      changedItemIds: [],
+      preApplyModuleState: emptyModuleState(),
+      observedModuleState: emptyModuleState(),
+      stateLastTargetLevel: null,
+      recoveredPlanStepIds: ["step"],
+    },
+    retryPlan: {
+      strategy: "rebuild-from-recovered-draft",
+      stepIds: ["step"],
+    },
+    retry: {
+      lifecycleKind: "applied",
+      draftCleared: true,
+      targetLevelReached: true,
+      rerunStepCount: 0,
+      preRetryItemIds: ["currency-item"],
+      postRetryItemIds: ["currency-item"],
+    },
+    message: `Wayfinder apply failed during acquisition-currency at ${checkpoint.checkpointId}. Intentional failure.`,
   };
 }
 

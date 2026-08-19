@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
+import {
+  acquisitionDefinitionFingerprint,
+  validateAcquisitionSmokeCaseDefinition,
+} from "./acquisition-cases.mjs";
+import { normalizeCompletedAcquisitionManifest } from "../../scripts/wayfinder/domain/completed-acquisition-manifest.js";
 
-export const SMOKE_EVIDENCE_SCHEMA_VERSION = 3;
+export const SMOKE_EVIDENCE_SCHEMA_VERSION = 4;
 
 const VALID_STACKING_INTENTS = new Set(["aggregate", "separate"]);
 const APPLY_PHASE_IDS = Object.freeze([
@@ -28,7 +33,12 @@ const APPLY_PHASE_IDS = Object.freeze([
   "finalize-actor",
 ]);
 const VALID_APPLY_PHASES = new Set(APPLY_PHASE_IDS);
-const VALID_APPLY_WRITE_OPERATIONS = new Set(["final-actor-update"]);
+const APPLY_WRITE_PHASES = Object.freeze({
+  "embedded-item-create": "acquisition-items",
+  "currency-convergence": "acquisition-currency",
+  "final-actor-update": "finalize-actor",
+});
+const VALID_APPLY_WRITE_OPERATIONS = new Set(Object.keys(APPLY_WRITE_PHASES));
 const REVIEWABLE_FINDING_CODES = new Set(["manual-classification"]);
 const REQUIRED_FINAL_ACTOR_UPDATE_PATHS = [
   "flags.wayfinder-pf2e.draft",
@@ -41,7 +51,15 @@ const ACTOR_AUTHORITY_KEYS = [
   "isOwner",
   "ownerPermission",
 ];
-const ACQUISITION_EVIDENCE_KEYS = ["currency", "failureSnapshot", "manifest", "policy"];
+const ACQUISITION_EVIDENCE_KEYS = [
+  "binding",
+  "currency",
+  "durability",
+  "failureSnapshot",
+  "manifest",
+  "policy",
+  "retry",
+];
 const ACQUISITION_CURRENCY_KEYS = [
   "budgetCopper",
   "observedCopper",
@@ -128,7 +146,7 @@ const EXPECTED_SPELL_SELECTION_KEYS = ["level", "name", "uuid"];
 
 export function assertIncrementalSmokeCasesSupported(caseDefinitions) {
   const unsupported = caseDefinitions
-    .filter((definition) => definition?.applySafetyFailureCheckpoint)
+    .filter((definition) => definition?.applySafetyFailureCheckpoint || definition?.acquisitionCase?.failure)
     .map((definition) => definition.id);
   if (unsupported.length > 0) {
     throw new Error(
@@ -154,7 +172,7 @@ export function qualifySmokeResult(resultInput, caseDefinitions = []) {
       ...applySafetyEvidenceFindings(smokeCase, definition),
       ...(caseKind === "character-build" ? characterBuildEvidenceFindings(smokeCase, definition) : []),
       ...acquisitionEnvelopeFindings(smokeCase),
-      ...(caseKind === "acquisition" ? acquisitionEvidenceFindings(smokeCase) : []),
+      ...(caseKind === "acquisition" ? acquisitionEvidenceFindings(smokeCase, definition, result) : []),
     ];
     findings.push(...reviewRecordFindings(findings, definition.reviewedFindings ?? [], result.user.isGM));
     const reviewedFindings = applyFindingReviews(uniqueFindings(findings), definition.reviewedFindings ?? []);
@@ -254,8 +272,13 @@ export function buildActorSourceEvidence(actorEvidence, expectations = []) {
   return { findings: uniqueFindings(findings), sourceGroups };
 }
 
-export function validateAcquisitionEvidence(smokeCase) {
-  return acquisitionEvidenceFindings(smokeCase);
+export function validateAcquisitionEvidence(smokeCase, definition = {}, result = {}) {
+  return acquisitionEvidenceFindings(smokeCase, definition, result);
+}
+
+export function parseApplyCheckpointId(value) {
+  const parsed = parseCheckpointId(value);
+  return parsed ? { ...parsed } : null;
 }
 
 function assertSmokeResultShape(result) {
@@ -414,7 +437,9 @@ function applySafetyEvidenceFindings(smokeCase, definition) {
     !Number.isSafeInteger(expectedOccurrence) ||
     expectedOccurrence < 1 ||
     (parsedExpected.kind === "phase" && expectedOccurrence !== 1) ||
-    (parsedExpected.kind === "write" && parsedExpected.operation === "final-actor-update" && expectedOccurrence !== 1) ||
+    (parsedExpected.kind === "write" &&
+      ["currency-convergence", "final-actor-update"].includes(parsedExpected.operation) &&
+      expectedOccurrence !== 1) ||
     !Number.isSafeInteger(definition?.targetLevel) ||
     definition.targetLevel < 1 ||
     !validExpectedPreApplyBaseline(definition?.expectedPreApply) ||
@@ -653,7 +678,10 @@ function applySafetyEvidenceFindings(smokeCase, definition) {
     evidence.partialReceipt?.updatedItemIds,
   ];
   const partialMustHaveNoItemDelta =
-    expected.kind === "write" || (expected.kind === "phase" && expected.boundary === "before");
+    (expected.kind === "phase" && expected.boundary === "before") ||
+    (expected.kind === "write" &&
+      expected.boundary === "before") ||
+    (expected.kind === "write" && expected.operation === "final-actor-update");
   if (
     partialMustHaveNoItemDelta &&
     partialItemDeltaFields.some((entries) => !Array.isArray(entries) || entries.length > 0)
@@ -663,6 +691,46 @@ function applySafetyEvidenceFindings(smokeCase, definition) {
         "apply-safety-partial-item-boundary-mismatch",
         subject,
         "A phase-before or final-write partial receipt cannot claim item mutations at that boundary."
+      )
+    );
+  }
+  if (
+    expected.kind === "write" &&
+    expected.operation === "currency-convergence" &&
+    expected.boundary === "after"
+  ) {
+    const actorItemsById = new Map((smokeCase.actor?.items ?? []).map((item) => [item?.id, item]));
+    const currencyReceiptIds = [
+      ...(evidence.partialReceipt?.createdItemIds ?? []),
+      ...(evidence.partialReceipt?.updatedItemIds ?? []),
+    ];
+    if (
+      (evidence.partialReceipt?.deletedItemIds?.length ?? 0) > 0 ||
+      currencyReceiptIds.some((itemId) => actorItemsById.get(itemId)?.isCurrency !== true)
+    ) {
+      findings.push(
+        finding(
+          "apply-safety-currency-write-receipt-mismatch",
+          subject,
+          "A Wave-2 currency write may report only surviving PF2E currency-document creation or updates."
+        )
+      );
+    }
+  }
+  if (
+    expected.kind === "write" &&
+    expected.operation === "embedded-item-create" &&
+    expected.boundary === "after" &&
+    (!Array.isArray(evidence.partialReceipt?.createdItemIds) ||
+      evidence.partialReceipt.createdItemIds.length !== expected.ordinal ||
+      evidence.partialReceipt.deletedItemIds?.length !== 0 ||
+      evidence.partialReceipt.updatedItemIds?.length !== 0)
+  ) {
+    findings.push(
+      finding(
+        "apply-safety-item-write-receipt-mismatch",
+        subject,
+        "An after-item write checkpoint must expose exactly the created item prefix through its ordinal."
       )
     );
   }
@@ -1266,6 +1334,14 @@ function structuredValueEquals(left, right) {
   );
 }
 
+function normalizedCompletedManifest(value) {
+  try {
+    return normalizeCompletedAcquisitionManifest(structuredClone(value));
+  } catch {
+    return null;
+  }
+}
+
 function uniqueStringArray(value) {
   return Array.isArray(value) && value.every(nonEmptyString) && new Set(value).size === value.length;
 }
@@ -1285,7 +1361,13 @@ function parseCheckpointId(value) {
   if (parts.length === 3 && parts[0] === "write" && VALID_APPLY_WRITE_OPERATIONS.has(parts[1])) {
     const boundary = parts[2];
     if (boundary !== "before" && boundary !== "after") return null;
-    return { checkpointId: value, kind: "write", phase: "finalize-actor", boundary, operation: parts[1] };
+    return {
+      checkpointId: value,
+      kind: "write",
+      phase: APPLY_WRITE_PHASES[parts[1]],
+      boundary,
+      operation: parts[1],
+    };
   }
   return null;
 }
@@ -1829,7 +1911,7 @@ function acquisitionEnvelopeFindings(smokeCase) {
       )
     );
   }
-  for (const field of ["policy", "manifest", "failureSnapshot"]) {
+  for (const field of ["binding", "policy", "manifest", "durability", "failureSnapshot", "retry"]) {
     const value = acquisition[field];
     if (value !== null && (!value || typeof value !== "object" || Array.isArray(value))) {
       findings.push(
@@ -1844,15 +1926,33 @@ function acquisitionEnvelopeFindings(smokeCase) {
   return findings;
 }
 
-function acquisitionEvidenceFindings(smokeCase) {
+function acquisitionEvidenceFindings(smokeCase, definition = {}, result = {}) {
   const acquisition = smokeCase?.evidence?.acquisition;
   const subject = String(smokeCase?.id ?? "acquisition-case");
   if (!acquisition || typeof acquisition !== "object") {
     return [finding("missing-acquisition-evidence", subject, "Acquisition smoke evidence is missing.")];
   }
   const findings = [];
+  const acquisitionDefinition = definition?.acquisitionCase;
+  if (acquisitionDefinition) {
+    for (const message of validateAcquisitionSmokeCaseDefinition(definition)) {
+      findings.push(finding("invalid-acquisition-case-definition", subject, message));
+    }
+    findings.push(...acquisitionBindingFindings(acquisition.binding, definition, result, subject));
+  } else if (acquisition.binding !== null && acquisition.binding !== undefined) {
+    findings.push(
+      finding(
+        "unexpected-acquisition-binding",
+        subject,
+        "Acquisition evidence cannot claim a case binding without a checked acquisition definition."
+      )
+    );
+  }
+
   for (const field of ["source", "version", "fingerprint"]) {
-    if (!nonEmptyString(acquisition.policy?.[field])) {
+    const value = acquisition.policy?.[field];
+    const valid = field === "version" ? nonEmptyString(value) || (Number.isSafeInteger(value) && value >= 1) : nonEmptyString(value);
+    if (!valid) {
       findings.push(
         finding("missing-policy-provenance", `${subject}:${field}`, `Acquisition policy is missing ${field}.`)
       );
@@ -1906,9 +2006,12 @@ function acquisitionEvidenceFindings(smokeCase) {
       )
     );
   }
+
   const failureSnapshotPresent = acquisition.failureSnapshot !== null && acquisition.failureSnapshot !== undefined;
+  const retryPresent = acquisition.retry !== null && acquisition.retry !== undefined;
+  const manifestPresent = acquisition.manifest !== null && acquisition.manifest !== undefined;
   if (
-    !failureSnapshotPresent &&
+    (!failureSnapshotPresent || retryPresent) &&
     Number.isSafeInteger(currency.targetCopper) &&
     Number.isSafeInteger(currency.observedCopper) &&
     currency.targetCopper !== currency.observedCopper
@@ -1934,7 +2037,29 @@ function acquisitionEvidenceFindings(smokeCase) {
       )
     );
   }
-  if (!failureSnapshotPresent) {
+
+  if (manifestPresent) {
+    if (acquisitionDefinition) {
+      const normalizedManifest = normalizedCompletedManifest(acquisition.manifest);
+      if (!normalizedManifest || !structuredValueEquals(normalizedManifest, acquisition.manifest)) {
+        findings.push(
+          finding(
+            "invalid-production-acquisition-manifest",
+            subject,
+            "Wave-2 acquisition evidence must contain the exact canonical production manifest with a valid fingerprint."
+          )
+        );
+      }
+      if (smokeCase.actor?.moduleStateAfterApply?.completedAcquisitionManifestCorrupt !== false) {
+        findings.push(
+          finding(
+            "corrupt-completed-acquisition-manifest",
+            subject,
+            "The actor state must explicitly report a non-corrupt completed acquisition manifest."
+          )
+        );
+      }
+    }
     for (const field of ["id", "batchId"]) {
       if (!nonEmptyString(acquisition.manifest?.[field])) {
         findings.push(
@@ -1958,116 +2083,180 @@ function acquisitionEvidenceFindings(smokeCase) {
     } else {
       findings.push(...manifestReconciliationFindings(smokeCase.actor?.items ?? [], acquisition.manifest, subject));
     }
+  } else if (!failureSnapshotPresent || retryPresent) {
+    findings.push(
+      finding("missing-manifest-identity", `${subject}:id`, "Successful acquisition is missing manifest id."),
+      finding("missing-manifest-identity", `${subject}:batchId`, "Successful acquisition is missing manifest batchId."),
+      finding("invalid-manifest-version", subject, "Successful acquisition needs a positive manifest schema version."),
+      finding("missing-manifest-entries", subject, "Successful acquisition needs canonical manifest entries."),
+      finding(
+        "missing-completed-acquisition-manifest",
+        subject,
+        "A successful acquisition or retry requires a durable completed manifest."
+      )
+    );
+  }
+
+  if (failureSnapshotPresent) {
+    findings.push(
+      ...acquisitionFailureSnapshotFindings({
+        acquisition,
+        definition,
+        retryPresent,
+        smokeCase,
+        subject,
+      })
+    );
+  }
+  if (retryPresent) {
+    findings.push(...acquisitionRetryFindings(smokeCase, acquisition, subject));
+  }
+  if (acquisitionDefinition) {
+    findings.push(...acquisitionDefinitionOutcomeFindings(smokeCase, acquisition, definition, result, subject));
+  }
+  return uniqueFindings(findings);
+}
+
+function acquisitionBindingFindings(binding, definition, result, subject) {
+  const runtime = binding?.runtime;
+  const valid =
+    binding?.schemaVersion === 1 &&
+    binding?.caseId === definition.id &&
+    binding?.definitionFingerprint === acquisitionDefinitionFingerprint(definition) &&
+    binding?.executorRole === "non-gm-owner" &&
+    nonEmptyString(runtime?.foundryVersion) &&
+    nonEmptyString(runtime?.pf2eVersion) &&
+    nonEmptyString(runtime?.moduleVersion) &&
+    runtime.foundryVersion === result?.foundryVersion &&
+    runtime.pf2eVersion === result?.pf2eVersion &&
+    runtime.moduleVersion === result?.moduleVersion &&
+    result?.user?.isGM === false &&
+    Number.isInteger(result?.user?.role) &&
+    result.user.role < 3;
+  const findings = [];
+  if (!valid) {
+    findings.push(
+      finding(
+        "acquisition-case-binding-mismatch",
+        subject,
+        "Acquisition evidence must bind the exact checked case, non-GM owner role, and observed runtime versions."
+      )
+    );
+  }
+  if (definition.acquisitionCase?.policyReview?.required === true) {
+    const review = result?.reviewSession;
+    const reviewValid =
+      review?.isGM === true &&
+      Number.isInteger(review?.role) &&
+      review.role >= 3 &&
+      review?.runtime?.foundryVersion === runtime?.foundryVersion &&
+      review?.runtime?.pf2eVersion === runtime?.pf2eVersion &&
+      review?.runtime?.moduleVersion === runtime?.moduleVersion &&
+      Array.isArray(review?.reviewedCaseIds) &&
+      review.reviewedCaseIds.includes(definition.id);
+    if (!reviewValid) {
+      findings.push(
+        finding(
+          "missing-gm-policy-review-session",
+          subject,
+          "This acquisition case requires a separate current-GM review session on the same exact runtime."
+        )
+      );
+    }
+  }
+  return findings;
+}
+
+function acquisitionFailureSnapshotFindings({ acquisition, definition, retryPresent, smokeCase, subject }) {
+  const snapshot = acquisition.failureSnapshot;
+  const findings = [];
+  for (const field of [
+    "point",
+    "batchId",
+    "afterItemIndex",
+    "currencyOperationIndex",
+    "message",
+    "actualItemIds",
+    "observedCurrencyCopper",
+    "manifestId",
+    "draftPresent",
+  ]) {
+    if (!Object.hasOwn(snapshot, field)) {
+      findings.push(
+        finding(
+          "incomplete-failure-snapshot",
+          `${subject}:${field}`,
+          `Acquisition failure snapshot is missing ${field}.`
+        )
+      );
+    }
+  }
+  if (!nonEmptyString(snapshot.point) || !nonEmptyString(snapshot.message)) {
+    findings.push(
+      finding(
+        "invalid-failure-snapshot",
+        subject,
+        "Acquisition failure snapshot needs a stable point and nonempty message."
+      )
+    );
+  }
+  if (!nonEmptyString(snapshot.batchId)) {
+    findings.push(
+      finding("invalid-failure-batch", subject, "Acquisition failure snapshot needs the attempted batch ID.")
+    );
+  }
+  const validFailurePoints = new Set([
+    "item-after",
+    "currency-before",
+    "currency-after",
+    "final-state-before",
+    "final-state-after",
+  ]);
+  if (!validFailurePoints.has(snapshot.point)) {
+    findings.push(
+      finding(
+        "invalid-failure-point",
+        subject,
+        "Acquisition failure point must identify a supported item, currency, or final-state boundary."
+      )
+    );
+  }
+  const itemPoint = snapshot.point === "item-after";
+  if (
+    itemPoint !==
+    (Number.isSafeInteger(snapshot.afterItemIndex) && snapshot.afterItemIndex >= 1)
+  ) {
+    findings.push(
+      finding(
+        "failure-item-index-mismatch",
+        subject,
+        "Only an item-after failure uses a positive after-item index."
+      )
+    );
+  }
+  const currencyPoint = snapshot.point === "currency-after";
+  if (
+    currencyPoint !==
+    (Number.isSafeInteger(snapshot.currencyOperationIndex) && snapshot.currencyOperationIndex >= 1)
+  ) {
+    findings.push(
+      finding(
+        "failure-currency-index-mismatch",
+        subject,
+        "Only a currency-after failure uses a positive currency-operation index."
+      )
+    );
+  }
+  if (!uniqueStringArray(snapshot.actualItemIds)) {
+    findings.push(
+      finding(
+        "invalid-failure-item-ids",
+        subject,
+        "Acquisition failure snapshot must contain unique actual item IDs."
+      )
+    );
   } else {
-    for (const field of [
-      "point",
-      "batchId",
-      "afterItemIndex",
-      "currencyOperationIndex",
-      "message",
-      "actualItemIds",
-      "observedCurrencyCopper",
-      "manifestId",
-    ]) {
-      if (!Object.hasOwn(acquisition.failureSnapshot, field)) {
-        findings.push(
-          finding(
-            "incomplete-failure-snapshot",
-            `${subject}:${field}`,
-            `Acquisition failure snapshot is missing ${field}.`
-          )
-        );
-      }
-    }
-    if (!nonEmptyString(acquisition.failureSnapshot.point) || !nonEmptyString(acquisition.failureSnapshot.message)) {
-      findings.push(
-        finding(
-          "invalid-failure-snapshot",
-          subject,
-          "Acquisition failure snapshot needs a stable point and nonempty message."
-        )
-      );
-    }
-    if (!nonEmptyString(acquisition.failureSnapshot.batchId)) {
-      findings.push(
-        finding("invalid-failure-batch", subject, "Acquisition failure snapshot needs the attempted batch ID.")
-      );
-    }
-    const validFailurePoints = new Set([
-      "item-after",
-      "currency-before",
-      "currency-after",
-      "final-state-before",
-      "final-state-after",
-    ]);
-    if (!validFailurePoints.has(acquisition.failureSnapshot.point)) {
-      findings.push(
-        finding(
-          "invalid-failure-point",
-          subject,
-          "Acquisition failure point must identify a supported item, currency, or final-state boundary."
-        )
-      );
-    }
-    if (
-      acquisition.failureSnapshot.afterItemIndex !== null &&
-      (!Number.isSafeInteger(acquisition.failureSnapshot.afterItemIndex) ||
-        acquisition.failureSnapshot.afterItemIndex < 0)
-    ) {
-      findings.push(
-        finding(
-          "invalid-failure-item-index",
-          subject,
-          "Acquisition failure snapshot item index must be null or a nonnegative integer."
-        )
-      );
-    }
-    const itemPoint = acquisition.failureSnapshot.point === "item-after";
-    if (
-      itemPoint !==
-      (Number.isSafeInteger(acquisition.failureSnapshot.afterItemIndex) &&
-        acquisition.failureSnapshot.afterItemIndex >= 1)
-    ) {
-      findings.push(
-        finding(
-          "failure-item-index-mismatch",
-          subject,
-          "Only an item-after failure uses a positive after-item index."
-        )
-      );
-    }
-    const currencyPoint = acquisition.failureSnapshot.point === "currency-after";
-    if (
-      currencyPoint !==
-      (Number.isSafeInteger(acquisition.failureSnapshot.currencyOperationIndex) &&
-        acquisition.failureSnapshot.currencyOperationIndex >= 1)
-    ) {
-      findings.push(
-        finding(
-          "failure-currency-index-mismatch",
-          subject,
-          "Only a currency-after failure uses a positive currency-operation index."
-        )
-      );
-    }
-    if (
-      !Array.isArray(acquisition.failureSnapshot.actualItemIds) ||
-      acquisition.failureSnapshot.actualItemIds.some((id) => !nonEmptyString(id))
-    ) {
-      findings.push(
-        finding(
-          "invalid-failure-item-ids",
-          subject,
-          "Acquisition failure snapshot must contain actual item IDs."
-        )
-      );
-    }
-    if (
-      Array.isArray(acquisition.failureSnapshot.actualItemIds) &&
-      itemPoint &&
-      Number.isSafeInteger(acquisition.failureSnapshot.afterItemIndex) &&
-      acquisition.failureSnapshot.actualItemIds.length !== acquisition.failureSnapshot.afterItemIndex
-    ) {
+    if (itemPoint && snapshot.actualItemIds.length !== snapshot.afterItemIndex) {
       findings.push(
         finding(
           "failure-item-count-mismatch",
@@ -2076,77 +2265,429 @@ function acquisitionEvidenceFindings(smokeCase) {
         )
       );
     }
-    if (Array.isArray(acquisition.failureSnapshot.actualItemIds)) {
-      findings.push(...failureItemSnapshotFindings(smokeCase.actor?.items ?? [], acquisition.failureSnapshot, subject));
-    }
-    if (
-      !Number.isSafeInteger(acquisition.failureSnapshot.observedCurrencyCopper) ||
-      acquisition.failureSnapshot.observedCurrencyCopper < 0
-    ) {
+    findings.push(
+      ...failureItemSnapshotFindings(
+        smokeCase.actor?.items ?? [],
+        snapshot,
+        subject,
+        retryPresent
+      )
+    );
+  }
+  if (!Number.isSafeInteger(snapshot.observedCurrencyCopper) || snapshot.observedCurrencyCopper < 0) {
+    findings.push(
+      finding(
+        "invalid-failure-currency",
+        subject,
+        "Acquisition failure snapshot must contain nonnegative observed copper."
+      )
+    );
+  }
+  const failureCurrency = retryPresent
+    ? acquisition.retry?.preRetryCurrencyCopper
+    : acquisition.currency?.observedCopper;
+  if (
+    Number.isSafeInteger(snapshot.observedCurrencyCopper) &&
+    snapshot.observedCurrencyCopper !== failureCurrency
+  ) {
+    findings.push(
+      finding(
+        "failure-currency-snapshot-mismatch",
+        subject,
+        "Failure-time currency does not match the independently captured retry boundary."
+      )
+    );
+  }
+  if (
+    ["item-after", "currency-before"].includes(snapshot.point) &&
+    Number.isSafeInteger(acquisition.currency?.preCopper) &&
+    snapshot.observedCurrencyCopper !== acquisition.currency.preCopper
+  ) {
+    findings.push(
+      finding(
+        "pre-currency-mutation-mismatch",
+        subject,
+        "Item and before-currency failures must leave aggregate currency at its pre-apply value."
+      )
+    );
+  }
+  if (
+    ["currency-after", "final-state-before", "final-state-after"].includes(snapshot.point) &&
+    Number.isSafeInteger(acquisition.currency?.targetCopper) &&
+    snapshot.observedCurrencyCopper !== acquisition.currency.targetCopper
+  ) {
+    findings.push(
+      finding(
+        "failure-converged-currency-mismatch",
+        subject,
+        "After-currency and final-state failures require already-converged absolute currency."
+      )
+    );
+  }
+  if (snapshot.point === "final-state-after" ? !nonEmptyString(snapshot.manifestId) : snapshot.manifestId !== null) {
+    findings.push(
+      finding(
+        "failure-manifest-state-mismatch",
+        subject,
+        "Only a final-state-after lost acknowledgement may observe a completed manifest ID."
+      )
+    );
+  }
+  const draftShouldRemain = snapshot.point !== "final-state-after";
+  if (snapshot.draftPresent !== draftShouldRemain) {
+    findings.push(
+      finding(
+        "failure-draft-state-mismatch",
+        subject,
+        "The failure snapshot does not match whether the recoverable acquisition draft should remain durable."
+      )
+    );
+  }
+
+  const configuredFailure = definition?.acquisitionCase?.failure;
+  if (configuredFailure) {
+    const checkpoint = snapshot.checkpoint;
+    const parsed = parseCheckpointId(checkpoint?.checkpointId);
+    const checkpointValid =
+      parsed &&
+      checkpoint.checkpointId === configuredFailure.checkpointId &&
+      checkpoint.kind === parsed.kind &&
+      checkpoint.phase === parsed.phase &&
+      checkpoint.operation === parsed.operation &&
+      checkpoint.boundary === parsed.boundary &&
+      checkpoint.ordinal === configuredFailure.occurrence &&
+      snapshot.point === configuredFailure.expectedPoint &&
+      failurePointForCheckpoint(checkpoint) === snapshot.point;
+    if (!checkpointValid) {
       findings.push(
         finding(
-          "invalid-failure-currency",
+          "failure-checkpoint-mismatch",
           subject,
-          "Acquisition failure snapshot must contain nonnegative observed copper."
-        )
-      );
-    }
-    if (
-      Number.isSafeInteger(acquisition.failureSnapshot.observedCurrencyCopper) &&
-      acquisition.failureSnapshot.observedCurrencyCopper !== currency.observedCopper
-    ) {
-      findings.push(
-        finding(
-          "failure-currency-snapshot-mismatch",
-          subject,
-          "Failure snapshot currency must equal the acquisition and actor observations."
-        )
-      );
-    }
-    if (
-      ["item-after", "currency-before"].includes(acquisition.failureSnapshot.point) &&
-      Number.isSafeInteger(currency.preCopper) &&
-      Number.isSafeInteger(currency.observedCopper) &&
-      currency.preCopper !== currency.observedCopper
-    ) {
-      findings.push(
-        finding(
-          "pre-currency-mutation-mismatch",
-          subject,
-          "Item and before-currency failures must leave aggregate currency at its pre-apply value."
-        )
-      );
-    }
-    if (
-      ["final-state-before", "final-state-after"].includes(acquisition.failureSnapshot.point) &&
-      Number.isSafeInteger(currency.targetCopper) &&
-      Number.isSafeInteger(currency.observedCopper) &&
-      currency.targetCopper !== currency.observedCopper
-    ) {
-      findings.push(
-        finding(
-          "final-state-currency-mismatch",
-          subject,
-          "Final-state failures require already-converged currency."
-        )
-      );
-    }
-    const manifestId = acquisition.failureSnapshot.manifestId;
-    if (
-      acquisition.failureSnapshot.point === "final-state-after"
-        ? !nonEmptyString(manifestId)
-        : manifestId !== null
-    ) {
-      findings.push(
-        finding(
-          "failure-manifest-state-mismatch",
-          subject,
-          "Only a final-state-after lost acknowledgement may observe a completed manifest ID."
+          "Acquisition failure evidence must match the exact configured typed write checkpoint."
         )
       );
     }
   }
-  return uniqueFindings(findings);
+  return findings;
+}
+
+function acquisitionRetryFindings(smokeCase, acquisition, subject) {
+  const retry = acquisition.retry;
+  const snapshot = acquisition.failureSnapshot;
+  const manifest = acquisition.manifest;
+  const findings = [];
+  const finalBatchItemIds = (smokeCase.actor?.items ?? [])
+    .filter((item) => item.acquisition?.batchId === snapshot?.batchId)
+    .map((item) => item.id)
+    .sort();
+  const failureItemIds = Array.isArray(snapshot?.actualItemIds) ? [...snapshot.actualItemIds].sort() : [];
+  const expectedDraftBeforeRetry = snapshot?.point !== "final-state-after";
+  const validBase =
+    retry?.attempted === true &&
+    retry?.converged === true &&
+    retry?.batchId === snapshot?.batchId &&
+    retry?.batchId === manifest?.batchId &&
+    retry?.manifestId === manifest?.id &&
+    retry?.draftPresentBeforeRetry === expectedDraftBeforeRetry &&
+    retry?.draftClearedAfterRetry === true &&
+    smokeCase.actor?.moduleDraftAfterApply === null &&
+    uniqueStringArray(retry?.preRetryItemIds) &&
+    uniqueStringArray(retry?.postRetryItemIds) &&
+    JSON.stringify([...retry.preRetryItemIds].sort()) === JSON.stringify(failureItemIds) &&
+    JSON.stringify([...retry.postRetryItemIds].sort()) === JSON.stringify(finalBatchItemIds) &&
+    retry?.preRetryCurrencyCopper === snapshot?.observedCurrencyCopper &&
+    retry?.postRetryCurrencyCopper === acquisition.currency?.observedCopper &&
+    retry?.postRetryCurrencyCopper === acquisition.currency?.targetCopper;
+  if (!validBase) {
+    findings.push(
+      finding(
+        "acquisition-retry-state-mismatch",
+        subject,
+        "Retry evidence must bridge the exact partial batch and currency into one cleared, manifested final outcome."
+      )
+    );
+  }
+  if (!Array.isArray(retry?.checkpoints)) {
+    findings.push(
+      finding(
+        "missing-acquisition-retry-checkpoints",
+        subject,
+        "Retry evidence must include the real typed write checkpoints emitted by the retry."
+      )
+    );
+    return findings;
+  }
+  const parsedCheckpoints = retry.checkpoints.map((checkpoint) => ({
+    checkpoint,
+    parsed: parseCheckpointId(checkpoint?.checkpointId),
+  }));
+  if (
+    parsedCheckpoints.some(
+      ({ checkpoint, parsed }) =>
+        !parsed ||
+        parsed.kind !== "write" ||
+        checkpoint.kind !== parsed.kind ||
+        checkpoint.phase !== parsed.phase ||
+        checkpoint.operation !== parsed.operation ||
+        checkpoint.boundary !== parsed.boundary ||
+        !Number.isSafeInteger(checkpoint.ordinal) ||
+        checkpoint.ordinal < 1
+    )
+  ) {
+    findings.push(
+      finding(
+        "invalid-acquisition-retry-checkpoint",
+        subject,
+        "Retry checkpoints must preserve their real operation, phase, boundary, and ordinal."
+      )
+    );
+  }
+  const itemCount = manifestObservedItemCount(manifest);
+  const completedItemPhase = [
+    "currency-before",
+    "currency-after",
+    "final-state-before",
+    "final-state-after",
+  ].includes(snapshot?.point);
+  if (
+    completedItemPhase &&
+    JSON.stringify(failureItemIds) !== JSON.stringify(finalBatchItemIds)
+  ) {
+    findings.push(
+      finding(
+        "acquisition-failure-item-phase-mismatch",
+        subject,
+        "Currency and final-state failures must already contain the complete acquisition item batch."
+      )
+    );
+  }
+
+  const expectedCheckpoints = [];
+  if (snapshot?.point === "item-after") {
+    for (let ordinal = failureItemIds.length + 1; ordinal <= itemCount; ordinal += 1) {
+      expectedCheckpoints.push(
+        expectedWriteCheckpoint("embedded-item-create", "before", ordinal),
+        expectedWriteCheckpoint("embedded-item-create", "after", ordinal)
+      );
+    }
+  }
+  if (["item-after", "currency-before"].includes(snapshot?.point)) {
+    expectedCheckpoints.push(
+      expectedWriteCheckpoint("currency-convergence", "before", 1),
+      expectedWriteCheckpoint("currency-convergence", "after", 1)
+    );
+  }
+  if (snapshot?.point !== "final-state-after") {
+    expectedCheckpoints.push(
+      expectedWriteCheckpoint("final-actor-update", "before", 1),
+      expectedWriteCheckpoint("final-actor-update", "after", 1)
+    );
+  }
+  const observedCheckpointSequence = retry.checkpoints.map(checkpointIdentity);
+  const expectedCheckpointSequence = expectedCheckpoints.map(checkpointIdentity);
+  if (JSON.stringify(observedCheckpointSequence) !== JSON.stringify(expectedCheckpointSequence)) {
+    findings.push(
+      finding(
+        "acquisition-retry-write-sequence-mismatch",
+        subject,
+        "Retry write checkpoints must form the exact ordered before/after sequence for only the remaining item, currency, and final-state work."
+      )
+    );
+  }
+  return findings;
+}
+
+function expectedWriteCheckpoint(operation, boundary, ordinal) {
+  return {
+    checkpointId: `write:${operation}:${boundary}`,
+    kind: "write",
+    phase: APPLY_WRITE_PHASES[operation],
+    operation,
+    boundary,
+    ordinal,
+  };
+}
+
+function checkpointIdentity(checkpoint) {
+  return [
+    checkpoint?.checkpointId,
+    checkpoint?.kind,
+    checkpoint?.phase,
+    checkpoint?.operation,
+    checkpoint?.boundary,
+    checkpoint?.ordinal,
+  ];
+}
+
+function acquisitionDefinitionOutcomeFindings(smokeCase, acquisition, definition, result, subject) {
+  const expected = definition.acquisitionCase;
+  const manifest = acquisition.manifest;
+  const findings = [];
+  findings.push(...acquisitionDurabilityFindings(smokeCase, acquisition, definition, result, subject));
+  const exactCurrency =
+    acquisition.currency?.preCopper === 0 &&
+    acquisition.currency?.budgetCopper === expected.expectedBudgetCopper &&
+    acquisition.currency?.spentCopper === expected.expectedSpentCopper &&
+    acquisition.currency?.remainingCopper === expected.expectedRemainingCopper &&
+    acquisition.currency?.targetCopper === expected.expectedRemainingCopper &&
+    acquisition.currency?.observedCopper === expected.expectedRemainingCopper;
+  if (!exactCurrency) {
+    findings.push(
+      finding(
+        "acquisition-case-currency-mismatch",
+        subject,
+        "The level-1 tracer did not reach its case-pinned absolute currency ledger."
+      )
+    );
+  }
+  if (
+    manifest?.disposition !== expected.disposition ||
+    manifest?.targetLevel !== expected.targetLevel ||
+    manifest?.actorId !== smokeCase.actor?.id ||
+    !nonEmptyString(manifest?.draftId) ||
+    !nonEmptyString(manifest?.fingerprint) ||
+    manifest?.environment?.foundryVersion !== result?.foundryVersion ||
+    manifest?.environment?.pf2eVersion !== result?.pf2eVersion ||
+    manifest?.environment?.moduleVersion !== result?.moduleVersion ||
+    !structuredValueEquals(manifest?.currency, acquisition.currency)
+  ) {
+    findings.push(
+      finding(
+        "acquisition-case-manifest-mismatch",
+        subject,
+        "The completed production manifest does not bind the actor, disposition, currency, and exact runtime."
+      )
+    );
+  }
+  if (
+    acquisition.policy?.source !== "completed-acquisition-manifest" ||
+    acquisition.policy?.version !== manifest?.policy?.version ||
+    acquisition.policy?.fingerprint !== manifest?.policy?.fingerprint ||
+    !structuredValueEquals(acquisition.policy?.snapshot, manifest?.policy)
+  ) {
+    findings.push(
+      finding(
+        "acquisition-policy-evidence-mismatch",
+        subject,
+        "Policy evidence must be derived from the exact completed production manifest snapshot."
+      )
+    );
+  }
+  const durableManifest = smokeCase.actor?.moduleStateAfterApply?.completedAcquisitionManifest;
+  if (!structuredValueEquals(durableManifest, manifest) || smokeCase.actor?.moduleDraftAfterApply !== null) {
+    findings.push(
+      finding(
+        "acquisition-manifest-not-durable",
+        subject,
+        "The actor state must contain the exact completed manifest and no remaining draft after success."
+      )
+    );
+  }
+  const actualEntries = manifestEntryFacts(manifest);
+  const expectedEntries = expected.expectedEntries ?? [];
+  if (
+    actualEntries.length !== expectedEntries.length ||
+    expectedEntries.some((entry, index) => {
+      const actual = actualEntries[index];
+      return (
+        actual?.sourceUuid !== entry.sourceUuid ||
+        actual?.quantity !== entry.quantity ||
+        actual?.containerId !== entry.containerId ||
+        actual?.stackingIntent !== entry.stackingIntent
+      );
+    })
+  ) {
+    findings.push(
+      finding(
+        "acquisition-case-entry-mismatch",
+        subject,
+        "The durable manifest does not contain the exact case-pinned source, quantity, container, and stacking result."
+      )
+    );
+  }
+  if (expected.failure) {
+    if (!acquisition.failureSnapshot || !acquisition.retry) {
+      findings.push(
+        finding(
+          "missing-acquisition-retry-evidence",
+          subject,
+          "The forced-failure tracer requires both the partial failure snapshot and final retry evidence."
+        )
+      );
+    }
+  } else if (acquisition.failureSnapshot !== null || acquisition.retry !== null) {
+    findings.push(
+      finding(
+        "unexpected-acquisition-retry-evidence",
+        subject,
+        "A non-failure acquisition case cannot claim retry evidence."
+      )
+    );
+  }
+  return findings;
+}
+
+function acquisitionDurabilityFindings(smokeCase, acquisition, definition, result, subject) {
+  const durability = acquisition.durability;
+  const manifest = acquisition.manifest;
+  const runtime = durability?.runtime;
+  const finalBatchItems = (smokeCase.actor?.items ?? [])
+    .filter((item) => item.acquisition?.batchId === manifest?.batchId)
+    .sort((left, right) => String(left.id).localeCompare(String(right.id)));
+  const durableItems = Array.isArray(durability?.items)
+    ? [...durability.items].sort((left, right) => String(left?.id).localeCompare(String(right?.id)))
+    : null;
+  const validDurability =
+    durability?.schemaVersion === 1 &&
+    durability?.source === "gm-context-page-reload" &&
+    durability?.caseId === definition.id &&
+    durability?.definitionFingerprint === definition.definitionFingerprint &&
+    durability?.actorId === smokeCase.actor?.id &&
+    runtime?.foundryVersion === result?.foundryVersion &&
+    runtime?.pf2eVersion === result?.pf2eVersion &&
+    runtime?.moduleVersion === result?.moduleVersion &&
+    durability?.draft === null &&
+    durability?.manifestCorrupt === false &&
+    durability?.currencyCopper === acquisition.currency?.observedCopper &&
+    structuredValueEquals(durability?.manifest, manifest) &&
+    structuredValueEquals(durableItems, finalBatchItems);
+  const findings = [];
+  if (!validDurability) {
+    findings.push(
+      finding(
+        "acquisition-reload-durability-mismatch",
+        subject,
+        "A separately reloaded GM context must observe the exact cleared draft, currency, manifest, and batch item identities."
+      )
+    );
+  }
+
+  const cleanup = result?.cleanup;
+  if (
+    cleanup?.exactFixturesMatched !== true ||
+    cleanup?.actorsMissingAfterCleanup !== true ||
+    cleanup?.actorsDeleted !== result?.cases?.length
+  ) {
+    findings.push(
+      finding(
+        "acquisition-cleanup-mismatch",
+        subject,
+        "Qualified acquisition evidence requires exact guarded fixture cleanup and confirmed actor absence."
+      )
+    );
+  }
+  return findings;
+}
+
+function failurePointForCheckpoint(checkpoint) {
+  if (checkpoint?.operation === "embedded-item-create" && checkpoint?.boundary === "after") return "item-after";
+  if (checkpoint?.operation === "currency-convergence") {
+    return checkpoint.boundary === "before" ? "currency-before" : "currency-after";
+  }
+  if (checkpoint?.operation === "final-actor-update") {
+    return checkpoint.boundary === "before" ? "final-state-before" : "final-state-after";
+  }
+  return null;
 }
 
 function classificationFindings(smokeCase) {
@@ -2285,6 +2826,8 @@ function manifestReconciliationFindings(items, manifest, subject) {
   const findings = [];
   const itemsById = new Map(items.map((item) => [item.id, item]));
   const entriesById = new Map();
+  const manifestedItemIds = new Set();
+  const manifestedPlannedItemIds = new Set();
   for (const entry of manifest.entries) {
     const entryId = entry?.entryId;
     if (!nonEmptyString(entryId) || entriesById.has(entryId)) {
@@ -2298,16 +2841,27 @@ function manifestReconciliationFindings(items, manifest, subject) {
       continue;
     }
     entriesById.set(entryId, entry);
-    for (const field of ["lineId", "sourceId"]) {
-      if (!nonEmptyString(entry[field])) {
-        findings.push(
-          finding(
-            "incomplete-manifest-entry",
-            `${subject}:${entryId}:${field}`,
-            `Manifest entry ${entryId} is missing ${field}.`
-          )
-        );
-      }
+    const productionShape = Array.isArray(entry.observedItems) || Array.isArray(entry.lineIds);
+    const lineIds = productionShape ? entry.lineIds : [entry.lineId];
+    const sourceUuid = productionShape ? entry.sourceUuid : entry.sourceId;
+    const observedItems = productionShape
+      ? entry.observedItems
+      : Array.isArray(entry.actualItemIds)
+        ? entry.actualItemIds.map((actualItemId) => ({
+            actualItemId,
+            actualSourceUuid: entry.sourceId,
+            actualQuantity: itemsById.get(actualItemId)?.quantity,
+            actualContainerId: entry.containerId ?? null,
+          }))
+        : null;
+    if (!nonEmptyUniqueStringArray(lineIds) || !nonEmptyString(sourceUuid)) {
+      findings.push(
+        finding(
+          "incomplete-manifest-entry",
+          `${subject}:${entryId}`,
+          `Manifest entry ${entryId} is missing canonical line or source identity.`
+        )
+      );
     }
     if (!Number.isSafeInteger(entry.quantity) || entry.quantity < 1) {
       findings.push(
@@ -2318,7 +2872,11 @@ function manifestReconciliationFindings(items, manifest, subject) {
         )
       );
     }
-    if (!nonEmptyUniqueStringArray(entry.actualItemIds)) {
+    if (
+      !Array.isArray(observedItems) ||
+      observedItems.length === 0 ||
+      !nonEmptyUniqueStringArray(observedItems.map((observed) => observed?.actualItemId))
+    ) {
       findings.push(
         finding(
           "missing-manifest-item-ids",
@@ -2329,7 +2887,30 @@ function manifestReconciliationFindings(items, manifest, subject) {
       continue;
     }
     let observedQuantity = 0;
-    for (const itemId of entry.actualItemIds) {
+    for (const observed of observedItems) {
+      const itemId = observed.actualItemId;
+      if (manifestedItemIds.has(itemId)) {
+        findings.push(
+          finding(
+            "duplicate-manifest-item-id",
+            `${subject}:${itemId}`,
+            `Actor item ${itemId} is claimed by more than one completed manifest entry.`
+          )
+        );
+      }
+      manifestedItemIds.add(itemId);
+      if (productionShape) {
+        if (!nonEmptyString(observed?.plannedItemId) || manifestedPlannedItemIds.has(observed.plannedItemId)) {
+          findings.push(
+            finding(
+              "duplicate-manifest-planned-item-id",
+              `${subject}:${String(observed?.plannedItemId)}`,
+              "Completed manifest planned item identities must be present and unique."
+            )
+          );
+        }
+        manifestedPlannedItemIds.add(observed?.plannedItemId);
+      }
       const item = itemsById.get(itemId);
       if (!item) {
         findings.push(
@@ -2341,13 +2922,34 @@ function manifestReconciliationFindings(items, manifest, subject) {
         );
         continue;
       }
-      observedQuantity += Number.isSafeInteger(item.quantity) ? item.quantity : 0;
+      observedQuantity += Number.isSafeInteger(observed.actualQuantity) ? observed.actualQuantity : 0;
       const identity = item.acquisition;
+      const plannedItem = productionShape
+        ? entry.plannedItems?.find((planned) => planned?.plannedItemId === observed?.plannedItemId)
+        : null;
+      const expectedPlannedGrantId =
+        productionShape && entry.funding?.lane === "class-grant"
+          ? entry.funding.grant?.plannedGrantId
+          : null;
       if (
         identity?.batchId !== manifest.batchId ||
-        identity?.lineId !== entry.lineId ||
+        (productionShape && identity?.draftId !== manifest.draftId) ||
+        !lineIds?.includes(identity?.lineId) ||
         identity?.entryId !== entry.entryId ||
-        item.sourceId !== entry.sourceId
+        item.sourceId !== sourceUuid ||
+        observed.actualSourceUuid !== sourceUuid ||
+        observed.actualQuantity !== item.quantity ||
+        (productionShape &&
+          (identity?.version !== 1 ||
+            identity?.manifestId !== manifest.id ||
+            identity?.plannedItemId !== observed?.plannedItemId ||
+            (identity?.plannedContainerId ?? null) !== (observed?.plannedContainerId ?? null) ||
+            (identity?.plannedGrantId ?? null) !== (expectedPlannedGrantId ?? null) ||
+            identity?.stackingIntent !== entry.stackingIntent ||
+            !plannedItem ||
+            plannedItem.sourceUuid !== sourceUuid ||
+            plannedItem.quantity !== observed.actualQuantity ||
+            (plannedItem.plannedContainerId ?? null) !== (observed?.plannedContainerId ?? null)))
       ) {
         findings.push(
           finding(
@@ -2357,7 +2959,10 @@ function manifestReconciliationFindings(items, manifest, subject) {
           )
         );
       }
-      if ((item.containerId ?? null) !== (entry.containerId ?? null)) {
+      const expectedContainerId = productionShape
+        ? (observed.actualContainerId ?? null)
+        : (entry.containerId ?? null);
+      if ((item.containerId ?? null) !== expectedContainerId) {
         findings.push(
           finding(
             "manifest-container-mismatch",
@@ -2366,7 +2971,10 @@ function manifestReconciliationFindings(items, manifest, subject) {
           )
         );
       }
-      if (JSON.stringify(item.grantAncestryIds ?? []) !== JSON.stringify(entry.grantAncestryIds ?? [])) {
+      if (
+        !productionShape &&
+        JSON.stringify(item.grantAncestryIds ?? []) !== JSON.stringify(entry.grantAncestryIds ?? [])
+      ) {
         findings.push(
           finding(
             "manifest-grant-ancestry-mismatch",
@@ -2390,7 +2998,10 @@ function manifestReconciliationFindings(items, manifest, subject) {
   for (const item of items) {
     if (item.acquisition?.batchId !== manifest.batchId) continue;
     const entry = entriesById.get(item.acquisition.entryId);
-    if (!entry || !entry.actualItemIds?.includes(item.id)) {
+    const actualItemIds = Array.isArray(entry?.observedItems)
+      ? entry.observedItems.map((observed) => observed?.actualItemId)
+      : entry?.actualItemIds;
+    if (!entry || !actualItemIds?.includes(item.id)) {
       findings.push(
         finding(
           "unmanifested-acquisition-item",
@@ -2403,7 +3014,32 @@ function manifestReconciliationFindings(items, manifest, subject) {
   return findings;
 }
 
-function failureItemSnapshotFindings(items, snapshot, subject) {
+function manifestEntryFacts(manifest) {
+  if (!Array.isArray(manifest?.entries)) return [];
+  return manifest.entries.map((entry) => {
+    const productionShape = Array.isArray(entry?.observedItems);
+    const observedItems = productionShape ? entry.observedItems : [];
+    const containers = productionShape
+      ? [...new Set(observedItems.map((observed) => observed?.actualContainerId ?? null))]
+      : [entry?.containerId ?? null];
+    return {
+      sourceUuid: productionShape ? entry?.sourceUuid : entry?.sourceId,
+      quantity: entry?.quantity,
+      containerId: containers.length === 1 ? containers[0] : undefined,
+      stackingIntent: entry?.stackingIntent ?? "aggregate",
+    };
+  });
+}
+
+function manifestObservedItemCount(manifest) {
+  if (!Array.isArray(manifest?.entries)) return 0;
+  return manifest.entries.reduce((total, entry) => {
+    if (Array.isArray(entry?.observedItems)) return total + entry.observedItems.length;
+    return total + (Array.isArray(entry?.actualItemIds) ? entry.actualItemIds.length : 0);
+  }, 0);
+}
+
+function failureItemSnapshotFindings(items, snapshot, subject, allowCompletedBatch = false) {
   const findings = [];
   const itemsById = new Map(items.map((item) => [item.id, item]));
   const uniqueIds = new Set(snapshot.actualItemIds);
@@ -2454,12 +3090,17 @@ function failureItemSnapshotFindings(items, snapshot, subject) {
     .map((item) => item.id)
     .sort();
   const snapshotItemIds = [...uniqueIds].sort();
-  if (JSON.stringify(observedBatchItemIds) !== JSON.stringify(snapshotItemIds)) {
+  const itemSetMatches = allowCompletedBatch
+    ? snapshotItemIds.every((itemId) => observedBatchItemIds.includes(itemId))
+    : JSON.stringify(observedBatchItemIds) === JSON.stringify(snapshotItemIds);
+  if (!itemSetMatches) {
     findings.push(
       finding(
         "failure-batch-item-set-mismatch",
         subject,
-        "Failure snapshot item IDs do not exactly match the observed partial batch."
+        allowCompletedBatch
+          ? "Failure snapshot item IDs are not preserved in the completed retry batch."
+          : "Failure snapshot item IDs do not exactly match the observed partial batch."
       )
     );
   }

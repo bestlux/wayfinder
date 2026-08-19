@@ -26,6 +26,13 @@ const UUID = {
   barbarian: "Compendium.pf2e.classes.Item.YDRiP7uVvr9WRhOI",
   instinct: "Compendium.pf2e.classfeatures.Item.dU7xRpg4kFd01hwZ",
   giant: "Compendium.pf2e.classfeatures.Item.JuKD6k7nDwfO0Ckv",
+  dwarf: "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+  clanDaggerFeature: "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
+  clanDaggerItem: "Compendium.pf2e.equipment-srd.Item.kJJvKm80KwWXPukV",
+  clanPistolFeature: "Compendium.pf2e.feats-srd.Item.LvVg83ZDj8mabcWF",
+  sarangay: "Compendium.pf2e.ancestries.Item.7mpMGhVoaPANJnZ8",
+  headGemFeature: "Compendium.pf2e.ancestryfeatures.Item.HYefFkddD9lOhFM8",
+  headGemItem: "Compendium.pf2e.equipment-srd.Item.FA1mAc7rEyC9vzZa",
 } as const;
 
 const SUBJECT = {
@@ -34,6 +41,7 @@ const SUBJECT = {
   batchId: "batch-1",
   targetLevel: 1,
   activeSteps: [
+    { slotId: "ancestry-level-1" },
     { slotId: "class-level-1" },
     { slotId: "class-branch-methodology-level-1" },
     { slotId: "class-branch-instinct-level-1" },
@@ -112,6 +120,83 @@ describe("class-grant projection service", () => {
         nativeGrantChainSourceUuids: [UUID.formulaFeature, UUID.alchemy, UUID.alchemist],
       },
     ]);
+  });
+
+  it("projects the deterministic Dwarf Clan Dagger native chain without inferring Clan Pistol", async () => {
+    const draft = ancestryDraft(UUID.dwarf, "Dwarf");
+    const documents = new Map<string, unknown>([
+      [UUID.dwarf, rootDocument(UUID.clanDaggerFeature, 0)],
+      [UUID.clanDaggerFeature, clanDaggerFeatureDocument()],
+      [UUID.clanDaggerItem, clanDaggerDocument()],
+    ]);
+
+    const result = await projectPlannedClassGrants({
+      ...SUBJECT,
+      draft,
+      fetchDocumentByUuid: async (uuid) => documents.get(uuid) ?? null,
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(result.grants).toMatchObject([
+      {
+        grantId: "class-grant:dwarf-clan-dagger:ancestry-level-1",
+        profileId: "dwarf-clan-dagger",
+        origin: { sourceSlotId: "ancestry-level-1", sourceUuid: UUID.dwarf },
+        granterSourceUuid: UUID.clanDaggerFeature,
+        expected: { sourceUuid: UUID.clanDaggerItem, quantity: 1, itemType: "weapon" },
+        materializer: "pf2e-native",
+        nativeGrantChainSourceUuids: [UUID.clanDaggerFeature, UUID.dwarf],
+      },
+    ]);
+  });
+
+  it("projects the exact Sarangay Head Gem native chain", async () => {
+    const draft = ancestryDraft(UUID.sarangay, "Sarangay");
+    const documents = new Map<string, unknown>([
+      [UUID.sarangay, rootDocument(UUID.headGemFeature, 1)],
+      [UUID.headGemFeature, document({ rules: [{ key: "GrantItem", uuid: UUID.headGemItem }] })],
+      [UUID.headGemItem, headGemDocument()],
+    ]);
+
+    const result = await projectPlannedClassGrants({
+      ...SUBJECT,
+      draft,
+      fetchDocumentByUuid: async (uuid) => documents.get(uuid) ?? null,
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(result.grants).toMatchObject([
+      {
+        grantId: "class-grant:sarangay-head-gem:ancestry-level-1",
+        profileId: "sarangay-head-gem",
+        origin: { sourceSlotId: "ancestry-level-1", sourceUuid: UUID.sarangay },
+        expected: { sourceUuid: UUID.headGemItem, quantity: 1, itemType: "equipment" },
+        nativeGrantChainSourceUuids: [UUID.headGemFeature, UUID.sarangay],
+      },
+    ]);
+  });
+
+  it("fails closed when the deterministic Dwarf choice or reviewed ancestry target drifts", async () => {
+    const draft = ancestryDraft(UUID.dwarf, "Dwarf");
+    const feature = clanDaggerFeatureDocument();
+    const documents = new Map<string, unknown>([
+      [UUID.dwarf, rootDocument(UUID.clanDaggerFeature, 0)],
+      [UUID.clanDaggerFeature, feature],
+      [UUID.clanDaggerItem, clanDaggerDocument()],
+    ]);
+    const execute = () =>
+      projectPlannedClassGrants({
+        ...SUBJECT,
+        draft,
+        fetchDocumentByUuid: async (uuid) => documents.get(uuid) ?? null,
+      });
+
+    feature.system.rules[2] = { key: "GrantItem", predicate: ["clan-pistol"], uuid: UUID.clanDaggerItem };
+    await expect(execute()).resolves.toMatchObject({ grants: [], blockers: [{ code: "source-drift" }] });
+
+    documents.set(UUID.clanDaggerFeature, clanDaggerFeatureDocument());
+    documents.set(UUID.clanDaggerItem, clanDaggerDocument({ price: { gp: 3 } }));
+    await expect(execute()).resolves.toMatchObject({ grants: [], blockers: [{ code: "source-drift" }] });
   });
 
   it("projects Alchemical Sciences only from the exact selected methodology relationship", async () => {
@@ -529,6 +614,16 @@ function classDraft(uuid: string, name: string) {
   return draft;
 }
 
+function ancestryDraft(uuid: string, name: string) {
+  const draft = createEmptyDraft(1);
+  draft.selections["ancestry-level-1"] = {
+    ...selection("ancestry-level-1", uuid, name),
+    itemType: "ancestry",
+    featType: null,
+  };
+  return draft;
+}
+
 function selection(slotId: string, uuid: string, name: string) {
   const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.(.+)$/u.exec(uuid);
   return {
@@ -544,7 +639,11 @@ function selection(slotId: string, uuid: string, name: string) {
 }
 
 function classDocument(featureUuid: string) {
-  return { system: { items: { feature: { level: 1, uuid: featureUuid } } } };
+  return rootDocument(featureUuid, 1);
+}
+
+function rootDocument(featureUuid: string, level: number) {
+  return { system: { items: { feature: { level, uuid: featureUuid } } } };
 }
 
 function document(options: { rules?: unknown[]; tags?: string[] } = {}) {
@@ -566,6 +665,53 @@ function formulaBookDocument(price: Record<string, number> = { gp: 1 }) {
       traits: { rarity: "common", otherTags: [] },
       price: { value: price },
       rules: [],
+    },
+  };
+}
+
+function clanDaggerFeatureDocument() {
+  return document({
+    rules: [
+      {
+        key: "ChoiceSet",
+        flag: "clanWeapon",
+        choices: [{ value: "clan-dagger" }, { value: "clan-pistol" }],
+      },
+      {
+        key: "RollOption",
+        option: "{item|flags.system.rulesSelections.clanWeapon}",
+        removeUponCreate: true,
+      },
+      { key: "GrantItem", predicate: ["clan-dagger"], uuid: UUID.clanDaggerItem },
+      { key: "GrantItem", predicate: ["clan-pistol"], uuid: UUID.clanPistolFeature },
+    ],
+  });
+}
+
+function clanDaggerDocument(options: { price?: Record<string, number> } = {}) {
+  return {
+    type: "weapon",
+    system: {
+      slug: "clan-dagger",
+      baseItem: "clan-dagger",
+      category: "simple",
+      quantity: 1,
+      level: { value: 0 },
+      traits: { rarity: "uncommon" },
+      price: { value: options.price ?? { gp: 2 } },
+    },
+  };
+}
+
+function headGemDocument() {
+  return {
+    type: "equipment",
+    system: {
+      slug: "head-gem",
+      quantity: 1,
+      level: { value: 0 },
+      traits: { rarity: "common" },
+      price: { value: {} },
     },
   };
 }

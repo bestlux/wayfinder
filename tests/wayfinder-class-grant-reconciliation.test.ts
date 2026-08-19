@@ -96,6 +96,39 @@ describe("planned class-grant reconciliation", () => {
     ).toBe("unresolved");
   });
 
+  it.each([
+    ["Dwarf Clan Dagger", dwarfGrant()],
+    ["Sarangay Head Gem", sarangayGrant()],
+  ])("authenticates the exact %s ancestry-native chain", (_name, grant) => {
+    const chain = [
+      observed("target", grant.expected.sourceUuid, grant.expected.itemType, "feature"),
+      observed("feature", grant.nativeGrantChainSourceUuids[0]!, "feat", null, null, null, "ancestry"),
+      observed("ancestry", grant.nativeGrantChainSourceUuids[1]!, "ancestry", null, null, "ancestry-level-1"),
+    ];
+    expect(
+      reconcilePlannedClassGrants({
+        plan: [grant],
+        actorItems: chain,
+        phase: "final",
+        draftId: "draft-1",
+        batchId: "batch-1",
+      })
+    ).toMatchObject({
+      entries: [{ grantId: grant.grantId, status: "resolved", itemIds: ["target"] }],
+      ignoredItemIds: ["target"],
+    });
+
+    expect(
+      reconcilePlannedClassGrants({
+        plan: [grant],
+        actorItems: [observed("lookalike", grant.expected.sourceUuid, grant.expected.itemType, null)],
+        phase: "final",
+        draftId: "draft-1",
+        batchId: "batch-1",
+      })
+    ).toMatchObject({ entries: [{ status: "unresolved" }], ignoredItemIds: [] });
+  });
+
   it("requires exact Wayfinder draft, batch, and planned-grant identity for Titan Mauler", () => {
     const grant = titanGrant();
     const exact = observed("weapon", grant.expected.sourceUuid, "weapon", null, {
@@ -368,6 +401,38 @@ function investigatorGrant(): PlannedClassGrantV1 {
     resaleRule: "normal",
     eligibilityEvidence: { kind: "fixed-native-profile" },
     nativeGrantChainSourceUuids: [u.alchemicalSciences, u.methodologyFeature, u.investigatorClass],
+  });
+}
+
+function dwarfGrant(): PlannedClassGrantV1 {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:dwarf-clan-dagger:ancestry-level-1",
+    profileId: "dwarf-clan-dagger",
+    origin: { sourceSlotId: "ancestry-level-1", sourceUuid: u.dwarfAncestry },
+    granterSourceUuid: u.clanDaggerFeature,
+    expected: { sourceUuid: u.clanDaggerItem, quantity: 1, itemType: "weapon" },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: [u.clanDaggerFeature, u.dwarfAncestry],
+  });
+}
+
+function sarangayGrant(): PlannedClassGrantV1 {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:sarangay-head-gem:ancestry-level-1",
+    profileId: "sarangay-head-gem",
+    origin: { sourceSlotId: "ancestry-level-1", sourceUuid: u.sarangayAncestry },
+    granterSourceUuid: u.headGemFeature,
+    expected: { sourceUuid: u.headGemItem, quantity: 1, itemType: "equipment" },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: [u.headGemFeature, u.sarangayAncestry],
   });
 }
 

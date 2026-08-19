@@ -6,6 +6,7 @@ import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot } fro
 import type { AcquisitionLineDraft, AcquisitionRecipeSelection } from "../domain/acquisition-types.js";
 import {
   CLASS_GRANT_PROFILE_UUIDS,
+  type ClassGrantProfileId,
   createPlannedClassGrant,
   createPreparedClassGrantPlan,
   evaluateTitanMaulerCandidate,
@@ -27,10 +28,7 @@ const UUIDS = CLASS_GRANT_PROFILE_UUIDS;
 
 export interface ClassGrantProjectionBlocker {
   readonly code: "source-missing" | "source-drift" | "titan-selection-required" | "titan-ineligible";
-  readonly profileId:
-    | "alchemist-formula-book"
-    | "investigator-alchemical-sciences-formula-book"
-    | "giant-instinct-titan-mauler";
+  readonly profileId: ClassGrantProfileId;
   readonly message: string;
 }
 
@@ -169,6 +167,27 @@ export async function projectPlannedClassGrants(args: {
   readonly actorSize?: TitanMaulerCandidate["actorSize"] | null;
   readonly resolveCharacterAccessRef?: (sourceUuid: string) => string | null;
 }): Promise<ClassGrantProjectionResult> {
+  const grants: PlannedClassGrantV1[] = [];
+  const blockers: ClassGrantProjectionBlocker[] = [];
+  const ancestrySelection = args.draft.selections["ancestry-level-1"];
+  const activeAncestryProfile =
+    ancestrySelection?.itemType === "ancestry" &&
+    ancestrySelection.slotId === "ancestry-level-1" &&
+    (ancestrySelection.uuid === UUIDS.dwarfAncestry || ancestrySelection.uuid === UUIDS.sarangayAncestry) &&
+    originIsActive(ancestrySelection, args.activeSteps, args.observedActorItems);
+  if (activeAncestryProfile) {
+    const ancestryDocument = await args.fetchDocumentByUuid(ancestrySelection.uuid);
+    const profileId =
+      ancestrySelection.uuid === UUIDS.dwarfAncestry ? ("dwarf-clan-dagger" as const) : ("sarangay-head-gem" as const);
+    const result = ancestryDocument
+      ? ancestrySelection.uuid === UUIDS.dwarfAncestry
+        ? await projectDwarf(ancestryDocument, args.fetchDocumentByUuid)
+        : await projectSarangay(ancestryDocument, args.fetchDocumentByUuid)
+      : sourceMissing(profileId);
+    if (result.grant) grants.push(result.grant);
+    if (result.blocker) blockers.push(result.blocker);
+  }
+
   const classSelection = args.draft.selections["class-level-1"];
   if (
     !classSelection ||
@@ -176,7 +195,7 @@ export async function projectPlannedClassGrants(args: {
     classSelection.slotId !== "class-level-1" ||
     !originIsActive(classSelection, args.activeSteps, args.observedActorItems)
   ) {
-    return completeProjection(args, [], []);
+    return completeProjection(args, grants, blockers);
   }
 
   const activeProfile =
@@ -195,18 +214,15 @@ export async function projectPlannedClassGrants(args: {
           selection.uuid === UUIDS.giantInstinct &&
           originIsActive(selection, args.activeSteps, args.observedActorItems)
       ));
-  if (!activeProfile) return completeProjection(args, [], []);
+  if (!activeProfile) return completeProjection(args, grants, blockers);
   const classDocument = await args.fetchDocumentByUuid(classSelection.uuid);
   if (!classDocument) {
-    return completeProjection(
-      args,
-      [],
-      [sourceMissing(profileIdForSelection(classSelection.uuid, args.draft)).blocker!]
-    );
+    return completeProjection(args, grants, [
+      ...blockers,
+      sourceMissing(profileIdForSelection(classSelection.uuid, args.draft)).blocker!,
+    ]);
   }
 
-  const grants: PlannedClassGrantV1[] = [];
-  const blockers: ClassGrantProjectionBlocker[] = [];
   if (classSelection.uuid === UUIDS.alchemistClass) {
     const result = await projectAlchemist(classDocument, args.fetchDocumentByUuid);
     if (result.grant) grants.push(result.grant);
@@ -251,12 +267,72 @@ export async function projectPlannedClassGrants(args: {
   return completeProjection(args, grants, blockers);
 }
 
+async function projectDwarf(
+  ancestryDocument: unknown,
+  fetchDocumentByUuid: (uuid: string) => Promise<unknown | null>
+): Promise<Projection> {
+  const profileId = "dwarf-clan-dagger" as const;
+  if (!rootIncludesFeature(ancestryDocument, UUIDS.clanDaggerFeature, 0)) {
+    return sourceDrift(profileId, "The installed Dwarf ancestry no longer links the reviewed Clan Dagger feature.");
+  }
+  const feature = await fetchDocumentByUuid(UUIDS.clanDaggerFeature);
+  const dagger = await fetchDocumentByUuid(UUIDS.clanDaggerItem);
+  if (!feature || !dagger) return sourceMissing(profileId);
+  if (!hasReviewedClanDaggerChoice(feature) || !isReviewedClanDaggerItem(dagger)) {
+    return sourceDrift(profileId, "The installed Dwarf Clan Dagger grant relationship changed.");
+  }
+  return {
+    grant: createPlannedClassGrant({
+      grantId: "class-grant:dwarf-clan-dagger:ancestry-level-1",
+      profileId,
+      origin: { sourceSlotId: "ancestry-level-1", sourceUuid: UUIDS.dwarfAncestry },
+      granterSourceUuid: UUIDS.clanDaggerFeature,
+      expected: { sourceUuid: UUIDS.clanDaggerItem, quantity: 1, itemType: "weapon" },
+      materializer: "pf2e-native",
+      eligibilityKind: "fixed-class-grant",
+      resaleRule: "normal",
+      eligibilityEvidence: { kind: "fixed-native-profile" },
+      nativeGrantChainSourceUuids: [UUIDS.clanDaggerFeature, UUIDS.dwarfAncestry],
+    }),
+  };
+}
+
+async function projectSarangay(
+  ancestryDocument: unknown,
+  fetchDocumentByUuid: (uuid: string) => Promise<unknown | null>
+): Promise<Projection> {
+  const profileId = "sarangay-head-gem" as const;
+  if (!rootIncludesFeature(ancestryDocument, UUIDS.headGemFeature, 1)) {
+    return sourceDrift(profileId, "The installed Sarangay ancestry no longer links the reviewed Head Gem feature.");
+  }
+  const feature = await fetchDocumentByUuid(UUIDS.headGemFeature);
+  const headGem = await fetchDocumentByUuid(UUIDS.headGemItem);
+  if (!feature || !headGem) return sourceMissing(profileId);
+  if (!hasOnlyStaticGrant(feature, UUIDS.headGemItem) || !isReviewedHeadGemItem(headGem)) {
+    return sourceDrift(profileId, "The installed Sarangay Head Gem grant relationship changed.");
+  }
+  return {
+    grant: createPlannedClassGrant({
+      grantId: "class-grant:sarangay-head-gem:ancestry-level-1",
+      profileId,
+      origin: { sourceSlotId: "ancestry-level-1", sourceUuid: UUIDS.sarangayAncestry },
+      granterSourceUuid: UUIDS.headGemFeature,
+      expected: { sourceUuid: UUIDS.headGemItem, quantity: 1, itemType: "equipment" },
+      materializer: "pf2e-native",
+      eligibilityKind: "fixed-class-grant",
+      resaleRule: "normal",
+      eligibilityEvidence: { kind: "fixed-native-profile" },
+      nativeGrantChainSourceUuids: [UUIDS.headGemFeature, UUIDS.sarangayAncestry],
+    }),
+  };
+}
+
 async function projectAlchemist(
   classDocument: unknown,
   fetchDocumentByUuid: (uuid: string) => Promise<unknown | null>
 ): Promise<Projection> {
   const profileId = "alchemist-formula-book" as const;
-  if (!classIncludesFeature(classDocument, UUIDS.alchemyFeature)) {
+  if (!rootIncludesFeature(classDocument, UUIDS.alchemyFeature, 1)) {
     return sourceDrift(profileId, "The installed Alchemist class no longer links the reviewed Alchemy feature.");
   }
   const alchemy = await fetchDocumentByUuid(UUIDS.alchemyFeature);
@@ -292,7 +368,7 @@ async function projectInvestigator(
   fetchDocumentByUuid: (uuid: string) => Promise<unknown | null>
 ): Promise<Projection> {
   const profileId = "investigator-alchemical-sciences-formula-book" as const;
-  if (!classIncludesFeature(classDocument, UUIDS.methodologyFeature)) {
+  if (!rootIncludesFeature(classDocument, UUIDS.methodologyFeature, 1)) {
     return sourceDrift(profileId, "The installed Investigator class no longer links the reviewed Methodology feature.");
   }
   const methodology = await fetchDocumentByUuid(UUIDS.methodologyFeature);
@@ -334,7 +410,7 @@ async function projectTitanMauler(
   subject: { readonly actorId: string; readonly draftId: string; readonly targetLevel: number }
 ): Promise<Projection> {
   const profileId = "giant-instinct-titan-mauler" as const;
-  if (!classIncludesFeature(classDocument, UUIDS.instinctFeature)) {
+  if (!rootIncludesFeature(classDocument, UUIDS.instinctFeature, 1)) {
     return sourceDrift(profileId, "The installed Barbarian class no longer links the reviewed Instinct feature.");
   }
   const instinct = await fetchDocumentByUuid(UUIDS.instinctFeature);
@@ -470,20 +546,65 @@ function sourceDrift(profileId: ClassGrantProjectionBlocker["profileId"], messag
   return { blocker: { code: "source-drift", profileId, message } };
 }
 
-function classIncludesFeature(document: unknown, uuid: string): boolean {
+function rootIncludesFeature(document: unknown, uuid: string, level: number): boolean {
   const items =
     isRecord(document) && isRecord(document.system) && isRecord(document.system.items)
       ? Object.values(document.system.items)
       : [];
   return (
     items.filter(
-      (entry) => isRecord(entry) && entry.uuid === uuid && Number.isInteger(entry.level) && Number(entry.level) === 1
+      (entry) =>
+        isRecord(entry) && entry.uuid === uuid && Number.isInteger(entry.level) && Number(entry.level) === level
     ).length === 1
+  );
+}
+
+function hasReviewedClanDaggerChoice(document: unknown): boolean {
+  const values = rules(document);
+  const choices = values.filter((rule) => rule.key === "ChoiceSet" && rule.flag === "clanWeapon");
+  const choice = choices[0];
+  const options = choice && Array.isArray(choice.choices) ? choice.choices.filter(isRecord) : [];
+  const optionValues = options.map((option) => option.value).sort();
+  const allGrants = values.filter((rule) => rule.key === "GrantItem");
+  const daggerGrants = allGrants.filter(
+    (rule) =>
+      rule.uuid === UUIDS.clanDaggerItem &&
+      Array.isArray(rule.predicate) &&
+      rule.predicate.length === 1 &&
+      rule.predicate[0] === "clan-dagger"
+  );
+  const pistolGrants = allGrants.filter(
+    (rule) =>
+      rule.uuid === UUIDS.clanPistolFeature &&
+      Array.isArray(rule.predicate) &&
+      rule.predicate.length === 1 &&
+      rule.predicate[0] === "clan-pistol"
+  );
+  const rollOptions = values.filter(
+    (rule) =>
+      rule.key === "RollOption" &&
+      rule.option === "{item|flags.system.rulesSelections.clanWeapon}" &&
+      rule.removeUponCreate === true
+  );
+  return (
+    choices.length === 1 &&
+    optionValues.length === 2 &&
+    optionValues[0] === "clan-dagger" &&
+    optionValues[1] === "clan-pistol" &&
+    allGrants.length === 2 &&
+    daggerGrants.length === 1 &&
+    pistolGrants.length === 1 &&
+    rollOptions.length === 1
   );
 }
 
 function hasExactlyOneStaticGrant(document: unknown, uuid: string): boolean {
   return rules(document).filter((rule) => rule.key === "GrantItem" && rule.uuid === uuid).length === 1;
+}
+
+function hasOnlyStaticGrant(document: unknown, uuid: string): boolean {
+  const grants = rules(document).filter((rule) => rule.key === "GrantItem");
+  return grants.length === 1 && grants[0]?.uuid === uuid && grants[0].predicate === undefined;
 }
 
 function hasDynamicBranch(document: unknown, flag: string, otherTag: string): boolean {
@@ -519,6 +640,41 @@ function isReviewedFormulaBookItem(document: unknown): boolean {
     quantity === 1 &&
     !!price &&
     copperValue(price) === 100
+  );
+}
+
+function isReviewedClanDaggerItem(document: unknown): boolean {
+  if (!isRecord(document) || document.type !== "weapon" || !isRecord(document.system)) return false;
+  const level = isRecord(document.system.level) ? document.system.level.value : null;
+  const traits = isRecord(document.system.traits) ? document.system.traits : null;
+  const price =
+    isRecord(document.system.price) && isRecord(document.system.price.value) ? document.system.price.value : null;
+  return (
+    document.system.slug === "clan-dagger" &&
+    document.system.baseItem === "clan-dagger" &&
+    document.system.category === "simple" &&
+    level === 0 &&
+    traits?.rarity === "uncommon" &&
+    document.system.quantity === 1 &&
+    !!price &&
+    copperValue(price) === 200
+  );
+}
+
+function isReviewedHeadGemItem(document: unknown): boolean {
+  if (!isRecord(document) || document.type !== "equipment" || !isRecord(document.system)) return false;
+  const level = isRecord(document.system.level) ? document.system.level.value : null;
+  const traits = isRecord(document.system.traits) ? document.system.traits : null;
+  const price =
+    isRecord(document.system.price) && isRecord(document.system.price.value) ? document.system.price.value : null;
+  return (
+    document.system.slug === "head-gem" &&
+    level === 0 &&
+    traits?.rarity === "common" &&
+    document.system.quantity === 1 &&
+    !!price &&
+    Object.keys(price).length === 0 &&
+    copperValue(price) === 0
   );
 }
 

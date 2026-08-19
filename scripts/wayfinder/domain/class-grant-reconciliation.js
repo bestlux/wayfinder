@@ -10,6 +10,13 @@ export const CLASS_GRANT_PROFILE_UUIDS = {
     barbarianClass: "Compendium.pf2e.classes.Item.YDRiP7uVvr9WRhOI",
     instinctFeature: "Compendium.pf2e.classfeatures.Item.dU7xRpg4kFd01hwZ",
     giantInstinct: "Compendium.pf2e.classfeatures.Item.JuKD6k7nDwfO0Ckv",
+    dwarfAncestry: "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+    clanDaggerFeature: "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
+    clanDaggerItem: "Compendium.pf2e.equipment-srd.Item.kJJvKm80KwWXPukV",
+    clanPistolFeature: "Compendium.pf2e.feats-srd.Item.LvVg83ZDj8mabcWF",
+    sarangayAncestry: "Compendium.pf2e.ancestries.Item.7mpMGhVoaPANJnZ8",
+    headGemFeature: "Compendium.pf2e.ancestryfeatures.Item.HYefFkddD9lOhFM8",
+    headGemItem: "Compendium.pf2e.equipment-srd.Item.FA1mAc7rEyC9vzZa",
 };
 const preparedPlans = new WeakSet();
 export function createPlannedClassGrant(grant) {
@@ -377,6 +384,30 @@ function canonicalProfileMatches(grant) {
                 u.investigatorClass,
             ]));
     }
+    if (grant.profileId === "dwarf-clan-dagger") {
+        return (grant.grantId === "class-grant:dwarf-clan-dagger:ancestry-level-1" &&
+            grant.origin.sourceSlotId === "ancestry-level-1" &&
+            grant.origin.sourceUuid === u.dwarfAncestry &&
+            grant.granterSourceUuid === u.clanDaggerFeature &&
+            grant.expected.sourceUuid === u.clanDaggerItem &&
+            grant.expected.itemType === "weapon" &&
+            grant.materializer === "pf2e-native" &&
+            grant.eligibilityKind === "fixed-class-grant" &&
+            grant.resaleRule === "normal" &&
+            sameOrderedStrings(grant.nativeGrantChainSourceUuids, [u.clanDaggerFeature, u.dwarfAncestry]));
+    }
+    if (grant.profileId === "sarangay-head-gem") {
+        return (grant.grantId === "class-grant:sarangay-head-gem:ancestry-level-1" &&
+            grant.origin.sourceSlotId === "ancestry-level-1" &&
+            grant.origin.sourceUuid === u.sarangayAncestry &&
+            grant.granterSourceUuid === u.headGemFeature &&
+            grant.expected.sourceUuid === u.headGemItem &&
+            grant.expected.itemType === "equipment" &&
+            grant.materializer === "pf2e-native" &&
+            grant.eligibilityKind === "fixed-class-grant" &&
+            grant.resaleRule === "normal" &&
+            sameOrderedStrings(grant.nativeGrantChainSourceUuids, [u.headGemFeature, u.sarangayAncestry]));
+    }
     return (grant.origin.sourceSlotId === "class-branch-instinct-level-1" &&
         grant.origin.sourceUuid === u.giantInstinct &&
         grant.granterSourceUuid === u.giantInstinct &&
@@ -447,7 +478,9 @@ function failure(code, message) {
 function isProfileId(value) {
     return (value === "alchemist-formula-book" ||
         value === "investigator-alchemical-sciences-formula-book" ||
-        value === "giant-instinct-titan-mauler");
+        value === "giant-instinct-titan-mauler" ||
+        value === "dwarf-clan-dagger" ||
+        value === "sarangay-head-gem");
 }
 function safeNonNegativeInteger(value) {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;

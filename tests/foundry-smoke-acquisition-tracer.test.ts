@@ -21,9 +21,11 @@ import { createCompletedAcquisitionManifest } from "../src/wayfinder/domain/comp
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 import {
+  ACQUISITION_CASE_SCHEMA_VERSION,
   acquisitionDefinitionFingerprint,
   acquisitionSmokeCases,
   LEVEL_ONE_DAGGER,
+  LEVEL_ONE_NATIVE_GRANTS,
   validateAcquisitionSmokeCaseDefinition,
 } from "../tools/foundry-smoke/acquisition-cases.mjs";
 import {
@@ -40,7 +42,7 @@ const browserSuite = readFileSync(resolve("tools/foundry-smoke/browser-suite.js"
 const runner = readFileSync(resolve("tools/foundry-smoke/run-acquisition-tracer.mjs"), "utf8");
 
 describe("Foundry Wave-2 acquisition tracer", () => {
-  it("pins purchase, retain-all, retry, and lost-ack cases to the current PF2E Dagger identity", () => {
+  it("pins purchase, retain-all, retry, lost-ack, and fixed-native cases to exact PF2E identities", () => {
     expect(acquisitionSmokeCases.map((smokeCase) => smokeCase.id)).toEqual([
       "equipment-l1-owner-common-purchase",
       "equipment-l1-owner-retain-all",
@@ -49,8 +51,11 @@ describe("Foundry Wave-2 acquisition tracer", () => {
       "equipment-l1-owner-common-purchase-currency-after-retry",
       "equipment-l1-owner-common-purchase-final-before-retry",
       "equipment-l1-owner-common-purchase-final-after-ack",
+      "equipment-l1-owner-dwarf-clan-dagger-native-retry",
+      "equipment-l1-owner-sarangay-head-gem-native-retry",
       "equipment-l1-gm-review-common-purchase",
     ]);
+    expect(ACQUISITION_CASE_SCHEMA_VERSION).toBe(2);
     expect(LEVEL_ONE_DAGGER).toMatchObject({
       sourceUuid: "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z",
       itemType: "weapon",
@@ -64,6 +69,7 @@ describe("Foundry Wave-2 acquisition tracer", () => {
     for (const smokeCase of acquisitionSmokeCases) {
       expect(validateAcquisitionSmokeCaseDefinition(smokeCase)).toEqual([]);
       expect(smokeCase.definitionFingerprint).toBe(acquisitionDefinitionFingerprint(smokeCase));
+      expect(smokeCase.definitionFingerprint).toMatch(/^wf-acquisition-case-v2-[a-f0-9]{64}$/u);
       expect(smokeCase.acquisitionCase.policyReview).toEqual({
         required: smokeCase.acquisitionCase.executorRole === "gm-reviewer",
         reviewerRole: "gm",
@@ -76,6 +82,185 @@ describe("Foundry Wave-2 acquisition tracer", () => {
       occurrence: 1,
       expectedPoint: "item-after",
     });
+  });
+
+  it("defines exactly two source-backed non-GM retain-all native grants with zero acquisition creates", () => {
+    const nativeCases = acquisitionSmokeCases.filter((smokeCase) => smokeCase.acquisitionCase.nativeGrant !== null);
+
+    expect(nativeCases).toHaveLength(2);
+    expect(LEVEL_ONE_NATIVE_GRANTS).toEqual({
+      dwarfClanDagger: expect.objectContaining({
+        kind: "fixed-native-grant",
+        profileId: "dwarf-clan-dagger",
+        grantId: "class-grant:dwarf-clan-dagger:ancestry-level-1",
+        materializer: "pf2e-native",
+        fundingLane: "class-grant",
+        originSlotId: "ancestry-level-1",
+        ancestry: {
+          name: "Dwarf",
+          sourceUuid: "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+        },
+        heritage: {
+          name: "Forge Dwarf",
+          sourceUuid: "Compendium.pf2e.heritages.Item.5CqsBKCZuGON53Hk",
+        },
+        ancestryFeat: {
+          name: "Dwarven Doughtiness",
+          sourceUuid: "Compendium.pf2e.feats-srd.Item.UJ8AqzkkDqRCMNFW",
+        },
+        granter: {
+          name: "Clan Dagger",
+          sourceUuid: "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
+        },
+        target: {
+          name: "Clan Dagger",
+          sourceUuid: "Compendium.pf2e.equipment-srd.Item.kJJvKm80KwWXPukV",
+          itemType: "weapon",
+          level: 0,
+          rarity: "uncommon",
+          publication: "Pathfinder Player Core",
+          quantity: 1,
+          sourceQuantity: 1,
+          rulesCount: 0,
+          containerId: null,
+          unitPriceCopper: 200,
+        },
+        nativeGrantChainSourceUuids: [
+          "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
+          "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+        ],
+        requiredRuleSelection: { key: "clanWeapon", value: "clan-dagger" },
+      }),
+      sarangayHeadGem: expect.objectContaining({
+        kind: "fixed-native-grant",
+        profileId: "sarangay-head-gem",
+        grantId: "class-grant:sarangay-head-gem:ancestry-level-1",
+        materializer: "pf2e-native",
+        fundingLane: "class-grant",
+        originSlotId: "ancestry-level-1",
+        ancestry: {
+          name: "Sarangay",
+          sourceUuid: "Compendium.pf2e.ancestries.Item.7mpMGhVoaPANJnZ8",
+        },
+        heritage: {
+          name: "Waxing Moon Sarangay",
+          sourceUuid: "Compendium.pf2e.heritages.Item.BHiOV3ETYSv6k7kF",
+        },
+        ancestryFeat: {
+          name: "Crown of Bone",
+          sourceUuid: "Compendium.pf2e.feats-srd.Item.pC9sGxKBOGWQLOuw",
+        },
+        granter: {
+          name: "Head Gem",
+          sourceUuid: "Compendium.pf2e.ancestryfeatures.Item.HYefFkddD9lOhFM8",
+        },
+        target: {
+          name: "Head Gem",
+          sourceUuid: "Compendium.pf2e.equipment-srd.Item.FA1mAc7rEyC9vzZa",
+          itemType: "equipment",
+          level: 0,
+          rarity: "common",
+          publication: "Pathfinder Lost Omens Tian Xia Character Guide",
+          quantity: 1,
+          sourceQuantity: 1,
+          rulesCount: 1,
+          containerId: null,
+          unitPriceCopper: 0,
+        },
+        nativeGrantChainSourceUuids: [
+          "Compendium.pf2e.ancestryfeatures.Item.HYefFkddD9lOhFM8",
+          "Compendium.pf2e.ancestries.Item.7mpMGhVoaPANJnZ8",
+        ],
+        requiredRuleSelection: null,
+      }),
+    });
+    expect(LEVEL_ONE_NATIVE_GRANTS.dwarfClanDagger.fixture).toMatchObject({
+      ancestryBoosts: { 0: "con", 1: "wis", 2: "dex" },
+      backgroundBoosts: { 0: "wis", 1: "cha" },
+    });
+    expect(LEVEL_ONE_NATIVE_GRANTS.sarangayHeadGem.fixture).toMatchObject({
+      ancestryBoosts: { 0: "str", 1: "cha", 2: "dex" },
+      backgroundBoosts: { 0: "wis", 1: "con" },
+    });
+
+    for (const definition of nativeCases) {
+      const expected = definition.acquisitionCase;
+      expect(expected).toMatchObject({
+        schemaVersion: 2,
+        executorRole: "non-gm-owner",
+        disposition: "retain-all",
+        expectedBudgetCopper: 1500,
+        expectedSpentCopper: 0,
+        expectedRemainingCopper: 1500,
+        expectedAcquisitionItemCreateCheckpoints: 0,
+        policyReview: { required: false, reviewerRole: "gm" },
+        failure: {
+          checkpointId: "write:currency-convergence:before",
+          occurrence: 1,
+          expectedPoint: "currency-before",
+        },
+      });
+      expect(expected.expectedEntries).toEqual([
+        expect.objectContaining({
+          sourceUuid: expected.nativeGrant.target.sourceUuid,
+          name: expected.nativeGrant.target.name,
+          quantity: 1,
+          sourceQuantity: 1,
+          stackingIntent: "separate",
+          fundingLane: "class-grant",
+          plannedGrantId: expected.nativeGrant.grantId,
+          materializer: "pf2e-native",
+        }),
+      ]);
+      expect(expected.nativeGrant.fixture).toMatchObject({
+        kind: "complete-draft",
+        background: {
+          name: "Acolyte",
+          sourceUuid: "Compendium.pf2e.backgrounds.Item.CAjQrHZZbALE7Qjy",
+        },
+        class: {
+          name: "Fighter",
+          sourceUuid: "Compendium.pf2e.classes.Item.8zn3cD6GSmoo1LW4",
+        },
+        classFeat: {
+          name: "Sudden Charge",
+          sourceUuid: "Compendium.pf2e.feats-srd.Item.qQt3CMrhLkUV1wCv",
+        },
+        keyAbility: "str",
+        levelOneBoosts: ["str", "dex", "con", "wis"],
+        preferredSkills: ["athletics", "crafting", "medicine", "stealth"],
+        ruleSelections: { fighterSkill: "athletics" },
+      });
+    }
+  });
+
+  it("rejects native profile, source, currency, and item-create expectation drift", () => {
+    const mutations = [
+      (definition: any) => {
+        definition.acquisitionCase.nativeGrant.kind = "catalogue-item";
+      },
+      (definition: any) => {
+        definition.acquisitionCase.nativeGrant.target.sourceUuid = LEVEL_ONE_DAGGER.sourceUuid;
+        definition.acquisitionCase.expectedEntries[0].sourceUuid = LEVEL_ONE_DAGGER.sourceUuid;
+      },
+      (definition: any) => {
+        definition.acquisitionCase.expectedRemainingCopper = 1499;
+      },
+      (definition: any) => {
+        definition.acquisitionCase.expectedAcquisitionItemCreateCheckpoints = 1;
+      },
+    ];
+
+    for (const mutate of mutations) {
+      const definition = structuredClone(
+        acquisitionSmokeCases.find((smokeCase) => smokeCase.id === "equipment-l1-owner-dwarf-clan-dagger-native-retry")
+      ) as any;
+      mutate(definition);
+      definition.definitionFingerprint = acquisitionDefinitionFingerprint(definition);
+      expect(validateAcquisitionSmokeCaseDefinition(definition)).toContain(
+        "Native-grant smoke cases require one exact fixed profile, locked zero-cost grant line, and before-currency retry."
+      );
+    }
   });
 
   it("maps acquisition write checkpoints only to their owning prepared-Apply phases", () => {

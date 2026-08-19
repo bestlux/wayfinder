@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const ACQUISITION_CASE_SCHEMA_VERSION = 1;
+export const ACQUISITION_CASE_SCHEMA_VERSION = 2;
 export const LEVEL_ONE_BUDGET_COPPER = 1500;
 export const LEVEL_ONE_DAGGER = Object.freeze({
   sourceUuid: "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z",
@@ -16,6 +16,127 @@ export const LEVEL_ONE_DAGGER = Object.freeze({
   stackingIntent: "aggregate",
 });
 
+const COMMON_COMPLETE_DRAFT = Object.freeze({
+  kind: "complete-draft",
+  background: Object.freeze({
+    name: "Acolyte",
+    sourceUuid: "Compendium.pf2e.backgrounds.Item.CAjQrHZZbALE7Qjy",
+  }),
+  class: Object.freeze({
+    name: "Fighter",
+    sourceUuid: "Compendium.pf2e.classes.Item.8zn3cD6GSmoo1LW4",
+  }),
+  classFeat: Object.freeze({
+    name: "Sudden Charge",
+    sourceUuid: "Compendium.pf2e.feats-srd.Item.qQt3CMrhLkUV1wCv",
+  }),
+  keyAbility: "str",
+  levelOneBoosts: Object.freeze(["str", "dex", "con", "wis"]),
+  preferredSkills: Object.freeze(["athletics", "crafting", "medicine", "stealth"]),
+  ruleSelections: Object.freeze({ fighterSkill: "athletics" }),
+});
+
+export const LEVEL_ONE_NATIVE_GRANTS = Object.freeze({
+  dwarfClanDagger: Object.freeze({
+    kind: "fixed-native-grant",
+    profileId: "dwarf-clan-dagger",
+    grantId: "class-grant:dwarf-clan-dagger:ancestry-level-1",
+    materializer: "pf2e-native",
+    fundingLane: "class-grant",
+    originSlotId: "ancestry-level-1",
+    ancestry: Object.freeze({
+      name: "Dwarf",
+      sourceUuid: "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+    }),
+    heritage: Object.freeze({
+      name: "Forge Dwarf",
+      sourceUuid: "Compendium.pf2e.heritages.Item.5CqsBKCZuGON53Hk",
+    }),
+    ancestryFeat: Object.freeze({
+      name: "Dwarven Doughtiness",
+      sourceUuid: "Compendium.pf2e.feats-srd.Item.UJ8AqzkkDqRCMNFW",
+    }),
+    granter: Object.freeze({
+      name: "Clan Dagger",
+      sourceUuid: "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
+    }),
+    target: Object.freeze({
+      name: "Clan Dagger",
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.kJJvKm80KwWXPukV",
+      itemType: "weapon",
+      level: 0,
+      rarity: "uncommon",
+      publication: "Pathfinder Player Core",
+      quantity: 1,
+      sourceQuantity: 1,
+      rulesCount: 0,
+      containerId: null,
+      unitPriceCopper: 200,
+    }),
+    nativeGrantChainSourceUuids: Object.freeze([
+      "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
+      "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+    ]),
+    requiredRuleSelection: Object.freeze({ key: "clanWeapon", value: "clan-dagger" }),
+    fixture: Object.freeze({
+      ...COMMON_COMPLETE_DRAFT,
+      ancestryBoosts: Object.freeze({ 0: "con", 1: "wis", 2: "dex" }),
+      backgroundBoosts: Object.freeze({ 0: "wis", 1: "cha" }),
+    }),
+  }),
+  sarangayHeadGem: Object.freeze({
+    kind: "fixed-native-grant",
+    profileId: "sarangay-head-gem",
+    grantId: "class-grant:sarangay-head-gem:ancestry-level-1",
+    materializer: "pf2e-native",
+    fundingLane: "class-grant",
+    originSlotId: "ancestry-level-1",
+    ancestry: Object.freeze({
+      name: "Sarangay",
+      sourceUuid: "Compendium.pf2e.ancestries.Item.7mpMGhVoaPANJnZ8",
+    }),
+    heritage: Object.freeze({
+      name: "Waxing Moon Sarangay",
+      sourceUuid: "Compendium.pf2e.heritages.Item.BHiOV3ETYSv6k7kF",
+    }),
+    ancestryFeat: Object.freeze({
+      name: "Crown of Bone",
+      sourceUuid: "Compendium.pf2e.feats-srd.Item.pC9sGxKBOGWQLOuw",
+    }),
+    granter: Object.freeze({
+      name: "Head Gem",
+      sourceUuid: "Compendium.pf2e.ancestryfeatures.Item.HYefFkddD9lOhFM8",
+    }),
+    target: Object.freeze({
+      name: "Head Gem",
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.FA1mAc7rEyC9vzZa",
+      itemType: "equipment",
+      level: 0,
+      rarity: "common",
+      publication: "Pathfinder Lost Omens Tian Xia Character Guide",
+      quantity: 1,
+      sourceQuantity: 1,
+      rulesCount: 1,
+      containerId: null,
+      unitPriceCopper: 0,
+    }),
+    nativeGrantChainSourceUuids: Object.freeze([
+      "Compendium.pf2e.ancestryfeatures.Item.HYefFkddD9lOhFM8",
+      "Compendium.pf2e.ancestries.Item.7mpMGhVoaPANJnZ8",
+    ]),
+    requiredRuleSelection: null,
+    fixture: Object.freeze({
+      ...COMMON_COMPLETE_DRAFT,
+      ancestryBoosts: Object.freeze({ 0: "str", 1: "cha", 2: "dex" }),
+      backgroundBoosts: Object.freeze({ 0: "wis", 1: "con" }),
+    }),
+  }),
+});
+
+const NATIVE_GRANTS_BY_PROFILE_ID = new Map(
+  Object.values(LEVEL_ONE_NATIVE_GRANTS).map((profile) => [profile.profileId, profile]),
+);
+
 function acquisitionCase({
   id,
   label,
@@ -24,9 +145,12 @@ function acquisitionCase({
   failure = null,
   executorRole = "non-gm-owner",
   policyReviewRequired = false,
+  nativeGrant = null,
 }) {
   const expectedEntries =
-    disposition === "purchase-ledger"
+    nativeGrant !== null
+      ? [nativeGrantExpectedEntry(nativeGrant)]
+      : disposition === "purchase-ledger"
       ? [
           {
             sourceUuid: LEVEL_ONE_DAGGER.sourceUuid,
@@ -44,7 +168,7 @@ function acquisitionCase({
           },
         ]
       : [];
-  const spentCopper = quantity * LEVEL_ONE_DAGGER.unitPriceCopper;
+  const spentCopper = nativeGrant === null ? quantity * LEVEL_ONE_DAGGER.unitPriceCopper : 0;
   const acquisition = {
     schemaVersion: ACQUISITION_CASE_SCHEMA_VERSION,
     executorRole,
@@ -54,6 +178,8 @@ function acquisitionCase({
     expectedSpentCopper: spentCopper,
     expectedRemainingCopper: LEVEL_ONE_BUDGET_COPPER - spentCopper,
     expectedEntries,
+    nativeGrant,
+    expectedAcquisitionItemCreateCheckpoints: nativeGrant === null ? null : 0,
     policyReview: {
       required: policyReviewRequired,
       reviewerRole: "gm",
@@ -69,6 +195,26 @@ function acquisitionCase({
     acquisitionCase: Object.freeze(acquisition),
     definitionFingerprint: acquisitionDefinitionFingerprint(material),
   });
+}
+
+function nativeGrantExpectedEntry(nativeGrant) {
+  return {
+    sourceUuid: nativeGrant.target.sourceUuid,
+    name: nativeGrant.target.name,
+    itemType: nativeGrant.target.itemType,
+    level: nativeGrant.target.level,
+    rarity: nativeGrant.target.rarity,
+    publication: nativeGrant.target.publication,
+    quantity: nativeGrant.target.quantity,
+    sourceQuantity: nativeGrant.target.sourceQuantity,
+    rulesCount: nativeGrant.target.rulesCount,
+    containerId: nativeGrant.target.containerId,
+    stackingIntent: "separate",
+    unitPriceCopper: nativeGrant.target.unitPriceCopper,
+    fundingLane: nativeGrant.fundingLane,
+    plannedGrantId: nativeGrant.grantId,
+    materializer: nativeGrant.materializer,
+  };
 }
 
 export const acquisitionSmokeCases = Object.freeze([
@@ -139,6 +285,28 @@ export const acquisitionSmokeCases = Object.freeze([
     },
   }),
   acquisitionCase({
+    id: "equipment-l1-owner-dwarf-clan-dagger-native-retry",
+    label: "Non-GM owner retains all wealth with one native Dwarf Clan Dagger after recovery",
+    disposition: "retain-all",
+    nativeGrant: LEVEL_ONE_NATIVE_GRANTS.dwarfClanDagger,
+    failure: {
+      checkpointId: "write:currency-convergence:before",
+      occurrence: 1,
+      expectedPoint: "currency-before",
+    },
+  }),
+  acquisitionCase({
+    id: "equipment-l1-owner-sarangay-head-gem-native-retry",
+    label: "Non-GM owner retains all wealth with one native Sarangay Head Gem after recovery",
+    disposition: "retain-all",
+    nativeGrant: LEVEL_ONE_NATIVE_GRANTS.sarangayHeadGem,
+    failure: {
+      checkpointId: "write:currency-convergence:before",
+      occurrence: 1,
+      expectedPoint: "currency-before",
+    },
+  }),
+  acquisitionCase({
     id: "equipment-l1-gm-review-common-purchase",
     label: "Current GM reviews and applies one Common level-0 Dagger purchase",
     disposition: "purchase-ledger",
@@ -158,7 +326,7 @@ export function acquisitionDefinitionFingerprint(value) {
           targetLevel: value.targetLevel,
           acquisition: value.acquisitionCase,
         };
-  return `wf-acquisition-case-v1-${createHash("sha256")
+  return `wf-acquisition-case-v2-${createHash("sha256")
     .update(canonicalJson(material))
     .digest("hex")}`;
 }
@@ -191,8 +359,12 @@ export function validateAcquisitionSmokeCaseDefinition(value) {
   }
   if (!Array.isArray(acquisition.expectedEntries)) {
     failures.push("Acquisition smoke cases require exact expected entries.");
-  } else if (acquisition.disposition === "retain-all" && acquisition.expectedEntries.length !== 0) {
-    failures.push("Retain-all smoke cases cannot expect purchased entries.");
+  } else if (
+    acquisition.disposition === "retain-all" &&
+    acquisition.nativeGrant === null &&
+    acquisition.expectedEntries.length !== 0
+  ) {
+    failures.push("Ordinary retain-all smoke cases cannot expect purchased entries.");
   } else if (
     acquisition.disposition === "purchase-ledger" &&
     (acquisition.expectedEntries.length !== 1 ||
@@ -214,6 +386,35 @@ export function validateAcquisitionSmokeCaseDefinition(value) {
       ))
   ) {
     failures.push("Purchase smoke cases require one exact pre-aggregated Dagger entry.");
+  }
+  if (acquisition.nativeGrant === null) {
+    if (acquisition.expectedAcquisitionItemCreateCheckpoints !== null) {
+      failures.push("Ordinary acquisition smoke cases cannot declare a native item-create expectation.");
+    }
+  } else {
+    const native = acquisition.nativeGrant;
+    const expectedProfile = NATIVE_GRANTS_BY_PROFILE_ID.get(native?.profileId);
+    const expectedEntry = expectedProfile ? nativeGrantExpectedEntry(expectedProfile) : null;
+    const nativeEntries = Array.isArray(acquisition.expectedEntries) ? acquisition.expectedEntries : [];
+    if (
+      native?.kind !== "fixed-native-grant" ||
+      !expectedProfile ||
+      !sameCanonical(native, expectedProfile) ||
+      acquisition.disposition !== "retain-all" ||
+      acquisition.executorRole !== "non-gm-owner" ||
+      acquisition.expectedSpentCopper !== 0 ||
+      acquisition.expectedRemainingCopper !== LEVEL_ONE_BUDGET_COPPER ||
+      acquisition.expectedAcquisitionItemCreateCheckpoints !== 0 ||
+      nativeEntries.length !== 1 ||
+      !sameCanonical(nativeEntries[0], expectedEntry) ||
+      acquisition.failure?.checkpointId !== "write:currency-convergence:before" ||
+      acquisition.failure?.occurrence !== 1 ||
+      acquisition.failure?.expectedPoint !== "currency-before"
+    ) {
+      failures.push(
+        "Native-grant smoke cases require one exact fixed profile, locked zero-cost grant line, and before-currency retry.",
+      );
+    }
   }
   if (
     acquisition.policyReview?.reviewerRole !== "gm" ||
@@ -268,6 +469,14 @@ function canonicalValue(value) {
     );
   }
   throw new TypeError("Acquisition case fingerprints require structured data.");
+}
+
+function sameCanonical(left, right) {
+  try {
+    return canonicalJson(left) === canonicalJson(right);
+  } catch {
+    return false;
+  }
 }
 
 function nonEmptyString(value) {

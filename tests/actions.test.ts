@@ -124,6 +124,32 @@ describe("wayfinder actions", () => {
     ).toEqual({ type: "open-feedback" });
   });
 
+  it("parses dedicated equipment cart and review actions", () => {
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "change-equipment-quantity",
+          stepId: "starting-equipment-level-1",
+          lineId: "line-1",
+          delta: "1",
+        },
+      } as any)
+    ).toEqual({
+      type: "change-equipment-quantity",
+      stepId: "starting-equipment-level-1",
+      lineId: "line-1",
+      delta: 1,
+    });
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "retain-all-equipment",
+          stepId: "starting-equipment-level-1",
+        },
+      } as any)
+    ).toEqual({ type: "retain-all-equipment", stepId: "starting-equipment-level-1" });
+  });
+
   it("rejects incomplete action datasets", () => {
     expect(
       parseWayfinderAction({

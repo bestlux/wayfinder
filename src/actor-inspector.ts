@@ -126,7 +126,9 @@ function readCompletedStateStepIds(actor: any): string[] {
     ? completedStepIds.filter(
         (slotId): slotId is string =>
           typeof slotId === "string" &&
-          (slotId.startsWith("ability-boosts-level-") || slotId.startsWith("skill-increase-level-"))
+          (slotId.startsWith("ability-boosts-level-") ||
+            slotId.startsWith("skill-increase-level-") ||
+            slotId === "starting-equipment-level-1")
       )
     : [];
 }

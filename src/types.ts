@@ -38,6 +38,7 @@ export type {
   SpellChoiceMeta,
   SpellChoicePublication,
   SpellChoiceStep,
+  StartingEquipmentStep,
   StaticGrantReplacementMeta,
   StepFilters,
   StepKind,

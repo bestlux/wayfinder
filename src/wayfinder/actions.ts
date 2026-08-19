@@ -1,7 +1,7 @@
 import type { AbilityKey, PickerFilterKind } from "../types.js";
 
 export type WayfinderAction =
-  | { type: "select-step"; stepId: string }
+  | { type: "select-step"; stepId: string; focusId?: string }
   | { type: "previous-step" }
   | { type: "next-step" }
   | { type: "preview-option"; stepId: string; value: string }
@@ -30,6 +30,16 @@ export type WayfinderAction =
   | { type: "toggle-spell-choice"; stepId: string; value: string }
   | { type: "toggle-spell-rarity-access"; stepId: string }
   | { type: "remove-spell-rarity-attestation"; stepId: string }
+  | { type: "initialize-starting-equipment"; stepId: string }
+  | { type: "preview-equipment-item"; stepId: string; sourceUuid: string }
+  | { type: "add-equipment-item"; stepId: string; sourceUuid: string }
+  | { type: "remove-equipment-line"; stepId: string; lineId: string }
+  | { type: "change-equipment-quantity"; stepId: string; lineId: string; delta: -1 | 1 }
+  | { type: "toggle-equipment-filter"; stepId: string; filterKey: string; value: string }
+  | { type: "clear-equipment-filters"; stepId: string }
+  | { type: "review-equipment-purchases"; stepId: string }
+  | { type: "retain-all-equipment"; stepId: string }
+  | { type: "acknowledge-equipment-handoff"; stepId: string }
   | { type: "clear-option"; stepId: string }
   | { type: "target-up" }
   | { type: "target-down" }
@@ -43,6 +53,7 @@ export type WayfinderAction =
 interface InteractionHandlers {
   onActionClick: (event: Event) => void | Promise<void>;
   onSearchInput: (event: Event) => void;
+  onEquipmentSearchInput: (event: Event) => void;
   onScrollableScroll: (event: Event) => void;
   onManualChange: (event: Event) => void | Promise<void>;
   onLoreInputChange: (event: Event) => void | Promise<void>;
@@ -61,6 +72,11 @@ export function bindWayfinderInteractions(
   const search = root.querySelector<HTMLInputElement>("[data-wayfinder-search]");
   if (search) {
     search.addEventListener("input", handlers.onSearchInput);
+  }
+
+  const equipmentSearch = root.querySelector<HTMLInputElement>("[data-wayfinder-equipment-search]");
+  if (equipmentSearch) {
+    equipmentSearch.addEventListener("input", handlers.onEquipmentSearchInput);
   }
 
   for (const scrollable of root.querySelectorAll<HTMLElement>("[data-wayfinder-scroll-id]")) {
@@ -88,7 +104,7 @@ export function bindWayfinderInteractions(
 
   if (pendingSearchFocus) {
     const nextSearch = root.querySelector<HTMLInputElement>(
-      `[data-wayfinder-search][data-step-id="${pendingSearchFocus.stepId}"]`
+      `[data-wayfinder-search][data-step-id="${pendingSearchFocus.stepId}"], [data-wayfinder-equipment-search][data-step-id="${pendingSearchFocus.stepId}"]`
     );
     if (nextSearch) {
       nextSearch.focus();
@@ -108,7 +124,13 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
 
   switch (action) {
     case "select-step":
-      return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
+      return element.dataset.stepId
+        ? {
+            type: action,
+            stepId: element.dataset.stepId,
+            ...(element.dataset.focusId ? { focusId: element.dataset.focusId } : {}),
+          }
+        : null;
     case "previous-step":
     case "next-step":
     case "target-up":
@@ -150,7 +172,36 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
     case "clear-picker-filters":
     case "toggle-spell-rarity-access":
     case "remove-spell-rarity-attestation":
+    case "initialize-starting-equipment":
+    case "clear-equipment-filters":
+    case "review-equipment-purchases":
+    case "retain-all-equipment":
+    case "acknowledge-equipment-handoff":
       return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
+    case "preview-equipment-item":
+    case "add-equipment-item":
+      return element.dataset.stepId && element.dataset.sourceUuid
+        ? { type: action, stepId: element.dataset.stepId, sourceUuid: element.dataset.sourceUuid }
+        : null;
+    case "remove-equipment-line":
+      return element.dataset.stepId && element.dataset.lineId
+        ? { type: action, stepId: element.dataset.stepId, lineId: element.dataset.lineId }
+        : null;
+    case "change-equipment-quantity": {
+      const delta = Number(element.dataset.delta);
+      return element.dataset.stepId && element.dataset.lineId && (delta === -1 || delta === 1)
+        ? { type: action, stepId: element.dataset.stepId, lineId: element.dataset.lineId, delta }
+        : null;
+    }
+    case "toggle-equipment-filter":
+      return element.dataset.stepId && element.dataset.filterKey && element.dataset.value
+        ? {
+            type: action,
+            stepId: element.dataset.stepId,
+            filterKey: element.dataset.filterKey,
+            value: element.dataset.value,
+          }
+        : null;
     case "toggle-ancestry-mode":
     case "toggle-voluntary-enabled":
     case "toggle-voluntary-legacy":
@@ -215,6 +266,13 @@ export function isDraftMutationAction(action: WayfinderAction): boolean {
     case "toggle-spell-choice":
     case "toggle-spell-rarity-access":
     case "remove-spell-rarity-attestation":
+    case "initialize-starting-equipment":
+    case "add-equipment-item":
+    case "remove-equipment-line":
+    case "change-equipment-quantity":
+    case "review-equipment-purchases":
+    case "retain-all-equipment":
+    case "acknowledge-equipment-handoff":
     case "clear-option":
     case "target-up":
     case "target-down":

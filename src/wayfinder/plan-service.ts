@@ -9,7 +9,7 @@ import {
   isWayfinderStepComplete as isDomainStepComplete,
   type WayfinderStepEvaluation,
 } from "./domain/step-evaluation.js";
-import { getStepModeLabel } from "./domain/step-types.js";
+import { createStartingEquipmentStep, getStepModeLabel } from "./domain/step-types.js";
 
 type ActorSnapshot = ReturnType<typeof inspectActor>;
 
@@ -88,9 +88,15 @@ export async function buildWayfinderPlan(
     ...spellChoiceSteps,
   ]);
 
+  const equipmentSlotId = `starting-equipment-level-${plan.targetLevel}`;
+  const targetLevelSteps =
+    plan.targetLevel === 1 && !snapshot.fulfilledStepIds.includes(equipmentSlotId)
+      ? [...registeredSteps, createStartingEquipmentStep(plan.targetLevel)]
+      : registeredSteps;
+
   return {
     ...plan,
-    steps: sortPendingSteps(registeredSteps),
+    steps: sortPendingSteps(targetLevelSteps),
   };
 }
 

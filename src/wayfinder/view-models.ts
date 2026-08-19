@@ -68,7 +68,8 @@ export type PaneTemplateKind =
   | "singleton-choice"
   | "language-choice"
   | "class-choice"
-  | "spell-choice";
+  | "spell-choice"
+  | "starting-equipment";
 
 export interface PickStepPane {
   kind: "pick-item";
@@ -387,6 +388,84 @@ export interface SpellChoiceStepPane {
   preview: PreviewPane | null;
 }
 
+export interface StartingEquipmentCatalogueRecord {
+  readonly sourceUuid: string;
+  readonly name: string;
+  readonly itemType: string;
+  readonly level: number;
+  readonly rarity: "common" | "uncommon" | "rare" | "unique";
+  readonly sourceLabel: string;
+  readonly priceCopper: number | null;
+  readonly priceLabel: string;
+  readonly bulkLabel: string;
+  readonly handsLabel: string | null;
+  readonly traits: readonly string[];
+  readonly available: boolean;
+  readonly unavailableReason: string | null;
+}
+
+export interface StartingEquipmentStepPane {
+  kind: "starting-equipment";
+  templateKind: "starting-equipment";
+  stepId: string;
+  slotId: string;
+  level: number;
+  modeLabel: string;
+  title: string;
+  description: string;
+  initialized: boolean;
+  corrupt: boolean;
+  policy: {
+    recipeLabel: string;
+    budgetLabel: string;
+    automaticEligibilityLabel: string;
+    authorityLabel: string;
+    handoffLabel: string;
+    explanations: readonly string[];
+  };
+  catalogue: {
+    state: "pending" | "ready" | "error";
+    message: string;
+    search: string;
+    searchDisabled: boolean;
+    filters: readonly { key: string; label: string; value: string; selected: boolean }[];
+    totalResultCount: number;
+    visibleResultCount: number;
+    items: readonly (StartingEquipmentCatalogueRecord & {
+      affordable: boolean;
+      previewing: boolean;
+      canAdd: boolean;
+    })[];
+    preview: (StartingEquipmentCatalogueRecord & { affordable: boolean }) | null;
+  };
+  cart: {
+    lines: readonly {
+      lineId: string;
+      sourceUuid: string;
+      name: string;
+      quantity: number;
+      priceLabel: string;
+      fundingLabel: string;
+      unavailableReason: string | null;
+      focusId: string;
+    }[];
+    empty: boolean;
+    spentLabel: string;
+    remainingLabel: string;
+  };
+  review: {
+    disposition: "not-started" | "unreviewed" | "purchase-ledger" | "retain-all" | "handoff";
+    label: string;
+    canReviewPurchases: boolean;
+    canRetainAll: boolean;
+  };
+  handoff: {
+    active: boolean;
+    acknowledged: boolean;
+    reasons: readonly string[];
+  };
+}
+
 export type ActivePane =
   | PickStepPane
   | ManualStepPane
@@ -397,4 +476,5 @@ export type ActivePane =
   | LanguageChoiceStepPane
   | ClassChoiceStepPane
   | SpellChoiceStepPane
+  | StartingEquipmentStepPane
   | null;

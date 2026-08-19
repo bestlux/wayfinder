@@ -12,6 +12,7 @@ const paneSources = [
   "src/wayfinder/panes/singleton-choice-pane.ts",
   "src/wayfinder/panes/skill-pane.ts",
   "src/wayfinder/panes/spell-pane.ts",
+  "src/wayfinder/panes/starting-equipment-pane.ts",
   "src/wayfinder/view-models.ts",
 ].map((path) => readFileSync(resolve(path), "utf8"));
 
@@ -25,6 +26,7 @@ const templateKinds = [
   "class-choice",
   "spell-choice",
   "pick-item",
+  "starting-equipment",
 ] as const;
 
 describe("wayfinder pane template discriminant", () => {

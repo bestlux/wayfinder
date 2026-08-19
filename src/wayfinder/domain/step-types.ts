@@ -20,7 +20,8 @@ export type SlotKind =
   | "skill-feat"
   | "general-feat"
   | "ability-boosts"
-  | "skill-increase";
+  | "skill-increase"
+  | "starting-equipment";
 
 export type StepKind =
   | "pick-item"
@@ -33,7 +34,8 @@ export type StepKind =
   | "class-branch"
   | "class-choice"
   | "spell-choice"
-  | "skill-training";
+  | "skill-training"
+  | "starting-equipment";
 
 export type PickItemSlotKind = Exclude<
   SlotKind,
@@ -362,6 +364,10 @@ export interface BoostStep extends BasePendingStep<"boost", "ability-boosts">, N
 
 export interface SkillIncreaseStep extends BasePendingStep<"skill-increase", "skill-increase">, NoStepExtras {}
 
+export interface StartingEquipmentStep
+  extends BasePendingStep<"starting-equipment", "starting-equipment">,
+    NoStepExtras {}
+
 export interface SkillTrainingStep extends BasePendingStep<"skill-training", "skill-training"> {
   filters?: never;
   branch?: never;
@@ -446,7 +452,8 @@ export type PendingStep =
   | ClassArchetypeStep
   | ClassBranchStep
   | ClassChoiceStep
-  | SpellChoiceStep;
+  | SpellChoiceStep
+  | StartingEquipmentStep;
 
 export type SelectionStep = PickItemStep | ClassBranchStep;
 
@@ -565,6 +572,20 @@ export function createSkillIncreaseStep(
   options: StepOptions = {}
 ): SkillIncreaseStep {
   return createBaseStep("skill-increase", "skill-increase", level, title, description, options);
+}
+
+export function createStartingEquipmentStep(level: number, options: StepOptions = {}): StartingEquipmentStep {
+  return createBaseStep(
+    "starting-equipment",
+    "starting-equipment",
+    level,
+    "Starting equipment",
+    "Review the effective equipment policy, build a cart, or explicitly retain all starting wealth.",
+    {
+      ...options,
+      slotId: options.slotId ?? `starting-equipment-level-${level}`,
+    }
+  );
 }
 
 export function createSkillTrainingStep(
@@ -759,6 +780,10 @@ export function isSpellChoiceStep(step: Pick<PendingStep, "kind">): step is Spel
   return step.kind === "spell-choice";
 }
 
+export function isStartingEquipmentStep(step: Pick<PendingStep, "kind">): step is StartingEquipmentStep {
+  return step.kind === "starting-equipment";
+}
+
 const SLOT_KIND_SORT_WEIGHTS: Record<SlotKind, number> = {
   ancestry: 0,
   heritage: 1,
@@ -782,6 +807,7 @@ const SLOT_KIND_SORT_WEIGHTS: Record<SlotKind, number> = {
   "skill-feat": 19,
   "general-feat": 20,
   "skill-increase": 21,
+  "starting-equipment": 22,
 };
 
 const STEP_MODE_LABELS: Record<StepKind, string> = {
@@ -796,6 +822,7 @@ const STEP_MODE_LABELS: Record<StepKind, string> = {
   "class-choice": "Class Choice",
   "spell-choice": "Spells",
   "skill-training": "Training",
+  "starting-equipment": "Equipment",
 };
 
 export function getStepModeLabel(kind: StepKind): string {

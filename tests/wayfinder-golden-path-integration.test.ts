@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { inspectActor } from "../src/actor-inspector";
 import { applyDraftToActor as applyDraftToActorWithAuthority } from "../src/actor-updater";
 import { getEffectiveSingletonDocument } from "../src/build-state";
+import { MODULE_ID } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
 import { fetchSelectionDocument } from "../src/pack/access";
 import type { DraftState, PendingStep, SelectionRef } from "../src/types";
@@ -575,6 +576,10 @@ function primeActorSystem(actor: ReturnType<typeof buildActorHarness>["actor"]):
         })
       ),
     }),
+  };
+  const flags = (actor.flags ??= {});
+  flags[MODULE_ID] = {
+    state: { completedStepIds: ["starting-equipment-level-1"] },
   };
 }
 

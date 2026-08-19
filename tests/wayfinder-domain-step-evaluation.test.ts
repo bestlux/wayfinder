@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
 import type { SelectionRef } from "../src/types";
+import { reviewRetainAll } from "../src/wayfinder/domain/acquisition-ledger";
 import {
   evaluateWayfinderDraftReadiness,
   evaluateWayfinderStep,
@@ -15,8 +16,10 @@ import {
   createLanguageChoiceStep,
   createSkillTrainingStep,
   createSpellChoiceStep,
+  createStartingEquipmentStep,
   getStepModeLabel,
 } from "../src/wayfinder/domain/step-types";
+import { acquisitionFixture } from "./fixtures/acquisition-fixture";
 
 describe("wayfinder domain step evaluation", () => {
   it("evaluates every planned step once and fails closed on an inconsistent result", async () => {
@@ -233,6 +236,70 @@ describe("wayfinder domain step evaluation", () => {
     expect(await isWayfinderStepComplete(level2, draft, buildState)).toBe(true);
     expect(await isWayfinderStepComplete(level3, draft, buildState)).toBe(true);
     expect(await getWayfinderStepStatus(level2, draft, new Set(), buildState)).toBe("Ready to apply");
+  });
+
+  it("requires an explicit reviewed equipment disposition and focuses its exact control", async () => {
+    const draft = createEmptyDraft(1);
+    const step = createStartingEquipmentStep(1);
+
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
+      state: "incomplete",
+      status: "Set up starting equipment",
+      issue: { code: "equipment-review", focusId: "starting-equipment-initialize" },
+    });
+
+    const purchase = acquisitionFixture().draft;
+    draft.acquisition = purchase;
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
+      state: "complete",
+      status: "Purchases reviewed",
+    });
+
+    const empty = acquisitionFixture({ lines: [], disposition: "unreviewed" });
+    draft.acquisition = reviewRetainAll(empty.draft, empty.ledger, {
+      userId: "owner-1",
+      reviewedAt: "2026-08-19T20:00:00.000Z",
+    });
+    await expect(isWayfinderStepComplete(step, draft, {} as EffectiveBuildState)).resolves.toBe(true);
+    await expect(getWayfinderStepStatus(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toBe(
+      "All starting wealth retained"
+    );
+  });
+
+  it("treats handoff as terminal only after acknowledgment", async () => {
+    const draft = createEmptyDraft(1);
+    const step = createStartingEquipmentStep(1);
+    const acquisition = acquisitionFixture({ disposition: "unreviewed" }).draft;
+    draft.acquisition = {
+      ...acquisition,
+      disposition: {
+        kind: "handoff",
+        handoff: {
+          version: 1,
+          kind: "pf2e-sheet",
+          baselineFingerprint: acquisition.baseline!.fingerprint,
+          reasons: [{ code: "nonzero-currency", copper: 100 }],
+        },
+        acknowledgedByUserId: null,
+        acknowledgedAt: null,
+      },
+    };
+
+    await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
+      complete: false,
+      issue: { focusId: "starting-equipment-handoff" },
+    });
+    const handoff = draft.acquisition.disposition;
+    if (handoff.kind !== "handoff") throw new Error("Expected handoff fixture.");
+    draft.acquisition = {
+      ...draft.acquisition,
+      disposition: {
+        ...handoff,
+        acknowledgedByUserId: "owner-1",
+        acknowledgedAt: "2026-08-19T20:00:00.000Z",
+      },
+    };
+    await expect(isWayfinderStepComplete(step, draft, {} as EffectiveBuildState)).resolves.toBe(true);
   });
 });
 

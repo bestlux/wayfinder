@@ -5,6 +5,7 @@ import type { PendingStep } from "../src/types";
 import {
   captureObservedClassGrantItems,
   prepareCurrentClassGrantPlan,
+  projectCurrentClassGrants,
   projectPlannedClassGrants,
 } from "../src/wayfinder/application/class-grant-projection-service";
 import { createAcquisitionPolicySnapshot } from "../src/wayfinder/domain/acquisition-draft";
@@ -491,6 +492,15 @@ describe("class-grant projection service", () => {
     vi.stubGlobal("game", productionGame());
     vi.stubGlobal("foundry", { utils: { fromUuid: async (uuid: string) => documents.get(uuid) ?? null } });
     try {
+      const selectedLine = acquisition.lines[0]!;
+      (acquisition as any).lines = [];
+      await expect(projectCurrentClassGrants(actor, draft, SUBJECT.activeSteps)).resolves.toMatchObject({
+        grants: [],
+        preparedPlan: null,
+        blockers: [{ code: "titan-selection-required" }],
+      });
+      (acquisition as any).lines = [selectedLine];
+
       await expect(prepareCurrentClassGrantPlan(actor, draft, SUBJECT.activeSteps)).resolves.toMatchObject({
         grants: [{ profileId: "giant-instinct-titan-mauler" }],
       });

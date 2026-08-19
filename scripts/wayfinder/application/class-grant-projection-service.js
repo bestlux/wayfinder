@@ -8,6 +8,13 @@ import { evaluateEquipmentItemAuthority, } from "../domain/equipment-policy.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
 const UUIDS = CLASS_GRANT_PROFILE_UUIDS;
 export async function prepareCurrentClassGrantPlan(actor, draft, activeSteps) {
+    const result = await projectCurrentClassGrants(actor, draft, activeSteps);
+    if (!result.preparedPlan || result.blockers.length > 0) {
+        throw new Error(result.blockers[0]?.message ?? "The current class-grant plan is unavailable.");
+    }
+    return result.preparedPlan;
+}
+export async function projectCurrentClassGrants(actor, draft, activeSteps) {
     const acquisition = draft.acquisition;
     if (!acquisition?.policySnapshot) {
         throw new TypeError("Starting-equipment Apply requires a reviewed equipment policy.");
@@ -50,10 +57,7 @@ export async function prepareCurrentClassGrantPlan(actor, draft, activeSteps) {
         // added; Common weapons remain fully supported.
         resolveCharacterAccessRef: () => null,
     });
-    if (!result.preparedPlan || result.blockers.length > 0) {
-        throw new Error(result.blockers[0]?.message ?? "The current class-grant plan is unavailable.");
-    }
-    return result.preparedPlan;
+    return result;
 }
 export function captureObservedClassGrantItems(actor) {
     if (!isRecord(actor) || !nonEmpty(actor.id))

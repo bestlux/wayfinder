@@ -45,6 +45,18 @@ export async function prepareCurrentClassGrantPlan(
   draft: DraftState,
   activeSteps: readonly PendingStep[]
 ): Promise<PreparedClassGrantPlanV1> {
+  const result = await projectCurrentClassGrants(actor, draft, activeSteps);
+  if (!result.preparedPlan || result.blockers.length > 0) {
+    throw new Error(result.blockers[0]?.message ?? "The current class-grant plan is unavailable.");
+  }
+  return result.preparedPlan;
+}
+
+export async function projectCurrentClassGrants(
+  actor: unknown,
+  draft: DraftState,
+  activeSteps: readonly PendingStep[]
+): Promise<ClassGrantProjectionResult> {
   const acquisition = draft.acquisition;
   if (!acquisition?.policySnapshot) {
     throw new TypeError("Starting-equipment Apply requires a reviewed equipment policy.");
@@ -88,10 +100,7 @@ export async function prepareCurrentClassGrantPlan(
     // added; Common weapons remain fully supported.
     resolveCharacterAccessRef: () => null,
   });
-  if (!result.preparedPlan || result.blockers.length > 0) {
-    throw new Error(result.blockers[0]?.message ?? "The current class-grant plan is unavailable.");
-  }
-  return result.preparedPlan;
+  return result;
 }
 
 export function captureObservedClassGrantItems(actor: unknown): ObservedClassGrantItem[] {

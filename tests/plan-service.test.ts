@@ -13,6 +13,7 @@ import {
   createSingletonChoiceStep,
   createSkillTrainingStep,
   createSpellChoiceStep,
+  createStartingEquipmentStep,
 } from "../src/wayfinder/domain/step-types";
 import {
   buildWayfinderPlan,
@@ -262,6 +263,47 @@ describe("wayfinder plan service", () => {
     ]);
   });
 
+  it("orders starting equipment after every level-1 choice", () => {
+    const steps = sortPendingSteps([
+      createStartingEquipmentStep(1),
+      createPickItemStep("class-feat", 1, "Class feat", "", { itemType: "feat" }),
+      createBoostStep(1, "Creation boosts", ""),
+    ]);
+
+    expect(steps.map((step) => step.slotKind)).toEqual(["ability-boosts", "class-feat", "starting-equipment"]);
+  });
+
+  it("adds the equipment tracer only for an unfulfilled level-1 target", async () => {
+    const snapshot = {
+      actorId: "actor-1",
+      level: 0,
+      isBlank: true,
+      freeArchetypeEnabled: false,
+      campaignFeatSections: [],
+      gradualBoostsEnabled: false,
+      singletonSlots: { ancestry: false, heritage: false, background: false, class: false, deity: false },
+      featCounts: { ancestry: 0, class: 0, archetype: 0, skill: 0, general: 0 },
+      fulfilledStepIds: [],
+      sourceIds: [],
+      namesByType: {},
+      skillRanks: {},
+    } satisfies ActorSnapshot;
+    const deps = emptyPlanDependencies();
+
+    const levelOne = await buildWayfinderPlan(snapshot, createEmptyDraft(1), deps);
+    expect(levelOne.steps.at(-1)?.slotId).toBe("starting-equipment-level-1");
+
+    const fulfilled = await buildWayfinderPlan(
+      { ...snapshot, fulfilledStepIds: ["starting-equipment-level-1"] },
+      createEmptyDraft(1),
+      deps
+    );
+    expect(fulfilled.steps.some((step) => step.kind === "starting-equipment")).toBe(false);
+
+    const levelTwo = await buildWayfinderPlan({ ...snapshot, level: 1 }, createEmptyDraft(2), deps);
+    expect(levelTwo.steps.some((step) => step.kind === "starting-equipment")).toBe(false);
+  });
+
   it("uses class-specific skill feat cadence instead of duplicating generic skill feat steps", async () => {
     const draft = createEmptyDraft(5);
     const plan = await buildWayfinderPlan(
@@ -419,3 +461,20 @@ describe("wayfinder plan service", () => {
     expect(plan.steps.filter((step) => choiceRuleIdentity(step)?.key === identity?.key)).toEqual([classChoiceStep]);
   });
 });
+
+function emptyPlanDependencies() {
+  return {
+    buildClassFeatSteps: async () => [],
+    buildClassSkillFeatSteps: async () => [],
+    buildClassTrainingSteps: async () => [],
+    buildGrantChoiceSteps: async () => [],
+    buildFlagChoiceSteps: async () => [],
+    buildSingletonChoiceSteps: async () => [],
+    buildLanguageChoiceSteps: async () => [],
+    buildClassArchetypeSteps: async () => [],
+    buildClassBranchSteps: async () => [],
+    buildClassGrantedItemSteps: async () => [],
+    buildClassChoiceSteps: async () => [],
+    buildSpellChoiceSteps: async () => [],
+  };
+}

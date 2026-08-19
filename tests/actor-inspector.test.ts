@@ -41,7 +41,7 @@ describe("actor-inspector", () => {
       flags: {
         "wayfinder-pf2e": {
           state: {
-            completedStepIds: ["ability-boosts-level-1"],
+            completedStepIds: ["ability-boosts-level-1", "starting-equipment-level-1", "untrusted-step"],
           },
         },
       },
@@ -92,6 +92,7 @@ describe("actor-inspector", () => {
       "class-feat-level-4",
       "skill-feat-level-1",
       "skill-feat-level-2",
+      "starting-equipment-level-1",
     ]);
   });
 

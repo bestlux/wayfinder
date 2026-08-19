@@ -37,6 +37,12 @@ export function createBoostStep(level, title, description, boost = {
 export function createSkillIncreaseStep(level, title, description, options = {}) {
     return createBaseStep("skill-increase", "skill-increase", level, title, description, options);
 }
+export function createStartingEquipmentStep(level, options = {}) {
+    return createBaseStep("starting-equipment", "starting-equipment", level, "Starting equipment", "Review the effective equipment policy, build a cart, or explicitly retain all starting wealth.", {
+        ...options,
+        slotId: options.slotId ?? `starting-equipment-level-${level}`,
+    });
+}
 export function createSkillTrainingStep(level, title, description, training, options = {}) {
     const slotId = options.slotId ?? `skill-training-${training.classSlug}-level-${level}`;
     return {
@@ -144,6 +150,9 @@ export function isSkillTrainingStep(step) {
 export function isSpellChoiceStep(step) {
     return step.kind === "spell-choice";
 }
+export function isStartingEquipmentStep(step) {
+    return step.kind === "starting-equipment";
+}
 const SLOT_KIND_SORT_WEIGHTS = {
     ancestry: 0,
     heritage: 1,
@@ -167,6 +176,7 @@ const SLOT_KIND_SORT_WEIGHTS = {
     "skill-feat": 19,
     "general-feat": 20,
     "skill-increase": 21,
+    "starting-equipment": 22,
 };
 const STEP_MODE_LABELS = {
     "pick-item": "Selection",
@@ -180,6 +190,7 @@ const STEP_MODE_LABELS = {
     "class-choice": "Class Choice",
     "spell-choice": "Spells",
     "skill-training": "Training",
+    "starting-equipment": "Equipment",
 };
 export function getStepModeLabel(kind) {
     return STEP_MODE_LABELS[kind];

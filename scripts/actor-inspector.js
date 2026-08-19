@@ -107,7 +107,9 @@ function readCompletedStateStepIds(actor) {
     const completedStepIds = actor?.flags?.[MODULE_ID]?.state?.completedStepIds;
     return Array.isArray(completedStepIds)
         ? completedStepIds.filter((slotId) => typeof slotId === "string" &&
-            (slotId.startsWith("ability-boosts-level-") || slotId.startsWith("skill-increase-level-")))
+            (slotId.startsWith("ability-boosts-level-") ||
+                slotId.startsWith("skill-increase-level-") ||
+                slotId === "starting-equipment-level-1"))
         : [];
 }
 function readFulfilledFeatSlotIds(actor) {

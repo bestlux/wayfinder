@@ -1,0 +1,90 @@
+<section class="starting-equipment-pane" aria-label="Starting equipment">
+  <section class="equipment-policy-summary" aria-label="Effective starting-equipment policy">
+    <article><span>Recipe</span><strong>{{activePane.policy.recipeLabel}}</strong></article>
+    <article><span>Budget</span><strong>{{activePane.policy.budgetLabel}}</strong></article>
+    <article><span>Automatic eligibility</span><strong>{{activePane.policy.automaticEligibilityLabel}}</strong></article>
+    <article><span>Authority</span><strong>{{activePane.policy.authorityLabel}}</strong></article>
+    <article class="equipment-policy-handoff"><span>Existing equipment</span><strong>{{activePane.policy.handoffLabel}}</strong></article>
+    {{#each activePane.policy.explanations}}<p><i class="fa-solid fa-circle-info" aria-hidden="true"></i>{{this}}</p>{{/each}}
+  </section>
+
+  {{#if activePane.corrupt}}
+    <section class="equipment-callout error" tabindex="-1" data-wayfinder-focus-id="starting-equipment-initialize">
+      <h4>Equipment draft needs recovery</h4>
+      <p>The saved acquisition data is malformed. Clear this draft before continuing; Wayfinder will not guess at economic state.</p>
+    </section>
+  {{else}}
+    {{#unless activePane.initialized}}
+      <section class="equipment-callout" tabindex="-1" data-wayfinder-focus-id="starting-equipment-initialize">
+        <h4>Review policy before browsing</h4>
+        <p>Setup captures the effective world policy and the actor's economic baseline. It does not add items or change currency.</p>
+        <button type="button" class="primary" data-wayfinder-action="initialize-starting-equipment" data-step-id="{{activePane.stepId}}">Set Up Starting Equipment</button>
+      </section>
+    {{else}}
+      {{#if activePane.handoff.active}}
+        <section class="equipment-callout warning" tabindex="-1" data-wayfinder-focus-id="starting-equipment-handoff">
+          <h4>Continue on the PF2E inventory sheet</h4>
+          {{#each activePane.handoff.reasons}}<p>{{this}}</p>{{/each}}
+          {{#unless activePane.handoff.acknowledged}}
+            <button type="button" class="primary" data-wayfinder-action="acknowledge-equipment-handoff" data-step-id="{{activePane.stepId}}">Acknowledge Handoff</button>
+          {{else}}
+            <p class="equipment-reviewed"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Handoff acknowledged. Wayfinder will make no economic changes.</p>
+          {{/unless}}
+        </section>
+      {{else}}
+        <div class="equipment-workspace">
+          <section class="equipment-catalogue" aria-label="Equipment catalogue">
+            <div class="equipment-search-row">
+              <input type="search" value="{{activePane.catalogue.search}}" placeholder="Search name, source, rarity…" aria-label="Search equipment" data-wayfinder-equipment-search data-step-id="{{activePane.stepId}}" {{#if activePane.catalogue.searchDisabled}}disabled{{/if}} />
+              <button type="button" class="secondary compact" data-wayfinder-action="clear-equipment-filters" data-step-id="{{activePane.stepId}}" {{#if activePane.catalogue.searchDisabled}}disabled{{/if}}>Clear filters</button>
+            </div>
+            <div class="equipment-filter-row" aria-label="Equipment filters">
+              {{#each activePane.catalogue.filters}}
+                <button type="button" class="secondary compact{{#if selected}} is-selected{{/if}}" aria-pressed="{{#if selected}}true{{else}}false{{/if}}" data-wayfinder-action="toggle-equipment-filter" data-step-id="{{../activePane.stepId}}" data-filter-key="{{key}}" data-value="{{value}}">{{label}}</button>
+              {{/each}}
+            </div>
+            <p class="equipment-result-count">Showing {{activePane.catalogue.visibleResultCount}} of {{activePane.catalogue.totalResultCount}} matching items</p>
+            {{#unless activePane.catalogue.items.length}}
+              <div class="equipment-catalogue-state {{activePane.catalogue.state}}"><i class="fa-solid fa-box-open" aria-hidden="true"></i><p>{{activePane.catalogue.message}}</p></div>
+            {{/unless}}
+            <div class="equipment-result-list" data-wayfinder-scroll-id="{{activePane.stepId}}:equipment-results">
+              {{#each activePane.catalogue.items}}
+                <article class="equipment-result{{#if previewing}} is-previewing{{/if}}" data-equipment-item data-source-uuid="{{sourceUuid}}" data-filter-rarity="{{rarity}}" data-filter-source="{{sourceLabel}}" data-filter-type="{{itemType}}">
+                  <button type="button" class="equipment-result-main" data-wayfinder-action="preview-equipment-item" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">
+                    <span><strong>{{name}}</strong><small>Level {{level}} · {{rarity}} · {{sourceLabel}}</small></span>
+                  </button>
+                  <span class="equipment-result-price">{{priceLabel}}</span>
+                  <button type="button" class="primary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}" {{#unless canAdd}}disabled{{/unless}}>Add</button>
+                  {{#if unavailableReason}}<small class="equipment-unavailable">{{unavailableReason}}</small>{{else}}{{#unless affordable}}<small class="equipment-unavailable">Not affordable with the remaining budget.</small>{{/unless}}{{/if}}
+                </article>
+              {{/each}}
+            </div>
+          </section>
+
+          <aside class="equipment-detail" aria-label="Equipment item detail">
+            {{#each activePane.catalogue.items}}
+              <article data-equipment-preview="{{sourceUuid}}" {{#unless previewing}}hidden{{/unless}}>
+                <p class="eyebrow">Level {{level}} · {{rarity}}</p><h4>{{name}}</h4>
+                <dl><div><dt>Price</dt><dd>{{priceLabel}}</dd></div><div><dt>Bulk</dt><dd>{{bulkLabel}}</dd></div><div><dt>Hands</dt><dd>{{handsLabel}}</dd></div><div><dt>Traits</dt><dd>{{traits}}</dd></div></dl>
+              </article>
+            {{/each}}
+            {{#unless activePane.catalogue.preview}}<p class="equipment-detail-empty">Choose an item to inspect its details, quantity, affordability, and availability.</p>{{/unless}}
+          </aside>
+
+          <section class="equipment-cart" aria-label="Starting-equipment cart">
+            <header><div><p class="eyebrow">Cart</p><h4>Reviewed acquisition</h4></div><dl><div><dt>Spent</dt><dd>{{activePane.cart.spentLabel}}</dd></div><div><dt>Remaining</dt><dd>{{activePane.cart.remainingLabel}}</dd></div></dl></header>
+            {{#if activePane.cart.empty}}<p class="equipment-cart-empty">No purchases. Retaining all wealth still requires an explicit review decision.</p>{{/if}}
+            {{#each activePane.cart.lines}}
+              <article class="equipment-cart-line" tabindex="-1" data-wayfinder-focus-id="{{focusId}}">
+                <span><strong>{{name}}</strong><small>{{fundingLabel}} · {{priceLabel}}</small>{{#if unavailableReason}}<small class="equipment-unavailable">{{unavailableReason}}</small>{{/if}}</span>
+                <div class="equipment-quantity" aria-label="Quantity for {{name}}"><button type="button" data-wayfinder-action="change-equipment-quantity" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" data-delta="-1" aria-label="Decrease quantity">−</button><strong>{{quantity}}</strong><button type="button" data-wayfinder-action="change-equipment-quantity" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" data-delta="1" aria-label="Increase quantity">+</button></div>
+                <button type="button" class="icon" data-wayfinder-action="remove-equipment-line" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" aria-label="Remove {{name}}"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+              </article>
+            {{/each}}
+            <footer tabindex="-1" data-wayfinder-focus-id="starting-equipment-review"><span><strong>{{activePane.review.label}}</strong><small>Apply revalidates policy, prices, quantities, baseline, and authority.</small></span><div><button type="button" class="secondary" data-wayfinder-action="retain-all-equipment" data-step-id="{{activePane.stepId}}" {{#unless activePane.review.canRetainAll}}disabled{{/unless}}>Retain All</button><button type="button" class="primary" data-wayfinder-action="review-equipment-purchases" data-step-id="{{activePane.stepId}}" {{#unless activePane.review.canReviewPurchases}}disabled{{/unless}}>Review Purchases</button></div></footer>
+          </section>
+        </div>
+      {{/if}}
+    {{/unless}}
+  {{/if}}
+</section>

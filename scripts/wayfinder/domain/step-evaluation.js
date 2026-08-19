@@ -35,10 +35,13 @@ export async function evaluateWayfinderStep(step, draft, recentlyInvalidatedStep
         return { state: "complete", complete: true, status, issue: null };
     }
     const issue = buildStepIssue(step, draft, recentlyInvalidatedStepIds, status);
+    const equipmentInvalid = step.kind === "starting-equipment" &&
+        (draft.acquisitionCorrupt ||
+            (draft.acquisition?.disposition.kind === "unreviewed" && draft.acquisition.disposition.invalidatedFrom !== null));
     return {
         state: issue.code === "too-many-choices"
             ? "excess"
-            : recentlyInvalidatedStepIds.has(step.slotId)
+            : equipmentInvalid || recentlyInvalidatedStepIds.has(step.slotId)
                 ? "invalid"
                 : "incomplete",
         complete: false,
@@ -76,6 +79,15 @@ export async function isWayfinderStepComplete(step, draft, effectiveBuildState) 
     }
     if (step.kind === "skill-increase") {
         return typeof draft.skillIncreases[step.slotId] === "string" && draft.skillIncreases[step.slotId].length > 0;
+    }
+    if (step.kind === "starting-equipment") {
+        const acquisition = draft.acquisition;
+        if (draft.acquisitionCorrupt || !acquisition)
+            return false;
+        if (acquisition.disposition.kind === "handoff") {
+            return !!acquisition.disposition.acknowledgedByUserId && !!acquisition.disposition.acknowledgedAt;
+        }
+        return acquisition.disposition.kind === "purchase-ledger" || acquisition.disposition.kind === "retain-all";
     }
     if (step.level === 1) {
         return (!!effectiveBuildState.ancestry &&
@@ -170,6 +182,25 @@ export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedSte
         const slug = draft.skillIncreases[step.slotId];
         return slug ? `${SKILL_LABELS[slug] ?? formatSlug(slug)} selected` : "Choose one";
     }
+    if (step.kind === "starting-equipment") {
+        if (draft.acquisitionCorrupt)
+            return "Needs equipment draft recovery";
+        const acquisition = draft.acquisition;
+        if (!acquisition)
+            return "Set up starting equipment";
+        switch (acquisition.disposition.kind) {
+            case "purchase-ledger":
+                return "Purchases reviewed";
+            case "retain-all":
+                return "All starting wealth retained";
+            case "handoff":
+                return acquisition.disposition.acknowledgedByUserId && acquisition.disposition.acknowledgedAt
+                    ? "PF2E sheet handoff acknowledged"
+                    : "Acknowledge PF2E sheet handoff";
+            case "unreviewed":
+                return acquisition.disposition.invalidatedFrom ? "Review equipment changes" : "Review purchases or retain all";
+        }
+    }
     if (recentlyInvalidatedStepIds.has(step.slotId) &&
         !(await isWayfinderStepComplete(step, draft, effectiveBuildState))) {
         return "Needs attention";
@@ -217,6 +248,31 @@ function buildStepIssue(step, draft, recentlyInvalidatedStepIds, status) {
             slotId: step.slotId,
             title: step.title,
             message: `${step.title}: complete the required manual review.`,
+        };
+    }
+    if (step.kind === "starting-equipment") {
+        const acquisition = draft.acquisition;
+        const lineId = acquisition?.disposition.kind === "unreviewed" &&
+            acquisition.disposition.invalidatedFrom !== null &&
+            acquisition.lines.length === 1 &&
+            acquisition.disposition.reasons.some((reason) => ["document", "price", "quantity"].includes(reason))
+            ? acquisition.lines[0]?.lineId
+            : undefined;
+        const focusId = draft.acquisitionCorrupt || !acquisition
+            ? "starting-equipment-initialize"
+            : acquisition.disposition.kind === "handoff"
+                ? "starting-equipment-handoff"
+                : lineId
+                    ? `starting-equipment-line:${lineId}`
+                    : "starting-equipment-review";
+        return {
+            code: "equipment-review",
+            stepId: step.id,
+            slotId: step.slotId,
+            ...(lineId ? { lineId } : {}),
+            focusId,
+            title: step.title,
+            message: `${step.title}: ${lowercaseInitial(status)}.`,
         };
     }
     if (recentlyInvalidatedStepIds.has(step.slotId)) {

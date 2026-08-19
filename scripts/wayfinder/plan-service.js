@@ -1,7 +1,7 @@
 import { buildProgressionPlan, sortPendingSteps } from "../progression.js";
 import { dedupeChoiceRuleSteps } from "./domain/choice-rule-ownership.js";
 import { evaluateWayfinderStep as evaluateDomainStep, getWayfinderStepStatus as getDomainStepStatus, isWayfinderStepComplete as isDomainStepComplete, } from "./domain/step-evaluation.js";
-import { getStepModeLabel } from "./domain/step-types.js";
+import { createStartingEquipmentStep, getStepModeLabel } from "./domain/step-types.js";
 export async function buildWayfinderPlan(snapshot, draft, deps) {
     const plan = buildProgressionPlan(snapshot, draft.targetLevel);
     const [classFeatSteps, classSkillFeatSteps, trainingSteps, grantChoiceSteps, flagChoiceSteps, singletonChoiceSteps, languageChoiceSteps, classArchetypeSteps, branchSteps, grantedItemSteps, classChoiceSteps, spellChoiceSteps,] = await Promise.all([
@@ -34,9 +34,13 @@ export async function buildWayfinderPlan(snapshot, draft, deps) {
         ...classChoiceSteps,
         ...spellChoiceSteps,
     ]);
+    const equipmentSlotId = `starting-equipment-level-${plan.targetLevel}`;
+    const targetLevelSteps = plan.targetLevel === 1 && !snapshot.fulfilledStepIds.includes(equipmentSlotId)
+        ? [...registeredSteps, createStartingEquipmentStep(plan.targetLevel)]
+        : registeredSteps;
     return {
         ...plan,
-        steps: sortPendingSteps(registeredSteps),
+        steps: sortPendingSteps(targetLevelSteps),
     };
 }
 export async function resolveActiveStep(steps, activeStepId, isStepComplete) {

@@ -6,6 +6,10 @@ export function bindWayfinderInteractions(root, handlers, scrollById, pendingSea
     if (search) {
         search.addEventListener("input", handlers.onSearchInput);
     }
+    const equipmentSearch = root.querySelector("[data-wayfinder-equipment-search]");
+    if (equipmentSearch) {
+        equipmentSearch.addEventListener("input", handlers.onEquipmentSearchInput);
+    }
     for (const scrollable of root.querySelectorAll("[data-wayfinder-scroll-id]")) {
         const scrollId = scrollable.dataset.wayfinderScrollId;
         if (!scrollId) {
@@ -25,7 +29,7 @@ export function bindWayfinderInteractions(root, handlers, scrollById, pendingSea
         loreInput.addEventListener("change", handlers.onLoreInputChange);
     }
     if (pendingSearchFocus) {
-        const nextSearch = root.querySelector(`[data-wayfinder-search][data-step-id="${pendingSearchFocus.stepId}"]`);
+        const nextSearch = root.querySelector(`[data-wayfinder-search][data-step-id="${pendingSearchFocus.stepId}"], [data-wayfinder-equipment-search][data-step-id="${pendingSearchFocus.stepId}"]`);
         if (nextSearch) {
             nextSearch.focus();
             const caret = Math.min(pendingSearchFocus.cursor, nextSearch.value.length);
@@ -41,7 +45,13 @@ export function parseWayfinderAction(element) {
     }
     switch (action) {
         case "select-step":
-            return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
+            return element.dataset.stepId
+                ? {
+                    type: action,
+                    stepId: element.dataset.stepId,
+                    ...(element.dataset.focusId ? { focusId: element.dataset.focusId } : {}),
+                }
+                : null;
         case "previous-step":
         case "next-step":
         case "target-up":
@@ -83,7 +93,36 @@ export function parseWayfinderAction(element) {
         case "clear-picker-filters":
         case "toggle-spell-rarity-access":
         case "remove-spell-rarity-attestation":
+        case "initialize-starting-equipment":
+        case "clear-equipment-filters":
+        case "review-equipment-purchases":
+        case "retain-all-equipment":
+        case "acknowledge-equipment-handoff":
             return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
+        case "preview-equipment-item":
+        case "add-equipment-item":
+            return element.dataset.stepId && element.dataset.sourceUuid
+                ? { type: action, stepId: element.dataset.stepId, sourceUuid: element.dataset.sourceUuid }
+                : null;
+        case "remove-equipment-line":
+            return element.dataset.stepId && element.dataset.lineId
+                ? { type: action, stepId: element.dataset.stepId, lineId: element.dataset.lineId }
+                : null;
+        case "change-equipment-quantity": {
+            const delta = Number(element.dataset.delta);
+            return element.dataset.stepId && element.dataset.lineId && (delta === -1 || delta === 1)
+                ? { type: action, stepId: element.dataset.stepId, lineId: element.dataset.lineId, delta }
+                : null;
+        }
+        case "toggle-equipment-filter":
+            return element.dataset.stepId && element.dataset.filterKey && element.dataset.value
+                ? {
+                    type: action,
+                    stepId: element.dataset.stepId,
+                    filterKey: element.dataset.filterKey,
+                    value: element.dataset.value,
+                }
+                : null;
         case "toggle-ancestry-mode":
         case "toggle-voluntary-enabled":
         case "toggle-voluntary-legacy":
@@ -147,6 +186,13 @@ export function isDraftMutationAction(action) {
         case "toggle-spell-choice":
         case "toggle-spell-rarity-access":
         case "remove-spell-rarity-attestation":
+        case "initialize-starting-equipment":
+        case "add-equipment-item":
+        case "remove-equipment-line":
+        case "change-equipment-quantity":
+        case "review-equipment-purchases":
+        case "retain-all-equipment":
+        case "acknowledge-equipment-handoff":
         case "clear-option":
         case "target-up":
         case "target-down":

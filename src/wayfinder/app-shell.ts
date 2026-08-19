@@ -27,6 +27,7 @@ import type {
   PendingStep,
   PickerFilterKind,
   PickerFilterState,
+  ProgressionPlan,
   SelectionRef,
   SpellRarityAttestationBasis,
 } from "../types.js";
@@ -108,6 +109,14 @@ import {
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
 import { SemanticCommandQueue } from "./application/semantic-command-queue.js";
 import {
+  executeStartingEquipmentCommand,
+  type StartingEquipmentCommand,
+} from "./application/starting-equipment-command-service.js";
+import {
+  getStartingEquipmentUiAdapter,
+  resolveStartingEquipmentRenderPlan,
+} from "./application/starting-equipment-ui-adapter.js";
+import {
   buildDraftSaveView,
   buildWayfinderContext,
   type WayfinderTemplateContext,
@@ -125,6 +134,7 @@ import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
 import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
 import { emptyPickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
+import { buildStartingEquipmentPane } from "./panes/starting-equipment-pane.js";
 import { evaluateWayfinderStep, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
 import {
@@ -187,6 +197,8 @@ type WayfinderRenderOptions = Record<string, unknown> & {
   wayfinderPickerSourceRevision?: number;
   wayfinderPickerViewRevision?: number;
   wayfinderSkippedReplacement?: boolean;
+  wayfinderEquipmentUpdate?: boolean;
+  wayfinderEquipmentRequest?: PickerSearchRequest;
 };
 type WayfinderGlobals = typeof globalThis & {
   CONFIG?: {
@@ -264,6 +276,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #scrollById = new Map<string, number>();
   #pendingSearchFocus: { stepId: string; cursor: number } | null = null;
   #pendingStepFocusId: string | null = null;
+  #pendingControlFocusId: string | null = null;
+  #equipmentSearchByStepId = new Map<string, string>();
+  #equipmentFiltersByStepId = new Map<string, Record<string, string[]>>();
+  #equipmentPreviewByStepId = new Map<string, string>();
+  #cachedRenderPlan: ProgressionPlan | null = null;
   #recentlyInvalidatedStepIds = new Set<string>();
   #statusNote: string | null = null;
   #draftPersistence: DraftPersistenceCoordinator;
@@ -278,6 +295,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     onError: (error) => {
       console.error("PF2E Wayfinder picker search render failed", error);
       ui.notifications.error("Wayfinder could not update these search results. Reopen the window and try again.");
+    },
+  });
+  #equipmentSearchScheduler = new PickerSearchScheduler({
+    delayMs: PICKER_SEARCH_DELAY_MS,
+    render: (request) => this.#renderStartingEquipmentSearch(request),
+    onError: (error) => {
+      console.error("PF2E Wayfinder equipment search render failed", error);
+      ui.notifications.error("Wayfinder could not update these equipment results. Reopen the window and try again.");
     },
   });
 
@@ -341,6 +366,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       options.wayfinderPickerSourceRevision = this.#pickerSearchScheduler.invalidateSource();
       options.wayfinderPickerViewRevision = this.#pickerSearchScheduler.viewRevision;
     }
+    if (!options.wayfinderEquipmentRequest) {
+      this.#equipmentSearchScheduler.invalidateSource();
+    }
     super._configureRenderOptions(options);
   }
 
@@ -365,10 +393,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return false;
     }
     const request = pickerSearchRequest(options);
-    if (!request) {
-      return;
+    if (request && !this.#canCommitPickerSearch(request)) {
+      return false;
     }
-    if (!this.#canCommitPickerSearch(request)) {
+    const equipmentRequest = options.wayfinderEquipmentRequest;
+    if (equipmentRequest && !this.#canCommitStartingEquipmentSearch(equipmentRequest)) {
       return false;
     }
   }
@@ -400,7 +429,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const snapshot = inspectActor(this.actor);
     const draft = this.#ensureDraft(snapshot.level);
     const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
-    const plan = await this._buildRenderPlan(snapshot, draft);
+    const plan = await resolveStartingEquipmentRenderPlan({
+      equipmentOnlyUpdate: options.wayfinderEquipmentUpdate === true,
+      targetLevel: draft.targetLevel,
+      cachedPlan: this.#cachedRenderPlan,
+      buildPlan: () => this._buildRenderPlan(snapshot, draft),
+    });
+    this.#cachedRenderPlan = plan;
     if (!this.#semanticCommands.busy && !hasApplyRecoveryState(draft)) {
       const orphanedSpellChoices = this.#selectionInvalidationService(draft).invalidateOrphanedSpellChoicesForSteps(
         plan.steps
@@ -483,6 +518,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
+    const equipmentRequest = options.wayfinderEquipmentRequest;
+    if (equipmentRequest && !this.#canCommitStartingEquipmentSearch(equipmentRequest)) {
+      options.wayfinderSkippedReplacement = true;
+      return;
+    }
+
     const startingViewRevision = numericRenderOption(options.wayfinderPickerViewRevision);
     if (!options.isFirstRender && startingViewRevision !== this.#pickerSearchScheduler.viewRevision) {
       options.wayfinderSkippedReplacement = true;
@@ -517,6 +558,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           {
             onActionClick: this.#onActionClick,
             onSearchInput: this.#onSearchInput,
+            onEquipmentSearchInput: this.#onEquipmentSearchInput,
             onScrollableScroll: this.#onScrollableScroll,
             onManualChange: this.#onManualChange,
             onLoreInputChange: this.#onLoreInputChange,
@@ -538,6 +580,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       {
         onActionClick: this.#onActionClick,
         onSearchInput: this.#onSearchInput,
+        onEquipmentSearchInput: this.#onEquipmentSearchInput,
         onScrollableScroll: this.#onScrollableScroll,
         onManualChange: this.#onManualChange,
         onLoreInputChange: this.#onLoreInputChange,
@@ -546,12 +589,19 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#pendingSearchFocus
     ).pendingSearchFocus;
     const pendingStepFocusId = this.#pendingStepFocusId;
+    const pendingControlFocusId = this.#pendingControlFocusId;
+    const control = pendingControlFocusId
+      ? root.querySelector<HTMLElement>(`[data-wayfinder-focus-id="${CSS.escape(pendingControlFocusId)}"]`)
+      : null;
     const stepHeading = root.querySelector<HTMLElement>("[data-wayfinder-step-heading]");
-    if (pendingStepFocusId && stepHeading?.dataset.wayfinderStepHeading === pendingStepFocusId) {
+    if (pendingControlFocusId && control) {
+      control.focus();
+    } else if (pendingStepFocusId && stepHeading?.dataset.wayfinderStepHeading === pendingStepFocusId) {
       stepHeading.focus();
     }
-    if (pendingStepFocusId) {
+    if (pendingStepFocusId || pendingControlFocusId) {
       this.#pendingStepFocusId = null;
+      this.#pendingControlFocusId = null;
     }
     WayfinderApp.#openApps.add(this);
     this.#patchDraftSaveStatus(this.#draftPersistence.state);
@@ -619,6 +669,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   #finalizeClosedState(): void {
     this.#pickerSearchScheduler.dispose();
+    this.#equipmentSearchScheduler.dispose();
     this.#semanticCommands.completeTerminalOperation();
     this.#draftPersistence.dispose();
     WayfinderApp.#openApps.delete(this);
@@ -718,6 +769,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       case "select-step":
         this.#activeStepId = action.stepId;
         this.#pendingStepFocusId = action.stepId;
+        this.#pendingControlFocusId = action.focusId ?? null;
         this.render(false);
         break;
       case "previous-step":
@@ -790,6 +842,41 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       case "remove-spell-rarity-attestation":
         await this.#removeSpellRarityAttestation(action.stepId);
         break;
+      case "initialize-starting-equipment":
+        await this.#executeStartingEquipmentCommand(action.stepId, { type: "initialize" });
+        break;
+      case "preview-equipment-item":
+        this.#equipmentPreviewByStepId.set(action.stepId, action.sourceUuid);
+        this.render({ wayfinderEquipmentUpdate: true });
+        break;
+      case "add-equipment-item":
+        await this.#addStartingEquipmentItem(action.stepId, action.sourceUuid);
+        break;
+      case "remove-equipment-line":
+        await this.#executeStartingEquipmentCommand(action.stepId, {
+          type: "remove-line",
+          lineId: action.lineId,
+        });
+        break;
+      case "change-equipment-quantity":
+        await this.#changeStartingEquipmentQuantity(action.stepId, action.lineId, action.delta);
+        break;
+      case "toggle-equipment-filter":
+        this.#toggleStartingEquipmentFilter(action.stepId, action.filterKey, action.value);
+        break;
+      case "clear-equipment-filters":
+        this.#equipmentFiltersByStepId.delete(action.stepId);
+        this.#equipmentSearchScheduler.schedule(action.stepId, this.#equipmentSearchByStepId.get(action.stepId) ?? "");
+        break;
+      case "review-equipment-purchases":
+        await this.#executeStartingEquipmentCommand(action.stepId, { type: "review-purchases" });
+        break;
+      case "retain-all-equipment":
+        await this.#executeStartingEquipmentCommand(action.stepId, { type: "retain-all" });
+        break;
+      case "acknowledge-equipment-handoff":
+        await this.#executeStartingEquipmentCommand(action.stepId, { type: "acknowledge-handoff" });
+        break;
       case "clear-option":
         this.#statusNote = null;
         {
@@ -826,6 +913,33 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.#searchByStepId.set(stepId, input.value);
     this.#pickerSearchScheduler.schedule(stepId, input.value);
   };
+
+  #onEquipmentSearchInput = (event: Event): void => {
+    const input = event.currentTarget as HTMLInputElement | null;
+    const stepId = input?.dataset.stepId;
+    if (!stepId) return;
+    this.#equipmentSearchByStepId.set(stepId, input.value);
+    this.#pendingSearchFocus = { stepId, cursor: input.selectionStart ?? input.value.length };
+    this.#equipmentSearchScheduler.schedule(stepId, input.value);
+  };
+
+  async #renderStartingEquipmentSearch(request: PickerSearchRequest): Promise<void> {
+    if (!this.#canCommitStartingEquipmentSearch(request)) return;
+    await this.render({
+      wayfinderEquipmentUpdate: true,
+      wayfinderEquipmentRequest: request,
+    });
+  }
+
+  #canCommitStartingEquipmentSearch(request: PickerSearchRequest): boolean {
+    return (
+      this.#equipmentSearchScheduler.isCurrent(request) &&
+      this.#activeStepId === request.stepId &&
+      this.#cachedRenderPlan?.steps.some((step) => step.id === request.stepId && step.kind === "starting-equipment") ===
+        true &&
+      (this.#equipmentSearchByStepId.get(request.stepId) ?? "") === request.query
+    );
+  }
 
   async #renderPickerSearch(request: PickerSearchRequest): Promise<void> {
     if (!this.#canCommitPickerSearch(request)) {
@@ -1008,6 +1122,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       });
     }
 
+    if (step.kind === "starting-equipment") {
+      const request = this.#startingEquipmentUiRequest(step);
+      return buildStartingEquipmentPane(
+        step,
+        this.#requireDraft(),
+        stepEvaluation,
+        await getStartingEquipmentUiAdapter().project(request)
+      );
+    }
+
     const skillPane = await buildSkillPane(step, this.#requireDraft(), {
       baseSkillRanks: inspectActor(this.actor).skillRanks,
       resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
@@ -1057,6 +1181,92 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     throw new Error(`Unsupported pane step kind: ${step.kind}`);
+  }
+
+  #startingEquipmentUiRequest(step: Extract<PendingStep, { kind: "starting-equipment" }>) {
+    return {
+      actor: this.actor,
+      draft: this.#requireDraft(),
+      step,
+      query: this.#equipmentSearchByStepId.get(step.id) ?? "",
+      filters: this.#equipmentFiltersByStepId.get(step.id) ?? {},
+      previewSourceUuid: this.#equipmentPreviewByStepId.get(step.id) ?? null,
+    };
+  }
+
+  async #executeStartingEquipmentCommand(stepId: string, command: StartingEquipmentCommand): Promise<void> {
+    try {
+      const plan = this.#cachedRenderPlan;
+      if (!plan) throw new TypeError("The current Wayfinder plan is unavailable.");
+      const step = plan.steps.find(
+        (candidate): candidate is Extract<PendingStep, { kind: "starting-equipment" }> =>
+          candidate.id === stepId && candidate.kind === "starting-equipment"
+      );
+      if (!step) throw new TypeError("The starting-equipment step is no longer in the current plan.");
+      const userId = String(game.user?.id ?? "");
+      const now = new Date().toISOString();
+      const result = await executeStartingEquipmentCommand(command, {
+        actor: this.actor,
+        draft: this.#requireDraft(),
+        moduleState: normalizeState(this.actor.getFlag(MODULE_ID, "state")),
+        steps: plan.steps,
+        userId,
+        now: () => now,
+      });
+      this.#requireDraft().acquisition = result.acquisition;
+      this.#requireDraft().acquisitionCorrupt = false;
+      this.#statusNote = result.statusNote;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Wayfinder could not update starting equipment.";
+      this.#statusNote = message;
+      ui.notifications.warn(message);
+    }
+    this.render({ wayfinderEquipmentUpdate: true });
+  }
+
+  async #addStartingEquipmentItem(stepId: string, sourceUuid: string): Promise<void> {
+    try {
+      const plan = this.#cachedRenderPlan;
+      if (!plan) throw new TypeError("The current Wayfinder plan is unavailable.");
+      const step = plan.steps.find(
+        (candidate): candidate is Extract<PendingStep, { kind: "starting-equipment" }> =>
+          candidate.id === stepId && candidate.kind === "starting-equipment"
+      );
+      if (!step) throw new TypeError("The starting-equipment step is no longer in the current plan.");
+      const line = await getStartingEquipmentUiAdapter().prepareLine({
+        ...this.#startingEquipmentUiRequest(step),
+        sourceUuid,
+      });
+      await this.#executeStartingEquipmentCommand(stepId, { type: "add-line", line });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Wayfinder could not add this equipment item.";
+      this.#statusNote = message;
+      ui.notifications.warn(message);
+      this.render({ wayfinderEquipmentUpdate: true });
+    }
+  }
+
+  async #changeStartingEquipmentQuantity(stepId: string, lineId: string, delta: -1 | 1): Promise<void> {
+    const line = this.#requireDraft().acquisition?.lines.find((candidate) => candidate.lineId === lineId);
+    if (!line) return;
+    const quantity = line.price.requestedQuantity + delta;
+    if (quantity < 1) {
+      await this.#executeStartingEquipmentCommand(stepId, { type: "remove-line", lineId });
+      return;
+    }
+    await this.#executeStartingEquipmentCommand(stepId, { type: "set-quantity", lineId, quantity });
+  }
+
+  #toggleStartingEquipmentFilter(stepId: string, filterKey: string, value: string): void {
+    const current = this.#equipmentFiltersByStepId.get(stepId) ?? {};
+    const selected = new Set(current[filterKey] ?? []);
+    if (selected.has(value)) selected.delete(value);
+    else selected.add(value);
+    this.#equipmentFiltersByStepId.set(stepId, {
+      ...current,
+      [filterKey]: [...selected].sort((left, right) => left.localeCompare(right)),
+    });
+    this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
   }
 
   async #chooseOption(stepId: string, rawValue: string): Promise<void> {

@@ -586,6 +586,59 @@ describe("prepared draft application", () => {
     expect(actor.update).not.toHaveBeenCalled();
   });
 
+  it("rechecks physical-grant coverage before any prepared acquisition callback or actor write", async () => {
+    const { actor } = buildActorHarness();
+    Object.assign(actor, { id: "actor-1" });
+    const draft = createEmptyDraft(1);
+    draft.acquisition = {
+      schemaVersion: 2,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const prepareClassGrantPlan = vi.fn(async () => {
+      throw new Error("Unsupported physical grant route: clan-pistol");
+    });
+    const executeAcquisitionItems = vi.fn(async () => undefined);
+    const executeAcquisitionCurrency = vi.fn(async () => undefined);
+    const verifyAcquisitionOutcome = vi.fn(async () => ({ kind: "none" }) as never);
+    const readCurrentAcquisitionHistory = vi.fn(async () => ({
+      completedAcquisitionManifest: null,
+      completedAcquisitionManifestCorrupt: false,
+    }));
+    const onCheckpoint = vi.fn();
+
+    await expect(
+      applyDraftToActor(actor as never, draft, [], {
+        prepareClassGrantPlan,
+        executeAcquisitionItems,
+        executeAcquisitionCurrency,
+        verifyAcquisitionOutcome,
+        readCurrentAcquisitionHistory,
+        onCheckpoint,
+      })
+    ).rejects.toThrow("Unsupported physical grant route: clan-pistol");
+
+    expect(prepareClassGrantPlan).toHaveBeenCalledTimes(1);
+    expect(executeAcquisitionItems).not.toHaveBeenCalled();
+    expect(executeAcquisitionCurrency).not.toHaveBeenCalled();
+    expect(verifyAcquisitionOutcome).not.toHaveBeenCalled();
+    expect(readCurrentAcquisitionHistory).not.toHaveBeenCalled();
+    expect(onCheckpoint).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
   it("blocks finalization when prepared class equipment is never materialized", async () => {
     const { actor } = buildActorHarness();
     Object.assign(actor, { id: "actor-1" });

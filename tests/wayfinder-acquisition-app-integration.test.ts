@@ -34,6 +34,18 @@ describe("Wayfinder acquisition app integration", () => {
     expect(receiptTemplate).toContain("acquisitionReceipt.authority.higherLevelStartLabel");
     expect(receiptTemplate).toContain("acquisitionReceipt.authority.judgmentIds.length");
   });
+
+  it("projects physical-grant coverage into rendered readiness and Apply's pre-confirm blockers", () => {
+    const render = sourceBetween("async _prepareContext(", "_replaceHTML(");
+    const apply = sourceBetween(
+      "async #applyDraft()",
+      "#createAcquisitionExecutionSession(characterDraft: DraftState)"
+    );
+
+    expect(render).toContain("const readiness = withPhysicalGrantCoverageReadiness(");
+    expect(apply).toContain("const physicalGrantBlockers = physicalGrantCoverageIssues(draft, steps);");
+    expect(apply).toContain("additionalBlockers: [...spellRarityBlockers, ...physicalGrantBlockers]");
+  });
 });
 
 function sourceBetween(start: string, end: string): string {

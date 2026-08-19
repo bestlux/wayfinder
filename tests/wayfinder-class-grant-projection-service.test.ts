@@ -150,6 +150,38 @@ describe("class-grant projection service", () => {
     ]);
   });
 
+  it("blocks Clan Pistol before projecting or resolving the default Dwarf Clan Dagger", async () => {
+    const draft = ancestryDraft(UUID.dwarf, "Dwarf");
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      UUID.clanPistolFeature,
+      "Clan Pistol"
+    );
+    const fetchDocumentByUuid = vi.fn(async () => null);
+
+    await expect(
+      projectPlannedClassGrants({
+        ...SUBJECT,
+        draft,
+        activeSteps: [...SUBJECT.activeSteps, { slotId: "ancestry-feat-level-1" } as PendingStep],
+        fetchDocumentByUuid,
+      })
+    ).resolves.toMatchObject({
+      grants: [],
+      preparedPlan: null,
+      blockers: [
+        {
+          code: "unsupported-physical-grant",
+          routeId: "clan-pistol",
+          reasonCode: "unprofiled-native-grant",
+          sourceSlotId: "ancestry-feat-level-1",
+          sourceUuid: UUID.clanPistolFeature,
+        },
+      ],
+    });
+    expect(fetchDocumentByUuid).not.toHaveBeenCalled();
+  });
+
   it("projects the exact Sarangay Head Gem native chain", async () => {
     const draft = ancestryDraft(UUID.sarangay, "Sarangay");
     const documents = new Map<string, unknown>([
@@ -502,6 +534,7 @@ describe("class-grant projection service", () => {
     };
     vi.stubGlobal("game", {
       user: { id: "owner-1", isGM: false },
+      system: { id: "pf2e", version: "8.4.1" },
       settings: {
         get: (moduleId: string, key: string) => {
           if (moduleId === MODULE_ID && key === SETTINGS.equipmentPolicy) return DEFAULT_EQUIPMENT_WORLD_POLICY;
@@ -541,6 +574,39 @@ describe("class-grant projection service", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("blocks production projection before source resolution when the PF2E runtime is not pinned", async () => {
+    const draft = classDraft(UUID.alchemist, "Alchemist");
+    const policy = equipmentPolicy();
+    draft.acquisition = {
+      schemaVersion: 2,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: createAcquisitionPolicySnapshot(policy, { kind: "permanent-items" }),
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const fetchDocumentByUuid = vi.fn(async () => null);
+    const actor = { id: "actor-1", items: { contents: [] } };
+
+    await expect(
+      projectCurrentClassGrants(actor, draft, SUBJECT.activeSteps, {
+        fetchDocumentByUuid,
+        pf2eVersion: "8.4.2",
+      })
+    ).resolves.toMatchObject({
+      grants: [],
+      preparedPlan: null,
+      blockers: [{ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }],
+    });
+    expect(fetchDocumentByUuid).not.toHaveBeenCalled();
   });
 
   it("uses drafted ancestry size and keeps production Titan Access fail-closed without a registered resolver", async () => {
@@ -847,7 +913,7 @@ function weaponDocument(rarity = "common") {
 function productionGame() {
   return {
     user: { id: "owner-1", isGM: false },
-    system: { id: "pf2e" },
+    system: { id: "pf2e", version: "8.4.1" },
     settings: {
       get: (moduleId: string, key: string) => {
         if (moduleId === MODULE_ID && key === SETTINGS.equipmentPolicy) return DEFAULT_EQUIPMENT_WORLD_POLICY;

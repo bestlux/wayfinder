@@ -291,6 +291,67 @@ describe("starting equipment command service", () => {
     expect(result.statusNote).toContain("Choose the required Titan Mauler weapon");
     expect(prepareClassGrantPlan).not.toHaveBeenCalled();
   });
+
+  it("hard-stops an unsupported physical grant before initialization performs admission or native-line work", async () => {
+    const policy = levelOnePolicy();
+    const prepareNativeGrantLines = vi.fn(async () => []);
+    const evaluateAdmission = vi.fn();
+    const context = commandContext(null);
+
+    await expect(
+      executeStartingEquipmentCommand({ type: "initialize" }, context, {
+        mintIdentity: vi.fn(() => ({ draftId: "draft-1", batchId: "batch-1", manifestId: "manifest-1" })),
+        resolvePolicy: vi.fn(() => policy),
+        projectClassGrants: vi.fn(async () => ({
+          grants: [],
+          preparedPlan: null,
+          blockers: [
+            {
+              code: "unsupported-physical-grant",
+              routeId: "clan-pistol",
+              reasonCode: "unprofiled-native-grant",
+              sourceSlotId: "ancestry-feat-level-1",
+              sourceUuid: "Compendium.pf2e.feats-srd.Item.LvVg83ZDj8mabcWF",
+              message: "Clan Pistol must use the PF2E sheet.",
+            },
+          ],
+        })),
+        prepareClassGrantPlan: vi.fn(),
+        prepareNativeGrantLines,
+        evaluateAdmission,
+        evaluateLedger: vi.fn(),
+      } as never)
+    ).rejects.toThrow("Clan Pistol must use the PF2E sheet");
+
+    expect(context.draft.acquisition).toBeNull();
+    expect(prepareNativeGrantLines).not.toHaveBeenCalled();
+    expect(evaluateAdmission).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { type: "review-purchases" as const },
+    { type: "retain-all" as const },
+  ])("rechecks unsupported physical grants before $type can change review state", async (command) => {
+    const fixture = acquisitionFixture();
+    const before = JSON.stringify(fixture.draft);
+    const prepareNativeGrantLines = vi.fn(async () => []);
+    const evaluateLedger = vi.fn();
+
+    await expect(
+      executeStartingEquipmentCommand(command, commandContext(fixture.draft), {
+        ...ledgerDependencies(fixture),
+        prepareClassGrantPlan: vi.fn(async () => {
+          throw new Error("Unsupported physical grant route: clan-pistol");
+        }),
+        prepareNativeGrantLines,
+        evaluateLedger,
+      } as never)
+    ).rejects.toThrow("Unsupported physical grant route: clan-pistol");
+
+    expect(JSON.stringify(fixture.draft)).toBe(before);
+    expect(prepareNativeGrantLines).not.toHaveBeenCalled();
+    expect(evaluateLedger).not.toHaveBeenCalled();
+  });
 });
 
 function commandContext(acquisition: ReturnType<typeof acquisitionFixture>["draft"] | null) {

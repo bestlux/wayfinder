@@ -30,6 +30,10 @@ import type { AcquisitionDraftState } from "../src/wayfinder/domain/acquisition-
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
+import {
+  PHYSICAL_GRANT_COVERAGE_PF2E_VERSION,
+  physicalGrantCoverageIssues,
+} from "../src/wayfinder/domain/physical-grant-coverage";
 import type { WayfinderStepEvaluation } from "../src/wayfinder/domain/step-evaluation";
 
 describe("wayfinder draft lifecycle service", () => {
@@ -655,6 +659,46 @@ describe("wayfinder draft lifecycle service", () => {
     });
 
     expect(result).toEqual({ kind: "warning", warning: "draft-not-ready", blockers: [blocker] });
+    expect(confirmApply).not.toHaveBeenCalled();
+    expect(beforeApply).not.toHaveBeenCalled();
+    expect(applyDraftToActor).not.toHaveBeenCalled();
+  });
+
+  it("hard-stops an unsupported physical grant before confirmation, candidate persistence, or actor Apply", async () => {
+    const draft = createEmptyDraft(1);
+    const sourceSlotId = "ancestry-feat-level-1";
+    draft.selections[sourceSlotId] = {
+      slotId: sourceSlotId,
+      packId: "pf2e.feats-srd",
+      documentId: "LvVg83ZDj8mabcWF",
+      uuid: "Compendium.pf2e.feats-srd.Item.LvVg83ZDj8mabcWF",
+      itemType: "feat",
+      featType: "ancestry",
+      name: "Clan Pistol",
+      level: 1,
+    };
+    const steps = [step(sourceSlotId)];
+    const confirmApply = vi.fn(() => true);
+    const beforeApply = vi.fn(async () => undefined);
+    const applyDraftToActor = vi.fn(async () => undefined);
+
+    const result = await applyDraftLifecycle({
+      actorName: "Harsk",
+      currentLevel: 1,
+      draft,
+      steps,
+      evaluateStep: async () => readyEvaluation(),
+      additionalBlockers: physicalGrantCoverageIssues(draft, steps, PHYSICAL_GRANT_COVERAGE_PF2E_VERSION),
+      confirmApply,
+      beforeApply,
+      applyDraftToActor,
+    });
+
+    expect(result).toMatchObject({
+      kind: "warning",
+      warning: "draft-not-ready",
+      blockers: [{ code: "equipment-review", stepId: sourceSlotId, slotId: sourceSlotId }],
+    });
     expect(confirmApply).not.toHaveBeenCalled();
     expect(beforeApply).not.toHaveBeenCalled();
     expect(applyDraftToActor).not.toHaveBeenCalled();

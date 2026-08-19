@@ -23,15 +23,23 @@ import {
   type EquipmentHigherLevelStartEvidence,
   evaluateEquipmentItemAuthority,
 } from "../domain/equipment-policy.js";
+import {
+  currentPf2eVersion,
+  findUnsupportedPhysicalGrantRoutes,
+  type PhysicalGrantCoverageBlocker,
+  physicalGrantCoverageVersionBlocker,
+} from "../domain/physical-grant-coverage.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
 
 const UUIDS = CLASS_GRANT_PROFILE_UUIDS;
 
-export interface ClassGrantProjectionBlocker {
+interface ProfileClassGrantProjectionBlocker {
   readonly code: "source-missing" | "source-drift" | "titan-selection-required" | "titan-ineligible";
   readonly profileId: ClassGrantProfileId;
   readonly message: string;
 }
+
+export type ClassGrantProjectionBlocker = ProfileClassGrantProjectionBlocker | PhysicalGrantCoverageBlocker;
 
 export interface ClassGrantProjectionResult {
   readonly grants: readonly PlannedClassGrantV1[];
@@ -42,6 +50,7 @@ export interface ClassGrantProjectionResult {
 export interface CurrentClassGrantProjectionOptions {
   readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
   readonly resolveCharacterAccessRef?: (sourceUuid: string) => Promise<string | null> | string | null;
+  readonly pf2eVersion?: string | null;
 }
 
 export async function prepareCurrentClassGrantPlan(
@@ -66,6 +75,15 @@ export async function projectCurrentClassGrants(
   const acquisition = draft.acquisition;
   if (!acquisition?.policySnapshot) {
     throw new TypeError("Starting-equipment Apply requires a reviewed equipment policy.");
+  }
+  const versionBlocker =
+    acquisition.targetLevel === 1
+      ? physicalGrantCoverageVersionBlocker(
+          options.pf2eVersion === undefined ? currentPf2eVersion() : options.pf2eVersion
+        )
+      : null;
+  if (versionBlocker) {
+    return { grants: [], preparedPlan: null, blockers: [versionBlocker] };
   }
   const reviewed = acquisition.policySnapshot;
   const currentPolicy = resolveEquipmentPolicyForActor({
@@ -214,6 +232,10 @@ export async function projectPlannedClassGrants(args: {
   readonly actorSize?: TitanMaulerCandidate["actorSize"] | null;
   readonly resolveCharacterAccessRef?: (sourceUuid: string) => Promise<string | null> | string | null;
 }): Promise<ClassGrantProjectionResult> {
+  const coverageBlockers = findUnsupportedPhysicalGrantRoutes(args.draft, args.activeSteps);
+  if (coverageBlockers.length > 0) {
+    return completeProjection(args, [], coverageBlockers);
+  }
   const grants: PlannedClassGrantV1[] = [];
   const blockers: ClassGrantProjectionBlocker[] = [];
   const ancestrySelection = args.draft.selections["ancestry-level-1"];
@@ -579,7 +601,7 @@ function completeProjection(
   };
 }
 
-function profileIdForSelection(classUuid: string, draft: DraftState): ClassGrantProjectionBlocker["profileId"] {
+function profileIdForSelection(classUuid: string, draft: DraftState): ClassGrantProfileId {
   if (classUuid === UUIDS.alchemistClass) return "alchemist-formula-book";
   if (
     classUuid === UUIDS.investigatorClass &&
@@ -590,7 +612,7 @@ function profileIdForSelection(classUuid: string, draft: DraftState): ClassGrant
   return "giant-instinct-titan-mauler";
 }
 
-function sourceMissing(profileId: ClassGrantProjectionBlocker["profileId"]): Projection {
+function sourceMissing(profileId: ClassGrantProfileId): Projection {
   return {
     blocker: {
       code: "source-missing",
@@ -600,7 +622,7 @@ function sourceMissing(profileId: ClassGrantProjectionBlocker["profileId"]): Pro
   };
 }
 
-function sourceDrift(profileId: ClassGrantProjectionBlocker["profileId"], message: string): Projection {
+function sourceDrift(profileId: ClassGrantProfileId, message: string): Projection {
   return { blocker: { code: "source-drift", profileId, message } };
 }
 

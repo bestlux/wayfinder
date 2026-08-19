@@ -43,6 +43,7 @@ import { buildDraftSaveView, buildWayfinderContext, } from "./application/wayfin
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
 import { recordAcquisitionCurrencyConvergenceWitness, recordClassGrantReconciliations, } from "./domain/acquisition-draft.js";
 import { manifestsDescribeSameOutcome } from "./domain/completed-acquisition-manifest.js";
+import { physicalGrantCoverageIssues, withPhysicalGrantCoverageReadiness } from "./domain/physical-grant-coverage.js";
 import { evaluateWayfinderDraftReadiness, isTrainingStepCompleteFromDraft, WayfinderDraftNotReadyError, } from "./domain/step-evaluation.js";
 import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildAcquisitionReceiptViewModel } from "./panes/acquisition-receipt.js";
@@ -244,7 +245,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             }
         }
         const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
-        const readiness = await evaluateWayfinderDraftReadiness(plan.steps, (step) => this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks));
+        const readiness = withPhysicalGrantCoverageReadiness(await evaluateWayfinderDraftReadiness(plan.steps, (step) => this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks)), draft, plan.steps);
         const evaluationsByStepId = new Map(plan.steps.map((step, index) => [step.id, readiness.evaluations[index]]));
         const activeStep = await this.#resolveActiveStep(plan.steps, evaluationsByStepId);
         const activeEvaluation = activeStep ? evaluationsByStepId.get(activeStep.id) : null;
@@ -1783,6 +1784,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             title: problem.title,
             message: problem.message,
         }));
+        const physicalGrantBlockers = physicalGrantCoverageIssues(draft, steps);
         const applyCandidate = { value: null };
         let finalizedDespiteApplyError = false;
         let result;
@@ -1796,7 +1798,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 appliedSpellRarityAttestations,
                 steps,
                 evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks),
-                additionalBlockers: spellRarityBlockers,
+                additionalBlockers: [...spellRarityBlockers, ...physicalGrantBlockers],
                 acquisitionExecutionAvailable: acquisitionSession !== null,
                 assertAcquisitionApplyAuthority: () => {
                     if (!draft.acquisition)

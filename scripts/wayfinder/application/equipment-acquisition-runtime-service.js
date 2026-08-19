@@ -1,9 +1,9 @@
 import { cloneData } from "../../shared/cloning.js";
 import { resolveUuid } from "../../shared/foundry-compat.js";
-import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot, invalidateAcquisitionReview, recordPlannedClassGrants, } from "../domain/acquisition-draft.js";
+import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot, invalidateAcquisitionReview, normalizeAcquisitionDraft, recordPlannedClassGrants, } from "../domain/acquisition-draft.js";
 import { mintAcquisitionLineId } from "../domain/acquisition-identity.js";
 import { createAcquisitionPriceSnapshot } from "../domain/acquisition-ledger.js";
-import { assertPreparedClassGrantPlanMatches, evaluateTitanMaulerCandidate, titanMaulerTargetSize, } from "../domain/class-grant-reconciliation.js";
+import { assertPreparedClassGrantPlanMatches, evaluateTitanMaulerCandidate, normalizePlannedClassGrant, titanMaulerTargetSize, } from "../domain/class-grant-reconciliation.js";
 import { buildTitanMaulerCandidate, resolveDraftedAncestryEquipmentSize, titanMaulerGrantIdForDraft, } from "./class-grant-projection-service.js";
 import { createEquipmentCatalogueDraftContext, createEquipmentCatalogueService, EMPTY_EQUIPMENT_ACCESS_REGISTRY, } from "./equipment-catalogue-service.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
@@ -185,7 +185,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 if (persisted.length > 1) {
                     throw new Error(`Native class grant ${grant.grantId} requires exactly one acquisition line.`);
                 }
-                const resolved = await catalogue.resolveForApply(context, grant.expected.sourceUuid);
+                const resolved = await catalogue.resolveFixedNativeSourceForApply(context, grant.expected.sourceUuid, fixedNativeSourceAuthority(grant));
                 assertFixedNativeSource(grant, resolved);
                 const lineId = persisted[0]?.lineId ?? mintLineId();
                 if (!lineId.trim() || (persisted.length === 0 && lineIds.has(lineId))) {
@@ -221,21 +221,29 @@ export function createEquipmentAcquisitionRuntime(options) {
             return createAcquisitionPolicySnapshot(resolveEffectivePolicy(actor, acquisition), acquisition.recipe);
         },
         async resolveSourceForApply(request) {
-            const persisted = request.characterDraft.acquisition;
-            if (persisted?.draftId !== request.acquisition.draftId ||
-                persisted.batchId !== request.acquisition.batchId ||
-                persisted.manifestId !== request.acquisition.manifestId) {
-                throw new TypeError("The Apply source request belongs to another acquisition draft.");
+            const persisted = normalizeAcquisitionDraft(cloneData(request.characterDraft.acquisition));
+            const requested = normalizeAcquisitionDraft(cloneData(request.acquisition));
+            if (!persisted || !requested || canonicalJson(persisted) !== canonicalJson(requested)) {
+                throw new TypeError("The Apply source request does not match the persisted acquisition state.");
             }
             const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
-            const resolved = await catalogueFor(policy).resolveForApply(context, request.entry.sourceUuid);
-            assertWaveTwoCandidate(resolved);
             const lines = request.entry.lineIds.map((lineId) => {
                 const line = request.acquisition.lines.find((candidate) => candidate.lineId === lineId);
                 if (!line)
                     throw new TypeError(`Prepared acquisition line ${lineId} is unavailable.`);
                 return line;
             });
+            const catalogue = catalogueFor(policy);
+            const fixedNativeGrant = resolveFixedNativeApplyGrant(request, persisted, lines);
+            const resolved = fixedNativeGrant
+                ? await catalogue.resolveFixedNativeSourceForApply(context, request.entry.sourceUuid, fixedNativeSourceAuthority(fixedNativeGrant))
+                : await catalogue.resolveForApply(context, request.entry.sourceUuid);
+            if (fixedNativeGrant) {
+                assertFixedNativeSource(fixedNativeGrant, resolved);
+            }
+            else {
+                assertWaveTwoCandidate(resolved);
+            }
             const currentPermanence = permanence(resolved.candidate.itemType);
             if (lines.some((line) => line.sourceUuid !== resolved.candidate.sourceUuid ||
                 line.itemLevel !== resolved.candidate.level ||
@@ -372,11 +380,71 @@ function assertFixedNativeSource(grant, resolved) {
     }
     assertExactCompendiumSource(grant.expected.sourceUuid, resolved.source);
 }
+function resolveFixedNativeApplyGrant(request, persistedAcquisition, lines) {
+    const funding = request.entry.funding;
+    if (funding.lane !== "class-grant")
+        return null;
+    const grants = request.acquisition.plannedClassGrants.filter((grant) => grant.grantId === funding.grant.plannedGrantId);
+    if (grants.length !== 1) {
+        throw new Error(`Class grant ${funding.grant.plannedGrantId} is not persisted exactly once.`);
+    }
+    const requestedGrant = grants[0];
+    const grant = normalizePlannedClassGrant(requestedGrant);
+    if (!grant) {
+        throw new TypeError(`Class grant ${funding.grant.plannedGrantId} is not a canonical persisted grant.`);
+    }
+    if (grant.materializer !== "pf2e-native")
+        return null;
+    const persistedGrants = persistedAcquisition.plannedClassGrants.filter((candidate) => candidate.grantId === grant.grantId);
+    const requestedGrantLines = request.acquisition.lines.filter(isGrantFundedLine(grant.grantId));
+    const persistedGrantLines = persistedAcquisition.lines.filter(isGrantFundedLine(grant.grantId));
+    const persistedGrant = persistedGrants[0] ? normalizePlannedClassGrant(persistedGrants[0]) : null;
+    if (persistedGrants.length !== 1 ||
+        !persistedGrant ||
+        canonicalJson(persistedGrant) !== canonicalJson(grant) ||
+        requestedGrantLines.length !== 1 ||
+        persistedGrantLines.length !== 1 ||
+        canonicalJson(requestedGrantLines[0]) !== canonicalJson(persistedGrantLines[0])) {
+        throw new Error(`PF2E-native class grant ${grant.grantId} is not persisted exactly once.`);
+    }
+    assertFixedNativeGrant(grant);
+    const line = lines[0];
+    const plannedItem = request.entry.plannedItems[0];
+    if (lines.length !== 1 ||
+        request.entry.lineIds.length !== 1 ||
+        !line ||
+        line.lineId !== request.entry.lineIds[0] ||
+        line.funding.lane !== "class-grant" ||
+        line.funding.grant.plannedGrantId !== grant.grantId ||
+        line.sourceUuid !== grant.expected.sourceUuid ||
+        request.entry.sourceUuid !== grant.expected.sourceUuid ||
+        line.documentFingerprint !== request.entry.documentFingerprint ||
+        line.priceFingerprint !== request.entry.priceFingerprint ||
+        canonicalJson(line.policyDecision) !== canonicalJson(request.entry.policyDecision) ||
+        canonicalJson(line.price) !== canonicalJson(request.entry.price) ||
+        line.itemLevel !== 0 ||
+        line.permanence !== "permanent" ||
+        line.componentKind !== "baseline-item" ||
+        line.stackingIntent !== "separate" ||
+        line.price.materializedQuantity !== 1 ||
+        request.entry.quantity !== 1 ||
+        request.entry.stackingIntent !== "separate" ||
+        request.entry.plannedItems.length !== 1 ||
+        !plannedItem ||
+        plannedItem.sourceUuid !== grant.expected.sourceUuid ||
+        plannedItem.quantity !== 1 ||
+        plannedItem.ownedContainerId !== null ||
+        plannedItem.plannedContainerId !== null) {
+        throw new Error(`PF2E-native class grant ${grant.grantId} differs from its persisted acquisition authority.`);
+    }
+    return grant;
+}
+function isGrantFundedLine(grantId) {
+    return (line) => line.funding.lane === "class-grant" && line.funding.grant.plannedGrantId === grantId;
+}
 function assertExactCompendiumSource(sourceUuid, source) {
-    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.([^.]+)$/.exec(sourceUuid);
-    if (!match)
-        throw new TypeError(`Native class-grant source is not an exact Compendium Item UUID: ${sourceUuid}.`);
-    if (source._id !== match[2]) {
+    const identity = compendiumItemIdentity(sourceUuid);
+    if (source._id !== identity.documentId) {
         throw new Error(`Native class-grant source ${sourceUuid} returned a different document identity.`);
     }
     const statsSource = record(source._stats).compendiumSource;
@@ -386,6 +454,20 @@ function assertExactCompendiumSource(sourceUuid, source) {
             throw new Error(`Native class-grant source ${sourceUuid} has mismatched source provenance.`);
         }
     }
+}
+function fixedNativeSourceAuthority(grant) {
+    const identity = compendiumItemIdentity(grant.expected.sourceUuid);
+    return {
+        kind: "fixed-native-grant",
+        expectedSourceUuid: grant.expected.sourceUuid,
+        expectedPackId: identity.packId,
+    };
+}
+function compendiumItemIdentity(sourceUuid) {
+    const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.([^.]+)$/.exec(sourceUuid);
+    if (!match)
+        throw new TypeError(`Native class-grant source is not an exact Compendium Item UUID: ${sourceUuid}.`);
+    return { packId: match[1], documentId: match[2] };
 }
 let foundryRuntime = null;
 export function registerFoundryEquipmentAcquisitionRuntime() {

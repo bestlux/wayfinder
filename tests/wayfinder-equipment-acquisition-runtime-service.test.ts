@@ -619,6 +619,21 @@ describe("equipment acquisition runtime", () => {
     expect(validated[0]).toBe(lines[0]);
     expect(getDocument).toHaveBeenCalledTimes(2);
 
+    const applied = await runtime.resolveSourceForApply({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+      entry: preparedEntry(lines[0]!),
+    });
+    expect(applied).toMatchObject({
+      sourceUuid: CLASS_GRANT_PROFILE_UUIDS.formulaBookItem,
+      documentFingerprint: lines[0]!.documentFingerprint,
+      priceFingerprint: lines[0]!.priceFingerprint,
+      policyDecision: lines[0]!.policyDecision,
+      resolvedPrice: lines[0]!.price,
+    });
+    expect(getDocument).toHaveBeenCalledTimes(3);
+
     currentSource = formulaBook({ priceSp: 2 });
     await expect(
       runtime.prepareNativeClassGrantLines({
@@ -626,7 +641,178 @@ describe("equipment acquisition runtime", () => {
         acquisition: request.draft.acquisition,
       })
     ).rejects.toThrow(/source material drifted/i);
-    expect(getDocument).toHaveBeenCalledTimes(3);
+    expect(getDocument).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not treat an unavailable ordinary purchase as a fixed native grant", async () => {
+    let currentSource = dagger();
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [currentSource]),
+      getDocument: vi.fn(async () => document(currentSource)),
+    });
+    const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
+    request.draft.acquisition = { ...request.draft.acquisition!, lines: [line] };
+    currentSource = dagger({ rarity: "uncommon" });
+    runtime.invalidatePack(PACK_ID);
+
+    await expect(
+      runtime.resolveSourceForApply({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition,
+        entry: preparedEntry(line),
+      })
+    ).rejects.toThrow(/rarity|unavailable/i);
+  });
+
+  it("requires fixed native Apply authority to match the exact persisted line and source provenance", async () => {
+    let currentSource = formulaBook();
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [currentSource]),
+      getDocument: vi.fn(async () => document(currentSource)),
+    });
+    const grant = fixedNativeGrant();
+    request.draft.acquisition = recordPlannedClassGrants(request.draft.acquisition!, [grant]);
+    const classGrantPlan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [grant],
+    });
+    const lines = await runtime.prepareNativeClassGrantLines({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+      classGrantPlan,
+    });
+    const line = lines[0]!;
+    request.draft.acquisition = { ...request.draft.acquisition, lines: [line] };
+    const entry = preparedEntry(line);
+
+    await expect(
+      runtime.resolveSourceForApply({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition,
+        entry: {
+          ...entry,
+          policyDecision: { ...entry.policyDecision, rarityBasis: "specific-character-access" },
+        },
+      })
+    ).rejects.toThrow(/persisted acquisition authority/i);
+
+    currentSource = formulaBook({ compendiumSource: DAGGER_UUID });
+    await expect(
+      runtime.resolveSourceForApply({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition,
+        entry,
+      })
+    ).rejects.toThrow(/mismatched source provenance/i);
+  });
+
+  it("rejects same-ID divergent persisted native authority and duplicate grant-funded lines", async () => {
+    const source = formulaBook();
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [source]),
+      getDocument: vi.fn(async () => document(source)),
+    });
+    const grant = fixedNativeGrant();
+    request.draft.acquisition = recordPlannedClassGrants(request.draft.acquisition!, [grant]);
+    const classGrantPlan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [grant],
+    });
+    const lines = await runtime.prepareNativeClassGrantLines({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+      classGrantPlan,
+    });
+    const line = lines[0]!;
+    const reviewedAcquisition = { ...request.draft.acquisition, lines: [line] };
+    request.draft.acquisition = { ...reviewedAcquisition, lines: [] };
+
+    await expect(
+      runtime.resolveSourceForApply({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: reviewedAcquisition,
+        entry: preparedEntry(line),
+      })
+    ).rejects.toThrow(/persisted acquisition state/i);
+
+    const duplicate = { ...line, lineId: "wf-line-native-duplicate" };
+    const duplicateAcquisition = { ...reviewedAcquisition, lines: [line, duplicate] };
+    request.draft.acquisition = duplicateAcquisition;
+    await expect(
+      runtime.resolveSourceForApply({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: duplicateAcquisition,
+        entry: preparedEntry(line),
+      })
+    ).rejects.toThrow(/not persisted exactly once/i);
+  });
+
+  it("hydrates an exact fixed native source outside catalogue packs without widening ordinary access", async () => {
+    const source = formulaBook();
+    const excludedPolicy: EffectiveEquipmentPolicySnapshotV1 = {
+      ...policy(),
+      sourcePolicy: { ...policy().sourcePolicy, effectivePackIds: [] },
+    };
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      { policy: excludedPolicy }
+    );
+    expect(await runtime.uiAdapter.project(request)).toMatchObject({ state: "ready", records: [] });
+    await expect(
+      runtime.uiAdapter.prepareLine({
+        ...request,
+        sourceUuid: CLASS_GRANT_PROFILE_UUIDS.formulaBookItem,
+      })
+    ).rejects.toThrow(/outside the current effective pack set/i);
+
+    const grant = fixedNativeGrant();
+    request.draft.acquisition = recordPlannedClassGrants(request.draft.acquisition!, [grant]);
+    const classGrantPlan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [grant],
+    });
+    const lines = await runtime.prepareNativeClassGrantLines({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+      classGrantPlan,
+    });
+    expect(lines[0]?.policyDecision).toMatchObject({
+      eligible: false,
+      sourceBasis: "source-not-allowed",
+    });
+    request.draft.acquisition = { ...request.draft.acquisition, lines: [...lines] };
+
+    await expect(
+      runtime.resolveSourceForApply({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition,
+        entry: preparedEntry(lines[0]!),
+      })
+    ).resolves.toMatchObject({
+      sourceUuid: CLASS_GRANT_PROFILE_UUIDS.formulaBookItem,
+      policyDecision: { eligible: false, sourceBasis: "source-not-allowed" },
+    });
   });
 
   it("rejects a hydrated native grant document with a different exact identity", async () => {
@@ -710,12 +896,13 @@ function fixture(
   options: {
     readonly accessRegistry?: EquipmentAccessRegistry;
     readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
+    readonly policy?: EffectiveEquipmentPolicySnapshotV1;
   } = {}
 ): {
   runtime: EquipmentAcquisitionRuntime;
   request: Parameters<EquipmentAcquisitionRuntime["uiAdapter"]["project"]>[0];
 } {
-  const currentPolicy = policy();
+  const currentPolicy = options.policy ?? policy();
   const acquisition = {
     ...createAcquisitionDraft({
       draftId: "draft-1",
@@ -891,13 +1078,15 @@ function document<T>(source: T) {
   return { toObject: () => structuredClone(source) };
 }
 
-function formulaBook(options: { readonly id?: string; readonly priceSp?: number } = {}) {
+function formulaBook(
+  options: { readonly id?: string; readonly priceSp?: number; readonly compendiumSource?: string } = {}
+) {
   return {
     _id: options.id ?? FORMULA_BOOK_ID,
     name: "Formula Book",
     img: "icons/sundries/books/book-embossed-gold-red.webp",
     type: "equipment",
-    _stats: { compendiumSource: CLASS_GRANT_PROFILE_UUIDS.formulaBookItem },
+    _stats: { compendiumSource: options.compendiumSource ?? CLASS_GRANT_PROFILE_UUIDS.formulaBookItem },
     system: {
       level: { value: 0 },
       traits: { rarity: "uncommon", value: [] },

@@ -419,6 +419,47 @@ describe("minimal equipment catalogue", () => {
     expect(drifted.priceFingerprint).not.toBe(first.priceFingerprint);
     expect(drifted.candidate.price).toMatchObject({ value: { sp: 3 }, copperValue: 30 });
   });
+
+  it("requires exact fixed-native source and pack authority outside the effective catalogue", async () => {
+    const source = uncommonSource();
+    const service = createEquipmentCatalogueService({
+      packs: packMap({ entries: [uncommonItem()], getDocument: vi.fn(async () => source) }),
+      equipmentPackIds: [],
+    });
+    const excludedContext = context({
+      policy: policy({
+        sourcePolicy: { ...policy().sourcePolicy, effectivePackIds: [] },
+      }),
+    });
+
+    await expect(service.resolveForApply(excludedContext, UNCOMMON_UUID)).rejects.toThrow(/effective pack set/i);
+    await expect(
+      service.resolveFixedNativeSourceForApply(excludedContext, UNCOMMON_UUID, {
+        kind: "fixed-native-grant",
+        expectedSourceUuid: WF_080_21_DAGGER_UUID,
+        expectedPackId: PACK_ID,
+      })
+    ).rejects.toThrow(/exact source authority/i);
+    await expect(
+      service.resolveFixedNativeSourceForApply(excludedContext, UNCOMMON_UUID, {
+        kind: "fixed-native-grant",
+        expectedSourceUuid: UNCOMMON_UUID,
+        expectedPackId: "pf2e.wrong-pack",
+      })
+    ).rejects.toThrow(/exact pack authority/i);
+
+    await expect(
+      service.resolveFixedNativeSourceForApply(excludedContext, UNCOMMON_UUID, {
+        kind: "fixed-native-grant",
+        expectedSourceUuid: UNCOMMON_UUID,
+        expectedPackId: PACK_ID,
+      })
+    ).resolves.toMatchObject({
+      source: { _id: UNCOMMON_ID },
+      available: false,
+      policyDecision: { eligible: false, sourceBasis: "source-not-allowed" },
+    });
+  });
 });
 
 function packMap(options: {

@@ -154,6 +154,12 @@ export interface EquipmentCatalogueApplyResolution {
   readonly policyDecision: AcquisitionLinePolicyDecision;
 }
 
+export interface FixedNativeEquipmentSourceAuthority {
+  readonly kind: "fixed-native-grant";
+  readonly expectedSourceUuid: string;
+  readonly expectedPackId: string;
+}
+
 export interface EquipmentCatalogueServiceOptions {
   readonly packs: Pick<ReadonlyMap<string, EquipmentCataloguePackLike>, "get">;
   /** Explicit PF2E equipment-tab pack projection; policy family membership alone is insufficient. */
@@ -380,9 +386,39 @@ export class EquipmentCatalogueService {
     context: EquipmentCatalogueContext,
     sourceUuid: string
   ): Promise<EquipmentCatalogueApplyResolution> {
+    return this.#resolveHydratedForApply(context, sourceUuid, false);
+  }
+
+  /**
+   * Hydrates one exact source for a caller that already proved fixed native-grant authority.
+   * This does not add the pack to catalogue projection, search, preview, or ordinary Apply.
+   */
+  async resolveFixedNativeSourceForApply(
+    context: EquipmentCatalogueContext,
+    sourceUuid: string,
+    authority: FixedNativeEquipmentSourceAuthority
+  ): Promise<EquipmentCatalogueApplyResolution> {
+    if (authority.kind !== "fixed-native-grant" || sourceUuid !== authority.expectedSourceUuid) {
+      throw new TypeError("Fixed native equipment hydration requires exact source authority.");
+    }
+    const { packId } = this.#resolvePack(sourceUuid);
+    if (packId !== authority.expectedPackId) {
+      throw new TypeError("Fixed native equipment hydration requires exact pack authority.");
+    }
+    return this.#resolveHydratedForApply(context, sourceUuid, true);
+  }
+
+  async #resolveHydratedForApply(
+    context: EquipmentCatalogueContext,
+    sourceUuid: string,
+    allowOutsideEffectivePackSet: boolean
+  ): Promise<EquipmentCatalogueApplyResolution> {
     assertContext(context);
     const { pack, packId, documentId } = this.#resolvePack(sourceUuid);
-    if (!this.#equipmentPackIds.has(packId) || !context.policy.sourcePolicy.effectivePackIds.includes(packId)) {
+    if (
+      !allowOutsideEffectivePackSet &&
+      (!this.#equipmentPackIds.has(packId) || !context.policy.sourcePolicy.effectivePackIds.includes(packId))
+    ) {
       throw new TypeError(`Equipment source ${sourceUuid} is outside the current effective pack set.`);
     }
     const document = await pack.getDocument(documentId);

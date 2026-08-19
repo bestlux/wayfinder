@@ -199,9 +199,27 @@ export class EquipmentCatalogueService {
         return this.#previewResult(sourceUuid, candidate, next, context);
     }
     async resolveForApply(context, sourceUuid) {
+        return this.#resolveHydratedForApply(context, sourceUuid, false);
+    }
+    /**
+     * Hydrates one exact source for a caller that already proved fixed native-grant authority.
+     * This does not add the pack to catalogue projection, search, preview, or ordinary Apply.
+     */
+    async resolveFixedNativeSourceForApply(context, sourceUuid, authority) {
+        if (authority.kind !== "fixed-native-grant" || sourceUuid !== authority.expectedSourceUuid) {
+            throw new TypeError("Fixed native equipment hydration requires exact source authority.");
+        }
+        const { packId } = this.#resolvePack(sourceUuid);
+        if (packId !== authority.expectedPackId) {
+            throw new TypeError("Fixed native equipment hydration requires exact pack authority.");
+        }
+        return this.#resolveHydratedForApply(context, sourceUuid, true);
+    }
+    async #resolveHydratedForApply(context, sourceUuid, allowOutsideEffectivePackSet) {
         assertContext(context);
         const { pack, packId, documentId } = this.#resolvePack(sourceUuid);
-        if (!this.#equipmentPackIds.has(packId) || !context.policy.sourcePolicy.effectivePackIds.includes(packId)) {
+        if (!allowOutsideEffectivePackSet &&
+            (!this.#equipmentPackIds.has(packId) || !context.policy.sourcePolicy.effectivePackIds.includes(packId))) {
             throw new TypeError(`Equipment source ${sourceUuid} is outside the current effective pack set.`);
         }
         const document = await pack.getDocument(documentId);

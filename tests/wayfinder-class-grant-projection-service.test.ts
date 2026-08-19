@@ -580,7 +580,7 @@ describe("class-grant projection service", () => {
     const draft = classDraft(UUID.alchemist, "Alchemist");
     const policy = equipmentPolicy();
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -590,6 +590,7 @@ describe("class-grant projection service", () => {
       baseline: null,
       plannedClassGrants: [],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -598,6 +599,32 @@ describe("class-grant projection service", () => {
 
     await expect(
       projectCurrentClassGrants(actor, draft, SUBJECT.activeSteps, {
+        fetchDocumentByUuid,
+        pf2eVersion: "8.4.2",
+      })
+    ).resolves.toMatchObject({
+      grants: [],
+      preparedPlan: null,
+      blockers: [{ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }],
+    });
+    expect(fetchDocumentByUuid).not.toHaveBeenCalled();
+
+    draft.targetLevel = 2;
+    draft.acquisition = { ...draft.acquisition, targetLevel: 2 };
+    await expect(
+      projectCurrentClassGrants(actor, draft, SUBJECT.activeSteps, {
+        fetchDocumentByUuid,
+        pf2eVersion: "8.4.2",
+      })
+    ).resolves.toMatchObject({
+      grants: [],
+      preparedPlan: null,
+      blockers: [{ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }],
+    });
+
+    draft.applyCompletedStepIds = ["class-level-1"];
+    await expect(
+      projectCurrentClassGrants(actor, draft, [], {
         fetchDocumentByUuid,
         pf2eVersion: "8.4.2",
       })

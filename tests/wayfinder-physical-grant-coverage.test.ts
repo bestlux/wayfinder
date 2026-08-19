@@ -297,11 +297,50 @@ describe("physical-grant coverage", () => {
     ]);
   });
 
-  it("does not apply the level-1 coverage version pin to an ordinary later-level draft", () => {
+  it("applies the version pin when the level-1 starting-equipment surface is active", () => {
+    const draft = createEmptyDraft(1);
+
+    expect(
+      physicalGrantCoverageBlockers(draft, [{ slotId: "starting-equipment-level-1" } as PendingStep], "8.4.2")
+    ).toEqual([expect.objectContaining({ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" })]);
+  });
+
+  it("does not apply the level-1 coverage version pin to an ordinary later-level draft without level-1 evidence", () => {
     const draft = createEmptyDraft(2);
 
     expect(physicalGrantCoverageBlockers(draft, [], "8.4.2")).toEqual([]);
     expect(physicalGrantCoverageIssues(draft, [], null)).toEqual([]);
+  });
+
+  it("applies the version pin to active level-1 grant evidence in a later-level draft", () => {
+    const draft = createEmptyDraft(2);
+    draft.branchSelections["class-branch-innovation-level-1"] = selection(
+      "class-branch-innovation-level-1",
+      "Compendium.pf2e.classfeatures.Item.bok3P78CMchFibxC"
+    );
+
+    expect(
+      physicalGrantCoverageBlockers(draft, [{ slotId: "class-branch-innovation-level-1" } as PendingStep], "8.4.2")
+    ).toEqual([expect.objectContaining({ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" })]);
+  });
+
+  it("applies the version pin to frozen level-1 recovery evidence in a later-level draft", () => {
+    const draft = createEmptyDraft(2);
+    draft.selections["ancestry-feat-level-1"] = selection(
+      "ancestry-feat-level-1",
+      "Compendium.pf2e.feats-srd.Item.LvVg83ZDj8mabcWF"
+    );
+    draft.applyCompletedStepIds = ["ancestry-feat-level-1"];
+
+    expect(physicalGrantCoverageBlockers(draft, [], "8.4.2")).toEqual([
+      expect.objectContaining({ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }),
+    ]);
+
+    draft.applyCompletedStepIds = ["starting-equipment-level-1"];
+    delete draft.selections["ancestry-feat-level-1"];
+    expect(physicalGrantCoverageBlockers(draft, [], "8.4.2")).toEqual([
+      expect.objectContaining({ code: "coverage-version-mismatch", routeId: "pf2e-version-pin" }),
+    ]);
   });
 
   it("makes an otherwise complete rendered draft visibly not ready", () => {

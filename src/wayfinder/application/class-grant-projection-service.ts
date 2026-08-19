@@ -27,7 +27,7 @@ import {
   currentPf2eVersion,
   findUnsupportedPhysicalGrantRoutes,
   type PhysicalGrantCoverageBlocker,
-  physicalGrantCoverageVersionBlocker,
+  physicalGrantCoverageBlockers,
 } from "../domain/physical-grant-coverage.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
 
@@ -76,14 +76,13 @@ export async function projectCurrentClassGrants(
   if (!acquisition?.policySnapshot) {
     throw new TypeError("Starting-equipment Apply requires a reviewed equipment policy.");
   }
-  const versionBlocker =
-    acquisition.targetLevel === 1
-      ? physicalGrantCoverageVersionBlocker(
-          options.pf2eVersion === undefined ? currentPf2eVersion() : options.pf2eVersion
-        )
-      : null;
-  if (versionBlocker) {
-    return { grants: [], preparedPlan: null, blockers: [versionBlocker] };
+  const coverageBlockers = physicalGrantCoverageBlockers(
+    draft,
+    activeSteps,
+    options.pf2eVersion === undefined ? currentPf2eVersion() : options.pf2eVersion
+  );
+  if (coverageBlockers.length > 0) {
+    return { grants: [], preparedPlan: null, blockers: coverageBlockers };
   }
   const reviewed = acquisition.policySnapshot;
   const currentPolicy = resolveEquipmentPolicyForActor({

@@ -266,7 +266,9 @@ export function currentPf2eVersion() {
     return currentGame?.system?.id === "pf2e" && nonEmpty(currentGame.system.version) ? currentGame.system.version : null;
 }
 export function physicalGrantCoverageBlockers(draft, activeSteps, pf2eVersion = currentPf2eVersion()) {
-    const versionBlocker = draft.targetLevel === 1 ? physicalGrantCoverageVersionBlocker(pf2eVersion) : null;
+    const versionBlocker = hasLevelOnePhysicalGrantCoverageEvidence(draft, activeSteps)
+        ? physicalGrantCoverageVersionBlocker(pf2eVersion)
+        : null;
     return versionBlocker ? [versionBlocker] : findUnsupportedPhysicalGrantRoutes(draft, activeSteps);
 }
 export function physicalGrantCoverageIssues(draft, activeSteps, pf2eVersion = currentPf2eVersion()) {
@@ -318,6 +320,27 @@ export function findUnsupportedPhysicalGrantRoutes(draft, activeSteps) {
         ];
     });
 }
+const PHYSICAL_GRANT_STEP_KINDS = new Set([
+    "pick-item",
+    "singleton-choice",
+    "class-archetype",
+    "class-branch",
+    "class-choice",
+    "starting-equipment",
+]);
+function hasLevelOnePhysicalGrantCoverageEvidence(draft, activeSteps) {
+    if (activeSteps.some((step) => step.slotId === "starting-equipment-level-1" || (step.level === 1 && PHYSICAL_GRANT_STEP_KINDS.has(step.kind)))) {
+        return true;
+    }
+    const frozenSlotIds = [...draft.applyAttemptStepIds, ...draft.applyCompletedStepIds];
+    if (frozenSlotIds.includes("starting-equipment-level-1"))
+        return true;
+    const activeSlotIds = new Set([...activeSteps.map((step) => step.slotId), ...frozenSlotIds]);
+    return [
+        ...selectionFacts("selections", draft.selections, activeSlotIds),
+        ...selectionFacts("branchSelections", draft.branchSelections, activeSlotIds),
+    ].some((fact) => isLevelOneSlotId(fact.sourceSlotId));
+}
 function selectionFacts(channel, selections, activeSlotIds) {
     return Object.entries(selections).flatMap(([mapSlotId, selection]) => {
         if (mapSlotId !== selection.slotId || !activeSlotIds.has(mapSlotId))
@@ -327,5 +350,8 @@ function selectionFacts(channel, selections, activeSlotIds) {
 }
 function nonEmpty(value) {
     return typeof value === "string" && value.trim().length > 0;
+}
+function isLevelOneSlotId(slotId) {
+    return slotId.endsWith("-level-1");
 }
 //# sourceMappingURL=physical-grant-coverage.js.map

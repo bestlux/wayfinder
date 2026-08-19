@@ -348,7 +348,9 @@ export function physicalGrantCoverageBlockers(
   activeSteps: readonly PendingStep[],
   pf2eVersion: string | null = currentPf2eVersion()
 ): readonly PhysicalGrantCoverageBlocker[] {
-  const versionBlocker = draft.targetLevel === 1 ? physicalGrantCoverageVersionBlocker(pf2eVersion) : null;
+  const versionBlocker = hasLevelOnePhysicalGrantCoverageEvidence(draft, activeSteps)
+    ? physicalGrantCoverageVersionBlocker(pf2eVersion)
+    : null;
   return versionBlocker ? [versionBlocker] : findUnsupportedPhysicalGrantRoutes(draft, activeSteps);
 }
 
@@ -426,6 +428,35 @@ interface ActiveSelectionFact {
   readonly sourceUuid: string;
 }
 
+const PHYSICAL_GRANT_STEP_KINDS = new Set<PendingStep["kind"]>([
+  "pick-item",
+  "singleton-choice",
+  "class-archetype",
+  "class-branch",
+  "class-choice",
+  "starting-equipment",
+]);
+
+function hasLevelOnePhysicalGrantCoverageEvidence(draft: DraftState, activeSteps: readonly PendingStep[]): boolean {
+  if (
+    activeSteps.some(
+      (step) =>
+        step.slotId === "starting-equipment-level-1" || (step.level === 1 && PHYSICAL_GRANT_STEP_KINDS.has(step.kind))
+    )
+  ) {
+    return true;
+  }
+
+  const frozenSlotIds = [...draft.applyAttemptStepIds, ...draft.applyCompletedStepIds];
+  if (frozenSlotIds.includes("starting-equipment-level-1")) return true;
+
+  const activeSlotIds = new Set([...activeSteps.map((step) => step.slotId), ...frozenSlotIds]);
+  return [
+    ...selectionFacts("selections", draft.selections, activeSlotIds),
+    ...selectionFacts("branchSelections", draft.branchSelections, activeSlotIds),
+  ].some((fact) => isLevelOneSlotId(fact.sourceSlotId));
+}
+
 function selectionFacts(
   channel: PhysicalGrantSelectionChannel,
   selections: Readonly<Record<string, SelectionRef>>,
@@ -439,4 +470,8 @@ function selectionFacts(
 
 function nonEmpty(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isLevelOneSlotId(slotId: string): boolean {
+  return slotId.endsWith("-level-1");
 }

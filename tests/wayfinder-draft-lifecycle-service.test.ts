@@ -29,11 +29,11 @@ import {
 import type { AcquisitionDraftState } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
-import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 import {
   PHYSICAL_GRANT_COVERAGE_PF2E_VERSION,
   physicalGrantCoverageIssues,
 } from "../src/wayfinder/domain/physical-grant-coverage";
+import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 import type { WayfinderStepEvaluation } from "../src/wayfinder/domain/step-evaluation";
 
 describe("wayfinder draft lifecycle service", () => {

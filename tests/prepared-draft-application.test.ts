@@ -591,7 +591,7 @@ describe("prepared draft application", () => {
     Object.assign(actor, { id: "actor-1" });
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -601,6 +601,7 @@ describe("prepared draft application", () => {
       baseline: null,
       plannedClassGrants: [],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -621,6 +622,7 @@ describe("prepared draft application", () => {
         prepareClassGrantPlan,
         executeAcquisitionItems,
         executeAcquisitionCurrency,
+        persistAcquisitionCurrencyConvergenceWitness: TEST_CURRENCY_WITNESS_PERSISTENCE,
         verifyAcquisitionOutcome,
         readCurrentAcquisitionHistory,
         onCheckpoint,

@@ -446,6 +446,8 @@ export interface StartingEquipmentStepPane {
       quantity: number;
       priceLabel: string;
       fundingLabel: string;
+      canRemove: boolean;
+      canChangeQuantity: boolean;
       unavailableReason: string | null;
       focusId: string;
     }[];

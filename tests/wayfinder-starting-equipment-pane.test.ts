@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
+import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
 import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types";
 import { buildStartingEquipmentPane } from "../src/wayfinder/panes/starting-equipment-pane";
 import type { StartingEquipmentCatalogueRecord } from "../src/wayfinder/view-models";
-import { acquisitionFixture } from "./fixtures/acquisition-fixture";
+import { acquisitionFixture, acquisitionLine } from "./fixtures/acquisition-fixture";
 
 describe("starting equipment pane", () => {
   it("projects policy, catalogue, affordability, cart quantity, and review state without OptionRecord", () => {
@@ -62,6 +63,64 @@ describe("starting equipment pane", () => {
     expect(pane.catalogue.filters[0]).toMatchObject({ value: "equipment", selected: true });
     expect(pane.cart.lines[0]).toMatchObject({ quantity: 1, focusId: "starting-equipment-line:line-1" });
     expect(pane.review.canReviewPurchases).toBe(true);
+  });
+
+  it("projects class-grant cart lines as fixed and policy-authorized by their grant", () => {
+    const draft = createEmptyDraft(1);
+    const nativeGrant = fixedNativeGrant();
+    const nativeLine = acquisitionLine({
+      lineId: "native-line",
+      sourceUuid: nativeGrant.expected.sourceUuid,
+      itemLevel: 0,
+      funding: { lane: "class-grant", grant: { plannedGrantId: nativeGrant.grantId } },
+      stackingIntent: "separate",
+      policyDecision: {
+        ...acquisitionLine().policyDecision,
+        eligible: false,
+        rarity: "uncommon",
+      },
+    });
+    const titanLine = acquisitionLine({
+      lineId: "titan-line",
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.weapon",
+      documentFingerprint: "titan-document",
+      priceFingerprint: "titan-price",
+      itemLevel: 0,
+      funding: {
+        lane: "class-grant",
+        grant: { plannedGrantId: "class-grant:titan-mauler:class-branch-instinct-level-1" },
+      },
+      stackingIntent: "separate",
+    });
+    const titanGrant = titanMaulerGrant(titanLine);
+    draft.acquisition = acquisitionFixture({
+      disposition: "unreviewed",
+      lines: [nativeLine, titanLine],
+      plannedClassGrants: [nativeGrant, titanGrant],
+    }).draft;
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(1),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases or retain all", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        records: [],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+      }
+    );
+
+    expect(pane.cart.lines[0]).toMatchObject({
+      canRemove: false,
+      canChangeQuantity: false,
+      fundingLabel: "Automatic build grant · not charged",
+      unavailableReason: null,
+    });
+    expect(pane.cart.lines[1]).toMatchObject({ canRemove: true, canChangeQuantity: false });
   });
 
   it("renders dedicated search, filter, quantity, cart, retain-all, handoff, and focus controls", () => {
@@ -122,3 +181,53 @@ describe("starting equipment pane", () => {
     expect(pane.catalogue.items).toHaveLength(12);
   });
 });
+
+function fixedNativeGrant() {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:alchemist-formula-book:class-level-1",
+    profileId: "alchemist-formula-book",
+    origin: { sourceSlotId: "class-level-1", sourceUuid: u.alchemistClass },
+    granterSourceUuid: u.formulaBookFeature,
+    expected: { sourceUuid: u.formulaBookItem, quantity: 1, itemType: "equipment" },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+  });
+}
+
+function titanMaulerGrant(line: ReturnType<typeof acquisitionLine>) {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:titan-mauler:class-branch-instinct-level-1",
+    profileId: "giant-instinct-titan-mauler",
+    origin: { sourceSlotId: "class-branch-instinct-level-1", sourceUuid: u.giantInstinct },
+    granterSourceUuid: u.giantInstinct,
+    expected: { sourceUuid: line.sourceUuid, quantity: 1, itemType: "weapon" },
+    materializer: "wayfinder-acquisition",
+    eligibilityKind: "catalogue-choice",
+    resaleRule: "zero-until-rune-investment",
+    eligibilityEvidence: {
+      kind: "titan-mauler",
+      documentFingerprint: "titan-profile-document",
+      lineId: line.lineId,
+      lineDocumentFingerprint: line.documentFingerprint,
+      linePriceFingerprint: line.priceFingerprint,
+      policyFingerprint: "policy-diagnostic-1",
+      actorSize: "medium",
+      targetSize: "large",
+      basePriceCopper: line.price.unitPriceCopper,
+      weaponCategory: "martial",
+      rangeIncrement: null,
+      rarity: "common",
+      characterAccessRef: null,
+      sourceAllowed: true,
+      quantity: 1,
+      permanence: "permanent",
+      componentKind: "baseline-item",
+    },
+    nativeGrantChainSourceUuids: [],
+  });
+}

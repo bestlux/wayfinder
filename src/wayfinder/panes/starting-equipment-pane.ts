@@ -47,6 +47,7 @@ export function buildStartingEquipmentPane(
     };
   });
   const recordByUuid = new Map(catalogue.records.map((record) => [record.sourceUuid, record]));
+  const plannedGrantById = new Map(acquisition?.plannedClassGrants.map((grant) => [grant.grantId, grant]) ?? []);
   const preview = records.find((record) => record.previewing) ?? null;
   const cartLines =
     acquisition?.lines.map((line) => {
@@ -58,7 +59,14 @@ export function buildStartingEquipmentPane(
         quantity: line.price.requestedQuantity,
         priceLabel: formatCopper(line.price.linePriceCopper),
         fundingLabel: fundingLabel(line.funding.lane),
-        unavailableReason: line.policyDecision.eligible ? null : "This item no longer satisfies the effective policy.",
+        canRemove:
+          line.funding.lane !== "class-grant" ||
+          plannedGrantById.get(line.funding.grant.plannedGrantId)?.materializer !== "pf2e-native",
+        canChangeQuantity: line.funding.lane !== "class-grant",
+        unavailableReason:
+          line.funding.lane === "class-grant" || line.policyDecision.eligible
+            ? null
+            : "This item no longer satisfies the effective policy.",
         focusId: `starting-equipment-line:${line.lineId}`,
       };
     }) ?? [];
@@ -180,7 +188,7 @@ function authorityLabel(value: string): string {
 }
 
 function fundingLabel(lane: "allowance" | "currency" | "class-grant"): string {
-  if (lane === "class-grant") return "Class grant · not charged";
+  if (lane === "class-grant") return "Automatic build grant · not charged";
   if (lane === "allowance") return "Permanent-item allowance";
   return "Starting wealth";
 }

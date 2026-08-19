@@ -4,12 +4,14 @@ import { createAcquisitionPriceSnapshot, evaluateAcquisitionLedger, reviewPurcha
 import { createPreparedClassGrantPlan } from "../domain/class-grant-reconciliation.js";
 import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class-grant-projection-service.js";
 import { evaluateActorEconomicAdmission } from "./economic-baseline-service.js";
+import { getFoundryEquipmentAcquisitionRuntime, } from "./equipment-acquisition-runtime-service.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
 const DEFAULT_DEPS = {
     mintIdentity: mintAcquisitionIdentitySeed,
     resolvePolicy: resolveEquipmentPolicyForActor,
     projectClassGrants: projectCurrentClassGrants,
     prepareClassGrantPlan: prepareCurrentClassGrantPlan,
+    prepareNativeGrantLines: (request) => getFoundryEquipmentAcquisitionRuntime().prepareNativeClassGrantLines(request),
     evaluateAdmission: evaluateActorEconomicAdmission,
     evaluateLedger: evaluateAcquisitionLedger,
 };
@@ -95,6 +97,13 @@ async function initializeAcquisition(context, deps) {
             targetLevel: acquisition.targetLevel,
             grants: classGrantProjection.grants,
         });
+    const nativeGrantLines = await deps.prepareNativeGrantLines({
+        actor: context.actor,
+        characterDraft: { ...context.draft, acquisition },
+        acquisition,
+        classGrantPlan,
+    });
+    acquisition = synchronizeNativeGrantLines(acquisition, [], nativeGrantLines, false);
     const admission = deps.evaluateAdmission({
         actor: context.actor,
         draftId: acquisition.draftId,
@@ -117,9 +126,17 @@ async function initializeAcquisition(context, deps) {
 }
 async function prepareLedger(context, deps) {
     let acquisition = requireAcquisition(context.draft);
+    const priorPlannedClassGrants = acquisition.plannedClassGrants;
     const projectionDraft = { ...context.draft, acquisition };
     const classGrantPlan = await deps.prepareClassGrantPlan(context.actor, projectionDraft, context.steps);
     acquisition = recordPlannedClassGrants(acquisition, classGrantPlan.grants);
+    const nativeGrantLines = await deps.prepareNativeGrantLines({
+        actor: context.actor,
+        characterDraft: { ...context.draft, acquisition },
+        acquisition,
+        classGrantPlan,
+    });
+    acquisition = synchronizeNativeGrantLines(acquisition, priorPlannedClassGrants, nativeGrantLines, true);
     const ledger = deps.evaluateLedger(acquisition, classGrantPlan);
     return { acquisition, ledger };
 }
@@ -142,9 +159,17 @@ function removeLine(draft, lineId) {
         throw new TypeError("A PF2E-sheet handoff cannot change cart items.");
     if (!lineId.trim())
         throw new TypeError("Removing equipment requires a line ID.");
-    const lines = draft.lines.filter((line) => line.lineId !== lineId);
-    if (lines.length === draft.lines.length)
+    const current = draft.lines.find((line) => line.lineId === lineId);
+    if (!current)
         throw new TypeError("The starting-equipment line no longer exists.");
+    const plannedGrantId = current.funding.lane === "class-grant" ? current.funding.grant.plannedGrantId : null;
+    const plannedGrant = plannedGrantId
+        ? draft.plannedClassGrants.find((grant) => grant.grantId === plannedGrantId)
+        : null;
+    if (plannedGrant?.materializer === "pf2e-native") {
+        throw new TypeError("Automatic build-granted equipment cannot be removed from the starting-equipment plan.");
+    }
+    const lines = draft.lines.filter((line) => line.lineId !== lineId);
     return invalidateAcquisitionReview({ ...draft, lines }, ["document"]);
 }
 function setLineQuantity(draft, lineId, quantity) {
@@ -157,6 +182,9 @@ function setLineQuantity(draft, lineId, quantity) {
     if (index < 0)
         throw new TypeError("The starting-equipment line no longer exists.");
     const current = draft.lines[index];
+    if (current.funding.lane === "class-grant") {
+        throw new TypeError("Automatic build-granted equipment quantity is fixed by its authoritative grant.");
+    }
     const price = createAcquisitionPriceSnapshot({
         basePrice: current.price.basePrice,
         size: current.price.size,
@@ -173,6 +201,60 @@ function setLineQuantity(draft, lineId, quantity) {
     const lines = [...draft.lines];
     lines[index] = { ...current, price: price.value };
     return invalidateAcquisitionReview({ ...draft, lines }, ["quantity"]);
+}
+function synchronizeNativeGrantLines(draft, priorPlannedClassGrants, preparedLines, invalidateReview) {
+    const priorNativeGrantIds = new Set(priorPlannedClassGrants.filter((grant) => grant.materializer === "pf2e-native").map((grant) => grant.grantId));
+    const currentNativeGrantIds = new Set(draft.plannedClassGrants.filter((grant) => grant.materializer === "pf2e-native").map((grant) => grant.grantId));
+    const preparedByGrantId = new Map();
+    for (const line of preparedLines) {
+        if (line.funding.lane !== "class-grant") {
+            throw new TypeError("Native class-grant preparation returned a non-grant acquisition line.");
+        }
+        const grantId = line.funding.grant.plannedGrantId;
+        if (!currentNativeGrantIds.has(grantId) || preparedByGrantId.has(grantId)) {
+            throw new TypeError("Native class-grant preparation returned an invalid or duplicate grant line.");
+        }
+        preparedByGrantId.set(grantId, line);
+    }
+    if (preparedByGrantId.size !== currentNativeGrantIds.size) {
+        throw new TypeError("Native class-grant preparation did not cover every current native grant.");
+    }
+    const emitted = new Set();
+    const lines = [];
+    for (const line of draft.lines) {
+        const grantId = line.funding.lane === "class-grant" ? line.funding.grant.plannedGrantId : null;
+        if (grantId && (priorNativeGrantIds.has(grantId) || currentNativeGrantIds.has(grantId))) {
+            const replacement = preparedByGrantId.get(grantId);
+            if (replacement && !emitted.has(grantId)) {
+                lines.push(replacement);
+                emitted.add(grantId);
+            }
+            continue;
+        }
+        lines.push(line);
+    }
+    for (const [grantId, line] of preparedByGrantId) {
+        if (!emitted.has(grantId))
+            lines.push(line);
+    }
+    if (canonicalJson(draft.lines) === canonicalJson(lines))
+        return draft;
+    const acquisition = normalizeAcquisitionDraft({ ...draft, lines });
+    if (!acquisition)
+        throw new TypeError("Native class-grant preparation returned malformed acquisition lines.");
+    return invalidateReview ? invalidateAcquisitionReview(acquisition, ["document"]) : acquisition;
+}
+function canonicalJson(value) {
+    if (Array.isArray(value))
+        return `[${value.map(canonicalJson).join(",")}]`;
+    if (value !== null && typeof value === "object") {
+        const input = value;
+        return `{${Object.keys(input)
+            .sort()
+            .map((key) => `${JSON.stringify(key)}:${canonicalJson(input[key])}`)
+            .join(",")}}`;
+    }
+    return JSON.stringify(value);
 }
 function requireAcquisition(draft) {
     if (draft.acquisitionCorrupt)

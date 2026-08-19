@@ -12,6 +12,11 @@ import type {
   AcquisitionPolicySnapshot,
   AcquisitionPriceSnapshot,
 } from "../domain/acquisition-types.js";
+import {
+  assertPreparedClassGrantPlanMatches,
+  type PlannedClassGrantV1,
+  type PreparedClassGrantPlanV1,
+} from "../domain/class-grant-reconciliation.js";
 import type { EffectiveEquipmentPolicySnapshotV1, OfficialEquipmentRecipe } from "../domain/equipment-policy.js";
 import type { ResolvedAcquisitionSource } from "./acquisition-execution-service.js";
 import {
@@ -49,8 +54,18 @@ export interface EquipmentApplySourceRequest {
   readonly entry: PreparedAcquisitionEntryV1;
 }
 
+export interface NativeClassGrantLineRequest {
+  readonly actor: unknown;
+  readonly characterDraft: DraftState;
+  readonly acquisition: AcquisitionDraftState;
+  readonly classGrantPlan: PreparedClassGrantPlanV1;
+}
+
 export interface EquipmentAcquisitionRuntime {
   readonly uiAdapter: StartingEquipmentUiAdapter;
+  readonly prepareNativeClassGrantLines: (
+    request: NativeClassGrantLineRequest
+  ) => Promise<readonly AcquisitionLineDraft[]>;
   readonly resolveCurrentPolicySnapshot: (
     actor: unknown,
     acquisition: AcquisitionDraftState
@@ -185,6 +200,60 @@ export function createEquipmentAcquisitionRuntime(
 
   return {
     uiAdapter,
+    async prepareNativeClassGrantLines(request) {
+      const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
+      assertPreparedClassGrantPlanMatches({
+        plan: request.classGrantPlan,
+        actorId: policy.actorId,
+        draftId: request.acquisition.draftId,
+        batchId: request.acquisition.batchId,
+        targetLevel: request.acquisition.targetLevel,
+        persistedGrants: request.acquisition.plannedClassGrants,
+      });
+      const catalogue = catalogueFor(policy);
+      const nativeGrants = request.classGrantPlan.grants.filter((grant) => grant.materializer === "pf2e-native");
+      const lineIds = new Set(request.acquisition.lines.map((line) => line.lineId));
+      const prepared: AcquisitionLineDraft[] = [];
+      for (const grant of nativeGrants) {
+        assertFixedNativeGrant(grant);
+        const persisted = request.acquisition.lines.filter(
+          (line) => line.funding.lane === "class-grant" && line.funding.grant.plannedGrantId === grant.grantId
+        );
+        if (persisted.length > 1) {
+          throw new Error(`Native class grant ${grant.grantId} requires exactly one acquisition line.`);
+        }
+        const resolved = await catalogue.resolveForApply(context, grant.expected.sourceUuid);
+        assertFixedNativeSource(grant, resolved);
+        const lineId = persisted[0]?.lineId ?? mintLineId();
+        if (!lineId.trim() || (persisted.length === 0 && lineIds.has(lineId))) {
+          throw new TypeError("Native class-grant preparation requires a unique acquisition line ID.");
+        }
+        lineIds.add(lineId);
+        const price = buildResolvedPrice(resolved, 1, sourceSize(resolved.source));
+        if (price.materializedQuantity !== 1) {
+          throw new Error(`Native class grant ${grant.grantId} must resolve to exactly one item.`);
+        }
+        const line: AcquisitionLineDraft = {
+          schemaVersion: 1,
+          lineId,
+          sourceUuid: grant.expected.sourceUuid,
+          documentFingerprint: resolved.documentFingerprint,
+          priceFingerprint: resolved.priceFingerprint,
+          itemLevel: resolved.candidate.level,
+          permanence: "permanent",
+          componentKind: "baseline-item",
+          policyDecision: cloneData(resolved.policyDecision),
+          funding: { lane: "class-grant", grant: { plannedGrantId: grant.grantId } },
+          stackingIntent: "separate",
+          price,
+        };
+        if (persisted[0] && canonicalJson(persisted[0]) !== canonicalJson(line)) {
+          throw new Error(`Native class-grant source material drifted for ${grant.grantId}.`);
+        }
+        prepared.push(persisted[0] ?? line);
+      }
+      return Object.freeze(prepared);
+    },
     resolveCurrentPolicySnapshot(actor, acquisition) {
       return createAcquisitionPolicySnapshot(resolveEffectivePolicy(actor, acquisition), acquisition.recipe);
     },
@@ -235,6 +304,48 @@ export function createEquipmentAcquisitionRuntime(
       for (const catalogue of catalogues.values()) catalogue.invalidatePack(packId);
     },
   };
+}
+
+function assertFixedNativeGrant(grant: PlannedClassGrantV1): void {
+  if (
+    grant.materializer !== "pf2e-native" ||
+    grant.eligibilityKind !== "fixed-class-grant" ||
+    grant.eligibilityEvidence.kind !== "fixed-native-profile" ||
+    grant.expected.quantity !== 1 ||
+    (grant.expected.itemType !== "equipment" && grant.expected.itemType !== "weapon")
+  ) {
+    throw new TypeError(`Class grant ${grant.grantId} is not an authoritative fixed native profile.`);
+  }
+}
+
+function assertFixedNativeSource(grant: PlannedClassGrantV1, resolved: EquipmentCatalogueApplyResolution): void {
+  const authorityOnlyReasons = new Set(["rarity-not-available", "source-not-allowed"]);
+  const structuralReason = resolved.unavailableReasons.find((reason) => !authorityOnlyReasons.has(reason.code));
+  if (structuralReason) throw new Error(structuralReason.message);
+  if (
+    resolved.candidate.sourceUuid !== grant.expected.sourceUuid ||
+    resolved.candidate.itemType !== grant.expected.itemType ||
+    resolved.candidate.level !== 0 ||
+    permanence(resolved.candidate.itemType) !== "permanent"
+  ) {
+    throw new Error(`Native class-grant source material changed for ${grant.grantId}.`);
+  }
+  assertExactCompendiumSource(grant.expected.sourceUuid, resolved.source);
+}
+
+function assertExactCompendiumSource(sourceUuid: string, source: Readonly<Record<string, unknown>>): void {
+  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.([^.]+)$/.exec(sourceUuid);
+  if (!match) throw new TypeError(`Native class-grant source is not an exact Compendium Item UUID: ${sourceUuid}.`);
+  if (source._id !== match[2]) {
+    throw new Error(`Native class-grant source ${sourceUuid} returned a different document identity.`);
+  }
+  const statsSource = record(source._stats).compendiumSource;
+  const coreSource = record(record(source.flags).core).sourceId;
+  for (const identity of [statsSource, coreSource]) {
+    if (identity !== undefined && identity !== null && identity !== sourceUuid) {
+      throw new Error(`Native class-grant source ${sourceUuid} has mismatched source provenance.`);
+    }
+  }
 }
 
 let foundryRuntime: EquipmentAcquisitionRuntime | null = null;

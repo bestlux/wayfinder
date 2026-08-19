@@ -5,15 +5,25 @@ import {
   type EquipmentAcquisitionRuntime,
 } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
 import type { EquipmentCataloguePackLike } from "../src/wayfinder/application/equipment-catalogue-service";
-import { createAcquisitionDraft, createAcquisitionPolicySnapshot } from "../src/wayfinder/domain/acquisition-draft";
+import {
+  createAcquisitionDraft,
+  createAcquisitionPolicySnapshot,
+  recordPlannedClassGrants,
+} from "../src/wayfinder/domain/acquisition-draft";
 import type { PreparedAcquisitionEntryV1 } from "../src/wayfinder/domain/acquisition-identity";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
+import {
+  CLASS_GRANT_PROFILE_UUIDS,
+  createPlannedClassGrant,
+  createPreparedClassGrantPlan,
+} from "../src/wayfinder/domain/class-grant-reconciliation";
 import type { EffectiveEquipmentPolicySnapshotV1 } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 
 const PACK_ID = "pf2e.equipment-srd";
 const DAGGER_ID = "rQWaJhI5Bko5x14Z";
 const DAGGER_UUID = `Compendium.${PACK_ID}.Item.${DAGGER_ID}`;
+const FORMULA_BOOK_ID = "qCEOZ6109Yo34tRx";
 
 describe("equipment acquisition runtime", () => {
   it("projects the bounded level-1 catalogue and prepares a hydrated Dagger line", async () => {
@@ -114,6 +124,97 @@ describe("equipment acquisition runtime", () => {
     await expect(
       configured.runtime.uiAdapter.prepareLine({ ...configured.request, sourceUuid: DAGGER_UUID })
     ).rejects.toThrow(/precious-material|graded/i);
+  });
+
+  it("prepares and freshly validates an exact fixed native grant without granting blanket Access", async () => {
+    let currentSource = formulaBook();
+    const getDocument = vi.fn(async () => document(currentSource));
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [currentSource]),
+      getDocument,
+    });
+    const grant = fixedNativeGrant();
+    request.draft.acquisition = recordPlannedClassGrants(request.draft.acquisition!, [grant]);
+    const classGrantPlan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [grant],
+    });
+    const nativeRequest = {
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition!,
+      classGrantPlan,
+    } as const;
+
+    const lines = await runtime.prepareNativeClassGrantLines(nativeRequest);
+
+    expect(lines).toMatchObject([
+      {
+        lineId: "wf-line-test",
+        sourceUuid: CLASS_GRANT_PROFILE_UUIDS.formulaBookItem,
+        itemLevel: 0,
+        permanence: "permanent",
+        componentKind: "baseline-item",
+        stackingIntent: "separate",
+        funding: { lane: "class-grant", grant: { plannedGrantId: grant.grantId } },
+        policyDecision: {
+          eligible: false,
+          rarity: "uncommon",
+          characterAccessRef: null,
+        },
+        price: { requestedQuantity: 1, materializedQuantity: 1, linePriceCopper: 10 },
+      },
+    ]);
+    expect(lines[0]?.documentFingerprint).toMatch(/^equipment-document-v1-/u);
+    expect(lines[0]?.priceFingerprint).toMatch(/^equipment-price-v1-/u);
+    expect(getDocument).toHaveBeenCalledTimes(1);
+
+    request.draft.acquisition = { ...request.draft.acquisition!, lines: [...lines] };
+    const validated = await runtime.prepareNativeClassGrantLines({
+      ...nativeRequest,
+      acquisition: request.draft.acquisition,
+    });
+    expect(validated).toEqual(lines);
+    expect(validated[0]).toBe(lines[0]);
+    expect(getDocument).toHaveBeenCalledTimes(2);
+
+    currentSource = formulaBook({ priceSp: 2 });
+    await expect(
+      runtime.prepareNativeClassGrantLines({
+        ...nativeRequest,
+        acquisition: request.draft.acquisition,
+      })
+    ).rejects.toThrow(/source material drifted/i);
+    expect(getDocument).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects a hydrated native grant document with a different exact identity", async () => {
+    const source = formulaBook({ id: "different-item" });
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [source]),
+      getDocument: vi.fn(async () => document(source)),
+    });
+    const grant = fixedNativeGrant();
+    request.draft.acquisition = recordPlannedClassGrants(request.draft.acquisition!, [grant]);
+    const classGrantPlan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [grant],
+    });
+
+    await expect(
+      runtime.prepareNativeClassGrantLines({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition,
+        classGrantPlan,
+      })
+    ).rejects.toThrow(/different document identity/i);
   });
 });
 
@@ -217,6 +318,42 @@ function dagger(
 
 function document(source: ReturnType<typeof dagger>) {
   return { toObject: () => structuredClone(source) };
+}
+
+function formulaBook(options: { readonly id?: string; readonly priceSp?: number } = {}) {
+  return {
+    _id: options.id ?? FORMULA_BOOK_ID,
+    name: "Formula Book",
+    img: "icons/sundries/books/book-embossed-gold-red.webp",
+    type: "equipment",
+    _stats: { compendiumSource: CLASS_GRANT_PROFILE_UUIDS.formulaBookItem },
+    system: {
+      level: { value: 0 },
+      traits: { rarity: "uncommon", value: [] },
+      publication: { title: "Pathfinder Player Core" },
+      price: { value: { sp: options.priceSp ?? 1 } },
+      quantity: 1,
+      rules: [],
+      size: "med",
+      material: { type: null, grade: null },
+    },
+  };
+}
+
+function fixedNativeGrant() {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:alchemist-formula-book:class-level-1",
+    profileId: "alchemist-formula-book",
+    origin: { sourceSlotId: "class-level-1", sourceUuid: u.alchemistClass },
+    granterSourceUuid: u.formulaBookFeature,
+    expected: { sourceUuid: u.formulaBookItem, quantity: 1, itemType: "equipment" },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+  });
 }
 
 function preparedEntry(

@@ -26,6 +26,8 @@ export interface NormalizedPf2eEquipmentSources {
   readonly showUnknownSources: boolean;
 }
 
+const CORE_EQUIPMENT_PACK_ID = "pf2e.equipment-srd";
+
 export function normalizePf2eEquipmentSources(input: {
   readonly availablePackIds: readonly string[];
   readonly allowedPackFamilies: readonly string[];
@@ -34,9 +36,11 @@ export function normalizePf2eEquipmentSources(input: {
 }): NormalizedPf2eEquipmentSources {
   const packRoot = record(input.compendiumBrowserPacks);
   const equipment = record(packRoot.equipment);
+  const explicitlyConfiguredPacks = new Set(Object.keys(equipment));
   const families = new Set(input.allowedPackFamilies.map((value) => value.trim().toLowerCase()));
   const effectivePackIds = [...new Set(input.availablePackIds)]
     .filter((packId) => families.has(packFamily(packId)))
+    .filter((packId) => packId === CORE_EQUIPMENT_PACK_ID || explicitlyConfiguredPacks.has(packId))
     .filter((packId) => record(equipment[packId]).load !== false)
     .sort((left, right) => left.localeCompare(right));
 

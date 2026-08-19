@@ -51,6 +51,34 @@ describe("equipment policy service", () => {
     });
   });
 
+  it("defaults to the core equipment pack instead of treating every Item pack as equipment", () => {
+    expect(
+      normalizePf2eEquipmentSources({
+        availablePackIds: ["pf2e.actionspf2e", "pf2e.equipment-srd", "pf2e.spells-srd", "battlezoo.items"],
+        allowedPackFamilies: ["pf2e", "battlezoo"],
+        compendiumBrowserPacks: {},
+        compendiumBrowserSources: { sources: {} },
+      }).effectivePackIds
+    ).toEqual(["pf2e.equipment-srd"]);
+  });
+
+  it("adds only explicitly enabled equipment-tab packs and honors an explicit core disable", () => {
+    expect(
+      normalizePf2eEquipmentSources({
+        availablePackIds: ["pf2e.equipment-srd", "pf2e.spells-srd", "battlezoo.items", "battlezoo.feats"],
+        allowedPackFamilies: ["pf2e", "battlezoo"],
+        compendiumBrowserPacks: {
+          equipment: {
+            "pf2e.equipment-srd": { load: false },
+            "battlezoo.items": { load: true },
+            "battlezoo.feats": { load: false },
+          },
+        },
+        compendiumBrowserSources: { sources: {} },
+      }).effectivePackIds
+    ).toEqual(["battlezoo.items"]);
+  });
+
   it("uses PF2E's effective ABP API and preserves mode and actor override", () => {
     const actor = { flags: { pf2e: { disableABP: true } } };
     expect(

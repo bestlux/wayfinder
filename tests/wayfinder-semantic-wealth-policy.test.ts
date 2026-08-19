@@ -137,11 +137,11 @@ describe("semantic wealth policy", () => {
     expect(resolveBasePrice({ kind: "priced", copper: 0 })).toMatchObject({ ok: true, value: 0 });
     expect(resolveBasePrice({ kind: "missing" }).diagnostics[0]?.code).toBe("price-missing");
     expect(resolveBasePrice({ kind: "unparseable" }).diagnostics[0]?.code).toBe("price-unparseable");
-    expect(resolveRequestedPrice({ unitPriceCopper: 100, pricePer: 10, requestedQuantity: 21 }).value).toBe(300);
+    expect(resolveRequestedPrice({ unitPriceCopper: 100, pricePer: 10, requestedQuantity: 21 }).value).toBe(210);
     expect(resolveRequestedPrice({ unitPriceCopper: 100, pricePer: 0, requestedQuantity: 1 }).ok).toBe(false);
   });
 
-  it("applies ordinary size multipliers without repricing listed magic items or precious material", () => {
+  it("applies ordinary size multipliers without repricing fixed prices or precious material", () => {
     for (const [size, copper] of [
       ["tiny", 100],
       ["small", 100],
@@ -151,14 +151,14 @@ describe("semantic wealth policy", () => {
       ["gargantuan", 800],
     ] as const) {
       expect(
-        resolveSizePricing({ baseCopper: 100, size, listedMagicPrice: false, preciousMaterial: false }).value?.copper
+        resolveSizePricing({ baseCopper: 100, size, sizeSensitive: true, preciousMaterial: false }).value?.copper
       ).toBe(copper);
     }
     expect(
-      resolveSizePricing({ baseCopper: 100, size: "gargantuan", listedMagicPrice: true, preciousMaterial: false }).value
-    ).toEqual({ copper: 100, strategy: "listed" });
+      resolveSizePricing({ baseCopper: 100, size: "gargantuan", sizeSensitive: false, preciousMaterial: false }).value
+    ).toEqual({ copper: 100, strategy: "fixed-price" });
     expect(
-      resolveSizePricing({ baseCopper: 100, size: "large", listedMagicPrice: false, preciousMaterial: true }).value
+      resolveSizePricing({ baseCopper: 100, size: "large", sizeSensitive: true, preciousMaterial: true }).value
     ).toEqual({ copper: null, strategy: "adjusted-bulk-material" });
   });
 

@@ -84,7 +84,7 @@ function resolveRequestedPrice(options) {
     if (!Number.isInteger(options.requestedQuantity) || options.requestedQuantity <= 0) {
         return failure("quantity-invalid", "explicit-zero-price", "Requested quantity must be a positive integer.");
     }
-    return success(Math.ceil(options.requestedQuantity / options.pricePer) * options.unitPriceCopper);
+    return success(Math.floor((options.requestedQuantity / options.pricePer) * options.unitPriceCopper));
 }
 function resolveSizePricing(options) {
     const base = resolveBasePrice({ kind: "priced", copper: options.baseCopper });
@@ -92,8 +92,8 @@ function resolveSizePricing(options) {
         return base;
     if (options.preciousMaterial)
         return success({ copper: null, strategy: "adjusted-bulk-material" });
-    if (options.listedMagicPrice)
-        return success({ copper: options.baseCopper, strategy: "listed" });
+    if (!options.sizeSensitive)
+        return success({ copper: options.baseCopper, strategy: "fixed-price" });
     const multiplier = options.size === "large" ? 2 : options.size === "huge" ? 4 : options.size === "gargantuan" ? 8 : 1;
     return success({ copper: options.baseCopper * multiplier, strategy: "size-multiplier" });
 }

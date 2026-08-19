@@ -1,3 +1,4 @@
+import type { AcquisitionDraftState } from "./wayfinder/domain/acquisition-types.js";
 import type { SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
 import type { CampaignFeatFilter as CampaignFeatFilterType, PendingStep } from "./wayfinder/domain/step-types.js";
 
@@ -71,6 +72,7 @@ export interface BoostDraftState {
 export interface DraftState {
   version: number;
   targetLevel: number;
+  acquisition: AcquisitionDraftState | null;
   applyAttemptStepIds: string[];
   applyCompletedStepIds: string[];
   applyRecoveryActorUpdate: Record<string, unknown>;

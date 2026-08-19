@@ -210,7 +210,7 @@ Acceptance:
 - Installed-journal compatibility produces an explicit `match`, `diff`, or `unavailable` result; `diff` is classified as structural or semantic. Anything other than a reviewed `match` blocks compatibility sign-off and never changes runtime values.
 - Record attribution/license treatment before merge.
 
-Implementation note (2026-08-16): the extractor, generated artifact, runtime facade, clean-tree check, and live compatibility probe are implemented. The attribution gate remains open because a GM-Core-only ORC notice would not accurately describe the mixed ORC/OGL provenance already present in the product; see the rules-assurance contract. This story is not release-complete until that product-wide notice decision is resolved.
+Implementation note (2026-08-18): the extractor, generated artifact, runtime facade, clean-tree check, live compatibility probe, and product-level notice treatment are complete. Provenance remains an engineering review boundary rather than a separate publication gate; see the rules-assurance contract.
 
 ### WF-080-11 — Cited semantic wealth policy
 

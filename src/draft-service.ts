@@ -14,19 +14,21 @@ import {
   migrateLegacyClassArchetypeBranches,
   STANDARD_CLASS_PATH,
 } from "./wayfinder/class-archetype/registry.js";
+import { normalizeAcquisitionDraft, reconcileAcquisitionTargetLevel } from "./wayfinder/domain/acquisition-draft.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
 import {
   normalizeAppliedSpellRarityAttestation,
   normalizeSpellRarityAttestation,
 } from "./wayfinder/spell-choice/rarity-attestation.js";
 
-const DRAFT_VERSION = 13;
+const DRAFT_VERSION = 14;
 const STATE_VERSION = 3;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
   return {
     version: DRAFT_VERSION,
     targetLevel: clampLevel(targetLevel),
+    acquisition: null,
     applyAttemptStepIds: [],
     applyCompletedStepIds: [],
     applyRecoveryActorUpdate: {},
@@ -60,6 +62,8 @@ export function createEmptyState(): ModuleState {
 
 export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): DraftState {
   const draft = isRecord(raw) ? (raw as Partial<DraftState>) : {};
+  const targetLevel = clampLevel(typeof draft.targetLevel === "number" ? draft.targetLevel : fallbackTargetLevel);
+  const acquisition = normalizeAcquisitionDraft(draft.acquisition);
   const branchSelections = sanitizeSelections(draft.branchSelections);
   const classArchetypeChoices = Object.fromEntries(
     Object.entries(sanitizeChoiceValues(draft.classArchetypeChoices)).filter(
@@ -95,7 +99,8 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
 
   return {
     version: DRAFT_VERSION,
-    targetLevel: clampLevel(typeof draft.targetLevel === "number" ? draft.targetLevel : fallbackTargetLevel),
+    targetLevel,
+    acquisition: acquisition ? reconcileAcquisitionTargetLevel(acquisition, targetLevel) : null,
     applyAttemptStepIds: sanitizeStepIds(draft.applyAttemptStepIds),
     applyCompletedStepIds: sanitizeStepIds(draft.applyCompletedStepIds),
     applyRecoveryActorUpdate: sanitizeRecoveryActorUpdate(draft.applyRecoveryActorUpdate),

@@ -217,7 +217,7 @@ function resolveRequestedPrice(options: {
   if (!Number.isInteger(options.requestedQuantity) || options.requestedQuantity <= 0) {
     return failure("quantity-invalid", "explicit-zero-price", "Requested quantity must be a positive integer.");
   }
-  return success(Math.ceil(options.requestedQuantity / options.pricePer) * options.unitPriceCopper);
+  return success(Math.floor((options.requestedQuantity / options.pricePer) * options.unitPriceCopper));
 }
 
 export type EquipmentSize = "tiny" | "small" | "medium" | "large" | "huge" | "gargantuan";
@@ -225,13 +225,16 @@ export type EquipmentSize = "tiny" | "small" | "medium" | "large" | "huge" | "ga
 function resolveSizePricing(options: {
   baseCopper: number;
   size: EquipmentSize;
-  listedMagicPrice: boolean;
+  sizeSensitive: boolean;
   preciousMaterial: boolean;
-}): SemanticWealthResult<{ copper: number | null; strategy: "listed" | "size-multiplier" | "adjusted-bulk-material" }> {
+}): SemanticWealthResult<{
+  copper: number | null;
+  strategy: "fixed-price" | "size-multiplier" | "adjusted-bulk-material";
+}> {
   const base = resolveBasePrice({ kind: "priced", copper: options.baseCopper });
   if (!base.ok) return base as SemanticWealthResult<never>;
   if (options.preciousMaterial) return success({ copper: null, strategy: "adjusted-bulk-material" });
-  if (options.listedMagicPrice) return success({ copper: options.baseCopper, strategy: "listed" });
+  if (!options.sizeSensitive) return success({ copper: options.baseCopper, strategy: "fixed-price" });
   const multiplier = options.size === "large" ? 2 : options.size === "huge" ? 4 : options.size === "gargantuan" ? 8 : 1;
   return success({ copper: options.baseCopper * multiplier, strategy: "size-multiplier" });
 }

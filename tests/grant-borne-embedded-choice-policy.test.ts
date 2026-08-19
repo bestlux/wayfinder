@@ -756,6 +756,7 @@ async function buildGrantSteps(
     draft: {
       version: 1,
       targetLevel: 2,
+      acquisition: null,
       applyAttemptStepIds: [],
       applyCompletedStepIds: [],
       applyRecoveryActorUpdate: {},

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getPackIndex, invalidatePackSourceCaches } from "../src/pack/access";
-import { registerPackSourceCacheInvalidation } from "../src/pack/cache-invalidation";
+import { invalidatePackSources, registerPackSourceCacheInvalidation } from "../src/pack/cache-invalidation";
 
 const testGlobals = globalThis as typeof globalThis & { Hooks: any };
 
@@ -43,5 +43,19 @@ describe("pack source cache invalidation hooks", () => {
     callbacks.get("createItem")?.({ pack: null });
 
     expect(rerender).not.toHaveBeenCalled();
+  });
+
+  it("invalidates source caches for settings changes outside the source manager", async () => {
+    const entries = [{ _id: "first" }];
+    const pack = { getIndex: vi.fn(async () => entries) } as any;
+    const rerender = vi.fn();
+
+    expect(await getPackIndex(pack, "third-party.feats")).toEqual([{ _id: "first" }]);
+    entries.splice(0, entries.length, { _id: "second" });
+
+    invalidatePackSources(rerender);
+
+    expect(await getPackIndex(pack, "third-party.feats")).toEqual([{ _id: "second" }]);
+    expect(rerender).toHaveBeenCalledOnce();
   });
 });

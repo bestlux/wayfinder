@@ -9,6 +9,10 @@ const sheetControls = readFileSync(resolve("src/sheet-controls.ts"), "utf8");
 const bootstrap = readFileSync(resolve("src/wayfinder.ts"), "utf8");
 
 describe("Foundry smoke lifecycle contract", () => {
+  it("invalidates source-derived caches for every extra-pack setting mutation", () => {
+    expect(bootstrap).toContain("onExtraPacksChange: () => invalidatePackSources(rerenderOpenWayfinderApps)");
+  });
+
   it("passes typed step evaluation through every draft lifecycle path", () => {
     expect(browserSuite.match(/modules\.applyDraftLifecycle\(\{/g)).toHaveLength(2);
     expect(

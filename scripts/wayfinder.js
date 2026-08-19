@@ -2,7 +2,7 @@ import { CompendiumSourceConfigApp } from "./compendium-source-config-app.js";
 import { MODULE_ID } from "./constants.js";
 import { EquipmentPolicyConfigApp } from "./equipment-policy-config-app.js";
 import { FeedbackSupportApp } from "./feedback-support-app.js";
-import { registerPackSourceCacheInvalidation } from "./pack/cache-invalidation.js";
+import { invalidatePackSources, registerPackSourceCacheInvalidation } from "./pack/cache-invalidation.js";
 import { registerSettings } from "./settings.js";
 import { preloadHandlebarsTemplates } from "./shared/foundry-compat.js";
 import { registerSheetControls, registerWayfinderActorRefresh, rerenderOpenWayfinderApps } from "./sheet-controls.js";
@@ -12,7 +12,7 @@ Hooks.once("init", () => {
         compendiumSourcesMenuType: CompendiumSourceConfigApp,
         equipmentPolicyMenuType: EquipmentPolicyConfigApp,
         feedbackMenuType: FeedbackSupportApp,
-        onExtraPacksChange: rerenderOpenWayfinderApps,
+        onExtraPacksChange: () => invalidatePackSources(rerenderOpenWayfinderApps),
         onSpellRarityCeilingChange: rerenderOpenWayfinderApps,
     });
     void preloadHandlebarsTemplates([

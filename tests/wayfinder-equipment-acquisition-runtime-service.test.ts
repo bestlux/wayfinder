@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import { projectPlannedClassGrants } from "../src/wayfinder/application/class-grant-projection-service";
 import {
+  commitTitanMaulerLineSynchronization,
   createEquipmentAcquisitionRuntime,
   type EquipmentAcquisitionRuntime,
 } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
@@ -16,12 +17,15 @@ import {
   recordPlannedClassGrants,
 } from "../src/wayfinder/domain/acquisition-draft";
 import type { PreparedAcquisitionEntryV1 } from "../src/wayfinder/domain/acquisition-identity";
+import { evaluateAcquisitionLedger, reviewRetainAll } from "../src/wayfinder/domain/acquisition-ledger";
+import type { AcquisitionDraftState, AcquisitionLineDraft } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
 import {
   CLASS_GRANT_PROFILE_UUIDS,
   createPlannedClassGrant,
   createPreparedClassGrantPlan,
 } from "../src/wayfinder/domain/class-grant-reconciliation";
+import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import type { EffectiveEquipmentPolicySnapshotV1 } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 
@@ -301,6 +305,265 @@ describe("equipment acquisition runtime", () => {
     ).rejects.toThrow(/9 gp or less/i);
   });
 
+  it.each([
+    "class",
+    "instinct",
+  ] as const)("removes and invalidates a reviewed Titan line when the drafted %s changes away", async (changedSelection) => {
+    const source = dagger({ priceGp: 9 });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      {
+        fetchDocumentByUuid: async (uuid) =>
+          uuid === ANCESTRY_UUID ? { type: "ancestry", system: { size: "med" } } : null,
+      }
+    );
+    selectGiantInstinct(request.draft);
+    const line = await runtime.uiAdapter.prepareTitanMaulerLine({ ...request, sourceUuid: DAGGER_UUID });
+    request.draft.acquisition = await reviewedTitanAcquisitionWithLine(request.draft, line, source);
+
+    if (changedSelection === "class") {
+      request.draft.selections["class-level-1"] = {
+        ...request.draft.selections["class-level-1"]!,
+        documentId: "other-class",
+        uuid: "Compendium.pf2e.classes.Item.other-class",
+        name: "Fighter",
+      };
+    } else {
+      request.draft.branchSelections.instinct = {
+        ...request.draft.branchSelections.instinct!,
+        documentId: "other-instinct",
+        uuid: "Compendium.pf2e.classfeatures.Item.other-instinct",
+        name: "Animal Instinct",
+      };
+    }
+
+    const result = await runtime.synchronizeTitanMaulerLine({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+    });
+    expect(result).toMatchObject({ changed: true, reason: "build-changed" });
+    expect(result.acquisition.lines).toEqual([]);
+    expect(result.acquisition.disposition).toMatchObject({ kind: "unreviewed", reasons: ["document"] });
+  });
+
+  it("removes a reviewed Large Titan line when the ancestry changes from Medium to Large", async () => {
+    let ancestrySize = "med";
+    const source = dagger({ priceGp: 9 });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      {
+        fetchDocumentByUuid: async (uuid) =>
+          uuid === ANCESTRY_UUID ? { type: "ancestry", system: { size: ancestrySize } } : null,
+      }
+    );
+    selectGiantInstinct(request.draft);
+    const line = await runtime.uiAdapter.prepareTitanMaulerLine({ ...request, sourceUuid: DAGGER_UUID });
+    request.draft.acquisition = await reviewedTitanAcquisitionWithLine(request.draft, line, source);
+    ancestrySize = "lg";
+
+    const result = await runtime.synchronizeTitanMaulerLine({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+    });
+    expect(result).toMatchObject({ changed: true, reason: "size-changed" });
+    expect(result.acquisition.lines).toEqual([]);
+    expect(result.acquisition.disposition).toMatchObject({ kind: "unreviewed", reasons: ["document"] });
+  });
+
+  it("preserves a reviewed Titan line byte-for-byte after an unrelated draft choice", async () => {
+    const source = dagger({ priceGp: 9 });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      {
+        fetchDocumentByUuid: async (uuid) =>
+          uuid === ANCESTRY_UUID ? { type: "ancestry", system: { size: "med" } } : null,
+      }
+    );
+    selectGiantInstinct(request.draft);
+    const line = await runtime.uiAdapter.prepareTitanMaulerLine({ ...request, sourceUuid: DAGGER_UUID });
+    request.draft.acquisition = await reviewedTitanAcquisitionWithLine(request.draft, line, source);
+    const reviewed = request.draft.acquisition;
+    request.draft.selections["background-level-1"] = {
+      slotId: "background-level-1",
+      packId: "pf2e.backgrounds",
+      documentId: "background",
+      uuid: "Compendium.pf2e.backgrounds.Item.background",
+      itemType: "background",
+      featType: null,
+      name: "Scholar",
+      level: 0,
+    };
+
+    const result = await runtime.synchronizeTitanMaulerLine({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: reviewed,
+    });
+    expect(result).toEqual({ acquisition: reviewed, changed: false, reason: null });
+  });
+
+  it("removes deterministic Titan source drift but preserves and invalidates on transient hydration failure", async () => {
+    let currentSource = dagger({ priceGp: 9 });
+    let ancestryHydrationFails = false;
+    let ancestryHydrationMissing = false;
+    let hydrationFails = false;
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [currentSource]),
+        getDocument: vi.fn(async () => {
+          if (hydrationFails) throw new Error("temporary pack failure");
+          return document(currentSource);
+        }),
+      },
+      {
+        fetchDocumentByUuid: async (uuid) => {
+          if (ancestryHydrationFails) throw new Error("temporary ancestry pack failure");
+          if (ancestryHydrationMissing) return null;
+          return uuid === ANCESTRY_UUID ? { type: "ancestry", system: { size: "med" } } : null;
+        },
+      }
+    );
+    selectGiantInstinct(request.draft);
+    const line = await runtime.uiAdapter.prepareTitanMaulerLine({ ...request, sourceUuid: DAGGER_UUID });
+    request.draft.acquisition = await reviewedTitanAcquisitionWithLine(request.draft, line, currentSource);
+
+    ancestryHydrationFails = true;
+    const ancestryTransient = await runtime.synchronizeTitanMaulerLine({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+    });
+    expect(ancestryTransient).toMatchObject({
+      changed: true,
+      reason: "verification-failed",
+      acquisition: {
+        lines: [{ lineId: line.lineId }],
+        disposition: { kind: "unreviewed", reasons: ["document"] },
+      },
+    });
+    ancestryHydrationFails = false;
+    ancestryHydrationMissing = true;
+    const ancestryMissing = await runtime.synchronizeTitanMaulerLine({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+    });
+    expect(ancestryMissing).toMatchObject({
+      reason: "verification-failed",
+      acquisition: { lines: [{ lineId: line.lineId }] },
+    });
+    ancestryHydrationMissing = false;
+
+    currentSource = dagger({ priceGp: 10 });
+    const drift = await runtime.synchronizeTitanMaulerLine({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+    });
+    expect(drift).toMatchObject({ changed: true, reason: "source-changed", acquisition: { lines: [] } });
+
+    currentSource = dagger({ priceGp: 9 });
+    hydrationFails = true;
+    const transient = await runtime.synchronizeTitanMaulerLine({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: await reviewedTitanAcquisitionWithLine(request.draft, line, currentSource),
+    });
+    expect(transient).toMatchObject({
+      changed: true,
+      reason: "verification-failed",
+      acquisition: {
+        lines: [{ lineId: line.lineId }],
+        disposition: { kind: "unreviewed", reasons: ["document"] },
+      },
+    });
+  });
+
+  it("discards a stale transient sync result after a newer class-away removal", async () => {
+    let blockAncestryHydration = false;
+    let rejectAncestryHydration: ((reason?: unknown) => void) | null = null;
+    const source = dagger({ priceGp: 9 });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      {
+        fetchDocumentByUuid: async (uuid) => {
+          if (uuid !== ANCESTRY_UUID) return null;
+          if (!blockAncestryHydration) return { type: "ancestry", system: { size: "med" } };
+          return new Promise<never>((_resolve, reject) => {
+            rejectAncestryHydration = reject;
+          });
+        },
+      }
+    );
+    selectGiantInstinct(request.draft);
+    const line = await runtime.uiAdapter.prepareTitanMaulerLine({ ...request, sourceUuid: DAGGER_UUID });
+    request.draft.acquisition = await reviewedTitanAcquisitionWithLine(request.draft, line, source);
+
+    const staleAcquisition = request.draft.acquisition;
+    const staleDraftFingerprint = JSON.stringify(request.draft);
+    blockAncestryHydration = true;
+    const stalePending = runtime.synchronizeTitanMaulerLine({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: staleAcquisition,
+    });
+    await Promise.resolve();
+
+    request.draft.selections["class-level-1"] = {
+      ...request.draft.selections["class-level-1"]!,
+      documentId: "other-class",
+      uuid: "Compendium.pf2e.classes.Item.other-class",
+      name: "Fighter",
+    };
+    const currentAcquisition = request.draft.acquisition;
+    const currentDraftFingerprint = JSON.stringify(request.draft);
+    const currentResult = await runtime.synchronizeTitanMaulerLine({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: currentAcquisition,
+    });
+    expect(
+      commitTitanMaulerLineSynchronization({
+        draft: request.draft,
+        expectedAcquisition: currentAcquisition,
+        expectedDraftFingerprint: currentDraftFingerprint,
+        currentDraftFingerprint: JSON.stringify(request.draft),
+        result: currentResult,
+      })
+    ).toBe(true);
+    expect(request.draft.acquisition?.lines).toEqual([]);
+
+    const rejectPending = rejectAncestryHydration;
+    if (!rejectPending) throw new Error("The ancestry hydration did not reach the controlled interleaving point.");
+    rejectPending(new Error("temporary ancestry pack failure"));
+    const staleResult = await stalePending;
+    expect(staleResult).toMatchObject({ changed: true, reason: "verification-failed" });
+    expect(
+      commitTitanMaulerLineSynchronization({
+        draft: request.draft,
+        expectedAcquisition: staleAcquisition,
+        expectedDraftFingerprint: staleDraftFingerprint,
+        currentDraftFingerprint: JSON.stringify(request.draft),
+        result: staleResult,
+      })
+    ).toBe(false);
+    expect(request.draft.acquisition?.lines).toEqual([]);
+  });
+
   it("prepares and freshly validates an exact fixed native grant without granting blanket Access", async () => {
     let currentSource = formulaBook();
     const getDocument = vi.fn(async () => document(currentSource));
@@ -392,6 +655,55 @@ describe("equipment acquisition runtime", () => {
     ).rejects.toThrow(/different document identity/i);
   });
 });
+
+async function reviewedTitanAcquisitionWithLine(
+  characterDraft: ReturnType<typeof createEmptyDraft>,
+  line: AcquisitionLineDraft,
+  source: ReturnType<typeof dagger>
+): Promise<AcquisitionDraftState> {
+  let acquisition: AcquisitionDraftState = {
+    ...characterDraft.acquisition!,
+    lines: [line],
+    plannedClassGrants: [],
+    classGrantReconciliations: [],
+    disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    baseline: createEconomicBaseline({
+      actorId: "actor-1",
+      capturedAt: "2026-08-19T20:00:00.000Z",
+      currencyCopper: 0,
+      physicalItems: [],
+    }),
+  };
+  characterDraft.acquisition = acquisition;
+  const projection = await projectPlannedClassGrants({
+    draft: characterDraft,
+    actorId: "actor-1",
+    draftId: acquisition.draftId,
+    batchId: acquisition.batchId,
+    targetLevel: acquisition.targetLevel,
+    activeSteps: [
+      { slotId: "ancestry-level-1" },
+      { slotId: "class-level-1" },
+      { slotId: "class-branch-instinct-level-1" },
+    ] as never,
+    observedActorItems: [],
+    currentEquipmentPolicy: policy(),
+    actorSize: "medium",
+    fetchDocumentByUuid: async (uuid) => titanProjectionDocument(uuid, source),
+  });
+  if (!projection.preparedPlan || projection.blockers.length > 0) {
+    throw new Error(projection.blockers[0]?.message ?? "Titan test projection failed.");
+  }
+  acquisition = recordPlannedClassGrants(acquisition, projection.grants);
+  characterDraft.acquisition = acquisition;
+  const ledger = evaluateAcquisitionLedger(acquisition, projection.preparedPlan);
+  const reviewed = reviewRetainAll(acquisition, ledger, {
+    userId: "owner-1",
+    reviewedAt: "2026-08-19T20:01:00.000Z",
+  });
+  characterDraft.acquisition = reviewed;
+  return reviewed;
+}
 
 function fixture(
   pack: Pick<EquipmentCataloguePackLike, "getIndex" | "getDocument">,

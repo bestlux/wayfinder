@@ -86,7 +86,10 @@ import {
   updateActorWithPersistedDraftPrecondition,
   WayfinderDraftWriteConflictError,
 } from "./application/draft-write-guard.js";
-import { getFoundryEquipmentAcquisitionRuntime } from "./application/equipment-acquisition-runtime-service.js";
+import {
+  commitTitanMaulerLineSynchronization,
+  getFoundryEquipmentAcquisitionRuntime,
+} from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
 import {
@@ -1738,6 +1741,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     } else if (languageChanged) {
       this.#statusNote = "Wayfinder marked drafted language choices for review after the projected build changed.";
     }
+    this.#statusNote = (await this.#synchronizeTitanMaulerLine()) ?? this.#statusNote;
   }
 
   #abilityLabel(attribute: AbilityKey): string {
@@ -1862,7 +1866,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
-    this.#statusNote = result.statusNote;
+    this.#statusNote = (await this.#synchronizeTitanMaulerLine()) ?? result.statusNote;
     if (result.shouldAdvance) {
       await this.#moveStep(1);
       return;
@@ -1870,6 +1874,42 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     if (result.shouldRender) {
       this.render(false);
+    }
+  }
+
+  async #synchronizeTitanMaulerLine(): Promise<string | null> {
+    const draft = this.#requireDraft();
+    const acquisition = draft.acquisition;
+    if (!acquisition) return null;
+    const expectedDraftFingerprint = draftFingerprint(draft);
+    const result = await getFoundryEquipmentAcquisitionRuntime().synchronizeTitanMaulerLine({
+      actor: this.actor,
+      characterDraft: draft,
+      acquisition,
+    });
+    if (
+      this.#requireDraft() !== draft ||
+      !commitTitanMaulerLineSynchronization({
+        draft,
+        expectedAcquisition: acquisition,
+        expectedDraftFingerprint,
+        currentDraftFingerprint: draftFingerprint(draft),
+        result,
+      })
+    ) {
+      return null;
+    }
+    switch (result.reason) {
+      case "build-changed":
+        return "Wayfinder removed the Titan Mauler weapon because Giant Instinct is no longer in this drafted build.";
+      case "size-changed":
+        return "Wayfinder removed the Titan Mauler weapon because the drafted ancestry requires a different weapon size. Choose it again.";
+      case "source-changed":
+        return "Wayfinder removed the Titan Mauler weapon because its current source or Access eligibility changed. Choose an eligible weapon again.";
+      case "verification-failed":
+        return "Wayfinder could not revalidate the Titan Mauler weapon after this build change. The choice was preserved, but equipment review must succeed again before Apply.";
+      default:
+        return null;
     }
   }
 

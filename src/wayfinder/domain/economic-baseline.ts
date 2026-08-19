@@ -42,6 +42,11 @@ export interface EconomicRetryExpectation {
   readonly batchId: string;
   readonly manifestId: string;
   readonly expectedCurrencyCopper: number;
+  /**
+   * Permits a persisted retain-all recovery to recognize an already-converged
+   * currency write when there are intentionally no stamped item identities.
+   */
+  readonly allowCurrencyOnlyConvergence?: boolean;
   readonly expectedEntries: readonly {
     readonly entryId: string;
     readonly plannedItemId: string;
@@ -273,8 +278,16 @@ export function evaluateEconomicAdmission(args: {
   }
   if (unresolved.length > 0) handoffReasons.push({ code: "unresolved-class-grant", grantIds: unresolved });
   if (ambiguous.length > 0) handoffReasons.push({ code: "ambiguous-class-grant", grantIds: ambiguous });
+  const currencyOnlyRetryMatches =
+    !!retry &&
+    retry.allowCurrencyOnlyConvergence === true &&
+    retry.expectedEntries.length === 0 &&
+    retry.expectedCurrencyCopper > 0 &&
+    baseline.currencyCopper === retry.expectedCurrencyCopper;
   const retryCurrencyMatches =
-    !!retry && observedRetryEntries.length > 0 && baseline.currencyCopper === retry.expectedCurrencyCopper;
+    !!retry &&
+    (observedRetryEntries.length > 0 || currencyOnlyRetryMatches) &&
+    baseline.currencyCopper === retry.expectedCurrencyCopper;
   if (baseline.currencyCopper !== 0 && !retryCurrencyMatches) {
     handoffReasons.push({ code: "nonzero-currency", copper: baseline.currencyCopper });
   }
@@ -285,7 +298,7 @@ export function evaluateEconomicAdmission(args: {
       handoff: { version: 1, kind: "pf2e-sheet", baselineFingerprint: baseline.fingerprint, reasons: handoffReasons },
     };
   }
-  if (retry && observedRetryEntries.length > 0) {
+  if (retry && (observedRetryEntries.length > 0 || currencyOnlyRetryMatches)) {
     return { kind: "eligible-retry", baseline, entryIds: uniqueSorted(observedRetryEntries) };
   }
   return { kind: "eligible-empty", baseline };

@@ -133,7 +133,14 @@ export function evaluateEconomicAdmission(args) {
         handoffReasons.push({ code: "unresolved-class-grant", grantIds: unresolved });
     if (ambiguous.length > 0)
         handoffReasons.push({ code: "ambiguous-class-grant", grantIds: ambiguous });
-    const retryCurrencyMatches = !!retry && observedRetryEntries.length > 0 && baseline.currencyCopper === retry.expectedCurrencyCopper;
+    const currencyOnlyRetryMatches = !!retry &&
+        retry.allowCurrencyOnlyConvergence === true &&
+        retry.expectedEntries.length === 0 &&
+        retry.expectedCurrencyCopper > 0 &&
+        baseline.currencyCopper === retry.expectedCurrencyCopper;
+    const retryCurrencyMatches = !!retry &&
+        (observedRetryEntries.length > 0 || currencyOnlyRetryMatches) &&
+        baseline.currencyCopper === retry.expectedCurrencyCopper;
     if (baseline.currencyCopper !== 0 && !retryCurrencyMatches) {
         handoffReasons.push({ code: "nonzero-currency", copper: baseline.currencyCopper });
     }
@@ -144,7 +151,7 @@ export function evaluateEconomicAdmission(args) {
             handoff: { version: 1, kind: "pf2e-sheet", baselineFingerprint: baseline.fingerprint, reasons: handoffReasons },
         };
     }
-    if (retry && observedRetryEntries.length > 0) {
+    if (retry && (observedRetryEntries.length > 0 || currencyOnlyRetryMatches)) {
         return { kind: "eligible-retry", baseline, entryIds: uniqueSorted(observedRetryEntries) };
     }
     return { kind: "eligible-empty", baseline };

@@ -188,6 +188,21 @@ describe("economic baseline", () => {
         },
       })
     ).toMatchObject({ kind: "handoff", handoff: { reasons: [{ code: "nonzero-currency", copper: 500 }] } });
+
+    expect(
+      admission({
+        baseline: baseline({ currencyCopper: 500 }),
+        higherLevelStartEvidence: ownerStartEvidence(),
+        retryExpectation: {
+          draftId: "draft-1",
+          batchId: "batch-1",
+          manifestId: "manifest-1",
+          expectedCurrencyCopper: 500,
+          allowCurrencyOnlyConvergence: true,
+          expectedEntries: [],
+        },
+      })
+    ).toMatchObject({ kind: "eligible-retry", entryIds: [] });
   });
 
   it("blocks completed acquisition and prior character outcomes before emptiness can grant wealth", () => {

@@ -16,7 +16,7 @@ import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { bindWayfinderInteractions, isDraftMutationAction, parseWayfinderAction, } from "./actions.js";
-import { acquisitionSmokeCheckpointHookFor } from "./application/acquisition-smoke-driver.js";
+import { acquisitionSmokeApplyFailureHandledFor, acquisitionSmokeApplyFailureRenderedFor, acquisitionSmokeCheckpointHookFor, } from "./application/acquisition-smoke-driver.js";
 import { openActorInventorySheet, } from "./application/actor-inventory-navigation-service.js";
 import { assertApplyCandidateCurrent, persistApplyCandidateIfCurrent, WayfinderApplyDriftError, } from "./application/apply-candidate-service.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
@@ -385,6 +385,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         _a.#openApps.add(this);
         this.#patchDraftSaveStatus(this.#draftPersistence.state);
+        if (options.wayfinderAcquisitionSmokeQuiescent) {
+            acquisitionSmokeApplyFailureRenderedFor(this.actor);
+        }
     }
     _tearDown(options) {
         try {
@@ -501,7 +504,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     await this.close({ animate: false });
                 }
                 else {
-                    this.render(false);
+                    this.render({ wayfinderAcquisitionSmokeQuiescent: true });
                 }
             }
             return;
@@ -2007,6 +2010,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     : "Wayfinder could not apply this draft. The draft was kept for review; details are in the console.";
             ui.notifications.error(game.i18n.localize("wayfinder-pf2e.Notifications.ApplyFailed"));
             this.render(false);
+            acquisitionSmokeApplyFailureHandledFor(this.actor, draft, error);
             return false;
         }
         if (result.kind === "warning") {

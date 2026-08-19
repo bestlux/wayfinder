@@ -16,7 +16,15 @@ export const LEVEL_ONE_DAGGER = Object.freeze({
   stackingIntent: "aggregate",
 });
 
-function acquisitionCase({ id, label, disposition, quantity = 0, failure = null }) {
+function acquisitionCase({
+  id,
+  label,
+  disposition,
+  quantity = 0,
+  failure = null,
+  executorRole = "non-gm-owner",
+  policyReviewRequired = false,
+}) {
   const expectedEntries =
     disposition === "purchase-ledger"
       ? [
@@ -39,7 +47,7 @@ function acquisitionCase({ id, label, disposition, quantity = 0, failure = null 
   const spentCopper = quantity * LEVEL_ONE_DAGGER.unitPriceCopper;
   const acquisition = {
     schemaVersion: ACQUISITION_CASE_SCHEMA_VERSION,
-    executorRole: "non-gm-owner",
+    executorRole,
     targetLevel: 1,
     disposition,
     expectedBudgetCopper: LEVEL_ONE_BUDGET_COPPER,
@@ -47,7 +55,7 @@ function acquisitionCase({ id, label, disposition, quantity = 0, failure = null 
     expectedRemainingCopper: LEVEL_ONE_BUDGET_COPPER - spentCopper,
     expectedEntries,
     policyReview: {
-      required: false,
+      required: policyReviewRequired,
       reviewerRole: "gm",
     },
     failure,
@@ -130,6 +138,14 @@ export const acquisitionSmokeCases = Object.freeze([
       expectedPoint: "final-state-after",
     },
   }),
+  acquisitionCase({
+    id: "equipment-l1-gm-review-common-purchase",
+    label: "Current GM reviews and applies one Common level-0 Dagger purchase",
+    disposition: "purchase-ledger",
+    quantity: 1,
+    executorRole: "gm-reviewer",
+    policyReviewRequired: true,
+  }),
 ]);
 
 export function acquisitionDefinitionFingerprint(value) {
@@ -158,11 +174,11 @@ export function validateAcquisitionSmokeCaseDefinition(value) {
     return failures;
   }
   if (
-    acquisition.executorRole !== "non-gm-owner" ||
+    !["non-gm-owner", "gm-reviewer"].includes(acquisition.executorRole) ||
     !["purchase-ledger", "retain-all"].includes(acquisition.disposition) ||
     acquisition.expectedBudgetCopper !== LEVEL_ONE_BUDGET_COPPER
   ) {
-    failures.push("Acquisition smoke cases require the level-1 non-GM-owner policy boundary.");
+    failures.push("Acquisition smoke cases require a supported level-1 executor policy boundary.");
   }
   if (
     !Number.isSafeInteger(acquisition.expectedSpentCopper) ||
@@ -201,7 +217,9 @@ export function validateAcquisitionSmokeCaseDefinition(value) {
   }
   if (
     acquisition.policyReview?.reviewerRole !== "gm" ||
-    typeof acquisition.policyReview?.required !== "boolean"
+    typeof acquisition.policyReview?.required !== "boolean" ||
+    (acquisition.executorRole === "non-gm-owner" && acquisition.policyReview.required !== false) ||
+    (acquisition.executorRole === "gm-reviewer" && acquisition.policyReview.required !== true)
   ) {
     failures.push("Acquisition smoke cases require an explicit GM policy-review session shape.");
   }

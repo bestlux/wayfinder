@@ -179,6 +179,12 @@
     </section>
   {{else}}
     <section class="wayfinder-empty wayfinder-empty-planner">
+      {{#if statusNote}}
+        <div class="status-note">
+          <i class="fa-solid fa-circle-info"></i>
+          <span>{{statusNote}}</span>
+        </div>
+      {{/if}}
       <div class="empty-planner-copy">
         <p class="eyebrow">Wayfinder</p>
         <h2>{{actorName}}</h2>

@@ -546,6 +546,11 @@ globalThis.__prepareWayfinderAcquisitionTracer = async function prepareWayfinder
   const fixtures = [];
   try {
     for (const smokeCase of cases) {
+      const executorRole = smokeCase.acquisitionCase?.executorRole;
+      const executorUser = executorRole === "gm-reviewer" ? game.user : player;
+      if (!executorUser || !["non-gm-owner", "gm-reviewer"].includes(executorRole)) {
+        throw new Error(`Acquisition tracer case ${smokeCase.id} has an unsupported executor role.`);
+      }
       const fixtureName = `${fixturePrefix} - acquisition - ${runId} - ${smokeCase.id}`;
       const actor = await Actor.create({
         name: fixtureName,
@@ -564,7 +569,8 @@ globalThis.__prepareWayfinderAcquisitionTracer = async function prepareWayfinder
               caseId: smokeCase.id,
               definitionFingerprint: smokeCase.definitionFingerprint,
               fixtureName,
-              playerId: player.id,
+              executorUserId: executorUser.id,
+              executorRole,
               preparedByUserId: game.user.id,
               worldId: expectedWorldId,
               runtime,
@@ -578,6 +584,8 @@ globalThis.__prepareWayfinderAcquisitionTracer = async function prepareWayfinder
         caseId: smokeCase.id,
         definitionFingerprint: smokeCase.definitionFingerprint,
         fixtureName,
+        executorUserId: executorUser.id,
+        executorRole,
       };
       fixtures.push(fixture);
       const precompletedStepIds = await prepareAcquisitionBaseBuild(actor, modules, moduleId);
@@ -607,7 +615,8 @@ globalThis.__prepareWayfinderAcquisitionTracer = async function prepareWayfinder
 
 globalThis.__runWayfinderAcquisitionTracer = async function runWayfinderAcquisitionTracer({
   cases,
-  expectedPlayerId,
+  expectedExecutorId,
+  expectedExecutorRole,
   expectedWorldId = "",
   fixtures,
   moduleId,
@@ -616,8 +625,19 @@ globalThis.__runWayfinderAcquisitionTracer = async function runWayfinderAcquisit
   assertExpectedWorldId(game.world?.id, expectedWorldId);
   const moduleRecord = game.modules.get(moduleId);
   if (!moduleRecord?.active) throw new Error(`${moduleId} is not active in this world.`);
-  if (!game.user || game.user.id !== expectedPlayerId || game.user.isGM) {
-    throw new Error("Acquisition tracer execution requires the configured distinct non-GM player.");
+  const expectedIsGM = expectedExecutorRole === "gm-reviewer";
+  if (
+    !game.user ||
+    game.user.id !== expectedExecutorId ||
+    (expectedIsGM ? !game.user.isGM || Number(game.user.role) < 3 : game.user.isGM || Number(game.user.role) >= 3) ||
+    !["non-gm-owner", "gm-reviewer"].includes(expectedExecutorRole) ||
+    (cases ?? []).some((smokeCase) => smokeCase.acquisitionCase?.executorRole !== expectedExecutorRole) ||
+    (fixtures ?? []).some(
+      (fixture) =>
+        fixture.executorRole !== expectedExecutorRole || fixture.executorUserId !== expectedExecutorId
+    )
+  ) {
+    throw new Error("Acquisition tracer execution requires the exact configured owner or GM-review executor.");
   }
   const startedAt = new Date().toISOString();
   const modules = await loadWayfinderModules(moduleId);
@@ -693,7 +713,9 @@ globalThis.__collectWayfinderAcquisitionDurability = async function collectWayfi
       actor.name !== fixture?.fixtureName ||
       marker?.runId !== runId ||
       marker?.caseId !== smokeCase.id ||
-      marker?.definitionFingerprint !== smokeCase.definitionFingerprint
+      marker?.definitionFingerprint !== smokeCase.definitionFingerprint ||
+      marker?.executorRole !== fixture?.executorRole ||
+      marker?.executorUserId !== fixture?.executorUserId
     ) {
       throw new Error("Acquisition durability collection refused a fixture with changed guarded identity.");
     }
@@ -741,7 +763,9 @@ globalThis.__cleanupWayfinderAcquisitionTracer = async function cleanupWayfinder
       actor.name !== fixture.fixtureName ||
       marker?.runId !== runId ||
       marker?.caseId !== fixture.caseId ||
-      marker?.definitionFingerprint !== fixture.definitionFingerprint
+      marker?.definitionFingerprint !== fixture.definitionFingerprint ||
+      marker?.executorRole !== fixture.executorRole ||
+      marker?.executorUserId !== fixture.executorUserId
     ) {
       throw new Error("Acquisition tracer cleanup refused a fixture that did not match its exact guarded identity.");
     }
@@ -765,7 +789,9 @@ async function runAcquisitionTracerCase({ actor, fixture, moduleId, moduleRecord
   if (
     marker?.runId !== runId ||
     marker?.caseId !== smokeCase.id ||
-    marker?.definitionFingerprint !== smokeCase.definitionFingerprint
+    marker?.definitionFingerprint !== smokeCase.definitionFingerprint ||
+    marker?.executorRole !== smokeCase.acquisitionCase?.executorRole ||
+    marker?.executorUserId !== game.user?.id
   ) {
     return failedAcquisitionTracerCase(smokeCase, collectActorEvidence(actor, modules, moduleId), "Acquisition tracer fixture identity changed.");
   }
@@ -774,7 +800,7 @@ async function runAcquisitionTracerCase({ actor, fixture, moduleId, moduleRecord
     !actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER) ||
     !actor.canUserModify?.(game.user, "update")
   ) {
-    failures.push("Acquisition tracer actor is not updateable by the current non-GM owner.");
+    failures.push("Acquisition tracer actor is not updateable by the exact current smoke executor.");
   }
   const driver = globalThis.__wayfinderAcquisitionSmokeDriver;
   if (!driver || typeof driver.runCase !== "function") {
@@ -944,7 +970,8 @@ function acquisitionEvidenceFromActor({ actorEvidence, failureCapture, manifest,
       schemaVersion: 1,
       caseId: smokeCase.id,
       definitionFingerprint: smokeCase.definitionFingerprint,
-      executorRole: "non-gm-owner",
+      executorRole: smokeCase.acquisitionCase.executorRole,
+      executorUserId: game.user.id,
       runtime: {
         foundryVersion: runtime.foundryVersion,
         pf2eVersion: runtime.pf2eVersion,

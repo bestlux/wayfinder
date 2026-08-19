@@ -37,7 +37,11 @@ import {
   parseWayfinderAction,
   type WayfinderAction,
 } from "./actions.js";
-import { acquisitionSmokeCheckpointHookFor } from "./application/acquisition-smoke-driver.js";
+import {
+  acquisitionSmokeApplyFailureHandledFor,
+  acquisitionSmokeApplyFailureRenderedFor,
+  acquisitionSmokeCheckpointHookFor,
+} from "./application/acquisition-smoke-driver.js";
 import {
   type ActorInventorySheetHost,
   openActorInventorySheet,
@@ -210,6 +214,7 @@ type WayfinderRenderOptions = Record<string, unknown> & {
   wayfinderSkippedReplacement?: boolean;
   wayfinderEquipmentUpdate?: boolean;
   wayfinderEquipmentRequest?: PickerSearchRequest;
+  wayfinderAcquisitionSmokeQuiescent?: boolean;
 };
 type WayfinderGlobals = typeof globalThis & {
   CONFIG?: {
@@ -626,6 +631,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     WayfinderApp.#openApps.add(this);
     this.#patchDraftSaveStatus(this.#draftPersistence.state);
+    if (options.wayfinderAcquisitionSmokeQuiescent) {
+      acquisitionSmokeApplyFailureRenderedFor(this.actor);
+    }
   }
 
   _tearDown(options: unknown): void {
@@ -754,7 +762,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (applied) {
           await this.close({ animate: false });
         } else {
-          this.render(false);
+          this.render({ wayfinderAcquisitionSmokeQuiescent: true });
         }
       }
       return;
@@ -2475,6 +2483,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           : "Wayfinder could not apply this draft. The draft was kept for review; details are in the console.";
       ui.notifications.error(game.i18n.localize("wayfinder-pf2e.Notifications.ApplyFailed"));
       this.render(false);
+      acquisitionSmokeApplyFailureHandledFor(this.actor, draft, error);
       return false;
     }
 

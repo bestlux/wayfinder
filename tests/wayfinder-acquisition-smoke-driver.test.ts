@@ -83,6 +83,12 @@ describe("acquisition UI smoke checkpoint capability", () => {
           expectedPoint: "item-before",
         })
     ).toThrow("unsupported");
+
+    const malformed = {
+      ...writeCheckpoint("currency-convergence", "before", 1),
+      phase: "acquisition-items",
+    } as DraftApplyCheckpoint;
+    await expect(secondItem.hook(malformed)).rejects.toThrow("malformed Apply write checkpoint");
   });
 
   it("is inert without a pre-page capability and consumes a nonce only once per browser session", () => {
@@ -99,6 +105,11 @@ describe("acquisition UI smoke checkpoint capability", () => {
       },
     });
     const bootstrap = validBootstrap();
+    globals.__wayfinderAcquisitionSmokeBootstrap = { ...bootstrap, executorRole: "gm-reviewer" };
+    registerAcquisitionSmokeDriver();
+    expect(globals.__wayfinderAcquisitionSmokeDriver).toBeUndefined();
+    expect(storage.size).toBe(0);
+
     globals.__wayfinderAcquisitionSmokeBootstrap = bootstrap;
     registerAcquisitionSmokeDriver();
     expect(globals.__wayfinderAcquisitionSmokeDriver).toBeDefined();
@@ -114,10 +125,19 @@ describe("acquisition UI smoke checkpoint capability", () => {
     const appShell = readFileSync(resolve("src/wayfinder/app-shell.ts"), "utf8");
     const driver = readFileSync(resolve("src/wayfinder/application/acquisition-smoke-driver.ts"), "utf8");
     const entrypoint = readFileSync(resolve("src/wayfinder.ts"), "utf8");
+    const shellTemplate = readFileSync(resolve("templates/wayfinder-app.hbs"), "utf8");
 
     expect(appShell.match(/onCheckpoint: acquisitionSmokeCheckpointHook/gu)).toHaveLength(2);
     expect(entrypoint).toContain("registerAcquisitionSmokeDriver()");
     expect(driver).toContain("CAPABILITY_TOMBSTONE");
+    expect(driver).toContain("acquisitionSmokeApplyFailureHandledFor");
+    expect(driver).toContain("acquisitionSmokeApplyFailureRenderedFor");
+    expect(appShell).toContain("wayfinderAcquisitionSmokeQuiescent: true");
+    expect(appShell).toContain("options.wayfinderAcquisitionSmokeQuiescent");
+    expect(driver).toContain('Hooks.on("renderActorSheet"');
+    expect(driver).toContain('.tab.inventory[data-tab="inventory"].active');
+    expect(driver).toContain("candidate.getClientRects().length > 0");
+    expect(shellTemplate.match(/\{\{#if statusNote\}\}/gu)).toHaveLength(2);
     expect(driver).toContain('Hooks.on("renderDialogV2"');
     expect(driver).toContain('.querySelector<HTMLElement>(".wayfinder-launch")');
     expect(driver).toContain('data-wayfinder-action="initialize-starting-equipment"');
@@ -157,7 +177,8 @@ function validBootstrap() {
     createdAt: Date.now(),
     moduleId: "wayfinder-pf2e",
     worldId: "smoke-world",
-    playerId: "player-id",
+    executorUserId: "player-id",
+    executorRole: "non-gm-owner",
     preparedByUserId: "gm-id",
     runId: "run-id",
     bindings: [

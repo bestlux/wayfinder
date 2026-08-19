@@ -2119,39 +2119,51 @@ function acquisitionEvidenceFindings(smokeCase, definition = {}, result = {}) {
 
 function acquisitionBindingFindings(binding, definition, result, subject) {
   const runtime = binding?.runtime;
+  const expectedRole = definition.acquisitionCase?.executorRole;
+  const executor = expectedRole === "gm-reviewer" ? result?.reviewSession : result?.user;
+  const executorId = expectedRole === "gm-reviewer" ? executor?.userId : executor?.id;
+  const executorRoleValid =
+    expectedRole === "gm-reviewer"
+      ? executor?.isGM === true && Number.isInteger(executor?.role) && executor.role >= 3
+      : expectedRole === "non-gm-owner" &&
+        executor?.isGM === false &&
+        Number.isInteger(executor?.role) &&
+        executor.role < 3;
   const valid =
     binding?.schemaVersion === 1 &&
     binding?.caseId === definition.id &&
     binding?.definitionFingerprint === acquisitionDefinitionFingerprint(definition) &&
-    binding?.executorRole === "non-gm-owner" &&
+    binding?.executorRole === expectedRole &&
+    binding?.executorUserId === executorId &&
     nonEmptyString(runtime?.foundryVersion) &&
     nonEmptyString(runtime?.pf2eVersion) &&
     nonEmptyString(runtime?.moduleVersion) &&
     runtime.foundryVersion === result?.foundryVersion &&
     runtime.pf2eVersion === result?.pf2eVersion &&
     runtime.moduleVersion === result?.moduleVersion &&
-    result?.user?.isGM === false &&
-    Number.isInteger(result?.user?.role) &&
-    result.user.role < 3;
+    executorRoleValid;
   const findings = [];
   if (!valid) {
     findings.push(
       finding(
         "acquisition-case-binding-mismatch",
         subject,
-        "Acquisition evidence must bind the exact checked case, non-GM owner role, and observed runtime versions."
+        "Acquisition evidence must bind the exact checked case, executor identity and role, and observed runtime versions."
       )
     );
   }
   if (definition.acquisitionCase?.policyReview?.required === true) {
     const review = result?.reviewSession;
     const reviewValid =
+      review?.source === "separate-gm-browser-context" &&
+      nonEmptyString(review?.userId) &&
       review?.isGM === true &&
       Number.isInteger(review?.role) &&
       review.role >= 3 &&
       review?.runtime?.foundryVersion === runtime?.foundryVersion &&
       review?.runtime?.pf2eVersion === runtime?.pf2eVersion &&
       review?.runtime?.moduleVersion === runtime?.moduleVersion &&
+      review?.runtime?.guardedWorldMatched === true &&
       Array.isArray(review?.reviewedCaseIds) &&
       review.reviewedCaseIds.includes(definition.id);
     if (!reviewValid) {
@@ -2159,7 +2171,7 @@ function acquisitionBindingFindings(binding, definition, result, subject) {
         finding(
           "missing-gm-policy-review-session",
           subject,
-          "This acquisition case requires a separate current-GM review session on the same exact runtime."
+          "This acquisition case requires its exact current-GM executor session in a separate browser context on the same runtime."
         )
       );
     }
@@ -2545,6 +2557,7 @@ function acquisitionDefinitionOutcomeFindings(smokeCase, acquisition, definition
     manifest?.disposition !== expected.disposition ||
     manifest?.targetLevel !== expected.targetLevel ||
     manifest?.actorId !== smokeCase.actor?.id ||
+    manifest?.appliedBy?.userId !== acquisition.binding?.executorUserId ||
     !nonEmptyString(manifest?.draftId) ||
     !nonEmptyString(manifest?.fingerprint) ||
     manifest?.environment?.foundryVersion !== result?.foundryVersion ||
@@ -2556,7 +2569,7 @@ function acquisitionDefinitionOutcomeFindings(smokeCase, acquisition, definition
       finding(
         "acquisition-case-manifest-mismatch",
         subject,
-        "The completed production manifest does not bind the actor, disposition, currency, and exact runtime."
+        "The completed production manifest does not bind the actor, applying executor, disposition, currency, and exact runtime."
       )
     );
   }
@@ -2571,6 +2584,16 @@ function acquisitionDefinitionOutcomeFindings(smokeCase, acquisition, definition
         "acquisition-policy-evidence-mismatch",
         subject,
         "Policy evidence must be derived from the exact completed production manifest snapshot."
+      )
+    );
+  }
+  const expectedApplyAuthority = expected.policyReview?.required === true ? "gm-review" : "actor-owner";
+  if (manifest?.policy?.material?.authorityPolicy?.apply !== expectedApplyAuthority) {
+    findings.push(
+      finding(
+        "acquisition-case-authority-policy-mismatch",
+        subject,
+        "The completed acquisition manifest does not prove the case-pinned equipment Apply authority policy."
       )
     );
   }

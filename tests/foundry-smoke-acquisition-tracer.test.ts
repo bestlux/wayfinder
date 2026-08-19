@@ -49,6 +49,7 @@ describe("Foundry Wave-2 acquisition tracer", () => {
       "equipment-l1-owner-common-purchase-currency-after-retry",
       "equipment-l1-owner-common-purchase-final-before-retry",
       "equipment-l1-owner-common-purchase-final-after-ack",
+      "equipment-l1-gm-review-common-purchase",
     ]);
     expect(LEVEL_ONE_DAGGER).toMatchObject({
       sourceUuid: "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z",
@@ -63,7 +64,10 @@ describe("Foundry Wave-2 acquisition tracer", () => {
     for (const smokeCase of acquisitionSmokeCases) {
       expect(validateAcquisitionSmokeCaseDefinition(smokeCase)).toEqual([]);
       expect(smokeCase.definitionFingerprint).toBe(acquisitionDefinitionFingerprint(smokeCase));
-      expect(smokeCase.acquisitionCase.policyReview).toEqual({ required: false, reviewerRole: "gm" });
+      expect(smokeCase.acquisitionCase.policyReview).toEqual({
+        required: smokeCase.acquisitionCase.executorRole === "gm-reviewer",
+        reviewerRole: "gm",
+      });
     }
     const retry = acquisitionSmokeCases[2];
     expect(retry.acquisitionCase.expectedEntries[0]).toMatchObject({ quantity: 2, stackingIntent: "aggregate" });
@@ -100,6 +104,47 @@ describe("Foundry Wave-2 acquisition tracer", () => {
 
     expect(result.qualification).toMatchObject({ passed: true, unreviewedFindingCount: 0 });
     expect(findingCodes(result)).toEqual([]);
+  });
+
+  it("qualifies a GM-review purchase only from its exact separate executor session and policy", async () => {
+    const definition = acquisitionSmokeCases.at(-1)!;
+    const valid = qualifySmokeResult(await purchaseResult(definition), [definition]);
+    expect(findingCodes(valid)).toEqual([]);
+    expect(valid.qualification.passed).toBe(true);
+
+    const missingSession = await purchaseResult(definition);
+    delete missingSession.reviewSession;
+    expect(findingCodes(qualifySmokeResult(missingSession, [definition]))).toEqual(
+      expect.arrayContaining(["acquisition-case-binding-mismatch", "missing-gm-policy-review-session"])
+    );
+
+    const wrongExecutor = await purchaseResult(definition);
+    wrongExecutor.cases[0].evidence.acquisition.binding.executorUserId = "another-gm";
+    expect(findingCodes(qualifySmokeResult(wrongExecutor, [definition]))).toContain(
+      "acquisition-case-binding-mismatch"
+    );
+
+    const wrongPrincipalManifest = await productionManifest(definition, "another-gm");
+    const wrongPrincipal = baseResult(
+      definition,
+      wrongPrincipalManifest,
+      [daggerItem(wrongPrincipalManifest)],
+      wrongPrincipalManifest.currency.observedCopper
+    );
+    expect(findingCodes(qualifySmokeResult(wrongPrincipal, [definition]))).toContain(
+      "acquisition-case-manifest-mismatch"
+    );
+
+    const ownerPolicy = await purchaseResult(definition);
+    ownerPolicy.cases[0].evidence.acquisition.manifest.policy.material.authorityPolicy.apply = "actor-owner";
+    ownerPolicy.cases[0].actor.moduleStateAfterApply.completedAcquisitionManifest =
+      ownerPolicy.cases[0].evidence.acquisition.manifest;
+    ownerPolicy.cases[0].evidence.acquisition.policy.snapshot =
+      ownerPolicy.cases[0].evidence.acquisition.manifest.policy;
+    ownerPolicy.cases[0].evidence.acquisition.durability.manifest = ownerPolicy.cases[0].evidence.acquisition.manifest;
+    expect(findingCodes(qualifySmokeResult(ownerPolicy, [definition]))).toContain(
+      "acquisition-case-authority-policy-mismatch"
+    );
   });
 
   it("qualifies a real-manifest item failure followed by forward-idempotent retry", async () => {
@@ -228,9 +273,16 @@ describe("Foundry Wave-2 acquisition tracer", () => {
     expect(browserSuite).toContain("driver?.revoke?.()");
     expect(browserSuite).toContain("prepareAcquisitionBaseBuild");
     expect(runner).toContain("playerContext.addInitScript");
+    expect(runner).toContain("gmReviewContext.addInitScript");
+    expect(runner).toContain('expectedExecutorRole: "gm-reviewer"');
+    expect(runner).toContain('setEquipmentApplyAuthority(setupPage, MODULE_ID, "gm-review")');
+    expect(runner).toContain("restoreEquipmentSettings(setupPage, MODULE_ID, equipmentSettingsSnapshot)");
     expect(runner).toContain("__wayfinderAcquisitionSmokeBootstrap");
-    expect(runner.match(/browser\.newContext\(/gu)).toHaveLength(2);
+    expect(runner.match(/browser\.newContext\(/gu)).toHaveLength(3);
     expect(runner.indexOf("await playerContext.close();")).toBeLessThan(
+      runner.indexOf("globalThis.__cleanupWayfinderAcquisitionTracer")
+    );
+    expect(runner.indexOf("await gmReviewContext.close();")).toBeLessThan(
       runner.indexOf("globalThis.__cleanupWayfinderAcquisitionTracer")
     );
     expect(runner).toContain("qualifySmokeResult(result, cases)");
@@ -327,6 +379,8 @@ function baseResult(
   currencyCopper: number
 ): any {
   const runtime = { foundryVersion: "14.366", pf2eVersion: "8.4.1", moduleVersion: "0.8.0" };
+  const gmReview = definition.acquisitionCase.executorRole === "gm-reviewer";
+  const executorUserId = gmReview ? "gm-id" : "owner-id";
   const durableItems = items.filter((item) => item.acquisition?.batchId === manifest.batchId);
   return {
     schemaVersion: SMOKE_EVIDENCE_SCHEMA_VERSION,
@@ -334,6 +388,18 @@ function baseResult(
     pf2eVersion: runtime.pf2eVersion,
     moduleVersion: runtime.moduleVersion,
     user: { id: "owner-id", name: "Owner", role: 1, isGM: false },
+    ...(gmReview
+      ? {
+          reviewSession: {
+            source: "separate-gm-browser-context",
+            userId: "gm-id",
+            role: 4,
+            isGM: true,
+            runtime: { ...runtime, guardedWorldMatched: true },
+            reviewedCaseIds: [definition.id],
+          },
+        }
+      : {}),
     cases: [
       {
         id: definition.id,
@@ -364,7 +430,8 @@ function baseResult(
               schemaVersion: 1,
               caseId: definition.id,
               definitionFingerprint: definition.definitionFingerprint,
-              executorRole: "non-gm-owner",
+              executorRole: definition.acquisitionCase.executorRole,
+              executorUserId,
               runtime,
             },
             policy: {
@@ -406,8 +473,10 @@ function baseResult(
   };
 }
 
-async function productionManifest(definition: (typeof acquisitionSmokeCases)[number]) {
+async function productionManifest(definition: (typeof acquisitionSmokeCases)[number], executorUserIdOverride?: string) {
   const expected = definition.acquisitionCase;
+  const gmReview = expected.executorRole === "gm-reviewer";
+  const executorUserId = executorUserIdOverride ?? (gmReview ? "gm-id" : "owner-id");
   const entry = expected.expectedEntries[0];
   const price = entry
     ? createAcquisitionPriceSnapshot({
@@ -486,7 +555,7 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
         authorityPolicy: {
           recipeChoice: "actor-owner" as const,
           higherLevelStart: "actor-owner-attestation" as const,
-          apply: "actor-owner" as const,
+          apply: gmReview ? ("gm-review" as const) : ("actor-owner" as const),
         },
         higherLevelStartEvidence: { kind: "not-required" as const },
         abp: { enabled: false, mode: "noABP", actorOverrideDisabled: false },
@@ -514,11 +583,11 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
   const reviewed =
     expected.disposition === "retain-all"
       ? reviewRetainAll(draft, ledger, {
-          userId: "owner-id",
+          userId: executorUserId,
           reviewedAt: "2026-08-19T15:00:00.000Z",
         })
       : reviewPurchaseLedger(draft, ledger, {
-          userId: "owner-id",
+          userId: executorUserId,
           reviewedAt: "2026-08-19T15:00:00.000Z",
         });
   const identityPlan = await prepareAcquisitionIdentityPlan({
@@ -554,7 +623,7 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
     actorId: "actor-id",
     draft: reviewed,
     identityPlan,
-    appliedBy: { userId: "owner-id", userName: "Owner" },
+    appliedBy: { userId: executorUserId, userName: gmReview ? "GM" : "Owner" },
     appliedAt: "2026-08-19T16:00:00.000Z",
     currency,
     observedItems,

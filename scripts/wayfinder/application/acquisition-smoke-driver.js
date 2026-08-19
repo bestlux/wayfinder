@@ -8,6 +8,7 @@ const DAGGER_SOURCE_UUID = "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z"
 const DAGGER_UNIT_PRICE_COPPER = 20;
 const EQUIPMENT_STEP_ID = "starting-equipment-level-1";
 const RECOVERY_STATUS = "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console.";
+const LATE_ACKNOWLEDGEMENT_STATUS = "The actor reached the reviewed final state, but Foundry reported a late Apply error. Review the actor before closing.";
 let activeSession = null;
 export class AcquisitionSmokeCheckpointFailure extends Error {
     checkpoint;
@@ -31,6 +32,7 @@ export class AcquisitionSmokeCheckpointController {
         if (this.#mode === "finished") {
             throw new Error("The acquisition smoke checkpoint capability has been revoked.");
         }
+        assertValidCheckpoint(checkpoint);
         if (this.#mode === "retry") {
             if (checkpoint.kind === "write") {
                 await this.#onRetryCheckpoint?.(cloneCheckpoint(checkpoint));
@@ -76,6 +78,8 @@ class AcquisitionSmokeSession {
     markerFingerprint;
     controller;
     #boundAcquisition = null;
+    #handledFailure = null;
+    #settledFailure = null;
     constructor(args) {
         this.actor = args.actor;
         this.caseDefinition = args.caseDefinition;
@@ -85,6 +89,39 @@ class AcquisitionSmokeSession {
     }
     checkpointHook(draft) {
         this.assertLiveIdentity();
+        this.#assertBoundAcquisition(draft);
+        return async (checkpoint) => {
+            this.assertLiveIdentity();
+            await this.controller.hook(checkpoint);
+        };
+    }
+    handleFailedApply(draft, error) {
+        this.assertLiveIdentity();
+        this.#assertBoundAcquisition(draft);
+        const failure = this.controller.failure;
+        const candidate = error;
+        if (!failure ||
+            candidate?.name !== "DraftApplyPhaseError" ||
+            candidate.failureKind !== "checkpoint-hook" ||
+            candidate.cause !== failure ||
+            canonicalJson(candidate.checkpoint) !== canonicalJson(failure.checkpoint)) {
+            throw new Error("The acquisition smoke Apply settled without its exact injected checkpoint failure.");
+        }
+        if (this.#handledFailure) {
+            throw new Error("The acquisition smoke Apply failure was handled more than once.");
+        }
+        this.#handledFailure = failure;
+    }
+    settleFailedApplyRender() {
+        if (!this.#handledFailure || this.#settledFailure) {
+            throw new Error("The acquisition smoke Apply rendered without one exact unsettled failure.");
+        }
+        this.#settledFailure = this.#handledFailure;
+    }
+    failureSettled(failure) {
+        return this.#settledFailure === failure;
+    }
+    #assertBoundAcquisition(draft) {
         const acquisition = assertReviewedAcquisitionDraft(draft, this.caseDefinition);
         const identity = {
             draftId: acquisition.draftId,
@@ -95,17 +132,13 @@ class AcquisitionSmokeSession {
             throw new Error("The acquisition smoke retry changed its draft, batch, or manifest identity.");
         }
         this.#boundAcquisition ??= identity;
-        return async (checkpoint) => {
-            this.assertLiveIdentity();
-            await this.controller.hook(checkpoint);
-        };
     }
     assertLiveIdentity() {
         const marker = normalizeMarker(this.actor.getFlag(MODULE_ID, "smokeAcquisitionTracer"));
         if (!marker || canonicalJson(marker) !== this.markerFingerprint) {
             throw new Error("The guarded acquisition smoke actor identity changed while Apply was running.");
         }
-        assertCurrentPlayerAndRuntime(this.actor, marker);
+        assertCurrentExecutorAndRuntime(this.actor, marker);
     }
 }
 /** Dormant in ordinary pages; only an exact active smoke session can obtain a hook. */
@@ -113,6 +146,18 @@ export function acquisitionSmokeCheckpointHookFor(actor, draft) {
     if (!activeSession || activeSession.actor !== actor)
         return undefined;
     return activeSession.checkpointHook(draft);
+}
+/** Records only the exact active smoke fault after app recovery handling has completed. */
+export function acquisitionSmokeApplyFailureHandledFor(actor, draft, error) {
+    if (!activeSession || activeSession.actor !== actor)
+        return;
+    activeSession.handleFailedApply(draft, error);
+}
+/** Settles the exact handled smoke fault only after the outer post-barrier render completes. */
+export function acquisitionSmokeApplyFailureRenderedFor(actor) {
+    if (!activeSession || activeSession.actor !== actor)
+        return;
+    activeSession.settleFailedApplyRender();
 }
 export function registerAcquisitionSmokeDriver() {
     const globals = globalThis;
@@ -172,12 +217,16 @@ async function runAcquisitionSmokeCase(bootstrap, remainingBindings, args) {
         marker.runId !== bootstrap.runId ||
         marker.caseId !== binding.caseId ||
         marker.definitionFingerprint !== binding.definitionFingerprint ||
-        marker.playerId !== bootstrap.playerId ||
+        marker.executorUserId !== bootstrap.executorUserId ||
+        marker.executorRole !== bootstrap.executorRole ||
         marker.preparedByUserId !== bootstrap.preparedByUserId ||
         marker.worldId !== bootstrap.worldId) {
         throw new Error("The acquisition smoke actor does not match its exact GM-prepared marker.");
     }
-    assertCurrentPlayerAndRuntime(actor, marker);
+    if (marker.executorRole !== caseDefinition.acquisitionCase.executorRole) {
+        throw new Error("The acquisition smoke actor marker belongs to another executor role.");
+    }
+    assertCurrentExecutorAndRuntime(actor, marker);
     assertCleanSmokeActor(actor);
     remainingBindings.delete(caseDefinition.id);
     const session = new AcquisitionSmokeSession({
@@ -207,8 +256,10 @@ async function runAcquisitionSmokeCase(bootstrap, remainingBindings, args) {
         if (binding.checkpointTarget) {
             const failure = await waitForValue(() => session.controller.failure, "configured acquisition failure");
             session.controller.assertInitialAttemptComplete();
+            await waitForValue(() => (session.failureSettled(failure) ? true : null), "settled acquisition failure recovery");
             if (binding.checkpointTarget.expectedPoint === "final-state-after") {
                 await waitForValue(() => completedActorState(actor), "durable lost-ack acquisition convergence");
+                await waitForValue(() => visibleLateAcknowledgementEvidence(actor, wayfinderApplication), "visible lost-ack status and durable acquisition receipt");
                 await args.onFailure?.(failure);
                 ui.lateAcknowledgementConverged = true;
                 ui.completed = true;
@@ -331,15 +382,55 @@ async function exposePartialItemOnActorSheet(actor, batchId, expectedQuantity) {
     const itemId = stringValue(item, "id");
     if (!itemId)
         return false;
-    const root = await waitForValue(() => actorSheetRootOf(actor), "PF2E actor sheet for partial-state review");
+    const root = await rerenderActorSheet(actor);
     const inventoryTab = root.querySelector('nav.sheet-navigation a[data-tab="inventory"]');
     if (!inventoryTab)
         return false;
     clickElement(inventoryTab);
-    const row = await waitForValue(() => actorSheetRootOf(actor)?.querySelector(`[data-inventory] [data-item-id="${itemId}"]`) ?? null, "partially created PF2E inventory row");
+    const row = await waitForValue(() => {
+        const currentRoot = actorSheetRootOf(actor);
+        const inventory = currentRoot?.querySelector('.tab.inventory[data-tab="inventory"].active');
+        const candidate = inventory?.querySelector(`[data-inventory] [data-item-id="${itemId}"]`) ?? null;
+        return candidate?.isConnected && candidate.getClientRects().length > 0 ? candidate : null;
+    }, "visible partially created PF2E inventory row");
     const name = row.querySelector('h4.name a[data-action="toggle-summary"]')?.textContent?.trim();
     const quantity = Number(row.querySelector(".quantity > span")?.textContent?.trim());
     return name === "Dagger" && quantity === expectedQuantity;
+}
+function rerenderActorSheet(actor) {
+    return new Promise((resolve, reject) => {
+        const hookId = Hooks.on("renderActorSheet", (application, html) => {
+            const candidate = application;
+            if (candidate?.actor?.id !== actor.id && candidate?.document?.id !== actor.id)
+                return;
+            const root = rootElement(html) ?? actorSheetRootOf(actor);
+            if (!root?.isConnected)
+                return;
+            clearTimeout(timeoutId);
+            Hooks.off("renderActorSheet", hookId);
+            resolve(root);
+        });
+        const timeoutId = globalThis.setTimeout(() => {
+            Hooks.off("renderActorSheet", hookId);
+            reject(new Error("The PF2E actor sheet did not rerender for partial-state review."));
+        }, DRIVER_TIMEOUT_MS);
+        try {
+            actor.sheet.render(true);
+        }
+        catch (error) {
+            clearTimeout(timeoutId);
+            Hooks.off("renderActorSheet", hookId);
+            reject(error);
+        }
+    });
+}
+function visibleLateAcknowledgementEvidence(actor, application) {
+    if (!completedActorState(actor))
+        return null;
+    const root = wayfinderRoot(application);
+    const status = [...(root?.querySelectorAll(".status-note span") ?? [])].find((candidate) => candidate.textContent?.trim() === LATE_ACKNOWLEDGEMENT_STATUS);
+    const receipt = root?.querySelector('.wayfinder-acquisition-receipt[aria-label="Last starting-equipment Apply receipt"]');
+    return status && receipt ? true : null;
 }
 function visibleRecoveryEvidence(actor, application) {
     const root = wayfinderRoot(application);
@@ -369,9 +460,13 @@ function assertReviewedAcquisitionDraft(draft, caseDefinition) {
     }
     const review = acquisition.disposition.review;
     if (review.reviewedByUserId !== String(game.user?.id ?? "")) {
-        throw new Error("The acquisition smoke Apply was not reviewed by the bound non-GM owner.");
+        throw new Error("The acquisition smoke Apply was not reviewed by the bound executor.");
     }
     const expected = caseDefinition.acquisitionCase;
+    const expectedApplyAuthority = expected.executorRole === "gm-reviewer" ? "gm-review" : "actor-owner";
+    if (acquisition.policySnapshot?.material.authorityPolicy.apply !== expectedApplyAuthority) {
+        throw new Error("The acquisition smoke Apply did not capture its exact executor authority policy.");
+    }
     if (expected.disposition === "retain-all") {
         if (acquisition.lines.length !== 0 || acquisition.disposition.kind !== "retain-all") {
             throw new Error("The retain-all smoke case acquired an item.");
@@ -413,7 +508,8 @@ function normalizeBootstrap(value) {
         !Number.isSafeInteger(value.createdAt) ||
         !nonEmptyString(value.moduleId) ||
         !nonEmptyString(value.worldId) ||
-        !nonEmptyString(value.playerId) ||
+        !nonEmptyString(value.executorUserId) ||
+        (value.executorRole !== "non-gm-owner" && value.executorRole !== "gm-reviewer") ||
         !nonEmptyString(value.preparedByUserId) ||
         !nonEmptyString(value.runId)) {
         return null;
@@ -423,7 +519,8 @@ function normalizeBootstrap(value) {
         return null;
     const typedBindings = bindings;
     if (typedBindings.length === 0 ||
-        new Set(typedBindings.map((binding) => binding.caseId)).size !== typedBindings.length) {
+        new Set(typedBindings.map((binding) => binding.caseId)).size !== typedBindings.length ||
+        typedBindings.some((binding) => binding.caseDefinition.acquisitionCase.executorRole !== value.executorRole)) {
         return null;
     }
     return {
@@ -432,7 +529,8 @@ function normalizeBootstrap(value) {
         createdAt: Number(value.createdAt),
         moduleId: value.moduleId,
         worldId: value.worldId,
-        playerId: value.playerId,
+        executorUserId: value.executorUserId,
+        executorRole: value.executorRole,
         preparedByUserId: value.preparedByUserId,
         runId: value.runId,
         bindings: typedBindings,
@@ -475,7 +573,8 @@ function normalizeMarker(value) {
         !nonEmptyString(value.caseId) ||
         !definitionFingerprint(value.definitionFingerprint) ||
         !nonEmptyString(value.fixtureName) ||
-        !nonEmptyString(value.playerId) ||
+        !nonEmptyString(value.executorUserId) ||
+        (value.executorRole !== "non-gm-owner" && value.executorRole !== "gm-reviewer") ||
         !nonEmptyString(value.preparedByUserId) ||
         !nonEmptyString(value.worldId) ||
         !isRecord(value.runtime) ||
@@ -500,7 +599,7 @@ function normalizeCaseDefinition(value) {
         value.targetLevel !== 1 ||
         !definitionFingerprint(value.definitionFingerprint) ||
         acquisition.schemaVersion !== 1 ||
-        acquisition.executorRole !== "non-gm-owner" ||
+        (acquisition.executorRole !== "non-gm-owner" && acquisition.executorRole !== "gm-reviewer") ||
         acquisition.targetLevel !== 1 ||
         (disposition !== "purchase-ledger" && disposition !== "retain-all") ||
         acquisition.expectedBudgetCopper !== LEVEL_ONE_BUDGET_COPPER ||
@@ -509,8 +608,9 @@ function normalizeCaseDefinition(value) {
         expectedSpentCopper + expectedRemainingCopper !== LEVEL_ONE_BUDGET_COPPER ||
         !Array.isArray(entries) ||
         !isRecord(acquisition.policyReview) ||
-        acquisition.policyReview.required !== false ||
-        acquisition.policyReview.reviewerRole !== "gm") {
+        acquisition.policyReview.reviewerRole !== "gm" ||
+        (acquisition.executorRole === "non-gm-owner" && acquisition.policyReview.required !== false) ||
+        (acquisition.executorRole === "gm-reviewer" && acquisition.policyReview.required !== true)) {
         throw new Error("The acquisition smoke case is outside the supported level-1 owner boundary.");
     }
     if (disposition === "retain-all") {
@@ -547,14 +647,14 @@ function normalizeCaseDefinition(value) {
         definitionFingerprint: value.definitionFingerprint,
         acquisitionCase: {
             schemaVersion: 1,
-            executorRole: "non-gm-owner",
+            executorRole: acquisition.executorRole,
             targetLevel: 1,
             disposition,
             expectedBudgetCopper: LEVEL_ONE_BUDGET_COPPER,
             expectedSpentCopper,
             expectedRemainingCopper,
             expectedEntries: entries,
-            policyReview: { required: false, reviewerRole: "gm" },
+            policyReview: { required: acquisition.policyReview.required === true, reviewerRole: "gm" },
             failure,
         },
     };
@@ -588,12 +688,16 @@ function normalizeCheckpointTarget(value) {
         expectedPoint: value.expectedPoint,
     };
 }
-function assertCurrentPlayerAndRuntime(actor, marker) {
+function assertCurrentExecutorAndRuntime(actor, marker) {
     const user = game.user;
     const runtime = currentRuntime();
+    const role = Number(user?.role);
+    const executorRoleMatches = marker.executorRole === "gm-reviewer"
+        ? user?.isGM === true && Number.isInteger(role) && role >= 3
+        : user?.isGM === false && Number.isInteger(role) && role < 3;
     if (!user ||
-        user.isGM ||
-        user.id !== marker.playerId ||
+        !executorRoleMatches ||
+        user.id !== marker.executorUserId ||
         game.world?.id !== marker.worldId ||
         actor.id.length === 0 ||
         actor.name !== marker.fixtureName ||
@@ -747,6 +851,30 @@ function recordValue(value, key) {
 }
 function stringValue(value, key) {
     return isRecord(value) && nonEmptyString(value[key]) ? value[key] : null;
+}
+function assertValidCheckpoint(checkpoint) {
+    if (checkpoint.kind === "phase") {
+        if (!nonEmptyString(checkpoint.phase) ||
+            (checkpoint.boundary !== "before" && checkpoint.boundary !== "after") ||
+            checkpoint.checkpointId !== `phase:${checkpoint.phase}:${checkpoint.boundary}`) {
+            throw new Error("The acquisition smoke driver observed a malformed Apply phase checkpoint.");
+        }
+        return;
+    }
+    const phaseByOperation = {
+        "embedded-item-create": "acquisition-items",
+        "currency-convergence": "acquisition-currency",
+        "final-actor-update": "finalize-actor",
+    };
+    const expectedPhase = phaseByOperation[checkpoint.operation];
+    if (checkpoint.phase !== expectedPhase ||
+        (checkpoint.boundary !== "before" && checkpoint.boundary !== "after") ||
+        checkpoint.checkpointId !== `write:${checkpoint.operation}:${checkpoint.boundary}` ||
+        !Number.isSafeInteger(checkpoint.ordinal) ||
+        checkpoint.ordinal < 1 ||
+        (checkpoint.operation !== "embedded-item-create" && checkpoint.ordinal !== 1)) {
+        throw new Error("The acquisition smoke driver observed a malformed Apply write checkpoint.");
+    }
 }
 function cloneCheckpoint(checkpoint) {
     return Object.freeze({ ...checkpoint });

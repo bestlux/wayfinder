@@ -102,6 +102,7 @@ export function parseWayfinderAction(element) {
             return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
         case "preview-equipment-item":
         case "add-equipment-item":
+        case "choose-titan-mauler-equipment":
             return element.dataset.stepId && element.dataset.sourceUuid
                 ? { type: action, stepId: element.dataset.stepId, sourceUuid: element.dataset.sourceUuid }
                 : null;
@@ -189,6 +190,7 @@ export function isDraftMutationAction(action) {
         case "remove-spell-rarity-attestation":
         case "initialize-starting-equipment":
         case "add-equipment-item":
+        case "choose-titan-mauler-equipment":
         case "remove-equipment-line":
         case "change-equipment-quantity":
         case "review-equipment-purchases":

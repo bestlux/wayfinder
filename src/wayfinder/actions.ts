@@ -33,6 +33,7 @@ export type WayfinderAction =
   | { type: "initialize-starting-equipment"; stepId: string }
   | { type: "preview-equipment-item"; stepId: string; sourceUuid: string }
   | { type: "add-equipment-item"; stepId: string; sourceUuid: string }
+  | { type: "choose-titan-mauler-equipment"; stepId: string; sourceUuid: string }
   | { type: "remove-equipment-line"; stepId: string; lineId: string }
   | { type: "change-equipment-quantity"; stepId: string; lineId: string; delta: -1 | 1 }
   | { type: "toggle-equipment-filter"; stepId: string; filterKey: string; value: string }
@@ -182,6 +183,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
       return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
     case "preview-equipment-item":
     case "add-equipment-item":
+    case "choose-titan-mauler-equipment":
       return element.dataset.stepId && element.dataset.sourceUuid
         ? { type: action, stepId: element.dataset.stepId, sourceUuid: element.dataset.sourceUuid }
         : null;
@@ -270,6 +272,7 @@ export function isDraftMutationAction(action: WayfinderAction): boolean {
     case "remove-spell-rarity-attestation":
     case "initialize-starting-equipment":
     case "add-equipment-item":
+    case "choose-titan-mauler-equipment":
     case "remove-equipment-line":
     case "change-equipment-quantity":
     case "review-equipment-purchases":

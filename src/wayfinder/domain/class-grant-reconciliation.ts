@@ -327,9 +327,12 @@ export function evaluateTitanMaulerCandidate(candidate: TitanMaulerCandidate): T
   if (!safeNonNegativeInteger(candidate.basePriceCopper)) {
     return failure("price-invalid", "The Titan Mauler weapon needs a parseable pre-size base Price.");
   }
-  const expectedSize = oneSizeLarger(candidate.actorSize);
+  const expectedSize = titanMaulerTargetSize(candidate.actorSize);
   if (!expectedSize || candidate.targetSize !== expectedSize) {
-    return failure("size-invalid", "The Titan Mauler weapon must be sized for a creature one size larger.");
+    return failure(
+      "size-invalid",
+      "The Titan Mauler weapon must be Large for a Small or Medium character, or one size larger otherwise."
+    );
   }
   if (candidate.quantity !== 1 || candidate.permanence !== "permanent" || candidate.componentKind !== "baseline-item") {
     return failure("line-shape-invalid", "Titan Mauler grants exactly one permanent baseline weapon.");
@@ -344,7 +347,7 @@ export function evaluateTitanMaulerCandidate(candidate: TitanMaulerCandidate): T
   });
   return result.ok
     ? { ok: true, targetSize: expectedSize, resaleCopper: 0 }
-    : failure("price-invalid", result.diagnostics[0]?.message ?? "The Titan Mauler weapon is ineligible.");
+    : failure("price-invalid", "The Titan Mauler weapon's pre-size base Price must be 9 gp or less.");
 }
 
 export function reconcilePlannedClassGrants(args: {
@@ -688,7 +691,11 @@ function isRarity(value: unknown): value is TitanMaulerCandidate["rarity"] {
   return ["common", "uncommon", "rare", "unique"].includes(String(value));
 }
 
-function oneSizeLarger(size: EquipmentSize): EquipmentSize | null {
+/**
+ * Titan Mauler's oversized-weapon target. PF2E treats Small and Medium
+ * characters alike here: both receive a weapon built for a Large creature.
+ */
+export function titanMaulerTargetSize(size: EquipmentSize): EquipmentSize | null {
   switch (size) {
     case "tiny":
       return "small";

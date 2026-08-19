@@ -21,6 +21,7 @@ import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class
 import type { EconomicActorLike } from "./economic-baseline-service.js";
 import { evaluateActorEconomicAdmission } from "./economic-baseline-service.js";
 import {
+  type CurrentEquipmentAccessRequest,
   getFoundryEquipmentAcquisitionRuntime,
   type NativeClassGrantLineRequest,
 } from "./equipment-acquisition-runtime-service.js";
@@ -56,6 +57,7 @@ interface StartingEquipmentCommandDependencies {
   readonly projectClassGrants: typeof projectCurrentClassGrants;
   readonly prepareClassGrantPlan: typeof prepareCurrentClassGrantPlan;
   readonly prepareNativeGrantLines: (request: NativeClassGrantLineRequest) => Promise<readonly AcquisitionLineDraft[]>;
+  readonly resolveCharacterAccessRef: (request: CurrentEquipmentAccessRequest) => Promise<string | null>;
   readonly evaluateAdmission: typeof evaluateActorEconomicAdmission;
   readonly evaluateLedger: typeof evaluateAcquisitionLedger;
 }
@@ -66,6 +68,8 @@ const DEFAULT_DEPS: StartingEquipmentCommandDependencies = {
   projectClassGrants: projectCurrentClassGrants,
   prepareClassGrantPlan: prepareCurrentClassGrantPlan,
   prepareNativeGrantLines: (request) => getFoundryEquipmentAcquisitionRuntime().prepareNativeClassGrantLines(request),
+  resolveCharacterAccessRef: (request) =>
+    getFoundryEquipmentAcquisitionRuntime().resolveCurrentCharacterAccessRef(request),
   evaluateAdmission: evaluateActorEconomicAdmission,
   evaluateLedger: evaluateAcquisitionLedger,
 };
@@ -197,7 +201,15 @@ async function prepareLedger(context: StartingEquipmentCommandContext, deps: Sta
   let acquisition = requireAcquisition(context.draft);
   const priorPlannedClassGrants = acquisition.plannedClassGrants;
   const projectionDraft = { ...context.draft, acquisition };
-  const classGrantPlan = await deps.prepareClassGrantPlan(context.actor, projectionDraft, context.steps);
+  const classGrantPlan = await deps.prepareClassGrantPlan(context.actor, projectionDraft, context.steps, {
+    resolveCharacterAccessRef: (sourceUuid) =>
+      deps.resolveCharacterAccessRef({
+        actor: context.actor,
+        characterDraft: projectionDraft,
+        acquisition,
+        sourceUuid,
+      }),
+  });
   acquisition = recordPlannedClassGrants(acquisition, classGrantPlan.grants);
   const nativeGrantLines = await deps.prepareNativeGrantLines({
     actor: context.actor,

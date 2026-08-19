@@ -12,6 +12,7 @@ const DEFAULT_DEPS = {
     projectClassGrants: projectCurrentClassGrants,
     prepareClassGrantPlan: prepareCurrentClassGrantPlan,
     prepareNativeGrantLines: (request) => getFoundryEquipmentAcquisitionRuntime().prepareNativeClassGrantLines(request),
+    resolveCharacterAccessRef: (request) => getFoundryEquipmentAcquisitionRuntime().resolveCurrentCharacterAccessRef(request),
     evaluateAdmission: evaluateActorEconomicAdmission,
     evaluateLedger: evaluateAcquisitionLedger,
 };
@@ -128,7 +129,14 @@ async function prepareLedger(context, deps) {
     let acquisition = requireAcquisition(context.draft);
     const priorPlannedClassGrants = acquisition.plannedClassGrants;
     const projectionDraft = { ...context.draft, acquisition };
-    const classGrantPlan = await deps.prepareClassGrantPlan(context.actor, projectionDraft, context.steps);
+    const classGrantPlan = await deps.prepareClassGrantPlan(context.actor, projectionDraft, context.steps, {
+        resolveCharacterAccessRef: (sourceUuid) => deps.resolveCharacterAccessRef({
+            actor: context.actor,
+            characterDraft: projectionDraft,
+            acquisition,
+            sourceUuid,
+        }),
+    });
     acquisition = recordPlannedClassGrants(acquisition, classGrantPlan.grants);
     const nativeGrantLines = await deps.prepareNativeGrantLines({
         actor: context.actor,

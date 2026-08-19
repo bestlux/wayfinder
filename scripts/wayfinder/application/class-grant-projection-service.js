@@ -7,14 +7,14 @@ import { normalizeAcquisitionIdentity } from "../domain/economic-baseline.js";
 import { evaluateEquipmentItemAuthority, } from "../domain/equipment-policy.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
 const UUIDS = CLASS_GRANT_PROFILE_UUIDS;
-export async function prepareCurrentClassGrantPlan(actor, draft, activeSteps) {
-    const result = await projectCurrentClassGrants(actor, draft, activeSteps);
+export async function prepareCurrentClassGrantPlan(actor, draft, activeSteps, options = {}) {
+    const result = await projectCurrentClassGrants(actor, draft, activeSteps, options);
     if (!result.preparedPlan || result.blockers.length > 0) {
         throw new Error(result.blockers[0]?.message ?? "The current class-grant plan is unavailable.");
     }
     return result.preparedPlan;
 }
-export async function projectCurrentClassGrants(actor, draft, activeSteps) {
+export async function projectCurrentClassGrants(actor, draft, activeSteps, options = {}) {
     const acquisition = draft.acquisition;
     if (!acquisition?.policySnapshot) {
         throw new TypeError("Starting-equipment Apply requires a reviewed equipment policy.");
@@ -41,6 +41,10 @@ export async function projectCurrentClassGrants(actor, draft, activeSteps) {
         throw new Error("The reviewed equipment policy changed before class-grant preparation.");
     }
     const observedActorItems = captureObservedClassGrantItems(actor);
+    const fetchDocumentByUuid = options.fetchDocumentByUuid ?? resolveUuid;
+    const actorSize = titanMaulerGrantIdForDraft(draft)
+        ? await resolveDraftedAncestryEquipmentSize(draft, fetchDocumentByUuid)
+        : null;
     const result = await projectPlannedClassGrants({
         draft,
         actorId: currentPolicy.actorId,
@@ -49,15 +53,42 @@ export async function projectCurrentClassGrants(actor, draft, activeSteps) {
         targetLevel: acquisition.targetLevel,
         activeSteps,
         observedActorItems,
-        fetchDocumentByUuid: resolveUuid,
+        fetchDocumentByUuid,
         currentEquipmentPolicy: currentPolicy,
-        actorSize: actorEquipmentSize(actor),
-        // PF2E has no generic, authoritative item-Access API. Restricted Titan
-        // Mauler weapons therefore fail closed until a source-specific adapter is
-        // added; Common weapons remain fully supported.
-        resolveCharacterAccessRef: () => null,
+        actorSize,
+        // Only a registered catalogue Access adapter may produce this reference.
+        // Callers that do not provide the bridge remain fail-closed for restricted
+        // Titan Mauler weapons; Common weapons do not need one.
+        resolveCharacterAccessRef: options.resolveCharacterAccessRef ?? (() => null),
     });
     return result;
+}
+export function titanMaulerGrantIdForDraft(draft) {
+    const classSelection = draft.selections["class-level-1"];
+    if (classSelection?.slotId !== "class-level-1" ||
+        classSelection.itemType !== "class" ||
+        classSelection.uuid !== UUIDS.barbarianClass) {
+        return null;
+    }
+    const giantInstinct = Object.values(draft.branchSelections).find((selection) => selection.slotId === "class-branch-instinct-level-1" &&
+        selection.uuid === UUIDS.giantInstinct &&
+        selection.itemType === "feat" &&
+        selection.featType === "classfeature");
+    return giantInstinct ? `class-grant:titan-mauler:${giantInstinct.slotId}` : null;
+}
+export async function resolveDraftedAncestryEquipmentSize(draft, fetchDocumentByUuid = resolveUuid) {
+    const selection = draft.selections["ancestry-level-1"];
+    if (selection?.slotId !== "ancestry-level-1" || selection.itemType !== "ancestry" || !nonEmpty(selection.uuid)) {
+        return null;
+    }
+    const document = await fetchDocumentByUuid(selection.uuid);
+    if (!isRecord(document) || (document.type !== undefined && document.type !== "ancestry"))
+        return null;
+    const sourceId = sourceIdOf(document);
+    if (sourceId !== null && sourceId !== selection.uuid)
+        return null;
+    const system = isRecord(document.system) ? document.system : {};
+    return equipmentSize(system.size);
 }
 export function captureObservedClassGrantItems(actor) {
     if (!isRecord(actor) || !nonEmpty(actor.id))
@@ -318,8 +349,8 @@ async function projectTitanMauler(classDocument, selection, acquisitionLines, po
         return sourceDrift(profileId, "The installed Giant Instinct source relationship changed.");
     }
     const grantId = `class-grant:titan-mauler:${selection.slotId}`;
-    const line = acquisitionLines.find((entry) => entry.funding.lane === "class-grant" && entry.funding.grant.plannedGrantId === grantId);
-    if (!line || !policy || !actorSize) {
+    const grantLines = acquisitionLines.filter((entry) => entry.funding.lane === "class-grant" && entry.funding.grant.plannedGrantId === grantId);
+    if (grantLines.length === 0 || !policy || !actorSize) {
         return {
             blocker: {
                 code: "titan-selection-required",
@@ -328,6 +359,16 @@ async function projectTitanMauler(classDocument, selection, acquisitionLines, po
             },
         };
     }
+    if (grantLines.length !== 1) {
+        return {
+            blocker: {
+                code: "titan-ineligible",
+                profileId,
+                message: "Giant Instinct requires exactly one reviewed Titan Mauler weapon selection.",
+            },
+        };
+    }
+    const line = grantLines[0];
     if (policy.actorId !== subject.actorId ||
         policy.draftId !== subject.draftId ||
         policy.targetLevel !== subject.targetLevel) {
@@ -336,12 +377,13 @@ async function projectTitanMauler(classDocument, selection, acquisitionLines, po
     const weaponDocument = await fetchDocumentByUuid(line.sourceUuid);
     if (!weaponDocument)
         return sourceMissing(profileId);
+    const characterAccessRef = (await resolveCharacterAccessRef?.(line.sourceUuid)) ?? null;
     const candidate = buildTitanMaulerCandidate({
         document: weaponDocument,
         line,
         policy,
         actorSize,
-        characterAccessRef: resolveCharacterAccessRef?.(line.sourceUuid) ?? null,
+        characterAccessRef,
     });
     if (!candidate)
         return sourceDrift(profileId, "The selected Titan Mauler weapon facts changed or are malformed.");
@@ -536,11 +578,7 @@ function higherLevelStartClaim(evidence) {
     }
     return { ...evidence };
 }
-function actorEquipmentSize(actor) {
-    const actorRecord = isRecord(actor) ? actor : {};
-    const system = isRecord(actorRecord.system) ? actorRecord.system : {};
-    const traits = isRecord(system.traits) ? system.traits : {};
-    const rawSize = isRecord(traits.size) ? traits.size.value : (traits.size ?? actorRecord.size);
+function equipmentSize(rawSize) {
     if (typeof rawSize !== "string")
         return null;
     const normalized = rawSize.trim().toLowerCase();
@@ -570,7 +608,7 @@ function hasTitanMaulerSemanticCanaries(document) {
         normalized.includes("one size larger") &&
         normalized.includes("no value if sold"));
 }
-function buildTitanMaulerCandidate(args) {
+export function buildTitanMaulerCandidate(args) {
     const { document, line, policy } = args;
     if (!isRecord(document) || document.type !== "weapon" || !isRecord(document.system))
         return null;
@@ -585,7 +623,8 @@ function buildTitanMaulerCandidate(args) {
     const traits = isRecord(document.system.traits) ? document.system.traits : null;
     const rarity = traits?.rarity;
     const publicationSlug = publicationSlugOf(document.system);
-    if (!nonEmpty(category) ||
+    if (line.policyDecision.eligible !== true ||
+        !nonEmpty(category) ||
         (range !== null && (typeof range !== "number" || !Number.isFinite(range))) ||
         (rarity !== "common" && rarity !== "uncommon" && rarity !== "rare" && rarity !== "unique") ||
         publicationSlug !== line.policyDecision.publicationSlug ||

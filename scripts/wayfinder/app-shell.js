@@ -624,6 +624,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             case "add-equipment-item":
                 await this.#addStartingEquipmentItem(action.stepId, action.sourceUuid);
                 break;
+            case "choose-titan-mauler-equipment":
+                await this.#chooseTitanMaulerEquipment(action.stepId, action.sourceUuid);
+                break;
             case "remove-equipment-line":
                 await this.#executeStartingEquipmentCommand(action.stepId, {
                     type: "remove-line",
@@ -962,6 +965,27 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         catch (error) {
             const message = error instanceof Error ? error.message : "Wayfinder could not add this equipment item.";
+            this.#statusNote = message;
+            ui.notifications.warn(message);
+            this.render({ wayfinderEquipmentUpdate: true });
+        }
+    }
+    async #chooseTitanMaulerEquipment(stepId, sourceUuid) {
+        try {
+            const plan = this.#cachedRenderPlan;
+            if (!plan)
+                throw new TypeError("The current Wayfinder plan is unavailable.");
+            const step = plan.steps.find((candidate) => candidate.id === stepId && candidate.kind === "starting-equipment");
+            if (!step)
+                throw new TypeError("The starting-equipment step is no longer in the current plan.");
+            const line = await getStartingEquipmentUiAdapter().prepareTitanMaulerLine({
+                ...this.#startingEquipmentUiRequest(step),
+                sourceUuid,
+            });
+            await this.#executeStartingEquipmentCommand(stepId, { type: "add-line", line });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : "Wayfinder could not choose this Titan Mauler weapon.";
             this.#statusNote = message;
             ui.notifications.warn(message);
             this.render({ wayfinderEquipmentUpdate: true });
@@ -1780,7 +1804,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                         spellRarityCeiling,
                         validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
                         validateSelectionEligibility: (selection, step) => this.#validateSelectionEligibility(selection, step, draft, steps, snapshot.skillRanks, this.#applySpellRarityCeiling(draft, step, recovering)),
-                        prepareClassGrantPlan: (actor, currentDraft, currentSteps) => prepareCurrentClassGrantPlan(actor, currentDraft, currentSteps),
+                        prepareClassGrantPlan: (actor, currentDraft, currentSteps) => prepareCurrentClassGrantPlan(actor, currentDraft, currentSteps, currentClassGrantProjectionOptions(actor, currentDraft)),
                         executeAcquisitionItems: acquisitionSession?.executeAcquisitionItems,
                         executeAcquisitionCurrency: acquisitionSession?.executeAcquisitionCurrency,
                         verifyAcquisitionOutcome: acquisitionSession?.verifyAcquisitionOutcome,
@@ -1815,7 +1839,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                         classGrantRecovery: draft.acquisition
                             ? {
                                 kind: "required",
-                                preparePlan: (actor) => prepareCurrentClassGrantPlan(actor, draft, steps),
+                                preparePlan: (actor) => prepareCurrentClassGrantPlan(actor, draft, steps, currentClassGrantProjectionOptions(actor, draft)),
                                 verifyAcquisitionRecovery: ({ actor, plan, finalClassGrantReconciliation }) => acquisitionSession.prepareRecoveredAcquisitionOutcome({
                                     actor,
                                     draft,
@@ -2163,6 +2187,19 @@ function currentApplyingUser() {
     return {
         userId: requiredRuntimeLabel(game.user?.id, "applying user ID"),
         userName: requiredRuntimeLabel(game.user?.name, "applying user name"),
+    };
+}
+function currentClassGrantProjectionOptions(actor, draft) {
+    const acquisition = draft.acquisition;
+    if (!acquisition)
+        return {};
+    return {
+        resolveCharacterAccessRef: (sourceUuid) => getFoundryEquipmentAcquisitionRuntime().resolveCurrentCharacterAccessRef({
+            actor,
+            characterDraft: draft,
+            acquisition,
+            sourceUuid,
+        }),
     };
 }
 function currentAcquisitionEnvironment() {

@@ -9,6 +9,7 @@ import {
   type ClassGrantProfileId,
   createPlannedClassGrant,
   createPreparedClassGrantPlan,
+  type EquipmentSize,
   evaluateTitanMaulerCandidate,
   type ObservedClassGrantItem,
   type PlannedClassGrantV1,
@@ -38,12 +39,18 @@ export interface ClassGrantProjectionResult {
   readonly blockers: readonly ClassGrantProjectionBlocker[];
 }
 
+export interface CurrentClassGrantProjectionOptions {
+  readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
+  readonly resolveCharacterAccessRef?: (sourceUuid: string) => Promise<string | null> | string | null;
+}
+
 export async function prepareCurrentClassGrantPlan(
   actor: unknown,
   draft: DraftState,
-  activeSteps: readonly PendingStep[]
+  activeSteps: readonly PendingStep[],
+  options: CurrentClassGrantProjectionOptions = {}
 ): Promise<PreparedClassGrantPlanV1> {
-  const result = await projectCurrentClassGrants(actor, draft, activeSteps);
+  const result = await projectCurrentClassGrants(actor, draft, activeSteps, options);
   if (!result.preparedPlan || result.blockers.length > 0) {
     throw new Error(result.blockers[0]?.message ?? "The current class-grant plan is unavailable.");
   }
@@ -53,7 +60,8 @@ export async function prepareCurrentClassGrantPlan(
 export async function projectCurrentClassGrants(
   actor: unknown,
   draft: DraftState,
-  activeSteps: readonly PendingStep[]
+  activeSteps: readonly PendingStep[],
+  options: CurrentClassGrantProjectionOptions = {}
 ): Promise<ClassGrantProjectionResult> {
   const acquisition = draft.acquisition;
   if (!acquisition?.policySnapshot) {
@@ -82,6 +90,10 @@ export async function projectCurrentClassGrants(
     throw new Error("The reviewed equipment policy changed before class-grant preparation.");
   }
   const observedActorItems = captureObservedClassGrantItems(actor);
+  const fetchDocumentByUuid = options.fetchDocumentByUuid ?? resolveUuid;
+  const actorSize = titanMaulerGrantIdForDraft(draft)
+    ? await resolveDraftedAncestryEquipmentSize(draft, fetchDocumentByUuid)
+    : null;
   const result = await projectPlannedClassGrants({
     draft,
     actorId: currentPolicy.actorId,
@@ -90,15 +102,50 @@ export async function projectCurrentClassGrants(
     targetLevel: acquisition.targetLevel,
     activeSteps,
     observedActorItems,
-    fetchDocumentByUuid: resolveUuid,
+    fetchDocumentByUuid,
     currentEquipmentPolicy: currentPolicy,
-    actorSize: actorEquipmentSize(actor),
-    // PF2E has no generic, authoritative item-Access API. Restricted Titan
-    // Mauler weapons therefore fail closed until a source-specific adapter is
-    // added; Common weapons remain fully supported.
-    resolveCharacterAccessRef: () => null,
+    actorSize,
+    // Only a registered catalogue Access adapter may produce this reference.
+    // Callers that do not provide the bridge remain fail-closed for restricted
+    // Titan Mauler weapons; Common weapons do not need one.
+    resolveCharacterAccessRef: options.resolveCharacterAccessRef ?? (() => null),
   });
   return result;
+}
+
+export function titanMaulerGrantIdForDraft(draft: DraftState): string | null {
+  const classSelection = draft.selections["class-level-1"];
+  if (
+    classSelection?.slotId !== "class-level-1" ||
+    classSelection.itemType !== "class" ||
+    classSelection.uuid !== UUIDS.barbarianClass
+  ) {
+    return null;
+  }
+  const giantInstinct = Object.values(draft.branchSelections).find(
+    (selection) =>
+      selection.slotId === "class-branch-instinct-level-1" &&
+      selection.uuid === UUIDS.giantInstinct &&
+      selection.itemType === "feat" &&
+      selection.featType === "classfeature"
+  );
+  return giantInstinct ? `class-grant:titan-mauler:${giantInstinct.slotId}` : null;
+}
+
+export async function resolveDraftedAncestryEquipmentSize(
+  draft: DraftState,
+  fetchDocumentByUuid: (uuid: string) => Promise<unknown | null> = resolveUuid
+): Promise<EquipmentSize | null> {
+  const selection = draft.selections["ancestry-level-1"];
+  if (selection?.slotId !== "ancestry-level-1" || selection.itemType !== "ancestry" || !nonEmpty(selection.uuid)) {
+    return null;
+  }
+  const document = await fetchDocumentByUuid(selection.uuid);
+  if (!isRecord(document) || (document.type !== undefined && document.type !== "ancestry")) return null;
+  const sourceId = sourceIdOf(document);
+  if (sourceId !== null && sourceId !== selection.uuid) return null;
+  const system = isRecord(document.system) ? document.system : {};
+  return equipmentSize(system.size);
 }
 
 export function captureObservedClassGrantItems(actor: unknown): ObservedClassGrantItem[] {
@@ -165,7 +212,7 @@ export async function projectPlannedClassGrants(args: {
   readonly fetchDocumentByUuid: (uuid: string) => Promise<unknown | null>;
   readonly currentEquipmentPolicy?: EffectiveEquipmentPolicySnapshotV1 | null;
   readonly actorSize?: TitanMaulerCandidate["actorSize"] | null;
-  readonly resolveCharacterAccessRef?: (sourceUuid: string) => string | null;
+  readonly resolveCharacterAccessRef?: (sourceUuid: string) => Promise<string | null> | string | null;
 }): Promise<ClassGrantProjectionResult> {
   const grants: PlannedClassGrantV1[] = [];
   const blockers: ClassGrantProjectionBlocker[] = [];
@@ -405,7 +452,7 @@ async function projectTitanMauler(
   acquisitionLines: readonly AcquisitionLineDraft[],
   policy: EffectiveEquipmentPolicySnapshotV1 | null,
   actorSize: TitanMaulerCandidate["actorSize"] | null,
-  resolveCharacterAccessRef: ((sourceUuid: string) => string | null) | undefined,
+  resolveCharacterAccessRef: ((sourceUuid: string) => Promise<string | null> | string | null) | undefined,
   fetchDocumentByUuid: (uuid: string) => Promise<unknown | null>,
   subject: { readonly actorId: string; readonly draftId: string; readonly targetLevel: number }
 ): Promise<Projection> {
@@ -424,10 +471,10 @@ async function projectTitanMauler(
     return sourceDrift(profileId, "The installed Giant Instinct source relationship changed.");
   }
   const grantId = `class-grant:titan-mauler:${selection.slotId}`;
-  const line = acquisitionLines.find(
+  const grantLines = acquisitionLines.filter(
     (entry) => entry.funding.lane === "class-grant" && entry.funding.grant.plannedGrantId === grantId
   );
-  if (!line || !policy || !actorSize) {
+  if (grantLines.length === 0 || !policy || !actorSize) {
     return {
       blocker: {
         code: "titan-selection-required",
@@ -436,6 +483,16 @@ async function projectTitanMauler(
       },
     };
   }
+  if (grantLines.length !== 1) {
+    return {
+      blocker: {
+        code: "titan-ineligible",
+        profileId,
+        message: "Giant Instinct requires exactly one reviewed Titan Mauler weapon selection.",
+      },
+    };
+  }
+  const line = grantLines[0]!;
   if (
     policy.actorId !== subject.actorId ||
     policy.draftId !== subject.draftId ||
@@ -445,12 +502,13 @@ async function projectTitanMauler(
   }
   const weaponDocument = await fetchDocumentByUuid(line.sourceUuid);
   if (!weaponDocument) return sourceMissing(profileId);
+  const characterAccessRef = (await resolveCharacterAccessRef?.(line.sourceUuid)) ?? null;
   const candidate = buildTitanMaulerCandidate({
     document: weaponDocument,
     line,
     policy,
     actorSize,
-    characterAccessRef: resolveCharacterAccessRef?.(line.sourceUuid) ?? null,
+    characterAccessRef,
   });
   if (!candidate) return sourceDrift(profileId, "The selected Titan Mauler weapon facts changed or are malformed.");
   const eligibility = evaluateTitanMaulerCandidate(candidate);
@@ -705,14 +763,10 @@ function higherLevelStartClaim(evidence: EquipmentHigherLevelStartEvidence): Equ
   return { ...evidence };
 }
 
-function actorEquipmentSize(actor: unknown): TitanMaulerCandidate["actorSize"] | null {
-  const actorRecord = isRecord(actor) ? actor : {};
-  const system = isRecord(actorRecord.system) ? actorRecord.system : {};
-  const traits = isRecord(system.traits) ? system.traits : {};
-  const rawSize = isRecord(traits.size) ? traits.size.value : (traits.size ?? actorRecord.size);
+function equipmentSize(rawSize: unknown): EquipmentSize | null {
   if (typeof rawSize !== "string") return null;
   const normalized = rawSize.trim().toLowerCase();
-  const sizes: Record<string, TitanMaulerCandidate["actorSize"]> = {
+  const sizes: Record<string, EquipmentSize> = {
     tiny: "tiny",
     sm: "small",
     small: "small",
@@ -741,7 +795,7 @@ function hasTitanMaulerSemanticCanaries(document: unknown): boolean {
   );
 }
 
-function buildTitanMaulerCandidate(args: {
+export function buildTitanMaulerCandidate(args: {
   readonly document: unknown;
   readonly line: AcquisitionLineDraft;
   readonly policy: EffectiveEquipmentPolicySnapshotV1;
@@ -760,6 +814,7 @@ function buildTitanMaulerCandidate(args: {
   const rarity = traits?.rarity;
   const publicationSlug = publicationSlugOf(document.system);
   if (
+    line.policyDecision.eligible !== true ||
     !nonEmpty(category) ||
     (range !== null && (typeof range !== "number" || !Number.isFinite(range))) ||
     (rarity !== "common" && rarity !== "uncommon" && rarity !== "rare" && rarity !== "unique") ||

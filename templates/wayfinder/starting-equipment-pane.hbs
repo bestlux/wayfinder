@@ -32,6 +32,18 @@
           {{/unless}}
         </section>
       {{else}}
+        {{#if activePane.titanMauler.required}}
+          <section class="equipment-callout warning titan-mauler-callout" tabindex="-1" data-wayfinder-focus-id="starting-equipment-titan-mauler">
+            {{#if activePane.titanMauler.selected}}
+              <h4>Titan Mauler weapon selected</h4>
+              <p><strong>{{activePane.titanMauler.selectedName}}</strong> is the automatic Giant Instinct grant. It is not charged against starting wealth, its quantity is fixed, and it has no resale value until rune investment. Remove it from the cart to choose a different weapon.</p>
+            {{else}}
+              <h4>Choose your Titan Mauler weapon</h4>
+              <p>Giant Instinct grants one level-0 Common melee or ranged weapon—or one covered by an exact registered character Access—with a base Price of 9 gp or less. Wayfinder prepares it at the ancestry-appropriate oversized size, does not charge starting wealth, and records its special resale rule.</p>
+              <p>Use <strong>Choose as Titan Mauler</strong> on an eligible catalogue weapon before reviewing equipment.</p>
+            {{/if}}
+          </section>
+        {{/if}}
         <div class="equipment-workspace">
           <section class="equipment-catalogue" aria-label="Equipment catalogue">
             <div class="equipment-search-row">
@@ -54,7 +66,10 @@
                     <span><strong>{{name}}</strong><small>Level {{level}} · {{rarity}} · {{sourceLabel}}</small></span>
                   </button>
                   <span class="equipment-result-price">{{priceLabel}}</span>
-                  <button type="button" class="primary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}" {{#unless canAdd}}disabled{{/unless}}>Add</button>
+                  <div class="equipment-result-actions">
+                    <button type="button" class="primary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}" {{#unless canAdd}}disabled{{/unless}}>Add</button>
+                    {{#if canChooseTitanMauler}}<button type="button" class="secondary compact" data-wayfinder-action="choose-titan-mauler-equipment" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">Choose as Titan Mauler</button>{{/if}}
+                  </div>
                   {{#if unavailableReason}}<small class="equipment-unavailable">{{unavailableReason}}</small>{{else}}{{#unless affordable}}<small class="equipment-unavailable">Not affordable with the remaining budget.</small>{{/unless}}{{/if}}
                 </article>
               {{/each}}

@@ -148,6 +148,19 @@ describe("wayfinder actions", () => {
         },
       } as any)
     ).toEqual({ type: "retain-all-equipment", stepId: "starting-equipment-level-1" });
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "choose-titan-mauler-equipment",
+          stepId: "starting-equipment-level-1",
+          sourceUuid: "Compendium.pf2e.equipment-srd.Item.weapon",
+        },
+      } as any)
+    ).toEqual({
+      type: "choose-titan-mauler-equipment",
+      stepId: "starting-equipment-level-1",
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.weapon",
+    });
   });
 
   it("rejects incomplete action datasets", () => {

@@ -1,5 +1,6 @@
 import type { EmbeddedItemSource } from "../../shared/actor-model.js";
 import { cloneData } from "../../shared/cloning.js";
+import { resolveUuid } from "../../shared/foundry-compat.js";
 import type { DraftState } from "../../types.js";
 import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot } from "../domain/acquisition-draft.js";
 import type { PreparedAcquisitionEntryV1 } from "../domain/acquisition-identity.js";
@@ -14,11 +15,18 @@ import type {
 } from "../domain/acquisition-types.js";
 import {
   assertPreparedClassGrantPlanMatches,
+  evaluateTitanMaulerCandidate,
   type PlannedClassGrantV1,
   type PreparedClassGrantPlanV1,
+  titanMaulerTargetSize,
 } from "../domain/class-grant-reconciliation.js";
 import type { EffectiveEquipmentPolicySnapshotV1, OfficialEquipmentRecipe } from "../domain/equipment-policy.js";
 import type { ResolvedAcquisitionSource } from "./acquisition-execution-service.js";
+import {
+  buildTitanMaulerCandidate,
+  resolveDraftedAncestryEquipmentSize,
+  titanMaulerGrantIdForDraft,
+} from "./class-grant-projection-service.js";
 import {
   createEquipmentCatalogueDraftContext,
   createEquipmentCatalogueService,
@@ -45,6 +53,7 @@ export interface EquipmentAcquisitionRuntimeOptions {
     acquisition: AcquisitionDraftState
   ) => EffectiveEquipmentPolicySnapshotV1;
   readonly mintLineId?: () => string;
+  readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
 }
 
 export interface EquipmentApplySourceRequest {
@@ -61,6 +70,13 @@ export interface NativeClassGrantLineRequest {
   readonly classGrantPlan: PreparedClassGrantPlanV1;
 }
 
+export interface CurrentEquipmentAccessRequest {
+  readonly actor: unknown;
+  readonly characterDraft: DraftState;
+  readonly acquisition: AcquisitionDraftState;
+  readonly sourceUuid: string;
+}
+
 export interface EquipmentAcquisitionRuntime {
   readonly uiAdapter: StartingEquipmentUiAdapter;
   readonly prepareNativeClassGrantLines: (
@@ -71,6 +87,7 @@ export interface EquipmentAcquisitionRuntime {
     acquisition: AcquisitionDraftState
   ) => AcquisitionPolicySnapshot;
   readonly resolveSourceForApply: (request: EquipmentApplySourceRequest) => Promise<ResolvedAcquisitionSource>;
+  readonly resolveCurrentCharacterAccessRef: (request: CurrentEquipmentAccessRequest) => Promise<string | null>;
   readonly invalidatePack: (packId: string) => void;
 }
 
@@ -80,6 +97,7 @@ export function createEquipmentAcquisitionRuntime(
   const accessRegistry = options.accessRegistry ?? EMPTY_EQUIPMENT_ACCESS_REGISTRY;
   const resolveEffectivePolicy = options.resolveEffectivePolicy ?? resolveCurrentEffectivePolicy;
   const mintLineId = options.mintLineId ?? mintAcquisitionLineId;
+  const fetchDocumentByUuid = options.fetchDocumentByUuid ?? resolveUuid;
   const catalogues = new Map<string, EquipmentCatalogueService>();
 
   const catalogueFor = (policy: EffectiveEquipmentPolicySnapshotV1): EquipmentCatalogueService => {
@@ -128,6 +146,7 @@ export function createEquipmentAcquisitionRuntime(
   const uiAdapter: StartingEquipmentUiAdapter = {
     async project(request) {
       const acquisition = request.draft.acquisition;
+      const titanMauler = titanMaulerProjection(request.draft);
       if (!acquisition) {
         return {
           state: "pending",
@@ -137,6 +156,7 @@ export function createEquipmentAcquisitionRuntime(
           filters: [],
           activeFilters: request.filters,
           previewSourceUuid: request.previewSourceUuid,
+          titanMauler,
         };
       }
       try {
@@ -162,6 +182,7 @@ export function createEquipmentAcquisitionRuntime(
           filters: catalogueFilters(entries),
           activeFilters: request.filters,
           previewSourceUuid: request.previewSourceUuid,
+          titanMauler,
         };
       } catch (error) {
         return {
@@ -172,6 +193,7 @@ export function createEquipmentAcquisitionRuntime(
           filters: [],
           activeFilters: request.filters,
           previewSourceUuid: request.previewSourceUuid,
+          titanMauler,
         };
       }
     },
@@ -195,6 +217,54 @@ export function createEquipmentAcquisitionRuntime(
         stackingIntent: "aggregate",
         price,
       };
+    },
+    async prepareTitanMaulerLine(request) {
+      const acquisition = requireAcquisition(request);
+      const grantId = titanMaulerGrantIdForDraft(request.draft);
+      if (!grantId) throw new TypeError("Titan Mauler is not part of the current drafted build.");
+      if (
+        acquisition.lines.some(
+          (line) => line.funding.lane === "class-grant" && line.funding.grant.plannedGrantId === grantId
+        )
+      ) {
+        throw new TypeError("Remove the current Titan Mauler weapon before choosing another one.");
+      }
+      const actorSize = await resolveDraftedAncestryEquipmentSize(request.draft, fetchDocumentByUuid);
+      if (!actorSize) {
+        throw new TypeError("Titan Mauler requires a selected ancestry with a supported size.");
+      }
+      const targetSize = titanMaulerTargetSize(actorSize);
+      if (!targetSize) throw new TypeError("Titan Mauler cannot prepare a weapon larger than Gargantuan.");
+
+      const { policy, context } = currentContext(request.actor, request.draft, acquisition);
+      const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
+      assertWaveTwoCandidate(resolved);
+      assertExactCompendiumSource(resolved.candidate.sourceUuid, resolved.source);
+      const line: AcquisitionLineDraft = {
+        schemaVersion: 1,
+        lineId: mintLineId(),
+        sourceUuid: resolved.candidate.sourceUuid,
+        documentFingerprint: resolved.documentFingerprint,
+        priceFingerprint: resolved.priceFingerprint,
+        itemLevel: resolved.candidate.level,
+        permanence: "permanent",
+        componentKind: "baseline-item",
+        policyDecision: cloneData(resolved.policyDecision),
+        funding: { lane: "class-grant", grant: { plannedGrantId: grantId } },
+        stackingIntent: "separate",
+        price: buildResolvedPrice(resolved, 1, targetSize),
+      };
+      const candidate = buildTitanMaulerCandidate({
+        document: resolved.source,
+        line,
+        policy,
+        actorSize,
+        characterAccessRef: resolved.policyDecision.characterAccessRef,
+      });
+      if (!candidate) throw new Error("The selected Titan Mauler weapon facts are malformed or changed.");
+      const eligibility = evaluateTitanMaulerCandidate(candidate);
+      if (eligibility.ok === false) throw new Error(eligibility.message);
+      return line;
     },
   };
 
@@ -286,10 +356,41 @@ export function createEquipmentAcquisitionRuntime(
       ) {
         throw new Error(`Acquisition item material drifted for ${request.entry.entryId}.`);
       }
+      const titanGrantId = titanMaulerGrantIdForDraft(request.characterDraft);
+      if (request.entry.funding.lane === "class-grant" && request.entry.funding.grant.plannedGrantId === titanGrantId) {
+        if (lines.length !== 1 || lines[0]?.funding.lane !== "class-grant") {
+          throw new Error("Titan Mauler must resolve from exactly one automatic build-grant line.");
+        }
+        const actorSize = await resolveDraftedAncestryEquipmentSize(request.characterDraft, fetchDocumentByUuid);
+        const targetSize = actorSize ? titanMaulerTargetSize(actorSize) : null;
+        if (
+          !actorSize ||
+          !targetSize ||
+          request.entry.price.size !== targetSize ||
+          lines[0].price.size !== targetSize
+        ) {
+          throw new Error("The reviewed Titan Mauler weapon size no longer matches the drafted ancestry.");
+        }
+        const candidate = buildTitanMaulerCandidate({
+          document: resolved.source,
+          line: lines[0],
+          policy,
+          actorSize,
+          characterAccessRef: resolved.policyDecision.characterAccessRef,
+        });
+        const eligibility = candidate ? evaluateTitanMaulerCandidate(candidate) : null;
+        if (!candidate || eligibility?.ok === false) {
+          throw new Error(
+            eligibility?.ok === false
+              ? eligibility.message
+              : "The reviewed Titan Mauler weapon facts are malformed or changed."
+          );
+        }
+      }
       const resolvedPrice = buildResolvedPrice(
         resolved,
         request.entry.price.requestedQuantity,
-        sourceSize(resolved.source)
+        request.entry.price.size
       );
       return {
         source: cloneData(resolved.source) as EmbeddedItemSource,
@@ -299,6 +400,12 @@ export function createEquipmentAcquisitionRuntime(
         resolvedPrice,
         policyDecision: cloneData(resolved.policyDecision),
       };
+    },
+    async resolveCurrentCharacterAccessRef(request) {
+      const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
+      const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
+      assertWaveTwoCandidate(resolved);
+      return resolved.policyDecision.characterAccessRef;
     },
     invalidatePack(packId) {
       for (const catalogue of catalogues.values()) catalogue.invalidatePack(packId);
@@ -495,6 +602,18 @@ function buildAccessFacts(draft: DraftState): Readonly<Record<string, unknown>> 
   };
 }
 
+function titanMaulerProjection(draft: DraftState): {
+  readonly required: boolean;
+  readonly selectedSourceUuid: string | null;
+} {
+  const grantId = titanMaulerGrantIdForDraft(draft);
+  if (!grantId) return { required: false, selectedSourceUuid: null };
+  const selected = draft.acquisition?.lines.find(
+    (line) => line.funding.lane === "class-grant" && line.funding.grant.plannedGrantId === grantId
+  );
+  return { required: true, selectedSourceUuid: selected?.sourceUuid ?? null };
+}
+
 function toUiRecord(entry: EquipmentCatalogueEntry) {
   return {
     sourceUuid: entry.sourceUuid,
@@ -510,7 +629,21 @@ function toUiRecord(entry: EquipmentCatalogueEntry) {
     traits: [...entry.traits],
     available: entry.available,
     unavailableReason: entry.unavailableReasons[0]?.message ?? null,
+    titanMaulerEligible: isPotentialTitanMaulerEntry(entry),
   };
+}
+
+function isPotentialTitanMaulerEntry(entry: EquipmentCatalogueEntry): boolean {
+  return (
+    entry.available &&
+    entry.itemType === "weapon" &&
+    !entry.traits.includes("unarmed") &&
+    entry.price.kind === "priced" &&
+    entry.price.copperValue !== null &&
+    entry.price.copperValue <= 900 &&
+    entry.price.sourceQuantity === 1 &&
+    (entry.rarity === "common" || entry.policyDecision.characterAccessRef !== null)
+  );
 }
 
 function catalogueFilters(entries: readonly EquipmentCatalogueEntry[]) {

@@ -16,6 +16,9 @@ export interface StartingEquipmentUiAdapter {
   /** Project search/filter state from a cached normalized catalogue; do not reread pack indexes or hydrate documents. */
   project(request: StartingEquipmentUiRequest): Promise<StartingEquipmentCatalogueProjection>;
   prepareLine(request: StartingEquipmentUiRequest & { readonly sourceUuid: string }): Promise<AcquisitionLineDraft>;
+  prepareTitanMaulerLine(
+    request: StartingEquipmentUiRequest & { readonly sourceUuid: string }
+  ): Promise<AcquisitionLineDraft>;
 }
 
 export async function resolveStartingEquipmentRenderPlan(args: {
@@ -39,9 +42,13 @@ const UNAVAILABLE_ADAPTER: StartingEquipmentUiAdapter = {
       filters: [],
       activeFilters: request.filters,
       previewSourceUuid: request.previewSourceUuid,
+      titanMauler: { required: false, selectedSourceUuid: null },
     };
   },
   async prepareLine() {
+    throw new Error("The approved Common-equipment catalogue is not loaded yet.");
+  },
+  async prepareTitanMaulerLine() {
     throw new Error("The approved Common-equipment catalogue is not loaded yet.");
   },
 };

@@ -26,6 +26,7 @@ describe("starting equipment pane", () => {
       traits: ["common"],
       available: true,
       unavailableReason: null,
+      titanMaulerEligible: false,
     };
 
     const pane = buildStartingEquipmentPane(
@@ -51,6 +52,7 @@ describe("starting equipment pane", () => {
         filters: [{ key: "type", label: "Equipment", value: "equipment" }],
         activeFilters: { type: ["equipment"] },
         previewSourceUuid: record.sourceUuid,
+        titanMauler: { required: false, selectedSourceUuid: null },
       }
     );
 
@@ -111,6 +113,7 @@ describe("starting equipment pane", () => {
         filters: [],
         activeFilters: {},
         previewSourceUuid: null,
+        titanMauler: { required: true, selectedSourceUuid: titanLine.sourceUuid },
       }
     );
 
@@ -121,6 +124,48 @@ describe("starting equipment pane", () => {
       unavailableReason: null,
     });
     expect(pane.cart.lines[1]).toMatchObject({ canRemove: true, canChangeQuantity: false });
+    expect(pane.titanMauler).toEqual({ required: true, selected: true, selectedName: titanLine.sourceUuid });
+  });
+
+  it("requires an explicit eligible Titan Mauler choice before equipment review", () => {
+    const draft = createEmptyDraft(1);
+    draft.acquisition = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    const weapon: StartingEquipmentCatalogueRecord = {
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.weapon",
+      name: "Longsword",
+      itemType: "weapon",
+      level: 0,
+      rarity: "common",
+      sourceLabel: "Player Core",
+      priceCopper: 100,
+      priceLabel: "1 gp",
+      bulkLabel: "1",
+      handsLabel: "1",
+      traits: ["versatile-p"],
+      available: true,
+      unavailableReason: null,
+      titanMaulerEligible: true,
+    };
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(1),
+      draft,
+      { state: "incomplete", complete: false, status: "Choose a Titan Mauler weapon", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        records: [weapon],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+        titanMauler: { required: true, selectedSourceUuid: null },
+      }
+    );
+
+    expect(pane.catalogue.items[0]).toMatchObject({ canAdd: true, canChooseTitanMauler: true });
+    expect(pane.titanMauler).toEqual({ required: true, selected: false, selectedName: null });
+    expect(pane.review).toMatchObject({ canReviewPurchases: false, canRetainAll: false });
   });
 
   it("renders dedicated search, filter, quantity, cart, retain-all, handoff, and focus controls", () => {
@@ -132,6 +177,8 @@ describe("starting equipment pane", () => {
       'data-wayfinder-action="review-equipment-purchases"',
       'data-wayfinder-action="retain-all-equipment"',
       'data-wayfinder-action="acknowledge-equipment-handoff"',
+      'data-wayfinder-action="choose-titan-mauler-equipment"',
+      "Choose your Titan Mauler weapon",
       "data-wayfinder-focus-id",
     ]) {
       expect(template).toContain(token);
@@ -158,6 +205,7 @@ describe("starting equipment pane", () => {
         traits: ["common"],
         available: true,
         unavailableReason: null,
+        titanMaulerEligible: false,
       })
     );
 
@@ -173,6 +221,7 @@ describe("starting equipment pane", () => {
         filters: [],
         activeFilters: {},
         previewSourceUuid: null,
+        titanMauler: { required: false, selectedSourceUuid: null },
       }
     );
 

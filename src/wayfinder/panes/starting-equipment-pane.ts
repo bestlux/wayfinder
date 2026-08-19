@@ -11,6 +11,10 @@ export interface StartingEquipmentCatalogueProjection {
   readonly filters: readonly { key: string; label: string; value: string }[];
   readonly activeFilters: Readonly<Record<string, readonly string[]>>;
   readonly previewSourceUuid: string | null;
+  readonly titanMauler: {
+    readonly required: boolean;
+    readonly selectedSourceUuid: string | null;
+  };
 }
 
 export const MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS = 12;
@@ -44,11 +48,18 @@ export function buildStartingEquipmentPane(
       affordable,
       previewing: record.sourceUuid === catalogue.previewSourceUuid,
       canAdd: record.available && affordable,
+      canChooseTitanMauler:
+        catalogue.titanMauler.required &&
+        catalogue.titanMauler.selectedSourceUuid === null &&
+        record.titanMaulerEligible,
     };
   });
   const recordByUuid = new Map(catalogue.records.map((record) => [record.sourceUuid, record]));
   const plannedGrantById = new Map(acquisition?.plannedClassGrants.map((grant) => [grant.grantId, grant]) ?? []);
   const preview = records.find((record) => record.previewing) ?? null;
+  const selectedTitanMaulerRecord = catalogue.titanMauler.selectedSourceUuid
+    ? recordByUuid.get(catalogue.titanMauler.selectedSourceUuid)
+    : null;
   const cartLines =
     acquisition?.lines.map((line) => {
       const record = recordByUuid.get(line.sourceUuid);
@@ -118,11 +129,24 @@ export function buildStartingEquipmentPane(
       spentLabel: formatCopper(spentCopper),
       remainingLabel: formatCopper(remainingCopper),
     },
+    titanMauler: {
+      required: catalogue.titanMauler.required,
+      selected: catalogue.titanMauler.selectedSourceUuid !== null,
+      selectedName: selectedTitanMaulerRecord?.name ?? catalogue.titanMauler.selectedSourceUuid,
+    },
     review: {
       disposition,
       label: evaluation.status,
-      canReviewPurchases: !!acquisition && !handoff && currencyLines.length > 0,
-      canRetainAll: !!acquisition && !handoff && currencyLines.length === 0,
+      canReviewPurchases:
+        !!acquisition &&
+        !handoff &&
+        currencyLines.length > 0 &&
+        (!catalogue.titanMauler.required || catalogue.titanMauler.selectedSourceUuid !== null),
+      canRetainAll:
+        !!acquisition &&
+        !handoff &&
+        currencyLines.length === 0 &&
+        (!catalogue.titanMauler.required || catalogue.titanMauler.selectedSourceUuid !== null),
     },
     handoff: {
       active: !!handoff,

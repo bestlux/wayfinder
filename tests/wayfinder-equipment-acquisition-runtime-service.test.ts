@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
+import { projectPlannedClassGrants } from "../src/wayfinder/application/class-grant-projection-service";
 import {
   createEquipmentAcquisitionRuntime,
   type EquipmentAcquisitionRuntime,
 } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
-import type { EquipmentCataloguePackLike } from "../src/wayfinder/application/equipment-catalogue-service";
+import {
+  createEquipmentAccessRegistry,
+  type EquipmentAccessRegistry,
+  type EquipmentCataloguePackLike,
+} from "../src/wayfinder/application/equipment-catalogue-service";
 import {
   createAcquisitionDraft,
   createAcquisitionPolicySnapshot,
@@ -24,6 +29,7 @@ const PACK_ID = "pf2e.equipment-srd";
 const DAGGER_ID = "rQWaJhI5Bko5x14Z";
 const DAGGER_UUID = `Compendium.${PACK_ID}.Item.${DAGGER_ID}`;
 const FORMULA_BOOK_ID = "qCEOZ6109Yo34tRx";
+const ANCESTRY_UUID = "Compendium.pf2e.ancestries.Item.ancestry";
 
 describe("equipment acquisition runtime", () => {
   it("projects the bounded level-1 catalogue and prepares a hydrated Dagger line", async () => {
@@ -126,6 +132,175 @@ describe("equipment acquisition runtime", () => {
     ).rejects.toThrow(/precious-material|graded/i);
   });
 
+  it.each([
+    ["sm", "large"],
+    ["med", "large"],
+  ] as const)("prepares and Apply-revalidates an explicit %s-ancestry Titan Mauler line at %s size", async (ancestrySize, targetSize) => {
+    const source = dagger({ priceGp: 9 });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      {
+        fetchDocumentByUuid: async (uuid) =>
+          uuid === ANCESTRY_UUID
+            ? {
+                type: "ancestry",
+                _stats: { compendiumSource: ANCESTRY_UUID },
+                system: { size: ancestrySize },
+              }
+            : null,
+      }
+    );
+    selectGiantInstinct(request.draft);
+
+    const projection = await runtime.uiAdapter.project(request);
+    expect(projection).toMatchObject({
+      titanMauler: { required: true, selectedSourceUuid: null },
+      records: [{ priceCopper: 900, titanMaulerEligible: true }],
+    });
+
+    const line = await runtime.uiAdapter.prepareTitanMaulerLine({ ...request, sourceUuid: DAGGER_UUID });
+    expect(line).toMatchObject({
+      funding: {
+        lane: "class-grant",
+        grant: { plannedGrantId: "class-grant:titan-mauler:class-branch-instinct-level-1" },
+      },
+      stackingIntent: "separate",
+      price: {
+        basePrice: { kind: "priced", value: { gp: 9 } },
+        size: targetSize,
+        requestedQuantity: 1,
+        materializedQuantity: 1,
+        unitPriceCopper: 1_800,
+        linePriceCopper: 1_800,
+      },
+    });
+
+    request.draft.acquisition = { ...request.draft.acquisition!, lines: [line] };
+    expect(await runtime.uiAdapter.project(request)).toMatchObject({
+      titanMauler: { required: true, selectedSourceUuid: DAGGER_UUID },
+      records: [{ titanMaulerEligible: true }],
+    });
+    const strictProjection = await projectPlannedClassGrants({
+      draft: request.draft,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      activeSteps: [
+        { slotId: "ancestry-level-1" },
+        { slotId: "class-level-1" },
+        { slotId: "class-branch-instinct-level-1" },
+      ] as never,
+      observedActorItems: [],
+      currentEquipmentPolicy: policy(),
+      actorSize: ancestrySize === "sm" ? "small" : "medium",
+      fetchDocumentByUuid: async (uuid) => titanProjectionDocument(uuid, source),
+    });
+    expect(strictProjection).toMatchObject({
+      blockers: [],
+      preparedPlan: { grants: [{ profileId: "giant-instinct-titan-mauler" }] },
+    });
+    request.draft.acquisition = recordPlannedClassGrants(request.draft.acquisition, strictProjection.grants);
+    const resolved = await runtime.resolveSourceForApply({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+      entry: preparedEntry(line),
+    });
+    expect(resolved.resolvedPrice).toMatchObject({
+      basePrice: { kind: "priced", value: { gp: 9 } },
+      size: targetSize,
+      linePriceCopper: 1_800,
+    });
+
+    const wrongSize = {
+      ...preparedEntry(line),
+      price: { ...line.price, size: "medium" as const, unitPriceCopper: 900, linePriceCopper: 900 },
+    };
+    await expect(
+      runtime.resolveSourceForApply({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition,
+        entry: wrongSize,
+      })
+    ).rejects.toThrow(/drafted ancestry/i);
+  });
+
+  it("uses pre-size base Price for Titan eligibility and accepts only exact registered Access", async () => {
+    const source = dagger({ priceGp: 9, rarity: "uncommon" });
+    const accessRegistry = createEquipmentAccessRegistry([
+      {
+        sourceUuid: DAGGER_UUID,
+        accessRef: "feature:test-weapon-access",
+        profileVersion: "test-v1",
+        resolve: () => true,
+      },
+    ]);
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      {
+        accessRegistry,
+        fetchDocumentByUuid: async (uuid) =>
+          uuid === ANCESTRY_UUID
+            ? {
+                type: "ancestry",
+                _stats: { compendiumSource: ANCESTRY_UUID },
+                system: { size: "med" },
+              }
+            : null,
+      }
+    );
+    selectGiantInstinct(request.draft);
+    const accessRequest = { ...request, previewSourceUuid: DAGGER_UUID };
+
+    const projection = await runtime.uiAdapter.project(accessRequest);
+    expect(projection.records[0]).toMatchObject({
+      priceCopper: 900,
+      rarity: "uncommon",
+      available: true,
+      titanMaulerEligible: true,
+    });
+    const line = await runtime.uiAdapter.prepareTitanMaulerLine({ ...accessRequest, sourceUuid: DAGGER_UUID });
+    expect(line).toMatchObject({
+      policyDecision: {
+        rarityBasis: "specific-character-access",
+        characterAccessRef: "feature:test-weapon-access",
+      },
+      price: { size: "large", linePriceCopper: 1_800 },
+    });
+    await expect(
+      runtime.resolveCurrentCharacterAccessRef({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition!,
+        sourceUuid: DAGGER_UUID,
+      })
+    ).resolves.toBe("feature:test-weapon-access");
+
+    const overPrice = dagger({ priceGp: 10 });
+    const over = fixture(
+      {
+        getIndex: vi.fn(async () => [overPrice]),
+        getDocument: vi.fn(async () => document(overPrice)),
+      },
+      {
+        fetchDocumentByUuid: async () => ({ type: "ancestry", system: { size: "med" } }),
+      }
+    );
+    selectGiantInstinct(over.request.draft);
+    expect((await over.runtime.uiAdapter.project(over.request)).records[0]?.titanMaulerEligible).toBe(false);
+    await expect(
+      over.runtime.uiAdapter.prepareTitanMaulerLine({ ...over.request, sourceUuid: DAGGER_UUID })
+    ).rejects.toThrow(/9 gp or less/i);
+  });
+
   it("prepares and freshly validates an exact fixed native grant without granting blanket Access", async () => {
     let currentSource = formulaBook();
     const getDocument = vi.fn(async () => document(currentSource));
@@ -218,7 +393,13 @@ describe("equipment acquisition runtime", () => {
   });
 });
 
-function fixture(pack: Pick<EquipmentCataloguePackLike, "getIndex" | "getDocument">): {
+function fixture(
+  pack: Pick<EquipmentCataloguePackLike, "getIndex" | "getDocument">,
+  options: {
+    readonly accessRegistry?: EquipmentAccessRegistry;
+    readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
+  } = {}
+): {
   runtime: EquipmentAcquisitionRuntime;
   request: Parameters<EquipmentAcquisitionRuntime["uiAdapter"]["project"]>[0];
 } {
@@ -241,6 +422,8 @@ function fixture(pack: Pick<EquipmentCataloguePackLike, "getIndex" | "getDocumen
   return {
     runtime: createEquipmentAcquisitionRuntime({
       packs,
+      accessRegistry: options.accessRegistry,
+      fetchDocumentByUuid: options.fetchDocumentByUuid,
       resolveEffectivePolicy: () => currentPolicy,
       mintLineId: () => "wf-line-test",
     }),
@@ -296,7 +479,13 @@ function policy(): EffectiveEquipmentPolicySnapshotV1 {
 }
 
 function dagger(
-  options: { readonly priceSp?: number; readonly level?: number; readonly materialType?: string | null } = {}
+  options: {
+    readonly priceSp?: number;
+    readonly priceGp?: number;
+    readonly level?: number;
+    readonly materialType?: string | null;
+    readonly rarity?: "common" | "uncommon";
+  } = {}
 ) {
   return {
     _id: DAGGER_ID,
@@ -305,9 +494,11 @@ function dagger(
     type: "weapon",
     system: {
       level: { value: options.level ?? 0 },
-      traits: { rarity: "common", value: ["agile", "finesse"] },
+      category: "simple",
+      range: null,
+      traits: { rarity: options.rarity ?? "common", value: ["agile", "finesse"] },
       publication: { title: "Pathfinder Player Core" },
-      price: { value: { sp: options.priceSp ?? 2 } },
+      price: { value: options.priceGp === undefined ? { sp: options.priceSp ?? 2 } : { gp: options.priceGp } },
       quantity: 1,
       rules: [],
       size: "med",
@@ -316,7 +507,75 @@ function dagger(
   };
 }
 
-function document(source: ReturnType<typeof dagger>) {
+function selectGiantInstinct(draft: ReturnType<typeof createEmptyDraft>): void {
+  draft.selections["ancestry-level-1"] = {
+    slotId: "ancestry-level-1",
+    packId: "pf2e.ancestries",
+    documentId: "ancestry",
+    uuid: ANCESTRY_UUID,
+    itemType: "ancestry",
+    featType: null,
+    name: "Test Ancestry",
+    level: 0,
+  };
+  draft.selections["class-level-1"] = {
+    slotId: "class-level-1",
+    packId: "pf2e.classes",
+    documentId: "YDRiP7uVvr9WRhOI",
+    uuid: CLASS_GRANT_PROFILE_UUIDS.barbarianClass,
+    itemType: "class",
+    featType: null,
+    name: "Barbarian",
+    level: 1,
+  };
+  draft.branchSelections.instinct = {
+    slotId: "class-branch-instinct-level-1",
+    packId: "pf2e.classfeatures",
+    documentId: "JuKD6k7nDwfO0Ckv",
+    uuid: CLASS_GRANT_PROFILE_UUIDS.giantInstinct,
+    itemType: "feat",
+    featType: "classfeature",
+    name: "Giant Instinct",
+    level: 1,
+  };
+}
+
+function titanProjectionDocument(uuid: string, weapon: ReturnType<typeof dagger>): unknown | null {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  if (uuid === u.barbarianClass) {
+    return { system: { items: { instinct: { level: 1, uuid: u.instinctFeature } } } };
+  }
+  if (uuid === u.instinctFeature) {
+    return {
+      system: {
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "instinct",
+            choices: { filter: ["item:tag:barbarian-instinct"] },
+          },
+          { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.instinct}" },
+        ],
+      },
+    };
+  }
+  if (uuid === u.giantInstinct) {
+    return {
+      system: {
+        description: {
+          value:
+            "Choose a weapon with a Price of 9 gp or less. Small or Medium characters use a Large weapon; otherwise choose one size larger. It has no value if sold.",
+        },
+        rules: [],
+        traits: { otherTags: ["barbarian-instinct"] },
+      },
+    };
+  }
+  if (uuid === DAGGER_UUID) return weapon;
+  return null;
+}
+
+function document<T>(source: T) {
   return { toObject: () => structuredClone(source) };
 }
 

@@ -542,8 +542,13 @@ describe("class-grant projection service", () => {
     }
   });
 
-  it("keeps production Titan Access fail-closed while preparing Common weapons", async () => {
+  it("uses drafted ancestry size and keeps production Titan Access fail-closed without a registered resolver", async () => {
     const draft = classDraft(UUID.barbarian, "Barbarian");
+    draft.selections["ancestry-level-1"] = {
+      ...selection("ancestry-level-1", "Compendium.pf2e.ancestries.Item.test-ancestry", "Test Ancestry"),
+      itemType: "ancestry",
+      featType: null,
+    };
     draft.branchSelections.instinct = selection("class-branch-instinct-level-1", UUID.giant, "Giant Instinct");
     const acquisition = titanAcquisition();
     const policy = equipmentPolicy();
@@ -553,6 +558,7 @@ describe("class-grant projection service", () => {
       [UUID.barbarian, classDocument(UUID.instinct)],
       [UUID.instinct, dynamicSelector("instinct", "barbarian-instinct")],
       [UUID.giant, giantInstinctDocument()],
+      ["Compendium.pf2e.ancestries.Item.test-ancestry", { type: "ancestry", system: { size: "med" } }],
       [acquisition.lines[0]!.sourceUuid, weaponDocument()],
     ]);
     const actor = {
@@ -560,7 +566,7 @@ describe("class-grant projection service", () => {
       type: "character",
       isOwner: true,
       flags: {},
-      system: { traits: { size: { value: "med" } } },
+      system: { traits: { size: { value: "tiny" } } },
       items: { contents: [] },
     };
     const project = (resolveCharacterAccessRef?: () => string | null) =>
@@ -593,11 +599,16 @@ describe("class-grant projection service", () => {
       const line = acquisition.lines[0] as any;
       line.policyDecision.rarity = "uncommon";
       line.policyDecision.rarityBasis = "specific-character-access";
-      line.policyDecision.characterAccessRef = "forged-access";
+      line.policyDecision.characterAccessRef = "registry:test-access";
       documents.set(line.sourceUuid, weaponDocument("uncommon"));
-      (acquisition as any).plannedClassGrants = [...(await project(() => "forged-access")).grants];
+      (acquisition as any).plannedClassGrants = [...(await project(() => "registry:test-access")).grants];
 
       await expect(prepareCurrentClassGrantPlan(actor, draft, SUBJECT.activeSteps)).rejects.toThrow();
+      await expect(
+        prepareCurrentClassGrantPlan(actor, draft, SUBJECT.activeSteps, {
+          resolveCharacterAccessRef: async () => "registry:test-access",
+        })
+      ).resolves.toMatchObject({ grants: [{ profileId: "giant-instinct-titan-mauler" }] });
     } finally {
       vi.unstubAllGlobals();
     }

@@ -13,9 +13,13 @@ const UNAVAILABLE_ADAPTER = {
             filters: [],
             activeFilters: request.filters,
             previewSourceUuid: request.previewSourceUuid,
+            titanMauler: { required: false, selectedSourceUuid: null },
         };
     },
     async prepareLine() {
+        throw new Error("The approved Common-equipment catalogue is not loaded yet.");
+    },
+    async prepareTitanMaulerLine() {
         throw new Error("The approved Common-equipment catalogue is not loaded yet.");
     },
 };

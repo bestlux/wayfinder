@@ -145,6 +145,13 @@
   text-align: left;
 }
 
+.wayfinder-app .equipment-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: end;
+}
+
 .wayfinder-app .equipment-result-main span,
 .wayfinder-app .equipment-cart-line > span {
   min-width: 0;

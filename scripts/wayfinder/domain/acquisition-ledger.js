@@ -1,5 +1,5 @@
 import { cloneData } from "../../shared/cloning.js";
-import { compareAcquisitionMaterialFacts } from "./acquisition-draft.js";
+import { compareAcquisitionMaterialFacts, isAcquisitionPolicyAuthorityConsistent } from "./acquisition-draft.js";
 import { SEMANTIC_WEALTH_POLICY } from "./semantic-wealth-policy.js";
 export function evaluateAcquisitionLedger(draft) {
     const policy = draft.policySnapshot;
@@ -7,6 +7,9 @@ export function evaluateAcquisitionLedger(draft) {
         return emptyInvalidLedger("policy-missing", "An effective equipment policy is required.");
     if (!draft.baseline)
         return emptyInvalidLedger("baseline-missing", "An economic baseline is required.");
+    if (!isAcquisitionPolicyAuthorityConsistent(draft)) {
+        return emptyInvalidLedger("policy-mismatch", "The equipment policy authority evidence is invalid or stale.");
+    }
     if (!same(policy.material.resolvedRecipe, draft.recipe)) {
         return emptyInvalidLedger("policy-mismatch", "The reviewed policy recipe does not match the acquisition draft.");
     }

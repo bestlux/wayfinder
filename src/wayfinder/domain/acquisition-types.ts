@@ -1,4 +1,5 @@
 import type { CharacterWealthPolicyRef } from "./character-wealth-policy.js";
+import type { EffectiveEquipmentPolicySnapshotV1 } from "./equipment-policy.js";
 import type { SEMANTIC_WEALTH_POLICY_REF } from "./semantic-wealth-rule-ledger.js";
 
 export type OfficialAcquisitionRecipe = "permanent-items" | "lump-sum";
@@ -27,12 +28,19 @@ export interface AcquisitionAllowanceSnapshot {
 }
 
 export interface AcquisitionPolicyMaterialFacts {
+  readonly subject: { readonly actorId: string; readonly draftId: string; readonly targetLevel: number };
   readonly numericPolicyRef: CharacterWealthPolicyRef;
   readonly semanticPolicyRef: typeof SEMANTIC_WEALTH_POLICY_REF;
   readonly resolvedRecipe: AcquisitionRecipeSelection;
   readonly budgetCopper: number;
   readonly allowances: readonly AcquisitionAllowanceSnapshot[];
-  readonly applyAuthorityBasis: string;
+  readonly worldRecipePolicy: EffectiveEquipmentPolicySnapshotV1["worldRecipePolicy"];
+  readonly sourcePolicy: EffectiveEquipmentPolicySnapshotV1["sourcePolicy"];
+  readonly rarityPolicy: EffectiveEquipmentPolicySnapshotV1["rarityPolicy"];
+  readonly authorityPolicy: EffectiveEquipmentPolicySnapshotV1["authorityPolicy"];
+  readonly higherLevelStartEvidence: EffectiveEquipmentPolicySnapshotV1["higherLevelStartEvidence"];
+  readonly abp: EffectiveEquipmentPolicySnapshotV1["abp"];
+  readonly gmJudgments: EffectiveEquipmentPolicySnapshotV1["gmJudgments"];
 }
 
 export interface AcquisitionPolicySnapshot {
@@ -93,9 +101,14 @@ export type AcquisitionFunding =
 
 export interface AcquisitionLinePolicyDecision {
   readonly eligible: boolean;
+  readonly packId: string;
+  readonly publicationSlug: string | null;
+  readonly rarity: "common" | "uncommon" | "rare" | "unique";
   readonly sourceBasis: string;
   readonly rarityBasis: string;
-  readonly accessOrExceptionRef: string | null;
+  readonly characterAccessRef: string | null;
+  readonly sourceExceptionJudgmentId: string | null;
+  readonly rarityExceptionJudgmentId: string | null;
   readonly abpTreatment: string;
 }
 

@@ -62,6 +62,12 @@
         "Label": "Configure compendia",
         "Hint": "Choose which additional PF2E Item compendia Wayfinder searches and review the character-building content found in each one."
       },
+      "EquipmentPolicy": {
+        "Name": "Starting equipment policy",
+        "JudgmentsName": "Equipment policy approvals",
+        "Label": "Configure equipment policy",
+        "Hint": "Choose the official starting-wealth recipes, equipment sources, rarity ceiling, and review authority used by Wayfinder."
+      },
       "SpellRarityCeiling": {
         "Name": "Player max eligible rarity",
         "Hint": "Spells up to this rarity appear without a per-step attestation. For higher rarities, players must record character or rules Access, or GM permission reported by the player, unless Unique is selected. This record is not verified GM authorization. Tradition, rank, cantrip, curriculum, and fixed spell restrictions still apply.",
@@ -72,6 +78,40 @@
           "Unique": "Unique"
         }
       }
+    },
+    "EquipmentPolicy": {
+      "Title": "Starting equipment policy",
+      "Eyebrow": "GM configuration",
+      "Heading": "Set campaign equipment rules",
+      "Intro": "These world rules control eligibility and review. Player sorting and display preferences can never broaden them.",
+      "Recipes": "Official starting-wealth recipes",
+      "PermanentItems": "Permanent items plus currency",
+      "LumpSum": "Lump sum",
+      "DefaultRecipe": "Default recipe",
+      "RecipeAuthority": "Who chooses the recipe",
+      "ActorOwnerChooses": "Actor owner chooses an enabled recipe",
+      "GmFixed": "Use the GM default",
+      "Authority": "Review and rarity authority",
+      "HigherLevelStart": "Higher-level new or replacement character",
+      "GmConfirmation": "Require GM confirmation",
+      "OwnerAttestation": "Allow a recorded actor-owner attestation",
+      "ApplyAuthority": "Apply authority",
+      "ActorOwnerApply": "Actor owner may Apply",
+      "GmReviewApply": "Require GM review before Apply",
+      "BlanketRarity": "Blanket rarity within approved sources",
+      "Rarities": {
+        "Common": "Common",
+        "Uncommon": "Uncommon",
+        "Rare": "Rare",
+        "Unique": "Unique"
+      },
+      "PackFamilies": "Approved equipment package families",
+      "PackFamiliesHint": "Selecting a package family permits its equipment Item compendia only when PF2E's own pack and publication-source settings also permit them.",
+      "ItemCompendia": "Item compendia",
+      "Save": "Save policy",
+      "Saved": "Starting equipment policy saved.",
+      "GmOnly": "Only a current GM may configure starting equipment policy.",
+      "RecipeRequired": "Enable at least one official starting-wealth recipe."
     },
     "CompendiumSources": {
       "Title": "Wayfinder content sources",

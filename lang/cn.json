@@ -73,6 +73,12 @@
         "Label": "配置合集包",
         "Hint": "选择寻路仪要检索的额外PF2e物品合集包，并查看各包中的角色构筑内容数量。"
       },
+      "EquipmentPolicy": {
+        "Name": "起始装备政策",
+        "JudgmentsName": "装备政策批准",
+        "Label": "配置装备政策",
+        "Hint": "选择寻路仪使用的官方起始财富方案、装备来源、稀有度上限与审核权限。"
+      },
       "SpellRarityCeiling": {
         "Name": "玩家可选最高稀有度",
         "Hint": "不超过此稀有度的法术无需逐步骤声明即可显示。除非选择独特，若要纳入更高稀有度，玩家必须记录角色或规则赋予的Access，或由玩家报告的GM许可；此记录并非经过验证的GM授权。传承、环位、戏法、课程与固定法术限制仍然适用。",
@@ -83,6 +89,40 @@
           "Unique": "独特"
         }
       }
+    },
+    "EquipmentPolicy": {
+      "Title": "起始装备政策",
+      "Eyebrow": "GM配置",
+      "Heading": "设置战役装备规则",
+      "Intro": "这些世界规则控制资格与审核。玩家的排序和显示偏好不能扩大可选范围。",
+      "Recipes": "官方起始财富方案",
+      "PermanentItems": "永久物品加货币",
+      "LumpSum": "一次性金额",
+      "DefaultRecipe": "默认方案",
+      "RecipeAuthority": "由谁选择方案",
+      "ActorOwnerChooses": "角色拥有者选择已启用方案",
+      "GmFixed": "使用GM默认方案",
+      "Authority": "审核与稀有度权限",
+      "HigherLevelStart": "高等级新角色或替补角色",
+      "GmConfirmation": "需要GM确认",
+      "OwnerAttestation": "允许角色拥有者记录声明",
+      "ApplyAuthority": "应用权限",
+      "ActorOwnerApply": "角色拥有者可应用",
+      "GmReviewApply": "应用前需要GM审核",
+      "BlanketRarity": "已批准来源中的统一稀有度",
+      "Rarities": {
+        "Common": "常见",
+        "Uncommon": "罕见",
+        "Rare": "稀有",
+        "Unique": "独特"
+      },
+      "PackFamilies": "已批准的装备模组系列",
+      "PackFamiliesHint": "选择模组系列后，只有同时通过PF2e自身合集包与出版来源设置的装备合集包才可用。",
+      "ItemCompendia": "物品合集包",
+      "Save": "保存政策",
+      "Saved": "起始装备政策已保存。",
+      "GmOnly": "仅当前GM可配置起始装备政策。",
+      "RecipeRequired": "请至少启用一个官方起始财富方案。"
     },
     "CompendiumSources": {
       "Title": "寻路仪内容来源",

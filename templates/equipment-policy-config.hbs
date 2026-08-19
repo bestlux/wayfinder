@@ -1,0 +1,72 @@
+<section class="equipment-policy-sheet">
+  <header>
+    <p class="equipment-policy-eyebrow">{{localize "wayfinder-pf2e.EquipmentPolicy.Eyebrow"}}</p>
+    <h2>{{localize "wayfinder-pf2e.EquipmentPolicy.Heading"}}</h2>
+    <p>{{localize "wayfinder-pf2e.EquipmentPolicy.Intro"}}</p>
+  </header>
+
+  <fieldset>
+    <legend>{{localize "wayfinder-pf2e.EquipmentPolicy.Recipes"}}</legend>
+    <label><input type="checkbox" name="enabledRecipes" value="permanent-items" {{#if permanentEnabled}}checked{{/if}} /> {{localize "wayfinder-pf2e.EquipmentPolicy.PermanentItems"}}</label>
+    <label><input type="checkbox" name="enabledRecipes" value="lump-sum" {{#if lumpSumEnabled}}checked{{/if}} /> {{localize "wayfinder-pf2e.EquipmentPolicy.LumpSum"}}</label>
+    <label>
+      <span>{{localize "wayfinder-pf2e.EquipmentPolicy.DefaultRecipe"}}</span>
+      <select name="defaultRecipe">
+        <option value="permanent-items" {{#if (eq policy.defaultRecipe "permanent-items")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.PermanentItems"}}</option>
+        <option value="lump-sum" {{#if (eq policy.defaultRecipe "lump-sum")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.LumpSum"}}</option>
+      </select>
+    </label>
+    <label>
+      <span>{{localize "wayfinder-pf2e.EquipmentPolicy.RecipeAuthority"}}</span>
+      <select name="recipeChoiceAuthority">
+        <option value="actor-owner" {{#if (eq policy.recipeChoiceAuthority "actor-owner")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.ActorOwnerChooses"}}</option>
+        <option value="gm-fixed" {{#if (eq policy.recipeChoiceAuthority "gm-fixed")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.GmFixed"}}</option>
+      </select>
+    </label>
+  </fieldset>
+
+  <fieldset class="equipment-policy-grid">
+    <legend>{{localize "wayfinder-pf2e.EquipmentPolicy.Authority"}}</legend>
+    <label>
+      <span>{{localize "wayfinder-pf2e.EquipmentPolicy.HigherLevelStart"}}</span>
+      <select name="higherLevelStartAuthority">
+        <option value="gm-confirmation" {{#if (eq policy.higherLevelStartAuthority "gm-confirmation")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.GmConfirmation"}}</option>
+        <option value="actor-owner-attestation" {{#if (eq policy.higherLevelStartAuthority "actor-owner-attestation")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.OwnerAttestation"}}</option>
+      </select>
+    </label>
+    <label>
+      <span>{{localize "wayfinder-pf2e.EquipmentPolicy.ApplyAuthority"}}</span>
+      <select name="applyAuthority">
+        <option value="actor-owner" {{#if (eq policy.applyAuthority "actor-owner")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.ActorOwnerApply"}}</option>
+        <option value="gm-review" {{#if (eq policy.applyAuthority "gm-review")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.GmReviewApply"}}</option>
+      </select>
+    </label>
+    <label>
+      <span>{{localize "wayfinder-pf2e.EquipmentPolicy.BlanketRarity"}}</span>
+      <select name="blanketRarity">
+        <option value="common" {{#if (eq policy.blanketRarity "common")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.Rarities.Common"}}</option>
+        <option value="uncommon" {{#if (eq policy.blanketRarity "uncommon")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.Rarities.Uncommon"}}</option>
+        <option value="rare" {{#if (eq policy.blanketRarity "rare")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.Rarities.Rare"}}</option>
+        <option value="unique" {{#if (eq policy.blanketRarity "unique")}}selected{{/if}}>{{localize "wayfinder-pf2e.EquipmentPolicy.Rarities.Unique"}}</option>
+      </select>
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>{{localize "wayfinder-pf2e.EquipmentPolicy.PackFamilies"}}</legend>
+    <p class="hint">{{localize "wayfinder-pf2e.EquipmentPolicy.PackFamiliesHint"}}</p>
+    <div class="equipment-policy-family-list">
+      {{#each families}}
+        <label>
+          <input type="checkbox" name="allowedEquipmentPackFamilies" value="{{id}}" {{#if selected}}checked{{/if}} />
+          <span>{{label}}</span>
+          <small>{{packCount}} {{localize "wayfinder-pf2e.EquipmentPolicy.ItemCompendia"}}</small>
+        </label>
+      {{/each}}
+    </div>
+  </fieldset>
+
+  <footer class="form-footer">
+    <button type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> {{localize "wayfinder-pf2e.EquipmentPolicy.Save"}}</button>
+  </footer>
+</section>

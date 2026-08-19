@@ -9,6 +9,8 @@ export const FLAG_KEYS = {
 export const SETTINGS = {
   extraPacks: "additionalSourcePacks",
   spellRarityCeiling: "spellRarityCeiling",
+  equipmentPolicy: "equipmentPolicy",
+  equipmentPolicyJudgments: "equipmentPolicyJudgments",
 } as const;
 export const SETTINGS_KEYS = {
   includeOfficialSources: "includeOfficialSources",
@@ -26,6 +28,7 @@ export const OFFICIAL_PACKS = {
   feat: ["pf2e.feats-srd"],
   classFeature: ["pf2e.classfeatures"],
   spell: ["pf2e.spells-srd"],
+  equipment: ["pf2e.equipment-srd"],
 } as const;
 
 export const SKILL_LABELS: Record<string, string> = {

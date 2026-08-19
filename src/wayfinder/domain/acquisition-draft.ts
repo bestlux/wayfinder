@@ -14,6 +14,11 @@ import type {
   AcquisitionRecipeSelection,
   AcquisitionReviewSnapshot,
 } from "./acquisition-types.js";
+import {
+  buildEquipmentPolicyJudgmentFactsFingerprint,
+  evaluateEquipmentItemAuthorityFacts,
+  normalizeEquipmentPolicyJudgment,
+} from "./equipment-policy.js";
 
 const INVALIDATION_ORDER: readonly AcquisitionInvalidationReason[] = [
   "target-level",
@@ -70,6 +75,16 @@ export function normalizeAcquisitionDraft(raw: unknown): AcquisitionDraftState |
   if (raw.policySnapshot != null && !policySnapshot) return null;
   const baseline = normalizeBaseline(raw.baseline);
   if (raw.baseline != null && !baseline) return null;
+  if (
+    policySnapshot &&
+    !policyMatchesAcquisition(
+      policySnapshot.material,
+      { draftId: raw.draftId, targetLevel: raw.targetLevel },
+      baseline,
+      normalizedLines
+    )
+  )
+    return null;
 
   return {
     schemaVersion: 1,
@@ -106,6 +121,18 @@ export function compareAcquisitionMaterialFacts(
     compareLineMaterial(previous, currentLine, reasons);
   }
   return INVALIDATION_ORDER.filter((reason) => reasons.has(reason));
+}
+
+export function isAcquisitionPolicyAuthorityConsistent(draft: AcquisitionDraftState): boolean {
+  return (
+    draft.policySnapshot !== null &&
+    policyMatchesAcquisition(
+      draft.policySnapshot.material,
+      { draftId: draft.draftId, targetLevel: draft.targetLevel },
+      draft.baseline,
+      draft.lines
+    )
+  );
 }
 
 export function invalidateAcquisitionReview(
@@ -174,9 +201,14 @@ function comparePolicyMaterial(
   if (reviewed.budgetCopper !== current.budgetCopper) reasons.add("budget");
   if (!same(reviewed.allowances, current.allowances)) reasons.add("allowance");
   if (
+    !same(reviewed.subject, current.subject) ||
     !same(reviewed.numericPolicyRef, current.numericPolicyRef) ||
     !same(reviewed.semanticPolicyRef, current.semanticPolicyRef) ||
-    reviewed.applyAuthorityBasis !== current.applyAuthorityBasis
+    !same(reviewed.worldRecipePolicy, current.worldRecipePolicy) ||
+    !same(reviewed.authorityPolicy, current.authorityPolicy) ||
+    !same(reviewed.higherLevelStartEvidence, current.higherLevelStartEvidence) ||
+    !same(reviewed.abp, current.abp) ||
+    !same(reviewed.gmJudgments, current.gmJudgments)
   ) {
     reasons.add("policy");
   }
@@ -273,22 +305,35 @@ function normalizeFunding(raw: unknown): AcquisitionFunding | null {
 }
 
 function normalizeLinePolicyDecision(raw: unknown): AcquisitionLinePolicyDecision | null {
-  const accessOrExceptionRef = isRecord(raw) ? raw.accessOrExceptionRef : undefined;
+  const publicationSlug = isRecord(raw) ? raw.publicationSlug : undefined;
+  const characterAccessRef = isRecord(raw) ? raw.characterAccessRef : undefined;
+  const sourceExceptionJudgmentId = isRecord(raw) ? raw.sourceExceptionJudgmentId : undefined;
+  const rarityExceptionJudgmentId = isRecord(raw) ? raw.rarityExceptionJudgmentId : undefined;
   if (
     !isRecord(raw) ||
     typeof raw.eligible !== "boolean" ||
+    !nonEmpty(raw.packId) ||
+    (publicationSlug !== null && typeof publicationSlug !== "string") ||
+    !isOneOf(raw.rarity, ["common", "uncommon", "rare", "unique"]) ||
     !nonEmpty(raw.sourceBasis) ||
     !nonEmpty(raw.rarityBasis) ||
-    (accessOrExceptionRef !== null && !nonEmpty(accessOrExceptionRef)) ||
+    (characterAccessRef !== null && !nonEmpty(characterAccessRef)) ||
+    (sourceExceptionJudgmentId !== null && !nonEmpty(sourceExceptionJudgmentId)) ||
+    (rarityExceptionJudgmentId !== null && !nonEmpty(rarityExceptionJudgmentId)) ||
     !nonEmpty(raw.abpTreatment)
   ) {
     return null;
   }
   return {
     eligible: raw.eligible,
+    packId: raw.packId,
+    publicationSlug: publicationSlug === null ? null : String(publicationSlug),
+    rarity: raw.rarity,
     sourceBasis: raw.sourceBasis,
     rarityBasis: raw.rarityBasis,
-    accessOrExceptionRef: accessOrExceptionRef === null ? null : String(accessOrExceptionRef),
+    characterAccessRef: characterAccessRef === null ? null : String(characterAccessRef),
+    sourceExceptionJudgmentId: sourceExceptionJudgmentId === null ? null : String(sourceExceptionJudgmentId),
+    rarityExceptionJudgmentId: rarityExceptionJudgmentId === null ? null : String(rarityExceptionJudgmentId),
     abpTreatment: raw.abpTreatment,
   };
 }
@@ -358,10 +403,19 @@ function normalizePolicySnapshot(raw: unknown): AcquisitionPolicySnapshot | null
 
 function normalizePolicyMaterial(raw: unknown): AcquisitionPolicyMaterialFacts | null {
   if (!isRecord(raw) || !isRecord(raw.numericPolicyRef) || !isRecord(raw.semanticPolicyRef)) return null;
+  const subject = normalizePolicySubject(raw.subject);
   const numericPolicyRef = raw.numericPolicyRef;
   const semanticPolicyRef = raw.semanticPolicyRef;
   const resolvedRecipe = normalizeRecipe(raw.resolvedRecipe);
+  const worldRecipePolicy = normalizeWorldRecipePolicy(raw.worldRecipePolicy);
+  const sourcePolicy = normalizeSourcePolicy(raw.sourcePolicy);
+  const rarityPolicy = normalizeRarityPolicy(raw.rarityPolicy);
+  const authorityPolicy = normalizeAuthorityPolicy(raw.authorityPolicy);
+  const higherLevelStartEvidence = normalizeHigherLevelStartEvidence(raw.higherLevelStartEvidence);
+  const abp = normalizeAbp(raw.abp);
+  const gmJudgments = normalizeJudgments(raw.gmJudgments);
   if (
+    !subject ||
     numericPolicyRef.policyId !== "pf2e-remaster-character-wealth" ||
     !safePositiveInteger(numericPolicyRef.policyVersion) ||
     !nonEmpty(numericPolicyRef.dataDigest) ||
@@ -370,7 +424,13 @@ function normalizePolicyMaterial(raw: unknown): AcquisitionPolicyMaterialFacts |
     !resolvedRecipe ||
     !safeNonNegativeInteger(raw.budgetCopper) ||
     !Array.isArray(raw.allowances) ||
-    !nonEmpty(raw.applyAuthorityBasis)
+    !worldRecipePolicy ||
+    !sourcePolicy ||
+    !rarityPolicy ||
+    !authorityPolicy ||
+    !higherLevelStartEvidence ||
+    !abp ||
+    !gmJudgments
   ) {
     return null;
   }
@@ -386,6 +446,7 @@ function normalizePolicyMaterial(raw: unknown): AcquisitionPolicyMaterialFacts |
     return null;
   }
   return {
+    subject,
     numericPolicyRef: {
       policyId: "pf2e-remaster-character-wealth",
       policyVersion: numericPolicyRef.policyVersion,
@@ -400,8 +461,291 @@ function normalizePolicyMaterial(raw: unknown): AcquisitionPolicyMaterialFacts |
     allowances: [...allowances].sort(
       (left, right) => left.itemLevel - right.itemLevel || left.allowanceId.localeCompare(right.allowanceId)
     ),
-    applyAuthorityBasis: raw.applyAuthorityBasis,
+    worldRecipePolicy,
+    sourcePolicy,
+    rarityPolicy,
+    authorityPolicy,
+    higherLevelStartEvidence,
+    abp,
+    gmJudgments,
   };
+}
+
+function normalizePolicySubject(raw: unknown): AcquisitionPolicyMaterialFacts["subject"] | null {
+  return isRecord(raw) && nonEmpty(raw.actorId) && nonEmpty(raw.draftId) && validTargetLevel(raw.targetLevel)
+    ? { actorId: raw.actorId, draftId: raw.draftId, targetLevel: raw.targetLevel }
+    : null;
+}
+
+function policyMatchesAcquisition(
+  policy: AcquisitionPolicyMaterialFacts,
+  draft: { readonly draftId: unknown; readonly targetLevel: unknown },
+  baseline: AcquisitionDraftState["baseline"],
+  lines: readonly AcquisitionLineDraft[]
+): boolean {
+  const subject = policy.subject;
+  if (
+    subject.draftId !== draft.draftId ||
+    subject.targetLevel !== draft.targetLevel ||
+    (baseline !== null && baseline.actorId !== subject.actorId) ||
+    policy.gmJudgments.some(
+      (judgment) =>
+        judgment.actorId !== subject.actorId ||
+        judgment.draftId !== subject.draftId ||
+        judgment.targetLevel !== subject.targetLevel
+    )
+  ) {
+    return false;
+  }
+  const evidence = policy.higherLevelStartEvidence;
+  const usedJudgmentIds = new Set<string>();
+  if (subject.targetLevel === 1 && evidence.kind !== "not-required") return false;
+  if (subject.targetLevel === 1) {
+    return (
+      policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) && usedJudgmentIds.size === policy.gmJudgments.length
+    );
+  }
+  if (evidence.kind === "not-required") return false;
+  if (evidence.kind === "gm-confirmation") {
+    const validStart =
+      policy.authorityPolicy.higherLevelStart === "gm-confirmation" &&
+      evidence.judgment.actorId === subject.actorId &&
+      evidence.judgment.draftId === subject.draftId &&
+      evidence.judgment.targetLevel === subject.targetLevel &&
+      evidence.judgment.factsFingerprint ===
+        buildEquipmentPolicyJudgmentFactsFingerprint({
+          kind: "higher-level-start",
+          actorId: subject.actorId,
+          draftId: subject.draftId,
+          targetLevel: subject.targetLevel,
+          startKind: evidence.startKind,
+        }) &&
+      policy.gmJudgments.some((judgment) => judgment.id === evidence.judgment.id);
+    if (!validStart) return false;
+    usedJudgmentIds.add(evidence.judgment.id);
+  } else if (
+    policy.authorityPolicy.higherLevelStart !== "actor-owner-attestation" ||
+    evidence.actorId !== subject.actorId ||
+    evidence.draftId !== subject.draftId ||
+    evidence.targetLevel !== subject.targetLevel
+  ) {
+    return false;
+  }
+  return (
+    policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) && usedJudgmentIds.size === policy.gmJudgments.length
+  );
+}
+
+function policyDetailsMatchJudgments(
+  policy: AcquisitionPolicyMaterialFacts,
+  lines: readonly AcquisitionLineDraft[],
+  usedJudgmentIds: Set<string>
+): boolean {
+  const byId = new Map(policy.gmJudgments.map((judgment) => [judgment.id, judgment]));
+  const subject = policy.subject;
+  if (policy.resolvedRecipe.kind === "custom-lump-sum") {
+    const judgment = byId.get(policy.resolvedRecipe.judgmentRef);
+    const expected = buildEquipmentPolicyJudgmentFactsFingerprint({
+      kind: "custom-lump-sum",
+      actorId: subject.actorId,
+      draftId: subject.draftId,
+      targetLevel: subject.targetLevel,
+      amountCopper: policy.resolvedRecipe.amountCopper,
+    });
+    if (judgment?.kind !== "custom-lump-sum" || judgment.factsFingerprint !== expected) return false;
+    usedJudgmentIds.add(judgment.id);
+  } else if (policy.gmJudgments.some((judgment) => judgment.kind === "custom-lump-sum")) {
+    return false;
+  }
+
+  for (const allowance of policy.allowances) {
+    if (!allowance.allowanceId.startsWith("gm-extra:")) continue;
+    const id = allowance.allowanceId.slice("gm-extra:".length);
+    const judgment = byId.get(id);
+    const expected = buildEquipmentPolicyJudgmentFactsFingerprint({
+      kind: "extra-current-level-allowance",
+      actorId: subject.actorId,
+      draftId: subject.draftId,
+      targetLevel: subject.targetLevel,
+    });
+    if (
+      judgment?.kind !== "extra-current-level-allowance" ||
+      judgment.factsFingerprint !== expected ||
+      allowance.itemLevel !== subject.targetLevel
+    )
+      return false;
+    usedJudgmentIds.add(id);
+  }
+  if (
+    policy.gmJudgments.some(
+      (judgment) => judgment.kind === "extra-current-level-allowance" && !usedJudgmentIds.has(judgment.id)
+    )
+  )
+    return false;
+
+  for (const line of lines) {
+    const decision = line.policyDecision;
+    const authority = evaluateEquipmentItemAuthorityFacts({
+      policy: {
+        actorId: subject.actorId,
+        draftId: subject.draftId,
+        targetLevel: subject.targetLevel,
+        sourcePolicy: policy.sourcePolicy,
+        rarityPolicy: policy.rarityPolicy,
+        gmJudgments: policy.gmJudgments,
+      },
+      sourceUuid: line.sourceUuid,
+      packId: decision.packId,
+      publicationSlug: decision.publicationSlug,
+      rarity: decision.rarity,
+      hasCharacterAccess: decision.characterAccessRef !== null,
+      sourceExceptionJudgmentId: decision.sourceExceptionJudgmentId,
+      rarityExceptionJudgmentId: decision.rarityExceptionJudgmentId,
+    });
+    if (authority.eligible !== decision.eligible) return false;
+    for (const [id, scope] of [
+      [decision.sourceExceptionJudgmentId, "source"],
+      [decision.rarityExceptionJudgmentId, "rarity"],
+    ] as const) {
+      if (id === null) continue;
+      const judgment = byId.get(id);
+      if (
+        judgment?.kind !== "rarity-source-exception" ||
+        ![scope, "source-and-rarity"].some(
+          (candidateScope) =>
+            judgment.factsFingerprint ===
+            buildEquipmentPolicyJudgmentFactsFingerprint({
+              kind: "rarity-source-exception",
+              actorId: subject.actorId,
+              draftId: subject.draftId,
+              targetLevel: subject.targetLevel,
+              scope: candidateScope as "source" | "rarity" | "source-and-rarity",
+              sourceUuid: line.sourceUuid,
+              packId: decision.packId,
+              publicationSlug: decision.publicationSlug,
+              rarity: decision.rarity,
+            })
+        )
+      )
+        return false;
+      usedJudgmentIds.add(id);
+    }
+  }
+  return !policy.gmJudgments.some(
+    (judgment) => judgment.kind === "rarity-source-exception" && !usedJudgmentIds.has(judgment.id)
+  );
+}
+
+function normalizeWorldRecipePolicy(raw: unknown): AcquisitionPolicyMaterialFacts["worldRecipePolicy"] | null {
+  if (
+    !isRecord(raw) ||
+    !Array.isArray(raw.enabledRecipes) ||
+    !isOneOf(raw.defaultRecipe, ["permanent-items", "lump-sum"])
+  ) {
+    return null;
+  }
+  const enabledRecipes = Array.from(
+    new Set(
+      raw.enabledRecipes.filter((value): value is "permanent-items" | "lump-sum" =>
+        isOneOf(value, ["permanent-items", "lump-sum"])
+      )
+    )
+  ).sort();
+  return enabledRecipes.length > 0 && enabledRecipes.includes(raw.defaultRecipe)
+    ? { enabledRecipes, defaultRecipe: raw.defaultRecipe }
+    : null;
+}
+
+function normalizeSourcePolicy(raw: unknown): AcquisitionPolicyMaterialFacts["sourcePolicy"] | null {
+  if (
+    !isRecord(raw) ||
+    !Array.isArray(raw.configuredPackFamilies) ||
+    !Array.isArray(raw.effectivePackIds) ||
+    !Array.isArray(raw.enabledSourceSlugs) ||
+    !Array.isArray(raw.knownSourceSlugs) ||
+    typeof raw.showEmptySources !== "boolean" ||
+    typeof raw.showUnknownSources !== "boolean"
+  )
+    return null;
+  const strings = (values: unknown[]) => Array.from(new Set(values.filter(nonEmpty))).sort();
+  return {
+    configuredPackFamilies: strings(raw.configuredPackFamilies),
+    effectivePackIds: strings(raw.effectivePackIds),
+    enabledSourceSlugs: strings(raw.enabledSourceSlugs),
+    knownSourceSlugs: strings(raw.knownSourceSlugs),
+    showEmptySources: raw.showEmptySources,
+    showUnknownSources: raw.showUnknownSources,
+  };
+}
+
+function normalizeRarityPolicy(raw: unknown): AcquisitionPolicyMaterialFacts["rarityPolicy"] | null {
+  return isRecord(raw) && isOneOf(raw.blanketCeiling, ["common", "uncommon", "rare", "unique"])
+    ? { blanketCeiling: raw.blanketCeiling }
+    : null;
+}
+
+function normalizeAuthorityPolicy(raw: unknown): AcquisitionPolicyMaterialFacts["authorityPolicy"] | null {
+  return isRecord(raw) &&
+    isOneOf(raw.recipeChoice, ["gm-fixed", "actor-owner"]) &&
+    isOneOf(raw.higherLevelStart, ["gm-confirmation", "actor-owner-attestation"]) &&
+    isOneOf(raw.apply, ["actor-owner", "gm-review"])
+    ? { recipeChoice: raw.recipeChoice, higherLevelStart: raw.higherLevelStart, apply: raw.apply }
+    : null;
+}
+
+function normalizeAbp(raw: unknown): AcquisitionPolicyMaterialFacts["abp"] | null {
+  return isRecord(raw) &&
+    typeof raw.enabled === "boolean" &&
+    (raw.mode === null || typeof raw.mode === "string") &&
+    typeof raw.actorOverrideDisabled === "boolean"
+    ? { enabled: raw.enabled, mode: raw.mode as string | null, actorOverrideDisabled: raw.actorOverrideDisabled }
+    : null;
+}
+
+function normalizeHigherLevelStartEvidence(
+  raw: unknown
+): AcquisitionPolicyMaterialFacts["higherLevelStartEvidence"] | null {
+  if (!isRecord(raw) || !isOneOf(raw.kind, ["not-required", "gm-confirmation", "actor-owner-attestation"])) {
+    return null;
+  }
+  if (raw.kind === "not-required") return hasOnlyKeys(raw, ["kind"]) ? { kind: "not-required" } : null;
+  if (raw.kind === "gm-confirmation") {
+    const judgment = normalizeEquipmentPolicyJudgment(raw.judgment);
+    return judgment?.kind === "higher-level-start" && isOneOf(raw.startKind, ["new-campaign", "replacement-character"])
+      ? { kind: "gm-confirmation", startKind: raw.startKind, judgment }
+      : null;
+  }
+  return nonEmpty(raw.actorId) &&
+    nonEmpty(raw.draftId) &&
+    validTargetLevel(raw.targetLevel) &&
+    isOneOf(raw.startKind, ["new-campaign", "replacement-character"]) &&
+    nonEmpty(raw.authorUserId) &&
+    nonEmpty(raw.authorName) &&
+    nonEmpty(raw.recordedAt) &&
+    Number.isFinite(Date.parse(raw.recordedAt)) &&
+    nonEmpty(raw.reason)
+    ? {
+        kind: "actor-owner-attestation",
+        startKind: raw.startKind,
+        actorId: raw.actorId,
+        draftId: raw.draftId,
+        targetLevel: raw.targetLevel,
+        authorUserId: raw.authorUserId,
+        authorName: raw.authorName,
+        recordedAt: raw.recordedAt,
+        reason: raw.reason.trim(),
+      }
+    : null;
+}
+
+function normalizeJudgments(raw: unknown): AcquisitionPolicyMaterialFacts["gmJudgments"] | null {
+  if (!Array.isArray(raw)) return null;
+  const values = raw.flatMap((value) => {
+    const judgment = normalizeEquipmentPolicyJudgment(value);
+    return judgment ? [judgment] : [];
+  });
+  if (values.length !== raw.length || new Set(values.map((value) => value.id)).size !== values.length) return null;
+  return values.sort((left, right) => left.id.localeCompare(right.id));
 }
 
 function normalizeBaseline(raw: unknown): AcquisitionDraftState["baseline"] {

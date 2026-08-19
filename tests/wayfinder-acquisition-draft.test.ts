@@ -8,6 +8,7 @@ import {
 import { createAcquisitionPriceSnapshot } from "../src/wayfinder/domain/acquisition-ledger";
 import type { AcquisitionDraftState, AcquisitionLineDraft } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
+import { buildEquipmentPolicyJudgmentFactsFingerprint } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 
 describe("acquisition draft", () => {
@@ -85,6 +86,101 @@ describe("acquisition draft", () => {
     malformedFunding.assignment = { mode: "player" };
     expect(normalizeAcquisitionDraft(malformed)).toBeNull();
   });
+
+  it("rejects policy authority replay across draft, actor, or target subjects", () => {
+    const valid = completeDraft();
+    expect(normalizeAcquisitionDraft(valid)).not.toBeNull();
+
+    const otherDraft = structuredClone(valid) as unknown as Record<string, unknown>;
+    otherDraft.draftId = "draft-2";
+    expect(normalizeAcquisitionDraft(otherDraft)).toBeNull();
+
+    const otherActor = structuredClone(valid) as unknown as Record<string, unknown>;
+    const baseline = otherActor.baseline as Record<string, unknown>;
+    baseline.actorId = "actor-2";
+    expect(normalizeAcquisitionDraft(otherActor)).toBeNull();
+
+    const otherTarget = structuredClone(valid) as unknown as Record<string, unknown>;
+    otherTarget.targetLevel = 6;
+    expect(normalizeAcquisitionDraft(otherTarget)).toBeNull();
+  });
+
+  it("preserves auditable GM start evidence and rejects a forged start kind", () => {
+    const base = completeDraft();
+    const facts = {
+      kind: "higher-level-start" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      startKind: "replacement-character" as const,
+    };
+    const judgment = {
+      id: "start-1",
+      kind: facts.kind,
+      actorId: facts.actorId,
+      draftId: facts.draftId,
+      targetLevel: facts.targetLevel,
+      factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(facts),
+      authorUserId: "gm-1",
+      authorName: "Game Master",
+      recordedAt: "2026-08-18T20:00:00.000Z",
+      reason: "Approved replacement character",
+    };
+    const policy = base.policySnapshot!.material;
+    const draft: AcquisitionDraftState = {
+      ...base,
+      policySnapshot: {
+        ...base.policySnapshot!,
+        material: {
+          ...policy,
+          authorityPolicy: { ...policy.authorityPolicy, higherLevelStart: "gm-confirmation" },
+          higherLevelStartEvidence: { kind: "gm-confirmation", startKind: facts.startKind, judgment },
+          gmJudgments: [judgment],
+        },
+      },
+    };
+
+    expect(normalizeAcquisitionDraft(draft)?.policySnapshot?.material.higherLevelStartEvidence).toEqual({
+      kind: "gm-confirmation",
+      startKind: "replacement-character",
+      judgment,
+    });
+    const forged: AcquisitionDraftState = {
+      ...draft,
+      policySnapshot: {
+        ...draft.policySnapshot!,
+        material: {
+          ...draft.policySnapshot!.material,
+          higherLevelStartEvidence: { kind: "gm-confirmation", startKind: "new-campaign", judgment },
+        },
+      },
+    };
+    expect(normalizeAcquisitionDraft(forged)).toBeNull();
+  });
+
+  it("rejects persisted custom budgets, allowances, and eligibility without exact judgments", () => {
+    const custom = structuredClone(completeDraft()) as unknown as Record<string, unknown>;
+    custom.recipe = { kind: "custom-lump-sum", judgmentRef: "fake", amountCopper: 999_999 };
+    const customPolicy = ((custom.policySnapshot as Record<string, unknown>).material ?? {}) as Record<string, unknown>;
+    customPolicy.resolvedRecipe = custom.recipe;
+    customPolicy.budgetCopper = 999_999;
+    expect(normalizeAcquisitionDraft(custom)).toBeNull();
+
+    const allowance = structuredClone(completeDraft()) as unknown as Record<string, unknown>;
+    const allowancePolicy = ((allowance.policySnapshot as Record<string, unknown>).material ?? {}) as Record<
+      string,
+      unknown
+    >;
+    allowancePolicy.allowances = [{ allowanceId: "gm-extra:fake", itemLevel: 5 }];
+    expect(normalizeAcquisitionDraft(allowance)).toBeNull();
+
+    const item = structuredClone(completeDraft()) as unknown as Record<string, unknown>;
+    const firstLine = (item.lines as Array<Record<string, unknown>>)[0]!;
+    const decision = firstLine.policyDecision as Record<string, unknown>;
+    decision.rarity = "unique";
+    decision.eligible = true;
+    expect(normalizeAcquisitionDraft(item)).toBeNull();
+  });
 });
 
 function completeDraft(): AcquisitionDraftState {
@@ -95,12 +191,40 @@ function completeDraft(): AcquisitionDraftState {
       version: 1,
       fingerprint: "full-policy",
       material: {
+        subject: { actorId: "actor-1", draftId: "draft-1", targetLevel: 5 },
         numericPolicyRef: CHARACTER_WEALTH_POLICY_REF,
         semanticPolicyRef: SEMANTIC_WEALTH_POLICY_REF,
         resolvedRecipe: recipe,
         budgetCopper: 1000,
         allowances: [{ allowanceId: "allowance-4", itemLevel: 4 }],
-        applyAuthorityBasis: "actor-owner",
+        worldRecipePolicy: { enabledRecipes: ["permanent-items", "lump-sum"], defaultRecipe: "permanent-items" },
+        sourcePolicy: {
+          configuredPackFamilies: ["pf2e"],
+          effectivePackIds: ["pf2e.equipment-srd"],
+          enabledSourceSlugs: [],
+          knownSourceSlugs: [],
+          showEmptySources: false,
+          showUnknownSources: false,
+        },
+        rarityPolicy: { blanketCeiling: "common" },
+        authorityPolicy: {
+          recipeChoice: "actor-owner",
+          higherLevelStart: "actor-owner-attestation",
+          apply: "actor-owner",
+        },
+        higherLevelStartEvidence: {
+          kind: "actor-owner-attestation",
+          startKind: "replacement-character",
+          actorId: "actor-1",
+          draftId: "draft-1",
+          targetLevel: 5,
+          authorUserId: "owner-1",
+          authorName: "Owner",
+          recordedAt: "2026-08-18T20:00:00.000Z",
+          reason: "Replacement character",
+        },
+        abp: { enabled: false, mode: "noABP", actorOverrideDisabled: false },
+        gmJudgments: [],
       },
     },
     baseline: { version: 1, actorId: "actor-1", fingerprint: "empty" },
@@ -132,9 +256,14 @@ function line(lineId: string): AcquisitionLineDraft {
     componentKind: "baseline-item",
     policyDecision: {
       eligible: true,
+      packId: "pf2e.equipment-srd",
+      publicationSlug: "player-core",
+      rarity: "common",
       sourceBasis: "approved-pack",
       rarityBasis: "common",
-      accessOrExceptionRef: null,
+      characterAccessRef: null,
+      sourceExceptionJudgmentId: null,
+      rarityExceptionJudgmentId: null,
       abpTreatment: "unchanged",
     },
     funding: { lane: "currency" },

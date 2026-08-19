@@ -1,0 +1,42 @@
+.wayfinder-equipment-policy-config .equipment-policy-sheet {
+  display: grid;
+  gap: 1rem;
+  padding: 0.75rem;
+}
+
+.wayfinder-equipment-policy-config .equipment-policy-eyebrow {
+  color: var(--wf-color-accent, #6f1818);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.wayfinder-equipment-policy-config fieldset {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem;
+}
+
+.wayfinder-equipment-policy-config fieldset > label,
+.wayfinder-equipment-policy-config .equipment-policy-family-list label {
+  align-items: center;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(11rem, 1fr) minmax(12rem, 1fr);
+}
+
+.wayfinder-equipment-policy-config .equipment-policy-family-list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 15rem;
+  overflow: auto;
+}
+
+.wayfinder-equipment-policy-config .equipment-policy-family-list label {
+  grid-template-columns: auto minmax(10rem, 1fr) auto;
+}
+
+.wayfinder-equipment-policy-config .equipment-policy-family-list small {
+  color: var(--color-text-subtle, #666);
+}

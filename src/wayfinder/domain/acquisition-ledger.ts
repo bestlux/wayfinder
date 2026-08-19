@@ -1,5 +1,5 @@
 import { cloneData } from "../../shared/cloning.js";
-import { compareAcquisitionMaterialFacts } from "./acquisition-draft.js";
+import { compareAcquisitionMaterialFacts, isAcquisitionPolicyAuthorityConsistent } from "./acquisition-draft.js";
 import type {
   AcquisitionDraftState,
   AcquisitionInvalidationReason,
@@ -35,6 +35,9 @@ export function evaluateAcquisitionLedger(draft: AcquisitionDraftState): Acquisi
   const policy = draft.policySnapshot;
   if (!policy) return emptyInvalidLedger("policy-missing", "An effective equipment policy is required.");
   if (!draft.baseline) return emptyInvalidLedger("baseline-missing", "An economic baseline is required.");
+  if (!isAcquisitionPolicyAuthorityConsistent(draft)) {
+    return emptyInvalidLedger("policy-mismatch", "The equipment policy authority evidence is invalid or stale.");
+  }
   if (!same(policy.material.resolvedRecipe, draft.recipe)) {
     return emptyInvalidLedger("policy-mismatch", "The reviewed policy recipe does not match the acquisition draft.");
   }

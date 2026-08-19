@@ -16,6 +16,7 @@ import type {
   AcquisitionRecipeSelection,
 } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
+import { buildEquipmentPolicyJudgmentFactsFingerprint } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 
 describe("acquisition price resolution", () => {
@@ -279,7 +280,7 @@ describe("acquisition ledger", () => {
     const policyDenied = mutable(acquisitionDraft({ lines: [line()] }));
     policyDenied.lines[0]!.policyDecision.eligible = false;
     expect(evaluateAcquisitionLedger(policyDenied).blockers).toContainEqual(
-      expect.objectContaining({ code: "item-ineligible" })
+      expect.objectContaining({ code: "policy-mismatch" })
     );
 
     const overBudget = acquisitionDraft({
@@ -287,6 +288,23 @@ describe("acquisition ledger", () => {
     });
     expect(evaluateAcquisitionLedger(overBudget).blockers).toContainEqual(
       expect.objectContaining({ code: "over-budget", lineId: null })
+    );
+  });
+
+  it("rejects forged persisted policy authority before using its budget or item decisions", () => {
+    const custom = mutable(acquisitionDraft({ lines: [line()] }));
+    custom.recipe = { kind: "custom-lump-sum", judgmentRef: "fake", amountCopper: 999_999 };
+    custom.policySnapshot!.material.resolvedRecipe = custom.recipe;
+    custom.policySnapshot!.material.budgetCopper = 999_999;
+    expect(evaluateAcquisitionLedger(custom).blockers).toContainEqual(
+      expect.objectContaining({ code: "policy-mismatch" })
+    );
+
+    const item = mutable(acquisitionDraft({ lines: [line()] }));
+    item.lines[0]!.policyDecision.rarity = "unique";
+    item.lines[0]!.policyDecision.eligible = true;
+    expect(evaluateAcquisitionLedger(item).blockers).toContainEqual(
+      expect.objectContaining({ code: "policy-mismatch" })
     );
   });
 
@@ -307,19 +325,39 @@ describe("acquisition ledger", () => {
       complete: false,
       reasons: ["policy"],
     });
+
+    const authorityChange = mutable(structuredClone(reviewed));
+    authorityChange.policySnapshot!.material.authorityPolicy.apply = "gm-review";
+    expect(evaluateAcquisitionCompletion(authorityChange, evaluateAcquisitionLedger(authorityChange))).toMatchObject({
+      complete: false,
+      reasons: ["policy"],
+    });
+
+    const abpChange = mutable(structuredClone(reviewed));
+    abpChange.policySnapshot!.material.abp = {
+      enabled: true,
+      mode: "ABPRulesAsWritten",
+      actorOverrideDisabled: false,
+    };
+    expect(evaluateAcquisitionCompletion(abpChange, evaluateAcquisitionLedger(abpChange))).toMatchObject({
+      complete: false,
+      reasons: ["policy"],
+    });
   });
 
   it("invalidates a reviewed custom amount or judgment reference change", () => {
     const recipe = { kind: "custom-lump-sum", judgmentRef: "judgment-1", amountCopper: 1200 } as const;
     const original = mutable(acquisitionDraft({ recipe, lines: [line()] }));
     original.policySnapshot!.material.budgetCopper = 1200;
+    original.policySnapshot!.material.gmJudgments = [customJudgment("judgment-1", 1200)];
     const reviewed = reviewPurchaseLedger(original, evaluateAcquisitionLedger(original), reviewer());
     const changed = mutable(structuredClone(reviewed));
     changed.recipe = { kind: "custom-lump-sum", judgmentRef: "judgment-2", amountCopper: 1200 };
     changed.policySnapshot!.material.resolvedRecipe = changed.recipe;
+    changed.policySnapshot!.material.gmJudgments = [customJudgment("judgment-2", 1200)];
     expect(evaluateAcquisitionCompletion(changed, evaluateAcquisitionLedger(changed))).toMatchObject({
       complete: false,
-      reasons: ["recipe"],
+      reasons: expect.arrayContaining(["recipe"]),
     });
   });
 
@@ -331,7 +369,7 @@ describe("acquisition ledger", () => {
     changedBaseline.baseline = { version: 1, actorId: "actor-2", fingerprint: "other-actor" };
     expect(evaluateAcquisitionCompletion(changedBaseline, evaluateAcquisitionLedger(changedBaseline))).toMatchObject({
       complete: false,
-      reasons: ["baseline"],
+      reasons: ["policy-mismatch"],
     });
 
     const changedLevel = mutable(structuredClone(reviewed));
@@ -377,6 +415,7 @@ function acquisitionDraft(options: {
       version: 1,
       fingerprint: "diagnostic-policy-fingerprint",
       material: {
+        subject: { actorId: "actor-1", draftId: "draft-1", targetLevel: 5 },
         numericPolicyRef: CHARACTER_WEALTH_POLICY_REF,
         semanticPolicyRef: SEMANTIC_WEALTH_POLICY_REF,
         resolvedRecipe: recipe,
@@ -385,7 +424,34 @@ function acquisitionDraft(options: {
           { allowanceId: "allowance-3", itemLevel: 3 },
           { allowanceId: "allowance-4", itemLevel: 4 },
         ],
-        applyAuthorityBasis: "actor-owner",
+        worldRecipePolicy: { enabledRecipes: ["permanent-items", "lump-sum"], defaultRecipe: "permanent-items" },
+        sourcePolicy: {
+          configuredPackFamilies: ["pf2e"],
+          effectivePackIds: ["pf2e.equipment-srd"],
+          enabledSourceSlugs: [],
+          knownSourceSlugs: [],
+          showEmptySources: false,
+          showUnknownSources: false,
+        },
+        rarityPolicy: { blanketCeiling: "common" },
+        authorityPolicy: {
+          recipeChoice: "actor-owner",
+          higherLevelStart: "actor-owner-attestation",
+          apply: "actor-owner",
+        },
+        higherLevelStartEvidence: {
+          kind: "actor-owner-attestation",
+          startKind: "replacement-character",
+          actorId: "actor-1",
+          draftId: "draft-1",
+          targetLevel: 5,
+          authorUserId: "owner-1",
+          authorName: "Owner",
+          recordedAt: "2026-08-18T20:00:00.000Z",
+          reason: "Replacement character",
+        },
+        abp: { enabled: false, mode: "noABP", actorOverrideDisabled: false },
+        gmJudgments: [],
       },
     },
     baseline: { version: 1, actorId: "actor-1", fingerprint: "empty-actor" },
@@ -415,9 +481,14 @@ function line(
     componentKind: options.componentKind ?? "baseline-item",
     policyDecision: {
       eligible: true,
+      packId: "pf2e.equipment-srd",
+      publicationSlug: "player-core",
+      rarity: "common",
       sourceBasis: "approved-pack",
       rarityBasis: "common",
-      accessOrExceptionRef: null,
+      characterAccessRef: null,
+      sourceExceptionJudgmentId: null,
+      rarityExceptionJudgmentId: null,
       abpTreatment: "unchanged",
     },
     funding: options.funding ?? { lane: "currency" },
@@ -449,6 +520,27 @@ function priceInput(overrides: Partial<AcquisitionPriceInput> = {}): Acquisition
 
 function reviewer() {
   return { userId: "user-1", reviewedAt: "2026-08-18T23:00:00.000Z" };
+}
+
+function customJudgment(id: string, amountCopper: number) {
+  return {
+    id,
+    kind: "custom-lump-sum" as const,
+    actorId: "actor-1",
+    draftId: "draft-1",
+    targetLevel: 5,
+    factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint({
+      kind: "custom-lump-sum",
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      amountCopper,
+    }),
+    authorUserId: "gm-1",
+    authorName: "Game Master",
+    recordedAt: "2026-08-18T23:00:00.000Z",
+    reason: "Custom replacement budget",
+  };
 }
 
 type DeepMutable<T> = T extends readonly (infer Entry)[]

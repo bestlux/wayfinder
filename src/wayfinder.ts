@@ -1,5 +1,6 @@
 import { CompendiumSourceConfigApp } from "./compendium-source-config-app.js";
 import { MODULE_ID } from "./constants.js";
+import { EquipmentPolicyConfigApp } from "./equipment-policy-config-app.js";
 import { FeedbackSupportApp } from "./feedback-support-app.js";
 import { registerPackSourceCacheInvalidation } from "./pack/cache-invalidation.js";
 import { registerSettings } from "./settings.js";
@@ -10,11 +11,13 @@ import { registerPersistedDraftWriteGuardHook } from "./wayfinder/application/dr
 Hooks.once("init", () => {
   registerSettings({
     compendiumSourcesMenuType: CompendiumSourceConfigApp,
+    equipmentPolicyMenuType: EquipmentPolicyConfigApp,
     feedbackMenuType: FeedbackSupportApp,
     onExtraPacksChange: rerenderOpenWayfinderApps,
     onSpellRarityCeilingChange: rerenderOpenWayfinderApps,
   });
   void preloadHandlebarsTemplates([
+    `modules/${MODULE_ID}/templates/equipment-policy-config.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/manual-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/boost-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/skill-increase-pane.hbs`,

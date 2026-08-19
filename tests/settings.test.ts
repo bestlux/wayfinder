@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MODULE_ID, SETTINGS } from "../src/constants";
-import { getSpellRarityCeilingSetting, registerSettings } from "../src/settings";
+import { getEquipmentWorldPolicySetting, getSpellRarityCeilingSetting, registerSettings } from "../src/settings";
 
 const testGlobals = globalThis as typeof globalThis & { game: any };
 
@@ -73,6 +73,40 @@ describe("Wayfinder settings", () => {
         restricted: true,
       })
     );
+  });
+
+  it("registers a restricted equipment-policy menu and atomic hidden world setting", () => {
+    class EquipmentPolicyMenu {}
+    registerSettings({ equipmentPolicyMenuType: EquipmentPolicyMenu });
+    expect(testGlobals.game.settings.registerMenu).toHaveBeenCalledWith(
+      MODULE_ID,
+      "equipmentPolicy",
+      expect.objectContaining({ type: EquipmentPolicyMenu, restricted: true })
+    );
+    expect(testGlobals.game.settings.register).toHaveBeenCalledWith(
+      MODULE_ID,
+      SETTINGS.equipmentPolicy,
+      expect.objectContaining({ scope: "world", config: false, restricted: true, type: Object })
+    );
+    expect(testGlobals.game.settings.register).toHaveBeenCalledWith(
+      MODULE_ID,
+      SETTINGS.equipmentPolicyJudgments,
+      expect.objectContaining({ scope: "world", config: false, restricted: true, type: Object })
+    );
+  });
+
+  it("normalizes the stored equipment policy", () => {
+    testGlobals.game.settings.get.mockReturnValue({
+      version: 1,
+      enabledRecipes: ["lump-sum"],
+      defaultRecipe: "permanent-items",
+      allowedEquipmentPackFamilies: ["BattleZoo"],
+    });
+    expect(getEquipmentWorldPolicySetting()).toMatchObject({
+      enabledRecipes: ["lump-sum"],
+      defaultRecipe: "lump-sum",
+      allowedEquipmentPackFamilies: ["battlezoo"],
+    });
   });
 
   it("registers feedback support for both players and GMs", () => {

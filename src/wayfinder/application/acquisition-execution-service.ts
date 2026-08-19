@@ -6,6 +6,11 @@ import { MODULE_ID } from "../../constants.js";
 import type { EmbeddedItemSource } from "../../shared/actor-model.js";
 import { cloneData } from "../../shared/cloning.js";
 import type { DraftState, ModuleState } from "../../types.js";
+import {
+  type AcquisitionCurrencyConvergenceWitnessV1,
+  acquisitionCurrencyConvergenceWitnessMatches,
+  createAcquisitionCurrencyConvergenceWitness,
+} from "../domain/acquisition-currency-convergence.js";
 import { normalizeAcquisitionDraft, normalizeAcquisitionPolicySnapshot } from "../domain/acquisition-draft.js";
 import {
   assertPreparedAcquisitionIdentityPlanMatches,
@@ -125,16 +130,13 @@ interface PreparedExecution {
   readonly handoff: boolean;
   readonly sources: ReadonlyMap<string, EmbeddedItemSource>;
   readonly persistedRecoveryManifest: CompletedAcquisitionManifestV1 | null;
+  readonly persistedCurrencyConvergenceWitness: AcquisitionCurrencyConvergenceWitnessV1 | null;
 }
 
 interface AcquisitionItemObservation {
   readonly evidence: readonly CompletedObservedItemV1[];
   readonly observedEntryIds: ReadonlySet<string>;
 }
-
-type CurrencyOnlyRetryExpectation = EconomicRetryExpectation & {
-  readonly allowCurrencyOnlyConvergence?: boolean;
-};
 
 export function createAcquisitionExecutionSession(
   dependencies: AcquisitionExecutionDependencies
@@ -181,6 +183,8 @@ export function createAcquisitionExecutionSession(
             ordinal,
             emitWriteCheckpoint,
             inventory,
+            expectedBaseline: current,
+            now,
           });
           current = captureBaseline(actor, now);
           assertStableNonAcquisitionItems(prepared.initialBaseline, current, prepared.identityPlan);
@@ -202,7 +206,13 @@ export function createAcquisitionExecutionSession(
       assertObservedWayfinderItemSizes(actor, prepared, completedObservation);
       assertAllPlannedItemsObserved(prepared.identityPlan, completedObservation);
     },
-    executeAcquisitionCurrency: async ({ actor, draft, classGrantPlan, emitWriteCheckpoint }) => {
+    executeAcquisitionCurrency: async ({
+      actor,
+      draft,
+      classGrantPlan,
+      emitWriteCheckpoint,
+      persistCurrencyConvergenceWitness,
+    }) => {
       const execution = requirePreparedExecution(prepared, actor, draft, classGrantPlan);
       let current = captureBaseline(actor, now);
       assertStableNonAcquisitionItems(execution.initialBaseline, current, execution.identityPlan);
@@ -223,9 +233,27 @@ export function createAcquisitionExecutionSession(
       const delta = execution.targetCopper - current.currencyCopper;
       if (!Number.isSafeInteger(delta)) throw new RangeError("Starting-equipment currency delta is unsafe.");
       if (delta !== 0) {
-        await emitWriteCheckpoint("currency-convergence", "before", 1);
-        if (delta > 0) await inventory.addCurrency(actor, delta);
-        else await inventory.removeCurrency(actor, -delta);
+        let writeAttempted = false;
+        let writeFailed = false;
+        let writeError: unknown;
+        try {
+          await executeAfterBeforeWriteRevalidation({
+            actor,
+            expectedBaseline: current,
+            now,
+            operation: "currency-convergence",
+            ordinal: 1,
+            emitWriteCheckpoint,
+            write: () => {
+              writeAttempted = true;
+              return delta > 0 ? inventory.addCurrency(actor, delta) : inventory.removeCurrency(actor, -delta);
+            },
+          });
+        } catch (error) {
+          if (!writeAttempted) throw error;
+          writeFailed = true;
+          writeError = error;
+        }
         current = captureBaseline(actor, now);
         assertStableNonAcquisitionItems(execution.initialBaseline, current, execution.identityPlan);
         const completedObservation = observeCompletedItems(
@@ -238,6 +266,9 @@ export function createAcquisitionExecutionSession(
         if (current.currencyCopper !== execution.targetCopper) {
           throw new Error("PF2E did not converge actor currency to the reviewed absolute target.");
         }
+        const witness = createCurrencyConvergenceWitness(execution, current);
+        await persistCurrencyConvergenceWitness(witness);
+        if (writeFailed) throw writeError;
         await emitWriteCheckpoint("currency-convergence", "after", 1);
       }
       if (current.currencyCopper !== execution.targetCopper) {
@@ -306,7 +337,7 @@ async function prepareExecution(args: {
   if (acquisition.targetLevel !== 1 || args.draft.targetLevel !== 1) {
     throw new Error("Wave 2 starting-equipment execution is limited to level 1.");
   }
-  if (args.recoveryFinalization && !hasApplyRecoveryState(args.draft)) {
+  if (args.recoveryFinalization && !hasApplyRecoveryLock(args.draft)) {
     throw new Error("Starting-equipment recovery verification requires persisted Apply recovery evidence.");
   }
   const ledger = evaluateAcquisitionLedger(acquisition, args.classGrantPlan);
@@ -325,6 +356,13 @@ async function prepareExecution(args: {
     acquisition.disposition.kind === "handoff"
       ? acquisition.baseline!.currencyCopper
       : safeCopperAdd(acquisition.baseline!.currencyCopper, identityPlan.ledger.remainingCopper);
+  const persistedCurrencyConvergenceWitness = resolvePersistedCurrencyConvergenceWitness({
+    draft: args.draft,
+    actorId,
+    acquisition,
+    identityPlan,
+    targetCopper,
+  });
   const history = await args.dependencies.readHistory();
   const persistedRecoveryManifest = resolvePersistedRecoveryManifest({
     history,
@@ -337,9 +375,11 @@ async function prepareExecution(args: {
     identityPlan,
     targetCopper,
     args.classGrantPlan,
-    persistedRecoveryManifest !== null
+    persistedRecoveryManifest,
+    persistedCurrencyConvergenceWitness
   );
   const initialBaseline = captureBaseline(args.actor, args.now);
+  assertWitnessedCurrencyUnchanged(persistedCurrencyConvergenceWitness, initialBaseline);
   const admission = evaluateActorEconomicAdmission({
     actor: args.actor as EconomicActorLike,
     draftId: acquisition.draftId,
@@ -452,6 +492,7 @@ async function prepareExecution(args: {
     handoff,
     sources,
     persistedRecoveryManifest,
+    persistedCurrencyConvergenceWitness,
   };
 }
 
@@ -674,9 +715,35 @@ async function executeItemWrite(args: {
   readonly ordinal: number;
   readonly emitWriteCheckpoint: DraftApplyWriteCheckpointEmitter;
   readonly inventory: AcquisitionInventoryAdapter;
+  readonly expectedBaseline: EconomicBaselineV1;
+  readonly now: () => string;
 }): Promise<void> {
-  await args.emitWriteCheckpoint("embedded-item-create", "before", args.ordinal);
-  await args.inventory.add(args.actor, args.source, { stack: false, render: false });
+  await executeAfterBeforeWriteRevalidation({
+    actor: args.actor,
+    expectedBaseline: args.expectedBaseline,
+    now: args.now,
+    operation: "embedded-item-create",
+    ordinal: args.ordinal,
+    emitWriteCheckpoint: args.emitWriteCheckpoint,
+    write: () => args.inventory.add(args.actor, args.source, { stack: false, render: false }),
+  });
+}
+
+async function executeAfterBeforeWriteRevalidation(args: {
+  readonly actor: unknown;
+  readonly expectedBaseline: EconomicBaselineV1;
+  readonly now: () => string;
+  readonly operation: "embedded-item-create" | "currency-convergence";
+  readonly ordinal: number;
+  readonly emitWriteCheckpoint: DraftApplyWriteCheckpointEmitter;
+  readonly write: () => unknown | Promise<unknown>;
+}): Promise<void> {
+  await args.emitWriteCheckpoint(args.operation, "before", args.ordinal);
+  const current = captureBaseline(args.actor, args.now);
+  if (current.fingerprint !== args.expectedBaseline.fingerprint) {
+    throw new Error(`Actor wealth changed after the ${args.operation} before-write checkpoint.`);
+  }
+  await args.write();
 }
 
 function observeCompletedItems(
@@ -956,8 +1023,24 @@ function buildRetryExpectation(
   plan: PreparedAcquisitionIdentityPlanV1,
   expectedCurrencyCopper: number,
   classGrantPlan: PreparedClassGrantPlanV1,
-  exactPersistedManifestRecovery: boolean
-): CurrencyOnlyRetryExpectation {
+  persistedRecoveryManifest: CompletedAcquisitionManifestV1 | null,
+  persistedCurrencyConvergenceWitness: AcquisitionCurrencyConvergenceWitnessV1 | null
+): EconomicRetryExpectation {
+  const currencyOnlyConvergenceEvidence =
+    plan.disposition.kind !== "retain-all"
+      ? null
+      : persistedRecoveryManifest
+        ? {
+            kind: "completed-manifest" as const,
+            manifestId: persistedRecoveryManifest.id,
+            manifestFingerprint: persistedRecoveryManifest.fingerprint,
+          }
+        : persistedCurrencyConvergenceWitness
+          ? {
+              kind: "acquisition-currency-witness" as const,
+              witness: persistedCurrencyConvergenceWitness,
+            }
+          : null;
   return {
     draftId: plan.subject.draftId,
     batchId: plan.subject.batchId,
@@ -978,8 +1061,72 @@ function buildRetryExpectation(
           stackingIntent: entry.stackingIntent,
         };
       }),
-    allowCurrencyOnlyConvergence: exactPersistedManifestRecovery && plan.disposition.kind === "retain-all",
+    currencyOnlyConvergenceEvidence,
   };
+}
+
+function createCurrencyConvergenceWitness(
+  execution: PreparedExecution,
+  observed: EconomicBaselineV1
+): AcquisitionCurrencyConvergenceWitnessV1 {
+  const reviewedBaseline = execution.draft.baseline;
+  if (
+    !reviewedBaseline ||
+    !Number.isSafeInteger(reviewedBaseline.currencyCopper) ||
+    reviewedBaseline.currencyCopper < 0
+  ) {
+    throw new TypeError("Currency convergence evidence requires the reviewed starting wealth baseline.");
+  }
+  return createAcquisitionCurrencyConvergenceWitness({
+    actorId: execution.actorId,
+    draftId: execution.identityPlan.subject.draftId,
+    batchId: execution.identityPlan.subject.batchId,
+    manifestId: execution.identityPlan.subject.manifestId,
+    ledgerDigest: execution.identityPlan.ledgerDigest,
+    baselineFingerprint: reviewedBaseline.fingerprint,
+    preCopper: reviewedBaseline.currencyCopper,
+    targetCopper: execution.targetCopper,
+    observedCopper: observed.currencyCopper,
+    verifiedAt: observed.capturedAt,
+  });
+}
+
+function resolvePersistedCurrencyConvergenceWitness(args: {
+  readonly draft: DraftState;
+  readonly actorId: string;
+  readonly acquisition: AcquisitionDraftState;
+  readonly identityPlan: PreparedAcquisitionIdentityPlanV1;
+  readonly targetCopper: number;
+}): AcquisitionCurrencyConvergenceWitnessV1 | null {
+  const witness = args.acquisition.currencyConvergenceWitness ?? null;
+  if (!witness) return null;
+  const preCopper = args.acquisition.baseline?.currencyCopper;
+  if (
+    !Number.isSafeInteger(preCopper) ||
+    !hasApplyRecoveryLock(args.draft) ||
+    !acquisitionCurrencyConvergenceWitnessMatches(witness, {
+      actorId: args.actorId,
+      draftId: args.acquisition.draftId,
+      batchId: args.acquisition.batchId,
+      manifestId: args.acquisition.manifestId,
+      ledgerDigest: args.identityPlan.ledgerDigest,
+      baselineFingerprint: args.acquisition.baseline!.fingerprint,
+      preCopper: preCopper as number,
+      targetCopper: args.targetCopper,
+    })
+  ) {
+    throw new Error("Persisted currency convergence evidence differs from the prepared acquisition.");
+  }
+  return witness;
+}
+
+function assertWitnessedCurrencyUnchanged(
+  witness: AcquisitionCurrencyConvergenceWitnessV1 | null,
+  baseline: EconomicBaselineV1
+): void {
+  if (witness && baseline.currencyCopper !== witness.observedCopper) {
+    throw new Error("Actor currency changed after the persisted acquisition convergence evidence was recorded.");
+  }
 }
 
 function assertWaveTwoIdentityShape(plan: PreparedAcquisitionIdentityPlanV1): void {
@@ -1036,7 +1183,7 @@ function resolvePersistedRecoveryManifest(args: {
   return manifest;
 }
 
-function hasApplyRecoveryState(draft: DraftState): boolean {
+function hasApplyRecoveryLock(draft: DraftState): boolean {
   return (
     draft.applyAttemptStepIds.length > 0 ||
     draft.applyCompletedStepIds.length > 0 ||

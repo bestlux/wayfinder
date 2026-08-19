@@ -46,6 +46,7 @@ export interface ApplyDraftOptions {
   ) => PreparedClassGrantPlanV1 | Promise<PreparedClassGrantPlanV1>;
   executeAcquisitionItems?: ExecutePreparedDraftApplicationOptions["executeAcquisitionItems"];
   executeAcquisitionCurrency?: ExecutePreparedDraftApplicationOptions["executeAcquisitionCurrency"];
+  persistAcquisitionCurrencyConvergenceWitness?: ExecutePreparedDraftApplicationOptions["persistAcquisitionCurrencyConvergenceWitness"];
   verifyAcquisitionOutcome?: ExecutePreparedDraftApplicationOptions["verifyAcquisitionOutcome"];
   readCurrentAcquisitionHistory?: ExecutePreparedDraftApplicationOptions["readCurrentAcquisitionHistory"];
   acquisitionFinalEvidence?: AcquisitionFinalEvidence;
@@ -91,6 +92,7 @@ export function applyDraftToActor(
     draft.acquisition &&
     (!options.executeAcquisitionItems ||
       !options.executeAcquisitionCurrency ||
+      !options.persistAcquisitionCurrencyConvergenceWitness ||
       !options.verifyAcquisitionOutcome ||
       !options.readCurrentAcquisitionHistory)
   ) {
@@ -128,6 +130,7 @@ export function applyDraftToActor(
       persistFinalActorUpdate: options.persistFinalActorUpdate,
       executeAcquisitionItems: options.executeAcquisitionItems,
       executeAcquisitionCurrency: options.executeAcquisitionCurrency,
+      persistAcquisitionCurrencyConvergenceWitness: options.persistAcquisitionCurrencyConvergenceWitness,
       verifyAcquisitionOutcome: options.verifyAcquisitionOutcome,
       readCurrentAcquisitionHistory: options.readCurrentAcquisitionHistory,
       acquisitionFinalEvidence: options.acquisitionFinalEvidence,
@@ -240,6 +243,9 @@ function draftApplyOperationKey(draft: DraftState, steps: PendingStep[], options
     prepareClassGrantPlan: operationIdentity(options.prepareClassGrantPlan),
     executeAcquisitionItems: operationIdentity(options.executeAcquisitionItems),
     executeAcquisitionCurrency: operationIdentity(options.executeAcquisitionCurrency),
+    persistAcquisitionCurrencyConvergenceWitness: operationIdentity(
+      options.persistAcquisitionCurrencyConvergenceWitness
+    ),
     verifyAcquisitionOutcome: operationIdentity(options.verifyAcquisitionOutcome),
     readCurrentAcquisitionHistory: operationIdentity(options.readCurrentAcquisitionHistory),
     acquisitionFinalEvidence: options.acquisitionFinalEvidence ?? null,

@@ -1,3 +1,4 @@
+import type { AcquisitionCurrencyConvergenceWitnessV1 } from "./acquisition-currency-convergence.js";
 import type { CharacterWealthPolicyRef } from "./character-wealth-policy.js";
 import type { ClassGrantReconciliationResultV1, PlannedClassGrantV1 } from "./class-grant-reconciliation.js";
 import type { EconomicBaselineV1, EconomicHandoffV1 } from "./economic-baseline.js";
@@ -171,7 +172,7 @@ export type AcquisitionDisposition =
     };
 
 export interface AcquisitionDraftState {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly draftId: string;
   readonly batchId: string;
   readonly manifestId: string;
@@ -181,6 +182,7 @@ export interface AcquisitionDraftState {
   readonly baseline: AcquisitionEconomicBaselineSnapshot | null;
   readonly plannedClassGrants: readonly PlannedClassGrantV1[];
   readonly classGrantReconciliations: readonly ClassGrantReconciliationResultV1[];
+  readonly currencyConvergenceWitness: AcquisitionCurrencyConvergenceWitnessV1 | null;
   readonly lines: readonly AcquisitionLineDraft[];
   readonly disposition: AcquisitionDisposition;
 }

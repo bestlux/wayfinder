@@ -1,3 +1,7 @@
+import {
+  type AcquisitionCurrencyConvergenceWitnessV1,
+  normalizeAcquisitionCurrencyConvergenceWitness,
+} from "./acquisition-currency-convergence.js";
 import type { AcquisitionStackingIntent } from "./acquisition-types.js";
 import {
   type ClassGrantReconciliationResultV1,
@@ -42,11 +46,17 @@ export interface EconomicRetryExpectation {
   readonly batchId: string;
   readonly manifestId: string;
   readonly expectedCurrencyCopper: number;
-  /**
-   * Permits a persisted retain-all recovery to recognize an already-converged
-   * currency write when there are intentionally no stamped item identities.
-   */
-  readonly allowCurrencyOnlyConvergence?: boolean;
+  readonly currencyOnlyConvergenceEvidence?:
+    | {
+        readonly kind: "completed-manifest";
+        readonly manifestId: string;
+        readonly manifestFingerprint: string;
+      }
+    | {
+        readonly kind: "acquisition-currency-witness";
+        readonly witness: AcquisitionCurrencyConvergenceWitnessV1;
+      }
+    | null;
   readonly expectedEntries: readonly {
     readonly entryId: string;
     readonly plannedItemId: string;
@@ -287,9 +297,26 @@ export function evaluateEconomicAdmission(args: {
   }
   if (unresolved.length > 0) handoffReasons.push({ code: "unresolved-class-grant", grantIds: unresolved });
   if (ambiguous.length > 0) handoffReasons.push({ code: "ambiguous-class-grant", grantIds: ambiguous });
+  const currencyOnlyEvidence = retry?.currencyOnlyConvergenceEvidence ?? null;
+  const normalizedCurrencyWitness =
+    currencyOnlyEvidence?.kind === "acquisition-currency-witness"
+      ? normalizeAcquisitionCurrencyConvergenceWitness(currencyOnlyEvidence.witness)
+      : null;
+  const currencyOnlyEvidenceMatches =
+    !!retry &&
+    ((currencyOnlyEvidence?.kind === "completed-manifest" &&
+      currencyOnlyEvidence.manifestId === retry.manifestId &&
+      nonEmpty(currencyOnlyEvidence.manifestFingerprint)) ||
+      (normalizedCurrencyWitness !== null &&
+        normalizedCurrencyWitness.actorId === baseline.actorId &&
+        normalizedCurrencyWitness.draftId === retry.draftId &&
+        normalizedCurrencyWitness.batchId === retry.batchId &&
+        normalizedCurrencyWitness.manifestId === retry.manifestId &&
+        normalizedCurrencyWitness.targetCopper === retry.expectedCurrencyCopper &&
+        normalizedCurrencyWitness.observedCopper === retry.expectedCurrencyCopper));
   const currencyOnlyRetryMatches =
     !!retry &&
-    retry.allowCurrencyOnlyConvergence === true &&
+    currencyOnlyEvidenceMatches &&
     retry.expectedEntries.length === 0 &&
     retry.expectedCurrencyCopper > 0 &&
     baseline.currencyCopper === retry.expectedCurrencyCopper;

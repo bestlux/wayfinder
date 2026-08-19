@@ -19,6 +19,7 @@ import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import type { DraftState, ModuleState, PendingStep, SelectionRef } from "../types.js";
 import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
 import { activeClassArchetypeProfile } from "../wayfinder/class-archetype/registry.js";
+import type { AcquisitionCurrencyConvergenceWitnessV1 } from "../wayfinder/domain/acquisition-currency-convergence.js";
 import {
   assertPreparedClassGrantPlanMatches,
   type ClassGrantReconciliationResultV1,
@@ -200,7 +201,9 @@ export interface ExecutePreparedDraftApplicationOptions {
     readonly draft: DraftState;
     readonly classGrantPlan: PreparedClassGrantPlanV1;
     readonly emitWriteCheckpoint: DraftApplyWriteCheckpointEmitter;
+    readonly persistCurrencyConvergenceWitness: (witness: AcquisitionCurrencyConvergenceWitnessV1) => Promise<void>;
   }) => void | Promise<void>;
+  persistAcquisitionCurrencyConvergenceWitness?: (witness: AcquisitionCurrencyConvergenceWitnessV1) => Promise<void>;
   verifyAcquisitionOutcome?: (args: {
     readonly actor: DraftMutationActor;
     readonly draft: DraftState;
@@ -234,6 +237,7 @@ export class DraftApplyPhaseError extends Error {
   readonly partialReceipt: DraftApplyPhaseReceipt;
   readonly recoveryActorUpdate: Readonly<Record<string, unknown>>;
   readonly completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[];
+  readonly acquisitionCurrencyConvergenceWitness: AcquisitionCurrencyConvergenceWitnessV1 | null;
   readonly intendedFinalActorUpdate: Readonly<Record<string, unknown>> | null;
 
   constructor(
@@ -245,7 +249,8 @@ export class DraftApplyPhaseError extends Error {
     cause: unknown,
     recoveryActorUpdate: Record<string, unknown> = {},
     completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[] = [],
-    intendedFinalActorUpdate: Record<string, unknown> | null = null
+    intendedFinalActorUpdate: Record<string, unknown> | null = null,
+    acquisitionCurrencyConvergenceWitness: AcquisitionCurrencyConvergenceWitnessV1 | null = null
   ) {
     const detail = cause instanceof Error && cause.message ? ` ${cause.message}` : "";
     const checkpointDetail = checkpoint ? ` at ${checkpoint.checkpointId}` : "";
@@ -257,6 +262,9 @@ export class DraftApplyPhaseError extends Error {
     this.partialReceipt = partialReceipt;
     this.recoveryActorUpdate = Object.freeze(cloneData(recoveryActorUpdate));
     this.completedClassGrantReconciliations = Object.freeze(cloneData(completedClassGrantReconciliations));
+    this.acquisitionCurrencyConvergenceWitness = acquisitionCurrencyConvergenceWitness
+      ? Object.freeze(cloneData(acquisitionCurrencyConvergenceWitness))
+      : null;
     this.intendedFinalActorUpdate = intendedFinalActorUpdate
       ? Object.freeze(cloneData(intendedFinalActorUpdate))
       : null;
@@ -576,6 +584,9 @@ export async function executePreparedDraftApplication(
   assertActorAuthority(prepared.actor, prepared.validateActorAuthority);
   assertAcquisitionAuthority(prepared.actor, prepared.draft, prepared.assertAcquisitionApplyAuthority);
   if (prepared.draft.acquisition) {
+    if (!options.persistAcquisitionCurrencyConvergenceWitness) {
+      throw new Error("Starting-equipment Apply requires durable currency-convergence recovery persistence.");
+    }
     if (!options.readCurrentAcquisitionHistory) {
       throw new Error("Starting-equipment Apply requires a current acquisition history precondition.");
     }
@@ -592,6 +603,7 @@ export async function executePreparedDraftApplication(
   const receipts: DraftApplyPhaseReceipt[] = [];
   const classGrantReconciliations: ClassGrantReconciliationResultV1[] = [];
   let acquisitionFinalEvidence: AcquisitionFinalEvidence = options.acquisitionFinalEvidence ?? { kind: "none" };
+  let acquisitionCurrencyConvergenceWitness: AcquisitionCurrencyConvergenceWitnessV1 | null = null;
   let projectedTrainingRanks: Record<string, number> = {};
 
   for (const phase of prepared.phaseIds) {
@@ -602,7 +614,8 @@ export async function executePreparedDraftApplication(
         options,
         acquisitionFinalEvidence,
         receipts,
-        classGrantReconciliations
+        classGrantReconciliations,
+        acquisitionCurrencyConvergenceWitness
       );
       receipts.push(receipt);
       continue;
@@ -805,6 +818,11 @@ export async function executePreparedDraftApplication(
               draft: prepared.draft,
               classGrantPlan: prepared.classGrantPlan!,
               emitWriteCheckpoint,
+              persistCurrencyConvergenceWitness: async (witness) => {
+                const capturedWitness = cloneData(witness);
+                acquisitionCurrencyConvergenceWitness = capturedWitness;
+                await options.persistAcquisitionCurrencyConvergenceWitness!(cloneData(capturedWitness));
+              },
             });
           }
           break;
@@ -840,7 +858,9 @@ export async function executePreparedDraftApplication(
         failedCheckpoint ? "checkpoint-hook" : "operation",
         error,
         prepared.deferredActorUpdate,
-        classGrantReconciliations
+        classGrantReconciliations,
+        null,
+        acquisitionCurrencyConvergenceWitness
       );
     }
   }
@@ -865,7 +885,8 @@ export async function executeRecoveredDraftFinalization(
     options,
     options.acquisitionFinalEvidence ?? { kind: "none" },
     [],
-    classGrantReconciliations
+    classGrantReconciliations,
+    null
   );
   return {
     actorUpdate: recoveryActorUpdate,
@@ -880,7 +901,8 @@ async function executeFinalActorPhase(
   options: ExecutePreparedDraftApplicationOptions,
   acquisitionFinalEvidence: AcquisitionFinalEvidence,
   completedReceipts: readonly DraftApplyPhaseReceipt[],
-  completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[]
+  completedClassGrantReconciliations: readonly ClassGrantReconciliationResultV1[],
+  acquisitionCurrencyConvergenceWitness: AcquisitionCurrencyConvergenceWitnessV1 | null
 ): Promise<DraftApplyPhaseReceipt> {
   const phase = "finalize-actor" as const;
   const beforeItems = snapshotPhaseItems(actor);
@@ -982,7 +1004,8 @@ async function executeFinalActorPhase(
       error,
       deferredActorUpdate,
       completedClassGrantReconciliations,
-      intendedFinalActorUpdate
+      intendedFinalActorUpdate,
+      acquisitionCurrencyConvergenceWitness
     );
   }
 }
@@ -1007,7 +1030,8 @@ function hasDraftRecoveryState(draft: DraftState): boolean {
     draft.applyAttemptStepIds.length > 0 ||
     draft.applyCompletedStepIds.length > 0 ||
     Object.keys(draft.applyRecoveryActorUpdate).length > 0 ||
-    draft.applySpellRarityAttestations.length > 0
+    draft.applySpellRarityAttestations.length > 0 ||
+    draft.acquisition?.currencyConvergenceWitness != null
   );
 }
 

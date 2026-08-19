@@ -1,6 +1,8 @@
 import { DRAFT_FLAG, STATE_FLAG } from "../../constants.js";
 import { buildDraftPatch, createEmptyDraft, createEmptyState, normalizeDraft } from "../../draft-service.js";
 import { cloneData } from "../../shared/cloning.js";
+import { normalizeAcquisitionCurrencyConvergenceWitness } from "../domain/acquisition-currency-convergence.js";
+import { recordAcquisitionCurrencyConvergenceWitness } from "../domain/acquisition-draft.js";
 import { assertPreparedAcquisitionIdentityPlanMatches } from "../domain/acquisition-identity.js";
 import { assertCompletedAcquisitionManifestMatchesIdentityPlan, completedClassGrantsMatchFinalReconciliation, manifestsDescribeSameOutcome, normalizeCompletedAcquisitionManifest, } from "../domain/completed-acquisition-manifest.js";
 import { evaluateWayfinderDraftReadiness, } from "../domain/step-evaluation.js";
@@ -191,7 +193,8 @@ export function hasApplyRecoveryState(draft) {
     return (draft.applyAttemptStepIds.length > 0 ||
         draft.applyCompletedStepIds.length > 0 ||
         Object.keys(draft.applyRecoveryActorUpdate).length > 0 ||
-        draft.applySpellRarityAttestations.length > 0);
+        draft.applySpellRarityAttestations.length > 0 ||
+        draft.acquisition?.currencyConvergenceWitness != null);
 }
 export class WayfinderRecoveryDraftConflictError extends Error {
     constructor() {
@@ -210,6 +213,7 @@ export function assertRecoveryDraftWriteAllowed(liveDraft, candidateDraft) {
     ]);
     const preservesRecovery = hasApplyRecoveryState(candidateDraft) &&
         semanticDraftFingerprint(liveDraft) === semanticDraftFingerprint(candidateDraft) &&
+        preservesAcquisitionCurrencyConvergenceWitness(liveDraft, candidateDraft) &&
         liveDraft.applyCompletedStepIds.every((stepId) => candidateDraft.applyCompletedStepIds.includes(stepId)) &&
         [...liveRecoveryStepIds].every((stepId) => candidateRecoveryStepIds.has(stepId)) &&
         Object.entries(liveDraft.applyRecoveryActorUpdate).every(([path, value]) => path in candidateDraft.applyRecoveryActorUpdate &&
@@ -226,8 +230,31 @@ function semanticDraftFingerprint(draft) {
     semanticDraft.applyCompletedStepIds = [];
     semanticDraft.applyRecoveryActorUpdate = {};
     semanticDraft.applySpellRarityAttestations = [];
+    if (semanticDraft.acquisition) {
+        semanticDraft.acquisition = { ...semanticDraft.acquisition, currencyConvergenceWitness: null };
+    }
     semanticDraft.updatedAt = null;
     return JSON.stringify(semanticDraft);
+}
+function preservesAcquisitionCurrencyConvergenceWitness(liveDraft, candidateDraft) {
+    const liveWitness = liveDraft.acquisition?.currencyConvergenceWitness ?? null;
+    const candidateWitness = candidateDraft.acquisition?.currencyConvergenceWitness ?? null;
+    if (liveWitness)
+        return JSON.stringify(liveWitness) === JSON.stringify(candidateWitness);
+    if (!candidateWitness)
+        return true;
+    if (!liveDraft.acquisition || !candidateDraft.acquisition)
+        return false;
+    const normalized = normalizeAcquisitionCurrencyConvergenceWitness(candidateWitness);
+    if (!normalized)
+        return false;
+    try {
+        const enriched = recordAcquisitionCurrencyConvergenceWitness(liveDraft.acquisition, normalized);
+        return JSON.stringify(enriched.currencyConvergenceWitness) === JSON.stringify(candidateWitness);
+    }
+    catch {
+        return false;
+    }
 }
 function mergeCompletedStepIds(existingStepIds, nextStepIds) {
     return Array.from(new Set([

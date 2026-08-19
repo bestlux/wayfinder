@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DRAFT_FLAG } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
 import type { ActorItemFlags, ActorItemLike, EmbeddedItemSource, ItemSystemLike } from "../src/shared/actor-model";
 import {
@@ -6,8 +7,20 @@ import {
   createAcquisitionExecutionSession,
 } from "../src/wayfinder/application/acquisition-execution-service";
 import { captureObservedClassGrantItems } from "../src/wayfinder/application/class-grant-projection-service";
+import {
+  PersistedDraftWriteGuard,
+  readPersistedDraftSnapshot,
+  saveDraftWithWriteGuard,
+} from "../src/wayfinder/application/draft-write-guard";
 import { fingerprintEquipmentDocument } from "../src/wayfinder/application/equipment-catalogue-service";
-import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
+import {
+  type AcquisitionCurrencyConvergenceWitnessV1,
+  createAcquisitionCurrencyConvergenceWitness,
+} from "../src/wayfinder/domain/acquisition-currency-convergence";
+import {
+  createAcquisitionDraft,
+  recordAcquisitionCurrencyConvergenceWitness,
+} from "../src/wayfinder/domain/acquisition-draft";
 import {
   createAcquisitionPriceSnapshot,
   evaluateAcquisitionLedger,
@@ -57,6 +70,7 @@ describe("Wave 2 acquisition execution", () => {
       draft: fixture.draft,
       classGrantPlan: fixture.classGrantPlan,
       emitWriteCheckpoint: checkpointRecorder(checkpoints),
+      persistCurrencyConvergenceWitness: ignoreCurrencyWitness,
     });
     const outcome = await session.verifyAcquisitionOutcome({
       actor,
@@ -311,6 +325,7 @@ describe("Wave 2 acquisition execution", () => {
       draft: recoveryDraft,
       classGrantPlan: fixture.classGrantPlan,
       emitWriteCheckpoint: noCheckpoint,
+      persistCurrencyConvergenceWitness: ignoreCurrencyWitness,
     });
     const outcome = await retrySession.verifyAcquisitionOutcome({
       actor,
@@ -403,6 +418,7 @@ describe("Wave 2 acquisition execution", () => {
       draft: recoveryDraft,
       classGrantPlan: fixture.classGrantPlan,
       emitWriteCheckpoint: noCheckpoint,
+      persistCurrencyConvergenceWitness: ignoreCurrencyWitness,
     });
     const outcome = await retrySession.verifyAcquisitionOutcome({
       actor,
@@ -473,6 +489,136 @@ describe("Wave 2 acquisition execution", () => {
     expect(actor.currencyCopper).toBe(1_500);
   });
 
+  it("reopens after process loss at currency-after and never repeats witnessed retain-all convergence", async () => {
+    const fixture = reviewedFixture([], "retain-all");
+    const actor = new FakeActor();
+    const lockedDraft = {
+      ...fixture.draft,
+      applyAttemptStepIds: ["starting-equipment-level-1"],
+    };
+    let persistedDraft: unknown = structuredClone(lockedDraft);
+    const persistedDraftActor = {
+      getFlag: () => persistedDraft,
+      update: async (update: Record<string, unknown>) => {
+        persistedDraft = update[DRAFT_FLAG];
+        return persistedDraftActor;
+      },
+    };
+    const draftWriteGuard = new PersistedDraftWriteGuard(readPersistedDraftSnapshot(persistedDraftActor, 1));
+    const firstSession = sessionFor(fixture.acquisition);
+    await firstSession.executeAcquisitionItems({
+      actor,
+      draft: lockedDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+    });
+    await expect(
+      firstSession.executeAcquisitionCurrency({
+        actor,
+        draft: lockedDraft,
+        classGrantPlan: fixture.classGrantPlan,
+        persistCurrencyConvergenceWitness: async (witness) => {
+          const currentDraft = readPersistedDraftSnapshot(persistedDraftActor, 1);
+          if (!currentDraft?.acquisition) throw new Error("Expected the locked Apply draft.");
+          currentDraft.acquisition = recordAcquisitionCurrencyConvergenceWitness(currentDraft.acquisition, witness);
+          await saveDraftWithWriteGuard(persistedDraftActor, currentDraft, 1, draftWriteGuard);
+        },
+        emitWriteCheckpoint: async (operation, boundary) => {
+          if (operation !== "currency-convergence" || boundary !== "after") return;
+          const reopened = readPersistedDraftSnapshot(persistedDraftActor, 1);
+          expect(reopened?.acquisition?.currencyConvergenceWitness).toBeTruthy();
+          throw new Error("simulated process stop before finalization");
+        },
+      })
+    ).rejects.toThrow(/process stop/i);
+
+    const recoveryDraft = readPersistedDraftSnapshot(persistedDraftActor, 1);
+    if (!recoveryDraft) throw new Error("Expected the witnessed recovery draft to survive reopen.");
+    const recoveryAcquisition = recoveryDraft.acquisition!;
+    const retrySession = sessionFor(recoveryAcquisition);
+    const retryWitnesses: AcquisitionCurrencyConvergenceWitnessV1[] = [];
+
+    await retrySession.executeAcquisitionItems({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+    });
+    await retrySession.executeAcquisitionCurrency({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+      persistCurrencyConvergenceWitness: async (value) => {
+        retryWitnesses.push(value);
+      },
+    });
+    const outcome = await retrySession.verifyAcquisitionOutcome({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      finalClassGrantReconciliation: finalReconciliation(actor, fixture.classGrantPlan),
+    });
+
+    expect(actor.currencyAdds).toEqual([1_500]);
+    expect(actor.currencyCopper).toBe(1_500);
+    expect(retryWitnesses).toEqual([]);
+    expect(outcome.manifest.disposition).toBe("retain-all");
+  });
+
+  it("rejects canonical-looking target currency evidence with a different ledger", async () => {
+    const fixture = reviewedFixture([], "retain-all");
+    const actor = new FakeActor();
+    const witness = await runItemsAndCurrency(sessionFor(fixture.acquisition), actor, fixture);
+    if (!witness) throw new Error("Expected the first currency convergence to produce evidence.");
+    const forged = createAcquisitionCurrencyConvergenceWitness({
+      ...witness,
+      ledgerDigest: "forged-ledger-digest",
+    });
+    const forgedAcquisition = recordAcquisitionCurrencyConvergenceWitness(fixture.acquisition, forged);
+    const recoveryDraft = {
+      ...fixture.draft,
+      acquisition: forgedAcquisition,
+      applyAttemptStepIds: ["starting-equipment-level-1"],
+    };
+
+    await expect(
+      sessionFor(forgedAcquisition).executeAcquisitionItems({
+        actor,
+        draft: recoveryDraft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/differs from the prepared acquisition/i);
+    expect(actor.currencyAdds).toEqual([1_500]);
+  });
+
+  it("does not repeat a witnessed currency mutation after the actor total changes", async () => {
+    const fixture = reviewedFixture([], "retain-all");
+    const actor = new FakeActor();
+    const witness = await runItemsAndCurrency(sessionFor(fixture.acquisition), actor, fixture);
+    if (!witness) throw new Error("Expected the first currency convergence to produce evidence.");
+    const recoveryAcquisition = recordAcquisitionCurrencyConvergenceWitness(fixture.acquisition, witness);
+    const recoveryDraft = {
+      ...fixture.draft,
+      acquisition: recoveryAcquisition,
+      applyAttemptStepIds: ["starting-equipment-level-1"],
+    };
+    actor.setExternalCurrency(1_400);
+
+    await expect(
+      sessionFor(recoveryAcquisition).executeAcquisitionItems({
+        actor,
+        draft: recoveryDraft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/currency changed after the persisted acquisition convergence evidence/i);
+
+    expect(actor.currencyAdds).toEqual([1_500]);
+    expect(actor.currencyCopper).toBe(1_400);
+  });
+
   it("converges currency to the absolute target and rejects a veto after rereading the aggregate", async () => {
     const fixture = reviewedFixture([line()]);
     const actor = new FakeActor();
@@ -488,6 +634,7 @@ describe("Wave 2 acquisition execution", () => {
       draft: fixture.draft,
       classGrantPlan: fixture.classGrantPlan,
       emitWriteCheckpoint: noCheckpoint,
+      persistCurrencyConvergenceWitness: ignoreCurrencyWitness,
     });
     expect(actor.currencyAdds).toEqual([1_400]);
     expect(actor.currencyCopper).toBe(1_400);
@@ -507,10 +654,125 @@ describe("Wave 2 acquisition execution", () => {
         draft: fixture.draft,
         classGrantPlan: fixture.classGrantPlan,
         emitWriteCheckpoint: noCheckpoint,
+        persistCurrencyConvergenceWitness: ignoreCurrencyWitness,
       })
     ).rejects.toThrow(/did not converge/i);
     expect(vetoActor.currencyAdds).toEqual([1_400]);
     expect(vetoActor.currencyCopper).toBe(0);
+  });
+
+  it("captures exact convergence when PF2E mutates currency and then rejects", async () => {
+    const fixture = reviewedFixture([], "retain-all");
+    const actor = new FakeActor();
+    actor.currencyWriteMode = "mutate-then-throw";
+    const session = sessionFor(fixture.acquisition);
+    await session.executeAcquisitionItems({
+      actor,
+      draft: fixture.draft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+    });
+    const witnesses: AcquisitionCurrencyConvergenceWitnessV1[] = [];
+
+    await expect(
+      session.executeAcquisitionCurrency({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+        persistCurrencyConvergenceWitness: async (value) => {
+          witnesses.push(value);
+        },
+      })
+    ).rejects.toThrow(/mutated currency/i);
+
+    expect(actor.currencyCopper).toBe(1_500);
+    expect(witnesses).toHaveLength(1);
+    expect(witnesses[0]).toMatchObject({
+      phase: "acquisition-currency",
+      operation: "currency-convergence",
+      boundary: "after",
+      observedCopper: 1_500,
+      targetCopper: 1_500,
+      verifiedAt: NOW,
+    });
+  });
+
+  it("does not capture convergence when PF2E rejects before mutating currency", async () => {
+    const fixture = reviewedFixture([], "retain-all");
+    const actor = new FakeActor();
+    actor.currencyWriteMode = "throw-before";
+    const session = sessionFor(fixture.acquisition);
+    await session.executeAcquisitionItems({
+      actor,
+      draft: fixture.draft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+    });
+    const witnesses: AcquisitionCurrencyConvergenceWitnessV1[] = [];
+
+    await expect(
+      session.executeAcquisitionCurrency({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+        persistCurrencyConvergenceWitness: async (value) => {
+          witnesses.push(value);
+        },
+      })
+    ).rejects.toThrow(/did not converge/i);
+
+    expect(actor.currencyCopper).toBe(0);
+    expect(witnesses).toEqual([]);
+  });
+
+  it("aborts an item write when actor wealth changes during its before checkpoint", async () => {
+    const fixture = reviewedFixture([line()]);
+    const actor = new FakeActor();
+    const session = sessionFor(fixture.acquisition);
+
+    await expect(
+      session.executeAcquisitionItems({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: async (operation, boundary) => {
+          if (operation === "embedded-item-create" && boundary === "before") actor.setExternalCurrency(25);
+        },
+      })
+    ).rejects.toThrow(/changed after the embedded-item-create before-write checkpoint/i);
+
+    expect(actor.addOptions).toEqual([]);
+    expect(actor.currencyAdds).toEqual([]);
+    expect(actor.currencyCopper).toBe(25);
+  });
+
+  it("aborts a relative currency write when actor wealth changes during its before checkpoint", async () => {
+    const fixture = reviewedFixture([line()]);
+    const actor = new FakeActor();
+    const session = sessionFor(fixture.acquisition);
+    await session.executeAcquisitionItems({
+      actor,
+      draft: fixture.draft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+    });
+
+    await expect(
+      session.executeAcquisitionCurrency({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: async (operation, boundary) => {
+          if (operation === "currency-convergence" && boundary === "before") actor.setExternalCurrency(25);
+        },
+        persistCurrencyConvergenceWitness: ignoreCurrencyWitness,
+      })
+    ).rejects.toThrow(/changed after the currency-convergence before-write checkpoint/i);
+
+    expect(actor.currencyAdds).toEqual([]);
+    expect(actor.currencyCopper).toBe(25);
   });
 
   it("freshly rebuilds completed evidence for final-state recovery", async () => {
@@ -952,6 +1214,7 @@ async function runItemsAndCurrency(
   actor: FakeActor,
   fixture: ReviewedFixture | ReturnType<typeof handoffFixture>
 ) {
+  let witness: AcquisitionCurrencyConvergenceWitnessV1 | null = null;
   await session.executeAcquisitionItems({
     actor,
     draft: fixture.draft,
@@ -963,7 +1226,11 @@ async function runItemsAndCurrency(
     draft: fixture.draft,
     classGrantPlan: fixture.classGrantPlan,
     emitWriteCheckpoint: noCheckpoint,
+    persistCurrencyConvergenceWitness: async (value) => {
+      witness = value;
+    },
   });
+  return witness;
 }
 
 function verify(
@@ -998,6 +1265,8 @@ function checkpointRecorder(target: string[]) {
 }
 
 async function noCheckpoint(): Promise<void> {}
+
+async function ignoreCurrencyWitness(_witness: AcquisitionCurrencyConvergenceWitnessV1): Promise<void> {}
 
 function sourceUuid(id: string): string {
   return `Compendium.pf2e.equipment-srd.Item.${id}`;
@@ -1083,7 +1352,7 @@ class FakeActor {
     removeCurrency: (coins: { cp?: number }) => Promise<void>;
   };
   itemWriteMode: "normal" | "veto" | "merged" | "wrong-size" = "normal";
-  currencyWriteMode: "normal" | "veto" = "normal";
+  currencyWriteMode: "normal" | "veto" | "throw-before" | "mutate-then-throw" = "normal";
   failBeforeAddOrdinal: number | null = null;
   private addOrdinal = 0;
   private nextItemId = 1;
@@ -1100,6 +1369,11 @@ class FakeActor {
 
   get currencyCopper(): number {
     return this.inventory.currency.copperValue;
+  }
+
+  setExternalCurrency(copper: number): void {
+    this.inventory.currency.copperValue = copper;
+    this.syncCurrencyItem();
   }
 
   acquisitionItems(): FakeItem[] {
@@ -1174,11 +1448,13 @@ class FakeActor {
   private async changeCurrency(delta: number): Promise<void> {
     if (delta >= 0) this.currencyAdds.push(delta);
     else this.currencyRemovals.push(-delta);
+    if (this.currencyWriteMode === "throw-before") throw new Error("PF2E rejected before currency mutation.");
     if (this.currencyWriteMode === "veto") return;
     const next = this.currencyCopper + delta;
     if (!Number.isSafeInteger(next) || next < 0) throw new Error("Invalid test currency.");
     this.inventory.currency.copperValue = next;
     this.syncCurrencyItem();
+    if (this.currencyWriteMode === "mutate-then-throw") throw new Error("PF2E mutated currency and then rejected.");
   }
 
   private syncCurrencyItem(): void {

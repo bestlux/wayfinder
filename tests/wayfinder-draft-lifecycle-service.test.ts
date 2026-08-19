@@ -21,6 +21,15 @@ import {
   saveDraftWithWriteGuard,
   WayfinderDraftWriteConflictError,
 } from "../src/wayfinder/application/draft-write-guard";
+import { createAcquisitionCurrencyConvergenceWitness } from "../src/wayfinder/domain/acquisition-currency-convergence";
+import {
+  createAcquisitionDraft,
+  recordAcquisitionCurrencyConvergenceWitness,
+} from "../src/wayfinder/domain/acquisition-draft";
+import type { AcquisitionDraftState } from "../src/wayfinder/domain/acquisition-types";
+import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
+import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
+import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 import type { WayfinderStepEvaluation } from "../src/wayfinder/domain/step-evaluation";
 
 describe("wayfinder draft lifecycle service", () => {
@@ -75,6 +84,33 @@ describe("wayfinder draft lifecycle service", () => {
     expect(() => assertRecoveryDraftWriteAllowed(live, tamperedAttestation)).toThrow(
       WayfinderRecoveryDraftConflictError
     );
+  });
+
+  it("allows one canonical currency-witness enrichment and then requires exact preservation", () => {
+    const live = createEmptyDraft(1);
+    live.applyAttemptStepIds = ["starting-equipment-level-1"];
+    live.acquisition = recoveryAcquisition();
+    const witness = recoveryCurrencyWitness(live.acquisition);
+    const enriched = structuredClone(live);
+    enriched.acquisition = recordAcquisitionCurrencyConvergenceWitness(enriched.acquisition!, witness);
+
+    expect(() => assertRecoveryDraftWriteAllowed(live, enriched)).not.toThrow();
+    expect(hasApplyRecoveryState(enriched)).toBe(true);
+    expect(() => assertRecoveryDraftWriteAllowed(enriched, structuredClone(enriched))).not.toThrow();
+
+    const deleted = structuredClone(enriched);
+    deleted.acquisition = { ...deleted.acquisition!, currencyConvergenceWitness: null };
+    expect(() => assertRecoveryDraftWriteAllowed(enriched, deleted)).toThrow(WayfinderRecoveryDraftConflictError);
+
+    const replaced = structuredClone(enriched);
+    replaced.acquisition = {
+      ...replaced.acquisition!,
+      currencyConvergenceWitness: createAcquisitionCurrencyConvergenceWitness({
+        ...witness,
+        ledgerDigest: "different-ledger",
+      }),
+    };
+    expect(() => assertRecoveryDraftWriteAllowed(enriched, replaced)).toThrow(WayfinderRecoveryDraftConflictError);
   });
 
   it("freezes the original Apply attestation evidence across a rebuilt retry", () => {
@@ -247,7 +283,7 @@ describe("wayfinder draft lifecycle service", () => {
   it("blocks acquisition before confirmation or Apply-attempt persistence when no executor is active", async () => {
     const draft = createEmptyDraft(5);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -257,6 +293,7 @@ describe("wayfinder draft lifecycle service", () => {
       baseline: null,
       plannedClassGrants: [],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -289,7 +326,7 @@ describe("wayfinder draft lifecycle service", () => {
     const draft = createEmptyDraft(5);
     draft.applyAttemptStepIds = ["starting-equipment"];
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -299,6 +336,7 @@ describe("wayfinder draft lifecycle service", () => {
       baseline: null,
       plannedClassGrants: [],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -323,7 +361,7 @@ describe("wayfinder draft lifecycle service", () => {
   it("blocks acquisition authority before confirmation or Apply-attempt persistence", async () => {
     const draft = createEmptyDraft(5);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -333,6 +371,7 @@ describe("wayfinder draft lifecycle service", () => {
       baseline: null,
       plannedClassGrants: [],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -928,6 +967,70 @@ function spellAttestationEvidence(): AppliedSpellRarityAttestation {
       },
     ],
   };
+}
+
+function recoveryAcquisition(): AcquisitionDraftState {
+  const recipe = { kind: "permanent-items" } as const;
+  const baseline = createEconomicBaseline({
+    actorId: "actor-1",
+    capturedAt: "2026-08-19T12:00:00.000Z",
+    currencyCopper: 0,
+    physicalItems: [],
+  });
+  return {
+    ...createAcquisitionDraft({
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 1,
+      recipe,
+    }),
+    policySnapshot: {
+      version: 1,
+      fingerprint: "policy-fingerprint",
+      material: {
+        subject: { actorId: "actor-1", draftId: "draft-1", targetLevel: 1 },
+        numericPolicyRef: CHARACTER_WEALTH_POLICY_REF,
+        semanticPolicyRef: SEMANTIC_WEALTH_POLICY_REF,
+        resolvedRecipe: recipe,
+        budgetCopper: 1500,
+        allowances: [],
+        worldRecipePolicy: {
+          enabledRecipes: ["permanent-items", "lump-sum"],
+          defaultRecipe: "permanent-items",
+        },
+        sourcePolicy: {
+          configuredPackFamilies: ["pf2e"],
+          effectivePackIds: ["pf2e.equipment-srd"],
+          enabledSourceSlugs: ["player-core"],
+          knownSourceSlugs: ["player-core"],
+          showEmptySources: false,
+          showUnknownSources: false,
+        },
+        rarityPolicy: { blanketCeiling: "common" },
+        authorityPolicy: { recipeChoice: "actor-owner", higherLevelStart: "gm-confirmation", apply: "actor-owner" },
+        higherLevelStartEvidence: { kind: "not-required" },
+        abp: { enabled: false, mode: "noABP", actorOverrideDisabled: false },
+        gmJudgments: [],
+      },
+    },
+    baseline,
+  };
+}
+
+function recoveryCurrencyWitness(acquisition: AcquisitionDraftState) {
+  return createAcquisitionCurrencyConvergenceWitness({
+    actorId: "actor-1",
+    draftId: acquisition.draftId,
+    batchId: acquisition.batchId,
+    manifestId: acquisition.manifestId,
+    ledgerDigest: "ledger-digest",
+    baselineFingerprint: acquisition.baseline!.fingerprint,
+    preCopper: 0,
+    targetCopper: 1500,
+    observedCopper: 1500,
+    verifiedAt: "2026-08-19T12:01:00.000Z",
+  });
 }
 
 function step(id: string): PendingStep {

@@ -486,7 +486,7 @@ describe("class-grant projection service", () => {
     });
     const policy = equipmentPolicy();
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -496,6 +496,7 @@ describe("class-grant projection service", () => {
       baseline: null,
       plannedClassGrants: projected.grants,
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -794,7 +795,7 @@ function titanLine(): AcquisitionLineDraft {
 
 function titanAcquisition(): AcquisitionDraftState {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     draftId: "draft-1",
     batchId: "batch-1",
     manifestId: "manifest-1",
@@ -804,6 +805,7 @@ function titanAcquisition(): AcquisitionDraftState {
     baseline: null,
     plannedClassGrants: [],
     classGrantReconciliations: [],
+    currencyConvergenceWitness: null,
     lines: [titanLine()],
     disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
   };

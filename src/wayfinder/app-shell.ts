@@ -136,7 +136,10 @@ import {
   type WayfinderTemplateContext,
 } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
-import { recordClassGrantReconciliations } from "./domain/acquisition-draft.js";
+import {
+  recordAcquisitionCurrencyConvergenceWitness,
+  recordClassGrantReconciliations,
+} from "./domain/acquisition-draft.js";
 import { manifestsDescribeSameOutcome } from "./domain/completed-acquisition-manifest.js";
 import {
   evaluateWayfinderDraftReadiness,
@@ -2024,6 +2027,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   #draftDidChange(): void {
     const draft = this.#requireDraft();
+    if (draft.acquisition?.currencyConvergenceWitness) {
+      draft.acquisition = { ...draft.acquisition, currencyConvergenceWitness: null };
+    }
     draft.applyAttemptStepIds = [];
     draft.applyCompletedStepIds = [];
     draft.applyRecoveryActorUpdate = {};
@@ -2253,7 +2259,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
               assertCanUseWayfinder(this.actor);
               this.#draftPersistence.schedule(applyAttemptDraft, { force: true });
               await this.#draftPersistence.pauseAndFlush();
-              applyCandidate.value = cloneData(applyAttemptDraft);
+              const persistedApplyCandidate = readPersistedDraftSnapshot(this.actor, inspectActor(this.actor).level);
+              this.#draftWriteGuard.assertCurrent(persistedApplyCandidate);
+              if (!persistedApplyCandidate) throw new WayfinderDraftWriteConflictError();
+              applyCandidate.value = cloneData(persistedApplyCandidate);
             }
           ),
         applyDraftToActor: (buildFinalActorUpdate) => {
@@ -2285,6 +2294,28 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             assertAcquisitionApplyAuthority: (actor, currentDraft) => {
               if (!currentDraft.acquisition) return;
               assertEquipmentApplyAuthority({ actor, acquisition: currentDraft.acquisition });
+            },
+            persistAcquisitionCurrencyConvergenceWitness: async (witness) => {
+              const lockedApplyCandidate = applyCandidate.value;
+              if (!lockedApplyCandidate?.acquisition) {
+                throw new Error("Currency convergence requires the persisted Apply candidate.");
+              }
+              const currentLevel = inspectActor(this.actor).level;
+              const currentCandidate = readPersistedDraftSnapshot(this.actor, currentLevel);
+              this.#draftWriteGuard.assertCurrent(currentCandidate);
+              if (!currentCandidate || JSON.stringify(currentCandidate) !== JSON.stringify(lockedApplyCandidate)) {
+                throw new WayfinderDraftWriteConflictError();
+              }
+
+              const enrichedCandidate = {
+                ...cloneData(lockedApplyCandidate),
+                acquisition: recordAcquisitionCurrencyConvergenceWitness(lockedApplyCandidate.acquisition, witness),
+              };
+              await saveDraftWithWriteGuard(this.actor, enrichedCandidate, currentLevel, this.#draftWriteGuard);
+              const persistedEnrichedCandidate = readPersistedDraftSnapshot(this.actor, currentLevel);
+              this.#draftWriteGuard.assertCurrent(persistedEnrichedCandidate);
+              if (!persistedEnrichedCandidate) throw new WayfinderDraftWriteConflictError();
+              applyCandidate.value = cloneData(persistedEnrichedCandidate);
             },
             spellRarityCeiling,
             validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
@@ -2435,6 +2466,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 recoverableDraft.acquisition,
                 error.completedClassGrantReconciliations
               );
+              if (error.acquisitionCurrencyConvergenceWitness) {
+                recoverableDraft.acquisition = recordAcquisitionCurrencyConvergenceWitness(
+                  recoverableDraft.acquisition,
+                  error.acquisitionCurrencyConvergenceWitness
+                );
+              }
             }
           }
           if (currentSnapshot.level < recoverableDraft.targetLevel) {

@@ -525,7 +525,7 @@ export function reviewPurchaseLedger(
   if (!draft.lines.some((line) => line.funding.lane !== "class-grant")) {
     throw new TypeError("An empty purchase ledger must use retain-all.");
   }
-  return { ...draft, disposition: { kind: "purchase-ledger", review } };
+  return { ...draft, currencyConvergenceWitness: null, disposition: { kind: "purchase-ledger", review } };
 }
 
 export function reviewRetainAll(
@@ -539,6 +539,7 @@ export function reviewRetainAll(
   }
   return {
     ...draft,
+    currencyConvergenceWitness: null,
     disposition: { kind: "retain-all", retainedCopper: ledger.remainingCopper, review },
   };
 }

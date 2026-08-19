@@ -198,7 +198,11 @@ describe("economic baseline", () => {
           batchId: "batch-1",
           manifestId: "manifest-1",
           expectedCurrencyCopper: 500,
-          allowCurrencyOnlyConvergence: true,
+          currencyOnlyConvergenceEvidence: {
+            kind: "completed-manifest",
+            manifestId: "manifest-1",
+            manifestFingerprint: "manifest-fingerprint",
+          },
           expectedEntries: [],
         },
       })

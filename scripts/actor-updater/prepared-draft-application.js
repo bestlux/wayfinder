@@ -37,8 +37,9 @@ export class DraftApplyPhaseError extends Error {
     partialReceipt;
     recoveryActorUpdate;
     completedClassGrantReconciliations;
+    acquisitionCurrencyConvergenceWitness;
     intendedFinalActorUpdate;
-    constructor(phase, completedReceipts, partialReceipt, checkpoint, failureKind, cause, recoveryActorUpdate = {}, completedClassGrantReconciliations = [], intendedFinalActorUpdate = null) {
+    constructor(phase, completedReceipts, partialReceipt, checkpoint, failureKind, cause, recoveryActorUpdate = {}, completedClassGrantReconciliations = [], intendedFinalActorUpdate = null, acquisitionCurrencyConvergenceWitness = null) {
         const detail = cause instanceof Error && cause.message ? ` ${cause.message}` : "";
         const checkpointDetail = checkpoint ? ` at ${checkpoint.checkpointId}` : "";
         super(`Wayfinder apply failed during ${phase}${checkpointDetail}.${detail}`, { cause });
@@ -49,6 +50,9 @@ export class DraftApplyPhaseError extends Error {
         this.partialReceipt = partialReceipt;
         this.recoveryActorUpdate = Object.freeze(cloneData(recoveryActorUpdate));
         this.completedClassGrantReconciliations = Object.freeze(cloneData(completedClassGrantReconciliations));
+        this.acquisitionCurrencyConvergenceWitness = acquisitionCurrencyConvergenceWitness
+            ? Object.freeze(cloneData(acquisitionCurrencyConvergenceWitness))
+            : null;
         this.intendedFinalActorUpdate = intendedFinalActorUpdate
             ? Object.freeze(cloneData(intendedFinalActorUpdate))
             : null;
@@ -298,6 +302,9 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
     assertActorAuthority(prepared.actor, prepared.validateActorAuthority);
     assertAcquisitionAuthority(prepared.actor, prepared.draft, prepared.assertAcquisitionApplyAuthority);
     if (prepared.draft.acquisition) {
+        if (!options.persistAcquisitionCurrencyConvergenceWitness) {
+            throw new Error("Starting-equipment Apply requires durable currency-convergence recovery persistence.");
+        }
         if (!options.readCurrentAcquisitionHistory) {
             throw new Error("Starting-equipment Apply requires a current acquisition history precondition.");
         }
@@ -314,10 +321,11 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
     const receipts = [];
     const classGrantReconciliations = [];
     let acquisitionFinalEvidence = options.acquisitionFinalEvidence ?? { kind: "none" };
+    let acquisitionCurrencyConvergenceWitness = null;
     let projectedTrainingRanks = {};
     for (const phase of prepared.phaseIds) {
         if (phase === "finalize-actor") {
-            const receipt = await executeFinalActorPhase(prepared.actor, prepared.deferredActorUpdate, options, acquisitionFinalEvidence, receipts, classGrantReconciliations);
+            const receipt = await executeFinalActorPhase(prepared.actor, prepared.deferredActorUpdate, options, acquisitionFinalEvidence, receipts, classGrantReconciliations, acquisitionCurrencyConvergenceWitness);
             receipts.push(receipt);
             continue;
         }
@@ -478,6 +486,11 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                             draft: prepared.draft,
                             classGrantPlan: prepared.classGrantPlan,
                             emitWriteCheckpoint,
+                            persistCurrencyConvergenceWitness: async (witness) => {
+                                const capturedWitness = cloneData(witness);
+                                acquisitionCurrencyConvergenceWitness = capturedWitness;
+                                await options.persistAcquisitionCurrencyConvergenceWitness(cloneData(capturedWitness));
+                            },
                         });
                     }
                     break;
@@ -506,7 +519,7 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
             await emitCheckpoint(buildPhaseCheckpoint(phase, "after"));
         }
         catch (error) {
-            throw new DraftApplyPhaseError(phase, receipts, buildPhaseReceipt(phase, beforeItems, prepared.actor, confirmedActorUpdatePaths), failedCheckpoint ?? operationFailureCheckpoint, failedCheckpoint ? "checkpoint-hook" : "operation", error, prepared.deferredActorUpdate, classGrantReconciliations);
+            throw new DraftApplyPhaseError(phase, receipts, buildPhaseReceipt(phase, beforeItems, prepared.actor, confirmedActorUpdatePaths), failedCheckpoint ?? operationFailureCheckpoint, failedCheckpoint ? "checkpoint-hook" : "operation", error, prepared.deferredActorUpdate, classGrantReconciliations, null, acquisitionCurrencyConvergenceWitness);
         }
     }
     return {
@@ -519,14 +532,14 @@ export async function executeRecoveredDraftFinalization(actor, options) {
     assertActorAuthority(actor, options.validateActorAuthority);
     const recoveryActorUpdate = cloneData(options.recoveryActorUpdate);
     const classGrantReconciliations = cloneData(options.classGrantReconciliations ?? []);
-    const receipt = await executeFinalActorPhase(actor, recoveryActorUpdate, options, options.acquisitionFinalEvidence ?? { kind: "none" }, [], classGrantReconciliations);
+    const receipt = await executeFinalActorPhase(actor, recoveryActorUpdate, options, options.acquisitionFinalEvidence ?? { kind: "none" }, [], classGrantReconciliations, null);
     return {
         actorUpdate: recoveryActorUpdate,
         receipts: [receipt],
         classGrantReconciliations: [...classGrantReconciliations],
     };
 }
-async function executeFinalActorPhase(actor, deferredActorUpdate, options, acquisitionFinalEvidence, completedReceipts, completedClassGrantReconciliations) {
+async function executeFinalActorPhase(actor, deferredActorUpdate, options, acquisitionFinalEvidence, completedReceipts, completedClassGrantReconciliations, acquisitionCurrencyConvergenceWitness) {
     const phase = "finalize-actor";
     const beforeItems = snapshotPhaseItems(actor);
     let failedCheckpoint = null;
@@ -617,7 +630,7 @@ async function executeFinalActorPhase(actor, deferredActorUpdate, options, acqui
         const partialReceipt = buildPhaseReceipt(phase, beforeItems, actor, confirmedActorUpdatePaths);
         const checkpointFailure = failedCheckpoint;
         const receiptCompletedBeforeFailure = checkpointFailure?.kind === "phase" && checkpointFailure.boundary === "after";
-        throw new DraftApplyPhaseError(phase, receiptCompletedBeforeFailure ? [...completedReceipts, partialReceipt] : completedReceipts, partialReceipt, checkpointFailure ?? operationFailureCheckpoint, checkpointFailure ? "checkpoint-hook" : "operation", error, deferredActorUpdate, completedClassGrantReconciliations, intendedFinalActorUpdate);
+        throw new DraftApplyPhaseError(phase, receiptCompletedBeforeFailure ? [...completedReceipts, partialReceipt] : completedReceipts, partialReceipt, checkpointFailure ?? operationFailureCheckpoint, checkpointFailure ? "checkpoint-hook" : "operation", error, deferredActorUpdate, completedClassGrantReconciliations, intendedFinalActorUpdate, acquisitionCurrencyConvergenceWitness);
     }
 }
 async function validateSpellSelections(prepared) {
@@ -638,7 +651,8 @@ function hasDraftRecoveryState(draft) {
     return (draft.applyAttemptStepIds.length > 0 ||
         draft.applyCompletedStepIds.length > 0 ||
         Object.keys(draft.applyRecoveryActorUpdate).length > 0 ||
-        draft.applySpellRarityAttestations.length > 0);
+        draft.applySpellRarityAttestations.length > 0 ||
+        draft.acquisition?.currencyConvergenceWitness != null);
 }
 function buildPhaseCheckpoint(phase, boundary) {
     return Object.freeze({

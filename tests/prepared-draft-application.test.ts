@@ -23,6 +23,7 @@ import {
   updateActorWithPersistedDraftPrecondition,
   WayfinderDraftWriteConflictError,
 } from "../src/wayfinder/application/draft-write-guard";
+import { createAcquisitionCurrencyConvergenceWitness } from "../src/wayfinder/domain/acquisition-currency-convergence";
 import {
   CLASS_GRANT_PROFILE_UUIDS,
   createPlannedClassGrant,
@@ -35,6 +36,7 @@ import { buildActorHarness, classSelectionStep, selection, setGamePacks } from "
 const TEST_ACTOR_AUTHORITY = () => true;
 const TEST_ACQUISITION_AUTHORITY = () => undefined;
 const TEST_SELECTION_ELIGIBILITY = () => true;
+const TEST_CURRENCY_WITNESS_PERSISTENCE = async () => undefined;
 
 function prepareDraftApplication(
   actor: Parameters<typeof prepareDraftApplicationWithAuthority>[0],
@@ -154,7 +156,7 @@ describe("prepared draft application", () => {
     });
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -164,6 +166,7 @@ describe("prepared draft application", () => {
       baseline: null,
       plannedClassGrants: [grant],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -179,6 +182,7 @@ describe("prepared draft application", () => {
     const acquisitionEvidence = { kind: "completed", manifest: { id: "manifest-1" } } as never;
     const resolveFinalActorUpdate = vi.fn(() => ({}));
     const result = await executePreparedDraftApplication(prepared, {
+      persistAcquisitionCurrencyConvergenceWitness: TEST_CURRENCY_WITNESS_PERSISTENCE,
       readCurrentAcquisitionHistory: () => ({
         completedAcquisitionManifest: null,
         completedAcquisitionManifestCorrupt: false,
@@ -203,6 +207,7 @@ describe("prepared draft application", () => {
     const secondBatchExecutor = vi.fn();
     await expect(
       executePreparedDraftApplication(prepared, {
+        persistAcquisitionCurrencyConvergenceWitness: TEST_CURRENCY_WITNESS_PERSISTENCE,
         readCurrentAcquisitionHistory: () => ({
           completedAcquisitionManifest: { id: "prior-manifest" } as never,
           completedAcquisitionManifestCorrupt: false,
@@ -221,7 +226,7 @@ describe("prepared draft application", () => {
     const grant = titanGrant();
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -231,6 +236,7 @@ describe("prepared draft application", () => {
       baseline: null,
       plannedClassGrants: [grant],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -244,6 +250,7 @@ describe("prepared draft application", () => {
     const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
 
     const result = await executePreparedDraftApplication(prepared, {
+      persistAcquisitionCurrencyConvergenceWitness: TEST_CURRENCY_WITNESS_PERSISTENCE,
       readCurrentAcquisitionHistory: () => ({
         completedAcquisitionManifest: null,
         completedAcquisitionManifestCorrupt: false,
@@ -291,7 +298,7 @@ describe("prepared draft application", () => {
     Object.assign(actor, { id: "actor-1" });
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -301,6 +308,7 @@ describe("prepared draft application", () => {
       baseline: null,
       plannedClassGrants: [],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -333,6 +341,7 @@ describe("prepared draft application", () => {
 
     await expect(
       executePreparedDraftApplication(prepared, {
+        persistAcquisitionCurrencyConvergenceWitness: TEST_CURRENCY_WITNESS_PERSISTENCE,
         readCurrentAcquisitionHistory: () => ({
           completedAcquisitionManifest: null,
           completedAcquisitionManifestCorrupt: false,
@@ -354,12 +363,12 @@ describe("prepared draft application", () => {
     });
   });
 
-  it("clears an acquisition operation checkpoint after its matching after boundary", async () => {
+  it("carries verified currency convergence through a failure at the after boundary", async () => {
     const { actor } = buildActorHarness();
     Object.assign(actor, { id: "actor-1" });
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -369,6 +378,80 @@ describe("prepared draft application", () => {
       baseline: null,
       plannedClassGrants: [],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const plan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [],
+    });
+    const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
+    const witness = createAcquisitionCurrencyConvergenceWitness({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      ledgerDigest: "ledger-digest",
+      baselineFingerprint: "baseline-fingerprint",
+      preCopper: 0,
+      targetCopper: 1500,
+      observedCopper: 1500,
+      verifiedAt: "2026-08-19T12:00:00.000Z",
+    });
+    let durablyRecordedWitness = null as typeof witness | null;
+
+    await expect(
+      executePreparedDraftApplication(prepared, {
+        persistAcquisitionCurrencyConvergenceWitness: async (value) => {
+          await Promise.resolve();
+          durablyRecordedWitness = value;
+        },
+        readCurrentAcquisitionHistory: () => ({
+          completedAcquisitionManifest: null,
+          completedAcquisitionManifestCorrupt: false,
+        }),
+        executeAcquisitionItems: () => undefined,
+        executeAcquisitionCurrency: async ({ emitWriteCheckpoint, persistCurrencyConvergenceWitness }) => {
+          await emitWriteCheckpoint("currency-convergence", "before", 1);
+          await persistCurrencyConvergenceWitness(witness);
+          await emitWriteCheckpoint("currency-convergence", "after", 1);
+        },
+        verifyAcquisitionOutcome: () => ({ kind: "completed" }) as never,
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.checkpointId === "write:currency-convergence:after") {
+            expect(durablyRecordedWitness).toEqual(witness);
+            throw new Error("injected currency-after failure");
+          }
+        },
+      })
+    ).rejects.toMatchObject({
+      phase: "acquisition-currency",
+      failureKind: "checkpoint-hook",
+      checkpoint: { checkpointId: "write:currency-convergence:after" },
+      acquisitionCurrencyConvergenceWitness: witness,
+    });
+  });
+
+  it("clears an acquisition operation checkpoint after its matching after boundary", async () => {
+    const { actor } = buildActorHarness();
+    Object.assign(actor, { id: "actor-1" });
+    const draft = createEmptyDraft(1);
+    draft.acquisition = {
+      schemaVersion: 3,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -383,6 +466,7 @@ describe("prepared draft application", () => {
 
     await expect(
       executePreparedDraftApplication(prepared, {
+        persistAcquisitionCurrencyConvergenceWitness: TEST_CURRENCY_WITNESS_PERSISTENCE,
         readCurrentAcquisitionHistory: () => ({
           completedAcquisitionManifest: null,
           completedAcquisitionManifestCorrupt: false,
@@ -407,7 +491,7 @@ describe("prepared draft application", () => {
     Object.assign(actor, { id: "actor-1" });
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -417,6 +501,7 @@ describe("prepared draft application", () => {
       baseline: null,
       plannedClassGrants: [],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -431,6 +516,7 @@ describe("prepared draft application", () => {
 
     await expect(
       executePreparedDraftApplication(prepared, {
+        persistAcquisitionCurrencyConvergenceWitness: TEST_CURRENCY_WITNESS_PERSISTENCE,
         readCurrentAcquisitionHistory: () => ({
           completedAcquisitionManifest: null,
           completedAcquisitionManifestCorrupt: false,
@@ -444,7 +530,7 @@ describe("prepared draft application", () => {
     const { actor } = buildActorHarness();
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -454,6 +540,7 @@ describe("prepared draft application", () => {
       baseline: null,
       plannedClassGrants: [],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -471,7 +558,7 @@ describe("prepared draft application", () => {
     const { actor } = buildActorHarness();
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -481,6 +568,7 @@ describe("prepared draft application", () => {
       baseline: null,
       plannedClassGrants: [],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -504,7 +592,7 @@ describe("prepared draft application", () => {
     const grant = titanGrant();
     const draft = createEmptyDraft(1);
     draft.acquisition = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
@@ -514,6 +602,7 @@ describe("prepared draft application", () => {
       baseline: null,
       plannedClassGrants: [grant],
       classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
       lines: [],
       disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
     };
@@ -528,6 +617,7 @@ describe("prepared draft application", () => {
 
     await expect(
       executePreparedDraftApplication(prepared, {
+        persistAcquisitionCurrencyConvergenceWitness: TEST_CURRENCY_WITNESS_PERSISTENCE,
         readCurrentAcquisitionHistory: () => ({
           completedAcquisitionManifest: null,
           completedAcquisitionManifestCorrupt: false,

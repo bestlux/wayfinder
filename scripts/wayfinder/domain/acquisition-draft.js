@@ -1,3 +1,4 @@
+import { normalizeAcquisitionCurrencyConvergenceWitness, } from "./acquisition-currency-convergence.js";
 import { isClassGrantReconciliationConsistent, normalizeClassGrantReconciliationResult, normalizePlannedClassGrant, } from "./class-grant-reconciliation.js";
 import { compareEconomicBaselines, normalizeEconomicBaseline, normalizeEconomicHandoff } from "./economic-baseline.js";
 import { buildEquipmentPolicyJudgmentFactsFingerprint, evaluateEquipmentItemAuthorityFacts, normalizeEquipmentPolicyJudgment, } from "./equipment-policy.js";
@@ -23,7 +24,7 @@ export function createAcquisitionDraft(args) {
     if (!recipe)
         throw new TypeError("Acquisition recipe is invalid.");
     return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         draftId: args.draftId,
         batchId: args.batchId,
         manifestId: args.manifestId,
@@ -33,6 +34,7 @@ export function createAcquisitionDraft(args) {
         baseline: null,
         plannedClassGrants: [],
         classGrantReconciliations: [],
+        currencyConvergenceWitness: null,
         lines: [],
         disposition: unreviewed(),
     };
@@ -66,7 +68,8 @@ export function acquisitionPolicyMaterialMatches(left, right) {
 }
 export function normalizeAcquisitionDraft(raw) {
     if (!isRecord(raw) ||
-        raw.schemaVersion !== 2 ||
+        raw.schemaVersion !== 3 ||
+        !("currencyConvergenceWitness" in raw) ||
         !nonEmpty(raw.draftId) ||
         !nonEmpty(raw.batchId) ||
         !nonEmpty(raw.manifestId)) {
@@ -92,8 +95,12 @@ export function normalizeAcquisitionDraft(raw) {
     if (new Set(normalizedLines.map((line) => line.lineId)).size !== normalizedLines.length)
         return null;
     const classGrantReconciliations = raw.classGrantReconciliations.map(normalizeClassGrantReconciliationResult);
+    const currencyConvergenceWitness = raw.currencyConvergenceWitness == null
+        ? null
+        : normalizeAcquisitionCurrencyConvergenceWitness(raw.currencyConvergenceWitness);
     if (classGrantReconciliations.some((result) => !result) ||
-        !classGrantJournalMatchesPlan(classGrantReconciliations, raw.draftId, raw.batchId, normalizedClassGrants)) {
+        !classGrantJournalMatchesPlan(classGrantReconciliations, raw.draftId, raw.batchId, normalizedClassGrants) ||
+        (raw.currencyConvergenceWitness != null && !currencyConvergenceWitness)) {
         return null;
     }
     const policySnapshot = normalizeAcquisitionPolicySnapshot(raw.policySnapshot);
@@ -105,8 +112,19 @@ export function normalizeAcquisitionDraft(raw) {
     if (policySnapshot &&
         !policyMatchesAcquisition(policySnapshot.material, { draftId: raw.draftId, targetLevel: raw.targetLevel }, baseline, normalizedLines))
         return null;
+    if (currencyConvergenceWitness &&
+        (!policySnapshot ||
+            !baseline ||
+            currencyConvergenceWitness.actorId !== policySnapshot.material.subject.actorId ||
+            currencyConvergenceWitness.draftId !== raw.draftId ||
+            currencyConvergenceWitness.batchId !== raw.batchId ||
+            currencyConvergenceWitness.manifestId !== raw.manifestId ||
+            currencyConvergenceWitness.baselineFingerprint !== baseline.fingerprint ||
+            currencyConvergenceWitness.preCopper !== baseline.currencyCopper)) {
+        return null;
+    }
     return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         draftId: raw.draftId,
         batchId: raw.batchId,
         manifestId: raw.manifestId,
@@ -116,6 +134,7 @@ export function normalizeAcquisitionDraft(raw) {
         baseline,
         plannedClassGrants: normalizedClassGrants,
         classGrantReconciliations: classGrantReconciliations,
+        currencyConvergenceWitness,
         lines: normalizedLines,
         disposition: normalizeDisposition(raw.disposition, normalizedLines, policySnapshot, baseline, normalizedClassGrants),
     };
@@ -151,14 +170,16 @@ export function isAcquisitionPolicyAuthorityConsistent(draft) {
 }
 export function invalidateAcquisitionReview(draft, reasons) {
     const normalizedReasons = INVALIDATION_ORDER.filter((reason) => reasons.includes(reason));
-    if (normalizedReasons.length === 0 ||
-        draft.disposition.kind === "unreviewed" ||
-        draft.disposition.kind === "handoff") {
+    if (normalizedReasons.length === 0) {
         return draft;
+    }
+    if (draft.disposition.kind === "unreviewed" || draft.disposition.kind === "handoff") {
+        return draft.currencyConvergenceWitness ? { ...draft, currencyConvergenceWitness: null } : draft;
     }
     const clearAssignments = normalizedReasons.includes("target-level") || normalizedReasons.includes("recipe");
     return {
         ...draft,
+        currencyConvergenceWitness: null,
         lines: clearAssignments
             ? draft.lines.map((line) => ({
                 ...line,
@@ -180,7 +201,13 @@ export function reconcileAcquisitionTargetLevel(draft, targetLevel) {
     }
     if (draft.targetLevel === targetLevel)
         return draft;
-    const changed = { ...draft, targetLevel, policySnapshot: null, classGrantReconciliations: [] };
+    const changed = {
+        ...draft,
+        targetLevel,
+        policySnapshot: null,
+        classGrantReconciliations: [],
+        currencyConvergenceWitness: null,
+    };
     if (draft.disposition.kind === "purchase-ledger" || draft.disposition.kind === "retain-all") {
         return invalidateAcquisitionReview(changed, ["target-level"]);
     }
@@ -214,6 +241,7 @@ export function recordPlannedClassGrants(draft, grants) {
         ...draft,
         plannedClassGrants,
         classGrantReconciliations: [],
+        currencyConvergenceWitness: null,
         disposition: {
             kind: "unreviewed",
             invalidatedFrom,
@@ -229,6 +257,25 @@ export function recordClassGrantReconciliations(draft, results) {
     }
     return { ...draft, classGrantReconciliations: normalized };
 }
+export function recordAcquisitionCurrencyConvergenceWitness(draft, witnessInput) {
+    const witness = normalizeAcquisitionCurrencyConvergenceWitness(witnessInput);
+    if (!witness ||
+        witness.draftId !== draft.draftId ||
+        witness.batchId !== draft.batchId ||
+        witness.manifestId !== draft.manifestId ||
+        witness.actorId !== draft.policySnapshot?.material.subject.actorId ||
+        witness.baselineFingerprint !== draft.baseline?.fingerprint ||
+        witness.preCopper !== draft.baseline?.currencyCopper) {
+        throw new TypeError("The currency convergence evidence does not match this acquisition.");
+    }
+    if (draft.currencyConvergenceWitness) {
+        if (!same(draft.currencyConvergenceWitness, witness)) {
+            throw new TypeError("Existing currency convergence evidence cannot be replaced.");
+        }
+        return draft;
+    }
+    return { ...draft, currencyConvergenceWitness: witness };
+}
 export function recordEconomicAdmission(draft, admission) {
     if (admission.baseline.actorId !== draft.policySnapshot?.material.subject.actorId) {
         throw new TypeError("The economic admission baseline does not match the acquisition policy subject.");
@@ -240,6 +287,7 @@ export function recordEconomicAdmission(draft, admission) {
         return {
             ...draft,
             baseline: admission.baseline,
+            currencyConvergenceWitness: null,
             disposition: {
                 kind: "handoff",
                 handoff: admission.handoff,
@@ -252,6 +300,7 @@ export function recordEconomicAdmission(draft, admission) {
     const next = {
         ...draft,
         baseline: admission.baseline,
+        currencyConvergenceWitness: baselineChanged || draft.disposition.kind === "handoff" ? null : draft.currencyConvergenceWitness,
         disposition: draft.disposition.kind === "handoff"
             ? { kind: "unreviewed", invalidatedFrom: null, reasons: [] }
             : draft.disposition,
@@ -268,6 +317,7 @@ export function acknowledgeAcquisitionHandoff(draft, acknowledgment) {
     }
     return {
         ...draft,
+        currencyConvergenceWitness: null,
         disposition: {
             ...draft.disposition,
             acknowledgedByUserId: acknowledgment.userId,

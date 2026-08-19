@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildDraftPatch, createEmptyDraft, normalizeDraft } from "../src/draft-service";
 import {
+  acquisitionCurrencyConvergenceWitnessMatches,
+  createAcquisitionCurrencyConvergenceWitness,
+} from "../src/wayfinder/domain/acquisition-currency-convergence";
+import {
   acknowledgeAcquisitionHandoff,
   createAcquisitionDraft,
   normalizeAcquisitionDraft,
   reconcileAcquisitionTargetLevel,
+  recordAcquisitionCurrencyConvergenceWitness,
   recordClassGrantReconciliations,
   recordEconomicAdmission,
   recordPlannedClassGrants,
@@ -32,10 +37,57 @@ describe("acquisition draft", () => {
         targetLevel: 5,
         recipe: { kind: "lump-sum" },
       })
-    ).toMatchObject({ draftId: "draft-1", batchId: "batch-1", targetLevel: 5 });
+    ).toMatchObject({
+      schemaVersion: 3,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 5,
+      currencyConvergenceWitness: null,
+    });
     expect(
       normalizeAcquisitionDraft({ schemaVersion: 1, targetLevel: 5, recipe: { kind: "lump-sum" }, lines: [] })
     ).toBeNull();
+  });
+
+  it("persists only exact acquisition-bound currency convergence evidence", () => {
+    const acquisition = completeDraft();
+    const witness = currencyWitness(acquisition);
+    const enriched = recordAcquisitionCurrencyConvergenceWitness(acquisition, witness);
+    const parent = createEmptyDraft(5);
+    parent.applyAttemptStepIds = ["starting-equipment-level-5"];
+    parent.acquisition = enriched;
+
+    const reopened = normalizeDraft(JSON.parse(JSON.stringify(buildDraftPatch(parent))), 1);
+    expect(reopened.acquisition?.currencyConvergenceWitness).toEqual(witness);
+    expect(recordAcquisitionCurrencyConvergenceWitness(enriched, witness)).toBe(enriched);
+    expect(
+      acquisitionCurrencyConvergenceWitnessMatches(witness, {
+        actorId: "actor-1",
+        draftId: "draft-1",
+        batchId: "batch-1",
+        manifestId: "manifest-1",
+        ledgerDigest: "different-ledger",
+        baselineFingerprint: acquisition.baseline!.fingerprint,
+        preCopper: 0,
+        targetCopper: 1000,
+      })
+    ).toBe(false);
+
+    const replacement = createAcquisitionCurrencyConvergenceWitness({
+      ...witness,
+      ledgerDigest: "different-ledger",
+    });
+    expect(() => recordAcquisitionCurrencyConvergenceWitness(enriched, replacement)).toThrow(/cannot be replaced/i);
+
+    const corruptParent = structuredClone(parent) as unknown as Record<string, unknown>;
+    const corruptAcquisition = corruptParent.acquisition as Record<string, unknown>;
+    const corruptWitness = corruptAcquisition.currencyConvergenceWitness as Record<string, unknown>;
+    corruptWitness.fingerprint = "forged-fingerprint";
+    expect(normalizeDraft(corruptParent, 1)).toMatchObject({ acquisition: null, acquisitionCorrupt: true });
+  });
+
+  it("rejects the superseded acquisition schema instead of silently inventing recovery metadata", () => {
+    expect(normalizeAcquisitionDraft({ ...completeDraft(), schemaVersion: 2 })).toBeNull();
   });
 
   it("preserves duplicate source UUID lines and every stable ID through save and reopen", () => {
@@ -384,6 +436,21 @@ function emptyBaseline(actorId: string) {
     capturedAt: "2026-08-18T20:00:00.000Z",
     currencyCopper: 0,
     physicalItems: [],
+  });
+}
+
+function currencyWitness(acquisition: AcquisitionDraftState) {
+  return createAcquisitionCurrencyConvergenceWitness({
+    actorId: "actor-1",
+    draftId: acquisition.draftId,
+    batchId: acquisition.batchId,
+    manifestId: acquisition.manifestId,
+    ledgerDigest: "ledger-digest",
+    baselineFingerprint: acquisition.baseline!.fingerprint,
+    preCopper: acquisition.baseline!.currencyCopper,
+    targetCopper: 1000,
+    observedCopper: 1000,
+    verifiedAt: "2026-08-18T20:05:00.000Z",
   });
 }
 

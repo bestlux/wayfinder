@@ -8,6 +8,8 @@ import type {
   ModuleState,
   PendingStep,
 } from "../../types.js";
+import { normalizeAcquisitionCurrencyConvergenceWitness } from "../domain/acquisition-currency-convergence.js";
+import { recordAcquisitionCurrencyConvergenceWitness } from "../domain/acquisition-draft.js";
 import { assertPreparedAcquisitionIdentityPlanMatches } from "../domain/acquisition-identity.js";
 import type { ClassGrantReconciliationResultV1 } from "../domain/class-grant-reconciliation.js";
 import {
@@ -285,7 +287,8 @@ export function hasApplyRecoveryState(draft: DraftState): boolean {
     draft.applyAttemptStepIds.length > 0 ||
     draft.applyCompletedStepIds.length > 0 ||
     Object.keys(draft.applyRecoveryActorUpdate).length > 0 ||
-    draft.applySpellRarityAttestations.length > 0
+    draft.applySpellRarityAttestations.length > 0 ||
+    draft.acquisition?.currencyConvergenceWitness != null
   );
 }
 
@@ -309,6 +312,7 @@ export function assertRecoveryDraftWriteAllowed(liveDraft: DraftState, candidate
   const preservesRecovery =
     hasApplyRecoveryState(candidateDraft) &&
     semanticDraftFingerprint(liveDraft) === semanticDraftFingerprint(candidateDraft) &&
+    preservesAcquisitionCurrencyConvergenceWitness(liveDraft, candidateDraft) &&
     liveDraft.applyCompletedStepIds.every((stepId) => candidateDraft.applyCompletedStepIds.includes(stepId)) &&
     [...liveRecoveryStepIds].every((stepId) => candidateRecoveryStepIds.has(stepId)) &&
     Object.entries(liveDraft.applyRecoveryActorUpdate).every(
@@ -329,8 +333,27 @@ function semanticDraftFingerprint(draft: DraftState): string {
   semanticDraft.applyCompletedStepIds = [];
   semanticDraft.applyRecoveryActorUpdate = {};
   semanticDraft.applySpellRarityAttestations = [];
+  if (semanticDraft.acquisition) {
+    semanticDraft.acquisition = { ...semanticDraft.acquisition, currencyConvergenceWitness: null };
+  }
   semanticDraft.updatedAt = null;
   return JSON.stringify(semanticDraft);
+}
+
+function preservesAcquisitionCurrencyConvergenceWitness(liveDraft: DraftState, candidateDraft: DraftState): boolean {
+  const liveWitness = liveDraft.acquisition?.currencyConvergenceWitness ?? null;
+  const candidateWitness = candidateDraft.acquisition?.currencyConvergenceWitness ?? null;
+  if (liveWitness) return JSON.stringify(liveWitness) === JSON.stringify(candidateWitness);
+  if (!candidateWitness) return true;
+  if (!liveDraft.acquisition || !candidateDraft.acquisition) return false;
+  const normalized = normalizeAcquisitionCurrencyConvergenceWitness(candidateWitness);
+  if (!normalized) return false;
+  try {
+    const enriched = recordAcquisitionCurrencyConvergenceWitness(liveDraft.acquisition, normalized);
+    return JSON.stringify(enriched.currencyConvergenceWitness) === JSON.stringify(candidateWitness);
+  } catch {
+    return false;
+  }
 }
 
 function mergeCompletedStepIds(existingStepIds: string[], nextStepIds: string[]): string[] {

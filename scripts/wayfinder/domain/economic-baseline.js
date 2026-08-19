@@ -1,3 +1,4 @@
+import { normalizeAcquisitionCurrencyConvergenceWitness, } from "./acquisition-currency-convergence.js";
 import { isClassGrantReconciliationConsistentForPlan, } from "./class-grant-reconciliation.js";
 export function createEconomicBaseline(args) {
     if (!nonEmpty(args.actorId) || !validTimestamp(args.capturedAt) || !validCopper(args.currencyCopper)) {
@@ -136,8 +137,23 @@ export function evaluateEconomicAdmission(args) {
         handoffReasons.push({ code: "unresolved-class-grant", grantIds: unresolved });
     if (ambiguous.length > 0)
         handoffReasons.push({ code: "ambiguous-class-grant", grantIds: ambiguous });
+    const currencyOnlyEvidence = retry?.currencyOnlyConvergenceEvidence ?? null;
+    const normalizedCurrencyWitness = currencyOnlyEvidence?.kind === "acquisition-currency-witness"
+        ? normalizeAcquisitionCurrencyConvergenceWitness(currencyOnlyEvidence.witness)
+        : null;
+    const currencyOnlyEvidenceMatches = !!retry &&
+        ((currencyOnlyEvidence?.kind === "completed-manifest" &&
+            currencyOnlyEvidence.manifestId === retry.manifestId &&
+            nonEmpty(currencyOnlyEvidence.manifestFingerprint)) ||
+            (normalizedCurrencyWitness !== null &&
+                normalizedCurrencyWitness.actorId === baseline.actorId &&
+                normalizedCurrencyWitness.draftId === retry.draftId &&
+                normalizedCurrencyWitness.batchId === retry.batchId &&
+                normalizedCurrencyWitness.manifestId === retry.manifestId &&
+                normalizedCurrencyWitness.targetCopper === retry.expectedCurrencyCopper &&
+                normalizedCurrencyWitness.observedCopper === retry.expectedCurrencyCopper));
     const currencyOnlyRetryMatches = !!retry &&
-        retry.allowCurrencyOnlyConvergence === true &&
+        currencyOnlyEvidenceMatches &&
         retry.expectedEntries.length === 0 &&
         retry.expectedCurrencyCopper > 0 &&
         baseline.currencyCopper === retry.expectedCurrencyCopper;

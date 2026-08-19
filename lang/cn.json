@@ -90,7 +90,7 @@
       "Heading": "选择额外合集包",
       "Intro": "PF2e官方来源始终可用。请仅启用本战役使用的额外物品合集包。",
       "EnabledSummary": "个可选包已启用",
-      "Guidance": "数量仅表示各合集包内的PF2e物品类型，并不保证所有第三方规则或文字规则均已完整自动化。特殊选项仍应由玩家与GM确认。",
+      "Guidance": "数量表示原始PF2e物品文档类型。支持模组可能会复用族裔、传承或职业文档来实现伙伴及其他自动化；寻路仪会另外筛选玩家可选项。第三方规则与仅文字规则仍可能需要GM检查或手动设置。",
       "GlobalWildcardTitle": "当前已启用所有物品合集包",
       "LegacyPatternTitle": "旧版通配来源需要检查",
       "LegacyPatternBody": "现有设置包含：{patterns}。当前匹配项已在下方勾选。保存后会改为你批准的确切合集包，今后新增的包不会自动启用。",
@@ -117,7 +117,7 @@
       "CountsUnavailable": "数量不可用",
       "SourceUnavailable": "来源当前不可用",
       "Pending": "正在扫描…",
-      "NoRelevantItems": "未找到支持的角色物品",
+      "NoRelevantItems": "未找到可识别的构筑器物品类型",
       "NoItemPacks": "此世界中没有可用的物品合集包。",
       "SaveNote": "更改来源不会移除已应用到角色的物品。使用已禁用来源的未完成草稿可能需要检查。",
       "Cancel": "取消",
@@ -126,8 +126,8 @@
       "GmOnly": "只有GM可以配置寻路仪内容来源。",
       "Filters": {
         "All": "所有物品合集包",
-        "Relevant": "仅角色内容",
-        "Ancestry": "含族裔或传承",
+        "Relevant": "可识别的构筑器物品类型",
+        "Ancestry": "含族裔或传承文档",
         "Feat": "含专长",
         "Spell": "含法术"
       },
@@ -137,8 +137,8 @@
         "Selected": "排序：已选优先"
       },
       "Counts": {
-        "Ancestries": "族裔",
-        "Heritages": "传承",
+        "Ancestries": "族裔文档",
+        "Heritages": "传承文档",
         "Backgrounds": "背景",
         "Classes": "职业",
         "Feats": "专长",

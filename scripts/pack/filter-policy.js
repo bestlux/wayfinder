@@ -7,6 +7,7 @@ import { cacheTraitCatalog, getCachedTraitCatalog, getGamePack, getGamePackIds, 
 import { matchesArchetypeLegality } from "./archetype-legality.js";
 import { hasUnsupportedEmbeddedChoiceSet } from "./embedded-choice-policy.js";
 import { extractEntrySlug, extractEntryTraits, namesMatch, normalizeTraitList, numericOrNull, resolveFeatType, stringOrNull, } from "./entry.js";
+import { isPlayerSelectableRoot } from "./player-option-eligibility.js";
 import { matchesChoicePredicate, matchesCurrentClassMulticlassDedication, matchesItemType, matchesStaticPredicate, matchesUuidAllowlist, matchesUuidChoicePredicate, } from "./predicates.js";
 export function resolvePackIds(slotKind, filters) {
     const extras = expandCompendiumAllowlist(parseCompendiumAllowlist(getExtraPackSetting()), getGamePackIds());
@@ -38,6 +39,9 @@ export function matchesFilters(entry, packId, step, context, traitCatalog) {
         return true;
     }
     if (!matchesItemType(entry, filters.itemType)) {
+        return false;
+    }
+    if (!isPlayerSelectableRoot(entry, filters.itemType)) {
         return false;
     }
     if (Array.isArray(filters.contextPredicate) && filters.contextPredicate.length > 0) {

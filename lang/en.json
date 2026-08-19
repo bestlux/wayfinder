@@ -79,7 +79,7 @@
       "Heading": "Choose additional compendia",
       "Intro": "Official PF2E sources are always available. Enable only the additional Item compendia your campaign uses.",
       "EnabledSummary": "optional packs enabled",
-      "Guidance": "Counts describe PF2E item types found in each compendium; they do not guarantee that every third-party or prose-based rule is fully automated. Players should still confirm unusual options with their GM.",
+      "Guidance": "Counts describe raw PF2E item document types. Support modules can reuse ancestry, heritage, or class documents for companions and other automation; Wayfinder filters individual player choices independently. Third-party and prose-based rules can still require GM review or manual setup.",
       "GlobalWildcardTitle": "Every Item compendium is currently enabled",
       "LegacyPatternTitle": "Legacy wildcard sources need review",
       "LegacyPatternBody": "The existing setting contains: {patterns}. The current matches are checked below. Saving replaces these patterns with the exact packs you approve, so future packs are not enabled automatically.",
@@ -106,7 +106,7 @@
       "CountsUnavailable": "Counts unavailable",
       "SourceUnavailable": "Source is not currently available",
       "Pending": "Scanning…",
-      "NoRelevantItems": "No supported character items found",
+      "NoRelevantItems": "No recognized builder item types found",
       "NoItemPacks": "No Item compendia are available in this world.",
       "SaveNote": "Changing sources never removes items already applied to actors. Open drafts using a disabled source may need review.",
       "Cancel": "Cancel",
@@ -115,8 +115,8 @@
       "GmOnly": "Only a GM can configure Wayfinder content sources.",
       "Filters": {
         "All": "All Item compendia",
-        "Relevant": "Character content only",
-        "Ancestry": "Has ancestries or heritages",
+        "Relevant": "Recognized builder item types",
+        "Ancestry": "Has ancestry or heritage documents",
         "Feat": "Has feats",
         "Spell": "Has spells"
       },
@@ -126,8 +126,8 @@
         "Selected": "Sort: selected first"
       },
       "Counts": {
-        "Ancestries": "ancestries",
-        "Heritages": "heritages",
+        "Ancestries": "ancestry docs",
+        "Heritages": "heritage docs",
         "Backgrounds": "backgrounds",
         "Classes": "classes",
         "Feats": "feats",

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import { clearPackServiceCache } from "../src/pack/access";
 import { projectedArchetypeFeat as projectArchetypeFeat } from "../src/pack/archetype-legality";
-import { getOptionsForStep } from "../src/pack/options";
+import { getOptionsForStep, resolveSelection } from "../src/pack/options";
 import { buildSteps } from "../src/progression";
 import type { ActorSnapshot, OptionContext, PendingStep, PickItemSlotKind, SelectionRef } from "../src/types";
 import { buildOptionContext } from "../src/wayfinder/application/option-context-service";
@@ -75,6 +75,40 @@ describe("pack options dependency filtering", () => {
     const options = await getOptionsForStep(makeStep("ancestry", { itemType: "ancestry" }));
 
     expect(options.map((option) => option.name)).toEqual(["Dragon"]);
+  });
+
+  it("shows player ancestries from mixed packs but excludes companion and eidolon support documents", async () => {
+    testGlobals.game.settings.get = () => "mixed-content.ancestries";
+    const evilEye = ancestryEntry("evil-eye", "Evil Eye");
+    evilEye.system.traits.value = ["aberration", "evil-eye"];
+    const ape = ancestryEntry("ape", "Ape");
+    ape.system.traits.value = ["animal"];
+    ape.system.boosts = { 0: { value: [] }, 1: { value: [] }, 2: { value: [] } };
+    ape.system.rules = [
+      { key: "ActiveEffectLike", path: "system.abilities.str.mod", value: 3 },
+      { key: "ActiveEffectLike", path: "flags.system.companionCompendia.kind", value: "animal" },
+    ];
+    const eidolon = ancestryEntry("aberrant-eidolon", "Aberrant Eidolon");
+    eidolon.system.traits.value = ["aberration", "eidolon"];
+    eidolon.system.boosts = { 0: { value: [] }, 1: { value: [] }, 2: { value: [] } };
+    setPack("mixed-content.ancestries", [evilEye, ape, eidolon]);
+
+    const step = makeStep("ancestry", { itemType: "ancestry" });
+    const options = await getOptionsForStep(step);
+
+    expect(options.map((option) => option.name)).toEqual(["Evil Eye"]);
+    await expect(resolveSelection("mixed-content.ancestries:ape", step)).resolves.toBeNull();
+  });
+
+  it("applies player-root eligibility to source-authored ancestry choices", async () => {
+    testGlobals.game.settings.get = () => "mixed-content.ancestries";
+    const companion = ancestryEntry("companion", "Companion");
+    companion.system.traits.value = ["minion"];
+    setPack("mixed-content.ancestries", [ancestryEntry("evil-eye", "Evil Eye"), companion]);
+
+    const options = await getOptionsForStep(makeStep("grant-choice", { itemType: "ancestry" }));
+
+    expect(options.map((option) => option.name)).toEqual(["Evil Eye"]);
   });
 
   it("filters heritages to the drafted ancestry plus versatile heritages", async () => {
@@ -2434,6 +2468,12 @@ function ancestryEntry(slug: string, name: string, includeSlug = true): any {
     type: "ancestry",
     system: {
       ...(includeSlug ? { slug } : {}),
+      boosts: {
+        0: { value: ["str", "dex", "con", "int", "wis", "cha"] },
+        1: { value: [] },
+        2: { value: ["str", "dex", "con", "int", "wis", "cha"] },
+      },
+      languages: { value: ["common"], custom: "" },
       traits: {
         rarity: "common",
         value: [slug],
@@ -2453,6 +2493,11 @@ function classEntry(slug: string, name: string): any {
     type: "class",
     system: {
       slug,
+      ancestryFeatLevels: { value: [1, 5, 9, 13, 17] },
+      classFeatLevels: { value: [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20] },
+      generalFeatLevels: { value: [3, 7, 11, 15, 19] },
+      skillFeatLevels: { value: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20] },
+      skillIncreaseLevels: { value: [3, 5, 7, 9, 11, 13, 15, 17, 19] },
       publication: {
         title: "Player Core",
       },

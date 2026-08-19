@@ -73,6 +73,35 @@ describe("pack filter policy hardening", () => {
     ).toBe(true);
   });
 
+  it("retains excluded companion identities as negative knowledge for ancestry-feat filtering", async () => {
+    const ape = identityEntry("ape", "Ape", "ancestry");
+    ape.system.boosts = { 0: { value: [] }, 1: { value: [] }, 2: { value: [] } };
+    ape.system.rules = [
+      { key: "ActiveEffectLike", path: "system.abilities.str.mod", value: 3 },
+      { key: "ActiveEffectLike", path: "flags.system.companionCompendia.kind", value: "animal" },
+    ];
+    ape.system.traits = { value: ["animal"] };
+    setPack("synthetic-content.people", [ape]);
+
+    const catalog = await getTraitCatalog("ancestry-feat");
+    const step = createPickItemStep("ancestry-feat", 1, "Ancestry feat", "", {
+      itemType: "feat",
+      featTypes: ["ancestry"],
+      maxLevel: 1,
+    });
+
+    expect(catalog).toContain("ape");
+    expect(
+      matchesFilters(
+        ancestryFeatEntry("companion-training", ["ape"]),
+        "synthetic-content.people",
+        step,
+        { ...EMPTY_CONTEXT, ancestrySlug: "human", ancestryTraits: ["human"] },
+        catalog
+      )
+    ).toBe(false);
+  });
+
   it("unions configured class identities with enabled root class documents only", async () => {
     setPack("synthetic-content.classes", [
       identityEntry("cosmonaut", "Cosmonaut", "class"),
@@ -191,6 +220,16 @@ function identityEntry(slug: string, name: string, type: string): PackIndexEntry
     type,
     system: {
       slug,
+      ...(type === "ancestry"
+        ? {
+            boosts: {
+              0: { value: ["str", "dex", "con", "int", "wis", "cha"] },
+              1: { value: [] },
+              2: { value: ["str", "dex", "con", "int", "wis", "cha"] },
+            },
+            languages: { value: ["common"], custom: "" },
+          }
+        : {}),
       traits: { value: [slug, "humanoid"] },
     },
   };

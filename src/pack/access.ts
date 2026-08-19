@@ -11,6 +11,12 @@ export interface PackEntryTraitsLike {
 }
 
 export interface PackEntrySystemLike {
+  additionalLanguages?: unknown;
+  ancestryFeatLevels?: unknown;
+  boosts?: unknown;
+  classFeatLevels?: unknown;
+  generalFeatLevels?: unknown;
+  languages?: unknown;
   slug?: unknown;
   level?: {
     value?: unknown;
@@ -30,6 +36,8 @@ export interface PackEntrySystemLike {
   publication?: {
     title?: string;
   };
+  skillFeatLevels?: unknown;
+  skillIncreaseLevels?: unknown;
   description?: {
     value?: string;
   };
@@ -139,7 +147,13 @@ export async function getPackIndex(pack: GamePackLike, packId: string): Promise<
       "folder",
       "img",
       "type",
+      "system.additionalLanguages",
+      "system.ancestryFeatLevels",
       "system.description.value",
+      "system.boosts",
+      "system.classFeatLevels",
+      "system.generalFeatLevels",
+      "system.languages",
       "system.slug",
       "system.level.value",
       "system.featType.value",
@@ -152,6 +166,8 @@ export async function getPackIndex(pack: GamePackLike, packId: string): Promise<
       "system.traits.otherTags",
       "system.traits.rarity",
       "system.publication.title",
+      "system.skillFeatLevels",
+      "system.skillIncreaseLevels",
     ],
   });
 

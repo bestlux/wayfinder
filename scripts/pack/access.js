@@ -31,7 +31,13 @@ export async function getPackIndex(pack, packId) {
             "folder",
             "img",
             "type",
+            "system.additionalLanguages",
+            "system.ancestryFeatLevels",
             "system.description.value",
+            "system.boosts",
+            "system.classFeatLevels",
+            "system.generalFeatLevels",
+            "system.languages",
             "system.slug",
             "system.level.value",
             "system.featType.value",
@@ -44,6 +50,8 @@ export async function getPackIndex(pack, packId) {
             "system.traits.otherTags",
             "system.traits.rarity",
             "system.publication.title",
+            "system.skillFeatLevels",
+            "system.skillIncreaseLevels",
         ],
     });
     const contents = Array.from(index ?? []);

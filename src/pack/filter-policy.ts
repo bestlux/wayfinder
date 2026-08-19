@@ -23,6 +23,7 @@ import {
   resolveFeatType,
   stringOrNull,
 } from "./entry.js";
+import { isPlayerSelectableRoot } from "./player-option-eligibility.js";
 import {
   matchesChoicePredicate,
   matchesCurrentClassMulticlassDedication,
@@ -82,6 +83,10 @@ export function matchesFilters(
   }
 
   if (!matchesItemType(entry, filters.itemType)) {
+    return false;
+  }
+
+  if (!isPlayerSelectableRoot(entry, filters.itemType)) {
     return false;
   }
 

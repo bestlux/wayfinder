@@ -1295,6 +1295,11 @@ function classDocument(
     type: "class",
     system: {
       slug,
+      ancestryFeatLevels: { value: [1, 5, 9, 13, 17] },
+      classFeatLevels: { value: [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20] },
+      generalFeatLevels: { value: [3, 7, 11, 15, 19] },
+      skillFeatLevels: { value: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20] },
+      skillIncreaseLevels: { value: [3, 5, 7, 9, 11, 13, 15, 17, 19] },
       keyAbility: {
         value: keyAbility,
         selected: null,

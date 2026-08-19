@@ -433,7 +433,10 @@ export function evaluateAcquisitionCompletion(
   readonly disposition: AcquisitionDraftState["disposition"]["kind"];
   readonly reasons: readonly string[];
 } {
-  if (draft.disposition.kind === "handoff") return { complete: true, disposition: "handoff", reasons: [] };
+  if (draft.disposition.kind === "handoff") {
+    const complete = !!draft.disposition.acknowledgedByUserId && !!draft.disposition.acknowledgedAt;
+    return { complete, disposition: "handoff", reasons: complete ? [] : ["handoff-acknowledgment-required"] };
+  }
   if (draft.disposition.kind === "unreviewed") {
     return { complete: false, disposition: "unreviewed", reasons: ["review-required"] };
   }

@@ -321,8 +321,10 @@ export function reviewRetainAll(draft, ledger, reviewer) {
     };
 }
 export function evaluateAcquisitionCompletion(draft, ledger) {
-    if (draft.disposition.kind === "handoff")
-        return { complete: true, disposition: "handoff", reasons: [] };
+    if (draft.disposition.kind === "handoff") {
+        const complete = !!draft.disposition.acknowledgedByUserId && !!draft.disposition.acknowledgedAt;
+        return { complete, disposition: "handoff", reasons: complete ? [] : ["handoff-acknowledgment-required"] };
+    }
     if (draft.disposition.kind === "unreviewed") {
         return { complete: false, disposition: "unreviewed", reasons: ["review-required"] };
     }

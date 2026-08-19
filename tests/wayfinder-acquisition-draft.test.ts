@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { buildDraftPatch, createEmptyDraft, normalizeDraft } from "../src/draft-service";
 import {
+  acknowledgeAcquisitionHandoff,
   createAcquisitionDraft,
   normalizeAcquisitionDraft,
   reconcileAcquisitionTargetLevel,
+  recordEconomicAdmission,
 } from "../src/wayfinder/domain/acquisition-draft";
 import { createAcquisitionPriceSnapshot } from "../src/wayfinder/domain/acquisition-ledger";
 import type { AcquisitionDraftState, AcquisitionLineDraft } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
+import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import { buildEquipmentPolicyJudgmentFactsFingerprint } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 
@@ -181,6 +184,58 @@ describe("acquisition draft", () => {
     decision.eligible = true;
     expect(normalizeAcquisitionDraft(item)).toBeNull();
   });
+
+  it("persists a structured economic handoff and requires explicit acknowledgment", () => {
+    const draft = completeDraft();
+    const foreign = createEconomicBaseline({
+      actorId: "actor-1",
+      capturedAt: "2026-08-18T21:00:00.000Z",
+      currencyCopper: 0,
+      physicalItems: [
+        {
+          itemId: "foreign-item",
+          type: "equipment",
+          sourceUuid: "Compendium.example.items.Item.foreign",
+          quantity: 1,
+          containerId: null,
+          acquisitionIdentity: null,
+        },
+      ],
+    });
+    const admitted = recordEconomicAdmission(draft, {
+      kind: "handoff",
+      baseline: foreign,
+      handoff: {
+        version: 1,
+        kind: "pf2e-sheet",
+        baselineFingerprint: foreign.fingerprint,
+        reasons: [{ code: "foreign-physical-items", itemIds: ["foreign-item"] }],
+      },
+    });
+    expect(admitted.disposition).toMatchObject({
+      kind: "handoff",
+      acknowledgedByUserId: null,
+      acknowledgedAt: null,
+    });
+    expect(normalizeAcquisitionDraft(structuredClone(admitted))).toMatchObject({
+      baseline: foreign,
+      disposition: admitted.disposition,
+    });
+
+    expect(
+      acknowledgeAcquisitionHandoff(admitted, {
+        userId: "owner-1",
+        acknowledgedAt: "2026-08-18T21:05:00.000Z",
+      }).disposition
+    ).toMatchObject({ kind: "handoff", acknowledgedByUserId: "owner-1" });
+
+    expect(
+      recordEconomicAdmission(admitted, {
+        kind: "eligible-empty",
+        baseline: foreign,
+      }).disposition
+    ).toEqual({ kind: "unreviewed", invalidatedFrom: null, reasons: [] });
+  });
 });
 
 function completeDraft(): AcquisitionDraftState {
@@ -227,9 +282,18 @@ function completeDraft(): AcquisitionDraftState {
         gmJudgments: [],
       },
     },
-    baseline: { version: 1, actorId: "actor-1", fingerprint: "empty" },
+    baseline: emptyBaseline("actor-1"),
     lines: [line("line-1"), line("line-2")],
   };
+}
+
+function emptyBaseline(actorId: string) {
+  return createEconomicBaseline({
+    actorId,
+    capturedAt: "2026-08-18T20:00:00.000Z",
+    currencyCopper: 0,
+    physicalItems: [],
+  });
 }
 
 function line(lineId: string): AcquisitionLineDraft {

@@ -1,6 +1,7 @@
 export type LooseRecord = Record<string, unknown>;
 
 export interface ActorModuleFlags extends LooseRecord {
+  acquisition?: unknown;
   importedBy?: unknown;
   slotId?: unknown;
   destinationKey?: unknown;

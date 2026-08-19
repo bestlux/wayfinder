@@ -1,4 +1,5 @@
 import type { CharacterWealthPolicyRef } from "./character-wealth-policy.js";
+import type { EconomicBaselineV1, EconomicHandoffV1 } from "./economic-baseline.js";
 import type { EffectiveEquipmentPolicySnapshotV1 } from "./equipment-policy.js";
 import type { SEMANTIC_WEALTH_POLICY_REF } from "./semantic-wealth-rule-ledger.js";
 
@@ -50,11 +51,7 @@ export interface AcquisitionPolicySnapshot {
   readonly material: AcquisitionPolicyMaterialFacts;
 }
 
-export interface AcquisitionEconomicBaselineSnapshot {
-  readonly version: 1;
-  readonly actorId: string;
-  readonly fingerprint: string;
-}
+export type AcquisitionEconomicBaselineSnapshot = EconomicBaselineV1;
 
 export type AcquisitionBasePriceSnapshot =
   | {
@@ -167,9 +164,9 @@ export type AcquisitionDisposition =
   | { readonly kind: "retain-all"; readonly retainedCopper: number; readonly review: AcquisitionReviewSnapshot }
   | {
       readonly kind: "handoff";
-      readonly reason: string;
-      readonly acknowledgedByUserId: string;
-      readonly acknowledgedAt: string;
+      readonly handoff: EconomicHandoffV1;
+      readonly acknowledgedByUserId: string | null;
+      readonly acknowledgedAt: string | null;
     };
 
 export interface AcquisitionDraftState {

@@ -14,6 +14,8 @@ import type {
   AcquisitionRecipeSelection,
   AcquisitionReviewSnapshot,
 } from "./acquisition-types.js";
+import type { EconomicAdmissionResult } from "./economic-baseline.js";
+import { compareEconomicBaselines, normalizeEconomicBaseline, normalizeEconomicHandoff } from "./economic-baseline.js";
 import {
   buildEquipmentPolicyJudgmentFactsFingerprint,
   evaluateEquipmentItemAuthorityFacts,
@@ -95,7 +97,7 @@ export function normalizeAcquisitionDraft(raw: unknown): AcquisitionDraftState |
     policySnapshot,
     baseline,
     lines: normalizedLines,
-    disposition: normalizeDisposition(raw.disposition, normalizedLines, policySnapshot),
+    disposition: normalizeDisposition(raw.disposition, normalizedLines, policySnapshot, baseline),
   };
 }
 
@@ -107,7 +109,7 @@ export function compareAcquisitionMaterialFacts(
   if (reviewed.targetLevel !== current.targetLevel) reasons.add("target-level");
   if (!same(reviewed.recipe, current.recipe)) reasons.add("recipe");
   comparePolicyMaterial(reviewed.policyMaterial, current.policyMaterial, reasons);
-  if (!same(reviewed.baseline, current.baseline)) reasons.add("baseline");
+  if (compareEconomicBaselines(reviewed.baseline, current.baseline).length > 0) reasons.add("baseline");
 
   const reviewedLines = new Map(reviewed.lines.map((line) => [line.lineId, line]));
   const currentLines = new Map(current.lines.map((line) => [line.lineId, line]));
@@ -189,6 +191,62 @@ export function reconcileAcquisitionTargetLevel(
           : line.funding,
     })),
     disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: ["target-level"] },
+  };
+}
+
+export function recordEconomicAdmission(
+  draft: AcquisitionDraftState,
+  admission: EconomicAdmissionResult
+): AcquisitionDraftState {
+  if (admission.baseline.actorId !== draft.policySnapshot?.material.subject.actorId) {
+    throw new TypeError("The economic admission baseline does not match the acquisition policy subject.");
+  }
+  if (admission.kind === "handoff") {
+    if (admission.handoff.baselineFingerprint !== admission.baseline.fingerprint) {
+      throw new TypeError("The economic handoff does not match its captured baseline.");
+    }
+    return {
+      ...draft,
+      baseline: admission.baseline,
+      disposition: {
+        kind: "handoff",
+        handoff: admission.handoff,
+        acknowledgedByUserId: null,
+        acknowledgedAt: null,
+      },
+    };
+  }
+  const baselineChanged = !!draft.baseline && compareEconomicBaselines(draft.baseline, admission.baseline).length > 0;
+  const next = {
+    ...draft,
+    baseline: admission.baseline,
+    disposition:
+      draft.disposition.kind === "handoff"
+        ? ({ kind: "unreviewed", invalidatedFrom: null, reasons: [] } as const)
+        : draft.disposition,
+  };
+  return baselineChanged ? invalidateAcquisitionReview(next, ["baseline"]) : next;
+}
+
+export function acknowledgeAcquisitionHandoff(
+  draft: AcquisitionDraftState,
+  acknowledgment: { readonly userId: string; readonly acknowledgedAt: string }
+): AcquisitionDraftState {
+  if (draft.disposition.kind !== "handoff") throw new TypeError("The acquisition is not in handoff state.");
+  if (
+    !nonEmpty(acknowledgment.userId) ||
+    !nonEmpty(acknowledgment.acknowledgedAt) ||
+    !Number.isFinite(Date.parse(acknowledgment.acknowledgedAt))
+  ) {
+    throw new TypeError("Handoff acknowledgment requires a user and timestamp.");
+  }
+  return {
+    ...draft,
+    disposition: {
+      ...draft.disposition,
+      acknowledgedByUserId: acknowledgment.userId,
+      acknowledgedAt: acknowledgment.acknowledgedAt,
+    },
   };
 }
 
@@ -749,15 +807,14 @@ function normalizeJudgments(raw: unknown): AcquisitionPolicyMaterialFacts["gmJud
 }
 
 function normalizeBaseline(raw: unknown): AcquisitionDraftState["baseline"] {
-  return isRecord(raw) && raw.version === 1 && nonEmpty(raw.actorId) && nonEmpty(raw.fingerprint)
-    ? { version: 1, actorId: raw.actorId, fingerprint: raw.fingerprint }
-    : null;
+  return normalizeEconomicBaseline(raw);
 }
 
 function normalizeDisposition(
   raw: unknown,
   lines: readonly AcquisitionLineDraft[],
-  policy: AcquisitionPolicySnapshot | null
+  policy: AcquisitionPolicySnapshot | null,
+  baseline: AcquisitionDraftState["baseline"]
 ): AcquisitionDisposition {
   if (!isRecord(raw) || !isOneOf(raw.kind, ["unreviewed", "purchase-ledger", "retain-all", "handoff"])) {
     return unreviewed();
@@ -771,12 +828,21 @@ function normalizeDisposition(
     };
   }
   if (raw.kind === "handoff") {
-    return nonEmpty(raw.reason) && nonEmpty(raw.acknowledgedByUserId) && nonEmpty(raw.acknowledgedAt)
+    const handoff = normalizeEconomicHandoff(raw.handoff);
+    const unacknowledged = raw.acknowledgedByUserId === null && raw.acknowledgedAt === null;
+    const acknowledged =
+      nonEmpty(raw.acknowledgedByUserId) &&
+      nonEmpty(raw.acknowledgedAt) &&
+      Number.isFinite(Date.parse(raw.acknowledgedAt));
+    return handoff &&
+      baseline &&
+      handoff.baselineFingerprint === baseline.fingerprint &&
+      (unacknowledged || acknowledged)
       ? {
           kind: "handoff",
-          reason: raw.reason,
-          acknowledgedByUserId: raw.acknowledgedByUserId,
-          acknowledgedAt: raw.acknowledgedAt,
+          handoff,
+          acknowledgedByUserId: acknowledged ? (raw.acknowledgedByUserId as string) : null,
+          acknowledgedAt: acknowledged ? (raw.acknowledgedAt as string) : null,
         }
       : unreviewed();
   }

@@ -16,6 +16,7 @@ import type {
   AcquisitionRecipeSelection,
 } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
+import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import { buildEquipmentPolicyJudgmentFactsFingerprint } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 
@@ -101,6 +102,31 @@ describe("acquisition ledger", () => {
     expect(ledger).toMatchObject({ valid: false, materialFacts: null });
     expect(ledger.blockers).toContainEqual(expect.objectContaining({ code: "baseline-missing" }));
     expect(() => reviewPurchaseLedger(draft, ledger, reviewer())).toThrow(/invalid acquisition ledger/i);
+  });
+
+  it("requires acknowledgment before an explicit handoff is complete", () => {
+    const draft = mutable(acquisitionDraft({ lines: [] }));
+    draft.disposition = {
+      kind: "handoff",
+      handoff: {
+        version: 1,
+        kind: "pf2e-sheet",
+        baselineFingerprint: draft.baseline!.fingerprint,
+        reasons: [{ code: "nonzero-currency", copper: 1 }],
+      },
+      acknowledgedByUserId: null,
+      acknowledgedAt: null,
+    };
+    expect(evaluateAcquisitionCompletion(draft, evaluateAcquisitionLedger(draft))).toMatchObject({
+      complete: false,
+      reasons: ["handoff-acknowledgment-required"],
+    });
+    draft.disposition.acknowledgedByUserId = "owner-1";
+    draft.disposition.acknowledgedAt = "2026-08-18T21:00:00.000Z";
+    expect(evaluateAcquisitionCompletion(draft, evaluateAcquisitionLedger(draft))).toMatchObject({
+      complete: true,
+      reasons: [],
+    });
   });
 
   it("assigns allowances deterministically and charges only configuration supplements", () => {
@@ -366,7 +392,7 @@ describe("acquisition ledger", () => {
     const reviewed = reviewPurchaseLedger(original, evaluateAcquisitionLedger(original), reviewer());
 
     const changedBaseline = mutable(structuredClone(reviewed));
-    changedBaseline.baseline = { version: 1, actorId: "actor-2", fingerprint: "other-actor" };
+    changedBaseline.baseline = mutable(emptyBaseline("actor-2"));
     expect(evaluateAcquisitionCompletion(changedBaseline, evaluateAcquisitionLedger(changedBaseline))).toMatchObject({
       complete: false,
       reasons: ["policy-mismatch"],
@@ -454,9 +480,18 @@ function acquisitionDraft(options: {
         gmJudgments: [],
       },
     },
-    baseline: { version: 1, actorId: "actor-1", fingerprint: "empty-actor" },
+    baseline: emptyBaseline("actor-1"),
     lines: options.lines ?? [],
   };
+}
+
+function emptyBaseline(actorId: string) {
+  return createEconomicBaseline({
+    actorId,
+    capturedAt: "2026-08-18T20:00:00.000Z",
+    currencyCopper: 0,
+    physicalItems: [],
+  });
 }
 
 function line(

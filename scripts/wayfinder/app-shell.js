@@ -24,6 +24,7 @@ import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection
 import { applyDraftLifecycle, buildApplyAttemptDraft, clearDraftLifecycle, hasApplyRecoveryState, } from "./application/draft-lifecycle-service.js";
 import { DraftPersistenceCoordinator } from "./application/draft-persistence-service.js";
 import { assertDraftSideEffectAllowed, assertFailedApplyRecoveryCandidateCurrent, captureDraftSideEffectPrecondition, capturePersistedDraftPrecondition, clearDraftWithWriteGuard, PersistedDraftWriteGuard, readPersistedDraftSnapshot, saveDraftWithWriteGuard, updateActorWithPersistedDraftPrecondition, WayfinderDraftWriteConflictError, } from "./application/draft-write-guard.js";
+import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
 import { buildExistingCharacterHistory, withExistingCharacterHistory, } from "./application/existing-character-history-service.js";
 import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
 import { buildContextNote, buildOptionContext, resolveSelectionClassHasSpellcasting, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
@@ -1516,6 +1517,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 steps,
                 evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks),
                 additionalBlockers: spellRarityBlockers,
+                assertAcquisitionApplyAuthority: () => {
+                    if (!draft.acquisition)
+                        return;
+                    assertEquipmentApplyAuthority({ actor: this.actor, acquisition: draft.acquisition });
+                },
                 reviewLines: buildSpellRarityAttestationReviewLines(appliedSpellRarityAttestations),
                 confirmApply: confirmWayfinderApply,
                 beforeApply: (applyAttemptDraft) => persistApplyCandidateIfCurrent({
@@ -1551,6 +1557,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     beforeFinalActorUpdate: () => this.#assertPersistedApplyCandidateCurrent(),
                     persistFinalActorUpdate: (actorUpdate) => updateActorWithPersistedDraftPrecondition(this.actor, actorUpdate, capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)),
                     validateActorAuthority: canUseWayfinder,
+                    assertAcquisitionApplyAuthority: (actor, currentDraft) => {
+                        if (!currentDraft.acquisition)
+                            return;
+                        assertEquipmentApplyAuthority({ actor, acquisition: currentDraft.acquisition });
+                    },
                     spellRarityCeiling,
                     validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
                     validateSelectionEligibility: (selection, step) => this.#validateSelectionEligibility(selection, step, draft, steps, snapshot.skillRanks, this.#applySpellRarityCeiling(draft, step, recovering)),
@@ -1575,6 +1586,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     persistFinalActorUpdate: (actorUpdate) => updateActorWithPersistedDraftPrecondition(this.actor, actorUpdate, capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)),
                     recoveryActorUpdate,
                     validateActorAuthority: canUseWayfinder,
+                    assertAcquisitionApplyAuthority: (actor) => {
+                        if (!draft.acquisition)
+                            return;
+                        assertEquipmentApplyAuthority({ actor, acquisition: draft.acquisition });
+                    },
                     classGrantRecovery: draft.acquisition
                         ? {
                             kind: "required",

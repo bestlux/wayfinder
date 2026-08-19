@@ -164,6 +164,65 @@ describe("economic baseline actor service", () => {
     expect(result).toMatchObject({ kind: "eligible-empty" });
   });
 
+  it("authenticates Investigator formula-book admission through the exact methodology slot", () => {
+    const u = CLASS_GRANT_PROFILE_UUIDS;
+    const book = itemFixture({ id: "book", type: "equipment", quantity: 1, sourceId: u.formulaBookItem });
+    (book.flags as Record<string, unknown>).pf2e = { grantedBy: { id: "science" } };
+    const science = actorFeat("science", u.alchemicalSciences, "methodology");
+    science.flags[MODULE_ID] = { slotId: "class-branch-methodology-level-1" };
+    const actor = actorFixture([
+      book,
+      science,
+      { ...actorFeat("methodology", u.methodologyFeature, null), system: { quantity: 1, location: "class" } },
+      { ...actorFeat("class", u.investigatorClass, null), type: "class" },
+    ]);
+    const grant = createPlannedClassGrant({
+      grantId: "class-grant:investigator-formula-book:class-branch-methodology-level-1",
+      profileId: "investigator-alchemical-sciences-formula-book",
+      origin: {
+        sourceSlotId: "class-branch-methodology-level-1",
+        sourceUuid: u.alchemicalSciences,
+      },
+      granterSourceUuid: u.alchemicalSciences,
+      expected: { sourceUuid: u.formulaBookItem, quantity: 1, itemType: "equipment" },
+      materializer: "pf2e-native",
+      eligibilityKind: "fixed-class-grant",
+      resaleRule: "normal",
+      eligibilityEvidence: { kind: "fixed-native-profile" },
+      nativeGrantChainSourceUuids: [u.alchemicalSciences, u.methodologyFeature, u.investigatorClass],
+    });
+    const plan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [grant],
+    });
+    const admission = () =>
+      evaluateActorEconomicAdmission({
+        actor,
+        draftId: "draft-1",
+        batchId: "batch-1",
+        targetLevel: 1,
+        higherLevelStartEvidence: { kind: "not-required" },
+        history: {
+          previousCharacterAppliedAt: null,
+          previousTargetLevel: null,
+          completedAcquisitionManifestId: null,
+          completedAcquisitionManifestCorrupt: false,
+        },
+        preparedClassGrantPlan: plan,
+        classGrantPhase: "final",
+      });
+
+    expect(admission()).toMatchObject({ kind: "eligible-empty" });
+    science.flags[MODULE_ID] = { slotId: "wrong-methodology-slot" };
+    expect(admission()).toMatchObject({
+      kind: "handoff",
+      handoff: { reasons: expect.arrayContaining([expect.objectContaining({ code: "unresolved-class-grant" })]) },
+    });
+  });
+
   it("re-captures immediately before write and leaves the write untouched on drift", async () => {
     const actor = actorFixture([]);
     const reviewed = captureActorEconomicBaseline(actor, { capturedAt: "2026-08-18T20:00:00.000Z" });

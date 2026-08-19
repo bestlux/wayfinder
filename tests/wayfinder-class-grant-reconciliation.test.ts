@@ -72,15 +72,17 @@ describe("planned class-grant reconciliation", () => {
       observed("methodology", grant.nativeGrantChainSourceUuids[1]!, "feat", null, null, null, "class"),
       observed("class", grant.nativeGrantChainSourceUuids[2]!, "class", null),
     ];
-    expect(
-      reconcilePlannedClassGrants({
-        plan: [grant],
-        actorItems: chain,
-        phase: "final",
-        draftId: "draft-1",
-        batchId: "batch-1",
-      }).entries[0]?.status
-    ).toBe("resolved");
+    for (const phase of ["before-acquisition", "after-acquisition", "final"] as const) {
+      expect(
+        reconcilePlannedClassGrants({
+          plan: [grant],
+          actorItems: chain,
+          phase,
+          draftId: "draft-1",
+          batchId: "batch-1",
+        }).entries[0]?.status
+      ).toBe("resolved");
+    }
     expect(
       reconcilePlannedClassGrants({
         plan: [grant],

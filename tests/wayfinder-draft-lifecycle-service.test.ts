@@ -310,6 +310,7 @@ describe("wayfinder draft lifecycle service", () => {
       draft,
       steps: [],
       acquisitionExecutionAvailable: true,
+      assertAcquisitionApplyAuthority: () => undefined,
       evaluateStep: async () => readyEvaluation(),
       applyDraftToActor: vi.fn(),
       finalizeRecoveredDraft,
@@ -317,6 +318,49 @@ describe("wayfinder draft lifecycle service", () => {
 
     expect(result).toMatchObject({ kind: "applied" });
     expect(finalizeRecoveredDraft).toHaveBeenCalledOnce();
+  });
+
+  it("blocks acquisition authority before confirmation or Apply-attempt persistence", async () => {
+    const draft = createEmptyDraft(5);
+    draft.acquisition = {
+      schemaVersion: 2,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 5,
+      recipe: { kind: "lump-sum" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+    const confirmApply = vi.fn();
+    const beforeApply = vi.fn();
+
+    const result = await applyDraftLifecycle({
+      actorName: "Valeros",
+      currentLevel: 5,
+      draft,
+      steps: [],
+      acquisitionExecutionAvailable: true,
+      assertAcquisitionApplyAuthority: () => {
+        throw new Error("Only a current GM may apply this equipment draft.");
+      },
+      evaluateStep: async () => readyEvaluation(),
+      confirmApply,
+      beforeApply,
+      applyDraftToActor: vi.fn(),
+    });
+
+    expect(result).toMatchObject({
+      kind: "warning",
+      warning: "draft-not-ready",
+      blockers: [{ slotId: "starting-equipment", message: expect.stringMatching(/current GM/i) }],
+    });
+    expect(confirmApply).not.toHaveBeenCalled();
+    expect(beforeApply).not.toHaveBeenCalled();
   });
 
   it("blocks malformed acquisition recovery instead of silently treating it as legacy recovery", async () => {

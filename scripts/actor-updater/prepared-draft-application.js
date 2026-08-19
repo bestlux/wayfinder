@@ -108,6 +108,7 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
     assertActorAuthority(actor, deps.validateActorAuthority);
     const draft = cloneData(draftInput);
     const steps = cloneData(stepsInput);
+    assertAcquisitionAuthority(actor, draft, deps.assertAcquisitionApplyAuthority);
     const spellRarityProblems = hasDraftRecoveryState(draft)
         ? listSpellRarityRecoveryProblems(typeof actor.id === "string" ? actor.id : "", draft)
         : listSpellRarityAttestationProblems(typeof actor.id === "string" ? actor.id : "", draft, steps, deps.spellRarityCeiling ?? "common");
@@ -162,6 +163,7 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
             ...buildLanguageChoiceUpdate(draft, steps),
         },
         validateActorAuthority: deps.validateActorAuthority,
+        assertAcquisitionApplyAuthority: deps.assertAcquisitionApplyAuthority,
         validateSelectionEligibility: deps.validateSelectionEligibility,
         classGrantPlan,
         sources,
@@ -293,6 +295,7 @@ async function validateSelectedEligibility(draft, steps, activeSelections, valid
 }
 export async function executePreparedDraftApplication(prepared, options = {}) {
     assertActorAuthority(prepared.actor, prepared.validateActorAuthority);
+    assertAcquisitionAuthority(prepared.actor, prepared.draft, prepared.assertAcquisitionApplyAuthority);
     if (prepared.draft.acquisition) {
         if (!options.readCurrentAcquisitionHistory) {
             throw new Error("Starting-equipment Apply requires a current acquisition history precondition.");
@@ -814,6 +817,14 @@ function assertActorAuthority(actor, validateActorAuthority) {
     if (!validateActorAuthority || !validateActorAuthority(actor)) {
         throw new Error("The current user can no longer modify this PF2E character.");
     }
+}
+function assertAcquisitionAuthority(actor, draft, assertApplyAuthority) {
+    if (!draft.acquisition)
+        return;
+    if (!assertApplyAuthority) {
+        throw new Error("Starting-equipment Apply requires current acquisition authority.");
+    }
+    assertApplyAuthority(actor, draft);
 }
 async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps) {
     const refs = collectSourceRefs(actor, draft, steps, activeSelections);

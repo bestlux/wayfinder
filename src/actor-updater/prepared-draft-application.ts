@@ -127,6 +127,7 @@ export interface PreparedDraftApplication {
   stepsBySlotId: ReadonlyMap<string, PendingStep>;
   deferredActorUpdate: Record<string, unknown>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
+  assertAcquisitionApplyAuthority?: (actor: DraftMutationActor, draft: DraftState) => void;
   validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
   classGrantPlan: PreparedClassGrantPlanV1 | null;
   sources: PreparedSourceCatalog;
@@ -161,6 +162,7 @@ export interface PrepareDraftApplicationDependencies {
   ) => Promise<void>;
   validateSelectionEligibility?: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
+  assertAcquisitionApplyAuthority?: (actor: DraftMutationActor, draft: DraftState) => void;
   prepareClassGrantPlan?: (
     actor: DraftMutationActor,
     draft: DraftState,
@@ -314,6 +316,7 @@ export async function prepareDraftApplication(
 
   const draft = cloneData(draftInput);
   const steps = cloneData(stepsInput);
+  assertAcquisitionAuthority(actor, draft, deps.assertAcquisitionApplyAuthority);
   const spellRarityProblems = hasDraftRecoveryState(draft)
     ? listSpellRarityRecoveryProblems(typeof actor.id === "string" ? actor.id : "", draft)
     : listSpellRarityAttestationProblems(
@@ -387,6 +390,7 @@ export async function prepareDraftApplication(
       ...buildLanguageChoiceUpdate(draft, steps),
     },
     validateActorAuthority: deps.validateActorAuthority,
+    assertAcquisitionApplyAuthority: deps.assertAcquisitionApplyAuthority,
     validateSelectionEligibility: deps.validateSelectionEligibility,
     classGrantPlan,
     sources,
@@ -555,6 +559,7 @@ export async function executePreparedDraftApplication(
   options: ExecutePreparedDraftApplicationOptions = {}
 ): Promise<ExecutePreparedDraftApplicationResult> {
   assertActorAuthority(prepared.actor, prepared.validateActorAuthority);
+  assertAcquisitionAuthority(prepared.actor, prepared.draft, prepared.assertAcquisitionApplyAuthority);
   if (prepared.draft.acquisition) {
     if (!options.readCurrentAcquisitionHistory) {
       throw new Error("Starting-equipment Apply requires a current acquisition history precondition.");
@@ -1202,6 +1207,18 @@ function assertActorAuthority(
   if (!validateActorAuthority || !validateActorAuthority(actor)) {
     throw new Error("The current user can no longer modify this PF2E character.");
   }
+}
+
+function assertAcquisitionAuthority(
+  actor: DraftMutationActor,
+  draft: DraftState,
+  assertApplyAuthority: ((actor: DraftMutationActor, draft: DraftState) => void) | undefined
+): void {
+  if (!draft.acquisition) return;
+  if (!assertApplyAuthority) {
+    throw new Error("Starting-equipment Apply requires current acquisition authority.");
+  }
+  assertApplyAuthority(actor, draft);
 }
 
 async function prepareSourceCatalog(

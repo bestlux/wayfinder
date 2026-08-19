@@ -31,10 +31,13 @@ export const SEMANTIC_WEALTH_RULES = Object.freeze([
     entry("level-0-starting-money", ["level-0"], "Level 0 uses a separate 5 gp rule and is outside 0.8.0.", "out-of-scope", [citation(GMC, [84, 85], 2754)]),
 ]);
 export function resolveSemanticWealthCapability(capability, rules = SEMANTIC_WEALTH_RULES) {
+    const requiredKeys = SEMANTIC_WEALTH_RULES.filter((rule) => rule.capabilities.includes(capability)).map((rule) => rule.key);
     const matching = rules.filter((rule) => rule.capabilities.includes(capability));
+    const suppliedCapabilityKeys = new Set(matching.map((rule) => rule.key));
+    const missingKeys = requiredKeys.filter((key) => !suppliedCapabilityKeys.has(key));
     const unresolved = matching.filter((rule) => rule.citations.length === 0);
-    if (matching.length === 0 || unresolved.length > 0) {
-        const ruleKeys = unresolved.length > 0 ? unresolved.map((rule) => rule.key) : [];
+    if (requiredKeys.length === 0 || missingKeys.length > 0 || unresolved.length > 0) {
+        const ruleKeys = [...new Set([...missingKeys, ...unresolved.map((rule) => rule.key)])];
         return {
             available: false,
             capability,
@@ -43,7 +46,7 @@ export function resolveSemanticWealthCapability(capability, rules = SEMANTIC_WEA
                 code: "semantic-wealth-citation-unresolved",
                 capability,
                 ruleKeys,
-                message: matching.length === 0
+                message: requiredKeys.length === 0
                     ? `No reviewed semantic wealth rules map to ${capability}.`
                     : `Unresolved citations block ${capability}: ${ruleKeys.join(", ")}.`,
             },

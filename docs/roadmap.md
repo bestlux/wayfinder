@@ -1,10 +1,10 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-18 for the 0.7.4 compatibility release and accepted 0.8.0 Starting Equipment and Wealth plan. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-08-19 for the 0.7.5 compatibility release and accepted 0.8.0 Starting Equipment and Wealth plan. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
-Wayfinder 0.7.4 guides 27 maintained PF2E classes from a blank level-1 actor through level 5 along one maintained path. PF2E 8.4's newer Necromancer and Runesmith base classes remain outside that maintained class matrix. Five representative profiles are verified through level 10 and Fighter through level 20. The current live release matrix contains 54 unique scenarios against Foundry VTT 14.366 and PF2E 8.4.0, including a deliberate late-phase Apply failure and clean retry.
+Wayfinder 0.7.5 guides 27 maintained PF2E classes from a blank level-1 actor through level 5 along one maintained path. PF2E 8.4's newer Necromancer and Runesmith base classes remain outside that maintained class matrix. Five representative profiles are verified through level 10 and Fighter through level 20. The current live release matrix contains 54 unique scenarios against Foundry VTT 14.366 and PF2E 8.4.0, including a deliberate late-phase Apply failure and clean retry.
 
 The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, and Gradual Ability Boosts. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation.
 

@@ -423,6 +423,16 @@ describe("acquisition ledger", () => {
       true
     );
 
+    const unusedRecipePolicyChange = mutable(structuredClone(reviewed));
+    unusedRecipePolicyChange.policySnapshot!.material.worldRecipePolicy = {
+      enabledRecipes: ["permanent-items"],
+      defaultRecipe: "permanent-items",
+    };
+    expect(
+      evaluateAcquisitionCompletion(unusedRecipePolicyChange, evaluateAcquisitionLedger(unusedRecipePolicyChange))
+        .complete
+    ).toBe(true);
+
     const materialChange = mutable(structuredClone(reviewed));
     materialChange.lines[0]!.policyDecision.rarityBasis = "different-current-basis";
     expect(evaluateAcquisitionCompletion(materialChange, evaluateAcquisitionLedger(materialChange))).toMatchObject({

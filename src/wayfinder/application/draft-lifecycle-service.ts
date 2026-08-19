@@ -34,6 +34,7 @@ export interface ApplyDraftLifecycleArgs {
   evaluateStep: (step: PendingStep) => Promise<WayfinderStepEvaluation>;
   additionalBlockers?: WayfinderStepIssue[];
   acquisitionExecutionAvailable?: boolean;
+  assertAcquisitionApplyAuthority?: () => void;
   reviewLines?: string[];
   confirmApply?: (message: string) => boolean | Promise<boolean>;
   beforeApply?: (applyAttemptDraft: DraftState) => Promise<void>;
@@ -96,6 +97,28 @@ export async function applyDraftLifecycle(args: ApplyDraftLifecycleArgs): Promis
         },
       ],
     };
+  }
+  if (args.draft.acquisition) {
+    try {
+      if (!args.assertAcquisitionApplyAuthority) {
+        throw new Error("Starting-equipment Apply requires current acquisition authority.");
+      }
+      args.assertAcquisitionApplyAuthority();
+    } catch (error) {
+      return {
+        kind: "warning",
+        warning: "draft-not-ready",
+        blockers: [
+          {
+            code: "dependency-review",
+            stepId: "starting-equipment-authority",
+            slotId: "starting-equipment",
+            title: "Starting equipment authority",
+            message: error instanceof Error ? error.message : "Starting-equipment Apply authority is unavailable.",
+          },
+        ],
+      };
+    }
   }
   const recoveryOnly = args.steps.length === 0 && hasApplyRecoveryState(args.draft);
   if (args.steps.length === 0 && !recoveryOnly) {

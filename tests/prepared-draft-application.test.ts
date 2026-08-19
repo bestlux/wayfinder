@@ -32,6 +32,7 @@ import { createLanguageChoiceStep } from "../src/wayfinder/domain/step-types";
 import { buildActorHarness, classSelectionStep, selection, setGamePacks } from "./support/actor-updater-fixtures";
 
 const TEST_ACTOR_AUTHORITY = () => true;
+const TEST_ACQUISITION_AUTHORITY = () => undefined;
 const TEST_SELECTION_ELIGIBILITY = () => true;
 
 function prepareDraftApplication(
@@ -42,6 +43,7 @@ function prepareDraftApplication(
 ) {
   return prepareDraftApplicationWithAuthority(actor, draft, steps, {
     validateActorAuthority: TEST_ACTOR_AUTHORITY,
+    assertAcquisitionApplyAuthority: TEST_ACQUISITION_AUTHORITY,
     ...options,
   });
 }
@@ -54,6 +56,7 @@ function applyDraftToActor(
 ) {
   return applyDraftToActorWithAuthority(actor, draft, steps, {
     validateActorAuthority: TEST_ACTOR_AUTHORITY,
+    assertAcquisitionApplyAuthority: TEST_ACQUISITION_AUTHORITY,
     spellRarityCeiling: "common",
     validateSelectionEligibility: TEST_SELECTION_ELIGIBILITY,
     ...options,
@@ -69,6 +72,7 @@ function finalizeRecoveredDraftOnActor(
 ) {
   return finalizeRecoveredDraftOnActorWithAuthority(actor, {
     validateActorAuthority: TEST_ACTOR_AUTHORITY,
+    assertAcquisitionApplyAuthority: TEST_ACQUISITION_AUTHORITY,
     classGrantRecovery: { kind: "none" },
     ...options,
   });
@@ -333,6 +337,37 @@ describe("prepared draft application", () => {
     expect(() => applyDraftToActor(actor as never, draft, [classSelectionStep()])).toThrow(
       /prepared acquisition execution and verification/i
     );
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects acquisition authority before queueing or mutating the actor", () => {
+    const { actor } = buildActorHarness();
+    const draft = createEmptyDraft(1);
+    draft.acquisition = {
+      schemaVersion: 2,
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 1,
+      recipe: { kind: "permanent-items" },
+      policySnapshot: null,
+      baseline: null,
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      lines: [],
+      disposition: { kind: "unreviewed", invalidatedFrom: null, reasons: [] },
+    };
+
+    expect(() =>
+      applyDraftToActor(actor as never, draft, [classSelectionStep()], {
+        assertAcquisitionApplyAuthority: () => {
+          throw new Error("GM review is required");
+        },
+      })
+    ).toThrow(/GM review is required/i);
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
     expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
     expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
@@ -1644,6 +1679,70 @@ describe("prepared draft application", () => {
     ]);
   });
 
+  it("rechecks acquisition authority inside the recovery queue before reconciliation or writes", async () => {
+    const { actor } = buildActorHarness();
+    let authorized = true;
+    const preparePlan = vi.fn();
+
+    await expect(
+      finalizeRecoveredDraftOnActorWithAuthority(actor as never, {
+        recoveryActorUpdate: {},
+        resolveFinalActorUpdate: () => ({ "flags.test.recovered": true }),
+        validateActorAuthority: TEST_ACTOR_AUTHORITY,
+        assertAcquisitionApplyAuthority: () => {
+          if (!authorized) throw new Error("GM review is no longer authorized");
+        },
+        beforeFinalize: () => {
+          authorized = false;
+        },
+        classGrantRecovery: {
+          kind: "required",
+          preparePlan,
+          verifyAcquisitionRecovery: vi.fn(),
+        },
+      })
+    ).rejects.toThrow(/no longer authorized/i);
+    expect(preparePlan).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("rechecks acquisition authority after recovery verification and immediately before final writes", async () => {
+    const { actor } = buildActorHarness();
+    Object.assign(actor, { id: "actor-1" });
+    let authorized = true;
+    const plan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [],
+    });
+
+    await expect(
+      finalizeRecoveredDraftOnActorWithAuthority(actor as never, {
+        recoveryActorUpdate: {},
+        resolveFinalActorUpdate: () => ({ "flags.test.recovered": true }),
+        validateActorAuthority: TEST_ACTOR_AUTHORITY,
+        assertAcquisitionApplyAuthority: () => {
+          if (!authorized) throw new Error("GM review is no longer authorized");
+        },
+        classGrantRecovery: {
+          kind: "required",
+          preparePlan: () => plan,
+          verifyAcquisitionRecovery: () => {
+            authorized = false;
+            return { kind: "completed", manifest: { disposition: "purchase-ledger" } } as never;
+          },
+        },
+      })
+    ).rejects.toThrow(/no longer authorized/i);
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.deleteEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
   it("re-prepares and reconciles class grants before recovered finalization", async () => {
     const u = CLASS_GRANT_PROFILE_UUIDS;
     const grant = createPlannedClassGrant({
@@ -1703,6 +1802,7 @@ describe("prepared draft application", () => {
       recoveryActorUpdate: {},
       resolveFinalActorUpdate,
       validateActorAuthority: TEST_ACTOR_AUTHORITY,
+      assertAcquisitionApplyAuthority: TEST_ACQUISITION_AUTHORITY,
       classGrantRecovery: {
         kind: "required",
         preparePlan: () => plan,
@@ -1722,6 +1822,7 @@ describe("prepared draft application", () => {
         recoveryActorUpdate: {},
         resolveFinalActorUpdate: () => ({ "flags.test.recovered": true }),
         validateActorAuthority: TEST_ACTOR_AUTHORITY,
+        assertAcquisitionApplyAuthority: TEST_ACQUISITION_AUTHORITY,
         classGrantRecovery: {
           kind: "required",
           preparePlan: () => plan,

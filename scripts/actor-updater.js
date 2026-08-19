@@ -8,6 +8,7 @@ const operationIdentityByReference = new WeakMap();
 let nextOperationIdentity = 1;
 export function applyDraftToActor(actor, draft, steps, options) {
     assertRequiredActorAuthority(actor, options?.validateActorAuthority);
+    assertRequiredAcquisitionAuthority(actor, draft, options?.assertAcquisitionApplyAuthority);
     if (draft.acquisition &&
         (!options.executeAcquisitionItems || !options.verifyAcquisitionOutcome || !options.readCurrentAcquisitionHistory)) {
         throw new Error("Starting-equipment Apply requires prepared acquisition execution and verification.");
@@ -29,6 +30,7 @@ export function applyDraftToActor(actor, draft, steps, options) {
         await options.beforePrepare?.();
         const prepared = await prepareDraftApplication(actor, draftSnapshot, stepSnapshots, {
             validateActorAuthority: options.validateActorAuthority,
+            assertAcquisitionApplyAuthority: options.assertAcquisitionApplyAuthority,
             spellRarityCeiling: options.spellRarityCeiling,
             validateSelectionEligibility: options.validateSelectionEligibility,
             validSkillSlugs: options.validSkillSlugs,
@@ -63,8 +65,17 @@ export function applyDraftToActor(actor, draft, steps, options) {
 }
 export function finalizeRecoveredDraftOnActor(actor, options) {
     assertRequiredActorAuthority(actor, options?.validateActorAuthority);
+    if (options.classGrantRecovery.kind === "required") {
+        if (!options.assertAcquisitionApplyAuthority) {
+            throw new Error("Starting-equipment recovery requires current acquisition authority.");
+        }
+        options.assertAcquisitionApplyAuthority(actor);
+    }
     return enqueueActorOperation(actor, async () => {
         await options.beforeFinalize?.();
+        if (options.classGrantRecovery.kind === "required") {
+            options.assertAcquisitionApplyAuthority(actor);
+        }
         const classGrantReconciliations = [];
         if (options.classGrantRecovery.kind === "required") {
             const plan = await options.classGrantRecovery.preparePlan(actor);
@@ -83,6 +94,7 @@ export function finalizeRecoveredDraftOnActor(actor, options) {
                 reconciliation.entries.some((entry) => entry.status !== "resolved")) {
                 throw new Error("Planned class equipment is missing or ambiguous during recovery finalization.");
             }
+            options.assertAcquisitionApplyAuthority(actor);
             const result = await executeRecoveredDraftFinalization(actor, {
                 resolveFinalActorUpdate: options.resolveFinalActorUpdate,
                 beforeFinalActorUpdate: options.beforeFinalActorUpdate,
@@ -123,6 +135,7 @@ function draftApplyOperationKey(draft, steps, options) {
         onCheckpoint: operationIdentity(options.onCheckpoint),
         resolveFinalActorUpdate: operationIdentity(options.resolveFinalActorUpdate),
         validateActorAuthority: operationIdentity(options.validateActorAuthority),
+        assertAcquisitionApplyAuthority: operationIdentity(options.assertAcquisitionApplyAuthority),
         spellRarityCeiling: options.spellRarityCeiling,
         validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),
         validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,
@@ -132,6 +145,14 @@ function draftApplyOperationKey(draft, steps, options) {
         readCurrentAcquisitionHistory: operationIdentity(options.readCurrentAcquisitionHistory),
         acquisitionFinalEvidence: options.acquisitionFinalEvidence ?? null,
     });
+}
+function assertRequiredAcquisitionAuthority(actor, draft, assertApplyAuthority) {
+    if (!draft.acquisition)
+        return;
+    if (!assertApplyAuthority) {
+        throw new Error("Starting-equipment Apply requires current acquisition authority.");
+    }
+    assertApplyAuthority(actor, draft);
 }
 function operationIdentity(value) {
     if (!value) {

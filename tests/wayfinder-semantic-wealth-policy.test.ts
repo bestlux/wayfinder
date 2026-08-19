@@ -118,6 +118,14 @@ describe("semantic wealth policy", () => {
     expect(
       evaluateAllowanceAssignment({
         allowanceLevel: 4,
+        itemLevel: 2,
+        componentKind: "baseline-item",
+        hasBaselineIdentity: false,
+      }).ok
+    ).toBe(false);
+    expect(
+      evaluateAllowanceAssignment({
+        allowanceLevel: 4,
         itemLevel: 4,
         componentKind: "property-rune",
         hasBaselineIdentity: true,
@@ -202,6 +210,15 @@ describe("semantic wealth policy", () => {
         createdAt: "2026-08-18T00:00:00Z",
         reason: "Joining mid-level",
         convertsToCash: false,
+      }).ok
+    ).toBe(true);
+    expect(
+      validateGmJudgment({
+        kind: "inherited-wealth-handoff",
+        authorId: "gm",
+        createdAt: "2026-08-18T00:00:00Z",
+        reason: "Inherited gear",
+        permitsAdditiveAcquisition: false,
       }).ok
     ).toBe(true);
     expect(

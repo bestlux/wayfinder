@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MODULE_ID, SETTINGS } from "../src/constants";
 import {
+  assertEquipmentApplyAuthority,
   createOwnerStartAttestation,
   normalizePf2eEquipmentSources,
   resolveActorAbpSnapshot,
@@ -10,6 +11,7 @@ import {
 } from "../src/wayfinder/application/equipment-policy-service";
 import { WayfinderGmCommandAuthorityError } from "../src/wayfinder/application/gm-command-authority";
 import { DEFAULT_EQUIPMENT_WORLD_POLICY } from "../src/wayfinder/domain/equipment-policy";
+import { acquisitionFixture } from "./fixtures/acquisition-fixture";
 
 const globals = globalThis as typeof globalThis & { game: any; CONST: any };
 
@@ -167,6 +169,33 @@ describe("equipment policy service", () => {
     );
     await saveEquipmentWorldPolicy({}, { id: "gm-1", isGM: true });
     expect(globals.game.settings.set).toHaveBeenCalledWith(MODULE_ID, SETTINGS.equipmentPolicy, expect.any(Object));
+  });
+
+  it("enforces the resolved Apply authority against the current actor and draft", () => {
+    const actor = { id: "actor-1", type: "character", isOwner: true };
+    const ownerDraft = acquisitionFixture().draft;
+    globals.game.user = { id: "owner-1", isGM: false };
+    expect(() => assertEquipmentApplyAuthority({ actor, acquisition: ownerDraft })).not.toThrow();
+
+    const gmReview = structuredClone(ownerDraft) as any;
+    gmReview.policySnapshot!.material.authorityPolicy.apply = "gm-review";
+    globals.game.settings.get.mockImplementation((moduleId: string, key: string) =>
+      moduleId === MODULE_ID && key === SETTINGS.equipmentPolicy
+        ? { ...DEFAULT_EQUIPMENT_WORLD_POLICY, applyAuthority: "gm-review" }
+        : null
+    );
+    expect(() => assertEquipmentApplyAuthority({ actor, acquisition: gmReview })).toThrow(
+      WayfinderGmCommandAuthorityError
+    );
+
+    globals.game.user = { id: "gm-1", isGM: true };
+    expect(() => assertEquipmentApplyAuthority({ actor, acquisition: gmReview })).not.toThrow();
+    expect(() => assertEquipmentApplyAuthority({ actor: { ...actor, id: "actor-2" }, acquisition: gmReview })).toThrow(
+      /does not match/i
+    );
+
+    const staleActorOwner = structuredClone(ownerDraft);
+    expect(() => assertEquipmentApplyAuthority({ actor, acquisition: staleActorOwner })).toThrow(/changed/i);
   });
 });
 

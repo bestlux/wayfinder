@@ -219,10 +219,15 @@ export function resolveSemanticWealthCapability(
   capability: SemanticWealthCapability,
   rules: readonly SemanticWealthRuleEntry[] = SEMANTIC_WEALTH_RULES
 ): SemanticWealthCapabilityResolution {
+  const requiredKeys = SEMANTIC_WEALTH_RULES.filter((rule) => rule.capabilities.includes(capability)).map(
+    (rule) => rule.key
+  );
   const matching = rules.filter((rule) => rule.capabilities.includes(capability));
+  const suppliedCapabilityKeys = new Set(matching.map((rule) => rule.key));
+  const missingKeys = requiredKeys.filter((key) => !suppliedCapabilityKeys.has(key));
   const unresolved = matching.filter((rule) => rule.citations.length === 0);
-  if (matching.length === 0 || unresolved.length > 0) {
-    const ruleKeys = unresolved.length > 0 ? unresolved.map((rule) => rule.key) : [];
+  if (requiredKeys.length === 0 || missingKeys.length > 0 || unresolved.length > 0) {
+    const ruleKeys = [...new Set([...missingKeys, ...unresolved.map((rule) => rule.key)])];
     return {
       available: false,
       capability,
@@ -232,7 +237,7 @@ export function resolveSemanticWealthCapability(
         capability,
         ruleKeys,
         message:
-          matching.length === 0
+          requiredKeys.length === 0
             ? `No reviewed semantic wealth rules map to ${capability}.`
             : `Unresolved citations block ${capability}: ${ruleKeys.join(", ")}.`,
       },

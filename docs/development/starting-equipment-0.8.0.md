@@ -259,7 +259,7 @@ Acceptance:
 - Permit a per-draft absolute custom lump sum only through a GM-authoritative command with author, time, and reason. It replaces the amount only: official lump-sum source, rarity, and target-level-minus-1 limits remain unless separately approved as a scoped exception.
 - Permit explicit GM judgments for an extra current-level permanent allowance and rarity/source exception. The extra allowance applies only to the permanent-items recipe, never converts to cash, and never bypasses the lump-sum item cap. Inherited foreign wealth records a handoff reason; it does not unlock additive acquisition.
 - Treat source-backed character Access as specific eligibility. Blanket world rarity policy is itself a GM grant inside approved sources; anything beyond either path needs per-draft approval.
-- Players can choose only enabled official recipes when policy permits, build a cart, and request an exception. Presentation preferences may narrow/reorder but never broaden eligibility.
+- The resolved policy permits only enabled official recipes and records when a scoped exception is required. Player cart commands belong to `WF-080-20`; request, approve, revoke, and stale-facts lifecycle belongs to `WF-080-04B`/`WF-080-32`. Presentation preferences may narrow/reorder but never broaden eligibility.
 - Consume PF2E's actual ABP/actor override and normalized compendium source settings rather than duplicating system switches.
 - Persist an explainable snapshot and diagnostic fingerprint. Apply re-evaluates current facts and invalidates only material changes.
 
@@ -290,11 +290,11 @@ Acceptance:
 
 - Project a grant from authoritative draft/source relationships, including the Alchemist formula book, Investigator Alchemical Sciences formula book, and Giant Instinct Titan Mauler weapon.
 - Store grant source/slot, expected source identity, quantity, funding lane, and any no-resale rule in the prepared plan and completed manifest.
-- Enforce Titan Mauler's exact free-grant boundary: one weapon sized for a creature one size larger, melee or ranged, Common or specifically accessed, and base Price no more than 9 gp before the size adjustment.
+- Enforce Titan Mauler's exact free-grant boundary: one weapon sized for a creature one size larger, melee or ranged, Common, and base Price no more than 9 gp before the size adjustment. The kernel also validates a specifically-accessed weapon when a reviewed authoritative Access adapter supplies evidence; PF2E 8.4 exposes no generic Access API, so unregistered restricted weapons fail closed until catalogue/Apply adapters in `WF-080-21`/`WF-080-22` re-resolve that evidence.
 - Reconcile expected grants regardless of whether PF2E materializes them before or after the acquisition item phase.
 - A grant never reduces currency or consumes a permanent allowance; the Titan Mauler weapon retains its no-resale economic treatment before later rune investment.
 - Never infer `class-grant` from arbitrary existing item flags or source resemblance. Missing or ambiguous planned provenance routes to handoff.
-- Cover preparation order, save/reopen, partial Apply, retry, and final economic-baseline verification for every supported grant.
+- Cover authoritative projection, save/reopen, phase-specific reconciliation, and final economic-baseline classification for every supported grant in the kernel. Mutation-path partial Apply and retry evidence is completed by the `WF-080-22`–`WF-080-24` tracer once a prepared item executor exists.
 
 ### WF-080-16 — Batch, entry, and completed-manifest identity
 
@@ -343,6 +343,7 @@ Acceptance:
 - Cache by projection and policy and deduplicate in-flight index requests.
 - Search/facets use cached normalized records; full documents hydrate only when preview identity changes.
 - Exclude `treasure` and documents requiring unsupported interactive rule-element resolution with explicit reasons.
+- Resolve registered source-backed character Access profiles against current actor/draft provenance and hydrated candidate facts; unregistered prose-only Access remains unavailable rather than inferred from proficiency or roll options.
 - Apply the measured Wave 0 interaction gates to the level-1 catalogue.
 
 ### WF-080-22 — Prepared simple-item acquisition
@@ -354,6 +355,7 @@ Outcome: a real non-GM actor owner buys one or more simple Common items as one p
 Acceptance:
 
 - Preparation re-resolves documents, policy, price, quantities, baseline, authority, and expected remaining currency before the first write.
+- Re-resolve any registered character Access evidence immediately before writes; a stale, removed, or mismatched Access source performs zero writes.
 - Equivalent logical purchases pre-aggregate; created entries carry module/draft/batch/line/entry identity.
 - Use a deliberate PF2E insertion path that preserves preparation behavior without merging into foreign stacks.
 - Verify exact item IDs, sources, quantities, and batch identity after insertion.

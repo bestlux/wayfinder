@@ -69,6 +69,24 @@ export function resolveEquipmentPolicyForActor(input) {
         exceptionJudgmentIds: input.exceptionJudgmentIds,
     });
 }
+export function assertEquipmentApplyAuthority(input) {
+    const policy = input.acquisition.policySnapshot?.material;
+    if (!policy ||
+        policy.subject.actorId !== actorIdentity(input.actor) ||
+        policy.subject.draftId !== input.acquisition.draftId ||
+        policy.subject.targetLevel !== input.acquisition.targetLevel) {
+        throw new TypeError("Starting-equipment Apply authority does not match the current actor and draft.");
+    }
+    const currentApplyAuthority = getEquipmentWorldPolicySetting().applyAuthority;
+    if (policy.authorityPolicy.apply !== currentApplyAuthority) {
+        throw new TypeError("Starting-equipment Apply authority changed after this draft was reviewed.");
+    }
+    if (policy.authorityPolicy.apply === "gm-review") {
+        requireCurrentGmPrincipal(input.user ?? game.user);
+        return;
+    }
+    assertCanUseWayfinder(input.actor);
+}
 export async function saveEquipmentWorldPolicy(raw, user = game.user) {
     requireCurrentGmPrincipal(user);
     const normalized = normalizeEquipmentWorldPolicy(raw);

@@ -455,6 +455,58 @@ describe("class-grant projection service", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("keeps production Titan Access fail-closed while preparing Common weapons", async () => {
+    const draft = classDraft(UUID.barbarian, "Barbarian");
+    draft.branchSelections.instinct = selection("class-branch-instinct-level-1", UUID.giant, "Giant Instinct");
+    const acquisition = titanAcquisition();
+    const policy = equipmentPolicy();
+    (acquisition as any).policySnapshot = createAcquisitionPolicySnapshot(policy, acquisition.recipe);
+    draft.acquisition = acquisition;
+    const documents = new Map<string, unknown>([
+      [UUID.barbarian, classDocument(UUID.instinct)],
+      [UUID.instinct, dynamicSelector("instinct", "barbarian-instinct")],
+      [UUID.giant, giantInstinctDocument()],
+      [acquisition.lines[0]!.sourceUuid, weaponDocument()],
+    ]);
+    const actor = {
+      id: "actor-1",
+      type: "character",
+      isOwner: true,
+      flags: {},
+      system: { traits: { size: { value: "med" } } },
+      items: { contents: [] },
+    };
+    const project = (resolveCharacterAccessRef?: () => string | null) =>
+      projectPlannedClassGrants({
+        ...SUBJECT,
+        draft,
+        fetchDocumentByUuid: async (uuid) => documents.get(uuid) ?? null,
+        currentEquipmentPolicy: policy,
+        actorSize: "medium",
+        resolveCharacterAccessRef,
+      });
+    (acquisition as any).plannedClassGrants = [...(await project()).grants];
+
+    vi.stubGlobal("game", productionGame());
+    vi.stubGlobal("foundry", { utils: { fromUuid: async (uuid: string) => documents.get(uuid) ?? null } });
+    try {
+      await expect(prepareCurrentClassGrantPlan(actor, draft, SUBJECT.activeSteps)).resolves.toMatchObject({
+        grants: [{ profileId: "giant-instinct-titan-mauler" }],
+      });
+
+      const line = acquisition.lines[0] as any;
+      line.policyDecision.rarity = "uncommon";
+      line.policyDecision.rarityBasis = "specific-character-access";
+      line.policyDecision.characterAccessRef = "forged-access";
+      documents.set(line.sourceUuid, weaponDocument("uncommon"));
+      (acquisition as any).plannedClassGrants = [...(await project(() => "forged-access")).grants];
+
+      await expect(prepareCurrentClassGrantPlan(actor, draft, SUBJECT.activeSteps)).rejects.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 function classDraft(uuid: string, name: string) {
@@ -609,16 +661,46 @@ function equipmentPolicy() {
   });
 }
 
-function weaponDocument() {
+function weaponDocument(rarity = "common") {
   return {
     type: "weapon",
     sourceId: "Compendium.pf2e.equipment-srd.Item.weapon",
     system: {
       category: "martial",
       range: null,
-      traits: { rarity: "common" },
+      traits: { rarity },
       publication: { title: "Pathfinder Player Core" },
       price: { value: { gp: 9 } },
+    },
+  };
+}
+
+function productionGame() {
+  return {
+    user: { id: "owner-1", isGM: false },
+    system: { id: "pf2e" },
+    settings: {
+      get: (moduleId: string, key: string) => {
+        if (moduleId === MODULE_ID && key === SETTINGS.equipmentPolicy) return DEFAULT_EQUIPMENT_WORLD_POLICY;
+        if (moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments) {
+          return { version: 1, judgments: [] };
+        }
+        if (moduleId === "pf2e" && key === "compendiumBrowserPacks") {
+          return { equipment: { "pf2e.equipment-srd": { load: true } } };
+        }
+        if (moduleId === "pf2e" && key === "compendiumBrowserSources") {
+          return { sources: { "pathfinder-player-core": { load: true } } };
+        }
+        return null;
+      },
+    },
+    packs: {
+      values: () =>
+        [{ collection: "pf2e.equipment-srd", metadata: { type: "Item" }, documentName: "Item" }][Symbol.iterator](),
+    },
+    pf2e: {
+      settings: { variants: { abp: "noABP" } },
+      variantRules: { AutomaticBonusProgression: { isEnabled: () => false } },
     },
   };
 }

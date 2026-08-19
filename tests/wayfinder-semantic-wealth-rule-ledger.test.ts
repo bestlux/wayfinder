@@ -58,4 +58,30 @@ describe("semantic wealth rule ledger", () => {
     });
     expect(resolveSemanticWealthCapability("official-wealth", rules).available).toBe(true);
   });
+
+  it("fails closed when an injected ledger omits a required capability rule", () => {
+    const rules = SEMANTIC_WEALTH_RULES.filter((rule) => rule.key !== "party-size-is-separate");
+
+    expect(resolveSemanticWealthCapability("official-wealth", rules)).toMatchObject({
+      available: false,
+      diagnostic: {
+        code: "semantic-wealth-citation-unresolved",
+        capability: "official-wealth",
+        ruleKeys: ["party-size-is-separate"],
+      },
+    });
+    expect(resolveSemanticWealthCapability("price-resolution", rules).available).toBe(true);
+  });
+
+  it("fails closed when a required rule drops the requested capability", () => {
+    const rules = SEMANTIC_WEALTH_RULES.map((rule) =>
+      rule.key === "party-size-is-separate" ? ({ ...rule, capabilities: [] } satisfies SemanticWealthRuleEntry) : rule
+    );
+
+    expect(resolveSemanticWealthCapability("official-wealth", rules)).toMatchObject({
+      available: false,
+      diagnostic: { ruleKeys: ["party-size-is-separate"] },
+    });
+    expect(resolveSemanticWealthCapability("price-resolution", rules).available).toBe(true);
+  });
 });

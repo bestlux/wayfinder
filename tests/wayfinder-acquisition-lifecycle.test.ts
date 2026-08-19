@@ -23,6 +23,7 @@ describe("acquisition lifecycle completion", () => {
       draft,
       steps: [step()],
       acquisitionExecutionAvailable: true,
+      assertAcquisitionApplyAuthority: () => undefined,
       evaluateStep: async () => readyEvaluation(),
       applyDraftToActor: async (buildFinalActorUpdate) => {
         const update = buildFinalActorUpdate(createEmptyState(), {
@@ -176,6 +177,7 @@ function applyLifecycleWithFinalizer(
     draft,
     steps: [step()],
     acquisitionExecutionAvailable,
+    assertAcquisitionApplyAuthority: () => undefined,
     evaluateStep: async () => readyEvaluation(),
     applyDraftToActor: async (buildFinalActorUpdate) => {
       finalize(buildFinalActorUpdate);

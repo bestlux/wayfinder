@@ -80,6 +80,7 @@ import {
   updateActorWithPersistedDraftPrecondition,
   WayfinderDraftWriteConflictError,
 } from "./application/draft-write-guard.js";
+import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
 import {
   buildExistingCharacterHistory,
   withExistingCharacterHistory,
@@ -1915,6 +1916,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         steps,
         evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks),
         additionalBlockers: spellRarityBlockers,
+        assertAcquisitionApplyAuthority: () => {
+          if (!draft.acquisition) return;
+          assertEquipmentApplyAuthority({ actor: this.actor, acquisition: draft.acquisition });
+        },
         reviewLines: buildSpellRarityAttestationReviewLines(appliedSpellRarityAttestations),
         confirmApply: confirmWayfinderApply,
         beforeApply: (applyAttemptDraft) =>
@@ -1963,6 +1968,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 capturePersistedDraftPrecondition(this.actor, inspectActor(this.actor).level, this.#draftWriteGuard)
               ),
             validateActorAuthority: canUseWayfinder,
+            assertAcquisitionApplyAuthority: (actor, currentDraft) => {
+              if (!currentDraft.acquisition) return;
+              assertEquipmentApplyAuthority({ actor, acquisition: currentDraft.acquisition });
+            },
             spellRarityCeiling,
             validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
             validateSelectionEligibility: (selection, step) =>
@@ -2004,6 +2013,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
               ),
             recoveryActorUpdate,
             validateActorAuthority: canUseWayfinder,
+            assertAcquisitionApplyAuthority: (actor) => {
+              if (!draft.acquisition) return;
+              assertEquipmentApplyAuthority({ actor, acquisition: draft.acquisition });
+            },
             classGrantRecovery: draft.acquisition
               ? {
                   kind: "required",

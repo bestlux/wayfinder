@@ -399,7 +399,6 @@ function comparePolicyMaterial(
     !same(reviewed.subject, current.subject) ||
     !same(reviewed.numericPolicyRef, current.numericPolicyRef) ||
     !same(reviewed.semanticPolicyRef, current.semanticPolicyRef) ||
-    !same(reviewed.worldRecipePolicy, current.worldRecipePolicy) ||
     !same(reviewed.authorityPolicy, current.authorityPolicy) ||
     !same(reviewed.higherLevelStartEvidence, current.higherLevelStartEvidence) ||
     !same(reviewed.abp, current.abp) ||

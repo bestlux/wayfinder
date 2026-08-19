@@ -9,7 +9,12 @@ import {
   recordEconomicAdmission,
   recordPlannedClassGrants,
 } from "../src/wayfinder/domain/acquisition-draft";
-import { createAcquisitionPriceSnapshot } from "../src/wayfinder/domain/acquisition-ledger";
+import {
+  createAcquisitionPriceSnapshot,
+  evaluateAcquisitionCompletion,
+  evaluateAcquisitionLedger,
+  reviewRetainAll,
+} from "../src/wayfinder/domain/acquisition-ledger";
 import type { AcquisitionDraftState, AcquisitionLineDraft } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
 import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
@@ -46,13 +51,44 @@ describe("acquisition draft", () => {
     expect(new Set(reopened.acquisition?.lines.map((line) => line.sourceUuid)).size).toBe(1);
   });
 
-  it("preserves the authoritative planned class-grant envelope through save and reopen", () => {
-    const acquisition = recordPlannedClassGrants(completeDraft(), [formulaGrant()]);
+  it("preserves an exact reviewed retain-all decision through save and reopen", () => {
+    const acquisition = normalizeAcquisitionDraft({ ...completeDraft(), lines: [] })!;
+    const reviewed = reviewRetainAll(acquisition, evaluateAcquisitionLedger(acquisition), {
+      userId: "owner-1",
+      reviewedAt: "2026-08-18T20:30:00.000Z",
+    });
+    const parent = createEmptyDraft(5);
+    parent.acquisition = reviewed;
+
+    const reopened = normalizeDraft(JSON.parse(JSON.stringify(buildDraftPatch(parent))), 1).acquisition;
+    expect(reopened?.disposition).toMatchObject({
+      kind: "retain-all",
+      retainedCopper: 1000,
+      review: {
+        reviewedByUserId: "owner-1",
+        reviewedAt: "2026-08-18T20:30:00.000Z",
+        remainingCopper: 1000,
+      },
+    });
+    expect(reopened?.disposition).toEqual(reviewed.disposition);
+    expect(evaluateAcquisitionCompletion(reopened!, evaluateAcquisitionLedger(reopened!))).toEqual({
+      complete: true,
+      disposition: "retain-all",
+      reasons: [],
+    });
+  });
+
+  it.each([
+    ["Alchemist", formulaGrant()],
+    ["Investigator", investigatorGrant()],
+    ["Titan Mauler", titanGrant()],
+  ])("preserves the authoritative %s class-grant envelope through save and reopen", (_name, grant) => {
+    const acquisition = recordPlannedClassGrants(completeDraft(), [grant]);
     const parent = createEmptyDraft(5);
     parent.acquisition = acquisition;
 
     const reopened = normalizeDraft(JSON.parse(JSON.stringify(buildDraftPatch(parent))), 1);
-    expect(reopened.acquisition?.plannedClassGrants).toEqual([formulaGrant()]);
+    expect(reopened.acquisition?.plannedClassGrants).toEqual([grant]);
     expect(reopened.acquisition?.disposition).toMatchObject({ kind: "unreviewed", reasons: ["document"] });
   });
 
@@ -408,5 +444,69 @@ function formulaGrant() {
     resaleRule: "normal",
     eligibilityEvidence: { kind: "fixed-native-profile" },
     nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+  });
+}
+
+function investigatorGrant() {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:investigator-formula-book:class-branch-methodology-level-1",
+    profileId: "investigator-alchemical-sciences-formula-book",
+    origin: {
+      sourceSlotId: "class-branch-methodology-level-1",
+      sourceUuid: u.alchemicalSciences,
+    },
+    granterSourceUuid: u.alchemicalSciences,
+    expected: {
+      sourceUuid: u.formulaBookItem,
+      quantity: 1,
+      itemType: "equipment",
+    },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: [u.alchemicalSciences, u.methodologyFeature, u.investigatorClass],
+  });
+}
+
+function titanGrant() {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  return createPlannedClassGrant({
+    grantId: "class-grant:titan-mauler:class-branch-instinct-level-1",
+    profileId: "giant-instinct-titan-mauler",
+    origin: {
+      sourceSlotId: "class-branch-instinct-level-1",
+      sourceUuid: u.giantInstinct,
+    },
+    granterSourceUuid: u.giantInstinct,
+    expected: {
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.weapon",
+      quantity: 1,
+      itemType: "weapon",
+    },
+    materializer: "wayfinder-acquisition",
+    eligibilityKind: "catalogue-choice",
+    resaleRule: "zero-until-rune-investment",
+    eligibilityEvidence: {
+      kind: "titan-mauler",
+      documentFingerprint: "document-weapon",
+      lineId: "line-1",
+      lineDocumentFingerprint: "document-line-1",
+      linePriceFingerprint: "price-line-1",
+      policyFingerprint: "policy-1",
+      actorSize: "medium",
+      targetSize: "large",
+      basePriceCopper: 900,
+      weaponCategory: "martial",
+      rangeIncrement: null,
+      rarity: "common",
+      characterAccessRef: null,
+      sourceAllowed: true,
+      quantity: 1,
+      permanence: "permanent",
+      componentKind: "baseline-item",
+    },
+    nativeGrantChainSourceUuids: [],
   });
 }

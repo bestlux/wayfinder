@@ -1,6 +1,7 @@
 import { MODULE_ID, SETTINGS } from "../../constants.js";
 import { assertCanUseWayfinder } from "../../permissions.js";
 import { getEquipmentPolicyJudgmentStoreSetting, getEquipmentWorldPolicySetting } from "../../settings.js";
+import type { AcquisitionDraftState } from "../domain/acquisition-types.js";
 import {
   buildEquipmentPolicyJudgmentFactsFingerprint,
   createEquipmentPolicyResolver,
@@ -112,6 +113,31 @@ export function resolveEquipmentPolicyForActor(input: {
     extraCurrentLevelAllowanceIds: input.extraCurrentLevelAllowanceIds,
     exceptionJudgmentIds: input.exceptionJudgmentIds,
   });
+}
+
+export function assertEquipmentApplyAuthority(input: {
+  readonly actor: unknown;
+  readonly acquisition: AcquisitionDraftState;
+  readonly user?: unknown;
+}): void {
+  const policy = input.acquisition.policySnapshot?.material;
+  if (
+    !policy ||
+    policy.subject.actorId !== actorIdentity(input.actor) ||
+    policy.subject.draftId !== input.acquisition.draftId ||
+    policy.subject.targetLevel !== input.acquisition.targetLevel
+  ) {
+    throw new TypeError("Starting-equipment Apply authority does not match the current actor and draft.");
+  }
+  const currentApplyAuthority = getEquipmentWorldPolicySetting().applyAuthority;
+  if (policy.authorityPolicy.apply !== currentApplyAuthority) {
+    throw new TypeError("Starting-equipment Apply authority changed after this draft was reviewed.");
+  }
+  if (policy.authorityPolicy.apply === "gm-review") {
+    requireCurrentGmPrincipal(input.user ?? game.user);
+    return;
+  }
+  assertCanUseWayfinder(input.actor);
 }
 
 export async function saveEquipmentWorldPolicy(

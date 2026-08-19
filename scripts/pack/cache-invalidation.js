@@ -8,7 +8,8 @@ export function registerPackSourceCacheInvalidation(onCompendiumChange) {
         if (!document.pack) {
             return;
         }
-        invalidatePackSources(onCompendiumChange);
+        invalidatePackSourceCaches();
+        onCompendiumChange?.(document.pack);
     };
     Hooks.on("createItem", invalidateIfCompendiumDocument);
     Hooks.on("updateItem", invalidateIfCompendiumDocument);

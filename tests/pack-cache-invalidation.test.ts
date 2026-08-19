@@ -29,6 +29,7 @@ describe("pack source cache invalidation hooks", () => {
 
     expect(await getPackIndex(pack, "third-party.feats")).toEqual([{ _id: "second" }]);
     expect(rerender).toHaveBeenCalledOnce();
+    expect(rerender).toHaveBeenCalledWith("third-party.feats");
     expect(testGlobals.Hooks.on).toHaveBeenCalledTimes(3);
   });
 

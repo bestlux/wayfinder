@@ -7,6 +7,7 @@ import { registerSettings } from "./settings.js";
 import { preloadHandlebarsTemplates } from "./shared/foundry-compat.js";
 import { registerSheetControls, registerWayfinderActorRefresh, rerenderOpenWayfinderApps } from "./sheet-controls.js";
 import { registerPersistedDraftWriteGuardHook } from "./wayfinder/application/draft-write-guard.js";
+import { invalidateFoundryEquipmentCataloguePack, registerFoundryEquipmentAcquisitionRuntime, } from "./wayfinder/application/equipment-acquisition-runtime-service.js";
 Hooks.once("init", () => {
     registerSettings({
         compendiumSourcesMenuType: CompendiumSourceConfigApp,
@@ -31,8 +32,12 @@ Hooks.once("init", () => {
         `modules/${MODULE_ID}/templates/wayfinder/pick-results.hbs`,
         `modules/${MODULE_ID}/templates/wayfinder/spell-choice-results.hbs`,
     ]);
+    registerFoundryEquipmentAcquisitionRuntime();
     registerPersistedDraftWriteGuardHook();
-    registerPackSourceCacheInvalidation(rerenderOpenWayfinderApps);
+    registerPackSourceCacheInvalidation((packId) => {
+        invalidateFoundryEquipmentCataloguePack(packId);
+        rerenderOpenWayfinderApps();
+    });
     registerSheetControls();
     registerWayfinderActorRefresh();
     console.log(`${MODULE_ID} | initialized`);

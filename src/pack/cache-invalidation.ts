@@ -9,13 +9,14 @@ export function invalidatePackSources(onCompendiumChange?: () => void): void {
   onCompendiumChange?.();
 }
 
-export function registerPackSourceCacheInvalidation(onCompendiumChange?: () => void): void {
+export function registerPackSourceCacheInvalidation(onCompendiumChange?: (packId: string) => void): void {
   const invalidateIfCompendiumDocument = (document: CompendiumDocumentLike): void => {
     if (!document.pack) {
       return;
     }
 
-    invalidatePackSources(onCompendiumChange);
+    invalidatePackSourceCaches();
+    onCompendiumChange?.(document.pack);
   };
 
   Hooks.on("createItem", invalidateIfCompendiumDocument);

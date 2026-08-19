@@ -150,6 +150,7 @@ describe("Wave 2 acquisition execution", () => {
     "source",
     "document",
     "price",
+    "resolved-price",
     "policy",
   ] as const)("rejects %s drift before the first item write", async (drift) => {
     const fixture = reviewedFixture([line()]);
@@ -164,6 +165,23 @@ describe("Wave 2 acquisition execution", () => {
         emitWriteCheckpoint: noCheckpoint,
       })
     ).rejects.toThrow(new RegExp(drift, "i"));
+    expect(actor.addOptions).toEqual([]);
+    expect(actor.currencyAdds).toEqual([]);
+  });
+
+  it("rechecks completed acquisition history after asynchronous source preflight", async () => {
+    const fixture = reviewedFixture([line()]);
+    const actor = new FakeActor();
+    const session = sessionFor(fixture.acquisition, { manifestAppearsAfterFirstHistoryRead: true });
+
+    await expect(
+      session.executeAcquisitionItems({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/already has a completed starting-equipment manifest/i);
     expect(actor.addOptions).toEqual([]);
     expect(actor.currencyAdds).toEqual([]);
   });
@@ -509,14 +527,16 @@ function line(overrides: Partial<AcquisitionLineDraft> = {}): AcquisitionLineDra
 function sessionFor(
   acquisition: AcquisitionDraftState,
   options: {
-    readonly drift?: "source" | "document" | "price" | "policy";
+    readonly drift?: "source" | "document" | "price" | "resolved-price" | "policy";
     readonly currentPolicy?: AcquisitionPolicySnapshot;
     readonly events?: string[];
     readonly authorityError?: Error;
     readonly lastAppliedAt?: string | null;
     readonly lastTargetLevel?: number | null;
+    readonly manifestAppearsAfterFirstHistoryRead?: boolean;
   } = {}
 ) {
+  let historyReads = 0;
   const dependencies: AcquisitionExecutionDependencies = {
     resolveSource: ({ entry }) => {
       options.events?.push("source");
@@ -534,15 +554,23 @@ function sessionFor(
         documentFingerprint:
           options.drift === "document" ? `${entry.documentFingerprint}-changed` : entry.documentFingerprint,
         priceFingerprint: options.drift === "price" ? `${entry.priceFingerprint}-changed` : entry.priceFingerprint,
+        resolvedPrice:
+          options.drift === "resolved-price"
+            ? { ...entry.price, unitPriceCopper: entry.price.unitPriceCopper + 1 }
+            : structuredClone(entry.price),
         policyDecision,
       };
     },
-    readHistory: () => ({
-      lastAppliedAt: options.lastAppliedAt ?? null,
-      lastTargetLevel: options.lastTargetLevel ?? null,
-      completedAcquisitionManifest: null,
-      completedAcquisitionManifestCorrupt: false,
-    }),
+    readHistory: () => {
+      historyReads += 1;
+      return {
+        lastAppliedAt: options.lastAppliedAt ?? null,
+        lastTargetLevel: options.lastTargetLevel ?? null,
+        completedAcquisitionManifest:
+          options.manifestAppearsAfterFirstHistoryRead && historyReads > 1 ? ({ id: "manifest-race" } as never) : null,
+        completedAcquisitionManifestCorrupt: false,
+      };
+    },
     resolveCurrentPolicySnapshot: () => {
       options.events?.push("policy");
       return options.currentPolicy ?? acquisition.policySnapshot!;

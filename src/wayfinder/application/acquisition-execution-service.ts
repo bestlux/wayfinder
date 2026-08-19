@@ -18,6 +18,7 @@ import type {
   AcquisitionDraftState,
   AcquisitionLinePolicyDecision,
   AcquisitionPolicySnapshot,
+  AcquisitionPriceSnapshot,
 } from "../domain/acquisition-types.js";
 import type {
   ClassGrantReconciliationResultV1,
@@ -50,6 +51,8 @@ export interface ResolvedAcquisitionSource {
   readonly sourceUuid: string;
   readonly documentFingerprint: string;
   readonly priceFingerprint: string;
+  /** Rebuilt from the freshly hydrated PF2E source, never copied from the reviewed line. */
+  readonly resolvedPrice: AcquisitionPriceSnapshot;
   readonly policyDecision: AcquisitionLinePolicyDecision;
 }
 
@@ -305,24 +308,7 @@ async function prepareExecution(args: {
     capturedAt: initialBaseline.capturedAt,
   });
   const handoff = acquisition.disposition.kind === "handoff";
-  if (handoff) {
-    if (admission.kind !== "handoff" || stableJson(admission.handoff) !== stableJson(acquisition.disposition.handoff)) {
-      throw new Error("The acknowledged starting-equipment handoff no longer matches current actor wealth.");
-    }
-  } else if (admission.kind !== "eligible-empty" && admission.kind !== "eligible-retry") {
-    const detail = admission.kind === "blocked" ? admission.message : "current wealth requires PF2E-sheet handoff";
-    throw new Error(`Starting-equipment economic admission failed: ${detail}.`);
-  }
-  if (admission.baseline.fingerprint !== initialBaseline.fingerprint) {
-    throw new Error("Actor wealth changed while starting-equipment admission was evaluated.");
-  }
-  if (
-    !handoff &&
-    admission.kind === "eligible-empty" &&
-    acquisition.baseline!.fingerprint !== initialBaseline.fingerprint
-  ) {
-    throw new Error("Current actor wealth differs from the reviewed economic baseline.");
-  }
+  assertEconomicAdmission(admission, acquisition, initialBaseline);
 
   const currentPolicy = normalizeAcquisitionPolicySnapshot(
     cloneData(await args.dependencies.resolveCurrentPolicySnapshot({ actor: args.actor, draft: acquisition }))
@@ -357,6 +343,20 @@ async function prepareExecution(args: {
   if (afterPreflight.fingerprint !== initialBaseline.fingerprint) {
     throw new Error("Actor wealth changed during starting-equipment source preflight.");
   }
+  const historyAfterPreflight = await args.dependencies.readHistory();
+  const admissionAfterPreflight = evaluateActorEconomicAdmission({
+    actor: args.actor as EconomicActorLike,
+    draftId: acquisition.draftId,
+    batchId: acquisition.batchId,
+    targetLevel: acquisition.targetLevel,
+    higherLevelStartEvidence: acquisition.policySnapshot!.material.higherLevelStartEvidence,
+    history: economicHistory(historyAfterPreflight, args.recoveryFinalization === true),
+    retryExpectation,
+    preparedClassGrantPlan: args.classGrantPlan,
+    classGrantPhase: "before-acquisition",
+    capturedAt: afterPreflight.capturedAt,
+  });
+  assertEconomicAdmission(admissionAfterPreflight, acquisition, afterPreflight);
   const initialObservation = observePlannedItems(identityPlan, initialBaseline);
   if (!handoff && admission.kind === "eligible-retry") {
     const observed = [...initialObservation.observedEntryIds].sort();
@@ -469,11 +469,42 @@ function assertResolvedSourceMatches(entry: PreparedAcquisitionEntryV1, resolved
   if (resolved.priceFingerprint !== entry.priceFingerprint) {
     throw new Error(`Acquisition price drifted for ${entry.entryId}.`);
   }
+  if (
+    stableJson(resolved.resolvedPrice) !== stableJson(entry.price) ||
+    resolved.resolvedPrice.materializedQuantity !== entry.quantity
+  ) {
+    throw new Error(`Acquisition resolved-price or quantity drifted for ${entry.entryId}.`);
+  }
   if (stableJson(resolved.policyDecision) !== stableJson(entry.policyDecision)) {
     throw new Error(`Acquisition policy drifted for ${entry.entryId}.`);
   }
   if (!resolved.source || typeof resolved.source !== "object") {
     throw new TypeError(`Acquisition source ${entry.entryId} has no embeddable item data.`);
+  }
+}
+
+function assertEconomicAdmission(
+  admission: ReturnType<typeof evaluateActorEconomicAdmission>,
+  acquisition: AcquisitionDraftState,
+  baseline: EconomicBaselineV1
+): void {
+  if (acquisition.disposition.kind === "handoff") {
+    if (admission.kind !== "handoff" || stableJson(admission.handoff) !== stableJson(acquisition.disposition.handoff)) {
+      throw new Error("The acknowledged starting-equipment handoff no longer matches current actor wealth.");
+    }
+  } else if (admission.kind !== "eligible-empty" && admission.kind !== "eligible-retry") {
+    const detail = admission.kind === "blocked" ? admission.message : "current wealth requires PF2E-sheet handoff";
+    throw new Error(`Starting-equipment economic admission failed: ${detail}.`);
+  }
+  if (admission.baseline.fingerprint !== baseline.fingerprint) {
+    throw new Error("Actor wealth changed while starting-equipment admission was evaluated.");
+  }
+  if (
+    acquisition.disposition.kind !== "handoff" &&
+    admission.kind === "eligible-empty" &&
+    acquisition.baseline!.fingerprint !== baseline.fingerprint
+  ) {
+    throw new Error("Current actor wealth differs from the reviewed economic baseline.");
   }
 }
 

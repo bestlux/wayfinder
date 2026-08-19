@@ -59,7 +59,7 @@ Acquisition experience:
 
 - Start level-1 characters from the official 15 gp budget. At higher levels, show permanent-item allowances separately from residual currency, including its consumable/lower-level-item restriction, or the selected lump-sum budget.
 - Offer the structured Adventurer's Pack and a searchable equipment catalogue with quantity, price, Bulk, hands, traits, rarity, level, source, availability, and allowance context.
-- Reconcile physical equipment explicitly granted by the same planned class build in a separate no-charge lane; never infer that arbitrary existing inventory was “PF2E-granted.”
+- Reconcile physical equipment explicitly granted by the same prepared build in a separate no-charge lane, including exact class, ancestry, heritage, background, and feat provenance; never infer that arbitrary existing inventory was “PF2E-granted.”
 - Recommended cuttable expansion: offer the cited Quick Equipment Packages that remain in Player Core and Player Core 2 even though PF2E no longer exposes remaster class-kit documents. Unreviewed classes receive no implied package, and Wayfinder-derived suggestions remain 0.8.1 work.
 - Treat `keep all currency` as a positive completed disposition, not a blocked empty cart.
 - Protect draft work with truthful persistence state, default-cancel Clear confirmation, actionable readiness reasons, Apply progress, and a reviewable success receipt.

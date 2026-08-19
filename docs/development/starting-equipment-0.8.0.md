@@ -23,7 +23,7 @@ The release is one aggregate. The waves below are review and integration milesto
 - GM Equipment Policy settings, an absolute custom lump-sum override, and genuine GM authorization for equipment exceptions.
 - Dedicated catalogue/cart/review UX, `retain-all` and `handoff` dispositions, truthful autosave, Clear protection, typed readiness, keyboard access, localization, and container-responsive layouts.
 - Core PF2E equipment types: `ammo`, `armor`, `backpack`, `consumable`, `equipment`, `kit`, `shield`, and `weapon`. `treasure` documents are not purchased; final coins use PF2E's currency aggregate.
-- A narrow `class-grant` funding/provenance lane for physical items explicitly granted by the same planned class build.
+- A narrow `class-grant` funding/provenance lane for physical items explicitly granted by the same prepared build. The stable lane name covers exact class, ancestry, heritage, background, and feat provenance; it is not authority to infer arbitrary actor inventory as granted.
 - Adventurer's Pack expansion with quantities and containers.
 - Economic-baseline admission, material policy-drift review, deliberate non-stacking insertion, absolute currency convergence, retry, and a persisted completed manifest.
 - The full existing release regression plus the focused equipment overlay in this plan.
@@ -240,7 +240,7 @@ Acceptance:
 - Support distinct `unreviewed`, `purchase-ledger`, `retain-all`, and `handoff` states.
 - An empty cart is complete only after explicit `retain-all`; save/reopen preserves the decision and exact amount.
 - Use integer copper and correctly apply denomination, `price.value`, `price.per`, source quantity, requested quantity, and size sensitivity.
-- Permanent allowances, currency, and planned class grants are separate lanes with deterministic assignment or an explicit player-selected allowance assignment.
+- Permanent allowances, currency, and planned build grants are separate lanes with deterministic assignment or an explicit player-selected allowance assignment.
 - Define precise invalidation for target level, recipe, policy, price/document, quantity, allowance, and budget changes.
 - Duplicate source UUIDs are valid when logical lines, quantities, or allowance assignments require them.
 
@@ -280,17 +280,17 @@ Acceptance:
 - Same-batch partial outputs are recognized as retry state; a completed manifest prevents a second starting acquisition.
 - A blank actor created directly at target level can receive target-level starting wealth only with a valid start-context claim. An actor that progressed from level 1—or has an earlier completed Wayfinder character/acquisition outcome—does not receive new-character wealth.
 
-### WF-080-15 — Planned class-grant reconciliation
+### WF-080-15 — Planned physical-grant reconciliation
 
 Depends on: `WF-080-11`, `WF-080-12`, `WF-080-14`.
 
-Outcome: physical equipment explicitly granted by the same planned class build is neither charged against wealth nor misclassified as foreign inventory.
+Outcome: physical equipment explicitly granted by the same prepared build is neither charged against wealth nor misclassified as foreign inventory.
 
 Acceptance:
 
-- Project a grant from authoritative draft/source relationships, including the Alchemist formula book, Investigator Alchemical Sciences formula book, and Giant Instinct Titan Mauler weapon.
+- Project a grant from authoritative draft/source relationships, including the Alchemist formula book, Investigator Alchemical Sciences formula book, Giant Instinct Titan Mauler weapon, Dwarf Clan Dagger, and Sarangay Head Gem.
 - Store grant source/slot, expected source identity, quantity, funding lane, and any no-resale rule in the prepared plan and completed manifest.
-- Enforce Titan Mauler's exact free-grant boundary: one weapon sized for a creature one size larger, melee or ranged, Common, and base Price no more than 9 gp before the size adjustment. The kernel also validates a specifically-accessed weapon when a reviewed authoritative Access adapter supplies evidence; PF2E 8.4 exposes no generic Access API, so unregistered restricted weapons fail closed until catalogue/Apply adapters in `WF-080-21`/`WF-080-22` re-resolve that evidence.
+- Enforce Titan Mauler's exact free-grant boundary: one Large weapon for a Small or Medium character, otherwise one weapon sized for a creature one size larger; melee or ranged; Common or specifically accessed; and base Price no more than 9 gp before the size adjustment. The kernel validates a specifically-accessed weapon only when a reviewed authoritative Access adapter supplies evidence; PF2E 8.4 exposes no generic Access API, so unregistered restricted weapons fail closed until catalogue/Apply adapters in `WF-080-21`/`WF-080-22` re-resolve that evidence.
 - Reconcile expected grants regardless of whether PF2E materializes them before or after the acquisition item phase.
 - A grant never reduces currency or consumes a permanent allowance; the Titan Mauler weapon retains its no-resale economic treatment before later rune investment.
 - Never infer `class-grant` from arbitrary existing item flags or source resemblance. Missing or ambiguous planned provenance routes to handoff.
@@ -313,7 +313,7 @@ Acceptance:
 
 ## Wave 2 — Prove a thin level-1 tracer
 
-The tracer deliberately excludes kits, permanent allowances, supplemental sources, package guidance, and derived suggestions. It is complete only when it crosses real UI, policy, Apply, actor state, and retry boundaries.
+The tracer deliberately excludes kits, permanent allowances, supplemental sources, package guidance, and derived suggestions. It is complete only when it crosses real UI, policy, Apply, actor state, retry, and deterministic planned-grant boundaries. The ordinary purchase tracer remains intentionally small; it is not evidence that every class, ancestry, heritage, background, or feat grant is covered.
 
 ### WF-080-20 — Dedicated starting-equipment step, pane, and commands
 
@@ -387,7 +387,22 @@ Acceptance:
 - Each retry converges to one batch, exact quantities, exact currency, one durable manifest, and no second charge.
 - Partial item state is visible and diagnosable; the draft remains available.
 - The live case runs through the UI as a real non-GM actor owner, with a separate GM session where policy review is required.
-- Do not begin Wave 3 until this tracer is green or an explicit architecture revision explains the failed invariant.
+- Do not begin Wave 3 until this tracer and the deterministic physical-grant gate are green or an explicit architecture revision explains the failed invariant.
+
+### WF-080-25 — Deterministic physical-grant coverage gate
+
+Depends on: `WF-080-15`, `WF-080-24`.
+
+Outcome: every level-1 physical item deterministically created by the prepared build is either projected and reconciled without a wealth charge or rejected before review with an explicit unsupported-source reason. No coverage claim rests on untracked PF2E `GrantItem` behavior.
+
+Acceptance:
+
+- Maintain a PF2E-version-pinned matrix of reachable class, ancestry, heritage, background, and feat physical grants. Classify every exact source/choice/provenance chain as `supported-native`, `supported-wayfinder-acquisition`, or `unsupported-handoff`; fail the pre-release scan when a reachable addition is unclassified.
+- Prove live non-GM Dwarf Clan Dagger and Sarangay Head Gem flows: exact native item ID admission, zero acquisition item-create writes for the grant, exact currency, persisted reconciliation and manifest evidence, and reload/rerun/retry with one item.
+- Track and test or reject before review every dynamic family, including Inventor innovations, Thaumaturge implements, Exemplar ikons, and level-1 physical-grant feat families. A missing second-stage equipment choice, prose-only choice, or owned-item dependency is not silently treated as deterministic.
+- Unresolved dynamic UUIDs, equipment-derived predicates, missing sources, broken grant chains, duplicate candidates, and foreign lookalikes fail closed with zero acquisition writes.
+- Every planned grant retains exactly one locked zero-cost `class-grant` line and one stable identity entry. A `pf2e-native` entry adopts the exact pre-acquisition reconciliation result and performs no inventory insertion; a `wayfinder-acquisition` entry such as Titan Mauler performs exactly one deliberate item write.
+- Derive grant authority only from exact draft selections plus resolved `ChoiceSet`/`GrantItem` relationships. Do not infer it from actor flags, source resemblance, or an item discovered only after an unclassified PF2E mutation.
 
 ## Wave 3 — Complete higher-level rules and GM control
 
@@ -535,7 +550,7 @@ Acceptance:
 
 - Exhaust all 20 generated numeric rows and every cited semantic distinction.
 - Cover policy materiality versus irrelevant fingerprint drift; economic empty/foreign/partial/completed states; custom and official recipes; and approval lifecycle.
-- Cover denominations, explicit zero Price, quantities, `price.per`, sizes, allowance assignment, planned class grants, configured equipment, `retain-all`, kit containers, and source isolation.
+- Cover denominations, explicit zero Price, quantities, `price.per`, sizes, allowance assignment, planned build grants, configured equipment, `retain-all`, kit containers, and source isolation.
 - Inject failures after item N, before currency, during convergence, and during final state/manifest write; verify exact forward convergence and reload behavior.
 - Prove a completed manifest cannot be silently replaced and a completed actor cannot receive a second starting acquisition.
 - Keep generated `scripts/`, generated rules artifact, locale keys, and package contents synchronized.
@@ -561,7 +576,7 @@ Add a focused pairwise overlay:
 11. Failure after item N, during currency convergence, and during final manifest/state write, each followed by clean retry.
 12. ABP world mode plus actor override behavior.
 13. Player spell attestation visible in GM review/receipt and distinct equipment approval.
-14. Planned class grants: one formula book and the no-resale Titan Mauler weapon without budget charge or false handoff.
+14. Planned build grants: formula book and no-resale Titan Mauler cases plus Dwarf Clan Dagger, Sarangay Head Gem, and representative supported/rejected dynamic-family cases from the version-pinned grant matrix, all without budget charge, duplicate insertion, or false handoff.
 15. English and Chinese flow, keyboard completion, and fixed Foundry app-container widths.
 
 Every overlay record includes user role, policy provenance, batch/line/entry IDs, quantities, containers, currency ledger, failure snapshot, completed manifest, git SHA, and served-script hashes.
@@ -597,7 +612,7 @@ Acceptance:
 | Player draft | Official recipe choice | Available only when world policy delegates selection |
 | Player draft | Cart, quantity, allowance assignment, `retain-all`, handoff acknowledgement | Can narrow and complete intent; cannot broaden eligibility |
 | Player draft | Exception request | Visible request only; never authorization |
-| Projected build | Source-backed item Access and class grants | Can authorize the named restricted item or free grant only when authoritative provenance is prepared |
+| Projected build | Source-backed item Access and planned build grants | Can authorize the named restricted item or free grant only when authoritative provenance is prepared |
 | Player presentation | Search, sort, compact/detail, unavailable visibility | Never enters policy fingerprint or Apply legality |
 
 Do not duplicate PF2E's ABP state, actor ABP override, compendium browser packs/sources, gradual boosts, Free Archetype, campaign feat sections, or language availability as Wayfinder settings. Consume their effective state where acquisition actually depends on it.
@@ -610,7 +625,7 @@ Do not duplicate PF2E's ABP state, actor ABP override, compendium browser packs/
 - the non-GM tracer and every forced retry converge without duplicate items or currency drift;
 - foreign wealth and material drift produce zero writes;
 - higher-level wealth requires a current authorized start-context claim and rejects ordinary progression;
-- planned class grants neither consume wealth nor trigger a false foreign-wealth handoff;
+- every reachable planned physical grant is classified before review, and supported grants neither consume wealth nor trigger a false foreign-wealth handoff;
 - the completed manifest persists before draft clear and across reload;
 - GM equipment approvals and player spell claims remain visibly different trust models;
 - the full regression and focused overlay are green on every advertised compatibility lane;

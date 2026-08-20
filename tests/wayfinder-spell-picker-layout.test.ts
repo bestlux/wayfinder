@@ -36,15 +36,15 @@ describe("wayfinder spell picker layout", () => {
     expect(spellTemplate).toContain('aria-invalid="{{#if activePane.excessCount}}true{{else}}false{{/if}}"');
     expect(spellTemplate).toContain('class="spell-selection-error"');
     expect(spellTemplate).not.toContain('class="spell-selection-error" role="alert"');
-    expect(spellTemplate).toContain("Remove {{activePane.excessCount}} extra spell");
+    expect(spellTemplate).toContain("Drop {{activePane.excessCount}} spell");
     expect(pickerStyles).toMatch(/\.spell-selected-summary\.is-invalid,[^}]*\.spell-selected-summary\.is-excess\s*\{/s);
   });
 
-  it("presents restricted access as a reviewable player attestation", () => {
-    expect(spellTemplate).toContain('aria-label="Restricted-spell player attestation"');
-    expect(spellTemplate).toContain("Player attestation");
-    expect(spellTemplate).toContain("This is a player claim, not verified GM authorization.");
-    expect(spellTemplate).toContain("permission reported by the player");
+  it("presents restricted access as a reviewable access note", () => {
+    expect(spellTemplate).toContain('aria-label="Access note for restricted spells"');
+    expect(spellTemplate).toContain("Access note");
+    expect(spellTemplate).toContain("This is your word for the record. Wayfinder does not check it.");
+    expect(spellTemplate).toContain("your GM's say-so");
     expect(spellTemplate).toContain("<dl");
     expect(spellTemplate).toContain('<time datetime="{{activePane.rarityAccess.attestedAt}}">');
     expect(spellTemplate).not.toContain("aria-pressed");

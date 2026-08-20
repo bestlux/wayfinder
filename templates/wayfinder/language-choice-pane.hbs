@@ -7,7 +7,7 @@
         <p>{{activePane.description}}</p>
       </div>
       <div class="skill-training-status">
-        <span class="skill-cap-label">Draft status</span>
+        <span class="skill-cap-label">Status</span>
         <strong>{{activePane.selectedLabel}}</strong>
       </div>
     </header>
@@ -16,7 +16,7 @@
       <header class="skill-training-block-header">
         <div>
           <p class="eyebrow">{{activePane.sourceName}}</p>
-          <h5>Granted automatically</h5>
+          <h5>Yours already</h5>
         </div>
       </header>
 
@@ -32,14 +32,14 @@
           {{/each}}
         </div>
       {{else}}
-        <p class="context-note">This source doesn't grant any starting languages.</p>
+        <p class="context-note">Nothing here hands you a language to start with.</p>
       {{/if}}
     </section>
 
     <section class="skill-training-block">
       <header class="skill-training-block-header">
         <div>
-          <p class="eyebrow">Choose additional languages</p>
+          <p class="eyebrow">Pick more languages</p>
           <h5>Available for {{activePane.sourceName}}</h5>
         </div>
       </header>
@@ -64,14 +64,14 @@
           {{/each}}
         </div>
       {{else}}
-        <p class="context-note">This source doesn't offer any additional languages without GM approval.</p>
+        <p class="context-note">There are no extra languages here without your GM signing off.</p>
       {{/if}}
 
       {{#if activePane.approvalOptions.length}}
         <details class="language-approval-options"{{#if activePane.approvalOptionsOpen}} open{{/if}}>
           <summary>
             <span>Other languages ({{activePane.approvalOptionCount}})</span>
-            <span class="language-approval-summary-note">GM approval required</span>
+            <span class="language-approval-summary-note">Needs GM approval</span>
           </summary>
           <p class="context-note language-approval-note" id="{{activePane.stepId}}-gm-approval-note">
             Ask your GM before choosing one of these campaign languages.

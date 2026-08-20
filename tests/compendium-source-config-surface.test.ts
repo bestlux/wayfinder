@@ -38,7 +38,7 @@ describe("compendium source config surface", () => {
       expect(localization["wayfinder-pf2e"].CompendiumSources.Counts.Feats).toBeTruthy();
     }
     expect(english["wayfinder-pf2e"].CompendiumSources.Filters.Relevant).toBe("Recognized builder item types");
-    expect(english["wayfinder-pf2e"].CompendiumSources.Guidance).toContain("raw PF2E item document types");
+    expect(english["wayfinder-pf2e"].CompendiumSources.Guidance).toContain("raw document types");
     expect(english["wayfinder-pf2e"].CompendiumSources.Guidance).not.toContain("every third-party");
   });
 });

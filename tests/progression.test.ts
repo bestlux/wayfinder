@@ -184,7 +184,7 @@ describe("progression", () => {
       "archetype-feat-level-4",
     ]);
     expect(enabledSteps.find((step) => step.slotKind === "archetype-feat")?.description).toContain(
-      "confirm eligibility with your GM"
+      "Run anything unusual past your GM"
     );
   });
 

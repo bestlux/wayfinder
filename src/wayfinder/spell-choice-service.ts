@@ -40,5 +40,5 @@ export function buildHistoricalSpellChoicePlanningNote(
     return null;
   }
 
-  return `Spell choices for levels up to ${params.currentLevel} aren't re-planned for existing characters. Spells already on the sheet are treated as complete — review them there.`;
+  return `Wayfinder does not re-plan spells you picked at level ${params.currentLevel} or below. Whatever is already on the sheet counts as done, so check it there.`;
 }

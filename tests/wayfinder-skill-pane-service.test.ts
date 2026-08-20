@@ -369,7 +369,7 @@ describe("wayfinder skill pane service", () => {
       currentRankLabel: "Trained",
       keyAbility: "WIS",
       disabled: true,
-      disabledReason: "Already trained from another source",
+      disabledReason: "Something else already trained you in this",
     });
     expect(options.find((option) => option.slug === "stealth")).toMatchObject({
       currentRank: 0,
@@ -382,10 +382,10 @@ describe("wayfinder skill pane service", () => {
     expect(options.find((option) => option.slug === "arcana")).toMatchObject({
       keyAbility: "INT",
       disabled: true,
-      disabledReason: "Already chosen elsewhere in this step",
+      disabledReason: "You already picked this above",
     });
     expect(pane.choiceSections[1]?.unavailableLegend).toBe(
-      "Dimmed options: Already chosen elsewhere in this step; Already trained from another source"
+      "Greyed out because: You already picked this above; Something else already trained you in this"
     );
     expect(pane.loreSections[0]?.suggestions).toEqual([
       { value: "Academia Lore", selected: true },

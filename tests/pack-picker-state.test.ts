@@ -149,7 +149,7 @@ describe("pack picker states", () => {
         0,
         ""
       )?.message
-    ).toContain("Wayfinder hides direct options that require unsupported follow-up choices");
+    ).toContain("Every option for this step leads to a follow-up choice Wayfinder can't handle yet");
   });
 
   it("blocks deity-dependent class branches until a deity is chosen", () => {

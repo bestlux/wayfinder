@@ -32,8 +32,7 @@ describe("wayfinder selection command service", () => {
     expect(result).toMatchObject({
       kind: "changed",
       shouldAdvance: true,
-      statusNote:
-        "Class path changed. Wayfinder reset dependent class choices, training, feats, and spells for review.",
+      statusNote: "New class path. The choices, training, feats, and spells it fed into all need another look.",
     });
     expect(draft.classArchetypeChoices["class-archetype-doctrine-level-1"]).toBe("battle-creed");
     expect(invalidatedPrefixes).toEqual([
@@ -148,7 +147,7 @@ describe("wayfinder selection command service", () => {
       shouldRender: false,
       warning: null,
       statusNote:
-        "Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, related singleton choices, spell, class feat, and Free Archetype selections for review.",
+        "New class, so your key ability is cleared. Your deity, class training, class path, and spells need another look, along with your class feats and Free Archetype feats.",
     });
     expect(draft.selections["class-level-1"]?.documentId).toBe("champion");
     expect(draft.boosts.class.keyAbility).toBeNull();
@@ -213,7 +212,7 @@ describe("wayfinder selection command service", () => {
     expect(result).toMatchObject({
       kind: "changed",
       statusNote:
-        "Class changed. Wayfinder marked drafted deity, class training, class path, class choice, related singleton choices, spell, class feat, and Free Archetype selections for review.",
+        "New class. Your deity, class training, class path, and spells need another look, along with your class feats and Free Archetype feats.",
     });
     expect(grantSourceCalls).toContain("classfeature");
     expect(
@@ -385,7 +384,7 @@ describe("wayfinder selection command service", () => {
       resetClassBoostDraft: () => false,
     });
 
-    expect(result.statusNote).toContain("native ancestry feat, campaign ancestry feat");
+    expect(result.statusNote).toContain("your ancestry feats, class feats, and Free Archetype feats");
     expect(draft.selections["ancestry-feat-level-1"]).toBeUndefined();
     expect(draft.selections["campaign-feat-ancestry-paragon-level-1"]).toBeUndefined();
     expect(draft.selections["campaign-feat-dual-class-level-1"]).toBeDefined();
@@ -447,7 +446,7 @@ describe("wayfinder selection command service", () => {
       resetClassBoostDraft: () => false,
     });
 
-    expect(result.statusNote).toBe("Dedication changed. Wayfinder marked Free Archetype selections for review.");
+    expect(result.statusNote).toBe("Different dedication. Your Free Archetype feats need another look.");
     expect(draft.selections["class-feat-level-2"]?.name).toBe("Sudden Charge");
     expect(draft.selections["archetype-feat-level-2"]).toBeUndefined();
   });
@@ -493,8 +492,7 @@ describe("wayfinder selection command service", () => {
     expect(result).toMatchObject({
       kind: "changed",
       shouldAdvance: true,
-      statusNote:
-        "Deity changed. Wayfinder marked dependent class choices, class paths, and deity-driven choices for review.",
+      statusNote: "New deity. Your class path and anything else your deity shapes need another look.",
     });
     expect(draft.selections["deity-level-1"]?.documentId).toBe("sarenrae");
   });
@@ -541,8 +539,7 @@ describe("wayfinder selection command service", () => {
     expect(result).toMatchObject({
       kind: "changed",
       shouldAdvance: true,
-      statusNote:
-        "Heritage changed. Wayfinder marked heritage-driven choices plus native and campaign ancestry-feat draft picks for review.",
+      statusNote: "New heritage. Anything it granted, plus your ancestry feats, needs another look.",
     });
     expect(draft.selections["heritage-level-1"]?.documentId).toBe("arctic-elf");
   });
@@ -714,7 +711,7 @@ describe("wayfinder selection command service", () => {
       kind: "changed",
       shouldAdvance: true,
       shouldRender: false,
-      statusNote: "Sanctification changed. Wayfinder marked class paths for review.",
+      statusNote: "Sanctification changed. Your class path needs another look.",
     });
     expect(draft.classChoices[step.slotId]).toBe("unholy");
     expect(state.recentlyInvalidatedStepIds.has(step.slotId)).toBe(false);
@@ -791,8 +788,7 @@ describe("wayfinder selection command service", () => {
     expect(result).toMatchObject({
       kind: "changed",
       shouldAdvance: true,
-      statusNote:
-        "Class choice changed. Wayfinder reset class paths, class-feature choices, and spell choices for review.",
+      statusNote: "That choice changed. Your class path, class features, and spells need another look.",
     });
     expect(draft.classChoices[gateChoiceSlotId]).toBe("single-gate");
     expect(draft.branchSelections[elementTwoSlotId]).toBeUndefined();
@@ -856,8 +852,7 @@ describe("wayfinder selection command service", () => {
     expect(result).toMatchObject({
       kind: "changed",
       shouldAdvance: true,
-      statusNote:
-        "Class choice changed. Wayfinder reset class paths, class-feature choices, and spell choices for review.",
+      statusNote: "That choice changed. Your class path, class features, and spells need another look.",
     });
     expect(draft.classChoices[elementSlotId]).toBe("air");
     expect(draft.classChoices[damageSlotId]).toBeUndefined();

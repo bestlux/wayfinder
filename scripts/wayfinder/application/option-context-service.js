@@ -378,16 +378,14 @@ export async function buildContextNote(step, context, deps) {
         step.campaignFeat.supported[0] === "ancestry") {
         const ancestryName = (await deps.resolveDocument("ancestry"))?.name;
         return ancestryName
-            ? `Showing ${step.campaignFeat.sectionLabel} feats keyed to ${ancestryName}. Class-dependent feats are filtered against the drafted class.`
+            ? `${step.campaignFeat.sectionLabel} feats for ${ancestryName}. Anything that keys off your class is filtered against it.`
             : null;
     }
     switch (step.slotKind) {
         case "heritage": {
             const ancestryDocument = deps.resolveDocument("ancestry");
             const ancestryName = (await ancestryDocument)?.name;
-            return ancestryName
-                ? `Showing ${ancestryName} heritages and versatile heritage options that remain legal for this draft.`
-                : null;
+            return ancestryName ? `${ancestryName} heritages, plus the versatile heritages still open to this build.` : null;
         }
         case "ancestry-feat": {
             const [ancestryDocument, heritageDocument] = await Promise.all([
@@ -399,10 +397,10 @@ export async function buildContextNote(step, context, deps) {
             const isVersatile = heritage?.system?.ancestry === null;
             const heritageName = isVersatile ? heritage?.name : null;
             if (ancestryName && heritageName) {
-                return `Showing ancestry feats keyed to ${ancestryName} plus versatile-heritage feats unlocked by ${heritageName}. Class-dependent feats are filtered against the drafted class.`;
+                return `Ancestry feats for ${ancestryName}, plus what ${heritageName} opens up. Anything that keys off your class is filtered against it.`;
             }
             if (ancestryName) {
-                return `Showing ancestry feats keyed to ${ancestryName}. Class-dependent feats are filtered against the drafted class.`;
+                return `Ancestry feats for ${ancestryName}. Anything that keys off your class is filtered against it.`;
             }
             return null;
         }
@@ -413,53 +411,49 @@ export async function buildContextNote(step, context, deps) {
             }
             const exceptionReview = archetypeExceptionReview(context);
             return context.hasDedicationFeat
-                ? `Showing feats keyed to ${className} plus legal archetype follow-up feats unlocked by projected dedications. Shared class feats that list ${className} also remain available.${exceptionReview} Unresolved family metadata, access, and unsupported free-text prerequisites still require GM confirmation.`
-                : `Showing feats keyed to ${className} plus dedications legal for the projected draft. Shared class feats that list ${className} also remain available. Unresolved family metadata, access, and unsupported free-text prerequisites still require GM confirmation.`;
+                ? `${className} feats, the follow-ups your dedications unlock, and shared feats that list ${className}.${exceptionReview} Wayfinder cannot read every access rule or written-out prerequisite, so check the unusual ones with your GM.`
+                : `${className} feats, shared feats that list ${className}, and the dedications you currently qualify for. Wayfinder cannot read every access rule or written-out prerequisite, so check the unusual ones with your GM.`;
         }
         case "archetype-feat":
             return context.hasDedicationFeat
-                ? `Showing Free Archetype feats legal for resolved dedication families, structured lockouts, duplicates, current-class multiclass limits, and supported skill-rank prerequisites.${archetypeExceptionReview(context)} Unresolved family metadata, access, and unsupported free-text prerequisites still require GM confirmation.`
-                : "Showing dedications legal for the projected draft, including current-class multiclass limits and supported skill-rank prerequisites. Unresolved family metadata, access, and unsupported free-text prerequisites still require GM confirmation.";
+                ? `Free Archetype feats that follow from the dedications you have taken, minus duplicates, lockouts, and multiclass limits.${archetypeExceptionReview(context)} Wayfinder cannot read every access rule or written-out prerequisite, so check the unusual ones with your GM.`
+                : "Dedications you currently qualify for, with your own class's multiclass limits applied. Wayfinder cannot read every access rule or written-out prerequisite, so check the unusual ones with your GM.";
         case "class-branch": {
             const className = (await deps.resolveDocument("class"))?.name;
             const selectorName = step.branch?.selectorName;
             if (step.branch?.optionTag === "champion-cause") {
                 if (!context.deitySelected) {
-                    return "Resolve the deity step first so Wayfinder can narrow champion causes to the legal sanctification path.";
+                    return "Pick your deity first. Which causes are open to you depends on it.";
                 }
-                const sanctificationLabel = context.sanctification === "holy"
-                    ? "holy"
-                    : context.sanctification === "unholy"
-                        ? "unholy"
-                        : context.sanctification === "none"
-                            ? "non-sanctified"
-                            : "currently unresolved";
-                return className
-                    ? `Showing ${className} causes currently legal for the ${sanctificationLabel} sanctification state in this draft.`
-                    : null;
+                if (!className) {
+                    return null;
+                }
+                if (context.sanctification === "holy" || context.sanctification === "unholy") {
+                    return `${className} causes open to a ${context.sanctification} character.`;
+                }
+                if (context.sanctification === "none") {
+                    return `${className} causes open to a character with no sanctification.`;
+                }
+                return `${className} causes. Your sanctification is not settled yet, so this list may narrow later.`;
             }
             if (className && selectorName) {
-                return `Showing ${className} options granted by ${selectorName}. Wayfinder will write the selector choice into PF2E's native class-feature data on apply.`;
+                return `${className} options from ${selectorName}. Wayfinder writes your pick straight into the class feature.`;
             }
-            return className ? `Showing class branch options keyed to ${className}.` : null;
+            return className ? `${className} class options.` : null;
         }
         case "deity": {
             const className = (await deps.resolveDocument("class"))?.name;
             return className
-                ? `Showing deity choices currently legal for ${className}. Wayfinder will wire the selected deity into PF2E's native class-feature data on apply.`
+                ? `Deities a ${className} can follow. Wayfinder wires your choice into the class feature that needs it.`
                 : null;
         }
         case "class-choice": {
             if (step.classChoice?.dependsOn === "deity") {
                 const deityName = (await deps.resolveDocument("deity"))?.name;
-                return deityName
-                    ? `Showing choices unlocked by ${deityName}. Wayfinder will write this directly into the granting class feature on apply.`
-                    : "Resolve the deity step first so Wayfinder can narrow this class choice.";
+                return deityName ? `Choices ${deityName} opens up.` : "Pick your deity first. This choice depends on it.";
             }
             const className = (await deps.resolveDocument("class"))?.name;
-            return className
-                ? `Showing direct class-feature choices from ${className}. Wayfinder will write this directly into the granting class feature on apply.`
-                : null;
+            return className ? `Choices that come straight from your ${className} features.` : null;
         }
         case "spell-choice": {
             const spellChoice = step.spellChoice;
@@ -469,7 +463,7 @@ export async function buildContextNote(step, context, deps) {
             if (spellChoice.dependsOn === "class-branch" &&
                 spellChoice.curriculumSpellNames.length === 0 &&
                 spellChoice.requiresCurriculum !== false) {
-                return "Resolve the arcane school step first so Wayfinder can narrow this list to the chosen curriculum.";
+                return "Pick your arcane school first. It sets the curriculum these spells come from.";
             }
             const tradition = spellChoice.destination.tradition;
             const rankLabel = spellChoice.cantrip
@@ -481,19 +475,19 @@ export async function buildContextNote(step, context, deps) {
                 : spellChoice.minRank === spellChoice.maxRank
                     ? `rank ${spellChoice.maxRank} ${tradition} spells`
                     : `${tradition} spells of rank ${spellChoice.minRank} to ${spellChoice.maxRank}`;
-            return `Showing ${rankLabel} that will be added to the ${spellChoice.destination.label}. Daily prepared loadouts remain on PF2E's character sheet.`;
+            return `Adding ${rankLabel} to your ${spellChoice.destination.label}. What you prepare each day stays on the PF2E sheet.`;
         }
         case "skill-feat":
-            return "Showing baseline skill feats. Archetype-tagged skill feats stay hidden until Wayfinder tracks a specific archetype path.";
+            return "Baseline skill feats. Archetype skill feats stay hidden until Wayfinder can follow that archetype's path.";
         case "general-feat":
-            return "Showing the full general-feat pool from the enabled compendia. Wayfinder does not narrow this step by ancestry or class draft.";
+            return "Every general feat from your enabled compendia. Wayfinder does not narrow this one by ancestry or class.";
         default:
             return null;
     }
 }
 function archetypeExceptionReview(context) {
     return context.projectedArchetypeFeats?.some((feat) => feat.unresolvedLockoutException)
-        ? " This draft includes a GM-adjudicated dedication exception that Wayfinder does not automate."
+        ? " Your build leans on a dedication exception your GM allowed, which Wayfinder does not handle on its own."
         : "";
 }
 //# sourceMappingURL=option-context-service.js.map

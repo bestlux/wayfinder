@@ -77,7 +77,7 @@ export function buildStartingEquipmentPane(
         unavailableReason:
           line.funding.lane === "class-grant" || line.policyDecision.eligible
             ? null
-            : "This item no longer satisfies the effective policy.",
+            : "Your world's rules no longer allow this item.",
         focusId: `starting-equipment-line:${line.lineId}`,
       };
     }) ?? [];
@@ -97,16 +97,15 @@ export function buildStartingEquipmentPane(
     initialized: !!acquisition,
     corrupt: draft.acquisitionCorrupt,
     policy: {
-      recipeLabel: policy ? recipeLabel(policy.resolvedRecipe.kind) : "World default resolved during setup",
+      recipeLabel: policy ? recipeLabel(policy.resolvedRecipe.kind) : "Read from your world when you start",
       budgetLabel: formatCopper(budgetCopper),
       automaticEligibilityLabel: policy
-        ? `${capitalize(policy.rarityPolicy.blanketCeiling)} items from ${policy.sourcePolicy.effectivePackIds.length} approved pack${policy.sourcePolicy.effectivePackIds.length === 1 ? "" : "s"}`
-        : "Common equipment from approved PF2E sources",
+        ? `${capitalize(policy.rarityPolicy.blanketCeiling)} gear from ${policy.sourcePolicy.effectivePackIds.length} approved pack${policy.sourcePolicy.effectivePackIds.length === 1 ? "" : "s"}`
+        : "Common gear from approved PF2E sources",
       authorityLabel: policy
-        ? `${authorityLabel(policy.authorityPolicy.recipeChoice)} chooses the recipe; ${authorityLabel(policy.authorityPolicy.apply)} applies it`
-        : "Resolved from the world equipment policy during setup",
-      handoffLabel:
-        "Existing currency or foreign physical equipment stays on the actor and routes to the PF2E inventory sheet.",
+        ? `${authorityLabel(policy.authorityPolicy.recipeChoice)} picks the funding, ${authorityLabel(policy.authorityPolicy.apply)} applies it`
+        : "Read from your world when you start",
+      handoffLabel: "Coin and gear your character already has stay put. Handle those on the PF2E inventory tab.",
       explanations: policy && acquisition ? policyExplanations(acquisition) : [],
     },
     catalogue: {
@@ -187,46 +186,46 @@ function policyExplanations(acquisition: NonNullable<DraftState["acquisition"]>)
   const material = acquisition.policySnapshot?.material;
   if (!material) return [];
   return [
-    "Level 1 uses the same 15 gp budget under either official starting-equipment recipe.",
+    "At level 1 you have 15 gp to spend, whichever funding option your GM picked.",
     material.rarityPolicy.blanketCeiling === "common"
-      ? "Common items are automatically eligible when their source pack is approved."
-      : `Items up to ${material.rarityPolicy.blanketCeiling} rarity may be eligible under world policy.`,
+      ? "Anything Common is fair game, as long as its pack is approved."
+      : `Your GM has opened this up to ${material.rarityPolicy.blanketCeiling} gear.`,
   ];
 }
 
 function recipeLabel(kind: string): string {
   switch (kind) {
     case "level-1-equivalent":
-      return "Level-1 starting wealth (official recipes are equivalent)";
+      return "Level 1 starting wealth";
     case "permanent-items":
-      return "Permanent items and currency";
+      return "Permanent items and coin";
     case "lump-sum":
-      return "Lump-sum currency";
+      return "Lump sum of coin";
     default:
-      return "GM-approved custom lump sum";
+      return "Lump sum set by your GM";
   }
 }
 
 function authorityLabel(value: string): string {
-  return value === "gm-fixed" || value === "gm-review" || value === "gm-confirmation" ? "GM" : "Actor owner";
+  return value === "gm-fixed" || value === "gm-review" || value === "gm-confirmation" ? "Your GM" : "You";
 }
 
 function fundingLabel(lane: "allowance" | "currency" | "class-grant"): string {
-  if (lane === "class-grant") return "Automatic build grant · not charged";
-  if (lane === "allowance") return "Permanent-item allowance";
-  return "Starting wealth";
+  if (lane === "class-grant") return "Granted by your build · free";
+  if (lane === "allowance") return "Permanent item allowance";
+  return "Paid from starting wealth";
 }
 
 function handoffReason(reason: { readonly code: string }): string {
   switch (reason.code) {
     case "foreign-physical-items":
-      return "The actor already has physical equipment that Wayfinder will not replace or merge.";
+      return "Your character already owns gear. Wayfinder leaves it alone, so pick up the rest on the PF2E inventory tab.";
     case "nonzero-currency":
-      return "The actor already has currency that Wayfinder will not reprice or replace.";
+      return "Your character already has coin. Wayfinder won't touch it, so spend it from the PF2E inventory tab.";
     case "unresolved-class-grant":
-      return "A class-granted item could not be reconciled automatically.";
+      return "Your build grants an item Wayfinder couldn't match to anything in your inventory.";
     default:
-      return "A class-granted item has more than one possible match.";
+      return "Your build grants an item that matches more than one thing in your inventory.";
   }
 }
 

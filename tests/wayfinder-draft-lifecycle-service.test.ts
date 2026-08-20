@@ -261,12 +261,12 @@ describe("wayfinder draft lifecycle service", () => {
       evaluateStep: async () => readyEvaluation(),
       confirmApply: (message) => {
         order.push("confirm");
-        expect(message).toContain("No build steps remain to reapply");
-        expect(message).toContain("Player attestation — not GM authorization");
+        expect(message).toContain("No steps are left to redo");
+        expect(message).toContain("Access note, the player's word and not a Wayfinder check");
         return true;
       },
       appliedSpellRarityAttestations: [],
-      reviewLines: ["Player attestation — not GM authorization: Wizard spells"],
+      reviewLines: ["Access note, the player's word and not a Wayfinder check: Wizard spells"],
       beforeApply: async (attempt) => {
         order.push("persist");
         expect(attempt.applyCompletedStepIds).toEqual(["ancestry-level-1", "class-level-1"]);
@@ -449,7 +449,7 @@ describe("wayfinder draft lifecycle service", () => {
     expect(result).toEqual({
       kind: "cancelled",
     });
-    expect(confirmApply).toHaveBeenCalledWith("Apply 2 Wayfinder step(s) to Valeros?");
+    expect(confirmApply).toHaveBeenCalledWith("Write 2 steps to Valeros?");
     expect(applyDraftToActor).not.toHaveBeenCalled();
   });
 
@@ -495,7 +495,7 @@ describe("wayfinder draft lifecycle service", () => {
     if (result.kind !== "applied") {
       throw new Error("expected applied result");
     }
-    expect(confirmApply).toHaveBeenCalledWith("Apply 2 Wayfinder step(s) to Kyra?");
+    expect(confirmApply).toHaveBeenCalledWith("Write 2 steps to Kyra?");
     expect(order).toEqual(["apply"]);
     expect(result.nextDraft.targetLevel).toBe(1);
     expect(result.nextDraft.selections).toEqual({});
@@ -524,7 +524,7 @@ describe("wayfinder draft lifecycle service", () => {
     });
 
     expect(result.kind).toBe("applied");
-    expect(confirmApply).toHaveBeenCalledWith("Apply 1 Wayfinder step(s) to Ezren?");
+    expect(confirmApply).toHaveBeenCalledWith("Write 1 step to Ezren?");
     expect(order).toEqual(["confirm", "apply"]);
   });
 
@@ -716,7 +716,7 @@ describe("wayfinder draft lifecycle service", () => {
       steps: [step("spell-choice-wizard-level-1")],
       evaluateStep: async () => readyEvaluation(),
       appliedSpellRarityAttestations: [evidence],
-      reviewLines: ["Player attestation — not GM authorization: Wizard spells"],
+      reviewLines: ["Access note, the player's word and not a Wayfinder check: Wizard spells"],
       confirmApply,
       applyDraftToActor: async (buildUpdate) => {
         finalUpdate = buildUpdate();
@@ -724,7 +724,7 @@ describe("wayfinder draft lifecycle service", () => {
     });
 
     expect(confirmApply).toHaveBeenCalledWith(
-      "Apply 1 Wayfinder step(s) to Ezren?\n\nPlayer attestation — not GM authorization: Wizard spells"
+      "Write 1 step to Ezren?\n\nAccess note, the player's word and not a Wayfinder check: Wizard spells"
     );
     expect(finalUpdate).toEqual(
       expect.objectContaining({
@@ -894,7 +894,7 @@ describe("wayfinder draft lifecycle service", () => {
     });
 
     expect(result).toEqual({ kind: "cancelled" });
-    expect(confirmClear).toHaveBeenCalledWith("Clear 5 drafted decisions? This cannot be undone.");
+    expect(confirmClear).toHaveBeenCalledWith("Throw away 5 choices you have made? You cannot get them back.");
     expect(clearPersistedDraft).not.toHaveBeenCalled();
   });
 
@@ -971,8 +971,8 @@ describe("wayfinder draft lifecycle service", () => {
     draft.boosts.class.keyAbility = "int";
 
     expect(countDraftLosses(draft, 1)).toBe(12);
-    expect(buildClearDraftConfirmationMessage(0)).toBe("Clear this empty Wayfinder draft?");
-    expect(buildClearDraftConfirmationMessage(1)).toContain("1 drafted decision?");
+    expect(buildClearDraftConfirmationMessage(0)).toBe("Clear this draft? There is nothing in it yet.");
+    expect(buildClearDraftConfirmationMessage(1)).toContain("1 choice you have made?");
   });
 });
 

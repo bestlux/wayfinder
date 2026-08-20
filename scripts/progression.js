@@ -20,26 +20,26 @@ export function buildProgressionPlan(snapshot, requestedTargetLevel) {
 export function buildSteps(snapshot, currentLevel, targetLevel) {
     const steps = [];
     if (!snapshot.singletonSlots.ancestry) {
-        steps.push(makePickStep("ancestry", 1, "Choose an ancestry", "Pick the ancestry your character was born into. Lineage, traits, and a few starting boosts come from here.", {
+        steps.push(makePickStep("ancestry", 1, "Choose an ancestry", "Where your character comes from. Ancestry sets your size, speed, starting Hit Points, and a couple of ability boosts.", {
             itemType: "ancestry",
         }));
     }
     if (!snapshot.singletonSlots.heritage) {
-        steps.push(makePickStep("heritage", 1, "Choose a heritage", "Heritages refine your ancestry — a sub-lineage with its own twist on the lineup.", {
+        steps.push(makePickStep("heritage", 1, "Choose a heritage", "A narrower branch of your ancestry, with its own knack or resistance on top of what the ancestry already gave you.", {
             itemType: "heritage",
         }));
     }
     if (!snapshot.singletonSlots.background) {
-        steps.push(makePickStep("background", 1, "Choose a background", "Backgrounds set who your character was before adventuring — a starting boost and a couple of trained skills.", {
+        steps.push(makePickStep("background", 1, "Choose a background", "Who your character was before any of this. A background hands you two ability boosts, a trained skill, a Lore, and a skill feat.", {
             itemType: "background",
         }));
     }
     if (!snapshot.singletonSlots.class) {
-        steps.push(makePickStep("class", 1, "Choose a class", "Your class is the spine of the build — fighter, wizard, rogue, cleric. Almost everything else hangs off this choice.", {
+        steps.push(makePickStep("class", 1, "Choose a class", "The big one. Your class decides how you fight, what you're proficient in, and what you gain at every level after this.", {
             itemType: "class",
         }));
     }
-    steps.push(...buildFeatSteps("ancestry-feat", "Level {level} ancestry feat", "Pick the ancestry feat unlocked at this milestone.", ANCESTRY_FEAT_LEVELS, snapshot.featCounts.ancestry, snapshot.fulfilledStepIds, targetLevel, {
+    steps.push(...buildFeatSteps("ancestry-feat", "Level {level} ancestry feat", "A new ancestry feat opens up at this level.", ANCESTRY_FEAT_LEVELS, snapshot.featCounts.ancestry, snapshot.fulfilledStepIds, targetLevel, {
         itemType: "feat",
         featTypes: ["ancestry"],
     }));
@@ -54,7 +54,7 @@ export function buildSteps(snapshot, currentLevel, targetLevel) {
             }
             const filter = slot.filter ?? section.filter;
             const featTypes = intersectCampaignFeatTypes(section.supported, filter.categories);
-            steps.push(createPickItemStep("campaign-feat", slot.level, `Level ${slot.level} ${section.label}`, `Fill PF2E's ${section.label} campaign feat slot.`, {
+            steps.push(createPickItemStep("campaign-feat", slot.level, `Level ${slot.level} ${section.label}`, `A ${section.label} feat slot from your campaign's variant rules.`, {
                 itemType: "feat",
                 ...(featTypes ? { featTypes } : {}),
                 ...(filter.traits.length > 0 ? { traits: filter.traits } : {}),
@@ -74,28 +74,28 @@ export function buildSteps(snapshot, currentLevel, targetLevel) {
         }
     }
     if (snapshot.freeArchetypeEnabled) {
-        steps.push(...buildFeatSteps("archetype-feat", "Level {level} Free Archetype feat", "Fill PF2E's separate Free Archetype slot. Wayfinder mirrors PF2E's available archetype pool but cannot exhaustively validate access, prerequisites, archetype-family restrictions, or dedication lockouts; confirm eligibility with your GM.", FREE_ARCHETYPE_FEAT_LEVELS, snapshot.featCounts.archetype, snapshot.fulfilledStepIds, targetLevel, {
+        steps.push(...buildFeatSteps("archetype-feat", "Level {level} Free Archetype feat", "A free archetype feat, on top of your normal class feats. Wayfinder shows the archetypes PF2E offers, but it can't check every access rule, prerequisite, or dedication lockout. Run anything unusual past your GM.", FREE_ARCHETYPE_FEAT_LEVELS, snapshot.featCounts.archetype, snapshot.fulfilledStepIds, targetLevel, {
             itemType: "feat",
             featTypes: ["class"],
         }));
     }
-    steps.push(...buildFeatSteps("skill-feat", "Level {level} skill feat", "Pick the skill feat unlocked at this milestone.", SKILL_FEAT_LEVELS, snapshot.featCounts.skill, snapshot.fulfilledStepIds, targetLevel, {
+    steps.push(...buildFeatSteps("skill-feat", "Level {level} skill feat", "A new skill feat opens up at this level.", SKILL_FEAT_LEVELS, snapshot.featCounts.skill, snapshot.fulfilledStepIds, targetLevel, {
         itemType: "feat",
         featTypes: ["skill"],
     }));
-    steps.push(...buildFeatSteps("general-feat", "Level {level} general feat", "Pick the general feat unlocked at this milestone.", GENERAL_FEAT_LEVELS, snapshot.featCounts.general, snapshot.fulfilledStepIds, targetLevel, {
+    steps.push(...buildFeatSteps("general-feat", "Level {level} general feat", "A new general feat opens up at this level.", GENERAL_FEAT_LEVELS, snapshot.featCounts.general, snapshot.fulfilledStepIds, targetLevel, {
         itemType: "feat",
         featTypes: ["general", "skill"],
     }));
     if (snapshot.isBlank || !allCreationAnchorsPresent(snapshot)) {
-        steps.push(makeBoostStep("ability-boosts", 1, "Assign creation boosts", "Allocate ancestry, background, class, and free level 1 boosts inside Wayfinder before finalizing the draft.", { level: 1, batchLevel: 1, requiredCount: 4, grantCount: 4 }));
+        steps.push(makeBoostStep("ability-boosts", 1, "Set your ability scores", "Set your starting ability scores. Your ancestry, background, and class each hand you boosts, and you get four free ones to place on top.", { level: 1, batchLevel: 1, requiredCount: 4, grantCount: 4 }));
     }
     for (const milestone of abilityBoostMilestones(snapshot.gradualBoostsEnabled)) {
         const { level } = milestone;
         if (level > currentLevel && level <= targetLevel) {
             steps.push(makeBoostStep("ability-boosts", level, `Level ${level} ability boost${milestone.grantCount === 1 ? "" : "s"}`, milestone.grantCount === 1
-                ? `Choose this level's ability boost. Each ability can be boosted only once across the level ${milestone.batchLevel - 3}–${milestone.batchLevel} batch.`
-                : "Spend this level's four free ability boosts. Pick four different abilities — no doubling up.", milestone));
+                ? `One boost to place. PF2E groups levels ${milestone.batchLevel - 3} through ${milestone.batchLevel} together, and an ability can only take one boost across the whole group.`
+                : "Four free boosts to spend. They have to go to four different abilities, so no doubling up.", milestone));
         }
     }
     for (const level of SKILL_INCREASE_LEVELS) {

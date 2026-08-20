@@ -8,16 +8,16 @@ export function getPickerInfoState(step, context, optionCount, filteredCount, se
         if (hidesUnsupportedEmbeddedChoiceSets(step)) {
             return {
                 tone: "empty",
-                eyebrow: "Unsupported guided options",
-                title: "No guided options are available",
-                message: "Nothing directly guided is available here. Wayfinder hides direct options that require unsupported follow-up choices; use the PF2E sheet for those choices for now.",
+                eyebrow: "Not guided yet",
+                title: "Nothing here Wayfinder can guide",
+                message: "Every option for this step leads to a follow-up choice Wayfinder can't handle yet, so it hides them rather than half-applying one. Make this choice on the PF2E sheet for now.",
             };
         }
         return {
             tone: "empty",
-            eyebrow: "No matching sources",
-            title: "No valid options are available",
-            message: "Nothing in your enabled sources matches this step. Ask your GM if more content can be allowlisted.",
+            eyebrow: "Nothing to pick from",
+            title: "No options in your enabled sources",
+            message: "Nothing in the compendia your world has turned on fits this step. Your GM can enable more content in the Wayfinder settings.",
         };
     }
     if (filteredCount === 0 && (search.trim() || hasActiveFilters)) {
@@ -31,10 +31,10 @@ export function getPickerInfoState(step, context, optionCount, filteredCount, se
                     ? "No choices match current filters"
                     : "No choices match this search",
             message: searchActive && hasActiveFilters
-                ? "Adjust the search or remove a filter to widen the list again."
+                ? "Try a different search, or drop a filter."
                 : hasActiveFilters
-                    ? "Remove or change a filter to widen the list again."
-                    : "Adjust the search terms to widen the list again.",
+                    ? "Drop or change a filter to widen the list."
+                    : "Try different search terms.",
         };
     }
     return null;
@@ -51,9 +51,9 @@ export function getPickerBlockedState(step, context) {
                 ? null
                 : {
                     tone: "blocked",
-                    eyebrow: "Prerequisite required",
+                    eyebrow: "One thing first",
                     title: "Choose an ancestry first",
-                    message: "Pick an ancestry first — heritages depend on it, and your options will show up here once that's set.",
+                    message: "Heritages branch off your ancestry, so pick that first. Your options will show up here once it's set.",
                 };
         case "ancestry-feat":
             return ancestryFeatBlockedState(context);
@@ -62,51 +62,51 @@ export function getPickerBlockedState(step, context) {
                 ? null
                 : {
                     tone: "blocked",
-                    eyebrow: "Prerequisite required",
+                    eyebrow: "One thing first",
                     title: "Choose a class first",
-                    message: "Class feat options are filtered from the drafted class. Pick the class step before reviewing class feats.",
+                    message: "Class feats come from the class you pick, so choose that first.",
                 };
         case "class-branch":
             if (step.branch?.dependsOn === "deity" && !context.deitySelected) {
                 return {
                     tone: "blocked",
-                    eyebrow: "Prerequisite required",
+                    eyebrow: "One thing first",
                     title: "Choose a deity first",
-                    message: "This class path depends on the drafted deity and sanctification state. Resolve the deity step before reviewing these branch options.",
+                    message: "Which paths are open to you depends on your deity and how you're sanctified. Choose a deity first.",
                 };
             }
             return context.classSlug
                 ? null
                 : {
                     tone: "blocked",
-                    eyebrow: "Prerequisite required",
+                    eyebrow: "One thing first",
                     title: "Choose a class first",
-                    message: "Pick a class first. Each class has its own branch — domain, doctrine, racket, and so on — and we'll show those once we know which class you're playing.",
+                    message: "Every class has its own path to choose, a domain, a doctrine, a racket. Pick your class and the right one shows up here.",
                 };
         case "deity":
             return context.classSlug
                 ? null
                 : {
                     tone: "blocked",
-                    eyebrow: "Prerequisite required",
+                    eyebrow: "One thing first",
                     title: "Choose a class first",
-                    message: "Wayfinder only offers deity choices when a drafted class grants them. Pick the class step before reviewing deity options.",
+                    message: "Only some classes bring a deity with them, so pick your class first.",
                 };
         case "spell-choice":
             if (step.spellChoice?.dependsOn === "class" && !context.classSlug) {
                 return {
                     tone: "blocked",
-                    eyebrow: "Prerequisite required",
+                    eyebrow: "One thing first",
                     title: "Choose a class first",
-                    message: "Pick a class first. Spell options depend on what tradition you'll be casting from.",
+                    message: "Your class decides which tradition you cast from, and that decides your spell list. Pick a class first.",
                 };
             }
             if (requiresResolvedCurriculum(step)) {
                 return {
                     tone: "blocked",
-                    eyebrow: "Prerequisite required",
+                    eyebrow: "One thing first",
                     title: "Choose an arcane school first",
-                    message: "This spell choice depends on the drafted arcane school. Resolve the school step before reviewing curriculum spells.",
+                    message: "Your arcane school sets the curriculum these spells come from, so choose the school first.",
                 };
             }
             return null;
@@ -118,18 +118,18 @@ function ancestryFeatBlockedState(context) {
     if (context.ancestryTraits.length === 0) {
         return {
             tone: "blocked",
-            eyebrow: "Prerequisite required",
-            title: "Choose an ancestry before ancestry feats",
-            message: "Ancestry feats are filtered from the drafted ancestry and any versatile heritage tags.",
+            eyebrow: "One thing first",
+            title: "Choose an ancestry first",
+            message: "Ancestry feats come from your ancestry and any versatile heritage you took.",
         };
     }
     return context.classSlug
         ? null
         : {
             tone: "blocked",
-            eyebrow: "Prerequisite required",
-            title: "Choose a class before ancestry feats",
-            message: "Some ancestry feats depend on class features such as spellcasting. Pick the class step before reviewing ancestry feat options.",
+            eyebrow: "One thing first",
+            title: "Choose a class first",
+            message: "A few ancestry feats key off class features like spellcasting, so Wayfinder needs your class before it can show the list.",
         };
 }
 function requiresResolvedCurriculum(step) {

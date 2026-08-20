@@ -56,8 +56,8 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
         }
         if (invalidated.length > 0 || boostReset) {
             statusNote = boostReset
-                ? "Ancestry changed. Wayfinder cleared ancestry-specific boost draft choices and marked dependent heritage, ancestry choice, language, native ancestry-feat, and campaign ancestry-feat picks for review."
-                : "Ancestry changed. Wayfinder marked dependent heritage, ancestry choice, language, native ancestry-feat, and campaign ancestry-feat draft picks for review.";
+                ? "New ancestry, so your ancestry boosts are cleared. Heritage, languages, and ancestry feats need another look."
+                : "New ancestry. Heritage, languages, and ancestry feats need another look.";
         }
     }
     if (step.slotKind === "heritage" && previousSelection?.uuid !== selection.uuid) {
@@ -75,8 +75,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
                 : []),
         ];
         if (invalidated.length > 0) {
-            statusNote =
-                "Heritage changed. Wayfinder marked heritage-driven choices plus native and campaign ancestry-feat draft picks for review.";
+            statusNote = "New heritage. Anything it granted, plus your ancestry feats, needs another look.";
         }
     }
     if (step.slotKind === "background" && previousSelection?.uuid !== selection.uuid) {
@@ -89,8 +88,8 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
         if (boostReset || invalidated.length > 0) {
             state.recentlyInvalidatedStepIds.add(SLOT_IDS.abilityBoostsLevel1);
             statusNote = boostReset
-                ? "Background changed. Wayfinder cleared background boost draft choices and marked background-driven choices for review."
-                : "Background changed. Wayfinder marked background-driven choices for review.";
+                ? "New background, so its boosts are cleared. The skills and feat it granted need another look."
+                : "New background. The skills and feat it granted need another look.";
         }
     }
     if (step.slotKind === "class" && previousSelection?.uuid !== selection.uuid) {
@@ -140,15 +139,15 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
                 grantInvalidated.length > 0 ||
                 boostReset) {
                 const featScope = ancestryFeatInvalidated.length > 0 || campaignAncestryFeatInvalidated.length > 0
-                    ? "native ancestry feat, campaign ancestry feat, class feat, and Free Archetype"
-                    : "class feat, and Free Archetype";
+                    ? "your ancestry feats, class feats, and Free Archetype feats"
+                    : "your class feats and Free Archetype feats";
                 statusNote = boostReset
-                    ? `Class changed. Wayfinder cleared the key-ability draft choice and marked drafted deity, class training, class path, class choice, related singleton choices, spell, ${featScope} selections for review.`
-                    : `Class changed. Wayfinder marked drafted deity, class training, class path, class choice, related singleton choices, spell, ${featScope} selections for review.`;
+                    ? `New class, so your key ability is cleared. Your deity, class training, class path, and spells need another look, along with ${featScope}.`
+                    : `New class. Your deity, class training, class path, and spells need another look, along with ${featScope}.`;
             }
         }
         else if (boostReset) {
-            statusNote = "Class changed. Wayfinder cleared the key-ability draft choice for review.";
+            statusNote = "New class, so your key ability is cleared. Pick it again.";
         }
     }
     if (step.slotKind === "deity" && previousSelection?.uuid !== selection.uuid) {
@@ -160,8 +159,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
             invalidatedBranches.length > 0 ||
             invalidatedSingletonChoices.length > 0 ||
             invalidatedGrantChoices.length > 0) {
-            statusNote =
-                "Deity changed. Wayfinder marked dependent class choices, class paths, and deity-driven choices for review.";
+            statusNote = "New deity. Your class path and anything else your deity shapes need another look.";
         }
     }
     if ((step.slotKind === "ancestry-feat" || (step.slotKind === "campaign-feat" && selection.featType === "ancestry")) &&
@@ -171,7 +169,7 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
             ...(await deps.invalidateFlagChoicesBySource("feat")),
         ];
         if (invalidated.length > 0) {
-            statusNote = "Ancestry feat changed. Wayfinder marked dependent granted feat choices for review.";
+            statusNote = "New ancestry feat. Any choices the old one granted need another look.";
         }
     }
     if ((step.slotKind === "class-feat" ||
@@ -198,10 +196,10 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
             ...(await deps.invalidateFlagChoicesBySource("feat")),
         ];
         if (otherArchetypeInvalidated.length > 0) {
-            statusNote = "Dedication changed. Wayfinder marked Free Archetype selections for review.";
+            statusNote = "Different dedication. Your Free Archetype feats need another look.";
         }
         else if (invalidated.length > 0) {
-            statusNote = "Feat changed. Wayfinder marked dependent feat choices for review.";
+            statusNote = "New feat. Any choices the old one granted need another look.";
         }
     }
     if (step.kind === "class-branch" && previousSelection?.uuid !== selection.uuid) {
@@ -210,13 +208,13 @@ export async function chooseSelectionOption(state, step, rawValue, deps) {
         const invalidatedFlagChoices = await deps.invalidateFlagChoicesBySource("classfeature");
         if ((invalidatedSpells.length > 0 || invalidatedGrantChoices.length > 0 || invalidatedFlagChoices.length > 0) &&
             step.branch?.flag === "arcaneSchool") {
-            statusNote = "Arcane school changed. Wayfinder marked dependent school choices for review.";
+            statusNote = "New arcane school. Your curriculum spells need another look.";
         }
     }
     if (previousSelection?.uuid !== selection.uuid) {
         const invalidatedSpellChoices = (await deps.invalidateOrphanedSpellChoices?.()) ?? [];
         if (invalidatedSpellChoices.length > 0 && !statusNote) {
-            statusNote = "Wayfinder removed spell choices and player attestations from vanished steps.";
+            statusNote = "Some spell steps no longer exist, so their spells and access notes came off the draft.";
         }
     }
     state.previewValueByStepId.set(step.id, rawValue);
@@ -344,7 +342,7 @@ export async function selectClassArchetypeValue(state, step, value, deps) {
     state.recentlyInvalidatedStepIds.delete(step.slotId);
     return changedResult({
         statusNote: invalidated.length > 0
-            ? "Class path changed. Wayfinder reset dependent class choices, training, feats, and spells for review."
+            ? "New class path. The choices, training, feats, and spells it fed into all need another look."
             : null,
         shouldAdvance: true,
     });
@@ -370,9 +368,9 @@ async function invalidateClassChoiceDependents(step, deps) {
         return null;
     }
     if (step?.classChoice?.flag === "sanctification") {
-        return "Sanctification changed. Wayfinder marked class paths for review.";
+        return "Sanctification changed. Your class path needs another look.";
     }
-    return "Class choice changed. Wayfinder reset class paths, class-feature choices, and spell choices for review.";
+    return "That choice changed. Your class path, class features, and spells need another look.";
 }
 export async function toggleSpellChoiceSelection(state, step, rawValue, deps) {
     if (!step || step.kind !== "spell-choice") {

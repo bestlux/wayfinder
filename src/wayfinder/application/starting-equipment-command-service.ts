@@ -92,34 +92,34 @@ export async function executeStartingEquipmentCommand(
       const initialized = before ? null : await initializeAcquisition(context, deps);
       acquisition = before ?? initialized!.acquisition;
       statusNote = before
-        ? "Starting equipment is already set up."
+        ? "Your equipment step is already open."
         : initialized!.pendingTitanSelection
-          ? "Starting-equipment policy is ready. Choose the required Titan Mauler weapon before review."
-          : "Starting-equipment policy is ready for review.";
+          ? "Ready to shop. Pick your Titan Mauler weapon before you finish."
+          : "Ready to shop.";
       break;
     }
     case "add-line":
       acquisition = addPreparedLine(requireAcquisition(context.draft), command.line);
-      statusNote = "Item added to the starting-equipment cart.";
+      statusNote = "Added to your cart.";
       break;
     case "remove-line":
       acquisition = removeLine(requireAcquisition(context.draft), command.lineId);
-      statusNote = "Item removed from the starting-equipment cart.";
+      statusNote = "Taken out of your cart.";
       break;
     case "set-quantity":
       acquisition = setLineQuantity(requireAcquisition(context.draft), command.lineId, command.quantity);
-      statusNote = "Starting-equipment quantity updated.";
+      statusNote = "Quantity updated.";
       break;
     case "review-purchases": {
       const prepared = await prepareLedger(context, deps);
       acquisition = reviewPurchaseLedger(prepared.acquisition, prepared.ledger, reviewer(context));
-      statusNote = "Starting-equipment purchases reviewed.";
+      statusNote = "Kit confirmed.";
       break;
     }
     case "retain-all": {
       const prepared = await prepareLedger(context, deps);
       acquisition = reviewRetainAll(prepared.acquisition, prepared.ledger, reviewer(context));
-      statusNote = "All remaining starting wealth will be retained.";
+      statusNote = "You are keeping the rest of your coin.";
       break;
     }
     case "acknowledge-handoff":

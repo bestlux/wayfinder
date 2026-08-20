@@ -1,7 +1,7 @@
 import { fetchSelectionDocument } from "../../pack/access.js";
 import { enrichHtml } from "../../shared/foundry-compat.js";
 import { buildPreviewDetails, formatSlug } from "../formatting.js";
-export const DEDICATION_SUPPORT_DISCLOSURE = "Dedication support varies. Wayfinder applies supported choices, but some prose-only benefits may require manual setup on the PF2E sheet. Review this feat before and after applying.";
+export const DEDICATION_SUPPORT_DISCLOSURE = "How much of a dedication Wayfinder can handle varies. It applies what it understands, but benefits written out in prose may need setting up by hand on the PF2E sheet. Worth reading this feat before you apply, and again after.";
 export function buildPickItemPane(args) {
     const { step, search, activeFilterCount, selectedValue, selectedLabel, filterGroups, visibleOptions, infoState, contextNote, preview, modeLabel, previewValue, } = args;
     return {

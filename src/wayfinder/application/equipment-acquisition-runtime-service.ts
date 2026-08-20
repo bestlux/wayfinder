@@ -184,7 +184,7 @@ export function createEquipmentAcquisitionRuntime(
       if (!acquisition) {
         return {
           state: "pending",
-          message: "Set up starting equipment to load the approved catalogue.",
+          message: "Start the step above and the gear list loads here.",
           query: request.query,
           records: [],
           filters: [],
@@ -210,7 +210,7 @@ export function createEquipmentAcquisitionRuntime(
         const records = entries.map(toUiRecord);
         return {
           state: "ready",
-          message: `${records.length} level-0 equipment option${records.length === 1 ? "" : "s"} loaded.`,
+          message: `${records.length} piece${records.length === 1 ? "" : "s"} of gear to browse.`,
           query: request.query,
           records,
           filters: catalogueFilters(entries),
@@ -221,7 +221,10 @@ export function createEquipmentAcquisitionRuntime(
       } catch (error) {
         return {
           state: "error",
-          message: error instanceof Error ? error.message : "The approved equipment catalogue could not be loaded.",
+          message:
+            error instanceof Error
+              ? error.message
+              : "The gear list would not load. Ask your GM to check the approved equipment sources.",
           query: request.query,
           records: [],
           filters: [],

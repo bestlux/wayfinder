@@ -34,6 +34,7 @@ export async function buildAcquisitionReceiptViewModel(rawManifest, deps = {}) {
             grantId: entry.grant.grantId,
             sourceUuid: entry.grant.expected.sourceUuid,
             status: entry.status,
+            statusLabel: classGrantStatusLabel(entry.status),
             observedItemIds: [...entry.observedItemIds],
         })),
         currency: {
@@ -43,25 +44,37 @@ export async function buildAcquisitionReceiptViewModel(rawManifest, deps = {}) {
             observedLabel: formatCopper(manifest.currency.observedCopper),
         },
         authority: {
-            applyLabel: authority.apply === "gm-review" ? "GM reviewed Apply" : "Actor-owner Apply",
-            recipeChoiceLabel: authority.recipeChoice === "gm-fixed" ? "GM-selected recipe" : "Actor-owner recipe choice",
+            applyLabel: authority.apply === "gm-review" ? "Your GM reviewed this" : "Applied by you",
+            recipeChoiceLabel: authority.recipeChoice === "gm-fixed" ? "Funding set by your GM" : "Funding chosen by you",
             higherLevelStartLabel: authority.higherLevelStart === "gm-confirmation"
-                ? "GM-confirmed higher-level start"
-                : "Actor-owner higher-level start attestation",
+                ? "Higher-level start confirmed by your GM"
+                : "Higher-level start noted by you",
             judgmentIds: manifest.policy.material.gmJudgments.map((judgment) => judgment.id).sort(),
         },
         environmentLabel: `Foundry ${manifest.environment.foundryVersion} · PF2E ${manifest.environment.pf2eVersion} · Wayfinder ${manifest.environment.moduleVersion}`,
         canOpenInventory: true,
     };
 }
+function classGrantStatusLabel(status) {
+    switch (status) {
+        case "resolved":
+            return "found on your sheet";
+        case "pending":
+            return "not written yet";
+        case "ambiguous":
+            return "matched more than one item";
+        default:
+            return "not found on your sheet";
+    }
+}
 function dispositionLabel(disposition) {
     switch (disposition) {
         case "purchase-ledger":
-            return "Purchased starting equipment";
+            return "Bought starting gear";
         case "retain-all":
-            return "Retained all starting currency";
+            return "Kept all your starting coin";
         case "handoff":
-            return "Continued in the PF2E character sheet";
+            return "Finished on the character sheet";
     }
 }
 function fundingLabel(lane) {
@@ -69,9 +82,9 @@ function fundingLabel(lane) {
         case "currency":
             return "Currency";
         case "allowance":
-            return "Permanent-item allowance";
+            return "Permanent item allowance";
         case "class-grant":
-            return "Automatic build grant";
+            return "Granted by your build";
     }
 }
 function compactSourceLabel(sourceUuid) {

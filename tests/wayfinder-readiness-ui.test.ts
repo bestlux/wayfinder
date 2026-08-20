@@ -13,7 +13,7 @@ describe("wayfinder readiness UI", () => {
     expect(appTemplate).toContain('data-step-id="{{applyBlocker.stepId}}"');
     expect(appTemplate).toContain('tabindex="-1" data-wayfinder-step-heading="{{activePane.stepId}}"');
     expect(appTemplate).toContain("{{applyBlocker.message}}");
-    expect(appTemplate).toContain('aria-label="Apply Changes unavailable. {{applyBlocker.message}}"');
+    expect(appTemplate).toContain('aria-label="Not ready to apply. {{applyBlocker.message}}"');
     expect(footerStyles).toMatch(/\.footer-readiness\s*\{/);
   });
 

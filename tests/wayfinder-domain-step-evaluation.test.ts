@@ -244,7 +244,7 @@ describe("wayfinder domain step evaluation", () => {
 
     await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
       state: "incomplete",
-      status: "Set up starting equipment",
+      status: "Not started",
       issue: { code: "equipment-review", focusId: "starting-equipment-initialize" },
     });
 
@@ -252,7 +252,7 @@ describe("wayfinder domain step evaluation", () => {
     draft.acquisition = purchase;
     await expect(evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toMatchObject({
       state: "complete",
-      status: "Purchases reviewed",
+      status: "Kit confirmed",
     });
 
     const empty = acquisitionFixture({ lines: [], disposition: "unreviewed" });
@@ -262,7 +262,7 @@ describe("wayfinder domain step evaluation", () => {
     });
     await expect(isWayfinderStepComplete(step, draft, {} as EffectiveBuildState)).resolves.toBe(true);
     await expect(getWayfinderStepStatus(step, draft, new Set(), {} as EffectiveBuildState)).resolves.toBe(
-      "All starting wealth retained"
+      "Keeping all your coin"
     );
   });
 

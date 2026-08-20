@@ -270,7 +270,7 @@ describe("existing character history service", () => {
         slotId: "spell-audit-witch-through-level-3",
         label: "Witch spell audit",
         value:
-          "20 spells found, matches expectations through level 3. Actor spell data does not identify which level each spell was learned.",
+          "20 spells, which is what a level 3 character should have. The sheet does not record which level each spell was learned at.",
         status: "mapped",
       }),
     ]);
@@ -281,8 +281,8 @@ describe("existing character history service", () => {
     const [audit] = spellAuditEntries(history.entries);
 
     expect(audit).toMatchObject({ status: "review" });
-    expect(audit?.value).toContain("2 fewer spells than expected (18 found; 20 expected through level 3)");
-    expect(audit?.value).toContain("add them on the sheet, or rebuild through Wayfinder");
+    expect(audit?.value).toContain("2 spells short. Found 18, expected 20 by level 3.");
+    expect(audit?.value).toContain("Add them on the sheet, or rebuild through Wayfinder");
   });
 
   it("marks a feat-granted surplus spell for review without recommending deletion", async () => {
@@ -290,9 +290,9 @@ describe("existing character history service", () => {
     const [audit] = spellAuditEntries(history.entries);
 
     expect(audit).toMatchObject({ status: "review" });
-    expect(audit?.value).toContain("1 more spell than expected (21 found; 20 expected through level 3)");
-    expect(audit?.value).toContain("probably feat- or item-granted");
-    expect(audit?.value).toContain("do not delete anything based on this audit");
+    expect(audit?.value).toContain("1 spell more than expected. Found 21, expected 20 by level 3.");
+    expect(audit?.value).toContain("A feat or item probably granted it");
+    expect(audit?.value).toContain("Do not delete anything on the strength of this count alone");
   });
 
   it("does not let an extra cantrip cancel a missing ranked spell", async () => {
@@ -308,7 +308,7 @@ describe("existing character history service", () => {
     const [audit] = spellAuditEntries(history.entries);
 
     expect(audit).toMatchObject({ status: "review" });
-    expect(audit?.value).toContain("1 expected spell is missing and 1 other spell does not match");
+    expect(audit?.value).toContain("1 expected spell is missing, and 1 other spell does not fill those gaps");
   });
 
   it("refuses to guess between multiple plausible spellcasting destinations", async () => {
@@ -358,7 +358,7 @@ describe("existing character history service", () => {
     const completeHistory = await buildExistingCharacterHistory(actor);
     expect(spellAuditEntries(completeHistory.entries)).toEqual([
       expect.objectContaining({
-        value: expect.stringContaining("12 spells found, matches expectations through level 3"),
+        value: expect.stringContaining("12 spells, which is what a level 3 character should have"),
         status: "mapped",
       }),
     ]);
@@ -370,7 +370,7 @@ describe("existing character history service", () => {
     }
     const incorrectHistory = await buildExistingCharacterHistory(actor);
     expect(spellAuditEntries(incorrectHistory.entries)[0]?.value).toContain(
-      "1 expected spell is missing and 1 other spell does not match"
+      "1 expected spell is missing, and 1 other spell does not fill those gaps"
     );
   });
 

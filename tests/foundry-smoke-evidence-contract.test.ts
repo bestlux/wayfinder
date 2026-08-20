@@ -1461,7 +1461,7 @@ function spellAttestationResult() {
   };
   result.cases[0].actor.moduleStateAfterApply.lastAppliedSpellRarityAttestations = [attestation];
   const reviewLine =
-    "Player attestation — not GM authorization: Level 5 spellbook additions; Character or rules Access; Restricted Spell; recorded by User at 2026-08-16T11:59:00.000Z; reason: The character has rules Access.";
+    "Access note, the player's word and not a Wayfinder check: Level 5 spellbook additions; A character or rules Access; Restricted Spell; written by User at 2026-08-16T11:59:00.000Z; reason: The character has rules Access.";
   result.cases[0].evidence.applyReview = {
     confirmationMessage: `Apply 1 step to Actor?\n\n${reviewLine}`,
     reviewLines: [reviewLine],

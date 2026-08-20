@@ -224,23 +224,23 @@ function spellMatchesAuditSlot(item, expected) {
         exactUuids.has(sourceId));
 }
 function comparisonEntry(classSlug, classLabel, actorLevel, observed, expected, deficit, extra) {
-    const attributionBoundary = "Actor spell data does not identify which level each spell was learned.";
+    const attributionBoundary = "The sheet does not record which level each spell was learned at.";
     let value;
     let status;
     if (deficit === 0 && extra === 0) {
-        value = `${observed} spells found, matches expectations through level ${actorLevel}. ${attributionBoundary}`;
+        value = `${observed} spells, which is what a level ${actorLevel} character should have. ${attributionBoundary}`;
         status = "mapped";
     }
     else if (deficit > 0 && extra === 0) {
-        value = `${deficit} fewer spell${deficit === 1 ? "" : "s"} than expected (${observed} found; ${expected} expected through level ${actorLevel}) — add ${deficit === 1 ? "it" : "them"} on the sheet, or rebuild through Wayfinder. ${attributionBoundary}`;
+        value = `${deficit} spell${deficit === 1 ? "" : "s"} short. Found ${observed}, expected ${expected} by level ${actorLevel}. Add ${deficit === 1 ? "it" : "them"} on the sheet, or rebuild through Wayfinder. ${attributionBoundary}`;
         status = "review";
     }
     else if (extra > 0 && deficit === 0) {
-        value = `${extra} more spell${extra === 1 ? "" : "s"} than expected (${observed} found; ${expected} expected through level ${actorLevel}), probably feat- or item-granted — review ${extra === 1 ? "it" : "them"} on the sheet; do not delete anything based on this audit. ${attributionBoundary}`;
+        value = `${extra} spell${extra === 1 ? "" : "s"} more than expected. Found ${observed}, expected ${expected} by level ${actorLevel}. A feat or item probably granted ${extra === 1 ? "it" : "them"}, so have a look on the sheet. Do not delete anything on the strength of this count alone. ${attributionBoundary}`;
         status = "review";
     }
     else {
-        value = `${deficit} expected spell${deficit === 1 ? " is" : "s are"} missing and ${extra} other spell${extra === 1 ? " does" : "s do"} not match those open places (${observed} found; ${expected} expected through level ${actorLevel}) — review both groups on the sheet; do not delete anything based on this audit. ${attributionBoundary}`;
+        value = `${deficit} expected spell${deficit === 1 ? " is" : "s are"} missing, and ${extra} other spell${extra === 1 ? " does" : "s do"} not fill those gaps. Found ${observed}, expected ${expected} by level ${actorLevel}. Check both groups on the sheet, and do not delete anything on the strength of this count alone. ${attributionBoundary}`;
         status = "review";
     }
     return {

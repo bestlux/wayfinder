@@ -3,14 +3,14 @@
     <details class="history-report">
       <summary>
         <span>
-          <strong>Existing character history</strong>
-          <small>{{existingCharacterHistory.mappedCount}} mapped · {{existingCharacterHistory.reviewCount}} need review</small>
+          <strong>What this character already has</strong>
+          <small>{{existingCharacterHistory.mappedCount}} traced · {{existingCharacterHistory.reviewCount}} need a look</small>
         </span>
-        <button type="button" class="secondary history-refresh" data-wayfinder-action="import-existing-history">Refresh from actor</button>
+        <button type="button" class="secondary history-refresh" data-wayfinder-action="import-existing-history">Read the sheet again</button>
       </summary>
       <div class="history-report-body">
         <p class="history-scope">
-          Wayfinder maps only choices it can verify from actor data and PF2E native feat slots. It leaves ambiguous source boosts, skill increases, and embedded choices explicit instead of guessing.
+          Wayfinder traces only what it can prove from the sheet itself. Where a boost, skill increase, or granted choice could have come from more than one place, it says so instead of guessing.
         </p>
         <div class="history-levels">
           {{#each existingCharacterHistory.levels}}
@@ -37,9 +37,9 @@
       <section class="history-import">
         <span>
           <strong>Already built this character?</strong>
-          <small>Map source-backed choices into a level-by-level history without rewriting the actor.</small>
+          <small>Trace the choices already on the sheet into a level-by-level history. Nothing gets rewritten.</small>
         </span>
-        <button type="button" class="primary" data-wayfinder-action="import-existing-history">Map Existing Character</button>
+        <button type="button" class="primary" data-wayfinder-action="import-existing-history">Trace This Character</button>
       </section>
     {{/if}}
   {{/if}}
@@ -189,7 +189,7 @@
         <p class="eyebrow">Wayfinder</p>
         <h2>{{actorName}}</h2>
         <p>{{localize "wayfinder-pf2e.App.NoPending"}}</p>
-        <small>Raise the target level to plan this character's next advancement.</small>
+        <small>Raise the target level to plan what comes next.</small>
       </div>
 
       <div class="empty-planner-levels" aria-label="Character level planning">
@@ -221,18 +221,18 @@
   {{/if}}
 
   {{#if lastAppliedSpellRarityAttestations.length}}
-    <section class="wayfinder-attestation-receipt" aria-label="Last Apply player spell attestations">
-      <p class="eyebrow">Last Apply receipt</p>
-      <h3>Player spell attestations</h3>
-      <p class="attestation-disclaimer">Player attestation — not GM authorization.</p>
+    <section class="wayfinder-attestation-receipt" aria-label="Spell access notes from the last apply">
+      <p class="eyebrow">Last apply</p>
+      <h3>Spell access notes</h3>
+      <p class="attestation-disclaimer">These are the player's word, not a check Wayfinder ran.</p>
       {{#each lastAppliedSpellRarityAttestations}}
         <article>
           <h4>{{subjectLabel}}</h4>
           <dl>
-            <div><dt>Claimed basis</dt><dd>{{basisLabel}}</dd></div>
+            <div><dt>Claimed under</dt><dd>{{basisLabel}}</dd></div>
             <div><dt>Reason</dt><dd>{{reason}}</dd></div>
-            <div><dt>Recorded by</dt><dd>{{authorName}}</dd></div>
-            <div><dt>Recorded at</dt><dd><time datetime="{{attestedAt}}">{{attestedAt}}</time></dd></div>
+            <div><dt>Written by</dt><dd>{{authorName}}</dd></div>
+            <div><dt>Written at</dt><dd><time datetime="{{attestedAt}}">{{attestedAt}}</time></dd></div>
             <div><dt>Selected spells</dt><dd>{{selectedSpellNames}}</dd></div>
           </dl>
         </article>
@@ -272,7 +272,7 @@
     {{/if}}
     <div class="footer-actions">
       <button type="button" class="secondary" data-wayfinder-action="save-draft" {{#if lifecycleBusy}}disabled{{/if}}>Save Draft</button>
-      <button type="button" class="primary" data-wayfinder-action="apply-draft" data-wayfinder-readiness-ready="{{readinessReady}}" {{#unless canApplyDraft}}disabled{{/unless}} {{#if applyBlocker}}aria-label="Apply Changes unavailable. {{applyBlocker.message}}"{{/if}}>Apply Changes</button>
+      <button type="button" class="primary" data-wayfinder-action="apply-draft" data-wayfinder-readiness-ready="{{readinessReady}}" {{#unless canApplyDraft}}disabled{{/unless}} {{#if applyBlocker}}aria-label="Not ready to apply. {{applyBlocker.message}}"{{/if}}>Apply Changes</button>
     </div>
   </footer>
 </section>

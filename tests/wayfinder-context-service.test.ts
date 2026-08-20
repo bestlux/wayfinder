@@ -212,7 +212,7 @@ describe("wayfinder context service", () => {
       {
         stepId: "spell-choice-wizard-level-1",
         subjectLabel: "Wizard spellbook",
-        basisLabel: "GM permission reported by player",
+        basisLabel: "GM said yes, per the player",
         reason: "The player reports campaign permission.",
         authorName: "Player One",
         attestedAt: "2026-08-16T12:34:56.000Z",

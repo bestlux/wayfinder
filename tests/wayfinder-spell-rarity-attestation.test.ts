@@ -134,7 +134,9 @@ describe("restricted-spell player attestations", () => {
         selectedSpells: [spellSelection()],
       }),
     ]);
-    expect(buildSpellRarityAttestationReviewLines(applied)[0]).toContain("Player attestation — not GM authorization");
+    expect(buildSpellRarityAttestationReviewLines(applied)[0]).toContain(
+      "Access note, the player's word and not a Wayfinder check"
+    );
     expect(buildSpellRarityAttestationReviewLines(applied)[0]).toContain("Forbidding Ward");
     expect(buildSpellRarityAttestationReviewLines(applied)[0]).toContain("Wizard spellbook");
     expect(

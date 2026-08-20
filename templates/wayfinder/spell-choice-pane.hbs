@@ -6,7 +6,7 @@
 
         <label class="search-shell">
           <i class="fa-solid fa-magnifying-glass"></i>
-          <input type="search" value="{{activePane.search}}" placeholder="Search name, source, rarity…" aria-label="Search spells" data-wayfinder-search data-step-id="{{activePane.stepId}}" />
+          <input type="search" value="{{activePane.search}}" placeholder="Search spells by name, source, or rarity…" aria-label="Search spells" data-wayfinder-search data-step-id="{{activePane.stepId}}" />
         </label>
 
         {{#if activePane.selectedSpells.length}}
@@ -18,7 +18,7 @@
 
             {{#if activePane.excessCount}}
               <p class="spell-selection-error">
-                Remove {{activePane.excessCount}} extra spell{{#unless (eq activePane.excessCount 1)}}s{{/unless}} before Apply.
+                Drop {{activePane.excessCount}} spell{{#unless (eq activePane.excessCount 1)}}s{{/unless}} before you can apply.
               </p>
             {{/if}}
 
@@ -54,26 +54,26 @@
         </div>
 
         {{#if activePane.rarityAccess.visible}}
-          <section class="spell-rarity-access is-{{activePane.rarityAccess.state}}" aria-label="Restricted-spell player attestation">
+          <section class="spell-rarity-access is-{{activePane.rarityAccess.state}}" aria-label="Access note for restricted spells">
             <div class="spell-rarity-access-heading">
-              <strong>Player attestation</strong>
-              {{#if (eq activePane.rarityAccess.state "unresolved")}}<span>Needs review</span>{{/if}}
+              <strong>Access note</strong>
+              {{#if (eq activePane.rarityAccess.state "unresolved")}}<span>Needs a reason</span>{{/if}}
               {{#if (eq activePane.rarityAccess.state "stale")}}<span>Stale</span>{{/if}}
-              {{#if (eq activePane.rarityAccess.state "unused")}}<span>Not currently needed</span>{{/if}}
-              {{#if (eq activePane.rarityAccess.state "attested")}}<span>Recorded</span>{{/if}}
+              {{#if (eq activePane.rarityAccess.state "unused")}}<span>Not needed right now</span>{{/if}}
+              {{#if (eq activePane.rarityAccess.state "attested")}}<span>On file</span>{{/if}}
             </div>
 
             {{#if activePane.rarityAccess.reason}}
               <dl class="spell-rarity-attestation-details">
-                <div><dt>Claimed basis</dt><dd>{{activePane.rarityAccess.basisLabel}}</dd></div>
+                <div><dt>Claimed under</dt><dd>{{activePane.rarityAccess.basisLabel}}</dd></div>
                 <div><dt>Reason</dt><dd>{{activePane.rarityAccess.reason}}</dd></div>
-                <div><dt>Recorded by</dt><dd>{{activePane.rarityAccess.authorName}}</dd></div>
-                <div><dt>Recorded at</dt><dd><time datetime="{{activePane.rarityAccess.attestedAt}}">{{activePane.rarityAccess.attestedAt}}</time></dd></div>
+                <div><dt>Written by</dt><dd>{{activePane.rarityAccess.authorName}}</dd></div>
+                <div><dt>Written at</dt><dd><time datetime="{{activePane.rarityAccess.attestedAt}}">{{activePane.rarityAccess.attestedAt}}</time></dd></div>
               </dl>
             {{/if}}
 
             <p class="spell-rarity-attestation-disclaimer">
-              This is a player claim, not verified GM authorization.
+              This is your word for the record. Wayfinder does not check it.
             </p>
             <button
               type="button"
@@ -84,12 +84,12 @@
               {{#if activePane.rarityAccess.locked}}disabled{{/if}}
             >
               {{#if (eq activePane.rarityAccess.state "attested")}}
-                <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove player attestation
+                <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove note
               {{else}}
                 {{#if (eq activePane.rarityAccess.state "unused")}}
-                  <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove unused attestation
+                  <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove unused note
                 {{else}}
-                  <i class="fa-solid fa-pen" aria-hidden="true"></i> Record player attestation
+                  <i class="fa-solid fa-pen" aria-hidden="true"></i> Write an access note
                 {{/if}}
               {{/if}}
             </button>
@@ -101,7 +101,7 @@
                 data-step-id="{{activePane.stepId}}"
                 aria-describedby="{{activePane.rarityAccess.descriptionId}}"
               >
-                <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove migrated attestation
+                <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove old note
               </button>
             {{/if}}
             {{#if (eq activePane.rarityAccess.state "stale")}}
@@ -112,12 +112,12 @@
                 data-step-id="{{activePane.stepId}}"
                 aria-describedby="{{activePane.rarityAccess.descriptionId}}"
               >
-                <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove stale attestation
+                <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove stale note
               </button>
             {{/if}}
             <p id="{{activePane.rarityAccess.descriptionId}}">
-              Spells above the world's default rarity ceiling require character or rules Access, or permission reported by the player.
-              {{#if activePane.rarityAccess.locked}}Clear this step's spells before removing the attestation.{{/if}}
+              Spells rarer than your world allows by default need a reason behind them, either a character or rules Access, or your GM's say-so.
+              {{#if activePane.rarityAccess.locked}}Clear this step's spells before you remove the note.{{/if}}
             </p>
           </section>
         {{/if}}

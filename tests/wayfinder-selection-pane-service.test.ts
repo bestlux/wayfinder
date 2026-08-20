@@ -725,7 +725,7 @@ describe("wayfinder selection pane service", () => {
       granted: true,
       locked: false,
       state: "attested",
-      basisLabel: "Character or rules Access",
+      basisLabel: "A character or rules Access",
       reason: "Witch patron grants Access.",
       authorName: "Player",
       attestedAt: "2026-08-16T12:00:00.000Z",

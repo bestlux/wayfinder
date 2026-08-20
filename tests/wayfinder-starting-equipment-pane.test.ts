@@ -59,7 +59,7 @@ describe("starting equipment pane", () => {
     expect(pane.templateKind).toBe("starting-equipment");
     expect(pane.policy).toMatchObject({
       budgetLabel: "10 gp",
-      automaticEligibilityLabel: "Common items from 1 approved pack",
+      automaticEligibilityLabel: "Common gear from 1 approved pack",
     });
     expect(pane.catalogue.items[0]).toMatchObject({ name: "Adventurer's Pack", affordable: true, canAdd: true });
     expect(pane.catalogue.filters[0]).toMatchObject({ value: "equipment", selected: true });
@@ -120,7 +120,7 @@ describe("starting equipment pane", () => {
     expect(pane.cart.lines[0]).toMatchObject({
       canRemove: false,
       canChangeQuantity: false,
-      fundingLabel: "Automatic build grant · not charged",
+      fundingLabel: "Granted by your build · free",
       unavailableReason: null,
     });
     expect(pane.cart.lines[1]).toMatchObject({ canRemove: true, canChangeQuantity: false });
@@ -178,7 +178,7 @@ describe("starting equipment pane", () => {
       'data-wayfinder-action="retain-all-equipment"',
       'data-wayfinder-action="acknowledge-equipment-handoff"',
       'data-wayfinder-action="choose-titan-mauler-equipment"',
-      "Choose your Titan Mauler weapon",
+      "Pick your Titan Mauler weapon",
       "data-wayfinder-focus-id",
     ]) {
       expect(template).toContain(token);

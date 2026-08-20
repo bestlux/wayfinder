@@ -9,7 +9,7 @@ describe("Wayfinder language choice layout", () => {
   it("groups approval options under one disclosure instead of repeating the warning on every card", () => {
     expect(template).toContain('class="language-approval-options"');
     expect(template).toContain("Other languages ({{activePane.approvalOptionCount}})");
-    expect(template.match(/GM approval required/g)).toHaveLength(1);
+    expect(template.match(/Needs GM approval/g)).toHaveLength(1);
     expect(template).toContain("{{#each activePane.sourceOptions}}");
     expect(template).toContain("{{#each activePane.approvalOptions}}");
   });

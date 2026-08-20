@@ -562,9 +562,7 @@ describe("wayfinder option context service", () => {
           resolveDocument: async () => ({ name: "Champion" }),
         }
       )
-    ).resolves.toBe(
-      "Resolve the deity step first so Wayfinder can narrow champion causes to the legal sanctification path."
-    );
+    ).resolves.toBe("Pick your deity first. Which causes are open to you depends on it.");
   });
 
   it("states the eligibility boundary for Free Archetype choices", async () => {
@@ -593,7 +591,7 @@ describe("wayfinder option context service", () => {
         },
         { resolveDocument: async () => null }
       )
-    ).resolves.toContain("resolved dedication families");
+    ).resolves.toContain("minus duplicates, lockouts, and multiclass limits");
   });
 
   it("discloses unresolved GM-adjudicated dedication exceptions", async () => {
@@ -626,7 +624,7 @@ describe("wayfinder option context service", () => {
         },
         { resolveDocument: async () => null }
       )
-    ).resolves.toContain("GM-adjudicated dedication exception");
+    ).resolves.toContain("a dedication exception your GM allowed");
   });
 
   it("describes unified-theory wizard bonus spells as available arcane choices", async () => {
@@ -688,7 +686,7 @@ describe("wayfinder option context service", () => {
         }
       )
     ).resolves.toBe(
-      "Showing rank 1 arcane spells that will be added to the Wizard spellbook. Daily prepared loadouts remain on PF2E's character sheet."
+      "Adding rank 1 arcane spells to your Wizard spellbook. What you prepare each day stays on the PF2E sheet."
     );
   });
 });

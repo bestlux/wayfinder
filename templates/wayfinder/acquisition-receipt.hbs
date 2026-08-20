@@ -1,7 +1,7 @@
 <section class="wayfinder-acquisition-receipt" aria-label="Last starting-equipment Apply receipt">
   <header>
     <div>
-      <p class="eyebrow">Last Apply receipt</p>
+      <p class="eyebrow">Last apply</p>
       <h3>Starting equipment</h3>
       <p>{{acquisitionReceipt.dispositionLabel}}</p>
     </div>
@@ -21,7 +21,7 @@
   </dl>
 
   {{#if acquisitionReceipt.itemRows.length}}
-    <div class="acquisition-receipt-items" role="list" aria-label="Created starting equipment">
+    <div class="acquisition-receipt-items" role="list" aria-label="Starting equipment added">
       {{#each acquisitionReceipt.itemRows}}
         <article role="listitem">
           <span>
@@ -33,15 +33,15 @@
       {{/each}}
     </div>
   {{else}}
-    <p class="acquisition-receipt-empty">No automated item creation was recorded for this Apply.</p>
+    <p class="acquisition-receipt-empty">Nothing was added to your inventory.</p>
   {{/if}}
 
   {{#if acquisitionReceipt.classGrantRows.length}}
     <details>
-      <summary>Build-grant evidence</summary>
+      <summary>What your build granted</summary>
       <ul>
         {{#each acquisitionReceipt.classGrantRows}}
-          <li><code>{{grantId}}</code> · {{status}}</li>
+          <li>{{statusLabel}} <code>{{grantId}}</code></li>
         {{/each}}
       </ul>
     </details>

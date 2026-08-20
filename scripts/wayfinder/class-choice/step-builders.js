@@ -18,7 +18,7 @@ export function buildClassTrainingStepsFromRules(args) {
         return [];
     }
     return [
-        createSkillTrainingStep(1, `${training.className} skill training`, "Choose the class skill training decisions this class grants at 1st level.", training),
+        createSkillTrainingStep(1, `${training.className} skill training`, "Your class trains you in a few skills outright and lets you choose the rest.", training),
     ];
 }
 export async function buildClassBranchStepsFromRules(args) {
@@ -95,8 +95,8 @@ function buildClassGrantedItemStepsFromFeatures(classFeatures, classSlug) {
             continue;
         }
         steps.push(createPickItemStep(grant.itemType === "deity" ? "deity" : "grant-choice", feature.level, grant.itemType === "deity" ? "Choose a deity" : `Choose ${grant.selectorName.toLowerCase()}`, grant.itemType === "deity"
-            ? "Choose the deity that grants your divine skill, favored weapon, sanctification, and divine font."
-            : `Choose the ${grant.selectorName.toLowerCase()} this class feature grants.`, grant.filters, {
+            ? "Your deity sets your divine skill, favored weapon, sanctification, and divine font."
+            : `Pick the ${grant.selectorName.toLowerCase()} this class feature hands you.`, grant.filters, {
             slotId: grant.slotId,
             grantSelection: grant,
         }));
@@ -144,11 +144,11 @@ function buildClassChoiceTitle(choice, localize) {
 function buildClassChoiceDescription(choice) {
     const classLabel = choice.classSlug ? formatSlug(choice.classSlug).toLowerCase() : "class";
     if (choice.flag === "sanctification") {
-        return `Choose the sanctification your deity allows for this ${classLabel}.`;
+        return `Pick the sanctification your deity allows a ${classLabel}.`;
     }
     if (choice.flag === "divineFont") {
-        return `Choose the divine font your deity grants for this ${classLabel}.`;
+        return `Pick the divine font your deity grants a ${classLabel}.`;
     }
-    return `Choose the ${formatSlug(choice.flag).toLowerCase()} this class feature grants.`;
+    return `Pick the ${formatSlug(choice.flag).toLowerCase()} this class feature hands you.`;
 }
 //# sourceMappingURL=step-builders.js.map

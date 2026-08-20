@@ -6,7 +6,7 @@ export class WayfinderDraftNotReadyError extends Error {
     blockers;
     constructor(blockers) {
         const firstBlocker = blockers[0];
-        super(firstBlocker?.message ?? "This Wayfinder draft is not ready to apply.");
+        super(firstBlocker?.message ?? "This draft is not ready to apply yet.");
         this.name = "WayfinderDraftNotReadyError";
         this.blockers = blockers;
     }
@@ -102,7 +102,7 @@ export async function isWayfinderStepComplete(step, draft, effectiveBuildState) 
 }
 export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState) {
     if (step.kind === "manual") {
-        return draft.manual[step.slotId] === true ? "Ready to apply" : "Needs manual review";
+        return draft.manual[step.slotId] === true ? "Ready to apply" : "Not done yet";
     }
     if (step.kind === "pick-item") {
         if (recentlyInvalidatedStepIds.has(step.slotId) && !draft.selections[step.slotId]) {
@@ -184,21 +184,21 @@ export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedSte
     }
     if (step.kind === "starting-equipment") {
         if (draft.acquisitionCorrupt)
-            return "Needs equipment draft recovery";
+            return "Draft is damaged";
         const acquisition = draft.acquisition;
         if (!acquisition)
-            return "Set up starting equipment";
+            return "Not started";
         switch (acquisition.disposition.kind) {
             case "purchase-ledger":
-                return "Purchases reviewed";
+                return "Kit confirmed";
             case "retain-all":
-                return "All starting wealth retained";
+                return "Keeping all your coin";
             case "handoff":
                 return acquisition.disposition.acknowledgedByUserId && acquisition.disposition.acknowledgedAt
-                    ? "PF2E sheet handoff acknowledged"
-                    : "Acknowledge PF2E sheet handoff";
+                    ? "Handled on your sheet"
+                    : "Needs your OK";
             case "unreviewed":
-                return acquisition.disposition.invalidatedFrom ? "Review equipment changes" : "Review purchases or retain all";
+                return acquisition.disposition.invalidatedFrom ? "Something changed, check it" : "Choose your gear";
         }
     }
     if (recentlyInvalidatedStepIds.has(step.slotId) &&
@@ -247,7 +247,7 @@ function buildStepIssue(step, draft, recentlyInvalidatedStepIds, status) {
             stepId: step.id,
             slotId: step.slotId,
             title: step.title,
-            message: `${step.title}: complete the required manual review.`,
+            message: `${step.title}: mark it done once you have handled it on the sheet.`,
         };
     }
     if (step.kind === "starting-equipment") {
@@ -281,7 +281,7 @@ function buildStepIssue(step, draft, recentlyInvalidatedStepIds, status) {
             stepId: step.id,
             slotId: step.slotId,
             title: step.title,
-            message: `${step.title}: review this step after the earlier choice changed.`,
+            message: `${step.title}: an earlier choice changed, so give this another look.`,
         };
     }
     return {

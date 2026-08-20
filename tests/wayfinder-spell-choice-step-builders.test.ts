@@ -658,7 +658,7 @@ describe("wayfinder spell-choice step builders", () => {
 
     expect(steps).toEqual([]);
     expect(planningNote).toBe(
-      "Spell choices for levels up to 3 aren't re-planned for existing characters. Spells already on the sheet are treated as complete — review them there."
+      "Wayfinder does not re-plan spells you picked at level 3 or below. Whatever is already on the sheet counts as done, so check it there."
     );
   });
 
@@ -895,7 +895,7 @@ describe("wayfinder spell-choice step builders", () => {
     });
 
     expect(steps.map((step) => step.level).filter((level) => level > 1)).toEqual([]);
-    expect(planningNote).toContain("Spell choices for levels up to 3 aren't re-planned");
+    expect(planningNote).toContain("Wayfinder does not re-plan spells you picked at level 3 or below");
   });
 
   it("builds magus bounded spellbook steps through level 5", async () => {

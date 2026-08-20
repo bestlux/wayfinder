@@ -1,14 +1,14 @@
 <section class="boost-stage">
   {{#if activePane.blocked}}
     <div class="picker-state picker-state-blocked boost-blocked">
-      <p class="eyebrow">Prerequisite Required</p>
+      <p class="eyebrow">One thing first</p>
       <h4>{{activePane.blockedTitle}}</h4>
       <p>{{activePane.blockedMessage}}</p>
     </div>
   {{else}}
     <section class="boost-ledger">
       <header class="boost-summary-header">
-        <p class="eyebrow">Projected Ability Modifiers</p>
+        <p class="eyebrow">Where your modifiers land</p>
         <h4>{{activePane.selectedLabel}}</h4>
       </header>
 
@@ -120,7 +120,7 @@
           <header class="boost-section-header">
             <div>
               <p class="eyebrow">Class</p>
-              <h4>Choose key ability</h4>
+              <h4>Choose your key ability</h4>
             </div>
           </header>
 
@@ -139,7 +139,7 @@
         <header class="boost-section-header">
           <div>
             <p class="eyebrow">Level {{activePane.levelSection.level}}</p>
-            <h4>Choose free boosts</h4>
+            <h4>Choose your free boosts</h4>
           </div>
           <span class="boost-remaining">{{activePane.levelSection.remaining}} remaining</span>
         </header>

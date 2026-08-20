@@ -1630,7 +1630,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       });
     } catch (error) {
       console.error("PF2E Wayfinder could not record the restricted-spell player attestation", error);
-      ui.notifications.warn("Enter a reason before recording this player attestation.");
+      ui.notifications.warn("Write a reason before saving this note.");
       return;
     }
     this.#statusNote =
@@ -2855,21 +2855,21 @@ async function requestSpellRarityAttestationInput(): Promise<SpellRarityAttestat
   const dialog = foundryApi.applications?.api?.DialogV2;
   if (dialog?.input) {
     const result = await dialog.input({
-      window: { title: "Record restricted-spell player attestation" },
+      window: { title: "Write an access note" },
       modal: true,
       content: `
         <fieldset class="wayfinder-attestation-input">
-          <legend>Claimed basis</legend>
-          <label><input type="radio" name="claimedBasis" value="rules-access" checked> Character or rules Access</label>
-          <label><input type="radio" name="claimedBasis" value="reported-gm-permission"> GM permission reported by player</label>
+          <legend>Where does the access come from?</legend>
+          <label><input type="radio" name="claimedBasis" value="rules-access" checked> A character or rules Access</label>
+          <label><input type="radio" name="claimedBasis" value="reported-gm-permission"> My GM said yes</label>
         </fieldset>
         <label class="wayfinder-attestation-reason">
-          Reason
+          Say a bit more
           <textarea name="reason" required maxlength="500" aria-describedby="wayfinder-attestation-disclaimer"></textarea>
         </label>
-        <p id="wayfinder-attestation-disclaimer">This is a player claim, not verified GM authorization.</p>
+        <p id="wayfinder-attestation-disclaimer">This goes on the record as your word. Wayfinder does not check it.</p>
       `,
-      ok: { label: "Record player attestation", icon: "fa-solid fa-pen" },
+      ok: { label: "Save note", icon: "fa-solid fa-pen" },
     });
     if (!isRecord(result)) return null;
     return normalizeSpellRarityAttestationInput(result.claimedBasis, result.reason);
@@ -2877,7 +2877,7 @@ async function requestSpellRarityAttestationInput(): Promise<SpellRarityAttestat
 
   if (typeof globalThis.prompt !== "function") return null;
   const reason = globalThis.prompt(
-    "Describe the character or rules Access supporting restricted spell selection. This records a player claim, not GM authorization."
+    "Where does the access for this spell come from? This goes on the record as your word, not as GM approval."
   );
   return normalizeSpellRarityAttestationInput("rules-access", reason);
 }
@@ -2892,7 +2892,7 @@ function normalizeSpellRarityAttestationInput(
     reason.trim().length === 0 ||
     reason.trim().length > 500
   ) {
-    ui.notifications.warn("Enter a reason before recording this player attestation.");
+    ui.notifications.warn("Write a reason before saving this note.");
     return null;
   }
   return { claimedBasis, reason: reason.trim() };
@@ -2904,7 +2904,7 @@ async function confirmWayfinderClear(message: string): Promise<boolean> {
   if (dialog) {
     const escapeHTML = foundryApi.utils?.escapeHTML ?? fallbackEscapeHtml;
     const result = await dialog.confirm({
-      window: { title: "Clear Wayfinder Draft" },
+      window: { title: "Clear This Draft" },
       content: `<p>${escapeHTML(message)}</p>`,
       modal: true,
       yes: { label: "Clear Draft", icon: "fa-solid fa-trash" },

@@ -26,12 +26,12 @@ export async function buildBoostPane(step, effectiveBuildState, deps) {
         blockedTitle: blockedForCreation
             ? "Choose ancestry, background, and class first"
             : missingPriorGradualBoost
-                ? "Complete the earlier gradual boost first"
+                ? "Finish the earlier boost first"
                 : null,
         blockedMessage: blockedForCreation
-            ? "Wayfinder needs the drafted ancestry, background, and class before it can offer a legal creation-boost layout."
+            ? "Your ancestry, background, and class each hand you boosts, so Wayfinder needs all three before it can lay this out."
             : missingPriorGradualBoost
-                ? `PF2E stores levels ${step.boost.batchLevel - 3}–${step.boost.batchLevel} as one ordered boost batch. Choose each earlier level before this one.`
+                ? `PF2E treats levels ${step.boost.batchLevel - 3} through ${step.boost.batchLevel} as one batch, in order. Fill in the earlier levels first.`
                 : null,
         completed: await deps.isStepComplete(step, effectiveBuildState),
         selectedLabel: await deps.stepStatus(step, effectiveBuildState),

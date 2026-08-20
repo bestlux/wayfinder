@@ -45,7 +45,9 @@ export function buildSkillIncreasePane(
       targetRankCode: PROFICIENCY_CODES[targetRank] ?? "T",
       selected: isSelected,
       disabled: atCap && !isSelected,
-      disabledReason: atCap ? `Already at ${PROFICIENCY_LABELS[currentRank]} (max for level ${step.level})` : null,
+      disabledReason: atCap
+        ? `Already ${PROFICIENCY_LABELS[currentRank]}, the highest a level ${step.level} character can reach`
+        : null,
     };
   });
 
@@ -109,7 +111,7 @@ export function buildSkillTrainingPane(
               targetRankCode: "T",
               selected,
               disabled: currentRank >= 1 && !selected,
-              disabledReason: currentRank >= 1 ? "Already trained from another source" : null,
+              disabledReason: currentRank >= 1 ? "Something else already trained you in this" : null,
             };
           })
       : [];
@@ -137,9 +139,9 @@ export function buildSkillTrainingPane(
       const disabledReason = selected
         ? null
         : reservedByOtherChoices.has(option.slug)
-          ? "Already chosen elsewhere in this step"
+          ? "You already picked this above"
           : currentRank >= 1
-            ? "Already trained from another source"
+            ? "Something else already trained you in this"
             : null;
 
       return {
@@ -165,7 +167,7 @@ export function buildSkillTrainingPane(
       sourceLabel: choiceRule.sourceLabel,
       selectedSlug: activeSelectedSlug,
       selectedLabel: activeSelectedSlug ? (SKILL_LABELS[activeSelectedSlug] ?? formatSlug(activeSelectedSlug)) : null,
-      unavailableLegend: unavailableReasons.length > 0 ? `Dimmed options: ${unavailableReasons.join("; ")}` : null,
+      unavailableLegend: unavailableReasons.length > 0 ? `Greyed out because: ${unavailableReasons.join("; ")}` : null,
       options,
     };
   });
@@ -212,7 +214,7 @@ export function buildSkillTrainingPane(
     selectedLabel:
       selectedLabels.length > 0
         ? `${selectedLabels.length}/${totalChoiceCount} chosen`
-        : "Choose starting skill training",
+        : "Choose your starting skill training",
     className: metadata.className,
     fixedSkills: fixedLabels,
     fixedLores: fixedLoreLabels,

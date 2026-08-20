@@ -13,7 +13,7 @@ describe("completed acquisition receipt", () => {
       manifestId: "manifest-1",
       batchId: "batch-1",
       disposition: "purchase-ledger",
-      dispositionLabel: "Purchased starting equipment",
+      dispositionLabel: "Bought starting gear",
       appliedBy: "Owner",
       currency: {
         preCopper: 0,
@@ -26,9 +26,9 @@ describe("completed acquisition receipt", () => {
         observedLabel: "9 gp",
       },
       authority: {
-        applyLabel: "Actor-owner Apply",
-        recipeChoiceLabel: "Actor-owner recipe choice",
-        higherLevelStartLabel: "Actor-owner higher-level start attestation",
+        applyLabel: "Applied by you",
+        recipeChoiceLabel: "Funding chosen by you",
+        higherLevelStartLabel: "Higher-level start noted by you",
         judgmentIds: [],
       },
       environmentLabel: "Foundry 14.366 · PF2E 8.4.0 · Wayfinder 0.8.0",
@@ -58,7 +58,7 @@ describe("completed acquisition receipt", () => {
     });
     const receipt = await buildAcquisitionReceiptViewModel(completed.manifest);
 
-    expect(receipt.dispositionLabel).toBe("Retained all starting currency");
+    expect(receipt.dispositionLabel).toBe("Kept all your starting coin");
     expect(receipt.itemRows).toEqual([]);
     expect(receipt.currency).toMatchObject({ spentCopper: 0, remainingCopper: 1_000, observedCopper: 1_000 });
   });

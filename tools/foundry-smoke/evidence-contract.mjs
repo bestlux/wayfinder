@@ -1309,10 +1309,10 @@ function validExpectedSpellSelections(value) {
 function spellRarityAttestationReviewLine(attestation) {
   const basis =
     attestation.claimedBasis === "rules-access"
-      ? "Character or rules Access"
-      : "GM permission reported by player";
+      ? "A character or rules Access"
+      : "GM said yes, per the player";
   const spells = attestation.selectedSpells.map((spell) => spell.name).join(", ") || "no selected spells";
-  return `Player attestation — not GM authorization: ${attestation.subjectLabel}; ${basis}; ${spells}; recorded by ${attestation.authorName} at ${attestation.attestedAt}; reason: ${attestation.reason}`;
+  return `Access note, the player's word and not a Wayfinder check: ${attestation.subjectLabel}; ${basis}; ${spells}; written by ${attestation.authorName} at ${attestation.attestedAt}; reason: ${attestation.reason}`;
 }
 
 function structuredValueEquals(left, right) {

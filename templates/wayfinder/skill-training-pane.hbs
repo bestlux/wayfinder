@@ -2,12 +2,12 @@
   <article class="skill-training-sheet" data-wayfinder-scroll-id="{{activePane.stepId}}:sheet">
     <header class="skill-training-header">
       <div>
-        <p class="eyebrow">Class Training</p>
+        <p class="eyebrow">Class training</p>
         <h4>{{activePane.className}}</h4>
         <p>{{activePane.description}}</p>
       </div>
       <div class="skill-training-status">
-        <span class="skill-cap-label">Draft status</span>
+        <span class="skill-cap-label">Status</span>
         <strong>{{activePane.selectedLabel}}</strong>
       </div>
     </header>
@@ -15,7 +15,7 @@
     {{#if activePane.fixedSkills.length}}
       <section class="skill-training-block">
         <header class="skill-training-block-header">
-          <p class="eyebrow">Automatic Training</p>
+          <p class="eyebrow">Trained automatically</p>
           <h5>Always trained</h5>
         </header>
         <div class="skill-training-fixed-list">
@@ -30,7 +30,7 @@
       <section class="skill-training-block">
         <header class="skill-training-block-header">
           <div>
-            <p class="eyebrow">Skill Choice</p>
+            <p class="eyebrow">Skill choice</p>
             <h5>{{prompt}}</h5>
           </div>
           <span class="skill-training-source-label">{{sourceLabel}}</span>
@@ -80,8 +80,8 @@
     {{#if activePane.fixedLores.length}}
       <section class="skill-training-block">
         <header class="skill-training-block-header">
-          <p class="eyebrow">Lore Training</p>
-          <h5>Already granted lore</h5>
+          <p class="eyebrow">Lore training</p>
+          <h5>Lore you already have</h5>
         </header>
         <div class="skill-training-fixed-list">
           {{#each activePane.fixedLores}}
@@ -95,7 +95,7 @@
       <section class="skill-training-block">
         <header class="skill-training-block-header">
           <div>
-            <p class="eyebrow">Lore Choice</p>
+            <p class="eyebrow">Lore choice</p>
             <h5>{{prompt}}</h5>
           </div>
           <span class="skill-training-source-label">{{sourceLabel}}</span>
@@ -139,7 +139,7 @@
     <section class="skill-training-block">
       <header class="skill-training-block-header">
         <div>
-          <p class="eyebrow">Additional Skills</p>
+          <p class="eyebrow">Extra skills</p>
           <h5>Choose {{activePane.additionalCount}} more skill{{#unless (eq activePane.additionalCount 1)}}s{{/unless}}</h5>
         </div>
         <span class="boost-remaining">{{activePane.additionalRemaining}} remaining</span>

@@ -31,7 +31,7 @@ describe("starting equipment command service", () => {
       kind: "purchase-ledger",
       review: { reviewedByUserId: "owner-1" },
     });
-    expect(result.statusNote).toBe("Starting-equipment purchases reviewed.");
+    expect(result.statusNote).toBe("Kit confirmed.");
   });
 
   it("records retain-all as an explicit reviewed empty-cart decision", async () => {
@@ -288,7 +288,7 @@ describe("starting equipment command service", () => {
       baseline: { actorId: "actor-1", currencyCopper: 0 },
       disposition: { kind: "unreviewed" },
     });
-    expect(result.statusNote).toContain("Choose the required Titan Mauler weapon");
+    expect(result.statusNote).toContain("Pick your Titan Mauler weapon before you finish");
     expect(prepareClassGrantPlan).not.toHaveBeenCalled();
   });
 

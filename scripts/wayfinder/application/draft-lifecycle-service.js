@@ -16,8 +16,8 @@ export async function applyDraftLifecycle(args) {
                     code: "dependency-review",
                     stepId: "starting-equipment",
                     slotId: "starting-equipment",
-                    title: "Starting equipment recovery",
-                    message: "The saved starting-equipment state is malformed and must be cleared or repaired before Apply.",
+                    title: "Starting equipment",
+                    message: "The saved equipment cart is damaged. Clear it before you apply.",
                 },
             ],
         };
@@ -32,7 +32,7 @@ export async function applyDraftLifecycle(args) {
                     stepId: "starting-equipment",
                     slotId: "starting-equipment",
                     title: "Starting equipment",
-                    message: "Starting-equipment Apply is unavailable until its prepared item executor is active.",
+                    message: "Wayfinder cannot buy equipment yet. That part is still being built.",
                 },
             ],
         };
@@ -319,17 +319,17 @@ export function countDraftLosses(draft, currentLevel) {
 }
 export function buildClearDraftConfirmationMessage(discardedDecisionCount) {
     if (discardedDecisionCount === 0) {
-        return "Clear this empty Wayfinder draft?";
+        return "Clear this draft? There is nothing in it yet.";
     }
-    const noun = discardedDecisionCount === 1 ? "decision" : "decisions";
-    return `Clear ${discardedDecisionCount} drafted ${noun}? This cannot be undone.`;
+    const noun = discardedDecisionCount === 1 ? "choice" : "choices";
+    return `Throw away ${discardedDecisionCount} ${noun} you have made? You cannot get them back.`;
 }
 export function buildApplyConfirmationMessage(actorName, stepCount, reviewLines = []) {
-    const heading = `Apply ${stepCount} Wayfinder step(s) to ${actorName}?`;
+    const heading = `Write ${stepCount} step${stepCount === 1 ? "" : "s"} to ${actorName}?`;
     return reviewLines.length > 0 ? `${heading}\n\n${reviewLines.join("\n")}` : heading;
 }
 function buildRecoveryFinalizationConfirmationMessage(actorName, reviewLines = []) {
-    const heading = `Finish recording the recovered Wayfinder Apply for ${actorName}? No build steps remain to reapply.`;
+    const heading = `Finish recording the interrupted apply for ${actorName}? No steps are left to redo.`;
     return reviewLines.length > 0 ? `${heading}\n\n${reviewLines.join("\n")}` : heading;
 }
 function defaultNow() {

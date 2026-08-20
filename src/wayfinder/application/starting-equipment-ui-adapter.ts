@@ -36,7 +36,7 @@ const UNAVAILABLE_ADAPTER: StartingEquipmentUiAdapter = {
   async project(request) {
     return {
       state: "pending",
-      message: "The approved Common-equipment catalogue is not loaded yet.",
+      message: "The gear list is not loaded yet.",
       query: request.query,
       records: [],
       filters: [],

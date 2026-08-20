@@ -54,7 +54,7 @@ export function buildSteps(snapshot, currentLevel, targetLevel) {
             }
             const filter = slot.filter ?? section.filter;
             const featTypes = intersectCampaignFeatTypes(section.supported, filter.categories);
-            steps.push(createPickItemStep("campaign-feat", slot.level, `Level ${slot.level} ${section.label}`, `A ${section.label} feat slot from your campaign's variant rules.`, {
+            steps.push(createPickItemStep("campaign-feat", slot.level, `Level ${slot.level} ${section.label}`, `Your campaign's variant rules add this ${section.label} feat slot.`, {
                 itemType: "feat",
                 ...(featTypes ? { featTypes } : {}),
                 ...(filter.traits.length > 0 ? { traits: filter.traits } : {}),

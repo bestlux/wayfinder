@@ -9,6 +9,7 @@ import {
   withExistingClassArchetypeChoice,
 } from "../class-archetype/registry.js";
 import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
+import { withIndefiniteArticle } from "../formatting.js";
 import { collectActorRuleSelectionRollOptions, collectSkillRankRollOptions } from "../projected-rule-options.js";
 import { selectionTakenLevel } from "../selection-level.js";
 
@@ -647,7 +648,7 @@ export async function buildContextNote(
           return null;
         }
         if (context.sanctification === "holy" || context.sanctification === "unholy") {
-          return `${className} causes open to a ${context.sanctification} character.`;
+          return `${className} causes open to ${withIndefiniteArticle(context.sanctification)} character.`;
         }
         if (context.sanctification === "none") {
           return `${className} causes open to a character with no sanctification.`;
@@ -664,7 +665,7 @@ export async function buildContextNote(
     case "deity": {
       const className = ((await deps.resolveDocument("class")) as LooseDocument | null)?.name;
       return className
-        ? `Deities a ${className} can follow. Wayfinder wires your choice into the class feature that needs it.`
+        ? `Deities ${withIndefiniteArticle(className)} can follow. Wayfinder wires your choice into the class feature that needs it.`
         : null;
     }
     case "class-choice": {

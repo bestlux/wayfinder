@@ -1,5 +1,5 @@
 import { createClassBranchStep, createClassChoiceStep, createPickItemStep, createSkillTrainingStep, } from "../domain/step-types.js";
-import { formatSlug } from "../formatting.js";
+import { formatSlug, withIndefiniteArticle } from "../formatting.js";
 import { buildChoiceRollOptions, discoverClassBranchMetas, discoverClassChoiceMeta, discoverGrantedItemMeta, discoverSkillTrainingMeta, getClassFeatureSources, } from "./rule-discovery.js";
 export function buildClassTrainingStepsFromRules(args) {
     const { effectiveClassDocument, classSelection, extractSlug, localize, intelligenceModifier } = args;
@@ -144,10 +144,10 @@ function buildClassChoiceTitle(choice, localize) {
 function buildClassChoiceDescription(choice) {
     const classLabel = choice.classSlug ? formatSlug(choice.classSlug).toLowerCase() : "class";
     if (choice.flag === "sanctification") {
-        return `Pick the sanctification your deity allows a ${classLabel}.`;
+        return `Pick the sanctification your deity allows ${withIndefiniteArticle(classLabel)}.`;
     }
     if (choice.flag === "divineFont") {
-        return `Pick the divine font your deity grants a ${classLabel}.`;
+        return `Pick the divine font your deity grants ${withIndefiniteArticle(classLabel)}.`;
     }
     return `Pick the ${formatSlug(choice.flag).toLowerCase()} this class feature hands you.`;
 }

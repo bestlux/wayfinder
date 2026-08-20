@@ -5,7 +5,7 @@ import {
   createPickItemStep,
   createSkillTrainingStep,
 } from "../domain/step-types.js";
-import { formatSlug } from "../formatting.js";
+import { formatSlug, withIndefiniteArticle } from "../formatting.js";
 import {
   buildChoiceRollOptions,
   type ClassFeatureSelectionSource,
@@ -249,10 +249,10 @@ function buildClassChoiceTitle(choice: ClassChoiceStep["classChoice"], localize:
 function buildClassChoiceDescription(choice: ClassChoiceStep["classChoice"]): string {
   const classLabel = choice.classSlug ? formatSlug(choice.classSlug).toLowerCase() : "class";
   if (choice.flag === "sanctification") {
-    return `Pick the sanctification your deity allows a ${classLabel}.`;
+    return `Pick the sanctification your deity allows ${withIndefiniteArticle(classLabel)}.`;
   }
   if (choice.flag === "divineFont") {
-    return `Pick the divine font your deity grants a ${classLabel}.`;
+    return `Pick the divine font your deity grants ${withIndefiniteArticle(classLabel)}.`;
   }
 
   return `Pick the ${formatSlug(choice.flag).toLowerCase()} this class feature hands you.`;

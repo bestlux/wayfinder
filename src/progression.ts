@@ -121,7 +121,7 @@ export function buildSteps(snapshot: ActorSnapshot, currentLevel: number, target
           "campaign-feat",
           slot.level,
           `Level ${slot.level} ${section.label}`,
-          `A ${section.label} feat slot from your campaign's variant rules.`,
+          `Your campaign's variant rules add this ${section.label} feat slot.`,
           {
             itemType: "feat",
             ...(featTypes ? { featTypes } : {}),

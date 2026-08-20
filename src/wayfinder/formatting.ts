@@ -208,3 +208,21 @@ export function formatActions(system: any): string {
   }
   return "";
 }
+
+/**
+ * Picks "a" or "an" for a word Wayfinder is about to splice into a sentence.
+ *
+ * Class names, ancestry names, campaign section labels, and sanctification
+ * values all reach copy through interpolation, so a hardcoded "a" reads as
+ * "a Oracle" or "a unholy character". This checks the first letter only, which
+ * is right for every value that currently reaches it. Words whose spelling and
+ * sound disagree ("a Universalist", "an hour") would need a real dictionary.
+ */
+export function indefiniteArticle(value: string): string {
+  return /^[aeiou]/i.test(value.trim()) ? "an" : "a";
+}
+
+export function withIndefiniteArticle(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? `${indefiniteArticle(trimmed)} ${trimmed}` : trimmed;
+}

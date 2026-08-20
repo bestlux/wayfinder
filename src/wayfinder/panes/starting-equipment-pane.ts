@@ -97,14 +97,14 @@ export function buildStartingEquipmentPane(
     initialized: !!acquisition,
     corrupt: draft.acquisitionCorrupt,
     policy: {
-      recipeLabel: policy ? recipeLabel(policy.resolvedRecipe.kind) : "Read from your world when you start",
+      recipeLabel: policy ? recipeLabel(policy.resolvedRecipe.kind) : "Set once you start shopping",
       budgetLabel: formatCopper(budgetCopper),
       automaticEligibilityLabel: policy
         ? `${capitalize(policy.rarityPolicy.blanketCeiling)} gear from ${policy.sourcePolicy.effectivePackIds.length} approved pack${policy.sourcePolicy.effectivePackIds.length === 1 ? "" : "s"}`
         : "Common gear from approved PF2E sources",
       authorityLabel: policy
-        ? `${authorityLabel(policy.authorityPolicy.recipeChoice)} picks the funding, ${authorityLabel(policy.authorityPolicy.apply)} applies it`
-        : "Read from your world when you start",
+        ? authoritySentence(policy.authorityPolicy.recipeChoice, policy.authorityPolicy.apply)
+        : "From your GM's settings",
       handoffLabel: "Coin and gear your character already has stay put. Handle those on the PF2E inventory tab.",
       explanations: policy && acquisition ? policyExplanations(acquisition) : [],
     },
@@ -206,8 +206,17 @@ function recipeLabel(kind: string): string {
   }
 }
 
-function authorityLabel(value: string): string {
-  return value === "gm-fixed" || value === "gm-review" || value === "gm-confirmation" ? "Your GM" : "You";
+function isGmAuthority(value: string): boolean {
+  return value === "gm-fixed" || value === "gm-review" || value === "gm-confirmation";
+}
+
+function authoritySentence(recipeChoice: string, apply: string): string {
+  const gmChooses = isGmAuthority(recipeChoice);
+  const gmApplies = isGmAuthority(apply);
+  if (gmChooses && gmApplies) return "Your GM chooses the funding and applies it";
+  if (gmChooses) return "Your GM chooses the funding, you apply it";
+  if (gmApplies) return "You choose the funding, your GM applies it";
+  return "You choose the funding and apply it";
 }
 
 function fundingLabel(lane: "allowance" | "currency" | "class-grant"): string {

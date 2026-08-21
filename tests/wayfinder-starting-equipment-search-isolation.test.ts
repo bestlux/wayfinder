@@ -7,6 +7,14 @@ import { resolveStartingEquipmentRenderPlan } from "../src/wayfinder/application
 const appShell = readFileSync(resolve("src/wayfinder/app-shell.ts"), "utf8");
 
 describe("starting equipment search isolation", () => {
+  it("uses the measured equipment debounce without changing ordinary picker timing", () => {
+    expect(appShell).toContain("const PICKER_SEARCH_DELAY_MS = 40;");
+    expect(appShell).toMatch(
+      /#pickerSearchScheduler = new PickerSearchScheduler\(\{\s*delayMs: PICKER_SEARCH_DELAY_MS,/
+    );
+    expect(appShell).toContain("#equipmentSearchScheduler = createEquipmentSearchScheduler({");
+  });
+
   it("schedules an equipment-only render without rebuilding the character plan from the input handler", () => {
     const start = appShell.indexOf("  #onEquipmentSearchInput = ");
     const end = appShell.indexOf("#renderPickerSearch", start);
@@ -14,7 +22,7 @@ describe("starting equipment search isolation", () => {
 
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
-    expect(handler).toContain("#equipmentSearchScheduler.schedule(stepId, input.value)");
+    expect(handler).toContain("scheduleEquipmentSearchInput(input, this.#equipmentSearchScheduler");
     expect(handler).toContain("parts: [...startingEquipmentPartsForIntent(equipmentRequest.intent)]");
     expect(handler).toContain("wayfinderEquipmentUpdate: true");
     expect(handler).toContain("wayfinderEquipmentRequest: equipmentRequest");
@@ -34,6 +42,21 @@ describe("starting equipment search isolation", () => {
     expect(prepare.slice(equipmentBranch, actorInspection)).toContain('wayfinderRenderScope: "equipment"');
     expect(prepare.slice(equipmentBranch, actorInspection)).not.toContain("this._buildRenderPlan");
     expect(prepare.slice(equipmentBranch, actorInspection)).not.toContain("buildWayfinderContext");
+  });
+
+  it("keeps equipment evaluation, readiness, and pane assembly outside the actor foundation", () => {
+    const start = appShell.indexOf("const resolveFoundation =");
+    const end = appShell.indexOf("const actorItemsById", start);
+    const prepare = appShell.slice(start, end);
+
+    expect(prepare).toMatch(/step\.kind === "starting-equipment"\s*\? \[\]/);
+    expect(prepare).toContain('if (step.kind === "starting-equipment")');
+    expect(prepare).toContain("withPhysicalGrantCoverageReadiness(");
+    expect(prepare).toContain("...buildActorRenderFoundationLanguageSettings(");
+    expect(prepare).toContain("await this.#buildActivePane(");
+    expect(prepare.indexOf("withPhysicalGrantCoverageReadiness(")).toBeLessThan(
+      prepare.indexOf("await this.#buildActivePane(")
+    );
   });
 
   it("keeps the equipment search control outside all replaceable application parts", () => {

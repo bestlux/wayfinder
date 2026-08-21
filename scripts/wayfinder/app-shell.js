@@ -9,7 +9,7 @@ import { fetchSelectionDocument } from "../pack/access.js";
 import { getOptionQueryForStep, getOptionsForStep, resolveSelection } from "../pack/options.js";
 import { getPickerInfoState } from "../pack/picker-state.js";
 import { assertCanUseWayfinder, canUseWayfinder, WayfinderActorAuthorityError } from "../permissions.js";
-import { getEquipmentPolicyJudgmentStoreSetting, getEquipmentWorldPolicySetting, getSpellRarityCeilingSetting, } from "../settings.js";
+import { getEquipmentPolicyJudgmentStoreSetting, getEquipmentWorldPolicySetting, getExtraPackSetting, getSpellRarityCeilingSetting, } from "../settings.js";
 import { enqueueActorOperation } from "../shared/actor-operation-queue.js";
 import { cloneData } from "../shared/cloning.js";
 import { extractDocumentSlug } from "../shared/slug.js";
@@ -19,6 +19,7 @@ import { bindWayfinderInteractions, isDraftMutationAction, parseWayfinderAction,
 import { localizeAcquisitionMessage, } from "./application/acquisition-localization.js";
 import { acquisitionSmokeApplyFailureHandledFor, acquisitionSmokeApplyFailureRenderedFor, acquisitionSmokeCheckpointHookFor, } from "./application/acquisition-smoke-driver.js";
 import { openActorInventorySheet, } from "./application/actor-inventory-navigation-service.js";
+import { actorRenderFoundationCache, buildActorRenderFoundationKey, buildActorRenderFoundationLanguageSettings, getActorRenderFoundationSourceGeneration, registerActorRenderFoundationSourceInvalidation, } from "./application/actor-render-foundation-service.js";
 import { assertApplyCandidateCurrent, persistApplyCandidateIfCurrent, WayfinderApplyDriftError, } from "./application/apply-candidate-service.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
 import { buildSkillPane, projectSkillRanks } from "./application/build-skill-pane-service.js";
@@ -31,6 +32,7 @@ import { equipmentLineFocusId, restoreEquipmentFocus, STARTING_EQUIPMENT_REVIEW_
 import { ConfiguredItemHandoffRequiredError, commitTitanMaulerLineSynchronization, getFoundryEquipmentAcquisitionRuntime, } from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
+import { createEquipmentSearchScheduler, scheduleEquipmentSearchInput, } from "./application/equipment-search-input-service.js";
 import { buildExistingCharacterHistory, withExistingCharacterHistory, } from "./application/existing-character-history-service.js";
 import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
 import { markWayfinderKeyboardFocus } from "./application/foundry-keyboard-focus-service.js";
@@ -43,7 +45,7 @@ import { SemanticCommandQueue } from "./application/semantic-command-queue.js";
 import { executeStartingEquipmentCommand, } from "./application/starting-equipment-command-service.js";
 import { localizeStartingEquipmentError } from "./application/starting-equipment-failure.js";
 import { advanceStartingEquipmentRenderSession, canDeriveStartingEquipmentRender, canUseStartingEquipmentCommandPartial, createStartingEquipmentRenderSession, EQUIPMENT_CART_PART, EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART, EQUIPMENT_POLICY_PART, EQUIPMENT_STATUS_PART, startingEquipmentPartsForIntent, startingEquipmentRenderIdentity, } from "./application/starting-equipment-render-session.js";
-import { getStartingEquipmentUiAdapter, resolveStartingEquipmentRenderPlan, } from "./application/starting-equipment-ui-adapter.js";
+import { getStartingEquipmentUiAdapter } from "./application/starting-equipment-ui-adapter.js";
 import { buildDraftSaveView, buildWayfinderContext, } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
 import { acquisitionPolicyMaterialMatches, recordAcquisitionCurrencyConvergenceWitness, recordClassGrantReconciliations, } from "./domain/acquisition-draft.js";
@@ -126,8 +128,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             ui.notifications.error("Wayfinder could not update these search results. Reopen the window and try again.");
         },
     });
-    #equipmentSearchScheduler = new PickerSearchScheduler({
-        delayMs: PICKER_SEARCH_DELAY_MS,
+    #equipmentSearchScheduler = createEquipmentSearchScheduler({
         render: (request) => this.#renderStartingEquipmentSearch(request),
         onError: (error) => {
             console.error("PF2E Wayfinder equipment search render failed", error);
@@ -163,6 +164,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             uniqueId: `${MODULE_ID}-${options.actor.id}`,
         });
         this.actor = options.actor;
+        registerActorRenderFoundationSourceInvalidation(() => _a.rerenderOpenApps());
         const initialLevel = inspectActor(this.actor).level;
         this.#draftWriteGuard = new PersistedDraftWriteGuard(readPersistedDraftSnapshot(this.actor, initialLevel));
         this.#draftPersistence = new DraftPersistenceCoordinator({
@@ -299,22 +301,51 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const snapshot = inspectActor(this.actor);
         const draft = this.#ensureDraft(snapshot.level);
         const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
-        const plan = await resolveStartingEquipmentRenderPlan({
-            equipmentOnlyUpdate: options.wayfinderEquipmentUpdate === true,
-            targetLevel: draft.targetLevel,
-            cachedPlan: this.#cachedRenderPlan,
-            buildPlan: () => this._buildRenderPlan(snapshot, draft),
+        const resolveFoundation = () => actorRenderFoundationCache.resolve(this.actor, buildActorRenderFoundationKey({
+            actor: this.actor,
+            snapshot,
+            draft,
+            recentlyInvalidatedStepIds: this.#recentlyInvalidatedStepIds,
+            settings: {
+                extraPacks: getExtraPackSetting(),
+                spellRarityCeiling: getSpellRarityCeilingSetting(),
+                locale: String(game.i18n.lang ?? ""),
+                ...buildActorRenderFoundationLanguageSettings(CONFIG.PF2E.languages, game.pf2e?.settings?.campaign?.languages?.unavailable),
+            },
+            sourceGeneration: getActorRenderFoundationSourceGeneration(),
+        }), async () => {
+            const plan = await this._buildRenderPlan(snapshot, draft);
+            const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
+            const nonEquipmentEvaluations = new Map(await Promise.all(plan.steps.flatMap((step) => step.kind === "starting-equipment"
+                ? []
+                : [
+                    this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks).then((evaluation) => [step.id, evaluation]),
+                ])));
+            return { plan, effectiveBuildState, nonEquipmentEvaluations };
         });
+        let foundation = await resolveFoundation();
+        let { plan } = foundation;
         this.#cachedRenderPlan = plan;
         if (!this.#semanticCommands.busy && !hasApplyRecoveryState(draft)) {
             const orphanedSpellChoices = this.#selectionInvalidationService(draft).invalidateOrphanedSpellChoicesForSteps(plan.steps);
             if (orphanedSpellChoices.length > 0) {
                 this.#statusNote = "Wayfinder removed spell choices and player attestations from vanished steps.";
                 this.#draftDidChange();
+                foundation = await resolveFoundation();
+                plan = foundation.plan;
+                this.#cachedRenderPlan = plan;
             }
         }
-        const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
-        const readiness = withPhysicalGrantCoverageReadiness(await evaluateWayfinderDraftReadiness(plan.steps, (step) => this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks)), draft, plan.steps);
+        const { effectiveBuildState } = foundation;
+        const readiness = withPhysicalGrantCoverageReadiness(await evaluateWayfinderDraftReadiness(plan.steps, (step) => {
+            if (step.kind === "starting-equipment") {
+                return this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks);
+            }
+            const cached = foundation.nonEquipmentEvaluations.get(step.id);
+            return cached
+                ? Promise.resolve(cached)
+                : this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks);
+        }), draft, plan.steps);
         const evaluationsByStepId = new Map(plan.steps.map((step, index) => [step.id, readiness.evaluations[index]]));
         const activeStep = await this.#resolveActiveStep(plan.steps, evaluationsByStepId);
         const activeEvaluation = activeStep ? evaluationsByStepId.get(activeStep.id) : null;
@@ -324,13 +355,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 pickerRenderSession = session;
             })
             : null;
-        const [effectiveAncestry, effectiveHeritage, effectiveBackground, effectiveClass, effectiveDeity] = await Promise.all([
-            getEffectiveSingletonDocument(this.actor, draft, "ancestry"),
-            getEffectiveSingletonDocument(this.actor, draft, "heritage"),
-            getEffectiveSingletonDocument(this.actor, draft, "background"),
-            getEffectiveSingletonDocument(this.actor, draft, "class"),
-            getEffectiveSingletonDocument(this.actor, draft, "deity"),
-        ]);
+        const effectiveAncestry = effectiveBuildState.ancestry?.document ?? null;
+        const effectiveHeritage = effectiveBuildState.heritage ?? null;
+        const effectiveBackground = effectiveBuildState.background?.document ?? null;
+        const effectiveClass = effectiveBuildState.class?.document ?? null;
+        const effectiveDeity = effectiveBuildState.deity ?? null;
         const planningNote = buildHistoricalSpellChoicePlanningNote({
             currentLevel: snapshot.level,
             effectiveClassDocument: effectiveClass,
@@ -929,14 +958,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     };
     #onEquipmentSearchInput = (event) => {
         const input = event.currentTarget;
-        const stepId = input?.dataset.stepId;
-        if (!stepId)
+        if (!input)
             return;
-        this.#equipmentSearchByStepId.set(stepId, input.value);
-        this.#pendingEquipmentSourceSearchFocus = null;
-        this.#pendingSearchFocus = { stepId, cursor: input.selectionStart ?? input.value.length };
-        this.#equipmentScheduledRenderIntent = "search";
-        this.#equipmentSearchScheduler.schedule(stepId, input.value);
+        scheduleEquipmentSearchInput(input, this.#equipmentSearchScheduler, ({ stepId, query, cursor }) => {
+            this.#equipmentSearchByStepId.set(stepId, query);
+            this.#pendingEquipmentSourceSearchFocus = null;
+            this.#pendingSearchFocus = { stepId, cursor };
+            this.#equipmentScheduledRenderIntent = "search";
+        });
     };
     #onEquipmentSourceSearchInput = (event) => {
         const input = event.currentTarget;

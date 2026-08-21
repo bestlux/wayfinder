@@ -117,6 +117,7 @@ function classCase({
   keyAbility,
   expectedAppliedSpellRarityAttestations = [],
   expectedStepIds = [],
+  expectedSkillRanks,
   expectedSpellChoiceCounts,
   preferredSelections = {},
   preferredSkills = commonSkills,
@@ -137,6 +138,7 @@ function classCase({
     spellRarityAttestations,
     expectedAppliedSpellRarityAttestations,
     expectedStepIds,
+    expectedSkillRanks,
     expectedSpellChoiceCounts,
     preferredSelections: {
       "ancestry-feat": commonAncestry,
@@ -1114,10 +1116,11 @@ export const smokeCases = [
     keyAbility: "dex",
     expectedStepIds: ["class-branch-swashbucklers-style-level-1"],
     preferredSelections: {
-      "class-branch-swashbucklers-style-level-1": ["Fencer", "Wit"],
+      "class-branch-swashbucklers-style-level-1": ["Fencer"],
       "class-feat": ["One for All", "Flying Blade"],
     },
     preferredSkills: ["acrobatics", "athletics", "diplomacy", "deception", "intimidation", "performance"],
+    expectedSkillRanks: { deception: 1 },
   }),
   classCase({
     className: "Thaumaturge",

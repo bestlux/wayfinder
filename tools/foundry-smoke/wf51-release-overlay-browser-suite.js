@@ -1,13 +1,67 @@
-/* global Actor, CONFIG, CONST, fromUuid, game, getComputedStyle, HTMLElement */
+/* global Actor, CONFIG, CONST, fromUuid, game, getComputedStyle, HTMLButtonElement, HTMLElement, ui */
 
 const WF51_PURPOSE = "wf51-release-overlay";
 const DAGGER_UUID = "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z";
 const HUMAN_UUID = "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX";
+const DWARF_UUID = "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6";
+const ACOLYTE_UUID = "Compendium.pf2e.backgrounds.Item.CAjQrHZZbALE7Qjy";
 const INVESTIGATOR_UUID = "Compendium.pf2e.classes.Item.4wrSCyX6akmyo7Wj";
 const METHODOLOGY_UUID = "Compendium.pf2e.classfeatures.Item.ln2Y1a4SxlU9sizX";
 const METHODOLOGY_SELECTOR_UUID = "Compendium.pf2e.classfeatures.Item.uhHg9BXBiHpL5ndS";
 const FORMULA_BOOK_UUID = "Compendium.pf2e.equipment-srd.Item.qCEOZ6109Yo34tRx";
 const MIND_READING_UUID = "Compendium.pf2e.spells-srd.Item.KHnhPHL4x1AQHfbC";
+const EXISTING_IMPORT_LEVEL = 7;
+const EXISTING_IMPORT_SOURCES = [
+  { uuid: HUMAN_UUID, name: "Human", type: "ancestry", historySlotId: "ancestry-level-1" },
+  {
+    uuid: "Compendium.pf2e.heritages.Item.KO33MNyY9VqNQmbZ",
+    name: "Wintertouched Human",
+    type: "heritage",
+    historySlotId: "heritage-level-1",
+  },
+  {
+    uuid: "Compendium.pf2e.backgrounds.Item.CAjQrHZZbALE7Qjy",
+    name: "Acolyte",
+    type: "background",
+    historySlotId: "background-level-1",
+  },
+  {
+    uuid: "Compendium.pf2e.classes.Item.8zn3cD6GSmoo1LW4",
+    name: "Fighter",
+    type: "class",
+    historySlotId: "class-level-1",
+    keyAbility: "str",
+    rulesSelections: { fighterSkill: "athletics" },
+  },
+  {
+    uuid: "Compendium.pf2e.feats-srd.Item.lwLcUHQMOqfaNND4",
+    name: "Cooperative Nature",
+    type: "feat",
+    location: "ancestry-1",
+    historySlotId: "ancestry-feat-level-1",
+  },
+  {
+    uuid: "Compendium.pf2e.feats-srd.Item.w8Ycgeq2zfyshtoS",
+    name: "Reactive Shield",
+    type: "feat",
+    location: "class-1",
+    historySlotId: "class-feat-level-1",
+  },
+  {
+    uuid: "Compendium.pf2e.feats-srd.Item.AmP0qu7c5dlBSath",
+    name: "Toughness",
+    type: "feat",
+    location: "general-3",
+    historySlotId: "general-feat-level-3",
+  },
+  {
+    uuid: "Compendium.pf2e.feats-srd.Item.LQw0yIMDUJJkq1nD",
+    name: "Cat Fall",
+    type: "feat",
+    location: "skill-2",
+    historySlotId: "skill-feat-level-2",
+  },
+];
 
 function assertWorld(expectedWorldId) {
   if (!expectedWorldId || game.world?.id !== expectedWorldId) {
@@ -207,6 +261,287 @@ function snapshotEconomic(modules, actor) {
     physicalItems: baseline.physicalItems,
     fingerprint: baseline.fingerprint,
   });
+}
+
+function snapshotItems(actor) {
+  return canonicalJson(
+    actor.items
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        sourceUuid: item.sourceId ?? item.flags?.core?.sourceId ?? null,
+        location:
+          typeof item.system?.location === "string" ? item.system.location : (item.system?.location?.value ?? null),
+        quantity: Number(item.system?.quantity ?? 0),
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  );
+}
+
+function snapshotUnrelatedFlags(actor, moduleId, runId, caseId, ordinal) {
+  const actual = {
+    pf2e: actor.getFlag("pf2e", "wf51OverlaySentinel"),
+    wayfinderSmoke: actor.getFlag(moduleId, "smokeWf51Overlay"),
+  };
+  const expected = {
+    purpose: WF51_PURPOSE,
+    runId,
+    caseId,
+    ordinal,
+  };
+  if (canonicalJson(actual.pf2e) !== canonicalJson(expected) || canonicalJson(actual.wayfinderSmoke) !== canonicalJson(expected)) {
+    throw new Error(`WF-080-51 unrelated actor flags drifted for ${caseId}/${ordinal}.`);
+  }
+  return canonicalJson(actual);
+}
+
+function acquisitionMaterial(draft) {
+  return {
+    acquisition: draft.acquisition
+      ? {
+          draftId: draft.acquisition.draftId,
+          batchId: draft.acquisition.batchId,
+          targetLevel: draft.acquisition.targetLevel,
+          disposition: draft.acquisition.disposition?.kind ?? null,
+        }
+      : null,
+    acquisitionCorrupt: draft.acquisitionCorrupt,
+    policyRequestIds: draft.equipmentPolicyRequests.map((entry) => entry.requestId),
+    applyAttemptStepIds: [...draft.applyAttemptStepIds],
+    applyCompletedStepIds: [...draft.applyCompletedStepIds],
+    applyRecoveryActorUpdate: structuredClone(draft.applyRecoveryActorUpdate),
+    selections: structuredClone(draft.selections),
+  };
+}
+
+function equipmentSurface(root) {
+  const selectors = {
+    steps: '[data-step-id^="starting-equipment-level-"]',
+    pane: ".starting-equipment-pane",
+    catalogue: ".equipment-catalogue, .equipment-catalogue-projection",
+    cart: ".equipment-cart",
+    initialize: '[data-wayfinder-action="initialize-starting-equipment"]',
+  };
+  return Object.fromEntries(
+    Object.entries(selectors).map(([key, selector]) => [key, root?.querySelectorAll(selector)?.length ?? 0]),
+  );
+}
+
+async function waitForValue(read, label, timeoutMs = 15_000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const value = read();
+    if (value) return value;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`WF-080-51 timed out waiting for ${label}.`);
+}
+
+async function importExistingHistoryThroughUi(modules, actor, moduleId) {
+  modules.WayfinderApp.open(actor);
+  const app = await waitForValue(
+    () => Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp),
+    "the actor-bound existing-character Wayfinder app",
+  );
+  await app.render(true);
+  const before = equipmentSurface(app.element);
+  const action = app.element?.querySelector('[data-wayfinder-action="import-existing-history"]');
+  if (!(action instanceof HTMLElement)) throw new Error("WF-080-51 existing-history UI action is missing.");
+  action.click();
+  const history = await waitForValue(
+    () => modules.normalizeState(actor.getFlag(moduleId, "state")).existingCharacterHistory,
+    "persisted existing-character history",
+  );
+  await waitForValue(
+    () => app.element?.querySelector(".history-report") && app.element,
+    "the rerendered existing-character report",
+  );
+  const after = equipmentSurface(app.element);
+  const status = app.element?.querySelector(".status-note")?.textContent?.replace(/\s+/gu, " ").trim() ?? "";
+  await app.close();
+  return { before, after, history: structuredClone(history), status };
+}
+
+async function renderExistingImportAfterReload(modules, actor) {
+  modules.WayfinderApp.open(actor);
+  const app = await waitForValue(
+    () => Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp),
+    "the reloaded existing-character Wayfinder app",
+  );
+  await app.render(true);
+  const report = await waitForValue(
+    () => app.element?.querySelector(".history-report"),
+    "the reloaded existing-character report",
+  );
+  const apply = app.element?.querySelector('[data-wayfinder-action="apply-draft"]') ?? null;
+  const evidence = {
+    equipment: equipmentSurface(app.element),
+    historyVisible: report instanceof HTMLElement && report.isConnected,
+    historyText: report.textContent?.replace(/\s+/gu, " ").trim() ?? "",
+    apply: {
+      present: apply instanceof HTMLElement,
+      enabled: apply instanceof HTMLButtonElement ? !apply.disabled : false,
+    },
+  };
+  await app.close();
+  return evidence;
+}
+
+function draftSelectionUuids(modules, actor, moduleId, targetLevel = 1) {
+  const draft = modules.normalizeDraft(actor.getFlag(moduleId, "draft"), targetLevel);
+  return Object.fromEntries(
+    Object.entries(draft.selections)
+      .map(([slotId, value]) => [slotId, value.uuid])
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+function draftAlerts(app) {
+  return [...(app.element?.querySelectorAll('[role="alert"], .status-note.error, [data-wayfinder-save-status][data-phase="error"]') ?? [])]
+    .filter((entry, index, entries) => entries.indexOf(entry) === index)
+    .map((entry) => entry.textContent?.replace(/\s+/gu, " ").trim() ?? "")
+    .filter(Boolean);
+}
+
+function interceptIntegrityNotifications() {
+  const calls = [];
+  const originals = {};
+  for (const level of ["error", "warn"]) {
+    const original = ui.notifications[level];
+    originals[level] = original;
+    ui.notifications[level] = function intercepted(message, ...args) {
+      calls.push({ level, message: String(message ?? "") });
+      return original.call(this, message, ...args);
+    };
+  }
+  return {
+    calls,
+    restore() {
+      for (const [level, original] of Object.entries(originals)) ui.notifications[level] = original;
+    },
+  };
+}
+
+async function waitForDraftSaved(app) {
+  return waitForValue(
+    () => {
+      const status = app.element?.querySelector("[data-wayfinder-save-status]");
+      return status?.dataset?.phase === "saved" ? status : null;
+    },
+    "the exact persisted draft save",
+  );
+}
+
+async function manualSaveDraft(app) {
+  const save = await waitForValue(
+    () => app.element?.querySelector('[data-wayfinder-action="save-draft"]'),
+    "the production Save Draft control",
+  );
+  if (!(save instanceof HTMLButtonElement) || save.disabled) {
+    throw new Error("WF-080-51 production Save Draft control is unavailable.");
+  }
+  save.click();
+  await waitForDraftSaved(app);
+}
+
+async function choosePickerOption(app, actor, modules, moduleId, uuid) {
+  const preview = await waitForValue(
+    () => app.element?.querySelector(`[data-wayfinder-action="preview-option"][data-value="${uuid}"]`),
+    `the production picker option ${uuid}`,
+  );
+  preview.click();
+  const select = await waitForValue(
+    () => app.element?.querySelector(`[data-wayfinder-action="select-option"][data-value="${uuid}"]`),
+    `the production picker selection ${uuid}`,
+  );
+  select.click();
+  await waitForValue(
+    () => draftSelectionUuids(modules, actor, moduleId)["ancestry-level-1"] === uuid,
+    `the autosaved picker selection ${uuid}`,
+  );
+  await waitForDraftSaved(app);
+}
+
+async function clearAncestryPickerOption(app, actor, modules, moduleId) {
+  const ancestryStep = await waitForValue(
+    () =>
+      app.element?.querySelector(
+        '[data-wayfinder-action="select-step"][data-step-id="ancestry-level-1"]',
+      ),
+    "the production ancestry step control",
+  );
+  ancestryStep.click();
+  const clear = await waitForValue(
+    () => app.element?.querySelector('[data-wayfinder-action="clear-option"][data-step-id="ancestry-level-1"]'),
+    "the production ancestry clear control",
+  );
+  clear.click();
+  await waitForValue(
+    () => !Object.hasOwn(draftSelectionUuids(modules, actor, moduleId), "ancestry-level-1"),
+    "the persisted ancestry-key deletion",
+  );
+  await waitForDraftSaved(app);
+}
+
+async function exerciseDraftReplacementUi(modules, actor, moduleId) {
+  const draft = modules.createEmptyDraft(1);
+  draft.selections["background-level-1"] = selection(
+    "background-level-1",
+    ACOLYTE_UUID,
+    "Acolyte",
+    "background",
+  );
+  await actor.setFlag(moduleId, "draft", draft);
+  modules.WayfinderApp.open(actor);
+  const app = await waitForValue(
+    () => Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp),
+    "the draft-replacement Wayfinder app",
+  );
+  const notifications = interceptIntegrityNotifications();
+  try {
+    await app.render(true);
+    const initial = draftSelectionUuids(modules, actor, moduleId);
+    await choosePickerOption(app, actor, modules, moduleId, HUMAN_UUID);
+    await manualSaveDraft(app);
+    const chosen = draftSelectionUuids(modules, actor, moduleId);
+    await clearAncestryPickerOption(app, actor, modules, moduleId);
+    await manualSaveDraft(app);
+    const cleared = draftSelectionUuids(modules, actor, moduleId);
+    await choosePickerOption(app, actor, modules, moduleId, DWARF_UUID);
+    await manualSaveDraft(app);
+    const replaced = draftSelectionUuids(modules, actor, moduleId);
+    return { initial, chosen, cleared, replaced, alerts: draftAlerts(app), notifications: notifications.calls };
+  } finally {
+    notifications.restore();
+    await app.close();
+  }
+}
+
+async function verifyDraftReplacementAfterReload(modules, actor, moduleId) {
+  const notifications = interceptIntegrityNotifications();
+  let app = null;
+  try {
+    modules.WayfinderApp.open(actor);
+    app = await waitForValue(
+      () => Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp),
+      "the reloaded draft-replacement Wayfinder app",
+    );
+    await app.render(true);
+    await manualSaveDraft(app);
+    const root = app.element;
+    return {
+      selections: draftSelectionUuids(modules, actor, moduleId),
+      alerts: draftAlerts(app),
+      notifications: notifications.calls,
+      usable:
+        root?.querySelector(".wayfinder-shell") instanceof HTMLElement &&
+        root.querySelector('[data-wayfinder-action="save-draft"]') instanceof HTMLButtonElement,
+    };
+  } finally {
+    notifications.restore();
+    await app?.close();
+  }
 }
 
 function canonicalJson(value) {
@@ -504,6 +839,49 @@ async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) 
   };
 }
 
+async function seedExistingImportActor(actor) {
+  const itemSources = [];
+  for (const expected of EXISTING_IMPORT_SOURCES) {
+    const document = await fromUuid(expected.uuid);
+    if (!document || document.name !== expected.name || document.type !== expected.type) {
+      throw new Error(`WF-080-51 existing-import source drifted: ${expected.uuid}.`);
+    }
+    const source = document.toObject(false);
+    delete source._id;
+    if (expected.location) source.system.location = expected.location;
+    if (expected.keyAbility && source.system?.keyAbility) source.system.keyAbility.selected = expected.keyAbility;
+    if (expected.rulesSelections) {
+      for (const rule of Array.isArray(source.system?.rules) ? source.system.rules : []) {
+        if (rule?.key === "ChoiceSet" && typeof rule.flag === "string" && rule.flag in expected.rulesSelections) {
+          rule.selection = expected.rulesSelections[rule.flag];
+        }
+      }
+      source.flags = source.flags ?? {};
+      source.flags.pf2e = {
+        ...(source.flags.pf2e ?? {}),
+        rulesSelections: { ...(source.flags.pf2e?.rulesSelections ?? {}), ...expected.rulesSelections },
+      };
+    }
+    itemSources.push(source);
+  }
+  await actor.createEmbeddedDocuments("Item", itemSources, { render: false });
+  await actor.update(
+    {
+      "system.details.level.value": EXISTING_IMPORT_LEVEL,
+      "system.build.attributes.boosts": {
+        1: ["str", "dex", "con", "int"],
+        5: ["dex", "con", "wis", "cha"],
+      },
+    },
+    { render: false },
+  );
+  const sourceIds = new Set(actor.items.map((item) => item.sourceId ?? item.flags?.core?.sourceId ?? null));
+  const missing = EXISTING_IMPORT_SOURCES.filter((entry) => !sourceIds.has(entry.uuid));
+  if (missing.length > 0 || Number(actor.system?.details?.level?.value) !== EXISTING_IMPORT_LEVEL) {
+    throw new Error("WF-080-51 existing-import actor did not prepare the pinned level-7 source documents.");
+  }
+}
+
 globalThis.__prepareWf51ReleaseOverlay = async function prepare({
   abpSetting,
   allowDestructive,
@@ -570,6 +948,14 @@ globalThis.__prepareWf51ReleaseOverlay = async function prepare({
                 definitionFingerprint: definition.definitionFingerprint,
               },
             },
+            pf2e: {
+              wf51OverlaySentinel: {
+                purpose: WF51_PURPOSE,
+                runId,
+                caseId: definition.id,
+                ordinal,
+              },
+            },
           },
         });
         if (!actor) throw new Error(`WF-080-51 could not create ${definition.id}/${ordinal}.`);
@@ -584,10 +970,12 @@ globalThis.__prepareWf51ReleaseOverlay = async function prepare({
     }
     const itemActor = fixtureActor(fixtures, "foreign-economic-handoffs", moduleId, runId, 0);
     const currencyActor = fixtureActor(fixtures, "foreign-economic-handoffs", moduleId, runId, 1);
+    const existingImportActor = fixtureActor(fixtures, "higher-level-start-boundary", moduleId, runId, 1);
     const source = dagger.toObject(false);
     delete source._id;
     await itemActor.createEmbeddedDocuments("Item", [source], { render: false });
     await currencyActor.inventory.addCoins({ cp: 25 });
+    await seedExistingImportActor(existingImportActor);
   } catch (error) {
     const cleanupFailures = [];
     for (const fixture of fixtures) {
@@ -673,6 +1061,62 @@ globalThis.__runWf51PlayerInitial = async function playerInitial({
   const afterUnauthorized = {
     actor: snapshotActor(startActor),
     judgments: canonicalJson(game.settings.get(moduleId, judgmentSetting)),
+  };
+
+  const existingImportActor = fixtureActor(fixtures, "higher-level-start-boundary", moduleId, runId, 1);
+  const existingImportDraft = modules.createEmptyDraft(EXISTING_IMPORT_LEVEL);
+  existingImportDraft.selections["ancestry-level-1"] = selection(
+    "ancestry-level-1",
+    HUMAN_UUID,
+    "Human",
+    "ancestry",
+  );
+  await executeAndPersist(
+    existingImportActor,
+    existingImportDraft,
+    { type: "initialize", selectedRecipe: "permanent-items" },
+    modules,
+    moduleId,
+  );
+  await executeAndPersist(
+    existingImportActor,
+    existingImportDraft,
+    { type: "request-higher-level-start", startKind: "replacement-character", reason: `WF-080-51 import ${runId}` },
+    modules,
+    moduleId,
+  );
+  const importBefore = {
+    draft: acquisitionMaterial(modules.normalizeDraft(existingImportActor.getFlag(moduleId, "draft"), EXISTING_IMPORT_LEVEL)),
+    economic: snapshotEconomic(modules, existingImportActor),
+    items: snapshotItems(existingImportActor),
+    manifest: structuredClone(modules.normalizeState(existingImportActor.getFlag(moduleId, "state")).completedAcquisitionManifest),
+    unrelatedFlags: snapshotUnrelatedFlags(existingImportActor, moduleId, runId, "higher-level-start-boundary", 1),
+  };
+  const importedUi = await importExistingHistoryThroughUi(modules, existingImportActor, moduleId);
+  const importedState = modules.normalizeState(existingImportActor.getFlag(moduleId, "state"));
+  const importAfterDraft = modules.normalizeDraft(
+    existingImportActor.getFlag(moduleId, "draft"),
+    EXISTING_IMPORT_LEVEL,
+  );
+  const importAfter = {
+    draft: acquisitionMaterial(importAfterDraft),
+    economic: snapshotEconomic(modules, existingImportActor),
+    items: snapshotItems(existingImportActor),
+    manifest: structuredClone(importedState.completedAcquisitionManifest),
+    unrelatedFlags: snapshotUnrelatedFlags(existingImportActor, moduleId, runId, "higher-level-start-boundary", 1),
+  };
+
+  const draftReplacementActor = fixtureActor(fixtures, "draft-replacement-semantics", moduleId, runId);
+  const draftReplacementBefore = {
+    economic: snapshotEconomic(modules, draftReplacementActor),
+    items: snapshotItems(draftReplacementActor),
+    unrelatedFlags: snapshotUnrelatedFlags(draftReplacementActor, moduleId, runId, "draft-replacement-semantics", 0),
+  };
+  const draftReplacementUi = await exerciseDraftReplacementUi(modules, draftReplacementActor, moduleId);
+  const draftReplacementAfter = {
+    economic: snapshotEconomic(modules, draftReplacementActor),
+    items: snapshotItems(draftReplacementActor),
+    unrelatedFlags: snapshotUnrelatedFlags(draftReplacementActor, moduleId, runId, "draft-replacement-semantics", 0),
   };
 
   const handoffs = {};
@@ -804,6 +1248,26 @@ globalThis.__runWf51PlayerInitial = async function playerInitial({
         message: denial,
         unchanged: canonicalJson(beforeUnauthorized) === canonicalJson(afterUnauthorized),
       },
+      existingImport: {
+        subject: {
+          actorId: existingImportActor.id,
+          actorLevel: Number(existingImportActor.system?.details?.level?.value),
+        },
+        expectedSources: EXISTING_IMPORT_SOURCES.map((entry) => ({
+          historySlotId: entry.historySlotId,
+          name: entry.name,
+          uuid: entry.uuid,
+        })),
+        before: importBefore,
+        after: importAfter,
+        ui: importedUi,
+      },
+    },
+    draftReplacement: {
+      subject: { actorId: draftReplacementActor.id, targetLevel: 1 },
+      before: draftReplacementBefore,
+      after: draftReplacementAfter,
+      ui: draftReplacementUi,
     },
     handoffs,
     trustApply: {
@@ -1018,6 +1482,34 @@ globalThis.__runWf51PlayerVerification = async function playerVerification({
     classGrantPhase: "before-acquisition",
   });
 
+  const existingImportActor = fixtureActor(fixtures, "higher-level-start-boundary", moduleId, runId, 1);
+  const existingImportState = modules.normalizeState(existingImportActor.getFlag(moduleId, "state"));
+  const existingImportDraft = modules.normalizeDraft(
+    existingImportActor.getFlag(moduleId, "draft"),
+    EXISTING_IMPORT_LEVEL,
+  );
+  const existingImportReload = {
+    subject: {
+      actorId: existingImportActor.id,
+      actorLevel: Number(existingImportActor.system?.details?.level?.value),
+    },
+    draft: acquisitionMaterial(existingImportDraft),
+    economic: snapshotEconomic(modules, existingImportActor),
+    items: snapshotItems(existingImportActor),
+    manifest: structuredClone(existingImportState.completedAcquisitionManifest),
+    history: structuredClone(existingImportState.existingCharacterHistory),
+    unrelatedFlags: snapshotUnrelatedFlags(existingImportActor, moduleId, runId, "higher-level-start-boundary", 1),
+    ui: await renderExistingImportAfterReload(modules, existingImportActor),
+  };
+  const draftReplacementActor = fixtureActor(fixtures, "draft-replacement-semantics", moduleId, runId);
+  const draftReplacementReload = {
+    subject: { actorId: draftReplacementActor.id, targetLevel: 1 },
+    economic: snapshotEconomic(modules, draftReplacementActor),
+    items: snapshotItems(draftReplacementActor),
+    unrelatedFlags: snapshotUnrelatedFlags(draftReplacementActor, moduleId, runId, "draft-replacement-semantics", 0),
+    ui: await verifyDraftReplacementAfterReload(modules, draftReplacementActor, moduleId),
+  };
+
   const trustActor = fixtureActor(fixtures, "abp-and-spell-trust", moduleId, runId);
   const trustState = modules.normalizeState(trustActor.getFlag(moduleId, "state"));
   const applied = trustState.lastAppliedSpellRarityAttestations;
@@ -1042,6 +1534,7 @@ globalThis.__runWf51PlayerVerification = async function playerVerification({
       },
       recipeSelection: structuredClone(acquisition.recipeSelection),
       higherLevelStartEvidence: structuredClone(policy.higherLevelStartEvidence),
+      existingImportReload,
     },
     trust: {
       spellAttestation: structuredClone(attestation),
@@ -1050,6 +1543,7 @@ globalThis.__runWf51PlayerVerification = async function playerVerification({
       draftCleared: trustActor.getFlag(moduleId, "draft") == null,
       persistedAttestationCount: applied.length,
     },
+    draftReplacementReload,
     grantsDurability: {
       draftCleared: grantActor.getFlag(moduleId, "draft") == null,
       manifestCorrupt: grantState.completedAcquisitionManifestCorrupt,

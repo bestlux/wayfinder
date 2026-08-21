@@ -1293,6 +1293,7 @@ async function prepareAcquisitionBaseBuild(actor, modules, moduleId, smokeCase) 
         preferredRuleChoices: nativeFixture.ruleSelections,
       },
       modules,
+      initialPlan.steps,
     );
   }
   const equipmentSteps = initialPlan.steps.filter(
@@ -2726,10 +2727,10 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
       return;
     }
     case "skill-training":
-      await fillSkillTraining(actor, draft, step, smokeCase, modules);
+      await fillSkillTraining(actor, draft, step, smokeCase, modules, planSteps);
       return;
     case "skill-increase":
-      await fillSkillIncrease(actor, draft, step, smokeCase, modules);
+      await fillSkillIncrease(actor, draft, step, smokeCase, modules, planSteps);
       return;
     case "boost": {
       const batchLevel = String(step.boost?.batchLevel ?? step.level);
@@ -3232,13 +3233,13 @@ function readActorCompletedStepIds(actor, moduleId) {
     : [];
 }
 
-async function fillSkillTraining(actor, draft, step, smokeCase, modules) {
+async function fillSkillTraining(actor, draft, step, smokeCase, modules, planSteps = []) {
   const preferred = smokeCase.preferredSkills ?? [];
   const used = new Set([...step.training.fixedSkills]);
   const ruleChoices = {};
   const loreChoices = {};
   const additional = [];
-  const pane = await buildCurrentSkillPane(actor, draft, step, modules);
+  const pane = await buildCurrentSkillPane(actor, draft, step, modules, planSteps);
   const choiceSections = new Map((pane?.choiceSections ?? []).map((section) => [section.key, section]));
   const availableAdditional = new Set(
     (pane?.additionalSkills ?? []).filter((option) => !option.disabled).map((option) => option.slug),
@@ -3290,11 +3291,12 @@ async function fillSkillTraining(actor, draft, step, smokeCase, modules) {
   draft.skillTrainings[step.slotId] = { additional, loreChoices, ruleChoices };
 }
 
-async function buildCurrentSkillPane(actor, draft, step, modules) {
+async function buildCurrentSkillPane(actor, draft, step, modules, planSteps = []) {
   return modules.buildSkillPane(step, draft, {
     baseSkillRanks: Object.fromEntries(
       Object.entries(actor.system?.skills ?? {}).map(([slug, data]) => [slug, Number(data?.rank ?? 0)]),
     ),
+    steps: planSteps,
     resolveDocument: async (itemType) => {
       const selection = draft.selections[`${itemType}-level-1`];
       return selection ? modules.fetchSelectionDocument(selection) : null;
@@ -3305,8 +3307,8 @@ async function buildCurrentSkillPane(actor, draft, step, modules) {
   });
 }
 
-async function fillSkillIncrease(actor, draft, step, smokeCase, modules) {
-  const pane = await buildCurrentSkillPane(actor, draft, step, modules);
+async function fillSkillIncrease(actor, draft, step, smokeCase, modules, planSteps = []) {
+  const pane = await buildCurrentSkillPane(actor, draft, step, modules, planSteps);
   const available = new Set((pane?.skills ?? []).filter((skill) => !skill.disabled).map((skill) => skill.slug));
   const explicit = smokeCase.expectedSkillIncreaseSelections?.[step.slotId];
   if (typeof explicit === "string" && explicit.length > 0 && available.has(explicit)) {

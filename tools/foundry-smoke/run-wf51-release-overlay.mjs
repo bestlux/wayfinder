@@ -234,6 +234,12 @@ function buildFocusedCases({ initial, gm, verification }) {
       approval: gm?.approval ?? null,
       approvedAdmission: verification?.start?.approvedAdmission ?? null,
       progressionAdmission: verification?.start?.progressionAdmission ?? null,
+      existingImport: initial?.start?.existingImport
+        ? {
+            ...initial.start.existingImport,
+            reload: verification?.start?.existingImportReload ?? null,
+          }
+        : null,
     },
     "level-5-permanent-recipe": verification?.start?.recipe
       ? {
@@ -274,6 +280,13 @@ function buildFocusedCases({ initial, gm, verification }) {
             titanReload: verification.grantsDurability,
           }
         : null,
+    "draft-replacement-semantics": initial?.draftReplacement
+      ? {
+          roles,
+          ...initial.draftReplacement,
+          reload: verification?.draftReplacementReload ?? null,
+        }
+      : null,
   };
   return wf51FocusedCases.map((definition) => ({
     id: definition.id,

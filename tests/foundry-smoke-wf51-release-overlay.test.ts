@@ -29,10 +29,11 @@ const focusedRunner = readFileSync(resolve("tools/foundry-smoke/run-wf51-release
 const browserSuite = readFileSync(resolve("tools/foundry-smoke/wf51-release-overlay-browser-suite.js"), "utf8");
 const coreRunner = readFileSync(resolve("tools/foundry-smoke/run-foundry-smoke.mjs"), "utf8");
 const coreBrowserSuite = readFileSync(resolve("tools/foundry-smoke/browser-suite.js"), "utf8");
+const classCases = readFileSync(resolve("tools/foundry-smoke/class-cases.mjs"), "utf8");
 const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
 
 describe("WF-080-51 focused live release overlay", () => {
-  it("pins six focused cases and all fifteen plan rows in exact order", () => {
+  it("pins seven focused cases and all fifteen plan rows in exact order", () => {
     expect(wf51FocusedCases.map((entry: any) => entry.id)).toEqual([
       "higher-level-start-boundary",
       "level-5-permanent-recipe",
@@ -40,6 +41,7 @@ describe("WF-080-51 focused live release overlay", () => {
       "material-drift-zero-write",
       "abp-and-spell-trust",
       "planned-grant-routes",
+      "draft-replacement-semantics",
     ]);
     expect(wf51ReleaseOverlayRows.map((entry: any) => entry.number)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
@@ -71,6 +73,7 @@ describe("WF-080-51 focused live release overlay", () => {
     expect((wf51ReleaseOverlayRows[13] as any).evidenceRefs).toEqual(
       expect.arrayContaining([{ route: "matrix", caseId: "alchemist-l1-l5-apply-rerun" }])
     );
+    expect(wf51FocusedCases[0]).toMatchObject({ actorCount: 2, targetLevel: 5, existingImportLevel: 7 });
   });
 
   it("owns fresh child runs, guarded two-role browser phases, served hashes, and failure-proof cleanup", () => {
@@ -98,6 +101,11 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(browserSuite).toContain("crypto.subtle.digest");
     expect(browserSuite).toContain(".wayfinder-attestation-receipt");
     expect(browserSuite).toContain("getBoundingClientRect");
+    expect(browserSuite).toContain('data-wayfinder-action="import-existing-history"');
+    expect(browserSuite).toContain("EXISTING_IMPORT_SOURCES");
+    expect(browserSuite).toContain("snapshotEconomic(modules, existingImportActor)");
+    expect(browserSuite).toContain('actor.getFlag("pf2e", "wf51OverlaySentinel")');
+    expect(browserSuite).toContain("unrelated actor flags drifted");
     expect(focusedRunner).toContain("listJavaScriptFiles");
     expect(focusedRunner).toContain("candidate.localModuleFiles.map");
     expect(packageJson.scripts["smoke:foundry:equipment-release-overlay"]).toContain(
@@ -110,6 +118,9 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(coreBrowserSuite).toContain("executeAcquisitionItems");
     expect(coreBrowserSuite).toContain("persistCurrencyConvergenceWitness");
     expect(coreBrowserSuite).toContain("completedAcquisitionManifest");
+    expect(classCases).toMatch(
+      /className: "Swashbuckler"[\s\S]*"class-branch-swashbucklers-style-level-1": \["Fencer"\][\s\S]*expectedSkillRanks: \{ deception: 1 \}/u
+    );
   });
 
   it("qualifies exact start, handoff, drift, ABP, spell-trust, grant, candidate, and cleanup evidence", () => {
@@ -117,6 +128,7 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(qualifyWf51ReleaseOverlay(result)).toEqual({ ok: true, failures: [] });
 
     result.cases[0].evidence.progressionAdmission.code = "higher-level-start-context-missing";
+    result.cases[0].evidence.existingImport.reload.ui.equipment.steps = 1;
     result.cases[1].evidence.recipe.allowances.push({ itemLevel: 5 });
     result.cases[2].evidence.currency.execution.writeAttempts.push("currency-add");
     result.cases[3].evidence.writeAttempts = 1;
@@ -124,22 +136,37 @@ describe("WF-080-51 focused live release overlay", () => {
     result.cases[5].evidence.routes[1].resaleRule = "normal";
     result.cases[5].evidence.investigatorMaterialization.formulaBookCount = 2;
     result.cases[5].evidence.titanReload.draftCleared = false;
+    result.cases[6].evidence.reload.ui.selections["ancestry-level-1"] =
+      "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX";
+    result.cases[6].evidence.reload.unrelatedFlags = "lost-unrelated-flags";
     const qualification = qualifyWf51ReleaseOverlay(result);
     expect(qualification.ok).toBe(false);
     expect(qualification.failures).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/level-1 progression/i),
+        expect.stringMatching(/Starting Equipment remained visible/i),
         expect.stringMatching(/standard/i),
         expect.stringMatching(/foreign currency/i),
         expect.stringMatching(/before every write/i),
         expect.stringMatching(/distinct/i),
         expect.stringMatching(/Titan Mauler/i),
         expect.stringMatching(/Investigator/i),
+        expect.stringMatching(/draft deletion or replacement/i),
+        expect.stringMatching(/unrelated flags/i),
       ])
     );
   });
 
   it("rejects reordered cases, stale bytes, wrong routes, missing categories, and stale child cleanup", () => {
+    const swappedHistorySlots = passingResult();
+    const mappedEntries = swappedHistorySlots.cases[0].evidence.existingImport.ui.history.entries;
+    const ancestryFeat = mappedEntries.find((entry: any) => entry.slotId === "ancestry-feat-level-1");
+    const classFeat = mappedEntries.find((entry: any) => entry.slotId === "class-feat-level-1");
+    [ancestryFeat.sourceUuid, classFeat.sourceUuid] = [classFeat.sourceUuid, ancestryFeat.sourceUuid];
+    expect(qualifyWf51ReleaseOverlay(swappedHistorySlots).failures).toEqual(
+      expect.arrayContaining([expect.stringMatching(/exact source-backed mappings/i)])
+    );
+
     const reordered = passingResult();
     reordered.cases.reverse();
     expect(qualifyWf51ReleaseOverlay(reordered).failures).toEqual(
@@ -332,6 +359,7 @@ function focusedCases(): any[] {
       unauthorizedApproval: { denied: true, unchanged: true, message: "GM only" },
       approvedAdmission: { kind: "eligible-empty" },
       progressionAdmission: { kind: "blocked", code: "prior-character-outcome" },
+      existingImport: existingImportEvidence(),
     },
     "level-5-permanent-recipe": {
       roles,
@@ -476,6 +504,7 @@ function focusedCases(): any[] {
         itemIds: ["titan-item-1"],
       },
     },
+    "draft-replacement-semantics": draftReplacementEvidence(roles),
   };
   return wf51FocusedCases.map((definition: any) => ({
     id: definition.id,
@@ -483,6 +512,146 @@ function focusedCases(): any[] {
     definitionFingerprint: definition.definitionFingerprint,
     evidence: evidence[definition.id],
   }));
+}
+
+function existingImportEvidence(): any {
+  const sources = [
+    ["ancestry-level-1", "Human", "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX"],
+    ["heritage-level-1", "Wintertouched Human", "Compendium.pf2e.heritages.Item.KO33MNyY9VqNQmbZ"],
+    ["background-level-1", "Acolyte", "Compendium.pf2e.backgrounds.Item.CAjQrHZZbALE7Qjy"],
+    ["class-level-1", "Fighter", "Compendium.pf2e.classes.Item.8zn3cD6GSmoo1LW4"],
+    ["ancestry-feat-level-1", "Cooperative Nature", "Compendium.pf2e.feats-srd.Item.lwLcUHQMOqfaNND4"],
+    ["class-feat-level-1", "Reactive Shield", "Compendium.pf2e.feats-srd.Item.w8Ycgeq2zfyshtoS"],
+    ["general-feat-level-3", "Toughness", "Compendium.pf2e.feats-srd.Item.AmP0qu7c5dlBSath"],
+    ["skill-feat-level-2", "Cat Fall", "Compendium.pf2e.feats-srd.Item.LQw0yIMDUJJkq1nD"],
+  ];
+  const selection = {
+    "ancestry-level-1": {
+      slotId: "ancestry-level-1",
+      packId: "pf2e.ancestries",
+      documentId: "IiG7DgeLWYrSNXuX",
+      uuid: "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX",
+      itemType: "ancestry",
+      featType: null,
+      level: null,
+      name: "Human",
+    },
+  };
+  const history = {
+    version: 1,
+    importedAt: "2026-08-21T17:00:00.000Z",
+    actorLevel: 7,
+    entries: [
+      ...sources.map(([slotId, name, sourceUuid], index) => ({
+        slotId,
+        level: Number(slotId.match(/level-(\d+)$/u)?.[1] ?? 1),
+        category: index < 4 ? "foundation" : "feat",
+        label: name,
+        value: name,
+        status: "mapped",
+        sourceUuid,
+      })),
+      ...["creation-source-boosts-level-1", "skill-increase-level-3", "embedded-choice-history-level-1"].map(
+        (slotId) => ({
+          slotId,
+          level: 1,
+          category: "other",
+          label: slotId,
+          value: "Review required",
+          status: "review",
+          sourceUuid: null,
+        })
+      ),
+    ],
+  };
+  const cleanDraft = {
+    acquisition: null,
+    acquisitionCorrupt: false,
+    policyRequestIds: [],
+    applyAttemptStepIds: [],
+    applyCompletedStepIds: [],
+    applyRecoveryActorUpdate: {},
+    selections: selection,
+  };
+  return {
+    subject: { actorId: "existing-actor", actorLevel: 7 },
+    expectedSources: sources.map(([historySlotId, name, uuid]) => ({ historySlotId, name, uuid })),
+    before: {
+      draft: {
+        ...cleanDraft,
+        acquisition: { draftId: "draft-existing", batchId: "batch-existing", targetLevel: 7, disposition: "blocked" },
+        policyRequestIds: ["request-existing"],
+      },
+      economic: "economic-snapshot",
+      items: "item-snapshot",
+      manifest: null,
+      unrelatedFlags: "preserved-import-flags",
+    },
+    after: {
+      draft: cleanDraft,
+      economic: "economic-snapshot",
+      items: "item-snapshot",
+      manifest: null,
+      unrelatedFlags: "preserved-import-flags",
+    },
+    ui: {
+      before: { steps: 1, pane: 0, catalogue: 0, cart: 0, initialize: 0 },
+      after: { steps: 0, pane: 0, catalogue: 0, cart: 0, initialize: 0 },
+      history,
+      status: "Mapped 12 observable choices; 3 historical decisions need review.",
+    },
+    reload: {
+      subject: { actorId: "existing-actor", actorLevel: 7 },
+      draft: cleanDraft,
+      economic: "economic-snapshot",
+      items: "item-snapshot",
+      manifest: null,
+      history,
+      unrelatedFlags: "preserved-import-flags",
+      ui: {
+        equipment: { steps: 0, pane: 0, catalogue: 0, cart: 0, initialize: 0 },
+        historyVisible: true,
+        historyText: "What this character already has 12 traced 3 need a look",
+        apply: { present: true, enabled: false },
+      },
+    },
+  };
+}
+
+function draftReplacementEvidence(roles: any): any {
+  const background = "Compendium.pf2e.backgrounds.Item.CAjQrHZZbALE7Qjy";
+  const initial = { "background-level-1": background };
+  const chosen = {
+    "ancestry-level-1": "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX",
+    "background-level-1": background,
+  };
+  const cleared = { "background-level-1": background };
+  const replaced = {
+    "ancestry-level-1": "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+    "background-level-1": background,
+  };
+  return {
+    roles,
+    subject: { actorId: "replacement-actor", targetLevel: 1 },
+    before: {
+      economic: "replacement-economic",
+      items: "replacement-items",
+      unrelatedFlags: "preserved-replacement-flags",
+    },
+    after: {
+      economic: "replacement-economic",
+      items: "replacement-items",
+      unrelatedFlags: "preserved-replacement-flags",
+    },
+    ui: { initial, chosen, cleared, replaced, alerts: [], notifications: [] },
+    reload: {
+      subject: { actorId: "replacement-actor", targetLevel: 1 },
+      economic: "replacement-economic",
+      items: "replacement-items",
+      unrelatedFlags: "preserved-replacement-flags",
+      ui: { selections: replaced, alerts: [], notifications: [], usable: true },
+    },
+  };
 }
 
 function grant(routeId: string, materializer: string): any {
@@ -570,7 +739,7 @@ function sourceCase(id: string): any {
 function passingCleanup(): any {
   return {
     attempted: true,
-    actorsDeleted: 7,
+    actorsDeleted: 9,
     actorsMissingAfterCleanup: true,
     actorCountRestored: true,
     exactFixturesMatched: true,

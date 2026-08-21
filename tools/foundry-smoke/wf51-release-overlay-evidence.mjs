@@ -8,6 +8,17 @@ import {
 } from "./wf51-release-overlay-cases.mjs";
 import { expectedWf51MatrixExecutionIds } from "./wf51-release-coordinator-contract.mjs";
 
+const EXISTING_IMPORT_MAPPINGS = [
+  ["ancestry-level-1", "Human", "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX", "foundation", 1],
+  ["heritage-level-1", "Wintertouched Human", "Compendium.pf2e.heritages.Item.KO33MNyY9VqNQmbZ", "foundation", 1],
+  ["background-level-1", "Acolyte", "Compendium.pf2e.backgrounds.Item.CAjQrHZZbALE7Qjy", "foundation", 1],
+  ["class-level-1", "Fighter", "Compendium.pf2e.classes.Item.8zn3cD6GSmoo1LW4", "foundation", 1],
+  ["ancestry-feat-level-1", "Cooperative Nature", "Compendium.pf2e.feats-srd.Item.lwLcUHQMOqfaNND4", "feat", 1],
+  ["class-feat-level-1", "Reactive Shield", "Compendium.pf2e.feats-srd.Item.w8Ycgeq2zfyshtoS", "feat", 1],
+  ["general-feat-level-3", "Toughness", "Compendium.pf2e.feats-srd.Item.AmP0qu7c5dlBSath", "feat", 3],
+  ["skill-feat-level-2", "Cat Fall", "Compendium.pf2e.feats-srd.Item.LQw0yIMDUJJkq1nD", "feat", 2],
+];
+
 export function qualifyWf51ReleaseOverlay(result) {
   const focused = qualifyWf51FocusedOverlay(result);
   const failures = [...focused.failures];
@@ -53,6 +64,7 @@ export function qualifyWf51FocusedOverlay(result) {
   qualifyDrift(observedCases.get("material-drift-zero-write")?.evidence, failures);
   qualifyTrust(observedCases.get("abp-and-spell-trust")?.evidence, result?.users, failures);
   qualifyGrants(observedCases.get("planned-grant-routes")?.evidence, failures);
+  qualifyDraftReplacement(observedCases.get("draft-replacement-semantics")?.evidence, failures);
   if (!freshCoordinatorEvidence(result?.coordinator, result?.candidate)) {
     failures.push("WF-080-51 focused evidence is not owned by a fresh coordinator or prior child cleanup failed.");
   }
@@ -148,6 +160,139 @@ function qualifyStartBoundary(evidence, failures) {
   }
   if (evidence?.unauthorizedApproval?.denied !== true || evidence?.unauthorizedApproval?.unchanged !== true) {
     failures.push("Non-GM higher-level approval did not fail with zero writes.");
+  }
+  qualifyExistingImport(evidence?.existingImport, failures);
+}
+
+function qualifyExistingImport(evidence, failures) {
+  const history = evidence?.ui?.history;
+  const reload = evidence?.reload;
+  const beforeDraft = evidence?.before?.draft;
+  const afterDraft = evidence?.after?.draft;
+  const reloadDraft = reload?.draft;
+  const expectedSelection = {
+    "ancestry-level-1": {
+      slotId: "ancestry-level-1",
+      packId: "pf2e.ancestries",
+      documentId: "IiG7DgeLWYrSNXuX",
+      uuid: "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX",
+      itemType: "ancestry",
+      featType: null,
+      level: null,
+      name: "Human",
+    },
+  };
+  const historyEntriesBySlotId = new Map((history?.entries ?? []).map((entry) => [entry.slotId, entry]));
+  const reviewIds = new Set(
+    (history?.entries ?? []).filter((entry) => entry.status === "review").map((entry) => entry.slotId),
+  );
+  const allEquipmentAbsent = (surface) =>
+    ["steps", "pane", "catalogue", "cart", "initialize"].every((key) => surface?.[key] === 0);
+  if (
+    evidence?.subject?.actorLevel !== 7 ||
+    evidence?.reload?.subject?.actorLevel !== 7 ||
+    canonicalJson(
+      (evidence?.expectedSources ?? []).map((entry) => [entry.historySlotId, entry.name, entry.uuid]),
+    ) !== canonicalJson(EXISTING_IMPORT_MAPPINGS.map(([slotId, name, uuid]) => [slotId, name, uuid])) ||
+    history?.actorLevel !== 7 ||
+    !EXISTING_IMPORT_MAPPINGS.every(([slotId, name, sourceUuid, category, level]) => {
+      const entry = historyEntriesBySlotId.get(slotId);
+      return (
+        entry?.status === "mapped" &&
+        entry.value === name &&
+        entry.sourceUuid === sourceUuid &&
+        entry.category === category &&
+        entry.level === level
+      );
+    }) ||
+    !["creation-source-boosts-level-1", "skill-increase-level-3", "embedded-choice-history-level-1"].every(
+      (slotId) => reviewIds.has(slotId),
+    )
+  ) {
+    failures.push("Level-7 existing-character import did not preserve exact source-backed mappings and explicit ambiguity review.");
+  }
+  if (
+    beforeDraft?.acquisition == null ||
+    beforeDraft.policyRequestIds?.length !== 1 ||
+    canonicalJson(beforeDraft.selections) !== canonicalJson(expectedSelection) ||
+    afterDraft?.acquisition !== null ||
+    afterDraft?.acquisitionCorrupt !== false ||
+    afterDraft?.policyRequestIds?.length !== 0 ||
+    afterDraft?.applyAttemptStepIds?.length !== 0 ||
+    afterDraft?.applyCompletedStepIds?.length !== 0 ||
+    Object.keys(afterDraft?.applyRecoveryActorUpdate ?? {}).length !== 0 ||
+    canonicalJson(afterDraft?.selections) !== canonicalJson(expectedSelection) ||
+    canonicalJson(reloadDraft) !== canonicalJson(afterDraft)
+  ) {
+    failures.push("Existing-character import did not atomically discard equipment work while preserving only the prior non-equipment draft choice.");
+  }
+  if (
+    !(evidence?.ui?.before?.steps > 0) ||
+    !allEquipmentAbsent(evidence?.ui?.after) ||
+    !allEquipmentAbsent(reload?.ui?.equipment) ||
+    reload?.ui?.historyVisible !== true ||
+    !/mapped|traced/i.test(evidence?.ui?.status ?? "")
+  ) {
+    failures.push("Starting Equipment remained visible after the production existing-history UI action or player reload.");
+  }
+  if (
+    evidence?.before?.economic !== evidence?.after?.economic ||
+    evidence?.after?.economic !== reload?.economic ||
+    evidence?.before?.items !== evidence?.after?.items ||
+    evidence?.after?.items !== reload?.items ||
+    evidence?.before?.manifest !== null ||
+    evidence?.after?.manifest !== null ||
+    reload?.manifest !== null ||
+    canonicalJson(reload?.history) !== canonicalJson(history) ||
+    evidence?.before?.unrelatedFlags !== evidence?.after?.unrelatedFlags ||
+    evidence?.after?.unrelatedFlags !== reload?.unrelatedFlags
+  ) {
+    failures.push(
+      "Existing-character import or reload changed items, currency, acquisition manifest, durable history, or unrelated actor flags.",
+    );
+  }
+}
+
+function qualifyDraftReplacement(evidence, failures) {
+  const background = "Compendium.pf2e.backgrounds.Item.CAjQrHZZbALE7Qjy";
+  const expected = {
+    initial: { "background-level-1": background },
+    chosen: {
+      "ancestry-level-1": "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX",
+      "background-level-1": background,
+    },
+    cleared: { "background-level-1": background },
+    replaced: {
+      "ancestry-level-1": "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+      "background-level-1": background,
+    },
+  };
+  if (
+    evidence?.subject?.targetLevel !== 1 ||
+    canonicalJson(evidence?.ui?.initial) !== canonicalJson(expected.initial) ||
+    canonicalJson(evidence?.ui?.chosen) !== canonicalJson(expected.chosen) ||
+    canonicalJson(evidence?.ui?.cleared) !== canonicalJson(expected.cleared) ||
+    canonicalJson(evidence?.ui?.replaced) !== canonicalJson(expected.replaced) ||
+    canonicalJson(evidence?.reload?.ui?.selections) !== canonicalJson(expected.replaced)
+  ) {
+    failures.push("Production picker draft deletion or replacement did not persist exactly across reload.");
+  }
+  if (
+    evidence?.ui?.alerts?.length !== 0 ||
+    evidence?.ui?.notifications?.length !== 0 ||
+    evidence?.reload?.ui?.alerts?.length !== 0 ||
+    evidence?.reload?.ui?.notifications?.length !== 0 ||
+    evidence?.reload?.ui?.usable !== true ||
+    evidence?.before?.economic !== evidence?.after?.economic ||
+    evidence?.after?.economic !== evidence?.reload?.economic ||
+    evidence?.before?.items !== evidence?.after?.items ||
+    evidence?.after?.items !== evidence?.reload?.items ||
+    evidence?.before?.unrelatedFlags !== evidence?.after?.unrelatedFlags ||
+    evidence?.after?.unrelatedFlags !== evidence?.reload?.unrelatedFlags
+  ) {
+    failures.push(
+      "Draft replacement surfaced an integrity conflict, changed the actor or unrelated flags, or reopened unusably.",
+    );
   }
 }
 

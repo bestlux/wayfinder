@@ -3,9 +3,10 @@ import { createHash } from "node:crypto";
 const RAW_FOCUSED_CASES = [
   {
     id: "higher-level-start-boundary",
-    label: "Approved higher-level start versus level-1 progression denial",
-    actorCount: 1,
+    label: "Approved higher-level start versus imported level-7 progression denial",
+    actorCount: 2,
     targetLevel: 5,
+    existingImportLevel: 7,
   },
   {
     id: "level-5-permanent-recipe",
@@ -43,6 +44,12 @@ const RAW_FOCUSED_CASES = [
       "investigator-alchemical-sciences-formula-book",
       "ancient-elf-alchemist-formula-book",
     ],
+  },
+  {
+    id: "draft-replacement-semantics",
+    label: "Production picker exact draft deletion and replacement persistence",
+    actorCount: 1,
+    targetLevel: 1,
   },
 ];
 

@@ -98,7 +98,7 @@ describe("class-grant projection service", () => {
     ]);
   });
 
-  it("projects the exact Alchemist native Formula Book chain", async () => {
+  it("projects the exact Alchemist native Formula Book chain from a prepared Coins shape", async () => {
     const draft = classDraft(UUID.alchemist, "Alchemist");
     const documents = new Map<string, unknown>([
       [UUID.alchemist, classDocument(UUID.alchemy)],
@@ -122,7 +122,7 @@ describe("class-grant projection service", () => {
     ]);
   });
 
-  it("projects the deterministic Dwarf Clan Dagger native chain without inferring Clan Pistol", async () => {
+  it("projects the deterministic Dwarf Clan Dagger native chain from a prepared Coins shape", async () => {
     const draft = ancestryDraft(UUID.dwarf, "Dwarf");
     const documents = new Map<string, unknown>([
       [UUID.dwarf, rootDocument(UUID.clanDaggerFeature, 0)],
@@ -182,7 +182,7 @@ describe("class-grant projection service", () => {
     expect(fetchDocumentByUuid).not.toHaveBeenCalled();
   });
 
-  it("projects the exact Sarangay Head Gem native chain", async () => {
+  it("projects the exact Sarangay Head Gem native chain from a prepared Coins shape", async () => {
     const draft = ancestryDraft(UUID.sarangay, "Sarangay");
     const documents = new Map<string, unknown>([
       [UUID.sarangay, rootDocument(UUID.headGemFeature, 1)],
@@ -231,7 +231,7 @@ describe("class-grant projection service", () => {
     await expect(execute()).resolves.toMatchObject({ grants: [], blockers: [{ code: "source-drift" }] });
   });
 
-  it("projects Alchemical Sciences only from the exact selected methodology relationship", async () => {
+  it("projects Alchemical Sciences from its exact relationship and a prepared Coins shape", async () => {
     const draft = classDraft(UUID.investigator, "Investigator");
     draft.branchSelections.methodology = selection(
       "class-branch-methodology-level-1",
@@ -760,7 +760,7 @@ function document(options: { rules?: unknown[]; tags?: string[] } = {}) {
   };
 }
 
-function formulaBookDocument(price: Record<string, number> = { gp: 1 }) {
+function formulaBookDocument(price: Record<string, number> = preparedPrice({ gp: 1 })) {
   return {
     type: "equipment",
     system: {
@@ -803,7 +803,7 @@ function clanDaggerDocument(options: { price?: Record<string, number> } = {}) {
       quantity: 1,
       level: { value: 0 },
       traits: { rarity: "uncommon" },
-      price: { value: options.price ?? { gp: 2 } },
+      price: { value: options.price ?? preparedPrice({ gp: 2 }) },
     },
   };
 }
@@ -816,9 +816,13 @@ function headGemDocument() {
       quantity: 1,
       level: { value: 0 },
       traits: { rarity: "common" },
-      price: { value: {} },
+      price: { value: preparedPrice({}) },
     },
   };
+}
+
+function preparedPrice(standard: Record<string, number>): Record<string, number> {
+  return { pp: 0, gp: 0, sp: 0, cp: 0, credits: 0, upb: 0, ...standard };
 }
 
 function giantInstinctDocument() {

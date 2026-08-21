@@ -710,8 +710,7 @@ function isReviewedFormulaBookItem(document: unknown): boolean {
   const traits = isRecord(document.system.traits) ? document.system.traits : null;
   const rarity = traits && typeof traits.rarity === "string" ? traits.rarity : null;
   const quantity = document.system.quantity;
-  const price =
-    isRecord(document.system.price) && isRecord(document.system.price.value) ? document.system.price.value : null;
+  const price = preparedPriceValueOf(document.system);
   return (
     slug === "formula-book-blank" &&
     level === 0 &&
@@ -726,8 +725,7 @@ function isReviewedClanDaggerItem(document: unknown): boolean {
   if (!isRecord(document) || document.type !== "weapon" || !isRecord(document.system)) return false;
   const level = isRecord(document.system.level) ? document.system.level.value : null;
   const traits = isRecord(document.system.traits) ? document.system.traits : null;
-  const price =
-    isRecord(document.system.price) && isRecord(document.system.price.value) ? document.system.price.value : null;
+  const price = preparedPriceValueOf(document.system);
   return (
     document.system.slug === "clan-dagger" &&
     document.system.baseItem === "clan-dagger" &&
@@ -744,15 +742,13 @@ function isReviewedHeadGemItem(document: unknown): boolean {
   if (!isRecord(document) || document.type !== "equipment" || !isRecord(document.system)) return false;
   const level = isRecord(document.system.level) ? document.system.level.value : null;
   const traits = isRecord(document.system.traits) ? document.system.traits : null;
-  const price =
-    isRecord(document.system.price) && isRecord(document.system.price.value) ? document.system.price.value : null;
+  const price = preparedPriceValueOf(document.system);
   return (
     document.system.slug === "head-gem" &&
     level === 0 &&
     traits?.rarity === "common" &&
     document.system.quantity === 1 &&
     !!price &&
-    Object.keys(price).length === 0 &&
     copperValue(price) === 0
   );
 }
@@ -845,8 +841,7 @@ export function buildTitanMaulerCandidate(args: {
   ) {
     return null;
   }
-  const documentPrice =
-    isRecord(document.system.price) && isRecord(document.system.price.value) ? document.system.price.value : null;
+  const documentPrice = preparedPriceValueOf(document.system);
   if (!documentPrice || line.price.basePrice.kind !== "priced") return null;
   const basePriceCopper = copperValue(documentPrice);
   const lineBasePriceCopper = copperValue(line.price.basePrice.value);
@@ -906,6 +901,19 @@ function copperValue(value: Record<string, unknown>): number | null {
     total = next;
   }
   return total;
+}
+
+function preparedPriceValueOf(system: Record<string, unknown>): Record<string, unknown> | null {
+  if (!isRecord(system.price) || !isRecord(system.price.value)) return null;
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(system.price.value)) {
+    if (key === "credits" || key === "upb") {
+      if (value !== 0) return null;
+      continue;
+    }
+    normalized[key] = value;
+  }
+  return normalized;
 }
 
 function publicationSlugOf(system: Record<string, unknown>): string | null {

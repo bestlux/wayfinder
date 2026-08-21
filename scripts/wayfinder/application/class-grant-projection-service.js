@@ -531,7 +531,7 @@ function isReviewedFormulaBookItem(document) {
     const traits = isRecord(document.system.traits) ? document.system.traits : null;
     const rarity = traits && typeof traits.rarity === "string" ? traits.rarity : null;
     const quantity = document.system.quantity;
-    const price = isRecord(document.system.price) && isRecord(document.system.price.value) ? document.system.price.value : null;
+    const price = preparedPriceValueOf(document.system);
     return (slug === "formula-book-blank" &&
         level === 0 &&
         rarity === "common" &&
@@ -544,7 +544,7 @@ function isReviewedClanDaggerItem(document) {
         return false;
     const level = isRecord(document.system.level) ? document.system.level.value : null;
     const traits = isRecord(document.system.traits) ? document.system.traits : null;
-    const price = isRecord(document.system.price) && isRecord(document.system.price.value) ? document.system.price.value : null;
+    const price = preparedPriceValueOf(document.system);
     return (document.system.slug === "clan-dagger" &&
         document.system.baseItem === "clan-dagger" &&
         document.system.category === "simple" &&
@@ -559,13 +559,12 @@ function isReviewedHeadGemItem(document) {
         return false;
     const level = isRecord(document.system.level) ? document.system.level.value : null;
     const traits = isRecord(document.system.traits) ? document.system.traits : null;
-    const price = isRecord(document.system.price) && isRecord(document.system.price.value) ? document.system.price.value : null;
+    const price = preparedPriceValueOf(document.system);
     return (document.system.slug === "head-gem" &&
         level === 0 &&
         traits?.rarity === "common" &&
         document.system.quantity === 1 &&
         !!price &&
-        Object.keys(price).length === 0 &&
         copperValue(price) === 0);
 }
 function originIsActive(selection, activeSteps, observedActorItems) {
@@ -641,7 +640,7 @@ export function buildTitanMaulerCandidate(args) {
         args.characterAccessRef !== line.policyDecision.characterAccessRef) {
         return null;
     }
-    const documentPrice = isRecord(document.system.price) && isRecord(document.system.price.value) ? document.system.price.value : null;
+    const documentPrice = preparedPriceValueOf(document.system);
     if (!documentPrice || line.price.basePrice.kind !== "priced")
         return null;
     const basePriceCopper = copperValue(documentPrice);
@@ -706,6 +705,20 @@ function copperValue(value) {
         total = next;
     }
     return total;
+}
+function preparedPriceValueOf(system) {
+    if (!isRecord(system.price) || !isRecord(system.price.value))
+        return null;
+    const normalized = {};
+    for (const [key, value] of Object.entries(system.price.value)) {
+        if (key === "credits" || key === "upb") {
+            if (value !== 0)
+                return null;
+            continue;
+        }
+        normalized[key] = value;
+    }
+    return normalized;
 }
 function publicationSlugOf(system) {
     const publication = isRecord(system.publication) ? system.publication : null;

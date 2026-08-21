@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "wizard-level-5-equipment-catalogue",
   "description": "Level-5 owner-operated starting-equipment catalogue release profile.",
   "smokeCaseId": "wizard-l1-l5-apply-rerun",
@@ -53,6 +53,14 @@
   "settleTimeoutMs": 15000,
   "postSettleMs": 350,
   "keyDelayMs": 8,
+  "timingSemantics": {
+    "rapidSearchPrimary": "final-input-dispatch-to-final-results",
+    "rapidSearchDiagnostic": "first-input-dispatch-to-final-results",
+    "previewPrimary": ["new-preview-dispatch-to-visible", "repeat-preview-dispatch-to-visible"],
+    "previewDiagnostic": "new-preview-dispatch-to-repeat-visible",
+    "qualifyingLongTasks": "overlap-primary-action-intervals",
+    "postSettleLongTasks": "overlap-semantic-completion-to-observation-end-diagnostic-only"
+  },
   "actions": [
     {
       "id": "cold-open",

@@ -18,6 +18,10 @@ const profilePath = fileURLToPath(
   new URL("../tools/foundry-interaction/equipment-catalogue-profile.json", import.meta.url)
 );
 const profile = JSON.parse(readFileSync(profilePath, "utf8"));
+const browserProfile = readFileSync(
+  fileURLToPath(new URL("../tools/foundry-interaction/browser-equipment-profile.js", import.meta.url)),
+  "utf8"
+);
 
 describe("equipment catalogue performance profile", () => {
   it("freezes the inherited release envelope and exact action contracts", () => {
@@ -31,6 +35,7 @@ describe("equipment catalogue performance profile", () => {
       maxLongTaskCountPerActionWidth: 0,
     });
     expect(profile.expectedCatalogueCounts).toEqual({ indexed: 5856, levelQualified: 2283, matching: 1, visible: 1 });
+    expect(profile.schemaVersion).toBe(2);
   });
 
   it("rejects weakened sample depth, widths, budgets, and preview caching", () => {
@@ -40,6 +45,7 @@ describe("equipment catalogue performance profile", () => {
     changed.budgets.maxP95MsPerActionWidth = 76;
     changed.smokeCaseId = "different-fixture";
     changed.postSettleMs = 0;
+    changed.timingSemantics.rapidSearchPrimary = "whole-typing-sequence";
     changed.actions.at(-1).repeatPreviewHydrations = 1;
     changed.actions.find((action: { id: string }) => action.id === "rapid-search").maxPlanBuilds = 999_999;
     expect(validateEquipmentProfile(changed)).toEqual(
@@ -51,6 +57,7 @@ describe("equipment catalogue performance profile", () => {
         expect.stringContaining("counter limits"),
         expect.stringContaining("exact Wizard"),
         expect.stringContaining("350ms"),
+        expect.stringContaining("timing semantics"),
       ])
     );
   });
@@ -85,6 +92,72 @@ describe("equipment catalogue performance profile", () => {
     const preview = sample("preview-change");
     preview.repeatPreviewHydrationCount = 1;
     expect(validateEquipmentSample(preview, profile)).toContain("Unchanged preview hydrated 1 time(s); expected 0.");
+  });
+
+  it("rederives final-input search timing and split preview timing", () => {
+    const search = sample("rapid-search");
+    expect(validateEquipmentSample(search, profile)).toEqual([]);
+    search.durationMs = search.endToEndTypingDurationMs;
+    expect(validateEquipmentSample(search, profile)).toContain(
+      "Primary duration does not rederive from the exact action interval(s)."
+    );
+    const earlyBoundary = sample("rapid-search");
+    earlyBoundary.typingStartedAt = 149;
+    earlyBoundary.endToEndTypingDurationMs = 26;
+    expect(validateEquipmentSample(earlyBoundary, profile)).toContain(
+      "Rapid-search primary and end-to-end typing timings do not rederive from the final input boundary."
+    );
+
+    const preview = sample("preview-change");
+    preview.durationMs = preview.combinedPreviewDurationMs;
+    preview.repeatPreviewDurationMs += 1;
+    expect(validateEquipmentSample(preview, profile)).toEqual(
+      expect.arrayContaining([
+        "Primary duration does not rederive from the exact action interval(s).",
+        "Preview primary and combined diagnostic timings do not rederive from the split intervals.",
+      ])
+    );
+    const noOpRepeat = sample("preview-change");
+    noOpRepeat.repeatPreviewRenderScheduled = false;
+    noOpRepeat.repeatPreviewDetailReplaced = false;
+    expect(validateEquipmentSample(noOpRepeat, profile)).toEqual([]);
+    noOpRepeat.repeatPreviewRenderScheduled = true;
+    expect(validateEquipmentSample(noOpRepeat, profile)).toContain(
+      "Preview primary and combined diagnostic timings do not rederive from the split intervals."
+    );
+  });
+
+  it("binds browser completion to final dispatch and repeat partial replacement", () => {
+    expect(browserProfile).toContain("const dispatchedAt = performance.now()");
+    expect(browserProfile).toContain('startActionInterval(sample, "rapid-final-query", dispatchedAt)');
+    expect(browserProfile).toContain("detailBeforeRepeat");
+    expect(browserProfile).toContain("!== detailBeforeRepeat");
+  });
+
+  it("qualifies only Long Tasks overlapping primary action intervals", () => {
+    const postSettle = { startTime: 200, duration: 60 };
+    const observed = sample("cart-quantity");
+    observed.observedLongTasks = [postSettle];
+    observed.postSettleLongTasks = [postSettle];
+    expect(validateEquipmentSample(observed, profile)).toEqual([]);
+    const summary = summarizeEquipmentProfile(profile, [observed]);
+    const row = summary.byActionWidth.find(
+      (entry: { actionId: string; requestedAppWidth: number }) =>
+        entry.actionId === "cart-quantity" && entry.requestedAppWidth === 1240
+    );
+    expect(row).toMatchObject({ longTaskCount: 0, observedLongTaskCount: 1, postSettleLongTaskCount: 1 });
+    observed.postSettleLongTasks = [];
+    expect(validateEquipmentSample(observed, profile)).toContain(
+      "Post-settle Long Tasks do not rederive from the observation interval."
+    );
+    observed.postSettleLongTasks = [postSettle];
+
+    const overlapping = { startTime: 120, duration: 50 };
+    observed.observedLongTasks = [overlapping, postSettle];
+    observed.qualifyingLongTasks = [];
+    expect(validateEquipmentSample(observed, profile)).toContain(
+      "Qualifying Long Tasks do not rederive from exact action intervals."
+    );
   });
 
   it("rederives every action outcome from raw DOM evidence", () => {
@@ -257,6 +330,11 @@ describe("equipment catalogue performance profile", () => {
 
     summary.byActionWidth[27].p95Ms = 76;
     expect(validateEquipmentBudgets(profile, summary).failures).toContain("preview-change at 760px p95 exceeded 75ms.");
+    summary.byActionWidth[27].p95Ms = 25;
+    summary.byActionWidth[27].newPreviewP95Ms = 76;
+    expect(validateEquipmentBudgets(profile, summary).failures).toContain(
+      "preview-change at 760px new-preview p95 exceeded 75ms."
+    );
   });
 
   it("emits compact evidence without raw samples", () => {
@@ -270,6 +348,8 @@ describe("equipment catalogue performance profile", () => {
       summary,
     });
     expect(compact.runIds).toEqual(["run-1"]);
+    expect(compact.schemaVersion).toBe(2);
+    expect(compact.profile.timingSemantics).toEqual(profile.timingSemantics);
     expect(compact.byActionWidth).toHaveLength(28);
     expect(compact).not.toHaveProperty("samples");
   });
@@ -298,6 +378,12 @@ describe("equipment catalogue performance profile", () => {
     failedStatus.status = "failed";
     expect(qualifyEquipmentEvidenceRuns([result, failedStatus]).failures).toContain(
       "Run 2 is not a completed equipment profile run."
+    );
+
+    const oldSchema = qualifiedResult("run-2");
+    oldSchema.schemaVersion = 1;
+    expect(qualifyEquipmentEvidenceRuns([result, oldSchema]).failures).toContain(
+      "Run 2 does not use equipment evidence schemaVersion 2."
     );
 
     const malformed = qualifiedResult("run-2");
@@ -381,13 +467,32 @@ function sample(actionId: string) {
       visiblePreviewSourceUuid: profile.expectedFinalResultValues[0],
     },
   };
+  const sampleStartedAt = 100;
+  const actionIntervals =
+    actionId === "preview-change"
+      ? [
+          { kind: "preview-new", startedAt: 110, completedAt: 130 },
+          { kind: "preview-repeat", startedAt: 140, completedAt: 165 },
+        ]
+      : actionId === "rapid-search"
+        ? [{ kind: "rapid-final-query", startedAt: 150, completedAt: 175 }]
+        : [{ kind: actionId, startedAt: 110, completedAt: 135 }];
+  const semanticCompletedAt = actionIntervals.at(-1)?.completedAt ?? 0;
   return {
+    schemaVersion: 2,
     actionId,
     requestedAppWidth: 1240,
     actualAppWidth: 1240,
     sampleKind: "measured",
     sampleIndex: 1,
+    sampleStartedAt,
+    semanticCompletedAt,
+    observationCompletedAt: semanticCompletedAt + 350,
+    actionIntervals,
     durationMs: 25,
+    combinedDurationMs: semanticCompletedAt - sampleStartedAt,
+    typingStartedAt: actionId === "rapid-search" ? 110 : null,
+    endToEndTypingDurationMs: actionId === "rapid-search" ? 65 : null,
     semanticPassed: true,
     finalValue: actionId === "rapid-search" ? "spray pellets" : null,
     focused: actionId === "rapid-search" ? true : null,
@@ -402,7 +507,9 @@ function sample(actionId: string) {
     resultDomElementCount: 12,
     imageRequestCount: 0,
     longTaskSupported: true,
-    longTasks: [],
+    observedLongTasks: [],
+    qualifyingLongTasks: [],
+    postSettleLongTasks: [],
     packIndexReadCount: 0,
     packDocumentReadCount: actionId === "preview-change" ? 1 : 0,
     allPackIndexReadCount: 0,
@@ -413,6 +520,11 @@ function sample(actionId: string) {
     fullPrepareContextCount: 0,
     newPreviewHydrationCount: actionId === "preview-change" ? 1 : undefined,
     repeatPreviewHydrationCount: actionId === "preview-change" ? 0 : undefined,
+    newPreviewDurationMs: actionId === "preview-change" ? 20 : undefined,
+    repeatPreviewDurationMs: actionId === "preview-change" ? 25 : undefined,
+    combinedPreviewDurationMs: actionId === "preview-change" ? 55 : undefined,
+    repeatPreviewRenderScheduled: actionId === "preview-change" ? true : undefined,
+    repeatPreviewDetailReplaced: actionId === "preview-change" ? true : undefined,
     failures: [],
   };
 }
@@ -439,6 +551,7 @@ function qualifiedResult(runId: string) {
   const qualifiedFixture = fixture(runId);
   qualifiedFixture.catalogueCounts = structuredClone(qualifiedProfile.expectedCatalogueCounts);
   return {
+    schemaVersion: 2,
     status: "completed",
     profile: qualifiedProfile,
     runId,

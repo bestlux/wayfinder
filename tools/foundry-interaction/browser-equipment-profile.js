@@ -116,8 +116,10 @@ globalThis.__wayfinderEquipmentProfile = {
     let semantic;
     let previewSplit = null;
     let actionOutcome = null;
+    let primaryInterval = null;
     try {
       if (actionId === "cold-open" || actionId === "warm-reopen") {
+        primaryInterval = startActionInterval(sample, actionId);
         await reopen(actionId === "cold-open", settleTimeoutMs);
         const ready = () => {
           const root = currentRoot();
@@ -141,11 +143,16 @@ globalThis.__wayfinderEquipmentProfile = {
       } else if (actionId === "rapid-search") {
         const input = currentSearch();
         input.focus();
-        for (const query of querySequence) {
+        for (const [index, query] of querySequence.entries()) {
           input.value = query;
           input.setSelectionRange(query.length, query.length);
+          const dispatchedAt = performance.now();
+          if (index === 0) sample.typingStartedAt = dispatchedAt;
+          if (index === querySequence.length - 1) {
+            primaryInterval = startActionInterval(sample, "rapid-final-query", dispatchedAt);
+          }
           input.dispatchEvent(new Event("input", { bubbles: true }));
-          await delay(keyDelayMs);
+          if (index < querySequence.length - 1) await delay(keyDelayMs);
         }
         semantic = () => {
           const current = currentSearch();
@@ -164,6 +171,7 @@ globalThis.__wayfinderEquipmentProfile = {
         const previous = button.getAttribute("aria-pressed");
         const filterKey = button.dataset.filterKey;
         const filterValue = button.dataset.value;
+        primaryInterval = startActionInterval(sample, actionId);
         button.click();
         semantic = () => {
           const current = currentRoot().querySelector(
@@ -188,6 +196,7 @@ globalThis.__wayfinderEquipmentProfile = {
         const line = button.closest(".equipment-cart-line");
         const previous = Number(line?.querySelector(".equipment-quantity strong")?.textContent ?? 0);
         const lineId = button.dataset.lineId;
+        primaryInterval = startActionInterval(sample, actionId);
         button.click();
         const observedQuantity = () =>
           Number(
@@ -206,6 +215,7 @@ globalThis.__wayfinderEquipmentProfile = {
         const previousRecipe = currentRoot().querySelector(
           '[data-wayfinder-action="select-equipment-recipe"][aria-pressed="true"]',
         )?.dataset.recipe;
+        primaryInterval = startActionInterval(sample, actionId);
         button.click();
         semantic = () =>
           currentRoot()
@@ -223,17 +233,42 @@ globalThis.__wayfinderEquipmentProfile = {
         const target = buttons.find((button) => !button.closest(".equipment-result")?.classList.contains("is-previewing")) ?? buttons[1];
         const targetUuid = target.dataset.sourceUuid;
         const beforeNew = documentReads(targetUuid);
+        const newPreviewInterval = startActionInterval(sample, "preview-new");
         target.click();
         await waitUntil(() => visiblePreviewUuid() === targetUuid, settleTimeoutMs);
+        completeActionInterval(newPreviewInterval);
         const afterNew = documentReads(targetUuid);
         const repeated = currentRoot().querySelector(
           `[data-wayfinder-action="preview-equipment-item"][data-source-uuid="${css(targetUuid)}"]`,
         );
-        repeated?.click();
-        await waitUntil(() => visiblePreviewUuid() === targetUuid, settleTimeoutMs);
+        if (!repeated) throw new Error("Equipment profile could not resolve the repeated preview control.");
+        const detailBeforeRepeat = currentRoot().querySelector('[data-application-part="equipment-detail"]');
+        if (!detailBeforeRepeat) throw new Error("Equipment profile could not resolve the pre-repeat preview detail part.");
+        const rendersBeforeRepeat = counters.equipmentRender;
+        const repeatPreviewInterval = startActionInterval(sample, "preview-repeat");
+        repeated.click();
+        const repeatPreviewRenderScheduled = counters.equipmentRender > rendersBeforeRepeat;
+        if (repeatPreviewRenderScheduled) {
+          await waitUntil(
+            () =>
+              visiblePreviewUuid() === targetUuid &&
+              currentRoot().querySelector('[data-application-part="equipment-detail"]') !== detailBeforeRepeat,
+            settleTimeoutMs,
+          );
+        } else if (visiblePreviewUuid() !== targetUuid) {
+          throw new Error("Equipment profile repeated-preview no-op did not preserve the exact visible identity.");
+        }
+        completeActionInterval(repeatPreviewInterval);
+        sample.semanticCompletedAt = repeatPreviewInterval.completedAt;
         previewSplit = {
           newPreviewHydrationCount: afterNew - beforeNew,
           repeatPreviewHydrationCount: documentReads(targetUuid) - afterNew,
+          newPreviewDurationMs: intervalDuration(newPreviewInterval),
+          repeatPreviewDurationMs: intervalDuration(repeatPreviewInterval),
+          combinedPreviewDurationMs: repeatPreviewInterval.completedAt - newPreviewInterval.startedAt,
+          repeatPreviewRenderScheduled,
+          repeatPreviewDetailReplaced:
+            currentRoot().querySelector('[data-application-part="equipment-detail"]') !== detailBeforeRepeat,
         };
         semantic = () => visiblePreviewUuid() === targetUuid;
         actionOutcome = () => ({ targetSourceUuid: targetUuid, visiblePreviewSourceUuid: visiblePreviewUuid() });
@@ -241,8 +276,11 @@ globalThis.__wayfinderEquipmentProfile = {
         throw new Error(`Unknown equipment profile action ${actionId}.`);
       }
 
-      await waitUntil(semantic, settleTimeoutMs);
-      sample.semanticCompletedAt = performance.now();
+      if (sample.semanticCompletedAt === null) {
+        await waitUntil(semantic, settleTimeoutMs);
+        completeActionInterval(primaryInterval);
+        sample.semanticCompletedAt = primaryInterval.completedAt;
+      }
       await delay(postSettleMs);
       return finishSample(sample, true, previewSplit, typeof actionOutcome === "function" ? actionOutcome() : actionOutcome);
     } catch (error) {
@@ -356,6 +394,7 @@ function beginSample({ finalQuery, finalResultValues }) {
   const root = currentRoot();
   const sample = {
     startedAt: performance.now(),
+    actionIntervals: [],
     counterStart: structuredClone(counters),
     imageUrlsAtStart: imageUrls(root),
     resourceStart: performance.now(),
@@ -363,6 +402,7 @@ function beginSample({ finalQuery, finalResultValues }) {
     observer,
     longTaskSupported: supported,
     semanticCompletedAt: null,
+    typingStartedAt: null,
     focusLossCount: 0,
     caretMismatchCount: 0,
     staleFlashCount: 0,
@@ -397,6 +437,21 @@ function beginSample({ finalQuery, finalResultValues }) {
   return sample;
 }
 
+function startActionInterval(sample, kind, startedAt = performance.now()) {
+  const interval = { kind, startedAt, completedAt: null };
+  sample.actionIntervals.push(interval);
+  return interval;
+}
+
+function completeActionInterval(interval) {
+  if (!interval) throw new Error("Equipment profile action interval was not started.");
+  interval.completedAt = performance.now();
+}
+
+function intervalDuration(interval) {
+  return interval?.completedAt === null ? null : interval.completedAt - interval.startedAt;
+}
+
 function finishSample(sample, semanticPassed, previewSplit, actionOutcome) {
   for (const entry of sample.observer?.takeRecords?.() ?? []) sample.longTasks.push({ startTime: entry.startTime, duration: entry.duration });
   sample.observer?.disconnect();
@@ -409,15 +464,46 @@ function finishSample(sample, semanticPassed, previewSplit, actionOutcome) {
   const images = performance
     .getEntriesByType("resource")
     .filter((entry) => entry.startTime >= sample.resourceStart && entry.initiatorType === "img" && urls.has(entry.name));
+  const observationCompletedAt = performance.now();
+  const observedLongTasks = sample.longTasks.map((entry) => ({ startTime: entry.startTime, duration: entry.duration }));
+  const completedIntervals = sample.actionIntervals.filter((interval) => interval.completedAt !== null);
+  const qualifyingLongTasks = observedLongTasks.filter((entry) =>
+    completedIntervals.some((interval) => intervalsOverlap(entry.startTime, entry.startTime + entry.duration, interval.startedAt, interval.completedAt)),
+  );
+  const postSettleLongTasks = observedLongTasks.filter(
+    (entry) =>
+      sample.semanticCompletedAt !== null &&
+      intervalsOverlap(
+        entry.startTime,
+        entry.startTime + entry.duration,
+        sample.semanticCompletedAt,
+        observationCompletedAt,
+      ),
+  );
+  const primaryDurations = completedIntervals.map(intervalDuration);
+  const durationMs = primaryDurations.length > 0 ? Math.max(...primaryDurations) : null;
   return {
-    durationMs: sample.semanticCompletedAt === null ? null : sample.semanticCompletedAt - sample.startedAt,
+    schemaVersion: 2,
+    sampleStartedAt: sample.startedAt,
+    semanticCompletedAt: sample.semanticCompletedAt,
+    observationCompletedAt,
+    actionIntervals: sample.actionIntervals,
+    durationMs,
+    combinedDurationMs: sample.semanticCompletedAt === null ? null : sample.semanticCompletedAt - sample.startedAt,
+    typingStartedAt: sample.typingStartedAt,
+    endToEndTypingDurationMs:
+      sample.typingStartedAt === null || sample.semanticCompletedAt === null
+        ? null
+        : sample.semanticCompletedAt - sample.typingStartedAt,
     semanticPassed,
     actualAppWidth: root.getBoundingClientRect().width,
     domElementCount: root.querySelectorAll("*").length,
     resultDomElementCount: root.querySelector(".equipment-result-list")?.querySelectorAll("*").length ?? 0,
     imageRequestCount: images.length,
     longTaskSupported: sample.longTaskSupported,
-    longTasks: sample.longTasks,
+    observedLongTasks,
+    qualifyingLongTasks,
+    postSettleLongTasks,
     finalValue: search?.value ?? null,
     focused: search ? document.activeElement === search : null,
     selectionStart: search?.selectionStart ?? null,
@@ -439,6 +525,10 @@ function finishSample(sample, semanticPassed, previewSplit, actionOutcome) {
     actionOutcome,
     ...previewSplit,
   };
+}
+
+function intervalsOverlap(leftStart, leftEnd, rightStart, rightEnd) {
+  return leftStart < rightEnd && leftEnd > rightStart;
 }
 
 async function instrumentAppPrototype() {

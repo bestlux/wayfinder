@@ -49,6 +49,14 @@ const FROZEN_IDENTITY = {
   locale: "en",
 };
 const FROZEN_TIMING = { keyDelayMs: 8, settleTimeoutMs: 15000, postSettleMs: 350 };
+const FROZEN_TIMING_SEMANTICS = {
+  rapidSearchPrimary: "final-input-dispatch-to-final-results",
+  rapidSearchDiagnostic: "first-input-dispatch-to-final-results",
+  previewPrimary: ["new-preview-dispatch-to-visible", "repeat-preview-dispatch-to-visible"],
+  previewDiagnostic: "new-preview-dispatch-to-repeat-visible",
+  qualifyingLongTasks: "overlap-primary-action-intervals",
+  postSettleLongTasks: "overlap-semantic-completion-to-observation-end-diagnostic-only",
+};
 const FROZEN_DRIVER_PATHS = [
   "tools/foundry-interaction/equipment-catalogue-profile.json",
   "tools/foundry-smoke/browser-suite.js",
@@ -78,8 +86,8 @@ const FROZEN_ACTION_CONTRACTS = [
 
 export function validateEquipmentProfile(profile) {
   const failures = [];
-  if (profile?.schemaVersion !== 1 || !nonempty(profile.id) || !nonempty(profile.smokeCaseId)) {
-    failures.push("Equipment profile requires schemaVersion 1, id, and smokeCaseId.");
+  if (profile?.schemaVersion !== 2 || !nonempty(profile.id) || !nonempty(profile.smokeCaseId)) {
+    failures.push("Equipment profile requires schemaVersion 2, id, and smokeCaseId.");
   }
   if (
     stableJson({
@@ -99,6 +107,9 @@ export function validateEquipmentProfile(profile) {
     }) !== stableJson(FROZEN_TIMING)
   ) {
     failures.push("Equipment profile must preserve the frozen 8ms key delay, 15s settle timeout, and 350ms observation window.");
+  }
+  if (stableJson(profile?.timingSemantics) !== stableJson(FROZEN_TIMING_SEMANTICS)) {
+    failures.push("Equipment profile timing semantics drifted from the final-input, split-preview, and action-overlap contract.");
   }
   if (stableJson(profile?.viewport) !== stableJson(FROZEN_VIEWPORT)) {
     failures.push("Equipment profile must freeze the 1440x1000 viewport.");
@@ -232,8 +243,9 @@ export function validateEquipmentSample(sample, profile) {
   const failures = [];
   const action = profile.actions?.find((entry) => entry.id === sample?.actionId);
   if (!action) return [`Unknown equipment profile action ${sample?.actionId ?? "<missing>"}.`];
+  if (sample?.schemaVersion !== 2) failures.push("Equipment sample requires timing schemaVersion 2.");
   if (!profile.appWidths.includes(sample.requestedAppWidth)) failures.push("Sample app width is not frozen by the profile.");
-  if (!nonnegativeFinite(sample.durationMs)) failures.push("Sample lacks a finite nonnegative semantic completion duration.");
+  failures.push(...validateSampleTiming(sample, profile));
   if (sample.semanticPassed !== true) failures.push("Sample did not reach its exact semantic DOM oracle.");
   if (sample.actionId === "rapid-search") {
     const finalQuery = profile.querySequence.at(-1);
@@ -293,9 +305,30 @@ export function validateEquipmentSample(sample, profile) {
   }
   if (sample.longTaskSupported !== true) failures.push("This browser did not expose Long Task performance entries.");
   if (sample.planBuildCounterSupported !== true) failures.push("The render-plan execution counter is unavailable.");
-  if (!Array.isArray(sample.longTasks)) failures.push("Sample lacks Long Task entries.");
-  else if (sample.longTasks.some((entry) => !nonnegativeFinite(entry?.duration))) {
-    failures.push("Long Task entries contained an invalid duration.");
+  for (const key of ["observedLongTasks", "qualifyingLongTasks", "postSettleLongTasks"]) {
+    if (!Array.isArray(sample[key])) failures.push(`Sample lacks ${key}.`);
+    else if (sample[key].some((entry) => !validLongTask(entry))) failures.push(`${key} contained an invalid entry.`);
+  }
+  if (Array.isArray(sample.observedLongTasks) && Array.isArray(sample.actionIntervals)) {
+    const qualifying = sample.observedLongTasks.filter((entry) =>
+      sample.actionIntervals.some((interval) =>
+        intervalsOverlap(entry.startTime, entry.startTime + entry.duration, interval.startedAt, interval.completedAt),
+      ),
+    );
+    const postSettle = sample.observedLongTasks.filter((entry) =>
+      intervalsOverlap(
+        entry.startTime,
+        entry.startTime + entry.duration,
+        sample.semanticCompletedAt,
+        sample.observationCompletedAt,
+      ),
+    );
+    if (stableJson(sample.qualifyingLongTasks) !== stableJson(qualifying)) {
+      failures.push("Qualifying Long Tasks do not rederive from exact action intervals.");
+    }
+    if (stableJson(sample.postSettleLongTasks) !== stableJson(postSettle)) {
+      failures.push("Post-settle Long Tasks do not rederive from the observation interval.");
+    }
   }
   for (const [counter, limit, label] of COUNTER_LIMITS) {
     if (!nonnegativeInteger(sample[counter])) failures.push(`Sample lacks ${label}.`);
@@ -316,6 +349,83 @@ export function validateEquipmentSample(sample, profile) {
     }
     if (sample.repeatPreviewHydrationCount !== action.repeatPreviewHydrations) {
       failures.push(`Unchanged preview hydrated ${sample.repeatPreviewHydrationCount} time(s); expected ${action.repeatPreviewHydrations}.`);
+    }
+  }
+  return failures;
+}
+
+function validateSampleTiming(sample, profile) {
+  const failures = [];
+  const intervals = sample?.actionIntervals;
+  const expectedKinds =
+    sample?.actionId === "preview-change"
+      ? ["preview-new", "preview-repeat"]
+      : sample?.actionId === "rapid-search"
+        ? ["rapid-final-query"]
+        : [sample?.actionId];
+  if (!Array.isArray(intervals) || stableJson(intervals.map((entry) => entry?.kind)) !== stableJson(expectedKinds)) {
+    return [`${sample?.actionId ?? "Sample"} lacks its exact ordered primary action intervals.`];
+  }
+  if (
+    !nonnegativeFinite(sample.sampleStartedAt) ||
+    !nonnegativeFinite(sample.semanticCompletedAt) ||
+    !nonnegativeFinite(sample.observationCompletedAt) ||
+    sample.observationCompletedAt - sample.semanticCompletedAt < profile.postSettleMs
+  ) {
+    failures.push("Sample timing boundaries are missing, invalid, out of order, or omit the post-settle window.");
+  }
+  for (const [index, interval] of intervals.entries()) {
+    if (
+      !nonnegativeFinite(interval?.startedAt) ||
+      !nonnegativeFinite(interval?.completedAt) ||
+      interval.completedAt < interval.startedAt ||
+      interval.startedAt < sample.sampleStartedAt ||
+      (index > 0 && interval.startedAt < intervals[index - 1].completedAt)
+    ) {
+      failures.push(`${interval?.kind ?? "Action"} timing boundaries are invalid or out of order.`);
+    }
+  }
+  const durations = intervals.map((interval) => interval.completedAt - interval.startedAt);
+  const expectedDuration = Math.max(...durations);
+  if (!nonnegativeFinite(sample.durationMs) || !nearlyEqual(sample.durationMs, expectedDuration)) {
+    failures.push("Primary duration does not rederive from the exact action interval(s).");
+  }
+  if (
+    !nonnegativeFinite(sample.combinedDurationMs) ||
+    !nearlyEqual(sample.combinedDurationMs, sample.semanticCompletedAt - sample.sampleStartedAt)
+  ) {
+    failures.push("Combined diagnostic duration does not rederive from the sample boundaries.");
+  }
+  if (!nearlyEqual(sample.semanticCompletedAt, intervals.at(-1)?.completedAt)) {
+    failures.push("Semantic completion does not match the final primary interval.");
+  }
+  if (sample.actionId === "rapid-search") {
+    const finalInterval = intervals[0];
+    const minimumPrefixDelay = profile.keyDelayMs * (profile.querySequence.length - 1);
+    if (
+      !nonnegativeFinite(sample.typingStartedAt) ||
+      sample.typingStartedAt > finalInterval.startedAt ||
+      finalInterval.startedAt - sample.typingStartedAt < minimumPrefixDelay ||
+      !nonnegativeFinite(sample.endToEndTypingDurationMs) ||
+      !nearlyEqual(sample.endToEndTypingDurationMs, sample.semanticCompletedAt - sample.typingStartedAt) ||
+      sample.endToEndTypingDurationMs < sample.durationMs
+    ) {
+      failures.push("Rapid-search primary and end-to-end typing timings do not rederive from the final input boundary.");
+    }
+  } else if (sample.typingStartedAt !== null || sample.endToEndTypingDurationMs !== null) {
+    failures.push("Non-search samples must not report typing diagnostics.");
+  }
+  if (sample.actionId === "preview-change") {
+    const [fresh, repeated] = intervals;
+    if (
+      !nearlyEqual(sample.newPreviewDurationMs, fresh.completedAt - fresh.startedAt) ||
+      !nearlyEqual(sample.repeatPreviewDurationMs, repeated.completedAt - repeated.startedAt) ||
+      !nearlyEqual(sample.combinedPreviewDurationMs, repeated.completedAt - fresh.startedAt) ||
+      sample.combinedPreviewDurationMs < sample.newPreviewDurationMs + sample.repeatPreviewDurationMs ||
+      typeof sample.repeatPreviewRenderScheduled !== "boolean" ||
+      sample.repeatPreviewDetailReplaced !== sample.repeatPreviewRenderScheduled
+    ) {
+      failures.push("Preview primary and combined diagnostic timings do not rederive from the split intervals.");
     }
   }
   return failures;
@@ -346,7 +456,93 @@ export function summarizeEquipmentProfile(profile, samples) {
         maxDomElementCount: maximum(selected, "domElementCount"),
         maxResultDomElementCount: maximum(selected, "resultDomElementCount"),
         maxImageRequestsPerSample: maximum(selected, "imageRequestCount"),
-        longTaskCount: selected.reduce((total, sample) => total + (sample.longTasks?.length ?? 0), 0),
+        longTaskCount: selected.reduce((total, sample) => total + (sample.qualifyingLongTasks?.length ?? 0), 0),
+        observedLongTaskCount: selected.reduce((total, sample) => total + (sample.observedLongTasks?.length ?? 0), 0),
+        postSettleLongTaskCount: selected.reduce((total, sample) => total + (sample.postSettleLongTasks?.length ?? 0), 0),
+        endToEndTypingDiagnosticP50Ms:
+          action.id === "rapid-search"
+            ? percentile(
+                selected.map((sample) => sample.endToEndTypingDurationMs),
+                0.5,
+              )
+            : null,
+        endToEndTypingDiagnosticP75Ms:
+          action.id === "rapid-search"
+            ? percentile(
+                selected.map((sample) => sample.endToEndTypingDurationMs),
+                0.75,
+              )
+            : null,
+        endToEndTypingDiagnosticP95Ms:
+          action.id === "rapid-search"
+            ? percentile(
+                selected.map((sample) => sample.endToEndTypingDurationMs),
+                0.95,
+              )
+            : null,
+        newPreviewP50Ms:
+          action.id === "preview-change"
+            ? percentile(
+                selected.map((sample) => sample.newPreviewDurationMs),
+                0.5,
+              )
+            : null,
+        newPreviewP75Ms:
+          action.id === "preview-change"
+            ? percentile(
+                selected.map((sample) => sample.newPreviewDurationMs),
+                0.75,
+              )
+            : null,
+        newPreviewP95Ms:
+          action.id === "preview-change"
+            ? percentile(
+                selected.map((sample) => sample.newPreviewDurationMs),
+                0.95,
+              )
+            : null,
+        repeatPreviewP50Ms:
+          action.id === "preview-change"
+            ? percentile(
+                selected.map((sample) => sample.repeatPreviewDurationMs),
+                0.5,
+              )
+            : null,
+        repeatPreviewP75Ms:
+          action.id === "preview-change"
+            ? percentile(
+                selected.map((sample) => sample.repeatPreviewDurationMs),
+                0.75,
+              )
+            : null,
+        repeatPreviewP95Ms:
+          action.id === "preview-change"
+            ? percentile(
+                selected.map((sample) => sample.repeatPreviewDurationMs),
+                0.95,
+              )
+            : null,
+        combinedPreviewDiagnosticP50Ms:
+          action.id === "preview-change"
+            ? percentile(
+                selected.map((sample) => sample.combinedPreviewDurationMs),
+                0.5,
+              )
+            : null,
+        combinedPreviewDiagnosticP75Ms:
+          action.id === "preview-change"
+            ? percentile(
+                selected.map((sample) => sample.combinedPreviewDurationMs),
+                0.75,
+              )
+            : null,
+        combinedPreviewDiagnosticP95Ms:
+          action.id === "preview-change"
+            ? percentile(
+                selected.map((sample) => sample.combinedPreviewDurationMs),
+                0.95,
+              )
+            : null,
       };
     })
   );
@@ -368,6 +564,18 @@ export function validateEquipmentBudgets(profile, summary, options = {}) {
     if (required !== null && row.sampleCount !== required) failures.push(`${label} recorded ${row.sampleCount} measured samples; expected ${required}.`);
     if (row.failedSampleCount > 0) failures.push(`${label} had ${row.failedSampleCount} semantic/counter failure(s).`);
     if (!nonnegativeFinite(row.p95Ms) || row.p95Ms > profile.budgets.maxP95MsPerActionWidth) failures.push(`${label} p95 exceeded ${profile.budgets.maxP95MsPerActionWidth}ms.`);
+    if (
+      row.actionId === "preview-change" &&
+      (!nonnegativeFinite(row.newPreviewP95Ms) || row.newPreviewP95Ms > profile.budgets.maxP95MsPerActionWidth)
+    ) {
+      failures.push(`${label} new-preview p95 exceeded ${profile.budgets.maxP95MsPerActionWidth}ms.`);
+    }
+    if (
+      row.actionId === "preview-change" &&
+      (!nonnegativeFinite(row.repeatPreviewP95Ms) || row.repeatPreviewP95Ms > profile.budgets.maxP95MsPerActionWidth)
+    ) {
+      failures.push(`${label} repeat-preview p95 exceeded ${profile.budgets.maxP95MsPerActionWidth}ms.`);
+    }
     if (row.maxDomElementCount > profile.budgets.maxDomElementCount) failures.push(`${label} DOM exceeded ${profile.budgets.maxDomElementCount}.`);
     if (row.maxResultDomElementCount > profile.budgets.maxResultDomElementCount) failures.push(`${label} result DOM exceeded ${profile.budgets.maxResultDomElementCount}.`);
     if (row.maxImageRequestsPerSample > profile.budgets.maxImageRequestsPerSample) failures.push(`${label} made image requests.`);
@@ -378,7 +586,7 @@ export function validateEquipmentBudgets(profile, summary, options = {}) {
 
 export function compactEquipmentEvidence(result) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     profile: {
       id: result.profile.id,
       viewport: result.profile.viewport,
@@ -388,6 +596,7 @@ export function compactEquipmentEvidence(result) {
         measured: result.profile.measuredSamplesPerActionWidth,
       },
       budgets: result.profile.budgets,
+      timingSemantics: result.profile.timingSemantics,
       counts: result.fixture.catalogueCounts,
       countSemantics: result.profile.catalogueCountSemantics,
       finalResultValues: result.profile.expectedFinalResultValues,
@@ -425,6 +634,7 @@ export function qualifyEquipmentEvidenceRuns(results) {
       ),
     );
     if (result?.runMode !== "qualification") failures.push(`${label} is not a qualification-depth run.`);
+    if (result?.schemaVersion !== 2) failures.push(`${label} does not use equipment evidence schemaVersion 2.`);
     if (result?.profile?.expectedCatalogueCounts === null) failures.push(`${label} did not freeze live catalogue counts.`);
     failures.push(...deriveQualifiedRun(result, label));
     failures.push(...validateProvenance(result, label));
@@ -610,6 +820,18 @@ function nonnegativeInteger(value) {
 
 function nonnegativeFinite(value) {
   return Number.isFinite(value) && value >= 0;
+}
+
+function nearlyEqual(left, right) {
+  return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) <= 0.000_001;
+}
+
+function validLongTask(entry) {
+  return nonnegativeFinite(entry?.startTime) && nonnegativeFinite(entry?.duration);
+}
+
+function intervalsOverlap(leftStart, leftEnd, rightStart, rightEnd) {
+  return [leftStart, leftEnd, rightStart, rightEnd].every(Number.isFinite) && leftStart < rightEnd && leftEnd > rightStart;
 }
 
 function validRunInterval(startedAt, finishedAt) {

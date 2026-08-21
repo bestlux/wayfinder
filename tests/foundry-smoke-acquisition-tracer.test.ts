@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
 import { prepareAcquisitionIdentityPlan } from "../src/wayfinder/domain/acquisition-identity";
@@ -23,7 +24,8 @@ import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baselin
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 import {
   cleanupAcquisitionFixtures,
-  createAcquisitionDurabilityPage,
+  cleanupAcquisitionFixturesWithRecovery,
+  createAcquisitionRecoveryPage,
   loadAcquisitionBrowserSuite,
   reloadAcquisitionBrowserSuite,
 } from "../tools/foundry-smoke/acquisition-browser-lifecycle.mjs";
@@ -46,6 +48,7 @@ import {
 } from "../tools/foundry-smoke/evidence-contract.mjs";
 
 const browserSuite = readFileSync(resolve("tools/foundry-smoke/browser-suite.js"), "utf8");
+const cleanupBrowserScript = readFileSync(resolve("tools/foundry-smoke/acquisition-cleanup-browser.js"), "utf8");
 const runner = readFileSync(resolve("tools/foundry-smoke/run-acquisition-tracer.mjs"), "utf8");
 
 describe("Foundry Wave-2 acquisition tracer", () => {
@@ -480,7 +483,8 @@ describe("Foundry Wave-2 acquisition tracer", () => {
   it("uses guarded GM setup, a distinct player context, actual actor collection, and GM cleanup", () => {
     expect(browserSuite).toContain("globalThis.__prepareWayfinderAcquisitionTracer");
     expect(browserSuite).toContain("globalThis.__runWayfinderAcquisitionTracer");
-    expect(browserSuite).toContain("globalThis.__cleanupWayfinderAcquisitionTracer");
+    expect(browserSuite).not.toContain("globalThis.__cleanupWayfinderAcquisitionTracer");
+    expect(cleanupBrowserScript).toContain("globalThis.__cleanupWayfinderAcquisitionTracer");
     expect(browserSuite).toContain("globalThis.__wayfinderAcquisitionSmokeDriver");
     expect(browserSuite).toContain("completedAcquisitionManifest");
     expect(browserSuite).toContain("onFailure: async (error) =>");
@@ -495,10 +499,10 @@ describe("Foundry Wave-2 acquisition tracer", () => {
     expect(runner).toContain("__wayfinderAcquisitionSmokeBootstrap");
     expect(runner.match(/browser\.newContext\(/gu)).toHaveLength(3);
     expect(runner.indexOf("await playerContext.close();")).toBeLessThan(
-      runner.indexOf("cleanup = await cleanupAcquisitionFixtures(")
+      runner.indexOf("cleanup = await cleanupAcquisitionFixturesWithRecovery(")
     );
     expect(runner.indexOf("await gmReviewContext.close();")).toBeLessThan(
-      runner.indexOf("cleanup = await cleanupAcquisitionFixtures(")
+      runner.indexOf("cleanup = await cleanupAcquisitionFixturesWithRecovery(")
     );
     expect(runner).toContain("qualifySmokeResult(result, cases)");
     expect(runner).not.toContain("console.error(error)");
@@ -515,6 +519,7 @@ describe("Foundry Wave-2 acquisition tracer", () => {
     await loadAcquisitionBrowserSuite(page);
 
     expect(calls.map((scriptPath) => scriptPath.replaceAll("\\", "/").split("/").at(-1))).toEqual([
+      "acquisition-cleanup-browser.js",
       "skill-selection-policy.js",
       "browser-suite.js",
     ]);
@@ -528,15 +533,27 @@ describe("Foundry Wave-2 acquisition tracer", () => {
       /GM review session ready[^;]+;\s+await loadAcquisitionBrowserSuite\(gmReviewPage\);\s+gmReviewResult/u
     );
     expect(runner).toMatch(
-      /durabilityPage = await createAcquisitionDurabilityPage\(setupContext, foundryUrl\);\s+const durability = await durabilityPage\.evaluate/u
+      /await reloadAcquisitionBrowserSuite\(setupPage\);\s+const durability = await setupPage\.evaluate/u
     );
-    expect(runner).toContain("[setupPage, durabilityPage]");
+    expect(runner).not.toContain("durabilityPage");
     expect(runner).not.toContain(".addScriptTag(");
+    expect(runner).toMatch(
+      /createAcquisitionRecoveryPage\(\{\s+blockingErrors: gmReviewCloseError[^,]+,\s+browser,\s+failedContext: setupContext,\s+login: \(page\) =>\s+loginToFoundryWorld\(page/u
+    );
+    expect(runner).toContain("closeFoundryBrowser(recoveryContext ?? setupContext, browser)");
+    expect(runner).toContain("executionError ? [executionError, ...finalizationErrors]");
+    expect(runner).toMatch(
+      /prepare: async \(page\) =>[^}]+restoreEquipmentSettings\(page, MODULE_ID, equipmentSettingsSnapshot\);[^}]+equipmentSettingsRestored = true;/su
+    );
+    expect(runner).toContain("[recoveryPage ?? setupPage]");
   });
 
   it("reloads to a ready Foundry page before restoring policy-bound acquisition globals", async () => {
     const calls: string[] = [];
     const page = {
+      addInitScript: async ({ path }: { path: string }) => {
+        calls.push(`init:${path.replaceAll("\\", "/").split("/").at(-1)}`);
+      },
       reload: async (options: { waitUntil: string }) => {
         calls.push(`reload:${options.waitUntil}`);
       },
@@ -551,72 +568,192 @@ describe("Foundry Wave-2 acquisition tracer", () => {
     await reloadAcquisitionBrowserSuite(page);
 
     expect(calls).toEqual([
+      "init:acquisition-cleanup-browser.js",
       "reload:domcontentloaded",
       "ready:null:60000",
+      "script:acquisition-cleanup-browser.js",
       "script:skill-selection-policy.js",
       "script:browser-suite.js",
     ]);
   });
 
-  it("keeps setup cleanup authority when durability bootstrap fails before returning a page", async () => {
+  it("keeps cleanup available when post-reload browser-suite injection fails", async () => {
     const cleanupPayload = { runId: "run-id" };
-    const close = vi.fn().mockResolvedValue(undefined);
-    const failedDurabilityPage = {
-      goto: vi.fn().mockResolvedValue(undefined),
+    const cleanup = vi.fn().mockResolvedValue({ actorsDeleted: 1 });
+    let cleanupAvailable = false;
+    const page = {
+      addInitScript: async ({ path }: { path: string }) => {
+        cleanupAvailable = path.endsWith("acquisition-cleanup-browser.js");
+      },
       reload: vi.fn().mockResolvedValue(undefined),
       waitForFunction: vi.fn().mockResolvedValue(undefined),
-      addScriptTag: vi
-        .fn()
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(new Error("Injected browser-suite load failure.")),
-      close,
+      addScriptTag: async ({ path }: { path: string }) => {
+        if (path.endsWith("browser-suite.js")) throw new Error("Injected browser-suite load failure.");
+      },
+      evaluate: vi.fn(async (_callback, payload?: unknown) =>
+        payload === undefined ? cleanupAvailable : cleanup(payload)
+      ),
     };
-    const context = { newPage: async () => failedDurabilityPage };
-    const durabilityPage = null;
 
-    await expect(createAcquisitionDurabilityPage(context, "http://localhost:30000")).rejects.toThrow(
-      "Injected browser-suite load failure."
-    );
-    expect(close).toHaveBeenCalledOnce();
+    await expect(reloadAcquisitionBrowserSuite(page)).rejects.toThrow("Injected browser-suite load failure.");
+    await expect(cleanupAcquisitionFixtures([page], cleanupPayload)).resolves.toEqual({ actorsDeleted: 1 });
+    expect(cleanup).toHaveBeenCalledWith(cleanupPayload);
+  });
 
-    const cleanup = vi.fn().mockResolvedValue({ actorsDeleted: 1 });
-    const retainedSetupPage = {
+  it("recovers cleanup through a fresh ready GM page when durability never reaches game.ready", async () => {
+    const cleanupPayload = { runId: "run-id" };
+    const timedOutPage = {
+      addInitScript: vi.fn().mockResolvedValue(undefined),
+      reload: vi.fn().mockResolvedValue(undefined),
+      waitForFunction: vi.fn().mockRejectedValue(new Error("Timed out waiting for game.ready.")),
+      evaluate: vi.fn().mockResolvedValue(false),
+    };
+
+    await expect(reloadAcquisitionBrowserSuite(timedOutPage)).rejects.toThrow("Timed out waiting for game.ready.");
+
+    const cleanup = vi.fn().mockResolvedValue({ actorsDeleted: 10 });
+    const recoveryPage = {
       evaluate: vi
         .fn()
         .mockResolvedValueOnce(true)
         .mockImplementationOnce(async (_callback, payload) => cleanup(payload)),
     };
+    const recoverPage = vi.fn().mockResolvedValue(recoveryPage);
 
-    await expect(cleanupAcquisitionFixtures([retainedSetupPage, durabilityPage], cleanupPayload)).resolves.toEqual({
-      actorsDeleted: 1,
+    await expect(cleanupAcquisitionFixturesWithRecovery([timedOutPage], cleanupPayload, recoverPage)).resolves.toEqual({
+      actorsDeleted: 10,
     });
+    expect(recoverPage).toHaveBeenCalledOnce();
     expect(cleanup).toHaveBeenCalledWith(cleanupPayload);
   });
 
-  it("creates a separately reloaded durability page with the same policy-before-suite contract", async () => {
-    const calls: string[] = [];
+  it("does not retry an exact cleanup rejection as an authority failure", async () => {
+    const exactRejection = new Error("Acquisition tracer cleanup refused a fixture that did not match.");
     const page = {
-      goto: async (url: string, options: { waitUntil: string }) => calls.push(`goto:${url}:${options.waitUntil}`),
-      reload: async (options: { waitUntil: string }) => calls.push(`reload:${options.waitUntil}`),
-      waitForFunction: async (_predicate: () => boolean, value: unknown, options: { timeout: number }) => {
-        calls.push(`ready:${String(value)}:${options.timeout}`);
-      },
-      addScriptTag: async ({ path }: { path: string }) => {
-        calls.push(`script:${path.replaceAll("\\", "/").split("/").at(-1)}`);
+      evaluate: vi.fn().mockResolvedValueOnce(true).mockRejectedValueOnce(exactRejection),
+    };
+    const recoverPage = vi.fn();
+
+    await expect(cleanupAcquisitionFixturesWithRecovery([page], { runId: "run-id" }, recoverPage)).rejects.toBe(
+      exactRejection
+    );
+    expect(recoverPage).not.toHaveBeenCalled();
+  });
+
+  it("closes the failed setup context before creating a fresh cleanup login session", async () => {
+    const calls: string[] = [];
+    const failedContext = {
+      close: async () => calls.push("failed-context:close"),
+    };
+    const recoveryPage = {
+      addScriptTag: async ({ path }: { path: string }) =>
+        calls.push(`script:${path.replaceAll("\\", "/").split("/").at(-1)}`),
+    };
+    const recoveryContext = {
+      newPage: async () => {
+        calls.push("recovery-context:new-page");
+        return recoveryPage;
       },
       close: vi.fn(),
     };
-    const context = { newPage: async () => page };
+    const browser = {
+      newContext: async (options: { viewport: { height: number; width: number } }) => {
+        calls.push(`browser:new-context:${options.viewport.width}x${options.viewport.height}`);
+        return recoveryContext;
+      },
+    };
+    const login = vi.fn(async (page) => {
+      expect(page).toBe(recoveryPage);
+      calls.push("recovery-page:login-ready");
+    });
+    const prepare = vi.fn(async (page) => {
+      expect(page).toBe(recoveryPage);
+      calls.push("recovery-page:settings-restored");
+    });
 
-    await expect(createAcquisitionDurabilityPage(context, "http://localhost:30000")).resolves.toBe(page);
+    await expect(createAcquisitionRecoveryPage({ browser, failedContext, login, prepare })).resolves.toEqual({
+      context: recoveryContext,
+      page: recoveryPage,
+    });
     expect(calls).toEqual([
-      "goto:http://localhost:30000:domcontentloaded",
-      "ready:null:60000",
-      "reload:domcontentloaded",
-      "ready:null:60000",
-      "script:skill-selection-policy.js",
-      "script:browser-suite.js",
+      "failed-context:close",
+      "browser:new-context:1440x1000",
+      "recovery-context:new-page",
+      "recovery-page:login-ready",
+      "script:acquisition-cleanup-browser.js",
+      "recovery-page:settings-restored",
     ]);
+  });
+
+  it("does not open a recovery GM session when a prior GM context did not confirm closure", async () => {
+    const closeError = new Error("GM review context close failed.");
+    const failedContext = { close: vi.fn() };
+    const browser = { newContext: vi.fn() };
+
+    await expect(
+      createAcquisitionRecoveryPage({
+        blockingErrors: [closeError],
+        browser,
+        failedContext,
+        login: vi.fn(),
+      })
+    ).rejects.toMatchObject({
+      message: "Acquisition cleanup recovery refused to open another GM session before prior GM contexts closed.",
+      errors: [closeError],
+    });
+    expect(failedContext.close).not.toHaveBeenCalled();
+    expect(browser.newContext).not.toHaveBeenCalled();
+  });
+
+  it("keeps the navigation-safe cleanup script exact-world and exact-fixture guarded", async () => {
+    const actorId = "actor-id";
+    const actors = new Map<string, any>();
+    const actor = {
+      id: actorId,
+      name: "WF Smoke Harness fixture",
+      getFlag: () => ({
+        runId: "run-id",
+        caseId: "case-id",
+        definitionFingerprint: "fingerprint",
+        executorRole: "non-gm-owner",
+        executorUserId: "owner-id",
+      }),
+      delete: async () => actors.delete(actorId),
+    };
+    actors.set(actorId, actor);
+    const context: any = {
+      game: {
+        actors,
+        user: { isGM: true },
+        world: { id: "testing-world" },
+      },
+    };
+    runInNewContext(cleanupBrowserScript, context);
+    const payload = {
+      allowDestructive: true,
+      expectedWorldId: "testing-world",
+      fixtures: [
+        {
+          actorId,
+          fixtureName: actor.name,
+          caseId: "case-id",
+          definitionFingerprint: "fingerprint",
+          executorRole: "non-gm-owner",
+          executorUserId: "owner-id",
+        },
+      ],
+      moduleId: "wayfinder-pf2e",
+      runId: "run-id",
+    };
+
+    await expect(
+      context.__cleanupWayfinderAcquisitionTracer({ ...payload, expectedWorldId: "another-world" })
+    ).rejects.toThrow("Foundry smoke expected world another-world, but connected to testing-world.");
+    await expect(context.__cleanupWayfinderAcquisitionTracer(payload)).resolves.toEqual({
+      exactFixturesMatched: true,
+      actorsDeleted: 1,
+      actorsMissingAfterCleanup: true,
+    });
   });
 
   it("publishes one immutable hash-bound acquisition evidence directory", async () => {

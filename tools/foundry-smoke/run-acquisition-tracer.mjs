@@ -6,9 +6,10 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 import {
-  cleanupAcquisitionFixtures,
-  createAcquisitionDurabilityPage,
+  cleanupAcquisitionFixturesWithRecovery,
+  createAcquisitionRecoveryPage,
   loadAcquisitionBrowserSuite,
+  reloadAcquisitionBrowserSuite,
 } from "./acquisition-browser-lifecycle.mjs";
 import {
   createExclusiveAcquisitionTracerArtifactDirectory,
@@ -85,7 +86,6 @@ async function main() {
   const browser = await chromium.launch({ executablePath: chromePath, headless });
   const setupContext = await browser.newContext({ viewport: { height: 1000, width: 1440 } });
   const setupPage = await setupContext.newPage();
-  let durabilityPage = null;
   let playerContext = null;
   let gmReviewContext = null;
   let setup = null;
@@ -95,6 +95,10 @@ async function main() {
   let gmReviewResult = null;
   let result;
   let cleanup = null;
+  let executionError = null;
+  let recoveryContext = null;
+  let recoveryPage = null;
+  let recoveryError = null;
 
   try {
     await loginToFoundryWorld(setupPage, {
@@ -221,8 +225,8 @@ async function main() {
     await restoreEquipmentSettings(setupPage, MODULE_ID, equipmentSettingsSnapshot);
     equipmentSettingsRestored = true;
     if (result) {
-      durabilityPage = await createAcquisitionDurabilityPage(setupContext, foundryUrl);
-      const durability = await durabilityPage.evaluate(
+      await reloadAcquisitionBrowserSuite(setupPage);
+      const durability = await setupPage.evaluate(
         (payload) => globalThis.__collectWayfinderAcquisitionDurability(payload),
         {
           cases,
@@ -235,45 +239,114 @@ async function main() {
       console.log("Acquisition tracer: post-reload durability evidence collected.");
       attachDurabilityEvidence(result, cases, durability);
     }
-  } finally {
+  } catch (error) {
+    executionError = error;
+  }
+
+  const finalizationErrors = [];
+  let gmReviewCloseError = null;
+  if (playerContext) {
     try {
-      try {
-        if (playerContext) {
-          await playerContext.close();
-          playerContext = null;
-        }
-      } finally {
-        if (gmReviewContext) {
-          await gmReviewContext.close();
-          gmReviewContext = null;
-        }
-      }
-    } finally {
-      try {
-        if (equipmentSettingsSnapshot && !equipmentSettingsRestored) {
-          await restoreEquipmentSettings(setupPage, MODULE_ID, equipmentSettingsSnapshot);
-          equipmentSettingsRestored = true;
-        }
-      } finally {
-        try {
-          if (setup) {
-            cleanup = await cleanupAcquisitionFixtures(
-              [setupPage, durabilityPage],
-              {
-                allowDestructive: options.allowDestructive,
-                expectedWorldId: options.expectedWorldId,
-                fixtures: setup.fixtures,
-                moduleId: MODULE_ID,
-                runId,
-              },
-            );
-          }
-        } finally {
-          await closeFoundryBrowser(setupContext, browser);
-        }
-      }
+      await playerContext.close();
+      playerContext = null;
+    } catch (error) {
+      finalizationErrors.push(error);
     }
   }
+  if (gmReviewContext) {
+    try {
+      await gmReviewContext.close();
+      gmReviewContext = null;
+    } catch (error) {
+      gmReviewCloseError = error;
+      finalizationErrors.push(error);
+    }
+  }
+  let equipmentRestoreError = null;
+  if (equipmentSettingsSnapshot && !equipmentSettingsRestored) {
+    try {
+      await restoreEquipmentSettings(setupPage, MODULE_ID, equipmentSettingsSnapshot);
+      equipmentSettingsRestored = true;
+    } catch (error) {
+      equipmentRestoreError = error;
+    }
+  }
+  const recoverFinalizationPage = async () => {
+    if (recoveryPage) return recoveryPage;
+    if (recoveryError) throw recoveryError;
+    try {
+      const recovery = await createAcquisitionRecoveryPage({
+        blockingErrors: gmReviewCloseError ? [gmReviewCloseError] : [],
+        browser,
+        failedContext: setupContext,
+        login: (page) =>
+          loginToFoundryWorld(page, {
+            foundryUrl,
+            password: process.env.FOUNDRY_PASSWORD ?? "",
+            user: options.setupUser,
+          }),
+        prepare: async (page) => {
+          if (equipmentSettingsSnapshot && !equipmentSettingsRestored) {
+            await restoreEquipmentSettings(page, MODULE_ID, equipmentSettingsSnapshot);
+            equipmentSettingsRestored = true;
+          }
+        },
+      });
+      recoveryContext = recovery.context;
+      recoveryPage = recovery.page;
+      return recoveryPage;
+    } catch (error) {
+      recoveryError = error;
+      throw error;
+    }
+  };
+  if (equipmentSettingsSnapshot && !equipmentSettingsRestored) {
+    try {
+      await recoverFinalizationPage();
+      equipmentRestoreError = null;
+    } catch (error) {
+      finalizationErrors.push(
+        new AggregateError(
+          equipmentRestoreError ? [equipmentRestoreError, error] : [error],
+          "Acquisition tracer could not restore equipment settings before cleanup.",
+          { cause: error },
+        ),
+      );
+    }
+  }
+  if (setup) {
+    try {
+      cleanup = await cleanupAcquisitionFixturesWithRecovery(
+        [recoveryPage ?? setupPage],
+        {
+          allowDestructive: options.allowDestructive,
+          expectedWorldId: options.expectedWorldId,
+          fixtures: setup.fixtures,
+          moduleId: MODULE_ID,
+          runId,
+        },
+        recoverFinalizationPage,
+      );
+    } catch (error) {
+      finalizationErrors.push(error);
+    }
+  }
+  try {
+    await closeFoundryBrowser(recoveryContext ?? setupContext, browser);
+  } catch (error) {
+    finalizationErrors.push(error);
+  }
+  if (finalizationErrors.length === 1 && !executionError) throw finalizationErrors[0];
+  if (finalizationErrors.length > 0) {
+    throw new AggregateError(
+      executionError ? [executionError, ...finalizationErrors] : finalizationErrors,
+      executionError
+        ? "Acquisition tracer execution failed and finalization also reported errors."
+        : "Acquisition tracer finalization reported multiple errors.",
+      { cause: finalizationErrors.at(-1) },
+    );
+  }
+  if (executionError) throw executionError;
 
   if (!result) throw new Error("Acquisition tracer produced no executor evidence.");
   Object.assign(result, {

@@ -55,6 +55,29 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(frozenWave2).toContain("equipment-l1-owner-common-purchase-retry");
   });
 
+  it("selects the compact catalogue leaf before keyboard-adding from exact item detail", () => {
+    const itemSelector = runner.indexOf('data-wayfinder-action="preview-equipment-item"');
+    const selectStage = runner.indexOf('interactionStage("browse-cart", "select-item")', itemSelector);
+    const selectTab = runner.indexOf("await tabTo(playerPage, itemSelector)", selectStage);
+    const selectAction = runner.indexOf('pressAndRecord(playerPage, keyboard, "select-item", "Enter")', selectStage);
+    const detailSelector = runner.indexOf('data-application-part="equipment-detail"', selectAction);
+    const currencySelector = runner.indexOf('data-funding="currency"', detailSelector);
+    const detailWait = runner.indexOf("await waitFor(playerPage, currencyActionSelector)", currencySelector);
+    const addTab = runner.indexOf("await tabTo(playerPage, currencyActionSelector)", detailWait);
+    const addAction = runner.indexOf('pressAndRecord(playerPage, keyboard, "add-item", "Enter")', detailWait);
+
+    expect(itemSelector).toBeGreaterThan(-1);
+    expect(selectStage).toBeGreaterThan(itemSelector);
+    expect(selectTab).toBeGreaterThan(selectStage);
+    expect(selectAction).toBeGreaterThan(selectTab);
+    expect(detailSelector).toBeGreaterThan(selectAction);
+    expect(currencySelector).toBeGreaterThan(detailSelector);
+    expect(detailWait).toBeGreaterThan(currencySelector);
+    expect(addTab).toBeGreaterThan(detailWait);
+    expect(addAction).toBeGreaterThan(addTab);
+    expect(runner).not.toContain('`${itemSelector} [data-wayfinder-action="add-equipment-item"]');
+  });
+
   it("records the app-local keyboard entry target instead of traversing arbitrary Foundry chrome", () => {
     const result = passingResult();
     result.locales[0].keyboard.entry.target.disabled = true;
@@ -108,6 +131,21 @@ describe("WF-080-43 live experience qualifier", () => {
 
   it("accepts exact responsive, accessible, localized evidence", () => {
     expect(qualifyWf43ExperienceResult(passingResult())).toEqual({ ok: true, failures: [] });
+  });
+
+  it("rejects duplicated, reordered, or non-Enter compact catalogue actions", () => {
+    const result = passingResult();
+    const actions = result.locales[0].keyboard.actions;
+    const selectIndex = actions.findIndex((item) => item.action === "select-item");
+    actions.splice(selectIndex, 0, { action: "add-item", key: "Enter" });
+    result.locales[1].keyboard.actions.find((item) => item.action === "select-item").key = "Space";
+
+    expect(qualifyWf43ExperienceResult(result).failures).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/en: compact catalogue flow did not keyboard-search/i),
+        expect.stringMatching(/cn: compact catalogue flow did not keyboard-search/i),
+      ])
+    );
   });
 
   it("rejects overflow, clipping, raw keys, generic names, stale announcements, and hidden focus", () => {
@@ -346,6 +384,7 @@ function passingResult(): any {
         actions: [
           "initialize",
           "search",
+          "select-item",
           "add-item",
           "increase-quantity",
           "decrease-quantity",

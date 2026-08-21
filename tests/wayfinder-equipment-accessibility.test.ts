@@ -8,6 +8,7 @@ import {
   equipmentLineControlFocusId,
   equipmentLineFocusId,
   STARTING_EQUIPMENT_REVIEW_FOCUS_ID,
+  STARTING_EQUIPMENT_SEARCH_FOCUS_ID,
   STARTING_EQUIPMENT_STATUS_FOCUS_ID,
 } from "../src/wayfinder/application/equipment-accessibility";
 
@@ -22,6 +23,7 @@ describe("starting equipment accessibility", () => {
     expect(equipmentLineControlFocusId("line-1", "decrease")).toBe("starting-equipment-line:line-1:decrease");
     expect(equipmentFilterFocusId("source", "Player Core")).toBe("starting-equipment-filter:source:Player Core");
     expect(STARTING_EQUIPMENT_REVIEW_FOCUS_ID).toBe("starting-equipment-review");
+    expect(STARTING_EQUIPMENT_SEARCH_FOCUS_ID).toBe("starting-equipment-search");
     expect(STARTING_EQUIPMENT_STATUS_FOCUS_ID).toBe("starting-equipment-status");
   });
 
@@ -60,6 +62,11 @@ describe("starting equipment accessibility", () => {
     expect(apply.indexOf("try {")).toBeGreaterThanOrEqual(0);
     expect(apply.indexOf("try {")).toBeLessThan(apply.indexOf("const snapshot = inspectActor"));
     expect(apply).toContain("this.#setStartingEquipmentFailure(failureMessage)");
+  });
+
+  it("gives the browse search a stable relocation identity", () => {
+    const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
+    expect(pane).toContain('data-wayfinder-equipment-search data-wayfinder-focus-id="starting-equipment-search"');
   });
 });
 

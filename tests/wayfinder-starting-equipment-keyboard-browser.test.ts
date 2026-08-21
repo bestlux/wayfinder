@@ -15,7 +15,10 @@ const chromePath = [
 const browserIt = chromePath ? it : it.skip;
 const accessibilityScript = readFileSync(resolve("scripts/wayfinder/application/equipment-accessibility.js"), "utf8")
   .replaceAll("export ", "")
-  .concat("\nwindow.restoreEquipmentFocus = restoreEquipmentFocus;");
+  .concat(
+    "\nwindow.restoreEquipmentFocus = restoreEquipmentFocus;",
+    "\nwindow.startingEquipmentFocusCandidates = startingEquipmentFocusCandidates;"
+  );
 
 browserIt(
   "supports a keyboard-only acquisition path with named controls, announcements, and deterministic relocation",
@@ -26,39 +29,42 @@ browserIt(
       await page.setContent(keyboardFixture);
       await page.addScriptTag({ content: accessibilityScript });
       await page.evaluate(() => {
-        const buy = document.querySelector<HTMLButtonElement>("[data-action='buy']")!;
-        buy.addEventListener("click", () => {
-          buy.remove();
-          const cart = document.querySelector<HTMLElement>("[data-cart]")!;
-          cart.innerHTML = `
-            <p data-cart-status role="status" aria-live="polite" aria-atomic="true"></p>
-            <article tabindex="-1" data-wayfinder-focus-id="starting-equipment-line:line-1">
-              <strong>Adventurer's Pack</strong>
-              <button aria-label="Decrease quantity of Adventurer's Pack" data-action="decrease" data-wayfinder-focus-id="starting-equipment-line:line-1:decrease">−</button>
-              <button aria-label="Increase quantity of Adventurer's Pack" data-wayfinder-focus-id="starting-equipment-line:line-1:increase">+</button>
-            </article>`;
-          document.querySelector<HTMLElement>("[data-cart-status]")!.textContent =
-            "Cart: 1 lines, 1 gp spent, 9 gp remaining.";
-          window.restoreEquipmentFocus(document, ["starting-equipment-line:line-1"]);
-          document.querySelector<HTMLButtonElement>("[data-action='decrease']")!.addEventListener("click", () => {
-            cart.replaceChildren();
-            window.restoreEquipmentFocus(document, ["starting-equipment-line:line-1", "starting-equipment-review"]);
+        const preview = document.querySelector<HTMLButtonElement>("[data-action='preview']")!;
+        preview.addEventListener("click", () => {
+          const detail = document.querySelector<HTMLElement>("[data-detail]")!;
+          detail.innerHTML = `<button aria-label="Buy Adventurer's Pack with coin" data-action="buy" data-wayfinder-focus-id="starting-equipment-item:item:coin">Buy with coin</button>`;
+          detail.querySelector<HTMLButtonElement>("[data-action='buy']")!.addEventListener("click", () => {
+            detail.replaceChildren();
+            const cart = document.querySelector<HTMLElement>("[data-cart]")!;
+            cart.innerHTML = `
+              <p data-cart-status role="status" aria-live="polite" aria-atomic="true"></p>
+              <article tabindex="-1" data-wayfinder-focus-id="starting-equipment-line:line-1">
+                <strong>Adventurer's Pack</strong>
+                <button aria-label="Decrease quantity of Adventurer's Pack" data-action="decrease" data-wayfinder-focus-id="starting-equipment-line:line-1:decrease">−</button>
+                <button aria-label="Increase quantity of Adventurer's Pack" data-wayfinder-focus-id="starting-equipment-line:line-1:increase">+</button>
+              </article>`;
+            document.querySelector<HTMLElement>("[data-cart-status]")!.textContent =
+              "Cart: 1 lines, 1 gp spent, 9 gp remaining.";
+            window.restoreEquipmentFocus(document, ["starting-equipment-line:line-1"]);
+            document.querySelector<HTMLButtonElement>("[data-action='decrease']")!.addEventListener("click", () => {
+              cart.replaceChildren();
+              window.restoreEquipmentFocus(document, ["starting-equipment-line:line-1", "starting-equipment-review"]);
+            });
           });
         });
       });
 
       await page.keyboard.press("Tab");
       await expectFocused(page, "Search equipment");
-      for (const expected of [
-        "Clear filters",
-        "Common",
-        "Preview Adventurer's Pack",
-        "Buy Adventurer's Pack with coin",
-      ]) {
+      for (const expected of ["Clear filters", "Common", "Preview Adventurer's Pack"]) {
         await page.keyboard.press("Tab");
         await expectFocused(page, expected);
       }
 
+      await page.keyboard.press("Enter");
+      await expectFocused(page, "Preview Adventurer's Pack");
+      await page.keyboard.press("Tab");
+      await expectFocused(page, "Buy Adventurer's Pack with coin");
       await page.keyboard.press("Enter");
       expect(await page.evaluate(() => document.activeElement?.getAttribute("data-wayfinder-focus-id"))).toBe(
         "starting-equipment-line:line-1"
@@ -128,6 +134,72 @@ browserIt(
       await page.keyboard.press("Tab");
       await page.keyboard.press("Enter");
       await expectFocusId(page, "starting-equipment-authority");
+
+      await page.evaluate(() => {
+        document.body.innerHTML = `
+          <main class="starting-equipment-pane" data-policy>
+            <button data-wayfinder-action="activate-equipment-policy" data-wayfinder-focus-id="starting-equipment-activate:replacement-character">Activate replacement policy</button>
+          </main>`;
+        const policy = document.querySelector<HTMLElement>("[data-policy]")!;
+        const activate = policy.querySelector<HTMLButtonElement>(
+          "[data-wayfinder-action='activate-equipment-policy']"
+        )!;
+        activate.addEventListener("click", () => {
+          const candidates = window.startingEquipmentFocusCandidates(activate)!;
+          policy.innerHTML = `
+            <input aria-label="Search equipment" data-wayfinder-focus-id="starting-equipment-search">
+            <button data-wayfinder-focus-id="starting-equipment-clear-filters">Clear filters</button>`;
+          window.restoreEquipmentFocus(document, candidates);
+        });
+      });
+      await page.locator("[data-wayfinder-action='activate-equipment-policy']").focus();
+      await page.keyboard.press("Enter");
+      await expectFocusId(page, "starting-equipment-search");
+      await page.keyboard.press("Tab");
+      await expectFocusId(page, "starting-equipment-clear-filters");
+
+      await page.evaluate(() => {
+        const policy = document.querySelector<HTMLElement>("[data-policy]")!;
+        policy.innerHTML = `
+          <section tabindex="-1" data-wayfinder-focus-id="starting-equipment-authority">
+            <button data-wayfinder-action="approve-equipment-policy-request" data-wayfinder-focus-id="starting-equipment-approve-request:request-1">Approve request</button>
+          </section>`;
+        const approve = policy.querySelector<HTMLButtonElement>(
+          "[data-wayfinder-action='approve-equipment-policy-request']"
+        )!;
+        approve.addEventListener("click", () => {
+          const candidates = window.startingEquipmentFocusCandidates(approve)!;
+          policy.innerHTML = `
+            <input aria-label="Search equipment" data-wayfinder-focus-id="starting-equipment-search">
+            <button data-wayfinder-focus-id="starting-equipment-clear-filters">Clear filters</button>`;
+          window.restoreEquipmentFocus(document, candidates);
+        });
+      });
+      await page.locator("[data-wayfinder-action='approve-equipment-policy-request']").focus();
+      await page.keyboard.press("Enter");
+      await expectFocusId(page, "starting-equipment-search");
+      await page.keyboard.press("Tab");
+      await expectFocusId(page, "starting-equipment-clear-filters");
+
+      await page.evaluate(() => {
+        const policy = document.querySelector<HTMLElement>("[data-policy]")!;
+        policy.innerHTML = `
+          <input data-wayfinder-focus-id="starting-equipment-search">
+          <button data-wayfinder-action="revoke-equipment-policy-judgment" data-wayfinder-focus-id="starting-equipment-revoke-approval">Revoke approval</button>
+          <button data-wayfinder-focus-id="starting-equipment-clear-filters">Clear filters</button>`;
+        const revoke = policy.querySelector<HTMLButtonElement>(
+          "[data-wayfinder-action='revoke-equipment-policy-judgment']"
+        )!;
+        revoke.addEventListener("click", () => {
+          const candidates = window.startingEquipmentFocusCandidates(revoke)!;
+          policy.innerHTML = `
+            <section tabindex="-1" data-wayfinder-focus-id="starting-equipment-authority">Authority required</section>`;
+          window.restoreEquipmentFocus(document, candidates);
+        });
+      });
+      await page.locator("[data-wayfinder-action='revoke-equipment-policy-judgment']").focus();
+      await page.keyboard.press("Enter");
+      await expectFocusId(page, "starting-equipment-authority");
     } finally {
       await browser.close();
     }
@@ -154,9 +226,9 @@ const keyboardFixture = `
     </div>
     <p role="status" aria-live="polite" aria-atomic="true">Showing 1 of 1 matching items</p>
     <div id="results">
-      <button aria-label="Preview Adventurer's Pack">Adventurer's Pack</button>
-      <button aria-label="Buy Adventurer's Pack with coin" data-action="buy" data-wayfinder-focus-id="starting-equipment-item:item:coin">Buy with coin</button>
+      <button aria-label="Preview Adventurer's Pack" data-action="preview">Adventurer's Pack</button>
     </div>
+    <aside data-detail></aside>
     <section data-cart>
       <p data-cart-status role="status" aria-live="polite" aria-atomic="true">Cart: 0 lines, 0 gp spent, 10 gp remaining.</p>
     </section>
@@ -167,5 +239,6 @@ const keyboardFixture = `
 declare global {
   interface Window {
     restoreEquipmentFocus(root: ParentNode, candidateIds: readonly string[]): HTMLElement | null;
+    startingEquipmentFocusCandidates(target: HTMLElement | null): string[] | null;
   }
 }

@@ -359,18 +359,21 @@ async function runLocale({
   await playerPage.keyboard.type(definition.fixture.item.name);
   keyboard.actions.push({ action: "search", key: definition.fixture.item.name });
   keyboard.focus.push(await focusEvidence(playerPage));
-  const itemSelector = `${rootSelector} [data-equipment-item][data-source-uuid="${definition.fixture.item.sourceUuid}"]`;
+  const itemSelector = `${rootSelector} [data-equipment-item][data-wayfinder-action="preview-equipment-item"][data-source-uuid="${definition.fixture.item.sourceUuid}"]`;
   await waitFor(playerPage, itemSelector);
   const afterSearch = await liveRegions(playerPage, opened.actorId);
   liveRegionChanges.catalogue = { before: beforeSearch.catalogue, after: afterSearch.catalogue };
   const beforeItem = await itemEvidence(playerPage, opened.actorId, definition.fixture.item.sourceUuid);
   const beforeCart = afterSearch.cart;
 
+  interactionStage("browse-cart", "select-item");
+  await tabTo(playerPage, itemSelector);
+  await pressAndRecord(playerPage, keyboard, "select-item", "Enter");
+  const currencyActionSelector = `${rootSelector} [data-application-part="equipment-detail"] [data-wayfinder-action="add-equipment-item"][data-source-uuid="${definition.fixture.item.sourceUuid}"][data-funding="currency"]`;
+  await waitFor(playerPage, currencyActionSelector);
+
   interactionStage("browse-cart", "add-item");
-  await tabTo(
-    playerPage,
-    `${itemSelector} [data-wayfinder-action="add-equipment-item"][data-source-uuid="${definition.fixture.item.sourceUuid}"]`,
-  );
+  await tabTo(playerPage, currencyActionSelector);
   await pressAndRecord(playerPage, keyboard, "add-item", "Enter");
   await waitFor(playerPage, `${rootSelector} .equipment-cart-line`);
   const afterCart = await liveRegions(playerPage, opened.actorId);

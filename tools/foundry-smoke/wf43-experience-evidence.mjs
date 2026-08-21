@@ -108,6 +108,7 @@ function qualifyLocale(entry, definition, failures) {
   for (const action of [
     "initialize",
     "search",
+    "select-item",
     "add-item",
     "increase-quantity",
     "decrease-quantity",
@@ -119,6 +120,20 @@ function qualifyLocale(entry, definition, failures) {
     "retry-apply-confirm",
   ]) {
     if (!keyboardActions.has(action)) failures.push(`${definition.id}: keyboard flow is missing ${action}.`);
+  }
+  const compactActions = new Set(["search", "select-item", "add-item"]);
+  const compactSequence = (keyboard?.actions ?? [])
+    .filter((item) => compactActions.has(item.action))
+    .map((item) => ({ action: item.action, key: item.key }));
+  const expectedCompactSequence = [
+    { action: "search", key: definition.fixture.item.name },
+    { action: "select-item", key: "Enter" },
+    { action: "add-item", key: "Enter" },
+  ];
+  if (JSON.stringify(compactSequence) !== JSON.stringify(expectedCompactSequence)) {
+    failures.push(
+      `${definition.id}: compact catalogue flow did not keyboard-search, then select the result leaf, then add its detail currency action.`,
+    );
   }
   const focus = keyboard?.focus ?? [];
   if (focus.length < 5 || focus.some((item) => item.visible !== true || !item.focusId)) {

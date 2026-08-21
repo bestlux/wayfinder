@@ -1,5 +1,6 @@
 export const STARTING_EQUIPMENT_STATUS_FOCUS_ID = "starting-equipment-status";
 export const STARTING_EQUIPMENT_REVIEW_FOCUS_ID = "starting-equipment-review";
+export const STARTING_EQUIPMENT_SEARCH_FOCUS_ID = "starting-equipment-search";
 export function equipmentItemFocusId(sourceUuid, action) {
     return `starting-equipment-item:${sourceUuid}:${action}`;
 }
@@ -14,6 +15,41 @@ export function equipmentLineControlFocusId(lineId, action) {
 }
 export function equipmentFilterFocusId(filterKey, value) {
     return `starting-equipment-filter:${filterKey}:${value}`;
+}
+export function startingEquipmentFocusCandidates(target) {
+    if (!target?.closest(".starting-equipment-pane"))
+        return null;
+    const candidates = [];
+    const controlId = target.closest("[data-wayfinder-focus-id]")?.dataset.wayfinderFocusId;
+    if (controlId)
+        candidates.push(controlId);
+    const sourceUuid = target.dataset.sourceUuid;
+    if (sourceUuid)
+        candidates.push(equipmentItemFocusId(sourceUuid, "preview"));
+    const lineId = target.dataset.lineId;
+    if (lineId)
+        candidates.push(equipmentLineFocusId(lineId));
+    switch (target.dataset.wayfinderAction) {
+        case "initialize-starting-equipment":
+            candidates.push("starting-equipment-authority", STARTING_EQUIPMENT_SEARCH_FOCUS_ID, "starting-equipment-clear-filters");
+            break;
+        case "activate-equipment-policy":
+        case "approve-equipment-policy-request":
+            candidates.push(STARTING_EQUIPMENT_SEARCH_FOCUS_ID, "starting-equipment-clear-filters", "starting-equipment-authority");
+            break;
+        case "revoke-equipment-policy-judgment":
+            candidates.push(STARTING_EQUIPMENT_SEARCH_FOCUS_ID, "starting-equipment-authority", "starting-equipment-clear-filters");
+            break;
+        case "request-equipment-start":
+        case "select-equipment-recipe":
+            candidates.push("starting-equipment-authority");
+            break;
+        case "acknowledge-equipment-handoff":
+            candidates.push("starting-equipment-handoff");
+            break;
+    }
+    candidates.push(STARTING_EQUIPMENT_REVIEW_FOCUS_ID);
+    return [...new Set(candidates)];
 }
 /**
  * Restores focus after Foundry replaces the application HTML. Candidates are

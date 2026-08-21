@@ -27,7 +27,7 @@ import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection
 import { applyDraftLifecycle, buildApplyAttemptDraft, clearDraftLifecycle, hasApplyRecoveryState, } from "./application/draft-lifecycle-service.js";
 import { DraftPersistenceCoordinator } from "./application/draft-persistence-service.js";
 import { assertDraftSideEffectAllowed, assertFailedApplyRecoveryCandidateCurrent, captureDraftSideEffectPrecondition, capturePersistedDraftPrecondition, clearDraftWithWriteGuard, PersistedDraftWriteGuard, readPersistedDraftSnapshot, saveDraftWithWriteGuard, updateActorWithPersistedDraftPrecondition, WayfinderDraftWriteConflictError, } from "./application/draft-write-guard.js";
-import { equipmentItemFocusId, equipmentLineFocusId, restoreEquipmentFocus, STARTING_EQUIPMENT_REVIEW_FOCUS_ID, STARTING_EQUIPMENT_STATUS_FOCUS_ID, } from "./application/equipment-accessibility.js";
+import { equipmentLineFocusId, restoreEquipmentFocus, STARTING_EQUIPMENT_REVIEW_FOCUS_ID, STARTING_EQUIPMENT_STATUS_FOCUS_ID, startingEquipmentFocusCandidates, } from "./application/equipment-accessibility.js";
 import { ConfiguredItemHandoffRequiredError, commitTitanMaulerLineSynchronization, getFoundryEquipmentAcquisitionRuntime, } from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
@@ -2803,39 +2803,6 @@ function fallbackEscapeHtml(value) {
 }
 function localizeAcquisition(key, values) {
     return values ? String(game.i18n.format(key, values)) : String(game.i18n.localize(key));
-}
-function startingEquipmentFocusCandidates(target) {
-    if (!target?.closest(".starting-equipment-pane"))
-        return null;
-    const candidates = [];
-    const controlId = target.closest("[data-wayfinder-focus-id]")?.dataset.wayfinderFocusId;
-    if (controlId)
-        candidates.push(controlId);
-    const sourceUuid = target.dataset.sourceUuid;
-    if (sourceUuid)
-        candidates.push(equipmentItemFocusId(sourceUuid, "preview"));
-    const lineId = target.dataset.lineId;
-    if (lineId)
-        candidates.push(equipmentLineFocusId(lineId));
-    switch (target.dataset.wayfinderAction) {
-        case "initialize-starting-equipment":
-            candidates.push("starting-equipment-authority", "starting-equipment-clear-filters");
-            break;
-        case "activate-equipment-policy":
-        case "approve-equipment-policy-request":
-        case "revoke-equipment-policy-judgment":
-            candidates.push("starting-equipment-clear-filters", "starting-equipment-authority");
-            break;
-        case "request-equipment-start":
-        case "select-equipment-recipe":
-            candidates.push("starting-equipment-authority");
-            break;
-        case "acknowledge-equipment-handoff":
-            candidates.push("starting-equipment-handoff");
-            break;
-    }
-    candidates.push(STARTING_EQUIPMENT_REVIEW_FOCUS_ID);
-    return [...new Set(candidates)];
 }
 function isStartingEquipmentViewOnlyAction(action) {
     return (action.type === "preview-equipment-item" ||

@@ -100,11 +100,11 @@ import {
   WayfinderDraftWriteConflictError,
 } from "./application/draft-write-guard.js";
 import {
-  equipmentItemFocusId,
   equipmentLineFocusId,
   restoreEquipmentFocus,
   STARTING_EQUIPMENT_REVIEW_FOCUS_ID,
   STARTING_EQUIPMENT_STATUS_FOCUS_ID,
+  startingEquipmentFocusCandidates,
 } from "./application/equipment-accessibility.js";
 import {
   ConfiguredItemHandoffRequiredError,
@@ -3503,41 +3503,6 @@ function fallbackEscapeHtml(value: string): string {
 
 function localizeAcquisition(key: string, values?: AcquisitionLocalizationValues): string {
   return values ? String(game.i18n.format(key, values)) : String(game.i18n.localize(key));
-}
-
-function startingEquipmentFocusCandidates(target: HTMLElement | null): string[] | null {
-  if (!target?.closest(".starting-equipment-pane")) return null;
-
-  const candidates: string[] = [];
-  const controlId = target.closest<HTMLElement>("[data-wayfinder-focus-id]")?.dataset.wayfinderFocusId;
-  if (controlId) candidates.push(controlId);
-
-  const sourceUuid = target.dataset.sourceUuid;
-  if (sourceUuid) candidates.push(equipmentItemFocusId(sourceUuid, "preview"));
-
-  const lineId = target.dataset.lineId;
-  if (lineId) candidates.push(equipmentLineFocusId(lineId));
-
-  switch (target.dataset.wayfinderAction) {
-    case "initialize-starting-equipment":
-      candidates.push("starting-equipment-authority", "starting-equipment-clear-filters");
-      break;
-    case "activate-equipment-policy":
-    case "approve-equipment-policy-request":
-    case "revoke-equipment-policy-judgment":
-      candidates.push("starting-equipment-clear-filters", "starting-equipment-authority");
-      break;
-    case "request-equipment-start":
-    case "select-equipment-recipe":
-      candidates.push("starting-equipment-authority");
-      break;
-    case "acknowledge-equipment-handoff":
-      candidates.push("starting-equipment-handoff");
-      break;
-  }
-
-  candidates.push(STARTING_EQUIPMENT_REVIEW_FOCUS_ID);
-  return [...new Set(candidates)];
 }
 
 function isStartingEquipmentViewOnlyAction(action: WayfinderAction): boolean {

@@ -9,7 +9,7 @@
           <div class="equipment-workspace">
             <section class="equipment-catalogue" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.Aria"}}">
               <div class="equipment-search-row">
-                <input type="search" value="{{activePane.catalogue.search}}" placeholder="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.SearchPlaceholder"}}" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.SearchAria"}}" aria-controls="{{activePane.stepId}}-equipment-results" data-wayfinder-equipment-search data-step-id="{{activePane.stepId}}" {{#if activePane.catalogue.searchDisabled}}disabled{{/if}} />
+                <input type="search" value="{{activePane.catalogue.search}}" placeholder="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.SearchPlaceholder"}}" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.SearchAria"}}" aria-controls="{{activePane.stepId}}-equipment-results" data-wayfinder-equipment-search data-wayfinder-focus-id="starting-equipment-search" data-step-id="{{activePane.stepId}}" {{#if activePane.catalogue.searchDisabled}}disabled{{/if}} />
                 <button type="button" class="secondary compact" data-wayfinder-action="clear-equipment-filters" data-wayfinder-focus-id="starting-equipment-clear-filters" data-step-id="{{activePane.stepId}}" {{#if activePane.catalogue.searchDisabled}}disabled{{/if}}>{{localize "wayfinder-pf2e.StartingEquipment.Actions.ClearFilters"}}</button>
               </div>
               {{> "modules/wayfinder-pf2e/templates/wayfinder/starting-equipment-catalogue.hbs"}}

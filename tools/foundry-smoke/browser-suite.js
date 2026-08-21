@@ -3,6 +3,7 @@
 globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
   cases,
   allowDestructive = false,
+  defaultReviewedEquipment = "none",
   expectedWorldId = "",
   fixturePrefix,
   incrementalCases = [],
@@ -26,24 +27,35 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
     await cleanupActors(fixturePrefix);
   }
   const modules = await loadWayfinderModules(moduleId);
+  const equipmentControl = await beginDefaultReviewedEquipment(moduleId, defaultReviewedEquipment);
   const results = [];
+  let equipmentRestoration;
+  try {
+    for (const smokeCase of cases) {
+      console.log(`WFSMOKE case start ${smokeCase.id}`);
+      const result = await runSmokeCase(smokeCase, modules, {
+        defaultReviewedEquipment,
+        keepActors,
+        moduleId,
+        prefix: fixturePrefix,
+      });
+      console.log(`WFSMOKE case ${result.status} ${smokeCase.id}`);
+      results.push(result);
+    }
 
-  for (const smokeCase of cases) {
-    console.log(`WFSMOKE case start ${smokeCase.id}`);
-    const result = await runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix: fixturePrefix });
-    console.log(`WFSMOKE case ${result.status} ${smokeCase.id}`);
-    results.push(result);
-  }
-
-  for (const smokeCase of incrementalCases) {
-    console.log(`WFSMOKE incremental case start ${smokeCase.id}`);
-    const result = await runIncrementalExistingCase(smokeCase, modules, {
-      keepActors,
-      moduleId,
-      prefix: fixturePrefix,
-    });
-    console.log(`WFSMOKE incremental case ${result.status} ${smokeCase.id}`);
-    results.push(result);
+    for (const smokeCase of incrementalCases) {
+      console.log(`WFSMOKE incremental case start ${smokeCase.id}`);
+      const result = await runIncrementalExistingCase(smokeCase, modules, {
+        defaultReviewedEquipment,
+        keepActors,
+        moduleId,
+        prefix: fixturePrefix,
+      });
+      console.log(`WFSMOKE incremental case ${result.status} ${smokeCase.id}`);
+      results.push(result);
+    }
+  } finally {
+    equipmentRestoration = await restoreDefaultReviewedEquipment(moduleId, equipmentControl);
   }
 
   const summary = {
@@ -60,6 +72,7 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
     moduleActive: true,
     moduleId,
     moduleVersion: moduleRecord.version ?? moduleRecord.manifest?.version ?? null,
+    defaultReviewedEquipment: equipmentRestoration,
     pf2eVersion: game.system?.version ?? null,
     summary,
     user: {
@@ -72,6 +85,91 @@ globalThis.__runWayfinderSmokeSuite = async function runWayfinderSmokeSuite({
     cases: results,
   };
 };
+
+async function beginDefaultReviewedEquipment(moduleId, mode) {
+  if (mode === "none") return { mode, snapshots: null };
+  if (mode !== "retain-all") throw new Error(`Unsupported default reviewed equipment mode: ${mode}.`);
+  if (!game.user?.isGM) throw new Error("Default reviewed equipment matrix setup requires a GM executor.");
+  const snapshots = {
+    policy: structuredClone(game.settings.get(moduleId, "equipmentPolicy")),
+    judgments: structuredClone(game.settings.get(moduleId, "equipmentPolicyJudgments")),
+  };
+  const guardedPolicy = {
+    ...snapshots.policy,
+    version: 1,
+    enabledRecipes: ["permanent-items", "lump-sum"],
+    defaultRecipe: "permanent-items",
+    recipeChoiceAuthority: "actor-owner",
+    higherLevelStartAuthority: "gm-confirmation",
+    blanketRarity: "common",
+    allowedEquipmentPackFamilies: ["pf2e"],
+    applyAuthority: "actor-owner",
+    recipeDecision: {
+      version: 1,
+      configuredBy: { userId: game.user.id, userName: game.user.name },
+      configuredAt: new Date().toISOString(),
+    },
+  };
+  try {
+    await game.settings.set(moduleId, "equipmentPolicy", guardedPolicy);
+    await game.settings.set(moduleId, "equipmentPolicyJudgments", { version: 1, judgments: [] });
+    return { mode, snapshots };
+  } catch (error) {
+    const restoration = await Promise.allSettled([
+      game.settings.set(moduleId, "equipmentPolicyJudgments", snapshots.judgments),
+      game.settings.set(moduleId, "equipmentPolicy", snapshots.policy),
+    ]);
+    const restorationFailures = restoration.flatMap((entry) =>
+      entry.status === "rejected" ? [entry.reason instanceof Error ? entry.reason.message : String(entry.reason)] : [],
+    );
+    throw new Error(
+      `Default reviewed equipment setup failed: ${error instanceof Error ? error.message : String(error)}${
+        restorationFailures.length > 0 ? `; restoration failed: ${restorationFailures.join("; ")}` : ""
+      }`,
+      { cause: error },
+    );
+  }
+}
+
+async function restoreDefaultReviewedEquipment(moduleId, control) {
+  if (control.mode === "none") return { mode: "none", changed: false, policyRestored: true, judgmentsRestored: true };
+  const failures = [];
+  for (const [key, value] of [
+    ["equipmentPolicyJudgments", control.snapshots.judgments],
+    ["equipmentPolicy", control.snapshots.policy],
+  ]) {
+    try {
+      await game.settings.set(moduleId, key, value);
+    } catch (error) {
+      failures.push(`${key}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const result = {
+    mode: control.mode,
+    changed: true,
+    policyRestored:
+      stableSmokeJson(game.settings.get(moduleId, "equipmentPolicy")) === stableSmokeJson(control.snapshots.policy),
+    judgmentsRestored:
+      stableSmokeJson(game.settings.get(moduleId, "equipmentPolicyJudgments")) ===
+      stableSmokeJson(control.snapshots.judgments),
+    restorationFailures: failures,
+  };
+  if (!result.policyRestored || !result.judgmentsRestored || failures.length > 0) {
+    throw new Error(`Default reviewed equipment restoration failed: ${failures.join("; ") || "state differs"}.`);
+  }
+  return result;
+}
+
+function stableSmokeJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableSmokeJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSmokeJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 
 globalThis.__prepareWayfinderPickerProfile = async function prepareWayfinderPickerProfile({
   allowDestructive = false,
@@ -1757,6 +1855,12 @@ async function loadWayfinderModules(moduleId) {
     wayfinderApp,
     foundryCompat,
     selectionApplication,
+    startingEquipmentCommands,
+    equipmentPolicy,
+    classGrantProjection,
+    acquisitionExecution,
+    acquisitionDraft,
+    acquisitionRuntime,
   ] = await Promise.all([
     import(`/modules/${moduleId}/scripts/draft-service.js`),
     import(`/modules/${moduleId}/scripts/actor-inspector.js`),
@@ -1780,6 +1884,12 @@ async function loadWayfinderModules(moduleId) {
     import(`/modules/${moduleId}/scripts/wayfinder-app.js`),
     import(`/modules/${moduleId}/scripts/shared/foundry-compat.js`),
     import(`/modules/${moduleId}/scripts/actor-updater/selection-application.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/application/starting-equipment-command-service.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/application/equipment-policy-service.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/application/class-grant-projection-service.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/application/acquisition-execution-service.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/domain/acquisition-draft.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/application/equipment-acquisition-runtime-service.js`),
   ]);
 
   return {
@@ -1821,10 +1931,16 @@ async function loadWayfinderModules(moduleId) {
     sourceIdOf: sourceId.sourceIdOf,
     withRestrictedSpellRarityAccess: spellRarityAccess.withRestrictedSpellRarityAccess,
     WayfinderApp: wayfinderApp.WayfinderApp,
+    executeStartingEquipmentCommand: startingEquipmentCommands.executeStartingEquipmentCommand,
+    assertEquipmentApplyAuthority: equipmentPolicy.assertEquipmentApplyAuthority,
+    prepareCurrentClassGrantPlan: classGrantProjection.prepareCurrentClassGrantPlan,
+    createAcquisitionExecutionSession: acquisitionExecution.createAcquisitionExecutionSession,
+    recordAcquisitionCurrencyConvergenceWitness: acquisitionDraft.recordAcquisitionCurrencyConvergenceWitness,
+    getEquipmentRuntime: acquisitionRuntime.getFoundryEquipmentAcquisitionRuntime,
   };
 }
 
-async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }) {
+async function runSmokeCase(smokeCase, modules, { defaultReviewedEquipment, keepActors, moduleId, prefix }) {
   let actor = null;
   const warnings = [];
   const classifications = [];
@@ -1846,7 +1962,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
     let draftForApply = draft;
     await seedCreationDraft(draft, smokeCase);
     console.log(`WFSMOKE ${smokeCase.id} fill start`);
-    const fillResult = await completeDraft(actor, draft, smokeCase, modules);
+    const fillResult = await completeDraft(actor, draft, smokeCase, modules, { defaultReviewedEquipment, moduleId });
     warnings.push(...fillResult.warnings);
     classifications.push(...fillResult.classifications);
 
@@ -1938,7 +2054,7 @@ async function runSmokeCase(smokeCase, modules, { keepActors, moduleId, prefix }
       actor: actorEvidence,
       classifications,
       evidence: {
-        acquisition: emptyAcquisitionEvidence(),
+        acquisition: coreAcquisitionEvidence(actorEvidence, defaultReviewedEquipment),
         dialogsAfter,
         dialogsBefore,
         fillIterations: fillResult.iterations,
@@ -1988,6 +2104,7 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
   const preApplyItems = actorItemSnapshots(actor, modules);
   const preApplyItemIds = [...preApplyItems.keys()].sort();
   const applyContext = buildSpellRarityApplyContext(actor, draft, steps, modules);
+  const acquisition = createCoreAcquisitionExecution({ actor, draft, moduleId, modules });
   let matchingOccurrence = 0;
   let injectedCheckpoint = null;
   let caught = null;
@@ -2001,6 +2118,8 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
         evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
         additionalBlockers: applyContext.additionalBlockers,
         appliedSpellRarityAttestations: applyContext.appliedSpellRarityAttestations,
+        acquisitionExecutionAvailable: acquisition !== null,
+        assertAcquisitionApplyAuthority: () => acquisition?.assertApplyAuthority(),
         reviewLines: applyContext.reviewLines,
         confirmApply: applyContext.confirmApply,
         beforeApply: async (applyAttemptDraft) => {
@@ -2009,13 +2128,21 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
         },
         applyDraftToActor: (buildFinalActorUpdate) =>
           modules.applyDraftToActor(actor, draft, steps, {
-            resolveFinalActorUpdate: buildFinalActorUpdate,
+            resolveFinalActorUpdate: (evidence) =>
+              buildFinalActorUpdate(modules.normalizeState(actor.getFlag(moduleId, "state")), evidence),
             beforeFinalActorUpdate: () => modules.assertCanUseWayfinder(actor),
             validateActorAuthority: modules.canUseWayfinder,
+            assertAcquisitionApplyAuthority: acquisition?.assertActorApplyAuthority,
+            persistAcquisitionCurrencyConvergenceWitness: acquisition?.persistCurrencyConvergenceWitness,
             spellRarityCeiling: modules.getSpellRarityCeilingSetting(),
             validateSelectionEligibility: (selection, step) =>
               validateSmokeSelectionEligibility(actor, draft, steps, selection, step, modules, moduleId),
             validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
+            prepareClassGrantPlan: acquisition?.prepareClassGrantPlan,
+            executeAcquisitionItems: acquisition?.session.executeAcquisitionItems,
+            executeAcquisitionCurrency: acquisition?.session.executeAcquisitionCurrency,
+            verifyAcquisitionOutcome: acquisition?.session.verifyAcquisitionOutcome,
+            readCurrentAcquisitionHistory: acquisition?.session.readCurrentAcquisitionHistory,
             onCheckpoint: (checkpoint) => {
               if (checkpoint.checkpointId !== checkpointId) return;
               matchingOccurrence += 1;
@@ -2208,7 +2335,11 @@ function changedActorItemIds(before, after) {
     .sort();
 }
 
-async function runIncrementalExistingCase(smokeCase, modules, { keepActors, moduleId, prefix }) {
+async function runIncrementalExistingCase(
+  smokeCase,
+  modules,
+  { defaultReviewedEquipment, keepActors, moduleId, prefix },
+) {
   let actor = null;
   const warnings = [];
   const classifications = [];
@@ -2226,7 +2357,10 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
     const initialCase = { ...smokeCase, targetLevel: 1 };
     const initialDraft = modules.createEmptyDraft(initialCase.targetLevel);
     await seedCreationDraft(initialDraft, initialCase);
-    const initialFill = await completeDraft(actor, initialDraft, initialCase, modules);
+    const initialFill = await completeDraft(actor, initialDraft, initialCase, modules, {
+      defaultReviewedEquipment,
+      moduleId,
+    });
     warnings.push(...initialFill.warnings.map((entry) => `initial: ${entry}`));
     classifications.push(...initialFill.classifications.map((entry) => `initial: ${entry}`));
 
@@ -2248,9 +2382,15 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
     if (initialLifecycleResult.kind !== "applied") {
       failures.push(`Initial apply lifecycle returned ${initialLifecycleResult.kind}`);
     }
+    const initialAcquisitionManifest = structuredClone(
+      modules.normalizeState(actor.getFlag(moduleId, "state")).completedAcquisitionManifest,
+    );
 
     const incrementalDraft = modules.createEmptyDraft(smokeCase.targetLevel);
-    const incrementalFill = await completeDraft(actor, incrementalDraft, smokeCase, modules);
+    const incrementalFill = await completeDraft(actor, incrementalDraft, smokeCase, modules, {
+      defaultReviewedEquipment,
+      moduleId,
+    });
     warnings.push(...incrementalFill.warnings.map((entry) => `incremental: ${entry}`));
     classifications.push(...incrementalFill.classifications.map((entry) => `incremental: ${entry}`));
 
@@ -2309,7 +2449,7 @@ async function runIncrementalExistingCase(smokeCase, modules, { keepActors, modu
       actor: actorEvidence,
       classifications,
       evidence: {
-        acquisition: emptyAcquisitionEvidence(),
+        acquisition: coreAcquisitionEvidence(actorEvidence, defaultReviewedEquipment, initialAcquisitionManifest),
         applyReview: incrementalApplyOutcome.applyReview,
         dialogsAfter,
         dialogsBefore,
@@ -2379,7 +2519,13 @@ async function seedCreationDraft(draft, smokeCase) {
   }
 }
 
-async function completeDraft(actor, draft, smokeCase, modules, { skipStepIds = new Set() } = {}) {
+async function completeDraft(
+  actor,
+  draft,
+  smokeCase,
+  modules,
+  { defaultReviewedEquipment = "none", moduleId = "wayfinder-pf2e", skipStepIds = new Set() } = {},
+) {
   const warnings = [];
   let classifications = [];
   let iterations = 0;
@@ -2396,7 +2542,12 @@ async function completeDraft(actor, draft, smokeCase, modules, { skipStepIds = n
       }
 
       const before = JSON.stringify(draft);
-      await fillStep(actor, draft, step, plan.steps, smokeCase, modules, { classifications, warnings });
+      await fillStep(actor, draft, step, plan.steps, smokeCase, modules, {
+        classifications,
+        defaultReviewedEquipment,
+        moduleId,
+        warnings,
+      });
       const stepChanged = before !== JSON.stringify(draft);
       changed = changed || stepChanged;
       if (stepChanged && requiresPlanRefresh(step)) {
@@ -2591,10 +2742,68 @@ async function fillStep(actor, draft, step, planSteps, smokeCase, modules, notes
       draft.boosts.levels[batchLevel] = selected.slice(0, requiredCount);
       return;
     }
+    case "starting-equipment":
+      if (notes.defaultReviewedEquipment !== "retain-all") {
+        notes.classifications.push(`${step.slotId}: no default reviewed equipment disposition configured`);
+        return;
+      }
+      await completeDefaultReviewedEquipment(actor, draft, planSteps, modules, step, notes.moduleId);
+      return;
     case "manual":
       notes.classifications.push(`${step.slotId}: manual PF2E-native checkpoint`);
       return;
   }
+}
+
+async function completeDefaultReviewedEquipment(actor, draft, planSteps, modules, step, moduleId) {
+  if (!game.user?.isGM) throw new Error("Core matrix default equipment review requires a GM executor.");
+  await executeCoreEquipmentCommand(
+    actor,
+    draft,
+    { type: "initialize", selectedRecipe: "permanent-items" },
+    planSteps,
+    modules,
+    moduleId,
+  );
+  if (draft.targetLevel > 1) {
+    await executeCoreEquipmentCommand(
+      actor,
+      draft,
+      { type: "request-higher-level-start", startKind: "new-campaign", reason: "WF-080-51 core matrix" },
+      planSteps,
+      modules,
+      moduleId,
+    );
+    const requests = draft.equipmentPolicyRequests.filter((entry) => entry.facts.kind === "higher-level-start");
+    if (requests.length !== 1) throw new Error(`${step.slotId}: exact higher-level start request is missing.`);
+    await executeCoreEquipmentCommand(
+      actor,
+      draft,
+      { type: "approve-policy-request", requestId: requests[0].requestId, reason: "WF-080-51 core matrix" },
+      planSteps,
+      modules,
+      moduleId,
+    );
+  }
+  await executeCoreEquipmentCommand(actor, draft, { type: "retain-all" }, planSteps, modules, moduleId);
+  if (draft.acquisition?.disposition.kind !== "retain-all") {
+    throw new Error(`${step.slotId}: default equipment did not reach reviewed retain-all disposition.`);
+  }
+}
+
+async function executeCoreEquipmentCommand(actor, draft, command, steps, modules, moduleId) {
+  const result = await modules.executeStartingEquipmentCommand(command, {
+    actor,
+    draft,
+    moduleState: modules.normalizeState(actor.getFlag(moduleId, "state")),
+    steps,
+    userId: game.user.id,
+    user: game.user,
+    now: () => new Date().toISOString(),
+  });
+  draft.acquisition = result.acquisition;
+  draft.equipmentPolicyRequests = [...result.policyRequests];
+  draft.updatedAt = new Date().toISOString();
 }
 
 async function logCurriculumPlanRefresh(
@@ -2876,9 +3085,72 @@ async function validateSmokeSelectionEligibility(actor, draft, steps, selection,
   return options.some((option) => option.uuid.trim().toLowerCase() === normalizedUuid);
 }
 
+function createCoreAcquisitionExecution({ actor, draft, moduleId, modules }) {
+  if (!draft.acquisition) return null;
+  const runtime = modules.getEquipmentRuntime();
+  const session = modules.createAcquisitionExecutionSession({
+    resolveSource: ({ draft: acquisition, entry }) =>
+      runtime.resolveSourceForApply({
+        actor,
+        characterDraft: modules.normalizeDraft(actor.getFlag(moduleId, "draft"), acquisition.targetLevel),
+        acquisition,
+        entry,
+      }),
+    readHistory: () => modules.normalizeState(actor.getFlag(moduleId, "state")),
+    resolveCurrentPolicySnapshot: ({ draft: acquisition }) => runtime.resolveCurrentPolicySnapshot(actor, acquisition),
+    assertSourceHealth: ({ draft: acquisition }) =>
+      runtime.assertCurrentSourceHealth({
+        actor,
+        characterDraft: modules.normalizeDraft(actor.getFlag(moduleId, "draft"), acquisition.targetLevel),
+        acquisition,
+      }),
+    assertApplyAuthority: ({ draft: acquisition }) =>
+      modules.assertEquipmentApplyAuthority({ actor, acquisition, user: game.user }),
+    readApplyingUser: () => ({ userId: game.user.id, userName: game.user.name }),
+    readEnvironment: () => ({
+      foundryVersion: String(game.version ?? ""),
+      pf2eVersion: String(game.system?.id === "pf2e" ? game.system.version ?? "" : ""),
+      moduleVersion: String(game.modules.get(moduleId)?.version ?? ""),
+    }),
+  });
+  const assertApplyAuthority = () =>
+    modules.assertEquipmentApplyAuthority({ actor, acquisition: draft.acquisition, user: game.user });
+  return {
+    session,
+    assertApplyAuthority,
+    assertActorApplyAuthority: (currentActor, currentDraft) => {
+      if (!currentDraft.acquisition) throw new Error("Core acquisition Apply lost its reviewed equipment draft.");
+      modules.assertEquipmentApplyAuthority({
+        actor: currentActor,
+        acquisition: currentDraft.acquisition,
+        user: game.user,
+      });
+    },
+    prepareClassGrantPlan: (currentActor, currentDraft, currentSteps) =>
+      modules.prepareCurrentClassGrantPlan(currentActor, currentDraft, currentSteps, {
+        resolveCharacterAccessRef: (sourceUuid) =>
+          runtime.resolveCurrentCharacterAccessRef({
+            actor: currentActor,
+            characterDraft: currentDraft,
+            acquisition: currentDraft.acquisition,
+            sourceUuid,
+          }),
+      }),
+    persistCurrencyConvergenceWitness: async (witness) => {
+      const persisted = modules.normalizeDraft(actor.getFlag(moduleId, "draft"), draft.targetLevel);
+      if (!persisted.acquisition) {
+        throw new Error("Core acquisition currency convergence requires the persisted Apply candidate.");
+      }
+      persisted.acquisition = modules.recordAcquisitionCurrencyConvergenceWitness(persisted.acquisition, witness);
+      await actor.setFlag(moduleId, "draft", persisted);
+    },
+  };
+}
+
 async function applyCompletedDraft(actor, draft, steps, modules, moduleId, { timeoutMs = 45000 } = {}) {
   const snapshot = modules.inspectActor(actor);
   const applyContext = buildSpellRarityApplyContext(actor, draft, steps, modules);
+  const acquisition = createCoreAcquisitionExecution({ actor, draft, moduleId, modules });
   const lifecycleResult = await withTimeout(
     modules.applyDraftLifecycle({
       actorName: actor.name,
@@ -2889,6 +3161,8 @@ async function applyCompletedDraft(actor, draft, steps, modules, moduleId, { tim
       evaluateStep: (step) => evaluateStep(actor, draft, step, modules),
       additionalBlockers: applyContext.additionalBlockers,
       appliedSpellRarityAttestations: applyContext.appliedSpellRarityAttestations,
+      acquisitionExecutionAvailable: acquisition !== null,
+      assertAcquisitionApplyAuthority: () => acquisition?.assertApplyAuthority(),
       reviewLines: applyContext.reviewLines,
       confirmApply: applyContext.confirmApply,
       beforeApply: async (applyAttemptDraft) => {
@@ -2897,23 +3171,51 @@ async function applyCompletedDraft(actor, draft, steps, modules, moduleId, { tim
       },
       applyDraftToActor: (buildFinalActorUpdate) =>
         modules.applyDraftToActor(actor, draft, steps, {
-          resolveFinalActorUpdate: () =>
-            buildFinalActorUpdate(modules.normalizeState(actor.getFlag(moduleId, "state"))),
+          resolveFinalActorUpdate: (evidence) =>
+            buildFinalActorUpdate(modules.normalizeState(actor.getFlag(moduleId, "state")), evidence),
           beforeFinalActorUpdate: () => modules.assertCanUseWayfinder(actor),
           validateActorAuthority: modules.canUseWayfinder,
+          assertAcquisitionApplyAuthority: acquisition?.assertActorApplyAuthority,
+          persistAcquisitionCurrencyConvergenceWitness: acquisition?.persistCurrencyConvergenceWitness,
           spellRarityCeiling: modules.getSpellRarityCeilingSetting(),
           validateSelectionEligibility: (selection, step) =>
             validateSmokeSelectionEligibility(actor, draft, steps, selection, step, modules, moduleId),
           validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
+          prepareClassGrantPlan: acquisition?.prepareClassGrantPlan,
+          executeAcquisitionItems: acquisition?.session.executeAcquisitionItems,
+          executeAcquisitionCurrency: acquisition?.session.executeAcquisitionCurrency,
+          verifyAcquisitionOutcome: acquisition?.session.verifyAcquisitionOutcome,
+          readCurrentAcquisitionHistory: acquisition?.session.readCurrentAcquisitionHistory,
         }),
       finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) =>
         modules.finalizeRecoveredDraftOnActor(actor, {
           beforeFinalize: () => modules.assertCanUseWayfinder(actor),
           beforeFinalActorUpdate: () => modules.assertCanUseWayfinder(actor),
           recoveryActorUpdate,
-          resolveFinalActorUpdate: () =>
-            buildFinalActorUpdate(modules.normalizeState(actor.getFlag(moduleId, "state"))),
+          resolveFinalActorUpdate: (evidence) =>
+            buildFinalActorUpdate(modules.normalizeState(actor.getFlag(moduleId, "state")), evidence),
           validateActorAuthority: modules.canUseWayfinder,
+          assertAcquisitionApplyAuthority: acquisition
+            ? (currentActor) =>
+                modules.assertEquipmentApplyAuthority({
+                  actor: currentActor,
+                  acquisition: draft.acquisition,
+                  user: game.user,
+                })
+            : undefined,
+          classGrantRecovery: acquisition
+            ? {
+                kind: "required",
+                preparePlan: (currentActor) => acquisition.prepareClassGrantPlan(currentActor, draft, steps),
+                verifyAcquisitionRecovery: ({ actor: currentActor, plan, finalClassGrantReconciliation }) =>
+                  acquisition.session.prepareRecoveredAcquisitionOutcome({
+                    actor: currentActor,
+                    draft,
+                    classGrantPlan: plan,
+                    finalClassGrantReconciliation,
+                  }),
+              }
+            : { kind: "none" },
         }),
       now: () => new Date().toISOString(),
     }),
@@ -3275,6 +3577,22 @@ function emptyAcquisitionEvidence() {
     manifest: null,
     failureSnapshot: null,
     retry: null,
+  };
+}
+
+function coreAcquisitionEvidence(actorEvidence, mode, initialManifest = null) {
+  if (mode !== "retain-all") return emptyAcquisitionEvidence();
+  const state = actorEvidence.moduleStateAfterApply ?? {};
+  const manifest = state.completedAcquisitionManifest ?? null;
+  return {
+    mode,
+    disposition: manifest?.disposition ?? null,
+    draftCleared: actorEvidence.moduleDraftAfterApply === null,
+    manifestCorrupt: state.completedAcquisitionManifestCorrupt === true,
+    manifest: manifest ? structuredClone(manifest) : null,
+    initialManifestId: initialManifest?.id ?? null,
+    finalManifestId: manifest?.id ?? null,
+    secondAcquisitionPrevented: initialManifest ? initialManifest.id === manifest?.id : null,
   };
 }
 

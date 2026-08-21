@@ -44,7 +44,9 @@ Options:
   --campaign-feat-sections <unchanged|ancestry-paragon|off>
                      Temporarily set PF2E's campaign feat sections for this invocation and restore them afterward.
   --gradual-boosts <unchanged|on|off>
-                     Temporarily set PF2E's Gradual Ability Boosts variant and restore it afterward.
+                      Temporarily set PF2E's Gradual Ability Boosts variant and restore it afterward.
+  --default-reviewed-equipment <none|retain-all>
+                      Complete new-character equipment with one guarded reviewed retain-all disposition.
   --help            Show this help text.
 
 Environment:
@@ -87,6 +89,9 @@ function parseArgs(argv) {
       process.env.FOUNDRY_SMOKE_GRADUAL_BOOSTS ?? "unchanged",
       "Gradual Ability Boosts",
     ),
+    defaultReviewedEquipment: normalizeDefaultEquipment(
+      process.env.FOUNDRY_SMOKE_DEFAULT_REVIEWED_EQUIPMENT ?? "none",
+    ),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -118,7 +123,8 @@ function parseArgs(argv) {
       arg === "--out" ||
       arg === "--free-archetype" ||
       arg === "--campaign-feat-sections" ||
-      arg === "--gradual-boosts"
+      arg === "--gradual-boosts" ||
+      arg === "--default-reviewed-equipment"
     ) {
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) {
@@ -135,6 +141,8 @@ function parseArgs(argv) {
         options.campaignFeatSectionsMode = normalizeCampaignFeatSectionsMode(value);
       } else if (arg === "--gradual-boosts") {
         options.gradualBoostsMode = normalizeVariantMode(value, "Gradual Ability Boosts");
+      } else if (arg === "--default-reviewed-equipment") {
+        options.defaultReviewedEquipment = normalizeDefaultEquipment(value);
       } else {
         options.outDir = value;
       }
@@ -157,6 +165,12 @@ function parseArgs(argv) {
   options.incrementalCaseIds.push(...envIncrementalCaseIds);
 
   return options;
+}
+
+function normalizeDefaultEquipment(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "none" || normalized === "retain-all") return normalized;
+  throw new Error(`Invalid default reviewed equipment mode: ${value}. Expected none or retain-all.`);
 }
 
 function normalizeVariantMode(value, label) {
@@ -307,6 +321,7 @@ async function main() {
           incrementalCases,
           keepActors: options.keepActors,
           moduleId: MODULE_ID,
+          defaultReviewedEquipment: options.defaultReviewedEquipment,
         },
       );
       result = qualifySmokeResult(result, [

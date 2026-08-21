@@ -97,6 +97,7 @@ async function main() {
       password: process.env.FOUNDRY_PASSWORD ?? "",
       user: options.setupUser,
     });
+    console.log("Acquisition tracer: GM setup session ready.");
     await setupPage.addScriptTag({ path: browserSuitePath });
     equipmentSettingsSnapshot = await captureEquipmentSettings(setupPage, MODULE_ID);
     await setEquipmentApplyAuthority(setupPage, MODULE_ID, "actor-owner");
@@ -112,6 +113,7 @@ async function main() {
         runId,
       },
     );
+    console.log(`Acquisition tracer: prepared ${setup.fixtures.length} guarded fixture(s).`);
 
     if (ownerCases.length > 0) {
       const ownerFixtures = fixturesForCases(setup.fixtures, ownerCases);
@@ -142,6 +144,7 @@ async function main() {
         password: process.env.FOUNDRY_SMOKE_PLAYER_PASSWORD ?? "",
         user: options.playerUser,
       });
+      console.log(`Acquisition tracer: non-GM owner session ready for ${ownerCases.length} case(s).`);
       await playerPage.addScriptTag({ path: browserSuitePath });
       ownerResult = await playerPage.evaluate(
         (payload) => globalThis.__runWayfinderAcquisitionTracer(payload),
@@ -155,6 +158,7 @@ async function main() {
           runId,
         },
       );
+      console.log("Acquisition tracer: non-GM owner cases finished.");
       await playerContext.close();
       playerContext = null;
     }
@@ -189,6 +193,7 @@ async function main() {
         password: process.env.FOUNDRY_PASSWORD ?? "",
         user: options.setupUser,
       });
+      console.log(`Acquisition tracer: GM review session ready for ${gmReviewCases.length} case(s).`);
       await gmReviewPage.addScriptTag({ path: browserSuitePath });
       gmReviewResult = await gmReviewPage.evaluate(
         (payload) => globalThis.__runWayfinderAcquisitionTracer(payload),
@@ -202,6 +207,7 @@ async function main() {
           runId,
         },
       );
+      console.log("Acquisition tracer: GM review cases finished.");
       await gmReviewContext.close();
       gmReviewContext = null;
     }
@@ -225,6 +231,7 @@ async function main() {
           runId,
         },
       );
+      console.log("Acquisition tracer: post-reload durability evidence collected.");
       attachDurabilityEvidence(result, cases, durability);
     }
   } finally {
@@ -526,7 +533,8 @@ function printSummary(result, outDir) {
   }
 }
 
-await main().catch(() => {
-  console.error("Foundry acquisition tracer could not initialize or publish its guarded evidence directory.");
+await main().catch((error) => {
+  const detail = error instanceof Error ? error.message : String(error);
+  console.error(`Foundry acquisition tracer could not initialize or publish its guarded evidence directory: ${detail}`);
   process.exitCode = 1;
 });

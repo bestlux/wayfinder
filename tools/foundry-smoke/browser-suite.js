@@ -440,6 +440,7 @@ const ACQUISITION_BASE_BUILD = Object.freeze([
     uuid: "Compendium.pf2e.classes.Item.8zn3cD6GSmoo1LW4",
     name: "Fighter",
     slotId: "class-level-1",
+    keyAbility: "str",
     rulesSelections: { fighterSkill: "athletics" },
   },
   {
@@ -447,21 +448,79 @@ const ACQUISITION_BASE_BUILD = Object.freeze([
     name: "Cooperative Nature",
     slotId: "ancestry-feat-level-1",
   },
+  {
+    uuid: "Compendium.pf2e.feats-srd.Item.qQt3CMrhLkUV1wCv",
+    name: "Sudden Charge",
+    slotId: "class-feat-level-1",
+  },
 ]);
 
-async function prepareAcquisitionBaseBuild(actor, modules, moduleId) {
-  for (const anchor of ACQUISITION_BASE_BUILD) {
+function acquisitionBaseBuildForCase(smokeCase) {
+  const native = smokeCase.acquisitionCase?.nativeGrant;
+  if (!native) return ACQUISITION_BASE_BUILD;
+  return [
+    { uuid: native.ancestry.sourceUuid, name: native.ancestry.name, slotId: "ancestry-level-1", nativeAncestry: true },
+    { uuid: native.heritage.sourceUuid, name: native.heritage.name, slotId: "heritage-level-1" },
+    ACQUISITION_BASE_BUILD[2],
+    ACQUISITION_BASE_BUILD[3],
+    { uuid: native.ancestryFeat.sourceUuid, name: native.ancestryFeat.name, slotId: "ancestry-feat-level-1" },
+    ACQUISITION_BASE_BUILD[5],
+  ];
+}
+
+async function prepareAcquisitionFixtureDraft(smokeCase, modules) {
+  const native = smokeCase.acquisitionCase?.nativeGrant;
+  if (!native) return modules.createEmptyDraft(1);
+  const fixture = native.fixture;
+  const draft = modules.createEmptyDraft(1);
+  const selections = [
+    ["ancestry-level-1", "pf2e.ancestries", native.ancestry],
+    ["heritage-level-1", "pf2e.heritages", native.heritage],
+    ["background-level-1", "pf2e.backgrounds", fixture.background],
+    ["class-level-1", "pf2e.classes", fixture.class],
+    ["ancestry-feat-level-1", "pf2e.feats-srd", native.ancestryFeat],
+    ["class-feat-level-1", "pf2e.feats-srd", fixture.classFeat],
+  ];
+  for (const [slotId, packId, expected] of selections) {
+    const selection = await selectionRef(packId, expected.name, slotId);
+    if (selection.uuid !== expected.sourceUuid) {
+      throw new Error(`Acquisition tracer native fixture source drifted: ${expected.name}.`);
+    }
+    draft.selections[slotId] = selection;
+  }
+  draft.boosts.ancestry.modeTouched = true;
+  draft.boosts.ancestry.selectedBoosts = structuredClone(fixture.ancestryBoosts);
+  draft.boosts.background.selectedBoosts = structuredClone(fixture.backgroundBoosts);
+  draft.boosts.class.keyAbility = fixture.keyAbility;
+  draft.boosts.levels["1"] = [...fixture.levelOneBoosts];
+  return draft;
+}
+
+async function prepareAcquisitionBaseBuild(actor, modules, moduleId, smokeCase) {
+  const fixtureDraft = await prepareAcquisitionFixtureDraft(smokeCase, modules);
+  for (const anchor of acquisitionBaseBuildForCase(smokeCase)) {
     const document = await modules.resolveUuid(anchor.uuid);
     if (!document || document.name !== anchor.name || typeof document.toObject !== "function") {
       throw new Error(`Acquisition tracer base-build source drifted: ${anchor.name}.`);
     }
-    const source = document.toObject();
+    const source = anchor.nativeAncestry
+      ? await modules.createEmbeddedSource(fixtureDraft.selections[anchor.slotId], fixtureDraft, [])
+      : document.toObject();
+    if (!source) throw new Error(`Acquisition tracer could not prepare ${anchor.name}.`);
     delete source._id;
     source.flags = {
       ...(source.flags ?? {}),
       [moduleId]: { ...(source.flags?.[moduleId] ?? {}), slotId: anchor.slotId },
     };
+    if (anchor.keyAbility && source.system?.keyAbility) {
+      source.system.keyAbility.selected = anchor.keyAbility;
+    }
     if (anchor.rulesSelections) {
+      for (const rule of Array.isArray(source.system?.rules) ? source.system.rules : []) {
+        if (rule?.key === "ChoiceSet" && typeof rule.flag === "string" && rule.flag in anchor.rulesSelections) {
+          rule.selection = anchor.rulesSelections[rule.flag];
+        }
+      }
       source.flags.pf2e = {
         ...(source.flags.pf2e ?? {}),
         rulesSelections: { ...(source.flags.pf2e?.rulesSelections ?? {}), ...anchor.rulesSelections },
@@ -472,17 +531,74 @@ async function prepareAcquisitionBaseBuild(actor, modules, moduleId) {
       };
     }
     const created = await actor.createEmbeddedDocuments("Item", [source], { render: false });
-    if (!Array.isArray(created) || created.length !== 1) {
+    const createdAnchors = Array.isArray(created)
+      ? created.filter((item) => item?.sourceId === anchor.uuid && item?.name === anchor.name)
+      : [];
+    if (createdAnchors.length !== 1) {
       throw new Error(`Acquisition tracer could not seed ${anchor.name}.`);
+    }
+    if (anchor.nativeAncestry) {
+      await modules.createSingletonSystemGrantItems(actor, fixtureDraft, []);
+    }
+  }
+
+  const nativeFixture = smokeCase.acquisitionCase?.nativeGrant?.fixture ?? null;
+  if (nativeFixture) {
+    const completion = await completeDraft(
+      actor,
+      fixtureDraft,
+      {
+        ...nativeFixture,
+        ancestryName: smokeCase.acquisitionCase.nativeGrant.ancestry.name,
+        heritageName: smokeCase.acquisitionCase.nativeGrant.heritage.name,
+        className: nativeFixture.class.name,
+      },
+      modules,
+      { skipStepIds: new Set(["starting-equipment-level-1"]) },
+    );
+    if (completion.classifications.length > 0 || completion.warnings.length > 0) {
+      throw new Error(
+        `Acquisition tracer native fixture did not complete deterministically: ${[
+          ...completion.classifications,
+          ...completion.warnings,
+        ].join(" ")}`,
+      );
     }
   }
 
   const physicalItems = modules.listActorItems(actor).filter((item) => item.isOfType?.("physical"));
-  if (physicalItems.length > 0 || Number(actor.inventory?.currency?.copperValue) !== 0) {
+  const nativeTarget = smokeCase.acquisitionCase?.nativeGrant?.target ?? null;
+  const exactNativePhysical =
+    nativeTarget &&
+    physicalItems.length === 1 &&
+    physicalItems[0]?.sourceId === nativeTarget.sourceUuid &&
+    physicalItems[0]?.name === nativeTarget.name &&
+    Number(physicalItems[0]?.quantity) === nativeTarget.quantity;
+  if ((!nativeTarget && physicalItems.length > 0) || (nativeTarget && !exactNativePhysical) || Number(actor.inventory?.currency?.copperValue) !== 0) {
     throw new Error("Acquisition tracer base build must remain economically empty.");
   }
-  const emptyDraft = modules.createEmptyDraft(1);
-  const initialPlan = await buildPlan(actor, emptyDraft, modules);
+  const equipmentDraft = nativeTarget ? modules.createEmptyDraft(1) : fixtureDraft;
+  if (nativeTarget) {
+    equipmentDraft.selections["ancestry-level-1"] = structuredClone(
+      fixtureDraft.selections["ancestry-level-1"],
+    );
+  }
+  const initialPlan = await buildPlan(actor, equipmentDraft, modules);
+  const nativeSkillStep = nativeFixture
+    ? initialPlan.steps.find((step) => step.id === "skill-training-fighter-level-1" && step.kind === "skill-training")
+    : null;
+  if (nativeSkillStep && !fixtureDraft.skillTrainings[nativeSkillStep.slotId]) {
+    await fillSkillTraining(
+      actor,
+      fixtureDraft,
+      nativeSkillStep,
+      {
+        preferredSkills: nativeFixture.preferredSkills,
+        preferredRuleChoices: nativeFixture.ruleSelections,
+      },
+      modules,
+    );
+  }
   const equipmentSteps = initialPlan.steps.filter(
     (step) => step.kind === "starting-equipment" && step.id === "starting-equipment-level-1",
   );
@@ -501,13 +617,17 @@ async function prepareAcquisitionBaseBuild(actor, modules, moduleId) {
     ...state,
     completedStepIds: [...new Set([...state.completedStepIds, ...precompletedStepIds])].sort(),
   });
-  const equipmentOnlyPlan = await buildPlan(actor, modules.createEmptyDraft(1), modules);
+  if (nativeTarget) await actor.setFlag(moduleId, "draft", equipmentDraft);
+  const equipmentOnlyPlan = await buildPlan(actor, nativeTarget ? equipmentDraft : modules.createEmptyDraft(1), modules);
   if (
     equipmentOnlyPlan.steps.length !== 1 ||
     equipmentOnlyPlan.steps[0]?.id !== "starting-equipment-level-1" ||
     equipmentOnlyPlan.steps[0]?.kind !== "starting-equipment"
   ) {
-    throw new Error("Acquisition tracer fixture is not equipment-only after deterministic base-build setup.");
+    const shape = equipmentOnlyPlan.steps.map((step) => `${step.id}:${step.kind}`).join(", ");
+    throw new Error(
+      `Acquisition tracer fixture is not equipment-only after deterministic base-build setup: ${shape || "no steps"}.`,
+    );
   }
   return precompletedStepIds;
 }
@@ -588,7 +708,7 @@ globalThis.__prepareWayfinderAcquisitionTracer = async function prepareWayfinder
         executorRole,
       };
       fixtures.push(fixture);
-      const precompletedStepIds = await prepareAcquisitionBaseBuild(actor, modules, moduleId);
+      const precompletedStepIds = await prepareAcquisitionBaseBuild(actor, modules, moduleId, smokeCase);
       fixture.precompletedStepIds = precompletedStepIds;
     }
   } catch (error) {
@@ -723,9 +843,13 @@ globalThis.__collectWayfinderAcquisitionDurability = async function collectWayfi
     const manifest = structuredClone(
       actorEvidence.moduleStateAfterApply?.completedAcquisitionManifest ?? null,
     );
-    const batchItems = manifest?.batchId
-      ? actorEvidence.items.filter((item) => item.acquisition?.batchId === manifest.batchId)
-      : [];
+    const durableItemIds = new Set([
+      ...(manifest?.entries ?? []).flatMap((entry) =>
+        (entry?.observedItems ?? []).map((observed) => observed?.actualItemId),
+      ),
+      ...(manifest?.classGrants ?? []).flatMap((classGrant) => classGrant?.observedItemIds ?? []),
+    ]);
+    const batchItems = actorEvidence.items.filter((item) => durableItemIds.has(item.id));
     return {
       schemaVersion: 1,
       source: "gm-context-page-reload",
@@ -1034,6 +1158,7 @@ async function loadWayfinderModules(moduleId) {
     settings,
     wayfinderApp,
     foundryCompat,
+    selectionApplication,
   ] = await Promise.all([
     import(`/modules/${moduleId}/scripts/draft-service.js`),
     import(`/modules/${moduleId}/scripts/actor-inspector.js`),
@@ -1056,6 +1181,7 @@ async function loadWayfinderModules(moduleId) {
     import(`/modules/${moduleId}/scripts/settings.js`),
     import(`/modules/${moduleId}/scripts/wayfinder-app.js`),
     import(`/modules/${moduleId}/scripts/shared/foundry-compat.js`),
+    import(`/modules/${moduleId}/scripts/actor-updater/selection-application.js`),
   ]);
 
   return {
@@ -1089,6 +1215,8 @@ async function loadWayfinderModules(moduleId) {
     normalizeDraft: draftService.normalizeDraft,
     normalizeState: draftService.normalizeState,
     resolveUuid: foundryCompat.resolveUuid,
+    createEmbeddedSource: selectionApplication.createEmbeddedSource,
+    createSingletonSystemGrantItems: selectionApplication.createSingletonSystemGrantItems,
     listSpellRarityAttestationProblems: spellRarityAttestation.listSpellRarityAttestationProblems,
     listSpellRarityRecoveryProblems: spellRarityAttestation.listSpellRarityRecoveryProblems,
     resolveSelection: packOptions.resolveSelection,

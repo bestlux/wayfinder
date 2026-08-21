@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DRAFT_FLAG, STATE_FLAG } from "../src/constants";
-import { createEmptyDraft, createEmptyState } from "../src/draft-service";
+import { createEmptyDraft, createEmptyState, normalizeDraft } from "../src/draft-service";
 import { enqueueActorOperation } from "../src/shared/actor-operation-queue";
 import type { AppliedSpellRarityAttestation, PendingStep } from "../src/types";
 import {
@@ -25,9 +25,11 @@ import { createAcquisitionCurrencyConvergenceWitness } from "../src/wayfinder/do
 import {
   createAcquisitionDraft,
   recordAcquisitionCurrencyConvergenceWitness,
+  recordClassGrantReconciliations,
 } from "../src/wayfinder/domain/acquisition-draft";
 import type { AcquisitionDraftState } from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
+import { createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import {
   PHYSICAL_GRANT_COVERAGE_PF2E_VERSION,
@@ -113,6 +115,40 @@ describe("wayfinder draft lifecycle service", () => {
         ...witness,
         ledgerDigest: "different-ledger",
       }),
+    };
+    expect(() => assertRecoveryDraftWriteAllowed(enriched, replaced)).toThrow(WayfinderRecoveryDraftConflictError);
+  });
+
+  it("allows append-only canonical class-grant recovery evidence and rejects deletion or replacement", () => {
+    const live = createEmptyDraft(1);
+    live.applyAttemptStepIds = ["starting-equipment-level-1"];
+    live.acquisition = recoveryAcquisition();
+    const grant = recoveryClassGrant();
+    live.acquisition = { ...live.acquisition, plannedClassGrants: [grant] };
+    const reconciliation = {
+      version: 1 as const,
+      draftId: live.acquisition.draftId,
+      batchId: live.acquisition.batchId,
+      phase: "before-acquisition" as const,
+      entries: [{ grantId: grant.grantId, status: "pending" as const, itemIds: [] }],
+      ignoredItemIds: [],
+      unresolvedGrantIds: [],
+      ambiguousGrantIds: [],
+    };
+    const enriched = structuredClone(live);
+    enriched.acquisition = recordClassGrantReconciliations(enriched.acquisition!, [reconciliation]);
+
+    expect(() => assertRecoveryDraftWriteAllowed(live, enriched)).not.toThrow();
+    expect(() => assertRecoveryDraftWriteAllowed(enriched, structuredClone(enriched))).not.toThrow();
+
+    const deleted = structuredClone(enriched);
+    deleted.acquisition = { ...deleted.acquisition!, classGrantReconciliations: [] };
+    expect(() => assertRecoveryDraftWriteAllowed(enriched, deleted)).toThrow(WayfinderRecoveryDraftConflictError);
+
+    const replaced = structuredClone(enriched);
+    replaced.acquisition = {
+      ...replaced.acquisition!,
+      classGrantReconciliations: [{ ...reconciliation, phase: "after-acquisition" }],
     };
     expect(() => assertRecoveryDraftWriteAllowed(enriched, replaced)).toThrow(WayfinderRecoveryDraftConflictError);
   });
@@ -853,13 +889,20 @@ describe("wayfinder draft lifecycle service", () => {
   it("builds the persisted draft patch and cleared draft state", () => {
     const draft = createEmptyDraft(6);
     draft.manual["manual-level-1"] = true;
+    draft.applyRecoveryActorUpdate = { "system.build": { attributes: { boosts: { 1: ["str"] } } } };
 
-    expect(buildSaveDraftUpdate(draft)).toMatchObject({
+    const saveUpdate = buildSaveDraftUpdate(draft);
+    expect(saveUpdate).toMatchObject({
       [DRAFT_FLAG]: expect.objectContaining({
         targetLevel: 6,
         manual: { "manual-level-1": true },
+        applyRecoveryActorUpdate: {
+          schemaVersion: 1,
+          entries: [{ path: "system.build", value: { attributes: { boosts: { 1: ["str"] } } } }],
+        },
       }),
     });
+    expect(normalizeDraft(saveUpdate[DRAFT_FLAG], 1).applyRecoveryActorUpdate).toEqual(draft.applyRecoveryActorUpdate);
 
     expect(createClearedDraftResult(2)).toEqual({
       nextDraft: expect.objectContaining({
@@ -1074,6 +1117,31 @@ function recoveryCurrencyWitness(acquisition: AcquisitionDraftState) {
     targetCopper: 1500,
     observedCopper: 1500,
     verifiedAt: "2026-08-19T12:01:00.000Z",
+  });
+}
+
+function recoveryClassGrant() {
+  return createPlannedClassGrant({
+    grantId: "class-grant:dwarf-clan-dagger:ancestry-level-1",
+    profileId: "dwarf-clan-dagger",
+    origin: {
+      sourceSlotId: "ancestry-level-1",
+      sourceUuid: "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+    },
+    granterSourceUuid: "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
+    expected: {
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.kJJvKm80KwWXPukV",
+      quantity: 1,
+      itemType: "weapon",
+    },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: [
+      "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
+      "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+    ],
   });
 }
 

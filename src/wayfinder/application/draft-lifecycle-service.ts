@@ -9,7 +9,10 @@ import type {
   PendingStep,
 } from "../../types.js";
 import { normalizeAcquisitionCurrencyConvergenceWitness } from "../domain/acquisition-currency-convergence.js";
-import { recordAcquisitionCurrencyConvergenceWitness } from "../domain/acquisition-draft.js";
+import {
+  recordAcquisitionCurrencyConvergenceWitness,
+  recordClassGrantReconciliations,
+} from "../domain/acquisition-draft.js";
 import { assertPreparedAcquisitionIdentityPlanMatches } from "../domain/acquisition-identity.js";
 import type { ClassGrantReconciliationResultV1 } from "../domain/class-grant-reconciliation.js";
 import {
@@ -312,6 +315,7 @@ export function assertRecoveryDraftWriteAllowed(liveDraft: DraftState, candidate
   const preservesRecovery =
     hasApplyRecoveryState(candidateDraft) &&
     semanticDraftFingerprint(liveDraft) === semanticDraftFingerprint(candidateDraft) &&
+    preservesClassGrantReconciliations(liveDraft, candidateDraft) &&
     preservesAcquisitionCurrencyConvergenceWitness(liveDraft, candidateDraft) &&
     liveDraft.applyCompletedStepIds.every((stepId) => candidateDraft.applyCompletedStepIds.includes(stepId)) &&
     [...liveRecoveryStepIds].every((stepId) => candidateRecoveryStepIds.has(stepId)) &&
@@ -334,10 +338,34 @@ function semanticDraftFingerprint(draft: DraftState): string {
   semanticDraft.applyRecoveryActorUpdate = {};
   semanticDraft.applySpellRarityAttestations = [];
   if (semanticDraft.acquisition) {
-    semanticDraft.acquisition = { ...semanticDraft.acquisition, currencyConvergenceWitness: null };
+    semanticDraft.acquisition = {
+      ...semanticDraft.acquisition,
+      classGrantReconciliations: [],
+      currencyConvergenceWitness: null,
+    };
   }
   semanticDraft.updatedAt = null;
   return JSON.stringify(semanticDraft);
+}
+
+function preservesClassGrantReconciliations(liveDraft: DraftState, candidateDraft: DraftState): boolean {
+  const liveReconciliations = liveDraft.acquisition?.classGrantReconciliations ?? [];
+  const candidateReconciliations = candidateDraft.acquisition?.classGrantReconciliations ?? [];
+  if (JSON.stringify(liveReconciliations) === JSON.stringify(candidateReconciliations)) return true;
+  if (!liveDraft.acquisition || !candidateDraft.acquisition) return false;
+  if (
+    candidateReconciliations.length < liveReconciliations.length ||
+    JSON.stringify(candidateReconciliations.slice(0, liveReconciliations.length)) !==
+      JSON.stringify(liveReconciliations)
+  ) {
+    return false;
+  }
+  try {
+    const enriched = recordClassGrantReconciliations(liveDraft.acquisition, candidateReconciliations);
+    return JSON.stringify(enriched.classGrantReconciliations) === JSON.stringify(candidateReconciliations);
+  } catch {
+    return false;
+  }
 }
 
 function preservesAcquisitionCurrencyConvergenceWitness(liveDraft: DraftState, candidateDraft: DraftState): boolean {
@@ -366,8 +394,15 @@ function mergeCompletedStepIds(existingStepIds: string[], nextStepIds: string[])
 }
 
 export function buildSaveDraftUpdate(draft: DraftState): Record<string, unknown> {
+  const patch = buildDraftPatch(draft);
+  if (Object.keys(patch.applyRecoveryActorUpdate).length > 0) {
+    patch.applyRecoveryActorUpdate = {
+      schemaVersion: 1,
+      entries: Object.entries(patch.applyRecoveryActorUpdate).map(([path, value]) => ({ path, value })),
+    };
+  }
   return {
-    [DRAFT_FLAG]: buildDraftPatch(draft),
+    [DRAFT_FLAG]: patch,
   };
 }
 

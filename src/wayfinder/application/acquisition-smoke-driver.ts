@@ -10,6 +10,46 @@ const LEVEL_ONE_BUDGET_COPPER = 1_500;
 const DAGGER_SOURCE_UUID = "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z";
 const DAGGER_UNIT_PRICE_COPPER = 20;
 const EQUIPMENT_STEP_ID = "starting-equipment-level-1";
+const NATIVE_GRANT_PROFILES = Object.freeze({
+  "dwarf-clan-dagger": Object.freeze({
+    id: "equipment-l1-owner-dwarf-clan-dagger-native-retry",
+    grantId: "class-grant:dwarf-clan-dagger:ancestry-level-1",
+    ancestryUuid: "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
+    ancestryName: "Dwarf",
+    heritageUuid: "Compendium.pf2e.heritages.Item.5CqsBKCZuGON53Hk",
+    heritageName: "Forge Dwarf",
+    featUuid: "Compendium.pf2e.feats-srd.Item.UJ8AqzkkDqRCMNFW",
+    featName: "Dwarven Doughtiness",
+    granterUuid: "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
+    targetUuid: "Compendium.pf2e.equipment-srd.Item.kJJvKm80KwWXPukV",
+    targetName: "Clan Dagger",
+    targetType: "weapon",
+    targetRarity: "uncommon",
+    targetPublication: "Pathfinder Player Core",
+    targetRulesCount: 0,
+    targetPriceCopper: 200,
+    selection: { key: "clanWeapon", value: "clan-dagger" },
+  }),
+  "sarangay-head-gem": Object.freeze({
+    id: "equipment-l1-owner-sarangay-head-gem-native-retry",
+    grantId: "class-grant:sarangay-head-gem:ancestry-level-1",
+    ancestryUuid: "Compendium.pf2e.ancestries.Item.7mpMGhVoaPANJnZ8",
+    ancestryName: "Sarangay",
+    heritageUuid: "Compendium.pf2e.heritages.Item.BHiOV3ETYSv6k7kF",
+    heritageName: "Waxing Moon Sarangay",
+    featUuid: "Compendium.pf2e.feats-srd.Item.pC9sGxKBOGWQLOuw",
+    featName: "Crown of Bone",
+    granterUuid: "Compendium.pf2e.ancestryfeatures.Item.HYefFkddD9lOhFM8",
+    targetUuid: "Compendium.pf2e.equipment-srd.Item.FA1mAc7rEyC9vzZa",
+    targetName: "Head Gem",
+    targetType: "equipment",
+    targetRarity: "common",
+    targetPublication: "Pathfinder Lost Omens Tian Xia Character Guide",
+    targetRulesCount: 1,
+    targetPriceCopper: 0,
+    selection: null,
+  }),
+});
 const RECOVERY_STATUS =
   "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console.";
 const LATE_ACKNOWLEDGEMENT_STATUS =
@@ -68,7 +108,7 @@ interface AcquisitionSmokeCaseDefinition {
   readonly targetLevel: 1;
   readonly definitionFingerprint: string;
   readonly acquisitionCase: {
-    readonly schemaVersion: 1;
+    readonly schemaVersion: 2;
     readonly executorRole: AcquisitionExecutorRole;
     readonly targetLevel: 1;
     readonly disposition: AcquisitionDisposition;
@@ -76,6 +116,8 @@ interface AcquisitionSmokeCaseDefinition {
     readonly expectedSpentCopper: number;
     readonly expectedRemainingCopper: number;
     readonly expectedEntries: readonly Record<string, unknown>[];
+    readonly nativeGrant: Record<string, unknown> | null;
+    readonly expectedAcquisitionItemCreateCheckpoints: number | null;
     readonly policyReview: { readonly required: boolean; readonly reviewerRole: "gm" };
     readonly failure: SmokeCheckpointTarget | null;
   };
@@ -120,6 +162,7 @@ interface AcquisitionSmokeUiEvidence {
   partialStateVisible: boolean;
   draftRecoveryVisible: boolean;
   lateAcknowledgementConverged: boolean;
+  acquisitionItemCreateCheckpoints: number;
 }
 
 interface AcquisitionSmokeDriver {
@@ -155,6 +198,7 @@ export class AcquisitionSmokeCheckpointController {
   readonly #onRetryCheckpoint: ((checkpoint: DraftApplyCheckpoint) => void | Promise<void>) | undefined;
   #mode: "initial" | "retry" | "finished" = "initial";
   #targetOccurrences = 0;
+  #initialItemCreateCheckpoints = 0;
   #failure: AcquisitionSmokeCheckpointFailure | null = null;
 
   constructor(
@@ -176,6 +220,13 @@ export class AcquisitionSmokeCheckpointController {
       }
       return;
     }
+    if (
+      checkpoint.kind === "write" &&
+      checkpoint.operation === "embedded-item-create" &&
+      checkpoint.boundary === "before"
+    ) {
+      this.#initialItemCreateCheckpoints += 1;
+    }
     if (!this.#target || checkpoint.checkpointId !== this.#target.checkpointId) return;
     this.#targetOccurrences += 1;
     if (this.#targetOccurrences !== this.#target.occurrence) return;
@@ -188,6 +239,10 @@ export class AcquisitionSmokeCheckpointController {
 
   get failure(): AcquisitionSmokeCheckpointFailure | null {
     return this.#failure;
+  }
+
+  get initialItemCreateCheckpoints(): number {
+    return this.#initialItemCreateCheckpoints;
   }
 
   assertInitialAttemptComplete(): void {
@@ -395,7 +450,7 @@ async function runAcquisitionSmokeCase(
     throw new Error("The acquisition smoke actor marker belongs to another executor role.");
   }
   assertCurrentExecutorAndRuntime(actor, marker);
-  assertCleanSmokeActor(actor);
+  assertCleanSmokeActor(actor, caseDefinition);
   remainingBindings.delete(caseDefinition.id);
 
   const session = new AcquisitionSmokeSession({
@@ -430,6 +485,8 @@ async function runAcquisitionSmokeCase(
     if (binding.checkpointTarget) {
       const failure = await waitForValue(() => session.controller.failure, "configured acquisition failure");
       session.controller.assertInitialAttemptComplete();
+      ui.acquisitionItemCreateCheckpoints = session.controller.initialItemCreateCheckpoints;
+      assertExpectedItemCreateCheckpoints(caseDefinition, ui.acquisitionItemCreateCheckpoints);
       await waitForValue(() => (session.failureSettled(failure) ? true : null), "settled acquisition failure recovery");
       if (binding.checkpointTarget.expectedPoint === "final-state-after") {
         await waitForValue(() => completedActorState(actor), "durable lost-ack acquisition convergence");
@@ -443,16 +500,12 @@ async function runAcquisitionSmokeCase(
         return { ui };
       }
       const recovery = await waitForValue(
-        () => visibleRecoveryEvidence(actor, wayfinderApplication!),
+        () => visibleRecoveryEvidence(actor, wayfinderApplication!, caseDefinition),
         "visible acquisition recovery state"
       );
       ui.failureVisible = recovery.failureVisible;
       ui.draftRecoveryVisible = recovery.draftRecoveryVisible;
-      ui.partialStateVisible = await exposePartialItemOnActorSheet(
-        actor,
-        recovery.batchId,
-        Number(caseDefinition.acquisitionCase.expectedEntries[0]?.quantity)
-      );
+      ui.partialStateVisible = await exposeExpectedItemOnActorSheet(actor, recovery.batchId, caseDefinition);
       if (!ui.partialStateVisible) {
         throw new Error("The PF2E inventory did not visibly expose the partially created acquisition item.");
       }
@@ -464,8 +517,10 @@ async function runAcquisitionSmokeCase(
 
     await waitForValue(() => completedActorState(actor), "completed acquisition manifest and cleared draft");
     session.controller.assertInitialAttemptComplete();
+    ui.acquisitionItemCreateCheckpoints = session.controller.initialItemCreateCheckpoints;
+    assertExpectedItemCreateCheckpoints(caseDefinition, ui.acquisitionItemCreateCheckpoints);
     await waitForValue(
-      () => (wayfinderRoot(wayfinderApplication!)?.isConnected === false ? true : null),
+      () => (wayfinderRoot(wayfinderApplication!)?.isConnected !== true ? true : null),
       "closed Wayfinder application"
     );
     ui.completed = true;
@@ -558,23 +613,23 @@ async function reviewDisposition(
     }
     const review = await waitForEnabledAction(application, "review-equipment-purchases");
     clickElement(review);
-    await waitForReviewLabel(application, "Purchases reviewed");
+    await waitForReviewLabel(application, "Kit confirmed");
   } else {
     if (daggerCartLine(application)) throw new Error("Retain-all acquisition unexpectedly contains a cart item.");
     const retain = await waitForEnabledAction(application, "retain-all-equipment");
     clickElement(retain);
-    await waitForReviewLabel(application, "All starting wealth retained");
+    await waitForReviewLabel(application, "Keeping all your coin");
   }
   await waitForValue(() => {
     const apply = applyButton(application);
-    return apply && !apply.disabled && apply.dataset.wayfinderReadinessReady === "true" ? apply : null;
+    return apply && applyCanRun(application, apply) ? apply : null;
   }, "enabled reviewed Apply control");
 }
 
 async function clickApplyAndConfirm(application: Record<string, unknown>, actorName: string): Promise<void> {
   const apply = await waitForValue(() => {
     const candidate = applyButton(application);
-    return candidate && !candidate.disabled && candidate.dataset.wayfinderReadinessReady === "true" ? candidate : null;
+    return candidate?.isConnected && applyCanRun(application, candidate) ? candidate : null;
   }, "enabled Apply control");
   const confirmation = waitForApplyConfirmation(actorName);
   clickElement(apply);
@@ -602,19 +657,35 @@ function waitForApplyConfirmation(actorName: string): Promise<HTMLElement> {
     });
     const timeoutId = globalThis.setTimeout(() => {
       Hooks.off("renderDialogV2", hookId);
-      reject(new Error("The real Foundry Apply confirmation dialog did not render."));
+      const notifications = [...document.querySelectorAll<HTMLElement>(".notification")]
+        .map((entry) => entry.textContent?.trim())
+        .filter(nonEmptyString)
+        .join(" | ");
+      const statuses = [...document.querySelectorAll<HTMLElement>(".wayfinder-app .status-note span")]
+        .map((entry) => entry.textContent?.trim())
+        .filter(nonEmptyString)
+        .join(" | ");
+      reject(
+        new Error(
+          `The real Foundry Apply confirmation dialog did not render.${notifications ? ` Notifications: ${notifications}` : ""}${statuses ? ` Status: ${statuses}` : ""}`
+        )
+      );
     }, DRIVER_TIMEOUT_MS);
   });
 }
 
-async function exposePartialItemOnActorSheet(
+async function exposeExpectedItemOnActorSheet(
   actor: SmokeActor,
   batchId: string,
-  expectedQuantity: number
+  caseDefinition: AcquisitionSmokeCaseDefinition
 ): Promise<boolean> {
+  const expected = caseDefinition.acquisitionCase.expectedEntries[0];
+  const native = caseDefinition.acquisitionCase.nativeGrant !== null;
   const item = actorItems(actor).find((candidate) => {
     const acquisition = recordValue(recordValue(candidate, "flags"), MODULE_ID)?.acquisition;
-    return stringValue(acquisition, "batchId") === batchId;
+    return native
+      ? itemSourceId(candidate) === expected?.sourceUuid && acquisition == null
+      : stringValue(acquisition, "batchId") === batchId;
   });
   const itemId = stringValue(item, "id");
   if (!itemId) return false;
@@ -630,7 +701,7 @@ async function exposePartialItemOnActorSheet(
   }, "visible partially created PF2E inventory row");
   const name = row.querySelector<HTMLElement>('h4.name a[data-action="toggle-summary"]')?.textContent?.trim();
   const quantity = Number(row.querySelector<HTMLElement>(".quantity > span")?.textContent?.trim());
-  return name === "Dagger" && quantity === expectedQuantity;
+  return name === expected?.name && quantity === Number(expected?.quantity);
 }
 
 function rerenderActorSheet(actor: SmokeActor): Promise<HTMLElement> {
@@ -675,7 +746,8 @@ function visibleLateAcknowledgementEvidence(actor: SmokeActor, application: Reco
 
 function visibleRecoveryEvidence(
   actor: SmokeActor,
-  application: Record<string, unknown>
+  application: Record<string, unknown>,
+  caseDefinition: AcquisitionSmokeCaseDefinition
 ): { readonly failureVisible: true; readonly draftRecoveryVisible: true; readonly batchId: string } | null {
   const root = wayfinderRoot(application);
   const status = [...(root?.querySelectorAll<HTMLElement>(".status-note span") ?? [])].find(
@@ -689,7 +761,9 @@ function visibleRecoveryEvidence(
     draft.applyAttemptStepIds.includes(EQUIPMENT_STEP_ID) &&
     batchId !== null;
   const apply = applyButton(application);
-  if (!status || !hasRecovery || !daggerCartLine(application) || !apply || apply.disabled) return null;
+  const expectedName = String(caseDefinition.acquisitionCase.expectedEntries[0]?.name ?? "");
+  const expectedLineVisible = expectedName ? cartLineByName(application, expectedName) !== null : true;
+  if (!status || !hasRecovery || !expectedLineVisible || !apply || apply.disabled) return null;
   return { failureVisible: true, draftRecoveryVisible: true, batchId };
 }
 
@@ -719,7 +793,20 @@ function assertReviewedAcquisitionDraft(
     throw new Error("The acquisition smoke Apply did not capture its exact executor authority policy.");
   }
   if (expected.disposition === "retain-all") {
-    if (acquisition.lines.length !== 0 || acquisition.disposition.kind !== "retain-all") {
+    const nativeGrantId = stringValue(expected.nativeGrant, "grantId");
+    const line = acquisition.lines[0];
+    const exactNativeLine =
+      nativeGrantId !== null &&
+      acquisition.lines.length === 1 &&
+      line?.sourceUuid === expected.expectedEntries[0]?.sourceUuid &&
+      line?.stackingIntent === "separate" &&
+      line?.funding.lane === "class-grant" &&
+      line.funding.grant.plannedGrantId === nativeGrantId &&
+      line.price.linePriceCopper === expected.expectedEntries[0]?.unitPriceCopper;
+    if (
+      acquisition.disposition.kind !== "retain-all" ||
+      (expected.nativeGrant === null ? acquisition.lines.length !== 0 : !exactNativeLine)
+    ) {
       throw new Error("The retain-all smoke case acquired an item.");
     }
   } else {
@@ -861,7 +948,7 @@ function normalizeCaseDefinition(value: unknown): AcquisitionSmokeCaseDefinition
     value.caseKind !== "acquisition" ||
     value.targetLevel !== 1 ||
     !definitionFingerprint(value.definitionFingerprint) ||
-    acquisition.schemaVersion !== 1 ||
+    acquisition.schemaVersion !== 2 ||
     (acquisition.executorRole !== "non-gm-owner" && acquisition.executorRole !== "gm-reviewer") ||
     acquisition.targetLevel !== 1 ||
     (disposition !== "purchase-ledger" && disposition !== "retain-all") ||
@@ -877,8 +964,15 @@ function normalizeCaseDefinition(value: unknown): AcquisitionSmokeCaseDefinition
   ) {
     throw new Error("The acquisition smoke case is outside the supported level-1 owner boundary.");
   }
+  const nativeGrant = acquisition.nativeGrant;
+  const nativeProfile = normalizeNativeGrant(value.id, nativeGrant, entries);
   if (disposition === "retain-all") {
-    if (entries.length !== 0 || expectedSpentCopper !== 0) {
+    if (
+      expectedSpentCopper !== 0 ||
+      (nativeGrant === null &&
+        (entries.length !== 0 || acquisition.expectedAcquisitionItemCreateCheckpoints !== null)) ||
+      (nativeGrant !== null && (!nativeProfile || acquisition.expectedAcquisitionItemCreateCheckpoints !== 0))
+    ) {
       throw new Error("The retain-all smoke case has purchase facts.");
     }
   } else {
@@ -903,6 +997,9 @@ function normalizeCaseDefinition(value: unknown): AcquisitionSmokeCaseDefinition
     ) {
       throw new Error("The purchase smoke case is not the exact supported PF2E Dagger candidate.");
     }
+    if (nativeGrant !== null || acquisition.expectedAcquisitionItemCreateCheckpoints !== null) {
+      throw new Error("The purchase smoke case cannot declare a native grant.");
+    }
   }
   const failure = normalizeNullableTarget(acquisition.failure);
   return {
@@ -911,7 +1008,7 @@ function normalizeCaseDefinition(value: unknown): AcquisitionSmokeCaseDefinition
     targetLevel: 1,
     definitionFingerprint: value.definitionFingerprint,
     acquisitionCase: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       executorRole: acquisition.executorRole,
       targetLevel: 1,
       disposition,
@@ -919,10 +1016,95 @@ function normalizeCaseDefinition(value: unknown): AcquisitionSmokeCaseDefinition
       expectedSpentCopper,
       expectedRemainingCopper,
       expectedEntries: entries,
+      nativeGrant: nativeProfile,
+      expectedAcquisitionItemCreateCheckpoints: acquisition.expectedAcquisitionItemCreateCheckpoints === 0 ? 0 : null,
       policyReview: { required: acquisition.policyReview.required === true, reviewerRole: "gm" },
       failure,
     },
   };
+}
+
+function normalizeNativeGrant(
+  caseId: string,
+  value: unknown,
+  entries: readonly unknown[]
+): Record<string, unknown> | null {
+  if (value === null) return null;
+  if (!isRecord(value) || !nonEmptyString(value.profileId)) {
+    throw new Error("The native-grant smoke profile is malformed.");
+  }
+  const profile = NATIVE_GRANT_PROFILES[value.profileId as keyof typeof NATIVE_GRANT_PROFILES];
+  const ancestry = recordValue(value, "ancestry");
+  const heritage = recordValue(value, "heritage");
+  const ancestryFeat = recordValue(value, "ancestryFeat");
+  const granter = recordValue(value, "granter");
+  const target = recordValue(value, "target");
+  const requiredRuleSelection = value.requiredRuleSelection;
+  const fixture = recordValue(value, "fixture");
+  const background = recordValue(fixture, "background");
+  const classSelection = recordValue(fixture, "class");
+  const classFeat = recordValue(fixture, "classFeat");
+  const entry = entries[0];
+  if (
+    !profile ||
+    caseId !== profile.id ||
+    value.kind !== "fixed-native-grant" ||
+    value.grantId !== profile.grantId ||
+    value.materializer !== "pf2e-native" ||
+    value.fundingLane !== "class-grant" ||
+    value.originSlotId !== "ancestry-level-1" ||
+    ancestry?.name !== profile.ancestryName ||
+    ancestry?.sourceUuid !== profile.ancestryUuid ||
+    heritage?.name !== profile.heritageName ||
+    heritage?.sourceUuid !== profile.heritageUuid ||
+    ancestryFeat?.name !== profile.featName ||
+    ancestryFeat?.sourceUuid !== profile.featUuid ||
+    granter?.sourceUuid !== profile.granterUuid ||
+    target?.sourceUuid !== profile.targetUuid ||
+    target?.name !== profile.targetName ||
+    target?.itemType !== profile.targetType ||
+    target?.level !== 0 ||
+    target?.rarity !== profile.targetRarity ||
+    target?.publication !== profile.targetPublication ||
+    target?.quantity !== 1 ||
+    target?.sourceQuantity !== 1 ||
+    target?.rulesCount !== profile.targetRulesCount ||
+    target?.containerId !== null ||
+    target?.unitPriceCopper !== profile.targetPriceCopper ||
+    canonicalJson(requiredRuleSelection) !== canonicalJson(profile.selection) ||
+    canonicalJson(value.nativeGrantChainSourceUuids) !== canonicalJson([profile.granterUuid, profile.ancestryUuid]) ||
+    background?.name !== "Acolyte" ||
+    background?.sourceUuid !== "Compendium.pf2e.backgrounds.Item.CAjQrHZZbALE7Qjy" ||
+    classSelection?.name !== "Fighter" ||
+    classSelection?.sourceUuid !== "Compendium.pf2e.classes.Item.8zn3cD6GSmoo1LW4" ||
+    classFeat?.name !== "Sudden Charge" ||
+    classFeat?.sourceUuid !== "Compendium.pf2e.feats-srd.Item.qQt3CMrhLkUV1wCv" ||
+    fixture?.kind !== "complete-draft" ||
+    fixture?.keyAbility !== "str" ||
+    canonicalJson(fixture?.levelOneBoosts) !== canonicalJson(["str", "dex", "con", "wis"]) ||
+    canonicalJson(fixture?.preferredSkills) !== canonicalJson(["athletics", "crafting", "medicine", "stealth"]) ||
+    canonicalJson(fixture?.ruleSelections) !== canonicalJson({ fighterSkill: "athletics" }) ||
+    entries.length !== 1 ||
+    !isRecord(entry) ||
+    entry.sourceUuid !== profile.targetUuid ||
+    entry.name !== profile.targetName ||
+    entry.itemType !== profile.targetType ||
+    entry.level !== 0 ||
+    entry.rarity !== profile.targetRarity ||
+    entry.publication !== profile.targetPublication ||
+    entry.quantity !== 1 ||
+    entry.sourceQuantity !== 1 ||
+    entry.rulesCount !== profile.targetRulesCount ||
+    entry.containerId !== null ||
+    entry.stackingIntent !== "separate" ||
+    entry.unitPriceCopper !== profile.targetPriceCopper ||
+    entry.fundingLane !== "class-grant" ||
+    entry.plannedGrantId !== profile.grantId ||
+    entry.materializer !== "pf2e-native"
+  ) {
+    throw new Error("The native-grant smoke case is outside the exact supported PF2E profile boundary.");
+  }
+  return structuredClone(value);
 }
 
 function normalizeNullableTarget(value: unknown): SmokeCheckpointTarget | null {
@@ -981,15 +1163,37 @@ function assertCurrentExecutorAndRuntime(actor: SmokeActor, marker: AcquisitionS
   }
 }
 
-function assertCleanSmokeActor(actor: SmokeActor): void {
+function assertCleanSmokeActor(actor: SmokeActor, caseDefinition: AcquisitionSmokeCaseDefinition): void {
   const state = normalizeDraftRecord(actor.getFlag(MODULE_ID, "state"));
+  const draft = normalizeDraftRecord(actor.getFlag(MODULE_ID, "draft"));
+  const nativeGrant = caseDefinition.acquisitionCase.nativeGrant;
+  const nativeDraftMatches = nativeGrant ? nativeFixtureDraftMatches(draft, nativeGrant) : draft === null;
   if (
-    actor.getFlag(MODULE_ID, "draft") != null ||
+    !nativeDraftMatches ||
     recordValue(state, "completedAcquisitionManifest") != null ||
     actorItems(actor).some((item) => Boolean(recordValue(recordValue(item, "flags"), MODULE_ID)?.acquisition))
   ) {
     throw new Error("The acquisition smoke actor is not a clean GM-prepared fixture.");
   }
+}
+
+function nativeFixtureDraftMatches(
+  draft: Record<string, unknown> | null,
+  nativeGrant: Record<string, unknown>
+): boolean {
+  const ancestry = recordValue(nativeGrant, "ancestry");
+  const selections = recordValue(draft, "selections");
+  const ancestrySelection = recordValue(selections, "ancestry-level-1");
+  return Boolean(
+    draft &&
+      draft.targetLevel === 1 &&
+      draft.acquisition == null &&
+      selections &&
+      ancestry &&
+      ancestrySelection?.uuid === ancestry.sourceUuid &&
+      ancestrySelection?.name === ancestry.name &&
+      Object.keys(selections).length === 1
+  );
 }
 
 function currentRuntime(): AcquisitionSmokeMarker["runtime"] {
@@ -1023,6 +1227,7 @@ function emptyUiEvidence(): AcquisitionSmokeUiEvidence {
     partialStateVisible: false,
     draftRecoveryVisible: false,
     lateAcknowledgementConverged: false,
+    acquisitionItemCreateCheckpoints: 0,
   };
 }
 
@@ -1051,12 +1256,40 @@ function applyButton(application: Record<string, unknown>): HTMLButtonElement | 
   return wayfinderRoot(application)?.querySelector<HTMLButtonElement>('[data-wayfinder-action="apply-draft"]') ?? null;
 }
 
+function applyCanRun(application: Record<string, unknown>, apply: HTMLButtonElement): boolean {
+  const savePhase =
+    wayfinderRoot(application)?.querySelector<HTMLElement>("[data-wayfinder-save-status]")?.dataset.phase;
+  return (
+    !apply.disabled &&
+    apply.dataset.wayfinderReadinessReady === "true" &&
+    (savePhase === "idle" || savePhase === "saved")
+  );
+}
+
 function daggerCartLine(application: Record<string, unknown>): HTMLElement | null {
+  return cartLineByName(application, "Dagger");
+}
+
+function cartLineByName(application: Record<string, unknown>, name: string): HTMLElement | null {
   return (
     [...(wayfinderRoot(application)?.querySelectorAll<HTMLElement>(".equipment-cart-line") ?? [])].find(
-      (line) => line.querySelector("span strong")?.textContent?.trim() === "Dagger"
+      (line) => line.querySelector("span strong")?.textContent?.trim() === name
     ) ?? null
   );
+}
+
+function itemSourceId(item: Record<string, unknown>): string | null {
+  const flags = recordValue(item, "flags");
+  const core = recordValue(flags, "core");
+  const stats = recordValue(item, "_stats");
+  return stringValue(core, "sourceId") ?? stringValue(stats, "compendiumSource");
+}
+
+function assertExpectedItemCreateCheckpoints(caseDefinition: AcquisitionSmokeCaseDefinition, observed: number): void {
+  const expected = caseDefinition.acquisitionCase.expectedAcquisitionItemCreateCheckpoints;
+  if (expected !== null && observed !== expected) {
+    throw new Error(`The native-grant smoke case observed ${observed} acquisition item-create checkpoint(s).`);
+  }
 }
 
 async function waitForCartQuantity(application: Record<string, unknown>, quantity: number): Promise<void> {
@@ -1186,7 +1419,7 @@ function requiredString(value: unknown, label: string): string {
 }
 
 function definitionFingerprint(value: unknown): value is string {
-  return typeof value === "string" && /^wf-acquisition-case-v1-[a-f0-9]{64}$/u.test(value);
+  return typeof value === "string" && /^wf-acquisition-case-v2-[a-f0-9]{64}$/u.test(value);
 }
 
 function nonEmptyString(value: unknown): value is string {

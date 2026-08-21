@@ -2537,6 +2537,19 @@ function acquisitionDefinitionOutcomeFindings(smokeCase, acquisition, definition
   const manifest = acquisition.manifest;
   const findings = [];
   findings.push(...acquisitionDurabilityFindings(smokeCase, acquisition, definition, result, subject));
+  if (
+    expected.expectedAcquisitionItemCreateCheckpoints !== null &&
+    smokeCase.evidence?.acquisitionUi?.acquisitionItemCreateCheckpoints !==
+      expected.expectedAcquisitionItemCreateCheckpoints
+  ) {
+    findings.push(
+      finding(
+        "acquisition-item-create-checkpoint-mismatch",
+        subject,
+        "The native-grant tracer must prove the case-pinned number of acquisition item-create writes."
+      )
+    );
+  }
   const exactCurrency =
     acquisition.currency?.preCopper === 0 &&
     acquisition.currency?.budgetCopper === expected.expectedBudgetCopper &&
@@ -2655,8 +2668,9 @@ function acquisitionDurabilityFindings(smokeCase, acquisition, definition, resul
   const durability = acquisition.durability;
   const manifest = acquisition.manifest;
   const runtime = durability?.runtime;
+  const durableItemIds = manifestDurableItemIds(manifest);
   const finalBatchItems = (smokeCase.actor?.items ?? [])
-    .filter((item) => item.acquisition?.batchId === manifest?.batchId)
+    .filter((item) => durableItemIds.has(item.id))
     .sort((left, right) => String(left.id).localeCompare(String(right.id)));
   const durableItems = Array.isArray(durability?.items)
     ? [...durability.items].sort((left, right) => String(left?.id).localeCompare(String(right?.id)))
@@ -2955,22 +2969,42 @@ function manifestReconciliationFindings(items, manifest, subject) {
         productionShape && entry.funding?.lane === "class-grant"
           ? entry.funding.grant?.plannedGrantId
           : null;
+      const nativeClassGrants =
+        expectedPlannedGrantId === null || !Array.isArray(manifest.classGrants)
+          ? []
+          : manifest.classGrants.filter(
+              (classGrant) =>
+                classGrant?.grant?.grantId === expectedPlannedGrantId &&
+                classGrant?.grant?.materializer === "pf2e-native"
+            );
+      const nativeClassGrant = nativeClassGrants.length === 1 ? nativeClassGrants[0] : null;
+      const nativeGrantChain = nativeGrantChainSourceUuids(item, itemsById);
+      const nativeIdentityMatches =
+        nativeClassGrant !== null &&
+        nativeClassGrant.status === "resolved" &&
+        structuredValueEquals(nativeClassGrant.observedItemIds, [itemId]) &&
+        identity == null &&
+        item.grantedById === item.grantAncestryIds?.[0] &&
+        structuredValueEquals(nativeGrantChain, nativeClassGrant.grant.nativeGrantChainSourceUuids);
+      const acquisitionIdentityMatches =
+        identity?.batchId === manifest.batchId &&
+        lineIds?.includes(identity?.lineId) &&
+        identity?.entryId === entry.entryId &&
+        (!productionShape ||
+          (identity?.draftId === manifest.draftId &&
+            identity?.version === 1 &&
+            identity?.manifestId === manifest.id &&
+            identity?.plannedItemId === observed?.plannedItemId &&
+            (identity?.plannedContainerId ?? null) === (observed?.plannedContainerId ?? null) &&
+            (identity?.plannedGrantId ?? null) === (expectedPlannedGrantId ?? null) &&
+            identity?.stackingIntent === entry.stackingIntent));
       if (
-        identity?.batchId !== manifest.batchId ||
-        (productionShape && identity?.draftId !== manifest.draftId) ||
-        !lineIds?.includes(identity?.lineId) ||
-        identity?.entryId !== entry.entryId ||
+        !(nativeClassGrant ? nativeIdentityMatches : acquisitionIdentityMatches) ||
         item.sourceId !== sourceUuid ||
         observed.actualSourceUuid !== sourceUuid ||
         observed.actualQuantity !== item.quantity ||
         (productionShape &&
-          (identity?.version !== 1 ||
-            identity?.manifestId !== manifest.id ||
-            identity?.plannedItemId !== observed?.plannedItemId ||
-            (identity?.plannedContainerId ?? null) !== (observed?.plannedContainerId ?? null) ||
-            (identity?.plannedGrantId ?? null) !== (expectedPlannedGrantId ?? null) ||
-            identity?.stackingIntent !== entry.stackingIntent ||
-            !plannedItem ||
+          (!plannedItem ||
             plannedItem.sourceUuid !== sourceUuid ||
             plannedItem.quantity !== observed.actualQuantity ||
             (plannedItem.plannedContainerId ?? null) !== (observed?.plannedContainerId ?? null)))
@@ -3036,6 +3070,29 @@ function manifestReconciliationFindings(items, manifest, subject) {
     }
   }
   return findings;
+}
+
+function manifestDurableItemIds(manifest) {
+  return new Set([
+    ...(manifest?.entries ?? []).flatMap((entry) =>
+      (entry?.observedItems ?? []).map((observed) => observed?.actualItemId)
+    ),
+    ...(manifest?.classGrants ?? []).flatMap((classGrant) => classGrant?.observedItemIds ?? []),
+  ]);
+}
+
+function nativeGrantChainSourceUuids(item, itemsById) {
+  const sources = [];
+  const visited = new Set([item?.id]);
+  let nextId = item?.grantedById ?? item?.location ?? null;
+  while (nonEmptyString(nextId) && !visited.has(nextId)) {
+    visited.add(nextId);
+    const ancestor = itemsById.get(nextId);
+    if (!ancestor || !nonEmptyString(ancestor.sourceId)) return [];
+    sources.push(ancestor.sourceId);
+    nextId = ancestor.grantedById ?? ancestor.location ?? null;
+  }
+  return sources;
 }
 
 function manifestEntryFacts(manifest) {

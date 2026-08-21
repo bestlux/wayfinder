@@ -180,7 +180,11 @@ describe("prepared draft application", () => {
 
     const prepared = await prepareDraftApplication(actor, draft, [], { prepareClassGrantPlan: () => plan });
     const acquisitionEvidence = { kind: "completed", manifest: { id: "manifest-1" } } as never;
-    const resolveFinalActorUpdate = vi.fn(() => ({}));
+    let resolvedFinalEvidence: unknown = null;
+    const resolveFinalActorUpdate = vi.fn((evidence: unknown) => {
+      resolvedFinalEvidence = evidence;
+      return {};
+    });
     const result = await executePreparedDraftApplication(prepared, {
       persistAcquisitionCurrencyConvergenceWitness: TEST_CURRENCY_WITNESS_PERSISTENCE,
       readCurrentAcquisitionHistory: () => ({
@@ -203,6 +207,7 @@ describe("prepared draft application", () => {
       classGrantReconciliations: expect.any(Array),
       acquisition: acquisitionEvidence,
     });
+    expect((resolvedFinalEvidence as { acquisition?: unknown }).acquisition).toBe(acquisitionEvidence);
 
     const secondBatchExecutor = vi.fn();
     await expect(

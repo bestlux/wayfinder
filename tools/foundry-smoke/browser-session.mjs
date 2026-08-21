@@ -31,7 +31,16 @@ export async function loginToFoundryWorld(page, { foundryUrl, password, user }) 
     await page.locator('button[name="join"]').click();
   }
 
-  await page.waitForURL(/\/game/u, { timeout: 30000 });
+  try {
+    await page.waitForURL(/\/game/u, { timeout: 30000 });
+  } catch (error) {
+    const notifications = await page.locator(".notification").allTextContents().catch(() => []);
+    const detail = notifications.map((value) => value.trim()).filter(Boolean).join(" ");
+    throw new Error(
+      `Foundry login for ${user || "the configured user"} remained at ${page.url()}${detail ? `: ${detail}` : "."}`,
+      { cause: error },
+    );
+  }
   await page.waitForFunction(() => globalThis.game?.ready === true, null, { timeout: 60000 });
 }
 

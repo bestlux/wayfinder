@@ -1,6 +1,6 @@
 # 0.8.0 Starting Equipment Implementation Plan
 
-Status: active implementation plan, updated 2026-08-19 after Wave 1 safety-kernel completion. Story completion still requires the acceptance and release evidence named below.
+Status: active implementation plan, updated 2026-08-20 after the Wave 2 live gate. Story completion still requires the acceptance and release evidence named below.
 
 Architecture and rules contracts:
 
@@ -403,6 +403,8 @@ Acceptance:
 - Unresolved dynamic UUIDs, equipment-derived predicates, missing sources, broken grant chains, duplicate candidates, and foreign lookalikes fail closed with zero acquisition writes.
 - Every planned grant retains exactly one locked zero-cost `class-grant` line and one stable identity entry. A `pf2e-native` entry adopts the exact pre-acquisition reconciliation result and performs no inventory insertion; a `wayfinder-acquisition` entry such as Titan Mauler performs exactly one deliberate item write.
 - Derive grant authority only from exact draft selections plus resolved `ChoiceSet`/`GrantItem` relationships. Do not infer it from actor flags, source resemblance, or an item discovered only after an unclassified PF2E mutation.
+
+Implementation note (2026-08-20): `WF-080-20` through `WF-080-25` are complete and the Wave 2 gate is proven live on Foundry 14.366 / PF2E 8.4.1. One guarded run (`6a8d72f7-0008-4451-8ca4-4ecf1ef34272`) passed all ten acquisition cases: ordinary purchase and retain-all, every forced retry boundary, lost final acknowledgement, both non-GM PF2E-native Dwarf Clan Dagger and Sarangay Head Gem routes with zero acquisition item-create writes, and separate-session GM review. Reload evidence matched the durable manifests and exact native grant chains. The pinned PF2E source scan at commit `bf1502676d863c73d67fd615af78c73ff908c10f` also matched `docs/coverage/pf2e-8.4.1-level1-physical-grants.json` with no missing or unexpected routes or observations. This clears the Wave 3 dependency gate; it does not mark Wave 3 or the 0.8.0 release complete.
 
 ## Wave 3 — Complete higher-level rules and GM control
 

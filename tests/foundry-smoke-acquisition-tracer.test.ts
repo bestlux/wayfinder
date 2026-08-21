@@ -14,6 +14,7 @@ import {
 } from "../src/wayfinder/domain/acquisition-ledger";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
 import {
+  createPlannedClassGrant,
   createPreparedClassGrantPlan,
   reconcilePreparedClassGrants,
 } from "../src/wayfinder/domain/class-grant-reconciliation";
@@ -291,6 +292,29 @@ describe("Foundry Wave-2 acquisition tracer", () => {
     expect(findingCodes(result)).toEqual([]);
   });
 
+  it("qualifies exact zero-write PF2E-native evidence and rejects stamps, chain drift, and claimed creates", async () => {
+    const definition = acquisitionSmokeCases.find(
+      (smokeCase) => smokeCase.id === "equipment-l1-owner-dwarf-clan-dagger-native-retry"
+    )!;
+    const valid = await nativeRetryResult(definition);
+    expect(findingCodes(qualifySmokeResult(valid, [definition]))).toEqual([]);
+
+    const stamped = structuredClone(valid);
+    stamped.cases[0].actor.items[0].acquisition = { batchId: "batch-id" };
+    stamped.cases[0].evidence.acquisition.durability.items[0].acquisition = { batchId: "batch-id" };
+    expect(findingCodes(qualifySmokeResult(stamped, [definition]))).toContain("manifest-item-identity-mismatch");
+
+    const wrongChain = structuredClone(valid);
+    wrongChain.cases[0].actor.items[1].sourceId = LEVEL_ONE_DAGGER.sourceUuid;
+    expect(findingCodes(qualifySmokeResult(wrongChain, [definition]))).toContain("manifest-item-identity-mismatch");
+
+    const claimedCreate = structuredClone(valid);
+    claimedCreate.cases[0].evidence.acquisitionUi.acquisitionItemCreateCheckpoints = 1;
+    expect(findingCodes(qualifySmokeResult(claimedCreate, [definition]))).toContain(
+      "acquisition-item-create-checkpoint-mismatch"
+    );
+  });
+
   it("qualifies a GM-review purchase only from its exact separate executor session and policy", async () => {
     const definition = acquisitionSmokeCases.at(-1)!;
     const valid = qualifySmokeResult(await purchaseResult(definition), [definition]);
@@ -557,6 +581,108 @@ async function retainAllResult(definition: (typeof acquisitionSmokeCases)[number
   return baseResult(definition, manifest, [], manifest.currency.observedCopper);
 }
 
+async function nativeRetryResult(definition: (typeof acquisitionSmokeCases)[number]): Promise<any> {
+  const manifest = await productionManifest(definition);
+  const native = definition.acquisitionCase.nativeGrant!;
+  const items = [
+    {
+      id: "native-item",
+      name: native.target.name,
+      type: native.target.itemType,
+      sourceId: native.target.sourceUuid,
+      quantity: 1,
+      containerId: null,
+      isPhysical: true,
+      isCurrency: false,
+      acquisition: null,
+      grantedById: "native-granter",
+      grantAncestryIds: ["native-granter", "native-ancestry"],
+      location: null,
+      slotId: null,
+      trainingKey: null,
+      destinationKey: null,
+      grantRules: [],
+      ruleSelections: {},
+      traits: [],
+      spellcasting: null,
+    },
+    {
+      id: "native-granter",
+      name: native.granter.name,
+      type: "feat",
+      sourceId: native.granter.sourceUuid,
+      quantity: null,
+      containerId: null,
+      isPhysical: false,
+      isCurrency: false,
+      acquisition: null,
+      grantedById: "native-ancestry",
+      grantAncestryIds: ["native-ancestry"],
+      location: "native-ancestry",
+      slotId: "system-grant-native",
+      trainingKey: null,
+      destinationKey: null,
+      grantRules: [],
+      ruleSelections: {},
+      traits: [],
+      spellcasting: null,
+    },
+    {
+      id: "native-ancestry",
+      name: native.ancestry.name,
+      type: "ancestry",
+      sourceId: native.ancestry.sourceUuid,
+      quantity: null,
+      containerId: null,
+      isPhysical: false,
+      isCurrency: false,
+      acquisition: null,
+      grantedById: null,
+      grantAncestryIds: [],
+      location: null,
+      slotId: "ancestry-level-1",
+      trainingKey: null,
+      destinationKey: null,
+      grantRules: [],
+      ruleSelections: {},
+      traits: [],
+      spellcasting: null,
+    },
+  ];
+  const result = baseResult(definition, manifest, items, manifest.currency.observedCopper);
+  result.cases[0].evidence.acquisition.failureSnapshot = {
+    checkpoint: writeCheckpoint("currency-convergence", "before", 1),
+    point: "currency-before",
+    batchId: "batch-id",
+    afterItemIndex: null,
+    currencyOperationIndex: null,
+    message: "Intentional failure at write:currency-convergence:before.",
+    actualItemIds: [],
+    observedCurrencyCopper: 0,
+    manifestId: null,
+    draftPresent: true,
+  };
+  result.cases[0].evidence.acquisition.retry = {
+    attempted: true,
+    converged: true,
+    batchId: "batch-id",
+    manifestId: "manifest-id",
+    draftPresentBeforeRetry: true,
+    draftClearedAfterRetry: true,
+    preRetryItemIds: [],
+    postRetryItemIds: [],
+    preRetryCurrencyCopper: 0,
+    postRetryCurrencyCopper: 1500,
+    checkpoints: [
+      writeCheckpoint("currency-convergence", "before", 1),
+      writeCheckpoint("currency-convergence", "after", 1),
+      writeCheckpoint("final-actor-update", "before", 1),
+      writeCheckpoint("final-actor-update", "after", 1),
+    ],
+  };
+  return result;
+}
+
 function baseResult(
   definition: (typeof acquisitionSmokeCases)[number],
   manifest: any,
@@ -566,7 +692,11 @@ function baseResult(
   const runtime = { foundryVersion: "14.366", pf2eVersion: "8.4.1", moduleVersion: "0.8.0" };
   const gmReview = definition.acquisitionCase.executorRole === "gm-reviewer";
   const executorUserId = gmReview ? "gm-id" : "owner-id";
-  const durableItems = items.filter((item) => item.acquisition?.batchId === manifest.batchId);
+  const durableItemIds = new Set([
+    ...manifest.entries.flatMap((entry: any) => entry.observedItems.map((observed: any) => observed.actualItemId)),
+    ...manifest.classGrants.flatMap((classGrant: any) => classGrant.observedItemIds),
+  ]);
+  const durableItems = items.filter((item) => durableItemIds.has(item.id));
   return {
     schemaVersion: SMOKE_EVIDENCE_SCHEMA_VERSION,
     foundryVersion: runtime.foundryVersion,
@@ -643,6 +773,20 @@ function baseResult(
             failureSnapshot: null,
             retry: null,
           },
+          acquisitionUi: {
+            actorSheetOpened: true,
+            launchControlClicked: true,
+            equipmentPaneOpened: true,
+            dispositionReviewed: true,
+            applyClicked: true,
+            completed: true,
+            retryClicked: definition.acquisitionCase.failure !== null,
+            failureVisible: definition.acquisitionCase.failure !== null,
+            partialStateVisible: definition.acquisitionCase.failure !== null,
+            draftRecoveryVisible: definition.acquisitionCase.failure !== null,
+            lateAcknowledgementConverged: false,
+            acquisitionItemCreateCheckpoints: definition.acquisitionCase.expectedAcquisitionItemCreateCheckpoints ?? 0,
+          },
           applyReview: { confirmationMessage: "", reviewLines: [] },
         },
         failures: [],
@@ -663,16 +807,35 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
   const gmReview = expected.executorRole === "gm-reviewer";
   const executorUserId = executorUserIdOverride ?? (gmReview ? "gm-id" : "owner-id");
   const entry = expected.expectedEntries[0];
+  const native = expected.nativeGrant;
+  const plannedGrant = native
+    ? createPlannedClassGrant({
+        grantId: native.grantId,
+        profileId: native.profileId,
+        origin: { sourceSlotId: native.originSlotId, sourceUuid: native.ancestry.sourceUuid },
+        granterSourceUuid: native.granter.sourceUuid,
+        expected: {
+          sourceUuid: native.target.sourceUuid,
+          quantity: native.target.quantity,
+          itemType: native.target.itemType,
+        },
+        materializer: "pf2e-native",
+        eligibilityKind: "fixed-class-grant",
+        resaleRule: "normal",
+        eligibilityEvidence: { kind: "fixed-native-profile" },
+        nativeGrantChainSourceUuids: native.nativeGrantChainSourceUuids,
+      })
+    : null;
   const price = entry
     ? createAcquisitionPriceSnapshot({
-        basePrice: { kind: "priced", value: { sp: 2 } },
+        basePrice: { kind: "priced", value: { cp: entry.unitPriceCopper } },
         size: "medium",
         sizeSensitive: true,
         preciousMaterial: false,
         adjustedBulkPriceCopper: null,
         configurationPriceCopper: 0,
         pricePer: 1,
-        sourceQuantity: LEVEL_ONE_DAGGER.sourceQuantity,
+        sourceQuantity: entry.sourceQuantity,
         requestedQuantity: entry.quantity,
       })
     : null;
@@ -683,25 +846,27 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
           schemaVersion: 1 as const,
           lineId: "line-id",
           sourceUuid: entry.sourceUuid,
-          documentFingerprint: "dagger-document-fingerprint",
-          priceFingerprint: "dagger-price-fingerprint",
-          itemLevel: LEVEL_ONE_DAGGER.level,
+          documentFingerprint: "document-fingerprint",
+          priceFingerprint: "price-fingerprint",
+          itemLevel: entry.level,
           permanence: "permanent" as const,
           componentKind: "baseline-item" as const,
           policyDecision: {
-            eligible: true,
+            eligible: native === null,
             packId: "pf2e.equipment-srd",
             publicationSlug: "player-core",
-            rarity: "common" as const,
+            rarity: entry.rarity,
             sourceBasis: "approved-pack",
-            rarityBasis: "common",
+            rarityBasis: native ? "blanket-common" : "common",
             characterAccessRef: null,
             sourceExceptionJudgmentId: null,
             rarityExceptionJudgmentId: null,
             abpTreatment: "unchanged",
           },
-          funding: { lane: "currency" as const },
-          stackingIntent: "aggregate" as const,
+          funding: native
+            ? { lane: "class-grant" as const, grant: { plannedGrantId: native.grantId } }
+            : { lane: "currency" as const },
+          stackingIntent: entry.stackingIntent,
           price: price!.value,
         },
       ]
@@ -712,7 +877,7 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
       batchId: "batch-id",
       manifestId: "manifest-id",
       targetLevel: 1,
-      recipe: { kind: "lump-sum" },
+      recipe: { kind: native ? "permanent-items" : "lump-sum" },
     }),
     policySnapshot: {
       version: 1 as const,
@@ -721,12 +886,12 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
         subject: { actorId: "actor-id", draftId: "draft-id", targetLevel: 1 },
         numericPolicyRef: CHARACTER_WEALTH_POLICY_REF,
         semanticPolicyRef: SEMANTIC_WEALTH_POLICY_REF,
-        resolvedRecipe: { kind: "lump-sum" as const },
+        resolvedRecipe: { kind: native ? ("permanent-items" as const) : ("lump-sum" as const) },
         budgetCopper: 1500,
         allowances: [],
         worldRecipePolicy: {
           enabledRecipes: ["lump-sum", "permanent-items"] as const,
-          defaultRecipe: "lump-sum" as const,
+          defaultRecipe: native ? ("permanent-items" as const) : ("lump-sum" as const),
         },
         sourcePolicy: {
           configuredPackFamilies: ["pf2e"],
@@ -751,9 +916,20 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
       actorId: "actor-id",
       capturedAt: "2026-08-19T14:00:00.000Z",
       currencyCopper: 0,
-      physicalItems: [],
+      physicalItems: native
+        ? [
+            {
+              itemId: "native-item",
+              type: native.target.itemType,
+              sourceUuid: native.target.sourceUuid,
+              quantity: 1,
+              containerId: null,
+              acquisitionIdentity: null,
+            },
+          ]
+        : [],
     }),
-    plannedClassGrants: [],
+    plannedClassGrants: plannedGrant ? [plannedGrant] : [],
     classGrantReconciliations: [],
     lines,
   };
@@ -762,7 +938,7 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
     draftId: draft.draftId,
     batchId: draft.batchId,
     targetLevel: draft.targetLevel,
-    grants: [],
+    grants: plannedGrant ? [plannedGrant] : [],
   });
   const ledger = evaluateAcquisitionLedger(draft, classGrantPlan);
   const reviewed =
@@ -784,7 +960,7 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
   const observedItems = identityPlan.entries.flatMap((manifestEntry) =>
     manifestEntry.plannedItems.map((planned) => ({
       plannedItemId: planned.plannedItemId,
-      actualItemId: "dagger-item",
+      actualItemId: native ? "native-item" : "dagger-item",
       actualSourceUuid: planned.sourceUuid,
       actualQuantity: planned.quantity,
       plannedContainerId: planned.plannedContainerId,
@@ -793,7 +969,40 @@ async function productionManifest(definition: (typeof acquisitionSmokeCases)[num
   );
   const finalClassGrantReconciliation = reconcilePreparedClassGrants({
     plan: classGrantPlan,
-    actorItems: [],
+    actorItems: native
+      ? [
+          {
+            itemId: "native-item",
+            sourceUuid: native.target.sourceUuid,
+            itemType: native.target.itemType,
+            quantity: 1,
+            grantedByItemId: "native-granter",
+            locationItemId: null,
+            wayfinderSlotId: null,
+            acquisitionIdentity: null,
+          },
+          {
+            itemId: "native-granter",
+            sourceUuid: native.granter.sourceUuid,
+            itemType: "feat",
+            quantity: 1,
+            grantedByItemId: "native-ancestry",
+            locationItemId: "native-ancestry",
+            wayfinderSlotId: null,
+            acquisitionIdentity: null,
+          },
+          {
+            itemId: "native-ancestry",
+            sourceUuid: native.ancestry.sourceUuid,
+            itemType: "ancestry",
+            quantity: 1,
+            grantedByItemId: null,
+            locationItemId: null,
+            wayfinderSlotId: "ancestry-level-1",
+            acquisitionIdentity: null,
+          },
+        ]
+      : [],
     phase: "final",
   });
   const currency = {

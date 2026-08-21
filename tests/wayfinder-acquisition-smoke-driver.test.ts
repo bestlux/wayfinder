@@ -185,15 +185,15 @@ function validBootstrap() {
       {
         actorId: "actor-id",
         caseId: "equipment-l1-owner-common-purchase",
-        definitionFingerprint: `wf-acquisition-case-v1-${"a".repeat(64)}`,
+        definitionFingerprint: `wf-acquisition-case-v2-${"a".repeat(64)}`,
         checkpointTarget: null,
         caseDefinition: {
           id: "equipment-l1-owner-common-purchase",
           caseKind: "acquisition",
           targetLevel: 1,
-          definitionFingerprint: `wf-acquisition-case-v1-${"a".repeat(64)}`,
+          definitionFingerprint: `wf-acquisition-case-v2-${"a".repeat(64)}`,
           acquisitionCase: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             executorRole: "non-gm-owner",
             targetLevel: 1,
             disposition: "purchase-ledger",
@@ -216,6 +216,8 @@ function validBootstrap() {
                 unitPriceCopper: 20,
               },
             ],
+            nativeGrant: null,
+            expectedAcquisitionItemCreateCheckpoints: null,
             policyReview: { required: false, reviewerRole: "gm" },
             failure: null,
           },

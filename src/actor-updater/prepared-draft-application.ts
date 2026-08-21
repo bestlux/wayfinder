@@ -929,7 +929,9 @@ async function executeFinalActorPhase(
       ? cloneData(
           await options.resolveFinalActorUpdate({
             classGrantReconciliations: cloneData(completedClassGrantReconciliations),
-            acquisition: cloneData(acquisitionFinalEvidence),
+            // The identity plan is an in-memory prepared authority branded by its domain service.
+            // Cloning it would turn valid final evidence into an unprepared lookalike.
+            acquisition: acquisitionFinalEvidence,
           })
         )
       : cloneData(options.finalActorUpdate ?? {});

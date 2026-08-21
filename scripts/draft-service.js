@@ -99,6 +99,19 @@ export function normalizeDraft(raw, fallbackTargetLevel) {
 function sanitizeRecoveryActorUpdate(value) {
     if (!isRecord(value))
         return {};
+    if (value.schemaVersion === 1 && Array.isArray(value.entries)) {
+        const entries = value.entries.map((entry) => {
+            if (!isRecord(entry) || typeof entry.path !== "string" || !entry.path.startsWith("system."))
+                return null;
+            return [entry.path, cloneData(entry.value)];
+        });
+        if (entries.some((entry) => entry === null))
+            return {};
+        const recovered = entries;
+        if (new Set(recovered.map(([path]) => path)).size !== recovered.length)
+            return {};
+        return Object.fromEntries(recovered);
+    }
     return Object.fromEntries(Object.entries(cloneData(value)).filter(([path]) => path.startsWith("system.")));
 }
 function clearLegacyClassArchetypeDependentState(state) {

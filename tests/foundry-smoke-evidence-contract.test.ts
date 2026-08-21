@@ -207,8 +207,7 @@ describe("Foundry smoke evidence contract", () => {
       sourceUuid: "Compendium.pf2e.classfeatures.Item.fpwtpm8pdwO1I6MO",
       message: "Inventor Armor Innovation is not supported by Wayfinder starting equipment.",
     };
-    const expectedOutcome = {
-      kind: "registered-physical-grant-rejection",
+    const activeRoute = {
       routeId: registryBlocker.routeId,
       classification: "unsupported-handoff",
       preReview: true,
@@ -216,12 +215,18 @@ describe("Foundry smoke evidence contract", () => {
       sourceUuid: registryBlocker.sourceUuid,
       sourceSlotId: registryBlocker.sourceSlotId,
     };
+    const expectedOutcome = {
+      kind: "registered-physical-grant-rejection",
+      ...activeRoute,
+      activeRoutes: [activeRoute],
+    };
     input.cases[0].actor = actor;
     input.cases[0].evidence.applyReview = { confirmationMessage: null, reviewLines: [] };
     input.cases[0].evidence.expectedRejection = {
       kind: "registered-physical-grant-rejection",
       expectedOutcome,
       registryRoute: structuredClone(physicalGrantRouteById(expectedOutcome.routeId)),
+      registryRoutes: [structuredClone(physicalGrantRouteById(expectedOutcome.routeId))],
       registryBlockers: [registryBlocker],
       rejection: {
         errorName: "StartingEquipmentPhysicalGrantCoverageError",

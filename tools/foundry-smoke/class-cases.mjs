@@ -156,25 +156,33 @@ function classCase({
   };
 }
 
-function registeredPhysicalGrantRejection(routeId, sourceSlotId) {
-  const route = physicalGrantRouteById(routeId);
-  const activationVariant = route?.classification === "unsupported-handoff" ? route.activationVariants[0] : null;
-  if (
-    route?.classification !== "unsupported-handoff" ||
-    route.blocker.preReview !== true ||
-    route.activationVariants.length !== 1 ||
-    activationVariant?.length !== 1
-  ) {
-    throw new TypeError(`Smoke rejection route ${routeId} must resolve to one executable registry requirement.`);
-  }
+function registeredPhysicalGrantRejection(...bindings) {
+  const activeRoutes = bindings.map(({ routeId, sourceSlotId }) => {
+    const route = physicalGrantRouteById(routeId);
+    const activationVariant = route?.classification === "unsupported-handoff" ? route.activationVariants[0] : null;
+    if (
+      route?.classification !== "unsupported-handoff" ||
+      route.blocker.preReview !== true ||
+      route.activationVariants.length !== 1 ||
+      activationVariant?.length !== 1
+    ) {
+      throw new TypeError(`Smoke rejection route ${routeId} must resolve to one executable registry requirement.`);
+    }
+    return Object.freeze({
+      routeId: route.routeId,
+      classification: route.classification,
+      preReview: route.blocker.preReview,
+      reasonCode: route.blocker.reasonCode,
+      sourceUuid: activationVariant[0].sourceUuid,
+      sourceSlotId,
+    });
+  });
+  const primary = activeRoutes[0];
+  if (!primary) throw new TypeError("Smoke rejection must name at least one executable registry route.");
   return Object.freeze({
     kind: "registered-physical-grant-rejection",
-    routeId: route.routeId,
-    classification: route.classification,
-    preReview: route.blocker.preReview,
-    reasonCode: route.blocker.reasonCode,
-    sourceUuid: activationVariant[0].sourceUuid,
-    sourceSlotId,
+    ...primary,
+    activeRoutes: Object.freeze(activeRoutes),
   });
 }
 
@@ -900,10 +908,10 @@ export const smokeCases = [
     className: "Inventor",
     classSlug: "inventor",
     caseKind: "expected-rejection",
-    expectedOutcome: registeredPhysicalGrantRejection(
-      "inventor-armor-innovation",
-      "class-branch-innovation-level-1"
-    ),
+    expectedOutcome: registeredPhysicalGrantRejection({
+      routeId: "inventor-armor-innovation",
+      sourceSlotId: "class-branch-innovation-level-1",
+    }),
     keyAbility: "int",
     expectedStepIds: ["class-choice-armor-innovation-armorInnovation-level-1", "class-branch-innovation-level-1"],
     preferredSelections: {
@@ -1160,8 +1168,14 @@ export const smokeCases = [
     classSlug: "thaumaturge",
     caseKind: "expected-rejection",
     expectedOutcome: registeredPhysicalGrantRejection(
-      "thaumaturge-amulet-implement",
-      "class-branch-first-implement-and-esoterica-level-1"
+      {
+        routeId: "thaumaturge-amulet-implement",
+        sourceSlotId: "class-branch-first-implement-and-esoterica-level-1",
+      },
+      {
+        routeId: "thaumaturge-wand-implement",
+        sourceSlotId: "class-branch-second-implement-level-5",
+      }
     ),
     keyAbility: "cha",
     expectedStepIds: [

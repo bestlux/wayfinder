@@ -2165,11 +2165,14 @@ function buildExpectedPhysicalGrantRejectionEvidence({
   const registryBlockers = Array.isArray(error?.blockers)
     ? error.blockers
     : modules.physicalGrantCoverageBlockers(draft, planSteps);
-  const activeRoute = modules.physicalGrantRouteById(expectedOutcome.routeId);
+  const registryRoutes = expectedOutcome.activeRoutes.map((expected) =>
+    modules.physicalGrantRouteById(expected.routeId)
+  );
   return {
     kind: "registered-physical-grant-rejection",
     expectedOutcome: structuredClone(expectedOutcome),
-    registryRoute: activeRoute ? structuredClone(activeRoute) : null,
+    registryRoute: registryRoutes[0] ? structuredClone(registryRoutes[0]) : null,
+    registryRoutes: structuredClone(registryRoutes),
     registryBlockers: structuredClone(registryBlockers),
     rejection: {
       errorName: error instanceof Error ? error.name : null,
@@ -2188,29 +2191,48 @@ function buildExpectedPhysicalGrantRejectionEvidence({
 function validateExpectedPhysicalGrantRejection(evidence, failures) {
   const blockers = evidence?.registryBlockers ?? [];
   const expected = evidence?.expectedOutcome;
-  const matched = blockers.find((blocker) => blocker?.routeId === expected?.routeId);
+  const expectedRoutes = expected?.activeRoutes ?? [];
+  const registryRoutes = evidence?.registryRoutes ?? [];
+  const primaryExpected = expectedRoutes[0];
+  const primaryBlocker = blockers[0];
   if (
     evidence?.kind !== "registered-physical-grant-rejection" ||
-    blockers.length !== 1 ||
-    matched?.code !== "unsupported-physical-grant" ||
-    matched?.reasonCode !== expected?.reasonCode ||
-    matched?.sourceUuid !== expected?.sourceUuid ||
-    matched?.sourceSlotId !== expected?.sourceSlotId ||
-    evidence?.registryRoute?.routeId !== expected?.routeId ||
-    evidence?.registryRoute?.classification !== expected?.classification ||
-    evidence?.registryRoute?.blocker?.preReview !== expected?.preReview ||
-    evidence?.registryRoute?.blocker?.reasonCode !== expected?.reasonCode ||
-    !evidence?.registryRoute?.activationVariants?.some((variant) =>
-      variant.some((requirement) => requirement?.sourceUuid === expected?.sourceUuid)
-    )
+    expectedRoutes.length === 0 ||
+    blockers.length !== expectedRoutes.length ||
+    registryRoutes.length !== expectedRoutes.length ||
+    JSON.stringify(evidence?.registryRoute) !== JSON.stringify(registryRoutes[0]) ||
+    expected?.routeId !== primaryExpected?.routeId ||
+    expected?.classification !== primaryExpected?.classification ||
+    expected?.preReview !== primaryExpected?.preReview ||
+    expected?.reasonCode !== primaryExpected?.reasonCode ||
+    expected?.sourceUuid !== primaryExpected?.sourceUuid ||
+    expected?.sourceSlotId !== primaryExpected?.sourceSlotId ||
+    !expectedRoutes.every((expectedRoute, index) => {
+      const blocker = blockers[index];
+      const registryRoute = registryRoutes[index];
+      return (
+        blocker?.code === "unsupported-physical-grant" &&
+        blocker?.routeId === expectedRoute.routeId &&
+        blocker?.reasonCode === expectedRoute.reasonCode &&
+        blocker?.sourceUuid === expectedRoute.sourceUuid &&
+        blocker?.sourceSlotId === expectedRoute.sourceSlotId &&
+        registryRoute?.routeId === expectedRoute.routeId &&
+        registryRoute?.classification === expectedRoute.classification &&
+        registryRoute?.blocker?.preReview === expectedRoute.preReview &&
+        registryRoute?.blocker?.reasonCode === expectedRoute.reasonCode &&
+        registryRoute?.activationVariants?.some((variant) =>
+          variant.some((requirement) => requirement?.sourceUuid === expectedRoute.sourceUuid)
+        )
+      );
+    })
   ) {
     failures.push("Expected rejection did not match its exact executable registry route contract.");
   }
   if (
     evidence?.rejection?.errorName !== "StartingEquipmentPhysicalGrantCoverageError" ||
     evidence.rejection.isTypedProductRejection !== true ||
-    JSON.stringify(evidence.rejection.blocker) !== JSON.stringify(matched) ||
-    evidence.rejection.message !== matched?.message ||
+    JSON.stringify(evidence.rejection.blocker) !== JSON.stringify(primaryBlocker) ||
+    evidence.rejection.message !== primaryBlocker?.message ||
     evidence.confirmationMessage !== null
   ) {
     failures.push("Expected rejection did not stop at its exact physical-grant blocker before equipment review.");

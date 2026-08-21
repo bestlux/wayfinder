@@ -265,30 +265,51 @@ function matrixExpectedRejectionFailures(entry, expected) {
   const evidence = entry?.evidence?.expectedRejection;
   const blockers = evidence?.registryBlockers;
   const registryRoute = evidence?.registryRoute;
-  const executableRoute = physicalGrantRouteById(expected.routeId);
-  const matchedBlocker = Array.isArray(blockers)
-    ? blockers.find((blocker) => blocker?.routeId === expected.routeId)
-    : null;
+  const expectedRoutes = expected?.activeRoutes;
+  const registryRoutes = evidence?.registryRoutes;
+  const primaryExpected = Array.isArray(expectedRoutes) ? expectedRoutes[0] : null;
+  const matchedBlocker = Array.isArray(blockers) ? blockers[0] : null;
   const actorBefore = evidence?.actorBefore;
   const actorAfter = evidence?.actorAfter;
   const valid =
     evidence?.kind === "registered-physical-grant-rejection" &&
     isDeepStrictEqual(evidence?.expectedOutcome, expected) &&
+    Array.isArray(expectedRoutes) &&
+    expectedRoutes.length > 0 &&
     Array.isArray(blockers) &&
-    blockers.length === 1 &&
-    matchedBlocker?.code === "unsupported-physical-grant" &&
-    matchedBlocker?.reasonCode === expected.reasonCode &&
-    matchedBlocker?.sourceSlotId === expected.sourceSlotId &&
-    matchedBlocker?.sourceUuid === expected.sourceUuid &&
-    registryRoute?.routeId === expected.routeId &&
-    isDeepStrictEqual(registryRoute, executableRoute) &&
-    registryRoute?.classification === expected.classification &&
-    executableRoute?.classification === "unsupported-handoff" &&
-    registryRoute?.blocker?.preReview === expected.preReview &&
-    registryRoute?.blocker?.reasonCode === expected.reasonCode &&
-    registryRoute?.activationVariants?.some((variant) =>
-      variant.some((requirement) => requirement?.sourceUuid === expected.sourceUuid)
-    ) &&
+    blockers.length === expectedRoutes.length &&
+    Array.isArray(registryRoutes) &&
+    registryRoutes.length === expectedRoutes.length &&
+    isDeepStrictEqual(registryRoute, registryRoutes[0]) &&
+    expected.routeId === primaryExpected?.routeId &&
+    expected.classification === primaryExpected?.classification &&
+    expected.preReview === primaryExpected?.preReview &&
+    expected.reasonCode === primaryExpected?.reasonCode &&
+    expected.sourceUuid === primaryExpected?.sourceUuid &&
+    expected.sourceSlotId === primaryExpected?.sourceSlotId &&
+    expectedRoutes.every((expectedRoute, index) => {
+      const blocker = blockers[index];
+      const route = registryRoutes[index];
+      const executableRoute = physicalGrantRouteById(expectedRoute.routeId);
+      return (
+        blocker?.code === "unsupported-physical-grant" &&
+        blocker?.routeId === expectedRoute.routeId &&
+        blocker?.reasonCode === expectedRoute.reasonCode &&
+        blocker?.sourceSlotId === expectedRoute.sourceSlotId &&
+        blocker?.sourceUuid === expectedRoute.sourceUuid &&
+        typeof blocker?.message === "string" &&
+        blocker.message.length > 0 &&
+        route?.routeId === expectedRoute.routeId &&
+        isDeepStrictEqual(route, executableRoute) &&
+        route?.classification === expectedRoute.classification &&
+        executableRoute?.classification === "unsupported-handoff" &&
+        route?.blocker?.preReview === expectedRoute.preReview &&
+        route?.blocker?.reasonCode === expectedRoute.reasonCode &&
+        route?.activationVariants?.some((variant) =>
+          variant.some((requirement) => requirement?.sourceUuid === expectedRoute.sourceUuid)
+        )
+      );
+    }) &&
     evidence?.rejection?.errorName === "StartingEquipmentPhysicalGrantCoverageError" &&
     evidence?.rejection?.isTypedProductRejection === true &&
     isDeepStrictEqual(evidence.rejection.blocker, matchedBlocker) &&

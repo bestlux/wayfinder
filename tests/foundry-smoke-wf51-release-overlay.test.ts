@@ -249,6 +249,11 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(new Set(expectedWf51MatrixExecutionIds())).toHaveProperty("size", 54);
     const children = matrixChildren();
     expect(qualifyFreshWf51Matrix(children)).toEqual([]);
+    const thaumaturge = children[0].result.cases.find((entry: any) => entry.id === "thaumaturge-l1-l5-apply-rerun");
+    expect(thaumaturge.evidence.expectedRejection.registryBlockers.map((blocker: any) => blocker.routeId)).toEqual([
+      "thaumaturge-amulet-implement",
+      "thaumaturge-wand-implement",
+    ]);
 
     children[0].result.cases[0].status = "fail";
     expect(qualifyFreshWf51Matrix(children)).toEqual(
@@ -295,6 +300,16 @@ describe("WF-080-51 focused live release overlay", () => {
     swappedInventor.evidence.expectedRejection.registryBlockers[0].routeId = "inventor-weapon-innovation";
     swappedInventor.evidence.expectedRejection.registryRoute.routeId = "inventor-weapon-innovation";
     expect(qualifyFreshWf51Matrix(rejectedRouteSwapped)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/registered pre-review zero-write rejection/i)])
+    );
+
+    const missingSecondaryThaumaturgeRoute = matrixChildren();
+    const incompleteThaumaturge = missingSecondaryThaumaturgeRoute[0].result.cases.find(
+      (entry: any) => entry.id === "thaumaturge-l1-l5-apply-rerun"
+    );
+    incompleteThaumaturge.evidence.expectedRejection.registryBlockers.pop();
+    incompleteThaumaturge.evidence.expectedRejection.registryRoutes.pop();
+    expect(qualifyFreshWf51Matrix(missingSecondaryThaumaturgeRoute)).toEqual(
       expect.arrayContaining([expect.stringMatching(/registered pre-review zero-write rejection/i)])
     );
 
@@ -894,14 +909,18 @@ function matrixChildren(): any[] {
           sourceGroups: [],
           sourceIdentityConflicts: [],
         };
-        const blocker = {
+        const blockers = expectedOutcome.activeRoutes.map((expectedRoute: any) => ({
           code: "unsupported-physical-grant",
-          routeId: expectedOutcome.routeId,
-          reasonCode: expectedOutcome.reasonCode,
-          sourceSlotId: expectedOutcome.sourceSlotId,
-          sourceUuid: expectedOutcome.sourceUuid,
-          message: `${expectedOutcome.routeId} is not supported.`,
-        };
+          routeId: expectedRoute.routeId,
+          reasonCode: expectedRoute.reasonCode,
+          sourceSlotId: expectedRoute.sourceSlotId,
+          sourceUuid: expectedRoute.sourceUuid,
+          message: `${expectedRoute.routeId} is not supported.`,
+        }));
+        const registryRoutes = expectedOutcome.activeRoutes.map((expectedRoute: any) =>
+          structuredClone(physicalGrantRouteById(expectedRoute.routeId))
+        );
+        const blocker = blockers[0];
         return {
           ...sourceCase(id),
           actor: qualifiedActor,
@@ -925,8 +944,9 @@ function matrixChildren(): any[] {
             expectedRejection: {
               kind: "registered-physical-grant-rejection",
               expectedOutcome: structuredClone(expectedOutcome),
-              registryRoute: structuredClone(physicalGrantRouteById(expectedOutcome.routeId)),
-              registryBlockers: [blocker],
+              registryRoute: structuredClone(registryRoutes[0]),
+              registryRoutes,
+              registryBlockers: blockers,
               rejection: {
                 errorName: "StartingEquipmentPhysicalGrantCoverageError",
                 isTypedProductRejection: true,

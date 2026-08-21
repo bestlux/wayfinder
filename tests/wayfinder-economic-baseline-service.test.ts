@@ -52,6 +52,36 @@ describe("economic baseline actor service", () => {
     ]);
   });
 
+  it("excludes only PF2E-prepared temporary physical documents from durable wealth", () => {
+    const temporaryVial = itemFixture({
+      id: "temporary-vial",
+      type: "weapon",
+      quantity: 2,
+      sourceId: "Compendium.pf2e.equipment-srd.Item.ljT5pe8D7rudJqus",
+      temporary: true,
+      slug: "versatile-vial",
+      traits: ["acid", "alchemical", "bomb", "consumable", "infused", "splash"],
+    });
+    const foreignVial = itemFixture({
+      id: "foreign-vial",
+      type: "weapon",
+      quantity: 1,
+      sourceId: "Compendium.pf2e.equipment-srd.Item.ljT5pe8D7rudJqus",
+      temporary: false,
+      slug: "versatile-vial",
+      traits: ["acid", "alchemical", "bomb", "consumable", "infused", "splash"],
+    });
+
+    const baseline = captureActorEconomicBaseline(actorFixture([temporaryVial, foreignVial]));
+
+    expect(baseline.physicalItems).toEqual([
+      expect.objectContaining({
+        itemId: "foreign-vial",
+        sourceUuid: "Compendium.pf2e.equipment-srd.Item.ljT5pe8D7rudJqus",
+      }),
+    ]);
+  });
+
   it("fails closed on missing currency, malformed quantity, or unusable item classification", () => {
     expect(() => captureActorEconomicBaseline({ id: "actor-1", items: [] })).toThrow(/currency/u);
     expect(() =>
@@ -68,6 +98,19 @@ describe("economic baseline actor service", () => {
     const currencyMismatch = actorFixture([itemFixture({ id: "gold", type: "treasure", quantity: 1, currency: true })]);
     currencyMismatch.inventory.currency.copperValue = 200;
     expect(() => captureActorEconomicBaseline(currencyMismatch)).toThrow(/disagree/u);
+
+    const malformedTemporary = itemFixture({ id: "bad-temporary", type: "equipment", quantity: 1 });
+    (malformedTemporary as { isTemporary: unknown }).isTemporary = "yes";
+    expect(() => captureActorEconomicBaseline(actorFixture([malformedTemporary]))).toThrow(/temporary/u);
+
+    const conflictingTemporary = itemFixture({
+      id: "conflicting-temporary",
+      type: "equipment",
+      quantity: 1,
+      temporary: true,
+    });
+    conflictingTemporary.system.temporary = false;
+    expect(() => captureActorEconomicBaseline(actorFixture([conflictingTemporary]))).toThrow(/disagrees/u);
   });
 
   it("fails closed on dangling or cyclic container links", () => {
@@ -115,8 +158,18 @@ describe("economic baseline actor service", () => {
       sourceId: u.formulaBookItem,
     });
     (book.flags as Record<string, unknown>).pf2e = { grantedBy: { id: "formula" } };
+    const vial = itemFixture({
+      id: "versatile-vial",
+      type: "weapon",
+      quantity: 2,
+      sourceId: "Compendium.pf2e.equipment-srd.Item.ljT5pe8D7rudJqus",
+      temporary: true,
+      slug: "versatile-vial",
+      traits: ["acid", "alchemical", "bomb", "consumable", "infused", "splash"],
+    });
     const actor = actorFixture([
       book,
+      vial,
       actorFeat("formula", u.formulaBookFeature, "alchemy"),
       {
         ...actorFeat("alchemy", u.alchemyFeature, null),
@@ -140,28 +193,43 @@ describe("economic baseline actor service", () => {
       eligibilityEvidence: { kind: "fixed-native-profile" },
       nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
     });
-    const result = evaluateActorEconomicAdmission({
-      actor,
-      draftId: "draft-1",
-      batchId: "batch-1",
-      targetLevel: 1,
-      higherLevelStartEvidence: { kind: "not-required" },
-      history: {
-        previousCharacterAppliedAt: null,
-        previousTargetLevel: null,
-        completedAcquisitionManifestId: null,
-        completedAcquisitionManifestCorrupt: false,
-      },
-      preparedClassGrantPlan: createPreparedClassGrantPlan({
-        actorId: "actor-1",
+    const admission = () =>
+      evaluateActorEconomicAdmission({
+        actor,
         draftId: "draft-1",
         batchId: "batch-1",
         targetLevel: 1,
-        grants: [grant],
-      }),
-      classGrantPhase: "final",
+        higherLevelStartEvidence: { kind: "not-required" },
+        history: {
+          previousCharacterAppliedAt: null,
+          previousTargetLevel: null,
+          completedAcquisitionManifestId: null,
+          completedAcquisitionManifestCorrupt: false,
+        },
+        preparedClassGrantPlan: createPreparedClassGrantPlan({
+          actorId: "actor-1",
+          draftId: "draft-1",
+          batchId: "batch-1",
+          targetLevel: 1,
+          grants: [grant],
+        }),
+        classGrantPhase: "final",
+      });
+
+    expect(admission()).toMatchObject({ kind: "eligible-empty" });
+
+    actor.items.contents.push(
+      itemFixture({
+        id: "foreign-bomb",
+        type: "weapon",
+        quantity: 1,
+        sourceId: "Compendium.pf2e.equipment-srd.Item.foreign-bomb",
+      })
+    );
+    expect(admission()).toMatchObject({
+      kind: "handoff",
+      handoff: { reasons: [{ code: "foreign-physical-items", itemIds: ["foreign-bomb"] }] },
     });
-    expect(result).toMatchObject({ kind: "eligible-empty" });
   });
 
   it("authenticates Investigator formula-book admission through the exact methodology slot", () => {
@@ -256,15 +324,25 @@ function itemFixture(options: {
   sourceId?: string;
   acquisition?: unknown;
   currency?: boolean;
+  temporary?: boolean;
+  slug?: string;
+  traits?: string[];
 }) {
   return {
     id: options.id,
     type: options.type,
     quantity: options.quantity,
+    isTemporary: options.temporary ?? false,
     isCurrency: options.currency ?? false,
     assetValue: options.currency ? { copperValue: options.quantity * 100 } : undefined,
     isOfType: (type: string) => type === "physical" || (type === "treasure" && options.type === "treasure"),
-    system: { quantity: options.quantity, containerId: options.containerId ?? null },
+    system: {
+      quantity: options.quantity,
+      containerId: options.containerId ?? null,
+      temporary: options.temporary ?? false,
+      slug: options.slug,
+      traits: { value: options.traits ?? [] },
+    },
     _source: {
       system: {
         quantity: options.quantity,

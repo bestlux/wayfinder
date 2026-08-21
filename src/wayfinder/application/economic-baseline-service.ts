@@ -23,6 +23,7 @@ interface PhysicalItemLike {
   id?: unknown;
   type?: unknown;
   quantity?: unknown;
+  isTemporary?: unknown;
   isCurrency?: unknown;
   assetValue?: { copperValue?: unknown };
   isOfType?: (...types: string[]) => boolean;
@@ -46,6 +47,7 @@ interface PhysicalItemLike {
     containerId?: unknown;
     category?: unknown;
     slug?: unknown;
+    temporary?: unknown;
   };
 }
 
@@ -73,6 +75,7 @@ export function captureActorEconomicBaseline(
       throw new TypeError("PF2E physical item classification is unavailable.");
     }
     if (!item.isOfType("physical")) continue;
+    if (isTemporaryPhysicalItem(item)) continue;
     const quantity = validatedQuantity(item);
     if (parentItemId === null && isCurrencyItem(item)) {
       validateCurrencySource(item);
@@ -111,6 +114,26 @@ export function captureActorEconomicBaseline(
     currencyCopper: currencyCopper as number,
     physicalItems,
   });
+}
+
+function isTemporaryPhysicalItem(item: PhysicalItemLike): boolean {
+  const prepared = item.isTemporary;
+  const system = item.system?.temporary;
+  if (prepared !== undefined && typeof prepared !== "boolean") {
+    throw new TypeError("A PF2E physical item has malformed temporary-item classification.");
+  }
+  if (system !== undefined && typeof system !== "boolean") {
+    throw new TypeError("A PF2E physical item has malformed prepared temporary state.");
+  }
+  if (prepared !== undefined && system !== undefined && prepared !== system) {
+    throw new TypeError("A PF2E physical item's temporary-item classification disagrees with its prepared state.");
+  }
+  // PF2E materializes some class resources, including Alchemist Versatile Vials,
+  // as explicit temporary physical documents. They are usable inventory, but not
+  // durable character wealth. Source identity, zero Price, and the infused trait
+  // alone are insufficient: only PF2E's prepared temporary classification excludes
+  // the document from economic admission.
+  return prepared === true;
 }
 
 export function evaluateActorEconomicAdmission(args: {

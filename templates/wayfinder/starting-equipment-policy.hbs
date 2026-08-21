@@ -1,16 +1,9 @@
 <div class="equipment-render-policy" data-application-part="equipment-policy" data-step-id="{{activePane.stepId}}">
 <section class="equipment-policy-summary" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Policy.Aria"}}">
-  <article><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.Funding"}}</span><strong>{{activePane.policy.recipeLabel}}</strong></article>
-  <article><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.Budget"}}</span><strong aria-live="polite" aria-atomic="true">{{activePane.policy.budgetLabel}}</strong></article>
-  <article><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.Eligibility"}}</span><strong>{{activePane.policy.automaticEligibilityLabel}}</strong></article>
-  <article><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.Authority"}}</span><strong>{{activePane.policy.authorityLabel}}</strong></article>
-  <article><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.SelectedBy"}}</span><strong>{{activePane.policy.recipeSelectionLabel}}</strong></article>
-  <article class="equipment-policy-handoff"><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.ExistingGear"}}</span><strong>{{activePane.policy.handoffLabel}}</strong></article>
-  {{#each activePane.policy.explanations}}<p><i class="fa-solid fa-circle-info" aria-hidden="true"></i>{{this}}</p>{{/each}}
+  <p class="equipment-policy-primary"><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.Funding"}}: <strong>{{activePane.policy.recipeLabel}}</strong></span><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.Eligibility"}}: {{activePane.policy.automaticEligibilityLabel}}</span><span aria-live="polite" aria-atomic="true">{{localize "wayfinder-pf2e.StartingEquipment.Policy.Budget"}}: <strong>{{activePane.policy.budgetLabel}}</strong></span></p>
+  <p class="equipment-policy-context">{{localize "wayfinder-pf2e.StartingEquipment.Policy.Authority"}}: {{activePane.policy.authorityLabel}} · {{localize "wayfinder-pf2e.StartingEquipment.Policy.SelectedBy"}}: {{activePane.policy.recipeSelectionLabel}} · {{localize "wayfinder-pf2e.StartingEquipment.Policy.ExistingGear"}}: {{activePane.policy.handoffLabel}} {{#each activePane.policy.explanations}}{{this}} {{/each}}</p>
   {{#if activePane.policy.allowances.length}}
-    <div class="equipment-allowance-summary" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Allowance.Aria"}}">
-      {{#each activePane.policy.allowances}}<span class="{{#if used}}is-used{{/if}}"><strong>{{label}}</strong><small>{{#if used}}{{localize "wayfinder-pf2e.StartingEquipment.Allowance.Assigned"}}{{else}}{{localize "wayfinder-pf2e.StartingEquipment.Allowance.Available"}}{{/if}}</small></span>{{/each}}
-    </div>
+    <p class="equipment-allowance-summary" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Allowance.Aria"}}">{{#each activePane.policy.allowances}}<span class="{{#if used}}is-used{{/if}}"><strong>{{label}}</strong> · {{#if used}}{{localize "wayfinder-pf2e.StartingEquipment.Allowance.Assigned"}}{{else}}{{localize "wayfinder-pf2e.StartingEquipment.Allowance.Available"}}{{/if}}</span>{{/each}}</p>
   {{/if}}
   {{#if activePane.setup.canRevoke}}<button type="button" class="secondary compact" data-wayfinder-action="revoke-equipment-policy-judgment" data-wayfinder-focus-id="starting-equipment-revoke-approval" data-step-id="{{activePane.stepId}}" data-judgment-id="{{activePane.setup.activeJudgmentId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.RevokeApproval"}}</button>{{/if}}
   {{#if activePane.setup.canSetCustomLumpSum}}
@@ -22,8 +15,7 @@
   {{#if activePane.setup.canGrantExtraAllowance}}<button type="button" class="secondary compact" data-wayfinder-action="grant-extra-equipment-allowance" data-wayfinder-focus-id="starting-equipment-grant-allowance" data-step-id="{{activePane.stepId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.GrantExtraAllowance" level=activePane.level}}</button>{{/if}}
   {{#each activePane.setup.pendingRequests}}
     <article class="equipment-policy-request">
-      <p>{{localize "wayfinder-pf2e.StartingEquipment.Request.RequestedBy" kind=kindLabel requesterName=requesterName requestedAt=requestedAt}}</p>
-      <small>{{reason}}</small>
+      <p>{{localize "wayfinder-pf2e.StartingEquipment.Request.RequestedBy" kind=kindLabel requesterName=requesterName requestedAt=requestedAt}} {{reason}}</p>
       {{#if canApprove}}<button type="button" class="primary compact" data-wayfinder-action="approve-equipment-policy-request" data-wayfinder-focus-id="starting-equipment-approve-request:{{requestId}}" data-step-id="{{../activePane.stepId}}" data-request-id="{{requestId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.ApproveRequest"}}</button>{{/if}}
     </article>
   {{/each}}

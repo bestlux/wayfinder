@@ -11,59 +11,50 @@
 }
 
 .wayfinder-app .equipment-policy-summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 10px 12px;
   border: 1px solid var(--wf-rule);
   border-radius: var(--wf-radius);
   background: var(--wf-paper-strong);
 }
 
-.wayfinder-app .equipment-policy-summary article,
 .wayfinder-app .equipment-policy-summary p {
   min-width: 0;
   margin: 0;
 }
 
-.wayfinder-app .equipment-policy-summary article span,
-.wayfinder-app .equipment-policy-summary article strong {
-  display: block;
+.wayfinder-app .equipment-policy-primary {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
 }
 
-.wayfinder-app .equipment-policy-summary article span,
-.wayfinder-app .equipment-cart dt {
+.wayfinder-app .equipment-policy-primary > span,
+.wayfinder-app .equipment-policy-context {
   color: var(--wf-ink-soft);
-  font-size: 0.72rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
 }
 
-.wayfinder-app .equipment-policy-summary article strong {
-  margin-top: 3px;
-  font-size: 0.82rem;
-  line-height: 1.35;
+.wayfinder-app .equipment-policy-context {
+  flex: 1 1 100%;
 }
 
-.wayfinder-app .equipment-policy-summary article span,
-.wayfinder-app .equipment-policy-summary article strong,
 .wayfinder-app .equipment-callout h4,
 .wayfinder-app .equipment-callout p,
 .wayfinder-app .equipment-callout li,
 .wayfinder-app .equipment-catalogue-state p,
 .wayfinder-app .equipment-source-diagnostics li,
-.wayfinder-app .equipment-cart header,
 .wayfinder-app .equipment-cart footer {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.wayfinder-app .equipment-policy-summary .equipment-policy-handoff,
-.wayfinder-app .equipment-policy-summary p {
-  grid-column: 1 / -1;
-}
-
-.wayfinder-app .equipment-policy-summary p,
 .wayfinder-app .equipment-reviewed {
   display: flex;
   gap: 7px;
@@ -103,6 +94,10 @@
   min-width: 0;
 }
 
+.wayfinder-app .equipment-workspace:has(> .equipment-detail.is-empty) > .equipment-catalogue {
+  grid-column: 1 / -1;
+}
+
 .wayfinder-app .equipment-catalogue,
 .wayfinder-app .equipment-detail,
 .wayfinder-app .equipment-cart {
@@ -115,6 +110,7 @@
 .wayfinder-app .equipment-search-row,
 .wayfinder-app .equipment-filter-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px;
   border-bottom: 1px solid var(--wf-rule);
@@ -125,11 +121,7 @@
   flex: 1;
 }
 
-.wayfinder-app .equipment-filter-row {
-  overflow-x: auto;
-}
-
-.wayfinder-app .equipment-filter-row .is-selected {
+.wayfinder-app :is(.equipment-filter-row, .equipment-filter-panel, .equipment-source-filter-panel) .is-selected {
   border-color: var(--wf-accent-strong);
   background: var(--wf-accent);
 }
@@ -143,11 +135,11 @@
 }
 
 .wayfinder-app .equipment-result-list {
+  display: grid;
   max-height: 360px;
   overflow: auto;
 }
 
-.wayfinder-app .equipment-result,
 .wayfinder-app .equipment-cart-line {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -158,38 +150,55 @@
 }
 
 .wayfinder-app .equipment-result {
-  grid-template-columns: minmax(0, 1.2fr) auto minmax(8rem, 0.8fr);
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--wf-rule);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: left;
+  white-space: normal;
 }
 
 .wayfinder-app .equipment-result.is-previewing {
   background: var(--wf-accent);
 }
 
-.wayfinder-app .equipment-result-main {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  text-align: left;
-}
-
-.wayfinder-app .equipment-result-actions {
+.wayfinder-app .equipment-detail-actions,
+.wayfinder-app .equipment-filter-panel,
+.wayfinder-app .equipment-source-filter-panel > div {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  justify-content: end;
+  gap: 6px;
   min-width: 0;
 }
 
-.wayfinder-app .equipment-result-main span,
+.wayfinder-app .equipment-filter-panel,
+.wayfinder-app .equipment-source-filter-panel {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--wf-rule);
+}
+
+.wayfinder-app .equipment-source-filter-panel {
+  display: grid;
+  gap: 6px;
+}
+
+.wayfinder-app .equipment-source-filter-panel p {
+  margin: 0;
+  color: var(--wf-ink-soft);
+  font-size: 0.76rem;
+}
+
 .wayfinder-app .equipment-cart-line > span {
   min-width: 0;
 }
 
-.wayfinder-app .equipment-result-main strong,
-.wayfinder-app .equipment-result-main small,
 .wayfinder-app .equipment-cart-line strong,
 .wayfinder-app .equipment-cart-line small {
   display: block;
@@ -203,7 +212,6 @@
 }
 
 .wayfinder-app .equipment-catalogue-state,
-.wayfinder-app .equipment-detail-empty,
 .wayfinder-app .equipment-cart-empty {
   padding: 24px;
   color: var(--wf-ink-soft);
@@ -211,28 +219,22 @@
 }
 
 .wayfinder-app .equipment-detail {
-  padding: 14px;
+  padding: 12px;
 }
 
-.wayfinder-app .equipment-detail dl,
-.wayfinder-app .equipment-cart header dl {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+.wayfinder-app .equipment-detail.is-empty {
+  display: none;
 }
 
-.wayfinder-app .equipment-detail dl div,
-.wayfinder-app .equipment-cart header dl div {
-  padding: 7px;
-  border-radius: var(--wf-radius);
-  background: var(--wf-paper-strong);
+.wayfinder-app .equipment-detail p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
 }
 
 .wayfinder-app .equipment-cart {
   grid-column: 1 / -1;
 }
 
-.wayfinder-app .equipment-cart header,
 .wayfinder-app .equipment-cart footer {
   display: flex;
   gap: 16px;
@@ -241,10 +243,15 @@
   padding: 12px;
 }
 
-.wayfinder-app .equipment-cart header dl,
-.wayfinder-app .equipment-cart header h4,
 .wayfinder-app .equipment-cart footer p {
   margin: 0;
+}
+
+.wayfinder-app .equipment-cart-summary {
+  margin: 0;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--wf-rule);
+  overflow-wrap: anywhere;
 }
 
 .wayfinder-app .equipment-quantity {
@@ -353,22 +360,12 @@
 }
 
 @container wayfinder-stage (max-width: 980px) {
-  .wayfinder-app .equipment-policy-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .wayfinder-app .equipment-result {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .wayfinder-app .equipment-result-actions {
-    grid-column: 1 / -1;
-    justify-content: start;
+  .wayfinder-app .equipment-workspace {
+    grid-template-columns: minmax(260px, 1.1fr) minmax(210px, 0.9fr);
   }
 }
 
 @container wayfinder-stage (max-width: 760px) {
-  .wayfinder-app .equipment-policy-summary,
   .wayfinder-app .equipment-workspace {
     grid-template-columns: 1fr;
   }
@@ -377,7 +374,6 @@
     grid-column: 1;
   }
 
-  .wayfinder-app .equipment-cart header,
   .wayfinder-app .equipment-cart footer {
     align-items: stretch;
     flex-direction: column;

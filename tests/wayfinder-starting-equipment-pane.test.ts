@@ -154,7 +154,7 @@ describe("starting equipment pane", () => {
       name: "Adventurer's Pack",
       affordable: true,
       canAdd: true,
-      previewAriaLabel: "Preview Adventurer's Pack",
+      previewAriaLabel: "Preview Adventurer's Pack · Level 0 · Common · Player Core · 1 gp · Available",
       buyAriaLabel: "Buy Adventurer's Pack with coin",
       buyFocusId: `starting-equipment-item:${record.sourceUuid}:coin`,
       requestExceptionAriaLabel: "Request an exact exception for Adventurer's Pack",
@@ -647,6 +647,118 @@ describe("starting equipment pane", () => {
     expect(pane.catalogue.totalResultCount).toBe(20);
     expect(pane.catalogue.visibleResultCount).toBe(12);
     expect(pane.catalogue.items).toHaveLength(12);
+  });
+
+  it("projects bounded production-shaped type and source controls without hiding active facets", () => {
+    const draft = createEmptyDraft(1);
+    draft.acquisition = acquisitionFixture({ disposition: "unreviewed" }).draft;
+    const record: StartingEquipmentCatalogueRecord = {
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.dagger",
+      name: "Dagger",
+      itemType: "kit",
+      level: 0,
+      rarity: "common",
+      sourceLabel: "Source 19",
+      priceCopper: 20,
+      priceLabel: "2 sp",
+      bulkLabel: "L",
+      handsLabel: "1",
+      traits: ["agile"],
+      available: true,
+      unavailableReason: null,
+      titanMaulerEligible: false,
+      exceptionRequestable: false,
+    };
+    const typeValues = ["ammo", "armor", "backpack", "consumable", "equipment", "kit", "shield", "treasure", "weapon"];
+    const sourceValues = Array.from({ length: 20 }, (_, index) => `Source ${index}`);
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(1),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        matchedRecordCount: 1,
+        records: [record],
+        filters: [
+          ...typeValues.map((value) => ({ key: "type", label: value, value })),
+          ...(["common", "uncommon", "rare", "unique"] as const).map((value) => ({
+            key: "rarity",
+            label: value,
+            value,
+          })),
+          ...sourceValues.map((value) => ({ key: "source", label: value, value })),
+        ],
+        activeFilters: { type: ["kit"], rarity: ["common"], source: ["Source 19"] },
+        previewSourceUuid: record.sourceUuid,
+        openFilterPanel: "source",
+        sourceFilterQuery: "Source",
+        titanMauler: { required: false, selectedSourceUuid: null },
+      }
+    );
+
+    expect(pane.catalogue.typeFilters).toHaveLength(8);
+    expect(pane.catalogue.typeFilters).toContainEqual(expect.objectContaining({ value: "kit", selected: true }));
+    expect(pane.catalogue.typeFilters.map((filter) => filter.value)).toContain("weapon");
+    expect(pane.catalogue.typeFilters.map((filter) => filter.value)).not.toContain("treasure");
+    expect(pane.catalogue.rarityFilters).toHaveLength(4);
+    expect(pane.catalogue.sourceFilters).toHaveLength(12);
+    expect(pane.catalogue.sourceFilters[0]).toMatchObject({ value: "Source 19", selected: true });
+    expect(pane.catalogue).toMatchObject({
+      hasSourceFilters: true,
+      rarityFilterActive: true,
+      rarityFilterLabel: "Rarity (1 selected)",
+      sourceFilterActive: true,
+      sourceFilterLabel: "Source (1 selected)",
+      sourcePanelOpen: true,
+      sourceSearch: "Source",
+      sourceResultAnnouncement: "Showing 12 of 20 matching sources",
+    });
+    expect(pane.catalogue.items[0]?.resultLabel).toBe("Dagger · Level 0 · Common · Source 19 · 2 sp · Available");
+    expect(pane.catalogue.preview).toMatchObject({
+      sourceUuid: record.sourceUuid,
+      buyFocusId: `starting-equipment-item:${record.sourceUuid}:coin`,
+      canChooseTitanMauler: false,
+    });
+  });
+
+  it("keeps each bounded result a direct leaf and mounts every item action only in selected detail", () => {
+    const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue.hbs"), "utf8");
+    const detail = readFileSync(resolve("templates/wayfinder/starting-equipment-detail.hbs"), "utf8");
+    const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
+    const styles = readFileSync(resolve("styles/wayfinder/starting-equipment.css"), "utf8");
+    const loopStart = catalogue.indexOf("{{#each activePane.catalogue.items}}");
+    const loopEnd = catalogue.indexOf("{{/each}}", loopStart);
+    const resultLoop = catalogue.slice(loopStart, loopEnd);
+
+    expect(loopStart).toBeGreaterThan(-1);
+    expect([...resultLoop.matchAll(/<[a-z]+\b/gu)]).toHaveLength(1);
+    expect(resultLoop).toContain("<button");
+    expect(resultLoop).toContain("{{resultLabel}}");
+    expect(resultLoop).toContain('data-wayfinder-action="preview-equipment-item"');
+    expect(resultLoop).toContain("data-wayfinder-focus-id");
+    expect(resultLoop).toContain("data-source-uuid");
+    expect(catalogue).not.toContain('data-wayfinder-action="add-equipment-item"');
+    expect(catalogue).toContain('aria-expanded="{{#if activePane.catalogue.rarityPanelOpen}}true');
+    expect(catalogue).toContain("{{activePane.catalogue.rarityFilterLabel}}");
+    expect(catalogue).toContain('aria-expanded="{{#if activePane.catalogue.sourcePanelOpen}}true');
+    expect(catalogue).toContain("{{activePane.catalogue.sourceFilterLabel}}");
+    for (const action of [
+      "add-equipment-item",
+      "request-equipment-item-exception",
+      "approve-equipment-item-exception",
+      "choose-titan-mauler-equipment",
+    ]) {
+      expect(detail).toContain(`data-wayfinder-action="${action}"`);
+    }
+    expect(detail).toContain("{{#if activePane.catalogue.preview}}");
+    expect(detail).toContain("{{#unless activePane.catalogue.preview}} is-empty{{/unless}}");
+    expect(detail).toContain("{{#unless activePane.catalogue.preview}}aria-description=");
+    expect(pane).not.toContain("is-detail-empty");
+    expect(styles).toContain(".equipment-workspace:has(> .equipment-detail.is-empty) > .equipment-catalogue");
+    expect(styles).toContain(".equipment-detail.is-empty");
   });
 });
 

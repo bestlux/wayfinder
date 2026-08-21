@@ -34,5 +34,17 @@ describe("Wayfinder actions", () => {
         value: "weapon",
       })
     ).toBe(false);
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "toggle-equipment-filter-panel",
+          stepId: "equipment",
+          filterKey: "source",
+        },
+      } as unknown as HTMLElement)
+    ).toEqual({ type: "toggle-equipment-filter-panel", stepId: "equipment", filterKey: "source" });
+    expect(
+      isDraftMutationAction({ type: "toggle-equipment-filter-panel", stepId: "equipment", filterKey: "rarity" })
+    ).toBe(false);
   });
 });

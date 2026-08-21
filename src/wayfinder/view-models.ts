@@ -487,6 +487,19 @@ export interface StartingEquipmentStepPane {
     search: string;
     searchDisabled: boolean;
     filters: readonly { key: string; label: string; value: string; selected: boolean; focusId: string }[];
+    typeFilters: readonly { key: "type"; label: string; value: string; selected: boolean; focusId: string }[];
+    rarityFilters: readonly { key: "rarity"; label: string; value: string; selected: boolean; focusId: string }[];
+    sourceFilters: readonly { key: "source"; label: string; value: string; selected: boolean; focusId: string }[];
+    hasSourceFilters: boolean;
+    rarityFilterActive: boolean;
+    rarityFilterLabel: string;
+    sourceFilterActive: boolean;
+    sourceFilterLabel: string;
+    openFilterPanel: "rarity" | "source" | null;
+    rarityPanelOpen: boolean;
+    sourcePanelOpen: boolean;
+    sourceSearch: string;
+    sourceResultAnnouncement: string;
     totalResultCount: number;
     visibleResultCount: number;
     resultAnnouncement: string;
@@ -494,6 +507,7 @@ export interface StartingEquipmentStepPane {
       affordable: boolean;
       previewing: boolean;
       canAdd: boolean;
+      resultLabel: string;
       canBuyWithCurrency: boolean;
       previewAriaLabel: string;
       previewFocusId: string;
@@ -511,7 +525,26 @@ export interface StartingEquipmentStepPane {
       approveExceptionAriaLabel: string;
       approveExceptionFocusId: string;
     })[];
-    preview: (StartingEquipmentCatalogueRecord & { affordable: boolean }) | null;
+    preview:
+      | (StartingEquipmentCatalogueRecord & {
+          affordable: boolean;
+          canAdd: boolean;
+          canBuyWithCurrency: boolean;
+          buyAriaLabel: string;
+          buyFocusId: string;
+          unavailableAriaLabel: string;
+          allowanceOptions: readonly { allowanceId: string; label: string; ariaLabel: string; focusId: string }[];
+          canChooseTitanMauler: boolean;
+          titanMaulerAriaLabel: string;
+          titanMaulerFocusId: string;
+          canRequestException: boolean;
+          requestExceptionAriaLabel: string;
+          requestExceptionFocusId: string;
+          canApproveException: boolean;
+          approveExceptionAriaLabel: string;
+          approveExceptionFocusId: string;
+        })
+      | null;
   };
   cart: {
     lines: readonly {

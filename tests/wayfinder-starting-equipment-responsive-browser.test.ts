@@ -30,6 +30,7 @@ browserIt(
         expect(equipment.rootOverflow, `root horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
         expect(equipment.stageOverflow, `stage horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
         expect(equipment.paneOverflow, `equipment horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
+        expect(equipment.resultElementCount, `result subtree contract at ${width}px`).toBe(12);
         expect(equipment.targetReachable, `review controls unreachable at ${width}px`).toBe(true);
         if (width <= 980) {
           expect(equipment.stageOverflowY).toBe("auto");
@@ -86,11 +87,7 @@ function layoutFixture(width: number, paneClass: string, content: string): strin
 }
 
 const result = `
-  <article class="equipment-result">
-    <button class="equipment-result-main"><span><strong>A long translated equipment item name</strong><small>Funding and configuration details</small></span></button>
-    <span class="equipment-result-price">100 gp</span>
-    <div class="equipment-result-actions"><button>Buy with coin</button><button>Request Exception</button></div>
-  </article>`;
+  <button class="equipment-result">A long translated equipment item name · Level 0 · Common · Player Core · 100 gp · Available</button>`;
 
 const cartLine = `
   <article class="equipment-cart-line">
@@ -100,10 +97,11 @@ const cartLine = `
 
 const equipmentContent = `
   <section class="equipment-policy-summary">
-    ${"<article><span>Policy label</span><strong>A long translated policy value</strong></article>".repeat(6)}
+    <p class="equipment-policy-primary"><span>Funding: Level 1 starting wealth</span><span>Eligibility: Common gear from one approved source</span><span>Budget: 15 gp</span></p>
+    <p class="equipment-policy-context">Owner chooses and applies · Existing gear stays on the actor sheet</p>
   </section>
   <div class="equipment-workspace">
-    <section class="equipment-catalogue"><div class="equipment-result-list">${result.repeat(8)}</div></section>
+    <section class="equipment-catalogue"><div class="equipment-result-list">${result.repeat(12)}</div></section>
     <aside class="equipment-detail">Equipment detail</aside>
     <section class="equipment-cart">${cartLine.repeat(8)}<footer data-reachability-target><span>Review the complete acquisition</span><div><button>Keep all</button><button>Confirm</button></div></footer></section>
   </div>`;
@@ -127,6 +125,7 @@ function measureLayout() {
     stageOverflowY: getComputedStyle(stage).overflowY,
     stageClientHeight: stage.clientHeight,
     stageScrollHeight: stage.scrollHeight,
+    resultElementCount: document.querySelector(".equipment-result-list")?.querySelectorAll("*").length ?? 0,
     targetReachable: targetRect.top < stageRect.bottom && targetRect.bottom > stageRect.top,
   };
 }

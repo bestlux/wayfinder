@@ -34,11 +34,12 @@ describe("starting equipment responsive layout", () => {
 
   it("wraps critical policy, browse, cart, review, handoff, failure, and receipt copy", () => {
     for (const selector of [
-      ".equipment-policy-summary article strong",
+      ".equipment-policy-primary > span",
+      ".equipment-policy-context",
       ".equipment-callout p",
       ".equipment-catalogue-state p",
       ".equipment-source-diagnostics li",
-      ".equipment-result-main strong",
+      ".equipment-result {",
       ".equipment-cart-line strong",
       ".equipment-cart footer",
       ".acquisition-receipt-items strong",
@@ -46,8 +47,8 @@ describe("starting equipment responsive layout", () => {
     ]) {
       expect(equipmentStyles).toContain(selector);
     }
-    expect(equipmentStyles).not.toMatch(/\.equipment-(?:result-main|cart-line)[^{]*\{[^}]*text-overflow:\s*ellipsis/s);
-    expect(equipmentStyles).not.toMatch(/\.equipment-(?:result-main|cart-line)[^{]*\{[^}]*white-space:\s*nowrap/s);
+    expect(equipmentStyles).not.toMatch(/\.equipment-(?:result|cart-line)[^{]*\{[^}]*text-overflow:\s*ellipsis/s);
+    expect(equipmentStyles).not.toMatch(/\.equipment-(?:result|cart-line)[^{]*\{[^}]*white-space:\s*nowrap/s);
     expect(equipmentStyles).toContain("overflow-wrap: anywhere");
   });
 });

@@ -2,6 +2,18 @@ import { localizeEquipmentSourceDiagnostic, } from "../application/acquisition-l
 import { equipmentAllowanceFocusId, equipmentFilterFocusId, equipmentItemFocusId, equipmentLineControlFocusId, equipmentLineFocusId, } from "../application/equipment-accessibility.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
 export const MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS = 12;
+const INLINE_STARTING_EQUIPMENT_TYPE_FILTERS = [
+    "ammo",
+    "armor",
+    "backpack",
+    "consumable",
+    "equipment",
+    "kit",
+    "shield",
+    "weapon",
+];
+export const MAX_INLINE_STARTING_EQUIPMENT_TYPE_FILTERS = INLINE_STARTING_EQUIPMENT_TYPE_FILTERS.length;
+export const MAX_VISIBLE_STARTING_EQUIPMENT_SOURCE_FILTERS = 12;
 export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, localize, setupOptions) {
     const acquisition = draft.acquisition;
     const sourceDiagnostics = catalogue.diagnostics ?? [];
@@ -45,26 +57,45 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             request.facts.kind === "rarity-source-exception" &&
             request.facts.draftId === acquisition?.draftId &&
             request.facts.sourceUuid === record.sourceUuid);
+        const unavailableReason = record.unavailableReason
+            ? localize(record.exceptionRequestable
+                ? "wayfinder-pf2e.StartingEquipment.Catalogue.ExceptionRequired"
+                : "wayfinder-pf2e.StartingEquipment.Catalogue.ItemUnavailable")
+            : null;
+        const noFundingReason = unavailableReason ??
+            (!canBuyWithCurrency && allowanceOptions.length === 0
+                ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.NoFunding")
+                : null);
+        const resultAvailability = noFundingReason ?? localize("wayfinder-pf2e.StartingEquipment.Catalogue.Available");
+        const priceLabel = cataloguePriceLabel(record, localize);
+        const localizedRarity = rarityLabel(record.rarity, localize);
+        const resultLabel = localize("wayfinder-pf2e.StartingEquipment.Catalogue.ResultLabel", {
+            name: record.name,
+            meta: localize("wayfinder-pf2e.StartingEquipment.Catalogue.ItemMeta", {
+                level: record.level,
+                rarity: localizedRarity,
+                source: record.sourceLabel,
+            }),
+            price: priceLabel,
+            availability: resultAvailability,
+        });
         return {
             ...record,
-            priceLabel: cataloguePriceLabel(record, localize),
-            rarityLabel: rarityLabel(record.rarity, localize),
+            priceLabel,
+            rarityLabel: localizedRarity,
             itemTypeLabel: itemTypeLabel(record.itemType, localize),
             traits: record.traits.map((trait) => pf2eTraitLabel(trait, localize)),
             bulkLabel: record.bulkLabel === "See item details"
                 ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.SeeItemDetails")
                 : record.bulkLabel,
-            unavailableReason: record.unavailableReason
-                ? localize(record.exceptionRequestable
-                    ? "wayfinder-pf2e.StartingEquipment.Catalogue.ExceptionRequired"
-                    : "wayfinder-pf2e.StartingEquipment.Catalogue.ItemUnavailable")
-                : null,
+            unavailableReason,
             affordable,
             previewing: record.sourceUuid === catalogue.previewSourceUuid,
             canAdd: canBuyWithCurrency || allowanceOptions.length > 0,
+            resultLabel,
             canBuyWithCurrency,
             previewAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.PreviewItem", {
-                name: record.name,
+                name: resultLabel,
             }),
             previewFocusId: equipmentItemFocusId(record.sourceUuid, "preview"),
             buyAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.BuyItemWithCoin", {
@@ -157,6 +188,24 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         ? (judgments.find((judgment) => judgment.id === reviewedStartJudgment.id && judgment.revocation === null) ?? null)
         : null;
     const startAuthorityInvalid = reviewedStartJudgment !== null && activeJudgment === null;
+    const localizedFilters = catalogue.filters.map((filter) => ({
+        ...filter,
+        label: catalogueFilterLabel(filter.key, filter.value, filter.label, localize),
+        selected: catalogue.activeFilters[filter.key]?.includes(filter.value) ?? false,
+        focusId: equipmentFilterFocusId(filter.key, filter.value),
+    }));
+    const typeFilterByValue = new Map(localizedFilters.filter(isTypeFilter).map((filter) => [filter.value, filter]));
+    const typeFilters = INLINE_STARTING_EQUIPMENT_TYPE_FILTERS.flatMap((value) => {
+        const filter = typeFilterByValue.get(value);
+        return filter ? [filter] : [];
+    });
+    const rarityFilters = selectedFirst(localizedFilters.filter(isRarityFilter));
+    const selectedRarityFilterCount = rarityFilters.filter((filter) => filter.selected).length;
+    const sourceSearch = catalogue.sourceFilterQuery?.trim() ?? "";
+    const normalizedSourceSearch = sourceSearch.toLocaleLowerCase();
+    const matchingSourceFilters = selectedFirst(localizedFilters.filter(isSourceFilter)).filter((filter) => !normalizedSourceSearch || filter.label.toLocaleLowerCase().includes(normalizedSourceSearch));
+    const sourceFilters = matchingSourceFilters.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_SOURCE_FILTERS);
+    const selectedSourceFilterCount = localizedFilters.filter((filter) => isSourceFilter(filter) && filter.selected).length;
     return {
         kind: "starting-equipment",
         templateKind: "starting-equipment",
@@ -256,12 +305,33 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             })),
             search: catalogue.query,
             searchDisabled: !acquisition || !catalogueReady || !!handoff,
-            filters: catalogue.filters.map((filter) => ({
-                ...filter,
-                label: catalogueFilterLabel(filter.key, filter.value, filter.label, localize),
-                selected: catalogue.activeFilters[filter.key]?.includes(filter.value) ?? false,
-                focusId: equipmentFilterFocusId(filter.key, filter.value),
-            })),
+            filters: localizedFilters,
+            typeFilters,
+            rarityFilters,
+            sourceFilters,
+            hasSourceFilters: localizedFilters.some(isSourceFilter),
+            rarityFilterActive: selectedRarityFilterCount > 0,
+            rarityFilterLabel: selectedRarityFilterCount > 0
+                ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.ActiveFilterLabel", {
+                    label: localize("wayfinder-pf2e.StartingEquipment.Catalogue.RarityFilters"),
+                    count: selectedRarityFilterCount,
+                })
+                : localize("wayfinder-pf2e.StartingEquipment.Catalogue.RarityFilters"),
+            sourceFilterActive: selectedSourceFilterCount > 0,
+            sourceFilterLabel: selectedSourceFilterCount > 0
+                ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.ActiveFilterLabel", {
+                    label: localize("wayfinder-pf2e.StartingEquipment.Catalogue.SourceFilters"),
+                    count: selectedSourceFilterCount,
+                })
+                : localize("wayfinder-pf2e.StartingEquipment.Catalogue.SourceFilters"),
+            openFilterPanel: catalogue.openFilterPanel ?? null,
+            rarityPanelOpen: catalogue.openFilterPanel === "rarity",
+            sourcePanelOpen: catalogue.openFilterPanel === "source",
+            sourceSearch,
+            sourceResultAnnouncement: localize("wayfinder-pf2e.StartingEquipment.Catalogue.SourceResultCount", {
+                visible: sourceFilters.length,
+                total: matchingSourceFilters.length,
+            }),
             totalResultCount: matchedRecordCount,
             visibleResultCount: records.length,
             resultAnnouncement: localize("wayfinder-pf2e.StartingEquipment.Catalogue.ResultCount", {
@@ -307,6 +377,18 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             reasons: handoff?.handoff.reasons.map((reason) => handoffReason(reason, localize)) ?? [],
         },
     };
+}
+function isTypeFilter(filter) {
+    return filter.key === "type";
+}
+function isRarityFilter(filter) {
+    return filter.key === "rarity";
+}
+function isSourceFilter(filter) {
+    return filter.key === "source";
+}
+function selectedFirst(filters) {
+    return [...filters].sort((left, right) => Number(right.selected) - Number(left.selected));
 }
 function recipeSelectionLabel(selection, localize) {
     if (!selection)

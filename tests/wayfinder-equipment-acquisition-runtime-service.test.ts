@@ -479,10 +479,12 @@ describe("equipment acquisition runtime", () => {
     await runtime.uiAdapter.project(request);
     expect(getDocument).toHaveBeenCalledTimes(12);
 
+    const beforeFirstPreview = getDocument.mock.calls.length;
     await runtime.uiAdapter.project({ ...request, previewSourceUuid });
-    expect(getDocument).toHaveBeenCalledTimes(13);
+    const afterFirstPreview = getDocument.mock.calls.length;
+    expect(afterFirstPreview - beforeFirstPreview).toBe(1);
     await runtime.uiAdapter.project({ ...request, previewSourceUuid });
-    expect(getDocument).toHaveBeenCalledTimes(13);
+    expect(getDocument.mock.calls.length - afterFirstPreview).toBe(0);
   });
 
   it("uses a bounded LRU for successful browse preparations", async () => {

@@ -252,7 +252,9 @@
         "Title": "Your kit"
       },
       "Catalogue": {
+        "ActiveFilterLabel": "{label} ({count} selected)",
         "Aria": "Equipment catalogue",
+        "Available": "Available",
         "ExceptionRequired": "This item needs an exact source or rarity exception.",
         "FiltersAria": "Equipment filters",
         "ItemMeta": "Level {level} · {rarity} · {source}",
@@ -263,10 +265,18 @@
         "PriceFor": "{price} for {quantity}",
         "PriceForPer": "{price} for {quantity} (priced per {pricePer})",
         "Ready": "{count} pieces of gear to browse.",
+        "RarityFilters": "Rarity",
+        "RarityFiltersAria": "Filter equipment by rarity",
+        "ResultLabel": "{name} · {meta} · {price} · {availability}",
         "ResultCount": "Showing {visible} of {total} matching items",
         "SearchAria": "Search equipment",
         "SearchPlaceholder": "Search gear by name, source, or rarity…",
         "SeeItemDetails": "See item details",
+        "SourceFilters": "Source",
+        "SourceFiltersAria": "Filter equipment by source",
+        "SourceResultCount": "Showing {visible} of {total} matching sources",
+        "SourceSearchAria": "Search equipment sources",
+        "SourceSearchPlaceholder": "Search sources…",
         "StartToLoad": "Start the step above and the gear list loads here."
       },
       "Corrupt": {

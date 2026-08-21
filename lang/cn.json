@@ -263,7 +263,9 @@
         "Title": "你的装备"
       },
       "Catalogue": {
+        "ActiveFilterLabel": "{label}（已选{count}项）",
         "Aria": "装备目录",
+        "Available": "可用",
         "ExceptionRequired": "此物品需要确切的来源或稀有度例外批准。",
         "FiltersAria": "装备筛选",
         "ItemMeta": "等级{level} · {rarity} · {source}",
@@ -274,10 +276,18 @@
         "PriceFor": "{quantity}件共{price}",
         "PriceForPer": "{quantity}件共{price}（每{pricePer}件计价）",
         "Ready": "可浏览{count}件装备。",
+        "RarityFilters": "稀有度",
+        "RarityFiltersAria": "按稀有度筛选装备",
+        "ResultLabel": "{name} · {meta} · {price} · {availability}",
         "ResultCount": "显示{visible}项，共{total}项匹配",
         "SearchAria": "搜索装备",
         "SearchPlaceholder": "按名称、来源或稀有度搜索装备…",
         "SeeItemDetails": "查看物品详情",
+        "SourceFilters": "来源",
+        "SourceFiltersAria": "按来源筛选装备",
+        "SourceResultCount": "显示{visible}项，共{total}项匹配来源",
+        "SourceSearchAria": "搜索装备来源",
+        "SourceSearchPlaceholder": "搜索来源…",
         "StartToLoad": "先开始上方步骤，装备列表将在这里加载。"
       },
       "Corrupt": {

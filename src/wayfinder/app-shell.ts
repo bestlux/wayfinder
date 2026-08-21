@@ -351,7 +351,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #pendingEquipmentFocusIds: string[] | null = null;
   #equipmentSearchByStepId = new Map<string, string>();
   #equipmentFiltersByStepId = new Map<string, Record<string, string[]>>();
+  #equipmentFilterPanelByStepId = new Map<string, "rarity" | "source">();
+  #equipmentSourceSearchByStepId = new Map<string, string>();
   #equipmentPreviewByStepId = new Map<string, string>();
+  #pendingEquipmentSourceSearchFocus: { stepId: string; cursor: number } | null = null;
   #equipmentScheduledRenderIntent: Extract<StartingEquipmentRenderIntent, "search" | "facet"> = "search";
   #cachedRenderPlan: ProgressionPlan | null = null;
   #recentlyInvalidatedStepIds = new Set<string>();
@@ -537,7 +540,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         session.step,
         draft,
         session.evaluation,
-        await getStartingEquipmentUiAdapter().project(this.#startingEquipmentUiRequest(session.step)),
+        await this.#projectStartingEquipmentCatalogue(session.step),
         localizeAcquisition,
         {
           worldPolicy: getEquipmentWorldPolicySetting(),
@@ -753,6 +756,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             onActionClick: this.#onActionClick,
             onSearchInput: this.#onSearchInput,
             onEquipmentSearchInput: this.#onEquipmentSearchInput,
+            onEquipmentSourceSearchInput: this.#onEquipmentSourceSearchInput,
             onScrollableScroll: this.#onScrollableScroll,
             onManualChange: this.#onManualChange,
             onLoreInputChange: this.#onLoreInputChange,
@@ -776,6 +780,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             onActionClick: this.#onActionClick,
             onSearchInput: this.#onSearchInput,
             onEquipmentSearchInput: this.#onEquipmentSearchInput,
+            onEquipmentSourceSearchInput: this.#onEquipmentSourceSearchInput,
             onScrollableScroll: this.#onScrollableScroll,
             onManualChange: this.#onManualChange,
             onLoreInputChange: this.#onLoreInputChange,
@@ -787,6 +792,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       if (this.#pendingEquipmentFocusIds) {
         restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
       }
+      this.#restoreEquipmentSourceSearchFocus(root);
       this.#pendingEquipmentFocusIds = null;
       this.#pendingSearchFocus = null;
       return;
@@ -803,6 +809,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         onActionClick: this.#onActionClick,
         onSearchInput: this.#onSearchInput,
         onEquipmentSearchInput: this.#onEquipmentSearchInput,
+        onEquipmentSourceSearchInput: this.#onEquipmentSourceSearchInput,
         onScrollableScroll: this.#onScrollableScroll,
         onManualChange: this.#onManualChange,
         onLoreInputChange: this.#onLoreInputChange,
@@ -823,6 +830,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     } else if (this.#pendingEquipmentFocusIds) {
       restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
     }
+    this.#restoreEquipmentSourceSearchFocus(root);
     if (pendingStepFocusId || pendingControlFocusId) {
       this.#pendingStepFocusId = null;
       this.#pendingControlFocusId = null;
@@ -1181,6 +1189,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         });
         break;
       case "preview-equipment-item":
+        if (this.#equipmentPreviewByStepId.get(action.stepId) === action.sourceUuid) {
+          this.#pendingEquipmentFocusIds = null;
+          break;
+        }
         this.#equipmentPreviewByStepId.set(action.stepId, action.sourceUuid);
         this.#renderStartingEquipmentPartial(action.stepId, "preview");
         break;
@@ -1215,6 +1227,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         break;
       case "toggle-equipment-filter":
         this.#toggleStartingEquipmentFilter(action.stepId, action.filterKey, action.value);
+        break;
+      case "toggle-equipment-filter-panel":
+        this.#toggleStartingEquipmentFilterPanel(action.stepId, action.filterKey);
         break;
       case "clear-equipment-filters":
         this.#equipmentFiltersByStepId.delete(action.stepId);
@@ -1272,9 +1287,21 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const stepId = input?.dataset.stepId;
     if (!stepId) return;
     this.#equipmentSearchByStepId.set(stepId, input.value);
+    this.#pendingEquipmentSourceSearchFocus = null;
     this.#pendingSearchFocus = { stepId, cursor: input.selectionStart ?? input.value.length };
     this.#equipmentScheduledRenderIntent = "search";
     this.#equipmentSearchScheduler.schedule(stepId, input.value);
+  };
+
+  #onEquipmentSourceSearchInput = (event: Event): void => {
+    const input = event.currentTarget as HTMLInputElement | null;
+    const stepId = input?.dataset.stepId;
+    if (!stepId) return;
+    this.#equipmentSourceSearchByStepId.set(stepId, input.value);
+    this.#pendingSearchFocus = null;
+    this.#pendingEquipmentSourceSearchFocus = { stepId, cursor: input.selectionStart ?? input.value.length };
+    this.#equipmentScheduledRenderIntent = "facet";
+    this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
   };
 
   async #renderStartingEquipmentSearch(request: PickerSearchRequest): Promise<void> {
@@ -1509,12 +1536,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     if (step.kind === "starting-equipment") {
-      const request = this.#startingEquipmentUiRequest(step);
       return buildStartingEquipmentPane(
         step,
         this.#requireDraft(),
         stepEvaluation,
-        await getStartingEquipmentUiAdapter().project(request),
+        await this.#projectStartingEquipmentCatalogue(step),
         localizeAcquisition,
         {
           worldPolicy: getEquipmentWorldPolicySetting(),
@@ -1584,6 +1610,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       query: this.#equipmentSearchByStepId.get(step.id) ?? "",
       filters: this.#equipmentFiltersByStepId.get(step.id) ?? {},
       previewSourceUuid: this.#equipmentPreviewByStepId.get(step.id) ?? null,
+    };
+  }
+
+  async #projectStartingEquipmentCatalogue(step: Extract<PendingStep, { kind: "starting-equipment" }>) {
+    return {
+      ...(await getStartingEquipmentUiAdapter().project(this.#startingEquipmentUiRequest(step))),
+      openFilterPanel: this.#equipmentFilterPanelByStepId.get(step.id) ?? null,
+      sourceFilterQuery: this.#equipmentSourceSearchByStepId.get(step.id) ?? "",
     };
   }
 
@@ -1759,6 +1793,30 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     });
     this.#equipmentScheduledRenderIntent = "facet";
     this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
+  }
+
+  #toggleStartingEquipmentFilterPanel(stepId: string, filterKey: "rarity" | "source"): void {
+    if (this.#equipmentFilterPanelByStepId.get(stepId) === filterKey) {
+      this.#equipmentFilterPanelByStepId.delete(stepId);
+    } else {
+      this.#equipmentFilterPanelByStepId.set(stepId, filterKey);
+    }
+    this.#equipmentScheduledRenderIntent = "facet";
+    this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
+  }
+
+  #restoreEquipmentSourceSearchFocus(root: HTMLElement): void {
+    const pending = this.#pendingEquipmentSourceSearchFocus;
+    if (!pending) return;
+    const input = root.querySelector<HTMLInputElement>(
+      `[data-wayfinder-equipment-source-search][data-step-id="${pending.stepId}"]`
+    );
+    if (input) {
+      input.focus();
+      const cursor = Math.min(pending.cursor, input.value.length);
+      input.setSelectionRange(cursor, cursor);
+    }
+    this.#pendingEquipmentSourceSearchFocus = null;
   }
 
   async #chooseOption(stepId: string, rawValue: string): Promise<void> {
@@ -3484,6 +3542,7 @@ function isStartingEquipmentViewOnlyAction(action: WayfinderAction): boolean {
   return (
     action.type === "preview-equipment-item" ||
     action.type === "toggle-equipment-filter" ||
+    action.type === "toggle-equipment-filter-panel" ||
     action.type === "clear-equipment-filters"
   );
 }

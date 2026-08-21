@@ -30,7 +30,7 @@ describe("starting equipment search isolation", () => {
 
     expect(equipmentBranch).toBeGreaterThan(-1);
     expect(actorInspection).toBeGreaterThan(equipmentBranch);
-    expect(prepare.slice(equipmentBranch, actorInspection)).toContain("getStartingEquipmentUiAdapter().project");
+    expect(prepare.slice(equipmentBranch, actorInspection)).toContain("this.#projectStartingEquipmentCatalogue");
     expect(prepare.slice(equipmentBranch, actorInspection)).toContain('wayfinderRenderScope: "equipment"');
     expect(prepare.slice(equipmentBranch, actorInspection)).not.toContain("this._buildRenderPlan");
     expect(prepare.slice(equipmentBranch, actorInspection)).not.toContain("buildWayfinderContext");
@@ -93,6 +93,19 @@ describe("starting equipment search isolation", () => {
     expect(detail).not.toContain("hidden");
   });
 
+  it("treats activation of the already selected preview as a focus-preserving no-op", () => {
+    const dispatchStart = appShell.indexOf("async #dispatchAction");
+    const dispatchEnd = appShell.indexOf("#onSearchInput =", dispatchStart);
+    const dispatch = appShell.slice(dispatchStart, dispatchEnd);
+    const previewStart = dispatch.indexOf('case "preview-equipment-item"');
+    const previewEnd = dispatch.indexOf("\n        break;", previewStart);
+    const preview = dispatch.slice(previewStart, previewEnd);
+
+    expect(preview).toContain("this.#equipmentPreviewByStepId.get(action.stepId) === action.sourceUuid");
+    expect(preview).toContain("this.#pendingEquipmentFocusIds = null");
+    expect(preview.indexOf("break")).toBeLessThan(preview.indexOf("#renderStartingEquipmentPartial"));
+  });
+
   it("retains an existing equipment error for view-only partial actions", () => {
     const clickStart = appShell.indexOf("#onActionClick =");
     const clickEnd = appShell.indexOf("#dispatchAction", clickStart);
@@ -104,7 +117,24 @@ describe("starting equipment search isolation", () => {
     expect(click).toContain("if (!isStartingEquipmentViewOnlyAction(action))");
     expect(helper).toContain('action.type === "preview-equipment-item"');
     expect(helper).toContain('action.type === "toggle-equipment-filter"');
+    expect(helper).toContain('action.type === "toggle-equipment-filter-panel"');
     expect(helper).toContain('action.type === "clear-equipment-filters"');
+  });
+
+  it("keeps disclosure and source search as bounded catalogue-only view state", () => {
+    const panelStart = appShell.indexOf("  #toggleStartingEquipmentFilterPanel(");
+    const panelEnd = appShell.indexOf("#restoreEquipmentSourceSearchFocus", panelStart);
+    const panel = appShell.slice(panelStart, panelEnd);
+    const sourceStart = appShell.indexOf("  #onEquipmentSourceSearchInput =");
+    const sourceEnd = appShell.indexOf("#renderStartingEquipmentSearch", sourceStart);
+    const source = appShell.slice(sourceStart, sourceEnd);
+
+    expect(panel).toContain('#equipmentScheduledRenderIntent = "facet"');
+    expect(panel).toContain("#equipmentSearchScheduler.schedule");
+    expect(panel).not.toContain("#draftDidChange");
+    expect(source).toContain("#equipmentSourceSearchByStepId.set(stepId, input.value)");
+    expect(source).toContain("#pendingEquipmentSourceSearchFocus");
+    expect(source).not.toContain("#buildPlan(");
   });
 
   it("suppresses handoff and Titan state while setup awaits authority", () => {

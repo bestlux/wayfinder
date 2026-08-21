@@ -10,6 +10,10 @@ export function bindWayfinderInteractions(root, handlers, scrollById, pendingSea
     if (equipmentSearch) {
         equipmentSearch.addEventListener("input", handlers.onEquipmentSearchInput);
     }
+    const equipmentSourceSearch = root.querySelector("[data-wayfinder-equipment-source-search]");
+    if (equipmentSourceSearch) {
+        equipmentSourceSearch.addEventListener("input", handlers.onEquipmentSourceSearchInput);
+    }
     for (const scrollable of root.querySelectorAll("[data-wayfinder-scroll-id]")) {
         const scrollId = scrollable.dataset.wayfinderScrollId;
         if (!scrollId) {
@@ -194,6 +198,11 @@ export function parseWayfinderAction(element) {
                     filterKey: element.dataset.filterKey,
                     value: element.dataset.value,
                 }
+                : null;
+        case "toggle-equipment-filter-panel":
+            return element.dataset.stepId &&
+                (element.dataset.filterKey === "rarity" || element.dataset.filterKey === "source")
+                ? { type: action, stepId: element.dataset.stepId, filterKey: element.dataset.filterKey }
                 : null;
         case "toggle-ancestry-mode":
         case "toggle-voluntary-enabled":

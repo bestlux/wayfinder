@@ -72,3 +72,43 @@ browserIt("keeps the equipment search node, focus, and caret while stale part wo
     await browser.close();
   }
 });
+
+browserIt("keeps focus on a leaf result when the selected preview is activated again", async () => {
+  const browser = await chromium.launch({ executablePath: chromePath, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`
+      <div class="equipment-result-list">
+        <button class="equipment-result is-previewing" aria-pressed="true" data-source-uuid="item-1">Dagger · Level 0 · Common · 2 sp · Available</button>
+      </div>
+      <aside data-application-part="equipment-detail">Dagger detail</aside>
+    `);
+    await page.evaluate(() => {
+      let selectedSourceUuid = "item-1";
+      let renderCount = 0;
+      const button = document.querySelector<HTMLButtonElement>("[data-source-uuid='item-1']")!;
+      button.addEventListener("click", () => {
+        if (selectedSourceUuid === button.dataset.sourceUuid) return;
+        selectedSourceUuid = button.dataset.sourceUuid ?? "";
+        renderCount += 1;
+      });
+      Object.assign(window, { compactPreviewRenderCount: () => renderCount });
+    });
+
+    const result = page.locator("[data-source-uuid='item-1']");
+    await result.focus();
+    await page.keyboard.press("Enter");
+
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-source-uuid"))).toBe("item-1");
+    expect(await page.evaluate(() => window.compactPreviewRenderCount())).toBe(0);
+    await expect(result.getAttribute("aria-pressed")).resolves.toBe("true");
+  } finally {
+    await browser.close();
+  }
+});
+
+declare global {
+  interface Window {
+    compactPreviewRenderCount(): number;
+  }
+}

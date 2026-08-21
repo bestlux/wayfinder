@@ -61,6 +61,7 @@ export type WayfinderAction =
   | { type: "remove-equipment-line"; stepId: string; lineId: string }
   | { type: "change-equipment-quantity"; stepId: string; lineId: string; delta: -1 | 1 }
   | { type: "toggle-equipment-filter"; stepId: string; filterKey: string; value: string }
+  | { type: "toggle-equipment-filter-panel"; stepId: string; filterKey: "rarity" | "source" }
   | { type: "clear-equipment-filters"; stepId: string }
   | { type: "review-equipment-purchases"; stepId: string }
   | { type: "retain-all-equipment"; stepId: string }
@@ -80,6 +81,7 @@ interface InteractionHandlers {
   onActionClick: (event: Event) => void | Promise<void>;
   onSearchInput: (event: Event) => void;
   onEquipmentSearchInput: (event: Event) => void;
+  onEquipmentSourceSearchInput: (event: Event) => void;
   onScrollableScroll: (event: Event) => void;
   onManualChange: (event: Event) => void | Promise<void>;
   onLoreInputChange: (event: Event) => void | Promise<void>;
@@ -103,6 +105,11 @@ export function bindWayfinderInteractions(
   const equipmentSearch = root.querySelector<HTMLInputElement>("[data-wayfinder-equipment-search]");
   if (equipmentSearch) {
     equipmentSearch.addEventListener("input", handlers.onEquipmentSearchInput);
+  }
+
+  const equipmentSourceSearch = root.querySelector<HTMLInputElement>("[data-wayfinder-equipment-source-search]");
+  if (equipmentSourceSearch) {
+    equipmentSourceSearch.addEventListener("input", handlers.onEquipmentSourceSearchInput);
   }
 
   for (const scrollable of root.querySelectorAll<HTMLElement>("[data-wayfinder-scroll-id]")) {
@@ -298,6 +305,11 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
             filterKey: element.dataset.filterKey,
             value: element.dataset.value,
           }
+        : null;
+    case "toggle-equipment-filter-panel":
+      return element.dataset.stepId &&
+        (element.dataset.filterKey === "rarity" || element.dataset.filterKey === "source")
+        ? { type: action, stepId: element.dataset.stepId, filterKey: element.dataset.filterKey }
         : null;
     case "toggle-ancestry-mode":
     case "toggle-voluntary-enabled":

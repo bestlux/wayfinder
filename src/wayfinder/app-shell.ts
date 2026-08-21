@@ -132,9 +132,8 @@ import {
 } from "./application/existing-character-history-service.js";
 import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
 import {
-  createWayfinderApplyConfirmationMarker,
+  createWayfinderApplyConfirmationFocusHandoff,
   markWayfinderKeyboardFocus,
-  withWayfinderApplyConfirmationFocus,
 } from "./application/foundry-keyboard-focus-service.js";
 import {
   buildContextNote,
@@ -296,6 +295,7 @@ interface DialogV2Like {
   confirm: (config: {
     content: string;
     modal?: boolean;
+    render?: (event: Event, dialog: unknown) => void;
     window?: { title: string };
     yes?: { default?: boolean; icon?: string; label: string };
     no?: { default?: boolean; icon?: string; label: string };
@@ -3456,17 +3456,20 @@ async function confirmWayfinderApply(message: string): Promise<boolean> {
   const dialog = foundryApi.applications?.api?.DialogV2;
   if (dialog) {
     const escapeHTML = foundryApi.utils?.escapeHTML ?? fallbackEscapeHtml;
-    const focusMarker = createWayfinderApplyConfirmationMarker();
-    const result = await withWayfinderApplyConfirmationFocus(Hooks, focusMarker, () =>
-      dialog.confirm({
+    const focusHandoff = createWayfinderApplyConfirmationFocusHandoff();
+    try {
+      const result = await dialog.confirm({
         window: { title: "wayfinder-pf2e.App.ApplyConfirmTitle" },
-        content: `<div data-wayfinder-apply-confirmation="${focusMarker}"><p style="white-space: pre-line">${escapeHTML(message)}</p></div>`,
+        content: `<div data-wayfinder-apply-confirmation="${focusHandoff.marker}"><p style="white-space: pre-line">${escapeHTML(message)}</p></div>`,
         modal: true,
+        render: (_event, renderedDialog) => focusHandoff.onRender(renderedDialog),
         yes: { label: "wayfinder-pf2e.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
         no: { label: "wayfinder-pf2e.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
-      })
-    );
-    return result === true;
+      });
+      return result === true;
+    } finally {
+      focusHandoff.cancel();
+    }
   }
 
   return typeof globalThis.confirm === "function" ? globalThis.confirm(message) : true;

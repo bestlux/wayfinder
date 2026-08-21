@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium } from "playwright-core";
+import { chromium, type Page } from "playwright-core";
 import { expect, it } from "vitest";
 
 const chromePath = [
@@ -20,21 +20,24 @@ const keyboardFocusScript = readFileSync(
   .replaceAll("export ", "")
   .concat(`
     window.markWayfinderKeyboardFocus = markWayfinderKeyboardFocus;
-    window.withWayfinderApplyConfirmationFocus = withWayfinderApplyConfirmationFocus;
+    window.createWayfinderApplyConfirmationFocusHandoff = createWayfinderApplyConfirmationFocusHandoff;
   `);
 
-it("wires the DialogV2 focus hook only around Wayfinder Apply confirmation", () => {
+it("wires the DialogV2 post-render handoff only around Wayfinder Apply confirmation", () => {
   const applyStart = appShell.indexOf("async function confirmWayfinderApply");
   const applyEnd = appShell.indexOf("interface SpellRarityAttestationInput", applyStart);
   const clearStart = appShell.indexOf("async function confirmWayfinderClear");
   const clearEnd = appShell.indexOf("function fallbackEscapeHtml", clearStart);
   const applyConfirmation = appShell.slice(applyStart, applyEnd);
   const clearConfirmation = appShell.slice(clearStart, clearEnd);
-  expect(applyConfirmation).toContain("withWayfinderApplyConfirmationFocus(Hooks, focusMarker");
-  expect(applyConfirmation).toContain('data-wayfinder-apply-confirmation="${focusMarker}"');
+  expect(applyConfirmation).toContain("createWayfinderApplyConfirmationFocusHandoff()");
+  expect(applyConfirmation).toContain('data-wayfinder-apply-confirmation="${focusHandoff.marker}"');
+  expect(applyConfirmation).toContain("render: (_event, renderedDialog) => focusHandoff.onRender(renderedDialog)");
+  expect(applyConfirmation).toContain("finally");
+  expect(applyConfirmation).toContain("focusHandoff.cancel()");
   expect(applyConfirmation).toContain('no: { label: "wayfinder-pf2e.App.ApplyConfirmNo"');
   expect(applyConfirmation).toContain("default: true");
-  expect(clearConfirmation).not.toContain("withWayfinderApplyConfirmationFocus");
+  expect(clearConfirmation).not.toContain("createWayfinderApplyConfirmationFocusHandoff");
   expect(clearConfirmation).not.toContain("data-wayfinder-apply-confirmation");
 });
 
@@ -83,7 +86,7 @@ browserIt(
 );
 
 browserIt(
-  "scopes native Tab restoration and safe default focus to Wayfinder's Apply DialogV2",
+  "hands off safe DialogV2 focus after Foundry's late bringToFront window focus",
   async () => {
     const browser = await chromium.launch({ executablePath: chromePath, headless: true });
     try {
@@ -91,84 +94,83 @@ browserIt(
       await page.setContent(dialogFixture);
       await page.addScriptTag({ content: foundryKeyboardInterception });
       await page.addScriptTag({ content: keyboardFocusScript });
-      await page.addScriptTag({ content: `window.createDialogHooks = ${createDialogHooks.toString()};` });
 
-      await page.evaluate(() => {
-        window.dialogHooks = window.createDialogHooks();
-        window.dialogResult = window.withWayfinderApplyConfirmationFocus(
-          window.dialogHooks,
-          "active-apply",
-          () =>
-            new Promise<boolean>((resolve) => {
-              window.resolveDialog = resolve;
-            })
-        );
+      const marker = await page.evaluate(() => {
+        document.body.tabIndex = -1;
+        window.focusHandoff = window.createWayfinderApplyConfirmationFocusHandoff();
+        document
+          .querySelector("#active-apply-marker")!
+          .setAttribute("data-wayfinder-apply-confirmation", window.focusHandoff.marker);
+        return window.focusHandoff.marker;
       });
-      await page.evaluate(() => window.dialogHooks.emit(document.querySelector("#unrelated")!));
+      expect(marker).toMatch(/^wayfinder-apply-\d+$/u);
+      await page.evaluate(() => window.focusHandoff.onRender({ element: document.querySelector("#unrelated") }));
       expect(await page.locator("#unrelated-save").getAttribute("data-keyboard-focus")).toBeNull();
-      expect(await page.evaluate(() => window.dialogHooks.offCount)).toBe(0);
-      await page.evaluate(() => window.dialogHooks.emit(document.querySelector("#stale-apply-dialog")!));
+      await page.evaluate(() =>
+        window.focusHandoff.onRender({ element: document.querySelector("#stale-apply-dialog") })
+      );
       expect(await page.locator("#stale-apply-no").getAttribute("data-keyboard-focus")).toBeNull();
-      expect(await page.evaluate(() => window.dialogHooks.offCount)).toBe(0);
 
       await page.evaluate(() => {
+        const dialog = document.querySelector<HTMLDialogElement>("#apply-dialog")!;
+        if (!dialog.open) dialog.showModal();
         const safeDefault = document.querySelector<HTMLButtonElement>("#apply-no")!;
-        safeDefault.focus = () => undefined;
-        window.dialogHooks.emit(document.querySelector("#apply-dialog")!);
-      });
-      expect(await page.evaluate(() => document.activeElement?.id)).not.toBe("apply-no");
-      expect(await page.evaluate(() => window.dialogHooks.offCount)).toBe(0);
-
-      await page.evaluate(() => {
-        const safeDefault = document.querySelector<HTMLButtonElement>("#apply-no")!;
-        safeDefault.focus = () => {
-          throw new Error("detached control");
+        window.focusAttempts = 0;
+        safeDefault.focus = function focusAfterNoOp(options?: FocusOptions) {
+          window.focusAttempts += 1;
+          if (window.focusAttempts === 1) return;
+          HTMLElement.prototype.focus.call(this, options);
         };
-        window.dialogHooks.emit(document.querySelector("#apply-dialog")!);
+        window.focusHandoff.onRender({ element: document.querySelector("#apply-dialog") });
+        queueMicrotask(() => (document.activeElement as HTMLElement | null)?.blur());
       });
-      expect(await page.evaluate(() => document.activeElement?.id)).not.toBe("apply-no");
-      expect(await page.evaluate(() => window.dialogHooks.offCount)).toBe(0);
-
-      await page.evaluate(() => {
-        document.querySelector<HTMLButtonElement>("#apply-no")!.focus = HTMLElement.prototype.focus;
-      });
-      await page.evaluate(() => window.dialogHooks.emit(document.querySelector("#apply-dialog")!));
+      expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("BODY");
+      await waitForAnimationFrames(page, 3);
+      expect(await page.evaluate(() => window.focusAttempts)).toBe(2);
+      expect(await page.evaluate(() => document.activeElement?.id)).toBe("apply-no");
       expect(await page.locator("#apply-no").getAttribute("data-keyboard-focus")).toBe("true");
       expect(await page.locator("#apply-yes").getAttribute("data-keyboard-focus")).toBe("true");
-      expect(await page.evaluate(() => document.activeElement?.id)).toBe("apply-no");
-      expect(await page.evaluate(() => window.dialogHooks.offCount)).toBe(1);
+      await page.evaluate(() => window.focusHandoff.cancel());
 
-      await page.keyboard.press("Tab");
+      await page.evaluate(() => {
+        (document.activeElement as HTMLElement | null)?.blur();
+        window.focusHandoff = window.createWayfinderApplyConfirmationFocusHandoff();
+        document
+          .querySelector("#active-apply-marker")!
+          .setAttribute("data-wayfinder-apply-confirmation", window.focusHandoff.marker);
+        const safeDefault = document.querySelector<HTMLButtonElement>("#apply-no")!;
+        window.focusAttempts = 0;
+        safeDefault.focus = function focusAfterThrow(options?: FocusOptions) {
+          window.focusAttempts += 1;
+          if (window.focusAttempts === 1) throw new Error("replaced control");
+          HTMLElement.prototype.focus.call(this, options);
+        };
+        window.focusHandoff.onRender({ element: document.querySelector("#apply-dialog") });
+        queueMicrotask(() => (document.activeElement as HTMLElement | null)?.blur());
+      });
+      await waitForAnimationFrames(page, 3);
+      expect(await page.evaluate(() => window.focusAttempts)).toBe(2);
+      expect(await page.evaluate(() => document.activeElement?.id)).toBe("apply-no");
+
+      await page.keyboard.press("Shift+Tab");
       expect(await page.evaluate(() => document.activeElement?.id)).toBe("apply-yes");
       expect(await page.evaluate(() => window.cycleViewCount)).toBe(0);
       await page.keyboard.press("Enter");
       expect(await page.evaluate(() => window.applyCount)).toBe(1);
-      await page.evaluate(() => window.resolveDialog(true));
-      expect(await page.evaluate(() => window.dialogResult)).toBe(true);
-      expect(await page.evaluate(() => window.dialogHooks.offCount)).toBe(1);
 
-      const cleanup = await page.evaluate(async () => {
-        const successHooks = window.createDialogHooks();
-        const success = await window.withWayfinderApplyConfirmationFocus(successHooks, "success", async () => "closed");
-        const errorHooks = window.createDialogHooks();
-        const error = await window
-          .withWayfinderApplyConfirmationFocus(errorHooks, "error", async () => {
-            throw new Error("render failed");
-          })
-          .catch((caught: Error) => caught.message);
-        return {
-          success,
-          successOffCount: successHooks.offCount,
-          error,
-          errorOffCount: errorHooks.offCount,
-        };
+      await page.evaluate(() => {
+        (document.activeElement as HTMLElement | null)?.blur();
+        window.focusHandoff = window.createWayfinderApplyConfirmationFocusHandoff();
+        document
+          .querySelector("#active-apply-marker")!
+          .setAttribute("data-wayfinder-apply-confirmation", window.focusHandoff.marker);
+        document.querySelector<HTMLButtonElement>("#apply-no")!.focus = HTMLElement.prototype.focus;
+        window.focusHandoff.onRender({ element: document.querySelector("#apply-dialog") });
+        window.focusHandoff.cancel();
+        window.focusHandoff.cancel();
       });
-      expect(cleanup).toEqual({
-        success: "closed",
-        successOffCount: 1,
-        error: "render failed",
-        errorOffCount: 1,
-      });
+      await waitForAnimationFrames(page, 2);
+      expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("BODY");
     } finally {
       await browser.close();
     }
@@ -196,13 +198,16 @@ const dialogFixture = `
     <div data-wayfinder-apply-confirmation="stale-apply"></div>
     <button id="stale-apply-no" type="button" data-action="no">Cancel stale Apply</button>
   </section>
-  <section id="apply-dialog" class="application dialog-v2" role="dialog" aria-modal="true">
-    <div data-wayfinder-apply-confirmation="active-apply"><p>Apply these choices?</p></div>
-    <footer>
-      <button id="apply-no" type="button" data-action="no">Cancel</button>
-      <button id="apply-yes" type="button" data-action="yes">Apply</button>
-    </footer>
-  </section>`;
+  <dialog id="apply-dialog" class="application dialog-v2">
+    <header><button id="apply-close" type="button" aria-label="Close Window">Close</button></header>
+    <form class="dialog-form standard-form">
+      <div id="active-apply-marker"><p>Apply these choices?</p></div>
+      <footer class="form-footer">
+        <button id="apply-yes" type="submit" data-action="yes">Apply</button>
+        <button id="apply-no" type="button" data-action="no" autofocus>Cancel</button>
+      </footer>
+    </form>
+  </dialog>`;
 
 // Mirrors Foundry 14.366 KeyboardManager.hasFocus and the consumed core cycleView Tab binding.
 const foundryKeyboardInterception = `
@@ -211,6 +216,7 @@ const foundryKeyboardInterception = `
   window.applyCount = 0;
   document.querySelector("#modal-save")?.addEventListener("click", () => window.modalSubmitCount += 1);
   document.querySelector("#apply-yes")?.addEventListener("click", () => window.applyCount += 1);
+  document.querySelector("#apply-dialog form")?.addEventListener("submit", event => event.preventDefault());
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Tab") return;
     const focused = document.activeElement;
@@ -226,37 +232,23 @@ const foundryKeyboardInterception = `
 declare global {
   interface Window {
     applyCount: number;
-    createDialogHooks: typeof createDialogHooks;
+    createWayfinderApplyConfirmationFocusHandoff(): {
+      readonly marker: string;
+      cancel(): void;
+      onRender(application: unknown): void;
+    };
     cycleViewCount: number;
-    dialogHooks: ReturnType<typeof createDialogHooks>;
-    dialogResult: Promise<boolean>;
+    focusAttempts: number;
+    focusHandoff: ReturnType<Window["createWayfinderApplyConfirmationFocusHandoff"]>;
     modalSubmitCount: number;
     markWayfinderKeyboardFocus(root: ParentNode): number;
-    resolveDialog(value: boolean): void;
-    withWayfinderApplyConfirmationFocus<T>(
-      hooks: ReturnType<typeof createDialogHooks>,
-      marker: string,
-      openDialog: () => Promise<T>
-    ): Promise<T>;
   }
 }
 
-function createDialogHooks() {
-  let nextId = 1;
-  const callbacks = new Map<number, (application: unknown, html: unknown) => void>();
-  return {
-    offCount: 0,
-    on(_event: "renderDialogV2", callback: (application: unknown, html: unknown) => void) {
-      const id = nextId++;
-      callbacks.set(id, callback);
-      return id;
-    },
-    off(_event: "renderDialogV2", hookId: number) {
-      this.offCount += 1;
-      callbacks.delete(hookId);
-    },
-    emit(html: unknown) {
-      for (const callback of [...callbacks.values()]) callback({}, html);
-    },
-  };
+async function waitForAnimationFrames(page: Page, count: number): Promise<void> {
+  await page.evaluate(async (frameCount) => {
+    for (let index = 0; index < frameCount; index += 1) {
+      await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()));
+    }
+  }, count);
 }

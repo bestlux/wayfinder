@@ -1,10 +1,17 @@
 const WAYFINDER_KEYBOARD_FOCUS_SELECTOR = "button, input, select, textarea, a[href], [tabindex]";
 const WAYFINDER_APPLY_CONFIRMATION_SELECTOR = "[data-wayfinder-apply-confirmation]";
+const WAYFINDER_APPLY_FOCUS_ATTEMPTS = 2;
 let wayfinderApplyConfirmationSequence = 0;
 
-export interface FoundryDialogHooksLike {
-  on(event: "renderDialogV2", callback: (application: unknown, html: unknown) => void): number;
-  off(event: "renderDialogV2", hookId: number): void;
+export interface WayfinderApplyConfirmationFocusHandoff {
+  readonly marker: string;
+  cancel(): void;
+  onRender(application: unknown): void;
+}
+
+interface ScheduledAnimationFrame {
+  readonly cancel: (handle: number) => void;
+  readonly handle: number;
 }
 
 /**
@@ -19,54 +26,71 @@ export function markWayfinderKeyboardFocus(root: ParentNode): number {
   return controls.length;
 }
 
-export function createWayfinderApplyConfirmationMarker(): string {
+/**
+ * DialogV2 dispatches its render callback before ApplicationV2's final
+ * autofocus and late bringToFront window focus. Defer the safe focus handoff
+ * to an animation frame so it survives both later lifecycle steps.
+ */
+export function createWayfinderApplyConfirmationFocusHandoff(): WayfinderApplyConfirmationFocusHandoff {
   wayfinderApplyConfirmationSequence += 1;
-  return `wayfinder-apply-${wayfinderApplyConfirmationSequence}`;
+  const marker = `wayfinder-apply-${wayfinderApplyConfirmationSequence}`;
+  let application: unknown = null;
+  let canceled = false;
+  let scheduled: ScheduledAnimationFrame | null = null;
+
+  const cancelScheduled = (): void => {
+    if (!scheduled) return;
+    scheduled.cancel(scheduled.handle);
+    scheduled = null;
+  };
+  const cancel = (): void => {
+    canceled = true;
+    cancelScheduled();
+    application = null;
+  };
+  const scheduleFocus = (attempt: number): void => {
+    if (canceled) return;
+    const root = keyboardFocusRoot(recordElement(application));
+    const view = root?.ownerDocument?.defaultView;
+    if (!root || !view || !prepareWayfinderApplyConfirmationControls(root, marker)) return;
+    cancelScheduled();
+    const handle = view.requestAnimationFrame(() => {
+      scheduled = null;
+      if (canceled) return;
+      const currentRoot = keyboardFocusRoot(recordElement(application));
+      const safeDefault = currentRoot && prepareWayfinderApplyConfirmationControls(currentRoot, marker);
+      if (!safeDefault) return;
+      try {
+        safeDefault.focus({ preventScroll: true });
+      } catch {
+        // A replaced control can throw for this frame. Retry once against the
+        // current dialog element, then rely on dialog settlement cleanup.
+      }
+      if (safeDefault.ownerDocument.activeElement !== safeDefault && attempt + 1 < WAYFINDER_APPLY_FOCUS_ATTEMPTS) {
+        scheduleFocus(attempt + 1);
+      }
+    });
+    scheduled = { cancel: view.cancelAnimationFrame.bind(view), handle };
+  };
+
+  return {
+    marker,
+    cancel,
+    onRender(renderedApplication: unknown): void {
+      if (canceled) return;
+      application = renderedApplication;
+      scheduleFocus(0);
+    },
+  };
 }
 
-/**
- * Scope Foundry's keyboard-focus opt-in to Wayfinder's Apply confirmation.
- * The destructive action remains non-default; initial focus goes to Cancel.
- */
-export function prepareWayfinderApplyConfirmationFocus(application: unknown, html: unknown, marker: string): boolean {
-  const root = keyboardFocusRoot(html) ?? keyboardFocusRoot(recordElement(application));
-  if (!root || !containsWayfinderApplyConfirmation(root, marker)) return false;
+function prepareWayfinderApplyConfirmationControls(root: ParentNode, marker: string): HTMLElement | null {
+  if (!containsWayfinderApplyConfirmation(root, marker)) return null;
   const safeDefault = root.querySelector<HTMLElement>('button[data-action="no"]');
   const apply = root.querySelector<HTMLElement>('button[data-action="yes"]');
-  if (!safeDefault || !apply) return false;
+  if (!safeDefault || !apply) return null;
   markWayfinderKeyboardFocus(root);
-  try {
-    safeDefault.focus({ preventScroll: true });
-  } catch {
-    // The controls remain opted into native Tab traversal even if Foundry removed
-    // the button during this render turn.
-    return false;
-  }
-  return safeDefault.ownerDocument.activeElement === safeDefault;
-}
-
-export async function withWayfinderApplyConfirmationFocus<T>(
-  hooks: FoundryDialogHooksLike | null | undefined,
-  marker: string,
-  openDialog: () => Promise<T>
-): Promise<T> {
-  if (!hooks) return openDialog();
-  let hookId: number | null = null;
-  const cleanup = (): void => {
-    if (hookId === null) return;
-    const activeHookId = hookId;
-    hookId = null;
-    hooks.off("renderDialogV2", activeHookId);
-  };
-  hookId = hooks.on("renderDialogV2", (application, html) => {
-    if (!prepareWayfinderApplyConfirmationFocus(application, html, marker)) return;
-    cleanup();
-  });
-  try {
-    return await openDialog();
-  } finally {
-    cleanup();
-  }
+  return safeDefault;
 }
 
 function containsWayfinderApplyConfirmation(root: ParentNode, marker: string): boolean {
@@ -77,19 +101,15 @@ function containsWayfinderApplyConfirmation(root: ParentNode, marker: string): b
   return candidates.some((candidate) => candidate.getAttribute("data-wayfinder-apply-confirmation") === marker);
 }
 
-function keyboardFocusRoot(value: unknown): ParentNode | null {
-  if (isParentNode(value)) return value;
-  if (value && typeof value === "object" && isParentNode((value as { 0?: unknown })[0])) {
-    return (value as { 0: ParentNode })[0];
-  }
-  return null;
+function keyboardFocusRoot(value: unknown): (ParentNode & { readonly ownerDocument?: Document }) | null {
+  return isParentNode(value) ? value : null;
 }
 
 function recordElement(value: unknown): unknown {
   return value && typeof value === "object" ? (value as { element?: unknown }).element : null;
 }
 
-function isParentNode(value: unknown): value is ParentNode {
+function isParentNode(value: unknown): value is ParentNode & { readonly ownerDocument?: Document } {
   return Boolean(value && typeof value === "object" && "querySelector" in value && "querySelectorAll" in value);
 }
 

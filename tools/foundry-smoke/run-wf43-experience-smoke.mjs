@@ -558,8 +558,23 @@ async function applyWithKeyboard(page, rootSelector, keyboard, action, tabTraver
   });
   await pressAndRecord(page, keyboard, action, "Enter");
   await waitFor(page, 'button[data-action="yes"]', 30_000);
-  await tabTo(page, 'button[data-action="yes"]', { failureEvidence: tabTraversalFailures, limit: 60 });
+  await pressAndRecordFocusTransition(page, keyboard, `${action}-confirm-focus`, "Shift+Tab", {
+    from: 'button[data-action="no"][data-keyboard-focus="true"]',
+    to: 'button[data-action="yes"][data-keyboard-focus="true"]',
+  });
   await pressAndRecord(page, keyboard, `${action}-confirm`, "Enter");
+}
+
+async function pressAndRecordFocusTransition(page, keyboard, action, key, { from, to }) {
+  await page.waitForFunction((selector) => document.activeElement?.matches(selector), from, { timeout: 30_000 });
+  const transition = { action, key, before: await focusEvidence(page), after: null };
+  keyboard.actions.push(transition);
+  await page.keyboard.press(key);
+  await page.waitForTimeout(50);
+  transition.after = await focusEvidence(page);
+  if (!(await page.evaluate((selector) => document.activeElement?.matches(selector), to))) {
+    throw new Error(`Keyboard focus transition ${action} did not reach ${to}.`);
+  }
 }
 
 async function pressAndRecord(page, keyboard, action, key) {

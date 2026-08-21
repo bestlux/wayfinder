@@ -35,7 +35,7 @@ import { assertEquipmentApplyAuthority } from "./application/equipment-policy-se
 import { createEquipmentSearchScheduler, scheduleEquipmentSearchInput, } from "./application/equipment-search-input-service.js";
 import { buildExistingCharacterHistory, withExistingCharacterHistory, } from "./application/existing-character-history-service.js";
 import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
-import { createWayfinderApplyConfirmationMarker, markWayfinderKeyboardFocus, withWayfinderApplyConfirmationFocus, } from "./application/foundry-keyboard-focus-service.js";
+import { createWayfinderApplyConfirmationFocusHandoff, markWayfinderKeyboardFocus, } from "./application/foundry-keyboard-focus-service.js";
 import { buildContextNote, buildOptionContext, resolveSelectionClassHasSpellcasting, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
 import { derivePickerRenderSession } from "./application/picker-render-session.js";
 import { PickerSearchScheduler } from "./application/picker-search-scheduler.js";
@@ -2747,15 +2747,21 @@ async function confirmWayfinderApply(message) {
     const dialog = foundryApi.applications?.api?.DialogV2;
     if (dialog) {
         const escapeHTML = foundryApi.utils?.escapeHTML ?? fallbackEscapeHtml;
-        const focusMarker = createWayfinderApplyConfirmationMarker();
-        const result = await withWayfinderApplyConfirmationFocus(Hooks, focusMarker, () => dialog.confirm({
-            window: { title: "wayfinder-pf2e.App.ApplyConfirmTitle" },
-            content: `<div data-wayfinder-apply-confirmation="${focusMarker}"><p style="white-space: pre-line">${escapeHTML(message)}</p></div>`,
-            modal: true,
-            yes: { label: "wayfinder-pf2e.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
-            no: { label: "wayfinder-pf2e.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
-        }));
-        return result === true;
+        const focusHandoff = createWayfinderApplyConfirmationFocusHandoff();
+        try {
+            const result = await dialog.confirm({
+                window: { title: "wayfinder-pf2e.App.ApplyConfirmTitle" },
+                content: `<div data-wayfinder-apply-confirmation="${focusHandoff.marker}"><p style="white-space: pre-line">${escapeHTML(message)}</p></div>`,
+                modal: true,
+                render: (_event, renderedDialog) => focusHandoff.onRender(renderedDialog),
+                yes: { label: "wayfinder-pf2e.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
+                no: { label: "wayfinder-pf2e.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
+            });
+            return result === true;
+        }
+        finally {
+            focusHandoff.cancel();
+        }
     }
     return typeof globalThis.confirm === "function" ? globalThis.confirm(message) : true;
 }

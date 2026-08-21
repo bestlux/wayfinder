@@ -104,6 +104,16 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(decreaseAction).toBeGreaterThan(decrementReturn);
   });
 
+  it("uses the safe Cancel default and adjacent backward traversal for Apply confirmation", () => {
+    const applyHelper = runner.slice(
+      runner.indexOf("async function applyWithKeyboard"),
+      runner.indexOf("async function pressAndRecord")
+    );
+    expect(applyHelper).toContain('button[data-action="yes"]');
+    expect(applyHelper).toContain('`${action}-confirm-focus`, "Shift+Tab"');
+    expect(applyHelper).toContain('pressAndRecord(page, keyboard, `${action}-confirm`, "Enter")');
+  });
+
   it("bounds and persists active, target, local-order, and observed Tab failure evidence", () => {
     expect(runner).toContain("const tabTraversalFailures = []");
     expect(runner).toContain("tabTraversalFailures,");
@@ -244,6 +254,20 @@ describe("WF-080-43 live experience qualifier", () => {
       expect.arrayContaining([
         expect.stringMatching(/en: compact catalogue flow did not keyboard-search/i),
         expect.stringMatching(/cn: compact catalogue flow did not keyboard-search/i),
+      ])
+    );
+  });
+
+  it("rejects Apply confirmation evidence that jumps to Apply without the Cancel Shift+Tab transition", () => {
+    const result = passingResult();
+    for (const entry of result.locales) {
+      entry.keyboard.actions = entry.keyboard.actions.filter((item) => !item.action.endsWith("-confirm-focus"));
+    }
+
+    expect(qualifyWf43ExperienceResult(result).failures).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/en: keyboard flow is missing forced-apply-confirm-focus/i),
+        expect.stringMatching(/cn: Apply confirmations did not prove ordered Cancel, Shift\+Tab, Apply, Enter/i),
       ])
     );
   });
@@ -573,10 +597,21 @@ function passingResult(): any {
           "review-purchases",
           "acknowledge-handoff",
           "forced-apply",
+          "forced-apply-confirm-focus",
           "forced-apply-confirm",
           "retry-apply",
+          "retry-apply-confirm-focus",
           "retry-apply-confirm",
-        ].map((action) => ({ action, key: action === "search" ? "Dagger" : "Enter" })),
+        ].map((action) => ({
+          action,
+          key: action === "search" ? "Dagger" : action.endsWith("-confirm-focus") ? "Shift+Tab" : "Enter",
+          ...(action.endsWith("-confirm-focus")
+            ? {
+                before: { action: "no", tag: "BUTTON", keyboardFocus: "true" },
+                after: { action: "yes", tag: "BUTTON", keyboardFocus: "true" },
+              }
+            : {}),
+        })),
         focus: Array.from({ length: 6 }, (_, index) => ({ focusId: `focus-${index}`, name: "Dagger", visible: true })),
       },
       liveRegionChanges: {

@@ -226,8 +226,10 @@ function qualifyLocale(entry, definition, failures) {
     "review-purchases",
     "acknowledge-handoff",
     "forced-apply",
+    "forced-apply-confirm-focus",
     "forced-apply-confirm",
     "retry-apply",
+    "retry-apply-confirm-focus",
     "retry-apply-confirm",
   ]) {
     if (!keyboardActions.has(action)) failures.push(`${definition.id}: keyboard flow is missing ${action}.`);
@@ -245,6 +247,40 @@ function qualifyLocale(entry, definition, failures) {
     failures.push(
       `${definition.id}: compact catalogue flow did not keyboard-search, then select the result leaf, then add its detail currency action.`,
     );
+  }
+  const confirmationActions = new Set([
+    "forced-apply-confirm-focus",
+    "forced-apply-confirm",
+    "retry-apply-confirm-focus",
+    "retry-apply-confirm",
+  ]);
+  const confirmationSequence = (keyboard?.actions ?? [])
+    .filter((item) => confirmationActions.has(item.action))
+    .map((item) => ({ action: item.action, key: item.key }));
+  const expectedConfirmationSequence = [
+    { action: "forced-apply-confirm-focus", key: "Shift+Tab" },
+    { action: "forced-apply-confirm", key: "Enter" },
+    { action: "retry-apply-confirm-focus", key: "Shift+Tab" },
+    { action: "retry-apply-confirm", key: "Enter" },
+  ];
+  if (JSON.stringify(confirmationSequence) !== JSON.stringify(expectedConfirmationSequence)) {
+    failures.push(
+      `${definition.id}: Apply confirmations did not prove ordered Cancel, Shift+Tab, Apply, Enter keyboard transitions.`,
+    );
+  }
+  for (const action of (keyboard?.actions ?? []).filter(
+    (item) => typeof item.action === "string" && item.action.endsWith("-confirm-focus"),
+  )) {
+    if (
+      action.before?.action !== "no" ||
+      action.before?.tag !== "BUTTON" ||
+      action.before?.keyboardFocus !== "true" ||
+      action.after?.action !== "yes" ||
+      action.after?.tag !== "BUTTON" ||
+      action.after?.keyboardFocus !== "true"
+    ) {
+      failures.push(`${definition.id}: ${action.action} did not bind focused Cancel to focused Apply.`);
+    }
   }
   const focus = keyboard?.focus ?? [];
   if (focus.length < 5 || focus.some((item) => item.visible !== true || !item.focusId)) {

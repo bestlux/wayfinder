@@ -1,23 +1,6 @@
+import { supportedPhysicalGrantRoute, } from "./physical-grant-route-registry.js";
 import { SEMANTIC_WEALTH_POLICY } from "./semantic-wealth-policy.js";
-export const CLASS_GRANT_PROFILE_UUIDS = {
-    alchemistClass: "Compendium.pf2e.classes.Item.XwfcJuskrhI9GIjX",
-    alchemyFeature: "Compendium.pf2e.classfeatures.Item.w3aS3tsvH2Ub6XMn",
-    formulaBookFeature: "Compendium.pf2e.classfeatures.Item.XPPG7nN9pxt0sjMg",
-    formulaBookItem: "Compendium.pf2e.equipment-srd.Item.qCEOZ6109Yo34tRx",
-    investigatorClass: "Compendium.pf2e.classes.Item.4wrSCyX6akmyo7Wj",
-    methodologyFeature: "Compendium.pf2e.classfeatures.Item.uhHg9BXBiHpL5ndS",
-    alchemicalSciences: "Compendium.pf2e.classfeatures.Item.ln2Y1a4SxlU9sizX",
-    barbarianClass: "Compendium.pf2e.classes.Item.YDRiP7uVvr9WRhOI",
-    instinctFeature: "Compendium.pf2e.classfeatures.Item.dU7xRpg4kFd01hwZ",
-    giantInstinct: "Compendium.pf2e.classfeatures.Item.JuKD6k7nDwfO0Ckv",
-    dwarfAncestry: "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6",
-    clanDaggerFeature: "Compendium.pf2e.ancestryfeatures.Item.Eyuqu6eIaoGCjnMv",
-    clanDaggerItem: "Compendium.pf2e.equipment-srd.Item.kJJvKm80KwWXPukV",
-    clanPistolFeature: "Compendium.pf2e.feats-srd.Item.LvVg83ZDj8mabcWF",
-    sarangayAncestry: "Compendium.pf2e.ancestries.Item.7mpMGhVoaPANJnZ8",
-    headGemFeature: "Compendium.pf2e.ancestryfeatures.Item.HYefFkddD9lOhFM8",
-    headGemItem: "Compendium.pf2e.equipment-srd.Item.FA1mAc7rEyC9vzZa",
-};
+export { CLASS_GRANT_PROFILE_UUIDS, } from "./physical-grant-route-registry.js";
 const preparedPlans = new WeakSet();
 export function createPlannedClassGrant(grant) {
     const normalized = normalizePlannedClassGrant({ ...grant, version: 1, fundingLane: "class-grant" });
@@ -355,68 +338,25 @@ function normalizeEligibilityEvidence(raw) {
     };
 }
 function canonicalProfileMatches(grant) {
-    const u = CLASS_GRANT_PROFILE_UUIDS;
-    if (grant.profileId === "alchemist-formula-book") {
-        return (grant.grantId === "class-grant:alchemist-formula-book:class-level-1" &&
-            grant.origin.sourceSlotId === "class-level-1" &&
-            grant.origin.sourceUuid === u.alchemistClass &&
-            grant.granterSourceUuid === u.formulaBookFeature &&
-            grant.expected.sourceUuid === u.formulaBookItem &&
-            grant.expected.itemType === "equipment" &&
-            grant.materializer === "pf2e-native" &&
-            grant.eligibilityKind === "fixed-class-grant" &&
-            grant.resaleRule === "normal" &&
-            sameOrderedStrings(grant.nativeGrantChainSourceUuids, [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass]));
+    const route = supportedPhysicalGrantRoute(grant.profileId);
+    const expected = route.grant;
+    const sharedFactsMatch = grant.origin.sourceSlotId === expected.originSourceSlotId &&
+        grant.origin.sourceUuid === expected.originSourceUuid &&
+        grant.granterSourceUuid === expected.granterSourceUuid &&
+        grant.expected.itemType === expected.expectedItemType &&
+        grant.materializer === route.materializer &&
+        grant.eligibilityKind === expected.eligibilityKind &&
+        grant.resaleRule === expected.resaleRule &&
+        sameOrderedStrings(grant.nativeGrantChainSourceUuids, expected.nativeGrantChainSourceUuids);
+    if (!sharedFactsMatch)
+        return false;
+    if (route.classification === "supported-native") {
+        return (grant.grantId === expected.grantId &&
+            grant.expected.sourceUuid === expected.expectedSourceUuid &&
+            grant.eligibilityEvidence.kind === "fixed-native-profile");
     }
-    if (grant.profileId === "investigator-alchemical-sciences-formula-book") {
-        return (grant.grantId === "class-grant:investigator-formula-book:class-branch-methodology-level-1" &&
-            grant.origin.sourceSlotId === "class-branch-methodology-level-1" &&
-            grant.origin.sourceUuid === u.alchemicalSciences &&
-            grant.granterSourceUuid === u.alchemicalSciences &&
-            grant.expected.sourceUuid === u.formulaBookItem &&
-            grant.expected.itemType === "equipment" &&
-            grant.materializer === "pf2e-native" &&
-            grant.eligibilityKind === "fixed-class-grant" &&
-            grant.resaleRule === "normal" &&
-            sameOrderedStrings(grant.nativeGrantChainSourceUuids, [
-                u.alchemicalSciences,
-                u.methodologyFeature,
-                u.investigatorClass,
-            ]));
-    }
-    if (grant.profileId === "dwarf-clan-dagger") {
-        return (grant.grantId === "class-grant:dwarf-clan-dagger:ancestry-level-1" &&
-            grant.origin.sourceSlotId === "ancestry-level-1" &&
-            grant.origin.sourceUuid === u.dwarfAncestry &&
-            grant.granterSourceUuid === u.clanDaggerFeature &&
-            grant.expected.sourceUuid === u.clanDaggerItem &&
-            grant.expected.itemType === "weapon" &&
-            grant.materializer === "pf2e-native" &&
-            grant.eligibilityKind === "fixed-class-grant" &&
-            grant.resaleRule === "normal" &&
-            sameOrderedStrings(grant.nativeGrantChainSourceUuids, [u.clanDaggerFeature, u.dwarfAncestry]));
-    }
-    if (grant.profileId === "sarangay-head-gem") {
-        return (grant.grantId === "class-grant:sarangay-head-gem:ancestry-level-1" &&
-            grant.origin.sourceSlotId === "ancestry-level-1" &&
-            grant.origin.sourceUuid === u.sarangayAncestry &&
-            grant.granterSourceUuid === u.headGemFeature &&
-            grant.expected.sourceUuid === u.headGemItem &&
-            grant.expected.itemType === "equipment" &&
-            grant.materializer === "pf2e-native" &&
-            grant.eligibilityKind === "fixed-class-grant" &&
-            grant.resaleRule === "normal" &&
-            sameOrderedStrings(grant.nativeGrantChainSourceUuids, [u.headGemFeature, u.sarangayAncestry]));
-    }
-    return (grant.origin.sourceSlotId === "class-branch-instinct-level-1" &&
-        grant.origin.sourceUuid === u.giantInstinct &&
-        grant.granterSourceUuid === u.giantInstinct &&
-        grant.expected.itemType === "weapon" &&
+    return (grant.grantId === `class-grant:titan-mauler:${expected.originSourceSlotId}` &&
         grant.expected.sourceUuid.length > 0 &&
-        grant.materializer === "wayfinder-acquisition" &&
-        grant.eligibilityKind === "catalogue-choice" &&
-        grant.resaleRule === "zero-until-rune-investment" &&
-        grant.nativeGrantChainSourceUuids.length === 0 &&
         grant.eligibilityEvidence.kind === "titan-mauler");
 }
 function deepFreezeGrant(grant) {

@@ -19,23 +19,25 @@ describe("physical-grant coverage", () => {
     expect(new Set(UNSUPPORTED_PHYSICAL_GRANT_ROUTE_IDS).size).toBe(46);
 
     for (const route of UNSUPPORTED_PHYSICAL_GRANT_ROUTES) {
-      const draft = createEmptyDraft(1);
-      const steps: PendingStep[] = [];
-      route.requirements.forEach((requirement, index) => {
-        const slotId = requirement.slotId ?? `coverage-selection-${index}`;
-        const channel = requirement.channel ?? "selections";
-        draft[channel][slotId] = selection(slotId, requirement.sourceUuid);
-        steps.push({ slotId } as PendingStep);
-      });
+      for (const activation of route.activationVariants) {
+        const draft = createEmptyDraft(1);
+        const steps: PendingStep[] = [];
+        activation.forEach((requirement, index) => {
+          const slotId = requirement.slotId ?? `coverage-selection-${index}`;
+          const channel = requirement.channel ?? "selections";
+          draft[channel][slotId] = selection(slotId, requirement.sourceUuid);
+          steps.push({ slotId } as PendingStep);
+        });
 
-      expect(findUnsupportedPhysicalGrantRoutes(draft, steps)).toEqual([
-        expect.objectContaining({
-          code: "unsupported-physical-grant",
-          routeId: route.routeId,
-          reasonCode: route.reasonCode,
-          sourceUuid: route.requirements.at(-1)!.sourceUuid,
-        }),
-      ]);
+        expect(findUnsupportedPhysicalGrantRoutes(draft, steps)).toEqual([
+          expect.objectContaining({
+            code: "unsupported-physical-grant",
+            routeId: route.routeId,
+            reasonCode: route.blocker.reasonCode,
+            sourceUuid: activation.at(-1)!.sourceUuid,
+          }),
+        ]);
+      }
     }
   });
 
@@ -151,11 +153,12 @@ describe("physical-grant coverage", () => {
     const giantRoute = UNSUPPORTED_PHYSICAL_GRANT_ROUTES.find(
       (route) => route.routeId === "ancient-elf-giant-instinct-weapon"
     )!;
+    const giantActivation = giantRoute.activationVariants[0]!;
 
-    giantRoute.requirements.forEach((_omitted, omittedIndex) => {
+    giantActivation.forEach((_omitted, omittedIndex) => {
       const draft = createEmptyDraft(1);
       const steps: PendingStep[] = [];
-      giantRoute.requirements.forEach((requirement, index) => {
+      giantActivation.forEach((requirement, index) => {
         if (index === omittedIndex) return;
         addRequirement(draft, steps, requirement.channel ?? "selections", requirement.slotId!, requirement.sourceUuid);
       });

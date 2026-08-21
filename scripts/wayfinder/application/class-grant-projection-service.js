@@ -6,6 +6,7 @@ import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant, createPreparedClass
 import { normalizeAcquisitionIdentity } from "../domain/economic-baseline.js";
 import { evaluateEquipmentItemAuthority, } from "../domain/equipment-policy.js";
 import { currentPf2eVersion, findUnsupportedPhysicalGrantRoutes, physicalGrantCoverageBlockers, } from "../domain/physical-grant-coverage.js";
+import { supportedPhysicalGrantRoute } from "../domain/physical-grant-route-registry.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
 const UUIDS = CLASS_GRANT_PROFILE_UUIDS;
 export async function prepareCurrentClassGrantPlan(actor, draft, activeSteps, options = {}) {
@@ -241,18 +242,7 @@ async function projectDwarf(ancestryDocument, fetchDocumentByUuid) {
         return sourceDrift(profileId, "The installed Dwarf Clan Dagger grant relationship changed.");
     }
     return {
-        grant: createPlannedClassGrant({
-            grantId: "class-grant:dwarf-clan-dagger:ancestry-level-1",
-            profileId,
-            origin: { sourceSlotId: "ancestry-level-1", sourceUuid: UUIDS.dwarfAncestry },
-            granterSourceUuid: UUIDS.clanDaggerFeature,
-            expected: { sourceUuid: UUIDS.clanDaggerItem, quantity: 1, itemType: "weapon" },
-            materializer: "pf2e-native",
-            eligibilityKind: "fixed-class-grant",
-            resaleRule: "normal",
-            eligibilityEvidence: { kind: "fixed-native-profile" },
-            nativeGrantChainSourceUuids: [UUIDS.clanDaggerFeature, UUIDS.dwarfAncestry],
-        }),
+        grant: createRegisteredClassGrant(profileId),
     };
 }
 async function projectSarangay(ancestryDocument, fetchDocumentByUuid) {
@@ -268,18 +258,7 @@ async function projectSarangay(ancestryDocument, fetchDocumentByUuid) {
         return sourceDrift(profileId, "The installed Sarangay Head Gem grant relationship changed.");
     }
     return {
-        grant: createPlannedClassGrant({
-            grantId: "class-grant:sarangay-head-gem:ancestry-level-1",
-            profileId,
-            origin: { sourceSlotId: "ancestry-level-1", sourceUuid: UUIDS.sarangayAncestry },
-            granterSourceUuid: UUIDS.headGemFeature,
-            expected: { sourceUuid: UUIDS.headGemItem, quantity: 1, itemType: "equipment" },
-            materializer: "pf2e-native",
-            eligibilityKind: "fixed-class-grant",
-            resaleRule: "normal",
-            eligibilityEvidence: { kind: "fixed-native-profile" },
-            nativeGrantChainSourceUuids: [UUIDS.headGemFeature, UUIDS.sarangayAncestry],
-        }),
+        grant: createRegisteredClassGrant(profileId),
     };
 }
 async function projectAlchemist(classDocument, fetchDocumentByUuid) {
@@ -298,18 +277,7 @@ async function projectAlchemist(classDocument, fetchDocumentByUuid) {
         return sourceDrift(profileId, "The installed Alchemist formula-book GrantItem chain changed.");
     }
     return {
-        grant: createPlannedClassGrant({
-            grantId: "class-grant:alchemist-formula-book:class-level-1",
-            profileId,
-            origin: { sourceSlotId: "class-level-1", sourceUuid: UUIDS.alchemistClass },
-            granterSourceUuid: UUIDS.formulaBookFeature,
-            expected: { sourceUuid: UUIDS.formulaBookItem, quantity: 1, itemType: "equipment" },
-            materializer: "pf2e-native",
-            eligibilityKind: "fixed-class-grant",
-            resaleRule: "normal",
-            eligibilityEvidence: { kind: "fixed-native-profile" },
-            nativeGrantChainSourceUuids: [UUIDS.formulaBookFeature, UUIDS.alchemyFeature, UUIDS.alchemistClass],
-        }),
+        grant: createRegisteredClassGrant(profileId),
     };
 }
 async function projectInvestigator(classDocument, selection, fetchDocumentByUuid) {
@@ -329,18 +297,7 @@ async function projectInvestigator(classDocument, selection, fetchDocumentByUuid
         return sourceDrift(profileId, "The installed Alchemical Sciences source relationship changed.");
     }
     return {
-        grant: createPlannedClassGrant({
-            grantId: `class-grant:investigator-formula-book:${selection.slotId}`,
-            profileId,
-            origin: { sourceSlotId: selection.slotId, sourceUuid: selection.uuid },
-            granterSourceUuid: UUIDS.alchemicalSciences,
-            expected: { sourceUuid: UUIDS.formulaBookItem, quantity: 1, itemType: "equipment" },
-            materializer: "pf2e-native",
-            eligibilityKind: "fixed-class-grant",
-            resaleRule: "normal",
-            eligibilityEvidence: { kind: "fixed-native-profile" },
-            nativeGrantChainSourceUuids: [UUIDS.alchemicalSciences, UUIDS.methodologyFeature, UUIDS.investigatorClass],
-        }),
+        grant: createRegisteredClassGrant(profileId),
     };
 }
 async function projectTitanMauler(classDocument, selection, acquisitionLines, policy, actorSize, resolveCharacterAccessRef, fetchDocumentByUuid, subject) {
@@ -403,15 +360,9 @@ async function projectTitanMauler(classDocument, selection, acquisitionLines, po
         };
     }
     return {
-        grant: createPlannedClassGrant({
+        grant: createRegisteredClassGrant(profileId, {
             grantId,
-            profileId,
-            origin: { sourceSlotId: selection.slotId, sourceUuid: selection.uuid },
-            granterSourceUuid: UUIDS.giantInstinct,
-            expected: { sourceUuid: candidate.sourceUuid, quantity: 1, itemType: "weapon" },
-            materializer: "wayfinder-acquisition",
-            eligibilityKind: "catalogue-choice",
-            resaleRule: "zero-until-rune-investment",
+            expectedSourceUuid: candidate.sourceUuid,
             eligibilityEvidence: {
                 kind: "titan-mauler",
                 documentFingerprint: candidate.documentFingerprint,
@@ -431,9 +382,34 @@ async function projectTitanMauler(classDocument, selection, acquisitionLines, po
                 permanence: "permanent",
                 componentKind: "baseline-item",
             },
-            nativeGrantChainSourceUuids: [],
         }),
     };
+}
+function createRegisteredClassGrant(profileId, overrides = {}) {
+    const route = supportedPhysicalGrantRoute(profileId);
+    const grant = route.grant;
+    const grantId = overrides.grantId ?? grant.grantId;
+    const expectedSourceUuid = overrides.expectedSourceUuid ?? grant.expectedSourceUuid;
+    if (!grantId || !expectedSourceUuid) {
+        throw new TypeError(`Physical-grant profile ${profileId} requires its dynamic grant identity.`);
+    }
+    const eligibilityEvidence = overrides.eligibilityEvidence ??
+        (route.classification === "supported-native" ? { kind: "fixed-native-profile" } : null);
+    if (!eligibilityEvidence) {
+        throw new TypeError(`Wayfinder-acquired physical-grant profile ${profileId} requires eligibility evidence.`);
+    }
+    return createPlannedClassGrant({
+        grantId,
+        profileId,
+        origin: { sourceSlotId: grant.originSourceSlotId, sourceUuid: grant.originSourceUuid },
+        granterSourceUuid: grant.granterSourceUuid,
+        expected: { sourceUuid: expectedSourceUuid, quantity: 1, itemType: grant.expectedItemType },
+        materializer: route.materializer,
+        eligibilityKind: grant.eligibilityKind,
+        resaleRule: grant.resaleRule,
+        eligibilityEvidence,
+        nativeGrantChainSourceUuids: grant.nativeGrantChainSourceUuids,
+    });
 }
 function completeProjection(subject, grants, blockers) {
     return {

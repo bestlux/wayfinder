@@ -474,6 +474,12 @@ export interface StartingEquipmentStepPane {
   catalogue: {
     state: "pending" | "ready" | "error";
     message: string;
+    diagnostics: readonly {
+      code: string;
+      packId: string;
+      sourceIdentity: string | null;
+      message: string;
+    }[];
     search: string;
     searchDisabled: boolean;
     filters: readonly { key: string; label: string; value: string; selected: boolean }[];

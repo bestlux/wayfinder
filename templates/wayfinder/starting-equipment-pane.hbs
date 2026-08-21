@@ -102,7 +102,13 @@
             </div>
             <p class="equipment-result-count">Showing {{activePane.catalogue.visibleResultCount}} of {{activePane.catalogue.totalResultCount}} matching items</p>
             {{#unless activePane.catalogue.items.length}}
-              <div class="equipment-catalogue-state {{activePane.catalogue.state}}"><i class="fa-solid fa-box-open" aria-hidden="true"></i><p>{{activePane.catalogue.message}}</p></div>
+              <div class="equipment-catalogue-state {{activePane.catalogue.state}}" role="status"><i class="fa-solid fa-box-open" aria-hidden="true"></i><p>{{activePane.catalogue.message}}</p>
+                {{#if activePane.catalogue.diagnostics.length}}
+                  <ul class="equipment-source-diagnostics">
+                    {{#each activePane.catalogue.diagnostics}}<li data-equipment-source-diagnostic="{{code}}"><strong>{{packId}}</strong>: {{message}}</li>{{/each}}
+                  </ul>
+                {{/if}}
+              </div>
             {{/unless}}
             <div class="equipment-result-list" data-wayfinder-scroll-id="{{activePane.stepId}}:equipment-results">
               {{#each activePane.catalogue.items}}

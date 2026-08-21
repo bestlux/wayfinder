@@ -12,6 +12,7 @@ import {
   type EquipmentAccessRegistry,
   type EquipmentCataloguePackLike,
 } from "../src/wayfinder/application/equipment-catalogue-service";
+import type { EquipmentSourceDiagnostic } from "../src/wayfinder/application/equipment-source-policy";
 import {
   createAcquisitionDraft,
   createAcquisitionPolicySnapshot,
@@ -361,6 +362,90 @@ describe("equipment acquisition runtime", () => {
     });
     expect(getIndex).toHaveBeenCalledTimes(1);
     expect(getDocument).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks a missing approved source with its typed diagnostic and no acquisition mutation", async () => {
+    const source = dagger();
+    const getDocument = vi.fn(async () => document(source));
+    const missingDiagnostic: EquipmentSourceDiagnostic = {
+      code: "equipment-pack-missing",
+      packId: "supplemental.missing-equipment",
+      sourceIdentity: null,
+      message:
+        "Enabled equipment pack supplemental.missing-equipment is not installed or is unavailable to the current user.",
+    };
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument },
+      { sourceDiagnostics: [missingDiagnostic] }
+    );
+    const beforeDraft = structuredClone(request.draft);
+    const beforeActor = structuredClone(request.actor);
+
+    const projection = await runtime.uiAdapter.project(request);
+    expect(projection).toMatchObject({
+      state: "error",
+      records: [],
+      diagnostics: [missingDiagnostic],
+      message: expect.stringMatching(/ask your GM/i),
+    });
+    const pane = buildStartingEquipmentPane(
+      request.step,
+      request.draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      projection
+    );
+    expect(pane.catalogue).toMatchObject({
+      state: "error",
+      searchDisabled: true,
+      diagnostics: [missingDiagnostic],
+      items: [],
+    });
+    expect(pane.review).toMatchObject({ canReviewPurchases: false, canRetainAll: false });
+    expect(getDocument).not.toHaveBeenCalled();
+    expect(request.draft).toEqual(beforeDraft);
+    expect(request.actor).toEqual(beforeActor);
+  });
+
+  it("blocks a corrupt approved pack index with its deterministic typed diagnostic", async () => {
+    const getDocument = vi.fn(async () => null);
+    const { runtime, request } = fixture({ getIndex: vi.fn(async () => null), getDocument });
+    const beforeDraft = structuredClone(request.draft);
+
+    const projection = await runtime.uiAdapter.project(request);
+
+    expect(projection).toMatchObject({
+      state: "error",
+      records: [],
+      diagnostics: [{ code: "equipment-pack-index-corrupt", packId: PACK_ID, sourceIdentity: null }],
+    });
+    expect(getDocument).not.toHaveBeenCalled();
+    expect(request.draft).toEqual(beforeDraft);
+  });
+
+  it("blocks duplicate source identity projection before document hydration or mutation", async () => {
+    const source = dagger();
+    const getDocument = vi.fn(async () => document(source));
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [source, dagger({ name: "Duplicate Dagger" })]),
+      getDocument,
+    });
+    const beforeDraft = structuredClone(request.draft);
+
+    const projection = await runtime.uiAdapter.project(request);
+
+    expect(projection).toMatchObject({
+      state: "error",
+      records: [],
+      diagnostics: [
+        {
+          code: "duplicate-equipment-source-identity",
+          packId: PACK_ID,
+          sourceIdentity: DAGGER_UUID,
+        },
+      ],
+    });
+    expect(getDocument).not.toHaveBeenCalled();
+    expect(request.draft).toEqual(beforeDraft);
   });
 
   it.each([
@@ -1488,6 +1573,7 @@ function fixture(
       Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareDraftedActor"]
     >;
     readonly ancestrySize?: "tiny" | "sm" | "med" | "lg" | "huge" | "grg";
+    readonly sourceDiagnostics?: readonly EquipmentSourceDiagnostic[];
   } = {}
 ): {
   runtime: EquipmentAcquisitionRuntime;
@@ -1527,6 +1613,7 @@ function fixture(
               }
             : null),
       resolveEffectivePolicy: () => currentPolicy,
+      resolveSourceDiagnostics: () => options.sourceDiagnostics ?? [],
       prepareConfiguredItem: options.prepareConfiguredItem,
       preparePhysicalItem: options.preparePhysicalItem ?? prepareTestPhysicalItem,
       prepareDraftedActor: options.prepareDraftedActor ?? prepareTestDraftedActor,

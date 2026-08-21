@@ -22,12 +22,30 @@ import {
 } from "../domain/equipment-policy.js";
 import {
   discoverInstalledEquipmentPackDescriptors,
+  type EquipmentSourceDiagnostic,
   type InstalledEquipmentPackDescriptor,
   normalizePf2eEquipmentSources,
 } from "./equipment-source-policy.js";
 import { requireCurrentGmPrincipal } from "./gm-command-authority.js";
 
 export { normalizePf2eEquipmentSources } from "./equipment-source-policy.js";
+
+/**
+ * Read-only health projection for the current PF2E equipment sources.
+ * Diagnostics deliberately remain outside reviewed policy material: pack
+ * availability is re-evaluated whenever the catalogue is projected.
+ */
+export function resolveCurrentEquipmentSourceDiagnostics(input: {
+  readonly policy: Pick<EffectiveEquipmentPolicySnapshotV1, "sourcePolicy">;
+  readonly installedEquipmentPacks?: readonly InstalledEquipmentPackDescriptor[];
+}): readonly EquipmentSourceDiagnostic[] {
+  return normalizePf2eEquipmentSources({
+    installedEquipmentPacks: input.installedEquipmentPacks ?? discoverCurrentEquipmentPacks(),
+    allowedPackFamilies: input.policy.sourcePolicy.configuredPackFamilies,
+    compendiumBrowserPacks: game.settings.get("pf2e", "compendiumBrowserPacks"),
+    compendiumBrowserSources: game.settings.get("pf2e", "compendiumBrowserSources"),
+  }).diagnostics;
+}
 
 export function resolveActorAbpSnapshot(
   actor: unknown,

@@ -5,6 +5,7 @@ import {
   createOwnerStartAttestation,
   normalizePf2eEquipmentSources,
   resolveActorAbpSnapshot,
+  resolveCurrentEquipmentSourceDiagnostics,
   resolveEquipmentPolicyForActor,
   revokeTrustedEquipmentPolicyJudgment,
   saveEquipmentWorldPolicy,
@@ -84,6 +85,40 @@ describe("equipment policy service", () => {
         compendiumBrowserSources: { sources: {} },
       }).effectivePackIds
     ).toEqual(["battlezoo.items"]);
+  });
+
+  it("projects current source health without adding diagnostics to durable policy material", () => {
+    globals.game.settings.get.mockImplementation((moduleId: string, key: string) => {
+      if (moduleId === "pf2e" && key === "compendiumBrowserPacks") {
+        return { equipment: { "supplemental.missing-equipment": { load: true } } };
+      }
+      if (moduleId === "pf2e" && key === "compendiumBrowserSources") return { sources: {} };
+      return null;
+    });
+
+    expect(
+      resolveCurrentEquipmentSourceDiagnostics({
+        policy: {
+          sourcePolicy: {
+            configuredPackFamilies: ["pf2e", "supplemental"],
+            effectivePackIds: ["pf2e.equipment-srd"],
+            enabledSourceSlugs: [],
+            knownSourceSlugs: [],
+            showEmptySources: false,
+            showUnknownSources: false,
+          },
+        },
+        installedEquipmentPacks: equipmentDescriptors(["pf2e.equipment-srd"]),
+      })
+    ).toEqual([
+      {
+        code: "equipment-pack-missing",
+        packId: "supplemental.missing-equipment",
+        sourceIdentity: null,
+        message:
+          "Enabled equipment pack supplemental.missing-equipment is not installed or is unavailable to the current user.",
+      },
+    ]);
   });
 
   it("uses PF2E's effective ABP API and preserves mode and actor override", () => {

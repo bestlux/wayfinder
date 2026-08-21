@@ -6,8 +6,9 @@ import { createAcquisitionPriceSnapshot } from "../domain/acquisition-ledger.js"
 import { assertPreparedClassGrantPlanMatches, evaluateTitanMaulerCandidate, normalizePlannedClassGrant, titanMaulerTargetSize, } from "../domain/class-grant-reconciliation.js";
 import { buildTitanMaulerCandidate, titanMaulerGrantIdForDraft } from "./class-grant-projection-service.js";
 import { createEquipmentCatalogueDraftContext, createEquipmentCatalogueService, EMPTY_EQUIPMENT_ACCESS_REGISTRY, } from "./equipment-catalogue-service.js";
-import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
+import { resolveCurrentEquipmentSourceDiagnostics, resolveEquipmentPolicyForActor, } from "./equipment-policy-service.js";
 import { materializedPhysicalItemSize, prepareTransientDraftedEquipmentActor, resolvePreparedDraftedEquipmentSize, } from "./equipment-size-preparation-service.js";
+import { sortEquipmentSourceDiagnostics } from "./equipment-source-policy.js";
 import { registerStartingEquipmentUiAdapter, } from "./starting-equipment-ui-adapter.js";
 export class ConfiguredItemHandoffRequiredError extends Error {
     reason;
@@ -35,6 +36,7 @@ export function commitTitanMaulerLineSynchronization(args) {
 export function createEquipmentAcquisitionRuntime(options) {
     const accessRegistry = options.accessRegistry ?? EMPTY_EQUIPMENT_ACCESS_REGISTRY;
     const resolveEffectivePolicy = options.resolveEffectivePolicy ?? resolveCurrentEffectivePolicy;
+    const resolveSourceDiagnostics = options.resolveSourceDiagnostics ?? ((policy) => resolveCurrentEquipmentSourceDiagnostics({ policy }));
     const mintLineId = options.mintLineId ?? mintAcquisitionLineId;
     const fetchDocumentByUuid = options.fetchDocumentByUuid ?? resolveUuid;
     const prepareConfiguredItem = options.prepareConfiguredItem ?? prepareTransientConfiguredItem;
@@ -105,6 +107,20 @@ export function createEquipmentAcquisitionRuntime(options) {
                 const { policy, context } = currentContext(request.actor, request.draft, acquisition);
                 const catalogue = catalogueFor(policy);
                 const projection = await catalogue.project(context);
+                const diagnostics = combineSourceDiagnostics(resolveSourceDiagnostics(policy), projection.diagnostics);
+                if (diagnostics.length > 0) {
+                    return {
+                        state: "error",
+                        message: "Approved equipment sources are unavailable or inconsistent. Ask your GM to review them.",
+                        diagnostics,
+                        query: request.query,
+                        records: [],
+                        filters: [],
+                        activeFilters: request.filters,
+                        previewSourceUuid: null,
+                        titanMauler,
+                    };
+                }
                 let projectedEntries = projection.entries;
                 if (request.previewSourceUuid) {
                     const preview = await catalogue.hydratePreview(request.previewSourceUuid, context);
@@ -147,6 +163,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 return {
                     state: "ready",
                     message: `${entries.length} piece${entries.length === 1 ? "" : "s"} of gear to browse.`,
+                    diagnostics: [],
                     query: request.query,
                     records,
                     filters: catalogueFilters(entries),
@@ -161,6 +178,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     message: error instanceof Error
                         ? error.message
                         : "The gear list would not load. Ask your GM to check the approved equipment sources.",
+                    diagnostics: [],
                     query: request.query,
                     records: [],
                     filters: [],
@@ -488,6 +506,14 @@ export function createEquipmentAcquisitionRuntime(options) {
                 catalogue.invalidatePack(packId);
         },
     };
+}
+function combineSourceDiagnostics(...groups) {
+    const unique = new Map();
+    for (const diagnostic of groups.flat()) {
+        const key = canonicalJson([diagnostic.code, diagnostic.packId, diagnostic.sourceIdentity, diagnostic.message]);
+        unique.set(key, diagnostic);
+    }
+    return Object.freeze(sortEquipmentSourceDiagnostics([...unique.values()]));
 }
 function assertFixedNativeGrant(grant) {
     if (grant.materializer !== "pf2e-native" ||

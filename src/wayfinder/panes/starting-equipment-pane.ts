@@ -1,4 +1,5 @@
 import type { DraftState } from "../../types.js";
+import type { EquipmentSourceDiagnostic } from "../application/equipment-source-policy.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
 import type { EconomicHandoffReason } from "../domain/economic-baseline.js";
 import type { EquipmentPolicyJudgmentRecord, EquipmentWorldPolicyV1 } from "../domain/equipment-policy.js";
@@ -9,6 +10,7 @@ import type { StartingEquipmentCatalogueRecord, StartingEquipmentStepPane } from
 export interface StartingEquipmentCatalogueProjection {
   readonly state: "pending" | "ready" | "error";
   readonly message: string;
+  readonly diagnostics?: readonly EquipmentSourceDiagnostic[];
   readonly query: string;
   readonly records: readonly StartingEquipmentCatalogueRecord[];
   readonly filters: readonly { key: string; label: string; value: string }[];
@@ -34,6 +36,8 @@ export function buildStartingEquipmentPane(
   }
 ): StartingEquipmentStepPane {
   const acquisition = draft.acquisition;
+  const sourceDiagnostics = catalogue.diagnostics ?? [];
+  const catalogueReady = catalogue.state === "ready" && sourceDiagnostics.length === 0;
   const policy = acquisition?.policySnapshot?.material ?? null;
   const budgetCopper = policy?.budgetCopper ?? 1_500;
   const spentCopper = acquisition?.lines.reduce((sum, line) => sum + chargedCopper(line), 0) ?? 0;
@@ -224,8 +228,9 @@ export function buildStartingEquipmentPane(
     catalogue: {
       state: catalogue.state,
       message: catalogue.message,
+      diagnostics: sourceDiagnostics,
       search: catalogue.query,
-      searchDisabled: !acquisition || catalogue.state !== "ready" || !!handoff,
+      searchDisabled: !acquisition || !catalogueReady || !!handoff,
       filters: catalogue.filters.map((filter) => ({
         ...filter,
         selected: catalogue.activeFilters[filter.key]?.includes(filter.value) ?? false,
@@ -251,11 +256,13 @@ export function buildStartingEquipmentPane(
       label: evaluation.status,
       canReviewPurchases:
         !!acquisition &&
+        catalogueReady &&
         !handoff &&
         currencyLines.length > 0 &&
         (!catalogue.titanMauler.required || catalogue.titanMauler.selectedSourceUuid !== null),
       canRetainAll:
         !!acquisition &&
+        catalogueReady &&
         !handoff &&
         currencyLines.length === 0 &&
         (!catalogue.titanMauler.required || catalogue.titanMauler.selectedSourceUuid !== null),

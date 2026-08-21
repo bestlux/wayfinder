@@ -329,6 +329,7 @@ describe("starting equipment pane", () => {
       'data-wayfinder-action="approve-equipment-item-exception"',
       "Pick your Titan Mauler weapon",
       "data-wayfinder-focus-id",
+      "data-equipment-source-diagnostic",
       "Wayfinder won't add items or touch your coin",
     ]) {
       expect(template).toContain(token);

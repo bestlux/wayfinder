@@ -2,6 +2,8 @@ import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
 export const MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS = 12;
 export function buildStartingEquipmentPane(step, draft, evaluation, catalogue, setupOptions) {
     const acquisition = draft.acquisition;
+    const sourceDiagnostics = catalogue.diagnostics ?? [];
+    const catalogueReady = catalogue.state === "ready" && sourceDiagnostics.length === 0;
     const policy = acquisition?.policySnapshot?.material ?? null;
     const budgetCopper = policy?.budgetCopper ?? 1_500;
     const spentCopper = acquisition?.lines.reduce((sum, line) => sum + chargedCopper(line), 0) ?? 0;
@@ -168,8 +170,9 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue, s
         catalogue: {
             state: catalogue.state,
             message: catalogue.message,
+            diagnostics: sourceDiagnostics,
             search: catalogue.query,
-            searchDisabled: !acquisition || catalogue.state !== "ready" || !!handoff,
+            searchDisabled: !acquisition || !catalogueReady || !!handoff,
             filters: catalogue.filters.map((filter) => ({
                 ...filter,
                 selected: catalogue.activeFilters[filter.key]?.includes(filter.value) ?? false,
@@ -194,10 +197,12 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue, s
             disposition,
             label: evaluation.status,
             canReviewPurchases: !!acquisition &&
+                catalogueReady &&
                 !handoff &&
                 currencyLines.length > 0 &&
                 (!catalogue.titanMauler.required || catalogue.titanMauler.selectedSourceUuid !== null),
             canRetainAll: !!acquisition &&
+                catalogueReady &&
                 !handoff &&
                 currencyLines.length === 0 &&
                 (!catalogue.titanMauler.required || catalogue.titanMauler.selectedSourceUuid !== null),

@@ -49,13 +49,17 @@ import {
   type EquipmentCataloguePackLike,
   type EquipmentCatalogueService,
 } from "./equipment-catalogue-service.js";
-import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
+import {
+  resolveCurrentEquipmentSourceDiagnostics,
+  resolveEquipmentPolicyForActor,
+} from "./equipment-policy-service.js";
 import {
   materializedPhysicalItemSize,
   type PrepareDraftedEquipmentActor,
   prepareTransientDraftedEquipmentActor,
   resolvePreparedDraftedEquipmentSize,
 } from "./equipment-size-preparation-service.js";
+import { type EquipmentSourceDiagnostic, sortEquipmentSourceDiagnostics } from "./equipment-source-policy.js";
 import {
   registerStartingEquipmentUiAdapter,
   type StartingEquipmentUiAdapter,
@@ -69,6 +73,9 @@ export interface EquipmentAcquisitionRuntimeOptions {
     actor: unknown,
     acquisition: AcquisitionDraftState
   ) => EffectiveEquipmentPolicySnapshotV1;
+  readonly resolveSourceDiagnostics?: (
+    policy: EffectiveEquipmentPolicySnapshotV1
+  ) => readonly EquipmentSourceDiagnostic[];
   readonly mintLineId?: () => string;
   readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
   readonly prepareConfiguredItem?: (input: {
@@ -184,6 +191,8 @@ export function createEquipmentAcquisitionRuntime(
 ): EquipmentAcquisitionRuntime {
   const accessRegistry = options.accessRegistry ?? EMPTY_EQUIPMENT_ACCESS_REGISTRY;
   const resolveEffectivePolicy = options.resolveEffectivePolicy ?? resolveCurrentEffectivePolicy;
+  const resolveSourceDiagnostics =
+    options.resolveSourceDiagnostics ?? ((policy) => resolveCurrentEquipmentSourceDiagnostics({ policy }));
   const mintLineId = options.mintLineId ?? mintAcquisitionLineId;
   const fetchDocumentByUuid = options.fetchDocumentByUuid ?? resolveUuid;
   const prepareConfiguredItem = options.prepareConfiguredItem ?? prepareTransientConfiguredItem;
@@ -263,6 +272,20 @@ export function createEquipmentAcquisitionRuntime(
         const { policy, context } = currentContext(request.actor, request.draft, acquisition);
         const catalogue = catalogueFor(policy);
         const projection = await catalogue.project(context);
+        const diagnostics = combineSourceDiagnostics(resolveSourceDiagnostics(policy), projection.diagnostics);
+        if (diagnostics.length > 0) {
+          return {
+            state: "error",
+            message: "Approved equipment sources are unavailable or inconsistent. Ask your GM to review them.",
+            diagnostics,
+            query: request.query,
+            records: [],
+            filters: [],
+            activeFilters: request.filters,
+            previewSourceUuid: null,
+            titanMauler,
+          };
+        }
         let projectedEntries = projection.entries;
         if (request.previewSourceUuid) {
           const preview = await catalogue.hydratePreview(request.previewSourceUuid, context);
@@ -311,6 +334,7 @@ export function createEquipmentAcquisitionRuntime(
         return {
           state: "ready",
           message: `${entries.length} piece${entries.length === 1 ? "" : "s"} of gear to browse.`,
+          diagnostics: [],
           query: request.query,
           records,
           filters: catalogueFilters(entries),
@@ -325,6 +349,7 @@ export function createEquipmentAcquisitionRuntime(
             error instanceof Error
               ? error.message
               : "The gear list would not load. Ask your GM to check the approved equipment sources.",
+          diagnostics: [],
           query: request.query,
           records: [],
           filters: [],
@@ -686,6 +711,17 @@ export function createEquipmentAcquisitionRuntime(
       for (const catalogue of catalogues.values()) catalogue.invalidatePack(packId);
     },
   };
+}
+
+function combineSourceDiagnostics(
+  ...groups: readonly (readonly EquipmentSourceDiagnostic[])[]
+): readonly EquipmentSourceDiagnostic[] {
+  const unique = new Map<string, EquipmentSourceDiagnostic>();
+  for (const diagnostic of groups.flat()) {
+    const key = canonicalJson([diagnostic.code, diagnostic.packId, diagnostic.sourceIdentity, diagnostic.message]);
+    unique.set(key, diagnostic);
+  }
+  return Object.freeze(sortEquipmentSourceDiagnostics([...unique.values()]));
 }
 
 function assertFixedNativeGrant(grant: PlannedClassGrantV1): void {

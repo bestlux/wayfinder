@@ -50,46 +50,63 @@ Environment:
 async function main() {
   const cli = parseArgs(process.argv.slice(2));
   if (cli.help) return console.log(usage());
-  for (const definition of wf43ExperienceCases) {
-    const failures = validateWf43ExperienceCaseDefinition(definition);
-    if (failures.length > 0) throw new Error(failures.join(" "));
-  }
-  const smokeCase = smokeCases.find((entry) => entry.id === wf43ExperienceCases[0].fixture.smokeCaseId);
-  if (!smokeCase) throw new Error("WF-080-43 could not resolve its exact shared Wizard fixture.");
-  const options = validateOptions({
-    allowDestructive: envFlag("FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE", false),
-    expectedWorldId: process.env.FOUNDRY_SMOKE_WORLD_ID ?? "",
-    gmUser: process.env.FOUNDRY_USER ?? "",
-    playerUser: process.env.FOUNDRY_SMOKE_PLAYER_USER ?? "",
-  });
-  const chromePath = resolveFoundryChromePath();
-  if (!chromePath) throw new Error("Could not find Chrome or Edge. Set FOUNDRY_CHROME_PATH.");
-
   const evidenceId = randomUUID();
   const runId = randomUUID();
   const startedAt = new Date().toISOString();
   const outDir = await createWf43ExperienceArtifactDirectory(repoRoot, cli.outDir, evidenceId);
-  await mkdir(path.join(outDir, "screenshots"), { recursive: true });
-  const browser = await chromium.launch({
-    executablePath: chromePath,
-    headless: cli.headed ? false : envFlag("FOUNDRY_SMOKE_HEADLESS", true),
-  });
-  const gmContext = await browser.newContext({ viewport: WF43_VIEWPORT });
-  const playerContext = await browser.newContext({ viewport: WF43_VIEWPORT });
-  const gmPage = await gmContext.newPage();
-  const playerPage = await playerContext.newPage();
+  let stage = { id: "artifact-preparation" };
+  let failedStage = null;
+  let runError = null;
+  let setupAttempted = false;
+  let browser = null;
+  let gmContext = null;
+  let playerContext = null;
+  let gmPage = null;
+  let playerPage = null;
+  let options = null;
   let setup = null;
-  let cleanup = null;
+  let cleanup = emptyCleanup();
   let playerReady = false;
   const localeEvidence = [];
+  const samples = [];
+  const keyboardEntries = [];
 
   try {
+    await mkdir(path.join(outDir, "screenshots"), { recursive: true });
+    stage = { id: "definition-validation" };
+    for (const definition of wf43ExperienceCases) {
+      const failures = validateWf43ExperienceCaseDefinition(definition);
+      if (failures.length > 0) throw new Error(failures.join(" "));
+    }
+    const smokeCase = smokeCases.find((entry) => entry.id === wf43ExperienceCases[0].fixture.smokeCaseId);
+    if (!smokeCase) throw new Error("WF-080-43 could not resolve its exact shared Wizard fixture.");
+    stage = { id: "option-validation" };
+    options = validateOptions({
+      allowDestructive: envFlag("FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE", false),
+      expectedWorldId: process.env.FOUNDRY_SMOKE_WORLD_ID ?? "",
+      gmUser: process.env.FOUNDRY_USER ?? "",
+      playerUser: process.env.FOUNDRY_SMOKE_PLAYER_USER ?? "",
+    });
+    const chromePath = resolveFoundryChromePath();
+    if (!chromePath) throw new Error("Could not find Chrome or Edge. Set FOUNDRY_CHROME_PATH.");
+    stage = { id: "browser-launch" };
+    browser = await chromium.launch({
+      executablePath: chromePath,
+      headless: cli.headed ? false : envFlag("FOUNDRY_SMOKE_HEADLESS", true),
+    });
+    gmContext = await browser.newContext({ viewport: WF43_VIEWPORT });
+    playerContext = await browser.newContext({ viewport: WF43_VIEWPORT });
+    gmPage = await gmContext.newPage();
+    playerPage = await playerContext.newPage();
+    stage = { id: "gm-login" };
     await loginToFoundryWorld(gmPage, {
       foundryUrl: process.env.FOUNDRY_URL || "http://localhost:30000",
       user: options.gmUser,
       password: process.env.FOUNDRY_PASSWORD ?? "",
     });
     await installSuites(gmPage);
+    stage = { id: "fixture-setup" };
+    setupAttempted = true;
     setup = await gmPage.evaluate(
       (payload) => globalThis.__prepareWayfinderWf43Experience(payload),
       {
@@ -107,6 +124,7 @@ async function main() {
     );
     console.log(`WF-080-43: prepared ${setup.fixtures.length} exact guarded actors.`);
 
+    stage = { id: "player-login" };
     await loginToFoundryWorld(playerPage, {
       foundryUrl: process.env.FOUNDRY_URL || "http://localhost:30000",
       user: options.playerUser,
@@ -116,6 +134,7 @@ async function main() {
     playerReady = true;
 
     for (const definition of wf43ExperienceCases) {
+      stage = { id: "locale-switch", locale: definition.id };
       await setFoundryLanguage(gmPage, playerPage, definition.id);
       const fixture = setup.fixtures.find((entry) => entry.locale === definition.id);
       if (!fixture) throw new Error(`WF-080-43 is missing its ${definition.id} fixture.`);
@@ -135,18 +154,27 @@ async function main() {
           packsSnapshot: setup.snapshots.packs,
           playerPage,
           runId,
+          keyboardEntries,
+          samples,
+          setStage(nextStage) {
+            stage = nextStage;
+          },
         }),
       );
       console.log(`WF-080-43: ${definition.id} keyboard/state/width matrix finished.`);
     }
+  } catch (error) {
+    runError = error;
+    failedStage = { ...stage };
   } finally {
     try {
       if (setup) {
         const restorationFailures = [];
-        cleanup = emptyCleanup();
+        cleanup = { ...emptyCleanup(), attempted: true, setupCompleted: true };
         try {
+          stage = { id: "cleanup-actors-policy-packs" };
           await reloadSuites(gmPage);
-          cleanup = await gmPage.evaluate(
+          const guardedCleanup = await gmPage.evaluate(
             (payload) => globalThis.__cleanupWayfinderWf43Experience(payload),
             {
               allowDestructive: options.allowDestructive,
@@ -159,16 +187,19 @@ async function main() {
               snapshots: setup.snapshots,
             },
           );
+          cleanup = { ...cleanup, ...guardedCleanup };
           restorationFailures.push(...(cleanup.restorationFailures ?? []));
         } catch (error) {
           restorationFailures.push(`guarded actor/policy/pack cleanup failed: ${errorMessage(error)}`);
         }
         try {
+          stage = { id: "cleanup-language" };
           await setFoundryLanguage(gmPage, playerReady ? playerPage : null, setup.snapshots.language);
         } catch (error) {
           restorationFailures.push(`language restoration failed: ${errorMessage(error)}`);
         }
         try {
+          stage = { id: "cleanup-verification" };
           const restored = await gmPage.evaluate(
             (payload) => globalThis.__verifyWayfinderWf43Restoration(payload),
             {
@@ -190,32 +221,68 @@ async function main() {
             ? "WF-080-43: exact actors, policy, PF2E packs, and language restored."
             : `WF-080-43: cleanup completed with ${restorationFailures.length} restoration failure(s).`,
         );
+      } else if (setupAttempted) {
+        cleanup = {
+          ...emptyCleanup(),
+          attempted: false,
+          setupCompleted: false,
+          restorationFailures: [
+            "Fixture setup did not return its guarded snapshot; its internal rollback could not be independently verified.",
+          ],
+        };
       }
     } finally {
-      await playerContext.close();
-      await closeFoundryBrowser(gmContext, browser);
+      try {
+        await playerContext?.close();
+      } catch (error) {
+        cleanup.restorationFailures.push(`player context close failed: ${errorMessage(error)}`);
+      }
+      try {
+        if (gmContext && browser) await closeFoundryBrowser(gmContext, browser);
+        else await browser?.close();
+      } catch (error) {
+        cleanup.restorationFailures.push(`browser close failed: ${errorMessage(error)}`);
+      }
     }
   }
 
-  if (!setup || localeEvidence.length !== wf43ExperienceCases.length) {
-    throw new Error("WF-080-43 produced incomplete locale evidence.");
+  const cleanupFailures = setup ? cleanupEvidenceFailures(cleanup, wf43ExperienceCases.length) : [];
+  if (!runError && cleanupFailures.length > 0) {
+    runError = new Error(cleanupFailures.join(" "));
+    failedStage = { id: "cleanup-restoration" };
+  }
+  if (!runError && (!setup || localeEvidence.length !== wf43ExperienceCases.length)) {
+    runError = new Error("WF-080-43 produced incomplete locale evidence.");
+    failedStage = { id: "evidence-assembly" };
   }
   const result = {
     schemaVersion: 1,
     evidenceId,
+    status: runError ? "fail" : "complete",
     startedAt,
     finishedAt: new Date().toISOString(),
-    runtime: setup.runtime,
-    users: setup.users,
+    stage: failedStage ?? { id: "complete" },
+    error: runError ? serializeError(runError) : null,
+    runtime: setup?.runtime ?? null,
+    users: setup?.users ?? null,
     viewport: WF43_VIEWPORT,
     appWidths: WF43_APP_WIDTHS,
     locales: localeEvidence,
+    keyboardEntries,
+    samples,
     cleanup,
   };
-  const qualification = qualifyWf43ExperienceResult(result);
+  const qualification = runError
+    ? {
+        ok: false,
+        failures: [`WF-080-43 runner failed during ${formatStage(failedStage)}: ${errorMessage(runError)}`],
+      }
+    : qualifyWf43ExperienceResult(result);
+  result.status = qualification.ok ? "pass" : "fail";
   await writeWf43ExperienceArtifacts(outDir, result, qualification);
   console.log(`WF-080-43 artifacts: ${path.relative(repoRoot, outDir)}`);
   for (const entry of localeEvidence) console.log(`${entry.status.toUpperCase()} ${entry.id}`);
+  if (runError) throw runError;
   if (!qualification.ok) {
     for (const failure of qualification.failures) console.error(`FAIL ${failure}`);
     process.exitCode = 1;
@@ -232,24 +299,53 @@ async function runLocale({
   packsSnapshot,
   playerPage,
   runId,
+  keyboardEntries,
+  samples,
+  setStage,
 }) {
   const payload = { expectedPlayerId, expectedWorldId, fixture: enrichedFixture, moduleId: MODULE_ID, runId };
+  const interactionStage = (state, action) => setStage({ id: "interaction", locale: definition.id, state, action });
+  interactionStage("policy", "open");
   const opened = await playerPage.evaluate((value) => globalThis.__openWayfinderWf43Experience(value), payload);
   const rootSelector = `[data-wayfinder-equipment-profile-actor-id="${opened.actorId}"]`;
   await waitFor(playerPage, `${rootSelector} .starting-equipment-pane`);
   const states = [];
-  const keyboard = { inputMode: "keyboard-events-only", pointerActionCount: 0, actions: [], focus: [] };
+  const keyboard = {
+    inputMode: "keyboard-events-only",
+    pointerActionCount: 0,
+    entry: null,
+    actions: [],
+    focus: [],
+  };
   const liveRegionChanges = {};
 
-  states.push(await captureState(playerPage, opened.actorId, "policy", definition, outDir));
+  states.push(await captureState(playerPage, opened.actorId, "policy", definition, outDir, samples, setStage));
 
-  await tabTo(playerPage, `${rootSelector} [data-wayfinder-action="initialize-starting-equipment"]`);
+  setStage({ id: "keyboard-entry", locale: definition.id, state: "policy", action: "initialize" });
+  keyboard.entry = await playerPage.evaluate(
+    (value) => globalThis.__enterWayfinderWf43KeyboardScope(value),
+    {
+      actorId: opened.actorId,
+      targetSelector: '[data-wayfinder-action="initialize-starting-equipment"]',
+    },
+  );
+  keyboard.entry.observedTraversal = [];
+  keyboardEntries.push({ locale: definition.id, ...keyboard.entry });
+  assertKeyboardEntry(keyboard.entry);
+  await tabTo(
+    playerPage,
+    `${rootSelector} [data-wayfinder-action="initialize-starting-equipment"]`,
+    180,
+    keyboard.entry.observedTraversal,
+  );
+  interactionStage("policy", "initialize");
   await pressAndRecord(playerPage, keyboard, "initialize", "Enter");
   await waitForEither(playerPage, [
     `${rootSelector} [data-wayfinder-action="activate-equipment-policy"]`,
     `${rootSelector} [data-wayfinder-equipment-search]`,
   ]);
   if ((await playerPage.locator(`${rootSelector} [data-wayfinder-action="activate-equipment-policy"]`).count()) > 0) {
+    interactionStage("policy", "activate-policy");
     await tabTo(
       playerPage,
       `${rootSelector} [data-wayfinder-action="activate-equipment-policy"][data-start-kind="replacement-character"]`,
@@ -258,6 +354,7 @@ async function runLocale({
   }
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-equipment-search]`);
   const beforeSearch = await liveRegions(playerPage, opened.actorId);
+  interactionStage("browse-cart", "search");
   await tabTo(playerPage, `${rootSelector} [data-wayfinder-equipment-search]`);
   await playerPage.keyboard.type(definition.fixture.item.name);
   keyboard.actions.push({ action: "search", key: definition.fixture.item.name });
@@ -269,6 +366,7 @@ async function runLocale({
   const beforeItem = await itemEvidence(playerPage, opened.actorId, definition.fixture.item.sourceUuid);
   const beforeCart = afterSearch.cart;
 
+  interactionStage("browse-cart", "add-item");
   await tabTo(
     playerPage,
     `${itemSelector} [data-wayfinder-action="add-equipment-item"][data-source-uuid="${definition.fixture.item.sourceUuid}"]`,
@@ -280,10 +378,12 @@ async function runLocale({
   const cartFocus = await focusEvidence(playerPage);
   keyboard.focus.push(cartFocus);
 
+  interactionStage("browse-cart", "increase-quantity");
   await tabTo(playerPage, `${rootSelector} [data-wayfinder-action="change-equipment-quantity"][data-delta="1"]`);
   await pressAndRecord(playerPage, keyboard, "increase-quantity", "Enter");
   await waitForText(playerPage, `${rootSelector} .equipment-quantity strong`, "2");
   keyboard.focus.push(await focusEvidence(playerPage));
+  interactionStage("browse-cart", "decrease-quantity");
   await tabTo(playerPage, `${rootSelector} [data-wayfinder-action="change-equipment-quantity"][data-delta="-1"]`);
   await pressAndRecord(playerPage, keyboard, "decrease-quantity", "Enter");
   await waitForText(playerPage, `${rootSelector} .equipment-quantity strong`, "1");
@@ -293,9 +393,10 @@ async function runLocale({
     name: afterItem.name || beforeItem.name,
     accessibleNames: { ...beforeItem.accessibleNames, ...nonEmptyValues(afterItem.accessibleNames) },
   };
-  states.push(await captureState(playerPage, opened.actorId, "browse-cart", definition, outDir));
+  states.push(await captureState(playerPage, opened.actorId, "browse-cart", definition, outDir, samples, setStage));
 
   const beforeReview = (await liveRegions(playerPage, opened.actorId)).review;
+  interactionStage("review", "review-purchases");
   await tabTo(playerPage, `${rootSelector} [data-wayfinder-action="review-equipment-purchases"]`);
   await pressAndRecord(playerPage, keyboard, "review-purchases", "Enter");
   await playerPage.waitForFunction(
@@ -306,8 +407,9 @@ async function runLocale({
   const afterReview = (await liveRegions(playerPage, opened.actorId)).review;
   liveRegionChanges.review = { before: beforeReview, after: afterReview };
   keyboard.focus.push(await focusEvidence(playerPage));
-  states.push(await captureState(playerPage, opened.actorId, "review", definition, outDir));
+  states.push(await captureState(playerPage, opened.actorId, "review", definition, outDir, samples, setStage));
 
+  interactionStage("handoff", "prepare");
   await playerPage.evaluate((value) => globalThis.__prepareWayfinderWf43Handoff(value), {
     expectedWorldId,
     fixture: enrichedFixture,
@@ -316,18 +418,21 @@ async function runLocale({
   });
   await playerPage.evaluate((value) => globalThis.__openWayfinderWf43Experience(value), payload);
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-focus-id="starting-equipment-handoff"]`);
-  states.push(await captureState(playerPage, opened.actorId, "handoff", definition, outDir));
+  states.push(await captureState(playerPage, opened.actorId, "handoff", definition, outDir, samples, setStage));
+  interactionStage("handoff", "acknowledge");
   await tabTo(playerPage, `${rootSelector} [data-wayfinder-action="acknowledge-equipment-handoff"]`);
   await pressAndRecord(playerPage, keyboard, "acknowledge-handoff", "Enter");
   await waitFor(playerPage, `${rootSelector} .equipment-reviewed`);
   keyboard.focus.push(await focusEvidence(playerPage));
 
+  interactionStage("forced-failure", "restore-reviewed-draft");
   await playerPage.evaluate((value) => globalThis.__restoreWayfinderWf43ReviewedDraft(value), {
     expectedWorldId,
     fixture: enrichedFixture,
     moduleId: MODULE_ID,
     runId,
   });
+  interactionStage("forced-failure", "disable-core-pack");
   await gmPage.evaluate((value) => globalThis.__setWayfinderWf43CorePack(value), {
     enabled: false,
     expectedWorldId,
@@ -339,6 +444,7 @@ async function runLocale({
   await playerPage.evaluate((value) => globalThis.__openWayfinderWf43Experience(value), payload);
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-action="apply-draft"]`);
   const beforeFailure = (await liveRegions(playerPage, opened.actorId)).failure || afterReview;
+  interactionStage("forced-failure", "apply");
   await applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply");
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-focus-id="starting-equipment-status"][role="alert"]`, 120_000);
   const failure = await playerPage.evaluate(
@@ -348,26 +454,29 @@ async function runLocale({
   const afterFailure = (await liveRegions(playerPage, opened.actorId)).failure;
   liveRegionChanges.failure = { before: beforeFailure, after: afterFailure };
   keyboard.focus.push(await focusEvidence(playerPage));
-  states.push(await captureState(playerPage, opened.actorId, "forced-failure", definition, outDir));
+  states.push(await captureState(playerPage, opened.actorId, "forced-failure", definition, outDir, samples, setStage));
 
+  interactionStage("receipt", "restore-core-pack");
   await gmPage.evaluate((value) => globalThis.__restoreWayfinderWf43CorePack(value), {
     expectedWorldId,
     packsSetting: PACKS_SETTING,
     snapshot: packsSnapshot,
   });
+  interactionStage("receipt", "retry-apply");
   await applyWithKeyboard(playerPage, rootSelector, keyboard, "retry-apply");
   await playerPage.waitForFunction(
     (selector) => !document.querySelector(selector),
     rootSelector,
     { timeout: 180_000 },
   );
+  interactionStage("receipt", "reopen");
   await playerPage.evaluate((value) => globalThis.__openWayfinderWf43Experience(value), payload);
   await waitFor(playerPage, `${rootSelector} .wayfinder-acquisition-receipt`, 60_000);
   const receipt = await playerPage.evaluate(
     (actorId) => globalThis.__inspectWayfinderWf43Receipt({ actorId }),
     opened.actorId,
   );
-  states.push(await captureState(playerPage, opened.actorId, "receipt", definition, outDir));
+  states.push(await captureState(playerPage, opened.actorId, "receipt", definition, outDir, samples, setStage));
 
   const stateRawKeys = states.flatMap((state) => state.rawLocalizationKeys);
   return {
@@ -385,9 +494,10 @@ async function runLocale({
   };
 }
 
-async function captureState(page, actorId, stateId, definition, outDir) {
+async function captureState(page, actorId, stateId, definition, outDir, samples, setStage) {
   const widths = [];
   for (const width of WF43_APP_WIDTHS) {
+    setStage({ id: "state-capture", locale: definition.id, state: stateId, width });
     const sample = await page.evaluate(
       (payload) => globalThis.__measureWayfinderWf43State(payload),
       { actorId, stateId, width },
@@ -396,7 +506,9 @@ async function captureState(page, actorId, stateId, definition, outDir) {
     await page
       .locator(`[data-wayfinder-equipment-profile-actor-id="${actorId}"]`)
       .screenshot({ path: path.join(outDir, screenshot) });
-    widths.push({ ...sample, screenshot: screenshot.replaceAll(path.sep, "/") });
+    const completed = { ...sample, screenshot: screenshot.replaceAll(path.sep, "/") };
+    widths.push(completed);
+    samples.push({ locale: definition.id, state: stateId, width, ...completed });
   }
   const inspected = await page.evaluate((value) => globalThis.__inspectWayfinderWf43State(value), { actorId });
   return { id: stateId, ...inspected, widths };
@@ -431,11 +543,12 @@ async function liveRegions(page, actorId) {
   return page.evaluate((value) => globalThis.__inspectWayfinderWf43LiveRegions({ actorId: value }), actorId);
 }
 
-async function tabTo(page, selector, limit = 180) {
+async function tabTo(page, selector, limit = 180, observedTraversal = null) {
   for (let index = 0; index < limit; index += 1) {
     const matched = await page.evaluate((candidate) => document.activeElement?.matches(candidate) === true, selector);
     if (matched) return;
     await page.keyboard.press("Tab");
+    if (observedTraversal) observedTraversal.push(await focusEvidence(page));
   }
   throw new Error(`Keyboard traversal could not reach ${selector}.`);
 }
@@ -494,6 +607,8 @@ function nonEmptyValues(value) {
 
 function emptyCleanup() {
   return {
+    attempted: false,
+    setupCompleted: false,
     actorsDeleted: 0,
     actorsMissingAfterCleanup: false,
     actorCountRestored: false,
@@ -503,6 +618,49 @@ function emptyCleanup() {
     languageRestored: false,
     restorationFailures: [],
   };
+}
+
+function assertKeyboardEntry(entry) {
+  if (
+    entry?.mode !== "scoped-app-entry" ||
+    entry?.focusMethod !== "programmatic-harness-anchor-before-keyboard-actions" ||
+    entry?.anchor?.focused !== true ||
+    entry?.target?.present !== true ||
+    entry?.target?.visible !== true ||
+    entry?.target?.disabled !== false ||
+    !Number.isInteger(entry?.target?.tabIndex) ||
+    entry.target.tabIndex < 0 ||
+    entry?.target?.localOrderIndex < 0
+  ) {
+    throw new Error(`WF-080-43 keyboard entry target is not a visible enabled local tab stop: ${JSON.stringify(entry)}.`);
+  }
+}
+
+function cleanupEvidenceFailures(cleanup, expectedActorCount) {
+  const failures = [...(cleanup.restorationFailures ?? [])];
+  if (cleanup.attempted !== true) failures.push("Cleanup was not attempted.");
+  if (cleanup.setupCompleted !== true) failures.push("Setup completion was not retained in cleanup evidence.");
+  if (cleanup.actorsDeleted !== expectedActorCount) failures.push("Cleanup did not delete the exact fixture actor count.");
+  if (cleanup.actorsMissingAfterCleanup !== true) failures.push("Fixture actors remain after cleanup.");
+  if (cleanup.actorCountRestored !== true) failures.push("Actor count was not restored.");
+  if (cleanup.exactFixturesMatched !== true) failures.push("Cleanup identity did not match every exact fixture.");
+  if (cleanup.policyRestored !== true) failures.push("Equipment policy was not restored.");
+  if (cleanup.packsRestored !== true) failures.push("PF2E pack settings were not restored.");
+  if (cleanup.languageRestored !== true) failures.push("Foundry language was not restored.");
+  return failures;
+}
+
+function serializeError(error) {
+  return {
+    name: error instanceof Error ? error.name : "Error",
+    message: errorMessage(error),
+    stack: error instanceof Error && typeof error.stack === "string" ? error.stack : null,
+  };
+}
+
+function formatStage(stage) {
+  if (!stage) return "unknown";
+  return [stage.id, stage.locale, stage.state, stage.width, stage.action].filter((value) => value !== undefined).join("/");
 }
 
 function errorMessage(error) {

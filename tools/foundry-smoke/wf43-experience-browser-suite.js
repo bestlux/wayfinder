@@ -275,6 +275,35 @@ globalThis.__inspectWayfinderWf43Focus = function inspectWf43Focus() {
   };
 };
 
+globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({ actorId, targetSelector }) {
+  const root = wf43ActorApp(game.actors.get(actorId)).element;
+  const target = root.querySelector(targetSelector);
+  const before = wf43FocusDescriptor(document.activeElement);
+  const localTabOrder = [...root.querySelectorAll("button, input, select, textarea, a[href], [tabindex]")]
+    .filter((element) => wf43KeyboardTarget(element).visible && !wf43KeyboardTarget(element).disabled && element.tabIndex >= 0)
+    .map(wf43FocusDescriptor);
+  const anchor = root.querySelector("[data-wayfinder-step-heading]");
+  if (!(anchor instanceof HTMLElement)) throw new Error("WF-080-43 could not resolve its app keyboard-entry anchor.");
+  anchor.focus();
+  const targetEvidence = wf43KeyboardTarget(target);
+  return {
+    mode: "scoped-app-entry",
+    focusMethod: "programmatic-harness-anchor-before-keyboard-actions",
+    before,
+    anchor: { ...wf43FocusDescriptor(anchor), focused: document.activeElement === anchor },
+    target: {
+      ...targetEvidence,
+      localOrderIndex: localTabOrder.findIndex(
+        (entry) =>
+          entry.focusId === targetEvidence.focusId &&
+          entry.action === targetEvidence.action &&
+          entry.name === targetEvidence.name,
+      ),
+    },
+    localTabOrder,
+  };
+};
+
 globalThis.__inspectWayfinderWf43Failure = function inspectWf43Failure({ actorId }) {
   const root = wf43ActorApp(game.actors.get(actorId)).element;
   const failure = root.querySelector(".status-note[role='alert']");
@@ -418,6 +447,38 @@ function wf43CriticalSelector(stateId) {
 
 function wf43RawKeys(text) {
   return [...new Set(String(text).match(/wayfinder-pf2e(?:\.[A-Za-z0-9_-]+)+/gu) ?? [])].sort();
+}
+
+function wf43KeyboardTarget(element) {
+  if (!(element instanceof HTMLElement)) {
+    return { present: false, visible: false, disabled: null, tabIndex: null, focusId: "", action: "", name: "" };
+  }
+  const rect = element.getBoundingClientRect();
+  const style = getComputedStyle(element);
+  const disabled =
+    ("disabled" in element && element.disabled === true) || element.getAttribute("aria-disabled") === "true";
+  return {
+    ...wf43FocusDescriptor(element),
+    present: true,
+    visible:
+      !element.hidden &&
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      rect.width > 0 &&
+      rect.height > 0,
+    disabled,
+    tabIndex: element.tabIndex,
+  };
+}
+
+function wf43FocusDescriptor(element) {
+  if (!(element instanceof HTMLElement)) return { focusId: "", action: "", name: "", tag: "" };
+  return {
+    focusId: element.dataset.wayfinderFocusId ?? "",
+    action: element.dataset.wayfinderAction ?? "",
+    name: element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "",
+    tag: element.tagName,
+  };
 }
 
 function wf43RenderedStrings(root) {

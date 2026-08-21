@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -5,7 +6,10 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createWf43ExperienceArtifactDirectory } from "../tools/foundry-smoke/wf43-experience-artifacts.mjs";
+import {
+  createWf43ExperienceArtifactDirectory,
+  writeWf43ExperienceArtifacts,
+} from "../tools/foundry-smoke/wf43-experience-artifacts.mjs";
 import {
   validateWf43ExperienceCaseDefinition,
   WF43_APP_WIDTHS,
@@ -38,7 +42,24 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(browserSuite).not.toContain("__runWayfinderAcquisitionTracer");
     expect(browserSuite).toContain("__prepareWayfinderWf43Handoff");
     expect(browserSuite).toContain("__inspectWayfinderWf43Focus");
+    expect(browserSuite).toContain("__enterWayfinderWf43KeyboardScope");
+    expect(browserSuite).toContain("localTabOrder");
+    expect(runner).toContain("assertKeyboardEntry(keyboard.entry)");
     expect(frozenWave2).toContain("equipment-l1-owner-common-purchase-retry");
+  });
+
+  it("records the app-local keyboard entry target instead of traversing arbitrary Foundry chrome", () => {
+    const result = passingResult();
+    result.locales[0].keyboard.entry.target.disabled = true;
+    result.locales[0].keyboard.entry.target.tabIndex = -1;
+    result.locales[1].keyboard.entry.target.localOrderIndex = -1;
+    result.locales[1].keyboard.entry.observedTraversal = [];
+    expect(qualifyWf43ExperienceResult(result).failures).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/visible enabled target in the app-local tab order/i),
+        expect.stringMatching(/visibly traverse to Start Shopping/i),
+      ])
+    );
   });
 
   it("guards exact actor, policy, pack, and language restoration", () => {
@@ -119,6 +140,108 @@ describe("WF-080-43 live experience qualifier", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("writes truthful partial artifacts for setup or interaction failures", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wf43-experience-failure-"));
+    try {
+      const result = {
+        schemaVersion: 1,
+        evidenceId: "failure-1",
+        status: "fail",
+        startedAt: "2026-08-21T00:00:00.000Z",
+        finishedAt: "2026-08-21T00:00:01.000Z",
+        stage: { id: "keyboard-entry", locale: "en", state: "policy", action: "initialize" },
+        error: { name: "Error", message: "Keyboard traversal failed", stack: null },
+        runtime: null,
+        users: null,
+        viewport: WF43_VIEWPORT,
+        appWidths: WF43_APP_WIDTHS,
+        locales: [],
+        keyboardEntries: [
+          {
+            locale: "en",
+            mode: "scoped-app-entry",
+            focusMethod: "programmatic-harness-anchor-before-keyboard-actions",
+            target: { visible: true, disabled: false, tabIndex: 0, localOrderIndex: 31 },
+          },
+        ],
+        samples: [{ locale: "en", state: "policy", width: 1240, screenshot: "screenshots/en-policy-1240.png" }],
+        cleanup: {
+          attempted: true,
+          setupCompleted: true,
+          actorsDeleted: 2,
+          actorCountRestored: true,
+          policyRestored: true,
+          packsRestored: true,
+          languageRestored: true,
+          restorationFailures: [],
+        },
+      };
+      await writeWf43ExperienceArtifacts(root, result, {
+        ok: false,
+        failures: ["WF-080-43 runner failed during keyboard-entry/en/policy/initialize."],
+      });
+      const written = JSON.parse(readFileSync(join(root, "wf43-experience-results.json"), "utf8"));
+      const summary = readFileSync(join(root, "wf43-experience-summary.md"), "utf8");
+      expect(written).toMatchObject({
+        status: "fail",
+        stage: result.stage,
+        error: result.error,
+        keyboardEntries: result.keyboardEntries,
+        samples: result.samples,
+        cleanup: result.cleanup,
+      });
+      expect(summary).toContain("Result: FAIL");
+      expect(summary).toContain("Stage: keyboard-entry/en/policy/initialize");
+      expect(summary).toContain("Completed samples: 1");
+      expect(summary).toContain("Keyboard entry diagnostics: 1");
+      expect(summary).toContain("Keyboard traversal failed");
+      expect(summary).toContain("Cleanup attempted: true");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("guards artifact preparation and converts cleanup-only failures into a staged run error", () => {
+    const mainStart = runner.indexOf("async function main()");
+    const guardedTry = runner.indexOf("  try {", mainStart);
+    const screenshotPreparation = runner.indexOf('await mkdir(path.join(outDir, "screenshots")', mainStart);
+    expect(screenshotPreparation).toBeGreaterThan(guardedTry);
+    expect(runner).toContain("cleanupEvidenceFailures(cleanup, wf43ExperienceCases.length)");
+    expect(runner).toContain('failedStage = { id: "cleanup-restoration" }');
+  });
+
+  it("emits a failed artifact when guarded option validation stops the runner before browser launch", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wf43-experience-runner-failure-"));
+    const outDir = join(root, "artifacts");
+    try {
+      const execution = spawnSync(
+        process.execPath,
+        [resolve("tools/foundry-smoke/run-wf43-experience-smoke.mjs"), "--out", outDir],
+        {
+          cwd: resolve("."),
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE: "false",
+            FOUNDRY_SMOKE_PLAYER_USER: "",
+            FOUNDRY_SMOKE_WORLD_ID: "",
+            FOUNDRY_USER: "",
+          },
+        }
+      );
+      expect(execution.status).toBe(1);
+      const written = JSON.parse(readFileSync(join(outDir, "wf43-experience-results.json"), "utf8"));
+      expect(written).toMatchObject({
+        status: "fail",
+        stage: { id: "option-validation" },
+        cleanup: { attempted: false, setupCompleted: false, restorationFailures: [] },
+      });
+      expect(written.error.message).toContain("An existing GM user is required");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 function passingResult(): any {
@@ -154,6 +277,28 @@ function passingResult(): any {
       keyboard: {
         inputMode: "keyboard-events-only",
         pointerActionCount: 0,
+        entry: {
+          mode: "scoped-app-entry",
+          focusMethod: "programmatic-harness-anchor-before-keyboard-actions",
+          before: { focusId: "", action: "", name: "", tag: "BODY" },
+          anchor: { focusId: "", action: "", name: "Starting equipment", tag: "H3", focused: true },
+          target: {
+            focusId: "starting-equipment-start",
+            action: "initialize-starting-equipment",
+            name: "Start Shopping",
+            tag: "BUTTON",
+            present: true,
+            visible: true,
+            disabled: false,
+            tabIndex: 0,
+            localOrderIndex: 31,
+          },
+          localTabOrder: [],
+          observedTraversal: [
+            { focusId: "previous-step", name: "Previous step", visible: true },
+            { focusId: "starting-equipment-start", name: "Start Shopping", visible: true },
+          ],
+        },
         actions: [
           "initialize",
           "search",

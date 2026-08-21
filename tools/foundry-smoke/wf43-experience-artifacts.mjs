@@ -12,36 +12,60 @@ export async function createWf43ExperienceArtifactDirectory(repoRoot, override, 
 
 export async function writeWf43ExperienceArtifacts(directory, result, qualification) {
   await writeFile(path.join(directory, "wf43-experience-results.json"), `${JSON.stringify(result, null, 2)}\n`);
+  const runtime = result.runtime ?? {};
+  const users = result.users ?? {};
+  const cleanup = result.cleanup ?? {};
+  const locales = result.locales ?? [];
   const lines = [
     "# WF-080-43 live experience qualifier",
     "",
     `- Result: ${qualification.ok ? "PASS" : "FAIL"}`,
-    `- Foundry: ${result.runtime.foundryVersion}`,
-    `- PF2E: ${result.runtime.pf2eVersion}`,
-    `- Module: ${result.runtime.moduleVersion}`,
-    `- World: ${result.runtime.worldId}`,
+    `- Stage: ${formatStage(result.stage)}`,
+    `- Completed samples: ${result.samples?.length ?? 0}`,
+    `- Keyboard entry diagnostics: ${result.keyboardEntries?.length ?? 0}`,
+    `- Foundry: ${runtime.foundryVersion ?? "unavailable"}`,
+    `- PF2E: ${runtime.pf2eVersion ?? "unavailable"}`,
+    `- Module: ${runtime.moduleVersion ?? "unavailable"}`,
+    `- World: ${runtime.worldId ?? "unavailable"}`,
     `- Viewport: ${result.viewport.width}x${result.viewport.height}`,
     `- App widths: ${result.appWidths.join(", ")}`,
-    `- GM: ${result.users.gm.name} (${result.users.gm.id})`,
-    `- Player: ${result.users.player.name} (${result.users.player.id})`,
+    `- GM: ${formatUser(users.gm)}`,
+    `- Player: ${formatUser(users.player)}`,
     "",
     "## Locales",
     "",
-    ...result.locales.map(
+    ...(locales.length > 0 ? locales : [{ id: "none", status: "fail", states: [] }]).map(
       (entry) =>
         `- ${entry.status === "pass" ? "PASS" : "FAIL"} ${entry.id}: ${entry.states.length} states, ${entry.states.reduce((sum, state) => sum + state.widths.length, 0)} width samples`,
     ),
     "",
     "## Cleanup",
     "",
-    `- Exact actors deleted: ${result.cleanup.actorsDeleted}`,
-    `- Actor count restored: ${result.cleanup.actorCountRestored}`,
-    `- Equipment policy restored: ${result.cleanup.policyRestored}`,
-    `- PF2E pack setting restored: ${result.cleanup.packsRestored}`,
-    `- Language restored: ${result.cleanup.languageRestored}`,
+    `- Cleanup attempted: ${cleanup.attempted ?? false}`,
+    `- Setup completed: ${cleanup.setupCompleted ?? false}`,
+    `- Exact actors deleted: ${cleanup.actorsDeleted ?? 0}`,
+    `- Actor count restored: ${cleanup.actorCountRestored ?? false}`,
+    `- Equipment policy restored: ${cleanup.policyRestored ?? false}`,
+    `- PF2E pack setting restored: ${cleanup.packsRestored ?? false}`,
+    `- Language restored: ${cleanup.languageRestored ?? false}`,
   ];
+  if (result.error) {
+    lines.push("", "## Run error", "", `- ${result.error.name}: ${result.error.message}`);
+  }
+  if (cleanup.restorationFailures?.length > 0) {
+    lines.push("", "## Restoration failures", "", ...cleanup.restorationFailures.map((failure) => `- ${failure}`));
+  }
   if (qualification.failures.length > 0) {
     lines.push("", "## Failures", "", ...qualification.failures.map((failure) => `- ${failure}`));
   }
   await writeFile(path.join(directory, "wf43-experience-summary.md"), `${lines.join("\n")}\n`);
+}
+
+function formatStage(stage) {
+  if (!stage) return "unknown";
+  return [stage.id, stage.locale, stage.state, stage.width, stage.action].filter((value) => value !== undefined).join("/");
+}
+
+function formatUser(user) {
+  return user ? `${user.name} (${user.id})` : "unavailable";
 }

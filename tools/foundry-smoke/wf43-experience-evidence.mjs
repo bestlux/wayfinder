@@ -70,6 +70,24 @@ function qualifyLocale(entry, definition, failures) {
   ) {
     failures.push(`${definition.id}: owner flow was not proven with keyboard events only.`);
   }
+  if (
+    keyboard?.entry?.mode !== "scoped-app-entry" ||
+    keyboard?.entry?.focusMethod !== "programmatic-harness-anchor-before-keyboard-actions" ||
+    keyboard?.entry?.anchor?.focused !== true ||
+    keyboard?.entry?.target?.present !== true ||
+    keyboard?.entry?.target?.visible !== true ||
+    keyboard?.entry?.target?.disabled !== false ||
+    !Number.isInteger(keyboard?.entry?.target?.tabIndex) ||
+    keyboard.entry.target.tabIndex < 0 ||
+    !Number.isInteger(keyboard?.entry?.target?.localOrderIndex) ||
+    keyboard.entry.target.localOrderIndex < 0
+  ) {
+    failures.push(`${definition.id}: keyboard entry did not prove a visible enabled target in the app-local tab order.`);
+  }
+  const observedEntryTarget = keyboard?.entry?.observedTraversal?.at(-1);
+  if (observedEntryTarget?.focusId !== "starting-equipment-start" || observedEntryTarget?.visible !== true) {
+    failures.push(`${definition.id}: keyboard entry did not visibly traverse to Start Shopping.`);
+  }
   const keyboardActions = new Set((keyboard?.actions ?? []).map((item) => item.action));
   for (const action of [
     "initialize",

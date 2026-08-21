@@ -77,6 +77,32 @@ export interface AcquisitionPriceSnapshot {
   readonly materializedQuantity: number;
   readonly unitPriceCopper: number;
   readonly linePriceCopper: number;
+  readonly configurationComponents?: AcquisitionConfigurationComponentsV1;
+}
+
+export interface AcquisitionConfigurationComponentsV1 {
+  readonly version: 1;
+  readonly itemType: "weapon" | "armor";
+  readonly baseItem: string;
+  readonly source: {
+    readonly runes: AcquisitionConfiguredRunesV1;
+    readonly material: { readonly type: string | null; readonly grade: string | null };
+  };
+  readonly prepared: {
+    readonly runes: AcquisitionConfiguredRunesV1;
+    readonly material: { readonly type: string | null; readonly grade: string | null };
+    readonly totalCopper: number;
+  };
+  readonly baselineAndFundamentalCopper: number;
+  readonly propertyRuneCopper: number;
+  readonly preciousMaterialCopper: number;
+  readonly suppressedByAbp: readonly string[];
+}
+
+export interface AcquisitionConfiguredRunesV1 {
+  readonly potency: number;
+  readonly fundamental: string | number | null;
+  readonly property: readonly string[];
 }
 
 export type AcquisitionPriceInput = Omit<

@@ -61,10 +61,11 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue, s
             name: record?.name ?? line.sourceUuid,
             quantity: line.price.requestedQuantity,
             priceLabel: formatCopper(line.price.linePriceCopper),
+            configurationLabel: configuredPriceLabel(line.price),
             fundingLabel: fundingLabel(line.funding, policy?.allowances ?? []),
             canRemove: line.funding.lane !== "class-grant" ||
                 plannedGrantById.get(line.funding.grant.plannedGrantId)?.materializer !== "pf2e-native",
-            canChangeQuantity: line.funding.lane !== "class-grant",
+            canChangeQuantity: line.funding.lane !== "class-grant" && !line.price.configurationComponents,
             unavailableReason: line.funding.lane === "class-grant" || line.policyDecision.eligible
                 ? null
                 : "Your world's rules no longer allow this item.",
@@ -242,7 +243,29 @@ function policyExplanations(acquisition) {
         material.rarityPolicy.blanketCeiling === "common"
             ? "Anything Common is fair game, as long as its pack is approved."
             : `Your GM has opened this up to ${material.rarityPolicy.blanketCeiling} gear.`,
+        ...(material.abp.enabled
+            ? [
+                material.abp.actorOverrideDisabled
+                    ? `PF2E's ${material.abp.mode ?? "ABP"} mode is enabled, but this actor's ABP override is disabled.`
+                    : `PF2E's ${material.abp.mode ?? "ABP"} mode is active. Configured gear uses PF2E's prepared rune state without changing starting currency.`,
+            ]
+            : []),
     ];
+}
+function configuredPriceLabel(price) {
+    const components = price.configurationComponents;
+    if (!components)
+        return null;
+    return [
+        `baseline/fundamental ${formatCopper(components.baselineAndFundamentalCopper)}`,
+        components.propertyRuneCopper > 0 ? `property runes ${formatCopper(components.propertyRuneCopper)}` : null,
+        components.preciousMaterialCopper > 0
+            ? `precious material ${formatCopper(components.preciousMaterialCopper)}`
+            : null,
+        components.suppressedByAbp.length > 0 ? `PF2E ABP suppresses ${components.suppressedByAbp.join(", ")}` : null,
+    ]
+        .filter((value) => value !== null)
+        .join(" · ");
 }
 function recipeLabel(kind) {
     switch (kind) {

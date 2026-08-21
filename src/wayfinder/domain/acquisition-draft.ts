@@ -4,6 +4,7 @@ import {
 } from "./acquisition-currency-convergence.js";
 import type {
   AcquisitionBasePriceSnapshot,
+  AcquisitionConfiguredRunesV1,
   AcquisitionDisposition,
   AcquisitionDraftState,
   AcquisitionFunding,
@@ -594,6 +595,7 @@ export function normalizeAcquisitionPriceSnapshot(raw: unknown): AcquisitionPric
   if (!isRecord(raw)) return null;
   const basePrice = normalizeBasePrice(raw.basePrice);
   const adjustedBulkPriceCopper = raw.adjustedBulkPriceCopper;
+  const configurationComponents = normalizeConfigurationComponents(raw.configurationComponents);
   if (
     !basePrice ||
     !isOneOf(raw.size, ["tiny", "small", "medium", "large", "huge", "gargantuan"]) ||
@@ -606,7 +608,8 @@ export function normalizeAcquisitionPriceSnapshot(raw: unknown): AcquisitionPric
     !safePositiveInteger(raw.requestedQuantity) ||
     !safePositiveInteger(raw.materializedQuantity) ||
     !safeNonNegativeInteger(raw.unitPriceCopper) ||
-    !safeNonNegativeInteger(raw.linePriceCopper)
+    !safeNonNegativeInteger(raw.linePriceCopper) ||
+    configurationComponents === undefined
   ) {
     return null;
   }
@@ -623,7 +626,80 @@ export function normalizeAcquisitionPriceSnapshot(raw: unknown): AcquisitionPric
     materializedQuantity: raw.materializedQuantity,
     unitPriceCopper: raw.unitPriceCopper,
     linePriceCopper: raw.linePriceCopper,
+    ...(configurationComponents ? { configurationComponents } : {}),
   };
+}
+
+function normalizeConfigurationComponents(
+  raw: unknown
+): AcquisitionPriceSnapshot["configurationComponents"] | null | undefined {
+  if (raw === undefined) return null;
+  if (
+    !isRecord(raw) ||
+    raw.version !== 1 ||
+    !isOneOf(raw.itemType, ["weapon", "armor"]) ||
+    !nonEmpty(raw.baseItem) ||
+    !isRecord(raw.source) ||
+    !isRecord(raw.prepared) ||
+    !safeNonNegativeInteger(raw.baselineAndFundamentalCopper) ||
+    !safeNonNegativeInteger(raw.propertyRuneCopper) ||
+    !safeNonNegativeInteger(raw.preciousMaterialCopper) ||
+    !Array.isArray(raw.suppressedByAbp) ||
+    !raw.suppressedByAbp.every(nonEmpty)
+  ) {
+    return undefined;
+  }
+  const sourceRunes = normalizeConfiguredRunes(raw.source.runes);
+  const preparedRunes = normalizeConfiguredRunes(raw.prepared.runes);
+  const sourceMaterial = normalizeConfiguredMaterial(raw.source.material);
+  const preparedMaterial = normalizeConfiguredMaterial(raw.prepared.material);
+  if (
+    !sourceRunes ||
+    !preparedRunes ||
+    !sourceMaterial ||
+    !preparedMaterial ||
+    !safeNonNegativeInteger(raw.prepared.totalCopper)
+  ) {
+    return undefined;
+  }
+  return {
+    version: 1,
+    itemType: raw.itemType,
+    baseItem: raw.baseItem,
+    source: { runes: sourceRunes, material: sourceMaterial },
+    prepared: { runes: preparedRunes, material: preparedMaterial, totalCopper: raw.prepared.totalCopper },
+    baselineAndFundamentalCopper: raw.baselineAndFundamentalCopper,
+    propertyRuneCopper: raw.propertyRuneCopper,
+    preciousMaterialCopper: raw.preciousMaterialCopper,
+    suppressedByAbp: [...new Set(raw.suppressedByAbp)].sort(),
+  };
+}
+
+function normalizeConfiguredRunes(raw: unknown): AcquisitionConfiguredRunesV1 | null {
+  if (
+    !isRecord(raw) ||
+    !safeNonNegativeInteger(raw.potency) ||
+    (raw.fundamental !== null && typeof raw.fundamental !== "string" && !safeNonNegativeInteger(raw.fundamental)) ||
+    !Array.isArray(raw.property) ||
+    !raw.property.every((value) => typeof value === "string")
+  ) {
+    return null;
+  }
+  return {
+    potency: Number(raw.potency),
+    fundamental: raw.fundamental as string | number | null,
+    property: [...raw.property] as string[],
+  };
+}
+
+function normalizeConfiguredMaterial(
+  raw: unknown
+): { readonly type: string | null; readonly grade: string | null } | null {
+  if (!isRecord(raw)) return null;
+  const type = raw.type;
+  const grade = raw.grade;
+  if ((type !== null && typeof type !== "string") || (grade !== null && typeof grade !== "string")) return null;
+  return { type: type as string | null, grade: grade as string | null };
 }
 
 function normalizeBasePrice(raw: unknown): AcquisitionBasePriceSnapshot | null {

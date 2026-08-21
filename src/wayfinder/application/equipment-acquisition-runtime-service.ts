@@ -68,6 +68,14 @@ export interface EquipmentAcquisitionRuntimeOptions {
   ) => EffectiveEquipmentPolicySnapshotV1;
   readonly mintLineId?: () => string;
   readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
+  readonly prepareConfiguredItem?: (input: {
+    readonly actor: unknown;
+    readonly targetLevel: number;
+    readonly baseSource: Readonly<Record<string, unknown>>;
+    readonly runes: Readonly<Record<string, unknown>>;
+    readonly material: Readonly<Record<string, unknown>>;
+    readonly forceNonSpecific: boolean;
+  }) => unknown;
 }
 
 export interface EquipmentApplySourceRequest {
@@ -148,6 +156,7 @@ export function createEquipmentAcquisitionRuntime(
   const resolveEffectivePolicy = options.resolveEffectivePolicy ?? resolveCurrentEffectivePolicy;
   const mintLineId = options.mintLineId ?? mintAcquisitionLineId;
   const fetchDocumentByUuid = options.fetchDocumentByUuid ?? resolveUuid;
+  const prepareConfiguredItem = options.prepareConfiguredItem ?? prepareTransientConfiguredItem;
   const catalogues = new Map<string, EquipmentCatalogueService>();
 
   const catalogueFor = (policy: EffectiveEquipmentPolicySnapshotV1): EquipmentCatalogueService => {
@@ -256,7 +265,15 @@ export function createEquipmentAcquisitionRuntime(
       const { policy, context } = currentContext(request.actor, request.draft, acquisition);
       const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
       assertSupportedCandidate(resolved);
-      const price = buildResolvedPrice(resolved, 1, sourceSize(resolved.source));
+      const priced = await buildResolvedPrice({
+        resolved,
+        requestedQuantity: 1,
+        targetSize: sourceSize(resolved.source),
+        actor: request.actor,
+        targetLevel: policy.targetLevel,
+        packs: options.packs,
+        prepareConfiguredItem,
+      });
       const itemPermanence = permanence(resolved.candidate.itemType);
       const funding = resolveRequestedFunding(
         policy,
@@ -269,14 +286,14 @@ export function createEquipmentAcquisitionRuntime(
         lineId: mintLineId(),
         sourceUuid: resolved.candidate.sourceUuid,
         documentFingerprint: resolved.documentFingerprint,
-        priceFingerprint: resolved.priceFingerprint,
+        priceFingerprint: priced.priceFingerprint,
         itemLevel: resolved.candidate.level,
         permanence: itemPermanence,
         componentKind: "baseline-item",
         policyDecision: cloneData(resolved.policyDecision),
         funding,
         stackingIntent: "aggregate",
-        price,
+        price: priced.price,
       };
     },
     async prepareTitanMaulerLine(request) {
@@ -347,7 +364,16 @@ export function createEquipmentAcquisitionRuntime(
           throw new TypeError("Native class-grant preparation requires a unique acquisition line ID.");
         }
         lineIds.add(lineId);
-        const price = buildResolvedPrice(resolved, 1, sourceSize(resolved.source));
+        const priced = await buildResolvedPrice({
+          resolved,
+          requestedQuantity: 1,
+          targetSize: sourceSize(resolved.source),
+          actor: request.actor,
+          targetLevel: policy.targetLevel,
+          packs: options.packs,
+          prepareConfiguredItem,
+        });
+        const price = priced.price;
         if (price.materializedQuantity !== 1) {
           throw new Error(`Native class grant ${grant.grantId} must resolve to exactly one item.`);
         }
@@ -356,7 +382,7 @@ export function createEquipmentAcquisitionRuntime(
           lineId,
           sourceUuid: grant.expected.sourceUuid,
           documentFingerprint: resolved.documentFingerprint,
-          priceFingerprint: resolved.priceFingerprint,
+          priceFingerprint: priced.priceFingerprint,
           itemLevel: resolved.candidate.level,
           permanence: "permanent",
           componentKind: "baseline-item",
@@ -444,17 +470,21 @@ export function createEquipmentAcquisitionRuntime(
           );
         }
       }
-      const resolvedPrice = buildResolvedPrice(
+      const priced = await buildResolvedPrice({
         resolved,
-        request.entry.price.requestedQuantity,
-        request.entry.price.size
-      );
+        requestedQuantity: request.entry.price.requestedQuantity,
+        targetSize: request.entry.price.size,
+        actor: request.actor,
+        targetLevel: policy.targetLevel,
+        packs: options.packs,
+        prepareConfiguredItem,
+      });
       return {
         source: cloneData(resolved.source) as EmbeddedItemSource,
         sourceUuid: resolved.candidate.sourceUuid,
         documentFingerprint: resolved.documentFingerprint,
-        priceFingerprint: resolved.priceFingerprint,
-        resolvedPrice,
+        priceFingerprint: priced.priceFingerprint,
+        resolvedPrice: priced.price,
         policyDecision: cloneData(resolved.policyDecision),
       };
     },
@@ -804,7 +834,152 @@ function resolveRequestedFunding(
   return { lane: "allowance", assignment: { mode: "player", allowanceId: allowance.allowanceId } };
 }
 
-function buildResolvedPrice(
+async function buildResolvedPrice(input: {
+  readonly resolved: EquipmentCatalogueApplyResolution;
+  readonly requestedQuantity: number;
+  readonly targetSize: AcquisitionPriceSnapshot["size"];
+  readonly actor: unknown;
+  readonly targetLevel: number;
+  readonly packs: Pick<ReadonlyMap<string, EquipmentCataloguePackLike>, "get">;
+  readonly prepareConfiguredItem: NonNullable<EquipmentAcquisitionRuntimeOptions["prepareConfiguredItem"]>;
+}): Promise<{ readonly price: AcquisitionPriceSnapshot; readonly priceFingerprint: string }> {
+  const configuration = configuredItemFacts(input.resolved.source, input.resolved.candidate.itemType);
+  if (!configuration) {
+    return {
+      price: buildSimpleResolvedPrice(input.resolved, input.requestedQuantity, input.targetSize),
+      priceFingerprint: input.resolved.priceFingerprint,
+    };
+  }
+  if (configuration.specific !== null) {
+    throw new Error("This specific configured magic item requires an explicit PF2E inventory-sheet handoff.");
+  }
+  if (
+    input.requestedQuantity !== 1 ||
+    input.resolved.candidate.price.per !== 1 ||
+    input.resolved.candidate.price.sourceQuantity !== 1
+  ) {
+    throw new Error("Configured equipment is supported only as one individually priced permanent item.");
+  }
+  const pack = input.packs.get(input.resolved.candidate.packId);
+  if (!pack) throw new Error("The configured equipment base-item pack is unavailable.");
+  const index = Array.from(
+    (await pack.getIndex({
+      fields: ["type", "system.slug", "system.level.value", "system.runes", "system.material"],
+    })) ?? []
+  );
+  const baseEntry = index.find((entry) => {
+    const candidate = record(entry);
+    return candidate.type === configuration.itemType && record(candidate.system).slug === configuration.baseItem;
+  });
+  const baseId = record(baseEntry)._id;
+  if (typeof baseId !== "string" || !baseId) {
+    throw new Error("PF2E did not expose the configured equipment's clean base item; use the inventory sheet.");
+  }
+  const baseDocument = await pack.getDocument(baseId);
+  const baseSource = documentSource(baseDocument);
+  if (!baseSource) throw new Error("The configured equipment clean base item is no longer available.");
+  const emptyMaterial = { type: null, grade: null };
+  const emptyRunes =
+    configuration.itemType === "weapon"
+      ? { potency: 0, striking: 0, property: [] }
+      : { potency: 0, resilient: 0, property: [] };
+  const fundamentalRunes = { ...configuration.runes, property: [] };
+  const prepare = (
+    base: Readonly<Record<string, unknown>>,
+    runes: Readonly<Record<string, unknown>>,
+    material: Readonly<Record<string, unknown>>,
+    forceNonSpecific: boolean
+  ) =>
+    input.prepareConfiguredItem({
+      actor: input.actor,
+      targetLevel: input.targetLevel,
+      baseSource: base,
+      runes,
+      material,
+      forceNonSpecific,
+    });
+  const full = prepare(baseSource, configuration.runes, configuration.material, true);
+  const runeOnly = prepare(baseSource, configuration.runes, emptyMaterial, true);
+  const fundamentalOnly = prepare(baseSource, fundamentalRunes, emptyMaterial, true);
+  const materialOnly = prepare(baseSource, emptyRunes, configuration.material, true);
+  const actual = prepare(input.resolved.source, configuration.runes, configuration.material, false);
+  const fullPrepared = preparedConfiguredFacts(full, configuration.itemType);
+  const runeOnlyPrepared = preparedConfiguredFacts(runeOnly, configuration.itemType);
+  const fundamentalPrepared = preparedConfiguredFacts(fundamentalOnly, configuration.itemType);
+  const materialPrepared = preparedConfiguredFacts(materialOnly, configuration.itemType);
+  const actualPrepared = preparedConfiguredFacts(actual, configuration.itemType);
+  if (
+    !fullPrepared ||
+    !runeOnlyPrepared ||
+    !fundamentalPrepared ||
+    !materialPrepared ||
+    !actualPrepared ||
+    actualPrepared.totalCopper !== fullPrepared.totalCopper ||
+    canonicalJson(actualPrepared.runes) !== canonicalJson(fullPrepared.runes) ||
+    canonicalJson(actualPrepared.material) !== canonicalJson(fullPrepared.material)
+  ) {
+    throw new Error("PF2E cannot safely express this configured item as a decomposed starting-equipment choice.");
+  }
+  const effectiveFundamental =
+    fundamentalPrepared.runes.potency > 0 || meaningfulFundamental(fundamentalPrepared.runes.fundamental);
+  const propertyRuneCopper =
+    runeOnlyPrepared.runes.property.length > 0
+      ? runeOnlyPrepared.totalCopper - (effectiveFundamental ? fundamentalPrepared.totalCopper : 0)
+      : 0;
+  const preciousMaterialCopper =
+    materialPrepared.material.type && materialPrepared.material.grade ? materialPrepared.totalCopper : 0;
+  const baselineAndFundamentalCopper = fullPrepared.totalCopper - propertyRuneCopper - preciousMaterialCopper;
+  if (
+    ![propertyRuneCopper, preciousMaterialCopper, baselineAndFundamentalCopper].every(
+      (value) => Number.isSafeInteger(value) && value >= 0
+    )
+  ) {
+    throw new Error("PF2E configured-item components did not converge to a safe exact price.");
+  }
+  const components = {
+    version: 1 as const,
+    itemType: configuration.itemType,
+    baseItem: configuration.baseItem,
+    source: {
+      runes: normalizeConfiguredRunes(configuration.runes, configuration.itemType),
+      material: configuration.material,
+    },
+    prepared: {
+      runes: fullPrepared.runes,
+      material: fullPrepared.material,
+      totalCopper: fullPrepared.totalCopper,
+    },
+    baselineAndFundamentalCopper,
+    propertyRuneCopper,
+    preciousMaterialCopper,
+    suppressedByAbp: suppressedConfiguredComponents(
+      normalizeConfiguredRunes(configuration.runes, configuration.itemType),
+      fullPrepared.runes
+    ),
+  };
+  const basePrice: AcquisitionBasePriceSnapshot = { kind: "priced", value: { cp: baselineAndFundamentalCopper } };
+  const snapshot = createAcquisitionPriceSnapshot({
+    basePrice,
+    size: input.targetSize,
+    sizeSensitive: false,
+    preciousMaterial: preciousMaterialCopper > 0,
+    adjustedBulkPriceCopper: preciousMaterialCopper > 0 ? baselineAndFundamentalCopper : null,
+    configurationPriceCopper: propertyRuneCopper + preciousMaterialCopper,
+    pricePer: 1,
+    sourceQuantity: 1,
+    requestedQuantity: 1,
+    configurationComponents: components,
+  });
+  if (snapshot.ok === false || snapshot.value.unitPriceCopper !== fullPrepared.totalCopper) {
+    throw new Error("Configured equipment price components do not equal PF2E's prepared total.");
+  }
+  return {
+    price: snapshot.value,
+    priceFingerprint: fingerprintPreparedPrice(snapshot.value),
+  };
+}
+
+function buildSimpleResolvedPrice(
   resolved: EquipmentCatalogueApplyResolution,
   requestedQuantity: number,
   targetSize: AcquisitionPriceSnapshot["size"]
@@ -813,15 +988,6 @@ function buildResolvedPrice(
   const source = record(resolved.source);
   const system = record(source.system);
   const price = record(system.price);
-  const material = record(system.material);
-  const materialType = material.type;
-  const materialGrade = material.grade;
-  if (
-    (materialType !== null && materialType !== undefined) ||
-    (materialGrade !== null && materialGrade !== undefined)
-  ) {
-    throw new Error("Precious-material and graded equipment are deferred beyond the Wave 2 simple-item tracer.");
-  }
   const sizeSensitive = price.sizeSensitive === undefined ? true : price.sizeSensitive;
   if (typeof sizeSensitive !== "boolean") throw new TypeError("The equipment size-pricing fact is malformed.");
   const basePrice: AcquisitionBasePriceSnapshot =
@@ -845,6 +1011,168 @@ function buildResolvedPrice(
   return snapshot.value;
 }
 
+function configuredItemFacts(source: unknown, itemType: string) {
+  if (itemType !== "weapon" && itemType !== "armor") return null;
+  const system = record(record(source).system);
+  const runes = record(system.runes);
+  const material = record(system.material);
+  const baseItem = system.baseItem;
+  const specific = system.specific ?? null;
+  const normalizedRunes = normalizeConfiguredRunes(runes, itemType);
+  const normalizedMaterial = normalizeConfiguredMaterial(material);
+  const configured =
+    normalizedRunes.potency > 0 ||
+    meaningfulFundamental(normalizedRunes.fundamental) ||
+    normalizedRunes.property.length > 0 ||
+    normalizedMaterial.type !== null ||
+    normalizedMaterial.grade !== null;
+  if (!configured) return null;
+  if (typeof baseItem !== "string" || !baseItem.trim()) {
+    throw new Error("Configured equipment has no exact PF2E base-item identity; use the inventory sheet.");
+  }
+  return {
+    itemType,
+    baseItem: baseItem.trim(),
+    specific,
+    runes: cloneData(runes),
+    material: normalizedMaterial,
+  } as const;
+}
+
+function preparedConfiguredFacts(item: unknown, itemType: "weapon" | "armor") {
+  const system = record(record(item).system);
+  const totalCopper = coinsCopper(record(system.price).value);
+  if (totalCopper === null) return null;
+  return {
+    runes: normalizeConfiguredRunes(record(system.runes), itemType),
+    material: normalizeConfiguredMaterial(record(system.material)),
+    totalCopper,
+  };
+}
+
+function normalizeConfiguredRunes(runes: Readonly<Record<string, unknown>>, itemType: "weapon" | "armor") {
+  const potency = Number.isSafeInteger(runes.potency) && Number(runes.potency) >= 0 ? Number(runes.potency) : 0;
+  const fundamentalKey = itemType === "weapon" ? "striking" : "resilient";
+  const rawFundamental = runes[fundamentalKey];
+  const fundamental =
+    rawFundamental === null || typeof rawFundamental === "string" || Number.isSafeInteger(rawFundamental)
+      ? (rawFundamental as string | number | null)
+      : null;
+  const property = Array.isArray(runes.property)
+    ? runes.property.filter((value): value is string => typeof value === "string")
+    : [];
+  return { potency, fundamental, property };
+}
+
+function normalizeConfiguredMaterial(material: Readonly<Record<string, unknown>>) {
+  return {
+    type: typeof material.type === "string" && material.type ? material.type : null,
+    grade: typeof material.grade === "string" && material.grade ? material.grade : null,
+  };
+}
+
+function meaningfulFundamental(value: string | number | null): boolean {
+  return (typeof value === "number" && value > 0) || (typeof value === "string" && value !== "" && value !== "0");
+}
+
+function suppressedConfiguredComponents(
+  source: ReturnType<typeof normalizeConfiguredRunes>,
+  prepared: ReturnType<typeof normalizeConfiguredRunes>
+): string[] {
+  const suppressed: string[] = [];
+  if (source.potency > prepared.potency) suppressed.push("potency");
+  if (meaningfulFundamental(source.fundamental) && !meaningfulFundamental(prepared.fundamental)) {
+    suppressed.push("fundamental");
+  }
+  for (const property of source.property) {
+    if (!prepared.property.includes(property)) suppressed.push(`property:${property}`);
+  }
+  return suppressed.sort();
+}
+
+function coinsCopper(value: unknown): number | null {
+  const coins = record(value);
+  if (Number.isSafeInteger(coins.copperValue) && Number(coins.copperValue) >= 0) return Number(coins.copperValue);
+  let total = 0;
+  for (const [denomination, factor] of Object.entries({ pp: 1000, gp: 100, sp: 10, cp: 1 })) {
+    const amount = coins[denomination] ?? 0;
+    if (!Number.isSafeInteger(amount) || Number(amount) < 0) return null;
+    total += Number(amount) * factor;
+    if (!Number.isSafeInteger(total)) return null;
+  }
+  return total;
+}
+
+function documentSource(document: unknown): Readonly<Record<string, unknown>> | null {
+  const toObject = record(document).toObject;
+  if (typeof toObject !== "function") return null;
+  const source = (toObject as (source?: boolean) => unknown).call(document, true);
+  return source && typeof source === "object" ? (cloneData(source) as Readonly<Record<string, unknown>>) : null;
+}
+
+function prepareTransientConfiguredItem(input: {
+  readonly actor: unknown;
+  readonly targetLevel: number;
+  readonly baseSource: Readonly<Record<string, unknown>>;
+  readonly runes: Readonly<Record<string, unknown>>;
+  readonly material: Readonly<Record<string, unknown>>;
+  readonly forceNonSpecific: boolean;
+}): unknown {
+  const actorToObject = record(input.actor).toObject;
+  if (typeof actorToObject !== "function") {
+    throw new Error("Configured equipment requires a PF2E actor preparation context.");
+  }
+  const actorSource = cloneData((actorToObject as (source?: boolean) => unknown).call(input.actor, true)) as Record<
+    string,
+    unknown
+  >;
+  const actorSystem = record(actorSource.system);
+  const details = record(actorSystem.details);
+  const level = record(details.level);
+  level.value = input.targetLevel;
+  details.level = level;
+  actorSystem.details = details;
+  actorSource.system = actorSystem;
+  actorSource._id = transientId();
+  actorSource.name = `Wayfinder configured-item preparation ${input.targetLevel}`;
+  const itemSource = cloneData(input.baseSource) as Record<string, unknown>;
+  const itemSystem = record(itemSource.system);
+  itemSystem.runes = cloneData(input.runes);
+  itemSystem.material = cloneData(input.material);
+  if (input.forceNonSpecific) itemSystem.specific = null;
+  itemSource.system = itemSystem;
+  const itemId = transientId();
+  itemSource._id = itemId;
+  actorSource.items = [itemSource];
+  const actorClass = record(record(CONFIG).Actor).documentClass;
+  if (typeof actorClass !== "function") throw new Error("PF2E actor preparation is unavailable.");
+  const temporary = new (actorClass as new (source: unknown, context: unknown) => unknown)(actorSource, {
+    temporary: true,
+  });
+  const items = record(temporary).items;
+  const get = record(items).get;
+  const item = typeof get === "function" ? (get as (id: string) => unknown).call(items, itemId) : null;
+  if (!item) throw new Error("PF2E did not prepare the transient configured item.");
+  return item;
+}
+
+function transientId(): string {
+  const randomId = record(record(globalThis).foundry).utils;
+  const mint = record(randomId).randomID;
+  if (typeof mint === "function") return (mint as (length: number) => string)(16);
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+}
+
+function fingerprintPreparedPrice(price: AcquisitionPriceSnapshot): string {
+  const text = canonicalJson({ version: 1, price });
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `equipment-prepared-price-v1-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 function buildTitanMaulerLine(args: {
   readonly resolved: EquipmentCatalogueApplyResolution;
   readonly policy: EffectiveEquipmentPolicySnapshotV1;
@@ -865,7 +1193,7 @@ function buildTitanMaulerLine(args: {
     policyDecision: cloneData(args.resolved.policyDecision),
     funding: { lane: "class-grant", grant: { plannedGrantId: args.grantId } },
     stackingIntent: "separate",
-    price: buildResolvedPrice(args.resolved, 1, args.targetSize),
+    price: buildSimpleResolvedPrice(args.resolved, 1, args.targetSize),
   };
   const candidate = buildTitanMaulerCandidate({
     document: args.resolved.source,

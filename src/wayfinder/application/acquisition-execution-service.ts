@@ -610,6 +610,9 @@ function assertResolvedSourceMatches(entry: PreparedAcquisitionEntryV1, resolved
     pricePer: resolved.resolvedPrice.pricePer,
     sourceQuantity: resolved.resolvedPrice.sourceQuantity,
     requestedQuantity: entry.price.requestedQuantity,
+    ...(resolved.resolvedPrice.configurationComponents
+      ? { configurationComponents: cloneData(resolved.resolvedPrice.configurationComponents) }
+      : {}),
   });
   if (
     rebuiltPrice.ok === false ||

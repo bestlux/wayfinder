@@ -740,6 +740,9 @@ function setLineQuantity(draft: AcquisitionDraftState, lineId: string, quantity:
   if (current.funding.lane === "class-grant") {
     throw new TypeError("Automatic build-granted equipment quantity is fixed by its authoritative grant.");
   }
+  if (current.price.configurationComponents) {
+    throw new TypeError("Configured equipment is prepared as one exact PF2E item and has a fixed quantity.");
+  }
   const price = createAcquisitionPriceSnapshot({
     basePrice: current.price.basePrice,
     size: current.price.size,
@@ -750,6 +753,9 @@ function setLineQuantity(draft: AcquisitionDraftState, lineId: string, quantity:
     pricePer: current.price.pricePer,
     sourceQuantity: current.price.sourceQuantity,
     requestedQuantity: quantity,
+    ...(current.price.configurationComponents
+      ? { configurationComponents: structuredClone(current.price.configurationComponents) }
+      : {}),
   });
   if (price.ok === false) throw new TypeError(price.message);
   const lines = [...draft.lines];

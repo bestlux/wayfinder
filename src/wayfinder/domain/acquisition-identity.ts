@@ -321,6 +321,9 @@ function combinedPrice(
     pricePer: price.pricePer,
     sourceQuantity: price.sourceQuantity,
     requestedQuantity,
+    ...(price.configurationComponents
+      ? { configurationComponents: structuredClone(price.configurationComponents) }
+      : {}),
   });
   if (!result.ok || result.value.materializedQuantity !== materializedQuantity) {
     throw new RangeError("Aggregated acquisition price cannot be represented safely.");

@@ -255,7 +255,7 @@ describe("acquisition ledger", () => {
     expect(evaluateAcquisitionLedger(fixedOutsideCatalogue)).toMatchObject({ valid: true, spentCopper: 0 });
 
     const invalidQuantity = mutable(structuredClone(valid));
-    invalidQuantity.lines[0]!.price = price({ requestedQuantity: 2 });
+    invalidQuantity.lines[0]!.price = mutable(price({ requestedQuantity: 2 }));
     expect(() => evaluateAcquisitionLedger(invalidQuantity)).not.toThrow();
     expect(evaluateAcquisitionLedger(invalidQuantity).blockers).toContainEqual(
       expect.objectContaining({ code: "class-grant-invalid" })

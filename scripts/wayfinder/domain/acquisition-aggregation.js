@@ -38,6 +38,7 @@ export function acquisitionPriceBasis(price) {
         pricePer: price.pricePer,
         sourceQuantity: price.sourceQuantity,
         unitPriceCopper: price.unitPriceCopper,
+        ...(price.configurationComponents ? { configurationComponents: price.configurationComponents } : {}),
     };
 }
 function fundingMaterial(funding, resolvedAllowanceId) {

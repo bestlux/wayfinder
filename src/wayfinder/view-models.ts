@@ -497,6 +497,7 @@ export interface StartingEquipmentStepPane {
       name: string;
       quantity: number;
       priceLabel: string;
+      configurationLabel: string | null;
       fundingLabel: string;
       canRemove: boolean;
       canChangeQuantity: boolean;

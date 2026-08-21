@@ -95,6 +95,140 @@ describe("equipment acquisition runtime", () => {
     ).rejects.toThrow(/cannot fund/i);
   });
 
+  it("prepares one non-specific configured weapon with exact PF2E component pricing", async () => {
+    const configured = dagger({
+      id: "configured",
+      name: "Configured Blade",
+      level: 14,
+      priceGp: 4500,
+      baseItem: "clean-blade",
+      runes: { potency: 2, striking: 2, property: ["holy"] },
+      materialType: "cold-iron",
+      materialGrade: "standard",
+      specific: null,
+    });
+    const base = dagger({ id: "base", name: "Clean Blade", baseItem: "clean-blade", priceGp: 4 });
+    const prepareConfiguredItem = vi.fn((input: any) => {
+      const property = Array.isArray(input.runes.property) ? input.runes.property : [];
+      const fundamental = Number(input.runes.potency) > 0 || Number(input.runes.striking) > 0;
+      const material = input.material.type && input.material.grade;
+      const totalCopper = property.length
+        ? material
+          ? 445_600
+          : 340_400
+        : fundamental
+          ? material
+            ? 305_600
+            : 200_400
+          : material
+            ? 105_600
+            : 400;
+      return {
+        system: {
+          runes: structuredClone(input.runes),
+          material: structuredClone(input.material),
+          price: { value: { copperValue: totalCopper } },
+        },
+      };
+    });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [configured, { ...base, system: { ...base.system, slug: "clean-blade" } }]),
+        getDocument: vi.fn(async (id) => document(id === "base" ? base : configured)),
+      },
+      { policy: configuredPolicy(), prepareConfiguredItem }
+    );
+
+    const line = await runtime.uiAdapter.prepareLine({
+      ...request,
+      sourceUuid: `Compendium.${PACK_ID}.Item.configured`,
+      funding: { lane: "allowance", allowanceId: "level-14-1" },
+    });
+    expect(line.price).toMatchObject({
+      unitPriceCopper: 445_600,
+      configurationPriceCopper: 245_600,
+      configurationComponents: {
+        baseItem: "clean-blade",
+        baselineAndFundamentalCopper: 200_000,
+        propertyRuneCopper: 140_000,
+        preciousMaterialCopper: 105_600,
+        prepared: { totalCopper: 445_600 },
+        suppressedByAbp: [],
+      },
+    });
+    expect(line.priceFingerprint).toMatch(/^equipment-prepared-price-v1-/);
+    expect(prepareConfiguredItem).toHaveBeenCalledTimes(5);
+  });
+
+  it("hands specific configured magic items to the PF2E inventory sheet", async () => {
+    const specific = dagger({
+      id: "specific",
+      level: 13,
+      baseItem: "clean-blade",
+      runes: { potency: 1, striking: 1, property: ["shadow"] },
+      specific: { value: true },
+    });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [specific]),
+        getDocument: vi.fn(async () => document(specific)),
+      },
+      { policy: configuredPolicy() }
+    );
+    await expect(
+      runtime.uiAdapter.prepareLine({
+        ...request,
+        sourceUuid: `Compendium.${PACK_ID}.Item.specific`,
+        funding: { lane: "allowance", allowanceId: "level-14-1" },
+      })
+    ).rejects.toThrow(/specific configured magic item.*handoff/i);
+  });
+
+  it("records PF2E ABP-suppressed rune components without changing the wealth recipe", async () => {
+    const configured = dagger({
+      id: "configured-abp",
+      level: 14,
+      baseItem: "clean-blade",
+      runes: { potency: 2, striking: 2, property: ["holy"] },
+      materialType: "cold-iron",
+      materialGrade: "standard",
+    });
+    const base = dagger({ id: "base", baseItem: "clean-blade", priceGp: 4 });
+    const prepareConfiguredItem = vi.fn((input: any) => ({
+      system: {
+        runes: { potency: 0, striking: 0, property: [] },
+        material: structuredClone(input.material),
+        price: { value: { copperValue: input.material.type && input.material.grade ? 105_600 : 400 } },
+      },
+    }));
+    const abpPolicy = {
+      ...configuredPolicy(),
+      abp: { enabled: true, mode: "ABPRulesAsWritten", actorOverrideDisabled: false },
+    };
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [configured, { ...base, system: { ...base.system, slug: "clean-blade" } }]),
+        getDocument: vi.fn(async (id) => document(id === "base" ? base : configured)),
+      },
+      { policy: abpPolicy, prepareConfiguredItem }
+    );
+    const line = await runtime.uiAdapter.prepareLine({
+      ...request,
+      sourceUuid: `Compendium.${PACK_ID}.Item.configured-abp`,
+      funding: { lane: "allowance", allowanceId: "level-14-1" },
+    });
+    expect(line.price).toMatchObject({
+      unitPriceCopper: 105_600,
+      configurationComponents: {
+        baselineAndFundamentalCopper: 0,
+        propertyRuneCopper: 0,
+        preciousMaterialCopper: 105_600,
+        suppressedByAbp: ["fundamental", "potency", "property:holy"],
+      },
+    });
+    expect(abpPolicy.recipe).toEqual(configuredPolicy().recipe);
+  });
+
   it("projects the bounded level-1 catalogue and prepares a hydrated Dagger line", async () => {
     const source = dagger();
     const getIndex = vi.fn(async () => [source]);
@@ -232,7 +366,7 @@ describe("equipment acquisition runtime", () => {
     });
     await expect(
       configured.runtime.uiAdapter.prepareLine({ ...configured.request, sourceUuid: DAGGER_UUID })
-    ).rejects.toThrow(/precious-material|graded/i);
+    ).rejects.toThrow(/base-item identity|inventory sheet/i);
   });
 
   it.each([
@@ -996,6 +1130,9 @@ function fixture(
     readonly accessRegistry?: EquipmentAccessRegistry;
     readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
     readonly policy?: EffectiveEquipmentPolicySnapshotV1;
+    readonly prepareConfiguredItem?: NonNullable<
+      Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareConfiguredItem"]
+    >;
   } = {}
 ): {
   runtime: EquipmentAcquisitionRuntime;
@@ -1025,6 +1162,7 @@ function fixture(
       accessRegistry: options.accessRegistry,
       fetchDocumentByUuid: options.fetchDocumentByUuid,
       resolveEffectivePolicy: () => currentPolicy,
+      prepareConfiguredItem: options.prepareConfiguredItem,
       mintLineId: () => "wf-line-test",
     }),
     request: {
@@ -1118,6 +1256,28 @@ function higherLevelPolicy(recipe: "permanent-items" | "lump-sum"): EffectiveEqu
   };
 }
 
+function configuredPolicy(): EffectiveEquipmentPolicySnapshotV1 {
+  const targetLevel = 14;
+  return {
+    ...policy(),
+    targetLevel,
+    recipe: { kind: "permanent-items", currencyCopper: 0, allowances: [{ allowanceId: "level-14-1", itemLevel: 14 }] },
+    higherLevelStartEvidence: {
+      kind: "actor-owner-attestation",
+      startKind: "replacement-character",
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel,
+      authorUserId: "owner-1",
+      authorName: "Owner",
+      recordedAt: "2026-08-20T20:00:00.000Z",
+      reason: "Replacement character",
+    },
+    authorityPolicy: { ...policy().authorityPolicy, higherLevelStart: "actor-owner-attestation" },
+    fingerprint: "policy-configured-level-14",
+  };
+}
+
 function dagger(
   options: {
     readonly id?: string;
@@ -1126,7 +1286,11 @@ function dagger(
     readonly priceGp?: number;
     readonly level?: number;
     readonly materialType?: string | null;
+    readonly materialGrade?: string | null;
     readonly rarity?: "common" | "uncommon";
+    readonly baseItem?: string | null;
+    readonly runes?: Record<string, unknown>;
+    readonly specific?: unknown;
   } = {}
 ) {
   return {
@@ -1144,7 +1308,10 @@ function dagger(
       quantity: 1,
       rules: [],
       size: "med",
-      material: { type: options.materialType ?? null, grade: null },
+      baseItem: options.baseItem ?? null,
+      specific: options.specific ?? null,
+      runes: options.runes ?? { potency: 0, striking: 0, property: [] },
+      material: { type: options.materialType ?? null, grade: options.materialGrade ?? null },
     },
   };
 }

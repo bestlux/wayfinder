@@ -45,6 +45,7 @@ export function acquisitionPriceBasis(price: AcquisitionPriceSnapshot): Record<s
     pricePer: price.pricePer,
     sourceQuantity: price.sourceQuantity,
     unitPriceCopper: price.unitPriceCopper,
+    ...(price.configurationComponents ? { configurationComponents: price.configurationComponents } : {}),
   };
 }
 

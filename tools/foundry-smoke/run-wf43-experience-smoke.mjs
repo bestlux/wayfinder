@@ -513,7 +513,6 @@ async function runLocale({
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-action="apply-draft"]`);
   const applyBoundary = await enterScopedKeyboardBoundary({
     action: "apply",
-    anchorSelector: `[data-wayfinder-step-heading="${definition.fixture.stepId}"]`,
     mode: "scoped-app-reentry",
     state: "forced-failure",
     targetSelector: '[data-wayfinder-action="apply-draft"]',

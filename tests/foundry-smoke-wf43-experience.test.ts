@@ -151,10 +151,6 @@ describe("WF-080-43 live experience qualifier", () => {
     const forcedRestore = runner.indexOf("__restoreWayfinderWf43ReviewedDraft", handoffAction);
     const forcedOpen = runner.indexOf("__openWayfinderWf43Experience", forcedRestore);
     const forcedBoundary = runner.indexOf('state: "forced-failure"', forcedOpen);
-    const forcedAnchor = runner.indexOf(
-      'anchorSelector: `[data-wayfinder-step-heading="${definition.fixture.stepId}"]`',
-      forcedOpen
-    );
     const forcedTarget = runner.indexOf("targetSelector: '[data-wayfinder-action=\"apply-draft\"]'", forcedBoundary);
     const forcedAction = runner.indexOf("applyBoundary.confirmation = await applyWithKeyboard", forcedTarget);
     const errorFocus = runner.indexOf('interactionStage("forced-failure", "error-focus")', forcedAction);
@@ -173,8 +169,7 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(forcedRestore).toBeGreaterThan(handoffAction);
     expect(forcedOpen).toBeGreaterThan(forcedRestore);
     expect(forcedBoundary).toBeGreaterThan(forcedOpen);
-    expect(forcedAnchor).toBeGreaterThan(forcedOpen);
-    expect(forcedBoundary).toBeGreaterThan(forcedAnchor);
+    expect(runner.slice(forcedBoundary, forcedTarget)).not.toContain("anchorSelector");
     expect(forcedTarget).toBeGreaterThan(forcedBoundary);
     expect(forcedAction).toBeGreaterThan(forcedTarget);
     expect(errorFocus).toBeGreaterThan(forcedAction);
@@ -423,6 +418,8 @@ describe("WF-080-43 live experience qualifier", () => {
       focusId: "",
       keyboardFocus: null,
     };
+    drifted.keyboardEntries[6].anchor.visible = false;
+    drifted.keyboardEntries[6].observedTraversal.at(-1).focusId = "BUTTON";
     expect(qualifyWf43ExperienceResult(drifted).failures).toContain(
       "en: handoff keyboard boundary did not prove scoped visible Tab traversal to acknowledge-equipment-handoff."
     );
@@ -430,6 +427,7 @@ describe("WF-080-43 live experience qualifier", () => {
       expect.arrayContaining([
         "en: forced-failure keyboard boundary did not prove scoped visible Tab traversal to apply-draft.",
         "cn: handoff keyboard boundary did not prove scoped visible Tab traversal to acknowledge-equipment-handoff.",
+        "cn: forced-failure keyboard boundary did not prove scoped visible Tab traversal to apply-draft.",
       ])
     );
   });
@@ -753,6 +751,8 @@ function passingResult(): any {
         targetAction: "apply-draft",
         targetFocusId: "",
         targetName: "Apply Changes",
+        anchorName: "Choose an ancestry",
+        anchorStepHeading: "ancestry-level-1",
         confirmationLabels: definition.confirmationLabels,
       }),
       passingKeyboardBoundary(definition.id, definition.fixture.stepId, {
@@ -1054,6 +1054,7 @@ function passingKeyboardBoundary(
       tag: boundary.anchorTag ?? "H3",
       keyboardFocus: "true",
       focused: true,
+      visible: true,
     },
     target,
     localTabOrder: [target],

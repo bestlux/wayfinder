@@ -121,7 +121,7 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       targetFocusId: "",
       anchorFocusId: "",
       anchorTag: "H3",
-      anchorStepId: definition.fixture.stepId,
+      anchorStepId: null,
       confirmationLabels: definition.confirmationLabels,
     },
     {
@@ -144,6 +144,10 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
   for (const [index, boundary] of expected.entries()) {
     const entry = entries[index];
     const observedTarget = entry?.observedTraversal?.at(-1);
+    const anchorStepMatches =
+      boundary.anchorStepId === null
+        ? typeof entry?.anchor?.stepHeading === "string" && Boolean(entry.anchor.stepHeading)
+        : entry?.anchor?.stepHeading === boundary.anchorStepId;
     const focusDiagnostics = [
       entry?.before,
       entry?.anchor,
@@ -159,11 +163,12 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       entry?.action !== boundary.action ||
       entry?.focusMethod !== "programmatic-harness-anchor-before-keyboard-actions" ||
       entry?.anchor?.focused !== true ||
+      entry?.anchor?.visible !== true ||
       entry?.anchor?.keyboardFocus !== "true" ||
       entry?.anchor?.tag !== boundary.anchorTag ||
       entry?.anchor?.action !== "" ||
       entry?.anchor?.focusId !== boundary.anchorFocusId ||
-      entry?.anchor?.stepHeading !== boundary.anchorStepId ||
+      !anchorStepMatches ||
       entry?.target?.present !== true ||
       entry?.target?.visible !== true ||
       entry?.target?.disabled !== false ||

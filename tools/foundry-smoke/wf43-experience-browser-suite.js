@@ -380,9 +380,12 @@ globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({
   const target = root.querySelector(targetSelector);
   const before = wf43FocusDescriptor(document.activeElement);
   const localTabOrder = wf43FocusableElements(root).map(wf43FocusDescriptor);
-  const anchor = root.querySelector(anchorSelector);
+  const anchor = [...root.querySelectorAll(anchorSelector)].find(
+    (candidate) => candidate instanceof HTMLElement && wf43KeyboardTarget(candidate).visible,
+  );
   if (!(anchor instanceof HTMLElement)) throw new Error("WF-080-43 could not resolve its app keyboard-entry anchor.");
   anchor.focus();
+  const anchorEvidence = wf43KeyboardTarget(anchor);
   const targetEvidence = wf43KeyboardTarget(target);
   return {
     action,
@@ -391,7 +394,7 @@ globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({
     focusMethod: "programmatic-harness-anchor-before-keyboard-actions",
     before,
     visibleWindows: wf43VisibleWindowEvidence(),
-    anchor: { ...wf43FocusDescriptor(anchor), focused: document.activeElement === anchor },
+    anchor: { ...anchorEvidence, focused: document.activeElement === anchor },
     target: {
       ...targetEvidence,
       localOrderIndex: localTabOrder.findIndex(

@@ -261,8 +261,9 @@ browserIt("re-enters retry traversal from the visible failure alert without focu
     const page = await browser.newPage();
     await page.setContent(`
       <section class="application wayfinder-app">
+        <h3 style="display: none" tabindex="-1" data-wayfinder-step-heading="starting-equipment-level-5"
+          data-keyboard-focus="true">Hidden starting equipment</h3>
         <h3 tabindex="-1" data-wayfinder-step-heading="ancestry-level-1" data-keyboard-focus="true">Ancestry</h3>
-        <h3 tabindex="-1" data-wayfinder-step-heading="starting-equipment-level-5" data-keyboard-focus="true">Starting equipment</h3>
         <div class="status-note error" role="alert" aria-live="assertive" tabindex="-1"
           data-wayfinder-focus-id="starting-equipment-status" data-keyboard-focus="true">Apply failed</div>
         <button type="button" data-wayfinder-action="apply-draft" data-keyboard-focus="true">Apply Changes</button>
@@ -280,14 +281,20 @@ browserIt("re-enters retry traversal from the visible failure alert without focu
       globalThis.__enterWayfinderWf43KeyboardScope({
         actorId: "actor-1",
         action: "apply",
-        anchorSelector: '[data-wayfinder-step-heading="starting-equipment-level-5"]',
         mode: "scoped-app-reentry",
         state: "forced-failure",
         targetSelector: '[data-wayfinder-action="apply-draft"]',
       })
     );
     expect(applyEntry).toMatchObject({
-      anchor: { name: "Starting equipment", stepHeading: "starting-equipment-level-5", focused: true },
+      anchor: { name: "Ancestry", stepHeading: "ancestry-level-1", focused: true, visible: true },
+      target: { focusId: "", action: "apply-draft", present: true, visible: true },
+    });
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => globalThis.__inspectWayfinderWf43Focus())).toMatchObject({
+      focusId: "apply-draft",
+      action: "apply-draft",
+      visible: true,
     });
 
     const entry = await page.evaluate(() =>

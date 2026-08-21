@@ -93,6 +93,62 @@ describe("singleton-choice-service", () => {
     expect(steps).toEqual([]);
   });
 
+  it("builds the Leap the Falls ikon step from registered projected choices", async () => {
+    const draft = createEmptyDraft(6);
+    const steps = await buildSingletonChoiceSteps({
+      draft,
+      targetLevel: 6,
+      sources: [
+        {
+          sourceItemType: "feat",
+          sourceSelection: selection("class-feat-level-6", "feat", "leap-the-falls", "Leap the Falls"),
+          sourceLevel: 6,
+          sourceDocument: {
+            name: "Leap the Falls",
+            system: {
+              slug: "leap-the-falls",
+              level: { value: 6 },
+              traits: { otherTags: ["body-ikon-feat"] },
+              rules: [
+                {
+                  key: "ChoiceSet",
+                  flag: "ikon",
+                  choices: "flags.system.exemplar.ikons",
+                },
+              ],
+            },
+          },
+        },
+      ],
+      registeredDynamicChoices: {
+        "flags.system.exemplar.ikons": [
+          {
+            value: "eye-catching-spot",
+            label: "Eye-Catching Spot",
+            predicate: ["parent:tag:body-ikon-feat"],
+          },
+          {
+            value: "gleaming-blade",
+            label: "Gleaming Blade",
+            predicate: ["parent:tag:weapon-ikon-feat"],
+          },
+        ],
+      },
+      extractSlug: (document) => (document as { system?: { slug?: string } })?.system?.slug ?? null,
+      localize: (value) => value,
+      readExistingSingletonChoiceSelection: () => null,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        slotId: "singleton-choice-feat-leap-the-falls-ikon-level-6",
+        singletonChoice: {
+          options: [{ value: "eye-catching-spot", label: "Eye-Catching Spot" }],
+        },
+      },
+    ]);
+  });
+
   it("only renders predicate-gated singleton follow-up choices after their upstream choice is selected", async () => {
     const draft = createEmptyDraft(1);
     const sources = [

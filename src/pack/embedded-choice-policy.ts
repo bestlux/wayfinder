@@ -44,7 +44,10 @@ export interface EmbeddedChoiceClassificationOptions {
   classSlug?: string | null;
   effectiveDeityDocument?: unknown | null;
   localize?: (value: string) => string;
-  optionContext?: Pick<OptionContext, "ancestrySlug" | "classSlug" | "deitySelected" | "rollOptions"> | null;
+  optionContext?: Pick<
+    OptionContext,
+    "ancestrySlug" | "classSlug" | "deitySelected" | "registeredDynamicChoices" | "rollOptions"
+  > | null;
   requireResolvedActorPlaceholders?: boolean;
   staticGrantSources?: StaticGrantChoiceSource[];
 }
@@ -198,7 +201,8 @@ function classifyOwnEmbeddedChoices(
       sourceSelection,
       coveredByRuleIndex,
       options.localize ?? identity,
-      activeRollOptions
+      activeRollOptions,
+      options.optionContext?.registeredDynamicChoices
     );
     markFeatSkillTrainingCoverage(
       entry,
@@ -297,7 +301,8 @@ function markFeatSingletonCoverage(
   _sourceSelection: SelectionRef,
   coveredByRuleIndex: Map<number, Set<EmbeddedChoiceCoverageLane>>,
   localize: (value: string) => string,
-  activeRollOptions: ReadonlySet<string>
+  activeRollOptions: ReadonlySet<string>,
+  registeredDynamicChoices?: OptionContext["registeredDynamicChoices"]
 ): void {
   for (const spec of discoverSingletonChoiceSpecs({
     sourceItemType: "feat",
@@ -305,6 +310,7 @@ function markFeatSingletonCoverage(
     sourceSlug: extractEntrySlug(entry) ?? String(entry._id ?? "feat"),
     localize,
     activeRollOptions,
+    registeredDynamicChoices,
   })) {
     markCovered(coveredByRuleIndex, spec.sourceRuleIndex, "singleton-choice");
   }

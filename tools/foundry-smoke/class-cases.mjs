@@ -631,6 +631,38 @@ export const smokeCases = [
       classSlug: "exemplar",
       keyAbility: "str",
       expectedStepIds: [
+        "class-branch-divine-spark-and-ikons-firstIkon-level-1",
+        "class-branch-divine-spark-and-ikons-secondIkon-level-1",
+        "class-branch-divine-spark-and-ikons-thirdIkon-level-1",
+        "class-branch-root-epithet-level-3",
+        "singleton-choice-feat-leap-the-falls-ikon-level-2",
+      ],
+      preferredSelections: {
+        "class-branch-divine-spark-and-ikons-firstIkon-level-1": ["Eye-Catching Spot"],
+        "class-branch-divine-spark-and-ikons-secondIkon-level-1": ["Scar of the Survivor"],
+        "class-branch-divine-spark-and-ikons-thirdIkon-level-1": ["Skin Hard as Horn"],
+        "class-branch-root-epithet-level-3": ["The Brave"],
+        "singleton-choice-feat-leap-the-falls-ikon-level-2": ["Eye-Catching Spot"],
+        "class-feat": ["Claim Initiate Domain", "Reactive Strike", "Leap the Falls"],
+      },
+      preferredSkills: ["athletics", "diplomacy", "intimidation", "society", "acrobatics"],
+    }),
+    id: "exemplar-leap-the-falls-l1-l6-apply-rerun",
+    label: "Exemplar with Leap the Falls level 1 through 6 apply/rerun",
+    targetLevel: 6,
+    expectedItemNames: ["Eye-Catching Spot", "Leap the Falls (Eye-Catching Spot)"],
+    expectedItemRuleSelections: {
+      "Leap the Falls (Eye-Catching Spot)": {
+        ikon: "eye-catching-spot",
+      },
+    },
+  },
+  {
+    ...classCase({
+      className: "Exemplar",
+      classSlug: "exemplar",
+      keyAbility: "str",
+      expectedStepIds: [
         "grant-choice-none-feat-champion-dedication-cause-level-2",
         "grant-choice-class-classfeature-deity-champion-deity-level-2",
         "class-choice-deity-champion-sanctification-level-2",

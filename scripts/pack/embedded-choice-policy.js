@@ -109,7 +109,7 @@ function classifyOwnEmbeddedChoices(entry, packId, choiceSetRuleIndexes, options
     }
     markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredByRuleIndex, options);
     if (sourceItemType === "feat") {
-        markFeatSingletonCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity, activeRollOptions);
+        markFeatSingletonCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity, activeRollOptions, options.optionContext?.registeredDynamicChoices);
         markFeatSkillTrainingCoverage(entry, sourceSelection, coveredByRuleIndex, options.localize ?? identity, activeRollOptions);
     }
     if (sourceItemType === "classfeature") {
@@ -176,13 +176,14 @@ function markFlagChoiceCoverage(entry, sourceItemType, sourceSelection, coveredB
         markCovered(coveredByRuleIndex, meta.sourceRuleIndex, "flag-choice");
     }
 }
-function markFeatSingletonCoverage(entry, _sourceSelection, coveredByRuleIndex, localize, activeRollOptions) {
+function markFeatSingletonCoverage(entry, _sourceSelection, coveredByRuleIndex, localize, activeRollOptions, registeredDynamicChoices) {
     for (const spec of discoverSingletonChoiceSpecs({
         sourceItemType: "feat",
         sourceDocument: entry,
         sourceSlug: extractEntrySlug(entry) ?? String(entry._id ?? "feat"),
         localize,
         activeRollOptions,
+        registeredDynamicChoices,
     })) {
         markCovered(coveredByRuleIndex, spec.sourceRuleIndex, "singleton-choice");
     }

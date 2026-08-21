@@ -1,4 +1,4 @@
-import type { SelectionRef, SingletonChoiceMeta, SingletonChoiceStep } from "../../types.js";
+import type { ProjectedDynamicChoice, SelectionRef, SingletonChoiceMeta, SingletonChoiceStep } from "../../types.js";
 import { createSingletonChoiceStep } from "../domain/step-types.js";
 import { formatSlug } from "../formatting.js";
 import { selectionTakenLevel } from "../selection-level.js";
@@ -13,6 +13,7 @@ export function buildSingletonChoiceStepsFromRules(args: {
   localize: (value: string) => string;
   activeRollOptions?: ReadonlySet<string>;
   selectedChoices?: Readonly<Record<string, string>>;
+  registeredDynamicChoices?: Readonly<Record<string, ProjectedDynamicChoice[]>>;
 }): SingletonChoiceStep[] {
   const { sourceItemType, effectiveSourceDocument, sourceSelection, extractSlug, localize } = args;
   if (!effectiveSourceDocument || !sourceSelection) {
@@ -29,6 +30,7 @@ export function buildSingletonChoiceStepsFromRules(args: {
     localize,
     activeRollOptions: args.activeRollOptions,
     selectedChoices: args.selectedChoices,
+    registeredDynamicChoices: args.registeredDynamicChoices,
   }).map((choice) =>
     createSingletonChoiceStep(sourceLevel, choice, {
       title: formatChoiceFlag(choice.flag),

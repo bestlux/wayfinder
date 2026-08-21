@@ -58,6 +58,7 @@ import {
   toNonEmptyString,
 } from "../rule-data.js";
 import { selectionTakenLevel } from "../selection-level.js";
+import { projectRegisteredDynamicChoices } from "../singleton-choice/dynamic-choice-registry.js";
 import { buildSingletonChoiceSteps, type SingletonChoiceSourceContext } from "../singleton-choice-service.js";
 import type { SkillTrainingSourceContext } from "../skill-training/source-discovery.js";
 import { SLOT_PREFIXES } from "../slot-ids.js";
@@ -248,12 +249,16 @@ export async function buildWayfinderAppPlan(
       });
     },
     buildSingletonChoiceSteps: async (_planSnapshot, planDraft, targetLevel) => {
-      const sources = await resolveSingletonChoiceSources(classArchetypeDraft, targetLevel, args, deps);
+      const [sources, registeredDynamicChoices] = await Promise.all([
+        resolveSingletonChoiceSources(classArchetypeDraft, targetLevel, args, deps),
+        resolveRegisteredDynamicChoices(classArchetypeDraft, args, deps),
+      ]);
       return deps.buildSingletonChoiceSteps({
         draft: planDraft,
         targetLevel,
         sources,
         activeRollOptions: await resolveProjectedRuleRollOptions(planDraft, sources, args, deps),
+        registeredDynamicChoices,
         extractSlug: deps.extractDocumentSlug,
         localize: args.localize,
         readExistingSingletonChoiceSelection: (choice) => deps.readExistingSingletonChoiceSelection(args.actor, choice),
@@ -726,6 +731,16 @@ async function resolveSpellChoiceClassFeatureDocuments(
   const selections = resolveSelectedClassFeatureSelections(draft, args.actor);
   const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
   return documents.filter((document): document is DocumentLike => document !== null);
+}
+
+async function resolveRegisteredDynamicChoices(
+  draft: DraftState,
+  args: BuildWayfinderAppPlanArgs,
+  deps: BuildWayfinderAppPlanDependencies
+): Promise<ReturnType<typeof projectRegisteredDynamicChoices>> {
+  const selections = resolveSelectedClassFeatureSelections(draft, args.actor);
+  const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
+  return projectRegisteredDynamicChoices(documents);
 }
 
 async function resolveSelectedClassFeatureChoiceSources(

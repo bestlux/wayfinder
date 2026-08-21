@@ -2,6 +2,7 @@ import { resolveConfiguredChoiceOptions } from "../class-choice/rule-discovery.j
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, } from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
 import { documentFeatureLevel, getDocumentRules, isChoicePredicate, isRecord, matchesChoiceSetRulePredicate, resolveEffectiveChoiceFlag, toNonEmptyString, } from "../rule-data.js";
+import { resolveRegisteredDynamicChoices } from "./dynamic-choice-registry.js";
 const ENABLED_FEAT_CONFIG_CHOICE_KEYS = new Set(["baseWeaponTypes", "creatureTraits", "saves", "weaponGroups"]);
 export function discoverSingletonChoiceMeta(args) {
     const { sourceItemType, sourceDocument, sourceSelection, sourceLevel, extractSlug, localize } = args;
@@ -14,6 +15,7 @@ export function discoverSingletonChoiceMeta(args) {
         localize,
         activeRollOptions: args.activeRollOptions,
         selectedChoices: args.selectedChoices,
+        registeredDynamicChoices: args.registeredDynamicChoices,
     }).map((choice) => ({
         slotId: choice.slotId,
         sourceItemType,
@@ -46,7 +48,7 @@ export function discoverSingletonChoiceSpecs(args) {
             return [];
         }
         const slotId = `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`;
-        const options = resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, args.activeRollOptions ?? new Set(), args.selectedChoices?.[slotId]);
+        const options = resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, args.activeRollOptions ?? new Set(), args.selectedChoices?.[slotId], args.registeredDynamicChoices, sourceDocument);
         if (!options ||
             options.options.length === 0 ||
             (!includeTrainingChoices && shouldSkipSingletonChoice(args.sourceItemType, options.optionDomain))) {
@@ -78,7 +80,7 @@ function shouldSkipSingletonChoice(sourceItemType, optionDomain) {
 function extractPredicate(value) {
     return Array.isArray(value) ? value.filter(isChoicePredicate) : [];
 }
-function resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, activeRollOptions, selectedValue) {
+function resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, activeRollOptions, selectedValue, registeredDynamicChoices, sourceDocument) {
     if (Array.isArray(rule.choices)) {
         const options = rule.choices
             .filter((choice) => isRecord(choice))
@@ -129,6 +131,22 @@ function resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, 
         : typeof choiceConfig?.config === "string"
             ? choiceConfig.config
             : null;
+    if (typeof rule.choices === "string") {
+        const dynamicChoices = resolveRegisteredDynamicChoices({
+            path: rule.choices,
+            projectedChoices: registeredDynamicChoices,
+            sourceDocument,
+        });
+        if (dynamicChoices) {
+            const options = dynamicChoices.map((choice) => ({
+                value: choice.value,
+                label: resolveChoiceLabel(choice.label, choice.value, localize),
+                img: null,
+                detail: null,
+            }));
+            return options.length > 0 ? { optionDomain: "generic", options } : null;
+        }
+    }
     if (sourceItemType === "feat" && configKey && ENABLED_FEAT_CONFIG_CHOICE_KEYS.has(configKey)) {
         const options = resolveConfiguredChoiceOptions(configKey, localize);
         return options.length > 0

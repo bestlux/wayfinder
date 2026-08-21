@@ -42,6 +42,46 @@ describe("wayfinder option context service", () => {
     ).toBeNull();
   });
 
+  it("projects selected draft and actor ikon values into the registered dynamic context", async () => {
+    const draft = createEmptyDraft(6);
+    draft.branchSelections["class-branch-divine-spark-and-ikons-firstIkon-level-1"] = {
+      slotId: "class-branch-divine-spark-and-ikons-firstIkon-level-1",
+      packId: "pf2e.classfeatures",
+      documentId: "eye-catching-spot",
+      uuid: "Compendium.pf2e.classfeatures.Item.eye-catching-spot",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "Eye-Catching Spot",
+      level: 1,
+    };
+
+    const context = await buildOptionContext({
+      draft,
+      resolveDocument: async () => null,
+      listActorItems: () => [ikonFeature("scar-of-the-survivor", "Scar of the Survivor", "body-ikon-feat")],
+      fetchSelectionDocument: async (selected) =>
+        selected.documentId === "eye-catching-spot"
+          ? ikonFeature("eye-catching-spot", "Eye-Catching Spot", "body-ikon-feat")
+          : null,
+      extractDocumentSlug: () => null,
+    });
+
+    expect(context.registeredDynamicChoices).toEqual({
+      "flags.system.exemplar.ikons": [
+        {
+          value: "eye-catching-spot",
+          label: "Eye-Catching Spot",
+          predicate: ["parent:tag:body-ikon-feat"],
+        },
+        {
+          value: "scar-of-the-survivor",
+          label: "Scar of the Survivor",
+          predicate: ["parent:tag:body-ikon-feat"],
+        },
+      ],
+    });
+  });
+
   it("builds option context from resolved documents, draft choices, and actor items", async () => {
     const draft = createEmptyDraft(1);
     draft.classChoices["class-choice-champion-sanctification-level-1"] = "holy";
@@ -728,6 +768,26 @@ function selection(slotId: string, itemType: string, documentId: string): Select
     featType: itemType === "feat" ? "class" : null,
     name: documentId,
     level: 2,
+  };
+}
+
+function ikonFeature(value: string, label: string, compatibilityTag: string) {
+  return {
+    type: "feat",
+    system: {
+      rules: [
+        {
+          key: "ActiveEffectLike",
+          mode: "add",
+          path: "flags.system.exemplar.ikons",
+          value: {
+            value,
+            label,
+            predicate: [`parent:tag:${compatibilityTag}`],
+          },
+        },
+      ],
+    },
   };
 }
 

@@ -390,6 +390,61 @@ describe("wayfinder singleton rule discovery", () => {
     expect(choices).toEqual([]);
   });
 
+  it("discovers the registered Exemplar ikon path from projected compatible ikons", () => {
+    const choices = discoverSingletonChoiceMeta({
+      sourceItemType: "feat",
+      sourceDocument: {
+        name: "Leap the Falls",
+        system: {
+          slug: "leap-the-falls",
+          level: { value: 6 },
+          traits: { otherTags: ["body-ikon-feat"] },
+          rules: [
+            {
+              key: "ChoiceSet",
+              flag: "ikon",
+              choices: "flags.system.exemplar.ikons",
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        ...sourceSelection,
+        slotId: "class-feat-level-6",
+        packId: "pf2e.feats-srd",
+        documentId: "leap-the-falls",
+        uuid: "Compendium.pf2e.feats-srd.Item.leap-the-falls",
+        itemType: "feat",
+        featType: "class",
+        name: "Leap the Falls",
+      },
+      extractSlug,
+      localize: (value) => value.replace("PF2E.Ikon.", ""),
+      registeredDynamicChoices: {
+        "flags.system.exemplar.ikons": [
+          {
+            value: "eye-catching-spot",
+            label: "PF2E.Ikon.EyeCatchingSpot",
+            predicate: ["parent:tag:body-ikon-feat"],
+          },
+          {
+            value: "gleaming-blade",
+            label: "PF2E.Ikon.GleamingBlade",
+            predicate: ["parent:tag:weapon-ikon-feat"],
+          },
+        ],
+      },
+    });
+
+    expect(choices).toMatchObject([
+      {
+        slotId: "singleton-choice-feat-leap-the-falls-ikon-level-6",
+        flag: "ikon",
+        options: [{ value: "eye-catching-spot", label: "EyeCatchingSpot" }],
+      },
+    ]);
+  });
+
   it("preserves explicit custom labels for generic array-backed choices", () => {
     const choices = discoverSingletonChoiceMeta({
       sourceItemType: "background",

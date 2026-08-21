@@ -12,6 +12,7 @@ import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { withIndefiniteArticle } from "../formatting.js";
 import { collectActorRuleSelectionRollOptions, collectSkillRankRollOptions } from "../projected-rule-options.js";
 import { selectionTakenLevel } from "../selection-level.js";
+import { projectRegisteredDynamicChoices } from "../singleton-choice/dynamic-choice-registry.js";
 
 type SingletonItemType = "ancestry" | "heritage" | "background" | "class" | "deity";
 type LooseDocument = {
@@ -240,6 +241,10 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
     skillProjectionBoundarySlotId(deps.maximumFeatLevel)
   );
   const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems, skillRanks);
+  const registeredDynamicChoices = projectRegisteredDynamicChoices([
+    ...actorItems,
+    ...(await resolveDraftBranchDocuments(effectiveDraft, deps)),
+  ]);
   return {
     ancestrySlug,
     ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
@@ -258,9 +263,19 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
     ...(actorSourceIds.length > 0 ? { actorSourceIds } : {}),
     ...(Object.keys(actorSpellUuidsByDestinationKey).length > 0 ? { actorSpellUuidsByDestinationKey } : {}),
     ...(rollOptions.length > 0 ? { rollOptions } : {}),
+    ...(Object.keys(registeredDynamicChoices).length > 0 ? { registeredDynamicChoices } : {}),
     ...(skillRanks ? { skillRanks } : {}),
     projectedArchetypeFeats,
   };
+}
+
+async function resolveDraftBranchDocuments(draft: DraftState, deps: SharedContextDependencies): Promise<unknown[]> {
+  const selections = Object.values(draft.branchSelections).filter((selection) => {
+    const level = selectionTakenLevel(selection);
+    return deps.maximumFeatLevel === undefined || level === null || level <= deps.maximumFeatLevel;
+  });
+  const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
+  return documents.filter((document): document is NonNullable<typeof document> => document !== null);
 }
 
 async function buildProjectedArchetypeFeats(args: HasDedicationContextDependencies): Promise<ProjectedArchetypeFeat[]> {

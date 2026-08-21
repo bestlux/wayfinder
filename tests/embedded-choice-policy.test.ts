@@ -99,6 +99,39 @@ describe("embedded choice policy", () => {
     expect(result.rules).toEqual([{ ruleIndex: 0, coveredBy: ["singleton-choice"] }]);
   });
 
+  it("marks registered Exemplar ikon choices as covered when compatible selected ikons are projected", () => {
+    const entry = featEntry("leap-the-falls", "Leap the Falls", "class", [
+      {
+        key: "ChoiceSet",
+        flag: "ikon",
+        choices: "flags.system.exemplar.ikons",
+      },
+    ]);
+    entry.system.traits = { otherTags: ["body-ikon-feat"] };
+
+    const result = classifyEmbeddedChoices(entry, "pf2e.feats-srd", {
+      optionContext: {
+        ancestrySlug: null,
+        classSlug: "exemplar",
+        deitySelected: false,
+        rollOptions: [],
+        registeredDynamicChoices: {
+          "flags.system.exemplar.ikons": [
+            {
+              value: "eye-catching-spot",
+              label: "Eye-Catching Spot",
+              predicate: ["parent:tag:body-ikon-feat"],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(result.covered).toEqual([0]);
+    expect(result.uncovered).toEqual([]);
+    expect(result.rules).toEqual([{ ruleIndex: 0, coveredBy: ["singleton-choice"] }]);
+  });
+
   it("marks skill-training-only direct feat choices as covered", () => {
     const result = classifyEmbeddedChoices(
       featEntry("skill-training", "Skill Training", "skill", [

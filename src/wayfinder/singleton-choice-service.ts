@@ -1,4 +1,11 @@
-import type { DraftState, PendingStep, SelectionRef, SingletonChoiceMeta, SingletonChoiceStep } from "../types.js";
+import type {
+  DraftState,
+  PendingStep,
+  ProjectedDynamicChoice,
+  SelectionRef,
+  SingletonChoiceMeta,
+  SingletonChoiceStep,
+} from "../types.js";
 import { buildSingletonChoiceStepsFromRules } from "./singleton-choice/step-builders.js";
 
 export interface SingletonChoiceSourceContext {
@@ -13,6 +20,7 @@ interface BuildSingletonChoiceStepsParams {
   targetLevel: number;
   sources: SingletonChoiceSourceContext[];
   activeRollOptions?: ReadonlySet<string>;
+  registeredDynamicChoices?: Readonly<Record<string, ProjectedDynamicChoice[]>>;
   extractSlug: (document: unknown) => string | null;
   localize: (value: string) => string;
   readExistingSingletonChoiceSelection: (choice: SingletonChoiceMeta) => string | null;
@@ -33,6 +41,7 @@ export async function buildSingletonChoiceSteps(params: BuildSingletonChoiceStep
         localize: params.localize,
         activeRollOptions,
         selectedChoices: params.draft.singletonChoices,
+        registeredDynamicChoices: params.registeredDynamicChoices,
       })
     );
     changed = addSelectedRollOptions(

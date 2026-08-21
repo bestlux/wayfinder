@@ -1,4 +1,4 @@
-import type { ChoicePredicate, SelectionRef, SingletonChoiceMeta } from "../../types.js";
+import type { ChoicePredicate, ProjectedDynamicChoice, SelectionRef, SingletonChoiceMeta } from "../../types.js";
 import { resolveConfiguredChoiceOptions } from "../class-choice/rule-discovery.js";
 import {
   getConfiguredSkills,
@@ -16,6 +16,7 @@ import {
   resolveEffectiveChoiceFlag,
   toNonEmptyString,
 } from "../rule-data.js";
+import { resolveRegisteredDynamicChoices } from "./dynamic-choice-registry.js";
 
 interface NamedDocumentLike {
   name?: unknown;
@@ -49,6 +50,7 @@ export function discoverSingletonChoiceMeta(args: {
   localize: (value: string) => string;
   activeRollOptions?: ReadonlySet<string>;
   selectedChoices?: Readonly<Record<string, string>>;
+  registeredDynamicChoices?: Readonly<Record<string, ProjectedDynamicChoice[]>>;
 }): SingletonChoiceMeta[] {
   const { sourceItemType, sourceDocument, sourceSelection, sourceLevel, extractSlug, localize } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
@@ -60,6 +62,7 @@ export function discoverSingletonChoiceMeta(args: {
     localize,
     activeRollOptions: args.activeRollOptions,
     selectedChoices: args.selectedChoices,
+    registeredDynamicChoices: args.registeredDynamicChoices,
   }).map(
     (choice) =>
       ({
@@ -88,6 +91,7 @@ export function discoverSingletonChoiceSpecs(args: {
   includeTrainingChoices?: boolean;
   activeRollOptions?: ReadonlySet<string>;
   selectedChoices?: Readonly<Record<string, string>>;
+  registeredDynamicChoices?: Readonly<Record<string, ProjectedDynamicChoice[]>>;
 }): SingletonChoiceSpec[] {
   const { sourceItemType, sourceDocument, sourceSlug, sourceLevel, localize, includeTrainingChoices = false } = args;
   const level = sourceLevel ?? documentFeatureLevel(sourceDocument);
@@ -114,7 +118,9 @@ export function discoverSingletonChoiceSpecs(args: {
       configuredSkills,
       sourceItemType,
       args.activeRollOptions ?? new Set(),
-      args.selectedChoices?.[slotId]
+      args.selectedChoices?.[slotId],
+      args.registeredDynamicChoices,
+      sourceDocument
     );
     if (
       !options ||
@@ -168,7 +174,9 @@ function resolveChoiceOptions(
   configuredSkills: SkillConfigMap,
   sourceItemType: SingletonChoiceSourceItemType,
   activeRollOptions: ReadonlySet<string>,
-  selectedValue?: string
+  selectedValue?: string,
+  registeredDynamicChoices?: Readonly<Record<string, ProjectedDynamicChoice[]>>,
+  sourceDocument?: unknown
 ): { optionDomain: "generic" | "skill" | "lore"; options: SingletonChoiceSpec["options"] } | null {
   if (Array.isArray(rule.choices)) {
     const options = rule.choices
@@ -236,6 +244,22 @@ function resolveChoiceOptions(
       : typeof choiceConfig?.config === "string"
         ? choiceConfig.config
         : null;
+  if (typeof rule.choices === "string") {
+    const dynamicChoices = resolveRegisteredDynamicChoices({
+      path: rule.choices,
+      projectedChoices: registeredDynamicChoices,
+      sourceDocument,
+    });
+    if (dynamicChoices) {
+      const options = dynamicChoices.map((choice) => ({
+        value: choice.value,
+        label: resolveChoiceLabel(choice.label, choice.value, localize),
+        img: null,
+        detail: null,
+      }));
+      return options.length > 0 ? { optionDomain: "generic", options } : null;
+    }
+  }
   if (sourceItemType === "feat" && configKey && ENABLED_FEAT_CONFIG_CHOICE_KEYS.has(configKey)) {
     const options = resolveConfiguredChoiceOptions(configKey, localize);
     return options.length > 0

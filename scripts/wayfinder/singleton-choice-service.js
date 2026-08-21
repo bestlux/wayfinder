@@ -13,6 +13,7 @@ export async function buildSingletonChoiceSteps(params) {
             localize: params.localize,
             activeRollOptions,
             selectedChoices: params.draft.singletonChoices,
+            registeredDynamicChoices: params.registeredDynamicChoices,
         }));
         changed = addSelectedRollOptions(activeRollOptions, steps, params.draft, params.readExistingSingletonChoiceSelection);
     }

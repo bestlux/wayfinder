@@ -7,6 +7,7 @@ import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { withIndefiniteArticle } from "../formatting.js";
 import { collectActorRuleSelectionRollOptions, collectSkillRankRollOptions } from "../projected-rule-options.js";
 import { selectionTakenLevel } from "../selection-level.js";
+import { projectRegisteredDynamicChoices } from "../singleton-choice/dynamic-choice-registry.js";
 export function extractContextTraits(document, extractDocumentSlug, fallbackSlug) {
     const typedDocument = document;
     const traits = Array.isArray(typedDocument?.system?.traits?.value) ? typedDocument.system.traits.value : [];
@@ -123,6 +124,10 @@ export async function buildOptionContext(deps) {
     const actorSpellUuidsByDestinationKey = buildActorSpellUuidsByDestinationKey(actorItems, deps.steps ?? []);
     const skillRanks = buildProjectedSkillRanks(deps.skillRanks, effectiveDraft, deps.steps ?? [], skillProjectionBoundarySlotId(deps.maximumFeatLevel));
     const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems, skillRanks);
+    const registeredDynamicChoices = projectRegisteredDynamicChoices([
+        ...actorItems,
+        ...(await resolveDraftBranchDocuments(effectiveDraft, deps)),
+    ]);
     return {
         ancestrySlug,
         ancestryTraits: extractContextTraits(ancestryDocument, deps.extractDocumentSlug, ancestrySlug),
@@ -141,9 +146,18 @@ export async function buildOptionContext(deps) {
         ...(actorSourceIds.length > 0 ? { actorSourceIds } : {}),
         ...(Object.keys(actorSpellUuidsByDestinationKey).length > 0 ? { actorSpellUuidsByDestinationKey } : {}),
         ...(rollOptions.length > 0 ? { rollOptions } : {}),
+        ...(Object.keys(registeredDynamicChoices).length > 0 ? { registeredDynamicChoices } : {}),
         ...(skillRanks ? { skillRanks } : {}),
         projectedArchetypeFeats,
     };
+}
+async function resolveDraftBranchDocuments(draft, deps) {
+    const selections = Object.values(draft.branchSelections).filter((selection) => {
+        const level = selectionTakenLevel(selection);
+        return deps.maximumFeatLevel === undefined || level === null || level <= deps.maximumFeatLevel;
+    });
+    const documents = await Promise.all(selections.map((selection) => deps.fetchSelectionDocument(selection)));
+    return documents.filter((document) => document !== null);
 }
 async function buildProjectedArchetypeFeats(args) {
     const { draft, listActorItems, fetchSelectionDocument, extractDocumentSlug, excludedFeatSlotId, maximumFeatLevel } = args;

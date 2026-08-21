@@ -1,7 +1,11 @@
 import type { AcquisitionDraftState } from "./wayfinder/domain/acquisition-types.js";
 import type { CompletedAcquisitionManifestV1 } from "./wayfinder/domain/completed-acquisition-manifest.js";
 import type { SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
-import type { CampaignFeatFilter as CampaignFeatFilterType, PendingStep } from "./wayfinder/domain/step-types.js";
+import type {
+  CampaignFeatFilter as CampaignFeatFilterType,
+  ChoicePredicate as ChoicePredicateType,
+  PendingStep,
+} from "./wayfinder/domain/step-types.js";
 
 export type { DraftDecision, SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
 export type {
@@ -261,8 +265,15 @@ export interface OptionContext {
   actorSourceIds?: string[];
   actorSpellUuidsByDestinationKey?: Record<string, string[]>;
   rollOptions?: string[];
+  registeredDynamicChoices?: Record<string, ProjectedDynamicChoice[]>;
   skillRanks?: Record<string, number>;
   projectedArchetypeFeats?: ProjectedArchetypeFeat[];
+}
+
+export interface ProjectedDynamicChoice {
+  value: string;
+  label: string;
+  predicate: ChoicePredicateType[];
 }
 
 export interface PickerInfoState {

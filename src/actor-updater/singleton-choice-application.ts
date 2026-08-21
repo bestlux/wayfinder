@@ -2,6 +2,7 @@ import { listActorItems } from "../build-state.js";
 import type { ActorItemLike, ActorLike } from "../shared/actor-model.js";
 import { queueRuleSelectionUpdate } from "../shared/pf2e-item-source.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
+import { materializeStructuredCreatureSizeChoice } from "../shared/structured-creature-size-choice.js";
 import type { DraftState, FlagChoiceMeta, PendingStep, SelectionRef } from "../types.js";
 
 export async function applySingletonChoiceDraft(
@@ -28,12 +29,18 @@ export async function applySingletonChoiceDraft(
       continue;
     }
 
+    const installedValue = materializeStructuredCreatureSizeChoice({
+      sourceItemType: item.type ?? "",
+      rules: Array.isArray(item.system?.rules) ? item.system.rules : [],
+      sourceRuleIndex: step.singletonChoice.sourceRuleIndex,
+      selectedValue: value,
+    });
     queueRuleSelectionUpdate(
       updatesByItemId,
       item,
       step.singletonChoice.sourceRuleIndex,
       step.singletonChoice.flag,
-      value
+      installedValue
     );
   }
 

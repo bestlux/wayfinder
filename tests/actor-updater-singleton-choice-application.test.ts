@@ -4,6 +4,38 @@ import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep } from "../src/types";
 
 describe("actor-updater singleton-choice application", () => {
+  it("maps Awakened Animal's stable size draft back to the installed structured value", async () => {
+    const draft = createEmptyDraft(1);
+    draft.singletonChoices["singleton-choice-ancestry-awakened-animal-choice-level-1"] = "tiny";
+    const rules = awakenedAnimalRules();
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: "ancestry-1",
+            type: "ancestry",
+            flags: {
+              core: { sourceId: "Compendium.pf2e.ancestries.Item.GFOgV3MzWkYwJoJW" },
+              pf2e: { rulesSelections: {} },
+            },
+            system: { rules },
+          },
+        ],
+      },
+      updateEmbeddedDocuments: vi.fn(async () => []),
+    };
+
+    await applySingletonChoiceDraft(actor, draft, [awakenedAnimalChoiceStep()]);
+
+    expect(actor.updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      {
+        _id: "ancestry-1",
+        "system.rules": [{ ...rules[0], selection: { hitPoints: 6, size: "tiny" } }, rules[1], rules[2]],
+        "flags.pf2e.rulesSelections.choice": { hitPoints: 6, size: "tiny" },
+      },
+    ]);
+  });
+
   it("writes rulesSelections back to the owning singleton item", async () => {
     const draft = createEmptyDraft(1);
     draft.singletonChoices["singleton-choice-background-sponsored-by-family-academySkill-level-1"] = "society";
@@ -196,4 +228,61 @@ function flagChoiceStep(): PendingStep {
       },
     },
   };
+}
+
+function awakenedAnimalChoiceStep(): PendingStep {
+  return {
+    id: "singleton-choice-ancestry-awakened-animal-choice-level-1",
+    level: 1,
+    kind: "singleton-choice",
+    slotKind: "singleton-choice",
+    title: "Creature Size",
+    description: "Choose your size",
+    required: true,
+    slotId: "singleton-choice-ancestry-awakened-animal-choice-level-1",
+    singletonChoice: {
+      slotId: "singleton-choice-ancestry-awakened-animal-choice-level-1",
+      sourceItemType: "ancestry",
+      sourcePackId: "pf2e.ancestries",
+      sourceDocumentId: "GFOgV3MzWkYwJoJW",
+      sourceUuid: "Compendium.pf2e.ancestries.Item.GFOgV3MzWkYwJoJW",
+      sourceName: "Awakened Animal",
+      sourceRuleIndex: 0,
+      flag: "choice",
+      prompt: "Creature Size",
+      predicate: [],
+      rollOption: null,
+      options: [
+        { value: "large", label: "Large", img: null, detail: null },
+        { value: "medium", label: "Medium", img: null, detail: null },
+        { value: "small", label: "Small", img: null, detail: null },
+        { value: "tiny", label: "Tiny", img: null, detail: null },
+      ],
+    },
+  };
+}
+
+function awakenedAnimalRules(): Array<Record<string, unknown>> {
+  return [
+    {
+      key: "ChoiceSet",
+      flag: "choice",
+      adjustName: false,
+      prompt: "PF2E.SpecificRule.Prompt.CreatureSize",
+      choices: [
+        { label: "PF2E.ActorSizeLarge", value: { hitPoints: 10, size: "large" } },
+        { label: "PF2E.ActorSizeMedium", value: { hitPoints: 8, size: "medium" } },
+        { label: "PF2E.ActorSizeSmall", value: { hitPoints: 6, size: "small" } },
+        { label: "PF2E.ActorSizeTiny", value: { hitPoints: 6, size: "tiny" } },
+      ],
+    },
+    { key: "CreatureSize", value: "{item|flags.system.rulesSelections.choice.size}" },
+    {
+      key: "ActiveEffectLike",
+      mode: "upgrade",
+      path: "system.attributes.ancestryhp",
+      priority: 51,
+      value: "{item|flags.system.rulesSelections.choice.hitPoints}",
+    },
+  ];
 }

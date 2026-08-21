@@ -124,6 +124,22 @@ describe("Wave 2 acquisition execution", () => {
     expect(outcome.manifest.environment).toEqual(ENVIRONMENT);
   });
 
+  it("materializes Small-character equipment at PF2E's Medium physical-item size", async () => {
+    const fixture = reviewedFixture([line({ lineId: "line-small", price: acquisitionPrice("small") })]);
+    const actor = new FakeActor();
+    const session = sessionFor(fixture.acquisition);
+
+    await session.executeAcquisitionItems({
+      actor,
+      draft: fixture.draft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+    });
+
+    expect(actor.addedSources[0]?.system?.size).toBe("med");
+    expect(actor.acquisitionItems()[0]?.system?.size).toBe("med");
+  });
+
   it("retains the full budget without creating an item", async () => {
     const fixture = reviewedFixture([], "retain-all");
     const actor = new FakeActor();

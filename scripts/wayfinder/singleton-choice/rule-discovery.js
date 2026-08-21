@@ -1,3 +1,4 @@
+import { projectStructuredCreatureSizeChoiceOptions } from "../../shared/structured-creature-size-choice.js";
 import { resolveConfiguredChoiceOptions } from "../class-choice/rule-discovery.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, } from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
@@ -48,7 +49,7 @@ export function discoverSingletonChoiceSpecs(args) {
             return [];
         }
         const slotId = `singleton-choice-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`;
-        const options = resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, args.activeRollOptions ?? new Set(), args.selectedChoices?.[slotId], args.registeredDynamicChoices, sourceDocument);
+        const options = resolveChoiceOptions(rule, rules, sourceRuleIndex, localize, configuredSkills, sourceItemType, args.activeRollOptions ?? new Set(), args.selectedChoices?.[slotId], args.registeredDynamicChoices, sourceDocument);
         if (!options ||
             options.options.length === 0 ||
             (!includeTrainingChoices && shouldSkipSingletonChoice(args.sourceItemType, options.optionDomain))) {
@@ -80,8 +81,24 @@ function shouldSkipSingletonChoice(sourceItemType, optionDomain) {
 function extractPredicate(value) {
     return Array.isArray(value) ? value.filter(isChoicePredicate) : [];
 }
-function resolveChoiceOptions(rule, localize, configuredSkills, sourceItemType, activeRollOptions, selectedValue, registeredDynamicChoices, sourceDocument) {
+function resolveChoiceOptions(rule, rules, sourceRuleIndex, localize, configuredSkills, sourceItemType, activeRollOptions, selectedValue, registeredDynamicChoices, sourceDocument) {
     if (Array.isArray(rule.choices)) {
+        const structuredSizeOptions = projectStructuredCreatureSizeChoiceOptions({
+            sourceItemType,
+            rules,
+            sourceRuleIndex,
+        });
+        if (structuredSizeOptions) {
+            return {
+                optionDomain: "generic",
+                options: structuredSizeOptions.map((choice) => ({
+                    value: choice.value,
+                    label: resolveChoiceLabel(choice.label, choice.value, localize),
+                    img: null,
+                    detail: null,
+                })),
+            };
+        }
         const options = rule.choices
             .filter((choice) => isRecord(choice))
             .filter((choice) => (typeof choice.value === "string" && choice.value === selectedValue) ||

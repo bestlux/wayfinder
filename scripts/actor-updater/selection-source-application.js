@@ -6,6 +6,7 @@ import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
 import { applyRuleSelectionToSource, ensureRuleSelections, stampImportedItemSource, } from "../shared/pf2e-item-source.js";
 import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
+import { materializeStructuredCreatureSizeChoice } from "../shared/structured-creature-size-choice.js";
 import { stripManualSystemItemGrants } from "./manual-system-item-grants.js";
 import { EXPLICIT_GRANT_SOURCE_ITEM_TYPES } from "./selection-constants.js";
 export const DEFAULT_CREATE_DEPS = {
@@ -166,7 +167,13 @@ function applyPendingSingletonChoices(source, selection, draft, steps) {
         if (typeof value !== "string" || value.length === 0) {
             continue;
         }
-        applyRuleSelection(source, step.singletonChoice.sourceRuleIndex, step.singletonChoice.flag, value);
+        const installedValue = materializeStructuredCreatureSizeChoice({
+            sourceItemType: selection.itemType,
+            rules,
+            sourceRuleIndex: step.singletonChoice.sourceRuleIndex,
+            selectedValue: value,
+        });
+        applyRuleSelection(source, step.singletonChoice.sourceRuleIndex, step.singletonChoice.flag, installedValue);
     }
 }
 function applyPendingClassChoices(source, selection, draft, steps) {

@@ -9,6 +9,7 @@ import { assertCompletedAcquisitionManifestMatchesIdentityPlan, createCompletedA
 import { captureObservedClassGrantItems } from "./class-grant-projection-service.js";
 import { captureActorEconomicBaseline, evaluateActorEconomicAdmission, } from "./economic-baseline-service.js";
 import { fingerprintEquipmentDocument } from "./equipment-catalogue-service.js";
+import { materializedPhysicalItemSize } from "./equipment-size-preparation-service.js";
 export function createAcquisitionExecutionSession(dependencies) {
     const inventory = dependencies.inventory ?? createPf2eAcquisitionInventoryAdapter();
     const now = dependencies.now ?? (() => new Date().toISOString());
@@ -481,7 +482,7 @@ function stampAcquisitionSource(sourceInput, entry, plannedItem, subject) {
         ...(source.system ?? {}),
         quantity: plannedItem.quantity,
         containerId: null,
-        size: pf2eItemSize(entry.price.size),
+        size: materializedPhysicalItemSize(entry.price.size),
     };
     source.flags = { ...(source.flags ?? {}) };
     source.flags.core = { ...(source.flags.core ?? {}), sourceId: plannedItem.sourceUuid };
@@ -579,7 +580,7 @@ function assertObservedWayfinderItemSizes(actor, execution, observation) {
     for (const entry of execution.identityPlan.entries) {
         if (entryMaterializer(entry, execution.classGrantPlan) === "pf2e-native")
             continue;
-        const expectedSize = pf2eItemSize(entry.price.size);
+        const expectedSize = materializedPhysicalItemSize(entry.price.size);
         for (const planned of entry.plannedItems) {
             const observed = evidenceByPlannedId.get(planned.plannedItemId);
             if (!observed)
@@ -882,17 +883,6 @@ function safeCopperAdd(left, right) {
         throw new RangeError("Starting-equipment absolute currency target is unsafe.");
     }
     return total;
-}
-function pf2eItemSize(size) {
-    const sizes = {
-        tiny: "tiny",
-        small: "sm",
-        medium: "med",
-        large: "lg",
-        huge: "huge",
-        gargantuan: "grg",
-    };
-    return sizes[size];
 }
 function stableJson(value) {
     if (value === null || typeof value === "string" || typeof value === "boolean")

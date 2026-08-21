@@ -18,6 +18,53 @@ import type { PendingStep, SelectionRef } from "../src/types";
 import { createClassArchetypeStep, createPickItemStep } from "../src/wayfinder/domain/step-types";
 
 describe("actor-updater selection application", () => {
+  it("materializes Awakened Animal's structured size value while preparing its embedded source", async () => {
+    const selection = selectionRef("ancestry-level-1", "ancestry", "awakened-animal", "Awakened Animal");
+    const slotId = "singleton-choice-ancestry-awakened-animal-choice-level-1";
+    const draft = createEmptyDraft(1);
+    draft.singletonChoices[slotId] = "large";
+    const rules = awakenedAnimalRules();
+    const step: PendingStep = {
+      id: slotId,
+      level: 1,
+      kind: "singleton-choice",
+      slotKind: "singleton-choice",
+      title: "Creature Size",
+      description: "Choose your size",
+      required: true,
+      slotId,
+      singletonChoice: {
+        slotId,
+        sourceItemType: "ancestry",
+        sourcePackId: selection.packId,
+        sourceDocumentId: selection.documentId,
+        sourceUuid: selection.uuid,
+        sourceName: selection.name,
+        sourceRuleIndex: 0,
+        flag: "choice",
+        prompt: "Creature Size",
+        predicate: [],
+        rollOption: null,
+        options: [],
+      },
+    };
+
+    const source = await createEmbeddedSource(selection, draft, [step], {
+      fetchSelectionDocument: async () => ({
+        toObject: () => ({ name: "Awakened Animal", type: "ancestry", system: { rules } }),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "choice",
+      selection: { hitPoints: 10, size: "large" },
+    });
+    expect(source?.flags?.pf2e?.rulesSelections?.choice).toEqual({ hitPoints: 10, size: "large" });
+  });
+
   it("replaces singleton items with embedded sources stamped for wayfinder", async () => {
     const actor = {
       items: [
@@ -2587,6 +2634,31 @@ function selectionRef(
     name,
     level: 1,
   };
+}
+
+function awakenedAnimalRules(): Array<Record<string, unknown>> {
+  return [
+    {
+      key: "ChoiceSet",
+      flag: "choice",
+      adjustName: false,
+      prompt: "PF2E.SpecificRule.Prompt.CreatureSize",
+      choices: [
+        { label: "PF2E.ActorSizeLarge", value: { hitPoints: 10, size: "large" } },
+        { label: "PF2E.ActorSizeMedium", value: { hitPoints: 8, size: "medium" } },
+        { label: "PF2E.ActorSizeSmall", value: { hitPoints: 6, size: "small" } },
+        { label: "PF2E.ActorSizeTiny", value: { hitPoints: 6, size: "tiny" } },
+      ],
+    },
+    { key: "CreatureSize", value: "{item|flags.system.rulesSelections.choice.size}" },
+    {
+      key: "ActiveEffectLike",
+      mode: "upgrade",
+      path: "system.attributes.ancestryhp",
+      priority: 51,
+      value: "{item|flags.system.rulesSelections.choice.hitPoints}",
+    },
+  ];
 }
 
 function featStep(

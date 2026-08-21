@@ -71,7 +71,7 @@ export function applyRuleSelectionToSource(
   source: EmbeddedItemSource,
   sourceRuleIndex: number,
   flag: string,
-  value: string
+  value: unknown
 ): void {
   const rules = Array.isArray(source.system?.rules) ? (source.system.rules as LooseRecord[]) : [];
   if (rules[sourceRuleIndex]) {
@@ -86,7 +86,7 @@ export function queueRuleSelectionUpdate(
   item: ActorItemLike,
   sourceRuleIndex: number,
   flag: string,
-  value: string
+  value: unknown
 ): void {
   if (!item.id) {
     return;
@@ -103,7 +103,7 @@ export function queueRuleSelectionUpdate(
   updatesByItemId.set(item.id, update);
 }
 
-function applyRuleSelectionToUpdate(update: LooseRecord, sourceRuleIndex: number, flag: string, value: string): void {
+function applyRuleSelectionToUpdate(update: LooseRecord, sourceRuleIndex: number, flag: string, value: unknown): void {
   const rules = update["system.rules"] as LooseRecord[];
   if (rules[sourceRuleIndex]) {
     rules[sourceRuleIndex].selection = value;

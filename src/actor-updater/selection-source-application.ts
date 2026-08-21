@@ -11,6 +11,7 @@ import {
   stampImportedItemSource,
 } from "../shared/pf2e-item-source.js";
 import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
+import { materializeStructuredCreatureSizeChoice } from "../shared/structured-creature-size-choice.js";
 import type {
   AbilityKey,
   DraftState,
@@ -229,7 +230,13 @@ function applyPendingSingletonChoices(
       continue;
     }
 
-    applyRuleSelection(source, step.singletonChoice.sourceRuleIndex, step.singletonChoice.flag, value);
+    const installedValue = materializeStructuredCreatureSizeChoice({
+      sourceItemType: selection.itemType,
+      rules,
+      sourceRuleIndex: step.singletonChoice.sourceRuleIndex,
+      selectedValue: value,
+    });
+    applyRuleSelection(source, step.singletonChoice.sourceRuleIndex, step.singletonChoice.flag, installedValue);
   }
 }
 
@@ -720,7 +727,7 @@ async function resolveSpellChoiceSelectionValue(
   );
 }
 
-function applyRuleSelection(source: EmbeddedItemSource, sourceRuleIndex: number, flag: string, value: string): void {
+function applyRuleSelection(source: EmbeddedItemSource, sourceRuleIndex: number, flag: string, value: unknown): void {
   applyRuleSelectionToSource(source, sourceRuleIndex, flag, value);
 }
 

@@ -56,6 +56,7 @@ import {
   evaluateActorEconomicAdmission,
 } from "./economic-baseline-service.js";
 import { fingerprintEquipmentDocument } from "./equipment-catalogue-service.js";
+import { materializedPhysicalItemSize } from "./equipment-size-preparation-service.js";
 
 type AcquisitionHistoryState = Pick<
   ModuleState,
@@ -704,7 +705,7 @@ function stampAcquisitionSource(
     ...(source.system ?? {}),
     quantity: plannedItem.quantity,
     containerId: null,
-    size: pf2eItemSize(entry.price.size),
+    size: materializedPhysicalItemSize(entry.price.size),
   };
   source.flags = { ...(source.flags ?? {}) };
   source.flags.core = { ...(source.flags.core ?? {}), sourceId: plannedItem.sourceUuid };
@@ -843,7 +844,7 @@ function assertObservedWayfinderItemSizes(
   const evidenceByPlannedId = new Map(observation.evidence.map((observed) => [observed.plannedItemId, observed]));
   for (const entry of execution.identityPlan.entries) {
     if (entryMaterializer(entry, execution.classGrantPlan) === "pf2e-native") continue;
-    const expectedSize = pf2eItemSize(entry.price.size);
+    const expectedSize = materializedPhysicalItemSize(entry.price.size);
     for (const planned of entry.plannedItems) {
       const observed = evidenceByPlannedId.get(planned.plannedItemId);
       if (!observed) continue;
@@ -1247,18 +1248,6 @@ function safeCopperAdd(left: number, right: number): number {
     throw new RangeError("Starting-equipment absolute currency target is unsafe.");
   }
   return total;
-}
-
-function pf2eItemSize(size: AcquisitionPriceSnapshot["size"]): "tiny" | "sm" | "med" | "lg" | "huge" | "grg" {
-  const sizes = {
-    tiny: "tiny",
-    small: "sm",
-    medium: "med",
-    large: "lg",
-    huge: "huge",
-    gargantuan: "grg",
-  } as const;
-  return sizes[size];
 }
 
 function stableJson(value: unknown): string {

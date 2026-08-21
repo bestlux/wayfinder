@@ -4,9 +4,10 @@ import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot, inva
 import { mintAcquisitionLineId } from "../domain/acquisition-identity.js";
 import { createAcquisitionPriceSnapshot } from "../domain/acquisition-ledger.js";
 import { assertPreparedClassGrantPlanMatches, evaluateTitanMaulerCandidate, normalizePlannedClassGrant, titanMaulerTargetSize, } from "../domain/class-grant-reconciliation.js";
-import { buildTitanMaulerCandidate, resolveDraftedAncestryEquipmentSize, titanMaulerGrantIdForDraft, } from "./class-grant-projection-service.js";
+import { buildTitanMaulerCandidate, titanMaulerGrantIdForDraft } from "./class-grant-projection-service.js";
 import { createEquipmentCatalogueDraftContext, createEquipmentCatalogueService, EMPTY_EQUIPMENT_ACCESS_REGISTRY, } from "./equipment-catalogue-service.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
+import { materializedPhysicalItemSize, prepareTransientDraftedEquipmentActor, resolvePreparedDraftedEquipmentSize, } from "./equipment-size-preparation-service.js";
 import { registerStartingEquipmentUiAdapter, } from "./starting-equipment-ui-adapter.js";
 export class ConfiguredItemHandoffRequiredError extends Error {
     reason;
@@ -14,6 +15,12 @@ export class ConfiguredItemHandoffRequiredError extends Error {
         super(`${reason.itemName} requires an explicit PF2E inventory-sheet handoff.`);
         this.name = "ConfiguredItemHandoffRequiredError";
         this.reason = cloneData(reason);
+    }
+}
+class PartialUnitPriceRequiredError extends TypeError {
+    constructor() {
+        super("This item must be purchased in a quantity that produces a nonzero exact PF2E charge.");
+        this.name = "PartialUnitPriceRequiredError";
     }
 }
 export function commitTitanMaulerLineSynchronization(args) {
@@ -31,6 +38,8 @@ export function createEquipmentAcquisitionRuntime(options) {
     const mintLineId = options.mintLineId ?? mintAcquisitionLineId;
     const fetchDocumentByUuid = options.fetchDocumentByUuid ?? resolveUuid;
     const prepareConfiguredItem = options.prepareConfiguredItem ?? prepareTransientConfiguredItem;
+    const preparePhysicalItem = options.preparePhysicalItem ?? prepareTransientPhysicalItem;
+    const prepareDraftedActor = options.prepareDraftedActor ?? prepareTransientDraftedEquipmentActor;
     const catalogues = new Map();
     const catalogueFor = (policy) => {
         const packIds = [...new Set(policy.sourcePolicy.effectivePackIds)].sort((left, right) => left.localeCompare(right));
@@ -46,6 +55,13 @@ export function createEquipmentAcquisitionRuntime(options) {
         }
         return catalogue;
     };
+    const draftedEquipmentSize = (actor, draft) => requireDraftedAncestryEquipmentSize({
+        actor,
+        draft,
+        targetLevel: draft.targetLevel,
+        fetchDocumentByUuid,
+        prepareDraftedActor,
+    });
     const currentContext = (actor, draft, acquisition) => {
         if (draft.acquisition?.draftId !== acquisition.draftId || draft.acquisition.batchId !== acquisition.batchId) {
             throw new TypeError("The equipment catalogue request belongs to another acquisition draft.");
@@ -98,10 +114,39 @@ export function createEquipmentAcquisitionRuntime(options) {
                 }
                 const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
                 const entries = projectedEntries.filter((entry) => entry.level <= maximumLevel);
-                const records = entries.map(toUiRecord);
+                const targetSize = await draftedEquipmentSize(request.actor, request.draft);
+                const visibleEntries = entries.filter((entry) => matchesCatalogueRequest(entry, request)).slice(0, 12);
+                const records = await Promise.all(visibleEntries.map(async (entry) => {
+                    if (entry.price.kind !== "priced" ||
+                        entry.unavailableReasons.some((reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available")) {
+                        return toUiRecord(entry);
+                    }
+                    const resolved = await catalogue.resolveForApply(context, entry.sourceUuid);
+                    try {
+                        const priced = await buildResolvedPrice({
+                            resolved,
+                            requestedQuantity: 1,
+                            targetSize,
+                            actor: request.actor,
+                            targetLevel: policy.targetLevel,
+                            packs: options.packs,
+                            prepareConfiguredItem,
+                            preparePhysicalItem,
+                        });
+                        return toUiRecord(entry, priced.price);
+                    }
+                    catch (error) {
+                        if (error instanceof ConfiguredItemHandoffRequiredError)
+                            return toUiRecord(entry);
+                        if (error instanceof PartialUnitPriceRequiredError) {
+                            return { ...toUiRecord(entry, null), available: false, unavailableReason: error.message };
+                        }
+                        throw error;
+                    }
+                }));
                 return {
                     state: "ready",
-                    message: `${records.length} piece${records.length === 1 ? "" : "s"} of gear to browse.`,
+                    message: `${entries.length} piece${entries.length === 1 ? "" : "s"} of gear to browse.`,
                     query: request.query,
                     records,
                     filters: catalogueFilters(entries),
@@ -130,7 +175,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             const { policy, context } = currentContext(request.actor, request.draft, acquisition);
             const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
             assertSupportedCandidate(resolved);
-            const targetSize = await requireDraftedAncestryEquipmentSize(request.draft, fetchDocumentByUuid);
+            const targetSize = await draftedEquipmentSize(request.actor, request.draft);
             const priced = await buildResolvedPrice({
                 resolved,
                 requestedQuantity: 1,
@@ -139,6 +184,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 targetLevel: policy.targetLevel,
                 packs: options.packs,
                 prepareConfiguredItem,
+                preparePhysicalItem,
             });
             const itemPermanence = permanence(resolved.candidate.itemType);
             const funding = resolveRequestedFunding(policy, request.funding ?? { lane: "currency" }, resolved.candidate.level, itemPermanence);
@@ -165,7 +211,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             if (acquisition.lines.some((line) => line.funding.lane === "class-grant" && line.funding.grant.plannedGrantId === grantId)) {
                 throw new TypeError("Remove the current Titan Mauler weapon before choosing another one.");
             }
-            const actorSize = await resolveDraftedAncestryEquipmentSize(request.draft, fetchDocumentByUuid);
+            const actorSize = await draftedEquipmentSize(request.actor, request.draft);
             if (!actorSize) {
                 throw new TypeError("Titan Mauler requires a selected ancestry with a supported size.");
             }
@@ -179,6 +225,9 @@ export function createEquipmentAcquisitionRuntime(options) {
             return buildTitanMaulerLine({
                 resolved,
                 policy,
+                actor: request.actor,
+                targetLevel: policy.targetLevel,
+                preparePhysicalItem,
                 actorSize,
                 targetSize,
                 grantId,
@@ -199,7 +248,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 persistedGrants: request.acquisition.plannedClassGrants,
             });
             const catalogue = catalogueFor(policy);
-            const targetSize = await requireDraftedAncestryEquipmentSize(request.characterDraft, fetchDocumentByUuid);
+            const targetSize = await draftedEquipmentSize(request.actor, request.characterDraft);
             const nativeGrants = request.classGrantPlan.grants.filter((grant) => grant.materializer === "pf2e-native");
             const lineIds = new Set(request.acquisition.lines.map((line) => line.lineId));
             const prepared = [];
@@ -224,6 +273,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     targetLevel: policy.targetLevel,
                     packs: options.packs,
                     prepareConfiguredItem,
+                    preparePhysicalItem,
                 });
                 const price = priced.price;
                 if (price.materializedQuantity !== 1) {
@@ -291,7 +341,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 if (lines.length !== 1 || lines[0]?.funding.lane !== "class-grant") {
                     throw new Error("Titan Mauler must resolve from exactly one automatic build-grant line.");
                 }
-                const actorSize = await resolveDraftedAncestryEquipmentSize(request.characterDraft, fetchDocumentByUuid);
+                const actorSize = await draftedEquipmentSize(request.actor, request.characterDraft);
                 const titanTargetSize = actorSize ? titanMaulerTargetSize(actorSize) : null;
                 if (!actorSize ||
                     !titanTargetSize ||
@@ -315,7 +365,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 targetSize = titanTargetSize;
             }
             else {
-                targetSize = await requireDraftedAncestryEquipmentSize(request.characterDraft, fetchDocumentByUuid);
+                targetSize = await draftedEquipmentSize(request.actor, request.characterDraft);
                 if (request.entry.price.size !== targetSize || lines.some((line) => line.price.size !== targetSize)) {
                     throw new Error("The reviewed equipment size no longer matches the drafted ancestry.");
                 }
@@ -328,6 +378,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 targetLevel: policy.targetLevel,
                 packs: options.packs,
                 prepareConfiguredItem,
+                preparePhysicalItem,
             });
             return {
                 source: cloneData(resolved.source),
@@ -387,7 +438,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             }
             let actorSize;
             try {
-                actorSize = await resolveDraftedAncestryEquipmentSize(request.characterDraft, fetchDocumentByUuid);
+                actorSize = await draftedEquipmentSize(request.actor, request.characterDraft);
             }
             catch {
                 return invalidateTitanMaulerVerification(request.acquisition);
@@ -416,6 +467,9 @@ export function createEquipmentAcquisitionRuntime(options) {
                 const currentLine = buildTitanMaulerLine({
                     resolved,
                     policy,
+                    actor: request.actor,
+                    targetLevel: policy.targetLevel,
+                    preparePhysicalItem,
                     actorSize,
                     targetSize,
                     grantId: currentGrantId,
@@ -643,7 +697,14 @@ async function buildResolvedPrice(input) {
     const configuration = configuredItemFacts(input.resolved.source, input.resolved.candidate.itemType);
     if (!configuration) {
         return {
-            price: buildSimpleResolvedPrice(input.resolved, input.requestedQuantity, input.targetSize),
+            price: buildSimpleResolvedPrice({
+                resolved: input.resolved,
+                requestedQuantity: input.requestedQuantity,
+                targetSize: input.targetSize,
+                actor: input.actor,
+                targetLevel: input.targetLevel,
+                preparePhysicalItem: input.preparePhysicalItem,
+            }),
             priceFingerprint: input.resolved.priceFingerprint,
         };
     }
@@ -763,14 +824,15 @@ async function buildResolvedPrice(input) {
         priceFingerprint: fingerprintPreparedPrice(preparedPrice),
     };
 }
-function buildSimpleResolvedPrice(resolved, requestedQuantity, targetSize) {
-    const normalized = resolved.candidate.price;
-    const source = record(resolved.source);
-    const system = record(source.system);
-    const price = record(system.price);
-    const sizeSensitive = price.sizeSensitive === undefined ? true : price.sizeSensitive;
-    if (typeof sizeSensitive !== "boolean")
-        throw new TypeError("The equipment size-pricing fact is malformed.");
+function buildSimpleResolvedPrice(input) {
+    const normalized = input.resolved.candidate.price;
+    const prepared = input.preparePhysicalItem({
+        actor: input.actor,
+        targetLevel: input.targetLevel,
+        targetSize: input.targetSize,
+        source: input.resolved.source,
+    });
+    const preparedFacts = preparedPhysicalPriceFacts(prepared);
     const basePrice = normalized.kind === "priced" && normalized.value
         ? { kind: "priced", value: cloneData(normalized.value) }
         : normalized.kind === "missing"
@@ -778,18 +840,43 @@ function buildSimpleResolvedPrice(resolved, requestedQuantity, targetSize) {
             : { kind: "unparseable" };
     const snapshot = createAcquisitionPriceSnapshot({
         basePrice,
-        size: targetSize,
-        sizeSensitive,
-        preciousMaterial: false,
-        adjustedBulkPriceCopper: null,
+        size: input.targetSize,
+        sizeSensitive: preparedFacts.sizeSensitive,
+        preciousMaterial: preparedFacts.preciousMaterial,
+        adjustedBulkPriceCopper: preparedFacts.preciousMaterial ? preparedFacts.totalCopper : null,
         configurationPriceCopper: 0,
         pricePer: normalized.per,
         sourceQuantity: normalized.sourceQuantity,
-        requestedQuantity,
+        requestedQuantity: input.requestedQuantity,
     });
     if (snapshot.ok === false)
         throw new TypeError(snapshot.message);
+    if (snapshot.value.unitPriceCopper !== preparedFacts.totalCopper) {
+        throw new TypeError("PF2E prepared equipment pricing differs from Wayfinder's reviewed price basis.");
+    }
+    if ((normalized.copperValue ?? 0) > 0 && snapshot.value.linePriceCopper === 0) {
+        throw new PartialUnitPriceRequiredError();
+    }
     return snapshot.value;
+}
+function preparedPhysicalPriceFacts(item) {
+    const system = record(record(item).system);
+    const price = record(system.price);
+    if (typeof price.sizeSensitive !== "boolean") {
+        throw new TypeError("PF2E prepared equipment has no authoritative size-pricing fact.");
+    }
+    const totalCopper = coinsCopper(price.value);
+    if (totalCopper === null)
+        throw new TypeError("PF2E prepared equipment has no exact prepared Price.");
+    const material = normalizeConfiguredMaterial(record(system.material));
+    if ((material.type === null) !== (material.grade === null)) {
+        throw new TypeError("PF2E prepared equipment has malformed precious-material facts.");
+    }
+    return {
+        sizeSensitive: price.sizeSensitive,
+        preciousMaterial: material.type !== null,
+        totalCopper,
+    };
 }
 function configuredItemFacts(source, itemType) {
     if (itemType !== "weapon" && itemType !== "armor")
@@ -887,9 +974,24 @@ function documentSource(document) {
     return source && typeof source === "object" ? cloneData(source) : null;
 }
 function prepareTransientConfiguredItem(input) {
+    const itemSource = cloneData(input.baseSource);
+    const itemSystem = record(itemSource.system);
+    itemSystem.runes = cloneData(input.runes);
+    itemSystem.material = cloneData(input.material);
+    if (input.forceNonSpecific)
+        itemSystem.specific = null;
+    itemSource.system = itemSystem;
+    return prepareTransientPhysicalItem({
+        actor: input.actor,
+        targetLevel: input.targetLevel,
+        targetSize: input.targetSize,
+        source: itemSource,
+    });
+}
+function prepareTransientPhysicalItem(input) {
     const actorToObject = record(input.actor).toObject;
     if (typeof actorToObject !== "function") {
-        throw new Error("Configured equipment requires a PF2E actor preparation context.");
+        throw new Error("Equipment pricing requires a PF2E actor preparation context.");
     }
     const actorSource = cloneData(actorToObject.call(input.actor, true));
     const actorSystem = record(actorSource.system);
@@ -900,14 +1002,10 @@ function prepareTransientConfiguredItem(input) {
     actorSystem.details = details;
     actorSource.system = actorSystem;
     actorSource._id = transientId();
-    actorSource.name = `Wayfinder configured-item preparation ${input.targetLevel}`;
-    const itemSource = cloneData(input.baseSource);
+    actorSource.name = `Wayfinder equipment-price preparation ${input.targetLevel}`;
+    const itemSource = cloneData(input.source);
     const itemSystem = record(itemSource.system);
-    itemSystem.runes = cloneData(input.runes);
-    itemSystem.material = cloneData(input.material);
-    itemSystem.size = pf2eItemSize(input.targetSize);
-    if (input.forceNonSpecific)
-        itemSystem.specific = null;
+    itemSystem.size = materializedPhysicalItemSize(input.targetSize);
     itemSource.system = itemSystem;
     const itemId = transientId();
     itemSource._id = itemId;
@@ -922,7 +1020,7 @@ function prepareTransientConfiguredItem(input) {
     const get = record(items).get;
     const item = typeof get === "function" ? get.call(items, itemId) : null;
     if (!item)
-        throw new Error("PF2E did not prepare the transient configured item.");
+        throw new Error("PF2E did not prepare the transient equipment item.");
     return item;
 }
 function transientId() {
@@ -954,7 +1052,14 @@ function buildTitanMaulerLine(args) {
         policyDecision: cloneData(args.resolved.policyDecision),
         funding: { lane: "class-grant", grant: { plannedGrantId: args.grantId } },
         stackingIntent: "separate",
-        price: buildSimpleResolvedPrice(args.resolved, 1, args.targetSize),
+        price: buildSimpleResolvedPrice({
+            resolved: args.resolved,
+            requestedQuantity: 1,
+            targetSize: args.targetSize,
+            actor: args.actor,
+            targetLevel: args.targetLevel,
+            preparePhysicalItem: args.preparePhysicalItem,
+        }),
     };
     const candidate = buildTitanMaulerCandidate({
         document: args.resolved.source,
@@ -993,22 +1098,8 @@ function invalidateTitanMaulerVerification(acquisition) {
         reason: "verification-failed",
     };
 }
-async function requireDraftedAncestryEquipmentSize(draft, fetchDocumentByUuid) {
-    const size = await resolveDraftedAncestryEquipmentSize(draft, fetchDocumentByUuid);
-    if (!size)
-        throw new TypeError("Equipment requires a selected ancestry with a supported authoritative size.");
-    return size;
-}
-function pf2eItemSize(size) {
-    const sizes = {
-        tiny: "tiny",
-        small: "sm",
-        medium: "med",
-        large: "lg",
-        huge: "huge",
-        gargantuan: "grg",
-    };
-    return sizes[size];
+async function requireDraftedAncestryEquipmentSize(input) {
+    return resolvePreparedDraftedEquipmentSize(input);
 }
 function permanence(itemType) {
     return itemType === "ammo" || itemType === "consumable" ? "consumable" : "permanent";
@@ -1030,7 +1121,8 @@ function titanMaulerProjection(draft) {
     const selected = draft.acquisition?.lines.find((line) => line.funding.lane === "class-grant" && line.funding.grant.plannedGrantId === grantId);
     return { required: true, selectedSourceUuid: selected?.sourceUuid ?? null };
 }
-function toUiRecord(entry) {
+function toUiRecord(entry, preparedPrice) {
+    const preparedPriceCopper = preparedPrice === undefined ? entry.price.copperValue : (preparedPrice?.linePriceCopper ?? null);
     return {
         sourceUuid: entry.sourceUuid,
         name: entry.name,
@@ -1038,8 +1130,8 @@ function toUiRecord(entry) {
         level: entry.level,
         rarity: entry.rarity,
         sourceLabel: publicationLabel(entry.publicationSlug),
-        priceCopper: entry.price.copperValue,
-        priceLabel: formatCopper(entry.price.copperValue),
+        priceCopper: preparedPriceCopper,
+        priceLabel: cataloguePriceLabel(preparedPriceCopper, preparedPrice),
         bulkLabel: "See item details",
         handsLabel: null,
         traits: [...entry.traits],
@@ -1049,6 +1141,37 @@ function toUiRecord(entry) {
             entry.unavailableReasons.every((reason) => reason.code === "source-not-allowed" || reason.code === "rarity-not-available"),
         titanMaulerEligible: isPotentialTitanMaulerEntry(entry),
     };
+}
+function cataloguePriceLabel(priceCopper, price) {
+    const label = formatCopper(priceCopper);
+    if (!price || priceCopper === null)
+        return label;
+    if (price.materializedQuantity === 1 && price.pricePer === 1)
+        return label;
+    const perContext = price.pricePer !== price.materializedQuantity ? ` (priced per ${price.pricePer})` : "";
+    return `${label} for ${price.materializedQuantity}${perContext}`;
+}
+function matchesCatalogueRequest(entry, request) {
+    const query = request.query.trim().toLocaleLowerCase();
+    if (query &&
+        ![entry.name, publicationLabel(entry.publicationSlug), entry.rarity, entry.itemType, ...entry.traits]
+            .join(" ")
+            .toLocaleLowerCase()
+            .includes(query)) {
+        return false;
+    }
+    return Object.entries(request.filters).every(([key, values]) => {
+        if (values.length === 0)
+            return true;
+        const actual = key === "rarity"
+            ? entry.rarity
+            : key === "source"
+                ? publicationLabel(entry.publicationSlug)
+                : key === "type"
+                    ? entry.itemType
+                    : null;
+        return actual !== null && values.includes(actual);
+    });
 }
 function isPotentialTitanMaulerEntry(entry) {
     return (entry.available &&

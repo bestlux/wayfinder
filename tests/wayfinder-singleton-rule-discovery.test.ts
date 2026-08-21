@@ -16,6 +16,61 @@ const sourceSelection: SelectionRef = {
 };
 
 describe("wayfinder singleton rule discovery", () => {
+  it("projects Awakened Animal's installed structured size profile into stable picker values", () => {
+    const sourceDocument = {
+      name: "Awakened Animal",
+      system: {
+        slug: "awakened-animal",
+        level: { value: 1 },
+        rules: awakenedAnimalRules(),
+      },
+    };
+
+    const choices = discoverSingletonChoiceMeta({
+      sourceItemType: "ancestry",
+      sourceDocument,
+      sourceSelection: {
+        ...sourceSelection,
+        slotId: "ancestry-level-1",
+        packId: "pf2e.ancestries",
+        documentId: "GFOgV3MzWkYwJoJW",
+        uuid: "Compendium.pf2e.ancestries.Item.GFOgV3MzWkYwJoJW",
+        itemType: "ancestry",
+        name: "Awakened Animal",
+      },
+      extractSlug,
+      localize: (value) => value.replace("PF2E.ActorSize", ""),
+    });
+
+    expect(choices).toMatchObject([
+      {
+        slotId: "singleton-choice-ancestry-awakened-animal-choice-level-1",
+        flag: "choice",
+        options: [
+          { value: "large", label: "Large" },
+          { value: "medium", label: "Medium" },
+          { value: "small", label: "Small" },
+          { value: "tiny", label: "Tiny" },
+        ],
+      },
+    ]);
+
+    sourceDocument.system.rules.pop();
+    expect(
+      discoverSingletonChoiceMeta({
+        sourceItemType: "ancestry",
+        sourceDocument,
+        sourceSelection: {
+          ...sourceSelection,
+          itemType: "ancestry",
+          name: "Awakened Animal",
+        },
+        extractSlug,
+        localize: (value) => value,
+      })
+    ).toEqual([]);
+  });
+
   it("uses PF2E's source-slug flag for a roll-option-only ChoiceSet", () => {
     const choices = discoverSingletonChoiceMeta({
       sourceItemType: "feat",
@@ -517,3 +572,28 @@ describe("wayfinder singleton rule discovery", () => {
     expect(choices).toEqual([]);
   });
 });
+
+function awakenedAnimalRules(): Array<Record<string, unknown>> {
+  return [
+    {
+      key: "ChoiceSet",
+      flag: "choice",
+      adjustName: false,
+      prompt: "PF2E.SpecificRule.Prompt.CreatureSize",
+      choices: [
+        { label: "PF2E.ActorSizeLarge", value: { hitPoints: 10, size: "large" } },
+        { label: "PF2E.ActorSizeMedium", value: { hitPoints: 8, size: "medium" } },
+        { label: "PF2E.ActorSizeSmall", value: { hitPoints: 6, size: "small" } },
+        { label: "PF2E.ActorSizeTiny", value: { hitPoints: 6, size: "tiny" } },
+      ],
+    },
+    { key: "CreatureSize", value: "{item|flags.system.rulesSelections.choice.size}" },
+    {
+      key: "ActiveEffectLike",
+      mode: "upgrade",
+      path: "system.attributes.ancestryhp",
+      priority: 51,
+      value: "{item|flags.system.rulesSelections.choice.hitPoints}",
+    },
+  ];
+}

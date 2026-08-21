@@ -34,6 +34,7 @@ import {
   type EquipmentPolicyJudgmentRecord,
 } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
+import { buildStartingEquipmentPane } from "../src/wayfinder/panes/starting-equipment-pane";
 
 const PACK_ID = "pf2e.equipment-srd";
 const DAGGER_ID = "rQWaJhI5Bko5x14Z";
@@ -359,7 +360,7 @@ describe("equipment acquisition runtime", () => {
       },
     });
     expect(getIndex).toHaveBeenCalledTimes(1);
-    expect(getDocument).toHaveBeenCalledTimes(1);
+    expect(getDocument).toHaveBeenCalledTimes(2);
   });
 
   it.each([
@@ -380,6 +381,17 @@ describe("equipment acquisition runtime", () => {
       { ancestrySize: "lg" }
     );
 
+    const projection = await runtime.uiAdapter.project(request);
+    expect(projection.records[0]?.priceLabel).toBe("2 sp 4 cp for 12 (priced per 10)");
+    expect(
+      buildStartingEquipmentPane(
+        request.step,
+        request.draft,
+        { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+        projection
+      ).catalogue.items[0]?.priceLabel
+    ).toBe("2 sp 4 cp for 12 (priced per 10)");
+
     const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
     expect(line).toMatchObject({
       permanence: itemType === "ammo" || itemType === "consumable" ? "consumable" : "permanent",
@@ -395,6 +407,40 @@ describe("equipment acquisition runtime", () => {
       },
     });
     expect(preparedEntry(line)).toMatchObject({ quantity: 12, plannedItems: [{ quantity: 12 }] });
+  });
+
+  it("diagnoses Candle-shaped partial-unit pricing instead of silently adding a free item", async () => {
+    const source = dagger({ itemType: "equipment", priceCp: 1, pricePer: 10, sourceQuantity: 1 });
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [source]),
+      getDocument: vi.fn(async () => document(source)),
+    });
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      state: "ready",
+      records: [
+        {
+          available: false,
+          priceCopper: null,
+          unavailableReason: expect.stringMatching(/quantity.*nonzero exact PF2E charge/i),
+        },
+      ],
+    });
+    await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).rejects.toThrow(
+      /quantity.*nonzero exact PF2E charge/i
+    );
+  });
+
+  it("preserves PF2E denomination conversion when Spray Pellets-shaped pricing resolves to one copper", async () => {
+    const source = dagger({ itemType: "ammo", priceSp: 1, pricePer: 10, sourceQuantity: 1 });
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [source]),
+      getDocument: vi.fn(async () => document(source)),
+    });
+
+    await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).resolves.toMatchObject({
+      price: { pricePer: 10, materializedQuantity: 1, unitPriceCopper: 10, linePriceCopper: 1 },
+    });
   });
 
   it("uses listed magic-item pricing while ordinary larger gear scales exactly once", async () => {
@@ -414,6 +460,114 @@ describe("equipment acquisition runtime", () => {
     await expect(
       runtime.uiAdapter.prepareLine({ ...request, sourceUuid: `Compendium.${PACK_ID}.Item.listed-magic` })
     ).resolves.toMatchObject({ price: { size: "large", unitPriceCopper: 10_000, linePriceCopper: 10_000 } });
+  });
+
+  it.each([
+    "lg",
+    "huge",
+  ] as const)("uses PF2E prepared size sensitivity for live-shaped %s magic-item pricing and catalogue admission", async (ancestrySize) => {
+    const source = dagger({ priceGp: 10 });
+    const preparePhysicalItem = vi.fn(() => ({
+      system: {
+        material: { type: null, grade: null },
+        price: {
+          sizeSensitive: false,
+          value: { pp: 0, gp: 10, sp: 0, cp: 0, credits: 0, upb: 0, copperValue: 1_000 },
+        },
+      },
+    }));
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      { ancestrySize, preparePhysicalItem }
+    );
+
+    const projection = await runtime.uiAdapter.project(request);
+    expect(projection).toMatchObject({
+      state: "ready",
+      records: [{ priceCopper: 1_000, priceLabel: "10 gp" }],
+    });
+    expect(
+      buildStartingEquipmentPane(
+        request.step,
+        request.draft,
+        { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+        projection
+      ).catalogue.items[0]
+    ).toMatchObject({ affordable: true, canBuyWithCurrency: true, canAdd: true });
+    await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).resolves.toMatchObject({
+      price: { sizeSensitive: false, unitPriceCopper: 1_000, linePriceCopper: 1_000 },
+    });
+    expect(preparePhysicalItem).toHaveBeenCalledWith(
+      expect.objectContaining({ targetSize: ancestrySize === "lg" ? "large" : "huge" })
+    );
+  });
+
+  it("uses PF2E prepared precious-material shield pricing once and rederives it at Apply", async () => {
+    let preparedCopper = 3_500;
+    const source = dagger({ itemType: "shield", priceGp: 2, materialType: "dawnsilver", materialGrade: "low" });
+    const preparePhysicalItem = vi.fn(() => ({
+      system: {
+        material: { type: "dawnsilver", grade: "low" },
+        price: { sizeSensitive: true, value: { copperValue: preparedCopper } },
+      },
+    }));
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      { ancestrySize: "huge", policy: higherLevelPolicy("lump-sum"), preparePhysicalItem }
+    );
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      records: [{ itemType: "shield", priceCopper: 3_500 }],
+    });
+    const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
+    expect(line.price).toMatchObject({
+      size: "huge",
+      sizeSensitive: true,
+      preciousMaterial: true,
+      adjustedBulkPriceCopper: 3_500,
+      unitPriceCopper: 3_500,
+      linePriceCopper: 3_500,
+    });
+    request.draft.acquisition = { ...request.draft.acquisition!, lines: [line] };
+    preparedCopper = 3_600;
+    await expect(
+      runtime.resolveSourceForApply({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition,
+        entry: preparedEntry(line),
+      })
+    ).resolves.toMatchObject({ resolvedPrice: { adjustedBulkPriceCopper: 3_600, unitPriceCopper: 3_600 } });
+  });
+
+  it.each([
+    ["singleton ancestry size", "tiny"],
+    ["heritage override", "medium"],
+  ] as const)("uses prepared drafted actor size for %s", async (_case, preparedSize) => {
+    const source = dagger({ priceGp: 1, sizeSensitive: true });
+    const prepareDraftedActor = vi.fn(async ({ draft }: { draft: ReturnType<typeof createEmptyDraft> }) => {
+      expect(draft.singletonChoices["singleton-choice-ancestry-automaton-size-level-1"]).toBe("small");
+      return { system: { traits: { size: { value: preparedSize } } } };
+    });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      { prepareDraftedActor: prepareDraftedActor as never }
+    );
+    request.draft.singletonChoices["singleton-choice-ancestry-automaton-size-level-1"] = "small";
+
+    await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).resolves.toMatchObject({
+      price: { size: preparedSize, unitPriceCopper: 100 },
+    });
+    expect(prepareDraftedActor).toHaveBeenCalled();
   });
 
   it.each([
@@ -1327,6 +1481,12 @@ function fixture(
     readonly prepareConfiguredItem?: NonNullable<
       Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareConfiguredItem"]
     >;
+    readonly preparePhysicalItem?: NonNullable<
+      Parameters<typeof createEquipmentAcquisitionRuntime>[0]["preparePhysicalItem"]
+    >;
+    readonly prepareDraftedActor?: NonNullable<
+      Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareDraftedActor"]
+    >;
     readonly ancestrySize?: "tiny" | "sm" | "med" | "lg" | "huge" | "grg";
   } = {}
 ): {
@@ -1368,6 +1528,8 @@ function fixture(
             : null),
       resolveEffectivePolicy: () => currentPolicy,
       prepareConfiguredItem: options.prepareConfiguredItem,
+      preparePhysicalItem: options.preparePhysicalItem ?? prepareTestPhysicalItem,
+      prepareDraftedActor: options.prepareDraftedActor ?? prepareTestDraftedActor,
       mintLineId: () => "wf-line-test",
     }),
     request: {
@@ -1388,6 +1550,40 @@ function fixture(
       previewSourceUuid: null,
     },
   };
+}
+
+function prepareTestPhysicalItem(
+  input: Parameters<NonNullable<Parameters<typeof createEquipmentAcquisitionRuntime>[0]["preparePhysicalItem"]>>[0]
+) {
+  const source = structuredClone(input.source) as Record<string, any>;
+  const price = source.system?.price ?? {};
+  const value = price.value ?? {};
+  const baseCopper =
+    Number(value.pp ?? 0) * 1_000 + Number(value.gp ?? 0) * 100 + Number(value.sp ?? 0) * 10 + Number(value.cp ?? 0);
+  const sizeSensitive = price.sizeSensitive === undefined ? true : price.sizeSensitive;
+  const multiplier =
+    sizeSensitive === true
+      ? input.targetSize === "large"
+        ? 2
+        : input.targetSize === "huge"
+          ? 4
+          : input.targetSize === "gargantuan"
+            ? 8
+            : 1
+      : 1;
+  source.system = {
+    ...source.system,
+    price: { ...price, sizeSensitive, value: { copperValue: baseCopper * multiplier } },
+  };
+  return source;
+}
+
+async function prepareTestDraftedActor(
+  input: Parameters<NonNullable<Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareDraftedActor"]>>[0]
+) {
+  const ancestry = input.draft.selections["ancestry-level-1"];
+  const document = ancestry ? ((await input.fetchDocumentByUuid(ancestry.uuid)) as Record<string, any> | null) : null;
+  return { system: { traits: { size: { value: document?.system?.size ?? null } } } };
 }
 
 function policy(): EffectiveEquipmentPolicySnapshotV1 {

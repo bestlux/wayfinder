@@ -1,3 +1,4 @@
+import { projectStructuredCreatureSizeChoiceOptions } from "../../shared/structured-creature-size-choice.js";
 import type { ChoicePredicate, ProjectedDynamicChoice, SelectionRef, SingletonChoiceMeta } from "../../types.js";
 import { resolveConfiguredChoiceOptions } from "../class-choice/rule-discovery.js";
 import {
@@ -114,6 +115,8 @@ export function discoverSingletonChoiceSpecs(args: {
 
     const options = resolveChoiceOptions(
       rule,
+      rules,
+      sourceRuleIndex,
       localize,
       configuredSkills,
       sourceItemType,
@@ -170,6 +173,8 @@ function extractPredicate(value: unknown): ChoicePredicate[] {
 
 function resolveChoiceOptions(
   rule: Record<string, unknown>,
+  rules: readonly unknown[],
+  sourceRuleIndex: number,
   localize: (value: string) => string,
   configuredSkills: SkillConfigMap,
   sourceItemType: SingletonChoiceSourceItemType,
@@ -179,6 +184,22 @@ function resolveChoiceOptions(
   sourceDocument?: unknown
 ): { optionDomain: "generic" | "skill" | "lore"; options: SingletonChoiceSpec["options"] } | null {
   if (Array.isArray(rule.choices)) {
+    const structuredSizeOptions = projectStructuredCreatureSizeChoiceOptions({
+      sourceItemType,
+      rules,
+      sourceRuleIndex,
+    });
+    if (structuredSizeOptions) {
+      return {
+        optionDomain: "generic",
+        options: structuredSizeOptions.map((choice) => ({
+          value: choice.value,
+          label: resolveChoiceLabel(choice.label, choice.value, localize),
+          img: null,
+          detail: null,
+        })),
+      };
+    }
     const options = rule.choices
       .filter((choice): choice is { label?: unknown; value?: unknown; img?: unknown } & Record<string, unknown> =>
         isRecord(choice)

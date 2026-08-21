@@ -41,6 +41,11 @@ import type { StartingEquipmentCatalogueRecord } from "../view-models.js";
 import type { ResolvedAcquisitionSource } from "./acquisition-execution-service.js";
 import { buildTitanMaulerCandidate, titanMaulerGrantIdForDraft } from "./class-grant-projection-service.js";
 import {
+  isBrowsePhysicalBatchSafeSource,
+  type PrepareBrowsePhysicalItems,
+  prepareTransientBrowsePhysicalItems,
+} from "./equipment-browse-preparation-service.js";
+import {
   createEquipmentCatalogueDraftContext,
   createEquipmentCatalogueService,
   EMPTY_EQUIPMENT_ACCESS_REGISTRY,
@@ -99,6 +104,7 @@ export interface EquipmentAcquisitionRuntimeOptions {
     readonly targetSize: AcquisitionPriceSnapshot["size"];
     readonly source: Readonly<Record<string, unknown>>;
   }) => unknown;
+  readonly prepareBrowsePhysicalItems?: PrepareBrowsePhysicalItems;
   readonly prepareDraftedActor?: PrepareDraftedEquipmentActor;
   readonly prepareKitExpansion?: typeof prepareAdventurersPackExpansion;
   /** Bounded successful-result cache for browse-only prepared price records. */
@@ -219,6 +225,11 @@ export function createEquipmentAcquisitionRuntime(
   const fetchDocumentByUuid = options.fetchDocumentByUuid ?? resolveUuid;
   const prepareConfiguredItem = options.prepareConfiguredItem ?? prepareTransientConfiguredItem;
   const preparePhysicalItem = options.preparePhysicalItem ?? prepareTransientPhysicalItem;
+  const prepareBrowsePhysicalItems =
+    options.prepareBrowsePhysicalItems ??
+    (options.preparePhysicalItem
+      ? prepareBrowsePhysicalItemsIndividually(options.preparePhysicalItem)
+      : prepareTransientBrowsePhysicalItems);
   const prepareDraftedActor = options.prepareDraftedActor ?? prepareTransientDraftedEquipmentActor;
   const prepareKitExpansion = options.prepareKitExpansion ?? prepareAdventurersPackExpansion;
   const browsePreparedRecordCacheLimit =
@@ -397,58 +408,112 @@ export function createEquipmentAcquisitionRuntime(
         const targetSize = await cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint);
         const matchedEntries = entries.filter((entry) => matchesCatalogueRequest(entry, request));
         const visibleEntries = matchedEntries.slice(0, 12);
-        const records = await Promise.all(
-          visibleEntries.map(async (entry) => {
-            if (
-              entry.price.kind !== "priced" ||
-              entry.unavailableReasons.some(
-                (reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available"
-              )
-            ) {
-              return toUiRecord(entry);
-            }
-            const browseCacheKey = actorPricingFingerprint
-              ? equipmentBrowsePreparedRecordCacheKey({
-                  projectionCacheKey: projection.cacheKey,
-                  entry,
-                  actorPricingFingerprint,
-                  accessFactsFingerprint: context.draft.accessFactsFingerprint,
-                  targetLevel: policy.targetLevel,
-                  targetSize,
-                })
-              : null;
-            const cached = browseCacheKey ? cachedBrowseRecord(browseCacheKey) : null;
-            if (cached) return cached;
-            const resolved = await catalogue.resolveForApply(context, entry.sourceUuid);
-            try {
-              const priced = await buildResolvedPrice({
-                resolved,
-                requestedQuantity: 1,
+        const browseRows = visibleEntries.map((entry) => {
+          if (
+            entry.price.kind !== "priced" ||
+            entry.unavailableReasons.some(
+              (reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available"
+            )
+          ) {
+            return { kind: "record" as const, record: toUiRecord(entry) };
+          }
+          const browseCacheKey = actorPricingFingerprint
+            ? equipmentBrowsePreparedRecordCacheKey({
+                projectionCacheKey: projection.cacheKey,
+                entry,
+                actorPricingFingerprint,
+                accessFactsFingerprint: context.draft.accessFactsFingerprint,
+                targetLevel: policy.targetLevel,
                 targetSize,
+              })
+            : null;
+          const cached = browseCacheKey ? cachedBrowseRecord(browseCacheKey) : null;
+          return cached
+            ? { kind: "record" as const, record: cached }
+            : { kind: "pending" as const, entry, browseCacheKey };
+        });
+        const pendingRows = browseRows.filter((row) => row.kind === "pending");
+        const resolvedRows = await Promise.all(
+          pendingRows.map(async (row) => ({
+            ...row,
+            resolved: await catalogue.resolveForApply(context, row.entry.sourceUuid),
+          }))
+        );
+        const batchRows = resolvedRows.filter(({ resolved }) => usesBrowsePhysicalPreparation(resolved));
+        const batchResults =
+          batchRows.length === 0
+            ? []
+            : await prepareBrowsePhysicalItems({
                 actor: request.actor,
                 targetLevel: policy.targetLevel,
-                packs: options.packs,
-                prepareConfiguredItem,
-                preparePhysicalItem,
+                targetSize,
+                entries: batchRows.map(({ entry, resolved }) => ({
+                  key: entry.sourceUuid,
+                  source: resolved.source,
+                })),
               });
-              const record = toUiRecord(entry, priced.price);
+        if (
+          batchResults.length !== batchRows.length ||
+          batchResults.some((result, index) => result.key !== batchRows[index]?.entry.sourceUuid)
+        ) {
+          throw new Error("PF2E browse equipment preparation returned unstable entry mapping.");
+        }
+        const batchResultByKey = new Map(batchResults.map((result) => [result.key, result]));
+        const preparedRecordByUuid = new Map<string, StartingEquipmentCatalogueRecord>();
+        await Promise.all(
+          resolvedRows.map(async ({ entry, browseCacheKey, resolved }) => {
+            try {
+              const batchResult = batchResultByKey.get(entry.sourceUuid);
+              let price: AcquisitionPriceSnapshot;
+              if (usesBrowsePhysicalPreparation(resolved)) {
+                if (!batchResult) throw new Error("PF2E browse equipment preparation omitted a visible entry.");
+                if (batchResult.error !== null) throw batchResult.error;
+                price = buildSimpleResolvedPriceFromPrepared({
+                  resolved,
+                  requestedQuantity: 1,
+                  targetSize,
+                  prepared: batchResult.prepared,
+                });
+              } else {
+                price = (
+                  await buildResolvedPrice({
+                    resolved,
+                    requestedQuantity: 1,
+                    targetSize,
+                    actor: request.actor,
+                    targetLevel: policy.targetLevel,
+                    packs: options.packs,
+                    prepareConfiguredItem,
+                    preparePhysicalItem,
+                  })
+                ).price;
+              }
+              const record = toUiRecord(entry, price);
               if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
-              return record;
+              preparedRecordByUuid.set(entry.sourceUuid, record);
             } catch (error) {
               if (error instanceof ConfiguredItemHandoffRequiredError) {
                 const record = toUiRecord(entry);
                 if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
-                return record;
+                preparedRecordByUuid.set(entry.sourceUuid, record);
+                return;
               }
               if (error instanceof PartialUnitPriceRequiredError) {
                 const record = { ...toUiRecord(entry, null), available: false, unavailableReason: error.message };
                 if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
-                return record;
+                preparedRecordByUuid.set(entry.sourceUuid, record);
+                return;
               }
               throw error;
             }
           })
         );
+        const records = browseRows.map((row) => {
+          if (row.kind === "record") return row.record;
+          const prepared = preparedRecordByUuid.get(row.entry.sourceUuid);
+          if (!prepared) throw new Error("PF2E browse equipment preparation omitted a projected record.");
+          return prepared;
+        });
         const visibleSourceUuids = new Set(records.map((record) => record.sourceUuid));
         const projectedEntryByUuid = new Map(projectedEntries.map((entry) => [entry.sourceUuid, entry]));
         const lineRecordSourceUuids = new Set(visibleSourceUuids);
@@ -1325,6 +1390,14 @@ async function buildResolvedPrice(input: {
   };
 }
 
+function usesBrowsePhysicalPreparation(resolved: EquipmentCatalogueApplyResolution): boolean {
+  return (
+    !isQualifiedKitSource(resolved.candidate.sourceUuid) &&
+    configuredItemFacts(resolved.source, resolved.candidate.itemType) === null &&
+    isBrowsePhysicalBatchSafeSource(resolved.source)
+  );
+}
+
 async function requireDocument(
   fetchDocumentByUuid: (uuid: string) => Promise<unknown | null>,
   uuid: string
@@ -1342,14 +1415,28 @@ function buildSimpleResolvedPrice(input: {
   readonly targetLevel: number;
   readonly preparePhysicalItem: NonNullable<EquipmentAcquisitionRuntimeOptions["preparePhysicalItem"]>;
 }): AcquisitionPriceSnapshot {
-  const normalized = input.resolved.candidate.price;
   const prepared = input.preparePhysicalItem({
     actor: input.actor,
     targetLevel: input.targetLevel,
     targetSize: input.targetSize,
     source: input.resolved.source,
   });
-  const preparedFacts = preparedPhysicalPriceFacts(prepared);
+  return buildSimpleResolvedPriceFromPrepared({
+    resolved: input.resolved,
+    requestedQuantity: input.requestedQuantity,
+    targetSize: input.targetSize,
+    prepared,
+  });
+}
+
+function buildSimpleResolvedPriceFromPrepared(input: {
+  readonly resolved: EquipmentCatalogueApplyResolution;
+  readonly requestedQuantity: number;
+  readonly targetSize: AcquisitionPriceSnapshot["size"];
+  readonly prepared: unknown;
+}): AcquisitionPriceSnapshot {
+  const normalized = input.resolved.candidate.price;
+  const preparedFacts = preparedPhysicalPriceFacts(input.prepared);
   const basePrice: AcquisitionBasePriceSnapshot =
     normalized.kind === "priced" && normalized.value
       ? { kind: "priced", value: cloneData(normalized.value) }
@@ -1497,6 +1584,28 @@ function documentSource(document: unknown): Readonly<Record<string, unknown>> | 
   if (typeof toObject !== "function") return null;
   const source = (toObject as (source?: boolean) => unknown).call(document, true);
   return source && typeof source === "object" ? (cloneData(source) as Readonly<Record<string, unknown>>) : null;
+}
+
+function prepareBrowsePhysicalItemsIndividually(
+  preparePhysicalItem: NonNullable<EquipmentAcquisitionRuntimeOptions["preparePhysicalItem"]>
+): PrepareBrowsePhysicalItems {
+  return async (input) =>
+    input.entries.map((entry) => {
+      try {
+        return {
+          key: entry.key,
+          prepared: preparePhysicalItem({
+            actor: input.actor,
+            targetLevel: input.targetLevel,
+            targetSize: input.targetSize,
+            source: entry.source,
+          }),
+          error: null,
+        };
+      } catch (error) {
+        return { key: entry.key, prepared: null, error };
+      }
+    });
 }
 
 function prepareTransientConfiguredItem(input: {

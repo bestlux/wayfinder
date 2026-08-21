@@ -8,6 +8,7 @@ import {
   type EquipmentAcquisitionRuntime,
   EquipmentSourceHealthError,
 } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
+import type { PrepareBrowsePhysicalItems } from "../src/wayfinder/application/equipment-browse-preparation-service";
 import {
   ADVENTURERS_PACK_UUID,
   createEquipmentAccessRegistry,
@@ -253,13 +254,19 @@ describe("equipment acquisition runtime", () => {
       runes: { potency: 1, striking: 1, property: ["shadow"] },
       specific: { value: true },
     });
+    const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
     const { runtime, request } = fixture(
       {
         getIndex: vi.fn(async () => [specific]),
         getDocument: vi.fn(async () => document(specific)),
       },
-      { policy: configuredPolicy() }
+      { policy: configuredPolicy(), prepareBrowsePhysicalItems }
     );
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      state: "ready",
+      records: [{ name: "Dagger" }],
+    });
+    expect(prepareBrowsePhysicalItems).not.toHaveBeenCalled();
     const prepared = runtime.uiAdapter.prepareLine({
       ...request,
       sourceUuid: `Compendium.${PACK_ID}.Item.specific`,
@@ -485,6 +492,126 @@ describe("equipment acquisition runtime", () => {
     expect(afterFirstPreview - beforeFirstPreview).toBe(1);
     await runtime.uiAdapter.project({ ...request, previewSourceUuid });
     expect(getDocument.mock.calls.length - afterFirstPreview).toBe(0);
+  });
+
+  it("matches fresh prepare and Apply pricing while batching only browse preparation", async () => {
+    const source = dagger({ priceGp: 1, sizeSensitive: true });
+    const preparePhysicalItem = vi.fn(prepareTestPhysicalItem);
+    const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
+    const getDocument = vi.fn(async () => document(source));
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument },
+      { ancestrySize: "lg", preparePhysicalItem, prepareBrowsePhysicalItems }
+    );
+
+    const projection = await runtime.uiAdapter.project(request);
+    const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
+    request.draft.acquisition = { ...request.draft.acquisition!, lines: [line] };
+    const applied = await runtime.resolveSourceForApply({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+      entry: preparedEntry(line),
+    });
+
+    expect(projection.records[0]?.priceCopper).toBe(line.price.unitPriceCopper);
+    expect(applied.resolvedPrice).toEqual(line.price);
+    expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
+    expect(prepareBrowsePhysicalItems.mock.calls[0]![0].entries).toHaveLength(1);
+    expect(preparePhysicalItem).toHaveBeenCalledTimes(2);
+    expect(getDocument).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps mixed browse outcomes ordered and makes a repeated facet document-free", async () => {
+    const ordinary = dagger({ id: "batch-ordinary", name: "Alpha Ordinary", priceSp: 1 });
+    const partial = dagger({
+      id: "batch-partial",
+      name: "Beta Partial Unit",
+      itemType: "equipment",
+      priceCp: 1,
+      pricePer: 10,
+      sourceQuantity: 1,
+    });
+    const sources = [ordinary, partial];
+    const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
+    const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => sources), getDocument },
+      { prepareBrowsePhysicalItems }
+    );
+    const facetRequest = { ...request, filters: { type: ["weapon", "equipment"] } };
+
+    const first = await runtime.uiAdapter.project(facetRequest);
+    expect(first.records).toMatchObject([
+      { name: "Alpha Ordinary", available: true, priceCopper: 10 },
+      {
+        name: "Beta Partial Unit",
+        available: false,
+        priceCopper: null,
+        unavailableReason: expect.stringMatching(/quantity.*nonzero exact PF2E charge/i),
+      },
+    ]);
+    expect(prepareBrowsePhysicalItems.mock.calls[0]![0].entries.map((entry) => entry.key)).toEqual([
+      `Compendium.${PACK_ID}.Item.batch-ordinary`,
+      `Compendium.${PACK_ID}.Item.batch-partial`,
+    ]);
+    expect(getDocument).toHaveBeenCalledTimes(2);
+
+    await expect(runtime.uiAdapter.project(facetRequest)).resolves.toMatchObject({ records: first.records });
+    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps rule-bearing and nested browse items out of the shared preparation actor", async () => {
+    const ordinary = dagger({ id: "ruleless", name: "Alpha Ruleless" });
+    const ruleBearing = dagger({ id: "rule-bearing", name: "Beta Rule Bearing" });
+    (ruleBearing.system.rules as unknown[]).push({ key: "FlatModifier", selector: "ac", value: 1 });
+    const nested = dagger({ id: "nested", name: "Gamma Nested" });
+    (nested.system as Record<string, unknown>).subitems = [{ system: { rules: [{ key: "GrantItem" }] } }];
+    const sources = [ordinary, ruleBearing, nested];
+    const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
+    const preparePhysicalItem = vi.fn(prepareTestPhysicalItem);
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => sources),
+        getDocument: vi.fn(async (id) => document(sources.find((source) => source._id === id)!)),
+      },
+      { prepareBrowsePhysicalItems, preparePhysicalItem }
+    );
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      state: "ready",
+      records: [{ name: "Alpha Ruleless" }, { name: "Beta Rule Bearing" }, { name: "Gamma Nested" }],
+    });
+    expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
+    expect(prepareBrowsePhysicalItems.mock.calls[0]![0].entries.map((entry) => entry.key)).toEqual([
+      `Compendium.${PACK_ID}.Item.ruleless`,
+    ]);
+    expect(preparePhysicalItem).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a rejected browse batch without caching an unprepared record", async () => {
+    let shouldFail = true;
+    const source = dagger();
+    const getDocument = vi.fn(async () => document(source));
+    const prepareBrowsePhysicalItems = vi.fn<PrepareBrowsePhysicalItems>(async (input) => {
+      if (shouldFail) throw new Error("temporary batch preparation failure");
+      return prepareTestBrowsePhysicalItems(input);
+    });
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument },
+      { prepareBrowsePhysicalItems }
+    );
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({ state: "error" });
+    shouldFail = false;
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      state: "ready",
+      records: [{ name: "Dagger" }],
+    });
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({ state: "ready" });
+    expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(2);
+    expect(getDocument).toHaveBeenCalledTimes(2);
   });
 
   it("uses a bounded LRU for successful browse preparations", async () => {
@@ -2210,6 +2337,7 @@ function fixture(
     readonly preparePhysicalItem?: NonNullable<
       Parameters<typeof createEquipmentAcquisitionRuntime>[0]["preparePhysicalItem"]
     >;
+    readonly prepareBrowsePhysicalItems?: PrepareBrowsePhysicalItems;
     readonly prepareDraftedActor?: NonNullable<
       Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareDraftedActor"]
     >;
@@ -2263,6 +2391,7 @@ function fixture(
       resolveSourceDiagnostics: () => options.sourceDiagnostics ?? [],
       prepareConfiguredItem: options.prepareConfiguredItem,
       preparePhysicalItem: options.preparePhysicalItem ?? prepareTestPhysicalItem,
+      prepareBrowsePhysicalItems: options.prepareBrowsePhysicalItems,
       prepareDraftedActor: options.prepareDraftedActor ?? prepareTestDraftedActor,
       prepareKitExpansion: options.prepareKitExpansion,
       browsePreparedRecordCacheLimit: options.browsePreparedRecordCacheLimit,
@@ -2314,6 +2443,24 @@ function prepareTestPhysicalItem(
   };
   return source;
 }
+
+const prepareTestBrowsePhysicalItems: PrepareBrowsePhysicalItems = async (input) =>
+  input.entries.map((entry) => {
+    try {
+      return {
+        key: entry.key,
+        prepared: prepareTestPhysicalItem({
+          actor: input.actor,
+          targetLevel: input.targetLevel,
+          targetSize: input.targetSize,
+          source: entry.source,
+        }),
+        error: null,
+      };
+    } catch (error) {
+      return { key: entry.key, prepared: null, error };
+    }
+  });
 
 async function prepareTestDraftedActor(
   input: Parameters<NonNullable<Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareDraftedActor"]>>[0]

@@ -118,7 +118,8 @@ export function evaluatePersistedDraftWriteGuardHook(
 export async function updateActorWithPersistedDraftPrecondition(
   actor: DraftFlagActor,
   updates: Record<string, unknown>,
-  assertCurrent: () => void
+  assertCurrent: () => void,
+  operation: Record<string, unknown> = {}
 ): Promise<unknown> {
   let operationId: string;
   do {
@@ -139,6 +140,7 @@ export async function updateActorWithPersistedDraftPrecondition(
     let updateFailure: unknown;
     try {
       updatedActor = await actor.update(updates, {
+        ...operation,
         [DRAFT_WRITE_GUARD_OPERATION_OPTION]: operationId,
       });
     } catch (error) {
@@ -206,7 +208,7 @@ export async function saveDraftWithWriteGuard(
   let updateRejected = false;
   let updateFailure: unknown;
   try {
-    await updateActorWithPersistedDraftPrecondition(actor, update, assertCurrent);
+    await updateActorWithPersistedDraftPrecondition(actor, update, assertCurrent, { render: false });
   } catch (error) {
     updateRejected = true;
     updateFailure = error;
@@ -349,7 +351,7 @@ async function restoreDurableDraft(
   if (durableDraft !== null && isRecord(update[DRAFT_FLAG])) {
     update[DRAFT_FLAG].updatedAt = durableDraft.updatedAt;
   }
-  await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent);
+  await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent, { render: false });
   const restoredDraft = readPersistedDraftSnapshot(actor, currentLevel);
   if (persistedDraftFingerprint(restoredDraft) !== persistedDraftFingerprint(durableDraft)) {
     throw new Error("Foundry did not restore the exact last durable Wayfinder draft.");

@@ -79,7 +79,7 @@ export function evaluatePersistedDraftWriteGuardHook(actor, _changes, operation)
         return false;
     }
 }
-export async function updateActorWithPersistedDraftPrecondition(actor, updates, assertCurrent) {
+export async function updateActorWithPersistedDraftPrecondition(actor, updates, assertCurrent, operation = {}) {
     let operationId;
     do {
         operationId = `${MODULE_ID}:${nextDraftWriteGuardOperationId++}`;
@@ -99,6 +99,7 @@ export async function updateActorWithPersistedDraftPrecondition(actor, updates, 
         let updateFailure;
         try {
             updatedActor = await actor.update(updates, {
+                ...operation,
                 [DRAFT_WRITE_GUARD_OPERATION_OPTION]: operationId,
             });
         }
@@ -155,7 +156,7 @@ export async function saveDraftWithWriteGuard(actor, candidateDraft, currentLeve
     let updateRejected = false;
     let updateFailure;
     try {
-        await updateActorWithPersistedDraftPrecondition(actor, update, assertCurrent);
+        await updateActorWithPersistedDraftPrecondition(actor, update, assertCurrent, { render: false });
     }
     catch (error) {
         updateRejected = true;
@@ -265,7 +266,7 @@ async function restoreDurableDraft(actor, currentLevel, rejectedDraft, durableDr
     if (durableDraft !== null && isRecord(update[DRAFT_FLAG])) {
         update[DRAFT_FLAG].updatedAt = durableDraft.updatedAt;
     }
-    await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent);
+    await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent, { render: false });
     const restoredDraft = readPersistedDraftSnapshot(actor, currentLevel);
     if (persistedDraftFingerprint(restoredDraft) !== persistedDraftFingerprint(durableDraft)) {
         throw new Error("Foundry did not restore the exact last durable Wayfinder draft.");

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DRAFT_FLAG } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
+import type { DraftState } from "../src/types";
 import { WayfinderRecoveryDraftConflictError } from "../src/wayfinder/application/draft-lifecycle-service";
 import {
   assertFailedApplyRecoveryCandidateCurrent,
@@ -12,6 +13,8 @@ import {
   WayfinderDraftRoundTripError,
   WayfinderDraftWriteConflictError,
 } from "../src/wayfinder/application/draft-write-guard";
+import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
+import { acquisitionFixture } from "./fixtures/acquisition-fixture";
 
 describe("Wayfinder persisted draft write guard", () => {
   it("rejects recovery over a candidate another client finalized before the final actor phase", () => {
@@ -66,6 +69,30 @@ describe("Wayfinder persisted draft write guard", () => {
     await expect(saveDraftWithWriteGuard(actor, candidate, 5, guard)).resolves.toBeUndefined();
     expect(actor.update).not.toHaveBeenCalled();
     expect(() => guard.assertCurrent(initial)).not.toThrow();
+  });
+
+  it.each([
+    ["an unreviewed cart quantity", quantityMutationDrafts()],
+    ["an awaiting-authority recipe choice", recipeMutationDrafts()],
+  ])("persists %s without Foundry automatically rendering actor apps", async (_label, drafts) => {
+    const { initial, candidate } = drafts;
+    let persisted: unknown = initial;
+    const actorAppRender = vi.fn();
+    const actor = {
+      getFlag: () => persisted,
+      update: vi.fn(async (update: Record<string, unknown>, operation?: Record<string, unknown>) => {
+        persisted = structuredClone(update[DRAFT_FLAG]);
+        if (operation?.render !== false) actorAppRender(false);
+        return actor;
+      }),
+    };
+    const guard = new PersistedDraftWriteGuard(initial);
+
+    await expect(saveDraftWithWriteGuard(actor, candidate, candidate.targetLevel, guard)).resolves.toBeUndefined();
+
+    expect(actor.update).toHaveBeenCalledOnce();
+    expect(actor.update.mock.calls[0]?.[1]).toMatchObject({ render: false });
+    expect(actorAppRender).not.toHaveBeenCalled();
   });
 
   it("restores the exact last durable draft when Foundry persists a malformed round trip", async () => {
@@ -434,3 +461,45 @@ describe("Wayfinder persisted draft write guard", () => {
     }
   });
 });
+
+function quantityMutationDrafts(): { initial: DraftState; candidate: DraftState } {
+  const initial = createEmptyDraft(5);
+  initial.acquisition = acquisitionFixture({ disposition: "unreviewed" }).draft;
+  const candidate = structuredClone(initial);
+  const line = candidate.acquisition!.lines[0]!;
+  candidate.acquisition = {
+    ...candidate.acquisition!,
+    lines: [
+      { ...line, price: { ...line.price, requestedQuantity: line.price.requestedQuantity + 1 } },
+      ...candidate.acquisition!.lines.slice(1),
+    ],
+  };
+  return { initial, candidate };
+}
+
+function recipeMutationDrafts(): { initial: DraftState; candidate: DraftState } {
+  const initial = createEmptyDraft(5);
+  const fixtureSelection = acquisitionFixture({ disposition: "unreviewed" }).draft.recipeSelection!;
+  initial.acquisition = createAcquisitionDraft({
+    draftId: "draft-1",
+    batchId: "batch-1",
+    manifestId: "manifest-1",
+    targetLevel: 5,
+    recipe: { kind: "permanent-items" },
+    recipeSelection: fixtureSelection,
+  });
+  const candidate = structuredClone(initial);
+  candidate.acquisition = createAcquisitionDraft({
+    draftId: "draft-1",
+    batchId: "batch-1",
+    manifestId: "manifest-1",
+    targetLevel: 5,
+    recipe: { kind: "lump-sum" },
+    recipeSelection: {
+      ...fixtureSelection,
+      selectedRecipe: "lump-sum",
+      selectedAt: "2026-08-21T12:06:54.452Z",
+    },
+  });
+  return { initial, candidate };
+}

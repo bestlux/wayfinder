@@ -776,6 +776,11 @@ describe("starting equipment pane", () => {
     expect(currentPolicyPrimaryElementCount).toBe(2);
     expect(detail).not.toContain("<article");
     expect(detail).not.toContain("equipment-detail-actions");
+    const detailRootTag = detail.slice(0, detail.indexOf(">") + 1);
+    expect(detailRootTag).toContain('data-application-part="equipment-detail"');
+    expect(detailRootTag).toContain('data-equipment-preview="{{activePane.catalogue.preview.sourceUuid}}"');
+    expect(detail.match(/data-equipment-preview=/gu)).toHaveLength(1);
+    expect(detail.indexOf('data-wayfinder-action="add-equipment-item"')).toBeGreaterThan(detailRootTag.length);
     expect(structuralReduction).toBeGreaterThanOrEqual(6);
     expect(measuredPreviewRootElementCount - structuralReduction).toBeLessThanOrEqual(325);
   });

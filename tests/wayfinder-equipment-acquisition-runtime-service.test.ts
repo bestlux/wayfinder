@@ -439,6 +439,183 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(2);
   });
 
+  it("reports the uncapped matched level-qualified count while hydrating only the bounded page", async () => {
+    const levelQualified = Array.from({ length: 20 }, (_, index) =>
+      dagger({ id: `qualified-${index}`, name: `Common gear ${String(index).padStart(2, "0")}` })
+    );
+    const atLevel = dagger({ id: "at-level", name: "Common at-level gear", level: 1 });
+    const sources = [...levelQualified, atLevel];
+    const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
+    const { runtime, request } = fixture({ getIndex: vi.fn(async () => sources), getDocument });
+
+    const projection = await runtime.uiAdapter.project({ ...request, query: "common" });
+    const pane = buildStartingEquipmentPane(
+      request.step,
+      request.draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      projection
+    );
+
+    expect(projection.matchedRecordCount).toBe(levelQualified.length);
+    expect(projection.records).toHaveLength(12);
+    expect(pane.catalogue).toMatchObject({
+      message: `${levelQualified.length} pieces of gear to browse.`,
+      totalResultCount: levelQualified.length,
+      visibleResultCount: 12,
+    });
+    expect(getDocument).toHaveBeenCalledTimes(12);
+  });
+
+  it("reuses successful browse preparations while a newly selected preview hydrates once", async () => {
+    const sources = Array.from({ length: 12 }, (_, index) =>
+      dagger({ id: `browse-cache-${index}`, name: `Browse cache ${String(index).padStart(2, "0")}` })
+    );
+    const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
+    const { runtime, request } = fixture({ getIndex: vi.fn(async () => sources), getDocument });
+    const previewSourceUuid = `Compendium.${PACK_ID}.Item.browse-cache-0`;
+
+    await runtime.uiAdapter.project(request);
+    expect(getDocument).toHaveBeenCalledTimes(12);
+    await runtime.uiAdapter.project(request);
+    expect(getDocument).toHaveBeenCalledTimes(12);
+
+    await runtime.uiAdapter.project({ ...request, previewSourceUuid });
+    expect(getDocument).toHaveBeenCalledTimes(13);
+    await runtime.uiAdapter.project({ ...request, previewSourceUuid });
+    expect(getDocument).toHaveBeenCalledTimes(13);
+  });
+
+  it("uses a bounded LRU for successful browse preparations", async () => {
+    const sources = [
+      dagger({ id: "lru-a", name: "LRU Alpha" }),
+      dagger({ id: "lru-b", name: "LRU Bravo" }),
+      dagger({ id: "lru-c", name: "LRU Charlie" }),
+    ];
+    const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => sources), getDocument },
+      { browsePreparedRecordCacheLimit: 2 }
+    );
+
+    for (const query of ["alpha", "bravo", "alpha", "charlie", "bravo"]) {
+      await runtime.uiAdapter.project({ ...request, query });
+    }
+
+    expect(getDocument.mock.calls.map(([id]) => id)).toEqual(["lru-a", "lru-b", "lru-c", "lru-b"]);
+  });
+
+  it("does not cache failed browse preparation", async () => {
+    let shouldFail = true;
+    const source = dagger();
+    const getDocument = vi.fn(async () => document(source));
+    const preparePhysicalItem = vi.fn((input: Parameters<typeof prepareTestPhysicalItem>[0]) => {
+      if (shouldFail) throw new Error("transient PF2E preparation failure");
+      return prepareTestPhysicalItem(input);
+    });
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument },
+      { preparePhysicalItem }
+    );
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      state: "error",
+      matchedRecordCount: 0,
+    });
+    shouldFail = false;
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      state: "ready",
+      matchedRecordCount: 1,
+      records: [{ name: "Dagger" }],
+    });
+    expect(getDocument).toHaveBeenCalledTimes(2);
+  });
+
+  it("invalidates browse preparations on actor, access, size, policy, and pack drift", async () => {
+    let ancestrySize: "med" | "lg" = "med";
+    const actorSource = {
+      type: "character",
+      system: { pricingRevision: 1 },
+      items: [],
+      effects: [],
+      flags: { "wayfinder-pf2e": { draftRevision: 1 }, pf2e: { pricingRevision: 1 } },
+    };
+    const actor = {
+      id: "actor-1",
+      toObject: vi.fn((source: boolean) => {
+        expect(source).toBe(true);
+        return structuredClone(actorSource);
+      }),
+    };
+    let source = dagger();
+    const currentPolicy = policy();
+    const getIndex = vi.fn(async () => [source]);
+    const getDocument = vi.fn(async () => document(source));
+    const { runtime, request } = fixture(
+      { getIndex, getDocument },
+      {
+        actor,
+        policy: currentPolicy,
+        fetchDocumentByUuid: async (uuid) =>
+          uuid === ANCESTRY_UUID ? { type: "ancestry", system: { size: ancestrySize } } : null,
+      }
+    );
+
+    await runtime.uiAdapter.project(request);
+    await runtime.uiAdapter.project(request);
+    expect(getDocument).toHaveBeenCalledTimes(1);
+
+    actorSource.flags["wayfinder-pf2e"].draftRevision = 2;
+    await runtime.uiAdapter.project(request);
+    expect(getDocument).toHaveBeenCalledTimes(1);
+    actorSource.flags.pf2e.pricingRevision = 2;
+    await runtime.uiAdapter.project(request);
+    actorSource.system.pricingRevision = 2;
+    await runtime.uiAdapter.project(request);
+    request.draft.classChoices.cacheProbe = "changed-access-facts";
+    await runtime.uiAdapter.project(request);
+    ancestrySize = "lg";
+    await runtime.uiAdapter.project(request);
+    (currentPolicy as { fingerprint: string }).fingerprint = "policy-v2";
+    request.draft.acquisition = {
+      ...request.draft.acquisition!,
+      policySnapshot: createAcquisitionPolicySnapshot(currentPolicy, request.draft.acquisition!.recipe),
+    };
+    await runtime.uiAdapter.project(request);
+    expect(getDocument).toHaveBeenCalledTimes(6);
+
+    source = dagger({ priceSp: 3 });
+    runtime.invalidatePack(PACK_ID);
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({ records: [{ priceCopper: 60 }] });
+    expect(getIndex).toHaveBeenCalledTimes(2);
+    expect(getDocument).toHaveBeenCalledTimes(7);
+  });
+
+  it("keeps prepare and Apply hydration fresh after warming the browse cache", async () => {
+    let currentSource = dagger();
+    const getDocument = vi.fn(async () => document(currentSource));
+    const { runtime, request } = fixture({ getIndex: vi.fn(async () => [dagger()]), getDocument });
+
+    await runtime.uiAdapter.project(request);
+    currentSource = dagger({ priceSp: 3 });
+    const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
+    expect(line.price).toMatchObject({ unitPriceCopper: 30, linePriceCopper: 30 });
+    request.draft.acquisition = { ...request.draft.acquisition!, lines: [line] };
+
+    await runtime.resolveSourceForApply({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+      entry: preparedEntry(line),
+    });
+    await runtime.resolveSourceForApply({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition: request.draft.acquisition,
+      entry: preparedEntry(line),
+    });
+    expect(getDocument).toHaveBeenCalledTimes(4);
+  });
+
   it("projects reviewed metadata for an ordinary cart line outside the bounded browse page", async () => {
     const browseSources = Array.from({ length: 12 }, (_, index) =>
       dagger({ id: `browse-${index}`, name: `Browse item ${String(index).padStart(2, "0")}` })
@@ -457,6 +634,7 @@ describe("equipment acquisition runtime", () => {
     const projection = await runtime.uiAdapter.project(request);
 
     expect(projection.records).toHaveLength(12);
+    expect(projection.matchedRecordCount).toBe(sources.length);
     expect(projection.records).not.toContainEqual(expect.objectContaining({ name: "Zed Off-Page Gear" }));
     expect(projection.lineRecords).toEqual([
       expect.objectContaining({
@@ -1865,6 +2043,7 @@ function fixture(
     readonly actor?: unknown;
     readonly ancestrySize?: "tiny" | "sm" | "med" | "lg" | "huge" | "grg";
     readonly sourceDiagnostics?: readonly EquipmentSourceDiagnostic[];
+    readonly browsePreparedRecordCacheLimit?: number;
   } = {}
 ): {
   runtime: EquipmentAcquisitionRuntime;
@@ -1909,6 +2088,7 @@ function fixture(
       preparePhysicalItem: options.preparePhysicalItem ?? prepareTestPhysicalItem,
       prepareDraftedActor: options.prepareDraftedActor ?? prepareTestDraftedActor,
       prepareKitExpansion: options.prepareKitExpansion,
+      browsePreparedRecordCacheLimit: options.browsePreparedRecordCacheLimit,
       mintLineId: () => "wf-line-test",
     }),
     request: {

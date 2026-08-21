@@ -1,3 +1,4 @@
+import { MODULE_ID } from "../../constants.js";
 import { cloneData } from "../../shared/cloning.js";
 import { resolveUuid } from "../../shared/foundry-compat.js";
 import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot, invalidateAcquisitionReview, normalizeAcquisitionDraft, recordPlannedClassGrants, } from "../domain/acquisition-draft.js";
@@ -11,6 +12,7 @@ import { materializedPhysicalItemSize, prepareTransientDraftedEquipmentActor, re
 import { sortEquipmentSourceDiagnostics } from "./equipment-source-policy.js";
 import { isQualifiedKitSource, prepareAdventurersPackExpansion } from "./pf2e-kit-adapter.js";
 import { registerStartingEquipmentUiAdapter, } from "./starting-equipment-ui-adapter.js";
+export const DEFAULT_BROWSE_PREPARED_RECORD_CACHE_LIMIT = 96;
 export class ConfiguredItemHandoffRequiredError extends Error {
     reason;
     constructor(reason) {
@@ -52,7 +54,30 @@ export function createEquipmentAcquisitionRuntime(options) {
     const preparePhysicalItem = options.preparePhysicalItem ?? prepareTransientPhysicalItem;
     const prepareDraftedActor = options.prepareDraftedActor ?? prepareTransientDraftedEquipmentActor;
     const prepareKitExpansion = options.prepareKitExpansion ?? prepareAdventurersPackExpansion;
+    const browsePreparedRecordCacheLimit = options.browsePreparedRecordCacheLimit ?? DEFAULT_BROWSE_PREPARED_RECORD_CACHE_LIMIT;
+    if (!Number.isSafeInteger(browsePreparedRecordCacheLimit) || browsePreparedRecordCacheLimit < 1) {
+        throw new TypeError("The equipment browse prepared-record cache limit must be a positive integer.");
+    }
     const catalogues = new Map();
+    const browsePreparedRecordCache = new Map();
+    const cachedBrowseRecord = (key) => {
+        const cached = browsePreparedRecordCache.get(key);
+        if (!cached)
+            return null;
+        browsePreparedRecordCache.delete(key);
+        browsePreparedRecordCache.set(key, cached);
+        return cloneData(cached);
+    };
+    const cacheBrowseRecord = (key, value) => {
+        browsePreparedRecordCache.delete(key);
+        browsePreparedRecordCache.set(key, cloneData(value));
+        while (browsePreparedRecordCache.size > browsePreparedRecordCacheLimit) {
+            const oldest = browsePreparedRecordCache.keys().next().value;
+            if (typeof oldest !== "string")
+                break;
+            browsePreparedRecordCache.delete(oldest);
+        }
+    };
     const catalogueFor = (policy) => {
         const packIds = [...new Set(policy.sourcePolicy.effectivePackIds)].sort((left, right) => left.localeCompare(right));
         const key = canonicalJson(packIds);
@@ -114,6 +139,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     state: "pending",
                     message: "Start the step above and the gear list loads here.",
                     query: request.query,
+                    matchedRecordCount: 0,
                     records: [],
                     filters: [],
                     activeFilters: request.filters,
@@ -134,12 +160,27 @@ export function createEquipmentAcquisitionRuntime(options) {
                 const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
                 const entries = projectedEntries.filter((entry) => entry.level <= maximumLevel);
                 const targetSize = await draftedEquipmentSize(request.actor, request.draft);
-                const visibleEntries = entries.filter((entry) => matchesCatalogueRequest(entry, request)).slice(0, 12);
+                const matchedEntries = entries.filter((entry) => matchesCatalogueRequest(entry, request));
+                const visibleEntries = matchedEntries.slice(0, 12);
+                const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
                 const records = await Promise.all(visibleEntries.map(async (entry) => {
                     if (entry.price.kind !== "priced" ||
                         entry.unavailableReasons.some((reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available")) {
                         return toUiRecord(entry);
                     }
+                    const browseCacheKey = actorPricingFingerprint
+                        ? equipmentBrowsePreparedRecordCacheKey({
+                            projectionCacheKey: projection.cacheKey,
+                            entry,
+                            actorPricingFingerprint,
+                            accessFactsFingerprint: context.draft.accessFactsFingerprint,
+                            targetLevel: policy.targetLevel,
+                            targetSize,
+                        })
+                        : null;
+                    const cached = browseCacheKey ? cachedBrowseRecord(browseCacheKey) : null;
+                    if (cached)
+                        return cached;
                     const resolved = await catalogue.resolveForApply(context, entry.sourceUuid);
                     try {
                         const priced = await buildResolvedPrice({
@@ -152,13 +193,23 @@ export function createEquipmentAcquisitionRuntime(options) {
                             prepareConfiguredItem,
                             preparePhysicalItem,
                         });
-                        return toUiRecord(entry, priced.price);
+                        const record = toUiRecord(entry, priced.price);
+                        if (browseCacheKey)
+                            cacheBrowseRecord(browseCacheKey, record);
+                        return record;
                     }
                     catch (error) {
-                        if (error instanceof ConfiguredItemHandoffRequiredError)
-                            return toUiRecord(entry);
+                        if (error instanceof ConfiguredItemHandoffRequiredError) {
+                            const record = toUiRecord(entry);
+                            if (browseCacheKey)
+                                cacheBrowseRecord(browseCacheKey, record);
+                            return record;
+                        }
                         if (error instanceof PartialUnitPriceRequiredError) {
-                            return { ...toUiRecord(entry, null), available: false, unavailableReason: error.message };
+                            const record = { ...toUiRecord(entry, null), available: false, unavailableReason: error.message };
+                            if (browseCacheKey)
+                                cacheBrowseRecord(browseCacheKey, record);
+                            return record;
                         }
                         throw error;
                     }
@@ -180,6 +231,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     message: `${entries.length} piece${entries.length === 1 ? "" : "s"} of gear to browse.`,
                     diagnostics: [],
                     query: request.query,
+                    matchedRecordCount: matchedEntries.length,
                     records,
                     lineRecords,
                     filters: catalogueFilters(entries),
@@ -196,6 +248,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                         : "The gear list would not load. Ask your GM to check the approved equipment sources.",
                     diagnostics: error instanceof EquipmentSourceHealthError ? error.diagnostics : [],
                     query: request.query,
+                    matchedRecordCount: 0,
                     records: [],
                     filters: [],
                     activeFilters: request.filters,
@@ -557,6 +610,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             }
         },
         invalidatePack(packId) {
+            browsePreparedRecordCache.clear();
             for (const catalogue of catalogues.values())
                 catalogue.invalidatePack(packId);
         },
@@ -1331,6 +1385,63 @@ function sortedRecord(input) {
 }
 function uniqueSorted(values) {
     return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+function equipmentBrowsePreparedRecordCacheKey(input) {
+    return fingerprintRuntimeMaterial("equipment-browse-prepared-record-v1", {
+        projectionCacheKey: input.projectionCacheKey,
+        evaluatedEntry: input.entry,
+        actorPricingFingerprint: input.actorPricingFingerprint,
+        accessFactsFingerprint: input.accessFactsFingerprint,
+        targetLevel: input.targetLevel,
+        targetSize: input.targetSize,
+    });
+}
+function fingerprintActorPricingContext(actor) {
+    try {
+        const actorRecord = record(actor);
+        const toObject = actorRecord.toObject;
+        const source = typeof toObject === "function" ? toObject.call(actor, true) : actor;
+        const actorSource = record(source);
+        return fingerprintRuntimeMaterial("equipment-actor-pricing-v1", {
+            type: actorSource.type ?? actorRecord.type ?? null,
+            system: cloneData(actorSource.system ?? actorRecord.system ?? {}),
+            items: pricingEmbeddedDocuments(actorSource.items ?? actorRecord.items),
+            effects: pricingEmbeddedDocuments(actorSource.effects ?? actorRecord.effects),
+            flags: flagsWithoutWayfinder(actorSource.flags ?? actorRecord.flags),
+        });
+    }
+    catch {
+        return null;
+    }
+}
+function pricingEmbeddedDocuments(value) {
+    const collection = Array.isArray(value)
+        ? value
+        : Array.isArray(record(value).contents)
+            ? record(value).contents
+            : [];
+    return collection.map((document) => {
+        const documentRecord = record(document);
+        const toObject = documentRecord.toObject;
+        const source = typeof toObject === "function" ? toObject.call(document, true) : document;
+        const cloned = cloneData(record(source));
+        cloned.flags = flagsWithoutWayfinder(cloned.flags);
+        return cloned;
+    });
+}
+function flagsWithoutWayfinder(value) {
+    const flags = cloneData(record(value));
+    delete flags[MODULE_ID];
+    return flags;
+}
+function fingerprintRuntimeMaterial(namespace, value) {
+    const text = canonicalJson({ namespace, value });
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < text.length; index += 1) {
+        hash ^= text.charCodeAt(index);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return `${namespace}-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 function canonicalJson(value) {
     if (Array.isArray(value))

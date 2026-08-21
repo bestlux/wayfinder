@@ -23,6 +23,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
     const matchingRecords = catalogueReady
         ? catalogue.records.filter((record) => matchesQuery(record, catalogue.query) && matchesFilters(record, catalogue.activeFilters))
         : [];
+    const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
     const records = matchingRecords.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS).map((record) => {
         const affordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
         const canBuyWithCurrency = record.available && record.level < step.level && affordable;
@@ -204,7 +205,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         },
         catalogue: {
             state: catalogue.state,
-            message: catalogueMessage(catalogue.state, acquisition !== null, matchingRecords.length, localize),
+            message: catalogueMessage(catalogue.state, acquisition !== null, matchedRecordCount, localize),
             diagnostics: sourceDiagnostics.map((diagnostic) => ({
                 ...diagnostic,
                 message: localizeEquipmentSourceDiagnostic(localize, diagnostic),
@@ -216,7 +217,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
                 label: catalogueFilterLabel(filter.key, filter.value, filter.label, localize),
                 selected: catalogue.activeFilters[filter.key]?.includes(filter.value) ?? false,
             })),
-            totalResultCount: matchingRecords.length,
+            totalResultCount: matchedRecordCount,
             visibleResultCount: records.length,
             items: records,
             preview,

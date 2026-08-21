@@ -16,6 +16,8 @@ export interface StartingEquipmentCatalogueProjection {
   readonly message: string;
   readonly diagnostics?: readonly EquipmentSourceDiagnostic[];
   readonly query: string;
+  /** Uncapped query/facet matches after the active recipe's level boundary is applied. */
+  readonly matchedRecordCount: number;
   readonly records: readonly StartingEquipmentCatalogueRecord[];
   /** Stable metadata for reviewed cart lines that are outside the bounded browse page. */
   readonly lineRecords?: readonly StartingEquipmentCatalogueRecord[];
@@ -68,6 +70,7 @@ export function buildStartingEquipmentPane(
         (record) => matchesQuery(record, catalogue.query) && matchesFilters(record, catalogue.activeFilters)
       )
     : [];
+  const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
   const records = matchingRecords.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS).map((record) => {
     const affordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
     const canBuyWithCurrency = record.available && record.level < step.level && affordable;
@@ -280,7 +283,7 @@ export function buildStartingEquipmentPane(
     },
     catalogue: {
       state: catalogue.state,
-      message: catalogueMessage(catalogue.state, acquisition !== null, matchingRecords.length, localize),
+      message: catalogueMessage(catalogue.state, acquisition !== null, matchedRecordCount, localize),
       diagnostics: sourceDiagnostics.map((diagnostic) => ({
         ...diagnostic,
         message: localizeEquipmentSourceDiagnostic(localize, diagnostic),
@@ -292,7 +295,7 @@ export function buildStartingEquipmentPane(
         label: catalogueFilterLabel(filter.key, filter.value, filter.label, localize),
         selected: catalogue.activeFilters[filter.key]?.includes(filter.value) ?? false,
       })),
-      totalResultCount: matchingRecords.length,
+      totalResultCount: matchedRecordCount,
       visibleResultCount: records.length,
       items: records,
       preview,

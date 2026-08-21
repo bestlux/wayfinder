@@ -1,3 +1,5 @@
+import { physicalGrantRouteById } from "../../scripts/wayfinder/domain/physical-grant-route-registry.js";
+
 const commonAncestry = ["Cooperative Nature", "Haughty Obstinacy"];
 const commonGeneral = ["Toughness", "Fleet"];
 const commonSkills = ["acrobatics", "athletics", "crafting", "diplomacy", "medicine", "nature", "religion", "society"];
@@ -112,8 +114,10 @@ export const expectedPf2eClassSlugs = [
 
 function classCase({
   applyTimeoutMs,
+  caseKind = "character-build",
   className,
   classSlug,
+  expectedOutcome = "applied",
   keyAbility,
   expectedAppliedSpellRarityAttestations = [],
   expectedStepIds = [],
@@ -129,6 +133,7 @@ function classCase({
     id: `${classSlug}-l1-l5-apply-rerun`,
     label: `${className} level 1 through 5 apply/rerun`,
     ...(applyTimeoutMs === undefined ? {} : { applyTimeoutMs }),
+    caseKind,
     className,
     classSlug,
     deityName,
@@ -137,6 +142,7 @@ function classCase({
     spellChoiceMode,
     spellRarityAttestations,
     expectedAppliedSpellRarityAttestations,
+    expectedOutcome,
     expectedStepIds,
     expectedSkillRanks,
     expectedSpellChoiceCounts,
@@ -148,6 +154,28 @@ function classCase({
     },
     preferredSkills,
   };
+}
+
+function registeredPhysicalGrantRejection(routeId, sourceSlotId) {
+  const route = physicalGrantRouteById(routeId);
+  const activationVariant = route?.classification === "unsupported-handoff" ? route.activationVariants[0] : null;
+  if (
+    route?.classification !== "unsupported-handoff" ||
+    route.blocker.preReview !== true ||
+    route.activationVariants.length !== 1 ||
+    activationVariant?.length !== 1
+  ) {
+    throw new TypeError(`Smoke rejection route ${routeId} must resolve to one executable registry requirement.`);
+  }
+  return Object.freeze({
+    kind: "registered-physical-grant-rejection",
+    routeId: route.routeId,
+    classification: route.classification,
+    preReview: route.blocker.preReview,
+    reasonCode: route.blocker.reasonCode,
+    sourceUuid: activationVariant[0].sourceUuid,
+    sourceSlotId,
+  });
 }
 
 function depthCase({
@@ -871,6 +899,11 @@ export const smokeCases = [
   classCase({
     className: "Inventor",
     classSlug: "inventor",
+    caseKind: "expected-rejection",
+    expectedOutcome: registeredPhysicalGrantRejection(
+      "inventor-armor-innovation",
+      "class-branch-innovation-level-1"
+    ),
     keyAbility: "int",
     expectedStepIds: ["class-choice-armor-innovation-armorInnovation-level-1", "class-branch-innovation-level-1"],
     preferredSelections: {
@@ -1125,6 +1158,11 @@ export const smokeCases = [
   classCase({
     className: "Thaumaturge",
     classSlug: "thaumaturge",
+    caseKind: "expected-rejection",
+    expectedOutcome: registeredPhysicalGrantRejection(
+      "thaumaturge-amulet-implement",
+      "class-branch-first-implement-and-esoterica-level-1"
+    ),
     keyAbility: "cha",
     expectedStepIds: [
       "class-choice-initiate-benefit-wand-initiateBenefitWand-level-1",

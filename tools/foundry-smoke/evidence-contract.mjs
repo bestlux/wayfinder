@@ -4,6 +4,8 @@ import {
   validateAcquisitionSmokeCaseDefinition,
 } from "./acquisition-cases.mjs";
 import { normalizeCompletedAcquisitionManifest } from "../../scripts/wayfinder/domain/completed-acquisition-manifest.js";
+import { physicalGrantRouteById } from "../../scripts/wayfinder/domain/physical-grant-route-registry.js";
+import { buildSpellRarityAttestationReviewLines } from "../../scripts/wayfinder/spell-choice/rarity-attestation.js";
 
 export const SMOKE_EVIDENCE_SCHEMA_VERSION = 4;
 
@@ -165,12 +167,16 @@ export function qualifySmokeResult(resultInput, caseDefinitions = []) {
     const definition = definitionsById.get(smokeCase.id) ?? {};
     const caseKind = definition.caseKind ?? "character-build";
     const findings = [
+      ...(!["character-build", "acquisition", "expected-rejection"].includes(caseKind)
+        ? [finding("invalid-case-kind", smokeCase.id, `Unsupported smoke case kind ${String(caseKind)}.`)]
+        : []),
       ...caseShapeFindings(smokeCase),
       ...classificationFindings(smokeCase),
       ...actorEvidenceFindings(smokeCase.actor, definition.sourceGroupExpectations ?? []),
       ...definitionActorOutcomeFindings(smokeCase.actor, definition),
       ...applySafetyEvidenceFindings(smokeCase, definition),
       ...(caseKind === "character-build" ? characterBuildEvidenceFindings(smokeCase, definition) : []),
+      ...(caseKind === "expected-rejection" ? expectedRejectionEvidenceFindings(smokeCase, definition) : []),
       ...acquisitionEnvelopeFindings(smokeCase),
       ...(caseKind === "acquisition" ? acquisitionEvidenceFindings(smokeCase, definition, result) : []),
     ];
@@ -395,7 +401,7 @@ function characterBuildEvidenceFindings(smokeCase, definition) {
   const applyReview = evidence?.applyReview;
   const appliedAttestations = actor?.moduleStateAfterApply?.lastAppliedSpellRarityAttestations;
   const expectedReviewLines = validAppliedSpellRarityAttestations(appliedAttestations)
-    ? appliedAttestations.map(spellRarityAttestationReviewLine)
+    ? buildSpellRarityAttestationReviewLines(appliedAttestations)
     : null;
   if (
     !exactObjectKeys(applyReview, APPLY_REVIEW_KEYS) ||
@@ -413,6 +419,95 @@ function characterBuildEvidenceFindings(smokeCase, definition) {
     );
   }
   return findings;
+}
+
+function expectedRejectionEvidenceFindings(smokeCase, definition) {
+  const subject = String(smokeCase?.id ?? "case");
+  const evidence = smokeCase?.evidence?.expectedRejection;
+  const expected = definition?.expectedOutcome;
+  const registryBlockers = evidence?.registryBlockers;
+  const registryRoute = evidence?.registryRoute;
+  const executableRoute = physicalGrantRouteById(String(expected?.routeId ?? ""));
+  const matchedBlocker = Array.isArray(registryBlockers)
+    ? registryBlockers.find((blocker) => blocker?.routeId === expected?.routeId)
+    : null;
+  const actorBefore = evidence?.actorBefore;
+  const actorAfter = evidence?.actorAfter;
+  const findings = [];
+  if (
+    expected?.kind !== "registered-physical-grant-rejection" ||
+    evidence?.kind !== expected.kind ||
+    !structuredValueEquals(evidence?.expectedOutcome, expected) ||
+    !Array.isArray(registryBlockers) ||
+    registryBlockers.length !== 1 ||
+    matchedBlocker?.code !== "unsupported-physical-grant" ||
+    matchedBlocker?.reasonCode !== expected?.reasonCode ||
+    matchedBlocker?.sourceSlotId !== expected?.sourceSlotId ||
+    matchedBlocker?.sourceUuid !== expected?.sourceUuid ||
+    !nonEmptyString(matchedBlocker?.message) ||
+    registryRoute?.routeId !== expected?.routeId ||
+    !structuredValueEquals(registryRoute, executableRoute) ||
+    registryRoute?.classification !== expected?.classification ||
+    executableRoute?.classification !== "unsupported-handoff" ||
+    registryRoute?.blocker?.preReview !== expected?.preReview ||
+    registryRoute?.blocker?.reasonCode !== expected?.reasonCode ||
+    !registryRoute?.activationVariants?.some((variant) =>
+      variant.some((requirement) => requirement?.sourceUuid === expected?.sourceUuid)
+    )
+  ) {
+    findings.push(
+      finding(
+        "invalid-expected-physical-grant-rejection",
+        subject,
+        "Expected rejection must name one exact active unsupported route, reason, source slot, and source UUID from the runtime registry."
+      )
+    );
+  }
+  if (
+    evidence?.rejection?.errorName !== "StartingEquipmentPhysicalGrantCoverageError" ||
+    evidence?.rejection?.isTypedProductRejection !== true ||
+    !structuredValueEquals(evidence?.rejection?.blocker, matchedBlocker) ||
+    evidence?.rejection?.message !== matchedBlocker?.message ||
+    evidence?.confirmationMessage !== null ||
+    smokeCase?.evidence?.applyReview?.confirmationMessage !== null ||
+    !structuredValueEquals(smokeCase?.evidence?.applyReview?.reviewLines, [])
+  ) {
+    findings.push(
+      finding(
+        "expected-rejection-after-review",
+        subject,
+        "The registered physical-grant route must stop at the typed product command boundary before equipment review."
+      )
+    );
+  }
+  if (
+    !actorBefore ||
+    !actorAfter ||
+    !structuredValueEquals(actorBefore, actorAfter) ||
+    !structuredValueEquals(actorAfter, withoutDerivedActorEvidence(smokeCase?.actor)) ||
+    !/^[0-9a-f]{64}$/u.test(evidence?.actorSourceFingerprintBefore ?? "") ||
+    evidence?.actorSourceFingerprintBefore !== evidence?.actorSourceFingerprintAfter ||
+    (actorBefore?.moduleStateAfterApply?.completedAcquisitionManifest ?? null) !== null ||
+    (actorAfter?.moduleStateAfterApply?.completedAcquisitionManifest ?? null) !== null ||
+    smokeCase?.evidence?.acquisition?.manifest !== null
+  ) {
+    findings.push(
+      finding(
+        "expected-rejection-mutated-actor",
+        subject,
+        "Expected rejection must leave the complete actor snapshot unchanged and persist no acquisition manifest."
+      )
+    );
+  }
+  return findings;
+}
+
+function withoutDerivedActorEvidence(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const snapshot = { ...value };
+  delete snapshot.sourceGroups;
+  delete snapshot.sourceIdentityConflicts;
+  return snapshot;
 }
 
 function applySafetyEvidenceFindings(smokeCase, definition) {
@@ -1306,15 +1401,6 @@ function validExpectedSpellSelections(value) {
     ) &&
     new Set(value.map((selection) => selection.uuid)).size === value.length
   );
-}
-
-function spellRarityAttestationReviewLine(attestation) {
-  const basis =
-    attestation.claimedBasis === "rules-access"
-      ? "A character or rules Access"
-      : "GM said yes, per the player";
-  const spells = attestation.selectedSpells.map((spell) => spell.name).join(", ") || "no selected spells";
-  return `Access note, the player's word and not a Wayfinder check: ${attestation.subjectLabel}; ${basis}; ${spells}; written by ${attestation.authorName} at ${attestation.attestedAt}; reason: ${attestation.reason}`;
 }
 
 function structuredValueEquals(left, right) {

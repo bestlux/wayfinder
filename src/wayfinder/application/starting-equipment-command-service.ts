@@ -31,6 +31,7 @@ import type {
   OfficialEquipmentRecipe,
 } from "../domain/equipment-policy.js";
 import { createEquipmentPolicyRequest, equipmentPolicyJudgmentFactsEqual } from "../domain/equipment-policy.js";
+import { type PhysicalGrantCoverageBlocker, physicalGrantCoverageBlockers } from "../domain/physical-grant-coverage.js";
 import type { AcquisitionLocalizedMessage } from "./acquisition-localization.js";
 import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class-grant-projection-service.js";
 import type { EconomicActorLike } from "./economic-baseline-service.js";
@@ -94,6 +95,20 @@ export interface StartingEquipmentCommandResult {
   readonly policyRequests: readonly EquipmentPolicyRequestV1[];
 }
 
+export class StartingEquipmentPhysicalGrantCoverageError extends Error {
+  readonly blocker: PhysicalGrantCoverageBlocker;
+  readonly blockers: readonly PhysicalGrantCoverageBlocker[];
+
+  constructor(blockers: readonly PhysicalGrantCoverageBlocker[]) {
+    const blocker = blockers[0];
+    if (!blocker) throw new TypeError("A physical-grant coverage error requires at least one blocker.");
+    super(blocker.message);
+    this.name = "StartingEquipmentPhysicalGrantCoverageError";
+    this.blocker = Object.freeze({ ...blocker });
+    this.blockers = Object.freeze(blockers.map((entry) => Object.freeze({ ...entry })));
+  }
+}
+
 interface StartingEquipmentCommandDependencies {
   readonly mintIdentity: typeof mintAcquisitionIdentitySeed;
   readonly resolvePolicy: typeof resolveEquipmentPolicyForActor;
@@ -114,6 +129,10 @@ interface StartingEquipmentCommandDependencies {
   ) => ReturnType<ReturnType<typeof getFoundryEquipmentAcquisitionRuntime>["resolveItemExceptionFacts"]>;
   readonly evaluateAdmission: typeof evaluateActorEconomicAdmission;
   readonly evaluateLedger: typeof evaluateAcquisitionLedger;
+  readonly resolvePhysicalGrantCoverageBlockers: (
+    draft: DraftState,
+    steps: readonly PendingStep[]
+  ) => readonly PhysicalGrantCoverageBlocker[];
 }
 
 const DEFAULT_DEPS: StartingEquipmentCommandDependencies = {
@@ -135,6 +154,7 @@ const DEFAULT_DEPS: StartingEquipmentCommandDependencies = {
   resolveItemExceptionFacts: (request) => getFoundryEquipmentAcquisitionRuntime().resolveItemExceptionFacts(request),
   evaluateAdmission: evaluateActorEconomicAdmission,
   evaluateLedger: evaluateAcquisitionLedger,
+  resolvePhysicalGrantCoverageBlockers: physicalGrantCoverageBlockers,
 };
 
 export async function executeStartingEquipmentCommand(
@@ -147,6 +167,7 @@ export async function executeStartingEquipmentCommand(
   if (context.draft.acquisitionCorrupt) {
     throw new TypeError("The starting-equipment draft is malformed and cannot be changed.");
   }
+  assertPhysicalGrantPreReviewBoundary(command, context, deps);
   const before = context.draft.acquisition;
   let acquisition: AcquisitionDraftState;
   let policyRequests: readonly EquipmentPolicyRequestV1[] = context.draft.equipmentPolicyRequests;
@@ -526,6 +547,21 @@ export async function executeStartingEquipmentCommand(
     status,
     policyRequests,
   };
+}
+
+const PHYSICAL_GRANT_RECOVERY_COMMANDS = new Set<StartingEquipmentCommand["type"]>([
+  "remove-line",
+  "revoke-policy-judgment",
+]);
+
+function assertPhysicalGrantPreReviewBoundary(
+  command: StartingEquipmentCommand,
+  context: StartingEquipmentCommandContext,
+  deps: StartingEquipmentCommandDependencies
+): void {
+  if (PHYSICAL_GRANT_RECOVERY_COMMANDS.has(command.type)) return;
+  const blockers = deps.resolvePhysicalGrantCoverageBlockers(context.draft, context.steps);
+  if (blockers.length > 0) throw new StartingEquipmentPhysicalGrantCoverageError(blockers);
 }
 
 function message(key: string, values?: AcquisitionLocalizedMessage["values"]): AcquisitionLocalizedMessage {

@@ -4,10 +4,24 @@ import { mintAcquisitionIdentitySeed } from "../domain/acquisition-identity.js";
 import { createAcquisitionPriceSnapshot, evaluateAcquisitionLedger, reviewPurchaseLedger, reviewRetainAll, } from "../domain/acquisition-ledger.js";
 import { createPreparedClassGrantPlan } from "../domain/class-grant-reconciliation.js";
 import { createEquipmentPolicyRequest, equipmentPolicyJudgmentFactsEqual } from "../domain/equipment-policy.js";
+import { physicalGrantCoverageBlockers } from "../domain/physical-grant-coverage.js";
 import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class-grant-projection-service.js";
 import { evaluateActorEconomicAdmission } from "./economic-baseline-service.js";
 import { getFoundryEquipmentAcquisitionRuntime, } from "./equipment-acquisition-runtime-service.js";
 import { createOwnerStartAttestation, resolveEquipmentPolicyForActor, revokeTrustedEquipmentPolicyJudgment, saveTrustedEquipmentPolicyJudgment, } from "./equipment-policy-service.js";
+export class StartingEquipmentPhysicalGrantCoverageError extends Error {
+    blocker;
+    blockers;
+    constructor(blockers) {
+        const blocker = blockers[0];
+        if (!blocker)
+            throw new TypeError("A physical-grant coverage error requires at least one blocker.");
+        super(blocker.message);
+        this.name = "StartingEquipmentPhysicalGrantCoverageError";
+        this.blocker = Object.freeze({ ...blocker });
+        this.blockers = Object.freeze(blockers.map((entry) => Object.freeze({ ...entry })));
+    }
+}
 const DEFAULT_DEPS = {
     mintIdentity: mintAcquisitionIdentitySeed,
     resolvePolicy: resolveEquipmentPolicyForActor,
@@ -26,6 +40,7 @@ const DEFAULT_DEPS = {
     resolveItemExceptionFacts: (request) => getFoundryEquipmentAcquisitionRuntime().resolveItemExceptionFacts(request),
     evaluateAdmission: evaluateActorEconomicAdmission,
     evaluateLedger: evaluateAcquisitionLedger,
+    resolvePhysicalGrantCoverageBlockers: physicalGrantCoverageBlockers,
 };
 export async function executeStartingEquipmentCommand(command, context, dependencyOverrides = {}) {
     const deps = { ...DEFAULT_DEPS, ...dependencyOverrides };
@@ -33,6 +48,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
     if (context.draft.acquisitionCorrupt) {
         throw new TypeError("The starting-equipment draft is malformed and cannot be changed.");
     }
+    assertPhysicalGrantPreReviewBoundary(command, context, deps);
     const before = context.draft.acquisition;
     let acquisition;
     let policyRequests = context.draft.equipmentPolicyRequests;
@@ -379,6 +395,17 @@ export async function executeStartingEquipmentCommand(command, context, dependen
         status,
         policyRequests,
     };
+}
+const PHYSICAL_GRANT_RECOVERY_COMMANDS = new Set([
+    "remove-line",
+    "revoke-policy-judgment",
+]);
+function assertPhysicalGrantPreReviewBoundary(command, context, deps) {
+    if (PHYSICAL_GRANT_RECOVERY_COMMANDS.has(command.type))
+        return;
+    const blockers = deps.resolvePhysicalGrantCoverageBlockers(context.draft, context.steps);
+    if (blockers.length > 0)
+        throw new StartingEquipmentPhysicalGrantCoverageError(blockers);
 }
 function message(key, values) {
     return values

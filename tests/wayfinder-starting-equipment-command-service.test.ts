@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyDraft, normalizeState } from "../src/draft-service";
 import { localizeAcquisitionMessage } from "../src/wayfinder/application/acquisition-localization";
 import { EquipmentSourceHealthError } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
@@ -6,6 +6,7 @@ import { WayfinderGmCommandAuthorityError } from "../src/wayfinder/application/g
 import {
   executeStartingEquipmentCommand,
   type StartingEquipmentCommandContext,
+  StartingEquipmentPhysicalGrantCoverageError,
 } from "../src/wayfinder/application/starting-equipment-command-service";
 import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
 import {
@@ -26,6 +27,14 @@ import { acquisitionFixture, acquisitionLine, acquisitionPrice } from "./fixture
 import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
 
 describe("starting equipment command service", () => {
+  beforeEach(() => {
+    vi.stubGlobal("game", { system: { id: "pf2e", version: "8.4.1" } });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("stages a higher-level identity before draft-bound authority exists", async () => {
     const context = commandContext(null, 5);
     const resolvePolicy = vi.fn();
@@ -915,6 +924,155 @@ describe("starting equipment command service", () => {
     expect(evaluateAdmission).not.toHaveBeenCalled();
   });
 
+  it("rejects an exact registered physical route before higher-level identity or acquisition work", async () => {
+    const context = unsupportedArmorCommandContext(null, 5);
+    const before = structuredClone(context.draft);
+    const mintIdentity = vi.fn();
+    const saveJudgment = vi.fn();
+    const projectClassGrants = vi.fn();
+    const prepareClassGrantPlan = vi.fn();
+    const prepareNativeGrantLines = vi.fn();
+    const evaluateAdmission = vi.fn();
+
+    const rejection = executeStartingEquipmentCommand({ type: "initialize" }, context, {
+      mintIdentity,
+      saveJudgment,
+      projectClassGrants,
+      prepareClassGrantPlan,
+      prepareNativeGrantLines,
+      evaluateAdmission,
+    } as never);
+
+    const error = await rejection.catch((reason) => reason);
+    expect(error).toBeInstanceOf(StartingEquipmentPhysicalGrantCoverageError);
+    expect(error).toMatchObject({
+      blocker: {
+        code: "unsupported-physical-grant",
+        routeId: "inventor-armor-innovation",
+        reasonCode: "unprofiled-native-grant",
+        sourceSlotId: "class-branch-innovation-level-1",
+        sourceUuid: "Compendium.pf2e.classfeatures.Item.fpwtpm8pdwO1I6MO",
+      },
+    });
+    expect(context.draft).toEqual(before);
+    for (const operation of [
+      mintIdentity,
+      saveJudgment,
+      projectClassGrants,
+      prepareClassGrantPlan,
+      prepareNativeGrantLines,
+      evaluateAdmission,
+    ]) {
+      expect(operation).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    { label: "unknown", game: undefined },
+    { label: "drifted", game: { system: { id: "pf2e", version: "8.4.2" } } },
+  ])("rejects a $label PF2E coverage version before any initialization operation", async ({ game }) => {
+    vi.stubGlobal("game", game);
+    const context = commandContext(null);
+    const before = structuredClone(context.draft);
+    const mintIdentity = vi.fn();
+    const saveJudgment = vi.fn();
+    const projectClassGrants = vi.fn();
+    const prepareClassGrantPlan = vi.fn();
+    const prepareNativeGrantLines = vi.fn();
+    const evaluateAdmission = vi.fn();
+
+    await expect(
+      executeStartingEquipmentCommand({ type: "initialize" }, context, {
+        mintIdentity,
+        saveJudgment,
+        projectClassGrants,
+        prepareClassGrantPlan,
+        prepareNativeGrantLines,
+        evaluateAdmission,
+      } as never)
+    ).rejects.toMatchObject({
+      name: "StartingEquipmentPhysicalGrantCoverageError",
+      blocker: {
+        code: "coverage-version-mismatch",
+        routeId: "pf2e-version-pin",
+        reasonCode: "pf2e-version-mismatch",
+        sourceSlotId: null,
+        sourceUuid: null,
+      },
+    });
+    expect(context.draft).toEqual(before);
+    for (const operation of [
+      mintIdentity,
+      saveJudgment,
+      projectClassGrants,
+      prepareClassGrantPlan,
+      prepareNativeGrantLines,
+      evaluateAdmission,
+    ]) {
+      expect(operation).not.toHaveBeenCalled();
+    }
+  });
+
+  it("rejects a legacy staged higher-level draft before GM approval can persist judgment", async () => {
+    const context = commandContext(null, 5);
+    const initialized = await executeStartingEquipmentCommand({ type: "initialize" }, context, {
+      mintIdentity: vi.fn(() => ({ draftId: "draft-5", batchId: "batch-5", manifestId: "manifest-5" })),
+      getWorldPolicy: vi.fn(() => DEFAULT_EQUIPMENT_WORLD_POLICY),
+    });
+    context.draft.acquisition = initialized.acquisition;
+    const requested = await executeStartingEquipmentCommand(
+      { type: "request-higher-level-start", startKind: "new-campaign", reason: "Request" },
+      context,
+      { mintRequestId: vi.fn(() => "request-5") }
+    );
+    context.draft.equipmentPolicyRequests = [...requested.policyRequests];
+    const guarded = unsupportedArmorCommandContext(context.draft.acquisition, 5);
+    guarded.draft.equipmentPolicyRequests = [...context.draft.equipmentPolicyRequests];
+    const before = structuredClone(guarded.draft);
+    const saveJudgment = vi.fn();
+    const projectClassGrants = vi.fn();
+    const prepareClassGrantPlan = vi.fn();
+    const prepareNativeGrantLines = vi.fn();
+    const evaluateAdmission = vi.fn();
+
+    await expect(
+      executeStartingEquipmentCommand(
+        { type: "approve-policy-request", requestId: "request-5", reason: "Approve" },
+        guarded,
+        { saveJudgment, projectClassGrants, prepareClassGrantPlan, prepareNativeGrantLines, evaluateAdmission } as never
+      )
+    ).rejects.toMatchObject({
+      name: "StartingEquipmentPhysicalGrantCoverageError",
+      blocker: { routeId: "inventor-armor-innovation", reasonCode: "unprofiled-native-grant" },
+    });
+    expect(guarded.draft).toEqual(before);
+    for (const operation of [
+      saveJudgment,
+      projectClassGrants,
+      prepareClassGrantPlan,
+      prepareNativeGrantLines,
+      evaluateAdmission,
+    ]) {
+      expect(operation).not.toHaveBeenCalled();
+    }
+  });
+
+  it("preserves line-removal recovery when a newly selected route becomes unsupported", async () => {
+    const fixture = acquisitionFixture();
+    const context = unsupportedArmorCommandContext(fixture.draft, fixture.draft.targetLevel);
+    const lineId = context.draft.acquisition!.lines[0]!.lineId;
+    const resolvePhysicalGrantCoverageBlockers = vi.fn(() => {
+      throw new Error("Recovery commands must not enter the pre-review blocker.");
+    });
+
+    const result = await executeStartingEquipmentCommand({ type: "remove-line", lineId }, context, {
+      resolvePhysicalGrantCoverageBlockers,
+    });
+
+    expect(result.acquisition.lines.some((line) => line.lineId === lineId)).toBe(false);
+    expect(resolvePhysicalGrantCoverageBlockers).not.toHaveBeenCalled();
+  });
+
   it.each([
     { type: "review-purchases" as const },
     { type: "retain-all" as const },
@@ -992,6 +1150,19 @@ function commandContext(
     userId: "owner-1",
     now: () => "2026-08-19T20:00:00.000Z",
   };
+}
+
+function unsupportedArmorCommandContext(
+  acquisition: ReturnType<typeof acquisitionFixture>["draft"] | null,
+  targetLevel?: number
+): StartingEquipmentCommandContext {
+  const context = commandContext(acquisition, targetLevel);
+  const slotId = "class-branch-innovation-level-1";
+  context.draft.branchSelections[slotId] = {
+    slotId,
+    uuid: "Compendium.pf2e.classfeatures.Item.fpwtpm8pdwO1I6MO",
+  } as never;
+  return { ...context, steps: [{ slotId } as never, ...context.steps] };
 }
 
 function ledgerDependencies(fixture: ReturnType<typeof acquisitionFixture>) {

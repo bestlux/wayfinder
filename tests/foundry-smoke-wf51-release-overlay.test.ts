@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { physicalGrantRouteById } from "../src/wayfinder/domain/physical-grant-route-registry";
+import { smokeCases } from "../tools/foundry-smoke/class-cases.mjs";
 
 import {
   collectWf51ActorIds,
@@ -71,7 +73,11 @@ describe("WF-080-51 focused live release overlay", () => {
       { route: "focused", caseId: "level-5-permanent-recipe" },
     ]);
     expect((wf51ReleaseOverlayRows[13] as any).evidenceRefs).toEqual(
-      expect.arrayContaining([{ route: "matrix", caseId: "alchemist-l1-l5-apply-rerun" }])
+      expect.arrayContaining([
+        { route: "matrix", caseId: "alchemist-l1-l5-apply-rerun" },
+        { route: "matrix", caseId: "inventor-l1-l5-apply-rerun" },
+        { route: "matrix", caseId: "thaumaturge-l1-l5-apply-rerun" },
+      ])
     );
     expect(wf51FocusedCases[0]).toMatchObject({ actorCount: 2, targetLevel: 5, existingImportLevel: 7 });
   });
@@ -118,6 +124,9 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(coreBrowserSuite).toContain("executeAcquisitionItems");
     expect(coreBrowserSuite).toContain("persistCurrencyConvergenceWitness");
     expect(coreBrowserSuite).toContain("completedAcquisitionManifest");
+    expect(coreBrowserSuite).toContain("physicalGrantCoverageBlockers");
+    expect(coreBrowserSuite).toContain('expectedOutcome?.kind === "registered-physical-grant-rejection"');
+    expect(coreBrowserSuite).not.toContain("Player attestation — not GM authorization");
     expect(classCases).toMatch(
       /className: "Swashbuckler"[\s\S]*"class-branch-swashbucklers-style-level-1": \["Fencer"\][\s\S]*expectedSkillRanks: \{ deception: 1 \}/u
     );
@@ -268,6 +277,25 @@ describe("WF-080-51 focused live release overlay", () => {
     replacedIncrementalManifest[1].result.cases[1].evidence.acquisition.retry.finalManifestId = "manifest-replaced";
     expect(qualifyFreshWf51Matrix(replacedIncrementalManifest)).toEqual(
       expect.arrayContaining([expect.stringMatching(/prevented a second acquisition/i)])
+    );
+
+    const rejectedRouteWroteCurrency = matrixChildren();
+    const inventor = rejectedRouteWroteCurrency[0].result.cases.find(
+      (entry: any) => entry.id === "inventor-l1-l5-apply-rerun"
+    );
+    inventor.evidence.expectedRejection.actorAfter.currencyCopper = 1;
+    expect(qualifyFreshWf51Matrix(rejectedRouteWroteCurrency)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/registered pre-review zero-write rejection/i)])
+    );
+
+    const rejectedRouteSwapped = matrixChildren();
+    const swappedInventor = rejectedRouteSwapped[0].result.cases.find(
+      (entry: any) => entry.id === "inventor-l1-l5-apply-rerun"
+    );
+    swappedInventor.evidence.expectedRejection.registryBlockers[0].routeId = "inventor-weapon-innovation";
+    swappedInventor.evidence.expectedRejection.registryRoute.routeId = "inventor-weapon-innovation";
+    expect(qualifyFreshWf51Matrix(rejectedRouteSwapped)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/registered pre-review zero-write rejection/i)])
     );
 
     const missingRestoration = matrixChildren();
@@ -701,6 +729,8 @@ function childEvidence(): any[] {
             ],
           },
         },
+        expectedRejectionSourceCase("inventor-l1-l5-apply-rerun", "inventor-armor-innovation"),
+        expectedRejectionSourceCase("thaumaturge-l1-l5-apply-rerun", "thaumaturge-amulet-implement"),
       ],
       cleanup: { verified: true, actorIdsChecked: 55, restorationFailures: [] },
     }),
@@ -733,6 +763,20 @@ function sourceCase(id: string): any {
     currencyCopper: 0,
     failure: { message: `forced failure for ${id}` },
     manifest: { id: `manifest-${id}` },
+  };
+}
+
+function expectedRejectionSourceCase(id: string, routeId: string): any {
+  return {
+    ...sourceCase(id),
+    evidence: {
+      expectedRejection: {
+        kind: "registered-physical-grant-rejection",
+        registryBlockers: [{ routeId, reasonCode: "unprofiled-native-grant" }],
+      },
+      acquisition: { manifest: null },
+    },
+    manifest: null,
   };
 }
 
@@ -836,6 +880,68 @@ function matrixChildren(): any[] {
               ],
             }
           : { items: [] };
+      const expectedOutcome = smokeCases.find((entry: any) => entry.id === id)?.expectedOutcome;
+      if (expectedOutcome?.kind === "registered-physical-grant-rejection") {
+        const actor = {
+          id: actorId,
+          levelAfterApply: 1,
+          moduleDraftAfterApply: { version: 5, targetLevel: 5 },
+          moduleStateAfterApply: { completedAcquisitionManifest: null, completedAcquisitionManifestCorrupt: false },
+          items: [],
+        };
+        const qualifiedActor = {
+          ...actor,
+          sourceGroups: [],
+          sourceIdentityConflicts: [],
+        };
+        const blocker = {
+          code: "unsupported-physical-grant",
+          routeId: expectedOutcome.routeId,
+          reasonCode: expectedOutcome.reasonCode,
+          sourceSlotId: expectedOutcome.sourceSlotId,
+          sourceUuid: expectedOutcome.sourceUuid,
+          message: `${expectedOutcome.routeId} is not supported.`,
+        };
+        return {
+          ...sourceCase(id),
+          actor: qualifiedActor,
+          evidence: {
+            acquisition: {
+              binding: null,
+              policy: null,
+              currency: {
+                preCopper: null,
+                budgetCopper: null,
+                targetCopper: null,
+                observedCopper: null,
+                spentCopper: null,
+                remainingCopper: null,
+              },
+              durability: null,
+              manifest: null,
+              failureSnapshot: null,
+              retry: null,
+            },
+            expectedRejection: {
+              kind: "registered-physical-grant-rejection",
+              expectedOutcome: structuredClone(expectedOutcome),
+              registryRoute: structuredClone(physicalGrantRouteById(expectedOutcome.routeId)),
+              registryBlockers: [blocker],
+              rejection: {
+                errorName: "StartingEquipmentPhysicalGrantCoverageError",
+                isTypedProductRejection: true,
+                blocker: structuredClone(blocker),
+                message: blocker.message,
+              },
+              confirmationMessage: null,
+              actorBefore: structuredClone(actor),
+              actorAfter: structuredClone(actor),
+              actorSourceFingerprintBefore: "a".repeat(64),
+              actorSourceFingerprintAfter: "a".repeat(64),
+            },
+          },
+        };
+      }
       return {
         ...sourceCase(id),
         actor: {

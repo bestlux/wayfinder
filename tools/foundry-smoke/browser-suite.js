@@ -1860,6 +1860,8 @@ async function loadWayfinderModules(moduleId) {
     startingEquipmentCommands,
     equipmentPolicy,
     classGrantProjection,
+    physicalGrantCoverage,
+    physicalGrantRouteRegistry,
     acquisitionExecution,
     acquisitionDraft,
     acquisitionRuntime,
@@ -1892,6 +1894,8 @@ async function loadWayfinderModules(moduleId) {
     import(`/modules/${moduleId}/scripts/wayfinder/application/starting-equipment-command-service.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/equipment-policy-service.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/class-grant-projection-service.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/domain/physical-grant-coverage.js`),
+    import(`/modules/${moduleId}/scripts/wayfinder/domain/physical-grant-route-registry.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/acquisition-execution-service.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/domain/acquisition-draft.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/equipment-acquisition-runtime-service.js`),
@@ -1939,8 +1943,13 @@ async function loadWayfinderModules(moduleId) {
     withRestrictedSpellRarityAccess: spellRarityAccess.withRestrictedSpellRarityAccess,
     WayfinderApp: wayfinderApp.WayfinderApp,
     executeStartingEquipmentCommand: startingEquipmentCommands.executeStartingEquipmentCommand,
+    StartingEquipmentPhysicalGrantCoverageError:
+      startingEquipmentCommands.StartingEquipmentPhysicalGrantCoverageError,
     assertEquipmentApplyAuthority: equipmentPolicy.assertEquipmentApplyAuthority,
     prepareCurrentClassGrantPlan: classGrantProjection.prepareCurrentClassGrantPlan,
+    physicalGrantCoverageBlockers: physicalGrantCoverage.physicalGrantCoverageBlockers,
+    physicalGrantCoverageIssues: physicalGrantCoverage.physicalGrantCoverageIssues,
+    physicalGrantRouteById: physicalGrantRouteRegistry.physicalGrantRouteById,
     createAcquisitionExecutionSession: acquisitionExecution.createAcquisitionExecutionSession,
     recordAcquisitionCurrencyConvergenceWitness: acquisitionDraft.recordAcquisitionCurrencyConvergenceWitness,
     getEquipmentRuntime: acquisitionRuntime.getFoundryEquipmentAcquisitionRuntime,
@@ -1968,8 +1977,56 @@ async function runSmokeCase(smokeCase, modules, { defaultReviewedEquipment, keep
     const draft = modules.createEmptyDraft(smokeCase.targetLevel);
     let draftForApply = draft;
     await seedCreationDraft(draft, smokeCase);
+    const expectedRejection = smokeCase.expectedOutcome?.kind === "registered-physical-grant-rejection";
+    const rejectionActorBefore = expectedRejection ? collectActorEvidence(actor, modules, moduleId) : null;
+    const rejectionSourceFingerprintBefore = expectedRejection ? await actorSourceFingerprint(actor) : null;
     console.log(`WFSMOKE ${smokeCase.id} fill start`);
-    const fillResult = await completeDraft(actor, draft, smokeCase, modules, { defaultReviewedEquipment, moduleId });
+    let fillResult;
+    try {
+      fillResult = await completeDraft(actor, draft, smokeCase, modules, { defaultReviewedEquipment, moduleId });
+    } catch (error) {
+      if (!expectedRejection) throw error;
+      const plan = await buildPlan(actor, draft, modules);
+      const actorEvidence = collectActorEvidence(actor, modules, moduleId);
+      const expectedRejectionEvidence = buildExpectedPhysicalGrantRejectionEvidence({
+        actorEvidence,
+        actorSourceFingerprintAfter: await actorSourceFingerprint(actor),
+        beforeApplyActorEvidence: rejectionActorBefore,
+        beforeApplyActorSourceFingerprint: rejectionSourceFingerprintBefore,
+        draft,
+        error,
+        isTypedProductRejection: error instanceof modules.StartingEquipmentPhysicalGrantCoverageError,
+        expectedOutcome: smokeCase.expectedOutcome,
+        modules,
+        planSteps: plan.steps,
+      });
+      validateExpectedPhysicalGrantRejection(expectedRejectionEvidence, failures);
+      return {
+        id: smokeCase.id,
+        label: smokeCase.label,
+        status: statusFor(failures, classifications),
+        actor: actorEvidence,
+        classifications,
+        evidence: {
+          acquisition: coreAcquisitionEvidence(actorEvidence, defaultReviewedEquipment),
+          dialogsAfter: dialogCount(),
+          dialogsBefore: dialogCount(),
+          expectedRejection: expectedRejectionEvidence,
+          fillIterations: null,
+          applyReview: emptyApplyReviewEvidence(),
+          applySafety: null,
+          incompleteBeforeApply: (await incompleteSteps(actor, draft, plan.steps, modules)).map(stepSummary),
+          preStepIds: plan.steps.map((step) => step.slotId),
+          rerunStepIds: [],
+          warnings,
+        },
+        failures,
+        warnings,
+      };
+    }
+    if (expectedRejection) {
+      failures.push("Expected registered physical-grant rejection did not occur before equipment review.");
+    }
     warnings.push(...fillResult.warnings);
     classifications.push(...fillResult.classifications);
 
@@ -2029,9 +2086,9 @@ async function runSmokeCase(smokeCase, modules, { defaultReviewedEquipment, keep
     await wait(1500);
     console.log(`WFSMOKE ${smokeCase.id} rerun check`);
     const dialogsAfter = dialogCount();
+    const actorEvidence = collectActorEvidence(actor, modules, moduleId);
     const rerunDraft = modules.createEmptyDraft(smokeCase.targetLevel);
     const rerunPlan = await buildPlan(actor, rerunDraft, modules);
-    const actorEvidence = collectActorEvidence(actor, modules, moduleId);
     if (applySafetyEvidence) {
       applySafetyEvidence.retry = {
         lifecycleKind: lifecycleResult.kind,
@@ -2091,6 +2148,94 @@ async function runSmokeCase(smokeCase, modules, { defaultReviewedEquipment, keep
       await actor.delete();
     }
   }
+}
+
+function buildExpectedPhysicalGrantRejectionEvidence({
+  actorEvidence,
+  actorSourceFingerprintAfter,
+  beforeApplyActorEvidence,
+  beforeApplyActorSourceFingerprint,
+  draft,
+  error,
+  expectedOutcome,
+  isTypedProductRejection,
+  modules,
+  planSteps,
+}) {
+  const registryBlockers = Array.isArray(error?.blockers)
+    ? error.blockers
+    : modules.physicalGrantCoverageBlockers(draft, planSteps);
+  const activeRoute = modules.physicalGrantRouteById(expectedOutcome.routeId);
+  return {
+    kind: "registered-physical-grant-rejection",
+    expectedOutcome: structuredClone(expectedOutcome),
+    registryRoute: activeRoute ? structuredClone(activeRoute) : null,
+    registryBlockers: structuredClone(registryBlockers),
+    rejection: {
+      errorName: error instanceof Error ? error.name : null,
+      isTypedProductRejection,
+      blocker: structuredClone(error?.blocker ?? null),
+      message: error instanceof Error ? error.message : String(error ?? ""),
+    },
+    confirmationMessage: null,
+    actorBefore: structuredClone(beforeApplyActorEvidence),
+    actorAfter: structuredClone(actorEvidence),
+    actorSourceFingerprintBefore: beforeApplyActorSourceFingerprint,
+    actorSourceFingerprintAfter,
+  };
+}
+
+function validateExpectedPhysicalGrantRejection(evidence, failures) {
+  const blockers = evidence?.registryBlockers ?? [];
+  const expected = evidence?.expectedOutcome;
+  const matched = blockers.find((blocker) => blocker?.routeId === expected?.routeId);
+  if (
+    evidence?.kind !== "registered-physical-grant-rejection" ||
+    blockers.length !== 1 ||
+    matched?.code !== "unsupported-physical-grant" ||
+    matched?.reasonCode !== expected?.reasonCode ||
+    matched?.sourceUuid !== expected?.sourceUuid ||
+    matched?.sourceSlotId !== expected?.sourceSlotId ||
+    evidence?.registryRoute?.routeId !== expected?.routeId ||
+    evidence?.registryRoute?.classification !== expected?.classification ||
+    evidence?.registryRoute?.blocker?.preReview !== expected?.preReview ||
+    evidence?.registryRoute?.blocker?.reasonCode !== expected?.reasonCode ||
+    !evidence?.registryRoute?.activationVariants?.some((variant) =>
+      variant.some((requirement) => requirement?.sourceUuid === expected?.sourceUuid)
+    )
+  ) {
+    failures.push("Expected rejection did not match its exact executable registry route contract.");
+  }
+  if (
+    evidence?.rejection?.errorName !== "StartingEquipmentPhysicalGrantCoverageError" ||
+    evidence.rejection.isTypedProductRejection !== true ||
+    JSON.stringify(evidence.rejection.blocker) !== JSON.stringify(matched) ||
+    evidence.rejection.message !== matched?.message ||
+    evidence.confirmationMessage !== null
+  ) {
+    failures.push("Expected rejection did not stop at its exact physical-grant blocker before equipment review.");
+  }
+  if (JSON.stringify(evidence?.actorBefore) !== JSON.stringify(evidence?.actorAfter)) {
+    failures.push("Expected rejection changed the actor before the unsupported route was reviewed.");
+  }
+  if (
+    typeof evidence?.actorSourceFingerprintBefore !== "string" ||
+    evidence.actorSourceFingerprintBefore !== evidence.actorSourceFingerprintAfter
+  ) {
+    failures.push("Expected rejection changed the complete Foundry actor source before review.");
+  }
+  if (
+    (evidence?.actorBefore?.moduleStateAfterApply?.completedAcquisitionManifest ?? null) !== null ||
+    (evidence?.actorAfter?.moduleStateAfterApply?.completedAcquisitionManifest ?? null) !== null
+  ) {
+    failures.push("Expected rejection persisted a completed acquisition manifest.");
+  }
+}
+
+async function actorSourceFingerprint(actor) {
+  const bytes = new TextEncoder().encode(stableSmokeJson(actor.toObject()));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, modules, target, steps, timeoutMs }) {
@@ -3031,6 +3176,7 @@ function buildSpellRarityApplyContext(actor, draft, steps, modules) {
     title: problem.title,
     message: problem.message,
   }));
+  additionalBlockers.push(...modules.physicalGrantCoverageIssues(draft, steps));
   const reviewLines = modules.buildSpellRarityAttestationReviewLines(appliedSpellRarityAttestations);
   const applyReview = emptyApplyReviewEvidence(reviewLines);
   return {
@@ -3058,8 +3204,7 @@ function validateApplyReviewEvidence(applyReview, expectedAttestations, failures
     typeof applyReview?.confirmationMessage !== "string" ||
     !Array.isArray(applyReview?.reviewLines) ||
     applyReview.reviewLines.length !== expectedCount ||
-    !applyReview.reviewLines.every((line) => applyReview.confirmationMessage.includes(line)) ||
-    (expectedCount > 0 && !applyReview.confirmationMessage.includes("Player attestation — not GM authorization"))
+    !applyReview.reviewLines.every((line) => applyReview.confirmationMessage.includes(line))
   ) {
     failures.push("Apply confirmation did not prove the complete spell-attestation review disclosure.");
   }

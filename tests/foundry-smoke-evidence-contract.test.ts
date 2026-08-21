@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { physicalGrantRouteById } from "../src/wayfinder/domain/physical-grant-route-registry";
 
 import {
   assertIncrementalSmokeCasesSupported,
@@ -182,6 +183,81 @@ describe("Foundry smoke evidence contract", () => {
 
     expect(result.cases[0].evidence.acquisition).toEqual(emptyAcquisitionEvidence());
     expect(result.qualification.passed).toBe(true);
+  });
+
+  it("fails closed on an unknown case-kind contract", () => {
+    const result = qualifySmokeResult(resultFixture(), [{ id: "case", caseKind: "skip-evidence" }]);
+    expect(result.qualification.passed).toBe(false);
+    expect(findingCodes(result)).toContain("invalid-case-kind");
+  });
+
+  it("qualifies only an exact registry-bound pre-review physical-grant rejection with zero actor writes", () => {
+    const input = resultFixture() as any;
+    const actor = {
+      ...input.cases[0].actor,
+      levelAfterApply: 1,
+      moduleDraftAfterApply: { version: 5, targetLevel: 5 },
+      moduleStateAfterApply: emptyModuleState(),
+    };
+    const registryBlocker = {
+      code: "unsupported-physical-grant",
+      routeId: "inventor-armor-innovation",
+      reasonCode: "unprofiled-native-grant",
+      sourceSlotId: "class-branch-innovation-level-1",
+      sourceUuid: "Compendium.pf2e.classfeatures.Item.fpwtpm8pdwO1I6MO",
+      message: "Inventor Armor Innovation is not supported by Wayfinder starting equipment.",
+    };
+    const expectedOutcome = {
+      kind: "registered-physical-grant-rejection",
+      routeId: registryBlocker.routeId,
+      classification: "unsupported-handoff",
+      preReview: true,
+      reasonCode: registryBlocker.reasonCode,
+      sourceUuid: registryBlocker.sourceUuid,
+      sourceSlotId: registryBlocker.sourceSlotId,
+    };
+    input.cases[0].actor = actor;
+    input.cases[0].evidence.applyReview = { confirmationMessage: null, reviewLines: [] };
+    input.cases[0].evidence.expectedRejection = {
+      kind: "registered-physical-grant-rejection",
+      expectedOutcome,
+      registryRoute: structuredClone(physicalGrantRouteById(expectedOutcome.routeId)),
+      registryBlockers: [registryBlocker],
+      rejection: {
+        errorName: "StartingEquipmentPhysicalGrantCoverageError",
+        isTypedProductRejection: true,
+        blocker: structuredClone(registryBlocker),
+        message: registryBlocker.message,
+      },
+      confirmationMessage: null,
+      actorBefore: structuredClone(actor),
+      actorAfter: structuredClone(actor),
+      actorSourceFingerprintBefore: "a".repeat(64),
+      actorSourceFingerprintAfter: "a".repeat(64),
+    };
+    const definition = {
+      id: "case",
+      caseKind: "expected-rejection",
+      expectedOutcome,
+    };
+
+    expect(qualifySmokeResult(input, [definition]).qualification.passed).toBe(true);
+
+    for (const mutate of [
+      (value: any) => (value.cases[0].evidence.expectedRejection.confirmationMessage = "Review?"),
+      (value: any) => (value.cases[0].evidence.expectedRejection.registryBlockers[0].routeId = ""),
+      (value: any) => (value.cases[0].evidence.expectedRejection.registryRoute.routeId = "different-route"),
+      (value: any) => (value.cases[0].evidence.expectedRejection.actorAfter.currencyCopper += 1),
+      (value: any) => (value.cases[0].evidence.expectedRejection.actorSourceFingerprintAfter = "b".repeat(64)),
+      (value: any) => (value.cases[0].evidence.acquisition.manifest = { id: "forged" }),
+    ]) {
+      const drifted = structuredClone(input);
+      mutate(drifted);
+      expect(qualifySmokeResult(drifted, [definition]).qualification.passed).toBe(false);
+      expect(findingCodes(qualifySmokeResult(drifted, [definition]))).toEqual(
+        expect.arrayContaining([expect.stringMatching(/expected-rejection|expected-physical-grant/u)])
+      );
+    }
   });
 
   it("binds a character-build retain-all manifest to the exact durable module state", () => {

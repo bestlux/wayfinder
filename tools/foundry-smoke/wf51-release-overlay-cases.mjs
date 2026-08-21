@@ -118,6 +118,8 @@ const RAW_OVERLAY_ROWS = [
   row(14, "planned-physical-grant-routes", [
     ref("focused", "planned-grant-routes"),
     ref("matrix", "alchemist-l1-l5-apply-rerun"),
+    ref("matrix", "inventor-l1-l5-apply-rerun"),
+    ref("matrix", "thaumaturge-l1-l5-apply-rerun"),
     ref("acquisition", "equipment-l1-owner-dwarf-clan-dagger-native-retry"),
     ref("acquisition", "equipment-l1-owner-sarangay-head-gem-native-retry"),
   ], ["roles", "policy", "identities", "quantities", "currency", "manifests"]),

@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 
+import { physicalGrantRouteById } from "../../scripts/wayfinder/domain/physical-grant-route-registry.js";
 import { acquisitionSmokeCases } from "./acquisition-cases.mjs";
 import { applySafetySmokeCases, gradualBoostsSmokeCases, smokeCases } from "./class-cases.mjs";
 import { campaignFeatSmokeCases } from "./campaign-feat-cases.mjs";
@@ -210,8 +211,14 @@ function formulaBookMaterializationFailures(cases) {
 
 function matrixManifestFailures(children) {
   const failures = [];
+  const definitions = new Map(smokeCases.map((entry) => [entry.id, entry]));
   for (const child of children) {
     for (const entry of child.result?.cases ?? []) {
+      const definition = definitions.get(entry?.id);
+      if (definition?.expectedOutcome?.kind === "registered-physical-grant-rejection") {
+        failures.push(...matrixExpectedRejectionFailures(entry, definition.expectedOutcome));
+        continue;
+      }
       const actor = entry?.actor;
       const evidence = entry?.evidence?.acquisition;
       const manifest = evidence?.manifest;
@@ -252,6 +259,59 @@ function matrixManifestFailures(children) {
     }
   }
   return failures;
+}
+
+function matrixExpectedRejectionFailures(entry, expected) {
+  const evidence = entry?.evidence?.expectedRejection;
+  const blockers = evidence?.registryBlockers;
+  const registryRoute = evidence?.registryRoute;
+  const executableRoute = physicalGrantRouteById(expected.routeId);
+  const matchedBlocker = Array.isArray(blockers)
+    ? blockers.find((blocker) => blocker?.routeId === expected.routeId)
+    : null;
+  const actorBefore = evidence?.actorBefore;
+  const actorAfter = evidence?.actorAfter;
+  const valid =
+    evidence?.kind === "registered-physical-grant-rejection" &&
+    isDeepStrictEqual(evidence?.expectedOutcome, expected) &&
+    Array.isArray(blockers) &&
+    blockers.length === 1 &&
+    matchedBlocker?.code === "unsupported-physical-grant" &&
+    matchedBlocker?.reasonCode === expected.reasonCode &&
+    matchedBlocker?.sourceSlotId === expected.sourceSlotId &&
+    matchedBlocker?.sourceUuid === expected.sourceUuid &&
+    registryRoute?.routeId === expected.routeId &&
+    isDeepStrictEqual(registryRoute, executableRoute) &&
+    registryRoute?.classification === expected.classification &&
+    executableRoute?.classification === "unsupported-handoff" &&
+    registryRoute?.blocker?.preReview === expected.preReview &&
+    registryRoute?.blocker?.reasonCode === expected.reasonCode &&
+    registryRoute?.activationVariants?.some((variant) =>
+      variant.some((requirement) => requirement?.sourceUuid === expected.sourceUuid)
+    ) &&
+    evidence?.rejection?.errorName === "StartingEquipmentPhysicalGrantCoverageError" &&
+    evidence?.rejection?.isTypedProductRejection === true &&
+    isDeepStrictEqual(evidence.rejection.blocker, matchedBlocker) &&
+    evidence.rejection.message === matchedBlocker?.message &&
+    evidence.confirmationMessage === null &&
+    actorBefore &&
+    isDeepStrictEqual(actorBefore, actorAfter) &&
+    isDeepStrictEqual(actorAfter, withoutDerivedActorEvidence(entry?.actor)) &&
+    /^[0-9a-f]{64}$/u.test(evidence?.actorSourceFingerprintBefore ?? "") &&
+    evidence.actorSourceFingerprintBefore === evidence.actorSourceFingerprintAfter &&
+    (actorAfter?.moduleStateAfterApply?.completedAcquisitionManifest ?? null) === null &&
+    entry?.evidence?.acquisition?.manifest === null;
+  return valid
+    ? []
+    : [`matrix: ${entry?.id ?? "unknown"} did not prove its exact registered pre-review zero-write rejection.`];
+}
+
+function withoutDerivedActorEvidence(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const snapshot = { ...value };
+  delete snapshot.sourceGroups;
+  delete snapshot.sourceIdentityConflicts;
+  return snapshot;
 }
 
 function cleanupFailures(route, cleanup, expectedCount) {

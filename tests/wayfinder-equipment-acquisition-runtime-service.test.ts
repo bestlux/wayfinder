@@ -473,38 +473,46 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(12);
   });
 
-  it("bulk-fetches the cold visible page once and refetches it only after explicit pack invalidation", async () => {
+  it("concurrently fetches the cold visible page and refetches it only after explicit pack invalidation", async () => {
     let sources = Array.from({ length: 12 }, (_, index) =>
       dagger({ id: `bulk-${index}`, name: `Bulk gear ${String(index).padStart(2, "0")}` })
     );
-    const getDocument = vi.fn(async () => {
-      throw new Error("single-document browse fallback must not run");
+    let releaseReads!: () => void;
+    let readGate = new Promise<void>((resolve) => {
+      releaseReads = resolve;
     });
-    const getDocuments = vi.fn(async ({ _id__in }: { _id__in: string[] }) =>
-      [..._id__in].reverse().map((documentId) => document(sources.find((source) => source._id === documentId)!))
-    );
+    const getDocument = vi.fn(async (documentId: string) => {
+      await readGate;
+      return document(sources.find((source) => source._id === documentId)!);
+    });
     const getIndex = vi.fn(async () => sources);
-    const { runtime, request } = fixture({ getIndex, getDocument, getDocuments });
+    const { runtime, request } = fixture({ getIndex, getDocument });
 
-    const cold = await runtime.uiAdapter.project(request);
+    const coldProjection = runtime.uiAdapter.project(request);
+    await vi.waitFor(() => expect(getDocument).toHaveBeenCalledTimes(12));
+    releaseReads();
+    const cold = await coldProjection;
     await runtime.uiAdapter.project(request);
 
     expect(cold.records.map(({ sourceUuid }) => sourceUuid)).toEqual(
       sources.map(({ _id }) => `Compendium.${PACK_ID}.Item.${_id}`)
     );
-    expect(getDocuments).toHaveBeenCalledOnce();
-    expect(getDocuments.mock.calls[0]?.[0]._id__in).toHaveLength(12);
-    expect(getDocument).not.toHaveBeenCalled();
+    expect(getDocument).toHaveBeenCalledTimes(12);
 
     sources = sources.map((source, index) =>
       index === 0 ? dagger({ id: "bulk-0", name: "Bulk gear 00", priceSp: 3 }) : source
     );
+    readGate = new Promise<void>((resolve) => {
+      releaseReads = resolve;
+    });
     runtime.invalidatePack(PACK_ID);
-    const invalidated = await runtime.uiAdapter.project(request);
+    const invalidatedProjection = runtime.uiAdapter.project(request);
+    await vi.waitFor(() => expect(getDocument).toHaveBeenCalledTimes(24));
+    releaseReads();
+    const invalidated = await invalidatedProjection;
 
     expect(getIndex).toHaveBeenCalledTimes(2);
-    expect(getDocuments).toHaveBeenCalledTimes(2);
-    expect(getDocument).not.toHaveBeenCalled();
+    expect(getDocument).toHaveBeenCalledTimes(24);
     expect(invalidated.records[0]).toMatchObject({ sourceUuid: `Compendium.${PACK_ID}.Item.bulk-0`, priceCopper: 30 });
   });
 
@@ -2361,8 +2369,7 @@ async function reviewedTitanAcquisitionWithLine(
 }
 
 function fixture(
-  pack: Pick<EquipmentCataloguePackLike, "getIndex" | "getDocument"> &
-    Partial<Pick<EquipmentCataloguePackLike, "getDocuments">>,
+  pack: Pick<EquipmentCataloguePackLike, "getIndex" | "getDocument">,
   options: {
     readonly accessRegistry?: EquipmentAccessRegistry;
     readonly fetchDocumentByUuid?: (uuid: string) => Promise<unknown | null>;
@@ -2406,14 +2413,8 @@ function fixture(
   const draft = createEmptyDraft(currentPolicy.targetLevel);
   draft.acquisition = acquisition;
   selectAncestry(draft);
-  const getDocuments =
-    pack.getDocuments ??
-    (async ({ _id__in }: { _id__in: string[] }) => {
-      const documents = await Promise.all(_id__in.map((documentId) => pack.getDocument(documentId)));
-      return documents.filter((document): document is NonNullable<typeof document> => document !== null);
-    });
   const packs = new Map<string, EquipmentCataloguePackLike>([
-    [PACK_ID, { documentName: "Item", getIndex: pack.getIndex, getDocument: pack.getDocument, getDocuments }],
+    [PACK_ID, { documentName: "Item", getIndex: pack.getIndex, getDocument: pack.getDocument }],
   ]);
   return {
     runtime: createEquipmentAcquisitionRuntime({

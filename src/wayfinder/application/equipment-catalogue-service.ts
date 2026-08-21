@@ -43,7 +43,9 @@ export interface EquipmentCataloguePackLike {
   readonly metadata?: { readonly type?: string };
   readonly getIndex: (options: { fields: string[] }) => Promise<Iterable<unknown> | null | undefined>;
   readonly getDocument: (documentId: string) => Promise<unknown | null>;
-  readonly getDocuments?: (query: { _id__in: string[] }) => Promise<Iterable<unknown> | null | undefined>;
+  readonly getDocuments?: (query: { _id: string }) => Promise<Iterable<unknown> | null | undefined>;
+  readonly set?: (documentId: string, document: unknown) => unknown;
+  readonly delete?: (documentId: string) => unknown;
 }
 
 export interface EquipmentCatalogueDraftContext {
@@ -418,12 +420,20 @@ export class EquipmentCatalogueService {
   }
 
   /**
-   * Bulk-hydrates one bounded visible browse page. Apply, preview, and native-grant
+   * Concurrently hydrates one bounded visible browse page. Apply, preview, and native-grant
    * callers deliberately keep using their fresh single-document paths.
    */
   async resolveManyForBrowse(
     context: EquipmentCatalogueContext,
     sourceUuids: readonly string[]
+  ): Promise<readonly EquipmentCatalogueBrowseResolutionResult[]> {
+    return this.#resolveManyForBrowse(context, sourceUuids, false);
+  }
+
+  async #resolveManyForBrowse(
+    context: EquipmentCatalogueContext,
+    sourceUuids: readonly string[],
+    forceFresh: boolean
   ): Promise<readonly EquipmentCatalogueBrowseResolutionResult[]> {
     assertContext(context);
     if (sourceUuids.length > 12) {
@@ -436,94 +446,43 @@ export class EquipmentCatalogueService {
       }
       return { sourceUuid, pack, packId, documentId };
     });
-    const grouped = new Map<string, typeof requests>();
-    for (const request of requests) {
-      const group = grouped.get(request.packId);
-      if (group) group.push(request);
-      else grouped.set(request.packId, [request]);
-    }
-    const generations = new Map([...grouped.keys()].map((packId) => [packId, this.#packGeneration(packId)]));
-    const byUuid = new Map<string, EquipmentCatalogueBrowseResolutionResult>();
-    await Promise.all(
-      [...grouped.entries()].map(async ([packId, group]) => {
-        const getDocuments = group[0]!.pack.getDocuments;
-        if (typeof getDocuments !== "function") {
-          const error = new TypeError(`Equipment pack ${packId} does not support bulk document hydration.`);
-          for (const { sourceUuid } of group) {
-            byUuid.set(sourceUuid, Object.freeze({ sourceUuid, resolution: null, error }));
-          }
-          return;
-        }
-        let documents: Iterable<unknown> | null | undefined;
+    const generations = new Map(
+      [...new Set(requests.map(({ packId }) => packId))].map((packId) => [packId, this.#packGeneration(packId)])
+    );
+    const results = await Promise.all(
+      requests.map(async ({ sourceUuid, pack, packId, documentId }) => {
         try {
-          documents = await getDocuments.call(group[0]!.pack, {
-            _id__in: [...new Set(group.map(({ documentId }) => documentId))],
+          const source = forceFresh
+            ? await forceFreshBrowseSource(pack, documentId)
+            : await pack
+                .getDocument(documentId)
+                .then((document) => (document === null ? null : extractDocumentSource(document)));
+          if (source === null) {
+            return Object.freeze({
+              sourceUuid,
+              resolution: null,
+              error: new TypeError(`Equipment source ${sourceUuid} is no longer available.`),
+            });
+          }
+          assertHydratedSourceIdentity(source, documentId);
+          return Object.freeze({
+            sourceUuid,
+            resolution: this.#resolutionFromSource(context, sourceUuid, packId, source),
+            error: null,
           });
         } catch (cause) {
-          for (const { sourceUuid } of group) {
-            byUuid.set(
-              sourceUuid,
-              Object.freeze({ sourceUuid, resolution: null, error: bulkHydrationError(sourceUuid, cause) })
-            );
-          }
-          return;
-        }
-        const hydrated = collectBulkDocuments(
-          documents,
-          group.map(({ documentId }) => documentId)
-        );
-        for (const { sourceUuid, documentId } of group) {
-          const result = hydrated.get(documentId);
-          if (result instanceof Error) {
-            byUuid.set(
-              sourceUuid,
-              Object.freeze({ sourceUuid, resolution: null, error: bulkHydrationError(sourceUuid, result) })
-            );
-            continue;
-          }
-          if (!result) {
-            byUuid.set(
-              sourceUuid,
-              Object.freeze({
-                sourceUuid,
-                resolution: null,
-                error: new TypeError(`Equipment source ${sourceUuid} is no longer available.`),
-              })
-            );
-            continue;
-          }
-          try {
-            byUuid.set(
-              sourceUuid,
-              Object.freeze({
-                sourceUuid,
-                resolution: this.#resolutionFromSource(context, sourceUuid, packId, result),
-                error: null,
-              })
-            );
-          } catch (cause) {
-            byUuid.set(
-              sourceUuid,
-              Object.freeze({ sourceUuid, resolution: null, error: bulkHydrationError(sourceUuid, cause) })
-            );
-          }
+          return Object.freeze({
+            sourceUuid,
+            resolution: null,
+            error: browseHydrationError(sourceUuid, cause),
+          });
         }
       })
     );
     if ([...generations].some(([packId, generation]) => generation !== this.#packGeneration(packId))) {
-      return this.resolveManyForBrowse(context, sourceUuids);
+      return this.#resolveManyForBrowse(context, sourceUuids, true);
     }
-    return Object.freeze(
-      requests.map(
-        ({ sourceUuid }) =>
-          byUuid.get(sourceUuid) ??
-          Object.freeze({
-            sourceUuid,
-            resolution: null,
-            error: new TypeError(`Equipment source ${sourceUuid} was omitted from bulk hydration.`),
-          })
-      )
-    );
+    return Object.freeze(results);
   }
 
   /**
@@ -1088,58 +1047,37 @@ function extractDocumentSource(document: unknown): Readonly<Record<string, unkno
   return cloneData(raw);
 }
 
-function collectBulkDocuments(
-  documents: Iterable<unknown> | null | undefined,
-  requestedDocumentIds: readonly string[]
-): ReadonlyMap<string, Readonly<Record<string, unknown>> | Error> {
-  const requested = new Set(requestedDocumentIds);
-  const collected = new Map<string, Readonly<Record<string, unknown>> | Error>();
-  if (!isIterable(documents)) {
-    const error = new TypeError("Equipment bulk hydration returned malformed data.");
-    for (const documentId of requested) collected.set(documentId, error);
-    return collected;
-  }
-  let unidentifiedError: Error | null = null;
-  for (const document of documents) {
-    const directDocumentId = isRecord(document) && nonEmpty(document.id) ? document.id.trim() : null;
-    let source: Readonly<Record<string, unknown>>;
-    try {
-      source = extractDocumentSource(document);
-    } catch (cause) {
-      const error = cause instanceof Error ? cause : new TypeError("Equipment document hydration failed.");
-      if (directDocumentId !== null && requested.has(directDocumentId)) collected.set(directDocumentId, error);
-      else unidentifiedError = error;
-      continue;
-    }
-    const sourceDocumentId = nonEmpty(source._id) ? source._id.trim() : null;
-    if (sourceDocumentId === null) {
-      unidentifiedError = new TypeError("Equipment bulk hydration returned a document without an exact source ID.");
-      continue;
-    }
-    if (directDocumentId !== null && directDocumentId !== sourceDocumentId) {
-      const error = new TypeError("Equipment bulk hydration returned contradictory document identity.");
-      if (requested.has(directDocumentId)) collected.set(directDocumentId, error);
-      if (requested.has(sourceDocumentId)) collected.set(sourceDocumentId, error);
-      continue;
-    }
-    if (!requested.has(sourceDocumentId)) continue;
-    if (collected.has(sourceDocumentId)) {
-      collected.set(sourceDocumentId, new TypeError("Equipment bulk hydration returned duplicate document identity."));
-      continue;
-    }
-    collected.set(sourceDocumentId, source);
-  }
-  if (unidentifiedError !== null) {
-    for (const documentId of requested) {
-      if (!collected.has(documentId)) collected.set(documentId, unidentifiedError);
-    }
-  }
-  return collected;
+function browseHydrationError(sourceUuid: string, cause: unknown): Error {
+  const detail = cause instanceof Error && nonEmpty(cause.message) ? ` ${cause.message}` : "";
+  return new TypeError(`Equipment source ${sourceUuid} could not be hydrated for browse.${detail}`);
 }
 
-function bulkHydrationError(sourceUuid: string, cause: unknown): Error {
-  const detail = cause instanceof Error && nonEmpty(cause.message) ? ` ${cause.message}` : "";
-  return new TypeError(`Equipment source ${sourceUuid} could not be hydrated in bulk.${detail}`);
+async function forceFreshBrowseSource(
+  pack: EquipmentCataloguePackLike,
+  documentId: string
+): Promise<Readonly<Record<string, unknown>> | null> {
+  if (typeof pack.getDocuments !== "function" || typeof pack.set !== "function" || typeof pack.delete !== "function") {
+    throw new TypeError("Equipment pack cannot safely refresh an invalidated browse source.");
+  }
+  const documents = await pack.getDocuments.call(pack, { _id: documentId });
+  if (!isIterable(documents)) throw new TypeError("Equipment pack refresh returned malformed data.");
+  const exact = [...documents];
+  if (exact.length > 1) throw new TypeError("Equipment pack refresh returned duplicate exact source identity.");
+  const document = exact[0];
+  if (document === undefined) {
+    pack.delete.call(pack, documentId);
+    return null;
+  }
+  const source = extractDocumentSource(document);
+  assertHydratedSourceIdentity(source, documentId);
+  pack.set.call(pack, documentId, document);
+  return source;
+}
+
+function assertHydratedSourceIdentity(source: Readonly<Record<string, unknown>>, expectedDocumentId: string): void {
+  if (!nonEmpty(source._id) || source._id.trim() !== expectedDocumentId) {
+    throw new TypeError("Equipment browse hydration returned contradictory document identity.");
+  }
 }
 
 function parseCompendiumItemUuid(sourceUuid: string): { readonly packId: string; readonly documentId: string } {

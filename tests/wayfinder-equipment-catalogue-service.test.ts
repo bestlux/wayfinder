@@ -665,50 +665,162 @@ describe("minimal equipment catalogue", () => {
     expect(drifted.candidate.price).toMatchObject({ value: { sp: 3 }, copperValue: 30 });
   });
 
-  it("bulk-hydrates a visible page once, restores request order, and matches fresh single-source resolution", async () => {
+  it("concurrently hydrates a visible page, restores request order, and matches fresh single-source resolution", async () => {
     const sources = new Map([
       [DAGGER_ID, daggerSource()],
       [UNCOMMON_ID, uncommonSource()],
     ]);
-    const getDocument = vi.fn(async (documentId: string) => sources.get(documentId) ?? null);
-    const getDocuments = vi.fn(async ({ _id__in }: { _id__in: string[] }) =>
-      [..._id__in].reverse().map((documentId) => sources.get(documentId)!)
+    const resolvers = new Map<string, (document: unknown) => void>();
+    const getDocument = vi.fn(
+      (documentId: string) =>
+        new Promise<unknown>((resolve) => {
+          resolvers.set(documentId, resolve);
+        })
     );
     const service = createEquipmentCatalogueService({
-      packs: packMap({ entries: [...sources.values()], getDocument, getDocuments }),
+      packs: packMap({ entries: [...sources.values()], getDocument }),
       equipmentPackIds: [PACK_ID],
     });
 
-    const bulk = await service.resolveManyForBrowse(context(), [WF_080_21_DAGGER_UUID, UNCOMMON_UUID]);
+    const concurrent = service.resolveManyForBrowse(context(), [WF_080_21_DAGGER_UUID, UNCOMMON_UUID]);
+    await vi.waitFor(() => expect(getDocument).toHaveBeenCalledTimes(2));
+    resolvers.get(UNCOMMON_ID)?.(uncommonSource());
+    resolvers.get(DAGGER_ID)?.(daggerSource());
+    const results = await concurrent;
+    getDocument.mockImplementation(async (documentId: string) => sources.get(documentId) ?? null);
     const singles = await Promise.all([
       service.resolveForApply(context(), WF_080_21_DAGGER_UUID),
       service.resolveForApply(context(), UNCOMMON_UUID),
     ]);
 
-    expect(getDocuments).toHaveBeenCalledOnce();
-    expect(getDocuments).toHaveBeenCalledWith({ _id__in: [DAGGER_ID, UNCOMMON_ID] });
-    expect(getDocument).toHaveBeenCalledTimes(2);
-    expect(bulk.map(({ sourceUuid }) => sourceUuid)).toEqual([WF_080_21_DAGGER_UUID, UNCOMMON_UUID]);
-    expect(bulk.map(({ resolution }) => resolution)).toEqual(singles);
-    expect(bulk.every(({ error }) => error === null)).toBe(true);
+    expect(getDocument).toHaveBeenCalledTimes(4);
+    expect(getDocument.mock.calls.map(([documentId]) => documentId)).toEqual([
+      DAGGER_ID,
+      UNCOMMON_ID,
+      DAGGER_ID,
+      UNCOMMON_ID,
+    ]);
+    expect(results.map(({ sourceUuid }) => sourceUuid)).toEqual([WF_080_21_DAGGER_UUID, UNCOMMON_UUID]);
+    expect(results.map(({ resolution }) => resolution)).toEqual(singles);
+    expect(results.every(({ error }) => error === null)).toBe(true);
   });
 
-  it("preserves successful entries beside exact missing and corrupt bulk diagnostics without N+1 fallback", async () => {
-    const getDocument = vi.fn(async () => {
-      throw new Error("single-document fallback must not run");
+  it("force-refreshes and repairs a stale pack cache after invalidated concurrent browse reads", async () => {
+    let resolveOld!: (document: unknown) => void;
+    let cachedDocument: unknown = null;
+    const getDocument = vi.fn(
+      () =>
+        new Promise<unknown>((resolve) => {
+          resolveOld = (document) => {
+            cachedDocument = document;
+            resolve(document);
+          };
+        })
+    );
+    const freshDocument = daggerSource({ system: { price: { value: { sp: 3 } } } });
+    const getDocuments = vi.fn(async () => [freshDocument]);
+    const set = vi.fn((_documentId: string, document: unknown) => {
+      cachedDocument = document;
     });
-    const corrupt = { id: UNCOMMON_ID, toObject: () => null };
-    const getDocuments = vi.fn(async () => [daggerSource(), corrupt]);
+    const deleteDocument = vi.fn(() => {
+      cachedDocument = null;
+    });
     const service = createEquipmentCatalogueService({
-      packs: packMap({ entries: [dagger(), uncommonItem()], getDocument, getDocuments }),
+      packs: new Map([
+        [
+          PACK_ID,
+          {
+            documentName: "Item",
+            getIndex: vi.fn(async () => [dagger()]),
+            getDocument,
+            getDocuments,
+            set,
+            delete: deleteDocument,
+          },
+        ],
+      ]),
       equipmentPackIds: [PACK_ID],
     });
+
+    const pending = service.resolveManyForBrowse(context(), [WF_080_21_DAGGER_UUID]);
+    await vi.waitFor(() => expect(getDocument).toHaveBeenCalledOnce());
+    service.invalidatePack(PACK_ID);
+    resolveOld(daggerSource({ system: { price: { value: { sp: 2 } } } }));
+
+    await expect(pending).resolves.toMatchObject([
+      { sourceUuid: WF_080_21_DAGGER_UUID, resolution: { candidate: { price: { copperValue: 30 } } }, error: null },
+    ]);
+    expect(getDocument).toHaveBeenCalledOnce();
+    expect(getDocuments).toHaveBeenCalledWith({ _id: DAGGER_ID });
+    expect(set).toHaveBeenCalledWith(DAGGER_ID, freshDocument);
+    expect(deleteDocument).not.toHaveBeenCalled();
+    expect(cachedDocument).toBe(freshDocument);
+  });
+
+  it("evicts a deleted source repopulated by an invalidated concurrent browse read", async () => {
+    let resolveOld!: (document: unknown) => void;
+    let cachedDocument: unknown = null;
+    const getDocument = vi.fn(
+      () =>
+        new Promise<unknown>((resolve) => {
+          resolveOld = (document) => {
+            cachedDocument = document;
+            resolve(document);
+          };
+        })
+    );
+    const getDocuments = vi.fn(async () => []);
+    const set = vi.fn();
+    const deleteDocument = vi.fn(() => {
+      cachedDocument = null;
+    });
+    const service = createEquipmentCatalogueService({
+      packs: new Map([
+        [
+          PACK_ID,
+          {
+            documentName: "Item",
+            getIndex: vi.fn(async () => [dagger()]),
+            getDocument,
+            getDocuments,
+            set,
+            delete: deleteDocument,
+          },
+        ],
+      ]),
+      equipmentPackIds: [PACK_ID],
+    });
+
+    const pending = service.resolveManyForBrowse(context(), [WF_080_21_DAGGER_UUID]);
+    await vi.waitFor(() => expect(getDocument).toHaveBeenCalledOnce());
+    service.invalidatePack(PACK_ID);
+    resolveOld(daggerSource());
+
+    await expect(pending).resolves.toMatchObject([
+      { sourceUuid: WF_080_21_DAGGER_UUID, resolution: null, error: { message: expect.stringMatching(/no longer/) } },
+    ]);
+    expect(getDocuments).toHaveBeenCalledWith({ _id: DAGGER_ID });
+    expect(deleteDocument).toHaveBeenCalledWith(DAGGER_ID);
+    expect(set).not.toHaveBeenCalled();
+    expect(cachedDocument).toBeNull();
+  });
+
+  it("preserves successful entries beside exact missing and corrupt concurrent diagnostics", async () => {
+    const corrupt = { id: UNCOMMON_ID, toObject: () => null };
     const missingUuid = `Compendium.${PACK_ID}.Item.missing-item`;
+    const getDocument = vi.fn(async (documentId: string) => {
+      if (documentId === DAGGER_ID) return daggerSource();
+      if (documentId === UNCOMMON_ID) return corrupt;
+      return null;
+    });
+    const service = createEquipmentCatalogueService({
+      packs: packMap({ entries: [dagger(), uncommonItem()], getDocument }),
+      equipmentPackIds: [PACK_ID],
+    });
 
     const results = await service.resolveManyForBrowse(context(), [WF_080_21_DAGGER_UUID, UNCOMMON_UUID, missingUuid]);
 
-    expect(getDocuments).toHaveBeenCalledOnce();
-    expect(getDocument).not.toHaveBeenCalled();
+    expect(getDocument).toHaveBeenCalledTimes(3);
     expect(results[0]).toMatchObject({ sourceUuid: WF_080_21_DAGGER_UUID, error: null });
     expect(results[0]?.resolution?.source).toMatchObject({ _id: DAGGER_ID });
     expect(results[1]?.resolution).toBeNull();
@@ -718,24 +830,17 @@ describe("minimal equipment catalogue", () => {
     expect(results[2]?.error?.message).toBe(`Equipment source ${missingUuid} is no longer available.`);
   });
 
-  it("issues one bulk fetch per pack while retaining interleaved source order", async () => {
+  it("issues one concurrent read per source across packs while retaining interleaved source order", async () => {
     const otherPackId = "supplemental.equipment";
-    const otherId = "other-item";
-    const otherUuid = `Compendium.${otherPackId}.Item.${otherId}`;
-    const primaryGetDocuments = vi.fn(async () => [daggerSource()]);
-    const otherGetDocuments = vi.fn(async () => [daggerSource({ _id: otherId, name: "Other Item" })]);
-    const getDocument = vi.fn(async () => {
-      throw new Error("single-document fallback must not run");
-    });
+    const otherIds = ["other-a", "other-b"] as const;
+    const otherUuids = otherIds.map((id) => `Compendium.${otherPackId}.Item.${id}`);
+    const primaryGetDocument = vi.fn(async () => daggerSource());
+    const otherGetDocument = vi.fn(async (documentId: string) =>
+      daggerSource({ _id: documentId, name: documentId === otherIds[0] ? "Other A" : "Other B" })
+    );
     const packs = new Map<string, EquipmentCataloguePackLike>([
-      [
-        PACK_ID,
-        { documentName: "Item", getIndex: vi.fn(async () => []), getDocument, getDocuments: primaryGetDocuments },
-      ],
-      [
-        otherPackId,
-        { documentName: "Item", getIndex: vi.fn(async () => []), getDocument, getDocuments: otherGetDocuments },
-      ],
+      [PACK_ID, { documentName: "Item", getIndex: vi.fn(async () => []), getDocument: primaryGetDocument }],
+      [otherPackId, { documentName: "Item", getIndex: vi.fn(async () => []), getDocument: otherGetDocument }],
     ]);
     const service = createEquipmentCatalogueService({ packs, equipmentPackIds: [PACK_ID, otherPackId] });
     const current = context({
@@ -744,14 +849,16 @@ describe("minimal equipment catalogue", () => {
       }),
     });
 
-    const results = await service.resolveManyForBrowse(current, [otherUuid, WF_080_21_DAGGER_UUID, otherUuid]);
+    const results = await service.resolveManyForBrowse(current, [
+      otherUuids[0]!,
+      WF_080_21_DAGGER_UUID,
+      otherUuids[1]!,
+    ]);
 
-    expect(primaryGetDocuments).toHaveBeenCalledOnce();
-    expect(otherGetDocuments).toHaveBeenCalledOnce();
-    expect(otherGetDocuments).toHaveBeenCalledWith({ _id__in: [otherId] });
-    expect(getDocument).not.toHaveBeenCalled();
-    expect(results.map(({ sourceUuid }) => sourceUuid)).toEqual([otherUuid, WF_080_21_DAGGER_UUID, otherUuid]);
-    expect(results.map(({ resolution }) => resolution?.candidate.name)).toEqual(["Other Item", "Dagger", "Other Item"]);
+    expect(primaryGetDocument).toHaveBeenCalledOnce();
+    expect(otherGetDocument.mock.calls.map(([documentId]) => documentId)).toEqual(otherIds);
+    expect(results.map(({ sourceUuid }) => sourceUuid)).toEqual([otherUuids[0], WF_080_21_DAGGER_UUID, otherUuids[1]]);
+    expect(results.map(({ resolution }) => resolution?.candidate.name)).toEqual(["Other A", "Dagger", "Other B"]);
   });
 
   it("requires exact fixed-native source and pack authority outside the effective catalogue", async () => {
@@ -800,17 +907,10 @@ function packMap(options: {
   readonly entries?: readonly unknown[];
   readonly getIndex?: EquipmentCataloguePackLike["getIndex"];
   readonly getDocument?: EquipmentCataloguePackLike["getDocument"];
-  readonly getDocuments?: EquipmentCataloguePackLike["getDocuments"];
 }): ReadonlyMap<string, EquipmentCataloguePackLike> {
   const getIndex = options.getIndex ?? vi.fn(async () => options.entries ?? []);
   const getDocument = options.getDocument ?? vi.fn(async () => null);
-  const getDocuments =
-    options.getDocuments ??
-    (async ({ _id__in }: { _id__in: string[] }) => {
-      const documents = await Promise.all(_id__in.map((documentId) => getDocument(documentId)));
-      return documents.filter((document): document is NonNullable<typeof document> => document !== null);
-    });
-  return new Map([[PACK_ID, { documentName: "Item", getIndex, getDocument, getDocuments }]]);
+  return new Map([[PACK_ID, { documentName: "Item", getIndex, getDocument }]]);
 }
 
 function context(overrides: Partial<EquipmentCatalogueContext> = {}): EquipmentCatalogueContext {

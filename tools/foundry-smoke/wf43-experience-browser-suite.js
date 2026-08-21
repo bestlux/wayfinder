@@ -276,13 +276,41 @@ globalThis.__inspectWayfinderWf43Focus = function inspectWf43Focus() {
   };
 };
 
+globalThis.__inspectWayfinderWf43TabTraversal = function inspectWf43TabTraversal({
+  key,
+  limit,
+  observedTraversal,
+  observedTraversalCount,
+  scopeSelector,
+  targetSelector,
+}) {
+  const scope = scopeSelector ? document.querySelector(scopeSelector) : document;
+  const focusable = scope ? wf43FocusableElements(scope) : [];
+  const target = document.querySelector(targetSelector);
+  const localOrderIndex = focusable.indexOf(target);
+  const localTabOrderLimit = 80;
+  return {
+    active: wf43FocusDescriptor(document.activeElement),
+    key,
+    limit,
+    localOrderIndex,
+    localTabOrder: focusable.slice(0, localTabOrderLimit).map(wf43FocusDescriptor),
+    localTabOrderCount: focusable.length,
+    localTabOrderTruncated: focusable.length > localTabOrderLimit,
+    observedTraversal,
+    observedTraversalCount,
+    observedTraversalTruncated: observedTraversalCount > observedTraversal.length,
+    scopeSelector,
+    target: wf43KeyboardTarget(target),
+    targetSelector,
+  };
+};
+
 globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({ actorId, targetSelector }) {
   const root = wf43ActorApp(game.actors.get(actorId)).element;
   const target = root.querySelector(targetSelector);
   const before = wf43FocusDescriptor(document.activeElement);
-  const localTabOrder = [...root.querySelectorAll("button, input, select, textarea, a[href], [tabindex]")]
-    .filter((element) => wf43KeyboardTarget(element).visible && !wf43KeyboardTarget(element).disabled && element.tabIndex >= 0)
-    .map(wf43FocusDescriptor);
+  const localTabOrder = wf43FocusableElements(root).map(wf43FocusDescriptor);
   const anchor = root.querySelector("[data-wayfinder-step-heading]");
   if (!(anchor instanceof HTMLElement)) throw new Error("WF-080-43 could not resolve its app keyboard-entry anchor.");
   anchor.focus();
@@ -481,6 +509,13 @@ function wf43KeyboardTarget(element) {
     tabIndex: element.tabIndex,
     keyboardFocus: element.dataset.keyboardFocus ?? null,
   };
+}
+
+function wf43FocusableElements(root) {
+  return [...root.querySelectorAll("button, input, select, textarea, a[href], [tabindex]")].filter((element) => {
+    const target = wf43KeyboardTarget(element);
+    return target.visible && !target.disabled && element.tabIndex >= 0;
+  });
 }
 
 function wf43FocusDescriptor(element) {

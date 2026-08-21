@@ -58,12 +58,12 @@ describe("WF-080-43 live experience qualifier", () => {
   it("selects the compact catalogue leaf before keyboard-adding from exact item detail", () => {
     const itemSelector = runner.indexOf('data-wayfinder-action="preview-equipment-item"');
     const selectStage = runner.indexOf('interactionStage("browse-cart", "select-item")', itemSelector);
-    const selectTab = runner.indexOf("await tabTo(playerPage, itemSelector)", selectStage);
+    const selectTab = runner.indexOf("await appTabTo(itemSelector)", selectStage);
     const selectAction = runner.indexOf('pressAndRecord(playerPage, keyboard, "select-item", "Enter")', selectStage);
     const detailSelector = runner.indexOf('data-application-part="equipment-detail"', selectAction);
     const currencySelector = runner.indexOf('data-funding="currency"', detailSelector);
     const detailWait = runner.indexOf("await waitFor(playerPage, currencyActionSelector)", currencySelector);
-    const addTab = runner.indexOf("await tabTo(playerPage, currencyActionSelector)", detailWait);
+    const addTab = runner.indexOf("await appTabTo(currencyActionSelector)", detailWait);
     const addAction = runner.indexOf('pressAndRecord(playerPage, keyboard, "add-item", "Enter")', detailWait);
 
     expect(itemSelector).toBeGreaterThan(-1);
@@ -76,6 +76,41 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(addTab).toBeGreaterThan(detailWait);
     expect(addAction).toBeGreaterThan(addTab);
     expect(runner).not.toContain('`${itemSelector} [data-wayfinder-action="add-equipment-item"]');
+  });
+
+  it("uses forward Tab into cart controls and Shift+Tab after quantity focus restoration", () => {
+    const quantityEntry = runner.indexOf('interactionStage("browse-cart", "quantity-entry")');
+    const decrementEntry = runner.indexOf("await appTabTo(decreaseQuantitySelector)", quantityEntry);
+    const increment = runner.indexOf("await appTabTo(increaseQuantitySelector)", decrementEntry);
+    const increaseAction = runner.indexOf(
+      'pressAndRecord(playerPage, keyboard, "increase-quantity", "Enter")',
+      increment
+    );
+    const decrementReturn = runner.indexOf(
+      'await appTabTo(decreaseQuantitySelector, { key: "Shift+Tab" })',
+      increaseAction
+    );
+    const decreaseAction = runner.indexOf(
+      'pressAndRecord(playerPage, keyboard, "decrease-quantity", "Enter")',
+      decrementReturn
+    );
+
+    expect(quantityEntry).toBeGreaterThan(-1);
+    expect(decrementEntry).toBeGreaterThan(quantityEntry);
+    expect(increment).toBeGreaterThan(decrementEntry);
+    expect(increaseAction).toBeGreaterThan(increment);
+    expect(decrementReturn).toBeGreaterThan(increaseAction);
+    expect(decreaseAction).toBeGreaterThan(decrementReturn);
+  });
+
+  it("bounds and persists active, target, local-order, and observed Tab failure evidence", () => {
+    expect(runner).toContain("const tabTraversalFailures = []");
+    expect(runner).toContain("tabTraversalFailures,");
+    expect(runner).toContain("if (boundedTraversal.length > 24) boundedTraversal.shift()");
+    expect(browserSuite).toContain("__inspectWayfinderWf43TabTraversal");
+    expect(browserSuite).toContain("active: wf43FocusDescriptor(document.activeElement)");
+    expect(browserSuite).toContain("localTabOrderLimit = 80");
+    expect(browserSuite).toContain("observedTraversalTruncated");
   });
 
   it("records the app-local keyboard entry target instead of traversing arbitrary Foundry chrome", () => {
@@ -223,6 +258,22 @@ describe("WF-080-43 live experience qualifier", () => {
             target: { visible: true, disabled: false, tabIndex: 0, localOrderIndex: 31 },
           },
         ],
+        tabTraversalFailures: [
+          {
+            active: { focusId: "starting-equipment-item:item:coin", name: "Buy Dagger with coin" },
+            key: "Tab",
+            limit: 180,
+            localOrderIndex: 12,
+            localTabOrder: [{ focusId: "starting-equipment-line:line-1", name: "Dagger" }],
+            localTabOrderCount: 24,
+            localTabOrderTruncated: false,
+            observedTraversal: [{ focusId: "starting-equipment-line:line-1", name: "Dagger" }],
+            observedTraversalCount: 180,
+            observedTraversalTruncated: true,
+            target: { present: true, visible: true, disabled: false, tabIndex: 0 },
+            targetSelector: "[data-delta='-1']",
+          },
+        ],
         samples: [{ locale: "en", state: "policy", width: 1240, screenshot: "screenshots/en-policy-1240.png" }],
         cleanup: {
           attempted: true,
@@ -246,6 +297,7 @@ describe("WF-080-43 live experience qualifier", () => {
         stage: result.stage,
         error: result.error,
         keyboardEntries: result.keyboardEntries,
+        tabTraversalFailures: result.tabTraversalFailures,
         samples: result.samples,
         cleanup: result.cleanup,
       });
@@ -253,6 +305,7 @@ describe("WF-080-43 live experience qualifier", () => {
       expect(summary).toContain("Stage: keyboard-entry/en/policy/initialize");
       expect(summary).toContain("Completed samples: 1");
       expect(summary).toContain("Keyboard entry diagnostics: 1");
+      expect(summary).toContain("Tab traversal failure diagnostics: 1");
       expect(summary).toContain("Keyboard traversal failed");
       expect(summary).toContain("Cleanup attempted: true");
     } finally {

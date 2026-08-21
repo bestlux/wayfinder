@@ -70,6 +70,7 @@ async function main() {
   const localeEvidence = [];
   const samples = [];
   const keyboardEntries = [];
+  const tabTraversalFailures = [];
 
   try {
     await mkdir(path.join(outDir, "screenshots"), { recursive: true });
@@ -156,6 +157,7 @@ async function main() {
           runId,
           keyboardEntries,
           samples,
+          tabTraversalFailures,
           setStage(nextStage) {
             stage = nextStage;
           },
@@ -269,6 +271,7 @@ async function main() {
     appWidths: WF43_APP_WIDTHS,
     locales: localeEvidence,
     keyboardEntries,
+    tabTraversalFailures,
     samples,
     cleanup,
   };
@@ -301,6 +304,7 @@ async function runLocale({
   runId,
   keyboardEntries,
   samples,
+  tabTraversalFailures,
   setStage,
 }) {
   const payload = { expectedPlayerId, expectedWorldId, fixture: enrichedFixture, moduleId: MODULE_ID, runId };
@@ -309,6 +313,12 @@ async function runLocale({
   const opened = await playerPage.evaluate((value) => globalThis.__openWayfinderWf43Experience(value), payload);
   const rootSelector = `[data-wayfinder-equipment-profile-actor-id="${opened.actorId}"]`;
   await waitFor(playerPage, `${rootSelector} .starting-equipment-pane`);
+  const appTabTo = (selector, options = {}) =>
+    tabTo(playerPage, selector, {
+      ...options,
+      failureEvidence: tabTraversalFailures,
+      scopeSelector: rootSelector,
+    });
   const states = [];
   const keyboard = {
     inputMode: "keyboard-events-only",
@@ -332,11 +342,9 @@ async function runLocale({
   keyboard.entry.observedTraversal = [];
   keyboardEntries.push({ locale: definition.id, ...keyboard.entry });
   assertKeyboardEntry(keyboard.entry);
-  await tabTo(
-    playerPage,
+  await appTabTo(
     `${rootSelector} [data-wayfinder-action="initialize-starting-equipment"]`,
-    180,
-    keyboard.entry.observedTraversal,
+    { observedTraversal: keyboard.entry.observedTraversal },
   );
   interactionStage("policy", "initialize");
   await pressAndRecord(playerPage, keyboard, "initialize", "Enter");
@@ -346,8 +354,7 @@ async function runLocale({
   ]);
   if ((await playerPage.locator(`${rootSelector} [data-wayfinder-action="activate-equipment-policy"]`).count()) > 0) {
     interactionStage("policy", "activate-policy");
-    await tabTo(
-      playerPage,
+    await appTabTo(
       `${rootSelector} [data-wayfinder-action="activate-equipment-policy"][data-start-kind="replacement-character"]`,
     );
     await pressAndRecord(playerPage, keyboard, "activate-policy", "Enter");
@@ -355,7 +362,7 @@ async function runLocale({
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-equipment-search]`);
   const beforeSearch = await liveRegions(playerPage, opened.actorId);
   interactionStage("browse-cart", "search");
-  await tabTo(playerPage, `${rootSelector} [data-wayfinder-equipment-search]`);
+  await appTabTo(`${rootSelector} [data-wayfinder-equipment-search]`);
   await playerPage.keyboard.type(definition.fixture.item.name);
   keyboard.actions.push({ action: "search", key: definition.fixture.item.name });
   keyboard.focus.push(await focusEvidence(playerPage));
@@ -367,13 +374,13 @@ async function runLocale({
   const beforeCart = afterSearch.cart;
 
   interactionStage("browse-cart", "select-item");
-  await tabTo(playerPage, itemSelector);
+  await appTabTo(itemSelector);
   await pressAndRecord(playerPage, keyboard, "select-item", "Enter");
   const currencyActionSelector = `${rootSelector} [data-application-part="equipment-detail"] [data-wayfinder-action="add-equipment-item"][data-source-uuid="${definition.fixture.item.sourceUuid}"][data-funding="currency"]`;
   await waitFor(playerPage, currencyActionSelector);
 
   interactionStage("browse-cart", "add-item");
-  await tabTo(playerPage, currencyActionSelector);
+  await appTabTo(currencyActionSelector);
   await pressAndRecord(playerPage, keyboard, "add-item", "Enter");
   await waitFor(playerPage, `${rootSelector} .equipment-cart-line`);
   const afterCart = await liveRegions(playerPage, opened.actorId);
@@ -381,13 +388,17 @@ async function runLocale({
   const cartFocus = await focusEvidence(playerPage);
   keyboard.focus.push(cartFocus);
 
+  const decreaseQuantitySelector = `${rootSelector} [data-wayfinder-action="change-equipment-quantity"][data-delta="-1"]`;
+  const increaseQuantitySelector = `${rootSelector} [data-wayfinder-action="change-equipment-quantity"][data-delta="1"]`;
+  interactionStage("browse-cart", "quantity-entry");
+  await appTabTo(decreaseQuantitySelector);
   interactionStage("browse-cart", "increase-quantity");
-  await tabTo(playerPage, `${rootSelector} [data-wayfinder-action="change-equipment-quantity"][data-delta="1"]`);
+  await appTabTo(increaseQuantitySelector);
   await pressAndRecord(playerPage, keyboard, "increase-quantity", "Enter");
   await waitForText(playerPage, `${rootSelector} .equipment-quantity strong`, "2");
   keyboard.focus.push(await focusEvidence(playerPage));
   interactionStage("browse-cart", "decrease-quantity");
-  await tabTo(playerPage, `${rootSelector} [data-wayfinder-action="change-equipment-quantity"][data-delta="-1"]`);
+  await appTabTo(decreaseQuantitySelector, { key: "Shift+Tab" });
   await pressAndRecord(playerPage, keyboard, "decrease-quantity", "Enter");
   await waitForText(playerPage, `${rootSelector} .equipment-quantity strong`, "1");
   keyboard.focus.push(await focusEvidence(playerPage));
@@ -400,7 +411,7 @@ async function runLocale({
 
   const beforeReview = (await liveRegions(playerPage, opened.actorId)).review;
   interactionStage("review", "review-purchases");
-  await tabTo(playerPage, `${rootSelector} [data-wayfinder-action="review-equipment-purchases"]`);
+  await appTabTo(`${rootSelector} [data-wayfinder-action="review-equipment-purchases"]`);
   await pressAndRecord(playerPage, keyboard, "review-purchases", "Enter");
   await playerPage.waitForFunction(
     (selector) => document.querySelector(selector)?.disabled === false,
@@ -423,7 +434,7 @@ async function runLocale({
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-focus-id="starting-equipment-handoff"]`);
   states.push(await captureState(playerPage, opened.actorId, "handoff", definition, outDir, samples, setStage));
   interactionStage("handoff", "acknowledge");
-  await tabTo(playerPage, `${rootSelector} [data-wayfinder-action="acknowledge-equipment-handoff"]`);
+  await appTabTo(`${rootSelector} [data-wayfinder-action="acknowledge-equipment-handoff"]`);
   await pressAndRecord(playerPage, keyboard, "acknowledge-handoff", "Enter");
   await waitFor(playerPage, `${rootSelector} .equipment-reviewed`);
   keyboard.focus.push(await focusEvidence(playerPage));
@@ -448,7 +459,7 @@ async function runLocale({
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-action="apply-draft"]`);
   const beforeFailure = (await liveRegions(playerPage, opened.actorId)).failure || afterReview;
   interactionStage("forced-failure", "apply");
-  await applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply");
+  await applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply", tabTraversalFailures);
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-focus-id="starting-equipment-status"][role="alert"]`, 120_000);
   const failure = await playerPage.evaluate(
     (actorId) => globalThis.__inspectWayfinderWf43Failure({ actorId }),
@@ -466,7 +477,7 @@ async function runLocale({
     snapshot: packsSnapshot,
   });
   interactionStage("receipt", "retry-apply");
-  await applyWithKeyboard(playerPage, rootSelector, keyboard, "retry-apply");
+  await applyWithKeyboard(playerPage, rootSelector, keyboard, "retry-apply", tabTraversalFailures);
   await playerPage.waitForFunction(
     (selector) => !document.querySelector(selector),
     rootSelector,
@@ -517,11 +528,14 @@ async function captureState(page, actorId, stateId, definition, outDir, samples,
   return { id: stateId, ...inspected, widths };
 }
 
-async function applyWithKeyboard(page, rootSelector, keyboard, action) {
-  await tabTo(page, `${rootSelector} [data-wayfinder-action="apply-draft"]`);
+async function applyWithKeyboard(page, rootSelector, keyboard, action, tabTraversalFailures) {
+  await tabTo(page, `${rootSelector} [data-wayfinder-action="apply-draft"]`, {
+    failureEvidence: tabTraversalFailures,
+    scopeSelector: rootSelector,
+  });
   await pressAndRecord(page, keyboard, action, "Enter");
   await waitFor(page, 'button[data-action="yes"]', 30_000);
-  await tabTo(page, 'button[data-action="yes"]', 60);
+  await tabTo(page, 'button[data-action="yes"]', { failureEvidence: tabTraversalFailures, limit: 60 });
   await pressAndRecord(page, keyboard, `${action}-confirm`, "Enter");
 }
 
@@ -546,14 +560,62 @@ async function liveRegions(page, actorId) {
   return page.evaluate((value) => globalThis.__inspectWayfinderWf43LiveRegions({ actorId: value }), actorId);
 }
 
-async function tabTo(page, selector, limit = 180, observedTraversal = null) {
-  for (let index = 0; index < limit; index += 1) {
-    const matched = await page.evaluate((candidate) => document.activeElement?.matches(candidate) === true, selector);
-    if (matched) return;
-    await page.keyboard.press("Tab");
-    if (observedTraversal) observedTraversal.push(await focusEvidence(page));
+async function tabTo(
+  page,
+  selector,
+  { failureEvidence, key = "Tab", limit = 180, observedTraversal = null, scopeSelector = null },
+) {
+  const boundedTraversal = [];
+  let observedTraversalCount = 0;
+  try {
+    for (let index = 0; index < limit; index += 1) {
+      const matched = await page.evaluate((candidate) => document.activeElement?.matches(candidate) === true, selector);
+      if (matched) return;
+      await page.keyboard.press(key);
+      const focus = await focusEvidence(page);
+      observedTraversalCount += 1;
+      boundedTraversal.push(focus);
+      if (boundedTraversal.length > 24) boundedTraversal.shift();
+      if (observedTraversal) {
+        observedTraversal.push(focus);
+        if (observedTraversal.length > 24) observedTraversal.shift();
+      }
+    }
+    throw new Error(`Keyboard traversal could not reach ${selector}.`);
+  } catch (error) {
+    const payload = {
+      key,
+      limit,
+      observedTraversal: boundedTraversal,
+      observedTraversalCount,
+      scopeSelector,
+      targetSelector: selector,
+    };
+    let diagnostic;
+    try {
+      diagnostic = await page.evaluate(
+        (value) => globalThis.__inspectWayfinderWf43TabTraversal(value),
+        payload,
+      );
+    } catch (diagnosticError) {
+      diagnostic = {
+        ...payload,
+        active: null,
+        target: null,
+        localOrderIndex: -1,
+        localTabOrder: [],
+        localTabOrderCount: 0,
+        localTabOrderTruncated: false,
+        observedTraversalTruncated: observedTraversalCount > boundedTraversal.length,
+        diagnosticError: errorMessage(diagnosticError),
+      };
+    }
+    failureEvidence.push({
+      ...diagnostic,
+      error: { name: error instanceof Error ? error.name : "Error", message: errorMessage(error) },
+    });
+    throw error;
   }
-  throw new Error(`Keyboard traversal could not reach ${selector}.`);
 }
 
 async function waitFor(page, selector, timeout = 30_000) {

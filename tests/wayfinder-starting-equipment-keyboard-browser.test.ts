@@ -19,6 +19,7 @@ const accessibilityScript = readFileSync(resolve("scripts/wayfinder/application/
     "\nwindow.restoreEquipmentFocus = restoreEquipmentFocus;",
     "\nwindow.startingEquipmentFocusCandidates = startingEquipmentFocusCandidates;"
   );
+const experienceBrowserScript = readFileSync(resolve("tools/foundry-smoke/wf43-experience-browser-suite.js"), "utf8");
 
 browserIt(
   "supports a keyboard-only acquisition path with named controls, announcements, and deterministic relocation",
@@ -28,6 +29,28 @@ browserIt(
       const page = await browser.newPage();
       await page.setContent(keyboardFixture);
       await page.addScriptTag({ content: accessibilityScript });
+      await page.addScriptTag({ content: experienceBrowserScript });
+      const traversalDiagnostic = await page.evaluate(() =>
+        globalThis.__inspectWayfinderWf43TabTraversal({
+          key: "Tab",
+          limit: 180,
+          observedTraversal: [{ focusId: "starting-equipment-line:line-1", name: "Adventurer's Pack" }],
+          observedTraversalCount: 180,
+          scopeSelector: ".starting-equipment-pane",
+          targetSelector: "[data-action='preview']",
+        })
+      );
+      expect(traversalDiagnostic).toMatchObject({
+        active: { tag: "BODY" },
+        key: "Tab",
+        limit: 180,
+        localOrderIndex: 3,
+        localTabOrderCount: 4,
+        localTabOrderTruncated: false,
+        observedTraversalCount: 180,
+        observedTraversalTruncated: true,
+        target: { present: true, visible: true, disabled: false, tabIndex: 0 },
+      });
       await page.evaluate(() => {
         const preview = document.querySelector<HTMLButtonElement>("[data-action='preview']")!;
         preview.addEventListener("click", () => {
@@ -36,20 +59,35 @@ browserIt(
           detail.querySelector<HTMLButtonElement>("[data-action='buy']")!.addEventListener("click", () => {
             detail.replaceChildren();
             const cart = document.querySelector<HTMLElement>("[data-cart]")!;
-            cart.innerHTML = `
-              <p data-cart-status role="status" aria-live="polite" aria-atomic="true"></p>
-              <article tabindex="-1" data-wayfinder-focus-id="starting-equipment-line:line-1">
-                <strong>Adventurer's Pack</strong>
-                <button aria-label="Decrease quantity of Adventurer's Pack" data-action="decrease" data-wayfinder-focus-id="starting-equipment-line:line-1:decrease">−</button>
-                <button aria-label="Increase quantity of Adventurer's Pack" data-wayfinder-focus-id="starting-equipment-line:line-1:increase">+</button>
-              </article>`;
-            document.querySelector<HTMLElement>("[data-cart-status]")!.textContent =
-              "Cart: 1 lines, 1 gp spent, 9 gp remaining.";
+            renderCart(1);
             window.restoreEquipmentFocus(document, ["starting-equipment-line:line-1"]);
-            document.querySelector<HTMLButtonElement>("[data-action='decrease']")!.addEventListener("click", () => {
-              cart.replaceChildren();
-              window.restoreEquipmentFocus(document, ["starting-equipment-line:line-1", "starting-equipment-review"]);
-            });
+
+            function renderCart(quantity: number): void {
+              cart.innerHTML = `
+                <p data-cart-status role="status" aria-live="polite" aria-atomic="true">Cart quantity ${quantity}</p>
+                <article tabindex="-1" data-wayfinder-focus-id="starting-equipment-line:line-1">
+                  <strong>Adventurer's Pack</strong>
+                  <button aria-label="Decrease quantity of Adventurer's Pack" data-action="decrease" data-wayfinder-focus-id="starting-equipment-line:line-1:decrease">−</button>
+                  <strong data-quantity>${quantity}</strong>
+                  <button aria-label="Increase quantity of Adventurer's Pack" data-action="increase" data-wayfinder-focus-id="starting-equipment-line:line-1:increase">+</button>
+                </article>`;
+              cart.querySelector<HTMLButtonElement>("[data-action='increase']")!.addEventListener("click", () => {
+                renderCart(quantity + 1);
+                window.restoreEquipmentFocus(document, ["starting-equipment-line:line-1:increase"]);
+              });
+              cart.querySelector<HTMLButtonElement>("[data-action='decrease']")!.addEventListener("click", () => {
+                if (quantity === 1) {
+                  cart.replaceChildren();
+                  window.restoreEquipmentFocus(document, [
+                    "starting-equipment-line:line-1",
+                    "starting-equipment-review",
+                  ]);
+                  return;
+                }
+                renderCart(quantity - 1);
+                window.restoreEquipmentFocus(document, ["starting-equipment-line:line-1:decrease"]);
+              });
+            }
           });
         });
       });
@@ -69,10 +107,20 @@ browserIt(
       expect(await page.evaluate(() => document.activeElement?.getAttribute("data-wayfinder-focus-id"))).toBe(
         "starting-equipment-line:line-1"
       );
-      expect(await page.locator("[data-cart-status]").textContent()).toBe("Cart: 1 lines, 1 gp spent, 9 gp remaining.");
+      expect(await page.locator("[data-cart-status]").textContent()).toBe("Cart quantity 1");
 
       await page.keyboard.press("Tab");
       await expectFocused(page, "Decrease quantity of Adventurer's Pack");
+      await page.keyboard.press("Tab");
+      await expectFocused(page, "Increase quantity of Adventurer's Pack");
+      await page.keyboard.press("Enter");
+      await expectFocused(page, "Increase quantity of Adventurer's Pack");
+      await expect(page.locator("[data-quantity]").textContent()).resolves.toBe("2");
+      await page.keyboard.press("Shift+Tab");
+      await expectFocused(page, "Decrease quantity of Adventurer's Pack");
+      await page.keyboard.press("Enter");
+      await expectFocused(page, "Decrease quantity of Adventurer's Pack");
+      await expect(page.locator("[data-quantity]").textContent()).resolves.toBe("1");
       await page.keyboard.press("Enter");
       expect(await page.evaluate(() => document.activeElement?.getAttribute("data-wayfinder-focus-id"))).toBe(
         "starting-equipment-review"
@@ -240,5 +288,13 @@ declare global {
   interface Window {
     restoreEquipmentFocus(root: ParentNode, candidateIds: readonly string[]): HTMLElement | null;
     startingEquipmentFocusCandidates(target: HTMLElement | null): string[] | null;
+    __inspectWayfinderWf43TabTraversal(payload: {
+      key: string;
+      limit: number;
+      observedTraversal: Array<{ focusId: string; name: string }>;
+      observedTraversalCount: number;
+      scopeSelector: string;
+      targetSelector: string;
+    }): Record<string, unknown>;
   }
 }

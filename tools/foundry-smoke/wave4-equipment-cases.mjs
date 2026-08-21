@@ -111,10 +111,10 @@ const RAW_CASES = [
         child("mca3x", null, "Backpack", "3lgwjrFEsQVKzhh7", "backpack", 1),
         child("mca3x/02xhi", "mca3x", "Rope", "fyYnQf1NAx9fWFaS", "equipment", 1),
         child("mca3x/30xet", "mca3x", "Waterskin", "VnPh324pKwd2ZB66", "equipment", 1),
-        child("mca3x/afbn4", "mca3x", "Chalk", "xShIDyydOMkGvGNb", "equipment", 10),
+        child("mca3x/afbn4", "mca3x", "Chalk", "xShIDyydOMkGvGNb", "consumable", 10),
         child("mca3x/fabyb", "mca3x", "Flint and Steel", "UlIxxLm71UdRgCFE", "equipment", 1),
         child("mca3x/jtagt", "mca3x", "Rations", "L9ZV076913otGtiB", "consumable", 2),
-        child("mca3x/lems2", "mca3x", "Torch", "8Jdw4yAzWYylGePS", "consumable", 5),
+        child("mca3x/lems2", "mca3x", "Torch", "8Jdw4yAzWYylGePS", "equipment", 5),
         child("mca3x/lpl11", "mca3x", "Bedroll", "fagzYdmfYyMQ6J77", "equipment", 1),
         child("mca3x/z9tim", "mca3x", "Soap", "81aHsD27HFGnq1Nt", "equipment", 1),
       ],
@@ -141,9 +141,11 @@ const RAW_CASES = [
       sourceUuid: `Compendium.${BATTLEZOO_EQUIPMENT_PACK_ID}.Item.rDPuZvrFUZhjpDif`,
       name: "Salt Stake",
       itemType: "weapon",
-      expectedUnavailableReason: "This item has no indexed base Price.",
+      expectedAvailable: true,
+      expectedPriceCopper: 0,
       expectedSourceBasis: "approved-pack",
-      expectedUnavailableReasonCode: "price-missing",
+      expectedEligible: true,
+      expectedUnavailableReasonCodes: [],
     },
     adjacent: {
       packId: BATTLEZOO_ADJACENT_PACK_ID,
@@ -199,6 +201,14 @@ export function validateWave4EquipmentCaseDefinition(value) {
     }
     if (value.supplemental?.expectedSourceBasis !== "approved-pack") {
       failures.push(`${value.id}: supplemental source authority must be approved-pack.`);
+    }
+    if (
+      value.supplemental?.expectedAvailable !== true ||
+      value.supplemental?.expectedEligible !== true ||
+      value.supplemental?.expectedPriceCopper !== 0 ||
+      value.supplemental?.expectedUnavailableReasonCodes?.length !== 0
+    ) {
+      failures.push(`${value.id}: Salt Stake must pin the explicit-zero allowed-item route.`);
     }
   }
   return failures;

@@ -39,6 +39,19 @@ describe("Foundry Wave 4 equipment live gate", () => {
       "weapon",
     ]);
     expect((wave4EquipmentCases[1] as any).kit.children).toHaveLength(9);
+    expect((wave4EquipmentCases[1] as any).kit.children).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Chalk", itemType: "consumable", quantity: 10 }),
+        expect.objectContaining({ name: "Torch", itemType: "equipment", quantity: 5 }),
+      ])
+    );
+    expect((wave4EquipmentCases[2] as any).supplemental).toMatchObject({
+      name: "Salt Stake",
+      expectedAvailable: true,
+      expectedEligible: true,
+      expectedPriceCopper: 0,
+      expectedUnavailableReasonCodes: [],
+    });
     expect(BATTLEZOO_EQUIPMENT_PACK_ID).not.toBe(BATTLEZOO_ADJACENT_PACK_ID);
   });
 
@@ -99,6 +112,17 @@ describe("Foundry Wave 4 equipment live gate", () => {
     deniedSource.cases[2].evidence.saltAuthority.unavailableReasonCodes.push("source-not-allowed");
     expect(qualifyWave4EquipmentResult(deniedSource).failures).toEqual(
       expect.arrayContaining([expect.stringMatching(/allowed supplemental pack/i)])
+    );
+
+    const missingPriceInsteadOfExplicitZero = passingResult();
+    missingPriceInsteadOfExplicitZero.cases[2].evidence.saltStake.available = false;
+    missingPriceInsteadOfExplicitZero.cases[2].evidence.saltStake.priceCopper = null;
+    missingPriceInsteadOfExplicitZero.cases[2].evidence.saltStake.unavailableReason =
+      "This item has no indexed base Price.";
+    missingPriceInsteadOfExplicitZero.cases[2].evidence.saltAuthority.eligible = false;
+    missingPriceInsteadOfExplicitZero.cases[2].evidence.saltAuthority.unavailableReasonCodes = ["price-missing"];
+    expect(qualifyWave4EquipmentResult(missingPriceInsteadOfExplicitZero).failures).toEqual(
+      expect.arrayContaining([expect.stringMatching(/explicit-zero/i)])
     );
   });
 
@@ -290,12 +314,14 @@ function passingResult(): any {
           saltStake: {
             sourceUuid: sourceDefinition.supplemental.sourceUuid,
             itemType: sourceDefinition.supplemental.itemType,
-            unavailableReason: sourceDefinition.supplemental.expectedUnavailableReason,
+            available: sourceDefinition.supplemental.expectedAvailable,
+            priceCopper: sourceDefinition.supplemental.expectedPriceCopper,
+            unavailableReason: null,
           },
           saltAuthority: {
-            eligible: false,
+            eligible: sourceDefinition.supplemental.expectedEligible,
             sourceBasis: sourceDefinition.supplemental.expectedSourceBasis,
-            unavailableReasonCodes: [sourceDefinition.supplemental.expectedUnavailableReasonCode],
+            unavailableReasonCodes: sourceDefinition.supplemental.expectedUnavailableReasonCodes,
           },
         },
       },

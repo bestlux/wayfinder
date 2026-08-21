@@ -196,12 +196,14 @@ function qualifySources(observed, definition, failures) {
   if (
     evidence?.saltStake?.sourceUuid !== definition?.supplemental?.sourceUuid ||
     evidence?.saltStake?.itemType !== definition?.supplemental?.itemType ||
-    evidence?.saltStake?.unavailableReason !== definition?.supplemental?.expectedUnavailableReason ||
-    evidence?.saltAuthority?.eligible !== false ||
+    evidence?.saltStake?.available !== definition?.supplemental?.expectedAvailable ||
+    evidence?.saltStake?.priceCopper !== definition?.supplemental?.expectedPriceCopper ||
+    evidence?.saltStake?.unavailableReason !== null ||
+    evidence?.saltAuthority?.eligible !== definition?.supplemental?.expectedEligible ||
     evidence?.saltAuthority?.sourceBasis !== definition?.supplemental?.expectedSourceBasis ||
-    !evidence?.saltAuthority?.unavailableReasonCodes?.includes(definition?.supplemental?.expectedUnavailableReasonCode) ||
-    evidence?.saltAuthority?.unavailableReasonCodes?.includes("source-not-allowed")
+    JSON.stringify(evidence?.saltAuthority?.unavailableReasonCodes) !==
+      JSON.stringify(definition?.supplemental?.expectedUnavailableReasonCodes)
   ) {
-    failures.push("Salt Stake did not prove the allowed supplemental pack with its exact zero-price diagnostic.");
+    failures.push("Salt Stake did not prove the allowed supplemental pack with its exact explicit-zero price.");
   }
 }

@@ -28,6 +28,8 @@ describe("completed acquisition receipt", () => {
       authority: {
         applyLabel: "Applied by you",
         recipeChoiceLabel: "Funding chosen by you",
+        recipeSelectionLabel: "Selected by Owner",
+        recipeSelectedAt: "2026-08-18T19:55:00.000Z",
         higherLevelStartLabel: "Higher-level start noted by you",
         judgmentIds: [],
       },

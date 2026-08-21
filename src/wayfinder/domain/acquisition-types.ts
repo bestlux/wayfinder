@@ -2,13 +2,28 @@ import type { AcquisitionCurrencyConvergenceWitnessV1 } from "./acquisition-curr
 import type { CharacterWealthPolicyRef } from "./character-wealth-policy.js";
 import type { ClassGrantReconciliationResultV1, PlannedClassGrantV1 } from "./class-grant-reconciliation.js";
 import type { EconomicBaselineV1, EconomicHandoffV1 } from "./economic-baseline.js";
-import type { EffectiveEquipmentPolicySnapshotV1 } from "./equipment-policy.js";
+import type { EffectiveEquipmentPolicySnapshotV1, EquipmentWorldPolicyV1 } from "./equipment-policy.js";
 import type { SEMANTIC_WEALTH_POLICY_REF } from "./semantic-wealth-rule-ledger.js";
 
 export type OfficialAcquisitionRecipe = "permanent-items" | "lump-sum";
 export type AcquisitionRecipeSelection =
   | { readonly kind: OfficialAcquisitionRecipe }
   | { readonly kind: "custom-lump-sum"; readonly judgmentRef: string; readonly amountCopper: number };
+
+export interface AcquisitionRecipeSelectionProvenanceV1 {
+  readonly version: 1;
+  readonly selectedRecipe: OfficialAcquisitionRecipe;
+  readonly selectedAt: string;
+  readonly selector:
+    | { readonly kind: "user"; readonly userId: string; readonly userName: string }
+    | { readonly kind: "unattributed-world-policy" };
+  readonly authority:
+    | {
+        readonly mode: "owner-delegated" | "gm-fixed";
+        readonly worldPolicy: EquipmentWorldPolicyV1;
+      }
+    | { readonly mode: "level-one-choice" };
+}
 export type AcquisitionFundingLane = "allowance" | "currency" | "class-grant";
 export type AcquisitionStackingIntent = "aggregate" | "separate";
 export type AcquisitionComponentKind = "baseline-item" | "property-rune" | "precious-material";
@@ -35,6 +50,7 @@ export interface AcquisitionPolicyMaterialFacts {
   readonly numericPolicyRef: CharacterWealthPolicyRef;
   readonly semanticPolicyRef: typeof SEMANTIC_WEALTH_POLICY_REF;
   readonly resolvedRecipe: AcquisitionRecipeSelection;
+  readonly recipeSelection?: AcquisitionRecipeSelectionProvenanceV1;
   readonly budgetCopper: number;
   readonly allowances: readonly AcquisitionAllowanceSnapshot[];
   readonly worldRecipePolicy: EffectiveEquipmentPolicySnapshotV1["worldRecipePolicy"];
@@ -204,6 +220,7 @@ export interface AcquisitionDraftState {
   readonly manifestId: string;
   readonly targetLevel: number;
   readonly recipe: AcquisitionRecipeSelection;
+  readonly recipeSelection?: AcquisitionRecipeSelectionProvenanceV1;
   readonly policySnapshot: AcquisitionPolicySnapshot | null;
   readonly baseline: AcquisitionEconomicBaselineSnapshot | null;
   readonly plannedClassGrants: readonly PlannedClassGrantV1[];

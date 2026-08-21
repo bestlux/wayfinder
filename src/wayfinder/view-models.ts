@@ -461,6 +461,7 @@ export interface StartingEquipmentStepPane {
     budgetLabel: string;
     automaticEligibilityLabel: string;
     authorityLabel: string;
+    recipeSelectionLabel: string;
     handoffLabel: string;
     explanations: readonly string[];
     allowances: readonly {

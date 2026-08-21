@@ -58,7 +58,11 @@ describe("equipment policy config app", () => {
     expect(globals.game.settings.set).toHaveBeenCalledWith(
       MODULE_ID,
       SETTINGS.equipmentPolicy,
-      expect.objectContaining({ version: 1, enabledRecipes: ["lump-sum", "permanent-items"] })
+      expect.objectContaining({
+        version: 1,
+        enabledRecipes: ["lump-sum", "permanent-items"],
+        recipeDecision: expect.objectContaining({ configuredBy: { userId: "gm-1", userName: "GM" } }),
+      })
     );
     expect(globals.ui.notifications.info).toHaveBeenCalled();
   });

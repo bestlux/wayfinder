@@ -159,12 +159,26 @@ export function assertEquipmentApplyAuthority(input: {
 
 export async function saveEquipmentWorldPolicy(
   raw: unknown,
-  user: unknown = game.user
+  user: unknown = game.user,
+  now: () => string = () => new Date().toISOString()
 ): Promise<EquipmentWorldPolicyV1> {
-  requireLiveGmPrincipal(record(user));
+  const principal = requireLiveGmPrincipal(record(user));
+  const liveUser = record(typeof game.users?.get === "function" ? game.users.get(principal.userId) : user);
+  const configuredAt = now();
+  if (!nonEmpty(liveUser.name) || !validTimestamp(configuredAt)) {
+    throw new TypeError("Equipment policy configuration requires current GM identity and time evidence.");
+  }
   const normalized = normalizeEquipmentWorldPolicy(raw);
-  await game.settings.set(MODULE_ID, SETTINGS.equipmentPolicy, normalized);
-  return normalized;
+  const attributed: EquipmentWorldPolicyV1 = {
+    ...normalized,
+    recipeDecision: {
+      version: 1,
+      configuredBy: { userId: principal.userId, userName: liveUser.name },
+      configuredAt,
+    },
+  };
+  await game.settings.set(MODULE_ID, SETTINGS.equipmentPolicy, attributed);
+  return attributed;
 }
 
 export async function saveTrustedEquipmentPolicyJudgment(input: {

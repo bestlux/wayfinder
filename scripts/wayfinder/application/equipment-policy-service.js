@@ -98,11 +98,24 @@ export function assertEquipmentApplyAuthority(input) {
     }
     assertCanUseWayfinder(input.actor);
 }
-export async function saveEquipmentWorldPolicy(raw, user = game.user) {
-    requireLiveGmPrincipal(record(user));
+export async function saveEquipmentWorldPolicy(raw, user = game.user, now = () => new Date().toISOString()) {
+    const principal = requireLiveGmPrincipal(record(user));
+    const liveUser = record(typeof game.users?.get === "function" ? game.users.get(principal.userId) : user);
+    const configuredAt = now();
+    if (!nonEmpty(liveUser.name) || !validTimestamp(configuredAt)) {
+        throw new TypeError("Equipment policy configuration requires current GM identity and time evidence.");
+    }
     const normalized = normalizeEquipmentWorldPolicy(raw);
-    await game.settings.set(MODULE_ID, SETTINGS.equipmentPolicy, normalized);
-    return normalized;
+    const attributed = {
+        ...normalized,
+        recipeDecision: {
+            version: 1,
+            configuredBy: { userId: principal.userId, userName: liveUser.name },
+            configuredAt,
+        },
+    };
+    await game.settings.set(MODULE_ID, SETTINGS.equipmentPolicy, attributed);
+    return attributed;
 }
 export async function saveTrustedEquipmentPolicyJudgment(input) {
     const user = record(input.user ?? game.user);

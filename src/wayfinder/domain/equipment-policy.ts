@@ -24,6 +24,11 @@ export interface EquipmentWorldPolicyV1 {
   readonly blanketRarity: EquipmentRarity;
   readonly allowedEquipmentPackFamilies: readonly string[];
   readonly applyAuthority: EquipmentApplyAuthority;
+  readonly recipeDecision: {
+    readonly version: 1;
+    readonly configuredBy?: { readonly userId: string; readonly userName: string };
+    readonly configuredAt?: string;
+  };
 }
 
 export const DEFAULT_EQUIPMENT_WORLD_POLICY: EquipmentWorldPolicyV1 = Object.freeze({
@@ -35,6 +40,7 @@ export const DEFAULT_EQUIPMENT_WORLD_POLICY: EquipmentWorldPolicyV1 = Object.fre
   blanketRarity: "common",
   allowedEquipmentPackFamilies: Object.freeze(["pf2e"] as const),
   applyAuthority: "actor-owner",
+  recipeDecision: Object.freeze({ version: 1 }),
 });
 
 export interface EquipmentPolicyJudgmentRecord {
@@ -245,6 +251,7 @@ export function normalizeEquipmentWorldPolicy(raw: unknown): EquipmentWorldPolic
       ? raw.allowedEquipmentPackFamilies.filter(nonEmpty).map((value) => value.trim().toLowerCase())
       : []
   );
+  const recipeDecision = normalizeRecipeDecision(raw.recipeDecision);
   return {
     version: 1,
     enabledRecipes: recipes,
@@ -263,7 +270,31 @@ export function normalizeEquipmentWorldPolicy(raw: unknown): EquipmentWorldPolic
     applyAuthority: isOneOf(raw.applyAuthority, ["actor-owner", "gm-review"])
       ? raw.applyAuthority
       : DEFAULT_EQUIPMENT_WORLD_POLICY.applyAuthority,
+    recipeDecision,
   };
+}
+
+function normalizeRecipeDecision(raw: unknown): EquipmentWorldPolicyV1["recipeDecision"] {
+  if (!isRecord(raw) || raw.version !== 1) {
+    return { version: 1 };
+  }
+  if (raw.configuredBy == null && raw.configuredAt == null) {
+    return { version: 1 };
+  }
+  if (
+    isRecord(raw.configuredBy) &&
+    nonEmpty(raw.configuredBy.userId) &&
+    nonEmpty(raw.configuredBy.userName) &&
+    nonEmpty(raw.configuredAt) &&
+    Number.isFinite(Date.parse(raw.configuredAt))
+  ) {
+    return {
+      version: 1,
+      configuredBy: { userId: raw.configuredBy.userId, userName: raw.configuredBy.userName },
+      configuredAt: raw.configuredAt,
+    };
+  }
+  return { version: 1 };
 }
 
 export function normalizeEquipmentPolicyJudgmentStore(raw: unknown): EquipmentPolicyJudgmentStoreV1 {

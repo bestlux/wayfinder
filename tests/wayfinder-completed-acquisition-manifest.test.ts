@@ -29,6 +29,16 @@ describe("completed acquisition manifest", () => {
       appliedBy: { userId: "owner-1", userName: "Owner" },
       targetLevel: 5,
       disposition: "purchase-ledger",
+      policy: {
+        material: {
+          recipeSelection: {
+            selectedRecipe: "permanent-items",
+            selectedAt: "2026-08-18T19:55:00.000Z",
+            selector: { kind: "user", userId: "owner-1", userName: "Owner" },
+            authority: { mode: "owner-delegated" },
+          },
+        },
+      },
       currency: { preCopper: 0, budgetCopper: 1_000, spentCopper: 100, remainingCopper: 900 },
       entries: [
         expect.objectContaining({

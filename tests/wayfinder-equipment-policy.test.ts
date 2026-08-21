@@ -37,6 +37,7 @@ describe("equipment world policy", () => {
       blanketRarity: "rare",
       allowedEquipmentPackFamilies: ["battlezoo", "pf2e"],
       applyAuthority: "gm-review",
+      recipeDecision: { version: 1 },
     });
   });
 

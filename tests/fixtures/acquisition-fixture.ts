@@ -30,6 +30,30 @@ export function acquisitionFixture(
     readonly plannedClassGrants?: readonly PlannedClassGrantV1[];
   } = {}
 ) {
+  const recipeSelection = {
+    version: 1 as const,
+    selectedRecipe: "permanent-items" as const,
+    selectedAt: "2026-08-18T19:55:00.000Z",
+    selector: { kind: "user" as const, userId: "owner-1", userName: "Owner" },
+    authority: {
+      mode: "owner-delegated" as const,
+      worldPolicy: {
+        version: 1 as const,
+        enabledRecipes: ["lump-sum", "permanent-items"] as const,
+        defaultRecipe: "permanent-items" as const,
+        recipeChoiceAuthority: "actor-owner" as const,
+        higherLevelStartAuthority: "actor-owner-attestation" as const,
+        blanketRarity: "common" as const,
+        allowedEquipmentPackFamilies: ["pf2e"] as const,
+        applyAuthority: "actor-owner" as const,
+        recipeDecision: {
+          version: 1 as const,
+          configuredBy: { userId: "gm-1", userName: "GM" },
+          configuredAt: "2026-08-18T19:00:00.000Z",
+        },
+      },
+    },
+  };
   const draft: AcquisitionDraftState = {
     ...createAcquisitionDraft({
       draftId: "draft-1",
@@ -37,6 +61,7 @@ export function acquisitionFixture(
       manifestId: "manifest-1",
       targetLevel: 5,
       recipe: { kind: "permanent-items" },
+      recipeSelection,
     }),
     policySnapshot: {
       version: 1,
@@ -46,6 +71,7 @@ export function acquisitionFixture(
         numericPolicyRef: CHARACTER_WEALTH_POLICY_REF,
         semanticPolicyRef: SEMANTIC_WEALTH_POLICY_REF,
         resolvedRecipe: { kind: "permanent-items" },
+        recipeSelection,
         budgetCopper: 1_000,
         allowances: [{ allowanceId: "allowance-5", itemLevel: 5 }],
         worldRecipePolicy: { enabledRecipes: ["lump-sum", "permanent-items"], defaultRecipe: "permanent-items" },

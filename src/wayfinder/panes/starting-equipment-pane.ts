@@ -211,6 +211,7 @@ export function buildStartingEquipmentPane(
       authorityLabel: policy
         ? authoritySentence(policy.authorityPolicy.recipeChoice, policy.authorityPolicy.apply)
         : "From your GM's settings",
+      recipeSelectionLabel: recipeSelectionLabel(acquisition?.recipeSelection),
       handoffLabel: "Coin and gear your character already has stay put. Handle those on the PF2E inventory tab.",
       explanations: policy && acquisition ? policyExplanations(acquisition) : [],
       allowances:
@@ -265,6 +266,14 @@ export function buildStartingEquipmentPane(
       reasons: handoff?.handoff.reasons.map(handoffReason) ?? [],
     },
   };
+}
+
+function recipeSelectionLabel(selection: NonNullable<DraftState["acquisition"]>["recipeSelection"]): string {
+  if (!selection) return "Recorded when funding is selected";
+  if (selection.selector.kind === "unattributed-world-policy") {
+    return `Fixed by legacy world policy at ${selection.selectedAt}`;
+  }
+  return `${selection.selector.userName} selected this at ${selection.selectedAt}`;
 }
 
 function matchesQuery(record: StartingEquipmentCatalogueRecord, query: string): boolean {

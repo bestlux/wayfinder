@@ -17,7 +17,11 @@ import {
   reviewPurchaseLedger,
   reviewRetainAll,
 } from "../domain/acquisition-ledger.js";
-import type { AcquisitionDraftState, AcquisitionLineDraft } from "../domain/acquisition-types.js";
+import type {
+  AcquisitionDraftState,
+  AcquisitionLineDraft,
+  AcquisitionRecipeSelectionProvenanceV1,
+} from "../domain/acquisition-types.js";
 import { createPreparedClassGrantPlan, type PlannedClassGrantV1 } from "../domain/class-grant-reconciliation.js";
 import type {
   EquipmentHigherLevelStartClaim,
@@ -158,7 +162,7 @@ export async function executeStartingEquipmentCommand(
       break;
     }
     case "select-recipe":
-      acquisition = selectStagedRecipe(requireAcquisition(context.draft), command.selectedRecipe, deps);
+      acquisition = selectStagedRecipe(requireAcquisition(context.draft), command.selectedRecipe, context, deps);
       statusNote = `Using ${command.selectedRecipe === "permanent-items" ? "permanent items and coin" : "a lump sum"}.`;
       break;
     case "activate-policy": {
@@ -167,7 +171,7 @@ export async function executeStartingEquipmentCommand(
       if (staged.policySnapshot) {
         const policy = resolveExistingPolicy(staged, context, deps, { higherLevelStartClaim: claim });
         acquisition = invalidateAcquisitionReview(
-          { ...staged, policySnapshot: createAcquisitionPolicySnapshot(policy, staged.recipe) },
+          { ...staged, policySnapshot: createAcquisitionPolicySnapshot(policy, staged.recipe, staged.recipeSelection) },
           ["policy"]
         );
         statusNote = "Higher-level starting wealth reapproved. Review the current cart before Apply.";
@@ -235,7 +239,10 @@ export async function executeStartingEquipmentCommand(
         ];
         const policy = resolveExistingPolicy(current, context, deps, { exceptionJudgmentIds });
         acquisition = invalidateAcquisitionReview(
-          { ...current, policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe) },
+          {
+            ...current,
+            policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe, current.recipeSelection),
+          },
           ["policy"]
         );
         statusNote = "Exact item source and rarity exception approved. The item can now be added normally.";
@@ -260,7 +267,10 @@ export async function executeStartingEquipmentCommand(
       if (current.policySnapshot) {
         const policy = resolveExistingPolicy(current, context, deps, { higherLevelStartClaim: claim });
         acquisition = invalidateAcquisitionReview(
-          { ...current, policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe) },
+          {
+            ...current,
+            policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe, current.recipeSelection),
+          },
           ["policy"]
         );
         statusNote = "Higher-level start reapproved. Review the current cart before Apply.";
@@ -314,7 +324,10 @@ export async function executeStartingEquipmentCommand(
       ];
       const policy = resolveExistingPolicy(current, context, deps, { exceptionJudgmentIds });
       acquisition = invalidateAcquisitionReview(
-        { ...current, policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe) },
+        {
+          ...current,
+          policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe, current.recipeSelection),
+        },
         ["policy"]
       );
       statusNote = "Exact item source and rarity exception approved. The item can now be added normally.";
@@ -369,7 +382,11 @@ export async function executeStartingEquipmentCommand(
       });
       const recipe = { kind: "custom-lump-sum", judgmentRef: judgmentId, amountCopper: command.amountCopper } as const;
       acquisition = invalidateAcquisitionReview(
-        { ...current, recipe, policySnapshot: createAcquisitionPolicySnapshot(policy, recipe) },
+        {
+          ...current,
+          recipe,
+          policySnapshot: createAcquisitionPolicySnapshot(policy, recipe, current.recipeSelection),
+        },
         ["recipe", "policy", "budget"]
       );
       statusNote = "Custom lump sum approved for this draft.";
@@ -403,7 +420,10 @@ export async function executeStartingEquipmentCommand(
         extraCurrentLevelAllowanceIds: [judgmentId],
       });
       acquisition = invalidateAcquisitionReview(
-        { ...current, policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe) },
+        {
+          ...current,
+          policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe, current.recipeSelection),
+        },
         ["policy", "allowance"]
       );
       statusNote = "One extra current-level permanent-item allowance approved.";
@@ -502,6 +522,7 @@ async function initializeAcquisition(
     ...identity,
     targetLevel: context.draft.targetLevel,
     recipe: { kind: recipe },
+    recipeSelection: createRecipeSelectionProvenance(recipe, worldPolicy, context),
   });
   if (context.draft.targetLevel > 1) {
     return { acquisition: staged, pendingTitanSelection: false, awaitingAuthority: true };
@@ -528,7 +549,7 @@ async function activateAcquisition(
   });
   let acquisition: AcquisitionDraftState = {
     ...staged,
-    policySnapshot: createAcquisitionPolicySnapshot(policy, staged.recipe),
+    policySnapshot: createAcquisitionPolicySnapshot(policy, staged.recipe, staged.recipeSelection),
   };
   const projectionDraft = { ...context.draft, acquisition };
   const classGrantProjection = await deps.projectClassGrants(context.actor, projectionDraft, context.steps);
@@ -580,6 +601,7 @@ async function activateAcquisition(
 function selectStagedRecipe(
   acquisition: AcquisitionDraftState,
   selectedRecipe: OfficialEquipmentRecipe,
+  context: StartingEquipmentCommandContext,
   deps: StartingEquipmentCommandDependencies
 ): AcquisitionDraftState {
   if (acquisition.policySnapshot || acquisition.baseline || acquisition.lines.length > 0) {
@@ -592,8 +614,50 @@ function selectStagedRecipe(
   if (!policy.enabledRecipes.includes(selectedRecipe)) {
     throw new TypeError("That starting-equipment funding recipe is disabled in this world.");
   }
-  if (acquisition.recipe.kind === selectedRecipe) return acquisition;
-  return { ...acquisition, recipe: { kind: selectedRecipe } };
+  const recipeSelection = createRecipeSelectionProvenance(selectedRecipe, policy, context);
+  if (
+    acquisition.recipe.kind === selectedRecipe &&
+    acquisition.recipeSelection?.selector.kind === "user" &&
+    acquisition.recipeSelection.selector.userId === context.userId
+  ) {
+    return acquisition;
+  }
+  return { ...acquisition, recipe: { kind: selectedRecipe }, recipeSelection };
+}
+
+function createRecipeSelectionProvenance(
+  selectedRecipe: OfficialEquipmentRecipe,
+  worldPolicy: ReturnType<typeof getEquipmentWorldPolicySetting> | null,
+  context: StartingEquipmentCommandContext
+): AcquisitionRecipeSelectionProvenanceV1 {
+  if (!worldPolicy) {
+    return {
+      version: 1,
+      selectedRecipe,
+      selectedAt: context.now(),
+      selector: { kind: "user", userId: context.userId, userName: userName(context.user, context.userId) },
+      authority: { mode: "level-one-choice" },
+    };
+  }
+  if (worldPolicy.recipeChoiceAuthority === "gm-fixed") {
+    const configuredBy = worldPolicy.recipeDecision.configuredBy;
+    return {
+      version: 1,
+      selectedRecipe,
+      selectedAt: worldPolicy.recipeDecision.configuredAt ?? context.now(),
+      selector: configuredBy
+        ? { kind: "user", userId: configuredBy.userId, userName: configuredBy.userName }
+        : { kind: "unattributed-world-policy" },
+      authority: { mode: "gm-fixed", worldPolicy: structuredClone(worldPolicy) },
+    };
+  }
+  return {
+    version: 1,
+    selectedRecipe,
+    selectedAt: context.now(),
+    selector: { kind: "user", userId: context.userId, userName: userName(context.user, context.userId) },
+    authority: { mode: "owner-delegated", worldPolicy: structuredClone(worldPolicy) },
+  };
 }
 
 async function createHigherLevelStartClaim(

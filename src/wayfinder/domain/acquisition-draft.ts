@@ -17,6 +17,7 @@ import type {
   AcquisitionPolicySnapshot,
   AcquisitionPriceSnapshot,
   AcquisitionRecipeSelection,
+  AcquisitionRecipeSelectionProvenanceV1,
   AcquisitionReviewSnapshot,
 } from "./acquisition-types.js";
 import {
@@ -53,6 +54,7 @@ export function createAcquisitionDraft(args: {
   manifestId: string;
   targetLevel: number;
   recipe: AcquisitionRecipeSelection;
+  recipeSelection?: AcquisitionRecipeSelectionProvenanceV1;
 }): AcquisitionDraftState {
   if (!nonEmpty(args.draftId) || !nonEmpty(args.batchId) || !nonEmpty(args.manifestId)) {
     throw new TypeError("Acquisition IDs must be created before draft initialization.");
@@ -61,7 +63,14 @@ export function createAcquisitionDraft(args: {
     throw new RangeError("Acquisition target level must be 1 through 20.");
   }
   const recipe = normalizeRecipe(args.recipe);
+  const recipeSelection = normalizeRecipeSelectionProvenance(args.recipeSelection);
   if (!recipe) throw new TypeError("Acquisition recipe is invalid.");
+  if (args.recipeSelection != null && !recipeSelection) {
+    throw new TypeError("Acquisition recipe-selection provenance is invalid.");
+  }
+  if (recipeSelection && recipeSelection.selectedRecipe !== officialRecipe(recipe)) {
+    throw new TypeError("Acquisition recipe-selection provenance differs from the selected recipe.");
+  }
   return {
     schemaVersion: 3,
     draftId: args.draftId,
@@ -69,6 +78,7 @@ export function createAcquisitionDraft(args: {
     manifestId: args.manifestId,
     targetLevel: args.targetLevel,
     recipe,
+    ...(recipeSelection ? { recipeSelection } : {}),
     policySnapshot: null,
     baseline: null,
     plannedClassGrants: [],
@@ -81,7 +91,8 @@ export function createAcquisitionDraft(args: {
 
 export function createAcquisitionPolicySnapshot(
   policy: EffectiveEquipmentPolicySnapshotV1,
-  selectedRecipe: AcquisitionRecipeSelection
+  selectedRecipe: AcquisitionRecipeSelection,
+  recipeSelection?: AcquisitionRecipeSelectionProvenanceV1
 ): AcquisitionPolicySnapshot {
   const recipe = acquisitionRecipeFromEffectivePolicy(policy, selectedRecipe);
   const allowances =
@@ -93,6 +104,7 @@ export function createAcquisitionPolicySnapshot(
     numericPolicyRef: policy.rules.wealth,
     semanticPolicyRef: policy.rules.semantics,
     resolvedRecipe: recipe,
+    ...(recipeSelection ? { recipeSelection: clone(recipeSelection) } : {}),
     budgetCopper,
     allowances,
     worldRecipePolicy: clone(policy.worldRecipePolicy),
@@ -127,9 +139,12 @@ export function normalizeAcquisitionDraft(raw: unknown): AcquisitionDraftState |
     return null;
   }
   const recipe = normalizeRecipe(raw.recipe);
+  const recipeSelection = normalizeRecipeSelectionProvenance(raw.recipeSelection);
   if (
     !validTargetLevel(raw.targetLevel) ||
     !recipe ||
+    (raw.recipeSelection !== undefined && !recipeSelection) ||
+    (recipeSelection !== undefined && recipeSelection.selectedRecipe !== officialRecipe(recipe)) ||
     !Array.isArray(raw.plannedClassGrants) ||
     !Array.isArray(raw.lines) ||
     !Array.isArray(raw.classGrantReconciliations)
@@ -165,6 +180,7 @@ export function normalizeAcquisitionDraft(raw: unknown): AcquisitionDraftState |
 
   const policySnapshot = normalizeAcquisitionPolicySnapshot(raw.policySnapshot);
   if (raw.policySnapshot != null && !policySnapshot) return null;
+  if (policySnapshot && !same(policySnapshot.material.recipeSelection, recipeSelection)) return null;
   const baseline = normalizeBaseline(raw.baseline);
   if (raw.baseline != null && !baseline) return null;
   if (
@@ -198,6 +214,7 @@ export function normalizeAcquisitionDraft(raw: unknown): AcquisitionDraftState |
     manifestId: raw.manifestId,
     targetLevel: raw.targetLevel,
     recipe,
+    ...(recipeSelection ? { recipeSelection } : {}),
     policySnapshot,
     baseline,
     plannedClassGrants: normalizedClassGrants,
@@ -765,6 +782,7 @@ function normalizePolicyMaterial(raw: unknown): AcquisitionPolicyMaterialFacts |
   const numericPolicyRef = raw.numericPolicyRef;
   const semanticPolicyRef = raw.semanticPolicyRef;
   const resolvedRecipe = normalizeRecipe(raw.resolvedRecipe);
+  const recipeSelection = normalizeRecipeSelectionProvenance(raw.recipeSelection);
   const worldRecipePolicy = normalizeWorldRecipePolicy(raw.worldRecipePolicy);
   const sourcePolicy = normalizeSourcePolicy(raw.sourcePolicy);
   const rarityPolicy = normalizeRarityPolicy(raw.rarityPolicy);
@@ -780,6 +798,8 @@ function normalizePolicyMaterial(raw: unknown): AcquisitionPolicyMaterialFacts |
     semanticPolicyRef.policyId !== "pf2e-remaster-semantic-wealth" ||
     semanticPolicyRef.policyVersion !== 1 ||
     !resolvedRecipe ||
+    (raw.recipeSelection !== undefined && !recipeSelection) ||
+    (recipeSelection !== undefined && recipeSelection.selectedRecipe !== officialRecipe(resolvedRecipe)) ||
     !safeNonNegativeInteger(raw.budgetCopper) ||
     !Array.isArray(raw.allowances) ||
     !worldRecipePolicy ||
@@ -803,6 +823,12 @@ function normalizePolicyMaterial(raw: unknown): AcquisitionPolicyMaterialFacts |
   ) {
     return null;
   }
+  if (
+    recipeSelection &&
+    !recipeSelectionMatchesPolicy(recipeSelection, subject, worldRecipePolicy, authorityPolicy.recipeChoice)
+  ) {
+    return null;
+  }
   return {
     subject,
     numericPolicyRef: {
@@ -815,6 +841,7 @@ function normalizePolicyMaterial(raw: unknown): AcquisitionPolicyMaterialFacts |
       policyVersion: 1,
     },
     resolvedRecipe,
+    ...(recipeSelection ? { recipeSelection } : {}),
     budgetCopper: raw.budgetCopper,
     allowances: [...allowances].sort(
       (left, right) => left.itemLevel - right.itemLevel || left.allowanceId.localeCompare(right.allowanceId)
@@ -1324,6 +1351,161 @@ function normalizeRecipe(raw: unknown): AcquisitionRecipeSelection | null {
   return nonEmpty(raw.judgmentRef) && safeNonNegativeInteger(raw.amountCopper)
     ? { kind: "custom-lump-sum", judgmentRef: raw.judgmentRef, amountCopper: raw.amountCopper }
     : null;
+}
+
+function officialRecipe(recipe: AcquisitionRecipeSelection): "permanent-items" | "lump-sum" {
+  return recipe.kind === "permanent-items" ? "permanent-items" : "lump-sum";
+}
+
+function normalizeRecipeSelectionProvenance(raw: unknown): AcquisitionRecipeSelectionProvenanceV1 | undefined {
+  if (raw === undefined) return undefined;
+  if (
+    !isRecord(raw) ||
+    raw.version !== 1 ||
+    !isOneOf(raw.selectedRecipe, ["permanent-items", "lump-sum"]) ||
+    !nonEmpty(raw.selectedAt) ||
+    !Number.isFinite(Date.parse(raw.selectedAt)) ||
+    !isRecord(raw.selector) ||
+    !isRecord(raw.authority)
+  ) {
+    return undefined;
+  }
+  const selector =
+    raw.selector.kind === "unattributed-world-policy" && hasOnlyKeys(raw.selector, ["kind"])
+      ? ({ kind: "unattributed-world-policy" } as const)
+      : raw.selector.kind === "user" &&
+          nonEmpty(raw.selector.userId) &&
+          nonEmpty(raw.selector.userName) &&
+          hasOnlyKeys(raw.selector, ["kind", "userId", "userName"])
+        ? ({
+            kind: "user",
+            userId: raw.selector.userId,
+            userName: raw.selector.userName,
+          } as const)
+        : null;
+  if (!selector) return undefined;
+  if (raw.authority.mode === "level-one-choice") {
+    if ("worldPolicy" in raw.authority || selector.kind !== "user") return undefined;
+    return {
+      version: 1,
+      selectedRecipe: raw.selectedRecipe,
+      selectedAt: raw.selectedAt,
+      selector,
+      authority: { mode: "level-one-choice" },
+    };
+  }
+  if (!isOneOf(raw.authority.mode, ["owner-delegated", "gm-fixed"])) return undefined;
+  const worldPolicy = normalizeRecipeSelectionWorldPolicy(raw.authority.worldPolicy);
+  if (
+    !worldPolicy ||
+    (raw.authority.mode === "owner-delegated" && selector.kind !== "user") ||
+    (raw.authority.mode === "gm-fixed" &&
+      selector.kind === "user" &&
+      (selector.userId !== worldPolicy.recipeDecision.configuredBy?.userId ||
+        selector.userName !== worldPolicy.recipeDecision.configuredBy?.userName ||
+        raw.selectedAt !== worldPolicy.recipeDecision.configuredAt)) ||
+    (raw.authority.mode === "gm-fixed" &&
+      selector.kind === "unattributed-world-policy" &&
+      worldPolicy.recipeDecision.configuredBy !== undefined) ||
+    (raw.authority.mode === "owner-delegated" && worldPolicy.recipeChoiceAuthority !== "actor-owner") ||
+    (raw.authority.mode === "gm-fixed" && worldPolicy.recipeChoiceAuthority !== "gm-fixed") ||
+    !worldPolicy.enabledRecipes.includes(raw.selectedRecipe) ||
+    (raw.authority.mode === "gm-fixed" && worldPolicy.defaultRecipe !== raw.selectedRecipe)
+  ) {
+    return undefined;
+  }
+  return {
+    version: 1,
+    selectedRecipe: raw.selectedRecipe,
+    selectedAt: raw.selectedAt,
+    selector,
+    authority: { mode: raw.authority.mode, worldPolicy },
+  };
+}
+
+function normalizeRecipeSelectionWorldPolicy(
+  raw: unknown
+): Extract<AcquisitionRecipeSelectionProvenanceV1["authority"], { worldPolicy: object }>["worldPolicy"] | null {
+  if (
+    !isRecord(raw) ||
+    raw.version !== 1 ||
+    !Array.isArray(raw.enabledRecipes) ||
+    !isOneOf(raw.defaultRecipe, ["permanent-items", "lump-sum"]) ||
+    !isOneOf(raw.recipeChoiceAuthority, ["gm-fixed", "actor-owner"]) ||
+    !isOneOf(raw.higherLevelStartAuthority, ["gm-confirmation", "actor-owner-attestation"]) ||
+    !isOneOf(raw.blanketRarity, ["common", "uncommon", "rare", "unique"]) ||
+    !Array.isArray(raw.allowedEquipmentPackFamilies) ||
+    !isOneOf(raw.applyAuthority, ["actor-owner", "gm-review"])
+  ) {
+    return null;
+  }
+  const enabledRecipes = [
+    ...new Set(raw.enabledRecipes.filter((value) => isOneOf(value, ["permanent-items", "lump-sum"]))),
+  ].sort();
+  const allowedEquipmentPackFamilies = [...new Set(raw.allowedEquipmentPackFamilies.filter(nonEmpty))].sort();
+  const recipeDecision = normalizeRecipeDecisionSnapshot(raw.recipeDecision);
+  if (
+    enabledRecipes.length !== raw.enabledRecipes.length ||
+    enabledRecipes.length === 0 ||
+    !enabledRecipes.includes(raw.defaultRecipe) ||
+    allowedEquipmentPackFamilies.length !== raw.allowedEquipmentPackFamilies.length ||
+    allowedEquipmentPackFamilies.length === 0 ||
+    !recipeDecision
+  ) {
+    return null;
+  }
+  return {
+    version: 1,
+    enabledRecipes,
+    defaultRecipe: raw.defaultRecipe,
+    recipeChoiceAuthority: raw.recipeChoiceAuthority,
+    higherLevelStartAuthority: raw.higherLevelStartAuthority,
+    blanketRarity: raw.blanketRarity,
+    allowedEquipmentPackFamilies,
+    applyAuthority: raw.applyAuthority,
+    recipeDecision,
+  };
+}
+
+function normalizeRecipeDecisionSnapshot(
+  raw: unknown
+):
+  | Extract<
+      AcquisitionRecipeSelectionProvenanceV1["authority"],
+      { worldPolicy: object }
+    >["worldPolicy"]["recipeDecision"]
+  | null {
+  if (!isRecord(raw) || raw.version !== 1) return null;
+  if (raw.configuredBy == null && raw.configuredAt == null) {
+    return { version: 1 };
+  }
+  return isRecord(raw.configuredBy) &&
+    nonEmpty(raw.configuredBy.userId) &&
+    nonEmpty(raw.configuredBy.userName) &&
+    nonEmpty(raw.configuredAt) &&
+    Number.isFinite(Date.parse(raw.configuredAt))
+    ? {
+        version: 1,
+        configuredBy: { userId: raw.configuredBy.userId, userName: raw.configuredBy.userName },
+        configuredAt: raw.configuredAt,
+      }
+    : null;
+}
+
+function recipeSelectionMatchesPolicy(
+  selection: AcquisitionRecipeSelectionProvenanceV1,
+  subject: AcquisitionPolicyMaterialFacts["subject"],
+  worldRecipePolicy: AcquisitionPolicyMaterialFacts["worldRecipePolicy"],
+  recipeChoice: AcquisitionPolicyMaterialFacts["authorityPolicy"]["recipeChoice"]
+): boolean {
+  if (subject.targetLevel === 1) return selection.authority.mode === "level-one-choice";
+  if (selection.authority.mode === "level-one-choice") return false;
+  const world = selection.authority.worldPolicy;
+  return (
+    recipeChoice === world.recipeChoiceAuthority &&
+    selection.authority.mode === (recipeChoice === "gm-fixed" ? "gm-fixed" : "owner-delegated") &&
+    same(worldRecipePolicy, { enabledRecipes: world.enabledRecipes, defaultRecipe: world.defaultRecipe })
+  );
 }
 
 function unreviewed(): AcquisitionDisposition {

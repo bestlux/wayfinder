@@ -247,8 +247,13 @@ describe("equipment policy service", () => {
     await expect(saveEquipmentWorldPolicy({}, { id: "owner-1", isGM: false })).rejects.toBeInstanceOf(
       WayfinderGmCommandAuthorityError
     );
-    await saveEquipmentWorldPolicy({}, { id: "gm-1", isGM: true });
-    expect(globals.game.settings.set).toHaveBeenCalledWith(MODULE_ID, SETTINGS.equipmentPolicy, expect.any(Object));
+    const saved = await saveEquipmentWorldPolicy({}, { id: "gm-1", isGM: true }, () => "2026-08-20T01:02:03.000Z");
+    expect(saved.recipeDecision).toEqual({
+      version: 1,
+      configuredBy: { userId: "gm-1", userName: "Game Master" },
+      configuredAt: "2026-08-20T01:02:03.000Z",
+    });
+    expect(globals.game.settings.set).toHaveBeenCalledWith(MODULE_ID, SETTINGS.equipmentPolicy, saved);
   });
 
   it("rejects a stale GM client after the live user has been demoted", async () => {

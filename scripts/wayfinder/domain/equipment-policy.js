@@ -11,6 +11,7 @@ export const DEFAULT_EQUIPMENT_WORLD_POLICY = Object.freeze({
     blanketRarity: "common",
     allowedEquipmentPackFamilies: Object.freeze(["pf2e"]),
     applyAuthority: "actor-owner",
+    recipeDecision: Object.freeze({ version: 1 }),
 });
 export const EMPTY_EQUIPMENT_POLICY_JUDGMENT_STORE = Object.freeze({
     version: 1,
@@ -27,6 +28,7 @@ export function normalizeEquipmentWorldPolicy(raw) {
     const families = uniqueSorted(Array.isArray(raw.allowedEquipmentPackFamilies)
         ? raw.allowedEquipmentPackFamilies.filter(nonEmpty).map((value) => value.trim().toLowerCase())
         : []);
+    const recipeDecision = normalizeRecipeDecision(raw.recipeDecision);
     return {
         version: 1,
         enabledRecipes: recipes,
@@ -44,7 +46,28 @@ export function normalizeEquipmentWorldPolicy(raw) {
         applyAuthority: isOneOf(raw.applyAuthority, ["actor-owner", "gm-review"])
             ? raw.applyAuthority
             : DEFAULT_EQUIPMENT_WORLD_POLICY.applyAuthority,
+        recipeDecision,
     };
+}
+function normalizeRecipeDecision(raw) {
+    if (!isRecord(raw) || raw.version !== 1) {
+        return { version: 1 };
+    }
+    if (raw.configuredBy == null && raw.configuredAt == null) {
+        return { version: 1 };
+    }
+    if (isRecord(raw.configuredBy) &&
+        nonEmpty(raw.configuredBy.userId) &&
+        nonEmpty(raw.configuredBy.userName) &&
+        nonEmpty(raw.configuredAt) &&
+        Number.isFinite(Date.parse(raw.configuredAt))) {
+        return {
+            version: 1,
+            configuredBy: { userId: raw.configuredBy.userId, userName: raw.configuredBy.userName },
+            configuredAt: raw.configuredAt,
+        };
+    }
+    return { version: 1 };
 }
 export function normalizeEquipmentPolicyJudgmentStore(raw) {
     if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.judgments))

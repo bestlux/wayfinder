@@ -102,7 +102,11 @@ export async function projectCurrentClassGrants(
       .filter((judgment) => judgment.kind === "rarity-source-exception")
       .map((judgment) => judgment.id),
   });
-  const currentSnapshot = createAcquisitionPolicySnapshot(currentPolicy, acquisition.recipe);
+  const currentSnapshot = createAcquisitionPolicySnapshot(
+    currentPolicy,
+    acquisition.recipe,
+    acquisition.recipeSelection
+  );
   if (!acquisitionPolicyMaterialMatches(reviewed, currentSnapshot)) {
     throw new Error("The reviewed equipment policy changed before class-grant preparation.");
   }

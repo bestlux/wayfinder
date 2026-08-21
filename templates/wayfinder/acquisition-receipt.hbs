@@ -18,6 +18,7 @@
     <div><dt>Applied at</dt><dd><time datetime="{{acquisitionReceipt.appliedAt}}">{{acquisitionReceipt.appliedAt}}</time></dd></div>
     <div><dt>Spent</dt><dd>{{acquisitionReceipt.currency.spentLabel}}</dd></div>
     <div><dt>Remaining</dt><dd>{{acquisitionReceipt.currency.remainingLabel}}</dd></div>
+    <div><dt>Funding selected by</dt><dd>{{acquisitionReceipt.authority.recipeSelectionLabel}}{{#if acquisitionReceipt.authority.recipeSelectedAt}} at <time datetime="{{acquisitionReceipt.authority.recipeSelectedAt}}">{{acquisitionReceipt.authority.recipeSelectedAt}}</time>{{/if}}</dd></div>
   </dl>
 
   {{#if acquisitionReceipt.itemRows.length}}

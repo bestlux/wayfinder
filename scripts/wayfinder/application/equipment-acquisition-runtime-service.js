@@ -51,7 +51,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             throw new TypeError("The equipment catalogue request belongs to another acquisition draft.");
         }
         const policy = resolveEffectivePolicy(actor, acquisition);
-        const snapshot = createAcquisitionPolicySnapshot(policy, acquisition.recipe);
+        const snapshot = createAcquisitionPolicySnapshot(policy, acquisition.recipe, acquisition.recipeSelection);
         if (!acquisition.policySnapshot || !acquisitionPolicyMaterialMatches(acquisition.policySnapshot, snapshot)) {
             throw new Error("The current equipment policy differs from the reviewed acquisition policy.");
         }
@@ -249,7 +249,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             return Object.freeze(prepared);
         },
         resolveCurrentPolicySnapshot(actor, acquisition) {
-            return createAcquisitionPolicySnapshot(resolveEffectivePolicy(actor, acquisition), acquisition.recipe);
+            return createAcquisitionPolicySnapshot(resolveEffectivePolicy(actor, acquisition), acquisition.recipe, acquisition.recipeSelection);
         },
         async resolveSourceForApply(request) {
             const persisted = normalizeAcquisitionDraft(cloneData(request.characterDraft.acquisition));

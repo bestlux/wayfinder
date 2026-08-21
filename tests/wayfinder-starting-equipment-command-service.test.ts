@@ -37,9 +37,59 @@ describe("starting equipment command service", () => {
       recipe: { kind: "lump-sum" },
       policySnapshot: null,
       baseline: null,
+      recipeSelection: {
+        version: 1,
+        selectedRecipe: "lump-sum",
+        selectedAt: "2026-08-19T20:00:00.000Z",
+        selector: { kind: "user", userId: "owner-1", userName: "owner-1" },
+        authority: { mode: "owner-delegated" },
+      },
     });
     expect(result.statusNote).toMatch(/confirm this higher-level start/i);
     expect(resolvePolicy).not.toHaveBeenCalled();
+  });
+
+  it("attributes a GM-fixed recipe to the GM who configured the world policy", async () => {
+    const context = commandContext(null, 5);
+    const result = await executeStartingEquipmentCommand({ type: "initialize" }, context, {
+      mintIdentity: vi.fn(() => ({ draftId: "draft-5", batchId: "batch-5", manifestId: "manifest-5" })),
+      getWorldPolicy: vi.fn(() => ({
+        ...DEFAULT_EQUIPMENT_WORLD_POLICY,
+        enabledRecipes: ["permanent-items", "lump-sum"] as const,
+        defaultRecipe: "lump-sum" as const,
+        recipeChoiceAuthority: "gm-fixed" as const,
+        recipeDecision: {
+          version: 1 as const,
+          configuredBy: { userId: "gm-1", userName: "Game Master" },
+          configuredAt: "2026-08-19T18:00:00.000Z",
+        },
+      })),
+    });
+
+    expect(result.acquisition.recipeSelection).toMatchObject({
+      selectedRecipe: "lump-sum",
+      selectedAt: "2026-08-19T18:00:00.000Z",
+      selector: { kind: "user", userId: "gm-1", userName: "Game Master" },
+      authority: { mode: "gm-fixed" },
+    });
+  });
+
+  it("does not fabricate a GM selector for an unattributed legacy world policy", async () => {
+    const context = commandContext(null, 5);
+    const result = await executeStartingEquipmentCommand({ type: "initialize" }, context, {
+      mintIdentity: vi.fn(() => ({ draftId: "draft-5", batchId: "batch-5", manifestId: "manifest-5" })),
+      getWorldPolicy: vi.fn(() => ({
+        ...DEFAULT_EQUIPMENT_WORLD_POLICY,
+        defaultRecipe: "lump-sum" as const,
+        recipeChoiceAuthority: "gm-fixed" as const,
+      })),
+    });
+
+    expect(result.acquisition.recipeSelection).toMatchObject({
+      selectedRecipe: "lump-sum",
+      selector: { kind: "unattributed-world-policy" },
+      authority: { mode: "gm-fixed", worldPolicy: { recipeDecision: { version: 1 } } },
+    });
   });
 
   it("records a player request as non-authoritative draft evidence", async () => {

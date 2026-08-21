@@ -45,6 +45,8 @@ export interface AcquisitionReceiptViewModel {
   readonly authority: {
     readonly applyLabel: string;
     readonly recipeChoiceLabel: string;
+    readonly recipeSelectionLabel: string;
+    readonly recipeSelectedAt: string | null;
     readonly higherLevelStartLabel: string;
     readonly judgmentIds: readonly string[];
   };
@@ -115,6 +117,8 @@ export async function buildAcquisitionReceiptViewModel(
     authority: {
       applyLabel: authority.apply === "gm-review" ? "Your GM reviewed this" : "Applied by you",
       recipeChoiceLabel: authority.recipeChoice === "gm-fixed" ? "Funding set by your GM" : "Funding chosen by you",
+      recipeSelectionLabel: recipeSelectionLabel(manifest.policy.material.recipeSelection),
+      recipeSelectedAt: manifest.policy.material.recipeSelection?.selectedAt ?? null,
       higherLevelStartLabel:
         authority.higherLevelStart === "gm-confirmation"
           ? "Higher-level start confirmed by your GM"
@@ -124,6 +128,15 @@ export async function buildAcquisitionReceiptViewModel(
     environmentLabel: `Foundry ${manifest.environment.foundryVersion} · PF2E ${manifest.environment.pf2eVersion} · Wayfinder ${manifest.environment.moduleVersion}`,
     canOpenInventory: true,
   };
+}
+
+function recipeSelectionLabel(
+  selection: CompletedAcquisitionManifestV1["policy"]["material"]["recipeSelection"]
+): string {
+  if (!selection) return "Funding selector unavailable";
+  return selection.selector.kind === "unattributed-world-policy"
+    ? "Fixed by legacy world policy (GM identity unavailable)"
+    : `Selected by ${selection.selector.userName}`;
 }
 
 function classGrantStatusLabel(status: string): string {

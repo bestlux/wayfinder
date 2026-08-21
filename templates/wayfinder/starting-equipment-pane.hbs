@@ -4,6 +4,7 @@
     <article><span>Budget</span><strong>{{activePane.policy.budgetLabel}}</strong></article>
     <article><span>What you can buy</span><strong>{{activePane.policy.automaticEligibilityLabel}}</strong></article>
     <article><span>Who decides</span><strong>{{activePane.policy.authorityLabel}}</strong></article>
+    <article><span>Funding selected by</span><strong>{{activePane.policy.recipeSelectionLabel}}</strong></article>
     <article class="equipment-policy-handoff"><span>Gear you already own</span><strong>{{activePane.policy.handoffLabel}}</strong></article>
     {{#each activePane.policy.explanations}}<p><i class="fa-solid fa-circle-info" aria-hidden="true"></i>{{this}}</p>{{/each}}
     {{#if activePane.policy.allowances.length}}

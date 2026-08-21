@@ -54,7 +54,7 @@ const RAW_CASES = [
     handoffItem: {
       sourceUuid: "Compendium.pf2e.equipment-srd.Item.cGgN41q4Qo9taiOR",
       name: "Chained Mist",
-      message: "This specific configured magic item requires an explicit PF2E inventory-sheet handoff.",
+      message: "Chained Mist requires an explicit PF2E inventory-sheet handoff.",
     },
   },
 ];

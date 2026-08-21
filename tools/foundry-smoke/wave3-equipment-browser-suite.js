@@ -156,6 +156,11 @@ globalThis.__prepareWayfinderWave3EquipmentSmoke = async function prepareWave3Eq
     blanketRarity: "common",
     allowedEquipmentPackFamilies: ["pf2e"],
     applyAuthority: "actor-owner",
+    recipeDecision: {
+      version: 1,
+      configuredBy: { userId: game.user.id, userName: game.user.name },
+      configuredAt: new Date().toISOString(),
+    },
   };
   const fixtures = [];
   await game.settings.set(moduleId, policySetting, guardedPolicy);
@@ -425,6 +430,7 @@ globalThis.__runWayfinderWave3PlayerVerification = async function runWave3Player
       targetLevel: draft.targetLevel,
       subject: structuredClone(policy.subject),
       recipe: structuredClone(policy.recipe),
+      recipeSelection: structuredClone(policy.recipeSelection),
       startEvidence: structuredClone(policy.higherLevelStartEvidence),
     };
     if (smokeCase.configuredItem) {
@@ -453,7 +459,11 @@ globalThis.__runWayfinderWave3PlayerVerification = async function runWave3Player
       };
       const handoffAcquisition = {
         ...draft.acquisition,
-        policySnapshot: modules.createPolicySnapshot(handoffPolicy, draft.acquisition.recipe),
+        policySnapshot: modules.createPolicySnapshot(
+          handoffPolicy,
+          draft.acquisition.recipe,
+          draft.acquisition.recipeSelection,
+        ),
       };
       const handoffDraft = { ...draft, acquisition: handoffAcquisition };
       const handoffRuntime = modules.createRuntime({

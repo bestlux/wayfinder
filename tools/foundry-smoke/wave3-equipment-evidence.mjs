@@ -31,6 +31,17 @@ export function qualifyWave3EquipmentResult(result, definitions = wave3Equipment
     if (observed.startEvidence?.kind !== "gm-confirmation") {
       failures.push(`${definition.id}: higher-level start lacks durable GM confirmation.`);
     }
+    const selection = observed.recipeSelection;
+    if (
+      selection?.selectedRecipe !== definition.selectedRecipe ||
+      selection?.selector?.kind !== "user" ||
+      selection.selector.userId !== result.users.player.id ||
+      selection?.authority?.mode !== "owner-delegated" ||
+      selection.authority.worldPolicy?.recipeDecision?.configuredBy?.userId !== result.users.gm.id ||
+      !selection.authority.worldPolicy?.recipeDecision?.configuredAt
+    ) {
+      failures.push(`${definition.id}: recipe selector or world-policy provenance is incomplete.`);
+    }
     if (observed.status !== "pass") failures.push(`${definition.id}: browser result did not pass.`);
     if (definition.expected && !sameExpectedRecipe(observed.recipe, definition.expected)) {
       failures.push(`${definition.id}: exact recipe evidence differs from the case definition.`);

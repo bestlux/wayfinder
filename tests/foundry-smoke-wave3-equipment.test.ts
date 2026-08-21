@@ -85,6 +85,22 @@ function passingResult(): any {
         targetLevel: definition.targetLevel,
       },
       recipe: expectedRecipe(definition),
+      recipeSelection: {
+        version: 1,
+        selectedRecipe: definition.selectedRecipe,
+        selectedAt: "2026-08-21T00:00:01.000Z",
+        selector: { kind: "user", userId: "player-1", userName: "wf-smoke-player" },
+        authority: {
+          mode: "owner-delegated",
+          worldPolicy: {
+            recipeDecision: {
+              version: 1,
+              configuredBy: { userId: "gm-1", userName: "smoke" },
+              configuredAt: "2026-08-21T00:00:00.000Z",
+            },
+          },
+        },
+      },
       startEvidence: { kind: "gm-confirmation" },
     };
     if (!definition.configuredItem) return base;

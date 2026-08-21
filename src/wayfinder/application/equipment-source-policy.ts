@@ -1,4 +1,15 @@
 export const CORE_EQUIPMENT_PACK_ID = "pf2e.equipment-srd";
+const EQUIPMENT_TAB_ITEM_TYPES = new Set([
+  "ammo",
+  "armor",
+  "backpack",
+  "consumable",
+  "equipment",
+  "shield",
+  "weapon",
+  "kit",
+  "treasure",
+]);
 
 export type EquipmentSourceDiagnosticCode =
   | "equipment-pack-missing"
@@ -21,6 +32,7 @@ export interface InstalledEquipmentPackDescriptor {
   readonly label: string;
   readonly packageName: string;
   readonly documentName: string | null;
+  readonly equipmentTab: boolean;
 }
 
 export interface NormalizedPf2eEquipmentSources {
@@ -32,46 +44,40 @@ export interface NormalizedPf2eEquipmentSources {
   readonly diagnostics: readonly EquipmentSourceDiagnostic[];
 }
 
-interface PackLike {
-  readonly collection?: unknown;
-  readonly documentName?: unknown;
-  readonly metadata?: unknown;
-}
-
 /**
- * Projects only the packs PF2E classified for its equipment browser tab. The raw
- * world setting is deliberately not a discovery source: stale or malformed
- * setting keys must not turn an adjacent feat/spell pack into equipment.
+ * Mirrors PF2E's equipment-tab classification from each installed pack's cached
+ * index types. The raw world setting is deliberately not a discovery source:
+ * stale or malformed setting keys must not turn an adjacent feat/spell pack into
+ * equipment.
  */
 export function discoverInstalledEquipmentPackDescriptors(input: {
   readonly packs: unknown;
-  readonly pf2eEquipmentPacks: unknown;
 }): InstalledEquipmentPackDescriptor[] {
-  const installed = new Map<string, PackLike>();
+  const descriptors: InstalledEquipmentPackDescriptor[] = [];
   for (const value of collectionValues(input.packs)) {
     const pack = record(value);
     const metadata = record(pack.metadata);
     const id = nonEmpty(pack.collection) ? pack.collection.trim() : nonEmpty(metadata.id) ? metadata.id.trim() : "";
-    if (id) installed.set(id, pack);
-  }
-
-  const equipment = record(input.pf2eEquipmentPacks);
-  const ids = new Set(Object.keys(equipment).filter(nonEmpty));
-  if (installed.has(CORE_EQUIPMENT_PACK_ID)) ids.add(CORE_EQUIPMENT_PACK_ID);
-
-  return [...ids]
-    .sort((left, right) => left.localeCompare(right))
-    .flatMap((id) => {
-      const pack = installed.get(id);
-      if (!pack) return [];
-      const metadata = record(pack.metadata);
-      const browser = record(equipment[id]);
-      const family = packFamily(id);
-      const label = firstNonEmpty(browser.name, metadata.label, id);
-      const packageName = firstNonEmpty(browser.package, metadata.packageName, family);
-      const documentName = firstNonEmpty(pack.documentName, metadata.type) || null;
-      return [{ id, family, label, packageName, documentName }];
+    if (!id) continue;
+    const family = packFamily(id);
+    const documentName = firstNonEmpty(pack.documentName, metadata.type) || null;
+    const indexedTypes = new Set(
+      collectionValues(pack.index)
+        .map((entry) => record(entry).type)
+        .filter(nonEmpty)
+    );
+    descriptors.push({
+      id,
+      family,
+      label: firstNonEmpty(metadata.label, id),
+      packageName: firstNonEmpty(metadata.packageName, family),
+      documentName,
+      equipmentTab:
+        id === CORE_EQUIPMENT_PACK_ID ||
+        (documentName === "Item" && [...indexedTypes].some((type) => EQUIPMENT_TAB_ITEM_TYPES.has(type))),
     });
+  }
+  return descriptors.sort((left, right) => left.id.localeCompare(right.id));
 }
 
 export function normalizePf2eEquipmentSources(input: {
@@ -93,16 +99,19 @@ export function normalizePf2eEquipmentSources(input: {
     if (!families.has(packFamily(descriptor.id))) continue;
     if (record(rawEquipment[descriptor.id]).load === false) continue;
     if (descriptor.documentName !== null && descriptor.documentName !== "Item") {
-      diagnostics.push(
-        sourceDiagnostic(
-          "equipment-pack-not-item",
-          descriptor.id,
-          null,
-          `Equipment pack ${descriptor.id} is not an Item compendium and was excluded.`
-        )
-      );
+      if (Object.hasOwn(rawEquipment, descriptor.id)) {
+        diagnostics.push(
+          sourceDiagnostic(
+            "equipment-pack-not-item",
+            descriptor.id,
+            null,
+            `Equipment pack ${descriptor.id} is not an Item compendium and was excluded.`
+          )
+        );
+      }
       continue;
     }
+    if (!descriptor.equipmentTab) continue;
     effectivePackIds.push(descriptor.id);
   }
 
@@ -125,7 +134,7 @@ export function normalizePf2eEquipmentSources(input: {
   const sources = record(sourceRoot.sources);
   const knownSourceSlugs = Object.keys(sources).sort((left, right) => left.localeCompare(right));
   const enabledSourceSlugs = Object.entries(sources)
-    .filter(([, value]) => record(value).load !== false)
+    .filter(([, value]) => record(value).load === true)
     .map(([slug]) => slug)
     .sort((left, right) => left.localeCompare(right));
   return {

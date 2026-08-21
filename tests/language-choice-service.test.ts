@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
+import type { ActorSnapshot } from "../src/types";
+import { normalizePf2eEquipmentSources } from "../src/wayfinder/application/equipment-source-policy";
 import { buildLanguageChoiceSteps } from "../src/wayfinder/language-choice-service";
 
 describe("language-choice service", () => {
@@ -214,7 +216,66 @@ describe("language-choice service", () => {
 
     expect(steps).toEqual([]);
   });
+
+  it("keeps campaign language resolution unchanged by supplemental equipment policy", async () => {
+    const build = () =>
+      buildLanguageChoiceSteps({
+        snapshot: blankSnapshot(),
+        targetLevel: 1,
+        draft: createEmptyDraft(1),
+        effectiveBuildState: buildState({
+          languages: {
+            sourceLanguages: [],
+            grantedLanguages: ["common"],
+            selectableLanguages: [],
+            maxSelections: 1,
+          },
+        }),
+        availableLanguageSlugs: ["common", "draconic", "dwarven"],
+        readExistingLanguageSelections: () => [],
+        localizeLanguage: (slug) => slug,
+      });
+    const before = await build();
+
+    normalizePf2eEquipmentSources({
+      installedEquipmentPacks: [
+        {
+          id: "gear.equipment",
+          family: "gear",
+          label: "Gear",
+          packageName: "gear",
+          documentName: "Item",
+          equipmentTab: true,
+        },
+      ],
+      allowedPackFamilies: ["gear"],
+      compendiumBrowserPacks: {},
+      compendiumBrowserSources: { sources: {} },
+    });
+
+    expect(await build()).toEqual(before);
+    expect(before[0]).toMatchObject({
+      languageChoice: { options: [{ value: "draconic" }, { value: "dwarven" }] },
+    });
+  });
 });
+
+function blankSnapshot(): ActorSnapshot {
+  return {
+    actorId: "actor-1",
+    level: 1,
+    isBlank: true,
+    freeArchetypeEnabled: false,
+    campaignFeatSections: [],
+    gradualBoostsEnabled: false,
+    singletonSlots: { ancestry: true, heritage: false, background: true, class: true, deity: false },
+    featCounts: { ancestry: 0, class: 0, archetype: 0, skill: 0, general: 0 },
+    fulfilledStepIds: [],
+    sourceIds: [],
+    namesByType: {},
+    skillRanks: {},
+  };
+}
 
 function buildState(overrides: Partial<EffectiveBuildState> = {}): EffectiveBuildState {
   return {

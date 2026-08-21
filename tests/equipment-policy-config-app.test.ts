@@ -27,7 +27,6 @@ describe("equipment policy config app", () => {
       user: { id: "gm-1", name: "GM", isGM: true },
       users: { get: vi.fn((id: string) => (id === "gm-1" ? { id: "gm-1", name: "GM", isGM: true } : null)) },
       packs: new Map(),
-      pf2e: { compendiumBrowser: { settings: { equipment: {} } } },
       settings: { get: vi.fn(), set: vi.fn(async () => undefined) },
     };
     globals.ui = { notifications: { error: vi.fn(), info: vi.fn() } };
@@ -91,11 +90,6 @@ describe("equipment policy config app", () => {
       ["battlezoo.items", pack("battlezoo.items", "Battlezoo")],
       ["battlezoo.feats", pack("battlezoo.feats", "Battlezoo")],
     ]);
-    globals.game.pf2e.compendiumBrowser.settings.equipment = {
-      "pf2e.equipment-srd": { name: "Equipment", package: "PF2E" },
-      "battlezoo.items": { name: "Items", package: "Battlezoo" },
-    };
-
     const { EquipmentPolicyConfigApp } = await import("../src/equipment-policy-config-app");
     const context = await (new EquipmentPolicyConfigApp() as any)._prepareContext();
     expect(context.families).toEqual([
@@ -110,5 +104,6 @@ function pack(id: string, packageName: string) {
     collection: id,
     documentName: "Item",
     metadata: { id, type: "Item", label: id, packageName },
+    index: [{ _id: `${id}-entry`, type: id.endsWith(".feats") ? "feat" : "equipment" }],
   };
 }

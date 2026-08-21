@@ -286,11 +286,7 @@ function actorIdentity(actor) {
     return id;
 }
 function discoverCurrentEquipmentPacks() {
-    const browser = record(record(game.pf2e).compendiumBrowser);
-    return discoverInstalledEquipmentPackDescriptors({
-        packs: game.packs,
-        pf2eEquipmentPacks: record(browser.settings).equipment,
-    });
+    return discoverInstalledEquipmentPackDescriptors({ packs: game.packs });
 }
 function validTimestamp(value) {
     return nonEmpty(value) && Number.isFinite(Date.parse(value));

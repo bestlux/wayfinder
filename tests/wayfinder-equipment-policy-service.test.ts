@@ -335,5 +335,6 @@ function equipmentDescriptors(ids: readonly string[]) {
     label: id,
     packageName: id.split(".")[0]!,
     documentName: "Item",
+    equipmentTab: true,
   }));
 }

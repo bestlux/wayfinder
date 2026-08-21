@@ -71,14 +71,10 @@ export class EquipmentPolicyConfigApp extends foundry.applications.api.Handlebar
 }
 function discoverEquipmentPackFamilies(selectedFamilies) {
     const selected = new Set(selectedFamilies);
-    const browser = record(record(game.pf2e).compendiumBrowser);
-    const descriptors = discoverInstalledEquipmentPackDescriptors({
-        packs: game.packs,
-        pf2eEquipmentPacks: record(browser.settings).equipment,
-    });
+    const descriptors = discoverInstalledEquipmentPackDescriptors({ packs: game.packs });
     const counts = new Map();
     for (const descriptor of descriptors) {
-        if (descriptor.documentName !== null && descriptor.documentName !== "Item")
+        if (!descriptor.equipmentTab || (descriptor.documentName !== null && descriptor.documentName !== "Item"))
             continue;
         const current = counts.get(descriptor.family);
         counts.set(descriptor.family, {
@@ -93,8 +89,5 @@ function discoverEquipmentPackFamilies(selectedFamilies) {
     return [...counts.entries()]
         .map(([id, value]) => ({ id, label: value.label, packCount: value.count, selected: selected.has(id) }))
         .sort((left, right) => left.label.localeCompare(right.label));
-}
-function record(value) {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
 }
 //# sourceMappingURL=equipment-policy-config-app.js.map

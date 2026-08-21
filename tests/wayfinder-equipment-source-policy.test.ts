@@ -8,14 +8,10 @@ describe("equipment source isolation", () => {
   it("enables installed PF2E equipment descriptors when the raw world entry is absent", () => {
     const installedEquipmentPacks = discoverInstalledEquipmentPackDescriptors({
       packs: packs([
-        pack("pf2e.equipment-srd", "Item"),
-        pack("battlezoo.dragon-equipment", "Item"),
-        pack("battlezoo.dragon-feats", "Item"),
+        pack("pf2e.equipment-srd", "Item", ["weapon"]),
+        pack("battlezoo.dragon-equipment", "Item", ["weapon", "treasure"]),
+        pack("battlezoo.dragon-feats", "Item", ["feat"]),
       ]),
-      pf2eEquipmentPacks: {
-        "pf2e.equipment-srd": { name: "Equipment", package: "pf2e" },
-        "battlezoo.dragon-equipment": { name: "Dragon Equipment", package: "battlezoo" },
-      },
     });
 
     expect(
@@ -26,7 +22,9 @@ describe("equipment source isolation", () => {
         compendiumBrowserSources: { sources: {} },
       }).effectivePackIds
     ).toEqual(["battlezoo.dragon-equipment", "pf2e.equipment-srd"]);
-    expect(installedEquipmentPacks.map((descriptor) => descriptor.id)).not.toContain("battlezoo.dragon-feats");
+    expect(installedEquipmentPacks.find((descriptor) => descriptor.id === "battlezoo.dragon-feats")).toMatchObject({
+      equipmentTab: false,
+    });
   });
 
   it("honors explicit load false without inheriting role-dependent source visibility", () => {
@@ -38,14 +36,14 @@ describe("equipment source isolation", () => {
         ignoreAsGM: true,
         showEmptySources: true,
         showUnknownSources: false,
-        sources: { enabled: {}, disabled: { load: false } },
+        sources: { enabled: { load: true }, malformed: {}, disabled: { load: false } },
       },
     });
 
     expect(result).toMatchObject({
       effectivePackIds: ["pf2e.equipment-srd"],
       enabledSourceSlugs: ["enabled"],
-      knownSourceSlugs: ["disabled", "enabled"],
+      knownSourceSlugs: ["disabled", "enabled", "malformed"],
       showEmptySources: true,
       showUnknownSources: false,
     });
@@ -79,6 +77,7 @@ describe("equipment source isolation", () => {
           label: "Broken Journals",
           packageName: "broken",
           documentName: "JournalEntry",
+          equipmentTab: false,
         },
       ],
       allowedPackFamilies: ["missing", "broken", "pf2e"],
@@ -117,14 +116,16 @@ function descriptors(...ids: string[]) {
     label: id,
     packageName: id.split(".")[0]!,
     documentName: "Item",
+    equipmentTab: true,
   }));
 }
 
-function pack(id: string, documentName: string) {
+function pack(id: string, documentName: string, itemTypes: readonly string[]) {
   return {
     collection: id,
     documentName,
     metadata: { id, type: documentName, label: id, packageName: id.split(".")[0] },
+    index: itemTypes.map((type, index) => ({ _id: `${id}-${index}`, type })),
   };
 }
 

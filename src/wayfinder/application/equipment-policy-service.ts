@@ -375,11 +375,7 @@ function actorIdentity(actor: unknown): string {
 }
 
 function discoverCurrentEquipmentPacks(): InstalledEquipmentPackDescriptor[] {
-  const browser = record(record(game.pf2e).compendiumBrowser);
-  return discoverInstalledEquipmentPackDescriptors({
-    packs: game.packs,
-    pf2eEquipmentPacks: record(browser.settings).equipment,
-  });
+  return discoverInstalledEquipmentPackDescriptors({ packs: game.packs });
 }
 
 function validTimestamp(value: unknown): value is string {

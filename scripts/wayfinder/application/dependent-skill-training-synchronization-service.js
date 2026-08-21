@@ -5,6 +5,7 @@ export async function synchronizeDependentSkillTrainingChoices(options) {
         baseSkillRanks: options.baseSkillRanks,
         steps: options.steps,
         resolveDocument: options.resolveDocument,
+        resolveSelectionDocument: options.resolveSelectionDocument,
         localize: options.localize,
     });
     return applySkillProgressionReconciliation(options.state, progression);

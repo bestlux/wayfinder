@@ -2,7 +2,7 @@ import { SKILL_LABELS } from "../../constants.js";
 import { resolveSingletonChoiceSkillGrant } from "../../shared/singleton-choice-skill-grants.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
-import type { DraftState, PendingStep } from "../../types.js";
+import type { DraftState, PendingStep, SelectionRef } from "../../types.js";
 import { compileSkillProgression, type SkillProgression, type SkillSourceGrant } from "../domain/skill-progression.js";
 import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { projectStaticSkillSourceGrants } from "../domain/static-skill-source-grants.js";
@@ -10,6 +10,7 @@ import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane } from "../panes/skill-pane.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
 import type { SkillIncreaseStepPane, SkillTrainingStepPane } from "../view-models.js";
+import { listPlannedStaticSkillSources } from "./planned-static-skill-source-service.js";
 
 type SkillPane = SkillIncreaseStepPane | SkillTrainingStepPane;
 type SkillDocumentType = "ancestry" | "heritage" | "background" | "class";
@@ -34,6 +35,7 @@ interface BuildSkillPaneDependencies {
   steps?: readonly PendingStep[];
   skillProgression?: SkillProgression;
   resolveDocument: (itemType: SkillDocumentType) => Promise<unknown | null>;
+  resolveSelectionDocument?: (selection: SelectionRef) => Promise<unknown | null>;
   configSkills: Record<string, unknown> | null;
   localize: (value: string) => string;
   isTrainingStepComplete: (step: PendingStep) => boolean;
@@ -45,6 +47,7 @@ interface ProjectSkillRanksDependencies {
   validSkillSlugs?: ReadonlySet<string>;
   mode?: "editing" | "recovery";
   resolveDocument: (itemType: SkillDocumentType) => Promise<unknown | null>;
+  resolveSelectionDocument?: (selection: SelectionRef) => Promise<unknown | null>;
   localize: (value: string) => string;
 }
 
@@ -64,6 +67,7 @@ export async function buildSkillPane(
       steps: deps.steps ?? [step],
       validSkillSlugs: validSkillSlugs(deps.baseSkillRanks, deps.configSkills),
       resolveDocument: deps.resolveDocument,
+      resolveSelectionDocument: deps.resolveSelectionDocument,
       localize: deps.localize,
     }));
   const projectedRanks = { ...(progression.stepsBySlotId[step.slotId]?.ranksBefore ?? progression.finalRanks) };
@@ -125,6 +129,22 @@ export async function compileSkillPaneProgression(
     { itemType: "heritage", document: heritageDocument },
     { itemType: "class", document: classDocument },
   ];
+  const plannedStaticSources = listPlannedStaticSkillSources(draft, deps.steps ?? []);
+  const additionalStaticSources = plannedStaticSources.filter(
+    ({ selection }) => !isSkillDocumentType(selection.itemType)
+  );
+  if (additionalStaticSources.length > 0 && !deps.resolveSelectionDocument) {
+    throw new Error("Active non-foundation skill sources require an exact document resolver.");
+  }
+  const additionalStaticDocuments = await Promise.all(
+    additionalStaticSources.map(async ({ selection }) => {
+      const document = await deps.resolveSelectionDocument?.(selection);
+      if (!document) {
+        throw new Error(`${selection.name} cannot project skills because its exact source document is unavailable.`);
+      }
+      return { selection, document };
+    })
+  );
   const activeSlotIds = new Set((deps.steps ?? []).map((step) => step.slotId));
   const activeFoundationSourceIds = new Map<SkillDocumentType, string>(
     Object.values(draft.selections)
@@ -151,6 +171,15 @@ export async function compileSkillPaneProgression(
       ],
       deps.localize,
       activeFoundationSourceIds
+    ),
+    ...additionalStaticDocuments.flatMap(({ selection, document }) =>
+      document
+        ? projectStaticSkillSourceGrants({
+            document,
+            sourceId: selection.uuid,
+            validSkillSlugs: acceptedSkillSlugs,
+          })
+        : []
     ),
   ];
 

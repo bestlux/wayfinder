@@ -244,6 +244,7 @@ export async function buildOptionContext(deps: OptionContextDependencies): Promi
           baseSkillRanks: deps.skillRanks ?? {},
           steps: deps.steps,
           resolveDocument: (itemType) => deps.resolveDocument(itemType),
+          resolveSelectionDocument: deps.fetchSelectionDocument,
           localize: (value) => value,
           mode: "editing",
         })

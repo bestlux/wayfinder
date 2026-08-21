@@ -1,6 +1,7 @@
 import { listActorItems } from "./build-state.js";
 import { applySelectorApplication, buildSelectorSelection, } from "./selector-application.js";
-import { activeClassArchetypeProfile, classArchetypeProfile, STANDARD_CLASS_PATH, } from "./wayfinder/class-archetype/registry.js";
+import { resolveActiveClassArchetypeProfile } from "./wayfinder/application/planned-static-skill-source-service.js";
+import { classArchetypeProfile, STANDARD_CLASS_PATH, } from "./wayfinder/class-archetype/registry.js";
 export async function applyClassArchetypeDraft(actor, draft, steps, deps) {
     const appliedProfiles = new Set();
     for (const step of steps) {
@@ -26,7 +27,7 @@ export async function applyClassArchetypeDraft(actor, draft, steps, deps) {
         });
         appliedProfiles.add(profile.value);
     }
-    const activeProfile = activeClassArchetypeProfile(draft, listActorItems(actor));
+    const activeProfile = resolveActiveClassArchetypeProfile(draft, steps, listActorItems(actor));
     if (activeProfile && !appliedProfiles.has(activeProfile.value)) {
         await applyClassArchetypeProfile(actor, draft, steps, deps, activeProfile, activeProfile.decisionSlotId, {
             packId: activeProfile.selector.selection.packId,

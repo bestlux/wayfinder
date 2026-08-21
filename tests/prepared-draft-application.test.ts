@@ -1032,6 +1032,193 @@ describe("prepared draft application", () => {
     expect(actor.update).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { replacesClass: true, expectedRequiredBeforeSkill: true },
+    { replacesClass: false, expectedRequiredBeforeSkill: false },
+  ])("keeps registered class-archetype grants canonical when class replacement is $replacesClass", async ({
+    replacesClass,
+    expectedRequiredBeforeSkill,
+  }) => {
+    const { actor } = buildActorHarness({
+      items: replacesClass
+        ? [
+            {
+              id: "stale-spellshot",
+              type: "feat",
+              name: "Way of the Spellshot",
+              flags: {
+                core: { sourceId: "Compendium.pf2e.classfeatures.Item.OmgtSDV1FubDUqWR" },
+                [MODULE_ID]: { slotId: "class-archetype-gunslingers-way-level-1" },
+              },
+              system: {
+                rules: [
+                  {
+                    key: "ActiveEffectLike",
+                    path: "system.skills.deception.rank",
+                    value: 1,
+                  },
+                ],
+              },
+            },
+          ]
+        : [
+            {
+              id: "gunslinger-class",
+              type: "class",
+              name: "Gunslinger",
+              flags: { core: { sourceId: "Compendium.pf2e.classes.Item.gunslinger" } },
+              system: {},
+            },
+          ],
+    });
+    actor.system = { ...actor.system, skills: { arcana: { rank: 0 }, society: { rank: 0 } } };
+    const draft = createEmptyDraft(5);
+    const classStep = classSelectionStep();
+    if (replacesClass) {
+      draft.selections[classStep.slotId] = selection(
+        classStep.slotId,
+        "pf2e.classes",
+        "gunslinger",
+        "class",
+        "Gunslinger"
+      );
+    }
+    const archetypeStep = spellshotClassArchetypeStep();
+    draft.classArchetypeChoices[archetypeStep.slotId] = "way-of-the-spellshot";
+    const training = necromancerTrainingStep();
+    if (training.kind !== "skill-training") throw new Error("Expected skill training");
+    training.id = "skill-training-gunslinger-level-1";
+    training.slotId = "skill-training-gunslinger-level-1";
+    training.title = "Gunslinger skill training";
+    training.training.classSlug = "gunslinger";
+    training.training.className = "Gunslinger";
+    training.training.choiceRules = [];
+    training.training.additionalCount = 1;
+    draft.skillTrainings[training.slotId] = {
+      ruleChoices: {},
+      additional: ["society"],
+      loreChoices: {},
+    };
+    draft.skillIncreases["skill-increase-level-3"] = "arcana";
+    draft.skillIncreases["skill-increase-level-5"] = "society";
+    const steps = [
+      ...(replacesClass ? [classStep] : []),
+      archetypeStep,
+      training,
+      skillIncreaseStep(3),
+      skillIncreaseStep(5),
+    ];
+    const spellshotSource = {
+      name: "Way of the Spellshot",
+      type: "feat",
+      system: {
+        slug: "way-of-the-spellshot",
+        rules: [
+          {
+            key: "ActiveEffectLike",
+            mode: "upgrade",
+            path: "system.skills.arcana.rank",
+            value: 1,
+          },
+        ],
+      },
+    };
+    setGamePacks({
+      "pf2e.classes": {
+        gunslinger: { name: "Gunslinger", type: "class", system: {} },
+      },
+      "pf2e.classfeatures": {
+        LDqVxLKrwEqSegiu: {
+          name: "Gunslinger's Way",
+          type: "feat",
+          system: {
+            slug: "gunslingers-way",
+            rules: [{ key: "ChoiceSet", flag: "way", choices: [] }],
+          },
+        },
+        OmgtSDV1FubDUqWR: spellshotSource,
+      },
+    });
+
+    const paneProgression = await compileSkillPaneProgression(draft, {
+      baseSkillRanks: { arcana: 0, society: 0 },
+      steps,
+      validSkillSlugs: new Set(Object.keys(SKILL_LABELS)),
+      resolveDocument: async (itemType) =>
+        itemType === "class"
+          ? {
+              flags: { core: { sourceId: "Compendium.pf2e.classes.Item.gunslinger" } },
+              system: {},
+            }
+          : null,
+      resolveSelectionDocument: async (sourceSelection) =>
+        sourceSelection.uuid === "Compendium.pf2e.classfeatures.Item.OmgtSDV1FubDUqWR" ? spellshotSource : null,
+      localize: (value) => value,
+    });
+
+    expect(paneProgression.sourceGrants).toContainEqual({
+      slug: "arcana",
+      rank: 1,
+      sourceId: "Compendium.pf2e.classfeatures.Item.OmgtSDV1FubDUqWR",
+    });
+    expect(paneProgression.finalRanks).toMatchObject({ arcana: 2, society: 2 });
+
+    const prepared = await prepareDraftApplication(actor as never, draft, steps, {
+      skillProgression: paneProgression,
+    });
+    const expectedArcanaGrant = {
+      slug: "arcana",
+      rank: 1,
+      sourceId: "Compendium.pf2e.classfeatures.Item.OmgtSDV1FubDUqWR",
+    };
+    expect(prepared.skillProgression.sourceGrants).not.toContainEqual({
+      slug: "deception",
+      rank: 1,
+      sourceId: "Compendium.pf2e.classfeatures.Item.OmgtSDV1FubDUqWR",
+    });
+    if (expectedRequiredBeforeSkill) {
+      expect(prepared.requiredBeforeSkillGrants).toContainEqual(expectedArcanaGrant);
+    } else {
+      expect(prepared.requiredBeforeSkillGrants).not.toContainEqual(expectedArcanaGrant);
+    }
+
+    await executePreparedDraftApplication(prepared, {
+      onCheckpoint: atPhaseStart((phase) => {
+        if (phase === "skill-training-items" && expectedRequiredBeforeSkill) {
+          actor.system.skills.arcana.rank = 1;
+        }
+      }),
+    });
+
+    expect(actor.system.skills.arcana.rank).toBe(2);
+    expect(actor.system.skills.society.rank).toBe(2);
+  });
+
+  it("does not let an orphaned class-archetype choice override the active Standard path", async () => {
+    const { actor } = buildActorHarness({
+      items: [
+        {
+          id: "gunslinger-class",
+          type: "class",
+          name: "Gunslinger",
+          flags: { core: { sourceId: "Compendium.pf2e.classes.Item.gunslinger" } },
+          system: { slug: "gunslinger" },
+        },
+      ],
+    });
+    const draft = createEmptyDraft(5);
+    draft.classArchetypeChoices["class-archetype-inactive-doctrine-level-1"] = "battle-creed";
+    const archetypeStep = spellshotClassArchetypeStep();
+    draft.classArchetypeChoices[archetypeStep.slotId] = "standard";
+    setGamePacks({});
+
+    const prepared = await prepareDraftApplication(actor as never, draft, [archetypeStep]);
+    await executePreparedDraftApplication(prepared);
+
+    expect(prepared.draft.classArchetypeChoices).toEqual({ [archetypeStep.slotId]: "standard" });
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
   it("preserves same-skill foundation grants as distinct source evidence", async () => {
     const { actor } = buildActorHarness();
     actor.system = { ...actor.system, skills: { society: { rank: 0 } } };
@@ -3180,6 +3367,41 @@ function backgroundSelectionStep(): PendingStep {
     required: true,
     slotId: "background-level-1",
     filters: { itemType: "background" },
+  };
+}
+
+function spellshotClassArchetypeStep(): PendingStep {
+  const slotId = "class-archetype-gunslingers-way-level-1";
+  return {
+    id: slotId,
+    level: 1,
+    kind: "class-archetype",
+    slotKind: "class-archetype",
+    title: "Gunslinger's Way",
+    description: "",
+    required: true,
+    slotId,
+    classArchetype: {
+      slotId,
+      standardValue: "standard",
+      sourceName: "Gunslinger's Way",
+      options: [
+        { value: "standard", label: "Standard class path", img: null, detail: null },
+        { value: "way-of-the-spellshot", label: "Way of the Spellshot", img: null, detail: null },
+      ],
+      selector: {
+        slotId,
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "LDqVxLKrwEqSegiu",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.LDqVxLKrwEqSegiu",
+        selectorName: "Gunslinger's Way",
+        selectorRuleIndex: 0,
+        flag: "way",
+        optionTag: "gunslinger-way",
+        classSlug: "gunslinger",
+        dependsOn: "class",
+      },
+    },
   };
 }
 

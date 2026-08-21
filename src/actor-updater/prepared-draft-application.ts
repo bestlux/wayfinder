@@ -18,7 +18,11 @@ import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import type { DraftState, ModuleState, PendingStep, SelectionRef } from "../types.js";
 import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
-import { activeClassArchetypeProfile } from "../wayfinder/class-archetype/registry.js";
+import {
+  listPlannedStaticSkillSources,
+  resolveActiveClassArchetypeProfile,
+  retainActiveClassArchetypeChoices,
+} from "../wayfinder/application/planned-static-skill-source-service.js";
 import type { AcquisitionCurrencyConvergenceWitnessV1 } from "../wayfinder/domain/acquisition-currency-convergence.js";
 import {
   assertPreparedClassGrantPlanMatches,
@@ -353,6 +357,7 @@ export async function prepareDraftApplication(
 
   const draft = cloneData(draftInput);
   const steps = cloneData(stepsInput);
+  retainActiveClassArchetypeChoices(draft, steps);
   assertAcquisitionAuthority(actor, draft, deps.assertAcquisitionApplyAuthority);
   const spellRarityProblems = hasDraftRecoveryState(draft)
     ? listSpellRarityRecoveryProblems(typeof actor.id === "string" ? actor.id : "", draft)
@@ -536,6 +541,7 @@ function assertSkillProgressionPlanMatches(
   validSkillSlugs: ReadonlySet<string>
 ): void {
   const foundationSourceIds = new Set([
+    ...listPlannedStaticSkillSources(draft, steps).map(({ selection }) => selection.uuid),
     ...Object.values(draft.selections)
       .filter((selection) => FOUNDATION_ITEM_TYPES.has(selection.itemType))
       .map((selection) => selection.uuid),
@@ -1345,7 +1351,10 @@ async function prepareSourceCatalog(
   deps: PrepareDraftApplicationDependencies
 ): Promise<PreparedSourceCatalog> {
   const refs = collectSourceRefs(actor, draft, steps, activeSelections);
-  const activeMaterializedSourceUuids = new Set(activeSelections.map((selection) => selection.uuid));
+  const activeMaterializedSourceKeys = new Set(activeSelections.map(sourceCatalogKey));
+  for (const { selection, requiredBeforeSkillPhase } of listPlannedStaticSkillSources(draft, steps)) {
+    if (requiredBeforeSkillPhase) activeMaterializedSourceKeys.add(sourceCatalogKey(selection));
+  }
   const sourcesByKey = new Map<string, EmbeddedItemSource>();
   const sourcesByUuid = new Map<string, EmbeddedItemSource>();
   const documentsByUuid = new Map<string, EmbeddedItemSource>();
@@ -1380,7 +1389,7 @@ async function prepareSourceCatalog(
     const document = await deps.fetchSelectionDocument(selection);
     const existingSource = existing ? snapshotActorItemSource(existing) : null;
     const resolvedSource = await deps.createEmbeddedSource(selection, draft, steps);
-    const isActiveMaterializedSource = activeMaterializedSourceUuids.has(selection.uuid);
+    const isActiveMaterializedSource = activeMaterializedSourceKeys.has(sourceCatalogKey(selection));
     const source = isActiveMaterializedSource ? resolvedSource : (existingSource ?? resolvedSource);
     if (!source) {
       throw new Error(`Cannot prepare ${selection.name}: source document ${selection.uuid} could not be resolved.`);
@@ -1500,7 +1509,7 @@ function collectSourceRefs(
     if (activeSlotIds.has(slotId)) selections.forEach(add);
   }
 
-  const activeProfile = activeClassArchetypeProfile(draft, listActorItems(actor));
+  const activeProfile = resolveActiveClassArchetypeProfile(draft, steps, listActorItems(actor));
   if (activeProfile) {
     add({ ...activeProfile.selection, slotId: activeProfile.decisionSlotId });
     add({ ...activeProfile.selector.selection, slotId: activeProfile.decisionSlotId });
@@ -1584,7 +1593,7 @@ async function validatePersistenceTargets(
   steps: PendingStep[],
   sources: PreparedSourceCatalog
 ): Promise<void> {
-  const activeProfile = activeClassArchetypeProfile(draft, listActorItems(actor));
+  const activeProfile = resolveActiveClassArchetypeProfile(draft, steps, listActorItems(actor));
   for (const internalChoice of activeProfile?.internalClassFeatureChoices ?? []) {
     await validateRuleTarget(
       {

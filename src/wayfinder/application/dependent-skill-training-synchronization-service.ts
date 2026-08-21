@@ -1,4 +1,4 @@
-import type { PendingStep } from "../../types.js";
+import type { PendingStep, SelectionRef } from "../../types.js";
 import { compileSkillPaneProgression } from "./build-skill-pane-service.js";
 import { applySkillProgressionReconciliation, type DraftAdjustmentState } from "./draft-adjustment-service.js";
 
@@ -9,6 +9,7 @@ export interface SynchronizeDependentSkillTrainingOptions {
   steps: readonly PendingStep[];
   baseSkillRanks: Record<string, number>;
   resolveDocument: (itemType: SkillDocumentType) => Promise<unknown | null>;
+  resolveSelectionDocument?: (selection: SelectionRef) => Promise<unknown | null>;
   localize: (value: string) => string;
 }
 
@@ -19,6 +20,7 @@ export async function synchronizeDependentSkillTrainingChoices(
     baseSkillRanks: options.baseSkillRanks,
     steps: options.steps,
     resolveDocument: options.resolveDocument,
+    resolveSelectionDocument: options.resolveSelectionDocument,
     localize: options.localize,
   });
   return applySkillProgressionReconciliation(options.state, progression);

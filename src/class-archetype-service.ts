@@ -6,8 +6,8 @@ import {
   type SelectorApplicationDependencies,
 } from "./selector-application.js";
 import type { DraftState, PendingStep } from "./types.js";
+import { resolveActiveClassArchetypeProfile } from "./wayfinder/application/planned-static-skill-source-service.js";
 import {
-  activeClassArchetypeProfile,
   type ClassArchetypeProfile,
   classArchetypeProfile,
   STANDARD_CLASS_PATH,
@@ -56,7 +56,7 @@ export async function applyClassArchetypeDraft(
     appliedProfiles.add(profile.value);
   }
 
-  const activeProfile = activeClassArchetypeProfile(draft, listActorItems(actor));
+  const activeProfile = resolveActiveClassArchetypeProfile(draft, steps, listActorItems(actor));
   if (activeProfile && !appliedProfiles.has(activeProfile.value)) {
     await applyClassArchetypeProfile(actor, draft, steps, deps, activeProfile, activeProfile.decisionSlotId, {
       packId: activeProfile.selector.selection.packId,

@@ -416,7 +416,7 @@ describe("actor-updater selection application", () => {
     ];
 
     await expect(
-      replaceSingletonItems(actor, selections, draft, [], {
+      replaceSingletonItems(actor, selections, draft, [battleCreedArchetypeStep()], {
         fetchSelectionDocument: async (selection) => ({
           toObject: () => ({ name: selection.name, type: selection.itemType }),
         }),
@@ -438,29 +438,7 @@ describe("actor-updater selection application", () => {
     const draft = createEmptyDraft(1);
     draft.classArchetypeChoices["class-archetype-doctrine-level-1"] = "battle-creed";
     const classSelection = selectionRef("class-level-1", "class", "cleric", "Cleric");
-    const steps: PendingStep[] = [
-      createClassArchetypeStep(1, {
-        slotId: "class-archetype-doctrine-level-1",
-        standardValue: "standard",
-        sourceName: "Doctrine",
-        selector: {
-          slotId: "class-branch-doctrine-level-1",
-          selectorPackId: "pf2e.classfeatures",
-          selectorDocumentId: "doctrine",
-          selectorUuid: "Compendium.pf2e.classfeatures.Item.doctrine",
-          selectorName: "Doctrine",
-          selectorRuleIndex: 0,
-          flag: "doctrine",
-          optionTag: "cleric-doctrine",
-          classSlug: "cleric",
-          dependsOn: "class",
-        },
-        options: [
-          { value: "standard", label: "Standard", img: null, detail: null },
-          { value: "battle-creed", label: "Battle Creed", img: null, detail: null },
-        ],
-      }),
-    ];
+    const steps: PendingStep[] = [battleCreedArchetypeStep()];
     const stripPreselectedClassFeatureEntries = vi.fn();
     const stripPreselectedClassBranchEntries = vi.fn();
 
@@ -2821,6 +2799,30 @@ function arcaneTattoosSpellStep(): PendingStep {
       restrictToCommon: true,
     },
   };
+}
+
+function battleCreedArchetypeStep(): PendingStep {
+  return createClassArchetypeStep(1, {
+    slotId: "class-archetype-doctrine-level-1",
+    standardValue: "standard",
+    sourceName: "Doctrine",
+    selector: {
+      slotId: "class-branch-doctrine-level-1",
+      selectorPackId: "pf2e.classfeatures",
+      selectorDocumentId: "doctrine",
+      selectorUuid: "Compendium.pf2e.classfeatures.Item.doctrine",
+      selectorName: "Doctrine",
+      selectorRuleIndex: 0,
+      flag: "doctrine",
+      optionTag: "cleric-doctrine",
+      classSlug: "cleric",
+      dependsOn: "class",
+    },
+    options: [
+      { value: "standard", label: "Standard", img: null, detail: null },
+      { value: "battle-creed", label: "Battle Creed", img: null, detail: null },
+    ],
+  });
 }
 
 async function fetchSelectionDocument(selection: SelectionRef) {

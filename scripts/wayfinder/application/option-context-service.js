@@ -130,6 +130,7 @@ export async function buildOptionContext(deps) {
                 baseSkillRanks: deps.skillRanks ?? {},
                 steps: deps.steps,
                 resolveDocument: (itemType) => deps.resolveDocument(itemType),
+                resolveSelectionDocument: deps.fetchSelectionDocument,
                 localize: (value) => value,
                 mode: "editing",
             })

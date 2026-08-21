@@ -203,6 +203,46 @@ describe("wayfinder skill pane service", () => {
     expect(progression.ranksBeforeSteps).toEqual({ deception: 1, society: 1 });
   });
 
+  it("fails closed when an active registered skill source cannot be inspected", async () => {
+    const draft = createEmptyDraft(5);
+    const archetypeStep = spellshotClassArchetypeStep();
+    draft.classArchetypeChoices["class-archetype-inactive-doctrine-level-1"] = "battle-creed";
+    draft.classArchetypeChoices[archetypeStep.slotId] = "way-of-the-spellshot";
+    const baseOptions = {
+      baseSkillRanks: { arcana: 0 },
+      steps: [archetypeStep],
+      validSkillSlugs: new Set(["arcana"]),
+      resolveDocument: async () => null,
+      localize: (value: string) => value,
+    };
+
+    await expect(compileSkillPaneProgression(draft, baseOptions)).rejects.toThrow(
+      "Active non-foundation skill sources require an exact document resolver"
+    );
+    await expect(
+      compileSkillPaneProgression(draft, {
+        ...baseOptions,
+        resolveSelectionDocument: async () => null,
+      })
+    ).rejects.toThrow("Way of the Spellshot cannot project skills because its exact source document is unavailable");
+  });
+
+  it("does not project a registered profile through the wrong active selector", async () => {
+    const draft = createEmptyDraft(5);
+    const archetypeStep = spellshotClassArchetypeStep();
+    draft.classArchetypeChoices[archetypeStep.slotId] = "battle-creed";
+
+    const progression = await compileSkillPaneProgression(draft, {
+      baseSkillRanks: { arcana: 0 },
+      steps: [archetypeStep],
+      validSkillSlugs: new Set(["arcana"]),
+      resolveDocument: async () => null,
+      localize: (value) => value,
+    });
+
+    expect(progression.sourceGrants).toEqual([]);
+  });
+
   it("projects level-1 draft training into a level-3 skill increase", async () => {
     const draft = createEmptyDraft(3);
     draft.skillTrainings["skill-training-wizard-level-1"] = trainingDraft(
@@ -826,6 +866,41 @@ describe("wayfinder skill pane service", () => {
     expect(athletics?.disabled).toBe(false);
   });
 });
+
+function spellshotClassArchetypeStep(): PendingStep {
+  const slotId = "class-archetype-gunslingers-way-level-1";
+  return {
+    id: slotId,
+    level: 1,
+    kind: "class-archetype",
+    slotKind: "class-archetype",
+    title: "Gunslinger's Way",
+    description: "",
+    required: true,
+    slotId,
+    classArchetype: {
+      slotId,
+      standardValue: "standard",
+      sourceName: "Gunslinger's Way",
+      options: [
+        { value: "standard", label: "Standard class path", img: null, detail: null },
+        { value: "way-of-the-spellshot", label: "Way of the Spellshot", img: null, detail: null },
+      ],
+      selector: {
+        slotId,
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "LDqVxLKrwEqSegiu",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.LDqVxLKrwEqSegiu",
+        selectorName: "Gunslinger's Way",
+        selectorRuleIndex: 0,
+        flag: "way",
+        optionTag: "gunslinger-way",
+        classSlug: "gunslinger",
+        dependsOn: "class",
+      },
+    },
+  };
+}
 
 function trainingDraft(ruleChoices: Record<string, string>, additional: string[]): SkillTrainingDraft {
   return {

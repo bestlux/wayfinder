@@ -324,6 +324,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 baseSkillRanks: snapshot.skillRanks,
                 steps: plan.steps,
                 resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType, draft),
+                resolveSelectionDocument: fetchSelectionDocument,
                 localize: (value) => game.i18n.localize(value),
                 mode: hasApplyRecoveryState(draft) ? "recovery" : "editing",
             });
@@ -1204,6 +1205,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             steps: planSteps,
             skillProgression,
             resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+            resolveSelectionDocument: fetchSelectionDocument,
             configSkills: getPf2eConfig()?.skills ?? null,
             localize: (value) => game.i18n.localize(value),
             isTrainingStepComplete: (trainingStep) => this.#isTrainingStepComplete(trainingStep),
@@ -1767,6 +1769,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             steps: plan.steps,
             baseSkillRanks,
             resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+            resolveSelectionDocument: fetchSelectionDocument,
             localize: (value) => game.i18n.localize(value),
         });
         const languageChanged = syncLanguageChoiceSelections(this.#draftAdjustmentState(), effectiveBuildState, plan.steps);
@@ -2200,6 +2203,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 baseSkillRanks: snapshot.skillRanks,
                 steps,
                 resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType, draft),
+                resolveSelectionDocument: fetchSelectionDocument,
                 localize: (value) => game.i18n.localize(value),
                 mode: hasApplyRecoveryState(draft) ? "recovery" : "editing",
             });

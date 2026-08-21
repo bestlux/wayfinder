@@ -2736,6 +2736,7 @@ async function completeDraft(
       steps: nextPlan.steps,
       baseSkillRanks: modules.inspectActor(actor).skillRanks,
       resolveDocument: (itemType) => modules.getEffectiveSingletonDocument(actor, draft, itemType),
+      resolveSelectionDocument: modules.fetchSelectionDocument,
       localize: (value) => game.i18n.localize(value),
     });
     changed = changed || trainingChoicesChanged;

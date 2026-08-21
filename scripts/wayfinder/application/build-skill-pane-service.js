@@ -8,6 +8,7 @@ import { projectStaticSkillSourceGrants } from "../domain/static-skill-source-gr
 import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane } from "../panes/skill-pane.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
+import { listPlannedStaticSkillSources } from "./planned-static-skill-source-service.js";
 export async function buildSkillPane(step, draft, deps) {
     if (step.kind !== "skill-training" && step.kind !== "skill-increase") {
         return null;
@@ -18,6 +19,7 @@ export async function buildSkillPane(step, draft, deps) {
             steps: deps.steps ?? [step],
             validSkillSlugs: validSkillSlugs(deps.baseSkillRanks, deps.configSkills),
             resolveDocument: deps.resolveDocument,
+            resolveSelectionDocument: deps.resolveSelectionDocument,
             localize: deps.localize,
         }));
     const projectedRanks = { ...(progression.stepsBySlotId[step.slotId]?.ranksBefore ?? progression.finalRanks) };
@@ -67,6 +69,18 @@ export async function compileSkillPaneProgression(draft, deps) {
         { itemType: "heritage", document: heritageDocument },
         { itemType: "class", document: classDocument },
     ];
+    const plannedStaticSources = listPlannedStaticSkillSources(draft, deps.steps ?? []);
+    const additionalStaticSources = plannedStaticSources.filter(({ selection }) => !isSkillDocumentType(selection.itemType));
+    if (additionalStaticSources.length > 0 && !deps.resolveSelectionDocument) {
+        throw new Error("Active non-foundation skill sources require an exact document resolver.");
+    }
+    const additionalStaticDocuments = await Promise.all(additionalStaticSources.map(async ({ selection }) => {
+        const document = await deps.resolveSelectionDocument?.(selection);
+        if (!document) {
+            throw new Error(`${selection.name} cannot project skills because its exact source document is unavailable.`);
+        }
+        return { selection, document };
+    }));
     const activeSlotIds = new Set((deps.steps ?? []).map((step) => step.slotId));
     const activeFoundationSourceIds = new Map(Object.values(draft.selections)
         .filter((selection) => activeSlotIds.has(selection.slotId) && isSkillDocumentType(selection.itemType))
@@ -84,6 +98,13 @@ export async function compileSkillPaneProgression(draft, deps) {
             { sourceItemType: "heritage", document: heritageDocument },
             { sourceItemType: "background", document: backgroundDocument },
         ], deps.localize, activeFoundationSourceIds),
+        ...additionalStaticDocuments.flatMap(({ selection, document }) => document
+            ? projectStaticSkillSourceGrants({
+                document,
+                sourceId: selection.uuid,
+                validSkillSlugs: acceptedSkillSlugs,
+            })
+            : []),
     ];
     return compileSkillProgression({
         baselineRanks: deps.baseSkillRanks,

@@ -11,7 +11,7 @@ import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js"
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
-import { activeClassArchetypeProfile } from "../wayfinder/class-archetype/registry.js";
+import { listPlannedStaticSkillSources, resolveActiveClassArchetypeProfile, retainActiveClassArchetypeChoices, } from "../wayfinder/application/planned-static-skill-source-service.js";
 import { assertPreparedClassGrantPlanMatches, reconcilePreparedClassGrants, } from "../wayfinder/domain/class-grant-reconciliation.js";
 import { compileSkillProgression, skillProgressionInputFingerprint, } from "../wayfinder/domain/skill-progression.js";
 import { assertDraftBackedStepsReady, evaluateWayfinderDraftReadiness, evaluateWayfinderStep, WayfinderDraftNotReadyError, } from "../wayfinder/domain/step-evaluation.js";
@@ -115,6 +115,7 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
     assertActorAuthority(actor, deps.validateActorAuthority);
     const draft = cloneData(draftInput);
     const steps = cloneData(stepsInput);
+    retainActiveClassArchetypeChoices(draft, steps);
     assertAcquisitionAuthority(actor, draft, deps.assertAcquisitionApplyAuthority);
     const spellRarityProblems = hasDraftRecoveryState(draft)
         ? listSpellRarityRecoveryProblems(typeof actor.id === "string" ? actor.id : "", draft)
@@ -261,6 +262,7 @@ function assertSkillProgressionValid(progression, steps) {
 }
 function assertSkillProgressionPlanMatches(progression, actor, draft, steps, validSkillSlugs) {
     const foundationSourceIds = new Set([
+        ...listPlannedStaticSkillSources(draft, steps).map(({ selection }) => selection.uuid),
         ...Object.values(draft.selections)
             .filter((selection) => FOUNDATION_ITEM_TYPES.has(selection.itemType))
             .map((selection) => selection.uuid),
@@ -909,7 +911,11 @@ function assertAcquisitionAuthority(actor, draft, assertApplyAuthority) {
 }
 async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps) {
     const refs = collectSourceRefs(actor, draft, steps, activeSelections);
-    const activeMaterializedSourceUuids = new Set(activeSelections.map((selection) => selection.uuid));
+    const activeMaterializedSourceKeys = new Set(activeSelections.map(sourceCatalogKey));
+    for (const { selection, requiredBeforeSkillPhase } of listPlannedStaticSkillSources(draft, steps)) {
+        if (requiredBeforeSkillPhase)
+            activeMaterializedSourceKeys.add(sourceCatalogKey(selection));
+    }
     const sourcesByKey = new Map();
     const sourcesByUuid = new Map();
     const documentsByUuid = new Map();
@@ -941,7 +947,7 @@ async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps)
         const document = await deps.fetchSelectionDocument(selection);
         const existingSource = existing ? snapshotActorItemSource(existing) : null;
         const resolvedSource = await deps.createEmbeddedSource(selection, draft, steps);
-        const isActiveMaterializedSource = activeMaterializedSourceUuids.has(selection.uuid);
+        const isActiveMaterializedSource = activeMaterializedSourceKeys.has(sourceCatalogKey(selection));
         const source = isActiveMaterializedSource ? resolvedSource : (existingSource ?? resolvedSource);
         if (!source) {
             throw new Error(`Cannot prepare ${selection.name}: source document ${selection.uuid} could not be resolved.`);
@@ -1046,7 +1052,7 @@ function collectSourceRefs(actor, draft, steps, activeSelections) {
         if (activeSlotIds.has(slotId))
             selections.forEach(add);
     }
-    const activeProfile = activeClassArchetypeProfile(draft, listActorItems(actor));
+    const activeProfile = resolveActiveClassArchetypeProfile(draft, steps, listActorItems(actor));
     if (activeProfile) {
         add({ ...activeProfile.selection, slotId: activeProfile.decisionSlotId });
         add({ ...activeProfile.selector.selection, slotId: activeProfile.decisionSlotId });
@@ -1131,7 +1137,7 @@ function selectionFromActorFoundation(item) {
     };
 }
 async function validatePersistenceTargets(actor, draft, steps, sources) {
-    const activeProfile = activeClassArchetypeProfile(draft, listActorItems(actor));
+    const activeProfile = resolveActiveClassArchetypeProfile(draft, steps, listActorItems(actor));
     for (const internalChoice of activeProfile?.internalClassFeatureChoices ?? []) {
         await validateRuleTarget({
             ...internalChoice.selection,

@@ -1,6 +1,7 @@
 import type { EmbeddedItemSource } from "../shared/actor-model.js";
 import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
+import { listPlannedStaticSkillSources } from "../wayfinder/application/planned-static-skill-source-service.js";
 import type { SkillSourceGrant } from "../wayfinder/domain/skill-progression.js";
 import { projectStaticSkillSourceGrants } from "../wayfinder/domain/static-skill-source-grants.js";
 
@@ -30,28 +31,31 @@ export function projectPreparedSkillSources(args: {
 
   const sourceGrants: SkillSourceGrant[] = [];
   const requiredBeforeSkillGrants: SkillSourceGrant[] = [];
-  const activeSlotIds = new Set(args.steps.map((step) => step.slotId));
+  const plannedStaticSources = listPlannedStaticSkillSources(args.draft, args.steps);
+  const plannedStaticSourcesByUuid = new Map(
+    plannedStaticSources.map((source) => [source.selection.uuid, source] as const)
+  );
   const selectedFoundationUuidByType = new Map(
-    Object.values(args.draft.selections)
-      .filter((selection) => activeSlotIds.has(selection.slotId) && FOUNDATION_ITEM_TYPES.has(selection.itemType))
-      .map((selection) => [selection.itemType, selection.uuid])
+    plannedStaticSources
+      .filter(({ selection }) => FOUNDATION_ITEM_TYPES.has(selection.itemType))
+      .map(({ selection }) => [selection.itemType, selection.uuid] as const)
   );
   const selectedFoundationUuids = new Set(selectedFoundationUuidByType.values());
   for (const entry of args.sources) {
-    const selectedUuid = selectedFoundationUuidByType.get(entry.selection.itemType);
-    if (
-      !FOUNDATION_ITEM_TYPES.has(entry.selection.itemType) ||
-      (selectedUuid !== undefined && selectedUuid !== entry.selection.uuid)
-    ) {
-      continue;
-    }
+    const plannedSource = plannedStaticSourcesByUuid.get(entry.selection.uuid);
+    const selectedFoundationUuid = selectedFoundationUuidByType.get(entry.selection.itemType);
+    const retainedFoundation =
+      FOUNDATION_ITEM_TYPES.has(entry.selection.itemType) && selectedFoundationUuid === undefined;
+    if (!plannedSource && !retainedFoundation) continue;
     const staticGrants = projectStaticSkillSourceGrants({
       document: entry.source,
       sourceId: entry.selection.uuid,
       validSkillSlugs: args.validSkillSlugs,
     });
     sourceGrants.push(...staticGrants);
-    requiredBeforeSkillGrants.push(...staticGrants);
+    if (plannedSource?.requiredBeforeSkillPhase || retainedFoundation) {
+      requiredBeforeSkillGrants.push(...staticGrants);
+    }
   }
 
   for (const step of args.steps) {
@@ -68,7 +72,13 @@ export function projectPreparedSkillSources(args: {
       selection,
     });
     if (grant && args.validSkillSlugs.has(grant.skillSlug)) {
-      sourceGrants.push({ slug: grant.skillSlug, rank: grant.rank, sourceId: step.singletonChoice.sourceUuid });
+      const projectedGrant = {
+        slug: grant.skillSlug,
+        rank: grant.rank,
+        sourceId: step.singletonChoice.sourceUuid,
+      };
+      sourceGrants.push(projectedGrant);
+      requiredBeforeSkillGrants.push(projectedGrant);
     }
     const staticGrants = projectStaticSkillSourceGrants({
       document: source.source,
@@ -113,7 +123,7 @@ export function projectPreparedSkillSources(args: {
 
   return Object.freeze({
     sourceGrants: freezeGrants(sourceGrants),
-    requiredBeforeSkillGrants: freezeGrants([...sourceGrants, ...requiredBeforeSkillGrants]),
+    requiredBeforeSkillGrants: freezeGrants(requiredBeforeSkillGrants),
     skillPhaseGrants: freezeGrants(skillPhaseGrants),
   });
 }

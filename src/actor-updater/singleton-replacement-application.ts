@@ -2,7 +2,7 @@ import { listActorItems } from "../build-state.js";
 import { MODULE_ID } from "../constants.js";
 import type { ActorItemLike, ActorLike, EmbeddedItemSource } from "../shared/actor-model.js";
 import type { DraftState, PendingStep, SelectionRef } from "../types.js";
-import { selectedClassArchetypeSelection } from "../wayfinder/class-archetype/registry.js";
+import { listPlannedStaticSkillSources } from "../wayfinder/application/planned-static-skill-source-service.js";
 import { SINGLETON_ITEM_TYPES } from "./selection-constants.js";
 import type { CreateEmbeddedSourceDependencies } from "./selection-dependencies.js";
 import { createEmbeddedSource } from "./selection-source-application.js";
@@ -38,7 +38,11 @@ export async function replaceSingletonItems(
   }
 
   const replacesClass = singletonSelections.some((selection) => selection.itemType === "class");
-  const classArchetypeSelection = replacesClass ? selectedClassArchetypeSelection(draft) : null;
+  const classArchetypeSelection = replacesClass
+    ? (listPlannedStaticSkillSources(draft, steps).find(
+        ({ selection }) => !SINGLETON_ITEM_TYPES.has(selection.itemType)
+      )?.selection ?? null)
+    : null;
   const batchedSelections = [...singletonSelections, ...(classArchetypeSelection ? [classArchetypeSelection] : [])];
 
   const selectedTypes = new Set(singletonSelections.map((selection) => selection.itemType));

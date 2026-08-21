@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { DRAFT_FLAG } from "../src/constants";
-import { createEmptyDraft } from "../src/draft-service";
+import { finalizeRecoveredDraftOnActor } from "../src/actor-updater";
+import {
+  DraftApplyPhaseError,
+  executePreparedDraftApplication,
+  prepareDraftApplication,
+} from "../src/actor-updater/prepared-draft-application";
+import { DRAFT_FLAG, MODULE_ID, STATE_FLAG } from "../src/constants";
+import { createEmptyDraft, createEmptyState } from "../src/draft-service";
 import type { ActorItemFlags, ActorItemLike, EmbeddedItemSource, ItemSystemLike } from "../src/shared/actor-model";
+import type { DraftState, ModuleState } from "../src/types";
 import {
   type AcquisitionExecutionDependencies,
   createAcquisitionExecutionSession,
@@ -38,6 +45,7 @@ import {
   createPlannedClassGrant,
   createPreparedClassGrantPlan,
   type PlannedClassGrantV1,
+  type PreparedClassGrantPlanV1,
   reconcilePreparedClassGrants,
 } from "../src/wayfinder/domain/class-grant-reconciliation";
 import {
@@ -50,6 +58,38 @@ import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wea
 
 const NOW = "2026-08-19T12:00:00.000Z";
 const ENVIRONMENT = { foundryVersion: "14.366", pf2eVersion: "8.4.1", moduleVersion: "0.8.0" };
+const PERSISTED_RELOAD_CASES = [
+  {
+    id: "item-after-n",
+    checkpointId: "write:embedded-item-create:after",
+    currencyMode: "normal",
+    intermediate: { items: 1, copper: 0, witnessed: false, completed: false },
+  },
+  {
+    id: "currency-before",
+    checkpointId: "write:currency-convergence:before",
+    currencyMode: "normal",
+    intermediate: { items: 2, copper: 0, witnessed: false, completed: false },
+  },
+  {
+    id: "currency-mutate-then-throw",
+    checkpointId: null,
+    currencyMode: "mutate-then-throw",
+    intermediate: { items: 2, copper: 1_300, witnessed: true, completed: false },
+  },
+  {
+    id: "final-state-before",
+    checkpointId: "write:final-actor-update:before",
+    currencyMode: "normal",
+    intermediate: { items: 2, copper: 1_300, witnessed: true, completed: false },
+  },
+  {
+    id: "final-state-after",
+    checkpointId: "write:final-actor-update:after",
+    currencyMode: "normal",
+    intermediate: { items: 2, copper: 1_300, witnessed: false, completed: true },
+  },
+] as const;
 
 describe("Wave 2 acquisition execution", () => {
   it("aggregates reviewed purchase lines, inserts one non-stacking item, and records real manifest evidence", async () => {
@@ -1122,6 +1162,141 @@ describe("Wave 2 acquisition execution", () => {
       })
     ).rejects.toThrow(/corrupt completed acquisition evidence/i);
   });
+
+  it.each(PERSISTED_RELOAD_CASES)("reload-converges the persisted $id boundary without duplicate wealth", async ({
+    id,
+    checkpointId,
+    currencyMode,
+    intermediate,
+  }) => {
+    const fixture = reviewedFixture([
+      line({ lineId: "line-a", sourceUuid: sourceUuid("a"), priceFingerprint: "price-a" }),
+      line({ lineId: "line-b", sourceUuid: sourceUuid("b"), priceFingerprint: "price-b" }),
+    ]);
+    const lockedDraft = structuredClone(fixture.draft);
+    lockedDraft.applyAttemptStepIds = ["starting-equipment-level-1"];
+    const firstActor = new FakeActor();
+    firstActor.seedWayfinderFlags(lockedDraft, createEmptyState());
+    firstActor.currencyWriteMode = currencyMode;
+    let failure: DraftApplyPhaseError | null = null;
+
+    try {
+      await executePersistedAcquisitionAttempt(firstActor, lockedDraft, fixture.classGrantPlan, checkpointId);
+    } catch (error) {
+      expect(error).toBeInstanceOf(DraftApplyPhaseError);
+      failure = error as DraftApplyPhaseError;
+    }
+    expect(failure).not.toBeNull();
+    expect(failure?.checkpoint?.checkpointId).toBe(
+      id === "currency-mutate-then-throw" ? "write:currency-convergence:before" : checkpointId
+    );
+    expect(firstActor.acquisitionItems()).toHaveLength(intermediate.items);
+    expect(firstActor.currencyCopper).toBe(intermediate.copper);
+    expect(!!firstActor.getPersistedDraft()?.acquisition?.currencyConvergenceWitness).toBe(intermediate.witnessed);
+    expect(firstActor.getWayfinderState().completedAcquisitionManifest !== null).toBe(intermediate.completed);
+
+    const reopenedActor = firstActor.reopen();
+    expect(reopenedActor).not.toBe(firstActor);
+    expect(reopenedActor.items.contents).not.toBe(firstActor.items.contents);
+    const reopenedDraft = reopenedActor.getPersistedDraft();
+    if (id === "final-state-after") {
+      expect(reopenedDraft).toBeNull();
+    } else {
+      expect(reopenedDraft).not.toBeNull();
+      if (id === "final-state-before") {
+        await finalizePersistedAcquisitionRecovery(
+          reopenedActor,
+          structuredClone(reopenedDraft!),
+          fixture.classGrantPlan
+        );
+      } else {
+        await executePersistedAcquisitionAttempt(
+          reopenedActor,
+          structuredClone(reopenedDraft!),
+          fixture.classGrantPlan,
+          null
+        );
+      }
+    }
+
+    const durableActor = reopenedActor.reopen();
+    const durableState = durableActor.getWayfinderState();
+    const manifest = durableState.completedAcquisitionManifest;
+    expect(durableActor.getPersistedDraft()).toBeNull();
+    expect(manifest).not.toBeNull();
+    expect(manifest?.entries.flatMap((entry) => entry.observedItems)).toHaveLength(2);
+    expect(durableActor.acquisitionItems()).toHaveLength(2);
+    expect(new Set(durableActor.acquisitionItems().map((item) => acquisitionIdentity(item)?.plannedItemId)).size).toBe(
+      2
+    );
+    expect(durableActor.currencyCopper).toBe(1_300);
+
+    const totalWrites = addWriteCounts(writeCounts(firstActor), writeCounts(reopenedActor));
+    expect(totalWrites).toEqual({
+      itemWrites: 2,
+      currencyWrites: 1,
+      witnessWrites: 1,
+      actorUpdateWrites: 1,
+    });
+
+    const secondFixture = reviewedFixture([line()], "purchase-ledger", [], {
+      draftId: "draft-2",
+      batchId: "batch-2",
+      manifestId: "manifest-2",
+    });
+    const secondDraft = structuredClone(secondFixture.draft);
+    secondDraft.applyAttemptStepIds = ["starting-equipment-level-1"];
+    const writesBeforeSecond = writeCounts(durableActor);
+    await expect(
+      executePersistedAcquisitionAttempt(durableActor, secondDraft, secondFixture.classGrantPlan, null)
+    ).rejects.toThrow(/prior or malformed acquisition history|completed acquisition/i);
+    expect(writeCounts(durableActor)).toEqual(writesBeforeSecond);
+    expect(durableActor.getWayfinderState().completedAcquisitionManifest).toEqual(manifest);
+  });
+
+  it.each([
+    "foreign-item",
+    "foreign-currency",
+  ] as const)("keeps a persisted partial retry at zero writes after %s drift", async (drift) => {
+    const fixture = reviewedFixture([
+      line({ lineId: "line-a", sourceUuid: sourceUuid("a"), priceFingerprint: "price-a" }),
+      line({ lineId: "line-b", sourceUuid: sourceUuid("b"), priceFingerprint: "price-b" }),
+    ]);
+    const lockedDraft = structuredClone(fixture.draft);
+    lockedDraft.applyAttemptStepIds = ["starting-equipment-level-1"];
+    const firstActor = new FakeActor();
+    firstActor.seedWayfinderFlags(lockedDraft, createEmptyState());
+
+    await expect(
+      executePersistedAcquisitionAttempt(
+        firstActor,
+        lockedDraft,
+        fixture.classGrantPlan,
+        "write:embedded-item-create:after"
+      )
+    ).rejects.toBeInstanceOf(DraftApplyPhaseError);
+    const reopenedActor = firstActor.reopen();
+    if (drift === "foreign-item") {
+      reopenedActor.addObservedItem({
+        id: "foreign-item",
+        type: "equipment",
+        sourceId: sourceUuid("foreign"),
+        physical: true,
+      });
+    } else {
+      reopenedActor.setExternalCurrency(25);
+    }
+    const writesBeforeRetry = writeCounts(reopenedActor);
+    const persistedDraft = reopenedActor.getPersistedDraft();
+    if (!persistedDraft) throw new Error("The partial retry draft did not survive reload.");
+
+    await expect(
+      executePersistedAcquisitionAttempt(reopenedActor, persistedDraft, fixture.classGrantPlan, null)
+    ).rejects.toThrow(/foreign physical items|nonzero currency|economic admission/i);
+    expect(writeCounts(reopenedActor)).toEqual(writesBeforeRetry);
+    expect(reopenedActor.getPersistedDraft()).toEqual(persistedDraft);
+    expect(reopenedActor.getWayfinderState().completedAcquisitionManifest).toBeNull();
+  });
 });
 
 type ReviewedFixture = ReturnType<typeof reviewedFixture>;
@@ -1129,7 +1304,12 @@ type ReviewedFixture = ReturnType<typeof reviewedFixture>;
 function reviewedFixture(
   lines: readonly AcquisitionLineDraft[],
   disposition: "purchase-ledger" | "retain-all" = "purchase-ledger",
-  plannedClassGrants: readonly PlannedClassGrantV1[] = []
+  plannedClassGrants: readonly PlannedClassGrantV1[] = [],
+  identity: { readonly draftId: string; readonly batchId: string; readonly manifestId: string } = {
+    draftId: "draft-1",
+    batchId: "batch-1",
+    manifestId: "manifest-1",
+  }
 ) {
   const baseline = createEconomicBaseline({
     actorId: "actor-1",
@@ -1137,11 +1317,9 @@ function reviewedFixture(
     currencyCopper: 0,
     physicalItems: [],
   });
-  const policySnapshot = policy(baseline);
+  const policySnapshot = policy(baseline, identity.draftId);
   const draftBase = createAcquisitionDraft({
-    draftId: "draft-1",
-    batchId: "batch-1",
-    manifestId: "manifest-1",
+    ...identity,
     targetLevel: 1,
     recipe: { kind: "permanent-items" },
   });
@@ -1235,12 +1413,12 @@ function configuredHandoffFixture(actor: FakeActor) {
   return { ...inherited, acquisition, draft: { ...inherited.draft, acquisition } };
 }
 
-function policy(_baseline: ReturnType<typeof createEconomicBaseline>): AcquisitionPolicySnapshot {
+function policy(_baseline: ReturnType<typeof createEconomicBaseline>, draftId = "draft-1"): AcquisitionPolicySnapshot {
   return {
     version: 1,
     fingerprint: "policy-level-1",
     material: {
-      subject: { actorId: "actor-1", draftId: "draft-1", targetLevel: 1 },
+      subject: { actorId: "actor-1", draftId, targetLevel: 1 },
       numericPolicyRef: CHARACTER_WEALTH_POLICY_REF,
       semanticPolicyRef: SEMANTIC_WEALTH_POLICY_REF,
       resolvedRecipe: { kind: "permanent-items" },
@@ -1433,6 +1611,7 @@ function sessionFor(
     readonly completedManifest?: CompletedAcquisitionManifestV1 | null;
     readonly completedManifestCorrupt?: boolean;
     readonly manifestAppearsAfterFirstHistoryRead?: boolean;
+    readonly readHistory?: AcquisitionExecutionDependencies["readHistory"];
   } = {}
 ) {
   let historyReads = 0;
@@ -1459,18 +1638,20 @@ function sessionFor(
         ...(expandedSources ? { expandedSources } : {}),
       };
     },
-    readHistory: () => {
-      historyReads += 1;
-      return {
-        lastAppliedAt: options.lastAppliedAt ?? null,
-        lastTargetLevel: options.lastTargetLevel ?? null,
-        completedAcquisitionManifest:
-          options.manifestAppearsAfterFirstHistoryRead && historyReads > 1
-            ? ({ id: "manifest-race" } as never)
-            : (options.completedManifest ?? null),
-        completedAcquisitionManifestCorrupt: options.completedManifestCorrupt ?? false,
-      };
-    },
+    readHistory:
+      options.readHistory ??
+      (() => {
+        historyReads += 1;
+        return {
+          lastAppliedAt: options.lastAppliedAt ?? null,
+          lastTargetLevel: options.lastTargetLevel ?? null,
+          completedAcquisitionManifest:
+            options.manifestAppearsAfterFirstHistoryRead && historyReads > 1
+              ? ({ id: "manifest-race" } as never)
+              : (options.completedManifest ?? null),
+          completedAcquisitionManifestCorrupt: options.completedManifestCorrupt ?? false,
+        };
+      }),
     resolveCurrentPolicySnapshot: () => {
       options.events?.push("policy");
       return options.currentPolicy ?? acquisition.policySnapshot!;
@@ -1487,6 +1668,147 @@ function sessionFor(
     now: () => NOW,
   };
   return createAcquisitionExecutionSession(dependencies);
+}
+
+async function executePersistedAcquisitionAttempt(
+  actor: FakeActor,
+  draft: DraftState,
+  classGrantPlan: PreparedClassGrantPlanV1,
+  checkpointId: (typeof PERSISTED_RELOAD_CASES)[number]["checkpointId"]
+): Promise<void> {
+  const acquisition = draft.acquisition;
+  if (!acquisition) throw new Error("The persisted acquisition attempt requires a draft.");
+  const session = sessionFor(acquisition, {
+    readHistory: () => {
+      const state = actor.getWayfinderState();
+      return {
+        lastAppliedAt: state.lastAppliedAt,
+        lastTargetLevel: state.lastTargetLevel,
+        completedAcquisitionManifest: state.completedAcquisitionManifest,
+        completedAcquisitionManifestCorrupt: state.completedAcquisitionManifestCorrupt,
+      };
+    },
+  });
+  const prepared = await prepareDraftApplication(actor as never, draft, [], {
+    validateActorAuthority: () => true,
+    assertAcquisitionApplyAuthority: () => undefined,
+    prepareClassGrantPlan: () => recreatePreparedClassGrantPlan(classGrantPlan),
+  });
+  let injected = false;
+
+  await executePreparedDraftApplication(prepared, {
+    executeAcquisitionItems: session.executeAcquisitionItems,
+    executeAcquisitionCurrency: session.executeAcquisitionCurrency,
+    verifyAcquisitionOutcome: session.verifyAcquisitionOutcome,
+    readCurrentAcquisitionHistory: session.readCurrentAcquisitionHistory,
+    persistAcquisitionCurrencyConvergenceWitness: async (witness) => {
+      actor.persistCurrencyConvergenceWitness(witness);
+    },
+    resolveFinalActorUpdate: (evidence) => {
+      return completedActorUpdate(draft, evidence.acquisition);
+    },
+    persistFinalActorUpdate: (update) => actor.update(update),
+    onCheckpoint: (checkpoint) => {
+      if (!injected && checkpointId !== null && checkpoint.checkpointId === checkpointId) {
+        injected = true;
+        throw new Error(`Injected persisted reload at ${checkpointId}.`);
+      }
+    },
+  });
+}
+
+async function finalizePersistedAcquisitionRecovery(
+  actor: FakeActor,
+  draft: DraftState,
+  classGrantPlan: PreparedClassGrantPlanV1
+): Promise<void> {
+  const acquisition = draft.acquisition;
+  if (!acquisition) throw new Error("The persisted acquisition recovery requires a draft.");
+  const session = sessionFor(acquisition, {
+    readHistory: () => {
+      const state = actor.getWayfinderState();
+      return {
+        lastAppliedAt: state.lastAppliedAt,
+        lastTargetLevel: state.lastTargetLevel,
+        completedAcquisitionManifest: state.completedAcquisitionManifest,
+        completedAcquisitionManifestCorrupt: state.completedAcquisitionManifestCorrupt,
+      };
+    },
+  });
+  await finalizeRecoveredDraftOnActor(actor as never, {
+    recoveryActorUpdate: structuredClone(draft.applyRecoveryActorUpdate),
+    validateActorAuthority: () => true,
+    assertAcquisitionApplyAuthority: () => undefined,
+    resolveFinalActorUpdate: (evidence) => completedActorUpdate(draft, evidence.acquisition),
+    persistFinalActorUpdate: (update) => actor.update(update),
+    classGrantRecovery: {
+      kind: "required",
+      preparePlan: () => recreatePreparedClassGrantPlan(classGrantPlan),
+      verifyAcquisitionRecovery: ({ actor: recoveryActor, plan, finalClassGrantReconciliation }) =>
+        session.prepareRecoveredAcquisitionOutcome({
+          actor: recoveryActor,
+          draft,
+          classGrantPlan: plan,
+          finalClassGrantReconciliation,
+        }),
+    },
+  });
+}
+
+function recreatePreparedClassGrantPlan(plan: PreparedClassGrantPlanV1): PreparedClassGrantPlanV1 {
+  return createPreparedClassGrantPlan({
+    ...plan.subject,
+    grants: plan.grants,
+  });
+}
+
+function completedActorUpdate(
+  draft: DraftState,
+  evidence: Parameters<
+    NonNullable<Parameters<typeof executePreparedDraftApplication>[1]["resolveFinalActorUpdate"]>
+  >[0]["acquisition"]
+): Record<string, unknown> {
+  if (evidence.kind !== "completed") {
+    throw new Error("The final acquisition update requires a completed manifest.");
+  }
+  return {
+    [DRAFT_FLAG]: null,
+    [STATE_FLAG]: {
+      ...createEmptyState(),
+      lastAppliedAt: evidence.manifest.appliedAt,
+      lastTargetLevel: draft.targetLevel,
+      completedStepIds: ["starting-equipment-level-1"],
+      completedAcquisitionManifest: evidence.manifest,
+    },
+  };
+}
+
+interface AcquisitionWriteCounts {
+  readonly itemWrites: number;
+  readonly currencyWrites: number;
+  readonly witnessWrites: number;
+  readonly actorUpdateWrites: number;
+}
+
+function writeCounts(actor: FakeActor): AcquisitionWriteCounts {
+  return {
+    itemWrites: actor.addOptions.length,
+    currencyWrites: actor.currencyAdds.length + actor.currencyRemovals.length,
+    witnessWrites: actor.witnessWrites,
+    actorUpdateWrites: actor.actorUpdateWrites,
+  };
+}
+
+function addWriteCounts(...counts: readonly AcquisitionWriteCounts[]): AcquisitionWriteCounts {
+  return counts.reduce(
+    (total, current) => ({
+      itemWrites: total.itemWrites + current.itemWrites,
+      currencyWrites: total.currencyWrites + current.currencyWrites,
+      witnessWrites: total.witnessWrites + current.witnessWrites,
+      actorUpdateWrites: total.actorUpdateWrites + current.actorUpdateWrites,
+    }),
+    { itemWrites: 0, currencyWrites: 0, witnessWrites: 0, actorUpdateWrites: 0 }
+  );
 }
 
 function refingerprintManifest(
@@ -1665,12 +1987,16 @@ interface FakeItem extends ActorItemLike {
 class FakeActor {
   [key: string]: unknown;
   readonly id = "actor-1";
+  readonly flags: Record<string, Record<string, unknown>> = {};
+  readonly system: Record<string, unknown> = { details: { level: { value: 1 } } };
   readonly items: { contents: FakeItem[] } = { contents: [] };
   readonly addOptions: Array<{ stack: boolean; render: boolean }> = [];
   readonly addContainerIds: Array<string | null> = [];
   readonly addedSources: EmbeddedItemSource[] = [];
   readonly currencyAdds: number[] = [];
   readonly currencyRemovals: number[] = [];
+  witnessWrites = 0;
+  actorUpdateWrites = 0;
   readonly inventory: {
     currency: { copperValue: number };
     add: (source: EmbeddedItemSource, options: { stack: boolean; render: boolean }) => Promise<FakeItem[]>;
@@ -1706,6 +2032,40 @@ class FakeActor {
 
   acquisitionItems(): FakeItem[] {
     return this.items.contents.filter((item) => !item.isCurrency && item.isOfType("physical"));
+  }
+
+  seedWayfinderFlags(draft: DraftState | null, state: ModuleState): void {
+    this.flags[MODULE_ID] = { draft: structuredClone(draft), state: structuredClone(state) };
+  }
+
+  getFlag(moduleId: string, key: string): unknown {
+    return this.flags[moduleId]?.[key];
+  }
+
+  getPersistedDraft(): DraftState | null {
+    const draft = this.getFlag(MODULE_ID, "draft");
+    return draft ? structuredClone(draft as DraftState) : null;
+  }
+
+  getWayfinderState(): ModuleState {
+    return structuredClone((this.getFlag(MODULE_ID, "state") as ModuleState | null) ?? createEmptyState());
+  }
+
+  persistCurrencyConvergenceWitness(witness: AcquisitionCurrencyConvergenceWitnessV1): void {
+    this.witnessWrites += 1;
+    const draft = this.getPersistedDraft();
+    if (!draft?.acquisition) throw new Error("The currency witness requires a persisted acquisition draft.");
+    draft.acquisition = recordAcquisitionCurrencyConvergenceWitness(draft.acquisition, witness);
+    this.flags[MODULE_ID] = { ...(this.flags[MODULE_ID] ?? {}), draft };
+  }
+
+  reopen(): FakeActor {
+    const reopened = new FakeActor(this.currencyCopper);
+    reopened.items.contents.push(...this.acquisitionItems().map(cloneFakeItem));
+    Object.assign(reopened.flags, structuredClone(this.flags));
+    Object.assign(reopened.system, structuredClone(this.system));
+    reopened.nextItemId = this.nextItemId;
+    return reopened;
   }
 
   addObservedItem(args: {
@@ -1745,6 +2105,12 @@ class FakeActor {
   async deleteEmbeddedDocuments(): Promise<void> {}
 
   async updateEmbeddedDocuments(): Promise<void> {}
+
+  async update(update: Record<string, unknown>): Promise<FakeActor> {
+    this.actorUpdateWrites += 1;
+    for (const [path, value] of Object.entries(update)) setPath(this, path, structuredClone(value));
+    return this;
+  }
 
   private async addItem(
     source: EmbeddedItemSource,
@@ -1814,6 +2180,29 @@ class FakeActor {
       isOfType: (...types) => types.includes("physical") || types.includes("treasure"),
     });
   }
+}
+
+function cloneFakeItem(item: FakeItem): FakeItem {
+  const type = item.type;
+  return {
+    ...item,
+    flags: structuredClone(item.flags),
+    system: structuredClone(item.system),
+    _source: structuredClone(item._source),
+    container: item.container ? { id: item.container.id } : null,
+    isOfType: (...types) => types.includes("physical") || types.includes(type),
+  };
+}
+
+function setPath(target: Record<string, unknown>, path: string, value: unknown): void {
+  const segments = path.split(".");
+  let current = target;
+  for (const segment of segments.slice(0, -1)) {
+    const next = current[segment];
+    if (!next || typeof next !== "object" || Array.isArray(next)) current[segment] = {};
+    current = current[segment] as Record<string, unknown>;
+  }
+  current[segments.at(-1)!] = value;
 }
 
 function acquisitionIdentity(item: FakeItem): Record<string, unknown> | null {

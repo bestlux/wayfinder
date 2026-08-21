@@ -25,6 +25,9 @@ export function createWayfinderApplyConfirmationFocusHandoff() {
     let application = null;
     let canceled = false;
     let scheduled = null;
+    let closePromise = null;
+    let removeCloseListener = null;
+    let resolveClose = null;
     const cancelScheduled = () => {
         if (!scheduled)
             return;
@@ -34,7 +37,30 @@ export function createWayfinderApplyConfirmationFocusHandoff() {
     const cancel = () => {
         canceled = true;
         cancelScheduled();
+        removeCloseListener?.();
+        removeCloseListener = null;
+        resolveClose?.();
+        resolveClose = null;
         application = null;
+    };
+    const observeClose = (renderedApplication) => {
+        if (closePromise !== null)
+            return;
+        closePromise = new Promise((resolve) => {
+            resolveClose = resolve;
+        });
+        if (!isCloseEventTarget(renderedApplication)) {
+            resolveClose?.();
+            resolveClose = null;
+            return;
+        }
+        const onClose = () => {
+            removeCloseListener = null;
+            resolveClose?.();
+            resolveClose = null;
+        };
+        renderedApplication.addEventListener("close", onClose, { once: true });
+        removeCloseListener = () => renderedApplication.removeEventListener("close", onClose);
     };
     const scheduleFocus = (attempt) => {
         if (canceled)
@@ -72,7 +98,11 @@ export function createWayfinderApplyConfirmationFocusHandoff() {
             if (canceled)
                 return;
             application = renderedApplication;
+            observeClose(renderedApplication);
             scheduleFocus(0);
+        },
+        waitForClose() {
+            return closePromise ?? Promise.resolve();
         },
     };
 }
@@ -104,5 +134,13 @@ function isParentNode(value) {
 }
 function isElement(value) {
     return "matches" in value && typeof value.matches === "function";
+}
+function isCloseEventTarget(value) {
+    return Boolean(value &&
+        typeof value === "object" &&
+        "addEventListener" in value &&
+        typeof value.addEventListener === "function" &&
+        "removeEventListener" in value &&
+        typeof value.removeEventListener === "function");
 }
 //# sourceMappingURL=foundry-keyboard-focus-service.js.map

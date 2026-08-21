@@ -35,6 +35,13 @@ it("wires the DialogV2 post-render handoff only around Wayfinder Apply confirmat
   expect(applyConfirmation).toContain("render: (_event, renderedDialog) => focusHandoff.onRender(renderedDialog)");
   expect(applyConfirmation).toContain("finally");
   expect(applyConfirmation).toContain("focusHandoff.cancel()");
+  expect(applyConfirmation).toContain("await focusHandoff.waitForClose()");
+  expect(applyConfirmation.indexOf("await dialog.confirm")).toBeLessThan(
+    applyConfirmation.indexOf("await focusHandoff.waitForClose()")
+  );
+  expect(applyConfirmation.indexOf("await focusHandoff.waitForClose()")).toBeLessThan(
+    applyConfirmation.indexOf("return result === true")
+  );
   expect(applyConfirmation).toContain('no: { label: "wayfinder-pf2e.App.ApplyConfirmNo"');
   expect(applyConfirmation).toContain("default: true");
   expect(clearConfirmation).not.toContain("createWayfinderApplyConfirmationFocusHandoff");
@@ -178,6 +185,50 @@ browserIt(
   20_000
 );
 
+browserIt("waits for the exact Apply dialog close before failure focus can begin", async () => {
+  const browser = await chromium.launch({ executablePath: chromePath, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`
+      <dialog id="apply-close-race">
+        <div data-wayfinder-apply-confirmation="placeholder"></div>
+        <button type="button" data-action="yes">Apply</button>
+        <button type="button" data-action="no">Cancel</button>
+      </dialog>
+      <div id="failure-alert" role="alert" tabindex="-1">Apply failed</div>`);
+    await page.addScriptTag({ content: keyboardFocusScript });
+
+    const evidence = await page.evaluate(async () => {
+      document.body.tabIndex = -1;
+      const dialogElement = document.querySelector<HTMLDialogElement>("#apply-close-race")!;
+      const application = Object.assign(new EventTarget(), { element: dialogElement });
+      const handoff = window.createWayfinderApplyConfirmationFocusHandoff();
+      dialogElement
+        .querySelector("[data-wayfinder-apply-confirmation]")!
+        .setAttribute("data-wayfinder-apply-confirmation", handoff.marker);
+      handoff.onRender(application);
+
+      let applyStarted = false;
+      const startApply = handoff.waitForClose().then(() => {
+        applyStarted = true;
+        document.querySelector<HTMLElement>("#failure-alert")!.focus();
+      });
+      await Promise.resolve();
+      const startedBeforeClose = applyStarted;
+
+      document.body.focus();
+      application.dispatchEvent(new Event("close"));
+      await startApply;
+      const focusedAfterClose = document.activeElement?.id;
+      handoff.cancel();
+      return { focusedAfterClose, startedBeforeClose };
+    });
+    expect(evidence).toEqual({ focusedAfterClose: "failure-alert", startedBeforeClose: false });
+  } finally {
+    await browser.close();
+  }
+});
+
 const fixture = `
   <section class="application user-config" aria-label="User Configuration">
     <form><button id="modal-save" type="button">Save</button></form>
@@ -236,6 +287,7 @@ declare global {
       readonly marker: string;
       cancel(): void;
       onRender(application: unknown): void;
+      waitForClose(): Promise<void>;
     };
     cycleViewCount: number;
     focusAttempts: number;

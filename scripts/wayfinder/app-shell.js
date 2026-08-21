@@ -2773,6 +2773,7 @@ async function confirmWayfinderApply(message) {
                 yes: { label: "wayfinder-pf2e.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
                 no: { label: "wayfinder-pf2e.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
             });
+            await focusHandoff.waitForClose();
             return result === true;
         }
         finally {

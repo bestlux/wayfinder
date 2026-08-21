@@ -7,6 +7,7 @@ export interface WayfinderApplyConfirmationFocusHandoff {
   readonly marker: string;
   cancel(): void;
   onRender(application: unknown): void;
+  waitForClose(): Promise<void>;
 }
 
 interface ScheduledAnimationFrame {
@@ -37,6 +38,9 @@ export function createWayfinderApplyConfirmationFocusHandoff(): WayfinderApplyCo
   let application: unknown = null;
   let canceled = false;
   let scheduled: ScheduledAnimationFrame | null = null;
+  let closePromise: Promise<void> | null = null;
+  let removeCloseListener: (() => void) | null = null;
+  let resolveClose: (() => void) | null = null;
 
   const cancelScheduled = (): void => {
     if (!scheduled) return;
@@ -46,7 +50,29 @@ export function createWayfinderApplyConfirmationFocusHandoff(): WayfinderApplyCo
   const cancel = (): void => {
     canceled = true;
     cancelScheduled();
+    removeCloseListener?.();
+    removeCloseListener = null;
+    resolveClose?.();
+    resolveClose = null;
     application = null;
+  };
+  const observeClose = (renderedApplication: unknown): void => {
+    if (closePromise !== null) return;
+    closePromise = new Promise<void>((resolve) => {
+      resolveClose = resolve;
+    });
+    if (!isCloseEventTarget(renderedApplication)) {
+      resolveClose?.();
+      resolveClose = null;
+      return;
+    }
+    const onClose = (): void => {
+      removeCloseListener = null;
+      resolveClose?.();
+      resolveClose = null;
+    };
+    renderedApplication.addEventListener("close", onClose, { once: true });
+    removeCloseListener = () => renderedApplication.removeEventListener("close", onClose);
   };
   const scheduleFocus = (attempt: number): void => {
     if (canceled) return;
@@ -79,7 +105,11 @@ export function createWayfinderApplyConfirmationFocusHandoff(): WayfinderApplyCo
     onRender(renderedApplication: unknown): void {
       if (canceled) return;
       application = renderedApplication;
+      observeClose(renderedApplication);
       scheduleFocus(0);
+    },
+    waitForClose(): Promise<void> {
+      return closePromise ?? Promise.resolve();
     },
   };
 }
@@ -115,4 +145,18 @@ function isParentNode(value: unknown): value is ParentNode & { readonly ownerDoc
 
 function isElement(value: ParentNode): value is Element {
   return "matches" in value && typeof value.matches === "function";
+}
+
+function isCloseEventTarget(value: unknown): value is {
+  addEventListener(type: "close", listener: () => void, options: { readonly once: true }): void;
+  removeEventListener(type: "close", listener: () => void): void;
+} {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "addEventListener" in value &&
+      typeof value.addEventListener === "function" &&
+      "removeEventListener" in value &&
+      typeof value.removeEventListener === "function"
+  );
 }

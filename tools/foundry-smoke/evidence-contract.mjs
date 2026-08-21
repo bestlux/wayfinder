@@ -70,6 +70,20 @@ const ACQUISITION_CURRENCY_KEYS = [
   "spentCopper",
   "targetCopper",
 ];
+const APPLY_SAFETY_ACQUISITION_KEYS = [
+  "currency",
+  "disposition",
+  "manifestCounts",
+  "recipe",
+  "retryAddedItemSemanticIdentities",
+  "stepId",
+];
+const APPLY_SAFETY_MANIFEST_COUNT_KEYS = ["classGrants", "entries", "logicalLines"];
+const APPLY_SAFETY_ACQUISITION_CALL_KEYS = [
+  "currencyExecutorCalls",
+  "itemsExecutorCalls",
+  "verificationCalls",
+];
 const ITEM_EVIDENCE_KEYS = [
   "acquisition",
   "containerId",
@@ -575,7 +589,8 @@ function applySafetyEvidenceFindings(smokeCase, definition) {
     Array.isArray(definition.expectedCompletedReceiptCounts) ||
     !definition?.expectedCompletedReceiptIdentities ||
     typeof definition.expectedCompletedReceiptIdentities !== "object" ||
-    Array.isArray(definition.expectedCompletedReceiptIdentities)
+    Array.isArray(definition.expectedCompletedReceiptIdentities) ||
+    !validApplySafetyAcquisitionDefinition(definition.expectedApplySafetyAcquisition)
   ) {
     return [
       finding(
@@ -919,6 +934,9 @@ function applySafetyEvidenceFindings(smokeCase, definition) {
       expectedStepIds: expectedCompletedStepIds,
       expectedExistingCharacterHistory: expectedPreApply.moduleState.existingCharacterHistory,
       expectedAppliedSpellRarityAttestations: definition.expectedAppliedSpellRarityAttestations ?? [],
+      expectedCompletedAcquisitionManifest: definition.expectedApplySafetyAcquisition
+        ? smokeCase?.evidence?.acquisition?.manifest ?? null
+        : null,
     }) &&
     Array.isArray(smokeCase?.evidence?.rerunStepIds) &&
     smokeCase.evidence.rerunStepIds.length === 0;
@@ -939,7 +957,129 @@ function applySafetyEvidenceFindings(smokeCase, definition) {
       )
     );
   }
+  findings.push(...applySafetyAcquisitionFindings(smokeCase, definition, evidence));
   return findings;
+}
+
+function validApplySafetyAcquisitionDefinition(value) {
+  if (value === undefined) return true;
+  return (
+    exactObjectKeys(value, APPLY_SAFETY_ACQUISITION_KEYS) &&
+    nonEmptyString(value.stepId) &&
+    value.disposition === "retain-all" &&
+    value.recipe === "permanent-items" &&
+    exactObjectKeys(value.currency, ACQUISITION_CURRENCY_KEYS) &&
+    Object.values(value.currency).every((amount) => Number.isSafeInteger(amount) && amount >= 0) &&
+    value.currency.spentCopper + value.currency.remainingCopper === value.currency.budgetCopper &&
+    value.currency.preCopper + value.currency.remainingCopper === value.currency.targetCopper &&
+    value.currency.targetCopper === value.currency.observedCopper &&
+    exactObjectKeys(value.manifestCounts, APPLY_SAFETY_MANIFEST_COUNT_KEYS) &&
+    Object.values(value.manifestCounts).every((count) => Number.isSafeInteger(count) && count >= 0) &&
+    nonEmptyUniqueStringArray(value.retryAddedItemSemanticIdentities)
+  );
+}
+
+function applySafetyAcquisitionFindings(smokeCase, definition, evidence) {
+  const expected = definition.expectedApplySafetyAcquisition;
+  if (expected === undefined || !validApplySafetyAcquisitionDefinition(expected)) return [];
+
+  const subject = String(smokeCase?.id ?? "case");
+  const findings = [...acquisitionEvidenceFindings(smokeCase, {}, {})];
+  const acquisition = smokeCase?.evidence?.acquisition;
+  const manifest = acquisition?.manifest;
+  const durableManifest = smokeCase?.actor?.moduleStateAfterApply?.completedAcquisitionManifest;
+  const normalizedManifest = normalizedCompletedManifest(manifest);
+  const policyMatches =
+    acquisition?.policy?.source === "completed-acquisition-manifest" &&
+    acquisition.policy.version === manifest?.policy?.version &&
+    acquisition.policy.fingerprint === manifest?.policy?.fingerprint &&
+    structuredValueEquals(acquisition.policy.snapshot, manifest?.policy);
+  const manifestMatches =
+    normalizedManifest !== null &&
+    structuredValueEquals(normalizedManifest, manifest) &&
+    structuredValueEquals(durableManifest, manifest) &&
+    smokeCase?.actor?.moduleStateAfterApply?.completedAcquisitionManifestCorrupt === false &&
+    manifest?.actorId === smokeCase?.actor?.id &&
+    manifest?.targetLevel === definition.targetLevel &&
+    manifest?.disposition === expected.disposition &&
+    manifest?.policy?.material?.resolvedRecipe?.kind === expected.recipe &&
+    structuredValueEquals(manifest?.currency, expected.currency) &&
+    manifest?.economicBaseline?.actorId === smokeCase?.actor?.id &&
+    manifest?.economicBaseline?.currencyCopper === expected.currency.preCopper &&
+    Array.isArray(manifest?.logicalLines) &&
+    manifest.logicalLines.length === expected.manifestCounts.logicalLines &&
+    Array.isArray(manifest?.entries) &&
+    manifest.entries.length === expected.manifestCounts.entries &&
+    Array.isArray(manifest?.classGrants) &&
+    manifest.classGrants.length === expected.manifestCounts.classGrants &&
+    policyMatches;
+  if (!manifestMatches) {
+    findings.push(
+      finding(
+        "apply-safety-acquisition-manifest-mismatch",
+        subject,
+        "Apply safety retry must persist one canonical manifest for the exact actor, policy, recipe, currency, and outcome."
+      )
+    );
+  }
+
+  if (
+    !structuredValueEquals(acquisition?.currency, expected.currency) ||
+    smokeCase?.actor?.currencyCopper !== expected.currency.observedCopper ||
+    evidence?.failureState?.preApplyCurrencyCopper !== expected.currency.preCopper ||
+    evidence?.failureState?.observedCurrencyCopper !== expected.currency.preCopper ||
+    evidence?.retry?.preRetryCurrencyCopper !== expected.currency.preCopper ||
+    evidence?.retry?.postRetryCurrencyCopper !== expected.currency.observedCopper
+  ) {
+    findings.push(
+      finding(
+        "apply-safety-acquisition-currency-mismatch",
+        subject,
+        "Apply safety retry must prove the exact pre-failure and converged post-retry currency values."
+      )
+    );
+  }
+
+  const preRetryIds = evidence?.retry?.preRetryItemIds;
+  const postRetryIds = evidence?.retry?.postRetryItemIds;
+  const actorItems = smokeCase?.actor?.items;
+  const actorItemsById = Array.isArray(actorItems) ? new Map(actorItems.map((item) => [item?.id, item])) : null;
+  const retryAddedIdentities =
+    uniqueStringArray(preRetryIds) && uniqueStringArray(postRetryIds) && actorItemsById
+      ? postRetryIds
+          .filter((itemId) => !preRetryIds.includes(itemId))
+          .map((itemId) => actorItemsById.get(itemId))
+          .filter(Boolean)
+          .map((item) => outcomeItemIdentity(item, actorItems))
+          .sort()
+      : null;
+  const stepOccursOnce = (stepIds) =>
+    uniqueStringArray(stepIds) && stepIds.filter((stepId) => stepId === expected.stepId).length === 1;
+  const retryItemsMatch =
+    retryAddedIdentities !== null &&
+    preRetryIds.every((itemId) => postRetryIds.includes(itemId)) &&
+    postRetryIds.every((itemId) => actorItemsById.has(itemId)) &&
+    JSON.stringify(retryAddedIdentities) ===
+      JSON.stringify([...expected.retryAddedItemSemanticIdentities].sort());
+  const acquisitionCallsMatch =
+    exactObjectKeys(evidence?.retry?.acquisitionCalls, APPLY_SAFETY_ACQUISITION_CALL_KEYS) &&
+    Object.values(evidence.retry.acquisitionCalls).every((count) => count === 1);
+  if (
+    !retryItemsMatch ||
+    !acquisitionCallsMatch ||
+    !stepOccursOnce(smokeCase?.evidence?.preStepIds) ||
+    !stepOccursOnce(evidence?.retryPlan?.stepIds) ||
+    !stepOccursOnce(smokeCase?.actor?.moduleStateAfterApply?.completedStepIds)
+  ) {
+    findings.push(
+      finding(
+        "apply-safety-acquisition-retry-mismatch",
+        subject,
+        "Apply safety retry must call each acquisition executor once, retain every prior item, and add only the pinned system and equipment outcomes through one equipment step."
+      )
+    );
+  }
+  return uniqueFindings(findings);
 }
 
 function checkpointEvidenceFindings(value, expected, subject, label) {

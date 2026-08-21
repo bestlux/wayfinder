@@ -2073,6 +2073,10 @@ async function runSmokeCase(smokeCase, modules, { defaultReviewedEquipment, keep
         }
       }
     }
+    const applySafetyAcquisitionCalls =
+      applySafetyEvidence && smokeCase.expectedApplySafetyAcquisition
+        ? { itemsExecutorCalls: 0, currencyExecutorCalls: 0, verificationCalls: 0 }
+        : null;
     const applyOutcome = failures.length
       ? {
           lifecycleResult: { kind: "warning", warning: "missing-selections" },
@@ -2080,6 +2084,7 @@ async function runSmokeCase(smokeCase, modules, { defaultReviewedEquipment, keep
         }
       : await applyCompletedDraft(actor, draftForApply, stepsForApply, modules, moduleId, {
           timeoutMs: smokeCase.applyTimeoutMs ?? 45000,
+          acquisitionCallCounts: applySafetyAcquisitionCalls,
         });
     const { applyReview, lifecycleResult } = applyOutcome;
 
@@ -2097,6 +2102,9 @@ async function runSmokeCase(smokeCase, modules, { defaultReviewedEquipment, keep
         rerunStepCount: rerunPlan.steps.length,
         preRetryItemIds: [...(applySafetyEvidence.failureState?.observedItemIds ?? [])],
         postRetryItemIds: actorEvidence.items.map((item) => item.id).sort(),
+        preRetryCurrencyCopper: applySafetyEvidence.failureState?.observedCurrencyCopper ?? null,
+        postRetryCurrencyCopper: actorEvidence.currencyCopper,
+        acquisitionCalls: applySafetyAcquisitionCalls ? { ...applySafetyAcquisitionCalls } : null,
       };
     }
     validateAppliedCase({
@@ -2275,6 +2283,11 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
     return { evidence: null, retryDraft: null };
   }
   const preApplyModuleState = structuredClone(modules.normalizeState(actor.getFlag(moduleId, "state")));
+  const preApplyCurrencyCopper = Number(actor.inventory?.currency?.copperValue);
+  if (!Number.isSafeInteger(preApplyCurrencyCopper) || preApplyCurrencyCopper < 0) {
+    failures.push("Apply safety probe could not capture the actor's pre-apply currency.");
+    return { evidence: null, retryDraft: null };
+  }
   const preApplyItems = actorItemSnapshots(actor, modules);
   const preApplyItemIds = [...preApplyItems.keys()].sort();
   const applyContext = buildSpellRarityApplyContext(actor, draft, steps, modules);
@@ -2364,6 +2377,7 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
   const levelValue = actor.system?.details?.level?.value;
   const observedLevel = typeof levelValue === "number" ? levelValue : null;
   const observedModuleState = structuredClone(modules.normalizeState(actor.getFlag(moduleId, "state")));
+  const observedCurrencyCopper = Number(actor.inventory?.currency?.copperValue);
   const stateLastTargetLevel =
     typeof observedModuleState.lastTargetLevel === "number" ? observedModuleState.lastTargetLevel : null;
   const observedItems = actorItemSnapshots(actor, modules);
@@ -2374,6 +2388,8 @@ async function runApplySafetyFailureProbe({ actor, draft, failures, moduleId, mo
     expected: postFinalCheckpoint ? "post-final" : "pre-final",
     preApplyLevel,
     observedLevel,
+    preApplyCurrencyCopper,
+    observedCurrencyCopper,
     draftPresent: persistedDraft !== null,
     draftMatchesAttempt: draftRecovered,
     preApplyItemIds,
@@ -3330,7 +3346,14 @@ function createCoreAcquisitionExecution({ actor, draft, moduleId, modules }) {
   };
 }
 
-async function applyCompletedDraft(actor, draft, steps, modules, moduleId, { timeoutMs = 45000 } = {}) {
+async function applyCompletedDraft(
+  actor,
+  draft,
+  steps,
+  modules,
+  moduleId,
+  { timeoutMs = 45000, acquisitionCallCounts = null } = {},
+) {
   const snapshot = modules.inspectActor(actor);
   const applyContext = buildSpellRarityApplyContext(actor, draft, steps, modules);
   const acquisition = createCoreAcquisitionExecution({ actor, draft, moduleId, modules });
@@ -3365,9 +3388,21 @@ async function applyCompletedDraft(actor, draft, steps, modules, moduleId, { tim
             validateSmokeSelectionEligibility(actor, draft, steps, selection, step, modules, moduleId),
           validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
           prepareClassGrantPlan: acquisition?.prepareClassGrantPlan,
-          executeAcquisitionItems: acquisition?.session.executeAcquisitionItems,
-          executeAcquisitionCurrency: acquisition?.session.executeAcquisitionCurrency,
-          verifyAcquisitionOutcome: acquisition?.session.verifyAcquisitionOutcome,
+          executeAcquisitionItems: trackedAcquisitionCall(
+            acquisitionCallCounts,
+            "itemsExecutorCalls",
+            acquisition?.session.executeAcquisitionItems,
+          ),
+          executeAcquisitionCurrency: trackedAcquisitionCall(
+            acquisitionCallCounts,
+            "currencyExecutorCalls",
+            acquisition?.session.executeAcquisitionCurrency,
+          ),
+          verifyAcquisitionOutcome: trackedAcquisitionCall(
+            acquisitionCallCounts,
+            "verificationCalls",
+            acquisition?.session.verifyAcquisitionOutcome,
+          ),
           readCurrentAcquisitionHistory: acquisition?.session.readCurrentAcquisitionHistory,
         }),
       finalizeRecoveredDraft: (recoveryActorUpdate, buildFinalActorUpdate) =>
@@ -3406,6 +3441,14 @@ async function applyCompletedDraft(actor, draft, steps, modules, moduleId, { tim
     `${actor.name} apply timed out`,
   );
   return { applyReview: applyContext.applyReview, lifecycleResult };
+}
+
+function trackedAcquisitionCall(counts, key, callback) {
+  if (typeof callback !== "function") return undefined;
+  return (...args) => {
+    if (counts && Object.hasOwn(counts, key)) counts[key] += 1;
+    return callback(...args);
+  };
 }
 
 function readActorCompletedStepIds(actor, moduleId) {

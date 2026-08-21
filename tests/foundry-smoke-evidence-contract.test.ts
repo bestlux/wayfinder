@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { reviewRetainAll } from "../src/wayfinder/domain/acquisition-ledger";
 import { physicalGrantRouteById } from "../src/wayfinder/domain/physical-grant-route-registry";
-
 import {
   assertIncrementalSmokeCasesSupported,
   buildActorSourceEvidence,
@@ -8,6 +8,7 @@ import {
   SMOKE_EVIDENCE_SCHEMA_VERSION,
   validateAcquisitionEvidence,
 } from "../tools/foundry-smoke/evidence-contract.mjs";
+import { acquisitionFixture, completedAcquisitionFixture } from "./fixtures/acquisition-fixture";
 
 describe("Foundry smoke evidence contract", () => {
   it("rejects Apply safety cases in the unsupported incremental lane", () => {
@@ -790,6 +791,120 @@ describe("Foundry smoke evidence contract", () => {
     const retryResult = qualifySmokeResult(contradictoryRetry, [definition]);
     expect(findingCodes(retryResult)).toContain("apply-safety-retry-mismatch");
     expect(retryResult.qualification.passed).toBe(false);
+  });
+
+  it("pins one retain-all equipment acquisition across a forced Apply failure and retry", async () => {
+    const fixture = acquisitionFixture({ lines: [], disposition: "unreviewed" });
+    const draft = reviewRetainAll(fixture.draft, fixture.ledger, {
+      userId: "owner-1",
+      reviewedAt: "2026-08-18T21:00:00.000Z",
+    });
+    const { manifest } = await completedAcquisitionFixture({ fixture, draft });
+    const braveryIdentity =
+      "feat||Compendium.pf2e.classfeatures.Item.bravery|Bravery::destination=::location=::training=::grant=::container=::quantity=::physical=false::currency=false";
+    const copperIdentity = `treasure||Compendium.pf2e.equipment-srd.Item.copper|Copper Pieces::destination=::location=::training=::grant=::container=::quantity=${manifest.currency.observedCopper}::physical=true::currency=true`;
+    const bravery = physicalItem({
+      id: "bravery-item",
+      name: "Bravery",
+      type: "feat",
+      sourceId: "Compendium.pf2e.classfeatures.Item.bravery",
+      isPhysical: false,
+      quantity: null,
+    });
+    const copper = physicalItem({
+      id: "currency-item",
+      name: "Copper Pieces",
+      type: "treasure",
+      sourceId: "Compendium.pf2e.equipment-srd.Item.copper",
+      isCurrency: true,
+      quantity: manifest.currency.observedCopper,
+    });
+    const input = resultFixture({
+      currencyCopper: manifest.currency.observedCopper,
+      items: [bravery, copper],
+    }) as any;
+    input.cases[0].actor.id = "actor-1";
+    input.cases[0].actor.moduleStateAfterApply.completedStepIds = ["step", "starting-equipment-level-5"];
+    input.cases[0].actor.moduleStateAfterApply.completedAcquisitionManifest = structuredClone(manifest);
+    input.cases[0].evidence.acquisition = {
+      ...emptyAcquisitionEvidence(),
+      policy: {
+        source: "completed-acquisition-manifest",
+        version: manifest.policy.version,
+        fingerprint: manifest.policy.fingerprint,
+        snapshot: structuredClone(manifest.policy),
+      },
+      currency: structuredClone(manifest.currency),
+      manifest: structuredClone(manifest),
+    };
+    input.cases[0].evidence.preStepIds = ["step", "starting-equipment-level-5"];
+    input.cases[0].evidence.applySafety = applySafetyEvidence();
+    Object.assign(input.cases[0].evidence.applySafety.failureState, {
+      preApplyCurrencyCopper: manifest.currency.preCopper,
+      observedCurrencyCopper: manifest.currency.preCopper,
+      recoveredPlanStepIds: ["step", "starting-equipment-level-5"],
+    });
+    Object.assign(input.cases[0].evidence.applySafety.retryPlan, {
+      stepIds: ["step", "starting-equipment-level-5"],
+    });
+    Object.assign(input.cases[0].evidence.applySafety.retry, {
+      postRetryItemIds: ["bravery-item", "currency-item"],
+      preRetryCurrencyCopper: manifest.currency.preCopper,
+      postRetryCurrencyCopper: manifest.currency.observedCopper,
+      acquisitionCalls: {
+        itemsExecutorCalls: 1,
+        currencyExecutorCalls: 1,
+        verificationCalls: 1,
+      },
+    });
+    const definition = applySafetyDefinition("phase:singleton-replacements:before") as any;
+    Object.assign(definition, {
+      expectedItemCount: 2,
+      expectedItemIdentities: [
+        "feat||Compendium.pf2e.classfeatures.Item.bravery|Bravery",
+        "treasure||Compendium.pf2e.equipment-srd.Item.copper|Copper Pieces",
+      ],
+      expectedItemSemanticIdentities: [braveryIdentity, copperIdentity],
+      expectedPreStepIds: ["step", "starting-equipment-level-5"],
+      expectedRetryStepIds: ["step", "starting-equipment-level-5"],
+      expectedApplySafetyAcquisition: {
+        stepId: "starting-equipment-level-5",
+        disposition: "retain-all",
+        recipe: "permanent-items",
+        currency: structuredClone(manifest.currency),
+        manifestCounts: { logicalLines: 0, entries: 0, classGrants: 0 },
+        retryAddedItemSemanticIdentities: [braveryIdentity, copperIdentity],
+      },
+    });
+
+    const valid = qualifySmokeResult(input, [definition]);
+    expect(findingCodes(valid)).toEqual([]);
+    expect(valid.qualification.passed).toBe(true);
+
+    for (const [mutate, expectedCode] of [
+      [
+        (value: any) => (value.cases[0].evidence.applySafety.retry.postRetryCurrencyCopper -= 1),
+        "apply-safety-acquisition-currency-mismatch",
+      ],
+      [
+        (value: any) => value.cases[0].evidence.applySafety.retry.postRetryItemIds.pop(),
+        "apply-safety-acquisition-retry-mismatch",
+      ],
+      [
+        (value: any) => (value.cases[0].evidence.applySafety.retry.acquisitionCalls.currencyExecutorCalls = 2),
+        "apply-safety-acquisition-retry-mismatch",
+      ],
+      [
+        (value: any) => (value.cases[0].evidence.acquisition.manifest.fingerprint = "forged"),
+        "apply-safety-acquisition-manifest-mismatch",
+      ],
+    ] as const) {
+      const forged = structuredClone(input);
+      mutate(forged);
+      const result = qualifySmokeResult(forged, [definition]);
+      expect(findingCodes(result)).toContain(expectedCode);
+      expect(result.qualification.passed).toBe(false);
+    }
   });
 
   it("binds the original and rebuilt retry plans to the checked case definition", () => {

@@ -696,6 +696,9 @@ function observePlannedItems(plan, baseline) {
     for (const [plannedItemId, item] of candidatesByPlannedId) {
         const expected = expectedByPlannedId.get(plannedItemId);
         if (expected?.planned.ownedContainerId) {
+            if (actualContainerByLogicalId.has(expected.planned.ownedContainerId)) {
+                throw new Error(`Planned container ${expected.planned.ownedContainerId} has more than one observed owner.`);
+            }
             actualContainerByLogicalId.set(expected.planned.ownedContainerId, item.itemId);
         }
     }
@@ -706,9 +709,11 @@ function observePlannedItems(plan, baseline) {
         if (!identity)
             continue;
         const expected = expectedByPlannedId.get(identity.plannedItemId);
-        const expectedActualContainer = expected?.planned.plannedContainerId
-            ? (actualContainerByLogicalId.get(expected.planned.plannedContainerId) ?? null)
-            : null;
+        const plannedContainerId = expected?.planned.plannedContainerId ?? null;
+        const expectedActualContainer = plannedContainerId ? actualContainerByLogicalId.get(plannedContainerId) : null;
+        if (plannedContainerId && expectedActualContainer === undefined) {
+            throw new Error(`Actor item ${item.itemId} has no observed owner for its planned container.`);
+        }
         if (!expected ||
             identity.manifestId !== plan.subject.manifestId ||
             identity.entryId !== expected.entry.entryId ||

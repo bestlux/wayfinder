@@ -43,6 +43,7 @@ import {
 import {
   type CompletedAcquisitionManifestV1,
   computeCompletedAcquisitionManifestFingerprint,
+  normalizeCompletedAcquisitionManifest,
 } from "../src/wayfinder/domain/completed-acquisition-manifest";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
@@ -452,6 +453,108 @@ describe("Wave 2 acquisition execution", () => {
     ).toBe(true);
     expect(outcome.manifest.entries[0]?.kitExpansion?.profile).toBe("adventurers-pack-v1");
     expect(outcome.manifest.entries[0]?.observedItems).toHaveLength(9);
+    expect(normalizeCompletedAcquisitionManifest(outcome.manifest)).not.toBeNull();
+    const wrongEntries = outcome.manifest.entries.map((entry, entryIndex) => ({
+      ...entry,
+      observedItems: entry.observedItems.map((item, itemIndex) =>
+        entryIndex === 0 && itemIndex === 1 ? { ...item, actualContainerId: null } : item
+      ),
+    }));
+    const { fingerprint: _fingerprint, ...manifestWithoutFingerprint } = outcome.manifest;
+    const wrongMaterial = { ...manifestWithoutFingerprint, entries: wrongEntries };
+    const wrongContainer: CompletedAcquisitionManifestV1 = {
+      ...wrongMaterial,
+      fingerprint: computeCompletedAcquisitionManifestFingerprint(wrongMaterial),
+    };
+    expect(normalizeCompletedAcquisitionManifest(wrongContainer)).toBeNull();
+  });
+
+  it("rejects malformed Adventurer's Pack retries before another write", async () => {
+    const fixture = reviewedFixture([kitLine()]);
+    const actor = new FakeActor();
+    actor.failBeforeAddOrdinal = 3;
+    const first = sessionFor(fixture.acquisition);
+    await expect(
+      first.executeAcquisitionItems({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/forced item failure/i);
+    expect(actor.acquisitionItems()).toHaveLength(2);
+
+    const rootIndex = actor.items.contents.findIndex((item) => item.type === "backpack");
+    actor.items.contents.splice(rootIndex, 1);
+    const orphan = actor.acquisitionItems()[0]!;
+    const orphanIndex = actor.items.contents.indexOf(orphan);
+    const orphanedItem: FakeItem = {
+      ...orphan,
+      system: { ...orphan.system, containerId: null },
+      _source: { system: { ...orphan._source.system, containerId: null } },
+      container: null,
+    };
+    actor.items.contents[orphanIndex] = orphanedItem;
+    actor.failBeforeAddOrdinal = null;
+    const recoveryDraft = { ...fixture.draft, applyAttemptStepIds: ["starting-equipment-level-1"] };
+    const writesBeforeRetry = actor.addOptions.length;
+    await expect(
+      sessionFor(fixture.acquisition).executeAcquisitionItems({
+        actor,
+        draft: recoveryDraft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/foreign physical items|observed owner|economic admission/i);
+    expect(actor.addOptions).toHaveLength(writesBeforeRetry);
+
+    const relabeledActor = new FakeActor();
+    relabeledActor.failBeforeAddOrdinal = 3;
+    await expect(
+      sessionFor(fixture.acquisition).executeAcquisitionItems({
+        actor: relabeledActor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/forced item failure/i);
+    const relabeledChild = relabeledActor.acquisitionItems().find((item) => item.type !== "backpack")!;
+    acquisitionIdentity(relabeledChild)!.entryId = "wrong-entry";
+    relabeledActor.failBeforeAddOrdinal = null;
+    const relabeledWrites = relabeledActor.addOptions.length;
+    await expect(
+      sessionFor(fixture.acquisition).executeAcquisitionItems({
+        actor: relabeledActor,
+        draft: recoveryDraft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/foreign physical items|economic admission/i);
+    expect(relabeledActor.addOptions).toHaveLength(relabeledWrites);
+
+    const duplicateOwnerActor = new FakeActor();
+    duplicateOwnerActor.failBeforeAddOrdinal = 3;
+    await expect(
+      sessionFor(fixture.acquisition).executeAcquisitionItems({
+        actor: duplicateOwnerActor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/forced item failure/i);
+    const duplicateOwner = duplicateOwnerActor.acquisitionItems().find((item) => item.type === "backpack")!;
+    duplicateOwnerActor.items.contents.push({ ...duplicateOwner, id: "duplicate-container-owner" });
+    duplicateOwnerActor.failBeforeAddOrdinal = null;
+    const duplicateOwnerWrites = duplicateOwnerActor.addOptions.length;
+    await expect(
+      sessionFor(fixture.acquisition).executeAcquisitionItems({
+        actor: duplicateOwnerActor,
+        draft: recoveryDraft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/foreign physical items|economic admission/i);
+    expect(duplicateOwnerActor.addOptions).toHaveLength(duplicateOwnerWrites);
   });
 
   it("rejects Adventurer's Pack child drift before any acquisition write", async () => {

@@ -282,25 +282,34 @@ export function evaluateEconomicAdmission(args: {
     if (ignoredClassGrantItemIds.has(item.itemId)) continue;
     const identity = item.acquisitionIdentity;
     const expected = identity ? retryEntries.get(identity.plannedItemId) : null;
+    const expectedContainerOwners = expected?.plannedContainerId
+      ? baseline.physicalItems.filter(
+          (candidate) =>
+            retryEntries.get(candidate.acquisitionIdentity?.plannedItemId ?? "")?.ownedContainerId ===
+            expected.plannedContainerId
+        )
+      : [];
     const expectedContainerId =
       expected?.plannedContainerId === null
         ? null
-        : (baseline.physicalItems.find(
-            (candidate) =>
-              retryEntries.get(candidate.acquisitionIdentity?.plannedItemId ?? "")?.ownedContainerId ===
-              expected?.plannedContainerId
-          )?.itemId ?? null);
+        : expectedContainerOwners.length === 1
+          ? expectedContainerOwners[0]?.itemId
+          : undefined;
     if (
       retry &&
       identity?.draftId === args.draftId &&
       identity.batchId === args.batchId &&
       identity.manifestId === retry.manifestId &&
-      expected?.lineId === identity.lineId &&
+      expected !== null &&
+      expected !== undefined &&
+      expected.entryId === identity.entryId &&
+      expected.lineId === identity.lineId &&
       expected.plannedItemId === identity.plannedItemId &&
       expected.plannedContainerId === identity.plannedContainerId &&
       expected.stackingIntent === identity.stackingIntent &&
       expected.sourceUuid === item.sourceUuid &&
       expected.quantity === item.quantity &&
+      expectedContainerId !== undefined &&
       expectedContainerId === item.containerId
     ) {
       observedRetryEntries.push(identity.entryId);

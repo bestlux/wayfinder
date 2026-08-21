@@ -4,7 +4,7 @@ import path from "node:path";
 export async function createWave3EquipmentArtifactDirectory(repoRoot, override, evidenceId) {
   const directory = override
     ? path.resolve(override)
-    : path.join(repoRoot, "artifacts", "foundry-smoke", `wave3-equipment-${evidenceId}`);
+    : path.join(repoRoot, ".wayfinder-smoke", `wave3-equipment-${evidenceId}`);
   await mkdir(path.dirname(directory), { recursive: true });
   await mkdir(directory, { recursive: false });
   return directory;

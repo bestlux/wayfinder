@@ -147,6 +147,37 @@ describe("acquisition UI smoke checkpoint capability", () => {
     expect(driver).not.toContain("executeStartingEquipmentCommand(");
     expect(driver).not.toContain("DialogV2.confirm =");
   });
+
+  it("previews the settled exact catalogue result before adding from exact item detail", () => {
+    const driver = readFileSync(resolve("src/wayfinder/application/acquisition-smoke-driver.ts"), "utf8");
+    const searchDispatch = driver.indexOf('search.dispatchEvent(new Event("input"');
+    const settledQuery = driver.indexOf('data-wayfinder-rendered-query="Dagger"', searchDispatch);
+    const previewAction = driver.indexOf('data-wayfinder-action="preview-equipment-item"', settledQuery);
+    const previewDisabled = driver.indexOf("isDisabled(candidate)", previewAction);
+    const previewClick = driver.indexOf("clickElement(preview)", previewDisabled);
+    const exactDetail = driver.indexOf('data-application-part="equipment-detail"', previewClick);
+    const exactDetailSource = driver.indexOf('data-equipment-preview="${DAGGER_SOURCE_UUID}"', exactDetail);
+    const addAction = driver.indexOf('data-wayfinder-action="add-equipment-item"', exactDetailSource);
+    const currencyFunding = driver.indexOf('data-funding="currency"', addAction);
+    const addDisabled = driver.indexOf("isDisabled(candidate)", currencyFunding);
+    const addClick = driver.indexOf("clickElement(add)", addDisabled);
+    const cartSettlement = driver.indexOf("await waitForCartQuantity(application, 1)", addClick);
+
+    expect(searchDispatch).toBeGreaterThan(-1);
+    expect(settledQuery).toBeGreaterThan(searchDispatch);
+    expect(previewAction).toBeGreaterThan(settledQuery);
+    expect(previewDisabled).toBeGreaterThan(previewAction);
+    expect(previewClick).toBeGreaterThan(previewDisabled);
+    expect(exactDetail).toBeGreaterThan(previewClick);
+    expect(exactDetailSource).toBeGreaterThan(exactDetail);
+    expect(addAction).toBeGreaterThan(exactDetailSource);
+    expect(currencyFunding).toBeGreaterThan(addAction);
+    expect(addDisabled).toBeGreaterThan(currencyFunding);
+    expect(addClick).toBeGreaterThan(addDisabled);
+    expect(cartSettlement).toBeGreaterThan(addClick);
+    expect(driver).toContain('[aria-pressed="true"]');
+    expect(driver).not.toContain("result.querySelector<HTMLElement>");
+  });
 });
 
 function writeCheckpoint(

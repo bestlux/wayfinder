@@ -365,10 +365,27 @@ async function reviewDisposition(application, caseDefinition) {
         const search = await waitForValue(() => wayfinderRoot(application)?.querySelector(`input[data-wayfinder-equipment-search][data-step-id="${EQUIPMENT_STEP_ID}"]`) ?? null, "equipment search input");
         search.value = "Dagger";
         search.dispatchEvent(new Event("input", { bubbles: true }));
-        const result = await waitForValue(() => wayfinderRoot(application)?.querySelector(`[data-equipment-item][data-source-uuid="${DAGGER_SOURCE_UUID}"]`) ?? null, "exact PF2E Dagger catalogue result");
-        const add = result.querySelector(`[data-wayfinder-action="add-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"]`);
-        if (!add || isDisabled(add))
-            throw new Error("The exact Dagger result cannot be added through the UI.");
+        const preview = await waitForValue(() => {
+            const catalogue = wayfinderRoot(application)?.querySelector('[data-application-part="equipment-catalogue"][data-wayfinder-rendered-query="Dagger"]');
+            const candidate = catalogue?.querySelector(`[data-equipment-item][data-wayfinder-action="preview-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"]`);
+            if (!catalogue?.isConnected || !candidate?.isConnected)
+                return null;
+            if (isDisabled(candidate))
+                throw new Error("The exact Dagger catalogue preview is disabled.");
+            return candidate;
+        }, "settled exact PF2E Dagger catalogue preview");
+        clickElement(preview);
+        const add = await waitForValue(() => {
+            const root = wayfinderRoot(application);
+            const selectedPreview = root?.querySelector(`[data-application-part="equipment-catalogue"][data-wayfinder-rendered-query="Dagger"] [data-equipment-item][data-wayfinder-action="preview-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"][aria-pressed="true"]`);
+            const detail = root?.querySelector(`[data-application-part="equipment-detail"][data-equipment-preview="${DAGGER_SOURCE_UUID}"]`);
+            const candidate = detail?.querySelector(`[data-wayfinder-action="add-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"][data-funding="currency"]`);
+            if (!selectedPreview?.isConnected || !detail?.isConnected || !candidate?.isConnected)
+                return null;
+            if (isDisabled(candidate))
+                throw new Error("The exact Dagger currency action is disabled.");
+            return candidate;
+        }, "settled exact PF2E Dagger detail currency action");
         clickElement(add);
         await waitForCartQuantity(application, 1);
         for (let current = 1; current < quantity; current += 1) {

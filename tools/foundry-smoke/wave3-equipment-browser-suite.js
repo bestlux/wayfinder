@@ -133,6 +133,27 @@ function recipeEvidence(policy) {
   };
 }
 
+function effectivePolicyFromMaterial(material, overrides = {}) {
+  return {
+    version: 1,
+    actorId: material.subject.actorId,
+    draftId: material.subject.draftId,
+    targetLevel: material.subject.targetLevel,
+    rules: { wealth: material.numericPolicyRef, semantics: material.semanticPolicyRef },
+    recipe: recipeEvidence(material),
+    worldRecipePolicy: structuredClone(material.worldRecipePolicy),
+    sourcePolicy: structuredClone(material.sourcePolicy),
+    rarityPolicy: structuredClone(material.rarityPolicy),
+    authorityPolicy: structuredClone(material.authorityPolicy),
+    higherLevelStartEvidence: structuredClone(material.higherLevelStartEvidence),
+    abp: structuredClone(material.abp),
+    gmJudgments: structuredClone(material.gmJudgments),
+    fingerprint: `wave3-live:${material.subject.actorId}:${material.subject.draftId}`,
+    explanations: [],
+    ...overrides,
+  };
+}
+
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value !== null && typeof value === "object") {
@@ -465,13 +486,12 @@ globalThis.__runWayfinderWave3PlayerVerification = async function runWave3Player
         ...request,
         sourceUuid: smokeCase.configuredItem.sourceUuid,
       });
-      const handoffPolicy = {
-        ...policy,
+      const handoffPolicy = effectivePolicyFromMaterial(policy, {
         rarityPolicy: { blanketCeiling: "unique" },
         gmJudgments: policy.gmJudgments.filter(
           (entry) => entry.request.facts.sourceUuid !== smokeCase.handoffItem.sourceUuid,
         ),
-      };
+      });
       const handoffAcquisition = {
         ...draft.acquisition,
         policySnapshot: modules.createPolicySnapshot(

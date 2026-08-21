@@ -16,6 +16,47 @@ const sourceSelection: SelectionRef = {
 };
 
 describe("wayfinder singleton rule discovery", () => {
+  it("uses PF2E's source-slug flag for a roll-option-only ChoiceSet", () => {
+    const choices = discoverSingletonChoiceMeta({
+      sourceItemType: "feat",
+      sourceDocument: {
+        name: "Champion Dedication",
+        system: {
+          slug: "champion-dedication",
+          level: { value: 2 },
+          rules: [
+            {
+              key: "ChoiceSet",
+              rollOption: "champion-dedication",
+              choices: [
+                { value: "light-and-medium", label: "Light" },
+                { value: "heavy", label: "Heavy" },
+              ],
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        ...sourceSelection,
+        slotId: "class-feat-level-2",
+        documentId: "champion-dedication",
+        uuid: "Compendium.pf2e.feats-srd.Item.champion-dedication",
+        itemType: "feat",
+        name: "Champion Dedication",
+      },
+      extractSlug,
+      localize: (value) => value,
+    });
+
+    expect(choices).toMatchObject([
+      {
+        slotId: "singleton-choice-feat-champion-dedication-championDedication-level-2",
+        flag: "championDedication",
+        rollOption: "champion-dedication",
+      },
+    ]);
+  });
+
   it("filters literal choices by their own predicates", () => {
     const choices = discoverSingletonChoiceMeta({
       sourceItemType: "background",

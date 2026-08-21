@@ -872,6 +872,63 @@ describe("prepared draft application", () => {
     );
   });
 
+  it("validates and persists PF2E's source-slug default ChoiceSet flag", async () => {
+    const { actor } = buildActorHarness();
+    setGamePacks({
+      "pf2e.feats-srd": {
+        "champion-dedication": {
+          name: "Champion Dedication",
+          type: "feat",
+          system: {
+            slug: "champion-dedication",
+            level: { value: 2 },
+            rules: [{ key: "ChoiceSet", choices: [{ value: "heavy", label: "Heavy" }] }],
+          },
+        },
+      },
+    });
+    const draft = createEmptyDraft(2);
+    const sourceSelection = selection(
+      "class-feat-level-2",
+      "pf2e.feats-srd",
+      "champion-dedication",
+      "feat",
+      "Champion Dedication"
+    );
+    const slotId = "singleton-choice-feat-champion-dedication-championDedication-level-2";
+    draft.singletonChoices[slotId] = "heavy";
+    const step: PendingStep = {
+      id: slotId,
+      level: 2,
+      kind: "singleton-choice",
+      slotKind: "singleton-choice",
+      title: "Choose armor training",
+      description: "",
+      required: true,
+      slotId,
+      singletonChoice: {
+        slotId,
+        sourceItemType: "feat",
+        sourcePackId: sourceSelection.packId,
+        sourceDocumentId: sourceSelection.documentId,
+        sourceUuid: sourceSelection.uuid,
+        sourceName: sourceSelection.name,
+        sourceRuleIndex: 0,
+        flag: "championDedication",
+        prompt: "Choose armor training",
+        predicate: [],
+        rollOption: null,
+        options: [{ value: "heavy", label: "Heavy", img: null, detail: null }],
+      },
+    };
+
+    const prepared = await prepareDraftApplication(actor as never, draft, [step]);
+    const source = await prepared.sources.createEmbeddedSource(sourceSelection, draft, [step]);
+
+    expect(source?.system?.rules?.[0]).toMatchObject({ key: "ChoiceSet", selection: "heavy" });
+    expect(source?.flags?.pf2e?.rulesSelections).toEqual({ championDedication: "heavy" });
+  });
+
   it("rejects spell over-selection before resolving or mutating documents", async () => {
     const { actor } = buildActorHarness();
     const fetchSelectionDocument = vi.fn();

@@ -32,6 +32,9 @@ export function resolveSanctificationChoice(args) {
     if (actorSelection === "holy" || actorSelection === "unholy" || actorSelection === "none") {
         return actorSelection;
     }
+    if (deityDocument === null) {
+        return null;
+    }
     const sanctification = deityDocument?.system?.sanctification;
     if (!sanctification || typeof sanctification !== "object") {
         return "none";

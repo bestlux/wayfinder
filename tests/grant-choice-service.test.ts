@@ -124,6 +124,72 @@ describe("grant-choice-service", () => {
     expect(steps).toEqual([]);
   });
 
+  it("retains a drafted grant after its own selection closes the PF2E prompt predicate", async () => {
+    const draft = createEmptyDraft(2);
+    const slotId = "grant-choice-class-classfeature-deity-champion-deity-level-2";
+    draft.selections[slotId] = {
+      slotId,
+      packId: "pf2e.deities",
+      documentId: "sarenrae",
+      uuid: "Compendium.pf2e.deities.Item.sarenrae",
+      itemType: "deity",
+      featType: null,
+      name: "Sarenrae",
+      level: null,
+    };
+
+    const sourceDocument = {
+      name: "Deity (Champion)",
+      system: {
+        slug: "deity-champion",
+        level: { value: 2 },
+        rules: [
+          {
+            key: "ChoiceSet",
+            flag: "deity",
+            predicate: [{ not: "deity" }],
+            choices: { itemType: "deity", filter: [{ or: ["item:category:deity", "item:category:pantheon"] }] },
+          },
+          { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.deity}" },
+        ],
+      },
+    };
+    const buildSteps = (activeRollOptions: Set<string>) =>
+      buildGrantChoiceSteps({
+        draft,
+        targetLevel: 2,
+        hasClassSelection: true,
+        hasDeitySelection: true,
+        activeRollOptions,
+        sources: [
+          {
+            sourceItemType: "classfeature",
+            sourceSelection: {
+              slotId: "static-grant-choice-class-feat-level-2-4",
+              packId: "pf2e.classfeatures",
+              documentId: "deity-champion",
+              uuid: "Compendium.pf2e.classfeatures.Item.deity-champion",
+              itemType: "feat",
+              featType: "classfeature",
+              name: "Deity (Champion)",
+              level: 2,
+            },
+            sourceDocument,
+            sourceLevel: 2,
+          },
+        ],
+        extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+        readExistingGrantedSelection: () => null,
+      });
+
+    const steps = await buildSteps(new Set(["deity"]));
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.slotId).toBe(slotId);
+
+    sourceDocument.system.rules[0]!.predicate = [{ not: "class:champion" }];
+    await expect(buildSteps(new Set(["deity", "class:champion"]))).resolves.toEqual([]);
+  });
+
   it("holds predicate-gated static grants until the source roll-option choice is drafted", async () => {
     const draft = createEmptyDraft(1);
     const sourceSelection = {

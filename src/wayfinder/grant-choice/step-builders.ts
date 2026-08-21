@@ -15,6 +15,7 @@ export function buildGrantChoiceStepsFromRules(args: {
   activeRollOptions?: ReadonlySet<string>;
   actorContext?: ChoiceFilterActorContext | null;
   requireResolvedActorPlaceholders?: boolean;
+  selectedValuesBySlotId?: Record<string, SelectionRef | undefined>;
 }): PickItemStep[] {
   const { sourceItemType, effectiveSourceDocument, sourceSelection, extractSlug } = args;
   if (!effectiveSourceDocument || !sourceSelection) {
@@ -30,6 +31,7 @@ export function buildGrantChoiceStepsFromRules(args: {
     activeRollOptions: args.activeRollOptions,
     actorContext: args.actorContext,
     requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
+    selectedValuesBySlotId: args.selectedValuesBySlotId,
   });
   return discovered.map((grant) =>
     createPickItemStep(

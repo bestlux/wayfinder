@@ -114,6 +114,9 @@ export function resolveSanctificationChoice(args: {
     return actorSelection;
   }
 
+  if (deityDocument === null) {
+    return null;
+  }
   const sanctification = (deityDocument as LooseDocument | null)?.system?.sanctification;
   if (!sanctification || typeof sanctification !== "object") {
     return "none";

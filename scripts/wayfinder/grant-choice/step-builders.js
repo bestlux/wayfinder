@@ -15,6 +15,7 @@ export function buildGrantChoiceStepsFromRules(args) {
         activeRollOptions: args.activeRollOptions,
         actorContext: args.actorContext,
         requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
+        selectedValuesBySlotId: args.selectedValuesBySlotId,
     });
     return discovered.map((grant) => createPickItemStep("grant-choice", args.sourceLevel ?? choiceSourceLevel(effectiveSourceDocument), buildGrantChoiceTitle(grant), buildGrantChoiceDescription(grant), grant.filters, {
         slotId: grant.slotId,

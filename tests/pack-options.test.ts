@@ -2013,6 +2013,7 @@ describe("pack options dependency filtering", () => {
     setPack("pf2e.classfeatures", [
       classFeatureEntry("justice", "Justice", ["champion"], ["champion-cause"]),
       classFeatureEntry("liberation", "Liberation", ["champion"], ["champion-cause"]),
+      classFeatureEntry("obedience", "Obedience", ["champion"], ["champion-cause"]),
       classFeatureEntry("redemption", "Redemption", ["champion"], ["champion-cause", "holy"]),
       classFeatureEntry("grandeur", "Grandeur", ["champion"], ["champion-cause", "holy"]),
       classFeatureEntry("desecration", "Desecration", ["champion"], ["champion-cause", "unholy"]),
@@ -2065,10 +2066,101 @@ describe("pack options dependency filtering", () => {
       deitySelected: true,
       sanctification: "unholy",
     });
+    const nonSanctifyingOptions = await getOptionsForStep(step, {
+      ...EMPTY_CONTEXT,
+      classSlug: "champion",
+      deitySelected: true,
+      sanctification: "none",
+    });
 
-    expect(unresolvedOptions.map((option) => option.name)).toEqual(["Justice", "Liberation"]);
-    expect(holyOptions.map((option) => option.name)).toEqual(["Grandeur", "Justice", "Liberation", "Redemption"]);
-    expect(unholyOptions.map((option) => option.name)).toEqual(["Desecration", "Iniquity", "Justice", "Liberation"]);
+    expect(unresolvedOptions.map((option) => option.name)).toEqual([
+      "Desecration",
+      "Grandeur",
+      "Iniquity",
+      "Justice",
+      "Liberation",
+      "Obedience",
+      "Redemption",
+    ]);
+    expect(holyOptions.map((option) => option.name)).toEqual([
+      "Grandeur",
+      "Justice",
+      "Liberation",
+      "Obedience",
+      "Redemption",
+    ]);
+    expect(unholyOptions.map((option) => option.name)).toEqual([
+      "Desecration",
+      "Iniquity",
+      "Justice",
+      "Liberation",
+      "Obedience",
+    ]);
+    expect(nonSanctifyingOptions.map((option) => option.name)).toEqual(["Justice", "Liberation", "Obedience"]);
+  });
+
+  it("keeps sanctified Champion Dedication causes visible until sanctification resolves", async () => {
+    setPack("pf2e.classfeatures", [
+      classFeatureEntry("justice", "Justice", ["champion"], ["champion-cause"]),
+      classFeatureEntry("liberation", "Liberation", ["champion"], ["champion-cause"]),
+      classFeatureEntry("obedience", "Obedience", ["champion"], ["champion-cause"]),
+      classFeatureEntry("redemption", "Redemption", ["champion"], ["champion-cause", "holy"]),
+      classFeatureEntry("grandeur", "Grandeur", ["champion"], ["champion-cause", "holy"]),
+      classFeatureEntry("desecration", "Desecration", ["champion"], ["champion-cause", "unholy"]),
+      classFeatureEntry("iniquity", "Iniquity", ["champion"], ["champion-cause", "unholy"]),
+      classFeatureEntry("holy-boon", "Holy Boon", ["champion"], ["holy"]),
+    ]);
+    const predicate = [
+      "item:tag:champion-cause",
+      {
+        or: [
+          { and: ["item:tag:holy", "sanctification:holy"] },
+          { and: ["item:tag:unholy", "sanctification:unholy"] },
+          { nor: ["item:tag:holy", "item:tag:unholy"] },
+        ],
+      },
+      { not: "item:tag:class-archetype" },
+    ];
+    const step = makeStep("grant-choice", {
+      itemType: "feat",
+      featTypes: ["classfeature"],
+      packIds: ["pf2e.classfeatures"],
+      predicate,
+    });
+
+    const namesFor = async (sanctification: "holy" | "unholy" | "none" | null) =>
+      (await getOptionsForStep(step, { ...EMPTY_CONTEXT, sanctification })).map((option) => option.name);
+
+    await expect(namesFor(null)).resolves.toEqual([
+      "Desecration",
+      "Grandeur",
+      "Iniquity",
+      "Justice",
+      "Liberation",
+      "Obedience",
+      "Redemption",
+    ]);
+    await expect(namesFor("holy")).resolves.toEqual(["Grandeur", "Justice", "Liberation", "Obedience", "Redemption"]);
+    await expect(namesFor("unholy")).resolves.toEqual([
+      "Desecration",
+      "Iniquity",
+      "Justice",
+      "Liberation",
+      "Obedience",
+    ]);
+    await expect(namesFor("none")).resolves.toEqual(["Justice", "Liberation", "Obedience"]);
+
+    const genericSanctificationStep = makeStep("grant-choice", {
+      itemType: "feat",
+      featTypes: ["classfeature"],
+      packIds: ["pf2e.classfeatures"],
+      predicate: ["item:tag:holy", "sanctification:holy"],
+    });
+    await expect(
+      getOptionsForStep(genericSanctificationStep, { ...EMPTY_CONTEXT, sanctification: null }).then((options) =>
+        options.map((option) => option.name)
+      )
+    ).resolves.toEqual(["Grandeur", "Redemption"]);
   });
 
   it("filters spell-choice options to legal arcane ranks and curriculum names", async () => {

@@ -12,9 +12,6 @@ export function discoverGrantSelectionMeta(args) {
         if (rule.key !== "ChoiceSet" || !flag) {
             return [];
         }
-        if (!matchesChoiceSetRulePredicate(rule, args.activeRollOptions ?? new Set())) {
-            return [];
-        }
         const resolution = resolveChoiceSetFilters(rule, {
             sourceLevel: level,
             actorContext: args.actorContext,
@@ -24,17 +21,24 @@ export function discoverGrantSelectionMeta(args) {
             return [];
         }
         const filters = resolution.filters;
-        const grantRuleIndex = rules.findIndex((entry) => entry.key === "GrantItem" && typeof entry.uuid === "string" && entry.uuid.includes(`rulesSelections.${flag}`));
-        if (grantRuleIndex === -1) {
-            return [];
-        }
         const dependsOn = resolution.actorDependencies.includes("class")
             ? "class"
             : resolveGrantDependency(sourceItemType, grantDependencyPredicates(filters));
         const dependencyKey = dependsOn ?? "none";
+        const slotId = `grant-choice-${dependencyKey}-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`;
+        const selectedValue = args.selectedValuesBySlotId?.[slotId];
+        if (!matchesChoiceSetRulePredicate(rule, args.activeRollOptions ?? new Set()) &&
+            (!selectedValue ||
+                !matchesAfterRemovingOwnGrantOption(rule, args.activeRollOptions ?? new Set(), filters.itemType, selectedValue))) {
+            return [];
+        }
+        const grantRuleIndex = rules.findIndex((entry) => entry.key === "GrantItem" && typeof entry.uuid === "string" && entry.uuid.includes(`rulesSelections.${flag}`));
+        if (grantRuleIndex === -1) {
+            return [];
+        }
         return [
             {
-                slotId: `grant-choice-${dependencyKey}-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`,
+                slotId,
                 sourceItemType,
                 selectorPackId: sourceSelection.packId,
                 selectorDocumentId: sourceSelection.documentId,
@@ -50,6 +54,23 @@ export function discoverGrantSelectionMeta(args) {
             },
         ];
     });
+}
+function matchesAfterRemovingOwnGrantOption(rule, activeRollOptions, itemType, selection) {
+    const withoutOwnChoice = new Set(activeRollOptions);
+    const rollOption = toNonEmptyString(rule.rollOption)?.toLowerCase();
+    const values = [selection.uuid, selection.slug, selection.documentId, selection.name]
+        .filter((value) => typeof value === "string" && value.trim().length > 0)
+        .map((value) => value.trim().toLowerCase());
+    let removed = false;
+    if (rollOption) {
+        for (const value of values) {
+            removed = withoutOwnChoice.delete(`${rollOption}:${value}`) || removed;
+        }
+    }
+    if (itemType === "deity") {
+        removed = withoutOwnChoice.delete("deity") || removed;
+    }
+    return removed && matchesChoiceSetRulePredicate(rule, withoutOwnChoice);
 }
 function grantDependencyPredicates(filters) {
     return [

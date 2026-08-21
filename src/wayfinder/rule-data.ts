@@ -26,6 +26,23 @@ export function extractChoiceKey(rule: Record<string, unknown>): string | null {
   return null;
 }
 
+export function resolveEffectiveChoiceFlag(rule: Record<string, unknown>, sourceSlug: string | null): string | null {
+  for (const candidate of [rule.flag, rule.slug]) {
+    const normalized = toNonEmptyString(candidate);
+    if (normalized) {
+      return normalized.replace(/[^-a-z0-9]/giu, "");
+    }
+  }
+  const parts = (sourceSlug ?? "")
+    .trim()
+    .split(/[^a-z0-9]+/iu)
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  return parts
+    .map((part, index) => (index === 0 ? part.toLowerCase() : `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`))
+    .join("");
+}
+
 export function toFeatureLevel(value: unknown): number {
   const number = Number(value);
   return Number.isFinite(number) && number >= 1 ? Math.floor(number) : 1;

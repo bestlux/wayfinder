@@ -24,6 +24,7 @@ export function discoverGrantSelectionMeta(args: {
   activeRollOptions?: ReadonlySet<string>;
   actorContext?: ChoiceFilterActorContext | null;
   requireResolvedActorPlaceholders?: boolean;
+  selectedValuesBySlotId?: Record<string, SelectionRef | undefined>;
 }): GrantSelectionMeta[] {
   const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
@@ -37,10 +38,6 @@ export function discoverGrantSelectionMeta(args: {
     if (rule.key !== "ChoiceSet" || !flag) {
       return [];
     }
-    if (!matchesChoiceSetRulePredicate(rule, args.activeRollOptions ?? new Set())) {
-      return [];
-    }
-
     const resolution = resolveChoiceSetFilters(rule, {
       sourceLevel: level,
       actorContext: args.actorContext,
@@ -51,6 +48,20 @@ export function discoverGrantSelectionMeta(args: {
     }
     const filters = resolution.filters;
 
+    const dependsOn = resolution.actorDependencies.includes("class")
+      ? "class"
+      : resolveGrantDependency(sourceItemType, grantDependencyPredicates(filters));
+    const dependencyKey = dependsOn ?? "none";
+    const slotId = `grant-choice-${dependencyKey}-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`;
+    const selectedValue = args.selectedValuesBySlotId?.[slotId];
+    if (
+      !matchesChoiceSetRulePredicate(rule, args.activeRollOptions ?? new Set()) &&
+      (!selectedValue ||
+        !matchesAfterRemovingOwnGrantOption(rule, args.activeRollOptions ?? new Set(), filters.itemType, selectedValue))
+    ) {
+      return [];
+    }
+
     const grantRuleIndex = rules.findIndex(
       (entry) =>
         entry.key === "GrantItem" && typeof entry.uuid === "string" && entry.uuid.includes(`rulesSelections.${flag}`)
@@ -59,13 +70,9 @@ export function discoverGrantSelectionMeta(args: {
       return [];
     }
 
-    const dependsOn = resolution.actorDependencies.includes("class")
-      ? "class"
-      : resolveGrantDependency(sourceItemType, grantDependencyPredicates(filters));
-    const dependencyKey = dependsOn ?? "none";
     return [
       {
-        slotId: `grant-choice-${dependencyKey}-${sourceItemType}-${sourceSlug}-${flag}-level-${level}`,
+        slotId,
         sourceItemType,
         selectorPackId: sourceSelection.packId,
         selectorDocumentId: sourceSelection.documentId,
@@ -81,6 +88,29 @@ export function discoverGrantSelectionMeta(args: {
       } satisfies GrantSelectionMeta,
     ];
   });
+}
+
+function matchesAfterRemovingOwnGrantOption(
+  rule: Record<string, unknown>,
+  activeRollOptions: ReadonlySet<string>,
+  itemType: string,
+  selection: SelectionRef
+): boolean {
+  const withoutOwnChoice = new Set(activeRollOptions);
+  const rollOption = toNonEmptyString(rule.rollOption)?.toLowerCase();
+  const values = [selection.uuid, selection.slug, selection.documentId, selection.name]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim().toLowerCase());
+  let removed = false;
+  if (rollOption) {
+    for (const value of values) {
+      removed = withoutOwnChoice.delete(`${rollOption}:${value}`) || removed;
+    }
+  }
+  if (itemType === "deity") {
+    removed = withoutOwnChoice.delete("deity") || removed;
+  }
+  return removed && matchesChoiceSetRulePredicate(rule, withoutOwnChoice);
 }
 
 function grantDependencyPredicates(filters: StepFilters): ChoicePredicate[] {

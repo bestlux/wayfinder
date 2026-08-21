@@ -13,6 +13,7 @@ export async function buildGrantChoiceSteps(params) {
         activeRollOptions: params.activeRollOptions,
         actorContext: params.actorContext,
         requireResolvedActorPlaceholders: true,
+        selectedValuesBySlotId: params.draft.selections,
         extractSlug: params.extractSlug,
     }).map((step) => ({ source, step })))
         .filter(({ source, step }) => {

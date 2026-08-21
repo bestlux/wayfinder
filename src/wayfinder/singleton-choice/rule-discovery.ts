@@ -9,11 +9,11 @@ import {
 import { formatSlug } from "../formatting.js";
 import {
   documentFeatureLevel,
-  extractChoiceKey,
   getDocumentRules,
   isChoicePredicate,
   isRecord,
   matchesChoiceSetRulePredicate,
+  resolveEffectiveChoiceFlag,
   toNonEmptyString,
 } from "../rule-data.js";
 
@@ -95,7 +95,7 @@ export function discoverSingletonChoiceSpecs(args: {
   const rules = getDocumentRules(sourceDocument);
 
   return rules.flatMap((rule, sourceRuleIndex) => {
-    const flag = extractChoiceKey(rule);
+    const flag = resolveEffectiveChoiceFlag(rule, sourceSlug);
     if (rule.key !== "ChoiceSet" || !flag) {
       return [];
     }

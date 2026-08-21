@@ -1,6 +1,7 @@
 import { listActorItems } from "../build-state.js";
 import { campaignFeatAllowsCandidate, resolveCampaignFeatSlotSetting, } from "../campaign-feat-sections.js";
 import { fetchSelectionDocument } from "../pack/access.js";
+import { createManualStaticGrantedItems, readManualStaticItemGrants, } from "../selector-application.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 import { stampSelectionFlags } from "./selection-flags.js";
 import { createEmbeddedSource } from "./selection-source-application.js";
@@ -21,6 +22,39 @@ export async function insertFeatSelection(actor, selection, step, deps = DEFAULT
     if (typeof actor.createEmbeddedDocuments === "function") {
         const inserted = await actor.createEmbeddedDocuments("Item", [source]);
         await stampSelectionFlags(actor, inserted, selection);
+        const createdItem = inserted[0];
+        if (createdItem?.id && readManualStaticItemGrants(source).length > 0) {
+            await createPreparedStaticFeatGrants(actor, createdItem, source, selection, deps);
+        }
+    }
+}
+async function createPreparedStaticFeatGrants(actor, createdItem, source, selection, deps) {
+    if (typeof actor.deleteEmbeddedDocuments !== "function" || typeof actor.updateEmbeddedDocuments !== "function") {
+        throw new Error(`Cannot create the prepared static grants for ${selection.name}.`);
+    }
+    let createdChildIds = [];
+    try {
+        const prepared = await createManualStaticGrantedItems(actor, createdItem, source, {
+            parentSlotId: selection.slotId,
+            parentName: selection.name,
+            createEmbeddedSource: deps.createEmbeddedSource,
+            replaceDescendantsOwnedById: null,
+        });
+        createdChildIds = prepared.createdItemIds;
+        if (prepared.updates.length > 0) {
+            await actor.updateEmbeddedDocuments("Item", prepared.updates);
+        }
+    }
+    catch (error) {
+        try {
+            await actor.deleteEmbeddedDocuments("Item", [...createdChildIds, createdItem.id]);
+        }
+        catch (rollbackError) {
+            throw new AggregateError([error, rollbackError], `Failed to create ${selection.name} safely.`, {
+                cause: rollbackError,
+            });
+        }
+        throw error;
     }
 }
 export async function preflightFeatSelection(actor, selection, step, deps = DEFAULT_INSERT_DEPS) {

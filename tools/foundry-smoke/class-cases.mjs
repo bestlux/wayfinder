@@ -625,6 +625,51 @@ export const smokeCases = [
     },
     preferredSkills: ["athletics", "diplomacy", "intimidation", "society", "acrobatics"],
   }),
+  {
+    ...classCase({
+      className: "Exemplar",
+      classSlug: "exemplar",
+      keyAbility: "str",
+      expectedStepIds: [
+        "grant-choice-none-feat-champion-dedication-cause-level-2",
+        "grant-choice-class-classfeature-deity-champion-deity-level-2",
+        "class-choice-deity-champion-sanctification-level-2",
+      ],
+      preferredSelections: {
+        "class-branch-divine-spark-and-ikons-firstIkon-level-1": ["Eye-Catching Spot"],
+        "class-branch-divine-spark-and-ikons-secondIkon-level-1": ["Scar of the Survivor"],
+        "class-branch-divine-spark-and-ikons-thirdIkon-level-1": ["Skin Hard as Horn"],
+        "grant-choice-none-feat-champion-dedication-cause-level-2": ["Redemption"],
+        "grant-choice-class-classfeature-deity-champion-deity-level-2": ["Sarenrae"],
+        "class-choice-deity-champion-sanctification-level-2": ["holy"],
+        "singleton-choice-feat-champion-dedication-attribute-level-2": ["Strength"],
+        "singleton-choice-feat-champion-dedication-championDedication-level-2": ["Light"],
+        "class-feat": ["Vow of Mortal Defiance", "Champion Dedication"],
+      },
+      preferredSkills: ["athletics", "religion", "diplomacy", "intimidation", "society", "acrobatics"],
+    }),
+    id: "exemplar-champion-dedication-l1-l2-apply-rerun",
+    label: "Exemplar with Champion Dedication level 1 through 2 apply/rerun",
+    targetLevel: 2,
+    applyTimeoutMs: 90_000,
+    ancestryBoosts: { "0": "str", "1": "cha" },
+    backgroundBoosts: { "0": "wis", "1": "cha" },
+    expectedItemNames: ["Champion Dedication", "Redemption", "Deity (Champion)", "Sarenrae"],
+    expectedItemRuleSelections: {
+      "Champion Dedication": {
+        cause: "Compendium.pf2e.classfeatures.Item.UyuwFp0jQqYL2AdF",
+      },
+      "Deity (Champion)": {
+        deity: "Compendium.pf2e.deities.Item.BNycwu3I21dTh4D9",
+        sanctification: "holy",
+      },
+    },
+    expectedPickerOptions: {
+      "grant-choice-none-feat-champion-dedication-cause-level-2": {
+        present: ["Desecration", "Grandeur", "Iniquity", "Justice", "Liberation", "Obedience", "Redemption"],
+      },
+    },
+  },
   classCase({
     className: "Fighter",
     classSlug: "fighter",

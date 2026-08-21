@@ -1,7 +1,7 @@
 import { resolveConfiguredChoiceOptions } from "../class-choice/rule-discovery.js";
 import { getConfiguredSkills, isConfiguredSkillSlug, resolveSkillLabel, } from "../class-choice/skill-config.js";
 import { formatSlug } from "../formatting.js";
-import { documentFeatureLevel, extractChoiceKey, getDocumentRules, isChoicePredicate, isRecord, matchesChoiceSetRulePredicate, toNonEmptyString, } from "../rule-data.js";
+import { documentFeatureLevel, getDocumentRules, isChoicePredicate, isRecord, matchesChoiceSetRulePredicate, resolveEffectiveChoiceFlag, toNonEmptyString, } from "../rule-data.js";
 const ENABLED_FEAT_CONFIG_CHOICE_KEYS = new Set(["baseWeaponTypes", "creatureTraits", "saves", "weaponGroups"]);
 export function discoverSingletonChoiceMeta(args) {
     const { sourceItemType, sourceDocument, sourceSelection, sourceLevel, extractSlug, localize } = args;
@@ -35,7 +35,7 @@ export function discoverSingletonChoiceSpecs(args) {
     const configuredSkills = getConfiguredSkills();
     const rules = getDocumentRules(sourceDocument);
     return rules.flatMap((rule, sourceRuleIndex) => {
-        const flag = extractChoiceKey(rule);
+        const flag = resolveEffectiveChoiceFlag(rule, sourceSlug);
         if (rule.key !== "ChoiceSet" || !flag) {
             return [];
         }

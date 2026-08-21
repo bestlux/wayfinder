@@ -38,6 +38,7 @@ import {
   evaluateWayfinderStep,
   WayfinderDraftNotReadyError,
 } from "../wayfinder/domain/step-evaluation.js";
+import { resolveEffectiveChoiceFlag } from "../wayfinder/rule-data.js";
 import type { SpellRarityCeiling } from "../wayfinder/spell-choice/rarity-access.js";
 import {
   listSpellRarityAttestationProblems,
@@ -719,6 +720,12 @@ export async function executePreparedDraftApplication(
               prepared.steps
             );
           }
+          await createSingletonGrantItems(
+            prepared.actor,
+            prepared.draft,
+            prepared.steps,
+            prepared.sources.insertDependencies
+          );
           break;
         case "singleton-choice-persistence-late":
           await applySingletonChoiceDraft(prepared.actor, prepared.draft, prepared.steps);
@@ -1556,31 +1563,19 @@ async function validateRuleTarget(
     !rule ||
     typeof rule !== "object" ||
     rule.key !== "ChoiceSet" ||
-    effectiveChoiceFlag(rule, source) !== target.flag
+    resolveEffectiveChoiceFlag(rule, typeof source?.system?.slug === "string" ? source.system.slug : null) !==
+      target.flag
   ) {
-    throw new Error(`Cannot persist ${target.flag}: its PF2E choice target changed or is unavailable.`);
+    const observedKey = rule && typeof rule === "object" ? String(rule.key ?? "missing") : "missing";
+    const observedFlag =
+      rule && typeof rule === "object"
+        ? (resolveEffectiveChoiceFlag(rule, typeof source?.system?.slug === "string" ? source.system.slug : null) ??
+          "missing")
+        : "missing";
+    throw new Error(
+      `Cannot persist ${target.flag}: expected PF2E ChoiceSet rule ${target.sourceRuleIndex}, found ${observedKey}/${observedFlag}.`
+    );
   }
-}
-
-function effectiveChoiceFlag(
-  rule: Record<string, unknown>,
-  source: ActorItemLike | EmbeddedItemSource | undefined
-): string | null {
-  for (const value of [rule.flag, rule.slug]) {
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.replace(/[^-a-z0-9]/giu, "");
-    }
-  }
-  const sourceSlug = source?.system?.slug;
-  if (typeof sourceSlug !== "string") return null;
-  const parts = sourceSlug
-    .trim()
-    .split(/[^a-z0-9]+/iu)
-    .filter(Boolean);
-  if (parts.length === 0) return null;
-  return parts
-    .map((part, index) => (index === 0 ? part.toLowerCase() : `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`))
-    .join("");
 }
 
 function validateSpellDestinations(actor: DraftMutationActor, draft: DraftState, steps: PendingStep[]): void {

@@ -301,6 +301,13 @@ function evaluateStaticPredicateString(
     return context.ancestrySlug?.trim().toLowerCase() === trimmed.slice("ancestry:".length);
   }
 
+  if (trimmed === "sanctification:holy" || trimmed === "sanctification:unholy") {
+    const expected = trimmed.slice("sanctification:".length);
+    return context.sanctification === null || context.sanctification === undefined
+      ? extractEntryTraits(entry).includes("champion-cause")
+      : context.sanctification === expected;
+  }
+
   const skillRankMatch = /^skill:([^:]+):rank:(\d+)$/.exec(trimmed);
   if (skillRankMatch) {
     const skillSlug = skillRankMatch[1] ?? "";

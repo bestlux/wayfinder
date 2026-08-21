@@ -10,11 +10,38 @@ import {
   buildContextNote,
   buildOptionContext,
   hasDedicationFeatInContext,
+  resolveSanctificationChoice,
   resolveSelectionSlug,
   resolveSelectionTraits,
 } from "../src/wayfinder/application/option-context-service";
 
 describe("wayfinder option context service", () => {
+  it("distinguishes unresolved sanctification from a resolved non-sanctifying deity", () => {
+    const draft = createEmptyDraft(1);
+    const base = { draft, actorItems: [] };
+
+    expect(resolveSanctificationChoice({ ...base, deityDocument: null })).toBeNull();
+    expect(resolveSanctificationChoice({ ...base, deityDocument: { name: "Atheism" } })).toBe("none");
+    expect(
+      resolveSanctificationChoice({
+        ...base,
+        deityDocument: { system: { sanctification: { modal: "", what: [] } } },
+      })
+    ).toBe("none");
+    expect(
+      resolveSanctificationChoice({
+        ...base,
+        deityDocument: { system: { sanctification: { modal: "must", what: ["holy"] } } },
+      })
+    ).toBe("holy");
+    expect(
+      resolveSanctificationChoice({
+        ...base,
+        deityDocument: { system: { sanctification: { modal: "can", what: ["holy", "unholy"] } } },
+      })
+    ).toBeNull();
+  });
+
   it("builds option context from resolved documents, draft choices, and actor items", async () => {
     const draft = createEmptyDraft(1);
     draft.classChoices["class-choice-champion-sanctification-level-1"] = "holy";

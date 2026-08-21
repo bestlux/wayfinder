@@ -188,6 +188,61 @@ describe("wayfinder class rule discovery", () => {
     ]);
   });
 
+  it("retains a drafted class choice after its own roll option closes the PF2E prompt predicate", () => {
+    const sourceDocument = {
+      type: "feat",
+      name: "Deity (Champion)",
+      system: {
+        slug: "deity-champion",
+        category: "classfeature",
+        level: { value: 2 },
+        rules: [
+          {
+            key: "ChoiceSet",
+            slug: "sanctification",
+            rollOption: "sanctification",
+            predicate: [{ nor: ["sanctification:none", "sanctification:holy", "sanctification:unholy"] }],
+            choices: [
+              {
+                value: "holy",
+                label: "Holy",
+                predicate: ["deity:primary:sanctification:can:holy"],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const args = {
+      sourceDocument,
+      sourceSelection: { ...selectorSelection, documentId: "deity-champion", name: "Deity (Champion)", level: 2 },
+      sourceLevel: 2,
+      classSlug: "exemplar",
+      extractSlug,
+      localize: (value: string) => value,
+      rollOptions: new Set(["deity:primary:sanctification:can:holy", "sanctification:holy"]),
+    };
+
+    expect(discoverClassChoiceMeta(args)).toEqual([]);
+    expect(
+      discoverClassChoiceMeta({
+        ...args,
+        selectedValuesBySlotId: { "class-choice-deity-champion-sanctification-level-2": "holy" },
+      })
+    ).toMatchObject([{ flag: "sanctification", options: [{ value: "holy" }] }]);
+
+    const unrelatedGateSource = structuredClone(sourceDocument);
+    (unrelatedGateSource.system.rules[0] as { predicate: unknown }).predicate = [{ not: "class:champion" }];
+    expect(
+      discoverClassChoiceMeta({
+        ...args,
+        sourceDocument: unrelatedGateSource,
+        rollOptions: new Set([...args.rollOptions, "class:champion"]),
+        selectedValuesBySlotId: { "class-choice-deity-champion-sanctification-level-2": "holy" },
+      })
+    ).toEqual([]);
+  });
+
   it("extracts skill training metadata without actor reads", () => {
     const trainingMeta = discoverSkillTrainingMeta({
       classDocument: {

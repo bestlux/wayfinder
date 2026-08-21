@@ -431,9 +431,12 @@ async function ensureGrantedItem(
         actor,
         existingGranted,
         refreshedSource ?? (existingGranted as EmbeddedItemSource),
-        grantPlan,
-        createEmbeddedSource,
-        null
+        {
+          parentSlotId: grantPlan.slotId,
+          parentName: grantPlan.selection.name,
+          createEmbeddedSource,
+          replaceDescendantsOwnedById: null,
+        }
       );
     }
     return {
@@ -463,14 +466,12 @@ async function ensureGrantedItem(
     throw new Error(`Cannot create ${grantPlan.selection.name}: Foundry returned no created item.`);
   }
   try {
-    const manualPreparation = await createManualStaticGrantedItems(
-      actor,
-      createdItem,
-      source,
-      grantPlan,
+    const manualPreparation = await createManualStaticGrantedItems(actor, createdItem, source, {
+      parentSlotId: grantPlan.slotId,
+      parentName: grantPlan.selection.name,
       createEmbeddedSource,
-      existingGrantedId
-    );
+      replaceDescendantsOwnedById: existingGrantedId,
+    });
     return {
       item: createdItem,
       update: grantPlan.updateCreatedGrant ? buildGrantedItemUpdate(createdItem.id, selectorItemId, grantPlan) : null,
@@ -513,13 +514,16 @@ function isUnconditionalPredicate(predicate: unknown): boolean {
   return predicate === undefined || (Array.isArray(predicate) && predicate.length === 0);
 }
 
-async function createManualStaticGrantedItems(
+export async function createManualStaticGrantedItems(
   actor: SelectorActorLike,
   granter: SelectorItemLike,
   granterSource: EmbeddedItemSource,
-  grantPlan: SelectorGrantPlan,
-  createEmbeddedSource: SelectorApplicationDependencies["createEmbeddedSource"],
-  replaceDescendantsOwnedById: string | null
+  options: {
+    parentSlotId: string;
+    parentName: string;
+    createEmbeddedSource: SelectorApplicationDependencies["createEmbeddedSource"];
+    replaceDescendantsOwnedById: string | null;
+  }
 ): Promise<ManualStaticGrantPreparation> {
   const granterId = typeof granter.id === "string" ? granter.id : null;
   if (!granterId) {
@@ -542,20 +546,21 @@ async function createManualStaticGrantedItems(
       if (
         actorItems.some(
           (item) =>
-            itemMatchesSourceId(item, grant.uuid) && item.flags?.pf2e?.grantedBy?.id !== replaceDescendantsOwnedById
+            itemMatchesSourceId(item, grant.uuid) &&
+            item.flags?.pf2e?.grantedBy?.id !== options.replaceDescendantsOwnedById
         )
       ) {
         continue;
       }
 
-      const selection = selectionFromManualStaticGrant(grant, grantPlan.slotId);
+      const selection = selectionFromManualStaticGrant(grant, options.parentSlotId);
       if (!selection) {
-        throw new Error(`Cannot create a static child for ${grantPlan.selection.name}: invalid UUID ${grant.uuid}.`);
+        throw new Error(`Cannot create a static child for ${options.parentName}: invalid UUID ${grant.uuid}.`);
       }
 
-      const source = await createEmbeddedSource(selection);
+      const source = await options.createEmbeddedSource(selection);
       if (!source) {
-        throw new Error(`Cannot create a static child for ${grantPlan.selection.name}: ${grant.uuid} is unavailable.`);
+        throw new Error(`Cannot create a static child for ${options.parentName}: ${grant.uuid} is unavailable.`);
       }
 
       applyManualChoiceSelections(source, grant.choices);
@@ -568,7 +573,7 @@ async function createManualStaticGrantedItems(
       const created = await actor.createEmbeddedDocuments("Item", [source]);
       const createdItem = Array.isArray(created) ? ((created[0] as SelectorItemLike | undefined) ?? null) : null;
       if (!createdItem?.id) {
-        throw new Error(`Cannot create a static child for ${grantPlan.selection.name}: Foundry returned no item.`);
+        throw new Error(`Cannot create a static child for ${options.parentName}: Foundry returned no item.`);
       }
       createdItemIds.push(createdItem.id);
       granterUpdate[`flags.pf2e.itemGrants.${grant.key}`] = buildItemGrantRecord(createdItem.id);
@@ -583,7 +588,7 @@ async function createManualStaticGrantedItems(
       try {
         await actor.deleteEmbeddedDocuments("Item", createdItemIds);
       } catch (rollbackError) {
-        throw new AggregateError([error, rollbackError], `Failed to create ${grantPlan.selection.name} safely.`, {
+        throw new AggregateError([error, rollbackError], `Failed to create ${options.parentName} safely.`, {
           cause: rollbackError,
         });
       }
@@ -592,7 +597,7 @@ async function createManualStaticGrantedItems(
   }
 }
 
-interface ManualStaticGrantPreparation {
+export interface ManualStaticGrantPreparation {
   createdItemIds: string[];
   updates: Record<string, unknown>[];
 }

@@ -11,7 +11,7 @@ const DEFAULT_INSERT_DEPS = {
     createEmbeddedSource: (selection, draft, steps) => createEmbeddedSource(selection, draft, steps),
 };
 export async function createSingletonGrantItems(actor, draft, steps, deps = DEFAULT_INSERT_DEPS) {
-    if (typeof actor.createEmbeddedDocuments !== "function") {
+    if (typeof actor.createEmbeddedDocuments !== "function" || typeof actor.updateEmbeddedDocuments !== "function") {
         return;
     }
     for (const step of steps) {
@@ -44,22 +44,40 @@ export async function createSingletonGrantItems(actor, draft, steps, deps = DEFA
         });
         const created = await actor.createEmbeddedDocuments("Item", [source]);
         const createdItem = Array.isArray(created) ? (created[0] ?? null) : null;
-        if (!createdItem?.id || typeof actor.updateEmbeddedDocuments !== "function") {
+        if (!createdItem?.id) {
             continue;
         }
         const granterSlotId = resolveExplicitGrantSourceSlotId(step.grantSelection.sourceItemType, draft, granter);
-        await actor.updateEmbeddedDocuments("Item", [
-            {
-                _id: granter.id,
-                ...(granterSlotId
-                    ? {
-                        [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
-                        [`flags.${MODULE_ID}.slotId`]: granterSlotId,
-                    }
-                    : {}),
-                [`flags.pf2e.itemGrants.${step.grantSelection.flag}`]: buildItemGrantRecord(createdItem.id, { nested: null }),
-            },
-        ]);
+        try {
+            await actor.updateEmbeddedDocuments("Item", [
+                {
+                    _id: granter.id,
+                    ...(granterSlotId
+                        ? {
+                            [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
+                            [`flags.${MODULE_ID}.slotId`]: granterSlotId,
+                        }
+                        : {}),
+                    [`flags.pf2e.itemGrants.${step.grantSelection.flag}`]: buildItemGrantRecord(createdItem.id, {
+                        nested: null,
+                    }),
+                },
+            ]);
+        }
+        catch (error) {
+            if (typeof actor.deleteEmbeddedDocuments !== "function") {
+                throw error;
+            }
+            try {
+                await actor.deleteEmbeddedDocuments("Item", [createdItem.id]);
+            }
+            catch (rollbackError) {
+                throw new AggregateError([error, rollbackError], `Failed to create ${grantedSelection.name} safely.`, {
+                    cause: rollbackError,
+                });
+            }
+            throw error;
+        }
     }
 }
 function resolveExplicitGrantSourceSlotId(sourceItemType, draft, granter) {

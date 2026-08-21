@@ -554,7 +554,7 @@ function matchesClassBranchContext(entry: PackIndexEntry, step: PendingStep, con
     if (sanctification === "unholy" && isHoly) {
       return false;
     }
-    if ((sanctification === null || sanctification === "none") && (isHoly || isUnholy)) {
+    if (sanctification === "none" && (isHoly || isUnholy)) {
       return false;
     }
   }

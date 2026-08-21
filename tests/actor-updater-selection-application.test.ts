@@ -1656,6 +1656,88 @@ describe("actor-updater selection application", () => {
     ]);
   });
 
+  it("creates prepared static children before a feat can invoke PF2E's native choice dialog", async () => {
+    const createEmbeddedDocuments = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: "champion-dedication-1" }])
+      .mockResolvedValueOnce([{ id: "champion-deity-1" }])
+      .mockResolvedValueOnce([{ id: "champion-dedication-2" }])
+      .mockResolvedValueOnce([{ id: "champion-deity-2" }]);
+    const updateEmbeddedDocuments = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error("parent link rejected"))
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const deleteEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      items: [],
+      feats: { get: () => ({ slots: {} }) },
+      createEmbeddedDocuments,
+      updateEmbeddedDocuments,
+      deleteEmbeddedDocuments,
+    };
+    const selection = selectionRef("class-feat-level-2", "feat", "champion-dedication", "Champion Dedication", "class");
+    const deityUuid = "Compendium.pf2e.classfeatures.Item.deity-champion";
+
+    const deps = {
+      fetchSelectionDocument,
+      createEmbeddedSource: async (requested: SelectionRef) =>
+        requested.uuid === selection.uuid
+          ? {
+              name: selection.name,
+              type: "feat",
+              system: {},
+              flags: {
+                [MODULE_ID]: {
+                  manualStaticItemGrants: [
+                    { key: "deityChampion", uuid: deityUuid, choices: { deity: "sarenrae", sanctification: "holy" } },
+                  ],
+                },
+              },
+            }
+          : {
+              name: "Deity (Champion)",
+              type: "feat",
+              system: {
+                rules: [
+                  { key: "ChoiceSet", flag: "deity" },
+                  { key: "ChoiceSet", slug: "sanctification" },
+                ],
+              },
+              flags: {},
+            },
+    };
+
+    await expect(
+      insertFeatSelection(actor, selection, featStep(selection.slotId, "class-feat", 2, ["class"]), deps)
+    ).rejects.toThrow("parent link rejected");
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["champion-deity-1", "champion-dedication-1"]);
+
+    await insertFeatSelection(actor, selection, featStep(selection.slotId, "class-feat", 2, ["class"]), deps);
+
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(4, "Item", [
+      expect.objectContaining({
+        name: "Deity (Champion)",
+        flags: expect.objectContaining({
+          pf2e: expect.objectContaining({
+            grantedBy: { id: "champion-dedication-2", onDelete: "cascade" },
+            rulesSelections: { deity: "sarenrae", sanctification: "holy" },
+          }),
+        }),
+      }),
+    ]);
+    expect(updateEmbeddedDocuments).toHaveBeenLastCalledWith("Item", [
+      {
+        _id: "champion-dedication-2",
+        "flags.pf2e.itemGrants.deityChampion": {
+          id: "champion-deity-2",
+          onDelete: "detach",
+        },
+      },
+    ]);
+  });
+
   it("writes future Free Archetype selections to PF2E's dedicated native slot", async () => {
     const actor = {
       feats: {
@@ -2227,7 +2309,7 @@ describe("actor-updater selection application", () => {
     ]);
   });
 
-  it("restores singleton source slot flags when linking explicit grant items", async () => {
+  it("rolls back a rejected explicit-grant link and retries with restored source slot flags", async () => {
     const draft = createEmptyDraft(1);
     draft.selections["heritage-level-1"] = selectionRef("heritage-level-1", "heritage", "nascent", "Nascent");
     draft.selections["grant-choice-none-heritage-nascent-nascent-level-1"] = selectionRef(
@@ -2284,11 +2366,18 @@ describe("actor-updater selection application", () => {
           },
         },
       ],
-      createEmbeddedDocuments: vi.fn(async () => [{ id: "created-community-knowledge" }]),
-      updateEmbeddedDocuments: vi.fn(async () => []),
+      createEmbeddedDocuments: vi
+        .fn()
+        .mockResolvedValueOnce([{ id: "created-community-knowledge-1" }])
+        .mockResolvedValueOnce([{ id: "created-community-knowledge-2" }]),
+      updateEmbeddedDocuments: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("grant link rejected"))
+        .mockResolvedValueOnce([]),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
     };
 
-    await createSingletonGrantItems(actor, draft, [step], {
+    const deps = {
       fetchSelectionDocument: async () => null,
       createEmbeddedSource: async () => ({
         name: "Community Knowledge",
@@ -2296,7 +2385,12 @@ describe("actor-updater selection application", () => {
         system: {},
         flags: {},
       }),
-    });
+    };
+
+    await expect(createSingletonGrantItems(actor, draft, [step], deps)).rejects.toThrow("grant link rejected");
+    expect(actor.deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["created-community-knowledge-1"]);
+
+    await createSingletonGrantItems(actor, draft, [step], deps);
 
     expect(actor.updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
       {
@@ -2304,7 +2398,7 @@ describe("actor-updater selection application", () => {
         [`flags.${MODULE_ID}.importedBy`]: MODULE_ID,
         [`flags.${MODULE_ID}.slotId`]: "heritage-level-1",
         "flags.pf2e.itemGrants.nascent": {
-          id: "created-community-knowledge",
+          id: "created-community-knowledge-2",
           onDelete: "detach",
           nested: null,
         },

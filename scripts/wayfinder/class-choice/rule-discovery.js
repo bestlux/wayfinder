@@ -182,10 +182,16 @@ export function discoverClassChoiceMeta(args) {
         if (rule.key !== "ChoiceSet" || !selectionKey) {
             return;
         }
-        if (!evaluatePredicate(rule.predicate, activeRollOptions)) {
+        const slotId = "class-choice-" + sourceSlug + "-" + selectionKey + "-level-" + level;
+        const persistedValue = toNonEmptyString(args.selectedValuesBySlotId?.[slotId]) ??
+            toNonEmptyString(args.existingSelectionsByFlag?.[selectionKey]) ??
+            toNonEmptyString(args.existingSelectionsByFlag?.[toNonEmptyString(rule.flag) ?? ""]);
+        const predicate = rule.predicate;
+        if (!evaluatePredicate(predicate, activeRollOptions) &&
+            (!persistedValue ||
+                !matchesAfterRemovingOwnChoiceOption(predicate, activeRollOptions, rule, selectionKey, persistedValue))) {
             return;
         }
-        const slotId = "class-choice-" + sourceSlug + "-" + selectionKey + "-level-" + level;
         const options = resolveClassChoiceOptions(rule.choices, activeRollOptions, localize);
         const isTrainingChoice = looksLikeSkillChoiceRule(rule, options.map((option) => option.value.trim().toLowerCase()), configuredSkills);
         const dependencyRefs = sameItemChoiceDependencies(rule, choiceRefs);
@@ -212,10 +218,7 @@ export function discoverClassChoiceMeta(args) {
                 options,
             });
         }
-        const selectedValue = toNonEmptyString(args.selectedValuesBySlotId?.[slotId]) ??
-            toNonEmptyString(args.existingSelectionsByFlag?.[selectionKey]) ??
-            toNonEmptyString(args.existingSelectionsByFlag?.[toNonEmptyString(rule.flag) ?? ""]) ??
-            (args.assumeFirstChoiceSelection ? (options[0]?.value ?? null) : null);
+        const selectedValue = persistedValue ?? (args.assumeFirstChoiceSelection ? (options[0]?.value ?? null) : null);
         const choiceRef = {
             flag: selectionKey,
             rawFlag: toNonEmptyString(rule.flag),
@@ -228,6 +231,18 @@ export function discoverClassChoiceMeta(args) {
         }
     });
     return result;
+}
+function matchesAfterRemovingOwnChoiceOption(predicate, activeRollOptions, rule, selectionKey, selectedValue) {
+    const value = selectedValue.trim().toLowerCase();
+    const keys = [rule.rollOption, rule.flag, rule.slug, selectionKey]
+        .filter((key) => typeof key === "string" && key.trim().length > 0)
+        .map((key) => key.trim().toLowerCase());
+    const withoutOwnChoice = new Set(activeRollOptions);
+    let removed = false;
+    for (const key of keys) {
+        removed = withoutOwnChoice.delete(`${key}:${value}`) || removed;
+    }
+    return removed && evaluatePredicate(predicate, withoutOwnChoice);
 }
 function resolveClassChoiceOptions(choices, rollOptions, localize) {
     if (Array.isArray(choices)) {

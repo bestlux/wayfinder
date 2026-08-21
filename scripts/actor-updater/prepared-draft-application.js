@@ -16,6 +16,7 @@ import { assertPreparedClassGrantPlanMatches, reconcilePreparedClassGrants, } fr
 import { maxProficiencyRank, projectDraftSkillRanks } from "../wayfinder/domain/skill-rank-projection.js";
 import { isActiveSkillTrainingChoice } from "../wayfinder/domain/skill-training-choice-availability.js";
 import { assertDraftBackedStepsReady, evaluateWayfinderDraftReadiness, evaluateWayfinderStep, WayfinderDraftNotReadyError, } from "../wayfinder/domain/step-evaluation.js";
+import { resolveEffectiveChoiceFlag } from "../wayfinder/rule-data.js";
 import { listSpellRarityAttestationProblems, listSpellRarityRecoveryProblems, } from "../wayfinder/spell-choice/rarity-attestation.js";
 import { applyBoostDraft } from "./boost-application.js";
 import { createSingletonGrantItems } from "./explicit-grant-application.js";
@@ -405,6 +406,7 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                         }
                         await insertFeatSelection(prepared.actor, selection, step, prepared.sources.insertDependencies, prepared.draft, prepared.steps);
                     }
+                    await createSingletonGrantItems(prepared.actor, prepared.draft, prepared.steps, prepared.sources.insertDependencies);
                     break;
                 case "singleton-choice-persistence-late":
                     await applySingletonChoiceDraft(prepared.actor, prepared.draft, prepared.steps);
@@ -1091,28 +1093,15 @@ async function validateRuleTarget(actor, selection, target, deps) {
     if (!rule ||
         typeof rule !== "object" ||
         rule.key !== "ChoiceSet" ||
-        effectiveChoiceFlag(rule, source) !== target.flag) {
-        throw new Error(`Cannot persist ${target.flag}: its PF2E choice target changed or is unavailable.`);
+        resolveEffectiveChoiceFlag(rule, typeof source?.system?.slug === "string" ? source.system.slug : null) !==
+            target.flag) {
+        const observedKey = rule && typeof rule === "object" ? String(rule.key ?? "missing") : "missing";
+        const observedFlag = rule && typeof rule === "object"
+            ? (resolveEffectiveChoiceFlag(rule, typeof source?.system?.slug === "string" ? source.system.slug : null) ??
+                "missing")
+            : "missing";
+        throw new Error(`Cannot persist ${target.flag}: expected PF2E ChoiceSet rule ${target.sourceRuleIndex}, found ${observedKey}/${observedFlag}.`);
     }
-}
-function effectiveChoiceFlag(rule, source) {
-    for (const value of [rule.flag, rule.slug]) {
-        if (typeof value === "string" && value.trim().length > 0) {
-            return value.replace(/[^-a-z0-9]/giu, "");
-        }
-    }
-    const sourceSlug = source?.system?.slug;
-    if (typeof sourceSlug !== "string")
-        return null;
-    const parts = sourceSlug
-        .trim()
-        .split(/[^a-z0-9]+/iu)
-        .filter(Boolean);
-    if (parts.length === 0)
-        return null;
-    return parts
-        .map((part, index) => (index === 0 ? part.toLowerCase() : `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`))
-        .join("");
 }
 function validateSpellDestinations(actor, draft, steps) {
     const plannedDestinationKeys = new Set();

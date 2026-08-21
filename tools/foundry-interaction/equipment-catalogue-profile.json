@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "id": "wizard-level-5-equipment-catalogue",
+  "description": "Level-5 owner-operated starting-equipment catalogue release profile.",
+  "smokeCaseId": "wizard-l1-l5-apply-rerun",
+  "stepId": "starting-equipment-level-5",
+  "locale": "en",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "appWidths": [1240, 1180, 980, 760],
+  "querySequence": ["s", "sp", "spr", "spra", "spray pellets"],
+  "expectedFinalResultValues": ["Compendium.pf2e.equipment-srd.Item.qaAQnuLVia6vS1LU"],
+  "expectedBroadResultValues": [
+    "Compendium.pf2e.equipment-srd.Item.oLLpwiNApEEAFbXF",
+    "Compendium.pf2e.equipment-srd.Item.VbjANEHtdxO8kV1n",
+    "Compendium.pf2e.equipment-srd.Item.Zo5MZWVBKssVPEcv",
+    "Compendium.pf2e.equipment-srd.Item.8WH6ub3FVFYtcXCT",
+    "Compendium.pf2e.equipment-srd.Item.2req0jGaxz8hScdB",
+    "Compendium.pf2e.equipment-srd.Item.8V4mgecGASsQ7fjl",
+    "Compendium.pf2e.equipment-srd.Item.7SPJO9xr89N8E23s",
+    "Compendium.pf2e.equipment-srd.Item.rHugmTjO3kgyiTH0",
+    "Compendium.pf2e.equipment-srd.Item.SzUynRs4HVtnpnel",
+    "Compendium.pf2e.equipment-srd.Item.YnPYSKCQBLIOtm0J",
+    "Compendium.pf2e.equipment-srd.Item.nIlx1IQhYJfQtpVF",
+    "Compendium.pf2e.equipment-srd.Item.hnzNKdD5hjQc1NUx"
+  ],
+  "expectedCatalogueCounts": {
+    "indexed": 5856,
+    "levelQualified": 2283,
+    "matching": 1,
+    "visible": 1
+  },
+  "catalogueCountSemantics": {
+    "indexed": "Raw entries in the exact core equipment pack index.",
+    "levelQualified": "Runtime browse entries after recipe maximum-level filtering, including policy-unavailable rows.",
+    "matching": "Registered runtime-adapter records for the exact final query before the 12-row cap.",
+    "visible": "Rendered result rows for the exact final query."
+  },
+  "expectedPolicy": {
+    "effectivePackIds": ["pf2e.equipment-srd"],
+    "blanketRarity": "common",
+    "enabledRecipes": ["lump-sum", "permanent-items"],
+    "recipeChoiceAuthority": "actor-owner"
+  },
+  "expectedRuntime": {
+    "foundryVersion": "14.366",
+    "pf2eVersion": "8.4.1"
+  },
+  "warmupSamplesPerActionWidth": 2,
+  "measuredSamplesPerActionWidth": 30,
+  "settleTimeoutMs": 15000,
+  "postSettleMs": 350,
+  "keyDelayMs": 8,
+  "actions": [
+    {
+      "id": "cold-open",
+      "maxPackIndexReads": 1,
+      "maxPackDocumentReads": 12,
+      "maxPlanBuilds": 1,
+      "maxFullRenders": 1,
+      "maxFullContextPreparations": 1
+    },
+    {
+      "id": "warm-reopen",
+      "maxPackIndexReads": 0,
+      "maxPackDocumentReads": 12,
+      "maxPlanBuilds": 1,
+      "maxFullRenders": 1,
+      "maxFullContextPreparations": 1
+    },
+    {
+      "id": "rapid-search",
+      "maxPackIndexReads": 0,
+      "maxPackDocumentReads": 12,
+      "maxPlanBuilds": 0,
+      "maxFullRenders": 0,
+      "maxFullContextPreparations": 0
+    },
+    {
+      "id": "facet-change",
+      "maxPackIndexReads": 0,
+      "maxPackDocumentReads": 12,
+      "maxPlanBuilds": 0,
+      "maxFullRenders": 0,
+      "maxFullContextPreparations": 0
+    },
+    {
+      "id": "cart-quantity",
+      "maxPackIndexReads": 0,
+      "maxPackDocumentReads": 12,
+      "maxPlanBuilds": 0,
+      "maxFullRenders": 0,
+      "maxFullContextPreparations": 0
+    },
+    {
+      "id": "recipe-change",
+      "maxPackIndexReads": 0,
+      "maxPackDocumentReads": 12,
+      "maxPlanBuilds": 0,
+      "maxFullRenders": 0,
+      "maxFullContextPreparations": 0
+    },
+    {
+      "id": "preview-change",
+      "maxPackIndexReads": 0,
+      "maxPackDocumentReads": 1,
+      "maxPlanBuilds": 0,
+      "maxFullRenders": 0,
+      "maxFullContextPreparations": 0,
+      "newPreviewHydrations": 1,
+      "repeatPreviewHydrations": 0
+    }
+  ],
+  "budgets": {
+    "maxP95MsPerActionWidth": 75,
+    "maxDomElementCount": 325,
+    "maxResultDomElementCount": 12,
+    "maxImageRequestsPerSample": 0,
+    "maxLongTaskCountPerActionWidth": 0
+  }
+}

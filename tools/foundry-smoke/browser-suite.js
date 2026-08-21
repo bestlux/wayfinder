@@ -233,6 +233,232 @@ globalThis.__cleanupWayfinderPickerProfile = async function cleanupWayfinderPick
   return { deleted: true, actorCountAfter: game.actors.size };
 };
 
+globalThis.__preflightWayfinderEquipmentProfile = function preflightWayfinderEquipmentProfile({
+  allowDestructive = false,
+  expectedWorldId = "",
+  moduleId,
+}) {
+  if (!allowDestructive || !String(expectedWorldId).trim()) {
+    throw new Error("Equipment profile preflight requires destructive opt-in and an exact expected world id.");
+  }
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (!game.user?.isGM) throw new Error("Equipment profile preflight must run as a GM.");
+  return {
+    actorCountBefore: game.actors.size,
+    languageSnapshot: String(game.i18n?.lang ?? ""),
+    policySnapshot: structuredClone(game.settings.get(moduleId, "equipmentPolicy")),
+  };
+};
+
+globalThis.__prepareWayfinderEquipmentProfile = async function prepareWayfinderEquipmentProfile({
+  allowDestructive = false,
+  expectedWorldId = "",
+  fixturePrefix,
+  moduleId,
+  playerName,
+  profile,
+  runId,
+  smokeCase,
+}) {
+  const normalizedWorldId = String(expectedWorldId ?? "").trim();
+  if (!allowDestructive || !normalizedWorldId) {
+    throw new Error("Equipment profiling requires destructive opt-in and an exact expected world id.");
+  }
+  assertExpectedWorldId(game.world?.id, normalizedWorldId);
+  if (!game.user?.isGM) throw new Error("Equipment profile setup must run as a GM.");
+  const player = game.users.find((user) => user.name === playerName && !user.isGM && user.id !== game.user.id);
+  if (!player) throw new Error("Equipment profile setup requires the exact distinct non-GM owner.");
+  const moduleRecord = game.modules.get(moduleId);
+  if (!moduleRecord?.active) throw new Error(`${moduleId} is not active in this world.`);
+
+  const actorCountBefore = game.actors.size;
+  const policySnapshot = structuredClone(game.settings.get(moduleId, "equipmentPolicy"));
+  const languageSnapshot = String(game.i18n?.lang ?? "");
+  const guardedPolicy = {
+    ...policySnapshot,
+    version: 1,
+    enabledRecipes: ["lump-sum", "permanent-items"],
+    defaultRecipe: "permanent-items",
+    recipeChoiceAuthority: "actor-owner",
+    higherLevelStartAuthority: "actor-owner-attestation",
+    blanketRarity: "common",
+    allowedEquipmentPackFamilies: ["pf2e"],
+    applyAuthority: "actor-owner",
+    recipeDecision: {
+      version: 1,
+      configuredBy: { userId: game.user.id, userName: game.user.name },
+      configuredAt: new Date().toISOString(),
+    },
+  };
+  const modules = await loadWayfinderModules(moduleId);
+  let actor = null;
+  try {
+    await game.settings.set(moduleId, "equipmentPolicy", guardedPolicy);
+    actor = await Actor.create({
+      name: `${fixturePrefix} - ${profile.id} - ${runId}`,
+      type: "character",
+      ownership: fixtureOwnershipFor(player),
+      system: { details: { level: { value: 1 } } },
+    });
+    await enforceFixtureOwnership(actor, player);
+    const failures = [];
+    await seedActorSkillRanks(actor, smokeCase);
+    await seedActorItems(actor, smokeCase, failures);
+    if (failures.length > 0) throw new Error(failures.join(" "));
+
+    const draft = modules.createEmptyDraft(smokeCase.targetLevel);
+    await seedCreationDraft(draft, smokeCase);
+    const fillResult = await completeDraft(actor, draft, smokeCase, modules, {
+      skipStepIds: new Set([profile.stepId]),
+    });
+    if (fillResult.classifications.length > 0 || fillResult.warnings.length > 0) {
+      throw new Error(
+        `Equipment profile fixture did not fill deterministically: ${[
+          ...fillResult.classifications,
+          ...fillResult.warnings,
+        ].join(" ")}`,
+      );
+    }
+    const plan = await buildPlan(actor, draft, modules);
+    const step = plan.steps.find((entry) => entry.slotId === profile.stepId);
+    if (step?.kind !== "starting-equipment") {
+      throw new Error(`Equipment profile step ${profile.stepId} is not a live starting-equipment step.`);
+    }
+    const incomplete = await incompleteSteps(actor, draft, plan.steps, modules);
+    const unexpected = incomplete.filter((entry) => entry.slotId !== profile.stepId);
+    if (unexpected.length > 0) {
+      throw new Error(`Equipment profile has unexpected incomplete steps: ${unexpected.map((entry) => entry.slotId).join(", ")}.`);
+    }
+
+    await actor.setFlag(moduleId, "draft", draft);
+    await actor.setFlag(moduleId, "equipmentProfileFixture", { profileId: profile.id, runId });
+    return {
+      actorId: actor.id,
+      actorName: actor.name,
+      actorCountBefore,
+      actorCountAfterCreate: game.actors.size,
+      policySnapshot,
+      languageSnapshot,
+      policy: {
+        effectivePackIds: ["pf2e.equipment-srd"],
+        blanketRarity: guardedPolicy.blanketRarity,
+        enabledRecipes: [...guardedPolicy.enabledRecipes].sort(),
+        recipeChoiceAuthority: guardedPolicy.recipeChoiceAuthority,
+      },
+      users: {
+        gm: { id: game.user.id, name: game.user.name, role: Number(game.user.role), isGM: true },
+        player: { id: player.id, name: player.name, role: Number(player.role), isGM: false },
+      },
+      runtime: {
+        worldId: game.world?.id ?? null,
+        locale: game.i18n?.lang ?? null,
+        foundryVersion: game.version ?? null,
+        pf2eVersion: game.system?.version ?? null,
+        moduleVersion: moduleRecord.version ?? moduleRecord.manifest?.version ?? null,
+      },
+    };
+  } catch (error) {
+    try {
+      if (actor) await actor.delete();
+    } finally {
+      await game.settings.set(moduleId, "equipmentPolicy", policySnapshot);
+    }
+    throw error;
+  }
+};
+
+globalThis.__openWayfinderEquipmentProfile = async function openWayfinderEquipmentProfile({
+  actorId,
+  expectedPlayerId,
+  expectedWorldId,
+  moduleId,
+  profileId,
+  runId,
+}) {
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (game.user?.isGM || game.user?.id !== expectedPlayerId) {
+    throw new Error("Equipment profile execution must run as the exact non-GM actor owner.");
+  }
+  const actor = game.actors.get(actorId);
+  const marker = actor?.getFlag(moduleId, "equipmentProfileFixture");
+  if (!actor || marker?.profileId !== profileId || marker?.runId !== runId || !actor.isOwner) {
+    throw new Error("Equipment profile refused an actor with changed guarded identity or ownership.");
+  }
+  const modules = await loadWayfinderModules(moduleId);
+  modules.WayfinderApp.open(actor);
+  const app = Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp);
+  if (!app) throw new Error("Equipment profile could not resolve the actor-bound Wayfinder app.");
+  await app.render(true);
+  app.element?.setAttribute("data-wayfinder-equipment-profile-actor-id", actor.id);
+  return {
+    actorId: actor.id,
+    appElementId: app.element?.id ?? app.id,
+    executor: { userId: game.user.id, locale: String(game.i18n?.lang ?? "") },
+  };
+};
+
+globalThis.__cleanupWayfinderEquipmentProfile = async function cleanupWayfinderEquipmentProfile({
+  actorId,
+  actorName,
+  allowDestructive = false,
+  expectedWorldId = "",
+  moduleId,
+  languageSnapshot,
+  policySnapshot,
+  profileId,
+  runId,
+}) {
+  if (!allowDestructive) throw new Error("Equipment profile cleanup requires destructive opt-in.");
+  if (!String(expectedWorldId).trim()) {
+    throw new Error("Equipment profile cleanup requires an exact nonempty expected world id.");
+  }
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (!game.user?.isGM) throw new Error("Equipment profile cleanup must run as a GM.");
+  let actor = null;
+  let actorCleanupError = null;
+  try {
+    const matchingActors = game.actors.filter((candidate) => {
+      const marker = candidate.getFlag(moduleId, "equipmentProfileFixture");
+      return candidate.name === actorName && marker?.profileId === profileId && marker?.runId === runId;
+    });
+    if (matchingActors.length > 1) throw new Error("Equipment profile cleanup found duplicate exact guarded actors.");
+    actor = actorId ? game.actors.get(actorId) : matchingActors[0];
+    if (actorId && actor !== matchingActors[0]) {
+      throw new Error("Equipment profile cleanup actor id disagreed with its exact name/run marker.");
+    }
+    if (actor) {
+      const marker = actor.getFlag(moduleId, "equipmentProfileFixture");
+      if (marker?.profileId !== profileId || marker?.runId !== runId || actor.name !== actorName) {
+        throw new Error("Equipment profile cleanup refused an actor with changed guarded identity.");
+      }
+      for (const app of Object.values(actor.apps ?? {})) await app.close?.({ animate: false });
+      await actor.delete();
+    }
+  } catch (error) {
+    actorCleanupError = error;
+  } finally {
+    await game.settings.set(moduleId, "equipmentPolicy", policySnapshot);
+  }
+  const policyRestored = JSON.stringify(game.settings.get(moduleId, "equipmentPolicy")) === JSON.stringify(policySnapshot);
+  const languageUnchanged = String(game.i18n?.lang ?? "") === languageSnapshot;
+  if (!policyRestored || !languageUnchanged) {
+    throw new Error("Equipment profile cleanup did not restore policy or preserve language exactly.");
+  }
+  if (actorCleanupError) throw actorCleanupError;
+  const actorMissingAfterCleanup = !game.actors.some((candidate) => {
+    const marker = candidate.getFlag(moduleId, "equipmentProfileFixture");
+    return candidate.name === actorName && marker?.profileId === profileId && marker?.runId === runId;
+  });
+  if (!actorMissingAfterCleanup) throw new Error("Equipment profile cleanup did not remove the exact guarded actor.");
+  return {
+    actorCountAfter: game.actors.size,
+    actorDeleted: Boolean(actor) && actorMissingAfterCleanup,
+    actorMissingAfterCleanup,
+    languageUnchanged,
+    policyRestored,
+  };
+};
+
 globalThis.__prepareWayfinderOwnerProbe = async function prepareWayfinderOwnerProbe({
   allowDestructive = false,
   expectedWorldId = "",

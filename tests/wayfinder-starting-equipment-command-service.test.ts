@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createEmptyDraft, normalizeState } from "../src/draft-service";
+import { EquipmentSourceHealthError } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
 import { executeStartingEquipmentCommand } from "../src/wayfinder/application/starting-equipment-command-service";
 import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
 import {
@@ -633,6 +634,42 @@ describe("starting equipment command service", () => {
     expect(prepareNativeGrantLines).not.toHaveBeenCalled();
     expect(evaluateLedger).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { command: { type: "review-purchases" as const }, code: "equipment-pack-missing" as const },
+    { command: { type: "review-purchases" as const }, code: "equipment-pack-index-corrupt" as const },
+    { command: { type: "review-purchases" as const }, code: "duplicate-equipment-source-identity" as const },
+    { command: { type: "retain-all" as const }, code: "equipment-pack-missing" as const },
+    { command: { type: "retain-all" as const }, code: "equipment-pack-index-corrupt" as const },
+    { command: { type: "retain-all" as const }, code: "duplicate-equipment-source-identity" as const },
+  ])("keeps review state unchanged when $command.type sees $code", async ({ command, code }) => {
+    const fixture = acquisitionFixture({
+      lines: command.type === "retain-all" ? [] : undefined,
+      disposition: "unreviewed",
+    });
+    const context = commandContext(fixture.draft);
+    const before = structuredClone(context.draft);
+    const prepareClassGrantPlan = vi.fn();
+    const diagnostic = {
+      code,
+      packId: "pf2e.equipment-srd",
+      sourceIdentity: code === "duplicate-equipment-source-identity" ? "Compendium.pf2e.equipment-srd.Item.x" : null,
+      message: `Source health failure: ${code}`,
+    };
+
+    await expect(
+      executeStartingEquipmentCommand(command, context, {
+        ...ledgerDependencies(fixture),
+        assertSourceHealth: vi.fn(async () => {
+          throw new EquipmentSourceHealthError([diagnostic]);
+        }),
+        prepareClassGrantPlan,
+      } as never)
+    ).rejects.toMatchObject({ name: "EquipmentSourceHealthError", diagnostics: [diagnostic] });
+
+    expect(context.draft).toEqual(before);
+    expect(prepareClassGrantPlan).not.toHaveBeenCalled();
+  });
 });
 
 function commandContext(acquisition: ReturnType<typeof acquisitionFixture>["draft"] | null, targetLevel?: number) {
@@ -654,6 +691,7 @@ function ledgerDependencies(fixture: ReturnType<typeof acquisitionFixture>) {
     mintIdentity: vi.fn(),
     resolvePolicy: vi.fn(),
     prepareClassGrantPlan: vi.fn(async () => fixture.classGrantPlan),
+    assertSourceHealth: vi.fn(async () => undefined),
     prepareNativeGrantLines: vi.fn(async () => []),
     evaluateAdmission: vi.fn(),
     evaluateLedger: vi.fn(() => fixture.ledger),

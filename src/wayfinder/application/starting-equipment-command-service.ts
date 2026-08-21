@@ -38,6 +38,7 @@ import {
   type ConfiguredItemHandoffReason,
   type CurrentEquipmentAccessRequest,
   type CurrentEquipmentExceptionRequest,
+  type EquipmentApplySourceRequest,
   getFoundryEquipmentAcquisitionRuntime,
   type NativeClassGrantLineRequest,
 } from "./equipment-acquisition-runtime-service.js";
@@ -105,6 +106,7 @@ interface StartingEquipmentCommandDependencies {
   readonly projectClassGrants: typeof projectCurrentClassGrants;
   readonly prepareClassGrantPlan: typeof prepareCurrentClassGrantPlan;
   readonly prepareNativeGrantLines: (request: NativeClassGrantLineRequest) => Promise<readonly AcquisitionLineDraft[]>;
+  readonly assertSourceHealth: (request: Omit<EquipmentApplySourceRequest, "entry">) => Promise<void>;
   readonly resolveCharacterAccessRef: (request: CurrentEquipmentAccessRequest) => Promise<string | null>;
   readonly resolveItemExceptionFacts: (
     request: CurrentEquipmentExceptionRequest
@@ -126,6 +128,7 @@ const DEFAULT_DEPS: StartingEquipmentCommandDependencies = {
   projectClassGrants: projectCurrentClassGrants,
   prepareClassGrantPlan: prepareCurrentClassGrantPlan,
   prepareNativeGrantLines: (request) => getFoundryEquipmentAcquisitionRuntime().prepareNativeClassGrantLines(request),
+  assertSourceHealth: (request) => getFoundryEquipmentAcquisitionRuntime().assertCurrentSourceHealth(request),
   resolveCharacterAccessRef: (request) =>
     getFoundryEquipmentAcquisitionRuntime().resolveCurrentCharacterAccessRef(request),
   resolveItemExceptionFacts: (request) => getFoundryEquipmentAcquisitionRuntime().resolveItemExceptionFacts(request),
@@ -446,12 +449,14 @@ export async function executeStartingEquipmentCommand(
       statusNote = "Quantity updated.";
       break;
     case "review-purchases": {
+      await assertReviewSourceHealth(context, deps);
       const prepared = await prepareLedger(context, deps);
       acquisition = reviewPurchaseLedger(prepared.acquisition, prepared.ledger, reviewer(context));
       statusNote = "Kit confirmed.";
       break;
     }
     case "retain-all": {
+      await assertReviewSourceHealth(context, deps);
       const prepared = await prepareLedger(context, deps);
       acquisition = reviewRetainAll(prepared.acquisition, prepared.ledger, reviewer(context));
       statusNote = "You are keeping the rest of your coin.";
@@ -472,6 +477,14 @@ export async function executeStartingEquipmentCommand(
     statusNote,
     policyRequests,
   };
+}
+
+async function assertReviewSourceHealth(
+  context: StartingEquipmentCommandContext,
+  deps: StartingEquipmentCommandDependencies
+): Promise<void> {
+  const acquisition = requireAcquisition(context.draft);
+  await deps.assertSourceHealth({ actor: context.actor, characterDraft: context.draft, acquisition });
 }
 
 function resolveExistingPolicy(

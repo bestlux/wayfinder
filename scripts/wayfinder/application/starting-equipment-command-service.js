@@ -21,6 +21,7 @@ const DEFAULT_DEPS = {
     projectClassGrants: projectCurrentClassGrants,
     prepareClassGrantPlan: prepareCurrentClassGrantPlan,
     prepareNativeGrantLines: (request) => getFoundryEquipmentAcquisitionRuntime().prepareNativeClassGrantLines(request),
+    assertSourceHealth: (request) => getFoundryEquipmentAcquisitionRuntime().assertCurrentSourceHealth(request),
     resolveCharacterAccessRef: (request) => getFoundryEquipmentAcquisitionRuntime().resolveCurrentCharacterAccessRef(request),
     resolveItemExceptionFacts: (request) => getFoundryEquipmentAcquisitionRuntime().resolveItemExceptionFacts(request),
     evaluateAdmission: evaluateActorEconomicAdmission,
@@ -312,12 +313,14 @@ export async function executeStartingEquipmentCommand(command, context, dependen
             statusNote = "Quantity updated.";
             break;
         case "review-purchases": {
+            await assertReviewSourceHealth(context, deps);
             const prepared = await prepareLedger(context, deps);
             acquisition = reviewPurchaseLedger(prepared.acquisition, prepared.ledger, reviewer(context));
             statusNote = "Kit confirmed.";
             break;
         }
         case "retain-all": {
+            await assertReviewSourceHealth(context, deps);
             const prepared = await prepareLedger(context, deps);
             acquisition = reviewRetainAll(prepared.acquisition, prepared.ledger, reviewer(context));
             statusNote = "You are keeping the rest of your coin.";
@@ -337,6 +340,10 @@ export async function executeStartingEquipmentCommand(command, context, dependen
         statusNote,
         policyRequests,
     };
+}
+async function assertReviewSourceHealth(context, deps) {
+    const acquisition = requireAcquisition(context.draft);
+    await deps.assertSourceHealth({ actor: context.actor, characterDraft: context.draft, acquisition });
 }
 function resolveExistingPolicy(acquisition, context, deps, overrides = {}) {
     const reviewed = acquisition.policySnapshot?.material;

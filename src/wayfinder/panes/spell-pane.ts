@@ -13,6 +13,7 @@ export function buildSpellChoicePane(args: {
   filterGroups: SpellChoiceStepPane["filterGroups"];
   visibleOptions: OptionRecord[];
   infoState: SpellChoiceStepPane["infoState"];
+  suppressionNotice: SpellChoiceStepPane["suppressionNotice"];
   contextNote: string | null;
   preview: PreviewPane | null;
   modeLabel: string;
@@ -29,6 +30,7 @@ export function buildSpellChoicePane(args: {
     filterGroups,
     visibleOptions,
     infoState,
+    suppressionNotice,
     contextNote,
     preview,
     modeLabel,
@@ -62,6 +64,7 @@ export function buildSpellChoicePane(args: {
     resultCount: visibleOptions.length,
     contextNote,
     infoState,
+    suppressionNotice,
     destinationLabel: step.spellChoice?.destination.label ?? "Spell destination",
     sourceName: step.spellChoice?.sourceName ?? "Spell source",
     rarityAccess,

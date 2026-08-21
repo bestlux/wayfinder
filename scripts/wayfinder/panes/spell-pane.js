@@ -1,6 +1,6 @@
 import { spellRankLabel } from "./picker-filters.js";
 export function buildSpellChoicePane(args) {
-    const { step, search, activeFilterCount, selectedSelections, selectedLabel, selectionState, filterGroups, visibleOptions, infoState, contextNote, preview, modeLabel, previewValue, rarityAccess, } = args;
+    const { step, search, activeFilterCount, selectedSelections, selectedLabel, selectionState, filterGroups, visibleOptions, infoState, suppressionNotice, contextNote, preview, modeLabel, previewValue, rarityAccess, } = args;
     const selectedValues = selectedSelections.map((selection) => `${selection.packId}:${selection.documentId}`);
     const requiredCount = step.spellChoice?.count ?? 0;
     const excessCount = Math.max(0, selectedValues.length - requiredCount);
@@ -26,6 +26,7 @@ export function buildSpellChoicePane(args) {
         resultCount: visibleOptions.length,
         contextNote,
         infoState,
+        suppressionNotice,
         destinationLabel: step.spellChoice?.destination.label ?? "Spell destination",
         sourceName: step.spellChoice?.sourceName ?? "Spell source",
         rarityAccess,

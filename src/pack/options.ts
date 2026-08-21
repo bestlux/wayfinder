@@ -1,15 +1,15 @@
 import { OFFICIAL_PACKS } from "../constants.js";
 import { toCompendiumItemUuid } from "../shared/compendium.js";
-import type { OptionContext, OptionRecord, PendingStep, SelectionRef } from "../types.js";
+import type { OptionContext, OptionRecord, PendingStep, SelectionRef, SuppressedPickerOption } from "../types.js";
 import { resolveStaticGrantChoiceSources } from "../wayfinder/static-grant-choice-sources.js";
 import { fetchSelectionDocument, getGamePack, getPackIndex, type PackIndexEntry } from "./access.js";
 import { buildStaticGrantChoiceDisclosure, classifyEmbeddedChoices } from "./embedded-choice-policy.js";
 import { extractEntrySlug, extractEntryTraits, numericOrNull, resolveFeatType, stringOrNull } from "./entry.js";
 import {
+  classifyFilterDecision,
+  classifyHeritageContext,
   getPackageAncestryCatalog,
   getTraitCatalog,
-  matchesFilters,
-  matchesHeritageContext,
   resolvePackIds,
 } from "./filter-policy.js";
 
@@ -28,14 +28,27 @@ export async function getOptionsForStep(
   step: PendingStep,
   context: OptionContext = EMPTY_OPTION_CONTEXT
 ): Promise<OptionRecord[]> {
+  return (await getOptionQueryForStep(step, context)).options;
+}
+
+export interface OptionQueryResult {
+  options: OptionRecord[];
+  suppressedOptions: SuppressedPickerOption[];
+}
+
+export async function getOptionQueryForStep(
+  step: PendingStep,
+  context: OptionContext = EMPTY_OPTION_CONTEXT
+): Promise<OptionQueryResult> {
   if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {
-    return [];
+    return { options: [], suppressedOptions: [] };
   }
 
   const packIds = resolvePackIds(step.slotKind, step.filters);
   const traitCatalog = await getTraitCatalog(step.slotKind);
   const packageAncestries = step.slotKind === "heritage" ? await getPackageAncestryCatalog() : new Map();
   const results: Array<{ entry: PackIndexEntry; option: OptionRecord }> = [];
+  const suppressedOptions: SuppressedPickerOption[] = [];
 
   for (const packId of packIds) {
     const pack = getGamePack(packId);
@@ -45,10 +58,15 @@ export async function getOptionsForStep(
 
     const index = await getPackIndex(pack, packId);
     for (const entry of index) {
-      if (!matchesFilters(entry, packId, step, context, traitCatalog)) {
+      const filterDecision = classifyFilterDecision(entry, packId, step, context, traitCatalog);
+      if (filterDecision.kind === "exclude" && filterDecision.category === "ordinary-legality") {
         continue;
       }
-      if (step.slotKind === "heritage" && !matchesHeritageContext(entry, packId, context, packageAncestries)) {
+      const heritageDecision =
+        step.slotKind === "heritage"
+          ? classifyHeritageContext(entry, packId, context, packageAncestries)
+          : ({ kind: "include" } as const);
+      if (heritageDecision.kind === "exclude" && heritageDecision.category === "ordinary-legality") {
         continue;
       }
 
@@ -63,6 +81,20 @@ export async function getOptionsForStep(
       }
 
       const name = String(entry.name ?? "Unknown Option");
+
+      if (filterDecision.kind === "exclude" || heritageDecision.kind === "exclude") {
+        suppressedOptions.push({
+          uuid,
+          name,
+          reason:
+            heritageDecision.kind === "exclude"
+              ? "ambiguous-heritage-ownership"
+              : filterDecision.kind === "exclude" && filterDecision.category === "fail-closed-policy"
+                ? filterDecision.reason
+                : "unvalidated-eligibility",
+        });
+        continue;
+      }
 
       results.push({
         entry,
@@ -96,7 +128,10 @@ export async function getOptionsForStep(
       disclosure: await resolveOptionDisclosure(entry, option, context, step),
     }))
   );
-  return dedupeAndSort(enriched);
+  return {
+    options: dedupeAndSort(enriched),
+    suppressedOptions: dedupeSuppressedOptions(suppressedOptions),
+  };
 }
 
 async function resolveOptionDisclosure(
@@ -224,4 +259,10 @@ function dedupeAndSort(options: OptionRecord[]): OptionRecord[] {
     }
     return left.name.localeCompare(right.name);
   });
+}
+
+function dedupeSuppressedOptions(options: SuppressedPickerOption[]): SuppressedPickerOption[] {
+  return Array.from(new Map(options.map((option) => [option.uuid, option])).values()).sort((left, right) =>
+    left.name.localeCompare(right.name)
+  );
 }

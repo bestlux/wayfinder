@@ -49,13 +49,17 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
         : { state: "none", granted: false, attestation: null };
     const spellRarityAccessGranted = spellRarityAttestation.granted;
     const optionStep = withRestrictedSpellRarityAccess(step, spellRarityCeiling, spellRarityAccessGranted);
-    const options = await deps.getOptionsForStep(optionStep, optionContext);
+    const optionQuery = deps.getOptionQueryForStep
+        ? await deps.getOptionQueryForStep(optionStep, optionContext)
+        : { options: await deps.getOptionsForStep(optionStep, optionContext), suppressedOptions: [] };
+    const options = optionQuery.options;
     const filterKinds = step.kind === "spell-choice" ? ["rank", "rarity", "source"] : ["rarity", "source"];
     const openFilterKind = deps.openPickerFilterMenu?.stepId === step.id ? deps.openPickerFilterMenu.filterKind : null;
     const renderInputs = {
         step,
         optionContext,
         options,
+        suppressedOptions: optionQuery.suppressedOptions,
         filterKinds,
         getPickerInfoState: deps.getPickerInfoState,
         matchesSearch: deps.matchesSearch,
@@ -90,6 +94,7 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
             filterGroups: projection.filterGroups,
             visibleOptions: projection.visibleOptions,
             infoState: projection.infoState,
+            suppressionNotice: projection.suppressionNotice,
             contextNote,
             preview,
             modeLabel: getStepModeLabel(step.kind),
@@ -130,6 +135,7 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
         filterGroups: projection.filterGroups,
         visibleOptions: projection.visibleOptions,
         infoState: projection.infoState,
+        suppressionNotice: projection.suppressionNotice,
         contextNote,
         preview,
         modeLabel: getStepModeLabel(step.kind),

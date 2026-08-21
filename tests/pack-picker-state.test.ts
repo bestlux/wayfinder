@@ -149,7 +149,7 @@ describe("pack picker states", () => {
         0,
         ""
       )?.message
-    ).toContain("Every option for this step leads to a follow-up choice Wayfinder can't handle yet");
+    ).toContain("Nothing in the compendia your world has turned on fits this step");
   });
 
   it("blocks deity-dependent class branches until a deity is chosen", () => {

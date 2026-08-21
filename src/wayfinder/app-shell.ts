@@ -11,7 +11,7 @@ import { MODULE_ID, MODULE_TITLE, STATE_FLAG } from "../constants.js";
 import { createEmptyDraft, normalizeDraft, normalizeState } from "../draft-service.js";
 import { FeedbackSupportApp } from "../feedback-support-app.js";
 import { fetchSelectionDocument } from "../pack/access.js";
-import { getOptionsForStep, resolveSelection } from "../pack/options.js";
+import { getOptionQueryForStep, getOptionsForStep, resolveSelection } from "../pack/options.js";
 import { getPickerInfoState } from "../pack/picker-state.js";
 import { assertCanUseWayfinder, canUseWayfinder, WayfinderActorAuthorityError } from "../permissions.js";
 import type { SelectorActorLike } from "../selector-application.js";
@@ -1221,6 +1221,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       resolveStepStatus: async () => stepEvaluation.status,
       stepEvaluation,
       getOptionsForStep,
+      getOptionQueryForStep,
       getPickerInfoState,
       buildPreview: (...args) => this._buildRenderPreview(...args),
       matchesSearch,

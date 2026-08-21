@@ -40,6 +40,8 @@ describe("wayfinder picker search parts", () => {
   });
 
   it("preserves picker-specific option actions and preloads every new partial", () => {
+    expect(countTemplate).toContain("activePane.suppressionNotice");
+    expect(countTemplate).toContain("picker-suppression-notice");
     expect(pickResultsTemplate).toContain('data-wayfinder-action="select-option"');
     expect(spellResultsTemplate).toContain('data-wayfinder-action="toggle-spell-choice"');
     expect(spellResultsTemplate).toContain("{{rankLabel}}");

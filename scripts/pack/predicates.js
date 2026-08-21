@@ -2,7 +2,10 @@ import { toCompendiumItemUuid } from "../shared/compendium.js";
 import { predicateIncludesString } from "../wayfinder/rule-data.js";
 import { extractEntrySlug, extractEntryTraits, numericOrNull, resolveFeatType, stringOrNull } from "./entry.js";
 export function matchesChoicePredicate(predicate, entry, context) {
-    return evaluateStaticPredicate(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
+    return evaluateChoicePredicate(predicate, entry, context) === true;
+}
+export function evaluateChoicePredicate(predicate, entry, context) {
+    return evaluateStaticPredicateValue(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
 }
 export function matchesUuidAllowlist(entry, packId, allowedUuids) {
     const allowed = new Set(allowedUuids.map(normalizeUuid).filter(Boolean));
@@ -12,17 +15,23 @@ export function matchesUuidAllowlist(entry, packId, allowedUuids) {
     return entryUuidCandidates(entry, packId).some((candidate) => allowed.has(normalizeUuid(candidate)));
 }
 export function matchesUuidChoicePredicate(entry, packId, uuidPredicates, context) {
+    return evaluateUuidChoicePredicate(entry, packId, uuidPredicates, context) === true;
+}
+export function evaluateUuidChoicePredicate(entry, packId, uuidPredicates, context) {
     const predicatesByUuid = new Map(Object.entries(uuidPredicates).map(([uuid, predicate]) => [normalizeUuid(uuid), predicate]));
     for (const candidate of entryUuidCandidates(entry, packId)) {
         const predicate = predicatesByUuid.get(normalizeUuid(candidate));
         if (predicate) {
-            return matchesStaticPredicate(predicate, entry, context);
+            return evaluateStaticPredicateMatch(predicate, entry, context);
         }
     }
     return true;
 }
 export function matchesStaticPredicate(predicate, entry, context) {
-    return evaluateStaticPredicate(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
+    return evaluateStaticPredicateMatch(predicate, entry, context) === true;
+}
+export function evaluateStaticPredicateMatch(predicate, entry, context) {
+    return evaluateStaticPredicateValue(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
 }
 export function matchesItemType(entry, expectedType) {
     const normalizedExpected = expectedType.trim().toLowerCase();
@@ -65,7 +74,7 @@ function normalizeUuid(value) {
 function matchesChoicePredicateString(statement, entry, context) {
     const resolved = resolveInjectedPredicateString(statement, context);
     if (!resolved) {
-        return false;
+        return "unknown";
     }
     const itemSlug = extractEntrySlug(entry);
     const itemTraits = extractEntryTraits(entry);
@@ -100,9 +109,6 @@ function matchesChoicePredicateString(statement, entry, context) {
         return false;
     }
     return false;
-}
-function evaluateStaticPredicate(predicate, evaluateString) {
-    return evaluateStaticPredicateValue(predicate, evaluateString) === true;
 }
 function evaluateStaticPredicateValue(predicate, evaluateString) {
     if (typeof predicate === "string") {
@@ -253,15 +259,23 @@ function resolveInjectedPredicateString(statement, context) {
     if (!trimmed) {
         return null;
     }
-    return trimmed.replace(/\{actor\|([^}]+)\}/g, (_, path) => {
+    let unresolved = false;
+    const resolved = trimmed.replace(/\{actor\|([^}]+)\}/g, (_, path) => {
+        let value;
         switch (path.trim()) {
             case "system.details.class.trait":
-                return context.classSlug ?? "";
+                value = context.classSlug;
+                break;
             case "system.details.ancestry.trait":
-                return context.ancestrySlug ?? "";
+                value = context.ancestrySlug;
+                break;
             default:
-                return "";
+                value = null;
+                break;
         }
+        unresolved ||= !value;
+        return value ?? "";
     });
+    return unresolved ? null : resolved;
 }
 //# sourceMappingURL=predicates.js.map

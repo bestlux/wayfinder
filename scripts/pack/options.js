@@ -4,7 +4,7 @@ import { resolveStaticGrantChoiceSources } from "../wayfinder/static-grant-choic
 import { fetchSelectionDocument, getGamePack, getPackIndex } from "./access.js";
 import { buildStaticGrantChoiceDisclosure, classifyEmbeddedChoices } from "./embedded-choice-policy.js";
 import { extractEntrySlug, extractEntryTraits, numericOrNull, resolveFeatType, stringOrNull } from "./entry.js";
-import { getPackageAncestryCatalog, getTraitCatalog, matchesFilters, matchesHeritageContext, resolvePackIds, } from "./filter-policy.js";
+import { classifyFilterDecision, classifyHeritageContext, getPackageAncestryCatalog, getTraitCatalog, resolvePackIds, } from "./filter-policy.js";
 const EMPTY_OPTION_CONTEXT = {
     ancestrySlug: null,
     ancestryTraits: [],
@@ -16,13 +16,17 @@ const EMPTY_OPTION_CONTEXT = {
     hasDedicationFeat: false,
 };
 export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
+    return (await getOptionQueryForStep(step, context)).options;
+}
+export async function getOptionQueryForStep(step, context = EMPTY_OPTION_CONTEXT) {
     if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {
-        return [];
+        return { options: [], suppressedOptions: [] };
     }
     const packIds = resolvePackIds(step.slotKind, step.filters);
     const traitCatalog = await getTraitCatalog(step.slotKind);
     const packageAncestries = step.slotKind === "heritage" ? await getPackageAncestryCatalog() : new Map();
     const results = [];
+    const suppressedOptions = [];
     for (const packId of packIds) {
         const pack = getGamePack(packId);
         if (!pack) {
@@ -30,10 +34,14 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
         }
         const index = await getPackIndex(pack, packId);
         for (const entry of index) {
-            if (!matchesFilters(entry, packId, step, context, traitCatalog)) {
+            const filterDecision = classifyFilterDecision(entry, packId, step, context, traitCatalog);
+            if (filterDecision.kind === "exclude" && filterDecision.category === "ordinary-legality") {
                 continue;
             }
-            if (step.slotKind === "heritage" && !matchesHeritageContext(entry, packId, context, packageAncestries)) {
+            const heritageDecision = step.slotKind === "heritage"
+                ? classifyHeritageContext(entry, packId, context, packageAncestries)
+                : { kind: "include" };
+            if (heritageDecision.kind === "exclude" && heritageDecision.category === "ordinary-legality") {
                 continue;
             }
             const level = numericOrNull(entry?.system?.level?.value);
@@ -46,6 +54,18 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
                 continue;
             }
             const name = String(entry.name ?? "Unknown Option");
+            if (filterDecision.kind === "exclude" || heritageDecision.kind === "exclude") {
+                suppressedOptions.push({
+                    uuid,
+                    name,
+                    reason: heritageDecision.kind === "exclude"
+                        ? "ambiguous-heritage-ownership"
+                        : filterDecision.kind === "exclude" && filterDecision.category === "fail-closed-policy"
+                            ? filterDecision.reason
+                            : "unvalidated-eligibility",
+                });
+                continue;
+            }
             results.push({
                 entry,
                 option: {
@@ -74,7 +94,10 @@ export async function getOptionsForStep(step, context = EMPTY_OPTION_CONTEXT) {
         ...option,
         disclosure: await resolveOptionDisclosure(entry, option, context, step),
     })));
-    return dedupeAndSort(enriched);
+    return {
+        options: dedupeAndSort(enriched),
+        suppressedOptions: dedupeSuppressedOptions(suppressedOptions),
+    };
 }
 async function resolveOptionDisclosure(entry, option, context, step) {
     const disclosures = [await resolveStaticGrantDisclosure(entry, option, context)];
@@ -164,5 +187,8 @@ function dedupeAndSort(options) {
         }
         return left.name.localeCompare(right.name);
     });
+}
+function dedupeSuppressedOptions(options) {
+    return Array.from(new Map(options.map((option) => [option.uuid, option])).values()).sort((left, right) => left.name.localeCompare(right.name));
 }
 //# sourceMappingURL=options.js.map

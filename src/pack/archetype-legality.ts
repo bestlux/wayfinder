@@ -9,45 +9,68 @@ export function matchesArchetypeLegality(
   context: OptionContext,
   matchesSkillRankPrerequisites: (entry: PackIndexEntry, context: OptionContext) => boolean
 ): boolean {
+  return classifyArchetypeLegality(entry, packId, context, matchesSkillRankPrerequisites).matches;
+}
+
+export interface ArchetypeLegalityDecision {
+  matches: boolean;
+  failClosed: boolean;
+}
+
+export function classifyArchetypeLegality(
+  entry: PackIndexEntry,
+  packId: string,
+  context: OptionContext,
+  matchesSkillRankPrerequisites: (entry: PackIndexEntry, context: OptionContext) => boolean
+): ArchetypeLegalityDecision {
   const traits = extractEntryTraits(entry);
   const isDedication = traits.includes("dedication");
   const projected = context.projectedArchetypeFeats;
 
   if (isDedication && matchesCurrentClassMulticlassDedication(entry, null, context)) {
-    return false;
+    return { matches: false, failClosed: false };
   }
 
   if (!matchesSkillRankPrerequisites(entry, context)) {
-    return false;
+    return { matches: false, failClosed: false };
   }
 
   if (!projected) {
-    return isDedication ? !context.hasDedicationFeat : context.hasDedicationFeat;
+    return { matches: isDedication ? !context.hasDedicationFeat : context.hasDedicationFeat, failClosed: false };
   }
 
   const candidate = projectedArchetypeFeat(entry, packId);
   const dedications = projected.filter((feat) => feat.traits.includes("dedication"));
   if (isDedication) {
     if (dedications.some((dedication) => isDuplicateDedication(candidate, dedication))) {
-      return false;
+      return { matches: false, failClosed: false };
     }
 
-    if (dedications.some((dedication) => blocksDedication(dedication, candidate, projected))) {
-      return false;
+    const blockKinds = dedications
+      .map((dedication) => dedicationBlockKind(dedication, candidate, projected))
+      .filter((kind): kind is "ordinary" | "policy" => kind !== null);
+    if (blockKinds.includes("ordinary")) {
+      return { matches: false, failClosed: false };
+    }
+    if (blockKinds.includes("policy")) {
+      return { matches: false, failClosed: true };
     }
 
-    return true;
+    return { matches: true, failClosed: false };
   }
 
   if (dedications.length === 0) {
-    return false;
+    return { matches: false, failClosed: false };
   }
 
   if (candidate.familyIds.length === 0 || dedications.some((dedication) => dedication.familyIds.length === 0)) {
-    return true;
+    return { matches: true, failClosed: false };
   }
 
-  return dedications.some((dedication) => sharesArchetypeFamily(candidate, dedication));
+  return {
+    matches: dedications.some((dedication) => sharesArchetypeFamily(candidate, dedication)),
+    failClosed: false,
+  };
 }
 
 export function projectedArchetypeFeat(
@@ -149,27 +172,26 @@ function isDuplicateDedication(candidate: ProjectedArchetypeFeat, projected: Pro
   return false;
 }
 
-function blocksDedication(
+function dedicationBlockKind(
   dedication: ProjectedArchetypeFeat,
   candidate: ProjectedArchetypeFeat,
   projected: ProjectedArchetypeFeat[]
-): boolean {
+): "ordinary" | "policy" | null {
   const lockout = dedication.dedicationLockout;
   if (!lockout) {
-    return false;
+    return null;
   }
   if (lockout.allowedDedicationFamilyIds.some((familyId) => candidate.familyIds.includes(familyId))) {
-    return false;
+    return null;
   }
-  if (dedication.unresolvedLockoutException === "follow-up-qualification") {
-    return true;
-  }
-
   const countingFamilyIds = expandedCountingFamilyIds(lockout.countingFamilyIds, projected);
   const followUpCount = projected.filter(
     (feat) => !feat.traits.includes("dedication") && feat.familyIds.some((familyId) => countingFamilyIds.has(familyId))
   ).length;
-  return followUpCount < lockout.requiredFollowUpCount;
+  if (followUpCount < lockout.requiredFollowUpCount) {
+    return dedication.unresolvedLockoutException === "allowed-dedication" ? "policy" : "ordinary";
+  }
+  return dedication.unresolvedLockoutException === "follow-up-qualification" ? "policy" : null;
 }
 
 function expandedCountingFamilyIds(familyIds: string[], projected: ProjectedArchetypeFeat[]): Set<string> {

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import { clearPackServiceCache } from "../src/pack/access";
 import { projectedArchetypeFeat as projectArchetypeFeat } from "../src/pack/archetype-legality";
-import { getOptionsForStep, resolveSelection } from "../src/pack/options";
+import { getOptionQueryForStep, getOptionsForStep, resolveSelection } from "../src/pack/options";
 import { buildSteps } from "../src/progression";
 import type { ActorSnapshot, OptionContext, PendingStep, PickItemSlotKind, SelectionRef } from "../src/types";
 import { buildOptionContext } from "../src/wayfinder/application/option-context-service";
@@ -158,13 +158,20 @@ describe("pack options dependency filtering", () => {
     setPack("many-ancestries.ancestries", [ancestryEntry("evil-eye", "Evil Eye"), ancestryEntry("angel", "Angel")]);
     setPack("many-ancestries.heritages", [heritageEntry("unclear", "Unclear Heritage", null)]);
 
-    const options = await getOptionsForStep(makeStep("heritage", { itemType: "heritage" }), {
+    const query = await getOptionQueryForStep(makeStep("heritage", { itemType: "heritage" }), {
       ...EMPTY_CONTEXT,
       ancestrySlug: "evil-eye",
       ancestryTraits: ["evil-eye"],
     });
 
-    expect(options).toEqual([]);
+    expect(query.options).toEqual([]);
+    expect(query.suppressedOptions).toEqual([
+      {
+        uuid: "Compendium.many-ancestries.heritages.Item.unclear",
+        name: "Unclear Heritage",
+        reason: "ambiguous-heritage-ownership",
+      },
+    ]);
   });
 
   it("uses the compendium label when an option has no publication title", async () => {
@@ -794,7 +801,7 @@ describe("pack options dependency filtering", () => {
       "The two feats you gain from taking the dedication don't count toward this total."
     );
 
-    const options = await getOptionsForStep(
+    const query = await getOptionQueryForStep(
       makeStep("archetype-feat", { itemType: "feat", featTypes: ["class"], maxLevel: 4 }),
       {
         ...EMPTY_CONTEXT,
@@ -808,15 +815,39 @@ describe("pack options dependency filtering", () => {
       }
     );
 
-    expect(options).toEqual([]);
+    expect(query.options).toEqual([]);
+    expect(query.suppressedOptions.map((option) => option.name)).toEqual(["Wizard Dedication"]);
   });
 
-  it("preserves the ordinary lockout for Cavalier's GM-adjudicated exception", async () => {
+  it("keeps a definite dedication lockout distinct from an unresolved follow-up exception", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
+    ]);
+    const spellTrickster = projectDedicationWithDescription(
+      "Spell Trickster Dedication",
+      "The two feats you gain from taking the dedication don't count toward this total."
+    );
+
+    const query = await getOptionQueryForStep(
+      makeStep("archetype-feat", { itemType: "feat", featTypes: ["class"], maxLevel: 4 }),
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "fighter",
+        hasDedicationFeat: true,
+        projectedArchetypeFeats: [spellTrickster],
+      }
+    );
+
+    expect(query.options).toEqual([]);
+    expect(query.suppressedOptions).toEqual([]);
+  });
+
+  it("reports Cavalier's unresolved GM-adjudicated exception as fail-closed suppression", async () => {
     setPack("pf2e.feats-srd", [
       featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
     ]);
 
-    const options = await getOptionsForStep(
+    const query = await getOptionQueryForStep(
       makeStep("archetype-feat", {
         itemType: "feat",
         featTypes: ["class"],
@@ -841,7 +872,61 @@ describe("pack options dependency filtering", () => {
       }
     );
 
-    expect(options).toEqual([]);
+    expect(query.options).toEqual([]);
+    expect(query.suppressedOptions.map((option) => option.name)).toEqual(["Wizard Dedication"]);
+  });
+
+  it("allows later dedications once Cavalier's ordinary follow-up count is met", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
+    ]);
+    const cavalier = projectDedicationWithDescription("Cavalier Dedication", PF2E_84_ARCHETYPE_DESCRIPTIONS.cavalier);
+
+    const query = await getOptionQueryForStep(
+      makeStep("archetype-feat", { itemType: "feat", featTypes: ["class"], maxLevel: 4 }),
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "fighter",
+        hasDedicationFeat: true,
+        projectedArchetypeFeats: [
+          cavalier,
+          projectedArchetype("Cavalier's Charge", "cavalier"),
+          projectedArchetype("Impressive Mount", "cavalier"),
+        ],
+      }
+    );
+
+    expect(query.options.map((option) => option.name)).toEqual(["Wizard Dedication"]);
+    expect(query.suppressedOptions).toEqual([]);
+  });
+
+  it.each([
+    "policy-first",
+    "ordinary-first",
+  ] as const)("prefers a definite dedication lockout when projected blockers are %s", async (order) => {
+    setPack("pf2e.feats-srd", [
+      featEntry("wizard-dedication", "Wizard Dedication", "class", ["archetype", "dedication", "multiclass"]),
+    ]);
+    const policyBlocker = projectDedicationWithDescription(
+      "Cavalier Dedication",
+      PF2E_84_ARCHETYPE_DESCRIPTIONS.cavalier
+    );
+    const ordinaryBlocker = projectedArchetype("Acrobat Dedication", "acrobat", true);
+    const projectedArchetypeFeats =
+      order === "policy-first" ? [policyBlocker, ordinaryBlocker] : [ordinaryBlocker, policyBlocker];
+
+    const query = await getOptionQueryForStep(
+      makeStep("archetype-feat", { itemType: "feat", featTypes: ["class"], maxLevel: 4 }),
+      {
+        ...EMPTY_CONTEXT,
+        classSlug: "fighter",
+        hasDedicationFeat: true,
+        projectedArchetypeFeats,
+      }
+    );
+
+    expect(query.options).toEqual([]);
+    expect(query.suppressedOptions).toEqual([]);
   });
 
   it.each([
@@ -1649,7 +1734,7 @@ describe("pack options dependency filtering", () => {
       }),
     ]);
 
-    const directOptions = await getOptionsForStep(
+    const directQuery = await getOptionQueryForStep(
       makeStep("skill-feat", {
         itemType: "feat",
         featTypes: ["skill"],
@@ -1666,8 +1751,45 @@ describe("pack options dependency filtering", () => {
       EMPTY_CONTEXT
     );
 
-    expect(directOptions.map((option) => option.name)).toEqual(["Assured Training", "Cat Fall"]);
+    expect(directQuery.options.map((option) => option.name)).toEqual(["Assured Training", "Cat Fall"]);
+    expect(directQuery.suppressedOptions).toEqual([
+      {
+        uuid: "Compendium.pf2e.feats-srd.Item.additional-lore",
+        name: "Additional Lore",
+        reason: "unvalidated-granted-choice",
+      },
+    ]);
     expect(grantOptions.map((option) => option.name)).toEqual(["Additional Lore", "Assured Training", "Cat Fall"]);
+  });
+
+  it("distinguishes unknown predicate suppression from ordinary predicate illegality", async () => {
+    setPack("pf2e.feats-srd", [
+      featEntry("cat-fall", "Cat Fall", "skill", ["skill"]),
+      featEntry("battle-medicine", "Battle Medicine", "skill", ["skill"]),
+      featEntry("assurance", "Assurance", "skill", ["skill"]),
+    ]);
+
+    const query = await getOptionQueryForStep(
+      makeStep("skill-feat", {
+        itemType: "feat",
+        featTypes: ["skill"],
+        maxLevel: 1,
+        uuidPredicates: {
+          "Compendium.pf2e.feats-srd.Item.cat-fall": ["item:trait:{actor|flags.system.unknown}"],
+          "Compendium.pf2e.feats-srd.Item.battle-medicine": ["item:trait:holy"],
+        },
+      }),
+      EMPTY_CONTEXT
+    );
+
+    expect(query.options.map((option) => option.name)).toEqual(["Assurance"]);
+    expect(query.suppressedOptions).toEqual([
+      {
+        uuid: "Compendium.pf2e.feats-srd.Item.cat-fall",
+        name: "Cat Fall",
+        reason: "unvalidated-eligibility",
+      },
+    ]);
   });
 
   it("filters class-branch choices to the selector tag for the drafted class", async () => {
@@ -2048,18 +2170,20 @@ describe("pack options dependency filtering", () => {
       },
     };
 
-    const unresolvedOptions = await getOptionsForStep(step, {
+    const unresolvedQuery = await getOptionQueryForStep(step, {
       ...EMPTY_CONTEXT,
       classSlug: "champion",
       deitySelected: true,
       sanctification: null,
     });
-    const holyOptions = await getOptionsForStep(step, {
+    const unresolvedOptions = unresolvedQuery.options;
+    const holyQuery = await getOptionQueryForStep(step, {
       ...EMPTY_CONTEXT,
       classSlug: "champion",
       deitySelected: true,
       sanctification: "holy",
     });
+    const holyOptions = holyQuery.options;
     const unholyOptions = await getOptionsForStep(step, {
       ...EMPTY_CONTEXT,
       classSlug: "champion",
@@ -2082,6 +2206,7 @@ describe("pack options dependency filtering", () => {
       "Obedience",
       "Redemption",
     ]);
+    expect(unresolvedQuery.suppressedOptions).toEqual([]);
     expect(holyOptions.map((option) => option.name)).toEqual([
       "Grandeur",
       "Justice",
@@ -2089,6 +2214,7 @@ describe("pack options dependency filtering", () => {
       "Obedience",
       "Redemption",
     ]);
+    expect(holyQuery.suppressedOptions).toEqual([]);
     expect(unholyOptions.map((option) => option.name)).toEqual([
       "Desecration",
       "Iniquity",

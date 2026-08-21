@@ -163,6 +163,16 @@ describe("wayfinder selection pane service", () => {
       buildContextNote: async () => "Filtered by ancestry context",
       resolveStepStatus: async () => "Wintertouched",
       getOptionsForStep: async () => options,
+      getOptionQueryForStep: async () => ({
+        options,
+        suppressedOptions: [
+          {
+            uuid: "Compendium.test.pack.Item.hidden-choice",
+            name: "Hidden Choice",
+            reason: "unvalidated-granted-choice",
+          },
+        ],
+      }),
       getPickerInfoState: () => null,
       buildPreview: async () => ({
         title: "Wintertouched",
@@ -187,6 +197,7 @@ describe("wayfinder selection pane service", () => {
     expect(pane.contextNote).toBe("Filtered by ancestry context");
     expect(pane.options.map((entry) => entry.name)).toEqual(["Wintertouched"]);
     expect(pane.activeFilterCount).toBe(2);
+    expect(pane.suppressionNotice?.count).toBe(1);
     expect(pane.filterGroups).toEqual([
       {
         key: "rarity",

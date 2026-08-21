@@ -283,6 +283,17 @@ export interface PickerInfoState {
   message: string;
 }
 
+export interface PickerSuppressionNotice {
+  count: number;
+  message: string;
+}
+
+export interface SuppressedPickerOption {
+  uuid: string;
+  name: string;
+  reason: "unvalidated-granted-choice" | "unvalidated-eligibility" | "ambiguous-heritage-ownership";
+}
+
 export type PickerFilterKind = "rank" | "rarity" | "source";
 
 export interface PickerFilterState {

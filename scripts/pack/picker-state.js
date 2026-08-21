@@ -1,18 +1,9 @@
-import { hidesUnsupportedEmbeddedChoiceSets } from "./embedded-choice-policy.js";
 export function getPickerInfoState(step, context, optionCount, filteredCount, search, hasActiveFilters = false) {
     const blocked = getPickerBlockedState(step, context);
     if (blocked) {
         return blocked;
     }
     if (optionCount === 0) {
-        if (hidesUnsupportedEmbeddedChoiceSets(step)) {
-            return {
-                tone: "empty",
-                eyebrow: "Not guided yet",
-                title: "Nothing here Wayfinder can guide",
-                message: "Every option for this step leads to a follow-up choice Wayfinder can't handle yet, so it hides them rather than half-applying one. Make this choice on the PF2E sheet for now.",
-            };
-        }
         return {
             tone: "empty",
             eyebrow: "Nothing to pick from",

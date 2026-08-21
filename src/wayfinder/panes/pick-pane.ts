@@ -16,6 +16,7 @@ export function buildPickItemPane(args: {
   filterGroups: PickStepPane["filterGroups"];
   visibleOptions: OptionRecord[];
   infoState: PickStepPane["infoState"];
+  suppressionNotice: PickStepPane["suppressionNotice"];
   contextNote: string | null;
   preview: PreviewPane | null;
   modeLabel: string;
@@ -30,6 +31,7 @@ export function buildPickItemPane(args: {
     filterGroups,
     visibleOptions,
     infoState,
+    suppressionNotice,
     contextNote,
     preview,
     modeLabel,
@@ -51,6 +53,7 @@ export function buildPickItemPane(args: {
     resultCount: visibleOptions.length,
     contextNote,
     infoState,
+    suppressionNotice,
     filterGroups,
     options: visibleOptions.map((option) => ({
       ...option,

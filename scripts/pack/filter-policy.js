@@ -4,11 +4,11 @@ import { toCompendiumItemUuid } from "../shared/compendium.js";
 import { expandCompendiumAllowlist, mergePackIds, parseCompendiumAllowlist } from "../source-filter.js";
 import { isSpellRarityWithinCeiling, spellChoiceRarityCeiling } from "../wayfinder/spell-choice/rarity-access.js";
 import { cacheTraitCatalog, getCachedTraitCatalog, getGamePack, getGamePackIds, getPackIndex, } from "./access.js";
-import { matchesArchetypeLegality } from "./archetype-legality.js";
+import { classifyArchetypeLegality } from "./archetype-legality.js";
 import { hasUnsupportedEmbeddedChoiceSet } from "./embedded-choice-policy.js";
 import { extractEntrySlug, extractEntryTraits, namesMatch, normalizeTraitList, numericOrNull, resolveFeatType, stringOrNull, } from "./entry.js";
 import { isPlayerSelectableRoot } from "./player-option-eligibility.js";
-import { matchesChoicePredicate, matchesCurrentClassMulticlassDedication, matchesItemType, matchesStaticPredicate, matchesUuidAllowlist, matchesUuidChoicePredicate, } from "./predicates.js";
+import { evaluateChoicePredicate, evaluateStaticPredicateMatch, evaluateUuidChoicePredicate, matchesCurrentClassMulticlassDedication, matchesItemType, matchesUuidAllowlist, } from "./predicates.js";
 export function resolvePackIds(slotKind, filters) {
     const extras = expandCompendiumAllowlist(parseCompendiumAllowlist(getExtraPackSetting()), getGamePackIds());
     if (filters?.packIds?.length) {
@@ -34,81 +34,122 @@ export function resolvePackIds(slotKind, filters) {
     }
 }
 export function matchesFilters(entry, packId, step, context, traitCatalog) {
+    return classifyFilterDecision(entry, packId, step, context, traitCatalog).kind === "include";
+}
+const INCLUDE = { kind: "include" };
+const ORDINARY_EXCLUSION = { kind: "exclude", category: "ordinary-legality" };
+const POLICY_GRANT_SUPPRESSION = {
+    kind: "exclude",
+    category: "fail-closed-policy",
+    reason: "unvalidated-granted-choice",
+};
+const POLICY_ELIGIBILITY_SUPPRESSION = {
+    kind: "exclude",
+    category: "fail-closed-policy",
+    reason: "unvalidated-eligibility",
+};
+export function classifyFilterDecision(entry, packId, step, context, traitCatalog) {
     const filters = step.filters;
     if (!filters) {
-        return true;
+        return INCLUDE;
     }
     if (!matchesItemType(entry, filters.itemType)) {
-        return false;
+        return ORDINARY_EXCLUSION;
     }
     if (!isPlayerSelectableRoot(entry, filters.itemType)) {
-        return false;
+        return ORDINARY_EXCLUSION;
     }
+    let policyUncertainty = null;
     if (Array.isArray(filters.contextPredicate) && filters.contextPredicate.length > 0) {
-        if (!matchesStaticPredicate(filters.contextPredicate, entry, context)) {
-            return false;
+        const result = evaluateStaticPredicateMatch(filters.contextPredicate, entry, context);
+        if (result === false) {
+            return ORDINARY_EXCLUSION;
         }
+        if (result === "unknown")
+            policyUncertainty = POLICY_ELIGIBILITY_SUPPRESSION;
     }
     if (filters.uuids?.length && !matchesUuidAllowlist(entry, packId, filters.uuids)) {
-        return false;
+        return ORDINARY_EXCLUSION;
     }
-    if (filters.uuidPredicates && !matchesUuidChoicePredicate(entry, packId, filters.uuidPredicates, context)) {
-        return false;
+    if (filters.uuidPredicates) {
+        const result = evaluateUuidChoicePredicate(entry, packId, filters.uuidPredicates, context);
+        if (result === false) {
+            return ORDINARY_EXCLUSION;
+        }
+        if (result === "unknown")
+            policyUncertainty = POLICY_ELIGIBILITY_SUPPRESSION;
     }
     if (hasUnsupportedEmbeddedChoiceSet(entry, packId, step, context)) {
-        return false;
+        policyUncertainty ??= POLICY_GRANT_SUPPRESSION;
     }
     if (Array.isArray(filters.featTypes)) {
         const featType = resolveFeatType(entry);
         if (!featType || !filters.featTypes.includes(featType)) {
-            return false;
+            return ORDINARY_EXCLUSION;
         }
     }
     if (!matchesTraitFilters(entry, filters)) {
-        return false;
+        return ORDINARY_EXCLUSION;
     }
     if (typeof filters.maxLevel === "number") {
         const level = numericOrNull(entry?.system?.level?.value);
         if (level === null || !Number.isInteger(level) || level < 0 || level > filters.maxLevel) {
-            return false;
+            return ORDINARY_EXCLUSION;
         }
     }
     if (Array.isArray(filters.predicate) && filters.predicate.length > 0) {
-        if (!matchesChoicePredicate(filters.predicate, entry, context)) {
-            return false;
+        const result = evaluateChoicePredicate(filters.predicate, entry, context);
+        if (result === false) {
+            return ORDINARY_EXCLUSION;
         }
+        if (result === "unknown")
+            policyUncertainty = POLICY_ELIGIBILITY_SUPPRESSION;
         if (matchesCurrentClassMulticlassDedication(entry, filters.predicate, context)) {
-            return false;
+            return ORDINARY_EXCLUSION;
         }
     }
     if (step.slotKind === "heritage" && context.ancestrySlug) {
         const heritageAncestrySlug = stringOrNull(entry?.system?.ancestry?.slug);
         if (heritageAncestrySlug && heritageAncestrySlug !== context.ancestrySlug) {
-            return false;
+            return ORDINARY_EXCLUSION;
         }
     }
     if (step.slotKind === "class-branch") {
-        return matchesClassBranchContext(entry, step, context);
+        return withPolicyUncertainty(ordinaryDecision(matchesClassBranchContext(entry, step, context)), policyUncertainty);
     }
     if (step.slotKind === "spell-choice") {
-        return matchesSpellChoiceContext(entry, packId, step);
+        return withPolicyUncertainty(ordinaryDecision(matchesSpellChoiceContext(entry, packId, step)), policyUncertainty);
     }
     if (step.slotKind === "ancestry-feat" || isAncestryCampaignFeatCandidate(step, entry)) {
-        return matchesAncestryFeatContext(entry, context, traitCatalog);
+        return withPolicyUncertainty(ordinaryDecision(matchesAncestryFeatContext(entry, context, traitCatalog)), policyUncertainty);
     }
     if (step.slotKind === "class-feat") {
-        return matchesClassFeatContext(entry, packId, context, traitCatalog);
+        return withPolicyUncertainty(classifyClassFeatContext(entry, packId, context), policyUncertainty);
     }
     if (step.slotKind === "archetype-feat") {
-        return matchesArchetypeFeatContext(entry, packId, context);
+        return withPolicyUncertainty(classifyArchetypeFeatContext(entry, packId, context), policyUncertainty);
     }
     if (step.slotKind === "skill-feat") {
-        return matchesSkillFeatContext(entry, context);
+        return withPolicyUncertainty(ordinaryDecision(matchesSkillFeatContext(entry, context)), policyUncertainty);
     }
     if (step.slotKind === "general-feat" && stringOrNull(entry?.system?.category) === "skill") {
-        return matchesSkillFeatContext(entry, context);
+        return withPolicyUncertainty(ordinaryDecision(matchesSkillFeatContext(entry, context)), policyUncertainty);
     }
-    return true;
+    return policyUncertainty ?? INCLUDE;
+}
+function ordinaryDecision(matches) {
+    return matches ? INCLUDE : ORDINARY_EXCLUSION;
+}
+function withPolicyUncertainty(decision, policyUncertainty) {
+    if (decision.kind === "exclude" && decision.category === "ordinary-legality") {
+        return decision;
+    }
+    if (policyUncertainty?.kind === "exclude" &&
+        policyUncertainty.category === "fail-closed-policy" &&
+        policyUncertainty.reason === "unvalidated-eligibility") {
+        return policyUncertainty;
+    }
+    return decision.kind === "exclude" ? decision : (policyUncertainty ?? INCLUDE);
 }
 export async function getPackageAncestryCatalog() {
     const catalog = new Map();
@@ -133,18 +174,24 @@ export async function getPackageAncestryCatalog() {
     return catalog;
 }
 export function matchesHeritageContext(entry, packId, context, packageAncestries) {
+    return classifyHeritageContext(entry, packId, context, packageAncestries).kind === "include";
+}
+export function classifyHeritageContext(entry, packId, context, packageAncestries) {
     if (!context.ancestrySlug) {
-        return true;
+        return INCLUDE;
     }
     const heritageAncestrySlug = stringOrNull(entry?.system?.ancestry?.slug);
     if (heritageAncestrySlug) {
-        return heritageAncestrySlug === context.ancestrySlug;
+        return ordinaryDecision(heritageAncestrySlug === context.ancestrySlug);
     }
     if (OFFICIAL_PACKS.heritage.some((officialPackId) => officialPackId === packId)) {
-        return true;
+        return INCLUDE;
     }
     const inferredAncestries = packageAncestries.get(packageIdFromPackId(packId));
-    return inferredAncestries?.size === 1 && inferredAncestries.has(context.ancestrySlug);
+    if (inferredAncestries?.size === 1) {
+        return ordinaryDecision(inferredAncestries.has(context.ancestrySlug));
+    }
+    return POLICY_ELIGIBILITY_SUPPRESSION;
 }
 function packageIdFromPackId(packId) {
     return packId.split(".", 1)[0] ?? packId;
@@ -242,30 +289,35 @@ function extractPrerequisiteText(entry) {
         })
         : [];
 }
-function matchesClassFeatContext(entry, packId, context, _traitCatalog) {
+function classifyClassFeatContext(entry, packId, context) {
     const category = stringOrNull(entry?.system?.category);
     if (category && category !== "class") {
-        return false;
+        return ORDINARY_EXCLUSION;
     }
     const classSlug = context.classSlug;
     if (!classSlug) {
-        return true;
+        return INCLUDE;
     }
     const traits = extractEntryTraits(entry);
     const isArchetypeFeat = traits.includes("archetype") || traits.includes("dedication");
     if (isArchetypeFeat) {
-        return matchesArchetypeLegality(entry, packId, context, matchesSkillRankPrerequisites);
+        return archetypeDecision(entry, packId, context);
     }
-    return traits.includes(classSlug);
+    return ordinaryDecision(traits.includes(classSlug));
 }
-function matchesArchetypeFeatContext(entry, packId, context) {
+function classifyArchetypeFeatContext(entry, packId, context) {
     const category = stringOrNull(entry?.system?.category);
     if (category && category !== "class") {
-        return false;
+        return ORDINARY_EXCLUSION;
     }
     const traits = extractEntryTraits(entry);
-    return ((traits.includes("archetype") || traits.includes("dedication")) &&
-        matchesArchetypeLegality(entry, packId, context, matchesSkillRankPrerequisites));
+    return traits.includes("archetype") || traits.includes("dedication")
+        ? archetypeDecision(entry, packId, context)
+        : ORDINARY_EXCLUSION;
+}
+function archetypeDecision(entry, packId, context) {
+    const decision = classifyArchetypeLegality(entry, packId, context, matchesSkillRankPrerequisites);
+    return decision.matches ? INCLUDE : decision.failClosed ? POLICY_ELIGIBILITY_SUPPRESSION : ORDINARY_EXCLUSION;
 }
 function matchesSkillFeatContext(entry, context) {
     const category = stringOrNull(entry?.system?.category);

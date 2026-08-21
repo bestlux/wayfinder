@@ -4,4 +4,7 @@
   {{else}}
     <h4>{{activePane.resultCount}} matching choice{{#unless (eq activePane.resultCount 1)}}s{{/unless}}</h4>
   {{/if}}
+  {{#if activePane.suppressionNotice}}
+    <p class="picker-suppression-notice"><i class="fa-solid fa-eye-slash"></i> {{activePane.suppressionNotice.message}}</p>
+  {{/if}}
 </div>

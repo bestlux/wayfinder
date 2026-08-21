@@ -4,6 +4,7 @@ import type {
   OptionRecord,
   PickerFilterKind,
   PickerInfoState,
+  PickerSuppressionNotice,
   SingletonChoiceMeta,
 } from "../types.js";
 
@@ -87,6 +88,7 @@ export interface PickStepPane {
   resultCount: number;
   contextNote: string | null;
   infoState: PickerInfoState | null;
+  suppressionNotice: PickerSuppressionNotice | null;
   filterGroups: PickerFilterGroupPane[];
   options: Array<OptionRecord & { selected: boolean; previewing: boolean; sourceLabel: string }>;
   preview: PreviewPane | null;
@@ -357,6 +359,7 @@ export interface SpellChoiceStepPane {
   resultCount: number;
   contextNote: string | null;
   infoState: PickerInfoState | null;
+  suppressionNotice: PickerSuppressionNotice | null;
   destinationLabel: string;
   sourceName: string;
   rarityAccess: {

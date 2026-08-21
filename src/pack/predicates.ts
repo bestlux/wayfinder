@@ -9,7 +9,17 @@ export function matchesChoicePredicate(
   entry: PackIndexEntry,
   context: OptionContext
 ): boolean {
-  return evaluateStaticPredicate(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
+  return evaluateChoicePredicate(predicate, entry, context) === true;
+}
+
+export function evaluateChoicePredicate(
+  predicate: ChoicePredicate,
+  entry: PackIndexEntry,
+  context: OptionContext
+): StaticPredicateValue {
+  return evaluateStaticPredicateValue(predicate, (statement) =>
+    evaluateStaticPredicateString(statement, entry, context)
+  );
 }
 
 export function matchesUuidAllowlist(entry: PackIndexEntry, packId: string, allowedUuids: string[]): boolean {
@@ -27,13 +37,22 @@ export function matchesUuidChoicePredicate(
   uuidPredicates: Record<string, ChoicePredicate[]>,
   context: OptionContext
 ): boolean {
+  return evaluateUuidChoicePredicate(entry, packId, uuidPredicates, context) === true;
+}
+
+export function evaluateUuidChoicePredicate(
+  entry: PackIndexEntry,
+  packId: string,
+  uuidPredicates: Record<string, ChoicePredicate[]>,
+  context: OptionContext
+): StaticPredicateValue {
   const predicatesByUuid = new Map(
     Object.entries(uuidPredicates).map(([uuid, predicate]) => [normalizeUuid(uuid), predicate] as const)
   );
   for (const candidate of entryUuidCandidates(entry, packId)) {
     const predicate = predicatesByUuid.get(normalizeUuid(candidate));
     if (predicate) {
-      return matchesStaticPredicate(predicate, entry, context);
+      return evaluateStaticPredicateMatch(predicate, entry, context);
     }
   }
 
@@ -45,7 +64,17 @@ export function matchesStaticPredicate(
   entry: PackIndexEntry,
   context: OptionContext
 ): boolean {
-  return evaluateStaticPredicate(predicate, (statement) => evaluateStaticPredicateString(statement, entry, context));
+  return evaluateStaticPredicateMatch(predicate, entry, context) === true;
+}
+
+export function evaluateStaticPredicateMatch(
+  predicate: ChoicePredicate,
+  entry: PackIndexEntry,
+  context: OptionContext
+): StaticPredicateValue {
+  return evaluateStaticPredicateValue(predicate, (statement) =>
+    evaluateStaticPredicateString(statement, entry, context)
+  );
 }
 
 export function matchesItemType(entry: PackIndexEntry, expectedType: string): boolean {
@@ -98,10 +127,14 @@ function normalizeUuid(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function matchesChoicePredicateString(statement: string, entry: PackIndexEntry, context: OptionContext): boolean {
+function matchesChoicePredicateString(
+  statement: string,
+  entry: PackIndexEntry,
+  context: OptionContext
+): StaticPredicateValue {
   const resolved = resolveInjectedPredicateString(statement, context);
   if (!resolved) {
-    return false;
+    return "unknown";
   }
 
   const itemSlug = extractEntrySlug(entry);
@@ -146,14 +179,7 @@ function matchesChoicePredicateString(statement: string, entry: PackIndexEntry, 
   return false;
 }
 
-function evaluateStaticPredicate(
-  predicate: ChoicePredicate,
-  evaluateString: (statement: string) => boolean | "unknown"
-): boolean {
-  return evaluateStaticPredicateValue(predicate, evaluateString) === true;
-}
-
-type StaticPredicateValue = boolean | "unknown";
+export type StaticPredicateValue = boolean | "unknown";
 
 function evaluateStaticPredicateValue(
   predicate: ChoicePredicate,
@@ -351,14 +377,22 @@ function resolveInjectedPredicateString(statement: string, context: OptionContex
     return null;
   }
 
-  return trimmed.replace(/\{actor\|([^}]+)\}/g, (_, path: string) => {
+  let unresolved = false;
+  const resolved = trimmed.replace(/\{actor\|([^}]+)\}/g, (_, path: string) => {
+    let value: string | null;
     switch (path.trim()) {
       case "system.details.class.trait":
-        return context.classSlug ?? "";
+        value = context.classSlug;
+        break;
       case "system.details.ancestry.trait":
-        return context.ancestrySlug ?? "";
+        value = context.ancestrySlug;
+        break;
       default:
-        return "";
+        value = null;
+        break;
     }
+    unresolved ||= !value;
+    return value ?? "";
   });
+  return unresolved ? null : resolved;
 }

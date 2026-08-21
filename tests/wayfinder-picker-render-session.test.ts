@@ -89,6 +89,7 @@ describe("picker render session", () => {
       step,
       optionContext: context(),
       options,
+      suppressedOptions: [],
       filterKinds: ["rank", "rarity", "source"],
       getPickerInfoState: () => null,
       matchesSearch: nameSearch,
@@ -114,6 +115,7 @@ describe("picker render session", () => {
       resultCount: 1,
       contextNote: null,
       infoState: null,
+      suppressionNotice: null,
       destinationLabel: "Wizard spellbook",
       sourceName: "Wizard Spellcasting",
       rarityAccess: {
@@ -196,6 +198,85 @@ describe("picker render session", () => {
     expect(inputs.options).toHaveLength(3);
     expect(projection.infoState?.tone).toBe("blocked");
   });
+
+  it("reports prepared fail-closed suppressions and explains a matching name search", () => {
+    const inputs = pickInputs();
+    inputs.suppressedOptions.push({
+      uuid: "Compendium.test.pack.Item.hidden-choice",
+      name: "Hidden Choice",
+      reason: "unvalidated-granted-choice",
+    });
+    const session = createPickerRenderSession(inputs, pickBasePane(inputs), "test.pack:wintertouched");
+
+    inputs.suppressedOptions[0]!.name = "Changed outside the session";
+    const pane = derivePickerRenderSession(session, {
+      search: "hidden choice",
+      filterState: null,
+      openFilterKind: null,
+    });
+
+    expect(pane.suppressionNotice).toEqual({
+      count: 1,
+      message: "1 option hidden because Wayfinder cannot yet validate a choice it grants.",
+    });
+    expect(pane.options).toEqual([]);
+    expect(pane.infoState).toMatchObject({
+      eyebrow: "Not guided yet",
+      title: "That choice is hidden",
+      message: "1 matching option is hidden because Wayfinder cannot yet validate a choice it grants.",
+    });
+  });
+
+  it("reports ambiguous heritage ownership without describing it as a granted choice", () => {
+    const inputs = pickInputs();
+    inputs.options = [];
+    inputs.suppressedOptions = [
+      {
+        uuid: "Compendium.test.pack.Item.unclear",
+        name: "Unclear Heritage",
+        reason: "ambiguous-heritage-ownership",
+      },
+    ];
+    inputs.getPickerInfoState = () => ({
+      tone: "empty",
+      eyebrow: "Nothing to pick from",
+      title: "No options",
+      message: "No options in enabled sources.",
+    });
+
+    const projection = derivePickerRenderProjection(inputs, {
+      search: "",
+      filterState: null,
+      openFilterKind: null,
+    });
+
+    expect(projection.suppressionNotice?.message).toBe(
+      "1 heritage hidden because Wayfinder cannot determine which ancestry it belongs to."
+    );
+    expect(projection.infoState?.eyebrow).toBe("Not guided yet");
+  });
+
+  it("explains eligibility uncertainty without describing a granted choice", () => {
+    const inputs = pickInputs();
+    inputs.suppressedOptions = [
+      {
+        uuid: "Compendium.test.pack.Item.wizard-dedication",
+        name: "Wizard Dedication",
+        reason: "unvalidated-eligibility",
+      },
+    ];
+
+    const projection = derivePickerRenderProjection(inputs, {
+      search: "wizard dedication",
+      filterState: null,
+      openFilterKind: null,
+    });
+
+    expect(projection.visibleOptions).toEqual([]);
+    expect(projection.infoState?.message).toBe(
+      "1 matching option is hidden because Wayfinder cannot yet validate whether it is eligible."
+    );
+  });
 });
 
 function pickInputs(): PickerRenderInputs {
@@ -207,6 +288,7 @@ function pickInputs(): PickerRenderInputs {
       option("test.pack:winterwise", "Winterwise", "rare", "Player Core"),
       option("test.pack:winterbound", "Winterbound", "common", "Lost Omens"),
     ],
+    suppressedOptions: [],
     filterKinds: ["rarity", "source"],
     getPickerInfoState: () => null,
     matchesSearch: nameSearch,
@@ -231,6 +313,7 @@ function pickBasePane(inputs: PickerRenderInputs): PickStepPane {
     resultCount: inputs.options.length,
     contextNote: null,
     infoState: null,
+    suppressionNotice: null,
     filterGroups: [],
     options: inputs.options.map((entry) => ({
       ...entry,

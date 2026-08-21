@@ -821,6 +821,40 @@ describe("prepared draft application", () => {
     expect(actor.update).not.toHaveBeenCalled();
   });
 
+  it("applies an increase over fixed-only training and creates fixed Lore", async () => {
+    const { actor, createdItems } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { deception: { rank: 0 } } };
+    const draft = createEmptyDraft(3);
+    draft.skillIncreases["skill-increase-level-3"] = "deception";
+    const fixedTraining = necromancerTrainingStep();
+    if (fixedTraining.kind !== "skill-training") {
+      throw new Error("Expected a skill-training step");
+    }
+    fixedTraining.training.fixedSkills = ["deception"];
+    fixedTraining.training.fixedLores = ["Intelligent Weapon Lore"];
+    fixedTraining.training.choiceRules = [];
+    fixedTraining.training.additionalCount = 0;
+
+    await applyDraftToActor(actor as never, draft, [fixedTraining, skillIncreaseStep(3)]);
+
+    expect(actor.system?.skills?.deception?.rank).toBe(2);
+    expect(actor.update).toHaveBeenLastCalledWith(expect.objectContaining({ "system.skills.deception.rank": 2 }));
+    expect(createdItems).toContainEqual(
+      expect.objectContaining({
+        type: "lore",
+        name: "Intelligent Weapon Lore",
+        system: expect.objectContaining({ proficient: { value: 1 } }),
+        flags: expect.objectContaining({
+          [MODULE_ID]: expect.objectContaining({
+            importedBy: MODULE_ID,
+            slotId: fixedTraining.slotId,
+            trainingKey: "fixed:0",
+          }),
+        }),
+      })
+    );
+  });
+
   it.each([
     { label: "preferred skill is available", ranks: { occultism: 0, arcana: 0 } },
     { label: "fallback skill is already trained", ranks: { occultism: 1, arcana: 1 } },

@@ -27,21 +27,27 @@ export async function applyTrainingDraft(actor, draft, steps, options = {}) {
         }
         projectedRanks[grantedSkill.skillSlug] = Math.max(projectedRanks[grantedSkill.skillSlug] ?? 0, grantedSkill.rank);
     }
-    for (const [slotId, training] of Object.entries(draft.skillTrainings)) {
-        const step = stepMap.get(slotId);
-        if (step?.kind !== "skill-training" || !step.training) {
+    for (const step of steps) {
+        if (step.kind !== "skill-training") {
             continue;
         }
-        for (const choiceRule of step.training.choiceRules) {
-            const selection = training.ruleChoices[choiceRule.key];
-            if (!selection) {
-                continue;
-            }
-            queueTrainingRuleSelectionUpdate(actorItems, updatesByItemId, choiceRule.persistence, choiceRule.flag, selection);
-            projectedRanks[selection] = Math.max(projectedRanks[selection] ?? 0, 1);
-        }
-        for (const slug of training.additional) {
+        const slotId = step.slotId;
+        const training = draft.skillTrainings[slotId];
+        for (const slug of step.training.fixedSkills) {
             projectedRanks[slug] = Math.max(projectedRanks[slug] ?? 0, 1);
+        }
+        if (training) {
+            for (const choiceRule of step.training.choiceRules) {
+                const selection = training.ruleChoices[choiceRule.key];
+                if (!selection) {
+                    continue;
+                }
+                queueTrainingRuleSelectionUpdate(actorItems, updatesByItemId, choiceRule.persistence, choiceRule.flag, selection);
+                projectedRanks[selection] = Math.max(projectedRanks[selection] ?? 0, 1);
+            }
+            for (const slug of training.additional) {
+                projectedRanks[slug] = Math.max(projectedRanks[slug] ?? 0, 1);
+            }
         }
         for (const [index, loreName] of step.training.fixedLores.entries()) {
             const normalizedLore = normalizeLoreName(loreName);
@@ -53,6 +59,9 @@ export async function applyTrainingDraft(actor, draft, steps, options = {}) {
                 key: `fixed:${index}`,
                 name: normalizedLore,
             });
+        }
+        if (!training) {
+            continue;
         }
         for (const loreChoice of step.training.loreChoices) {
             const selection = normalizeLoreName(training.loreChoices[loreChoice.key] ?? "");

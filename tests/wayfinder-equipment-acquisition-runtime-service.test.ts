@@ -532,6 +532,178 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(2);
   });
 
+  it("reuses drafted equipment size until actor or ancestry and heritage material changes", async () => {
+    const actorSource = {
+      type: "character",
+      system: { pricingRevision: 1 },
+      items: [],
+      effects: [],
+      flags: {},
+    };
+    const actor = {
+      id: "actor-1",
+      toObject: vi.fn(() => structuredClone(actorSource)),
+    };
+    const prepareDraftedActor = vi.fn(async () => ({ system: { traits: { size: { value: "med" } } } }));
+    const source = dagger();
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument: vi.fn(async () => document(source)) },
+      { actor, prepareDraftedActor: prepareDraftedActor as never }
+    );
+    request.draft.selections["ancestry-level-1"]!.slug = "automaton";
+    request.draft.selections["heritage-level-1"] = {
+      slotId: "heritage-level-1",
+      packId: "pf2e.heritages",
+      documentId: "versatile-heritage",
+      uuid: "Compendium.pf2e.heritages.Item.versatile-heritage",
+      itemType: "heritage",
+      featType: null,
+      name: "Versatile Heritage",
+      level: 0,
+      slug: "versatile-heritage",
+    };
+
+    await runtime.uiAdapter.project(request);
+    await runtime.uiAdapter.project(request);
+    request.draft.classChoices.unrelated = "ignored";
+    request.draft.singletonChoices["singleton-choice-class-wizard-thesis-level-1"] = "spell-blending";
+    await runtime.uiAdapter.project(request);
+    expect(prepareDraftedActor).toHaveBeenCalledTimes(1);
+
+    request.draft.singletonChoices["singleton-choice-ancestry-automaton-size-level-1"] = "small";
+    await runtime.uiAdapter.project(request);
+    request.draft.singletonChoices["singleton-choice-heritage-versatile-heritage-size-level-1"] = "large";
+    await runtime.uiAdapter.project(request);
+    actorSource.system.pricingRevision = 2;
+    await runtime.uiAdapter.project(request);
+    request.draft.targetLevel = 2;
+    await runtime.uiAdapter.project(request);
+    request.draft.selections["ancestry-level-1"]!.uuid = "Compendium.pf2e.ancestries.Item.changed";
+    await runtime.uiAdapter.project(request);
+    expect(prepareDraftedActor).toHaveBeenCalledTimes(6);
+  });
+
+  it("coalesces concurrent drafted equipment size preparation", async () => {
+    let releasePreparation!: () => void;
+    const preparationGate = new Promise<void>((resolve) => {
+      releasePreparation = resolve;
+    });
+    const prepareDraftedActor = vi.fn(async ({ draft: _draft }: { draft: ReturnType<typeof createEmptyDraft> }) => {
+      await preparationGate;
+      return { system: { traits: { size: { value: "med" } } } };
+    });
+    const source = dagger();
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument: vi.fn(async () => document(source)) },
+      { prepareDraftedActor: prepareDraftedActor as never }
+    );
+    const sizeChoiceSlotId = "singleton-choice-ancestry-automaton-size-level-1";
+    request.draft.singletonChoices[sizeChoiceSlotId] = "small";
+
+    const first = runtime.uiAdapter.project(request);
+    const second = runtime.uiAdapter.project(request);
+    await vi.waitFor(() => expect(prepareDraftedActor).toHaveBeenCalledTimes(1));
+    request.draft.singletonChoices[sizeChoiceSlotId] = "large";
+    releasePreparation();
+
+    await expect(Promise.all([first, second])).resolves.toMatchObject([{ state: "ready" }, { state: "ready" }]);
+    expect(prepareDraftedActor.mock.calls[0]![0].draft.singletonChoices[sizeChoiceSlotId]).toBe("small");
+    expect(prepareDraftedActor).toHaveBeenCalledTimes(1);
+    await runtime.uiAdapter.project(request);
+    expect(prepareDraftedActor).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retain drafted size under an actor fingerprint that changed during preparation", async () => {
+    let releasePreparation!: () => void;
+    const preparationGate = new Promise<void>((resolve) => {
+      releasePreparation = resolve;
+    });
+    const actorSource = {
+      type: "character",
+      system: { pricingRevision: 1 },
+      items: [],
+      effects: [],
+      flags: {},
+    };
+    const actor = {
+      id: "actor-1",
+      toObject: vi.fn(() => structuredClone(actorSource)),
+    };
+    let preparationCount = 0;
+    const prepareDraftedActor = vi.fn(async () => {
+      preparationCount += 1;
+      if (preparationCount === 1) await preparationGate;
+      return { system: { traits: { size: { value: "med" } } } };
+    });
+    const source = dagger();
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument: vi.fn(async () => document(source)) },
+      { actor, prepareDraftedActor: prepareDraftedActor as never }
+    );
+
+    const first = runtime.uiAdapter.project(request);
+    await vi.waitFor(() => expect(prepareDraftedActor).toHaveBeenCalledTimes(1));
+    actorSource.system.pricingRevision = 2;
+    releasePreparation();
+    await expect(first).resolves.toMatchObject({ state: "ready" });
+
+    actorSource.system.pricingRevision = 1;
+    await runtime.uiAdapter.project(request);
+    expect(prepareDraftedActor).toHaveBeenCalledTimes(2);
+  });
+
+  it("evicts rejected drafted equipment size preparation", async () => {
+    let shouldFail = true;
+    const prepareDraftedActor = vi.fn(async () => {
+      if (shouldFail) throw new Error("drafted size preparation failure");
+      return { system: { traits: { size: { value: "med" } } } };
+    });
+    const source = dagger();
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument: vi.fn(async () => document(source)) },
+      { prepareDraftedActor: prepareDraftedActor as never }
+    );
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({ state: "error" });
+    shouldFail = false;
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({ state: "ready" });
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({ state: "ready" });
+    expect(prepareDraftedActor).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds drafted equipment size results with LRU reuse", async () => {
+    const prepareDraftedActor = vi.fn(async () => ({ system: { traits: { size: { value: "med" } } } }));
+    const source = dagger();
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument: vi.fn(async () => document(source)) },
+      { prepareDraftedActor: prepareDraftedActor as never, draftedEquipmentSizeCacheLimit: 2 }
+    );
+    request.draft.selections["ancestry-level-1"]!.slug = "automaton";
+
+    for (const value of ["small", "medium", "small", "large", "medium"]) {
+      request.draft.singletonChoices["singleton-choice-ancestry-automaton-size-level-1"] = value;
+      await runtime.uiAdapter.project(request);
+    }
+
+    expect(prepareDraftedActor).toHaveBeenCalledTimes(4);
+  });
+
+  it("invalidates drafted equipment size on pack source invalidation", async () => {
+    const prepareDraftedActor = vi.fn(async () => ({ system: { traits: { size: { value: "med" } } } }));
+    const source = dagger();
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument: vi.fn(async () => document(source)) },
+      { prepareDraftedActor: prepareDraftedActor as never }
+    );
+
+    await runtime.uiAdapter.project(request);
+    await runtime.uiAdapter.project(request);
+    expect(prepareDraftedActor).toHaveBeenCalledTimes(1);
+    runtime.invalidatePack(PACK_ID);
+    await runtime.uiAdapter.project(request);
+    expect(prepareDraftedActor).toHaveBeenCalledTimes(2);
+  });
+
   it("invalidates browse preparations on actor, access, size, policy, and pack drift", async () => {
     let ancestrySize: "med" | "lg" = "med";
     const actorSource = {
@@ -561,6 +733,7 @@ describe("equipment acquisition runtime", () => {
           uuid === ANCESTRY_UUID ? { type: "ancestry", system: { size: ancestrySize } } : null,
       }
     );
+    request.draft.selections["ancestry-level-1"]!.slug = "test-ancestry";
 
     await runtime.uiAdapter.project(request);
     await runtime.uiAdapter.project(request);
@@ -576,6 +749,7 @@ describe("equipment acquisition runtime", () => {
     request.draft.classChoices.cacheProbe = "changed-access-facts";
     await runtime.uiAdapter.project(request);
     ancestrySize = "lg";
+    request.draft.singletonChoices["singleton-choice-ancestry-test-ancestry-size-level-1"] = "large";
     await runtime.uiAdapter.project(request);
     (currentPolicy as { fingerprint: string }).fingerprint = "policy-v2";
     request.draft.acquisition = {
@@ -2046,6 +2220,7 @@ function fixture(
     readonly ancestrySize?: "tiny" | "sm" | "med" | "lg" | "huge" | "grg";
     readonly sourceDiagnostics?: readonly EquipmentSourceDiagnostic[];
     readonly browsePreparedRecordCacheLimit?: number;
+    readonly draftedEquipmentSizeCacheLimit?: number;
   } = {}
 ): {
   runtime: EquipmentAcquisitionRuntime;
@@ -2091,6 +2266,7 @@ function fixture(
       prepareDraftedActor: options.prepareDraftedActor ?? prepareTestDraftedActor,
       prepareKitExpansion: options.prepareKitExpansion,
       browsePreparedRecordCacheLimit: options.browsePreparedRecordCacheLimit,
+      draftedEquipmentSizeCacheLimit: options.draftedEquipmentSizeCacheLimit,
       mintLineId: () => "wf-line-test",
     }),
     request: {

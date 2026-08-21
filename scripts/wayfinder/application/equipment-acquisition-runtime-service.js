@@ -13,6 +13,7 @@ import { sortEquipmentSourceDiagnostics } from "./equipment-source-policy.js";
 import { isQualifiedKitSource, prepareAdventurersPackExpansion } from "./pf2e-kit-adapter.js";
 import { registerStartingEquipmentUiAdapter, } from "./starting-equipment-ui-adapter.js";
 export const DEFAULT_BROWSE_PREPARED_RECORD_CACHE_LIMIT = 96;
+export const DEFAULT_DRAFTED_EQUIPMENT_SIZE_CACHE_LIMIT = 32;
 export class ConfiguredItemHandoffRequiredError extends Error {
     reason;
     constructor(reason) {
@@ -58,8 +59,13 @@ export function createEquipmentAcquisitionRuntime(options) {
     if (!Number.isSafeInteger(browsePreparedRecordCacheLimit) || browsePreparedRecordCacheLimit < 1) {
         throw new TypeError("The equipment browse prepared-record cache limit must be a positive integer.");
     }
+    const draftedEquipmentSizeCacheLimit = options.draftedEquipmentSizeCacheLimit ?? DEFAULT_DRAFTED_EQUIPMENT_SIZE_CACHE_LIMIT;
+    if (!Number.isSafeInteger(draftedEquipmentSizeCacheLimit) || draftedEquipmentSizeCacheLimit < 1) {
+        throw new TypeError("The drafted equipment size cache limit must be a positive integer.");
+    }
     const catalogues = new Map();
     const browsePreparedRecordCache = new Map();
+    const draftedEquipmentSizeCache = new Map();
     const cachedBrowseRecord = (key) => {
         const cached = browsePreparedRecordCache.get(key);
         if (!cached)
@@ -92,13 +98,50 @@ export function createEquipmentAcquisitionRuntime(options) {
         }
         return catalogue;
     };
-    const draftedEquipmentSize = (actor, draft) => requireDraftedAncestryEquipmentSize({
+    const resolveDraftedEquipmentSize = (actor, draft) => requireDraftedAncestryEquipmentSize({
         actor,
         draft,
         targetLevel: draft.targetLevel,
         fetchDocumentByUuid,
         prepareDraftedActor,
     });
+    const cachedDraftedEquipmentSize = (actor, draft, actorPricingFingerprint = fingerprintActorPricingContext(actor)) => {
+        const draftSnapshot = snapshotDraftedEquipmentSizeMaterial(draft);
+        const cacheKey = actorPricingFingerprint
+            ? draftedEquipmentSizeCacheKey({ actorPricingFingerprint, draft: draftSnapshot })
+            : null;
+        if (cacheKey) {
+            const cached = draftedEquipmentSizeCache.get(cacheKey);
+            if (cached !== undefined) {
+                draftedEquipmentSizeCache.delete(cacheKey);
+                draftedEquipmentSizeCache.set(cacheKey, cached);
+                return cached;
+            }
+        }
+        const pending = resolveDraftedEquipmentSize(actor, draftSnapshot).then((size) => {
+            if (cacheKey &&
+                fingerprintActorPricingContext(actor) !== actorPricingFingerprint &&
+                draftedEquipmentSizeCache.get(cacheKey) === pending) {
+                draftedEquipmentSizeCache.delete(cacheKey);
+            }
+            return size;
+        }, (error) => {
+            if (cacheKey && draftedEquipmentSizeCache.get(cacheKey) === pending) {
+                draftedEquipmentSizeCache.delete(cacheKey);
+            }
+            throw error;
+        });
+        if (cacheKey) {
+            draftedEquipmentSizeCache.set(cacheKey, pending);
+            while (draftedEquipmentSizeCache.size > draftedEquipmentSizeCacheLimit) {
+                const oldest = draftedEquipmentSizeCache.keys().next().value;
+                if (typeof oldest !== "string")
+                    break;
+                draftedEquipmentSizeCache.delete(oldest);
+            }
+        }
+        return pending;
+    };
     const currentContext = (actor, draft, acquisition) => {
         if (draft.acquisition?.draftId !== acquisition.draftId || draft.acquisition.batchId !== acquisition.batchId) {
             throw new TypeError("The equipment catalogue request belongs to another acquisition draft.");
@@ -159,10 +202,10 @@ export function createEquipmentAcquisitionRuntime(options) {
                 }
                 const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
                 const entries = projectedEntries.filter((entry) => entry.level <= maximumLevel);
-                const targetSize = await draftedEquipmentSize(request.actor, request.draft);
+                const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
+                const targetSize = await cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint);
                 const matchedEntries = entries.filter((entry) => matchesCatalogueRequest(entry, request));
                 const visibleEntries = matchedEntries.slice(0, 12);
-                const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
                 const records = await Promise.all(visibleEntries.map(async (entry) => {
                     if (entry.price.kind !== "priced" ||
                         entry.unavailableReasons.some((reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available")) {
@@ -263,7 +306,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             const { catalogue } = await requireHealthyCatalogue(policy, context);
             const resolved = await catalogue.resolveForApply(context, request.sourceUuid);
             assertSupportedCandidate(resolved);
-            const targetSize = await draftedEquipmentSize(request.actor, request.draft);
+            const targetSize = await resolveDraftedEquipmentSize(request.actor, request.draft);
             const priced = await buildResolvedPrice({
                 resolved,
                 requestedQuantity: 1,
@@ -308,7 +351,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             if (acquisition.lines.some((line) => line.funding.lane === "class-grant" && line.funding.grant.plannedGrantId === grantId)) {
                 throw new TypeError("Remove the current Titan Mauler weapon before choosing another one.");
             }
-            const actorSize = await draftedEquipmentSize(request.actor, request.draft);
+            const actorSize = await resolveDraftedEquipmentSize(request.actor, request.draft);
             if (!actorSize) {
                 throw new TypeError("Titan Mauler requires a selected ancestry with a supported size.");
             }
@@ -349,7 +392,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             const nativeGrants = request.classGrantPlan.grants.filter((grant) => grant.materializer === "pf2e-native");
             if (nativeGrants.length === 0)
                 return Object.freeze([]);
-            const targetSize = await draftedEquipmentSize(request.actor, request.characterDraft);
+            const targetSize = await resolveDraftedEquipmentSize(request.actor, request.characterDraft);
             const lineIds = new Set(request.acquisition.lines.map((line) => line.lineId));
             const prepared = [];
             for (const grant of nativeGrants) {
@@ -445,7 +488,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 if (lines.length !== 1 || lines[0]?.funding.lane !== "class-grant") {
                     throw new Error("Titan Mauler must resolve from exactly one automatic build-grant line.");
                 }
-                const actorSize = await draftedEquipmentSize(request.actor, request.characterDraft);
+                const actorSize = await resolveDraftedEquipmentSize(request.actor, request.characterDraft);
                 const titanTargetSize = actorSize ? titanMaulerTargetSize(actorSize) : null;
                 if (!actorSize ||
                     !titanTargetSize ||
@@ -469,7 +512,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 targetSize = titanTargetSize;
             }
             else {
-                targetSize = await draftedEquipmentSize(request.actor, request.characterDraft);
+                targetSize = await resolveDraftedEquipmentSize(request.actor, request.characterDraft);
                 if (request.entry.price.size !== targetSize || lines.some((line) => line.price.size !== targetSize)) {
                     throw new Error("The reviewed equipment size no longer matches the drafted ancestry.");
                 }
@@ -563,7 +606,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             }
             let actorSize;
             try {
-                actorSize = await draftedEquipmentSize(request.actor, request.characterDraft);
+                actorSize = await resolveDraftedEquipmentSize(request.actor, request.characterDraft);
             }
             catch {
                 return invalidateTitanMaulerVerification(request.acquisition);
@@ -611,6 +654,7 @@ export function createEquipmentAcquisitionRuntime(options) {
         },
         invalidatePack(packId) {
             browsePreparedRecordCache.clear();
+            draftedEquipmentSizeCache.clear();
             for (const catalogue of catalogues.values())
                 catalogue.invalidatePack(packId);
         },
@@ -1395,6 +1439,44 @@ function equipmentBrowsePreparedRecordCacheKey(input) {
         targetLevel: input.targetLevel,
         targetSize: input.targetSize,
     });
+}
+function draftedEquipmentSizeCacheKey(input) {
+    const selections = Object.values(input.draft.selections)
+        .filter((selection) => selection.itemType === "ancestry" || selection.itemType === "heritage")
+        .map((selection) => ({
+        slotId: selection.slotId,
+        itemType: selection.itemType,
+        packId: selection.packId,
+        documentId: selection.documentId,
+        uuid: selection.uuid,
+        slug: selection.slug ?? null,
+    }))
+        .sort((left, right) => left.itemType.localeCompare(right.itemType) ||
+        left.slotId.localeCompare(right.slotId) ||
+        left.uuid.localeCompare(right.uuid));
+    const singletonChoices = Object.entries(input.draft.singletonChoices)
+        .filter(([slotId]) => isDraftedEquipmentSizeSingletonChoice(slotId))
+        .sort(([left], [right]) => left.localeCompare(right));
+    return fingerprintRuntimeMaterial("equipment-drafted-size-v1", {
+        actorPricingFingerprint: input.actorPricingFingerprint,
+        targetLevel: input.draft.targetLevel,
+        selections,
+        singletonChoices,
+    });
+}
+function snapshotDraftedEquipmentSizeMaterial(draft) {
+    const selections = Object.fromEntries(Object.entries(draft.selections)
+        .filter(([, selection]) => selection.itemType === "ancestry" || selection.itemType === "heritage")
+        .map(([slotId, selection]) => [slotId, cloneData(selection)]));
+    const singletonChoices = Object.fromEntries(Object.entries(draft.singletonChoices).filter(([slotId]) => isDraftedEquipmentSizeSingletonChoice(slotId)));
+    return {
+        ...draft,
+        selections,
+        singletonChoices,
+    };
+}
+function isDraftedEquipmentSizeSingletonChoice(slotId) {
+    return slotId.startsWith("singleton-choice-ancestry-") || slotId.startsWith("singleton-choice-heritage-");
 }
 function fingerprintActorPricingContext(actor) {
     try {

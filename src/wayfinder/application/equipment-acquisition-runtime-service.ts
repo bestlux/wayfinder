@@ -70,6 +70,7 @@ import {
 } from "./starting-equipment-ui-adapter.js";
 
 export const DEFAULT_BROWSE_PREPARED_RECORD_CACHE_LIMIT = 96;
+export const DEFAULT_DRAFTED_EQUIPMENT_SIZE_CACHE_LIMIT = 32;
 
 export interface EquipmentAcquisitionRuntimeOptions {
   readonly packs: Pick<ReadonlyMap<string, EquipmentCataloguePackLike>, "get">;
@@ -102,6 +103,8 @@ export interface EquipmentAcquisitionRuntimeOptions {
   readonly prepareKitExpansion?: typeof prepareAdventurersPackExpansion;
   /** Bounded successful-result cache for browse-only prepared price records. */
   readonly browsePreparedRecordCacheLimit?: number;
+  /** Bounded successful-result cache for authoritative drafted equipment size. */
+  readonly draftedEquipmentSizeCacheLimit?: number;
 }
 
 export interface EquipmentApplySourceRequest {
@@ -223,8 +226,14 @@ export function createEquipmentAcquisitionRuntime(
   if (!Number.isSafeInteger(browsePreparedRecordCacheLimit) || browsePreparedRecordCacheLimit < 1) {
     throw new TypeError("The equipment browse prepared-record cache limit must be a positive integer.");
   }
+  const draftedEquipmentSizeCacheLimit =
+    options.draftedEquipmentSizeCacheLimit ?? DEFAULT_DRAFTED_EQUIPMENT_SIZE_CACHE_LIMIT;
+  if (!Number.isSafeInteger(draftedEquipmentSizeCacheLimit) || draftedEquipmentSizeCacheLimit < 1) {
+    throw new TypeError("The drafted equipment size cache limit must be a positive integer.");
+  }
   const catalogues = new Map<string, EquipmentCatalogueService>();
   const browsePreparedRecordCache = new Map<string, StartingEquipmentCatalogueRecord>();
+  const draftedEquipmentSizeCache = new Map<string, Promise<AcquisitionPriceSnapshot["size"]>>();
 
   const cachedBrowseRecord = (key: string): StartingEquipmentCatalogueRecord | null => {
     const cached = browsePreparedRecordCache.get(key);
@@ -259,7 +268,7 @@ export function createEquipmentAcquisitionRuntime(
     return catalogue;
   };
 
-  const draftedEquipmentSize = (actor: unknown, draft: DraftState) =>
+  const resolveDraftedEquipmentSize = (actor: unknown, draft: DraftState) =>
     requireDraftedAncestryEquipmentSize({
       actor,
       draft,
@@ -267,6 +276,52 @@ export function createEquipmentAcquisitionRuntime(
       fetchDocumentByUuid,
       prepareDraftedActor,
     });
+
+  const cachedDraftedEquipmentSize = (
+    actor: unknown,
+    draft: DraftState,
+    actorPricingFingerprint = fingerprintActorPricingContext(actor)
+  ): Promise<AcquisitionPriceSnapshot["size"]> => {
+    const draftSnapshot = snapshotDraftedEquipmentSizeMaterial(draft);
+    const cacheKey = actorPricingFingerprint
+      ? draftedEquipmentSizeCacheKey({ actorPricingFingerprint, draft: draftSnapshot })
+      : null;
+    if (cacheKey) {
+      const cached = draftedEquipmentSizeCache.get(cacheKey);
+      if (cached !== undefined) {
+        draftedEquipmentSizeCache.delete(cacheKey);
+        draftedEquipmentSizeCache.set(cacheKey, cached);
+        return cached;
+      }
+    }
+    const pending: Promise<AcquisitionPriceSnapshot["size"]> = resolveDraftedEquipmentSize(actor, draftSnapshot).then(
+      (size) => {
+        if (
+          cacheKey &&
+          fingerprintActorPricingContext(actor) !== actorPricingFingerprint &&
+          draftedEquipmentSizeCache.get(cacheKey) === pending
+        ) {
+          draftedEquipmentSizeCache.delete(cacheKey);
+        }
+        return size;
+      },
+      (error: unknown) => {
+        if (cacheKey && draftedEquipmentSizeCache.get(cacheKey) === pending) {
+          draftedEquipmentSizeCache.delete(cacheKey);
+        }
+        throw error;
+      }
+    );
+    if (cacheKey) {
+      draftedEquipmentSizeCache.set(cacheKey, pending);
+      while (draftedEquipmentSizeCache.size > draftedEquipmentSizeCacheLimit) {
+        const oldest = draftedEquipmentSizeCache.keys().next().value;
+        if (typeof oldest !== "string") break;
+        draftedEquipmentSizeCache.delete(oldest);
+      }
+    }
+    return pending;
+  };
 
   const currentContext = (
     actor: unknown,
@@ -338,10 +393,10 @@ export function createEquipmentAcquisitionRuntime(
         }
         const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
         const entries = projectedEntries.filter((entry) => entry.level <= maximumLevel);
-        const targetSize = await draftedEquipmentSize(request.actor, request.draft);
+        const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
+        const targetSize = await cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint);
         const matchedEntries = entries.filter((entry) => matchesCatalogueRequest(entry, request));
         const visibleEntries = matchedEntries.slice(0, 12);
-        const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
         const records = await Promise.all(
           visibleEntries.map(async (entry) => {
             if (
@@ -441,7 +496,7 @@ export function createEquipmentAcquisitionRuntime(
       const { catalogue } = await requireHealthyCatalogue(policy, context);
       const resolved = await catalogue.resolveForApply(context, request.sourceUuid);
       assertSupportedCandidate(resolved);
-      const targetSize = await draftedEquipmentSize(request.actor, request.draft);
+      const targetSize = await resolveDraftedEquipmentSize(request.actor, request.draft);
       const priced = await buildResolvedPrice({
         resolved,
         requestedQuantity: 1,
@@ -494,7 +549,7 @@ export function createEquipmentAcquisitionRuntime(
       ) {
         throw new TypeError("Remove the current Titan Mauler weapon before choosing another one.");
       }
-      const actorSize = await draftedEquipmentSize(request.actor, request.draft);
+      const actorSize = await resolveDraftedEquipmentSize(request.actor, request.draft);
       if (!actorSize) {
         throw new TypeError("Titan Mauler requires a selected ancestry with a supported size.");
       }
@@ -535,7 +590,7 @@ export function createEquipmentAcquisitionRuntime(
       });
       const nativeGrants = request.classGrantPlan.grants.filter((grant) => grant.materializer === "pf2e-native");
       if (nativeGrants.length === 0) return Object.freeze([]);
-      const targetSize = await draftedEquipmentSize(request.actor, request.characterDraft);
+      const targetSize = await resolveDraftedEquipmentSize(request.actor, request.characterDraft);
       const lineIds = new Set(request.acquisition.lines.map((line) => line.lineId));
       const prepared: AcquisitionLineDraft[] = [];
       for (const grant of nativeGrants) {
@@ -649,7 +704,7 @@ export function createEquipmentAcquisitionRuntime(
         if (lines.length !== 1 || lines[0]?.funding.lane !== "class-grant") {
           throw new Error("Titan Mauler must resolve from exactly one automatic build-grant line.");
         }
-        const actorSize = await draftedEquipmentSize(request.actor, request.characterDraft);
+        const actorSize = await resolveDraftedEquipmentSize(request.actor, request.characterDraft);
         const titanTargetSize = actorSize ? titanMaulerTargetSize(actorSize) : null;
         if (
           !actorSize ||
@@ -676,7 +731,7 @@ export function createEquipmentAcquisitionRuntime(
         }
         targetSize = titanTargetSize;
       } else {
-        targetSize = await draftedEquipmentSize(request.actor, request.characterDraft);
+        targetSize = await resolveDraftedEquipmentSize(request.actor, request.characterDraft);
         if (request.entry.price.size !== targetSize || lines.some((line) => line.price.size !== targetSize)) {
           throw new Error("The reviewed equipment size no longer matches the drafted ancestry.");
         }
@@ -778,7 +833,7 @@ export function createEquipmentAcquisitionRuntime(
       }
       let actorSize: TitanMaulerCandidate["actorSize"] | null;
       try {
-        actorSize = await draftedEquipmentSize(request.actor, request.characterDraft);
+        actorSize = await resolveDraftedEquipmentSize(request.actor, request.characterDraft);
       } catch {
         return invalidateTitanMaulerVerification(request.acquisition);
       }
@@ -825,6 +880,7 @@ export function createEquipmentAcquisitionRuntime(
     },
     invalidatePack(packId) {
       browsePreparedRecordCache.clear();
+      draftedEquipmentSizeCache.clear();
       for (const catalogue of catalogues.values()) catalogue.invalidatePack(packId);
     },
   };
@@ -1774,6 +1830,57 @@ function equipmentBrowsePreparedRecordCacheKey(input: {
     targetLevel: input.targetLevel,
     targetSize: input.targetSize,
   });
+}
+
+function draftedEquipmentSizeCacheKey(input: {
+  readonly actorPricingFingerprint: string;
+  readonly draft: DraftState;
+}): string {
+  const selections = Object.values(input.draft.selections)
+    .filter((selection) => selection.itemType === "ancestry" || selection.itemType === "heritage")
+    .map((selection) => ({
+      slotId: selection.slotId,
+      itemType: selection.itemType,
+      packId: selection.packId,
+      documentId: selection.documentId,
+      uuid: selection.uuid,
+      slug: selection.slug ?? null,
+    }))
+    .sort(
+      (left, right) =>
+        left.itemType.localeCompare(right.itemType) ||
+        left.slotId.localeCompare(right.slotId) ||
+        left.uuid.localeCompare(right.uuid)
+    );
+  const singletonChoices = Object.entries(input.draft.singletonChoices)
+    .filter(([slotId]) => isDraftedEquipmentSizeSingletonChoice(slotId))
+    .sort(([left], [right]) => left.localeCompare(right));
+  return fingerprintRuntimeMaterial("equipment-drafted-size-v1", {
+    actorPricingFingerprint: input.actorPricingFingerprint,
+    targetLevel: input.draft.targetLevel,
+    selections,
+    singletonChoices,
+  });
+}
+
+function snapshotDraftedEquipmentSizeMaterial(draft: DraftState): DraftState {
+  const selections = Object.fromEntries(
+    Object.entries(draft.selections)
+      .filter(([, selection]) => selection.itemType === "ancestry" || selection.itemType === "heritage")
+      .map(([slotId, selection]) => [slotId, cloneData(selection)])
+  );
+  const singletonChoices = Object.fromEntries(
+    Object.entries(draft.singletonChoices).filter(([slotId]) => isDraftedEquipmentSizeSingletonChoice(slotId))
+  );
+  return {
+    ...draft,
+    selections,
+    singletonChoices,
+  };
+}
+
+function isDraftedEquipmentSizeSingletonChoice(slotId: string): boolean {
+  return slotId.startsWith("singleton-choice-ancestry-") || slotId.startsWith("singleton-choice-heritage-");
 }
 
 function fingerprintActorPricingContext(actor: unknown): string | null {

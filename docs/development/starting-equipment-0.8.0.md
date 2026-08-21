@@ -1,6 +1,6 @@
 # 0.8.0 Starting Equipment Implementation Plan
 
-Status: active implementation plan, updated 2026-08-20 after the Wave 2 live gate. Story completion still requires the acceptance and release evidence named below.
+Status: release-candidate qualification, updated 2026-08-21 after the Wave 4 live gate. Required functional stories through Wave 4 are complete; Wave 5 exact-candidate live and package proof remains pending.
 
 Architecture and rules contracts:
 
@@ -28,9 +28,9 @@ The release is one aggregate. The waves below are review and integration milesto
 - Economic-baseline admission, material policy-drift review, deliberate non-stacking insertion, absolute currency convergence, retry, and a persisted completed manifest.
 - The full existing release regression plus the focused equipment overlay in this plan.
 
-### Recommended expansion, cuttable before release candidate
+### Cut from 0.8.0
 
-`WF-080-45` adds cited Quick Equipment Packages from Player Core page 268 and Player Core 2 page 277. The books contain official package guidance even though PF2E's remaster data pack no longer exposes class-kit documents. This is a high-value level-1 shortcut, but it is not allowed to delay the safety kernel, both wealth recipes, or release qualification.
+`WF-080-45` Quick Equipment Packages and `WF-080-46` shared-faceting cleanup are not part of the 0.8.0 candidate and are not partially shipped. The books contain official package guidance even though PF2E's remaster data pack no longer exposes class-kit documents; that high-value shortcut can be reconsidered as one complete slice after release. The refactor remains deferred until two proven adapters make its benefit measurable.
 
 Derived Wayfinder suggestions for classes without a reviewed official package are deferred to 0.8.1. If later added, they must be reason-backed and labeled non-official rather than complete or optimal.
 
@@ -458,7 +458,7 @@ Acceptance:
 - Read PF2E's exact ABP world mode and actor override. Preserve currency by default; suppress or warn on potency, striking, resilient, and redundant numerical items as supported. Do not generate an adjusted wealth table or blanket-filter property runes, consumables, scrolls, or wands that can still matter.
 - Where installed PF2E cannot safely express a configuration, provide an explicit handoff rather than inventing an item.
 
-Implementation note (2026-08-21): `WF-080-30` through `WF-080-33` are complete and the bounded Wave 3 gate is proven live on Foundry 14.366 / PF2E 8.4.1 at commit `27f06dcf6e049c4803bd7af9540f2dd37f81bdbf`. Guarded run `37822635-f308-4f9e-80a3-2dd8ef13ec8f` passed owner-selected level-5 lump sum and level-20 permanent-item recipes with durable GM start approval, a custom lump sum, one extra current-level allowance, exact Morning Glow source/rarity approval with PF2E-prepared 445,600 cp component evidence, and a typed zero-write Chained Mist inventory-sheet handoff. The distinct non-GM owner could request but not approve authority, and the denied attempt left actor, draft, inventory, currency, and judgment state unchanged. Recipe review now records the acting selector plus the configuring GM and time from world policy. ABP handling in this wave is deliberately bounded to potency, striking/resilient, and property/material effects on configured weapons and armor that PF2E can prepare exactly; it does not claim blanket catalogue suppression for standalone numerical items. Cleanup removed all five guarded actors and their judgments and restored the prior world policy. `npm run check` passed 141 files / 1,463 tests. This clears the Wave 4 dependency boundary; it is not the broader Wave 5 release matrix.
+Implementation note (2026-08-21): `WF-080-30` through `WF-080-33` are complete and the bounded Wave 3 gate is proven live on Foundry 14.366 / PF2E 8.4.1 at commit `27f06dcf6e049c4803bd7af9540f2dd37f81bdbf`. Guarded run `37822635-f308-4f9e-80a3-2dd8ef13ec8f` passed owner-selected level-5 lump sum and level-20 permanent-item recipes with durable GM start approval, a custom lump sum, one extra current-level allowance, exact Morning Glow source/rarity approval with PF2E-prepared 445,600 cp component evidence, and a typed zero-write Chained Mist inventory-sheet handoff. Current-candidate rerun `wave3-equipment-294f38f0-9443-48ab-9641-b18209caa075` reconfirmed the gate. The distinct non-GM owner could request but not approve authority, and the denied attempt left actor, draft, inventory, currency, and judgment state unchanged. Recipe review records the acting selector plus the configuring GM and time from world policy. ABP handling in this wave is deliberately bounded to potency, striking/resilient, and property/material effects on configured weapons and armor that PF2E can prepare exactly; it does not claim blanket catalogue suppression for standalone numerical items. Cleanup removed all five guarded actors and their judgments and restored the prior world policy. The original implementation gate's `npm run check` passed 141 files / 1,463 tests. This clears the Wave 4 dependency boundary; it is not the broader Wave 5 release matrix.
 
 ## Wave 4 — Complete breadth and experience
 
@@ -521,11 +521,13 @@ Acceptance:
 - Add bounded paging/windowing, delegated row actions, and lazy images only where measurement requires them; any resulting limits become tested contracts.
 - Reuse the already-built effective render snapshot where profiling proves duplicate actor/document resolution; do not add broad speculative memoization.
 
-### WF-080-45 — Official Quick Equipment Packages (recommended expansion)
+Implementation note (2026-08-21): `WF-080-40` through `WF-080-44` are complete and live-proven on Foundry 14.366 / PF2E 8.4.1. Functional run `wave4-equipment-cd91505f-004b-4e57-be7c-fd21c5e75c79` passed physical stack/price/size boundaries, deterministic Adventurer's Pack materialization and retry, and supplemental-source isolation. Experience run `wf43-experience-4a9289b8-95b3-4da8-a31b-6d25aeb77f2b` passed English and Chinese through both GM and player provider paths, 12 states at four widths each, exact keyboard Apply/retry and focus behavior, and exact cleanup. Two independent full performance runs passed 840/840 samples with zero long tasks: `equipment-2026-08-21T14-52-41-226Z-8a239870-0ad2-4e88-ba8d-73b1d32130b6` recorded overall p95 60.3 ms and a worst-width cold-open p95 of 70.2 ms; `equipment-2026-08-21T15-31-56-723Z-36ef9d7f-d05a-435a-953c-4052130b270c` recorded overall p95 58.8 ms and a worst-width cold-open p95 of 67.1 ms. `WF-080-45` Quick Equipment Packages and `WF-080-46` shared-faceting cleanup are cut from 0.8.0, not partially shipped.
+
+### WF-080-45 — Official Quick Equipment Packages (cut from 0.8.0)
 
 Depends on: `WF-080-11`, `WF-080-40`, `WF-080-41`.
 
-Acceptance if promoted into the release:
+Acceptance if reconsidered for a future release:
 
 - Add cited, versioned definitions for all 16 reviewed classes in Player Core page 268 and Player Core 2 page 277, or keep the entire preset slice out of the release.
 - Distinguish included Armor/Weapons/Gear from optional purchases and preserve quantities.
@@ -533,7 +535,7 @@ Acceptance if promoted into the release:
 - Show book/page/edition and never imply coverage for unreviewed classes or sourcebooks.
 - Applying a package uses the same ledger, policy, preparation, retry, and manifest path as a manual cart.
 
-### WF-080-46 — Evidence-driven shared faceting cleanup (cuttable refactor)
+### WF-080-46 — Evidence-driven shared faceting cleanup (deferred after 0.8.0)
 
 Depends on: stable equipment and existing picker adapters.
 
@@ -542,9 +544,11 @@ Acceptance if undertaken:
 - Generalize facet definitions only after the existing picker and equipment catalogue prove two real adapters.
 - Reuse a focused filter-bar primitive without forcing feat, spell, and equipment into one pane or option record.
 - Demonstrate deletion of duplicated filter logic; do not add a framework whose removal merely redistributes the same complexity.
-- Keep this refactor out of the critical path if its benefit is not measurable before release candidate.
+- Keep this refactor outside 0.8.0 and require measurable benefit before a future release candidate.
 
 ## Wave 5 — Prove and package the exact release
+
+Implementation status (2026-08-21): `WF-080-50`'s executable contract suite is complete. The `WF-080-51` exact release coordinator and `WF-080-52` package binder are built and reviewed, but their live and packaged proof has not yet run against the immutable 0.8.0 candidate. Wave 5 and the release therefore remain incomplete; nothing in this note claims a push, tag, publication, or Foundry package registration.
 
 ### WF-080-50 — Automated contract suite
 
@@ -591,7 +595,7 @@ Depends on: `WF-080-51`.
 
 Acceptance:
 
-- Qualify the advertised PF2E minimum 8.1.0 and the release target, or raise the manifest minimum before release candidate.
+- Qualify PF2E 8.4.1 as both the advertised minimum and verified system version.
 - Installed-journal comparison is a reviewed `match` for every advertised PF2E lane.
 - Run `npm run format:check`, `npm run lint`, `npm run build`, `npm test`, `npm run check:strict`, and `npm run check` on the exact candidate.
 - Produce a clean generated-artifact check and review PF2E attribution/license notices.
@@ -636,4 +640,4 @@ Do not duplicate PF2E's ABP state, actor ABP override, compendium browser packs/
 - the measured interaction, app-container, keyboard, and localization gates pass; and
 - exact-candidate smoke, source digests, served output, package hash, metadata, and tag all agree.
 
-Any failure in rules provenance, economic admission, retry convergence, manifest durability, authority, or exact-candidate binding is a release blocker. The Quick Equipment Packages expansion and shared-faceting cleanup are cuttable without changing that bar.
+Any failure in rules provenance, economic admission, retry convergence, manifest durability, authority, or exact-candidate binding is a release blocker. Quick Equipment Packages and shared-faceting cleanup are cut from 0.8.0 and do not change that bar.

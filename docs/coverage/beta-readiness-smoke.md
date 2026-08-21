@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-08-18.
+Last updated: 2026-08-21.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -46,6 +46,18 @@ The companion static class audit checks the maintained smoke matrix against the 
 ```powershell
 npm run audit:classes
 ```
+
+## 2026-08-21 Release 0.8.0 Candidate Feature Gates
+
+The required Starting Equipment behavior through Wave 4 is live-proven against Foundry VTT 14.366 / PF2E 8.4.1 in `testing-world`:
+
+- Wave 2 acquisition run `6a8d72f7-0008-4451-8ca4-4ecf1ef34272` passed all ten cases, including forced retry boundaries, lost final acknowledgement, separate-session GM review, and non-GM native Dwarf Clan Dagger and Sarangay Head Gem grants with zero acquisition item-create writes. The pinned source scan at commit `bf1502676d863c73d67fd615af78c73ff908c10f` matched the checked-in physical-grant registry with no missing or unexpected routes.
+- Wave 3 rerun `.wayfinder-smoke/wave3-equipment-294f38f0-9443-48ab-9641-b18209caa075` reconfirmed higher-level recipes, GM authority, configured equipment, ABP boundaries, and zero-write handoff. The earlier implementation-gate artifact `37822635-f308-4f9e-80a3-2dd8ef13ec8f` remains the focused original proof.
+- Wave 4 functional artifact `.wayfinder-smoke/wave4-equipment-cd91505f-004b-4e57-be7c-fd21c5e75c79` passed price, stack, actor-size, Adventurer's Pack, retry, and source-isolation cases.
+- Experience artifact `.wayfinder-smoke/wf43-experience-4a9289b8-95b3-4da8-a31b-6d25aeb77f2b` passed English and Chinese through GM and player provider paths, all 12 states at four widths each, exact keyboard Apply/retry and focus behavior, and cleanup.
+- Two independent full catalogue profiles each passed 840/840 samples with zero long tasks. `.wayfinder-interaction/equipment-2026-08-21T14-52-41-226Z-8a239870-0ad2-4e88-ba8d-73b1d32130b6` recorded overall p95 60.3 ms and a worst-width cold-open p95 of 70.2 ms; `.wayfinder-interaction/equipment-2026-08-21T15-31-56-723Z-36ef9d7f-d05a-435a-953c-4052130b270c` recorded overall p95 58.8 ms and a worst-width cold-open p95 of 67.1 ms.
+
+This is feature-gate evidence, not a publication claim. The automated release contract and exact coordinator/package binder are built and reviewed, but the full `WF-080-51` exact-candidate matrix and `WF-080-52` installed-package proof remain pending. No 0.8.0 tag, push, Foundry registration, or publication is represented here.
 
 ## 2026-08-18 Release 0.7.5 Focused Matrix
 
@@ -261,4 +273,4 @@ These cases first applied a level 1 actor, reopened Wayfinder against that exist
 - Remaining embedded-`ChoiceSet` caveats are selected-item and equipment predicates, dynamic flags-path choices, and cross-item dependency graphs.
 - Battle Creed, Way of the Spellshot, and Palatine Detective are guided through the dedicated class-archetype lane. Other class-archetype branch options stay filtered until a complete profile is registered.
 - Free Archetype uses PF2E's separate `archetype` feat group. Wayfinder checks duplicate and own-class dedications, the ordinary two-feat dedication lockout, resolved archetype-family membership, and supported skill-rank prerequisites against projected draft state. Access entries, prose prerequisites, unresolved families, campaign permission, and feats whose text rewrites the lockout remain visible GM-confirmation boundaries.
-- Daily preparations, starting gear beyond class-feature grants, purchasing, retraining, and table-specific campaign systems remain PF2E-native/manual.
+- Daily preparations, ongoing purchasing, selling, crafting, rune transfer, retraining, and table-specific campaign systems remain PF2E-native/manual. Starting acquisition is guided only for an economically eligible new or GM-authorized replacement character; foreign or unresolved wealth produces a zero-write handoff.

@@ -1,19 +1,19 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-19 for the 0.7.5 compatibility release and accepted 0.8.0 Starting Equipment and Wealth plan. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-08-21 for the 0.8.0 Starting Equipment release candidate. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
-Wayfinder 0.7.5 guides 27 maintained PF2E classes from a blank level-1 actor through level 5 along one maintained path. PF2E 8.4's newer Necromancer and Runesmith base classes remain outside that maintained class matrix. Five representative profiles are verified through level 10 and Fighter through level 20. The current live release matrix contains 54 unique scenarios against Foundry VTT 14.366 and PF2E 8.4.0, including a deliberate late-phase Apply failure and clean retry.
+The 0.8.0 candidate adds reviewed Starting Equipment to Wayfinder's existing guided creation and level-up flow. Its required functional waves are live-proven against Foundry VTT 14.366 and PF2E 8.4.1; the exact-candidate regression, package binder, and independent release verification remain the final publication gate. The last published full-regression baseline contains 54 unique scenarios from Wayfinder 0.7.3. Wayfinder continues to guide 27 maintained PF2E classes through level 5 along one maintained path, five representative profiles through level 10, and Fighter through level 20. Necromancer and Runesmith base classes remain outside that maintained class matrix.
 
-The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, and Gradual Ability Boosts. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation.
+The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, Gradual Ability Boosts, and creation-time Starting Equipment. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation.
 
-GMs currently have world settings for supplemental Item packs and the spell-rarity ceiling. Players and GMs can open the Feedback panel from Wayfinder or Foundry settings. With issue #23 completed in 0.7.2, the remaining open work is:
+GMs currently have world settings for Equipment Policy, supplemental Item packs, and the spell-rarity ceiling. Players and GMs can open the Feedback panel from Wayfinder or Foundry settings. With issue #23 completed in 0.7.2, the remaining open work is:
 
-- [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) is a draft-editing improvement, not an apply-correctness prerequisite. Its shared readiness and review work now belongs in the 0.8.0 foundation because an equipment cart must remain editable while over budget or otherwise incomplete.
+- [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) supplied the shared readiness and review foundation now used by the 0.8.0 cart. Its remaining scope is broader draft-editing UX and bookkeeping, not an apply-correctness prerequisite.
 - [#7 — class archetypes at level 1](https://github.com/bestlux/wayfinder/issues/7) remains a parallel, profile-by-profile expansion track.
 
-The largest remaining product gaps are starting equipment and wealth, a satisfying character-completion chapter, and high-level caster evidence beyond level 10. The apply path now prepares supported authority and sources before writing, executes named per-actor phases, verifies outcomes, and retains the draft when a phase fails.
+After the 0.8.0 candidate, the largest remaining product gaps are a satisfying character-completion chapter and high-level caster evidence beyond level 10. The apply path now prepares supported authority and sources before writing, executes named per-actor phases, verifies outcomes, and retains the draft when a phase fails.
 
 ## Product thesis
 
@@ -45,7 +45,7 @@ Before equipment branches into catalogue, ledger, and Apply work, 0.7.4 ships in
 
 ### 0.8.0 — Starting Equipment and Wealth
 
-The accepted design is recorded in [Starting Equipment and Wealth Architecture](architecture/starting-equipment-and-wealth.md), its provenance contract lives in [Starting Equipment Rules Assurance](architecture/starting-equipment-rules-assurance.md), and the sequenced build work lives in the [0.8.0 implementation plan](development/starting-equipment-0.8.0.md). The release is creation-time acquisition, not a persistent shop.
+The accepted design is recorded in [Starting Equipment and Wealth Architecture](architecture/starting-equipment-and-wealth.md), its provenance contract lives in [Starting Equipment Rules Assurance](architecture/starting-equipment-rules-assurance.md), and implementation status plus exact evidence live in the [0.8.0 implementation plan](development/starting-equipment-0.8.0.md). Required functional work through Wave 4 is complete and live-proven; Wave 5's exact-candidate matrix and package proof still gate publication. The release is creation-time acquisition, not a persistent shop.
 
 Rules and policy:
 
@@ -60,7 +60,7 @@ Acquisition experience:
 - Start level-1 characters from the official 15 gp budget. At higher levels, show permanent-item allowances separately from residual currency, including its consumable/lower-level-item restriction, or the selected lump-sum budget.
 - Offer the structured Adventurer's Pack and a searchable equipment catalogue with quantity, price, Bulk, hands, traits, rarity, level, source, availability, and allowance context.
 - Reconcile physical equipment explicitly granted by the same prepared build in a separate no-charge lane, including exact class, ancestry, heritage, background, and feat provenance; never infer that arbitrary existing inventory was “PF2E-granted.”
-- Recommended cuttable expansion: offer the cited Quick Equipment Packages that remain in Player Core and Player Core 2 even though PF2E no longer exposes remaster class-kit documents. Unreviewed classes receive no implied package, and Wayfinder-derived suggestions remain 0.8.1 work.
+- Quick Equipment Packages were cut from 0.8.0 as one complete slice; no partial package set ships. The cited Player Core and Player Core 2 packages can be reconsidered for 0.8.1. Unreviewed classes receive no implied package, and Wayfinder-derived suggestions remain later work.
 - Treat `keep all currency` as a positive completed disposition, not a blocked empty cart.
 - Protect draft work with truthful persistence state, default-cancel Clear confirmation, actionable readiness reasons, Apply progress, and a reviewable success receipt.
 

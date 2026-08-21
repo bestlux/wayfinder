@@ -6,16 +6,17 @@
 
 [![Latest release](https://img.shields.io/github/v/release/bestlux/wayfinder?label=release&color=2b6cb0)](https://github.com/bestlux/wayfinder/releases/latest)
 ![Foundry VTT v14](https://img.shields.io/badge/Foundry%20VTT-v14-e26a26)
-![PF2E 8.1+](https://img.shields.io/badge/PF2E%20system-8.1%2B-8a2422)
+![PF2E 8.4.1+](https://img.shields.io/badge/PF2E%20system-8.4.1%2B-8a2422)
 [![Legal](https://img.shields.io/badge/legal-notices-6b7280)](LEGAL.md)
 
 </div>
 
-Character creation and leveling in PF2E means juggling class tables, compendium browsers, feat slots, boosts, spell lists, and source exceptions. Wayfinder turns all of that into a single guided flow you open straight from the character sheet. It knows which sources your GM enabled, narrows each picker using the rules it can verify, and writes the result directly to the actor. No JSON export, no re-import, no sheet-mismatch cleanup.
+Character creation and leveling in PF2E means juggling class tables, compendium browsers, feat slots, boosts, spell lists, equipment, and source exceptions. Wayfinder turns all of that into a single guided flow you open straight from the character sheet. It knows which sources your GM enabled, narrows each picker using the rules it can verify, and writes the result directly to the actor. No JSON export, no re-import, no sheet-mismatch cleanup.
 
 ## Highlights
 
-- **One flow from level 1 to level up.** Ancestry, heritage, background, class, class branches, feats, boosts, skill increases, languages, and spell choices — all in order, in one window.
+- **One flow from level 1 to level up.** Ancestry, heritage, background, class, class branches, feats, boosts, skill increases, languages, spells, and Starting Equipment — all in order, in one window.
+- **Reviewed Starting Equipment.** Build a running-budget cart, use the Adventurer's Pack shortcut, or keep all starting currency under the recipe and sources your GM enabled.
 - **Dedicated class-archetype decisions.** Battle Creed, Way of the Spellshot, and Palatine Detective are guided as complete progression profiles instead of ordinary subclass options.
 - **Native Free Archetype slots.** When PF2E's Free Archetype variant is enabled, Wayfinder adds separate even-level archetype choices without consuming normal class feats.
 - **Earlier picks filter later ones.** You stop scrolling past feats and options you can't take anyway.
@@ -34,16 +35,29 @@ https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 
 Foundry's package updater will follow it for future versions. Older releases stay installable from their own [release pages](https://github.com/bestlux/wayfinder/releases).
 
-**Requirements:** Foundry VTT v14 with the PF2E system (8.1 or newer). This release is verified against Foundry VTT 14.366 and PF2E 8.4.0.
+**Requirements:** Foundry VTT v14 with the PF2E system 8.4.1 or newer. The 0.8.0 feature gates are verified against Foundry VTT 14.366 and PF2E 8.4.1; exact-candidate package qualification remains the final release gate.
 
 ## Using Wayfinder
 
 1. Open an owned PF2E character actor.
 2. Click the **Wayfinder** action in the sheet header.
-3. Walk the steps. Drafts save as you go.
-4. Apply when you're ready — Wayfinder writes the changes to the actor.
+3. Walk the steps. Drafts save as you go, including the Starting Equipment cart.
+4. Review the final choices, equipment, remaining currency, approvals, and any PF2E-sheet handoffs.
+5. Apply when you're ready — Wayfinder writes the supported changes to the actor.
 
 Wayfinder is a planning layer on top of the PF2E system, not a replacement for it. The actor and its items remain the source of truth; Wayfinder's job is to get you to a clean, valid state without clicking through twelve places to do it.
+
+## Starting Equipment
+
+Starting Equipment is creation-time acquisition, not a persistent shop. A blank level-1 character receives the official 15 gp budget. A higher-level new or replacement character requires a current GM-approved start context, then uses either the permanent-items-plus-currency recipe or the optional lump sum according to world policy. The catalogue shows price, quantity, Bulk, hands, traits, rarity, level, source, and allowance context; the Adventurer's Pack expands into its contained items during Apply.
+
+Before applying, check the review for three trust boundaries:
+
+- The GM controls equipment sources, available recipes, custom amounts, and uncommon or otherwise restricted exceptions. An actor owner can choose a recipe only when the GM delegated that choice.
+- Wayfinder acquires equipment only for an economically eligible actor. Existing or unresolved physical items or currency produce an explicit, zero-write handoff to the PF2E sheet; Wayfinder never clears, reprices, or merges into that inventory.
+- Supported physical items granted by the same prepared character build are reconciled in a locked no-charge lane. Unresolved grant chains fail closed instead of being guessed into the budget.
+
+A successful acquisition leaves a durable manifest for audit and safe retry. It is not an undo record. Ongoing purchases, selling, crafting, rune transfer, and inventory optimization remain PF2E-native workflows.
 
 ## Class support
 
@@ -74,7 +88,7 @@ Each class is verified by a live in-Foundry test that builds a character from bl
 
 These stay in the native PF2E sheet for now, and Wayfinder will tell you so when they come up:
 
-- Starting gear and item purchasing
+- Ongoing equipment shopping, selling, crafting, rune transfer, or additive acquisition into existing inventory
 - Necromancer and Runesmith base-class paths
 - Daily preparations
 - Archetype requirements or benefits that only exist as prose — access entries, campaign permission, feat/class-feature/attribute prerequisites, manual follow-on setup, and dedications whose own text rewrites the lockout rule

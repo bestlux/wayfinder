@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0 - Unreleased
+
+- Added guided Starting Equipment for eligible new and replacement characters. Level 1 uses the official 15 gp budget; levels 2–20 support both remastered Character Wealth recipes, with permanent-item allowances and residual currency kept distinct from the optional lump sum.
+- Added a searchable, source-isolated physical-item catalogue with quantities, actor-size pricing, supported configured gear, and deterministic Adventurer's Pack expansion that preserves nested quantities and container relationships.
+- Added GM Equipment Policy, higher-level start authorization, custom lump sums, and item-specific rarity/source review. Actor owners can exercise only the choices the GM delegated; player spell-access attestations remain visibly different from GM equipment approval.
+- Starting acquisition now fails closed when an actor has foreign or unresolved physical wealth. Apply prepares exact sources, inserts a stable non-stacking batch, converges PF2E currency to an absolute target, and persists a non-replaceable completion manifest before clearing the draft. Interrupted writes retry forward without duplicating items or drifting currency.
+- Reconciled supported physical grants from the prepared character build without charging the equipment budget or inserting a second copy. Live PF2E price objects are normalized at the document boundary, including their `credits` and `upb` fields, so native Dwarf Clan Dagger and Sarangay Head Gem grants no longer report false drift (issue #29).
+- Corrected Champion archetype sanctification so unresolved holy and unholy causes remain selectable (issue #25), and restored Exemplar class feat choices such as Leap the Falls when their embedded choice rules use supported shapes (issue #26).
+- Pickers now explain why structured options were suppressed instead of silently disappearing (issue #28), and feat browsing has inclusive minimum/maximum level controls that use the established spell-rank filter idiom (issue #27).
+- Draft persistence now verifies the complete actor-flag round trip, preserves the newest pending snapshot after transient failure, and distinguishes retryable failures from conflicts, integrity errors, and permanent validation rejection with an actionable recovery message (issue #31).
+- Completed the Starting Equipment interaction gates for English and Simplified Chinese, keyboard and focus behavior, fixed Foundry app widths, and the measured catalogue profile. Ongoing shopping, selling, crafting, rune transfer, and additive acquisition into existing inventory remain on the PF2E sheet.
+
 ## 0.7.5 - 2026-08-18
 
 - Supplemental compendia can no longer expose companion, eidolon, and NPC support documents as player ancestries, heritages, or classes merely because those documents reuse PF2E's player-facing item types. The filter uses PF2E build and automation structure rather than names or creature traits, so unusual player options such as Battlezoo's Evil Eye, Slime, Angel, Intelligent Weapon, Dungeon, and Fusion remain available.

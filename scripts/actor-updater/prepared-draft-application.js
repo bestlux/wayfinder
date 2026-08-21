@@ -13,7 +13,7 @@ import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
 import { activeClassArchetypeProfile } from "../wayfinder/class-archetype/registry.js";
 import { assertPreparedClassGrantPlanMatches, reconcilePreparedClassGrants, } from "../wayfinder/domain/class-grant-reconciliation.js";
-import { maxProficiencyRank, projectDraftSkillRanks } from "../wayfinder/domain/skill-rank-projection.js";
+import { buildAdditionalTrainingSkillsBySlotId, maxProficiencyRank, projectDraftSkillRanks, } from "../wayfinder/domain/skill-rank-projection.js";
 import { isActiveSkillTrainingChoice } from "../wayfinder/domain/skill-training-choice-availability.js";
 import { assertDraftBackedStepsReady, evaluateWayfinderDraftReadiness, evaluateWayfinderStep, WayfinderDraftNotReadyError, } from "../wayfinder/domain/step-evaluation.js";
 import { resolveEffectiveChoiceFlag } from "../wayfinder/rule-data.js";
@@ -208,6 +208,7 @@ function validateDraftChoiceValues(actor, draft, steps, configuredSkillSlugs) {
         slug,
         Number(data?.rank ?? 0),
     ]));
+    const additionalTrainingSkillsBySlotId = buildAdditionalTrainingSkillsBySlotId(draft, steps);
     for (const step of steps) {
         if (step.kind === "singleton-choice") {
             assertListedChoice(step, draft.singletonChoices[step.slotId], step.singletonChoice.options);
@@ -230,6 +231,7 @@ function validateDraftChoiceValues(actor, draft, steps, configuredSkillSlugs) {
                 baseSkillRanks,
                 draft: activeRankDraft,
                 beforeSlotId: step.slotId,
+                additionalTrainingSkillsBySlotId,
             }), hasDraftRecoveryState(draft));
         }
         else if (step.kind === "skill-increase") {
@@ -241,6 +243,7 @@ function validateDraftChoiceValues(actor, draft, steps, configuredSkillSlugs) {
                     baseSkillRanks,
                     draft: activeRankDraft,
                     beforeSlotId: step.slotId,
+                    additionalTrainingSkillsBySlotId,
                 });
                 if ((ranks[selected] ?? 0) >= maxProficiencyRank(step.level))
                     throw staleChoiceError(step);

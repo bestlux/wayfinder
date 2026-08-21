@@ -1,7 +1,7 @@
 import { SKILL_LABELS } from "../../constants.js";
 import { resolveSingletonChoiceSkillGrant } from "../../shared/singleton-choice-skill-grants.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
-import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
+import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane } from "../panes/skill-pane.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
@@ -11,6 +11,7 @@ export async function buildSkillPane(step, draft, deps) {
     }
     const projectedRanks = await projectSkillRanks(draft, step.slotId, {
         baseSkillRanks: deps.baseSkillRanks,
+        steps: deps.steps,
         resolveDocument: deps.resolveDocument,
         localize: deps.localize,
     });
@@ -56,6 +57,7 @@ export async function projectSkillRanks(draft, upToSlotId, deps) {
         baseSkillRanks,
         draft,
         beforeSlotId: upToSlotId,
+        additionalTrainingSkillsBySlotId: buildAdditionalTrainingSkillsBySlotId(draft, deps.steps ?? []),
     });
 }
 function extractFixedTrainedSkills(document) {

@@ -30,7 +30,11 @@ import type {
   AcquisitionFinalEvidence,
   VerifiedAcquisitionOutcomeV1,
 } from "../wayfinder/domain/completed-acquisition-manifest.js";
-import { maxProficiencyRank, projectDraftSkillRanks } from "../wayfinder/domain/skill-rank-projection.js";
+import {
+  buildAdditionalTrainingSkillsBySlotId,
+  maxProficiencyRank,
+  projectDraftSkillRanks,
+} from "../wayfinder/domain/skill-rank-projection.js";
 import { isActiveSkillTrainingChoice } from "../wayfinder/domain/skill-training-choice-availability.js";
 import {
   assertDraftBackedStepsReady,
@@ -470,6 +474,7 @@ function validateDraftChoiceValues(
       Number((data as { rank?: unknown })?.rank ?? 0),
     ])
   );
+  const additionalTrainingSkillsBySlotId = buildAdditionalTrainingSkillsBySlotId(draft, steps);
   for (const step of steps) {
     if (step.kind === "singleton-choice") {
       assertListedChoice(step, draft.singletonChoices[step.slotId], step.singletonChoice.options);
@@ -492,6 +497,7 @@ function validateDraftChoiceValues(
           baseSkillRanks,
           draft: activeRankDraft,
           beforeSlotId: step.slotId,
+          additionalTrainingSkillsBySlotId,
         }),
         hasDraftRecoveryState(draft)
       );
@@ -503,6 +509,7 @@ function validateDraftChoiceValues(
           baseSkillRanks,
           draft: activeRankDraft,
           beforeSlotId: step.slotId,
+          additionalTrainingSkillsBySlotId,
         });
         if ((ranks[selected] ?? 0) >= maxProficiencyRank(step.level)) throw staleChoiceError(step);
       }

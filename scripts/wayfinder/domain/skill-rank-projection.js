@@ -5,10 +5,32 @@ export function maxProficiencyRank(level) {
         return 3;
     return 2;
 }
+export function buildAdditionalTrainingSkillsBySlotId(draft, steps) {
+    return Object.fromEntries(steps.flatMap((step) => {
+        if (step.kind !== "skill-training") {
+            return [];
+        }
+        const training = draft.skillTrainings[step.slotId];
+        return [
+            [
+                step.slotId,
+                [
+                    ...step.training.fixedSkills,
+                    ...step.training.fixedLores,
+                    ...step.training.loreChoices.map((choice) => training?.loreChoices[choice.key]),
+                ],
+            ],
+        ];
+    }));
+}
 export function projectDraftSkillRanks(options) {
     const projected = normalizeBaseSkillRanks(options.baseSkillRanks);
+    const trainingSlotIds = new Set([
+        ...Object.keys(options.draft.skillTrainings),
+        ...Object.keys(options.additionalTrainingSkillsBySlotId ?? {}),
+    ]);
     const operations = [
-        ...Object.keys(options.draft.skillTrainings).map((slotId) => ({ kind: "skill-training", slotId })),
+        ...Array.from(trainingSlotIds, (slotId) => ({ kind: "skill-training", slotId })),
         ...Object.keys(options.draft.skillIncreases).map((slotId) => ({ kind: "skill-increase", slotId })),
     ].sort((left, right) => compareProjectedSkillSlotIds(left.slotId, right.slotId));
     for (const operation of operations) {
@@ -17,12 +39,9 @@ export function projectDraftSkillRanks(options) {
         }
         if (operation.kind === "skill-training") {
             const training = options.draft.skillTrainings[operation.slotId];
-            if (!training) {
-                continue;
-            }
             for (const skill of [
-                ...Object.values(training.ruleChoices),
-                ...training.additional,
+                ...Object.values(training?.ruleChoices ?? {}),
+                ...(training?.additional ?? []),
                 ...(options.additionalTrainingSkillsBySlotId?.[operation.slotId] ?? []),
             ]) {
                 setMinimumRank(projected, skill, 1);

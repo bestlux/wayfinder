@@ -1,4 +1,4 @@
-import type { DraftState } from "../../types.js";
+import type { DraftState, PendingStep } from "../../types.js";
 
 interface ProjectDraftSkillRanksOptions {
   baseSkillRanks: Record<string, number>;
@@ -18,12 +18,39 @@ export function maxProficiencyRank(level: number): number {
   return 2;
 }
 
+export function buildAdditionalTrainingSkillsBySlotId(
+  draft: DraftState,
+  steps: readonly PendingStep[]
+): Record<string, readonly unknown[]> {
+  return Object.fromEntries(
+    steps.flatMap((step) => {
+      if (step.kind !== "skill-training") {
+        return [];
+      }
+
+      const training = draft.skillTrainings[step.slotId];
+      return [
+        [
+          step.slotId,
+          [
+            ...step.training.fixedSkills,
+            ...step.training.fixedLores,
+            ...step.training.loreChoices.map((choice) => training?.loreChoices[choice.key]),
+          ],
+        ] as const,
+      ];
+    })
+  );
+}
+
 export function projectDraftSkillRanks(options: ProjectDraftSkillRanksOptions): Record<string, number> {
   const projected = normalizeBaseSkillRanks(options.baseSkillRanks);
+  const trainingSlotIds = new Set([
+    ...Object.keys(options.draft.skillTrainings),
+    ...Object.keys(options.additionalTrainingSkillsBySlotId ?? {}),
+  ]);
   const operations: SkillRankOperation[] = [
-    ...Object.keys(options.draft.skillTrainings).map(
-      (slotId): SkillRankOperation => ({ kind: "skill-training", slotId })
-    ),
+    ...Array.from(trainingSlotIds, (slotId): SkillRankOperation => ({ kind: "skill-training", slotId })),
     ...Object.keys(options.draft.skillIncreases).map(
       (slotId): SkillRankOperation => ({ kind: "skill-increase", slotId })
     ),
@@ -36,13 +63,10 @@ export function projectDraftSkillRanks(options: ProjectDraftSkillRanksOptions): 
 
     if (operation.kind === "skill-training") {
       const training = options.draft.skillTrainings[operation.slotId];
-      if (!training) {
-        continue;
-      }
 
       for (const skill of [
-        ...Object.values(training.ruleChoices),
-        ...training.additional,
+        ...Object.values(training?.ruleChoices ?? {}),
+        ...(training?.additional ?? []),
         ...(options.additionalTrainingSkillsBySlotId?.[operation.slotId] ?? []),
       ]) {
         setMinimumRank(projected, skill, 1);

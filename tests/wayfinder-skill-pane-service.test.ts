@@ -145,6 +145,91 @@ describe("wayfinder skill pane service", () => {
     });
   });
 
+  it("projects fixed-only level-1 training into a level-3 skill increase", async () => {
+    const draft = createEmptyDraft(5);
+    draft.skillIncreases["skill-increase-level-3"] = "deception";
+    const levelOneTraining: PendingStep = {
+      id: "skill-training-intelligent-weapon-level-1",
+      level: 1,
+      kind: "skill-training",
+      slotKind: "skill-training",
+      title: "Intelligent Weapon training",
+      description: "",
+      required: true,
+      slotId: "skill-training-intelligent-weapon-level-1",
+      training: {
+        classSlug: "intelligent-weapon",
+        className: "Intelligent Weapon",
+        fixedSkills: ["deception", "acrobatics", "crafting"],
+        fixedLores: [],
+        choiceRules: [],
+        loreChoices: [],
+        additionalCount: 0,
+      },
+    };
+    const levelThreeIncrease: PendingStep = {
+      id: "skill-increase-level-3",
+      level: 3,
+      kind: "skill-increase",
+      slotKind: "skill-increase",
+      title: "Skill increase",
+      description: "",
+      required: true,
+      slotId: "skill-increase-level-3",
+    };
+    const futureTraining: PendingStep = {
+      ...levelOneTraining,
+      id: "skill-training-intelligent-weapon-level-5",
+      level: 5,
+      slotId: "skill-training-intelligent-weapon-level-5",
+      training: {
+        ...levelOneTraining.training,
+        fixedSkills: ["medicine"],
+      },
+    };
+    const steps = [levelOneTraining, levelThreeIncrease, futureTraining];
+
+    const projected = await projectSkillRanks(draft, levelThreeIncrease.slotId, {
+      baseSkillRanks: {},
+      steps,
+      resolveDocument: async () => null,
+      localize: (value) => value,
+    });
+
+    expect(projected).toMatchObject({
+      acrobatics: 1,
+      crafting: 1,
+      deception: 1,
+    });
+    expect(projected.medicine).toBeUndefined();
+
+    const pane = await buildSkillPane(levelThreeIncrease, draft, {
+      baseSkillRanks: {},
+      steps,
+      resolveDocument: async () => null,
+      configSkills: {
+        acrobatics: { label: "Acrobatics" },
+        crafting: { label: "Crafting" },
+        deception: { label: "Deception" },
+        medicine: { label: "Medicine" },
+      },
+      localize: (value) => value,
+      isTrainingStepComplete: () => true,
+    });
+
+    expect(pane?.kind).toBe("skill-increase");
+    if (!pane || pane.kind !== "skill-increase") {
+      throw new Error("Expected a skill-increase pane");
+    }
+    expect(pane.selectedLabel).toBe("Deception → Expert");
+    expect(pane.skills.find((entry) => entry.slug === "deception")).toMatchObject({
+      currentRank: 1,
+      currentRankCode: "T",
+      targetRank: 2,
+      targetRankCode: "E",
+    });
+  });
+
   it("keeps overridden unleveled training in bounded skill projections", async () => {
     const draft = createEmptyDraft(3);
     draft.skillTrainings["skill-training-legacy"] = trainingDraft(

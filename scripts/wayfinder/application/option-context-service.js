@@ -3,7 +3,7 @@ import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import { findSpellcastingEntryForChoiceInItems } from "../../shared/spellcasting.js";
 import { projectedClassArchetypeFeatSelections, projectedClassArchetypeStaticFeatSelections, withExistingClassArchetypeChoice, } from "../class-archetype/registry.js";
-import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
+import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { withIndefiniteArticle } from "../formatting.js";
 import { collectActorRuleSelectionRollOptions, collectSkillRankRollOptions } from "../projected-rule-options.js";
 import { selectionTakenLevel } from "../selection-level.js";
@@ -323,26 +323,11 @@ function collectDraftRollOptions(draft, steps) {
     return options;
 }
 function buildProjectedSkillRanks(baseRanks, draft, steps, beforeSlotId) {
-    const additionalTrainingSkillsBySlotId = {};
-    for (const step of steps) {
-        if (step.kind !== "skill-training") {
-            continue;
-        }
-        const training = draft.skillTrainings[step.slotId];
-        if (!training) {
-            continue;
-        }
-        additionalTrainingSkillsBySlotId[step.slotId] = [
-            ...step.training.fixedSkills,
-            ...step.training.fixedLores,
-            ...step.training.loreChoices.map((choice) => training.loreChoices[choice.key]),
-        ];
-    }
     const projected = projectDraftSkillRanks({
         baseSkillRanks: baseRanks ?? {},
         draft,
         beforeSlotId,
-        additionalTrainingSkillsBySlotId,
+        additionalTrainingSkillsBySlotId: buildAdditionalTrainingSkillsBySlotId(draft, steps),
     });
     return Object.keys(projected).length > 0 ? projected : null;
 }

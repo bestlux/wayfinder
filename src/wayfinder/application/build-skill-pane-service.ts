@@ -2,7 +2,7 @@ import { SKILL_LABELS } from "../../constants.js";
 import { resolveSingletonChoiceSkillGrant } from "../../shared/singleton-choice-skill-grants.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import type { DraftState, PendingStep } from "../../types.js";
-import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
+import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane } from "../panes/skill-pane.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
@@ -27,6 +27,7 @@ type LooseSkillDocument = {
 
 interface BuildSkillPaneDependencies {
   baseSkillRanks: Record<string, number>;
+  steps?: readonly PendingStep[];
   resolveDocument: (itemType: SkillDocumentType) => Promise<unknown | null>;
   configSkills: Record<string, unknown> | null;
   localize: (value: string) => string;
@@ -35,6 +36,7 @@ interface BuildSkillPaneDependencies {
 
 interface ProjectSkillRanksDependencies {
   baseSkillRanks: Record<string, number>;
+  steps?: readonly PendingStep[];
   resolveDocument: (itemType: SkillDocumentType) => Promise<unknown | null>;
   localize: (value: string) => string;
 }
@@ -50,6 +52,7 @@ export async function buildSkillPane(
 
   const projectedRanks = await projectSkillRanks(draft, step.slotId, {
     baseSkillRanks: deps.baseSkillRanks,
+    steps: deps.steps,
     resolveDocument: deps.resolveDocument,
     localize: deps.localize,
   });
@@ -112,6 +115,7 @@ export async function projectSkillRanks(
     baseSkillRanks,
     draft,
     beforeSlotId: upToSlotId,
+    additionalTrainingSkillsBySlotId: buildAdditionalTrainingSkillsBySlotId(draft, deps.steps ?? []),
   });
 }
 

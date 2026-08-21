@@ -1627,6 +1627,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     const skillPane = await buildSkillPane(step, this.#requireDraft(), {
       baseSkillRanks: inspectActor(this.actor).skillRanks,
+      steps: planSteps,
       resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
       configSkills: getPf2eConfig()?.skills ?? null,
       localize: (value) => game.i18n.localize(value),
@@ -2281,6 +2282,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             ? [
                 projectSkillRanks(this.#requireDraft(), step.slotId, {
                   baseSkillRanks,
+                  steps: plan.steps,
                   resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
                   localize: (value) => game.i18n.localize(value),
                 }).then((ranks) => [step.slotId, ranks] as const),

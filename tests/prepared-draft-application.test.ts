@@ -801,6 +801,26 @@ describe("prepared draft application", () => {
     ).resolves.toBeDefined();
   });
 
+  it("validates later skill increases against fixed-only plan training", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { deception: { rank: 0 } } };
+    const draft = createEmptyDraft(5);
+    draft.skillIncreases["skill-increase-level-3"] = "deception";
+    draft.skillIncreases["skill-increase-level-5"] = "deception";
+    const fixedTraining = necromancerTrainingStep();
+    if (fixedTraining.kind !== "skill-training") {
+      throw new Error("Expected a skill-training step");
+    }
+    fixedTraining.training.fixedSkills = ["deception"];
+    fixedTraining.training.choiceRules = [];
+    fixedTraining.training.additionalCount = 0;
+
+    await expect(
+      prepareDraftApplication(actor as never, draft, [fixedTraining, skillIncreaseStep(3), skillIncreaseStep(5)])
+    ).rejects.toThrow("Skill increase 5 changed after this draft was prepared");
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
   it.each([
     { label: "preferred skill is available", ranks: { occultism: 0, arcana: 0 } },
     { label: "fallback skill is already trained", ranks: { occultism: 1, arcana: 1 } },

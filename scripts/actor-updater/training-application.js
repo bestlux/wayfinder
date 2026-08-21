@@ -3,6 +3,7 @@ import { MODULE_ID } from "../constants.js";
 import { queueRuleSelectionUpdate } from "../shared/pf2e-item-source.js";
 import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
+import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks, } from "../wayfinder/domain/skill-rank-projection.js";
 export async function applyTrainingDraft(actor, draft, steps, options = {}) {
     const projectedRanks = {};
     for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
@@ -27,6 +28,7 @@ export async function applyTrainingDraft(actor, draft, steps, options = {}) {
         }
         projectedRanks[grantedSkill.skillSlug] = Math.max(projectedRanks[grantedSkill.skillSlug] ?? 0, grantedSkill.rank);
     }
+    options.onProjectedBaseSkillRanks?.({ ...projectedRanks });
     for (const step of steps) {
         if (step.kind !== "skill-training") {
             continue;
@@ -93,8 +95,20 @@ export async function applyTrainingDraft(actor, draft, steps, options = {}) {
     return projectedRanks;
 }
 export async function applySkillIncreaseDraft(actor, draft, baseRanks, options = {}) {
-    const projectedRanks = baseRanks ? { ...baseRanks } : {};
-    if (!baseRanks) {
+    let projectedRanks = baseRanks ? { ...baseRanks } : {};
+    if (options.steps) {
+        const activeSlotIds = options.activeSlotIds ?? new Set(options.steps.map((step) => step.slotId));
+        const activeDraft = {
+            skillIncreases: Object.fromEntries(Object.entries(draft.skillIncreases).filter(([slotId]) => activeSlotIds.has(slotId))),
+            skillTrainings: Object.fromEntries(Object.entries(draft.skillTrainings).filter(([slotId]) => activeSlotIds.has(slotId))),
+        };
+        projectedRanks = projectDraftSkillRanks({
+            baseSkillRanks: projectedRanks,
+            draft: activeDraft,
+            additionalTrainingSkillsBySlotId: buildAdditionalTrainingSkillsBySlotId(draft, options.steps),
+        });
+    }
+    else if (!baseRanks) {
         for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
             const rank = Number(data?.rank ?? 0);
             projectedRanks[slug] = Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
@@ -109,8 +123,10 @@ export async function applySkillIncreaseDraft(actor, draft, baseRanks, options =
             continue;
         }
         increasedSlugs.add(slug);
-        const currentRank = projectedRanks[slug] ?? 0;
-        projectedRanks[slug] = Math.min(4, currentRank + 1);
+        if (!options.steps) {
+            const currentRank = projectedRanks[slug] ?? 0;
+            projectedRanks[slug] = Math.min(4, currentRank + 1);
+        }
     }
     const updates = Object.entries(projectedRanks)
         .filter(([slug, rank]) => {

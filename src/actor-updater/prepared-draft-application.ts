@@ -612,7 +612,7 @@ export async function executePreparedDraftApplication(
   const classGrantReconciliations: ClassGrantReconciliationResultV1[] = [];
   let acquisitionFinalEvidence: AcquisitionFinalEvidence = options.acquisitionFinalEvidence ?? { kind: "none" };
   let acquisitionCurrencyConvergenceWitness: AcquisitionCurrencyConvergenceWitnessV1 | null = null;
-  let projectedTrainingRanks: Record<string, number> = {};
+  let projectedBaseSkillRanks: Record<string, number> = {};
 
   for (const phase of prepared.phaseIds) {
     if (phase === "finalize-actor") {
@@ -685,12 +685,16 @@ export async function executePreparedDraftApplication(
         case "singleton-choice-persistence-early":
           await applySingletonChoiceDraft(prepared.actor, prepared.draft, prepared.steps);
           break;
-        case "skill-training-items":
-          projectedTrainingRanks = await applyTrainingDraft(prepared.actor, prepared.draft, prepared.steps, {
+        case "skill-training-items": {
+          const projectedTrainingRanks = await applyTrainingDraft(prepared.actor, prepared.draft, prepared.steps, {
             persistActorUpdate: false,
+            onProjectedBaseSkillRanks: (ranks) => {
+              projectedBaseSkillRanks = ranks;
+            },
           });
           Object.assign(prepared.deferredActorUpdate, buildTrainingActorUpdate(prepared.actor, projectedTrainingRanks));
           break;
+        }
         case "class-archetype":
           await applyClassArchetypeDraft(prepared.actor, prepared.draft, prepared.steps, {
             createEmbeddedSource: prepared.sources.createEmbeddedSource,
@@ -757,12 +761,13 @@ export async function executePreparedDraftApplication(
           const skillIncreaseUpdate = await applySkillIncreaseDraft(
             prepared.actor,
             prepared.draft,
-            projectedTrainingRanks,
+            projectedBaseSkillRanks,
             {
               persistActorUpdate: false,
               activeSlotIds: new Set(
                 prepared.steps.filter((step) => step.kind === "skill-increase").map((step) => step.slotId)
               ),
+              steps: prepared.steps,
             }
           );
           Object.assign(prepared.deferredActorUpdate, skillIncreaseUpdate);

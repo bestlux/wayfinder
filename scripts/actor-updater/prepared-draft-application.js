@@ -326,7 +326,7 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
     const classGrantReconciliations = [];
     let acquisitionFinalEvidence = options.acquisitionFinalEvidence ?? { kind: "none" };
     let acquisitionCurrencyConvergenceWitness = null;
-    let projectedTrainingRanks = {};
+    let projectedBaseSkillRanks = {};
     for (const phase of prepared.phaseIds) {
         if (phase === "finalize-actor") {
             const receipt = await executeFinalActorPhase(prepared.actor, prepared.deferredActorUpdate, options, acquisitionFinalEvidence, receipts, classGrantReconciliations, acquisitionCurrencyConvergenceWitness);
@@ -374,12 +374,16 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                 case "singleton-choice-persistence-early":
                     await applySingletonChoiceDraft(prepared.actor, prepared.draft, prepared.steps);
                     break;
-                case "skill-training-items":
-                    projectedTrainingRanks = await applyTrainingDraft(prepared.actor, prepared.draft, prepared.steps, {
+                case "skill-training-items": {
+                    const projectedTrainingRanks = await applyTrainingDraft(prepared.actor, prepared.draft, prepared.steps, {
                         persistActorUpdate: false,
+                        onProjectedBaseSkillRanks: (ranks) => {
+                            projectedBaseSkillRanks = ranks;
+                        },
                     });
                     Object.assign(prepared.deferredActorUpdate, buildTrainingActorUpdate(prepared.actor, projectedTrainingRanks));
                     break;
+                }
                 case "class-archetype":
                     await applyClassArchetypeDraft(prepared.actor, prepared.draft, prepared.steps, {
                         createEmbeddedSource: prepared.sources.createEmbeddedSource,
@@ -426,9 +430,10 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                         persistActorUpdate: false,
                     });
                     Object.assign(prepared.deferredActorUpdate, boostResult.actorUpdate);
-                    const skillIncreaseUpdate = await applySkillIncreaseDraft(prepared.actor, prepared.draft, projectedTrainingRanks, {
+                    const skillIncreaseUpdate = await applySkillIncreaseDraft(prepared.actor, prepared.draft, projectedBaseSkillRanks, {
                         persistActorUpdate: false,
                         activeSlotIds: new Set(prepared.steps.filter((step) => step.kind === "skill-increase").map((step) => step.slotId)),
+                        steps: prepared.steps,
                     });
                     Object.assign(prepared.deferredActorUpdate, skillIncreaseUpdate);
                     break;

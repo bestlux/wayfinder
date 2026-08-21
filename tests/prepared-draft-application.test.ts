@@ -855,6 +855,28 @@ describe("prepared draft application", () => {
     );
   });
 
+  it("does not apply future fixed training before an earlier skill increase", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { medicine: { rank: 0 } } };
+    const draft = createEmptyDraft(5);
+    draft.skillIncreases["skill-increase-level-3"] = "medicine";
+    const futureTraining = necromancerTrainingStep();
+    if (futureTraining.kind !== "skill-training") {
+      throw new Error("Expected a skill-training step");
+    }
+    futureTraining.id = "skill-training-intelligent-weapon-level-5";
+    futureTraining.slotId = "skill-training-intelligent-weapon-level-5";
+    futureTraining.level = 5;
+    futureTraining.training.fixedSkills = ["medicine"];
+    futureTraining.training.choiceRules = [];
+    futureTraining.training.additionalCount = 0;
+
+    await applyDraftToActor(actor as never, draft, [skillIncreaseStep(3), futureTraining]);
+
+    expect(actor.system?.skills?.medicine?.rank).toBe(1);
+    expect(actor.update).toHaveBeenLastCalledWith(expect.objectContaining({ "system.skills.medicine.rank": 1 }));
+  });
+
   it.each([
     { label: "preferred skill is available", ranks: { occultism: 0, arcana: 0 } },
     { label: "fallback skill is already trained", ranks: { occultism: 1, arcana: 1 } },

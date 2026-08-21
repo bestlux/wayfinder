@@ -131,6 +131,26 @@ describe("actor-inspector", () => {
     ).toBe(false);
   });
 
+  it("recognizes only normalized persisted existing-character history", () => {
+    const inspectWithHistory = (existingCharacterHistory: unknown) =>
+      inspectActor({
+        id: "actor-1",
+        items: [],
+        flags: { "wayfinder-pf2e": { state: { existingCharacterHistory } } },
+      }).hasImportedExistingCharacterHistory;
+
+    expect(
+      inspectWithHistory({
+        version: 1,
+        importedAt: "2026-08-21T12:00:00.000Z",
+        actorLevel: 7,
+        entries: [],
+      })
+    ).toBe(true);
+    expect(inspectWithHistory(null)).toBe(false);
+    expect(inspectWithHistory({ version: 1, actorLevel: 7, entries: [] })).toBe(false);
+  });
+
   it("counts class-category feats in PF2E's archetype locations only in the Free Archetype lane", () => {
     const snapshot = inspectActor({
       items: {

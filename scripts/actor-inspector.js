@@ -1,13 +1,14 @@
 import { isGradualAbilityBoostsEnabled } from "./ability-boost-progression.js";
 import { campaignFeatStepId, readCampaignFeatSections } from "./campaign-feat-sections.js";
 import { MODULE_ID } from "./constants.js";
-import { normalizeCompletedAcquisitionManifest } from "./wayfinder/domain/completed-acquisition-manifest.js";
+import { normalizeState } from "./draft-service.js";
 export function inspectActor(actor) {
     const items = normalizeItems(actor);
     const level = clampLevel(Number(actor?.system?.details?.level?.value ?? 1));
     const freeArchetypeEnabled = !!getFeatGroup(actor, "archetype");
     const campaignFeatSections = readCampaignFeatSections(actor);
     const gradualBoostsEnabled = isGradualAbilityBoostsEnabled();
+    const moduleState = normalizeState(actor?.flags?.[MODULE_ID]?.state);
     const namesByType = {};
     const sourceIds = new Set();
     const fulfilledStepIds = new Set();
@@ -72,7 +73,8 @@ export function inspectActor(actor) {
         actorId: String(actor?.id ?? ""),
         level,
         isBlank: items.length === 0 && !hasAnySingleton(singletonSlots),
-        hasValidCompletedAcquisitionManifest: readValidCompletedAcquisitionManifest(actor),
+        hasImportedExistingCharacterHistory: moduleState.existingCharacterHistory !== null,
+        hasValidCompletedAcquisitionManifest: readValidCompletedAcquisitionManifest(actor, moduleState),
         freeArchetypeEnabled,
         campaignFeatSections,
         gradualBoostsEnabled,
@@ -84,12 +86,11 @@ export function inspectActor(actor) {
         skillRanks: extractSkillRanks(actor),
     };
 }
-function readValidCompletedAcquisitionManifest(actor) {
+function readValidCompletedAcquisitionManifest(actor, state) {
     const actorId = String(actor?.id ?? "");
-    const state = actor?.flags?.[MODULE_ID]?.state;
-    if (!actorId || state?.completedAcquisitionManifestCorrupt === true)
+    if (!actorId || state.completedAcquisitionManifestCorrupt)
         return false;
-    const manifest = normalizeCompletedAcquisitionManifest(state?.completedAcquisitionManifest);
+    const manifest = state.completedAcquisitionManifest;
     return manifest?.actorId === actorId;
 }
 function extractSkillRanks(actor) {

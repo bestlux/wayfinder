@@ -335,6 +335,36 @@ describe("wayfinder plan service", () => {
     }
   });
 
+  it("omits starting equipment globally after existing-character history is imported", async () => {
+    const snapshot = {
+      actorId: "actor-imported",
+      level: 7,
+      isBlank: false,
+      hasImportedExistingCharacterHistory: true,
+      freeArchetypeEnabled: false,
+      campaignFeatSections: [],
+      gradualBoostsEnabled: false,
+      singletonSlots: { ancestry: true, heritage: true, background: true, class: true, deity: false },
+      featCounts: { ancestry: 1, class: 2, archetype: 0, skill: 3, general: 1 },
+      fulfilledStepIds: [],
+      sourceIds: [],
+      namesByType: {},
+      skillRanks: {},
+    } satisfies ActorSnapshot;
+
+    for (const targetLevel of [1, 8, 13, 20]) {
+      const plan = await buildWayfinderPlan(snapshot, createEmptyDraft(targetLevel), emptyPlanDependencies());
+      expect(plan.steps.some((step) => step.kind === "starting-equipment")).toBe(false);
+    }
+
+    const replacementCharacter = await buildWayfinderPlan(
+      { ...snapshot, hasImportedExistingCharacterHistory: false },
+      createEmptyDraft(8),
+      emptyPlanDependencies()
+    );
+    expect(replacementCharacter.steps.some((step) => step.kind === "starting-equipment")).toBe(true);
+  });
+
   it("uses class-specific skill feat cadence instead of duplicating generic skill feat steps", async () => {
     const draft = createEmptyDraft(5);
     const plan = await buildWayfinderPlan(

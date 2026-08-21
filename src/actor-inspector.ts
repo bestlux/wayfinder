@@ -1,8 +1,8 @@
 import { isGradualAbilityBoostsEnabled } from "./ability-boost-progression.js";
 import { campaignFeatStepId, readCampaignFeatSections } from "./campaign-feat-sections.js";
 import { MODULE_ID } from "./constants.js";
-import type { ActorSnapshot } from "./types.js";
-import { normalizeCompletedAcquisitionManifest } from "./wayfinder/domain/completed-acquisition-manifest.js";
+import { normalizeState } from "./draft-service.js";
+import type { ActorSnapshot, ModuleState } from "./types.js";
 
 export function inspectActor(actor: any): ActorSnapshot {
   const items = normalizeItems(actor);
@@ -10,6 +10,7 @@ export function inspectActor(actor: any): ActorSnapshot {
   const freeArchetypeEnabled = !!getFeatGroup(actor, "archetype");
   const campaignFeatSections = readCampaignFeatSections(actor);
   const gradualBoostsEnabled = isGradualAbilityBoostsEnabled();
+  const moduleState = normalizeState(actor?.flags?.[MODULE_ID]?.state);
   const namesByType: Record<string, string[]> = {};
   const sourceIds = new Set<string>();
   const fulfilledStepIds = new Set<string>();
@@ -83,7 +84,8 @@ export function inspectActor(actor: any): ActorSnapshot {
     actorId: String(actor?.id ?? ""),
     level,
     isBlank: items.length === 0 && !hasAnySingleton(singletonSlots),
-    hasValidCompletedAcquisitionManifest: readValidCompletedAcquisitionManifest(actor),
+    hasImportedExistingCharacterHistory: moduleState.existingCharacterHistory !== null,
+    hasValidCompletedAcquisitionManifest: readValidCompletedAcquisitionManifest(actor, moduleState),
     freeArchetypeEnabled,
     campaignFeatSections,
     gradualBoostsEnabled,
@@ -96,12 +98,11 @@ export function inspectActor(actor: any): ActorSnapshot {
   };
 }
 
-function readValidCompletedAcquisitionManifest(actor: any): boolean {
+function readValidCompletedAcquisitionManifest(actor: any, state: ModuleState): boolean {
   const actorId = String(actor?.id ?? "");
-  const state = actor?.flags?.[MODULE_ID]?.state;
-  if (!actorId || state?.completedAcquisitionManifestCorrupt === true) return false;
+  if (!actorId || state.completedAcquisitionManifestCorrupt) return false;
 
-  const manifest = normalizeCompletedAcquisitionManifest(state?.completedAcquisitionManifest);
+  const manifest = state.completedAcquisitionManifest;
   return manifest?.actorId === actorId;
 }
 

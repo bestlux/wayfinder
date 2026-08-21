@@ -12,6 +12,7 @@ import {
   validateEquipmentProfile,
   validateEquipmentSample,
 } from "../tools/foundry-interaction/equipment-profile-results.mjs";
+import { buildEquipmentProfileResult } from "../tools/foundry-interaction/run-equipment-profile.mjs";
 
 const profilePath = fileURLToPath(
   new URL("../tools/foundry-interaction/equipment-catalogue-profile.json", import.meta.url)
@@ -104,6 +105,140 @@ describe("equipment catalogue performance profile", () => {
     expect(() => resolveEvidencePaths("one.json", "two.json", "two.json")).toThrow(/must not overwrite/);
   });
 
+  it("writes truthful non-qualifying evidence for pre-measurement orchestration failures", () => {
+    const failed = buildEquipmentProfileResult({
+      browserVersion: "Chrome/140",
+      candidate: { gitSha: "a".repeat(40), dirtyPaths: [] },
+      cleanup: {
+        actorCountAfter: 4,
+        actorDeleted: true,
+        actorMissingAfterCleanup: true,
+        languageUnchanged: true,
+        policyRestored: true,
+      },
+      cleanupFailures: [],
+      driver: driverProvenance(),
+      liveFixture: null,
+      orchestrationFailure: { stage: "player-open", name: "Error", message: "render failed" },
+      options: { samples: 1, warmups: 0 },
+      preflight: { actorCountBefore: 4, languageSnapshot: "en", policySnapshot: { version: 1 } },
+      profile,
+      routeFailures: ["route diagnostic"],
+      runId: "failed-run",
+      samples: [],
+      servedFiles: [{ path: "module.json", bytes: 100, requests: 1, sha256: "b".repeat(64) }],
+      setup: { ...fixture("failed-run"), policySnapshot: { version: 1 } },
+      startedAt: "2026-08-21T12:00:00.000Z",
+    });
+    expect(failed).toMatchObject({
+      status: "failed",
+      failure: { stage: "player-open", message: "render failed" },
+      runtime: fixture().runtime,
+      preflight: { actorCountBefore: 4, languageSnapshot: "en", policySnapshotCaptured: true },
+      cleanup: { actorMissingAfterCleanup: true, policyRestored: true },
+      servedRouteFailures: ["route diagnostic"],
+      qualification: { passed: false },
+    });
+    expect(failed.fixture).not.toHaveProperty("policySnapshot");
+    expect(failed.qualification.failures).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("player-open"),
+        expect.stringContaining("Candidate route failed"),
+      ])
+    );
+  });
+
+  it("preserves cleanup failures when no live fixture was available", () => {
+    const failed = buildEquipmentProfileResult({
+      browserVersion: "Chrome/140",
+      candidate: { gitSha: "a".repeat(40), dirtyPaths: [] },
+      cleanup: null,
+      cleanupFailures: [{ stage: "fixture-cleanup", name: "Error", message: "cleanup transport lost" }],
+      driver: driverProvenance(),
+      liveFixture: null,
+      orchestrationFailure: { stage: "fixture-setup", name: "Error", message: "setup response lost" },
+      options: { samples: 1, warmups: 0 },
+      preflight: {
+        actorCountBefore: 4,
+        languageSnapshot: "en",
+        policySnapshot: { version: 1 },
+        runtime: fixture().runtime,
+      },
+      profile,
+      routeFailures: [],
+      runId: "failed-before-setup",
+      samples: [],
+      servedFiles: [],
+      setup: null,
+      startedAt: "2026-08-21T12:00:00.000Z",
+    });
+    expect(failed).toMatchObject({
+      status: "failed",
+      runtime: fixture().runtime,
+      preflight: { actorCountBefore: 4, languageSnapshot: "en", policySnapshotCaptured: true },
+      fixture: null,
+      cleanup: null,
+      cleanupFailures: [{ stage: "fixture-cleanup", message: "cleanup transport lost" }],
+      qualification: { passed: false },
+    });
+  });
+
+  it("preserves the read-only GM runtime when guarded preflight fails", () => {
+    const observedRuntime = fixture().runtime;
+    const failed = buildEquipmentProfileResult({
+      browserVersion: "Chrome/140",
+      candidate: { gitSha: "a".repeat(40), dirtyPaths: [] },
+      cleanup: null,
+      cleanupFailures: [],
+      driver: driverProvenance(),
+      liveFixture: null,
+      observedRuntime,
+      orchestrationFailure: { stage: "preflight", name: "Error", message: "expected world mismatch" },
+      options: { samples: 1, warmups: 0 },
+      preflight: null,
+      profile,
+      routeFailures: [],
+      runId: "preflight-failed",
+      samples: [],
+      servedFiles: [{ path: "module.json", bytes: 100, requests: 1, sha256: "b".repeat(64) }],
+      setup: null,
+      startedAt: "2026-08-21T12:00:00.000Z",
+    });
+    expect(failed).toMatchObject({
+      status: "failed",
+      failure: { stage: "preflight", message: "expected world mismatch" },
+      runtime: observedRuntime,
+      preflight: null,
+      qualification: { passed: false },
+    });
+  });
+
+  it("does not mislabel cleanup-only failures as orchestration failures", () => {
+    const failed = buildEquipmentProfileResult({
+      browserVersion: "Chrome/140",
+      candidate: { gitSha: "a".repeat(40), dirtyPaths: [] },
+      cleanup: null,
+      cleanupFailures: [{ stage: "browser-close", name: "Error", message: "close failed" }],
+      driver: driverProvenance(),
+      liveFixture: fixture(),
+      orchestrationFailure: null,
+      options: { samples: 1, warmups: 0 },
+      preflight: null,
+      profile,
+      routeFailures: [],
+      runId: "cleanup-only",
+      samples: [],
+      servedFiles: [],
+      setup: fixture(),
+      startedAt: "2026-08-21T12:00:00.000Z",
+    });
+    expect(failed).toMatchObject({
+      status: "failed",
+      failure: { stage: "browser-close", message: "close failed" },
+      qualification: { passed: false, failures: ["Cleanup failed at browser-close: close failed"] },
+    });
+  });
+
   it("qualifies every action and width independently", () => {
     const samples = profile.actions.flatMap((action: { id: string }) =>
       profile.appWidths.flatMap((requestedAppWidth: number) =>
@@ -157,6 +292,12 @@ describe("equipment catalogue performance profile", () => {
     reusedActor.fixture.actorId = result.fixture.actorId;
     expect(qualifyEquipmentEvidenceRuns([result, reusedActor]).failures).toContain(
       "Qualified equipment runs require distinct stable fixture actor ids."
+    );
+
+    const failedStatus = qualifiedResult("run-2");
+    failedStatus.status = "failed";
+    expect(qualifyEquipmentEvidenceRuns([result, failedStatus]).failures).toContain(
+      "Run 2 is not a completed equipment profile run."
     );
 
     const malformed = qualifiedResult("run-2");
@@ -298,6 +439,7 @@ function qualifiedResult(runId: string) {
   const qualifiedFixture = fixture(runId);
   qualifiedFixture.catalogueCounts = structuredClone(qualifiedProfile.expectedCatalogueCounts);
   return {
+    status: "completed",
     profile: qualifiedProfile,
     runId,
     runMode: "qualification",

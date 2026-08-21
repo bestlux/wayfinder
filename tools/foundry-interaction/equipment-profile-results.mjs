@@ -428,6 +428,7 @@ export function qualifyEquipmentEvidenceRuns(results) {
     if (result?.profile?.expectedCatalogueCounts === null) failures.push(`${label} did not freeze live catalogue counts.`);
     failures.push(...deriveQualifiedRun(result, label));
     failures.push(...validateProvenance(result, label));
+    if (result?.status !== "completed") failures.push(`${label} is not a completed equipment profile run.`);
     if (!validRunInterval(result?.startedAt, result?.finishedAt)) failures.push(`${label} has an invalid run interval.`);
     if (
       result?.cleanup?.policyRestored !== true ||

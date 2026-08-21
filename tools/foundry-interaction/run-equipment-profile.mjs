@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { smokeCases } from "../foundry-smoke/class-cases.mjs";
-import { closeFoundryBrowser, loginToFoundryWorld, resolveFoundryChromePath } from "../foundry-smoke/browser-session.mjs";
+import { loginToFoundryWorld, resolveFoundryChromePath } from "../foundry-smoke/browser-session.mjs";
 import {
   summarizeEquipmentProfile,
   validateEquipmentBudgets,
@@ -75,32 +75,65 @@ async function main() {
   const runId = randomUUID();
   const outDir = resolveOutDir(options.outDir, runId);
   await mkdir(outDir, { recursive: true });
-  const candidate = inspectCandidate(options.moduleRoot, options.moduleRef);
   const startedAt = new Date().toISOString();
   const servedFiles = new Map();
   const routeFailures = [];
-  const browser = await chromium.launch({
-    executablePath: chromePath,
-    headless: options.headed ? false : envFlag("FOUNDRY_INTERACTION_HEADLESS", true),
-  });
-  const gmContext = await browser.newContext({ viewport: profile.viewport });
-  const playerContext = await browser.newContext({ viewport: profile.viewport });
-  const gmPage = await gmContext.newPage();
-  const playerPage = await playerContext.newPage();
-  await installCandidateRoute(gmPage, options.moduleRoot, servedFiles, routeFailures);
-  await installCandidateRoute(playerPage, options.moduleRoot, servedFiles, routeFailures);
+  let browser = null;
+  let candidate = null;
+  let driver = null;
+  let gmContext = null;
+  let playerContext = null;
+  let gmPage = null;
+  let playerPage;
   let setup = null;
   let preflight = null;
   let cleanup = null;
   let liveFixture;
+  let browserVersion = null;
+  let failureStage = "candidate-provenance";
+  let orchestrationFailure = null;
+  let observedRuntime = null;
+  const cleanupFailures = [];
   const samples = [];
   try {
+    candidate = inspectCandidate(options.moduleRoot, options.moduleRef);
+    failureStage = "driver-provenance";
+    driver = await inspectDriver();
+    failureStage = "browser-launch";
+    browser = await chromium.launch({
+      executablePath: chromePath,
+      headless: options.headed ? false : envFlag("FOUNDRY_INTERACTION_HEADLESS", true),
+    });
+    browserVersion = browser.version();
+    failureStage = "browser-contexts";
+    gmContext = await browser.newContext({ viewport: profile.viewport });
+    playerContext = await browser.newContext({ viewport: profile.viewport });
+    gmPage = await gmContext.newPage();
+    playerPage = await playerContext.newPage();
+    failureStage = "candidate-routing";
+    await installCandidateRoute(gmPage, options.moduleRoot, servedFiles, routeFailures);
+    await installCandidateRoute(playerPage, options.moduleRoot, servedFiles, routeFailures);
+    failureStage = "gm-login";
     await loginToFoundryWorld(gmPage, {
       foundryUrl: process.env.FOUNDRY_URL || "http://localhost:30000",
       user: process.env.FOUNDRY_USER ?? "",
       password: process.env.FOUNDRY_PASSWORD ?? "",
     });
+    failureStage = "runtime-snapshot";
+    observedRuntime = await gmPage.evaluate((moduleId) => {
+      const foundry = globalThis.game;
+      const moduleRecord = foundry.modules.get(moduleId);
+      return {
+        worldId: foundry.world?.id ?? null,
+        locale: foundry.i18n?.lang ?? null,
+        foundryVersion: foundry.version ?? null,
+        pf2eVersion: foundry.system?.version ?? null,
+        moduleVersion: moduleRecord?.version ?? moduleRecord?.manifest?.version ?? null,
+      };
+    }, MODULE_ID);
+    failureStage = "gm-driver-injection";
     await gmPage.addScriptTag({ path: browserSuitePath });
+    failureStage = "preflight";
     preflight = await gmPage.evaluate(
       (payload) => globalThis.__preflightWayfinderEquipmentProfile(payload),
       {
@@ -109,6 +142,7 @@ async function main() {
         moduleId: MODULE_ID,
       },
     );
+    failureStage = "fixture-setup";
     setup = await gmPage.evaluate(
       (payload) => globalThis.__prepareWayfinderEquipmentProfile(payload),
       {
@@ -123,12 +157,15 @@ async function main() {
       },
     );
 
+    failureStage = "player-login";
     await loginToFoundryWorld(playerPage, {
       foundryUrl: process.env.FOUNDRY_URL || "http://localhost:30000",
       user: options.playerUser,
       password: process.env.FOUNDRY_SMOKE_PLAYER_PASSWORD ?? "",
     });
+    failureStage = "player-driver-injection";
     await playerPage.addScriptTag({ path: browserSuitePath });
+    failureStage = "player-open";
     const playerOpen = await playerPage.evaluate(
       (payload) => globalThis.__openWayfinderEquipmentProfile(payload),
       {
@@ -140,13 +177,18 @@ async function main() {
         runId,
       },
     );
+    failureStage = "profile-driver-injection";
     await playerPage.addScriptTag({ path: browserProfilePath });
+    failureStage = "profile-configure";
     await playerPage.evaluate((actorId) => globalThis.__wayfinderEquipmentProfile.configure({ actorId }), setup.actorId);
+    failureStage = "workspace-initialize";
     await playerPage.evaluate(
       (settleTimeoutMs) => globalThis.__wayfinderEquipmentProfile.initializeWorkspace({ settleTimeoutMs }),
       profile.settleTimeoutMs,
     );
+    failureStage = "workspace-inspection";
     const inspected = await playerPage.evaluate(() => globalThis.__wayfinderEquipmentProfile.inspect());
+    failureStage = "catalogue-counts";
     const catalogueCounts = await playerPage.evaluate(
       (payload) => globalThis.__wayfinderEquipmentProfile.discoverCatalogueCounts(payload),
       {
@@ -163,9 +205,11 @@ async function main() {
       finalResultCount: profile.expectedFinalResultValues.length,
       observedInitialVisibleCount: inspected.visibleResultCount,
     };
+    failureStage = "fixture-validation";
     const fixtureFailures = validateEquipmentFixture(profile, liveFixture, options.expectedWorldId);
     if (fixtureFailures.length > 0) throw new Error(fixtureFailures.join(" "));
 
+    failureStage = "sampling";
     for (const requestedAppWidth of profile.appWidths) {
       await playerPage.evaluate((width) => globalThis.__wayfinderEquipmentProfile.resize({ width }), requestedAppWidth);
       for (const action of profile.actions) {
@@ -193,51 +237,136 @@ async function main() {
         }
       }
     }
+  } catch (error) {
+    orchestrationFailure = failureEvidence(failureStage, error);
   } finally {
     try {
-      await playerContext.close();
-    } finally {
-      try {
-        if (preflight) {
-          cleanup = await gmPage.evaluate(
-            (payload) => globalThis.__cleanupWayfinderEquipmentProfile(payload),
-            {
-              actorId: setup?.actorId ?? null,
-              actorName: setup?.actorName ?? `${FIXTURE_PREFIX} - ${profile.id} - ${runId}`,
-              allowDestructive: options.allowDestructive,
-              expectedWorldId: options.expectedWorldId,
-              languageSnapshot: preflight.languageSnapshot,
-              moduleId: MODULE_ID,
-              policySnapshot: preflight.policySnapshot,
-              profileId: profile.id,
-              runId,
-            },
-          );
-        }
-      } finally {
-        await closeFoundryBrowser(gmContext, browser);
+      await playerContext?.close();
+    } catch (error) {
+      cleanupFailures.push(failureEvidence("player-context-close", error));
+    }
+    try {
+      if (preflight && gmPage) {
+        cleanup = await gmPage.evaluate(
+          (payload) => globalThis.__cleanupWayfinderEquipmentProfile(payload),
+          {
+            actorId: setup?.actorId ?? null,
+            actorName: setup?.actorName ?? `${FIXTURE_PREFIX} - ${profile.id} - ${runId}`,
+            allowDestructive: options.allowDestructive,
+            expectedWorldId: options.expectedWorldId,
+            languageSnapshot: preflight.languageSnapshot,
+            moduleId: MODULE_ID,
+            policySnapshot: preflight.policySnapshot,
+            profileId: profile.id,
+            runId,
+          },
+        );
       }
+    } catch (error) {
+      cleanupFailures.push(failureEvidence("fixture-cleanup", error));
+    }
+    try {
+      await gmContext?.close();
+    } catch (error) {
+      cleanupFailures.push(failureEvidence("gm-context-close", error));
+    }
+    try {
+      await browser?.close();
+    } catch (error) {
+      cleanupFailures.push(failureEvidence("browser-close", error));
     }
   }
-  if (!setup || !liveFixture) throw new Error("Equipment profile did not produce its guarded fixture.");
-  if (
-    cleanup?.actorCountAfter !== setup.actorCountBefore ||
-    cleanup?.actorDeleted !== true ||
-    cleanup?.actorMissingAfterCleanup !== true ||
-    cleanup?.policyRestored !== true ||
-    cleanup?.languageUnchanged !== true
-  ) {
-    throw new Error("Equipment profile cleanup did not restore the exact actor count/policy or preserve language.");
-  }
-  if (routeFailures.length > 0) throw new Error(routeFailures.join(" "));
 
+  if (preflight) {
+    const cleanupProblems = [];
+    if (!cleanup) cleanupProblems.push("cleanup evidence is missing");
+    if (cleanup?.actorCountAfter !== preflight.actorCountBefore) cleanupProblems.push("actor count was not restored");
+    if (cleanup?.actorMissingAfterCleanup !== true) cleanupProblems.push("the exact run marker remains");
+    if (cleanup?.policyRestored !== true) cleanupProblems.push("policy was not restored");
+    if (cleanup?.languageUnchanged !== true) cleanupProblems.push("language changed");
+    if (setup && cleanup?.actorDeleted !== true) cleanupProblems.push("the created actor was not deleted");
+    if (cleanupProblems.length > 0) {
+      cleanupFailures.push(failureEvidence("cleanup-verification", new Error(cleanupProblems.join("; "))));
+    }
+  }
+  if ((!setup || !liveFixture) && !orchestrationFailure) {
+    orchestrationFailure = failureEvidence("fixture-finalization", new Error("Equipment profile did not produce its guarded fixture."));
+  }
+  const result = buildEquipmentProfileResult({
+    browserVersion,
+    candidate,
+    cleanup,
+    cleanupFailures,
+    driver,
+    liveFixture,
+    orchestrationFailure,
+    options,
+    observedRuntime,
+    preflight,
+    profile,
+    routeFailures,
+    runId,
+    samples,
+    servedFiles: [...servedFiles.values()].sort((left, right) => left.path.localeCompare(right.path)),
+    setup,
+    startedAt,
+  });
+  await writeFile(path.join(outDir, "equipment-profile-results.json"), `${JSON.stringify(result, null, 2)}\n`);
+  console.log(`Equipment profile artifacts: ${path.relative(repoRoot, outDir)}`);
+  if (result.status === "failed") {
+    console.error(`Equipment profile failed at ${result.failure.stage}: ${result.failure.message}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`Measured ${result.summary.measuredSampleCount}; failures ${result.summary.failedSampleCount}; p95 ${result.summary.p95Ms}ms.`);
+  if (!result.qualification.passed || result.summary.failedSampleCount > 0) process.exitCode = 1;
+}
+
+export function buildEquipmentProfileResult({
+  browserVersion,
+  candidate,
+  cleanup,
+  cleanupFailures,
+  driver,
+  liveFixture,
+  orchestrationFailure,
+  options,
+  observedRuntime,
+  preflight,
+  profile,
+  routeFailures,
+  runId,
+  samples,
+  servedFiles,
+  setup,
+  startedAt,
+}) {
   const summary = summarizeEquipmentProfile(profile, samples);
   const developmentOverride = options.samples !== null || options.warmups !== null;
-  const qualification = validateEquipmentBudgets(profile, summary, {
+  const derivedQualification = validateEquipmentBudgets(profile, summary, {
     requireQualificationSamples: !developmentOverride,
   });
-  const result = {
+  const failed = Boolean(orchestrationFailure) || cleanupFailures.length > 0 || routeFailures.length > 0;
+  const failure =
+    orchestrationFailure ??
+    cleanupFailures[0] ??
+    (routeFailures.length > 0 ? failureEvidence("candidate-routing", new Error(routeFailures.join(" "))) : null);
+  const qualification = failed
+    ? {
+        passed: false,
+        failures: [
+          ...(orchestrationFailure
+            ? [`Orchestration failed at ${orchestrationFailure.stage}: ${orchestrationFailure.message}`]
+            : []),
+          ...cleanupFailures.map((failure) => `Cleanup failed at ${failure.stage}: ${failure.message}`),
+          ...routeFailures.map((failure) => `Candidate route failed: ${failure}`),
+        ],
+      }
+    : derivedQualification;
+  return {
     schemaVersion: 1,
+    status: failed ? "failed" : "completed",
+    failure,
     runId,
     runMode:
       profile.expectedCatalogueCounts === null
@@ -249,25 +378,38 @@ async function main() {
     finishedAt: new Date().toISOString(),
     profile,
     candidate,
-    driver: await inspectDriver(),
+    driver,
     environment: {
-      browserVersion: browser.version(),
+      browserVersion,
       nodeVersion: process.version,
       os: { platform: process.platform, release: release(), arch: arch() },
       cpu: { model: cpus()[0]?.model.trim() || "unknown", logicalProcessorCount: cpus().length },
     },
-    runtime: setup.runtime,
-    fixture: sanitizeFixture(liveFixture),
+    runtime: setup?.runtime ?? preflight?.runtime ?? observedRuntime ?? null,
+    preflight: preflight
+      ? {
+          actorCountBefore: preflight.actorCountBefore,
+          languageSnapshot: preflight.languageSnapshot,
+          policySnapshotCaptured: Object.hasOwn(preflight, "policySnapshot"),
+        }
+      : null,
+    fixture: liveFixture || setup ? sanitizeFixture(liveFixture ?? setup) : null,
     cleanup,
-    servedModuleFiles: [...servedFiles.values()].sort((left, right) => left.path.localeCompare(right.path)),
+    cleanupFailures,
+    servedRouteFailures: [...routeFailures],
+    servedModuleFiles: servedFiles,
     samples,
     summary,
     qualification,
   };
-  await writeFile(path.join(outDir, "equipment-profile-results.json"), `${JSON.stringify(result, null, 2)}\n`);
-  console.log(`Equipment profile artifacts: ${path.relative(repoRoot, outDir)}`);
-  console.log(`Measured ${summary.measuredSampleCount}; failures ${summary.failedSampleCount}; p95 ${summary.p95Ms}ms.`);
-  if (!qualification.passed || summary.failedSampleCount > 0) process.exitCode = 1;
+}
+
+function failureEvidence(stage, error) {
+  return {
+    stage,
+    name: error instanceof Error ? error.name : "Error",
+    message: error instanceof Error ? error.message : String(error),
+  };
 }
 
 function parseArgs(argv) {
@@ -416,7 +558,9 @@ function nonnegativeInteger(value, label) {
   return parsed;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

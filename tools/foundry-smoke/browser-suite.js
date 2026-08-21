@@ -243,10 +243,18 @@ globalThis.__preflightWayfinderEquipmentProfile = function preflightWayfinderEqu
   }
   assertExpectedWorldId(game.world?.id, expectedWorldId);
   if (!game.user?.isGM) throw new Error("Equipment profile preflight must run as a GM.");
+  const moduleRecord = game.modules.get(moduleId);
   return {
     actorCountBefore: game.actors.size,
     languageSnapshot: String(game.i18n?.lang ?? ""),
     policySnapshot: structuredClone(game.settings.get(moduleId, "equipmentPolicy")),
+    runtime: {
+      worldId: game.world?.id ?? null,
+      locale: game.i18n?.lang ?? null,
+      foundryVersion: game.version ?? null,
+      pf2eVersion: game.system?.version ?? null,
+      moduleVersion: moduleRecord?.version ?? moduleRecord?.manifest?.version ?? null,
+    },
   };
 };
 

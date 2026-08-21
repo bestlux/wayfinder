@@ -328,6 +328,8 @@ async function runLocale({
     focus: [],
   };
   const liveRegionChanges = {};
+  let reviewedSnapshotProvenance;
+  let reviewedSnapshotToken;
   const enterScopedKeyboardBoundary = async ({ action, mode, state, targetSelector }) => {
     setStage({ id: "keyboard-entry", locale: definition.id, state, action });
     const entry = await playerPage.evaluate(
@@ -427,12 +429,14 @@ async function runLocale({
   states.push(await captureState(playerPage, opened.actorId, "review", definition, outDir, samples, setStage));
 
   interactionStage("handoff", "prepare");
-  await playerPage.evaluate((value) => globalThis.__prepareWayfinderWf43Handoff(value), {
+  const handoffPreparation = await playerPage.evaluate((value) => globalThis.__prepareWayfinderWf43Handoff(value), {
     expectedWorldId,
     fixture: enrichedFixture,
     moduleId: MODULE_ID,
     runId,
   });
+  reviewedSnapshotToken = handoffPreparation.reviewedSnapshot;
+  reviewedSnapshotProvenance = handoffPreparation.provenance;
   await playerPage.evaluate((value) => globalThis.__openWayfinderWf43Experience(value), payload);
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-focus-id="starting-equipment-handoff"]`);
   states.push(await captureState(playerPage, opened.actorId, "handoff", definition, outDir, samples, setStage));
@@ -448,12 +452,16 @@ async function runLocale({
   keyboard.focus.push(await focusEvidence(playerPage));
 
   interactionStage("forced-failure", "restore-reviewed-draft");
-  await playerPage.evaluate((value) => globalThis.__restoreWayfinderWf43ReviewedDraft(value), {
+  const restoredReviewedDraft = await playerPage.evaluate((value) => globalThis.__restoreWayfinderWf43ReviewedDraft(value), {
     expectedWorldId,
     fixture: enrichedFixture,
     moduleId: MODULE_ID,
+    reviewedSnapshot: reviewedSnapshotToken,
     runId,
   });
+  if (JSON.stringify(restoredReviewedDraft.provenance) !== JSON.stringify(reviewedSnapshotProvenance)) {
+    throw new Error("WF-080-43 reviewed snapshot provenance changed across the handoff boundary.");
+  }
   interactionStage("forced-failure", "disable-core-pack");
   await gmPage.evaluate((value) => globalThis.__setWayfinderWf43CorePack(value), {
     enabled: false,
@@ -517,6 +525,7 @@ async function runLocale({
     liveRegionChanges,
     failure,
     receipt,
+    reviewedSnapshotProvenance,
     states,
     rawLocalizationKeys: [...new Set(stateRawKeys)].sort(),
   };

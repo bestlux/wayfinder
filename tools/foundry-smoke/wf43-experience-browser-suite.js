@@ -1,7 +1,7 @@
 /* global CSS, HTMLElement, document, game, getComputedStyle, requestAnimationFrame */
 
 const WF43_PURPOSE = "wf08043-live-experience";
-const reviewedDrafts = new Map();
+const WF43_REVIEWED_SNAPSHOT_PURPOSE = "wf08043-reviewed-draft-snapshot";
 
 globalThis.__prepareWayfinderWf43Experience = async function prepareWf43Experience({
   allowDestructive,
@@ -153,7 +153,13 @@ globalThis.__prepareWayfinderWf43Handoff = async function prepareWf43Handoff({
   if (draft?.acquisition?.disposition?.kind !== "purchase-ledger") {
     throw new Error("WF-080-43 handoff projection requires the reviewed purchase draft.");
   }
-  reviewedDrafts.set(actor.id, draft);
+  const reviewedSnapshot = wf43CreateReviewedSnapshotToken({
+    actor,
+    draft,
+    expectedWorldId,
+    fixture,
+    runId,
+  });
   const { recordConfiguredItemHandoff } = await import(
     `/modules/${moduleId}/scripts/wayfinder/domain/acquisition-draft.js`
   );
@@ -164,26 +170,50 @@ globalThis.__prepareWayfinderWf43Handoff = async function prepareWf43Handoff({
     issue: "specific-magic-item",
   });
   await actor.setFlag(moduleId, "draft", draft);
-  return { kind: draft.acquisition.disposition.kind, actorId: actor.id };
+  return {
+    kind: draft.acquisition.disposition.kind,
+    actorId: actor.id,
+    reviewedSnapshot,
+    provenance: wf43ReviewedSnapshotProvenance(reviewedSnapshot),
+  };
 };
 
 globalThis.__restoreWayfinderWf43ReviewedDraft = async function restoreWf43ReviewedDraft({
   expectedWorldId,
   fixture,
   moduleId,
+  reviewedSnapshot,
   runId,
 }) {
   assertWf43World(expectedWorldId);
   if (game.user?.isGM) throw new Error("WF-080-43 draft restoration requires the non-GM owner.");
   const actor = wf43FixtureActor(fixture, moduleId, runId);
   await closeActorApps(actor);
-  const reviewed = reviewedDrafts.get(actor.id);
-  if (reviewed?.acquisition?.disposition?.kind !== "purchase-ledger") {
-    throw new Error("WF-080-43 reviewed draft snapshot is missing.");
+  const reviewed = wf43ValidateReviewedSnapshotToken(reviewedSnapshot, {
+    actor,
+    expectedWorldId,
+    fixture,
+    runId,
+  });
+  const currentDraft = structuredClone(actor.getFlag(moduleId, "draft"));
+  const handoff = currentDraft?.acquisition?.disposition;
+  if (
+    handoff?.kind !== "handoff" ||
+    handoff.handoff?.kind !== "pf2e-sheet" ||
+    !wf43Same(handoff.handoff?.reasons, [reviewedSnapshot.subject.configuredItem])
+  ) {
+    throw new Error("WF-080-43 reviewed snapshot restore requires the configured-item handoff disposition.");
   }
   await actor.setFlag(moduleId, "draft", reviewed);
-  reviewedDrafts.delete(actor.id);
-  return { kind: reviewed.acquisition.disposition.kind, actorId: actor.id };
+  const durable = structuredClone(actor.getFlag(moduleId, "draft"));
+  if (!wf43Same(durable, reviewed) || wf43Fingerprint(durable) !== reviewedSnapshot.draftFingerprint) {
+    throw new Error("WF-080-43 reviewed snapshot did not restore durably and exactly.");
+  }
+  return {
+    kind: reviewed.acquisition.disposition.kind,
+    actorId: actor.id,
+    provenance: wf43ReviewedSnapshotProvenance(reviewedSnapshot),
+  };
 };
 
 globalThis.__measureWayfinderWf43State = async function measureWf43State({ actorId, stateId, width }) {
@@ -431,6 +461,113 @@ globalThis.__verifyWayfinderWf43Restoration = function verifyWf43Restoration({
     packsRestored: wf43Same(game.settings.get("pf2e", packsSetting), snapshots.packs),
   };
 };
+
+globalThis.__createWayfinderWf43ReviewedSnapshotToken = wf43CreateReviewedSnapshotToken;
+
+function wf43CreateReviewedSnapshotToken({ actor, draft, expectedWorldId, fixture, runId }) {
+  if (draft?.acquisition?.disposition?.kind !== "purchase-ledger") {
+    throw new Error("WF-080-43 reviewed snapshot requires the purchase-ledger disposition.");
+  }
+  const snapshot = structuredClone(draft);
+  return {
+    schemaVersion: 1,
+    purpose: WF43_REVIEWED_SNAPSHOT_PURPOSE,
+    subject: {
+      actorId: actor.id,
+      definitionFingerprint: fixture.definitionFingerprint,
+      dispositionKind: "purchase-ledger",
+      configuredItem: {
+        code: "unsafe-configured-item",
+        sourceUuid: fixture.itemSourceUuid,
+        itemName: fixture.itemName,
+        issue: "specific-magic-item",
+      },
+      fixtureName: fixture.fixtureName,
+      locale: fixture.locale,
+      profileId: fixture.profileId,
+      runId,
+      worldId: expectedWorldId,
+    },
+    draftFingerprint: wf43Fingerprint(snapshot),
+    draft: snapshot,
+  };
+}
+
+function wf43ValidateReviewedSnapshotToken(token, { actor, expectedWorldId, fixture, runId }) {
+  if (!token || typeof token !== "object") {
+    throw new Error("WF-080-43 reviewed snapshot token is required.");
+  }
+  if (token.schemaVersion !== 1 || token.purpose !== WF43_REVIEWED_SNAPSHOT_PURPOSE) {
+    throw new Error("WF-080-43 reviewed snapshot token schema or purpose changed.");
+  }
+  if (token.subject?.worldId !== expectedWorldId || token.subject.worldId !== game.world?.id) {
+    throw new Error("WF-080-43 reviewed snapshot token world changed.");
+  }
+  if (token.subject?.actorId !== actor.id || token.subject.fixtureName !== fixture.fixtureName) {
+    throw new Error("WF-080-43 reviewed snapshot token actor changed.");
+  }
+  if (token.subject?.runId !== runId) {
+    throw new Error("WF-080-43 reviewed snapshot token run changed.");
+  }
+  if (
+    token.subject?.locale !== fixture.locale ||
+    token.subject.profileId !== fixture.profileId ||
+    token.subject.definitionFingerprint !== fixture.definitionFingerprint ||
+    !wf43Same(token.subject.configuredItem, {
+      code: "unsafe-configured-item",
+      sourceUuid: fixture.itemSourceUuid,
+      itemName: fixture.itemName,
+      issue: "specific-magic-item",
+    })
+  ) {
+    throw new Error("WF-080-43 reviewed snapshot token subject changed.");
+  }
+  if (
+    token.subject?.dispositionKind !== "purchase-ledger" ||
+    token.draft?.acquisition?.disposition?.kind !== "purchase-ledger"
+  ) {
+    throw new Error("WF-080-43 reviewed snapshot token disposition changed.");
+  }
+  if (token.draftFingerprint !== wf43Fingerprint(token.draft)) {
+    throw new Error("WF-080-43 reviewed snapshot token draft changed.");
+  }
+  return structuredClone(token.draft);
+}
+
+function wf43ReviewedSnapshotProvenance(token) {
+  return {
+    schemaVersion: token.schemaVersion,
+    purpose: token.purpose,
+    actorId: token.subject.actorId,
+    dispositionKind: token.subject.dispositionKind,
+    locale: token.subject.locale,
+    profileId: token.subject.profileId,
+    runId: token.subject.runId,
+    worldId: token.subject.worldId,
+    draftFingerprint: token.draftFingerprint,
+  };
+}
+
+function wf43Fingerprint(value) {
+  const bytes = new TextEncoder().encode(wf43CanonicalJson(value));
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of bytes) {
+    hash ^= BigInt(byte);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return `fnv1a64:${hash.toString(16).padStart(16, "0")}`;
+}
+
+function wf43CanonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(wf43CanonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${wf43CanonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 
 function wf43FixtureActor(fixture, moduleId, runId) {
   const actor = game.actors.get(fixture?.actorId);

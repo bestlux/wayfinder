@@ -145,6 +145,34 @@ function qualifyLocale(entry, definition, failures) {
   if (entry.rawLocalizationKeys?.length !== 0) {
     failures.push(`${definition.id}: rendered raw wayfinder-pf2e localization keys.`);
   }
+  const reviewedSnapshot = entry.reviewedSnapshotProvenance;
+  const reviewedSnapshotKeys = Object.keys(reviewedSnapshot ?? {}).sort();
+  if (
+    JSON.stringify(reviewedSnapshotKeys) !==
+      JSON.stringify(
+        [
+          "actorId",
+          "dispositionKind",
+          "draftFingerprint",
+          "locale",
+          "profileId",
+          "purpose",
+          "runId",
+          "schemaVersion",
+          "worldId",
+        ].sort(),
+      ) ||
+    reviewedSnapshot?.schemaVersion !== 1 ||
+    reviewedSnapshot?.purpose !== "wf08043-reviewed-draft-snapshot" ||
+    reviewedSnapshot?.dispositionKind !== "purchase-ledger" ||
+    reviewedSnapshot?.locale !== definition.id ||
+    !/^fnv1a64:[0-9a-f]{16}$/u.test(reviewedSnapshot?.draftFingerprint ?? "") ||
+    [reviewedSnapshot?.actorId, reviewedSnapshot?.profileId, reviewedSnapshot?.runId, reviewedSnapshot?.worldId].some(
+      (value) => typeof value !== "string" || !value || value.length > 160,
+    )
+  ) {
+    failures.push(`${definition.id}: reviewed draft snapshot provenance is missing, unbounded, or exposes draft state.`);
+  }
   const keyboard = entry.keyboard;
   if (
     keyboard?.inputMode !== "keyboard-events-only" ||

@@ -46,6 +46,7 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(runner).not.toContain("__runWayfinderAcquisitionTracer");
     expect(browserSuite).not.toContain("__runWayfinderAcquisitionTracer");
     expect(browserSuite).toContain("__prepareWayfinderWf43Handoff");
+    expect(browserSuite).not.toContain("reviewedDrafts");
     expect(browserSuite).toContain("__inspectWayfinderWf43Focus");
     expect(browserSuite).toContain("__enterWayfinderWf43KeyboardScope");
     expect(browserSuite).toContain("localTabOrder");
@@ -249,6 +250,7 @@ describe("WF-080-43 live experience qualifier", () => {
 
   it("rejects overflow, clipping, raw keys, generic names, stale announcements, and hidden focus", () => {
     const result = passingResult();
+    result.locales[0].reviewedSnapshotProvenance.draft = { acquisition: "must not leak" };
     result.locales[0].states[1].widths[3].stageOverflow = 2;
     result.locales[0].states[2].widths[2].clippedCriticalNodes.push("review");
     result.locales[1].states[4].rawLocalizationKeys.push("wayfinder-pf2e.StartingEquipment.Apply.Failed");
@@ -266,6 +268,7 @@ describe("WF-080-43 live experience qualifier", () => {
         expect.stringMatching(/cart live region/i),
         expect.stringMatching(/visible focus/i),
         expect.stringMatching(/forced failure was not localized/i),
+        expect.stringMatching(/snapshot provenance is missing, unbounded, or exposes draft state/i),
       ])
     );
   });
@@ -475,6 +478,17 @@ function passingResult(): any {
           increase: "Increase quantity of Dagger",
           remove: "Remove Dagger",
         },
+      },
+      reviewedSnapshotProvenance: {
+        schemaVersion: 1,
+        purpose: "wf08043-reviewed-draft-snapshot",
+        actorId: `actor-${definition.id}`,
+        dispositionKind: "purchase-ledger",
+        locale: definition.id,
+        profileId: `profile-${definition.id}`,
+        runId: "run-1",
+        worldId: "testing-world",
+        draftFingerprint: "fnv1a64:0123456789abcdef",
       },
       keyboard: {
         inputMode: "keyboard-events-only",

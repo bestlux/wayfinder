@@ -74,15 +74,31 @@ function qualifyLocale(entry, definition, failures) {
     keyboard?.entry?.mode !== "scoped-app-entry" ||
     keyboard?.entry?.focusMethod !== "programmatic-harness-anchor-before-keyboard-actions" ||
     keyboard?.entry?.anchor?.focused !== true ||
+    keyboard?.entry?.anchor?.keyboardFocus !== "true" ||
     keyboard?.entry?.target?.present !== true ||
     keyboard?.entry?.target?.visible !== true ||
     keyboard?.entry?.target?.disabled !== false ||
+    keyboard?.entry?.target?.keyboardFocus !== "true" ||
     !Number.isInteger(keyboard?.entry?.target?.tabIndex) ||
     keyboard.entry.target.tabIndex < 0 ||
     !Number.isInteger(keyboard?.entry?.target?.localOrderIndex) ||
     keyboard.entry.target.localOrderIndex < 0
   ) {
     failures.push(`${definition.id}: keyboard entry did not prove a visible enabled target in the app-local tab order.`);
+  }
+  const focusDiagnostics = [
+    keyboard?.entry?.before,
+    keyboard?.entry?.anchor,
+    keyboard?.entry?.target,
+    ...(keyboard?.entry?.localTabOrder ?? []),
+    ...(keyboard?.entry?.observedTraversal ?? []),
+    ...(keyboard?.entry?.visibleWindows ?? []).map((window) => ({ name: window.title })),
+  ].filter(Boolean);
+  if (focusDiagnostics.some((item) => typeof item.name !== "string" || item.name.length > 160)) {
+    failures.push(`${definition.id}: keyboard focus diagnostics contain unbounded accessible names.`);
+  }
+  if (!Array.isArray(keyboard?.entry?.visibleWindows)) {
+    failures.push(`${definition.id}: keyboard entry is missing visible-window diagnostics.`);
   }
   const observedEntryTarget = keyboard?.entry?.observedTraversal?.at(-1);
   if (observedEntryTarget?.focusId !== "starting-equipment-start" || observedEntryTarget?.visible !== true) {

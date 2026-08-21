@@ -21,6 +21,11 @@ import { qualifyWf43ExperienceResult } from "../tools/foundry-smoke/wf43-experie
 
 const runner = readFileSync(resolve("tools/foundry-smoke/run-wf43-experience-smoke.mjs"), "utf8");
 const browserSuite = readFileSync(resolve("tools/foundry-smoke/wf43-experience-browser-suite.js"), "utf8");
+const appShell = readFileSync(resolve("src/wayfinder/app-shell.ts"), "utf8");
+const keyboardFocusService = readFileSync(
+  resolve("src/wayfinder/application/foundry-keyboard-focus-service.ts"),
+  "utf8"
+);
 const frozenWave2 = readFileSync(resolve("tools/foundry-smoke/acquisition-cases.mjs"), "utf8");
 const english = JSON.parse(readFileSync(resolve("lang/en.json"), "utf8"));
 const chinese = JSON.parse(readFileSync(resolve("lang/cn.json"), "utf8"));
@@ -44,6 +49,8 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(browserSuite).toContain("__inspectWayfinderWf43Focus");
     expect(browserSuite).toContain("__enterWayfinderWf43KeyboardScope");
     expect(browserSuite).toContain("localTabOrder");
+    expect(browserSuite).toContain("const descriptor = wf43FocusDescriptor(active)");
+    expect(browserSuite).toContain("visibleWindows: wf43VisibleWindowEvidence()");
     expect(runner).toContain("assertKeyboardEntry(keyboard.entry)");
     expect(frozenWave2).toContain("equipment-l1-owner-common-purchase-retry");
   });
@@ -52,14 +59,27 @@ describe("WF-080-43 live experience qualifier", () => {
     const result = passingResult();
     result.locales[0].keyboard.entry.target.disabled = true;
     result.locales[0].keyboard.entry.target.tabIndex = -1;
+    result.locales[0].keyboard.entry.target.keyboardFocus = null;
+    delete result.locales[0].keyboard.entry.visibleWindows;
     result.locales[1].keyboard.entry.target.localOrderIndex = -1;
     result.locales[1].keyboard.entry.observedTraversal = [];
+    result.locales[1].keyboard.entry.visibleWindows[0].title = "x".repeat(161);
     expect(qualifyWf43ExperienceResult(result).failures).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/visible enabled target in the app-local tab order/i),
         expect.stringMatching(/visibly traverse to Start Shopping/i),
+        expect.stringMatching(/unbounded accessible names/i),
+        expect.stringMatching(/missing visible-window diagnostics/i),
       ])
     );
+  });
+
+  it("marks Foundry keyboard focus centrally before both full and partial render branches", () => {
+    expect(keyboardFocusService).toContain('"button, input, select, textarea, a[href], [tabindex]"');
+    const markerCall = appShell.indexOf("markWayfinderKeyboardFocus(root);");
+    expect(markerCall).toBeGreaterThan(appShell.indexOf("async _onRender"));
+    expect(markerCall).toBeLessThan(appShell.indexOf('context.wayfinderRenderScope === "picker-search"', markerCall));
+    expect(markerCall).toBeLessThan(appShell.indexOf('context.wayfinderRenderScope === "equipment"', markerCall));
   });
 
   it("guards exact actor, policy, pack, and language restoration", () => {
@@ -281,7 +301,30 @@ function passingResult(): any {
           mode: "scoped-app-entry",
           focusMethod: "programmatic-harness-anchor-before-keyboard-actions",
           before: { focusId: "", action: "", name: "", tag: "BODY" },
-          anchor: { focusId: "", action: "", name: "Starting equipment", tag: "H3", focused: true },
+          visibleWindows: [
+            {
+              id: "user-config-player",
+              classes: ["application", "user-config"],
+              title: "User Configuration: wf-smoke-player",
+              ariaModal: null,
+              zIndex: "100",
+            },
+            {
+              id: "wayfinder-player",
+              classes: ["application", "wayfinder-app"],
+              title: "Wayfinder",
+              ariaModal: null,
+              zIndex: "101",
+            },
+          ],
+          anchor: {
+            focusId: "",
+            action: "",
+            name: "Starting equipment",
+            tag: "H3",
+            keyboardFocus: "true",
+            focused: true,
+          },
           target: {
             focusId: "starting-equipment-start",
             action: "initialize-starting-equipment",
@@ -291,6 +334,7 @@ function passingResult(): any {
             visible: true,
             disabled: false,
             tabIndex: 0,
+            keyboardFocus: "true",
             localOrderIndex: 31,
           },
           localTabOrder: [],

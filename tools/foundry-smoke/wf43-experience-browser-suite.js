@@ -266,9 +266,10 @@ globalThis.__inspectWayfinderWf43Focus = function inspectWf43Focus() {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement)) return { focusId: "", name: "", visible: false };
   const style = getComputedStyle(active);
+  const descriptor = wf43FocusDescriptor(active);
   return {
-    focusId: active.dataset.wayfinderFocusId ?? active.dataset.wayfinderAction ?? active.tagName,
-    name: active.getAttribute("aria-label") ?? active.textContent?.trim() ?? "",
+    ...descriptor,
+    focusId: descriptor.focusId || descriptor.action || descriptor.tag,
     visible:
       active.matches(":focus-visible") &&
       ((style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0) || style.boxShadow !== "none"),
@@ -290,6 +291,7 @@ globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({
     mode: "scoped-app-entry",
     focusMethod: "programmatic-harness-anchor-before-keyboard-actions",
     before,
+    visibleWindows: wf43VisibleWindowEvidence(),
     anchor: { ...wf43FocusDescriptor(anchor), focused: document.activeElement === anchor },
     target: {
       ...targetEvidence,
@@ -451,7 +453,16 @@ function wf43RawKeys(text) {
 
 function wf43KeyboardTarget(element) {
   if (!(element instanceof HTMLElement)) {
-    return { present: false, visible: false, disabled: null, tabIndex: null, focusId: "", action: "", name: "" };
+    return {
+      present: false,
+      visible: false,
+      disabled: null,
+      tabIndex: null,
+      keyboardFocus: null,
+      focusId: "",
+      action: "",
+      name: "",
+    };
   }
   const rect = element.getBoundingClientRect();
   const style = getComputedStyle(element);
@@ -468,17 +479,42 @@ function wf43KeyboardTarget(element) {
       rect.height > 0,
     disabled,
     tabIndex: element.tabIndex,
+    keyboardFocus: element.dataset.keyboardFocus ?? null,
   };
 }
 
 function wf43FocusDescriptor(element) {
-  if (!(element instanceof HTMLElement)) return { focusId: "", action: "", name: "", tag: "" };
+  if (!(element instanceof HTMLElement)) {
+    return { focusId: "", action: "", name: "", nameLength: 0, nameTruncated: false, tag: "", keyboardFocus: null };
+  }
+  const rawName = element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "";
+  const name = wf43BoundedText(rawName);
   return {
     focusId: element.dataset.wayfinderFocusId ?? "",
     action: element.dataset.wayfinderAction ?? "",
-    name: element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "",
+    name,
+    nameLength: rawName.length,
+    nameTruncated: name.length < rawName.length,
     tag: element.tagName,
+    keyboardFocus: element.dataset.keyboardFocus ?? null,
   };
+}
+
+function wf43VisibleWindowEvidence() {
+  return [...document.querySelectorAll(".application")]
+    .filter((element) => wf43KeyboardTarget(element).visible)
+    .map((element) => ({
+      id: element.id,
+      classes: [...element.classList].sort(),
+      title: wf43BoundedText(element.querySelector(".window-title")?.textContent ?? element.getAttribute("aria-label") ?? ""),
+      ariaModal: element.getAttribute("aria-modal"),
+      zIndex: getComputedStyle(element).zIndex,
+    }));
+}
+
+function wf43BoundedText(value, limit = 160) {
+  const normalized = String(value ?? "").replace(/\s+/gu, " ").trim();
+  return normalized.length <= limit ? normalized : `${normalized.slice(0, limit - 1)}…`;
 }
 
 function wf43RenderedStrings(root) {

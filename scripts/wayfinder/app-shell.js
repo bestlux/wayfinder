@@ -33,6 +33,7 @@ import { createEquipmentAcquisitionExecutionSession } from "./application/equipm
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
 import { buildExistingCharacterHistory, withExistingCharacterHistory, } from "./application/existing-character-history-service.js";
 import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
+import { markWayfinderKeyboardFocus } from "./application/foundry-keyboard-focus-service.js";
 import { buildContextNote, buildOptionContext, resolveSelectionClassHasSpellcasting, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
 import { derivePickerRenderSession } from "./application/picker-render-session.js";
 import { PickerSearchScheduler } from "./application/picker-search-scheduler.js";
@@ -442,6 +443,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (!(root instanceof HTMLElement)) {
             return;
         }
+        markWayfinderKeyboardFocus(root);
         if (context.wayfinderRenderScope === "picker-search") {
             const results = root.querySelector(`[data-application-part="${PICKER_RESULTS_PART}"]`);
             if (results) {

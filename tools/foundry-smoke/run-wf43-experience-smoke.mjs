@@ -625,9 +625,11 @@ function assertKeyboardEntry(entry) {
     entry?.mode !== "scoped-app-entry" ||
     entry?.focusMethod !== "programmatic-harness-anchor-before-keyboard-actions" ||
     entry?.anchor?.focused !== true ||
+    entry?.anchor?.keyboardFocus !== "true" ||
     entry?.target?.present !== true ||
     entry?.target?.visible !== true ||
     entry?.target?.disabled !== false ||
+    entry?.target?.keyboardFocus !== "true" ||
     !Number.isInteger(entry?.target?.tabIndex) ||
     entry.target.tabIndex < 0 ||
     entry?.target?.localOrderIndex < 0

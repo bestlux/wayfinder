@@ -118,6 +118,7 @@ import {
   withExistingCharacterHistory,
 } from "./application/existing-character-history-service.js";
 import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
+import { markWayfinderKeyboardFocus } from "./application/foundry-keyboard-focus-service.js";
 import {
   buildContextNote,
   buildOptionContext,
@@ -746,6 +747,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (!(root instanceof HTMLElement)) {
       return;
     }
+    markWayfinderKeyboardFocus(root);
 
     if (context.wayfinderRenderScope === "picker-search") {
       const results = root.querySelector<HTMLElement>(`[data-application-part="${PICKER_RESULTS_PART}"]`);

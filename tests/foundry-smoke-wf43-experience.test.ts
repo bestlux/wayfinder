@@ -389,6 +389,30 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(runner).toContain('failedStage = { id: "cleanup-restoration" }');
   });
 
+  it("stages guarded draft clear/set failures before the exact fixture cleanup finally path", () => {
+    const mainStart = runner.indexOf("async function main()");
+    const guardedTry = runner.indexOf("  try {", mainStart);
+    const awaitedLocale = runner.indexOf("await runLocale({", guardedTry);
+    const mainCatch = runner.indexOf("  } catch (error) {", awaitedLocale);
+    const mainFinally = runner.indexOf("  } finally {", mainCatch);
+    const guardedCleanup = runner.indexOf("__cleanupWayfinderWf43Experience", mainFinally);
+    const mainEnd = runner.indexOf("\n}\n\nasync function runLocale", mainFinally);
+    const localeStart = runner.indexOf("async function runLocale");
+    const localeEnd = runner.indexOf("async function captureState", localeStart);
+    const restoreStage = runner.indexOf('interactionStage("forced-failure", "restore-reviewed-draft")', localeStart);
+    const restoreCall = runner.indexOf("__restoreWayfinderWf43ReviewedDraft", restoreStage);
+    expect(awaitedLocale).toBeGreaterThan(guardedTry);
+    expect(mainCatch).toBeGreaterThan(awaitedLocale);
+    expect(mainFinally).toBeGreaterThan(mainCatch);
+    expect(guardedCleanup).toBeGreaterThan(mainFinally);
+    expect(mainEnd).toBeGreaterThan(guardedCleanup);
+    expect(restoreStage).toBeGreaterThan(localeStart);
+    expect(restoreCall).toBeGreaterThan(restoreStage);
+    expect(localeEnd).toBeGreaterThan(restoreCall);
+    expect(runner.slice(mainCatch, mainFinally)).toContain("failedStage = { ...stage }");
+    expect(runner).toContain("cleanupEvidenceFailures(cleanup, wf43ExperienceCases.length)");
+  });
+
   it("emits a failed artifact when guarded option validation stops the runner before browser launch", async () => {
     const root = await mkdtemp(join(tmpdir(), "wf43-experience-runner-failure-"));
     const outDir = join(root, "artifacts");

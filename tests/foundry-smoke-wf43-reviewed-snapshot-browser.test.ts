@@ -53,6 +53,7 @@ browserIt(
             ...structuredClone(reviewedDraft.acquisition),
             disposition: {
               kind: "handoff",
+              acknowledgedAt: "2026-08-21T01:02:03.000Z",
               handoff: {
                 kind: "pf2e-sheet",
                 reasons: [
@@ -69,6 +70,9 @@ browserIt(
         };
         let storedDraft: unknown = structuredClone(handoffDraft);
         let corruptWrites = false;
+        let failUnset = false;
+        let failSet = false;
+        const operations: string[] = [];
         const marker = {
           purpose: "wf08043-live-experience",
           runId,
@@ -79,7 +83,14 @@ browserIt(
         const actor = {
           id: fixture.actorId,
           name: fixture.fixtureName,
-          apps: {},
+          apps: {
+            wayfinder: {
+              element: { classList: { contains: (value: string) => value === "wayfinder-app" } },
+              async close() {
+                operations.push("close");
+              },
+            },
+          },
           getFlag(_module: string, key: string) {
             if (key === "draft") return structuredClone(storedDraft);
             if (key === "smokeWf43Experience") return marker;
@@ -88,12 +99,38 @@ browserIt(
           },
           async setFlag(_module: string, key: string, value: unknown) {
             if (key === "draft") {
-              storedDraft = structuredClone(value);
+              operations.push("set");
+              if (failSet) throw new Error("simulated set failure");
+              storedDraft = mergeFoundryFlag(storedDraft, structuredClone(value));
               if (corruptWrites && storedDraft && typeof storedDraft === "object") {
                 storedDraft = { ...(storedDraft as Record<string, unknown>), corrupted: true };
               }
             }
           },
+          async unsetFlag(_module: string, key: string) {
+            if (key === "draft") {
+              operations.push("unset");
+              if (failUnset) throw new Error("simulated unset failure");
+              storedDraft = undefined;
+            }
+          },
+        };
+        const mergeFoundryFlag = (current: unknown, update: unknown): unknown => {
+          if (
+            !current ||
+            !update ||
+            typeof current !== "object" ||
+            typeof update !== "object" ||
+            Array.isArray(current) ||
+            Array.isArray(update)
+          ) {
+            return structuredClone(update);
+          }
+          const merged = structuredClone(current) as Record<string, unknown>;
+          for (const [key, value] of Object.entries(update)) {
+            merged[key] = mergeFoundryFlag(merged[key], value);
+          }
+          return merged;
         };
         suite.game = {
           world: { id: expectedWorldId },
@@ -107,6 +144,10 @@ browserIt(
           fixture,
           runId,
         });
+        storedDraft = structuredClone(handoffDraft);
+        await actor.setFlag(moduleId, "draft", token.draft);
+        const mergeResidue = structuredClone(storedDraft as any).acquisition.disposition.acknowledgedAt;
+        operations.length = 0;
         const payload = { expectedWorldId, fixture, moduleId, reviewedSnapshot: token, runId };
         const attempt = async (reviewedSnapshot: unknown, currentDraft: unknown = handoffDraft) => {
           storedDraft = structuredClone(currentDraft);
@@ -160,6 +201,13 @@ browserIt(
         corruptWrites = true;
         const durableFailure = await attempt(token);
         corruptWrites = false;
+        failUnset = true;
+        const unsetFailure = await attempt(token);
+        failUnset = false;
+        failSet = true;
+        const setFailure = await attempt(token);
+        const draftAfterSetFailure = storedDraft;
+        failSet = false;
 
         const nonSerializableFailure = (value: unknown) => {
           try {
@@ -198,7 +246,9 @@ browserIt(
         const prototypeArrayFailure = nonSerializableFailure(prototypeArrayDraft);
 
         storedDraft = structuredClone(handoffDraft);
+        operations.length = 0;
         const restored = await suite.__restoreWayfinderWf43ReviewedDraft(payload);
+        const successfulRestoreOperations = [...operations];
         return {
           failures: {
             missing,
@@ -214,6 +264,8 @@ browserIt(
             currentIssueFailure,
             extraReasonFailure,
             durableFailure,
+            unsetFailure,
+            setFailure,
             functionFailure,
             bigintFailure,
             cyclicFailure,
@@ -230,6 +282,9 @@ browserIt(
             sparseFirst: token.draft.sparseSlots[0],
             sparseLength: token.draft.sparseSlots.length,
           },
+          mergeResidue,
+          draftAbsentAfterSetFailure: draftAfterSetFailure === undefined,
+          successfulRestoreOperations,
           tokenHasDraft: Object.hasOwn(restored.provenance, "draft"),
         };
       });
@@ -252,6 +307,8 @@ browserIt(
         extraReasonFailure: "WF-080-43 reviewed snapshot restore requires the configured-item handoff disposition.",
         durableFailure:
           'WF-080-43 reviewed snapshot restore persistence changed: {"path":"$[\\"corrupted\\"]","expectedClass":"missing","observedClass":"boolean"}',
+        unsetFailure: "WF-080-43 reviewed snapshot restore could not clear the guarded draft flag (object:Error).",
+        setFailure: "WF-080-43 reviewed snapshot restore could not set the guarded draft flag (object:Error).",
         functionFailure: 'WF-080-43 reviewed snapshot is not JSON-durable at $["nonSerializable"] (function).',
         bigintFailure: 'WF-080-43 reviewed snapshot is not JSON-durable at $["nonSerializable"] (bigint).',
         cyclicFailure: 'WF-080-43 reviewed snapshot is not JSON-durable at $["self"] (cyclic-object).',
@@ -265,6 +322,9 @@ browserIt(
       });
       expect(evidence.durableDraft).toEqual(evidence.tokenDraft);
       expect(evidence.normalized).toEqual({ omittedUndefined: true, sparseFirst: null, sparseLength: 2 });
+      expect(evidence.mergeResidue).toBe("2026-08-21T01:02:03.000Z");
+      expect(evidence.draftAbsentAfterSetFailure).toBe(true);
+      expect(evidence.successfulRestoreOperations).toEqual(["close", "unset", "set"]);
       expect(evidence.restored).toMatchObject({
         actorId: "actor-1",
         kind: "purchase-ledger",

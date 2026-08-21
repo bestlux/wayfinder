@@ -213,7 +213,25 @@ globalThis.__restoreWayfinderWf43ReviewedDraft = async function restoreWf43Revie
   ) {
     throw new Error("WF-080-43 reviewed snapshot restore requires the configured-item handoff disposition.");
   }
-  await actor.setFlag(moduleId, "draft", reviewed);
+  try {
+    await actor.unsetFlag(moduleId, "draft");
+  } catch (error) {
+    throw new Error(
+      `WF-080-43 reviewed snapshot restore could not clear the guarded draft flag (${wf43ValueClass(error)}).`,
+      { cause: error },
+    );
+  }
+  if (actor.getFlag(moduleId, "draft") !== undefined) {
+    throw new Error("WF-080-43 reviewed snapshot restore did not clear the guarded draft flag exactly.");
+  }
+  try {
+    await actor.setFlag(moduleId, "draft", reviewed);
+  } catch (error) {
+    throw new Error(
+      `WF-080-43 reviewed snapshot restore could not set the guarded draft flag (${wf43ValueClass(error)}).`,
+      { cause: error },
+    );
+  }
   const durable = wf43JsonDurableClone(actor.getFlag(moduleId, "draft"));
   wf43AssertExactDurableSnapshot(
     reviewed,

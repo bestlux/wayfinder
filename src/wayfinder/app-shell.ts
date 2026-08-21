@@ -70,7 +70,7 @@ import {
   WayfinderApplyDriftError,
 } from "./application/apply-candidate-service.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
-import { buildSkillPane } from "./application/build-skill-pane-service.js";
+import { buildSkillPane, compileSkillPaneProgression } from "./application/build-skill-pane-service.js";
 import { prepareCurrentClassGrantPlan } from "./application/class-grant-projection-service.js";
 import { synchronizeDependentSkillTrainingChoices } from "./application/dependent-skill-training-synchronization-service.js";
 import {
@@ -193,6 +193,7 @@ import {
 } from "./domain/acquisition-draft.js";
 import { manifestsDescribeSameOutcome } from "./domain/completed-acquisition-manifest.js";
 import { physicalGrantCoverageIssues, withPhysicalGrantCoverageReadiness } from "./domain/physical-grant-coverage.js";
+import type { SkillProgression } from "./domain/skill-progression.js";
 import {
   evaluateWayfinderDraftReadiness,
   isTrainingStepCompleteFromDraft,
@@ -611,20 +612,32 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         async () => {
           const plan = await this._buildRenderPlan(snapshot, draft);
           const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
+          const skillProgression = await compileSkillPaneProgression(draft, {
+            baseSkillRanks: snapshot.skillRanks,
+            steps: plan.steps,
+            resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType, draft),
+            localize: (value) => game.i18n.localize(value),
+            mode: hasApplyRecoveryState(draft) ? "recovery" : "editing",
+          });
           const nonEquipmentEvaluations = new Map(
             await Promise.all(
               plan.steps.flatMap((step) =>
                 step.kind === "starting-equipment"
                   ? []
                   : [
-                      this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks).then(
-                        (evaluation) => [step.id, evaluation] as const
-                      ),
+                      this.#evaluateStep(
+                        step,
+                        effectiveBuildState,
+                        draft,
+                        plan.steps,
+                        snapshot.skillRanks,
+                        skillProgression
+                      ).then((evaluation) => [step.id, evaluation] as const),
                     ]
               )
             )
           );
-          return { plan, effectiveBuildState, nonEquipmentEvaluations };
+          return { plan, effectiveBuildState, skillProgression, nonEquipmentEvaluations };
         }
       );
     let foundation = await resolveFoundation();
@@ -646,12 +659,26 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const readiness = withPhysicalGrantCoverageReadiness(
       await evaluateWayfinderDraftReadiness(plan.steps, (step) => {
         if (step.kind === "starting-equipment") {
-          return this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks);
+          return this.#evaluateStep(
+            step,
+            effectiveBuildState,
+            draft,
+            plan.steps,
+            snapshot.skillRanks,
+            foundation.skillProgression
+          );
         }
         const cached = foundation.nonEquipmentEvaluations.get(step.id);
         return cached
           ? Promise.resolve(cached)
-          : this.#evaluateStep(step, effectiveBuildState, draft, plan.steps, snapshot.skillRanks);
+          : this.#evaluateStep(
+              step,
+              effectiveBuildState,
+              draft,
+              plan.steps,
+              snapshot.skillRanks,
+              foundation.skillProgression
+            );
       }),
       draft,
       plan.steps
@@ -664,9 +691,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     let pickerRenderSession: PickerRenderSession | null = null;
     const activePane =
       activeStep && activeEvaluation
-        ? await this.#buildActivePane(activeStep, activeEvaluation, effectiveBuildState, plan.steps, (session) => {
-            pickerRenderSession = session;
-          })
+        ? await this.#buildActivePane(
+            activeStep,
+            activeEvaluation,
+            effectiveBuildState,
+            plan.steps,
+            foundation.skillProgression,
+            (session) => {
+              pickerRenderSession = session;
+            }
+          )
         : null;
     const effectiveAncestry =
       (effectiveBuildState.ancestry?.document as ResolvedBuildStateDocument | undefined) ?? null;
@@ -1584,6 +1618,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     stepEvaluation: WayfinderStepEvaluation,
     effectiveBuildState: EffectiveBuildState,
     planSteps: PendingStep[],
+    skillProgression: SkillProgression,
     onPickerRenderSession?: (session: PickerRenderSession) => void
   ): Promise<ActivePane> {
     if (step.kind === "manual") {
@@ -1628,6 +1663,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const skillPane = await buildSkillPane(step, this.#requireDraft(), {
       baseSkillRanks: inspectActor(this.actor).skillRanks,
       steps: planSteps,
+      skillProgression,
       resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
       configSkills: getPf2eConfig()?.skills ?? null,
       localize: (value) => game.i18n.localize(value),
@@ -1652,6 +1688,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           excludedFeatSlotId: paneStep.slotId,
           maximumFeatLevel: paneStep.level,
           skillRanks: inspectActor(this.actor).skillRanks,
+          skillProgression,
           resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
           listActorItems: () => listActorItems(this.actor),
           fetchSelectionDocument,
@@ -2476,10 +2513,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     effectiveBuildState?: EffectiveBuildState,
     draft = this.#requireDraft(),
     steps?: PendingStep[],
-    skillRanks?: Record<string, number>
+    skillRanks?: Record<string, number>,
+    skillProgression?: SkillProgression
   ): Promise<WayfinderStepEvaluation> {
     const buildState = effectiveBuildState ?? (await getEffectiveBuildState(this.actor, draft));
-    const evaluation = await evaluateWayfinderStep(step, draft, this.#recentlyInvalidatedStepIds, buildState);
+    const evaluation = await evaluateWayfinderStep(
+      step,
+      draft,
+      this.#recentlyInvalidatedStepIds,
+      buildState,
+      skillProgression
+    );
     if (step.kind !== "spell-choice") {
       return evaluation;
     }
@@ -2506,7 +2550,17 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     if (evaluation.complete && steps && skillRanks) {
       for (const selection of draft.spellChoices[step.slotId] ?? []) {
-        if (!(await this.#validateSelectionEligibility(selection, step, draft, steps, skillRanks))) {
+        if (
+          !(await this.#validateSelectionEligibility(
+            selection,
+            step,
+            draft,
+            steps,
+            skillRanks,
+            undefined,
+            skillProgression
+          ))
+        ) {
           return {
             state: "invalid",
             complete: false,
@@ -2764,6 +2818,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       const plan = await this.#buildPlan(snapshot, draft);
       const steps = cloneData(plan.steps);
       const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
+      const skillProgression = await compileSkillPaneProgression(draft, {
+        baseSkillRanks: snapshot.skillRanks,
+        steps,
+        resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType, draft),
+        localize: (value) => game.i18n.localize(value),
+        mode: hasApplyRecoveryState(draft) ? "recovery" : "editing",
+      });
       const spellRarityCeiling = getSpellRarityCeilingSetting();
       const recovering = hasApplyRecoveryState(draft);
       const computedSpellRarityAttestations = buildAppliedSpellRarityAttestations(
@@ -2795,7 +2856,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         existingCharacterHistory: state.existingCharacterHistory,
         appliedSpellRarityAttestations,
         steps,
-        evaluateStep: (step) => this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks),
+        evaluateStep: (step) =>
+          this.#evaluateStep(step, effectiveBuildState, draft, steps, snapshot.skillRanks, skillProgression),
         additionalBlockers: [...spellRarityBlockers, ...physicalGrantBlockers],
         acquisitionExecutionAvailable: acquisitionSession !== null,
         assertAcquisitionApplyAuthority: () => {
@@ -2889,6 +2951,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             },
             spellRarityCeiling,
             validSkillSlugs: new Set(Object.keys(CONFIG.PF2E?.skills ?? {})),
+            skillProgression,
             validateSelectionEligibility: (selection, step) =>
               this.#validateSelectionEligibility(
                 selection,
@@ -2896,7 +2959,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 draft,
                 steps,
                 snapshot.skillRanks,
-                this.#applySpellRarityCeiling(draft, step, recovering)
+                this.#applySpellRarityCeiling(draft, step, recovering),
+                skillProgression
               ),
             prepareClassGrantPlan: (actor, currentDraft, currentSteps) =>
               prepareCurrentClassGrantPlan(
@@ -3178,7 +3242,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     draft: DraftState,
     steps: PendingStep[],
     skillRanks: Record<string, number>,
-    spellRarityCeiling: SpellRarityCeiling | null = getSpellRarityCeilingSetting()
+    spellRarityCeiling: SpellRarityCeiling | null = getSpellRarityCeilingSetting(),
+    skillProgression?: SkillProgression
   ): Promise<boolean> {
     if (spellRarityCeiling === null) return false;
     const normalizedUuid = selection.uuid.trim().toLowerCase();
@@ -3201,6 +3266,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       excludedFeatSlotId: step.slotId,
       maximumFeatLevel: step.level,
       skillRanks,
+      skillProgression,
       resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType, draft),
       listActorItems: () => listActorItems(this.actor),
       fetchSelectionDocument,

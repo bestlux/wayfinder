@@ -1,6 +1,7 @@
 import type { EffectiveBuildState } from "../../build-state.js";
 import type { AbilityKey, DraftState, PendingStep } from "../../types.js";
 import { reconcileAcquisitionTargetLevel } from "../domain/acquisition-draft.js";
+import type { SkillProgression } from "../domain/skill-progression.js";
 import { isActiveSkillTrainingChoice } from "../domain/skill-training-choice-availability.js";
 import { SLOT_IDS } from "../slot-ids.js";
 
@@ -396,6 +397,29 @@ export function syncSkillTrainingSelections(
     }
   }
 
+  return changed;
+}
+
+export function applySkillProgressionReconciliation(
+  state: DraftAdjustmentState,
+  progression: SkillProgression
+): boolean {
+  let changed = false;
+  for (const slotId of progression.reconciliation.changedStepIds) {
+    const training = progression.reconciliation.skillTrainings[slotId];
+    if (training) {
+      state.draft.skillTrainings[slotId] = {
+        ruleChoices: { ...training.ruleChoices },
+        additional: [...training.additional],
+        loreChoices: { ...training.loreChoices },
+      };
+    } else {
+      delete state.draft.skillTrainings[slotId];
+      delete state.draft.skillIncreases[slotId];
+    }
+    state.recentlyInvalidatedStepIds.add(slotId);
+    changed = true;
+  }
   return changed;
 }
 

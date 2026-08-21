@@ -1,6 +1,7 @@
 import type { EffectiveBuildState } from "../../build-state.js";
 import { MODULE_ID } from "../../constants.js";
 import type { ActorSnapshot, DraftState, ProgressionPlan } from "../../types.js";
+import type { SkillProgression } from "../domain/skill-progression.js";
 import type { WayfinderStepEvaluation } from "../domain/step-evaluation.js";
 
 export const ACTOR_RENDER_FOUNDATION_SCHEMA = "wayfinder-actor-render-foundation-v1";
@@ -8,6 +9,7 @@ export const ACTOR_RENDER_FOUNDATION_SCHEMA = "wayfinder-actor-render-foundation
 export interface ActorRenderFoundation {
   readonly plan: ProgressionPlan;
   readonly effectiveBuildState: EffectiveBuildState;
+  readonly skillProgression: SkillProgression;
   readonly nonEquipmentEvaluations: ReadonlyMap<string, WayfinderStepEvaluation>;
 }
 

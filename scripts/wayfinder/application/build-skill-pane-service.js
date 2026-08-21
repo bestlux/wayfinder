@@ -1,6 +1,7 @@
 import { SKILL_LABELS } from "../../constants.js";
 import { resolveSingletonChoiceSkillGrant } from "../../shared/singleton-choice-skill-grants.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
+import { compileSkillProgression } from "../domain/skill-progression.js";
 import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane } from "../panes/skill-pane.js";
@@ -9,56 +10,74 @@ export async function buildSkillPane(step, draft, deps) {
     if (step.kind !== "skill-training" && step.kind !== "skill-increase") {
         return null;
     }
-    const projectedRanks = await projectSkillRanks(draft, step.slotId, {
-        baseSkillRanks: deps.baseSkillRanks,
-        steps: deps.steps,
-        resolveDocument: deps.resolveDocument,
-        localize: deps.localize,
-    });
+    const progression = deps.skillProgression ??
+        (await compileSkillPaneProgression(draft, {
+            baseSkillRanks: deps.baseSkillRanks,
+            steps: deps.steps ?? [step],
+            validSkillSlugs: validSkillSlugs(deps.baseSkillRanks, deps.configSkills),
+            resolveDocument: deps.resolveDocument,
+            localize: deps.localize,
+        }));
+    const projectedRanks = { ...(progression.stepsBySlotId[step.slotId]?.ranksBefore ?? progression.finalRanks) };
     const skillEntries = buildSkillList(projectedRanks, {
         configSkills: deps.configSkills,
         localize: deps.localize,
     });
     if (step.kind === "skill-training") {
         return buildSkillTrainingPane(step, draft, projectedRanks, skillEntries, {
-            isTrainingStepComplete: deps.isTrainingStepComplete,
+            isTrainingStepComplete: () => progression.stepsBySlotId[step.slotId]?.progress.complete === true,
         });
     }
     return buildSkillIncreasePane(step, draft, projectedRanks, skillEntries);
 }
 export async function projectSkillRanks(draft, upToSlotId, deps) {
-    const baseSkillRanks = { ...deps.baseSkillRanks };
+    if (!deps.steps) {
+        const projected = projectDraftSkillRanks({
+            baseSkillRanks: deps.baseSkillRanks,
+            draft,
+            beforeSlotId: upToSlotId,
+            additionalTrainingSkillsBySlotId: buildAdditionalTrainingSkillsBySlotId(draft, []),
+        });
+        const documents = await Promise.all([
+            deps.resolveDocument("ancestry"),
+            deps.resolveDocument("heritage"),
+            deps.resolveDocument("background"),
+            deps.resolveDocument("class"),
+        ]);
+        for (const slug of documents.flatMap(extractFixedTrainedSkills)) {
+            projected[slug] = Math.max(projected[slug] ?? 0, 1);
+        }
+        return projected;
+    }
+    const progression = await compileSkillPaneProgression(draft, deps);
+    return { ...(progression.stepsBySlotId[upToSlotId]?.ranksBefore ?? progression.finalRanks) };
+}
+export async function compileSkillPaneProgression(draft, deps) {
     const [ancestryDocument, heritageDocument, backgroundDocument, classDocument] = await Promise.all([
         deps.resolveDocument("ancestry"),
         deps.resolveDocument("heritage"),
         deps.resolveDocument("background"),
         deps.resolveDocument("class"),
     ]);
-    for (const slug of extractFixedTrainedSkills(backgroundDocument)) {
-        baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
-    }
-    for (const slug of extractFixedTrainedSkills(ancestryDocument)) {
-        baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
-    }
-    for (const slug of extractFixedTrainedSkills(heritageDocument)) {
-        baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
-    }
-    for (const slug of extractFixedTrainedSkills(classDocument)) {
-        baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
-    }
-    for (const slug of extractDraftedSingletonSkillChoices(draft, [
-        { sourceItemType: "ancestry", document: ancestryDocument },
-        { sourceItemType: "heritage", document: heritageDocument },
-        { sourceItemType: "background", document: backgroundDocument },
-    ], deps.localize)) {
-        baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
-    }
-    return projectDraftSkillRanks({
-        baseSkillRanks,
+    const sourceGrants = [
+        ...[backgroundDocument, ancestryDocument, heritageDocument, classDocument].flatMap((document) => extractFixedTrainedSkills(document).map((slug) => ({ slug, rank: 1 }))),
+        ...extractDraftedSingletonSkillChoices(draft, [
+            { sourceItemType: "ancestry", document: ancestryDocument },
+            { sourceItemType: "heritage", document: heritageDocument },
+            { sourceItemType: "background", document: backgroundDocument },
+        ], deps.localize),
+    ];
+    return compileSkillProgression({
+        baselineRanks: deps.baseSkillRanks,
         draft,
-        beforeSlotId: upToSlotId,
-        additionalTrainingSkillsBySlotId: buildAdditionalTrainingSkillsBySlotId(draft, deps.steps ?? []),
+        steps: deps.steps ?? [],
+        sourceGrants,
+        validSkillSlugs: deps.validSkillSlugs ?? validSkillSlugs(deps.baseSkillRanks, null),
+        mode: deps.mode ?? "editing",
     });
+}
+function validSkillSlugs(baseSkillRanks, configSkills) {
+    return new Set([...Object.keys(SKILL_LABELS), ...Object.keys(baseSkillRanks), ...Object.keys(configSkills ?? {})]);
 }
 function extractFixedTrainedSkills(document) {
     const typedDocument = document;
@@ -76,24 +95,29 @@ function extractDraftedSingletonSkillChoices(draft, sources, localize) {
         if (!document || !sourceSlug) {
             return [];
         }
+        const sourceUuid = Object.values(draft.selections).find((selection) => selection.itemType === sourceItemType)?.uuid ??
+            (typeof document.uuid === "string"
+                ? document.uuid
+                : undefined);
         return discoverSingletonChoiceSpecs({
             sourceItemType,
             sourceDocument: document,
             sourceSlug,
             localize,
-        })
-            .map((choice) => {
+        }).flatMap((choice) => {
             const selection = draft.singletonChoices[choice.slotId] ?? null;
             if (!selection || !choice.options.some((option) => option.value === selection)) {
-                return null;
+                return [];
             }
-            return resolveSingletonChoiceSkillGrant({
+            const grant = resolveSingletonChoiceSkillGrant({
                 rules: sourceRules,
                 flag: choice.flag,
                 selection,
-            })?.skillSlug;
-        })
-            .filter((selection) => typeof selection === "string" && selection.length > 0);
+            });
+            return grant
+                ? [{ slug: grant.skillSlug, rank: grant.rank, ...(sourceUuid ? { sourceId: sourceUuid } : {}) }]
+                : [];
+        });
     });
 }
 function buildSkillList(actorSkillRanks, deps) {

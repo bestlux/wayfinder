@@ -3,11 +3,13 @@ import { parseCompendiumItemUuid } from "../../shared/compendium.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import { findSpellcastingEntryForChoiceInItems } from "../../shared/spellcasting.js";
 import { projectedClassArchetypeFeatSelections, projectedClassArchetypeStaticFeatSelections, withExistingClassArchetypeChoice, } from "../class-archetype/registry.js";
-import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
+import { compileSkillProgression } from "../domain/skill-progression.js";
+import { projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { withIndefiniteArticle } from "../formatting.js";
 import { collectActorRuleSelectionRollOptions, collectSkillRankRollOptions } from "../projected-rule-options.js";
 import { selectionTakenLevel } from "../selection-level.js";
 import { projectRegisteredDynamicChoices } from "../singleton-choice/dynamic-choice-registry.js";
+import { compileSkillPaneProgression } from "./build-skill-pane-service.js";
 export function extractContextTraits(document, extractDocumentSlug, fallbackSlug) {
     const typedDocument = document;
     const traits = Array.isArray(typedDocument?.system?.traits?.value) ? typedDocument.system.traits.value : [];
@@ -122,7 +124,17 @@ export async function buildOptionContext(deps) {
     const selectedSpellChoicesBySlotId = buildSelectedSpellChoicesBySlotId(effectiveDraft, deps.steps ?? []);
     const actorSourceIds = buildActorSourceIds(actorItems);
     const actorSpellUuidsByDestinationKey = buildActorSpellUuidsByDestinationKey(actorItems, deps.steps ?? []);
-    const skillRanks = buildProjectedSkillRanks(deps.skillRanks, effectiveDraft, deps.steps ?? [], skillProjectionBoundarySlotId(deps.maximumFeatLevel));
+    const skillProgression = deps.skillProgression ??
+        ((deps.steps?.length ?? 0) > 0
+            ? await compileSkillPaneProgression(effectiveDraft, {
+                baseSkillRanks: deps.skillRanks ?? {},
+                steps: deps.steps,
+                resolveDocument: (itemType) => deps.resolveDocument(itemType),
+                localize: (value) => value,
+                mode: "editing",
+            })
+            : undefined);
+    const skillRanks = buildProjectedSkillRanks(deps.skillRanks, effectiveDraft, deps.steps ?? [], deps.maximumFeatLevel, skillProgression);
     const rollOptions = buildActiveRollOptions(effectiveDraft, deps.steps ?? [], actorItems, skillRanks);
     const registeredDynamicChoices = projectRegisteredDynamicChoices([
         ...actorItems,
@@ -322,17 +334,49 @@ function collectDraftRollOptions(draft, steps) {
     }
     return options;
 }
-function buildProjectedSkillRanks(baseRanks, draft, steps, beforeSlotId) {
-    const projected = projectDraftSkillRanks({
-        baseSkillRanks: baseRanks ?? {},
+function buildProjectedSkillRanks(baseRanks, draft, steps, maximumLevel, skillProgression) {
+    if (skillProgression) {
+        let projected = skillProgression.ranksBeforeSteps;
+        for (const step of steps) {
+            if (maximumLevel !== undefined && step.level > maximumLevel)
+                continue;
+            const compiledStep = skillProgression.stepsBySlotId[step.slotId];
+            if (compiledStep)
+                projected = compiledStep.ranksAfter;
+        }
+        return Object.keys(projected).length > 0 ? { ...projected } : null;
+    }
+    if (steps.length === 0) {
+        const projected = projectDraftSkillRanks({
+            baseSkillRanks: baseRanks ?? {},
+            draft,
+            beforeSlotId: maximumLevel === undefined ? undefined : `option-context-level-${maximumLevel}`,
+        });
+        return Object.keys(projected).length > 0 ? projected : null;
+    }
+    const activeSteps = maximumLevel === undefined ? steps : steps.filter((step) => step.level <= maximumLevel);
+    const validSkillSlugs = new Set([
+        ...Object.keys(baseRanks ?? {}),
+        ...Object.values(draft.skillIncreases),
+        ...Object.values(draft.skillTrainings).flatMap((training) => [
+            ...Object.values(training.ruleChoices),
+            ...training.additional,
+        ]),
+        ...activeSteps.flatMap((step) => step.kind === "skill-training"
+            ? [
+                ...step.training.fixedSkills,
+                ...step.training.choiceRules.flatMap((choice) => choice.options.map((option) => option.slug)),
+            ]
+            : []),
+    ]);
+    const projected = compileSkillProgression({
+        baselineRanks: baseRanks ?? {},
         draft,
-        beforeSlotId,
-        additionalTrainingSkillsBySlotId: buildAdditionalTrainingSkillsBySlotId(draft, steps),
-    });
+        steps: activeSteps,
+        validSkillSlugs,
+        mode: "editing",
+    }).finalRanks;
     return Object.keys(projected).length > 0 ? projected : null;
-}
-function skillProjectionBoundarySlotId(maximumFeatLevel) {
-    return maximumFeatLevel === undefined ? undefined : `option-context-level-${maximumFeatLevel}`;
 }
 function buildSelectedUuidsBySlotId(draft) {
     const entries = [

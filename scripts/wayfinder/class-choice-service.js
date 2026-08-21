@@ -19,33 +19,16 @@ export async function buildClassTrainingSteps(params) {
         return [];
     }
     const effectiveClassDocument = await fetchSelectionDocument(draftClassSelection);
+    if (!includeBaseClassTraining) {
+        return buildSourceTrainingSteps(sourceSelections, effectiveClassDocument, params);
+    }
+    const baseSources = sourceSelections.filter((source) => !source.sourceSelection || selectionTakenLevel(source.sourceSelection) <= 1);
+    const laterSources = sourceSelections.filter((source) => !!source.sourceSelection && selectionTakenLevel(source.sourceSelection) > 1);
     const sourceTraining = discoverSourceSkillTrainingMeta({
-        sources: sourceSelections,
+        sources: baseSources,
         localize,
         activeRollOptions: params.activeRollOptions,
     });
-    if (!includeBaseClassTraining) {
-        const sourceSelection = sourceSelections.find((source) => source.sourceSelection)?.sourceSelection ?? null;
-        const hasSourceTraining = sourceTraining.fixedSkills.length > 0 ||
-            sourceTraining.fixedLores.length > 0 ||
-            sourceTraining.choiceRules.length > 0 ||
-            sourceTraining.loreChoices.length > 0;
-        if (!sourceSelection || !hasSourceTraining) {
-            return [];
-        }
-        const sourceSlug = sourceSelection.slug ?? slugifyName(sourceSelection.name) ?? sourceSelection.documentId;
-        const level = selectionTakenLevel(sourceSelection);
-        return [
-            createSkillTrainingStep(level, `${sourceSelection.name} skill training`, `Choose the skill training granted by ${sourceSelection.name}.`, {
-                classSlug: extractSlug(effectiveClassDocument) ?? "class",
-                className: sourceSelection.name,
-                ...sourceTraining,
-                additionalCount: 0,
-            }, {
-                slotId: `skill-training-${sourceSlug}-level-${level}`,
-            }),
-        ];
-    }
     const steps = buildClassTrainingStepsFromRules({
         effectiveClassDocument,
         classSelection: draftClassSelection,
@@ -54,7 +37,7 @@ export async function buildClassTrainingSteps(params) {
         intelligenceModifier: effectiveBuildState.projectedAbilities.int.modifier,
         activeRollOptions: params.activeRollOptions,
     });
-    return steps.map((step) => ({
+    const baseSteps = steps.map((step) => ({
         ...step,
         training: {
             ...step.training,
@@ -64,6 +47,40 @@ export async function buildClassTrainingSteps(params) {
             loreChoices: [...step.training.loreChoices, ...sourceTraining.loreChoices],
         },
     }));
+    return [
+        ...(baseSteps.length > 0 ? baseSteps : buildSourceTrainingSteps(baseSources, effectiveClassDocument, params)),
+        ...buildSourceTrainingSteps(laterSources, effectiveClassDocument, params),
+    ];
+}
+function buildSourceTrainingSteps(sources, effectiveClassDocument, params) {
+    return sources.flatMap((source) => {
+        const sourceSelection = source.sourceSelection;
+        if (!sourceSelection)
+            return [];
+        const training = discoverSourceSkillTrainingMeta({
+            sources: [source],
+            localize: params.localize,
+            activeRollOptions: params.activeRollOptions,
+        });
+        if (!hasSkillTraining(training))
+            return [];
+        const sourceSlug = sourceSelection.slug ?? slugifyName(sourceSelection.name) ?? sourceSelection.documentId;
+        const level = selectionTakenLevel(sourceSelection);
+        return [
+            createSkillTrainingStep(level, `${sourceSelection.name} skill training`, `Choose the skill training granted by ${sourceSelection.name}.`, {
+                classSlug: params.extractSlug(effectiveClassDocument) ?? "class",
+                className: sourceSelection.name,
+                ...training,
+                additionalCount: 0,
+            }, { slotId: `skill-training-${sourceSlug}-level-${level}` }),
+        ];
+    });
+}
+function hasSkillTraining(training) {
+    return (training.fixedSkills.length > 0 ||
+        training.fixedLores.length > 0 ||
+        training.choiceRules.length > 0 ||
+        training.loreChoices.length > 0);
 }
 export async function buildClassFeatSteps(params) {
     return buildFeatStepsFromClassLevels({

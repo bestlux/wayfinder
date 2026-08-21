@@ -20,6 +20,7 @@ import type {
   AcquisitionFinalEvidence,
   VerifiedAcquisitionOutcomeV1,
 } from "./wayfinder/domain/completed-acquisition-manifest.js";
+import type { SkillProgression } from "./wayfinder/domain/skill-progression.js";
 import type { SpellRarityCeiling } from "./wayfinder/spell-choice/rarity-access.js";
 
 type DraftMutationActor = SelectorActorLike &
@@ -39,6 +40,7 @@ export interface ApplyDraftOptions {
   spellRarityCeiling: SpellRarityCeiling;
   validateSelectionEligibility: (selection: SelectionRef, step: PendingStep) => boolean | Promise<boolean>;
   validSkillSlugs?: ReadonlySet<string>;
+  skillProgression?: SkillProgression;
   prepareClassGrantPlan?: (
     actor: DraftMutationActor,
     draft: DraftState,
@@ -120,6 +122,7 @@ export function applyDraftToActor(
       spellRarityCeiling: options.spellRarityCeiling,
       validateSelectionEligibility: options.validateSelectionEligibility,
       validSkillSlugs: options.validSkillSlugs,
+      skillProgression: options.skillProgression,
       prepareClassGrantPlan: options.prepareClassGrantPlan,
     });
     const result = await executePreparedDraftApplication(prepared, {
@@ -240,6 +243,7 @@ function draftApplyOperationKey(draft: DraftState, steps: PendingStep[], options
     spellRarityCeiling: options.spellRarityCeiling,
     validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),
     validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,
+    skillProgression: options.skillProgression ?? null,
     prepareClassGrantPlan: operationIdentity(options.prepareClassGrantPlan),
     executeAcquisitionItems: operationIdentity(options.executeAcquisitionItems),
     executeAcquisitionCurrency: operationIdentity(options.executeAcquisitionCurrency),

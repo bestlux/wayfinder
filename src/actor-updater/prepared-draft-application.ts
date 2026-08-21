@@ -31,11 +31,10 @@ import type {
   VerifiedAcquisitionOutcomeV1,
 } from "../wayfinder/domain/completed-acquisition-manifest.js";
 import {
-  buildAdditionalTrainingSkillsBySlotId,
-  maxProficiencyRank,
-  projectDraftSkillRanks,
-} from "../wayfinder/domain/skill-rank-projection.js";
-import { isActiveSkillTrainingChoice } from "../wayfinder/domain/skill-training-choice-availability.js";
+  compileSkillProgression,
+  type SkillProgression,
+  skillProgressionInputFingerprint,
+} from "../wayfinder/domain/skill-progression.js";
 import {
   assertDraftBackedStepsReady,
   evaluateWayfinderDraftReadiness,
@@ -69,7 +68,7 @@ import { DEFAULT_CREATE_DEPS } from "./selection-source-application.js";
 import { applySingletonChoiceDraft } from "./singleton-choice-application.js";
 import { applySpellChoiceDraft } from "./spell-choice-application.js";
 import { spellLocationId } from "./spellcasting-entry-support.js";
-import { applySkillIncreaseDraft, applyTrainingDraft, buildTrainingActorUpdate } from "./training-application.js";
+import { applyTrainingDraft, buildTrainingActorUpdate } from "./training-application.js";
 
 export type DraftApplyPhase =
   | "singleton-replacements"
@@ -138,6 +137,7 @@ export interface PreparedDraftApplication {
   selections: SelectionRef[];
   pendingFeatSelections: SelectionRef[];
   stepsBySlotId: ReadonlyMap<string, PendingStep>;
+  validSkillSlugs: ReadonlySet<string>;
   deferredActorUpdate: Record<string, unknown>;
   validateActorAuthority?: (actor: DraftMutationActor) => boolean;
   assertAcquisitionApplyAuthority?: (actor: DraftMutationActor, draft: DraftState) => void;
@@ -183,6 +183,7 @@ export interface PrepareDraftApplicationDependencies {
   ) => PreparedClassGrantPlanV1 | Promise<PreparedClassGrantPlanV1>;
   spellRarityCeiling?: SpellRarityCeiling;
   validSkillSlugs?: ReadonlySet<string>;
+  skillProgression?: SkillProgression;
   resolveCampaignFeatSlot: (sectionId: string, slotId: string) => CampaignFeatSlotAuthority | null;
 }
 
@@ -364,7 +365,12 @@ export async function prepareDraftApplication(
       }))
     );
   }
-  await assertDraftBackedStepsReady(steps, draft);
+  const validSkillSlugs = buildValidSkillSlugs(actor, deps.validSkillSlugs);
+  const skillProgression =
+    deps.skillProgression ?? compilePreparedSkillProgression(actor, draft, steps, validSkillSlugs);
+  assertSkillProgressionPlanMatches(skillProgression, actor, draft, steps, validSkillSlugs);
+  assertSkillProgressionValid(skillProgression, steps);
+  await assertDraftBackedStepsReady(steps, draft, skillProgression);
   const boostSteps = steps.filter((step) => step.kind === "boost");
   if (boostSteps.length > 0) {
     const effectiveBuildState = await getEffectiveBuildState(actor, draft);
@@ -389,7 +395,7 @@ export async function prepareDraftApplication(
   });
 
   await validateMutationCapabilities(actor, selections, steps);
-  validateDraftChoiceValues(actor, draft, steps, deps.validSkillSlugs);
+  validateDraftChoiceValues(draft, steps);
   await validateSelectedEligibility(draft, steps, selections, deps.validateSelectionEligibility);
   const sources = await prepareSourceCatalog(actor, draft, steps, selections, deps);
   const classGrantPlan = await prepareClassGrantAuthority(actor, draft, steps, deps);
@@ -413,6 +419,7 @@ export async function prepareDraftApplication(
     selections,
     pendingFeatSelections,
     stepsBySlotId,
+    validSkillSlugs,
     deferredActorUpdate: {
       ...cloneData(draft.applyRecoveryActorUpdate),
       ...buildLanguageChoiceUpdate(draft, steps),
@@ -448,33 +455,7 @@ async function prepareClassGrantAuthority(
   return plan;
 }
 
-function validateDraftChoiceValues(
-  actor: DraftMutationActor,
-  draft: DraftState,
-  steps: PendingStep[],
-  configuredSkillSlugs?: ReadonlySet<string>
-): void {
-  const activeSlotIds = new Set(steps.map((step) => step.slotId));
-  const validSkillSlugs = new Set([
-    ...PF2E_SKILL_SLUGS,
-    ...Object.keys(actor.system?.skills ?? {}),
-    ...(configuredSkillSlugs ?? []),
-  ]);
-  const activeRankDraft = {
-    skillIncreases: Object.fromEntries(
-      Object.entries(draft.skillIncreases).filter(([slotId]) => activeSlotIds.has(slotId))
-    ),
-    skillTrainings: Object.fromEntries(
-      Object.entries(draft.skillTrainings).filter(([slotId]) => activeSlotIds.has(slotId))
-    ),
-  };
-  const baseSkillRanks = Object.fromEntries(
-    Object.entries(actor.system?.skills ?? {}).map(([slug, data]) => [
-      slug,
-      Number((data as { rank?: unknown })?.rank ?? 0),
-    ])
-  );
-  const additionalTrainingSkillsBySlotId = buildAdditionalTrainingSkillsBySlotId(draft, steps);
+function validateDraftChoiceValues(draft: DraftState, steps: PendingStep[]): void {
   for (const step of steps) {
     if (step.kind === "singleton-choice") {
       assertListedChoice(step, draft.singletonChoices[step.slotId], step.singletonChoice.options);
@@ -488,91 +469,94 @@ function validateDraftChoiceValues(
       if (selected.some((value) => !allowed.has(value))) {
         throw staleChoiceError(step);
       }
-    } else if (step.kind === "skill-training") {
-      validateTrainingChoices(
-        draft,
-        step,
-        validSkillSlugs,
-        projectDraftSkillRanks({
-          baseSkillRanks,
-          draft: activeRankDraft,
-          beforeSlotId: step.slotId,
-          additionalTrainingSkillsBySlotId,
-        }),
-        hasDraftRecoveryState(draft)
-      );
-    } else if (step.kind === "skill-increase") {
-      const selected = draft.skillIncreases[step.slotId];
-      if (selected && !validSkillSlugs.has(selected)) throw staleChoiceError(step);
-      if (selected) {
-        const ranks = projectDraftSkillRanks({
-          baseSkillRanks,
-          draft: activeRankDraft,
-          beforeSlotId: step.slotId,
-          additionalTrainingSkillsBySlotId,
-        });
-        if ((ranks[selected] ?? 0) >= maxProficiencyRank(step.level)) throw staleChoiceError(step);
-      }
     }
   }
+}
+
+function compilePreparedSkillProgression(
+  actor: DraftMutationActor,
+  draft: DraftState,
+  steps: PendingStep[],
+  validSkillSlugs: ReadonlySet<string>
+): SkillProgression {
+  return compileSkillProgression({
+    baselineRanks: readPreparedSkillRanks(actor),
+    draft,
+    steps,
+    validSkillSlugs,
+    mode: hasDraftRecoveryState(draft) ? "recovery" : "editing",
+  });
+}
+
+function buildValidSkillSlugs(
+  actor: DraftMutationActor,
+  configuredSkillSlugs?: ReadonlySet<string>
+): ReadonlySet<string> {
+  return new Set([...PF2E_SKILL_SLUGS, ...Object.keys(actor.system?.skills ?? {}), ...(configuredSkillSlugs ?? [])]);
+}
+
+function assertSkillProgressionValid(progression: SkillProgression, steps: PendingStep[]): void {
+  const firstIssue = progression.issues[0];
+  if (!firstIssue) return;
+  const step = steps.find((entry) => entry.slotId === firstIssue.slotId);
+  if (step) throw staleChoiceError(step);
+  throw new Error("A skill choice changed after this draft was prepared; review it before applying.");
+}
+
+function assertSkillProgressionPlanMatches(
+  progression: SkillProgression,
+  actor: DraftMutationActor,
+  draft: DraftState,
+  steps: readonly PendingStep[],
+  validSkillSlugs: ReadonlySet<string>
+): void {
+  const sourceGrantsMatchPlan = progression.sourceGrants.every((grant) => {
+    if (!grant.sourceId) {
+      return steps.some((step) => step.kind === "skill-training" && step.training.fixedSkills.includes(grant.slug));
+    }
+    return steps.some(
+      (step) =>
+        step.kind === "singleton-choice" &&
+        step.singletonChoice.sourceUuid === grant.sourceId &&
+        typeof draft.singletonChoices[step.slotId] === "string" &&
+        step.singletonChoice.options.some((option) => option.value === draft.singletonChoices[step.slotId])
+    );
+  });
+  const expected = steps
+    .filter((step) => step.kind === "skill-training" || step.kind === "skill-increase")
+    .map((step) => step.slotId);
+  const actual = progression.steps.map((step) => step.slotId);
+  const mode = hasDraftRecoveryState(draft) ? "recovery" : "editing";
+  if (
+    expected.length !== actual.length ||
+    expected.some((slotId, index) => actual[index] !== slotId) ||
+    !sourceGrantsMatchPlan ||
+    progression.inputFingerprint !==
+      skillProgressionInputFingerprint({
+        baselineRanks: readPreparedSkillRanks(actor),
+        draft,
+        steps,
+        sourceGrants: progression.sourceGrants,
+        validSkillSlugs,
+        mode,
+      })
+  ) {
+    throw new Error("The compiled skill progression no longer matches the active plan; reopen Wayfinder before Apply.");
+  }
+}
+
+function readPreparedSkillRanks(actor: DraftMutationActor): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(actor.system?.skills ?? {}).map(([slug, data]) => [
+      slug,
+      Number((data as { rank?: unknown })?.rank ?? 0),
+    ])
+  );
 }
 
 function assertListedChoice(step: PendingStep, selected: string | undefined, options: Array<{ value: string }>): void {
   if (selected && !options.some((option) => option.value === selected)) {
     throw staleChoiceError(step);
-  }
-}
-
-function validateTrainingChoices(
-  draft: DraftState,
-  step: PendingStep & { kind: "skill-training" },
-  validSkillSlugs: ReadonlySet<string>,
-  projectedRanks: Readonly<Record<string, number>>,
-  allowRecoveredSelection: boolean
-): void {
-  const training = draft.skillTrainings[step.slotId];
-  if (!training) return;
-  const activeRuleChoiceKeys = new Set(step.training.choiceRules.map((choice) => choice.key));
-  if (Object.keys(training.ruleChoices).some((key) => !activeRuleChoiceKeys.has(key))) {
-    throw staleChoiceError(step);
-  }
-  const activeLoreChoiceKeys = new Set(step.training.loreChoices.map((choice) => choice.key));
-  if (Object.keys(training.loreChoices).some((key) => !activeLoreChoiceKeys.has(key))) {
-    throw staleChoiceError(step);
-  }
-  if (training.additional.some((slug) => !validSkillSlugs.has(slug))) {
-    throw staleChoiceError(step);
-  }
-  const additionalSkills = new Set(training.additional);
-  const reservedAdditionalSkills = new Set([
-    ...step.training.fixedSkills,
-    ...Object.entries(training.ruleChoices)
-      .filter(([key, value]) => activeRuleChoiceKeys.has(key) && typeof value === "string" && value.length > 0)
-      .map(([, value]) => value),
-  ]);
-  if (
-    additionalSkills.size !== training.additional.length ||
-    training.additional.length > step.training.additionalCount ||
-    training.additional.some(
-      (slug) => reservedAdditionalSkills.has(slug) || ((projectedRanks[slug] ?? 0) >= 1 && !allowRecoveredSelection)
-    )
-  ) {
-    throw staleChoiceError(step);
-  }
-  for (const choice of step.training.choiceRules) {
-    const selected = training.ruleChoices[choice.key];
-    if (!selected) continue;
-    if (
-      !isActiveSkillTrainingChoice(step.training, training, choice, projectedRanks, selected, allowRecoveredSelection)
-    ) {
-      throw staleChoiceError(step);
-    }
-  }
-  for (const choice of step.training.loreChoices) {
-    const selected = training.loreChoices[choice.key];
-    if (selected && !choice.allowCustom && !choice.suggestions.includes(selected)) {
-      throw staleChoiceError(step);
-    }
   }
 }
 
@@ -636,8 +620,6 @@ export async function executePreparedDraftApplication(
   const classGrantReconciliations: ClassGrantReconciliationResultV1[] = [];
   let acquisitionFinalEvidence: AcquisitionFinalEvidence = options.acquisitionFinalEvidence ?? { kind: "none" };
   let acquisitionCurrencyConvergenceWitness: AcquisitionCurrencyConvergenceWitnessV1 | null = null;
-  let projectedBaseSkillRanks: Record<string, number> = {};
-
   for (const phase of prepared.phaseIds) {
     if (phase === "finalize-actor") {
       const receipt = await executeFinalActorPhase(
@@ -712,9 +694,8 @@ export async function executePreparedDraftApplication(
         case "skill-training-items": {
           const projectedTrainingRanks = await applyTrainingDraft(prepared.actor, prepared.draft, prepared.steps, {
             persistActorUpdate: false,
-            onProjectedBaseSkillRanks: (ranks) => {
-              projectedBaseSkillRanks = ranks;
-            },
+            validSkillSlugs: prepared.validSkillSlugs,
+            mode: hasDraftRecoveryState(prepared.draft) ? "recovery" : "editing",
           });
           Object.assign(prepared.deferredActorUpdate, buildTrainingActorUpdate(prepared.actor, projectedTrainingRanks));
           break;
@@ -782,19 +763,6 @@ export async function executePreparedDraftApplication(
             persistActorUpdate: false,
           });
           Object.assign(prepared.deferredActorUpdate, boostResult.actorUpdate);
-          const skillIncreaseUpdate = await applySkillIncreaseDraft(
-            prepared.actor,
-            prepared.draft,
-            projectedBaseSkillRanks,
-            {
-              persistActorUpdate: false,
-              activeSlotIds: new Set(
-                prepared.steps.filter((step) => step.kind === "skill-increase").map((step) => step.slotId)
-              ),
-              steps: prepared.steps,
-            }
-          );
-          Object.assign(prepared.deferredActorUpdate, skillIncreaseUpdate);
           break;
         }
         case "source-flag-restoration":

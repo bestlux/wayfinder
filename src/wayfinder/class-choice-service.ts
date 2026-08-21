@@ -128,41 +128,21 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
   }
 
   const effectiveClassDocument = await fetchSelectionDocument(draftClassSelection);
+  if (!includeBaseClassTraining) {
+    return buildSourceTrainingSteps(sourceSelections, effectiveClassDocument, params);
+  }
+
+  const baseSources = sourceSelections.filter(
+    (source) => !source.sourceSelection || selectionTakenLevel(source.sourceSelection) <= 1
+  );
+  const laterSources = sourceSelections.filter(
+    (source) => !!source.sourceSelection && selectionTakenLevel(source.sourceSelection) > 1
+  );
   const sourceTraining = discoverSourceSkillTrainingMeta({
-    sources: sourceSelections,
+    sources: baseSources,
     localize,
     activeRollOptions: params.activeRollOptions,
   });
-  if (!includeBaseClassTraining) {
-    const sourceSelection = sourceSelections.find((source) => source.sourceSelection)?.sourceSelection ?? null;
-    const hasSourceTraining =
-      sourceTraining.fixedSkills.length > 0 ||
-      sourceTraining.fixedLores.length > 0 ||
-      sourceTraining.choiceRules.length > 0 ||
-      sourceTraining.loreChoices.length > 0;
-    if (!sourceSelection || !hasSourceTraining) {
-      return [];
-    }
-
-    const sourceSlug = sourceSelection.slug ?? slugifyName(sourceSelection.name) ?? sourceSelection.documentId;
-    const level = selectionTakenLevel(sourceSelection);
-    return [
-      createSkillTrainingStep(
-        level,
-        `${sourceSelection.name} skill training`,
-        `Choose the skill training granted by ${sourceSelection.name}.`,
-        {
-          classSlug: extractSlug(effectiveClassDocument) ?? "class",
-          className: sourceSelection.name,
-          ...sourceTraining,
-          additionalCount: 0,
-        },
-        {
-          slotId: `skill-training-${sourceSlug}-level-${level}`,
-        }
-      ),
-    ];
-  }
 
   const steps = buildClassTrainingStepsFromRules({
     effectiveClassDocument,
@@ -173,7 +153,7 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
     activeRollOptions: params.activeRollOptions,
   });
 
-  return steps.map((step) => ({
+  const baseSteps = steps.map((step) => ({
     ...step,
     training: {
       ...step.training,
@@ -183,6 +163,52 @@ export async function buildClassTrainingSteps(params: BuildClassTrainingStepsPar
       loreChoices: [...step.training.loreChoices, ...sourceTraining.loreChoices],
     },
   }));
+  return [
+    ...(baseSteps.length > 0 ? baseSteps : buildSourceTrainingSteps(baseSources, effectiveClassDocument, params)),
+    ...buildSourceTrainingSteps(laterSources, effectiveClassDocument, params),
+  ];
+}
+
+function buildSourceTrainingSteps(
+  sources: readonly SkillTrainingSourceContext[],
+  effectiveClassDocument: unknown | null,
+  params: Pick<BuildClassTrainingStepsParams, "activeRollOptions" | "extractSlug" | "localize">
+): PendingStep[] {
+  return sources.flatMap((source) => {
+    const sourceSelection = source.sourceSelection;
+    if (!sourceSelection) return [];
+    const training = discoverSourceSkillTrainingMeta({
+      sources: [source],
+      localize: params.localize,
+      activeRollOptions: params.activeRollOptions,
+    });
+    if (!hasSkillTraining(training)) return [];
+    const sourceSlug = sourceSelection.slug ?? slugifyName(sourceSelection.name) ?? sourceSelection.documentId;
+    const level = selectionTakenLevel(sourceSelection);
+    return [
+      createSkillTrainingStep(
+        level,
+        `${sourceSelection.name} skill training`,
+        `Choose the skill training granted by ${sourceSelection.name}.`,
+        {
+          classSlug: params.extractSlug(effectiveClassDocument) ?? "class",
+          className: sourceSelection.name,
+          ...training,
+          additionalCount: 0,
+        },
+        { slotId: `skill-training-${sourceSlug}-level-${level}` }
+      ),
+    ];
+  });
+}
+
+function hasSkillTraining(training: ReturnType<typeof discoverSourceSkillTrainingMeta>): boolean {
+  return (
+    training.fixedSkills.length > 0 ||
+    training.fixedLores.length > 0 ||
+    training.choiceRules.length > 0 ||
+    training.loreChoices.length > 0
+  );
 }
 
 export async function buildClassFeatSteps(params: BuildClassFeatStepsParams): Promise<PendingStep[]> {

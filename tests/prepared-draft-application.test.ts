@@ -11,7 +11,7 @@ import {
   executePreparedDraftApplication,
   prepareDraftApplication as prepareDraftApplicationWithAuthority,
 } from "../src/actor-updater/prepared-draft-application";
-import { DRAFT_FLAG, MODULE_ID } from "../src/constants";
+import { DRAFT_FLAG, MODULE_ID, SKILL_LABELS } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
 import type { ActorItemLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import { enqueueActorOperation } from "../src/shared/actor-operation-queue";
@@ -29,6 +29,7 @@ import {
   createPlannedClassGrant,
   createPreparedClassGrantPlan,
 } from "../src/wayfinder/domain/class-grant-reconciliation";
+import { compileSkillProgression } from "../src/wayfinder/domain/skill-progression";
 import { WayfinderDraftNotReadyError } from "../src/wayfinder/domain/step-evaluation";
 import { createLanguageChoiceStep } from "../src/wayfinder/domain/step-types";
 import { buildActorHarness, classSelectionStep, selection, setGamePacks } from "./support/actor-updater-fixtures";
@@ -818,6 +819,40 @@ describe("prepared draft application", () => {
     await expect(
       prepareDraftApplication(actor as never, draft, [fixedTraining, skillIncreaseStep(3), skillIncreaseStep(5)])
     ).rejects.toThrow("Skill increase 5 changed after this draft was prepared");
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a compiled skill progression after its active draft input changes", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { deception: { rank: 0 }, crafting: { rank: 0 } } };
+    const draft = createEmptyDraft(3);
+    const training = necromancerTrainingStep();
+    if (training.kind !== "skill-training") throw new Error("Expected skill training");
+    training.training.fixedSkills = ["deception"];
+    training.training.choiceRules = [];
+    training.training.additionalCount = 0;
+    const steps = [training, skillIncreaseStep(3)];
+    draft.skillIncreases[steps[1].slotId] = "deception";
+    const progression = compileSkillProgression({
+      baselineRanks: { deception: 0, crafting: 0 },
+      draft,
+      steps,
+      validSkillSlugs: new Set(Object.keys(SKILL_LABELS)),
+      mode: "editing",
+    });
+    await expect(
+      prepareDraftApplication(actor as never, draft, steps, { skillProgression: progression })
+    ).resolves.toBeDefined();
+    draft.skillIncreases[steps[1].slotId] = "crafting";
+
+    await expect(
+      prepareDraftApplication(actor as never, draft, steps, { skillProgression: progression })
+    ).rejects.toThrow("compiled skill progression no longer matches the active plan");
+    draft.skillIncreases[steps[1].slotId] = "deception";
+    actor.system.skills.deception.rank = 1;
+    await expect(
+      prepareDraftApplication(actor as never, draft, steps, { skillProgression: progression })
+    ).rejects.toThrow("compiled skill progression no longer matches the active plan");
     expect(actor.update).not.toHaveBeenCalled();
   });
 

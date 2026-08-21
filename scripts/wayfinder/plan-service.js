@@ -67,14 +67,14 @@ export async function resolveActiveStep(steps, activeStepId, isStepComplete) {
     nextIncomplete ??= steps[0];
     return { activeStep: nextIncomplete, activeStepId: nextIncomplete.id };
 }
-export async function isWayfinderStepComplete(step, draft, effectiveBuildState) {
-    return isDomainStepComplete(step, draft, effectiveBuildState);
+export async function isWayfinderStepComplete(step, draft, effectiveBuildState, skillProgression) {
+    return isDomainStepComplete(step, draft, effectiveBuildState, skillProgression);
 }
-export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState) {
-    return getDomainStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState);
+export async function getWayfinderStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState, skillProgression) {
+    return getDomainStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState, skillProgression);
 }
-export async function evaluateWayfinderStep(step, draft, recentlyInvalidatedStepIds, effectiveBuildState) {
-    return evaluateDomainStep(step, draft, recentlyInvalidatedStepIds, effectiveBuildState);
+export async function evaluateWayfinderStep(step, draft, recentlyInvalidatedStepIds, effectiveBuildState, skillProgression) {
+    return evaluateDomainStep(step, draft, recentlyInvalidatedStepIds, effectiveBuildState, skillProgression);
 }
 export function modeLabel(kind) {
     return getStepModeLabel(kind);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EffectiveBuildState } from "../src/build-state";
 import { createEmptyDraft } from "../src/draft-service";
-import type { SelectionRef } from "../src/types";
+import type { PendingStep, SelectionRef } from "../src/types";
 import {
   buildClassBranchSteps,
   buildClassChoiceSteps,
@@ -10,6 +10,7 @@ import {
   buildClassSkillFeatSteps,
   buildClassTrainingSteps,
 } from "../src/wayfinder/class-choice-service";
+import { compileSkillProgression } from "../src/wayfinder/domain/skill-progression";
 
 describe("class-choice-service", () => {
   it("derives class feat milestones from the effective class document", async () => {
@@ -128,6 +129,68 @@ describe("class-choice-service", () => {
         },
       },
     ]);
+  });
+
+  it("keeps later feat training at its taken level in the production training plan", async () => {
+    const classSelection = selection("pf2e.classes", "fighter", "Fighter", "class");
+    const levelOneSource = selection("pf2e.backgrounds", "artisan", "Artisan", "background");
+    const levelFiveSource = {
+      ...selection("pf2e.feats-srd", "battle-medicine-training", "Battle Medicine Training", "feat"),
+      slotId: "class-feat-level-5",
+      level: 5,
+    };
+    const steps = await buildClassTrainingSteps({
+      draftClassSelection: classSelection,
+      sourceSelections: [
+        {
+          sourceItemType: "background",
+          sourceSelection: levelOneSource,
+          sourceDocument: { system: { trainedSkills: { value: ["crafting"] } } },
+        },
+        {
+          sourceItemType: "feat",
+          sourceSelection: levelFiveSource,
+          sourceDocument: { system: { trainedSkills: { value: ["medicine"] } } },
+        },
+      ],
+      targetLevel: 5,
+      effectiveBuildState: buildState(),
+      fetchSelectionDocument: async () => ({
+        name: "Fighter",
+        system: { slug: "fighter", trainedSkills: { additional: 0, value: [] }, rules: [] },
+      }),
+      extractSlug: slugFromDocument,
+      localize: (value) => value,
+    });
+    const levelOneTraining = steps.find((step) => step.level === 1);
+    const levelFiveTraining = steps.find((step) => step.level === 5);
+    expect(levelOneTraining).toMatchObject({ training: { fixedSkills: ["crafting"] } });
+    expect(levelFiveTraining).toMatchObject({
+      slotId: "skill-training-battle-medicine-training-level-5",
+      training: { fixedSkills: ["medicine"] },
+    });
+
+    const draft = createEmptyDraft(5);
+    draft.skillIncreases["skill-increase-level-3"] = "medicine";
+    const increase: PendingStep = {
+      id: "skill-increase-level-3",
+      slotId: "skill-increase-level-3",
+      level: 3,
+      kind: "skill-increase",
+      slotKind: "skill-increase",
+      title: "Skill increase",
+      description: "",
+      required: true,
+    };
+    const progression = compileSkillProgression({
+      baselineRanks: { medicine: 0 },
+      draft,
+      steps: [levelOneTraining!, increase, levelFiveTraining!],
+      validSkillSlugs: new Set(["crafting", "medicine"]),
+      mode: "editing",
+    });
+    expect(progression.stepsBySlotId[increase.slotId]?.ranksBefore.medicine).toBe(0);
+    expect(progression.finalRanks.medicine).toBe(1);
   });
 
   it("skips class training until creation boosts are finished", async () => {

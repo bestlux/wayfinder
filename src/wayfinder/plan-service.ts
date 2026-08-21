@@ -3,6 +3,7 @@ import type { EffectiveBuildState } from "../build-state.js";
 import { buildProgressionPlan, sortPendingSteps } from "../progression.js";
 import type { DraftState, PendingStep, StepKind } from "../types.js";
 import { dedupeChoiceRuleSteps } from "./domain/choice-rule-ownership.js";
+import type { SkillProgression } from "./domain/skill-progression.js";
 import {
   evaluateWayfinderStep as evaluateDomainStep,
   getWayfinderStepStatus as getDomainStepStatus,
@@ -136,27 +137,30 @@ export async function resolveActiveStep(
 export async function isWayfinderStepComplete(
   step: PendingStep,
   draft: DraftState,
-  effectiveBuildState: EffectiveBuildState
+  effectiveBuildState: EffectiveBuildState,
+  skillProgression?: SkillProgression
 ): Promise<boolean> {
-  return isDomainStepComplete(step, draft, effectiveBuildState);
+  return isDomainStepComplete(step, draft, effectiveBuildState, skillProgression);
 }
 
 export async function getWayfinderStepStatus(
   step: PendingStep,
   draft: DraftState,
   recentlyInvalidatedStepIds: Set<string>,
-  effectiveBuildState: EffectiveBuildState
+  effectiveBuildState: EffectiveBuildState,
+  skillProgression?: SkillProgression
 ): Promise<string> {
-  return getDomainStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState);
+  return getDomainStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState, skillProgression);
 }
 
 export async function evaluateWayfinderStep(
   step: PendingStep,
   draft: DraftState,
   recentlyInvalidatedStepIds: ReadonlySet<string>,
-  effectiveBuildState: EffectiveBuildState
+  effectiveBuildState: EffectiveBuildState,
+  skillProgression?: SkillProgression
 ): Promise<WayfinderStepEvaluation> {
-  return evaluateDomainStep(step, draft, recentlyInvalidatedStepIds, effectiveBuildState);
+  return evaluateDomainStep(step, draft, recentlyInvalidatedStepIds, effectiveBuildState, skillProgression);
 }
 
 export function modeLabel(kind: StepKind): string {

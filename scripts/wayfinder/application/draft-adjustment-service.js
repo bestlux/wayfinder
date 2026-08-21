@@ -290,6 +290,26 @@ export function syncSkillTrainingSelections(state, steps, projectedSkillRanksByS
     }
     return changed;
 }
+export function applySkillProgressionReconciliation(state, progression) {
+    let changed = false;
+    for (const slotId of progression.reconciliation.changedStepIds) {
+        const training = progression.reconciliation.skillTrainings[slotId];
+        if (training) {
+            state.draft.skillTrainings[slotId] = {
+                ruleChoices: { ...training.ruleChoices },
+                additional: [...training.additional],
+                loreChoices: { ...training.loreChoices },
+            };
+        }
+        else {
+            delete state.draft.skillTrainings[slotId];
+            delete state.draft.skillIncreases[slotId];
+        }
+        state.recentlyInvalidatedStepIds.add(slotId);
+        changed = true;
+    }
+    return changed;
+}
 function emptyTrainingDraft() {
     return { ruleChoices: {}, additional: [], loreChoices: {} };
 }

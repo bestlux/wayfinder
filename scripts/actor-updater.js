@@ -38,6 +38,7 @@ export function applyDraftToActor(actor, draft, steps, options) {
             spellRarityCeiling: options.spellRarityCeiling,
             validateSelectionEligibility: options.validateSelectionEligibility,
             validSkillSlugs: options.validSkillSlugs,
+            skillProgression: options.skillProgression,
             prepareClassGrantPlan: options.prepareClassGrantPlan,
         });
         const result = await executePreparedDraftApplication(prepared, {
@@ -145,6 +146,7 @@ function draftApplyOperationKey(draft, steps, options) {
         spellRarityCeiling: options.spellRarityCeiling,
         validateSelectionEligibility: operationIdentity(options.validateSelectionEligibility),
         validSkillSlugs: options.validSkillSlugs ? Array.from(options.validSkillSlugs).sort() : null,
+        skillProgression: options.skillProgression ?? null,
         prepareClassGrantPlan: operationIdentity(options.prepareClassGrantPlan),
         executeAcquisitionItems: operationIdentity(options.executeAcquisitionItems),
         executeAcquisitionCurrency: operationIdentity(options.executeAcquisitionCurrency),

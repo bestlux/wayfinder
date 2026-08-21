@@ -8,6 +8,7 @@ import {
   isClassBoostSectionComplete,
   remainingCreationBoostChoices,
 } from "./boost-rules.js";
+import type { SkillProgression } from "./skill-progression.js";
 import { getStepModeLabel } from "./step-types.js";
 
 export type WayfinderStepReadinessState = "complete" | "incomplete" | "excess" | "invalid";
@@ -19,6 +20,7 @@ export type WayfinderStepIssueCode =
   | "dependency-review"
   | "access-attestation"
   | "selection-ineligible"
+  | "skill-progression"
   | "equipment-review";
 
 export interface WayfinderStepIssue {
@@ -77,10 +79,16 @@ export async function evaluateWayfinderDraftReadiness(
   };
 }
 
-export async function assertDraftBackedStepsReady(steps: PendingStep[], draft: DraftState): Promise<void> {
+export async function assertDraftBackedStepsReady(
+  steps: PendingStep[],
+  draft: DraftState,
+  skillProgression?: SkillProgression
+): Promise<void> {
   const evaluations = await Promise.all(
     steps.flatMap((step) =>
-      step.kind === "boost" ? [] : [evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState)]
+      step.kind === "boost"
+        ? []
+        : [evaluateWayfinderStep(step, draft, new Set(), {} as EffectiveBuildState, skillProgression)]
     )
   );
   const blockers = evaluations.flatMap(({ issue }) => (issue ? [issue] : []));
@@ -93,10 +101,32 @@ export async function evaluateWayfinderStep(
   step: PendingStep,
   draft: DraftState,
   recentlyInvalidatedStepIds: ReadonlySet<string>,
-  effectiveBuildState: EffectiveBuildState
+  effectiveBuildState: EffectiveBuildState,
+  skillProgression?: SkillProgression
 ): Promise<WayfinderStepEvaluation> {
-  const complete = await isWayfinderStepComplete(step, draft, effectiveBuildState);
-  const status = await getWayfinderStepStatus(step, draft, recentlyInvalidatedStepIds, effectiveBuildState);
+  const skillStep = skillProgression?.stepsBySlotId[step.slotId];
+  if (skillStep && skillStep.issues.length > 0) {
+    return {
+      state: "invalid",
+      complete: false,
+      status: "Needs attention",
+      issue: {
+        code: "skill-progression",
+        stepId: step.id,
+        slotId: step.slotId,
+        title: step.title,
+        message: `${step.title}: a skill choice no longer matches the active progression; review it before applying.`,
+      },
+    };
+  }
+  const complete = await isWayfinderStepComplete(step, draft, effectiveBuildState, skillProgression);
+  const status = await getWayfinderStepStatus(
+    step,
+    draft,
+    recentlyInvalidatedStepIds,
+    effectiveBuildState,
+    skillProgression
+  );
   if (complete) {
     return { state: "complete", complete: true, status, issue: null };
   }
@@ -122,7 +152,8 @@ export async function evaluateWayfinderStep(
 export async function isWayfinderStepComplete(
   step: PendingStep,
   draft: DraftState,
-  effectiveBuildState: EffectiveBuildState
+  effectiveBuildState: EffectiveBuildState,
+  skillProgression?: SkillProgression
 ): Promise<boolean> {
   if (step.kind === "manual") {
     return draft.manual[step.slotId] === true;
@@ -157,11 +188,16 @@ export async function isWayfinderStepComplete(
   }
 
   if (step.kind === "skill-training") {
-    return isTrainingStepCompleteFromDraft(step, draft);
+    return (
+      skillProgression?.stepsBySlotId[step.slotId]?.progress.complete ?? isTrainingStepCompleteFromDraft(step, draft)
+    );
   }
 
   if (step.kind === "skill-increase") {
-    return typeof draft.skillIncreases[step.slotId] === "string" && draft.skillIncreases[step.slotId].length > 0;
+    return (
+      skillProgression?.stepsBySlotId[step.slotId]?.progress.complete ??
+      (typeof draft.skillIncreases[step.slotId] === "string" && draft.skillIncreases[step.slotId].length > 0)
+    );
   }
 
   if (step.kind === "starting-equipment") {
@@ -194,7 +230,8 @@ export async function getWayfinderStepStatus(
   step: PendingStep,
   draft: DraftState,
   recentlyInvalidatedStepIds: ReadonlySet<string>,
-  effectiveBuildState: EffectiveBuildState
+  effectiveBuildState: EffectiveBuildState,
+  skillProgression?: SkillProgression
 ): Promise<string> {
   if (step.kind === "manual") {
     return draft.manual[step.slotId] === true ? "Ready to apply" : "Not done yet";
@@ -271,11 +308,15 @@ export async function getWayfinderStepStatus(
   }
 
   if (step.kind === "skill-training") {
-    if (recentlyInvalidatedStepIds.has(step.slotId) && !isTrainingStepCompleteFromDraft(step, draft)) {
+    const compiledProgress = skillProgression?.stepsBySlotId[step.slotId]?.progress;
+    if (
+      recentlyInvalidatedStepIds.has(step.slotId) &&
+      !(compiledProgress?.complete ?? isTrainingStepCompleteFromDraft(step, draft))
+    ) {
       return "Needs attention";
     }
 
-    const progress = getSkillTrainingProgress(step, draft);
+    const progress = compiledProgress ?? getSkillTrainingProgress(step, draft);
     if (progress.excessCount > 0) {
       return `${progress.selectedCount}/${progress.requiredCount} chosen · remove ${progress.excessCount}`;
     }
@@ -313,7 +354,7 @@ export async function getWayfinderStepStatus(
 
   if (
     recentlyInvalidatedStepIds.has(step.slotId) &&
-    !(await isWayfinderStepComplete(step, draft, effectiveBuildState))
+    !(await isWayfinderStepComplete(step, draft, effectiveBuildState, skillProgression))
   ) {
     return "Needs attention";
   }

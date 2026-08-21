@@ -393,6 +393,34 @@ describe("wayfinder option context service", () => {
     });
   });
 
+  it("uses source-granted training when the active plan has no skill-training step yet", async () => {
+    const draft = createEmptyDraft(1);
+    const context = await buildOptionContext({
+      draft,
+      steps: [
+        {
+          id: "skill-increase-level-3",
+          level: 3,
+          kind: "skill-increase",
+          slotKind: "skill-increase",
+          title: "Skill increase",
+          description: "",
+          required: true,
+          slotId: "skill-increase-level-3",
+        },
+      ],
+      skillRanks: { crafting: 0 },
+      resolveDocument: async (itemType) =>
+        itemType === "background" ? { system: { trainedSkills: { value: ["crafting"] } } } : null,
+      listActorItems: () => [],
+      fetchSelectionDocument: async () => null,
+      extractDocumentSlug: () => null,
+    });
+
+    expect(context.skillRanks?.crafting).toBe(1);
+    expect(context.rollOptions).toContain("skill:crafting:rank:1");
+  });
+
   it("counts dedication feats from drafted feat selections when the actor does not already have one", async () => {
     const draft = createEmptyDraft(2);
     draft.selections["class-feat-level-2"] = selection("class-feat-level-2", "feat", "wizard-dedication");

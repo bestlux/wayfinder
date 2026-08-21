@@ -1,6 +1,6 @@
 import type { PendingStep } from "../../types.js";
-import { projectSkillRanks } from "./build-skill-pane-service.js";
-import { type DraftAdjustmentState, syncSkillTrainingSelections } from "./draft-adjustment-service.js";
+import { compileSkillPaneProgression } from "./build-skill-pane-service.js";
+import { applySkillProgressionReconciliation, type DraftAdjustmentState } from "./draft-adjustment-service.js";
 
 type SkillDocumentType = "ancestry" | "heritage" | "background" | "class";
 
@@ -15,22 +15,11 @@ export interface SynchronizeDependentSkillTrainingOptions {
 export async function synchronizeDependentSkillTrainingChoices(
   options: SynchronizeDependentSkillTrainingOptions
 ): Promise<boolean> {
-  const projectedSkillRanksByStepId = Object.fromEntries(
-    await Promise.all(
-      options.steps.flatMap((step) =>
-        step.kind === "skill-training"
-          ? [
-              projectSkillRanks(options.state.draft, step.slotId, {
-                baseSkillRanks: options.baseSkillRanks,
-                steps: options.steps,
-                resolveDocument: options.resolveDocument,
-                localize: options.localize,
-              }).then((ranks) => [step.slotId, ranks] as const),
-            ]
-          : []
-      )
-    )
-  );
-
-  return syncSkillTrainingSelections(options.state, [...options.steps], projectedSkillRanksByStepId);
+  const progression = await compileSkillPaneProgression(options.state.draft, {
+    baseSkillRanks: options.baseSkillRanks,
+    steps: options.steps,
+    resolveDocument: options.resolveDocument,
+    localize: options.localize,
+  });
+  return applySkillProgressionReconciliation(options.state, progression);
 }

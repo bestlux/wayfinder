@@ -1,14 +1,15 @@
 import { listActorItems } from "../build-state.js";
-import { MODULE_ID } from "../constants.js";
+import { MODULE_ID, SKILL_LABELS } from "../constants.js";
 import type { ActorItemLike, ActorLike } from "../shared/actor-model.js";
 import { queueRuleSelectionUpdate } from "../shared/pf2e-item-source.js";
 import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 import type { DraftState, PendingStep, SkillTrainingPersistenceMeta } from "../types.js";
 import {
-  buildAdditionalTrainingSkillsBySlotId,
-  projectDraftSkillRanks,
-} from "../wayfinder/domain/skill-rank-projection.js";
+  compileSkillProgression,
+  type SkillProgressionMode,
+  type SkillSourceGrant,
+} from "../wayfinder/domain/skill-progression.js";
 
 export async function applyTrainingDraft(
   actor: ActorLike,
@@ -16,49 +17,31 @@ export async function applyTrainingDraft(
   steps: PendingStep[],
   options: {
     persistActorUpdate?: boolean;
-    onProjectedBaseSkillRanks?: (ranks: Record<string, number>) => void;
+    validSkillSlugs?: ReadonlySet<string>;
+    mode?: SkillProgressionMode;
   } = {}
 ): Promise<Record<string, number>> {
-  const projectedRanks: Record<string, number> = {};
-  for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
-    const rank = Number((data as { rank?: unknown })?.rank ?? 0);
-    projectedRanks[slug] = Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
-  }
-
-  const stepMap = new Map(steps.map((step) => [step.slotId, step]));
   const actorItems = listActorItems(actor) as ActorItemLike[];
+  const progression = compileSkillProgression({
+    baselineRanks: readActorSkillRanks(actor),
+    draft,
+    steps,
+    sourceGrants: collectAppliedSkillSourceGrants(actor, draft, steps),
+    validSkillSlugs: options.validSkillSlugs ?? collectProgressionSkillSlugs(actor, draft, steps),
+    mode: options.mode ?? "editing",
+  });
+  if (progression.issues.length > 0) {
+    throw new Error("Skill progression changed during Apply; reopen Wayfinder and review the affected choices.");
+  }
   const updatesByItemId = new Map<string, Record<string, unknown>>();
   const desiredTrainingLores = new Map<string, { slotId: string; key: string; name: string }>();
-
-  for (const [slotId, selection] of Object.entries(draft.singletonChoices)) {
-    const step = stepMap.get(slotId);
-    if (step?.kind !== "singleton-choice" || typeof selection !== "string" || selection.length === 0) {
-      continue;
-    }
-
-    if (!step.singletonChoice.options.some((option) => option.value === selection)) {
-      continue;
-    }
-
-    const grantedSkill = resolveSingletonChoiceGrantedSkill(actorItems, step, selection);
-    if (!grantedSkill) {
-      continue;
-    }
-
-    projectedRanks[grantedSkill.skillSlug] = Math.max(projectedRanks[grantedSkill.skillSlug] ?? 0, grantedSkill.rank);
-  }
-  options.onProjectedBaseSkillRanks?.({ ...projectedRanks });
 
   for (const step of steps) {
     if (step.kind !== "skill-training") {
       continue;
     }
     const slotId = step.slotId;
-    const training = draft.skillTrainings[slotId];
-
-    for (const slug of step.training.fixedSkills) {
-      projectedRanks[slug] = Math.max(projectedRanks[slug] ?? 0, 1);
-    }
+    const training = progression.reconciliation.skillTrainings[slotId];
 
     if (training) {
       for (const choiceRule of step.training.choiceRules) {
@@ -74,11 +57,6 @@ export async function applyTrainingDraft(
           choiceRule.flag,
           selection
         );
-        projectedRanks[selection] = Math.max(projectedRanks[selection] ?? 0, 1);
-      }
-
-      for (const slug of training.additional) {
-        projectedRanks[slug] = Math.max(projectedRanks[slug] ?? 0, 1);
       }
     }
 
@@ -119,20 +97,43 @@ export async function applyTrainingDraft(
     await actor.updateEmbeddedDocuments("Item", itemUpdates);
   }
 
-  const skillUpdates = Object.entries(projectedRanks)
-    .filter(([slug, rank]) => {
-      const current = Number(actor?.system?.skills?.[slug]?.rank ?? 0);
-      return rank > current;
-    })
-    .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank] as const);
+  const actorUpdate = buildTrainingActorUpdate(actor, progression.finalRanks);
 
-  if (options.persistActorUpdate !== false && skillUpdates.length > 0 && typeof actor.update === "function") {
-    await actor.update(Object.fromEntries(skillUpdates));
+  if (
+    options.persistActorUpdate !== false &&
+    Object.keys(actorUpdate).length > 0 &&
+    typeof actor.update === "function"
+  ) {
+    await actor.update(actorUpdate);
   }
 
   await reconcileTrainingLore(actor, actorItems, Array.from(desiredTrainingLores.values()));
 
-  return projectedRanks;
+  return { ...progression.finalRanks };
+}
+
+export function collectAppliedSkillSourceGrants(
+  actor: ActorLike,
+  draft: DraftState,
+  steps: readonly PendingStep[]
+): readonly SkillSourceGrant[] {
+  const actorItems = listActorItems(actor) as ActorItemLike[];
+  const stepMap = new Map(steps.map((step) => [step.slotId, step]));
+  return Object.entries(draft.singletonChoices).flatMap(([slotId, selection]) => {
+    const step = stepMap.get(slotId);
+    if (
+      step?.kind !== "singleton-choice" ||
+      typeof selection !== "string" ||
+      selection.length === 0 ||
+      !step.singletonChoice.options.some((option) => option.value === selection)
+    ) {
+      return [];
+    }
+    const grantedSkill = resolveSingletonChoiceGrantedSkill(actorItems, step, selection);
+    return grantedSkill
+      ? [{ slug: grantedSkill.skillSlug, rank: grantedSkill.rank, sourceId: step.singletonChoice.sourceUuid }]
+      : [];
+  });
 }
 
 export async function applySkillIncreaseDraft(
@@ -147,21 +148,22 @@ export async function applySkillIncreaseDraft(
 ): Promise<Record<string, unknown>> {
   let projectedRanks: Record<string, number> = baseRanks ? { ...baseRanks } : {};
   if (options.steps) {
-    const activeStepSlotIds = new Set(options.steps.map((step) => step.slotId));
-    const activeIncreaseSlotIds = options.activeSlotIds ?? activeStepSlotIds;
+    const activeIncreaseSlotIds = options.activeSlotIds ?? new Set(options.steps.map((step) => step.slotId));
     const activeDraft = {
       skillIncreases: Object.fromEntries(
         Object.entries(draft.skillIncreases).filter(([slotId]) => activeIncreaseSlotIds.has(slotId))
       ),
-      skillTrainings: Object.fromEntries(
-        Object.entries(draft.skillTrainings).filter(([slotId]) => activeStepSlotIds.has(slotId))
-      ),
+      skillTrainings: draft.skillTrainings,
     };
-    projectedRanks = projectDraftSkillRanks({
-      baseSkillRanks: projectedRanks,
-      draft: activeDraft,
-      additionalTrainingSkillsBySlotId: buildAdditionalTrainingSkillsBySlotId(draft, options.steps),
-    });
+    projectedRanks = {
+      ...compileSkillProgression({
+        baselineRanks: projectedRanks,
+        draft: activeDraft,
+        steps: options.steps,
+        validSkillSlugs: collectProgressionSkillSlugs(actor, draft, options.steps),
+        mode: "editing",
+      }).finalRanks,
+    };
   } else if (!baseRanks) {
     for (const [slug, data] of Object.entries(actor?.system?.skills ?? {})) {
       const rank = Number((data as { rank?: unknown })?.rank ?? 0);
@@ -205,13 +207,39 @@ export async function applySkillIncreaseDraft(
 
 export function buildTrainingActorUpdate(
   actor: ActorLike,
-  projectedRanks: Record<string, number>
+  projectedRanks: Readonly<Record<string, number>>
 ): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(projectedRanks)
-      .filter(([slug, rank]) => rank > readActorSkillRank(actor, slug))
+      .filter(
+        ([slug, rank]) =>
+          (slug in (actor.system?.skills ?? {}) || slug in SKILL_LABELS) && rank > readActorSkillRank(actor, slug)
+      )
       .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank])
   );
+}
+
+function collectProgressionSkillSlugs(
+  actor: ActorLike,
+  draft: DraftState,
+  steps: readonly PendingStep[]
+): ReadonlySet<string> {
+  return new Set([
+    ...Object.keys(actor.system?.skills ?? {}),
+    ...Object.values(draft.skillIncreases),
+    ...Object.values(draft.skillTrainings).flatMap((training) => [
+      ...Object.values(training.ruleChoices),
+      ...training.additional,
+    ]),
+    ...steps.flatMap((step) =>
+      step.kind === "skill-training"
+        ? [
+            ...step.training.fixedSkills,
+            ...step.training.choiceRules.flatMap((choice) => choice.options.map((option) => option.slug)),
+          ]
+        : []
+    ),
+  ]);
 }
 
 function compareSkillIncreaseSlotIds(left: string, right: string): number {
@@ -249,6 +277,12 @@ function resolveSingletonChoiceGrantedSkill(
 function readActorSkillRank(actor: ActorLike, slug: string): number {
   const rank = Number(actor?.system?.skills?.[slug]?.rank ?? 0);
   return Number.isFinite(rank) ? Math.max(0, Math.min(4, Math.floor(rank))) : 0;
+}
+
+function readActorSkillRanks(actor: ActorLike): Record<string, number> {
+  return Object.fromEntries(
+    Object.keys(actor.system?.skills ?? {}).map((slug) => [slug, readActorSkillRank(actor, slug)])
+  );
 }
 
 function queueTrainingRuleSelectionUpdate(

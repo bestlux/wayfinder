@@ -2,6 +2,7 @@ import { SKILL_LABELS } from "../../constants.js";
 import { resolveSingletonChoiceSkillGrant } from "../../shared/singleton-choice-skill-grants.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
 import type { DraftState, PendingStep } from "../../types.js";
+import { compileSkillProgression, type SkillProgression, type SkillSourceGrant } from "../domain/skill-progression.js";
 import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
 import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane } from "../panes/skill-pane.js";
@@ -16,6 +17,7 @@ type SkillListEntry = {
   keyAbility: string | null;
 };
 type LooseSkillDocument = {
+  uuid?: unknown;
   system?: {
     slug?: unknown;
     rules?: unknown;
@@ -28,6 +30,7 @@ type LooseSkillDocument = {
 interface BuildSkillPaneDependencies {
   baseSkillRanks: Record<string, number>;
   steps?: readonly PendingStep[];
+  skillProgression?: SkillProgression;
   resolveDocument: (itemType: SkillDocumentType) => Promise<unknown | null>;
   configSkills: Record<string, unknown> | null;
   localize: (value: string) => string;
@@ -37,6 +40,8 @@ interface BuildSkillPaneDependencies {
 interface ProjectSkillRanksDependencies {
   baseSkillRanks: Record<string, number>;
   steps?: readonly PendingStep[];
+  validSkillSlugs?: ReadonlySet<string>;
+  mode?: "editing" | "recovery";
   resolveDocument: (itemType: SkillDocumentType) => Promise<unknown | null>;
   localize: (value: string) => string;
 }
@@ -50,12 +55,16 @@ export async function buildSkillPane(
     return null;
   }
 
-  const projectedRanks = await projectSkillRanks(draft, step.slotId, {
-    baseSkillRanks: deps.baseSkillRanks,
-    steps: deps.steps,
-    resolveDocument: deps.resolveDocument,
-    localize: deps.localize,
-  });
+  const progression =
+    deps.skillProgression ??
+    (await compileSkillPaneProgression(draft, {
+      baseSkillRanks: deps.baseSkillRanks,
+      steps: deps.steps ?? [step],
+      validSkillSlugs: validSkillSlugs(deps.baseSkillRanks, deps.configSkills),
+      resolveDocument: deps.resolveDocument,
+      localize: deps.localize,
+    }));
+  const projectedRanks = { ...(progression.stepsBySlotId[step.slotId]?.ranksBefore ?? progression.finalRanks) };
   const skillEntries = buildSkillList(projectedRanks, {
     configSkills: deps.configSkills,
     localize: deps.localize,
@@ -63,7 +72,7 @@ export async function buildSkillPane(
 
   if (step.kind === "skill-training") {
     return buildSkillTrainingPane(step, draft, projectedRanks, skillEntries, {
-      isTrainingStepComplete: deps.isTrainingStepComplete,
+      isTrainingStepComplete: () => progression.stepsBySlotId[step.slotId]?.progress.complete === true,
     });
   }
 
@@ -75,7 +84,32 @@ export async function projectSkillRanks(
   upToSlotId: string,
   deps: ProjectSkillRanksDependencies
 ): Promise<Record<string, number>> {
-  const baseSkillRanks = { ...deps.baseSkillRanks };
+  if (!deps.steps) {
+    const projected = projectDraftSkillRanks({
+      baseSkillRanks: deps.baseSkillRanks,
+      draft,
+      beforeSlotId: upToSlotId,
+      additionalTrainingSkillsBySlotId: buildAdditionalTrainingSkillsBySlotId(draft, []),
+    });
+    const documents = await Promise.all([
+      deps.resolveDocument("ancestry"),
+      deps.resolveDocument("heritage"),
+      deps.resolveDocument("background"),
+      deps.resolveDocument("class"),
+    ]);
+    for (const slug of documents.flatMap(extractFixedTrainedSkills)) {
+      projected[slug] = Math.max(projected[slug] ?? 0, 1);
+    }
+    return projected;
+  }
+  const progression = await compileSkillPaneProgression(draft, deps);
+  return { ...(progression.stepsBySlotId[upToSlotId]?.ranksBefore ?? progression.finalRanks) };
+}
+
+export async function compileSkillPaneProgression(
+  draft: DraftState,
+  deps: ProjectSkillRanksDependencies
+): Promise<SkillProgression> {
   const [ancestryDocument, heritageDocument, backgroundDocument, classDocument] = await Promise.all([
     deps.resolveDocument("ancestry"),
     deps.resolveDocument("heritage"),
@@ -83,40 +117,36 @@ export async function projectSkillRanks(
     deps.resolveDocument("class"),
   ]);
 
-  for (const slug of extractFixedTrainedSkills(backgroundDocument)) {
-    baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
-  }
+  const sourceGrants: SkillSourceGrant[] = [
+    ...[backgroundDocument, ancestryDocument, heritageDocument, classDocument].flatMap((document) =>
+      extractFixedTrainedSkills(document).map((slug) => ({ slug, rank: 1 }))
+    ),
+    ...extractDraftedSingletonSkillChoices(
+      draft,
+      [
+        { sourceItemType: "ancestry", document: ancestryDocument },
+        { sourceItemType: "heritage", document: heritageDocument },
+        { sourceItemType: "background", document: backgroundDocument },
+      ],
+      deps.localize
+    ),
+  ];
 
-  for (const slug of extractFixedTrainedSkills(ancestryDocument)) {
-    baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
-  }
-
-  for (const slug of extractFixedTrainedSkills(heritageDocument)) {
-    baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
-  }
-
-  for (const slug of extractFixedTrainedSkills(classDocument)) {
-    baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
-  }
-
-  for (const slug of extractDraftedSingletonSkillChoices(
+  return compileSkillProgression({
+    baselineRanks: deps.baseSkillRanks,
     draft,
-    [
-      { sourceItemType: "ancestry", document: ancestryDocument },
-      { sourceItemType: "heritage", document: heritageDocument },
-      { sourceItemType: "background", document: backgroundDocument },
-    ],
-    deps.localize
-  )) {
-    baseSkillRanks[slug] = Math.max(baseSkillRanks[slug] ?? 0, 1);
-  }
-
-  return projectDraftSkillRanks({
-    baseSkillRanks,
-    draft,
-    beforeSlotId: upToSlotId,
-    additionalTrainingSkillsBySlotId: buildAdditionalTrainingSkillsBySlotId(draft, deps.steps ?? []),
+    steps: deps.steps ?? [],
+    sourceGrants,
+    validSkillSlugs: deps.validSkillSlugs ?? validSkillSlugs(deps.baseSkillRanks, null),
+    mode: deps.mode ?? "editing",
   });
+}
+
+function validSkillSlugs(
+  baseSkillRanks: Readonly<Record<string, number>>,
+  configSkills: Record<string, unknown> | null
+): ReadonlySet<string> {
+  return new Set([...Object.keys(SKILL_LABELS), ...Object.keys(baseSkillRanks), ...Object.keys(configSkills ?? {})]);
 }
 
 function extractFixedTrainedSkills(document: unknown): string[] {
@@ -136,7 +166,7 @@ function extractDraftedSingletonSkillChoices(
     document: unknown | null;
   }>,
   localize: (value: string) => string
-): string[] {
+): SkillSourceGrant[] {
   return sources.flatMap(({ sourceItemType, document }) => {
     const sourceSlug = extractDocumentSlug(document);
     const sourceRules = (document as LooseSkillDocument | null)?.system?.rules;
@@ -144,25 +174,31 @@ function extractDraftedSingletonSkillChoices(
       return [];
     }
 
+    const sourceUuid =
+      Object.values(draft.selections).find((selection) => selection.itemType === sourceItemType)?.uuid ??
+      (typeof (document as LooseSkillDocument).uuid === "string"
+        ? ((document as LooseSkillDocument).uuid as string)
+        : undefined);
     return discoverSingletonChoiceSpecs({
       sourceItemType,
       sourceDocument: document,
       sourceSlug,
       localize,
-    })
-      .map((choice) => {
-        const selection = draft.singletonChoices[choice.slotId] ?? null;
-        if (!selection || !choice.options.some((option) => option.value === selection)) {
-          return null;
-        }
+    }).flatMap((choice): SkillSourceGrant[] => {
+      const selection = draft.singletonChoices[choice.slotId] ?? null;
+      if (!selection || !choice.options.some((option) => option.value === selection)) {
+        return [];
+      }
 
-        return resolveSingletonChoiceSkillGrant({
-          rules: sourceRules,
-          flag: choice.flag,
-          selection,
-        })?.skillSlug;
-      })
-      .filter((selection): selection is string => typeof selection === "string" && selection.length > 0);
+      const grant = resolveSingletonChoiceSkillGrant({
+        rules: sourceRules,
+        flag: choice.flag,
+        selection,
+      });
+      return grant
+        ? [{ slug: grant.skillSlug, rank: grant.rank, ...(sourceUuid ? { sourceId: sourceUuid } : {}) }]
+        : [];
+    });
   });
 }
 

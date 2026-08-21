@@ -19,6 +19,13 @@
       </div>
     {{/if}}
     {{#if activePane.setup.canGrantExtraAllowance}}<button type="button" class="secondary compact" data-wayfinder-action="grant-extra-equipment-allowance" data-step-id="{{activePane.stepId}}">Grant One Extra Level {{activePane.level}} Allowance</button>{{/if}}
+    {{#each activePane.setup.pendingRequests}}
+      <article class="equipment-policy-request">
+        <p><strong>{{kindLabel}}</strong> requested by {{requesterName}} at {{requestedAt}}.</p>
+        <small>{{reason}}</small>
+        {{#if canApprove}}<button type="button" class="primary compact" data-wayfinder-action="approve-equipment-policy-request" data-step-id="{{../activePane.stepId}}" data-request-id="{{requestId}}">Approve Request</button>{{/if}}
+      </article>
+    {{/each}}
   </section>
 
   {{#if activePane.corrupt}}
@@ -57,13 +64,6 @@
               <button type="button" class="primary" data-wayfinder-action="request-equipment-start" data-step-id="{{activePane.stepId}}" data-start-kind="replacement-character">Request Replacement Start</button>
             </div>
           {{/if}}
-          {{#each activePane.setup.pendingRequests}}
-            <article class="equipment-policy-request">
-              <p><strong>{{requesterName}}</strong> requested approval at {{requestedAt}}.</p>
-              <small>{{reason}}</small>
-              {{#if canApprove}}<button type="button" class="primary compact" data-wayfinder-action="approve-equipment-policy-request" data-step-id="{{../activePane.stepId}}" data-request-id="{{requestId}}">Approve Request</button>{{/if}}
-            </article>
-          {{/each}}
         </section>
       {{else if activePane.handoff.active}}
         <section class="equipment-callout warning" tabindex="-1" data-wayfinder-focus-id="starting-equipment-handoff">
@@ -113,6 +113,8 @@
                   <div class="equipment-result-actions">
                     {{#if canBuyWithCurrency}}<button type="button" class="primary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}" data-funding="currency">Buy with coin</button>{{/if}}
                     {{#each allowanceOptions}}<button type="button" class="secondary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../../activePane.stepId}}" data-source-uuid="{{../sourceUuid}}" data-funding="allowance" data-allowance-id="{{allowanceId}}">{{label}}</button>{{/each}}
+                    {{#if canRequestException}}<button type="button" class="secondary compact" data-wayfinder-action="request-equipment-item-exception" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">Request Exception</button>{{/if}}
+                    {{#if canApproveException}}<button type="button" class="secondary compact" data-wayfinder-action="approve-equipment-item-exception" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">Approve Exact Exception</button>{{/if}}
                     {{#unless canAdd}}<button type="button" class="primary compact" disabled>Add</button>{{/unless}}
                     {{#if canChooseTitanMauler}}<button type="button" class="secondary compact" data-wayfinder-action="choose-titan-mauler-equipment" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">Choose as Titan Mauler</button>{{/if}}
                   </div>

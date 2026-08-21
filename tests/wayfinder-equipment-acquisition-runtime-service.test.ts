@@ -146,6 +146,46 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(1);
   });
 
+  it("derives exact exception facts from the hydrated document and rejects structural failures", async () => {
+    const uncommon = dagger({ rarity: "uncommon" });
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => [uncommon]),
+      getDocument: vi.fn(async () => document(uncommon)),
+    });
+    await expect(
+      runtime.resolveItemExceptionFacts({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition!,
+        sourceUuid: DAGGER_UUID,
+      })
+    ).resolves.toEqual({
+      kind: "rarity-source-exception",
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 1,
+      scope: "rarity",
+      sourceUuid: DAGGER_UUID,
+      packId: PACK_ID,
+      publicationSlug: "pathfinder-player-core",
+      rarity: "uncommon",
+    });
+
+    const precious = dagger({ materialType: "silver" });
+    const structural = fixture({
+      getIndex: vi.fn(async () => [precious]),
+      getDocument: vi.fn(async () => document(precious)),
+    });
+    await expect(
+      structural.runtime.resolveItemExceptionFacts({
+        actor: structural.request.actor,
+        characterDraft: structural.request.draft,
+        acquisition: structural.request.draft.acquisition!,
+        sourceUuid: DAGGER_UUID,
+      })
+    ).rejects.toThrow(/otherwise supported item/i);
+  });
+
   it("rebuilds current price material for Apply instead of trusting the reviewed line", async () => {
     let currentSource = dagger();
     const { runtime, request } = fixture({

@@ -50,6 +50,7 @@ describe("starting equipment pane", () => {
       available: true,
       unavailableReason: null,
       titanMaulerEligible: false,
+      exceptionRequestable: false,
     };
 
     const pane = buildStartingEquipmentPane(
@@ -98,6 +99,7 @@ describe("starting equipment pane", () => {
       available: true,
       unavailableReason: null,
       titanMaulerEligible: false,
+      exceptionRequestable: false,
     };
 
     const pane = buildStartingEquipmentPane(
@@ -216,6 +218,7 @@ describe("starting equipment pane", () => {
       available: true,
       unavailableReason: null,
       titanMaulerEligible: true,
+      exceptionRequestable: false,
     };
 
     const pane = buildStartingEquipmentPane(
@@ -249,6 +252,8 @@ describe("starting equipment pane", () => {
       'data-wayfinder-action="retain-all-equipment"',
       'data-wayfinder-action="acknowledge-equipment-handoff"',
       'data-wayfinder-action="choose-titan-mauler-equipment"',
+      'data-wayfinder-action="request-equipment-item-exception"',
+      'data-wayfinder-action="approve-equipment-item-exception"',
       "Pick your Titan Mauler weapon",
       "data-wayfinder-focus-id",
     ]) {
@@ -277,6 +282,7 @@ describe("starting equipment pane", () => {
         available: true,
         unavailableReason: null,
         titanMaulerEligible: false,
+        exceptionRequestable: false,
       })
     );
 

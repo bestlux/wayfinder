@@ -9,8 +9,11 @@ import {
 } from "../src/wayfinder/domain/class-grant-reconciliation";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import {
+  buildEquipmentPolicyJudgmentFactsFingerprint,
   createEquipmentPolicyResolver,
   DEFAULT_EQUIPMENT_WORLD_POLICY,
+  type EquipmentPolicyJudgmentFacts,
+  type EquipmentPolicyJudgmentRecord,
 } from "../src/wayfinder/domain/equipment-policy";
 import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types";
 import { acquisitionFixture, acquisitionLine } from "./fixtures/acquisition-fixture";
@@ -72,6 +75,124 @@ describe("starting equipment command service", () => {
         }),
       }),
     ]);
+  });
+
+  it("records an exact hydrated item-exception request without an authority write", async () => {
+    const context = commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft);
+    const saveJudgment = vi.fn();
+    const facts = {
+      kind: "rarity-source-exception" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      scope: "rarity" as const,
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.uncommon",
+      packId: "pf2e.equipment-srd",
+      publicationSlug: "player-core",
+      rarity: "uncommon" as const,
+    };
+    const result = await executeStartingEquipmentCommand(
+      { type: "request-item-exception", sourceUuid: facts.sourceUuid, reason: "Ancestral item access" },
+      context,
+      {
+        mintRequestId: vi.fn(() => "request-item-1"),
+        resolveItemExceptionFacts: vi.fn(async () => facts),
+        saveJudgment,
+      }
+    );
+
+    expect(result.acquisition).toBe(context.draft.acquisition);
+    expect(result.policyRequests).toEqual([
+      expect.objectContaining({ requestId: "request-item-1", facts, requesterUserId: "owner-1" }),
+    ]);
+    expect(saveJudgment).not.toHaveBeenCalled();
+  });
+
+  it("rejects stale item-exception request facts before any GM authority write", async () => {
+    const context = commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft);
+    const requestedFacts = {
+      kind: "rarity-source-exception" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      scope: "rarity" as const,
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.uncommon",
+      packId: "pf2e.equipment-srd",
+      publicationSlug: "player-core",
+      rarity: "uncommon" as const,
+    };
+    const requested = await executeStartingEquipmentCommand(
+      { type: "request-item-exception", sourceUuid: requestedFacts.sourceUuid, reason: "Request" },
+      context,
+      {
+        mintRequestId: vi.fn(() => "request-item-1"),
+        resolveItemExceptionFacts: vi.fn(async () => requestedFacts),
+      }
+    );
+    context.draft.equipmentPolicyRequests = [...requested.policyRequests];
+    const saveJudgment = vi.fn();
+    await expect(
+      executeStartingEquipmentCommand(
+        { type: "approve-policy-request", requestId: "request-item-1", reason: "Approve" },
+        context,
+        {
+          resolveItemExceptionFacts: vi.fn(async () => ({ ...requestedFacts, rarity: "rare" as const })),
+          saveJudgment,
+        }
+      )
+    ).rejects.toThrow(/facts changed/i);
+    expect(saveJudgment).not.toHaveBeenCalled();
+  });
+
+  it("approves exact current item facts and persists a dormant policy exception", async () => {
+    const context = commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft);
+    const facts = {
+      kind: "rarity-source-exception" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      scope: "rarity" as const,
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.uncommon",
+      packId: "pf2e.equipment-srd",
+      publicationSlug: "player-core",
+      rarity: "uncommon" as const,
+    };
+    const requested = await executeStartingEquipmentCommand(
+      { type: "request-item-exception", sourceUuid: facts.sourceUuid, reason: "Request" },
+      context,
+      {
+        mintRequestId: vi.fn(() => "request-item-1"),
+        resolveItemExceptionFacts: vi.fn(async () => facts),
+      }
+    );
+    context.draft.equipmentPolicyRequests = [...requested.policyRequests];
+    const approved = judgment(facts, "approval:request-item-1");
+    const saveJudgment = vi.fn(async () => approved);
+    const result = await executeStartingEquipmentCommand(
+      { type: "approve-policy-request", requestId: "request-item-1", reason: "Approve" },
+      context,
+      {
+        resolveItemExceptionFacts: vi.fn(async () => facts),
+        saveJudgment,
+        resolvePolicy: vi.fn(() => effectivePolicyWithJudgment(approved)),
+      }
+    );
+
+    expect(saveJudgment).toHaveBeenCalledOnce();
+    expect(result.acquisition.lines).toEqual(context.draft.acquisition!.lines);
+    expect(result.acquisition.policySnapshot?.material.gmJudgments).toContainEqual(approved);
+  });
+
+  it("refuses to revoke an approval outside the current acquisition scope", async () => {
+    const revokeJudgment = vi.fn();
+    await expect(
+      executeStartingEquipmentCommand(
+        { type: "revoke-policy-judgment", judgmentId: "other-draft", reason: "Forged action" },
+        commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft),
+        { revokeJudgment }
+      )
+    ).rejects.toThrow(/bound to this equipment draft/i);
+    expect(revokeJudgment).not.toHaveBeenCalled();
   });
 
   it("returns a reviewed purchase state without mutating the caller draft", async () => {
@@ -505,4 +626,53 @@ function levelOnePolicy() {
     showUnknownSources: false,
     abp: { enabled: false, mode: "noABP", actorOverrideDisabled: false },
   });
+}
+
+function judgment(facts: EquipmentPolicyJudgmentFacts, id: string): EquipmentPolicyJudgmentRecord {
+  return {
+    id,
+    kind: facts.kind,
+    actorId: facts.actorId,
+    draftId: facts.draftId,
+    targetLevel: facts.targetLevel,
+    factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(facts),
+    authorUserId: "gm-1",
+    authorName: "GM",
+    recordedAt: "2026-08-19T20:00:00.000Z",
+    reason: "Approved",
+    request: {
+      requestId: "request-item-1",
+      requesterUserId: "owner-1",
+      requesterName: "Owner",
+      requestedAt: "2026-08-19T19:00:00.000Z",
+      reason: "Requested",
+      facts,
+    },
+    revocation: null,
+  };
+}
+
+function effectivePolicyWithJudgment(judgment: EquipmentPolicyJudgmentRecord) {
+  const base = acquisitionFixture({ disposition: "unreviewed" }).draft.policySnapshot!.material;
+  return {
+    version: 1 as const,
+    actorId: base.subject.actorId,
+    draftId: base.subject.draftId,
+    targetLevel: base.subject.targetLevel,
+    rules: { wealth: base.numericPolicyRef, semantics: base.semanticPolicyRef },
+    recipe: {
+      kind: "permanent-items" as const,
+      currencyCopper: base.budgetCopper,
+      allowances: base.allowances,
+    },
+    worldRecipePolicy: base.worldRecipePolicy,
+    sourcePolicy: base.sourcePolicy,
+    rarityPolicy: base.rarityPolicy,
+    authorityPolicy: base.authorityPolicy,
+    higherLevelStartEvidence: base.higherLevelStartEvidence,
+    abp: base.abp,
+    gmJudgments: [judgment],
+    fingerprint: "policy-with-exception",
+    explanations: [],
+  };
 }

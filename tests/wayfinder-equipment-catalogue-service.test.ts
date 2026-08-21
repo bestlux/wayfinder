@@ -9,7 +9,11 @@ import {
   WF_080_21_DAGGER_UUID,
 } from "../src/wayfinder/application/equipment-catalogue-service";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
-import type { EffectiveEquipmentPolicySnapshotV1 } from "../src/wayfinder/domain/equipment-policy";
+import {
+  buildEquipmentPolicyJudgmentFactsFingerprint,
+  type EffectiveEquipmentPolicySnapshotV1,
+  type EquipmentPolicyJudgmentRecord,
+} from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 
 const PACK_ID = "pf2e.equipment-srd";
@@ -378,6 +382,57 @@ describe("minimal equipment catalogue", () => {
         },
       ])
     ).toThrow(/more than once/i);
+  });
+
+  it("automatically applies only an exact dormant GM item exception", async () => {
+    const facts = {
+      kind: "rarity-source-exception" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 1,
+      scope: "rarity" as const,
+      sourceUuid: UNCOMMON_UUID,
+      packId: PACK_ID,
+      publicationSlug: "pathfinder-player-core",
+      rarity: "uncommon" as const,
+    };
+    const exception: EquipmentPolicyJudgmentRecord = {
+      id: "exception-1",
+      kind: facts.kind,
+      actorId: facts.actorId,
+      draftId: facts.draftId,
+      targetLevel: facts.targetLevel,
+      factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(facts),
+      authorUserId: "gm-1",
+      authorName: "GM",
+      recordedAt: "2026-08-20T20:00:00.000Z",
+      reason: "Approved exact uncommon item",
+      request: {
+        requestId: "request-1",
+        requesterUserId: "owner-1",
+        requesterName: "Owner",
+        requestedAt: "2026-08-20T19:00:00.000Z",
+        reason: "Requested exact uncommon item",
+        facts,
+      },
+      revocation: null,
+    };
+    const service = createEquipmentCatalogueService({
+      packs: packMap({ entries: [uncommonItem(), uncommonItem({ _id: "adjacent" })] }),
+      equipmentPackIds: [PACK_ID],
+    });
+    const projection = await service.project(context({ policy: policy({ gmJudgments: [exception] }) }));
+    expect(projection.entries.find((entry) => entry.sourceUuid === UNCOMMON_UUID)).toMatchObject({
+      available: true,
+      policyDecision: {
+        rarityBasis: "gm-rarity-exception",
+        rarityExceptionJudgmentId: exception.id,
+      },
+    });
+    expect(projection.entries.find((entry) => entry.sourceUuid.endsWith(".adjacent"))).toMatchObject({
+      available: false,
+      policyDecision: { rarityExceptionJudgmentId: null },
+    });
   });
 
   it("force-hydrates Apply resolution and surfaces stable document and price fingerprint drift", async () => {

@@ -66,6 +66,13 @@ export function buildStartingEquipmentPane(
               label: `Use level ${allowance.itemLevel} allowance`,
             }))
         : [];
+    const exceptionPending = draft.equipmentPolicyRequests.some(
+      (request) =>
+        request.withdrawnAt === null &&
+        request.facts.kind === "rarity-source-exception" &&
+        request.facts.draftId === acquisition?.draftId &&
+        request.facts.sourceUuid === record.sourceUuid
+    );
     return {
       ...record,
       affordable,
@@ -73,6 +80,8 @@ export function buildStartingEquipmentPane(
       canAdd: canBuyWithCurrency || allowanceOptions.length > 0,
       canBuyWithCurrency,
       allowanceOptions,
+      canRequestException: record.exceptionRequestable && setupOptions?.isGm !== true && !exceptionPending,
+      canApproveException: record.exceptionRequestable && setupOptions?.isGm === true,
       canChooseTitanMauler:
         catalogue.titanMauler.required &&
         catalogue.titanMauler.selectedSourceUuid === null &&
@@ -171,6 +180,12 @@ export function buildStartingEquipmentPane(
         requesterName: request.requesterName,
         requestedAt: request.requestedAt,
         reason: request.reason,
+        kindLabel:
+          request.facts.kind === "higher-level-start"
+            ? `Level ${request.facts.targetLevel} higher-level start`
+            : request.facts.kind === "rarity-source-exception"
+              ? `Exact item exception: ${request.facts.sourceUuid}`
+              : request.facts.kind,
         canApprove: setupOptions?.isGm === true,
       })),
       activeJudgmentId: activeJudgment?.id ?? null,

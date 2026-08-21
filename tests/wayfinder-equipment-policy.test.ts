@@ -10,6 +10,7 @@ import {
   type EquipmentPolicyJudgmentRecord,
   type EquipmentPolicyResolutionInput,
   evaluateEquipmentItemAuthority,
+  normalizeEquipmentPolicyJudgment,
   normalizeEquipmentWorldPolicy,
 } from "../src/wayfinder/domain/equipment-policy";
 
@@ -51,6 +52,19 @@ describe("equipment world policy", () => {
 });
 
 describe("effective equipment policy", () => {
+  it("rejects a judgment envelope that contradicts its exact request facts", () => {
+    const valid = judgment({
+      kind: "extra-current-level-allowance",
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+    });
+    expect(normalizeEquipmentPolicyJudgment(valid)).toEqual(valid);
+    expect(normalizeEquipmentPolicyJudgment({ ...valid, actorId: "actor-2" })).toBeNull();
+    expect(normalizeEquipmentPolicyJudgment({ ...valid, draftId: "draft-2" })).toBeNull();
+    expect(normalizeEquipmentPolicyJudgment({ ...valid, targetLevel: 6 })).toBeNull();
+  });
+
   it("resolves every official higher-level wealth row exactly", () => {
     for (let targetLevel = 2; targetLevel <= 20; targetLevel += 1) {
       const row = getCharacterWealthRow(targetLevel);

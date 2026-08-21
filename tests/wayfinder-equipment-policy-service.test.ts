@@ -251,6 +251,26 @@ describe("equipment policy service", () => {
     expect(globals.game.settings.set).toHaveBeenCalledWith(MODULE_ID, SETTINGS.equipmentPolicy, expect.any(Object));
   });
 
+  it("rejects a stale GM client after the live user has been demoted", async () => {
+    globals.game.users.get.mockReturnValue({ id: "gm-1", name: "Former GM", isGM: false });
+    await expect(
+      saveTrustedEquipmentPolicyJudgment({
+        id: "judgment-demoted",
+        facts: {
+          kind: "custom-lump-sum",
+          actorId: "actor-1",
+          draftId: "draft-1",
+          targetLevel: 5,
+          amountCopper: 1234,
+        },
+        reason: "Stale client approval",
+        recordedAt: "2026-08-18T20:00:00.000Z",
+        user: { id: "gm-1", name: "Former GM", isGM: true },
+      })
+    ).rejects.toBeInstanceOf(WayfinderGmCommandAuthorityError);
+    expect(globals.game.settings.set).not.toHaveBeenCalled();
+  });
+
   it("enforces the resolved Apply authority against the current actor and draft", () => {
     const actor = { id: "actor-1", type: "character", isOwner: true };
     const ownerDraft = acquisitionFixture().draft;

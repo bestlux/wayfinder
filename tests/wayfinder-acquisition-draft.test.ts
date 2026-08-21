@@ -331,6 +331,53 @@ describe("acquisition draft", () => {
     expect(normalizeAcquisitionDraft(item)).toBeNull();
   });
 
+  it("keeps an exact dormant item exception without letting it authorize an adjacent line", () => {
+    const draft = completeDraft();
+    const facts = {
+      kind: "rarity-source-exception" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      scope: "rarity" as const,
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.uncommon",
+      packId: "pf2e.equipment-srd",
+      publicationSlug: "player-core",
+      rarity: "uncommon" as const,
+    };
+    const judgment = {
+      id: "exception-1",
+      kind: facts.kind,
+      actorId: facts.actorId,
+      draftId: facts.draftId,
+      targetLevel: facts.targetLevel,
+      factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(facts),
+      authorUserId: "gm-1",
+      authorName: "GM",
+      recordedAt: "2026-08-20T20:00:00.000Z",
+      reason: "Approved exact uncommon item",
+      request: {
+        requestId: "request-1",
+        requesterUserId: "owner-1",
+        requesterName: "Owner",
+        requestedAt: "2026-08-20T19:00:00.000Z",
+        reason: "Requested exact uncommon item",
+        facts,
+      },
+      revocation: null,
+    };
+    const dormant = structuredClone(draft) as any;
+    dormant.policySnapshot.material.gmJudgments = [judgment];
+    expect(normalizeAcquisitionDraft(dormant)).not.toBeNull();
+
+    dormant.lines[0].policyDecision = {
+      ...dormant.lines[0].policyDecision,
+      eligible: true,
+      rarity: "uncommon",
+      rarityExceptionJudgmentId: judgment.id,
+    };
+    expect(normalizeAcquisitionDraft(dormant)).toBeNull();
+  });
+
   it("persists a structured economic handoff and requires explicit acknowledgment", () => {
     const draft = completeDraft();
     const foreign = createEconomicBaseline({

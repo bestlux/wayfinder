@@ -140,6 +140,11 @@ export function parseWayfinderAction(element) {
             return element.dataset.stepId && element.dataset.requestId
                 ? { type: action, stepId: element.dataset.stepId, requestId: element.dataset.requestId }
                 : null;
+        case "request-equipment-item-exception":
+        case "approve-equipment-item-exception":
+            return element.dataset.stepId && element.dataset.sourceUuid
+                ? { type: action, stepId: element.dataset.stepId, sourceUuid: element.dataset.sourceUuid }
+                : null;
         case "revoke-equipment-policy-judgment":
             return element.dataset.stepId && element.dataset.judgmentId
                 ? { type: action, stepId: element.dataset.stepId, judgmentId: element.dataset.judgmentId }
@@ -258,6 +263,8 @@ export function isDraftMutationAction(action) {
         case "activate-equipment-policy":
         case "request-equipment-start":
         case "approve-equipment-policy-request":
+        case "request-equipment-item-exception":
+        case "approve-equipment-item-exception":
         case "revoke-equipment-policy-judgment":
         case "set-custom-equipment-lump-sum":
         case "grant-extra-equipment-allowance":

@@ -4,6 +4,7 @@ import {
   type EffectiveEquipmentPolicySnapshotV1,
   type EquipmentRarity,
   evaluateEquipmentItemAuthority,
+  resolveEquipmentItemExceptionJudgmentIds,
 } from "../domain/equipment-policy.js";
 
 export const EQUIPMENT_CATALOGUE_PROJECTION_VERSION = 1 as const;
@@ -520,6 +521,13 @@ export class EquipmentCatalogueService {
             candidate,
             source: source === null ? null : cloneData(source),
           });
+    const exceptionIds = resolveEquipmentItemExceptionJudgmentIds({
+      policy: context.policy,
+      sourceUuid: candidate.sourceUuid,
+      packId: candidate.packId,
+      publicationSlug: candidate.publicationSlug,
+      rarity: candidate.rarity,
+    });
     const authority = evaluateEquipmentItemAuthority({
       policy: context.policy,
       sourceUuid: candidate.sourceUuid,
@@ -527,6 +535,7 @@ export class EquipmentCatalogueService {
       publicationSlug: candidate.publicationSlug,
       rarity: candidate.rarity,
       hasCharacterAccess: characterAccessRef !== null,
+      ...exceptionIds,
     });
     const policyReasons = authority.reasons.flatMap((code) => authorityReason(code));
     const unavailableReasons = dedupeReasons([...normalized.reasons, ...policyReasons]);
@@ -535,16 +544,21 @@ export class EquipmentCatalogueService {
       packId: candidate.packId,
       publicationSlug: candidate.publicationSlug,
       rarity: candidate.rarity,
-      sourceBasis: authority.reasons.includes("source-not-allowed") ? "source-not-allowed" : "approved-pack",
+      sourceBasis: exceptionIds.sourceExceptionJudgmentId
+        ? "gm-source-exception"
+        : authority.reasons.includes("source-not-allowed")
+          ? "source-not-allowed"
+          : "approved-pack",
       rarityBasis:
         candidate.rarity === "common"
           ? "common"
-          : characterAccessRef
-            ? "specific-character-access"
-            : `blanket-${context.policy.rarityPolicy.blanketCeiling}`,
+          : exceptionIds.rarityExceptionJudgmentId
+            ? "gm-rarity-exception"
+            : characterAccessRef
+              ? "specific-character-access"
+              : `blanket-${context.policy.rarityPolicy.blanketCeiling}`,
       characterAccessRef,
-      sourceExceptionJudgmentId: null,
-      rarityExceptionJudgmentId: null,
+      ...exceptionIds,
       abpTreatment: context.policy.abp.enabled ? `abp-${context.policy.abp.mode ?? "enabled"}` : "unchanged",
     });
     return Object.freeze({

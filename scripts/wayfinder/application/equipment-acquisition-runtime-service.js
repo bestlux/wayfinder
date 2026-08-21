@@ -299,6 +299,33 @@ export function createEquipmentAcquisitionRuntime(options) {
             assertTitanMaulerCandidate(resolved);
             return resolved.policyDecision.characterAccessRef;
         },
+        async resolveItemExceptionFacts(request) {
+            const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
+            const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
+            const authorityCodes = resolved.unavailableReasons
+                .map((reason) => reason.code)
+                .filter((code) => code === "source-not-allowed" || code === "rarity-not-available");
+            if (authorityCodes.length === 0 ||
+                resolved.unavailableReasons.some((reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available")) {
+                throw new TypeError("Only an otherwise supported item blocked by source or rarity can request an exception.");
+            }
+            const scope = authorityCodes.includes("source-not-allowed")
+                ? authorityCodes.includes("rarity-not-available")
+                    ? "source-and-rarity"
+                    : "source"
+                : "rarity";
+            return {
+                kind: "rarity-source-exception",
+                actorId: policy.actorId,
+                draftId: policy.draftId,
+                targetLevel: policy.targetLevel,
+                scope,
+                sourceUuid: resolved.candidate.sourceUuid,
+                packId: resolved.candidate.packId,
+                publicationSlug: resolved.candidate.publicationSlug,
+                rarity: resolved.candidate.rarity,
+            };
+        },
         async synchronizeTitanMaulerLine(request) {
             const titanLines = request.acquisition.lines.filter(isTitanMaulerLine);
             if (titanLines.length === 0) {
@@ -708,6 +735,8 @@ function toUiRecord(entry) {
         traits: [...entry.traits],
         available: entry.available,
         unavailableReason: entry.unavailableReasons[0]?.message ?? null,
+        exceptionRequestable: entry.unavailableReasons.length > 0 &&
+            entry.unavailableReasons.every((reason) => reason.code === "source-not-allowed" || reason.code === "rarity-not-available"),
         titanMaulerEligible: isPotentialTitanMaulerEntry(entry),
     };
 }

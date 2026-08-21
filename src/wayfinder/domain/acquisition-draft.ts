@@ -754,7 +754,7 @@ function policyMatchesAcquisition(
   if (subject.targetLevel === 1 && evidence.kind !== "not-required") return false;
   if (subject.targetLevel === 1) {
     return (
-      policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) && usedJudgmentIds.size === policy.gmJudgments.length
+      policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) && allRequiredJudgmentsUsed(policy, usedJudgmentIds)
     );
   }
   if (evidence.kind === "not-required") return false;
@@ -784,7 +784,16 @@ function policyMatchesAcquisition(
     return false;
   }
   return (
-    policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) && usedJudgmentIds.size === policy.gmJudgments.length
+    policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) && allRequiredJudgmentsUsed(policy, usedJudgmentIds)
+  );
+}
+
+function allRequiredJudgmentsUsed(
+  policy: AcquisitionPolicyMaterialFacts,
+  usedJudgmentIds: ReadonlySet<string>
+): boolean {
+  return policy.gmJudgments.every(
+    (judgment) => judgment.kind === "rarity-source-exception" || usedJudgmentIds.has(judgment.id)
   );
 }
 
@@ -883,9 +892,7 @@ function policyDetailsMatchJudgments(
       usedJudgmentIds.add(id);
     }
   }
-  return !policy.gmJudgments.some(
-    (judgment) => judgment.kind === "rarity-source-exception" && !usedJudgmentIds.has(judgment.id)
-  );
+  return true;
 }
 
 function normalizeWorldRecipePolicy(raw: unknown): AcquisitionPolicyMaterialFacts["worldRecipePolicy"] | null {

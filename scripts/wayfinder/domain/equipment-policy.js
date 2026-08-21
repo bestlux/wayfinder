@@ -205,6 +205,15 @@ export function equipmentPolicyJudgmentFactsEqual(left, right) {
 export function evaluateEquipmentItemAuthority(input) {
     return evaluateEquipmentItemAuthorityFacts({ ...input, policy: input.policy });
 }
+export function resolveEquipmentItemExceptionJudgmentIds(input) {
+    const matching = (requestedScope) => [...input.policy.gmJudgments]
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .find((judgment) => hasMatchingItemException(input, judgment.id, requestedScope))?.id ?? null;
+    return {
+        sourceExceptionJudgmentId: matching("source"),
+        rarityExceptionJudgmentId: matching("rarity"),
+    };
+}
 export function evaluateEquipmentItemAuthorityFacts(input) {
     const packAllowed = input.policy.sourcePolicy.effectivePackIds.includes(input.packId);
     const sourceVisible = sourceEnabled(input.policy.sourcePolicy, input.publicationSlug);
@@ -471,7 +480,11 @@ function validateJudgmentFacts(facts) {
         throw new TypeError("Custom lump-sum judgment facts are invalid.");
     }
     if (facts.kind === "rarity-source-exception" &&
-        (!nonEmpty(facts.sourceUuid) || !nonEmpty(facts.packId) || !isRarity(facts.rarity))) {
+        (!nonEmpty(facts.sourceUuid) ||
+            !nonEmpty(facts.packId) ||
+            !isOneOf(facts.scope, ["source", "rarity", "source-and-rarity"]) ||
+            (facts.publicationSlug !== null && typeof facts.publicationSlug !== "string") ||
+            !isRarity(facts.rarity))) {
         throw new TypeError("Equipment exception facts are invalid.");
     }
 }

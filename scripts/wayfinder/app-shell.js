@@ -41,7 +41,7 @@ import { executeStartingEquipmentCommand, } from "./application/starting-equipme
 import { getStartingEquipmentUiAdapter, resolveStartingEquipmentRenderPlan, } from "./application/starting-equipment-ui-adapter.js";
 import { buildDraftSaveView, buildWayfinderContext, } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
-import { recordAcquisitionCurrencyConvergenceWitness, recordClassGrantReconciliations, } from "./domain/acquisition-draft.js";
+import { acquisitionPolicyMaterialMatches, recordAcquisitionCurrencyConvergenceWitness, recordClassGrantReconciliations, } from "./domain/acquisition-draft.js";
 import { manifestsDescribeSameOutcome } from "./domain/completed-acquisition-manifest.js";
 import { physicalGrantCoverageIssues, withPhysicalGrantCoverageReadiness } from "./domain/physical-grant-coverage.js";
 import { evaluateWayfinderDraftReadiness, isTrainingStepCompleteFromDraft, WayfinderDraftNotReadyError, } from "./domain/step-evaluation.js";
@@ -655,6 +655,20 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     type: "approve-policy-request",
                     requestId: action.requestId,
                     reason: "Approved the requested higher-level starting wealth.",
+                });
+                break;
+            case "request-equipment-item-exception":
+                await this.#executeStartingEquipmentCommand(action.stepId, {
+                    type: "request-item-exception",
+                    sourceUuid: action.sourceUuid,
+                    reason: "Requesting an exact source and rarity exception for this item.",
+                });
+                break;
+            case "approve-equipment-item-exception":
+                await this.#executeStartingEquipmentCommand(action.stepId, {
+                    type: "approve-item-exception",
+                    sourceUuid: action.sourceUuid,
+                    reason: "Approved an exact source and rarity exception for this item.",
                 });
                 break;
             case "revoke-equipment-policy-judgment":
@@ -1922,6 +1936,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                             if (!currentDraft.acquisition)
                                 return;
                             assertEquipmentApplyAuthority({ actor, acquisition: currentDraft.acquisition });
+                            const reviewed = currentDraft.acquisition.policySnapshot;
+                            const current = getFoundryEquipmentAcquisitionRuntime().resolveCurrentPolicySnapshot(actor, currentDraft.acquisition);
+                            if (!reviewed || !acquisitionPolicyMaterialMatches(reviewed, current)) {
+                                throw new Error("Starting-equipment authority changed before Apply could begin.");
+                            }
                         },
                         persistAcquisitionCurrencyConvergenceWitness: async (witness) => {
                             const lockedApplyCandidate = applyCandidate.value;

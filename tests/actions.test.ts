@@ -213,6 +213,19 @@ describe("wayfinder actions", () => {
     expect(
       parseWayfinderAction({
         dataset: {
+          wayfinderAction: "request-equipment-item-exception",
+          stepId: "starting-equipment-level-5",
+          sourceUuid: "Compendium.pf2e.equipment-srd.Item.uncommon",
+        },
+      } as any)
+    ).toEqual({
+      type: "request-equipment-item-exception",
+      stepId: "starting-equipment-level-5",
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.uncommon",
+    });
+    expect(
+      parseWayfinderAction({
+        dataset: {
           wayfinderAction: "change-equipment-quantity",
           stepId: "starting-equipment-level-1",
           lineId: "line-1",

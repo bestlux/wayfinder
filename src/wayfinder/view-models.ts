@@ -416,6 +416,7 @@ export interface StartingEquipmentCatalogueRecord {
   readonly traits: readonly string[];
   readonly available: boolean;
   readonly unavailableReason: string | null;
+  readonly exceptionRequestable: boolean;
   readonly titanMaulerEligible: boolean;
 }
 
@@ -447,6 +448,7 @@ export interface StartingEquipmentStepPane {
       requesterName: string;
       requestedAt: string;
       reason: string;
+      kindLabel: string;
       canApprove: boolean;
     }[];
     activeJudgmentId: string | null;
@@ -483,6 +485,8 @@ export interface StartingEquipmentStepPane {
       canBuyWithCurrency: boolean;
       allowanceOptions: readonly { allowanceId: string; label: string }[];
       canChooseTitanMauler: boolean;
+      canRequestException: boolean;
+      canApproveException: boolean;
     })[];
     preview: (StartingEquipmentCatalogueRecord & { affordable: boolean }) | null;
   };

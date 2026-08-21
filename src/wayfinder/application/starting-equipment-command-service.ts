@@ -25,12 +25,13 @@ import type {
   HigherLevelStartKind,
   OfficialEquipmentRecipe,
 } from "../domain/equipment-policy.js";
-import { createEquipmentPolicyRequest } from "../domain/equipment-policy.js";
+import { createEquipmentPolicyRequest, equipmentPolicyJudgmentFactsEqual } from "../domain/equipment-policy.js";
 import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class-grant-projection-service.js";
 import type { EconomicActorLike } from "./economic-baseline-service.js";
 import { evaluateActorEconomicAdmission } from "./economic-baseline-service.js";
 import {
   type CurrentEquipmentAccessRequest,
+  type CurrentEquipmentExceptionRequest,
   getFoundryEquipmentAcquisitionRuntime,
   type NativeClassGrantLineRequest,
 } from "./equipment-acquisition-runtime-service.js";
@@ -55,6 +56,8 @@ export type StartingEquipmentCommand =
       readonly reason: string;
     }
   | { readonly type: "approve-policy-request"; readonly requestId: string; readonly reason: string }
+  | { readonly type: "request-item-exception"; readonly sourceUuid: string; readonly reason: string }
+  | { readonly type: "approve-item-exception"; readonly sourceUuid: string; readonly reason: string }
   | { readonly type: "revoke-policy-judgment"; readonly judgmentId: string; readonly reason: string }
   | { readonly type: "set-custom-lump-sum"; readonly amountCopper: number; readonly reason: string }
   | { readonly type: "grant-extra-current-level-allowance"; readonly reason: string }
@@ -96,6 +99,9 @@ interface StartingEquipmentCommandDependencies {
   readonly prepareClassGrantPlan: typeof prepareCurrentClassGrantPlan;
   readonly prepareNativeGrantLines: (request: NativeClassGrantLineRequest) => Promise<readonly AcquisitionLineDraft[]>;
   readonly resolveCharacterAccessRef: (request: CurrentEquipmentAccessRequest) => Promise<string | null>;
+  readonly resolveItemExceptionFacts: (
+    request: CurrentEquipmentExceptionRequest
+  ) => ReturnType<ReturnType<typeof getFoundryEquipmentAcquisitionRuntime>["resolveItemExceptionFacts"]>;
   readonly evaluateAdmission: typeof evaluateActorEconomicAdmission;
   readonly evaluateLedger: typeof evaluateAcquisitionLedger;
 }
@@ -115,6 +121,7 @@ const DEFAULT_DEPS: StartingEquipmentCommandDependencies = {
   prepareNativeGrantLines: (request) => getFoundryEquipmentAcquisitionRuntime().prepareNativeClassGrantLines(request),
   resolveCharacterAccessRef: (request) =>
     getFoundryEquipmentAcquisitionRuntime().resolveCurrentCharacterAccessRef(request),
+  resolveItemExceptionFacts: (request) => getFoundryEquipmentAcquisitionRuntime().resolveItemExceptionFacts(request),
   evaluateAdmission: evaluateActorEconomicAdmission,
   evaluateLedger: evaluateAcquisitionLedger,
 };
@@ -194,10 +201,45 @@ export async function executeStartingEquipmentCommand(
       break;
     }
     case "approve-policy-request": {
-      const staged = requireAcquisition(context.draft);
-      const request = requireCurrentPolicyRequest(policyRequests, command.requestId, staged, actorId(context.actor));
+      const current = requireAcquisition(context.draft);
+      const request = requireCurrentPolicyRequest(policyRequests, command.requestId, current, actorId(context.actor));
+      if (request.facts.kind === "rarity-source-exception") {
+        if (!current.policySnapshot) {
+          throw new TypeError("Activate starting-equipment policy before approving an item exception.");
+        }
+        const currentFacts = await deps.resolveItemExceptionFacts({
+          actor: context.actor,
+          characterDraft: context.draft,
+          acquisition: current,
+          sourceUuid: request.facts.sourceUuid,
+        });
+        if (!equipmentPolicyJudgmentFactsEqual(currentFacts, request.facts)) {
+          throw new TypeError("Equipment exception request facts changed before approval.");
+        }
+        const judgment = await deps.saveJudgment({
+          id: `approval:${request.requestId}`,
+          facts: request.facts,
+          request,
+          reason: command.reason,
+          recordedAt: context.now(),
+          user: context.user,
+        });
+        const exceptionJudgmentIds = [
+          ...current.policySnapshot.material.gmJudgments
+            .filter((candidate) => candidate.kind === "rarity-source-exception")
+            .map((candidate) => candidate.id),
+          judgment.id,
+        ];
+        const policy = resolveExistingPolicy(current, context, deps, { exceptionJudgmentIds });
+        acquisition = invalidateAcquisitionReview(
+          { ...current, policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe) },
+          ["policy"]
+        );
+        statusNote = "Exact item source and rarity exception approved. The item can now be added normally.";
+        break;
+      }
       if (request.facts.kind !== "higher-level-start") {
-        throw new TypeError("This equipment approval is not a higher-level start request.");
+        throw new TypeError("This equipment request requires its dedicated GM command.");
       }
       const judgment = await deps.saveJudgment({
         id: `approval:${request.requestId}`,
@@ -212,18 +254,67 @@ export async function executeStartingEquipmentCommand(
         judgmentId: judgment.id,
         startKind: request.facts.startKind,
       } as const;
-      if (staged.policySnapshot) {
-        const policy = resolveExistingPolicy(staged, context, deps, { higherLevelStartClaim: claim });
+      if (current.policySnapshot) {
+        const policy = resolveExistingPolicy(current, context, deps, { higherLevelStartClaim: claim });
         acquisition = invalidateAcquisitionReview(
-          { ...staged, policySnapshot: createAcquisitionPolicySnapshot(policy, staged.recipe) },
+          { ...current, policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe) },
           ["policy"]
         );
         statusNote = "Higher-level start reapproved. Review the current cart before Apply.";
       } else {
-        const activated = await activateAcquisition(staged, context, deps, claim);
+        const activated = await activateAcquisition(current, context, deps, claim);
         acquisition = activated.acquisition;
         statusNote = "Higher-level start approved. Ready to shop.";
       }
+      break;
+    }
+    case "request-item-exception": {
+      acquisition = requireActiveAcquisition(context.draft);
+      const facts = await deps.resolveItemExceptionFacts({
+        actor: context.actor,
+        characterDraft: context.draft,
+        acquisition,
+        sourceUuid: command.sourceUuid,
+      });
+      const request = deps.createRequest({
+        requestId: deps.mintRequestId(),
+        facts,
+        requesterUserId: context.userId,
+        requesterName: userName(context.user, context.userId),
+        requestedAt: context.now(),
+        reason: command.reason,
+      });
+      policyRequests = replacePolicyRequest(policyRequests, request);
+      statusNote = "Exact item exception requested from a GM.";
+      break;
+    }
+    case "approve-item-exception": {
+      const current = requireActiveAcquisition(context.draft);
+      const facts = await deps.resolveItemExceptionFacts({
+        actor: context.actor,
+        characterDraft: context.draft,
+        acquisition: current,
+        sourceUuid: command.sourceUuid,
+      });
+      const judgment = await deps.saveJudgment({
+        id: deps.mintJudgmentId(),
+        facts,
+        reason: command.reason,
+        recordedAt: context.now(),
+        user: context.user,
+      });
+      const exceptionJudgmentIds = [
+        ...current
+          .policySnapshot!.material.gmJudgments.filter((candidate) => candidate.kind === "rarity-source-exception")
+          .map((candidate) => candidate.id),
+        judgment.id,
+      ];
+      const policy = resolveExistingPolicy(current, context, deps, { exceptionJudgmentIds });
+      acquisition = invalidateAcquisitionReview(
+        { ...current, policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe) },
+        ["policy"]
+      );
+      statusNote = "Exact item source and rarity exception approved. The item can now be added normally.";
       break;
     }
     case "revoke-policy-judgment": {

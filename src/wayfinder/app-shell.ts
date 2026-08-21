@@ -142,6 +142,7 @@ import {
 } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
 import {
+  acquisitionPolicyMaterialMatches,
   recordAcquisitionCurrencyConvergenceWitness,
   recordClassGrantReconciliations,
 } from "./domain/acquisition-draft.js";
@@ -932,6 +933,20 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           type: "approve-policy-request",
           requestId: action.requestId,
           reason: "Approved the requested higher-level starting wealth.",
+        });
+        break;
+      case "request-equipment-item-exception":
+        await this.#executeStartingEquipmentCommand(action.stepId, {
+          type: "request-item-exception",
+          sourceUuid: action.sourceUuid,
+          reason: "Requesting an exact source and rarity exception for this item.",
+        });
+        break;
+      case "approve-equipment-item-exception":
+        await this.#executeStartingEquipmentCommand(action.stepId, {
+          type: "approve-item-exception",
+          sourceUuid: action.sourceUuid,
+          reason: "Approved an exact source and rarity exception for this item.",
         });
         break;
       case "revoke-equipment-policy-judgment":
@@ -2395,6 +2410,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             assertAcquisitionApplyAuthority: (actor, currentDraft) => {
               if (!currentDraft.acquisition) return;
               assertEquipmentApplyAuthority({ actor, acquisition: currentDraft.acquisition });
+              const reviewed = currentDraft.acquisition.policySnapshot;
+              const current = getFoundryEquipmentAcquisitionRuntime().resolveCurrentPolicySnapshot(
+                actor,
+                currentDraft.acquisition
+              );
+              if (!reviewed || !acquisitionPolicyMaterialMatches(reviewed, current)) {
+                throw new Error("Starting-equipment authority changed before Apply could begin.");
+              }
             },
             persistAcquisitionCurrencyConvergenceWitness: async (witness) => {
               const lockedApplyCandidate = applyCandidate.value;

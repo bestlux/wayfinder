@@ -463,6 +463,26 @@ export function evaluateEquipmentItemAuthority(input: {
   return evaluateEquipmentItemAuthorityFacts({ ...input, policy: input.policy });
 }
 
+export function resolveEquipmentItemExceptionJudgmentIds(input: {
+  readonly policy: EquipmentItemAuthorityPolicyFacts;
+  readonly sourceUuid: string;
+  readonly packId: string;
+  readonly publicationSlug: string | null;
+  readonly rarity: EquipmentRarity;
+}): {
+  readonly sourceExceptionJudgmentId: string | null;
+  readonly rarityExceptionJudgmentId: string | null;
+} {
+  const matching = (requestedScope: "source" | "rarity") =>
+    [...input.policy.gmJudgments]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .find((judgment) => hasMatchingItemException(input, judgment.id, requestedScope))?.id ?? null;
+  return {
+    sourceExceptionJudgmentId: matching("source"),
+    rarityExceptionJudgmentId: matching("rarity"),
+  };
+}
+
 export function evaluateEquipmentItemAuthorityFacts(input: {
   readonly policy: EquipmentItemAuthorityPolicyFacts;
   readonly sourceUuid: string;
@@ -805,7 +825,11 @@ function validateJudgmentFacts(facts: EquipmentPolicyJudgmentFacts): void {
   }
   if (
     facts.kind === "rarity-source-exception" &&
-    (!nonEmpty(facts.sourceUuid) || !nonEmpty(facts.packId) || !isRarity(facts.rarity))
+    (!nonEmpty(facts.sourceUuid) ||
+      !nonEmpty(facts.packId) ||
+      !isOneOf(facts.scope, ["source", "rarity", "source-and-rarity"]) ||
+      (facts.publicationSlug !== null && typeof facts.publicationSlug !== "string") ||
+      !isRarity(facts.rarity))
   ) {
     throw new TypeError("Equipment exception facts are invalid.");
   }

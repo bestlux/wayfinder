@@ -595,7 +595,7 @@ function policyMatchesAcquisition(policy, draft, baseline, lines) {
     if (subject.targetLevel === 1 && evidence.kind !== "not-required")
         return false;
     if (subject.targetLevel === 1) {
-        return (policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) && usedJudgmentIds.size === policy.gmJudgments.length);
+        return (policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) && allRequiredJudgmentsUsed(policy, usedJudgmentIds));
     }
     if (evidence.kind === "not-required")
         return false;
@@ -623,7 +623,10 @@ function policyMatchesAcquisition(policy, draft, baseline, lines) {
         evidence.targetLevel !== subject.targetLevel) {
         return false;
     }
-    return (policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) && usedJudgmentIds.size === policy.gmJudgments.length);
+    return (policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) && allRequiredJudgmentsUsed(policy, usedJudgmentIds));
+}
+function allRequiredJudgmentsUsed(policy, usedJudgmentIds) {
+    return policy.gmJudgments.every((judgment) => judgment.kind === "rarity-source-exception" || usedJudgmentIds.has(judgment.id));
 }
 function policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) {
     const byId = new Map(policy.gmJudgments.map((judgment) => [judgment.id, judgment]));
@@ -708,7 +711,7 @@ function policyDetailsMatchJudgments(policy, lines, usedJudgmentIds) {
             usedJudgmentIds.add(id);
         }
     }
-    return !policy.gmJudgments.some((judgment) => judgment.kind === "rarity-source-exception" && !usedJudgmentIds.has(judgment.id));
+    return true;
 }
 function normalizeWorldRecipePolicy(raw) {
     if (!isRecord(raw) ||

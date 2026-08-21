@@ -475,6 +475,7 @@ async function resolveGrantChoiceSources(draft, targetLevel, args, deps) {
             sourceSelection: source.sourceSelection,
             sourceDocument: source.sourceDocument,
             sourceLevel: source.sourceLevel,
+            ...(source.staticGrantOwner ? { staticGrantOwner: source.staticGrantOwner } : {}),
         })),
         ...classFeatureSelections.flatMap((sourceSelection, index) => {
             const sourceDocument = classFeatureDocuments[index];
@@ -536,6 +537,7 @@ async function resolveSelectedClassFeatureChoiceSources(draft, args, deps) {
         selection: source.sourceSelection,
         document: source.sourceDocument,
         existingRulesSelections: {},
+        ...(source.staticGrantOwner ? { staticGrantOwner: source.staticGrantOwner } : {}),
     }));
     const staticGrantSelections = dedupeSelectionsByUuid(directSources.flatMap((source) => staticClassFeatureGrantSelections({
         actor: args.actor,
@@ -591,6 +593,10 @@ async function resolveExpandedFeatChoiceSources(featSelections, draft, args, dep
             sourceDocument: source.sourceDocument,
             sourceLevel: source.sourceLevel,
             staticGrant: true,
+            staticGrantOwner: {
+                grantRuleIndex: source.grantRuleIndex,
+                selection: source.parentSelection,
+            },
         })),
     ];
 }

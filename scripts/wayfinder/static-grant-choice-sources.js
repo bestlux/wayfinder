@@ -16,7 +16,7 @@ export async function resolveStaticGrantChoiceSources(args) {
     })));
     const occurrenceCounts = new Map();
     for (const grant of grants) {
-        const key = staticGrantOccurrenceKey(grant.parentSelection, grant.selection);
+        const key = staticGrantOccurrenceKey(grant.selection);
         occurrenceCounts.set(key, (occurrenceCounts.get(key) ?? 0) + 1);
     }
     const pending = grants.map(async ({ grantRuleIndex, preselectChoices, selection, parentSelection, }) => {
@@ -36,7 +36,7 @@ export async function resolveStaticGrantChoiceSources(args) {
         const sourceLevel = selectionTakenLevel(parentSelection, documentFeatureLevel(sourceDocument));
         return {
             grantRuleIndex,
-            supportsGuidedChoices: occurrenceCounts.get(staticGrantOccurrenceKey(parentSelection, selection)) === 1,
+            supportsGuidedChoices: occurrenceCounts.get(staticGrantOccurrenceKey(selection)) === 1,
             parentSelection,
             sourceItemType,
             sourceSelection: {
@@ -52,8 +52,8 @@ export async function resolveStaticGrantChoiceSources(args) {
     const resolved = await Promise.all(pending);
     return dedupeStaticGrantSources(resolved.filter((source) => source !== null));
 }
-function staticGrantOccurrenceKey(parentSelection, childSelection) {
-    return `${parentSelection.uuid.trim().toLowerCase()}|${childSelection.uuid.trim().toLowerCase()}`;
+function staticGrantOccurrenceKey(childSelection) {
+    return childSelection.uuid.trim().toLowerCase();
 }
 export function staticGrantSelections(parentSelection, sourceDocument, activeRollOptions = new Set()) {
     const sourceRollOptions = buildSourceRollOptions(parentSelection, sourceDocument, activeRollOptions);

@@ -18,6 +18,7 @@ export function buildSelectorSelection(slotId, packId, documentId, uuid, name, i
 }
 export async function applySelectorApplication(actor, plan, deps) {
     const grantPlans = normalizeGrantPlans(plan);
+    assertDistinctGrantPlans(plan.selectorSelection.name, grantPlans);
     let selectorItem = findSelectorItemBySourceId(actor, plan.selectorSelection.uuid);
     const createdSelector = !selectorItem?.id;
     if (!selectorItem?.id) {
@@ -26,6 +27,8 @@ export async function applySelectorApplication(actor, plan, deps) {
     if (!selectorItem?.id) {
         return;
     }
+    if (!createdSelector)
+        assertExistingSelectorGrantAuthority(actor, plan);
     const selectorRules = await loadSelectorRules(selectorItem, plan.selectorSelection, createdSelector, deps);
     applyRuleSelections(selectorRules, plan.ruleSelections);
     if (grantPlans.length > 0) {
@@ -51,6 +54,7 @@ export async function applySelectorApplication(actor, plan, deps) {
     const grantedItemUpdates = [];
     const createdItemIds = [];
     const replacedItemIds = [];
+    const claimedGrantedItemIds = new Map();
     const selectorRollback = !createdSelector ? buildSelectorRollbackUpdate(selectorItem, plan, grantPlans) : null;
     let selectorWasUpdated = false;
     try {
@@ -61,12 +65,16 @@ export async function applySelectorApplication(actor, plan, deps) {
             selectorWasUpdated = true;
         }
         for (const grantPlan of grantPlans) {
+            const currentGrantedItem = findGrantedItemForPlan(actor, selectorItem, grantPlan);
+            assertUnclaimedGrantRoute(plan.selectorSelection.name, grantPlan.flag, currentGrantedItem, claimedGrantedItemIds);
             const grantedItemResult = await ensureGrantedItem(actor, selectorItem, grantPlan, deps.createEmbeddedSource);
             createdItemIds.push(...grantedItemResult.createdItemIds);
             if (grantedItemResult.replacedItemId) {
                 replacedItemIds.push(grantedItemResult.replacedItemId);
             }
             if (grantedItemResult.item?.id) {
+                assertUnclaimedGrantRoute(plan.selectorSelection.name, grantPlan.flag, grantedItemResult.item, claimedGrantedItemIds);
+                claimedGrantedItemIds.set(grantedItemResult.item.id, grantPlan.flag);
                 selectorUpdate[`flags.pf2e.itemGrants.${grantPlan.flag}`] = buildItemGrantRecord(grantedItemResult.item.id, {
                     nested: null,
                 });
@@ -108,6 +116,45 @@ export async function applySelectorApplication(actor, plan, deps) {
             });
         }
         throw error;
+    }
+}
+function assertUnclaimedGrantRoute(selectorName, flag, grantedItem, claimedChildIds) {
+    if (!grantedItem?.id)
+        return;
+    const claimedBy = claimedChildIds.get(grantedItem.id);
+    if (claimedBy) {
+        throw new Error(`Cannot reconcile ${selectorName}: grant routes ${claimedBy} and ${flag} claim the same child.`);
+    }
+}
+export function assertExistingSelectorGrantAuthority(actor, plan) {
+    const grantPlans = normalizeGrantPlans(plan);
+    assertDistinctGrantPlans(plan.selectorSelection.name, grantPlans);
+    const selectorItem = findSelectorItemBySourceId(actor, plan.selectorSelection.uuid);
+    if (!selectorItem?.id)
+        return;
+    const claimedChildIds = new Map();
+    for (const grantPlan of grantPlans) {
+        const grantedItem = findGrantedItemForPlan(actor, selectorItem, grantPlan);
+        if (!grantedItem?.id)
+            continue;
+        const claimedBy = claimedChildIds.get(grantedItem.id);
+        if (claimedBy) {
+            throw new Error(`Cannot reconcile ${selectorItem.name ?? "selector"}: grant routes ${claimedBy} and ${grantPlan.flag} claim the same child.`);
+        }
+        claimedChildIds.set(grantedItem.id, grantPlan.flag);
+    }
+}
+function assertDistinctGrantPlans(selectorName, grantPlans) {
+    const flags = new Set();
+    const slotIds = new Set();
+    const sourceUuids = new Set();
+    for (const grantPlan of grantPlans) {
+        if (flags.has(grantPlan.flag) || slotIds.has(grantPlan.slotId) || sourceUuids.has(grantPlan.selection.uuid)) {
+            throw new Error(`Cannot reconcile ${selectorName}: its planned grant routes are ambiguous.`);
+        }
+        flags.add(grantPlan.flag);
+        slotIds.add(grantPlan.slotId);
+        sourceUuids.add(grantPlan.selection.uuid);
     }
 }
 function buildSelectorRollbackUpdate(selectorItem, plan, grantPlans) {
@@ -580,32 +627,67 @@ function findGrantedItemForPlan(actor, selectorItem, grantPlan) {
         return null;
     }
     const items = listActorItems(actor);
-    const itemGrantId = itemGrantIdForFlag(selectorItem, grantPlan.flag);
-    if (itemGrantId) {
-        const linkedItem = items.find((item) => item?.id === itemGrantId) ?? null;
-        if (linkedItem) {
-            return linkedItem;
+    const routeName = `${selectorItem.name ?? "selector"} grant ${grantPlan.flag}`;
+    const itemGrant = itemGrantForFlag(selectorItem, grantPlan.flag);
+    const sourceMatches = items.filter((item) => itemMatchesSourceId(item, grantPlan.selection.uuid));
+    const ownedSourceMatches = sourceMatches.filter((item) => item.flags?.pf2e?.grantedBy?.id === selectorItemId);
+    const foreignSourceMatches = sourceMatches.filter((item) => item.flags?.pf2e?.grantedBy?.id !== selectorItemId);
+    const ownedSlotMatches = items.filter((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId && item?.flags?.[MODULE_ID]?.slotId === grantPlan.slotId);
+    if (ownedSourceMatches.length > 1 || ownedSlotMatches.length > 1) {
+        throw new Error(`Cannot reconcile ${routeName}: its owned child provenance is ambiguous.`);
+    }
+    if (foreignSourceMatches.length > 0) {
+        const adoptable = grantPlan.adoptExistingSource
+            ? foreignSourceMatches.filter((item) => !item.flags?.pf2e?.grantedBy?.id)
+            : [];
+        if (!grantPlan.adoptExistingSource ||
+            adoptable.length !== foreignSourceMatches.length ||
+            adoptable.length > 1 ||
+            ownedSourceMatches.length > 0 ||
+            ownedSlotMatches.length > 0 ||
+            itemGrant.present) {
+            throw new Error(`Cannot reconcile ${routeName}: its child has conflicting provenance.`);
         }
     }
-    const matchingSource = items.find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId && itemMatchesSourceId(item, grantPlan.selection.uuid));
-    if (matchingSource) {
-        return matchingSource;
-    }
-    if (grantPlan.adoptExistingSource) {
-        const adoptableSource = items.find((item) => itemMatchesSourceId(item, grantPlan.selection.uuid));
-        if (adoptableSource) {
-            return adoptableSource;
+    if (itemGrant.present) {
+        if (!itemGrant.id) {
+            throw new Error(`Cannot reconcile ${routeName}: its child link is invalid.`);
         }
+        const linkedMatches = items.filter((item) => item?.id === itemGrant.id);
+        if (linkedMatches.length !== 1 || linkedMatches[0]?.flags?.pf2e?.grantedBy?.id !== selectorItemId) {
+            throw new Error(`Cannot reconcile ${routeName}: its linked child has conflicting provenance.`);
+        }
+        const linkedItem = linkedMatches[0];
+        const otherCandidates = new Set([...ownedSourceMatches, ...ownedSlotMatches].filter((item) => item.id !== linkedItem.id).map((item) => item.id));
+        if (otherCandidates.size > 0) {
+            throw new Error(`Cannot reconcile ${routeName}: its owned child provenance is ambiguous.`);
+        }
+        return linkedItem;
     }
-    return (items.find((item) => item?.flags?.pf2e?.grantedBy?.id === selectorItemId && item?.flags?.[MODULE_ID]?.slotId === grantPlan.slotId) ?? null);
+    const ownedCandidates = new Map([...ownedSourceMatches, ...ownedSlotMatches]
+        .filter((item) => typeof item.id === "string")
+        .map((item) => [item.id, item]));
+    if (ownedCandidates.size > 1) {
+        throw new Error(`Cannot reconcile ${routeName}: its owned child provenance is ambiguous.`);
+    }
+    if (ownedCandidates.size === 1) {
+        return ownedCandidates.values().next().value ?? null;
+    }
+    if (grantPlan.adoptExistingSource && foreignSourceMatches.length === 1) {
+        return foreignSourceMatches[0] ?? null;
+    }
+    return null;
 }
-function itemGrantIdForFlag(selectorItem, flag) {
+function itemGrantForFlag(selectorItem, flag) {
     const grants = selectorItem.flags?.pf2e?.itemGrants;
-    if (!grants || typeof grants !== "object") {
-        return null;
+    if (!grants || typeof grants !== "object" || Array.isArray(grants) || !Object.hasOwn(grants, flag)) {
+        return { present: false, id: null };
     }
     const grant = grants[flag];
-    return typeof grant?.id === "string" && grant.id.length > 0 ? grant.id : null;
+    return {
+        present: true,
+        id: typeof grant?.id === "string" && grant.id.length > 0 ? grant.id : null,
+    };
 }
 function buildGrantedItemUpdate(itemId, selectorItemId, grantPlan) {
     return buildGrantedItemSourceUpdate(itemId, {

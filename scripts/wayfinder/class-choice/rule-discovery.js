@@ -221,6 +221,7 @@ export function discoverClassChoiceMeta(args) {
                 rollOption: toNonEmptyString(rule.rollOption),
                 classSlug,
                 dependsOn: referencesDeity(rule) ? "deity" : "class",
+                ...(args.staticGrantOwner ? { staticGrantOwner: args.staticGrantOwner } : {}),
                 ...(dependencyRefs.length > 0
                     ? {
                         dependsOnChoices: dependencyRefs.map((entry) => ({

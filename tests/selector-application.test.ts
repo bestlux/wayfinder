@@ -333,6 +333,98 @@ describe("selector application", () => {
     );
   });
 
+  it("rolls back a child that a Foundry hook aliases into a later grant route", async () => {
+    const items = [
+      {
+        id: "selector-1",
+        name: "Selector",
+        type: "feat",
+        flags: {
+          core: { sourceId: "Compendium.pf2e.classfeatures.Item.selector" },
+          pf2e: { itemGrants: {} },
+        },
+        system: { rules: [{ key: "ChoiceSet" }, { key: "ChoiceSet" }] },
+      },
+    ] as any[];
+    const deleteEmbeddedDocuments = vi.fn(async (_type: string, ids: string[]) => {
+      for (const id of ids) {
+        const index = items.findIndex((item) => item.id === id);
+        if (index >= 0) items.splice(index, 1);
+      }
+      return [];
+    });
+    const actor = {
+      items: { contents: items },
+      createEmbeddedDocuments: vi.fn(async (_type: string, sources: any[]) => {
+        const child = {
+          ...structuredClone(sources[0]),
+          id: "hook-aliased-child",
+          flags: {
+            ...structuredClone(sources[0]?.flags ?? {}),
+            "wayfinder-pf2e": { slotId: "grant-second" },
+          },
+        };
+        items.push(child);
+        return [child];
+      }),
+      deleteEmbeddedDocuments,
+      updateEmbeddedDocuments: vi.fn(async () => []),
+    };
+    const grantPlan = (flag: string, documentId: string, selectorRuleIndex: number) => ({
+      flag,
+      slotId: `grant-${flag}`,
+      selection: {
+        slotId: `grant-${flag}`,
+        packId: "pf2e.actionspf2e",
+        documentId,
+        uuid: `Compendium.pf2e.actionspf2e.Item.${documentId}`,
+        itemType: "action",
+        featType: null,
+        name: documentId,
+        level: null,
+      },
+      selectorRuleIndex,
+      createRulePolicy: null,
+    });
+
+    await expect(
+      applySelectorApplication(
+        actor as never,
+        {
+          selectorSelection: {
+            slotId: "selector",
+            packId: "pf2e.classfeatures",
+            documentId: "selector",
+            uuid: "Compendium.pf2e.classfeatures.Item.selector",
+            itemType: "feat",
+            featType: "classfeature",
+            name: "Selector",
+            level: 1,
+          },
+          slotId: "selector",
+          ruleSelections: [],
+          grantPlans: [grantPlan("first", "first-source", 0), grantPlan("second", "second-source", 1)],
+        },
+        {
+          fetchSelectionDocument: vi.fn(async () => null),
+          createEmbeddedSource: vi.fn(async (selection) => ({
+            name: selection.name,
+            type: "action",
+            system: { rules: [] },
+            flags: {},
+          })),
+        }
+      )
+    ).rejects.toThrow(/grant routes first and second claim the same child/i);
+
+    expect(items.map((item) => item.id)).toEqual(["selector-1"]);
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["hook-aliased-child"]);
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalledWith(
+      "Item",
+      expect.arrayContaining([expect.objectContaining({ "flags.pf2e.itemGrants.second": expect.anything() })])
+    );
+  });
+
   it.each([
     {
       label: "source UUID",

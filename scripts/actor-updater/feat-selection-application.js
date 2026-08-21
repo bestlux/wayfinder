@@ -21,40 +21,42 @@ export async function insertFeatSelection(actor, selection, step, deps = DEFAULT
     }
     if (typeof actor.createEmbeddedDocuments === "function") {
         const inserted = await actor.createEmbeddedDocuments("Item", [source]);
-        await stampSelectionFlags(actor, inserted, selection);
-        const createdItem = inserted[0];
-        if (createdItem?.id && readManualStaticItemGrants(source).length > 0) {
-            await createPreparedStaticFeatGrants(actor, createdItem, source, selection, deps);
-        }
-    }
-}
-async function createPreparedStaticFeatGrants(actor, createdItem, source, selection, deps) {
-    if (typeof actor.deleteEmbeddedDocuments !== "function" || typeof actor.updateEmbeddedDocuments !== "function") {
-        throw new Error(`Cannot create the prepared static grants for ${selection.name}.`);
-    }
-    let createdChildIds = [];
-    try {
-        const prepared = await createManualStaticGrantedItems(actor, createdItem, source, {
-            parentSlotId: selection.slotId,
-            parentName: selection.name,
-            createEmbeddedSource: deps.createEmbeddedSource,
-            replaceDescendantsOwnedById: null,
-        });
-        createdChildIds = prepared.createdItemIds;
-        if (prepared.updates.length > 0) {
-            await actor.updateEmbeddedDocuments("Item", prepared.updates);
-        }
-    }
-    catch (error) {
+        const createdParentIds = inserted.flatMap((item) => (typeof item?.id === "string" ? [item.id] : []));
+        let createdChildIds = [];
         try {
-            await actor.deleteEmbeddedDocuments("Item", [...createdChildIds, createdItem.id]);
+            await stampSelectionFlags(actor, inserted, selection);
+            const createdItem = inserted[0];
+            if (createdItem?.id && readManualStaticItemGrants(source).length > 0) {
+                if (typeof actor.deleteEmbeddedDocuments !== "function" ||
+                    typeof actor.updateEmbeddedDocuments !== "function") {
+                    throw new Error(`Cannot create the prepared static grants for ${selection.name}.`);
+                }
+                const prepared = await createManualStaticGrantedItems(actor, createdItem, source, {
+                    parentSlotId: selection.slotId,
+                    parentName: selection.name,
+                    createEmbeddedSource: deps.createEmbeddedSource,
+                    replaceDescendantsOwnedById: null,
+                });
+                createdChildIds = prepared.createdItemIds;
+                if (prepared.updates.length > 0) {
+                    await actor.updateEmbeddedDocuments("Item", prepared.updates);
+                }
+            }
         }
-        catch (rollbackError) {
-            throw new AggregateError([error, rollbackError], `Failed to create ${selection.name} safely.`, {
-                cause: rollbackError,
-            });
+        catch (error) {
+            if (typeof actor.deleteEmbeddedDocuments !== "function") {
+                throw error;
+            }
+            try {
+                await actor.deleteEmbeddedDocuments("Item", [...createdChildIds, ...createdParentIds]);
+            }
+            catch (rollbackError) {
+                throw new AggregateError([error, rollbackError], `Failed to create ${selection.name} safely.`, {
+                    cause: rollbackError,
+                });
+            }
+            throw error;
         }
-        throw error;
     }
 }
 export async function preflightFeatSelection(actor, selection, step, deps = DEFAULT_INSERT_DEPS) {

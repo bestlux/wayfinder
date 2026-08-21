@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createEmbeddedSource } from "../src/actor-updater/selection-source-application";
+import { applyClassFeatureChoiceDraft } from "../src/class-feature-choice-service";
 import { MODULE_ID } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
 import { clearPackServiceCache, type PackIndexEntry } from "../src/pack/access";
@@ -339,6 +340,16 @@ describe("grant-borne embedded choice policy", () => {
     expect(buildStaticGrantChoiceDisclosure(classification)).toBeNull();
 
     const grantSteps = await buildGrantSteps(sources);
+    expect(grantSteps.map((step) => step.grantSelection?.staticGrantOwner)).toEqual([
+      {
+        grantRuleIndex: 2,
+        selection: selectionFor(COMMANDER_DEDICATION),
+      },
+      {
+        grantRuleIndex: 2,
+        selection: selectionFor(COMMANDER_DEDICATION),
+      },
+    ]);
     expect(grantSteps).toHaveLength(2);
     expect(grantSteps.map((step) => step.slotId)).toEqual([
       "grant-choice-class-classfeature-tactics-firstTactic-level-2",
@@ -494,6 +505,44 @@ describe("grant-borne embedded choice policy", () => {
         },
       },
     ]);
+
+    const tacticsSource = await createEmbeddedSource(sources[0]!.sourceSelection, draft, grantSteps, {
+      fetchSelectionDocument: async () => ({
+        toObject: () => structuredClone(TACTICS),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+    expect(tacticsSource?.flags?.pf2e?.rulesSelections).toMatchObject({
+      firstTactic: "Compendium.pf2e.actionspf2e.Item.coordinating-maneuvers",
+      secondTactic: "Compendium.pf2e.actionspf2e.Item.defensive-retreat",
+    });
+    expect(tacticsSource?.system?.rules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "GrantItem",
+          uuid: "{item|flags.system.rulesSelections.firstTactic}",
+        }),
+        expect.objectContaining({
+          key: "GrantItem",
+          uuid: "{item|flags.system.rulesSelections.secondTactic}",
+        }),
+      ])
+    );
+
+    const actor = {
+      items: { contents: [] },
+      createEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+    };
+    await applyClassFeatureChoiceDraft(actor, draft, grantSteps, {
+      createEmbeddedSource: async (selection) =>
+        selection.uuid === selectionFor(COMMANDER_DEDICATION).uuid ? source : null,
+      fetchSelectionDocument: async () => null,
+    });
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
   });
 
   it("discloses Cathartic Mage's structured emotional-state choice", async () => {
@@ -659,6 +708,37 @@ describe("grant-borne embedded choice policy", () => {
     expect(buildStaticGrantChoiceDisclosure(classification)).toContain("PF2E will ask");
   });
 
+  it("does not choose an arbitrary owner when two active parents grant the same guided child", async () => {
+    const firstParent = selectionFor(COMMANDER_DEDICATION);
+    const secondParent = {
+      ...firstParent,
+      slotId: "class-feat-level-2",
+      documentId: "other-parent",
+      uuid: "Compendium.pf2e.feats-srd.Item.other-parent",
+      name: "Other Parent",
+    };
+    const childUuid = "Compendium.pf2e.classfeatures.Item.Shared Choice";
+    const parentDocument = {
+      system: { rules: [{ key: "GrantItem", uuid: childUuid }] },
+    };
+    const childDocument = {
+      name: "Shared Choice",
+      system: { rules: [{ key: "ChoiceSet", flag: "shared", choices: [] }] },
+    };
+
+    const sources = await resolveStaticGrantChoiceSources({
+      sources: [
+        { sourceSelection: firstParent, sourceDocument: parentDocument },
+        { sourceSelection: secondParent, sourceDocument: parentDocument },
+      ],
+      fetchSelectionDocument: async () => childDocument,
+    });
+
+    expect(sources).toHaveLength(2);
+    expect(sources.every((source) => !source.supportsGuidedChoices)).toBe(true);
+    expect(await buildGrantSteps(sources.filter((source) => source.supportsGuidedChoices))).toEqual([]);
+  });
+
   it("does not guide a partial duplicate when the other occurrence is already preselected", async () => {
     const selection = selectionFor(COMMANDER_DEDICATION);
     const sourceDocument = {
@@ -791,7 +871,16 @@ async function buildGrantSteps(
     targetLevel: 2,
     hasClassSelection: true,
     hasDeitySelection: false,
-    sources,
+    sources: sources.map((source) => ({
+      sourceItemType: source.sourceItemType,
+      sourceSelection: source.sourceSelection,
+      sourceDocument: source.sourceDocument,
+      sourceLevel: source.sourceLevel,
+      staticGrantOwner: {
+        grantRuleIndex: source.grantRuleIndex,
+        selection: source.parentSelection,
+      },
+    })),
     activeRollOptions,
     extractSlug,
     readExistingGrantedSelection: () => null,

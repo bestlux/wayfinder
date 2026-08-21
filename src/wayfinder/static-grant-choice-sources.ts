@@ -47,7 +47,7 @@ export async function resolveStaticGrantChoiceSources(
   );
   const occurrenceCounts = new Map<string, number>();
   for (const grant of grants) {
-    const key = staticGrantOccurrenceKey(grant.parentSelection, grant.selection);
+    const key = staticGrantOccurrenceKey(grant.selection);
     occurrenceCounts.set(key, (occurrenceCounts.get(key) ?? 0) + 1);
   }
 
@@ -77,7 +77,7 @@ export async function resolveStaticGrantChoiceSources(
       const sourceLevel = selectionTakenLevel(parentSelection, documentFeatureLevel(sourceDocument));
       return {
         grantRuleIndex,
-        supportsGuidedChoices: occurrenceCounts.get(staticGrantOccurrenceKey(parentSelection, selection)) === 1,
+        supportsGuidedChoices: occurrenceCounts.get(staticGrantOccurrenceKey(selection)) === 1,
         parentSelection,
         sourceItemType,
         sourceSelection: {
@@ -96,8 +96,8 @@ export async function resolveStaticGrantChoiceSources(
   return dedupeStaticGrantSources(resolved.filter((source): source is StaticGrantChoiceSource => source !== null));
 }
 
-function staticGrantOccurrenceKey(parentSelection: SelectionRef, childSelection: SelectionRef): string {
-  return `${parentSelection.uuid.trim().toLowerCase()}|${childSelection.uuid.trim().toLowerCase()}`;
+function staticGrantOccurrenceKey(childSelection: SelectionRef): string {
+  return childSelection.uuid.trim().toLowerCase();
 }
 
 export function staticGrantSelections(

@@ -120,6 +120,7 @@ function buildClassChoiceStepsFromFeatures(args) {
             rollOptions,
             selectedValuesBySlotId: args.selectedValuesBySlotId,
             existingSelectionsByFlag: feature.existingRulesSelections,
+            staticGrantOwner: feature.staticGrantOwner,
         });
         for (const choice of choices) {
             steps.push(createClassChoiceStep(feature.level, choice, {

@@ -25,6 +25,7 @@ export function discoverGrantSelectionMeta(args: {
   actorContext?: ChoiceFilterActorContext | null;
   requireResolvedActorPlaceholders?: boolean;
   selectedValuesBySlotId?: Record<string, SelectionRef | undefined>;
+  staticGrantOwner?: GrantSelectionMeta["staticGrantOwner"];
 }): GrantSelectionMeta[] {
   const { sourceItemType, sourceDocument, sourceSelection, extractSlug } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
@@ -85,6 +86,7 @@ export function discoverGrantSelectionMeta(args: {
         classSlug: null,
         dependsOn,
         filters,
+        ...(args.staticGrantOwner ? { staticGrantOwner: args.staticGrantOwner } : {}),
       } satisfies GrantSelectionMeta,
     ];
   });

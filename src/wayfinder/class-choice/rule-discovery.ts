@@ -20,6 +20,7 @@ export interface ClassFeatureSelectionSource {
   selection: SelectionRef;
   document: unknown | null;
   existingRulesSelections?: Record<string, unknown>;
+  staticGrantOwner?: ClassChoiceMeta["staticGrantOwner"];
 }
 
 interface NamedDocumentLike {
@@ -283,6 +284,7 @@ export function discoverClassChoiceMeta(args: {
   selectedValuesBySlotId?: Record<string, string | undefined>;
   existingSelectionsByFlag?: Record<string, unknown>;
   assumeFirstChoiceSelection?: boolean;
+  staticGrantOwner?: ClassChoiceMeta["staticGrantOwner"];
 }): ClassChoiceMeta[] {
   const { sourceDocument, sourceSelection, classSlug, extractSlug, localize, rollOptions } = args;
   const document = sourceDocument as NamedDocumentLike | null | undefined;
@@ -354,6 +356,7 @@ export function discoverClassChoiceMeta(args: {
         rollOption: toNonEmptyString(rule.rollOption),
         classSlug,
         dependsOn: referencesDeity(rule) ? "deity" : "class",
+        ...(args.staticGrantOwner ? { staticGrantOwner: args.staticGrantOwner } : {}),
         ...(dependencyRefs.length > 0
           ? {
               dependsOnChoices: dependencyRefs.map((entry) => ({

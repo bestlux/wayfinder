@@ -13,6 +13,7 @@ import type {
   ClassGrantMeta,
   DraftState,
   FlagChoiceMeta,
+  GrantSelectionMeta,
   PendingStep,
   SelectionRef,
   SingletonChoiceMeta,
@@ -693,6 +694,7 @@ async function resolveGrantChoiceSources(
           sourceSelection: source.sourceSelection,
           sourceDocument: source.sourceDocument,
           sourceLevel: source.sourceLevel,
+          ...(source.staticGrantOwner ? { staticGrantOwner: source.staticGrantOwner } : {}),
         }) satisfies GrantChoiceSourceContext
     ),
     ...classFeatureSelections.flatMap((sourceSelection, index) => {
@@ -782,6 +784,7 @@ async function resolveSelectedClassFeatureChoiceSources(
           selection: source.sourceSelection,
           document: source.sourceDocument,
           existingRulesSelections: {},
+          ...(source.staticGrantOwner ? { staticGrantOwner: source.staticGrantOwner } : {}),
         }) satisfies ClassFeatureSelectionSource
     );
 
@@ -822,6 +825,7 @@ interface ExpandedFeatChoiceSource {
   sourceDocument: unknown;
   sourceLevel: number;
   staticGrant: boolean;
+  staticGrantOwner?: GrantSelectionMeta["staticGrantOwner"];
 }
 
 async function resolveExpandedFeatChoiceSources(
@@ -861,6 +865,10 @@ async function resolveExpandedFeatChoiceSources(
         sourceDocument: source.sourceDocument,
         sourceLevel: source.sourceLevel,
         staticGrant: true,
+        staticGrantOwner: {
+          grantRuleIndex: source.grantRuleIndex,
+          selection: source.parentSelection,
+        },
       })),
   ];
 }

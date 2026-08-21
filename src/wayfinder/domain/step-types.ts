@@ -1,3 +1,5 @@
+import type { SelectionRef } from "./decision-types.js";
+
 export type SlotKind =
   | "ancestry"
   | "heritage"
@@ -131,6 +133,11 @@ export interface ClassArchetypeMeta {
 export type GrantSelectionSourceItemType = "classfeature" | "ancestry" | "heritage" | "background" | "feat";
 export type GrantSelectionDependency = "class" | "deity" | null;
 
+export interface StaticGrantOwnerMeta {
+  grantRuleIndex: number;
+  selection: SelectionRef;
+}
+
 export interface GrantSelectionMeta {
   slotId: string;
   sourceItemType: GrantSelectionSourceItemType;
@@ -145,6 +152,7 @@ export interface GrantSelectionMeta {
   classSlug: string | null;
   dependsOn: GrantSelectionDependency;
   filters: StepFilters;
+  staticGrantOwner?: StaticGrantOwnerMeta;
 }
 
 export interface StaticGrantReplacementMeta {
@@ -186,6 +194,7 @@ export interface ClassChoiceMeta {
     sourceUuid: string;
     flag: string;
   }>;
+  staticGrantOwner?: StaticGrantOwnerMeta;
   options: Array<{
     value: string;
     label: string;

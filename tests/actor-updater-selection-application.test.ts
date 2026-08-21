@@ -1823,6 +1823,150 @@ describe("actor-updater selection application", () => {
     ]);
   });
 
+  it.each([
+    {
+      label: "unowned",
+      items: [commanderTacticsItem("tactics-orphan", null)],
+      expected: /conflicting provenance/i,
+    },
+    {
+      label: "owned by another parent",
+      items: [commanderTacticsItem("tactics-other", "other-dedication")],
+      expected: /conflicting provenance/i,
+    },
+    {
+      label: "duplicated",
+      items: [commanderTacticsItem("tactics-one", null), commanderTacticsItem("tactics-two", null)],
+      expected: /ambiguous/i,
+    },
+  ])("rolls back Commander instead of adopting a $label Tactics document", async ({ items, expected }) => {
+    const commander = commanderSelection();
+    const createEmbeddedDocuments = vi.fn(async () => [{ id: "commander-created" }]);
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    const deleteEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      items: { contents: items },
+      feats: { get: () => ({ slots: {} }) },
+      createEmbeddedDocuments,
+      updateEmbeddedDocuments,
+      deleteEmbeddedDocuments,
+    };
+
+    await expect(
+      insertFeatSelection(
+        actor,
+        commander,
+        featStep(commander.slotId, "archetype-feat", 2, ["class"]),
+        commanderStaticGrantDependencies(commander)
+      )
+    ).rejects.toThrow(expected);
+
+    expect(createEmbeddedDocuments).toHaveBeenCalledTimes(1);
+    expect(updateEmbeddedDocuments).toHaveBeenCalledTimes(1);
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["commander-created"]);
+    expect(actor.items.contents).toEqual(items);
+  });
+
+  it("retries Commander after a conflicting orphan is removed and creates the exact parent-owned Tactics child", async () => {
+    const commander = commanderSelection();
+    const actorItems = [commanderTacticsItem("tactics-orphan", null)];
+    const createEmbeddedDocuments = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: "commander-failed" }])
+      .mockResolvedValueOnce([{ id: "commander-retry" }])
+      .mockResolvedValueOnce([{ id: "tactics-retry" }]);
+    const updateEmbeddedDocuments = vi.fn(async () => []);
+    const deleteEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      items: { contents: actorItems },
+      feats: { get: () => ({ slots: {} }) },
+      createEmbeddedDocuments,
+      updateEmbeddedDocuments,
+      deleteEmbeddedDocuments,
+    };
+    const apply = () =>
+      insertFeatSelection(
+        actor,
+        commander,
+        featStep(commander.slotId, "archetype-feat", 2, ["class"]),
+        commanderStaticGrantDependencies(commander)
+      );
+
+    await expect(apply()).rejects.toThrow(/conflicting provenance/i);
+    actorItems.length = 0;
+    await expect(apply()).resolves.toBeUndefined();
+
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledTimes(1);
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["commander-failed"]);
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(3, "Item", [
+      expect.objectContaining({
+        name: "Tactics",
+        system: expect.objectContaining({
+          rules: expect.arrayContaining([
+            expect.objectContaining({ key: "GrantItem", uuid: "{item|flags.system.rulesSelections.firstTactic}" }),
+            expect.objectContaining({ key: "GrantItem", uuid: "{item|flags.system.rulesSelections.secondTactic}" }),
+          ]),
+        }),
+        flags: expect.objectContaining({
+          pf2e: expect.objectContaining({
+            grantedBy: { id: "commander-retry", onDelete: "cascade" },
+            rulesSelections: {
+              firstTactic: "Compendium.pf2e.actionspf2e.Item.first-tactic",
+              secondTactic: "Compendium.pf2e.actionspf2e.Item.second-tactic",
+            },
+          }),
+        }),
+      }),
+    ]);
+    expect(updateEmbeddedDocuments).toHaveBeenLastCalledWith("Item", [
+      {
+        _id: "commander-retry",
+        "flags.pf2e.itemGrants.tactics": {
+          id: "tactics-retry",
+          onDelete: "detach",
+        },
+      },
+    ]);
+  });
+
+  it("rolls back Commander when selection-flag stamping fails and retries the complete graph", async () => {
+    const commander = commanderSelection();
+    const createEmbeddedDocuments = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: "commander-failed" }])
+      .mockResolvedValueOnce([{ id: "commander-retry" }])
+      .mockResolvedValueOnce([{ id: "tactics-retry" }]);
+    const updateEmbeddedDocuments = vi.fn().mockRejectedValueOnce(new Error("stamp rejected")).mockResolvedValue([]);
+    const deleteEmbeddedDocuments = vi.fn(async () => []);
+    const actor = {
+      items: { contents: [] },
+      feats: { get: () => ({ slots: {} }) },
+      createEmbeddedDocuments,
+      updateEmbeddedDocuments,
+      deleteEmbeddedDocuments,
+    };
+    const apply = () =>
+      insertFeatSelection(
+        actor,
+        commander,
+        featStep(commander.slotId, "archetype-feat", 2, ["class"]),
+        commanderStaticGrantDependencies(commander)
+      );
+
+    await expect(apply()).rejects.toThrow("stamp rejected");
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledWith("Item", ["commander-failed"]);
+    await expect(apply()).resolves.toBeUndefined();
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(3, "Item", [
+      expect.objectContaining({
+        name: "Tactics",
+        flags: expect.objectContaining({
+          pf2e: expect.objectContaining({ grantedBy: { id: "commander-retry", onDelete: "cascade" } }),
+        }),
+      }),
+    ]);
+    expect(deleteEmbeddedDocuments).toHaveBeenCalledTimes(1);
+  });
+
   it("writes future Free Archetype selections to PF2E's dedicated native slot", async () => {
     const actor = {
       feats: {
@@ -2823,6 +2967,70 @@ function battleCreedArchetypeStep(): PendingStep {
       { value: "battle-creed", label: "Battle Creed", img: null, detail: null },
     ],
   });
+}
+
+function commanderSelection(): SelectionRef {
+  const selection = selectionRef("archetype-feat-level-2", "feat", "e9iVLfL7KIfUG3NV", "Commander Dedication", "class");
+  selection.uuid = "Compendium.pf2e.feats-srd.Item.e9iVLfL7KIfUG3NV";
+  selection.slug = "commander-dedication";
+  return selection;
+}
+
+function commanderTacticsItem(id: string, grantedById: string | null): ActorItemLike {
+  return {
+    id,
+    name: "Tactics",
+    type: "feat",
+    flags: {
+      core: { sourceId: "Compendium.pf2e.classfeatures.Item.2IysodKQuf62jmd7" },
+      ...(grantedById ? { pf2e: { grantedBy: { id: grantedById, onDelete: "cascade" } } } : {}),
+    },
+    system: {},
+  };
+}
+
+function commanderStaticGrantDependencies(commander: SelectionRef) {
+  const tacticsUuid = "Compendium.pf2e.classfeatures.Item.2IysodKQuf62jmd7";
+  return {
+    fetchSelectionDocument,
+    createEmbeddedSource: async (requested: SelectionRef): Promise<EmbeddedItemSource | null> => {
+      if (requested.uuid === commander.uuid) {
+        return {
+          name: commander.name,
+          type: "feat",
+          system: {},
+          flags: {
+            [MODULE_ID]: {
+              manualStaticItemGrants: [
+                {
+                  key: "tactics",
+                  uuid: tacticsUuid,
+                  choices: {
+                    firstTactic: "Compendium.pf2e.actionspf2e.Item.first-tactic",
+                    secondTactic: "Compendium.pf2e.actionspf2e.Item.second-tactic",
+                  },
+                },
+              ],
+            },
+          },
+        };
+      }
+      if (requested.uuid !== tacticsUuid) return null;
+      return {
+        name: "Tactics",
+        type: "feat",
+        system: {
+          rules: [
+            { key: "ChoiceSet", flag: "firstTactic" },
+            { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.firstTactic}" },
+            { key: "ChoiceSet", flag: "secondTactic" },
+            { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.secondTactic}" },
+          ],
+        },
+        flags: {},
+      };
+    },
+  };
 }
 
 async function fetchSelectionDocument(selection: SelectionRef) {

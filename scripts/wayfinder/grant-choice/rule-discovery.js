@@ -51,6 +51,7 @@ export function discoverGrantSelectionMeta(args) {
                 classSlug: null,
                 dependsOn,
                 filters,
+                ...(args.staticGrantOwner ? { staticGrantOwner: args.staticGrantOwner } : {}),
             },
         ];
     });

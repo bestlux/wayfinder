@@ -44,6 +44,7 @@ export type {
   SpellChoicePublication,
   SpellChoiceStep,
   StartingEquipmentStep,
+  StaticGrantOwnerMeta,
   StaticGrantReplacementMeta,
   StepFilters,
   StepKind,

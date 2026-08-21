@@ -16,6 +16,7 @@ export function buildGrantChoiceStepsFromRules(args: {
   actorContext?: ChoiceFilterActorContext | null;
   requireResolvedActorPlaceholders?: boolean;
   selectedValuesBySlotId?: Record<string, SelectionRef | undefined>;
+  staticGrantOwner?: GrantSelectionMeta["staticGrantOwner"];
 }): PickItemStep[] {
   const { sourceItemType, effectiveSourceDocument, sourceSelection, extractSlug } = args;
   if (!effectiveSourceDocument || !sourceSelection) {
@@ -32,6 +33,7 @@ export function buildGrantChoiceStepsFromRules(args: {
     actorContext: args.actorContext,
     requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
     selectedValuesBySlotId: args.selectedValuesBySlotId,
+    staticGrantOwner: args.staticGrantOwner,
   });
   return discovered.map((grant) =>
     createPickItemStep(

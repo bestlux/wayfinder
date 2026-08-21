@@ -15,6 +15,7 @@ export interface GrantChoiceSourceContext {
   sourceSelection: SelectionRef | null;
   sourceDocument: unknown | null;
   sourceLevel?: number;
+  staticGrantOwner?: GrantSelectionMeta["staticGrantOwner"];
 }
 
 interface BuildGrantChoiceStepsParams {
@@ -45,6 +46,7 @@ export async function buildGrantChoiceSteps(params: BuildGrantChoiceStepsParams)
         actorContext: params.actorContext,
         requireResolvedActorPlaceholders: true,
         selectedValuesBySlotId: params.draft.selections,
+        staticGrantOwner: source.staticGrantOwner,
         extractSlug: params.extractSlug,
       }).map((step) => ({ source, step }))
     )

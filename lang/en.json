@@ -201,6 +201,18 @@
         "RevokeApproval": "Revoke GM Approval",
         "StartShopping": "Start Shopping"
       },
+      "Accessibility": {
+        "ApproveExceptionForItem": "Approve an exact exception for {name}",
+        "BuyItemWithCoin": "Buy {name} with coin",
+        "CannotAddItem": "Cannot add {name}",
+        "CartSummary": "Cart: {count} lines, {spent} spent, {remaining} remaining.",
+        "ChooseTitanForItem": "Choose {name} as the Titan Mauler weapon",
+        "DecreaseItemQuantity": "Decrease quantity of {name}",
+        "IncreaseItemQuantity": "Increase quantity of {name}",
+        "PreviewItem": "Preview {name}",
+        "RequestExceptionForItem": "Request an exact exception for {name}",
+        "UseAllowanceForItem": "Use the level {level} allowance for {name}"
+      },
       "Allowance": {
         "Aria": "Permanent item allowances",
         "Assigned": "Assigned",
@@ -212,7 +224,9 @@
         "Failed": "Wayfinder could not apply this starting-equipment draft. The draft was kept for review; details are in the console.",
         "LateError": "The actor reached the reviewed final state, but Foundry reported a late Apply error. Review the actor before closing.",
         "NotReady": "Starting equipment still needs review before Apply.",
-        "Partial": "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console."
+        "Partial": "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console.",
+        "RecoveryConflict": "This actor has a partial-Apply recovery draft from another client. Wayfinder kept your local work unsaved; reopen before continuing.",
+        "RecoveryLocked": "Wayfinder partially applied this draft. Retry Apply without changing choices; manual actor recovery is required if the retry cannot finish."
       },
       "Authority": {
         "AwaitingGm": "A GM must confirm this higher-level start before shopping.",
@@ -227,11 +241,9 @@
       },
       "Cart": {
         "Aria": "Starting-equipment cart",
-        "DecreaseQuantity": "Decrease quantity",
         "Empty": "Nothing in the cart yet. If you would rather keep the coin, say so with Keep It All.",
         "Eyebrow": "Cart",
         "FixedQuantityAria": "Fixed quantity for {name}",
-        "IncreaseQuantity": "Increase quantity",
         "PolicyChanged": "Your world's rules no longer allow this item.",
         "QuantityAria": "Quantity for {name}",
         "Remaining": "Remaining",

@@ -32,6 +32,7 @@ export interface BuildWayfinderContextArgs {
   activeStep: PendingStep | null;
   activePane: ActivePane | null;
   statusNote: string | null;
+  statusNoteIsError?: boolean;
   planningNote?: string | null;
   summaryDocuments: WayfinderSummaryDocuments;
   readiness: WayfinderDraftReadiness;
@@ -58,6 +59,7 @@ export interface WayfinderTemplateContext {
   completedCount: number;
   activeStepIndex: number;
   statusNote: string | null;
+  statusNoteIsError: boolean;
   planningNote: string | null;
   steps: StepNavRow[];
   activePane: ActivePane | null;
@@ -153,6 +155,7 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
     completedCount: stepRows.filter((step) => step.complete).length,
     activeStepIndex: activeStepIndex + 1,
     statusNote: args.statusNote,
+    statusNoteIsError: args.statusNoteIsError ?? false,
     planningNote: args.planningNote ?? null,
     steps: stepRows,
     activePane: args.activePane,

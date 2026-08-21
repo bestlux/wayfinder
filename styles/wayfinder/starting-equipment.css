@@ -77,10 +77,17 @@
   border-color: color-mix(in srgb, var(--wf-warn) 55%, var(--wf-rule));
 }
 
-.wayfinder-app .equipment-callout.error,
-.wayfinder-app [data-wayfinder-focus-id]:focus {
+.wayfinder-app .equipment-callout.error {
   outline: 2px solid var(--wf-warn);
   outline-offset: 2px;
+}
+
+.wayfinder-app .starting-equipment-pane :is(button, input, select, summary):focus-visible,
+.wayfinder-app .starting-equipment-pane [data-wayfinder-focus-id]:focus-visible,
+.wayfinder-app .status-note.error:focus-visible {
+  outline: 3px solid var(--wf-focus, var(--wf-accent-strong));
+  outline-offset: 3px;
+  box-shadow: 0 0 0 2px var(--wf-paper-strong);
 }
 
 .wayfinder-app .equipment-workspace {

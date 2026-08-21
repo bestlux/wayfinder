@@ -212,6 +212,18 @@
         "RevokeApproval": "撤销GM批准",
         "StartShopping": "开始选购"
       },
+      "Accessibility": {
+        "ApproveExceptionForItem": "批准{name}的确切例外",
+        "BuyItemWithCoin": "使用货币购买{name}",
+        "CannotAddItem": "无法添加{name}",
+        "CartSummary": "购物车：{count}项，已花费{spent}，剩余{remaining}。",
+        "ChooseTitanForItem": "将{name}选为泰坦重击武器",
+        "DecreaseItemQuantity": "减少{name}的数量",
+        "IncreaseItemQuantity": "增加{name}的数量",
+        "PreviewItem": "预览{name}",
+        "RequestExceptionForItem": "请求{name}的确切例外",
+        "UseAllowanceForItem": "将{level}级物品名额用于{name}"
+      },
       "Allowance": {
         "Aria": "永久物品名额",
         "Assigned": "已分配",
@@ -223,7 +235,9 @@
         "Failed": "寻路仪无法应用此起始装备草稿。草稿已保留供检查；详细信息可在控制台查看。",
         "LateError": "角色已达到审核后的装备状态，但Foundry在应用末尾报告了错误。关闭前请检查角色。",
         "NotReady": "应用前仍需检查起始装备。",
-        "Partial": "寻路仪已部分应用此起始装备草稿。请不要更改选择并重试应用；详细信息可在控制台查看。"
+        "Partial": "寻路仪已部分应用此起始装备草稿。请不要更改选择并重试应用；详细信息可在控制台查看。",
+        "RecoveryConflict": "此角色存在来自另一个客户端的部分应用恢复草稿。寻路仪保留了你未保存的本地内容；请重新打开后再继续。",
+        "RecoveryLocked": "寻路仪已部分应用此草稿。请不要更改选择并重试应用；若重试无法完成，则需要手动恢复角色。"
       },
       "Authority": {
         "AwaitingGm": "开始选购前，需要GM确认此次高等级角色起始资格。",
@@ -238,11 +252,9 @@
       },
       "Cart": {
         "Aria": "起始装备购物车",
-        "DecreaseQuantity": "减少数量",
         "Empty": "购物车中还没有物品。如果想保留货币，请选择“全部保留”。",
         "Eyebrow": "购物车",
         "FixedQuantityAria": "{name}的固定数量",
-        "IncreaseQuantity": "增加数量",
         "PolicyChanged": "当前世界规则已不再允许此物品。",
         "QuantityAria": "{name}的数量",
         "Remaining": "剩余",

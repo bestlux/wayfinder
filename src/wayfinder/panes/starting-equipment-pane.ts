@@ -3,6 +3,13 @@ import {
   type AcquisitionLocalize,
   localizeEquipmentSourceDiagnostic,
 } from "../application/acquisition-localization.js";
+import {
+  equipmentAllowanceFocusId,
+  equipmentFilterFocusId,
+  equipmentItemFocusId,
+  equipmentLineControlFocusId,
+  equipmentLineFocusId,
+} from "../application/equipment-accessibility.js";
 import type { EquipmentSourceDiagnostic } from "../application/equipment-source-policy.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
 import type { EconomicHandoffReason } from "../domain/economic-baseline.js";
@@ -81,6 +88,11 @@ export function buildStartingEquipmentPane(
             .map((allowance) => ({
               allowanceId: allowance.allowanceId,
               label: localize("wayfinder-pf2e.StartingEquipment.Allowance.Use", { level: allowance.itemLevel }),
+              ariaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.UseAllowanceForItem", {
+                level: allowance.itemLevel,
+                name: record.name,
+              }),
+              focusId: equipmentAllowanceFocusId(record.sourceUuid, allowance.allowanceId),
             }))
         : [];
     const exceptionPending = draft.equipmentPolicyRequests.some(
@@ -111,13 +123,36 @@ export function buildStartingEquipmentPane(
       previewing: record.sourceUuid === catalogue.previewSourceUuid,
       canAdd: canBuyWithCurrency || allowanceOptions.length > 0,
       canBuyWithCurrency,
+      previewAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.PreviewItem", {
+        name: record.name,
+      }),
+      previewFocusId: equipmentItemFocusId(record.sourceUuid, "preview"),
+      buyAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.BuyItemWithCoin", {
+        name: record.name,
+      }),
+      buyFocusId: equipmentItemFocusId(record.sourceUuid, "coin"),
+      unavailableAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.CannotAddItem", {
+        name: record.name,
+      }),
       allowanceOptions,
       canRequestException: record.exceptionRequestable && setupOptions?.isGm !== true && !exceptionPending,
+      requestExceptionAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.RequestExceptionForItem", {
+        name: record.name,
+      }),
+      requestExceptionFocusId: equipmentItemFocusId(record.sourceUuid, "request-exception"),
       canApproveException: record.exceptionRequestable && setupOptions?.isGm === true,
+      approveExceptionAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.ApproveExceptionForItem", {
+        name: record.name,
+      }),
+      approveExceptionFocusId: equipmentItemFocusId(record.sourceUuid, "approve-exception"),
       canChooseTitanMauler:
         catalogue.titanMauler.required &&
         catalogue.titanMauler.selectedSourceUuid === null &&
         record.titanMaulerEligible,
+      titanMaulerAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.ChooseTitanForItem", {
+        name: record.name,
+      }),
+      titanMaulerFocusId: equipmentItemFocusId(record.sourceUuid, "titan"),
     };
   });
   const recordByUuid = new Map(
@@ -148,7 +183,22 @@ export function buildStartingEquipmentPane(
           line.funding.lane === "class-grant" || line.policyDecision.eligible
             ? null
             : localize("wayfinder-pf2e.StartingEquipment.Cart.PolicyChanged"),
-        focusId: `starting-equipment-line:${line.lineId}`,
+        focusId: equipmentLineFocusId(line.lineId),
+        quantityAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Cart.QuantityAria", {
+          name: record?.name ?? line.sourceUuid,
+        }),
+        decreaseAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.DecreaseItemQuantity", {
+          name: record?.name ?? line.sourceUuid,
+        }),
+        decreaseFocusId: equipmentLineControlFocusId(line.lineId, "decrease"),
+        increaseAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.IncreaseItemQuantity", {
+          name: record?.name ?? line.sourceUuid,
+        }),
+        increaseFocusId: equipmentLineControlFocusId(line.lineId, "increase"),
+        removeAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Cart.RemoveAria", {
+          name: record?.name ?? line.sourceUuid,
+        }),
+        removeFocusId: equipmentLineControlFocusId(line.lineId, "remove"),
         children:
           line.kitExpansion?.items.map((item) => ({
             name: item.name,
@@ -294,9 +344,14 @@ export function buildStartingEquipmentPane(
         ...filter,
         label: catalogueFilterLabel(filter.key, filter.value, filter.label, localize),
         selected: catalogue.activeFilters[filter.key]?.includes(filter.value) ?? false,
+        focusId: equipmentFilterFocusId(filter.key, filter.value),
       })),
       totalResultCount: matchedRecordCount,
       visibleResultCount: records.length,
+      resultAnnouncement: localize("wayfinder-pf2e.StartingEquipment.Catalogue.ResultCount", {
+        visible: records.length,
+        total: matchedRecordCount,
+      }),
       items: records,
       preview,
     },
@@ -305,6 +360,11 @@ export function buildStartingEquipmentPane(
       empty: cartLines.length === 0,
       spentLabel: formatCopper(spentCopper, localize),
       remainingLabel: formatCopper(remainingCopper, localize),
+      announcement: localize("wayfinder-pf2e.StartingEquipment.Accessibility.CartSummary", {
+        count: cartLines.length,
+        spent: formatCopper(spentCopper, localize),
+        remaining: formatCopper(remainingCopper, localize),
+      }),
     },
     titanMauler: {
       required: catalogue.titanMauler.required,

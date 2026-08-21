@@ -150,9 +150,31 @@ describe("starting equipment pane", () => {
       budgetLabel: "10 gp",
       automaticEligibilityLabel: "Common gear from 1 approved pack",
     });
-    expect(pane.catalogue.items[0]).toMatchObject({ name: "Adventurer's Pack", affordable: true, canAdd: true });
-    expect(pane.catalogue.filters[0]).toMatchObject({ value: "equipment", selected: true });
-    expect(pane.cart.lines[0]).toMatchObject({ quantity: 1, focusId: "starting-equipment-line:line-1" });
+    expect(pane.catalogue.items[0]).toMatchObject({
+      name: "Adventurer's Pack",
+      affordable: true,
+      canAdd: true,
+      previewAriaLabel: "Preview Adventurer's Pack",
+      buyAriaLabel: "Buy Adventurer's Pack with coin",
+      buyFocusId: `starting-equipment-item:${record.sourceUuid}:coin`,
+      requestExceptionAriaLabel: "Request an exact exception for Adventurer's Pack",
+      titanMaulerAriaLabel: "Choose Adventurer's Pack as the Titan Mauler weapon",
+    });
+    expect(pane.catalogue.filters[0]).toMatchObject({
+      value: "equipment",
+      selected: true,
+      focusId: "starting-equipment-filter:type:equipment",
+    });
+    expect(pane.catalogue.resultAnnouncement).toBe("Showing 1 of 1 matching items");
+    expect(pane.cart.lines[0]).toMatchObject({
+      quantity: 1,
+      focusId: "starting-equipment-line:line-1",
+      decreaseAriaLabel: "Decrease quantity of Adventurer's Pack",
+      decreaseFocusId: "starting-equipment-line:line-1:decrease",
+      increaseFocusId: "starting-equipment-line:line-1:increase",
+      removeFocusId: "starting-equipment-line:line-1:remove",
+    });
+    expect(pane.cart.announcement).toBe("Cart: 1 lines, 1 gp spent, 9 gp remaining.");
     expect(pane.review.canReviewPurchases).toBe(true);
   });
 
@@ -501,6 +523,13 @@ describe("starting equipment pane", () => {
       "data-wayfinder-focus-id",
       "data-equipment-source-diagnostic",
       "wayfinder-pf2e.StartingEquipment.Handoff.Acknowledged",
+      'role="group"',
+      'aria-live="polite"',
+      'aria-atomic="true"',
+      "buyAriaLabel",
+      "decreaseAriaLabel",
+      "requestExceptionAriaLabel",
+      "titanMaulerAriaLabel",
     ]) {
       expect(template).toContain(token);
     }

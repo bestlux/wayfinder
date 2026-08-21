@@ -45,7 +45,6 @@ import {
 import {
   type AcquisitionLocalizationValues,
   localizeAcquisitionMessage,
-  localizeEquipmentSourceDiagnostic,
 } from "./application/acquisition-localization.js";
 import {
   acquisitionSmokeApplyFailureHandledFor,
@@ -101,9 +100,15 @@ import {
   WayfinderDraftWriteConflictError,
 } from "./application/draft-write-guard.js";
 import {
+  equipmentItemFocusId,
+  equipmentLineFocusId,
+  restoreEquipmentFocus,
+  STARTING_EQUIPMENT_REVIEW_FOCUS_ID,
+  STARTING_EQUIPMENT_STATUS_FOCUS_ID,
+} from "./application/equipment-accessibility.js";
+import {
   ConfiguredItemHandoffRequiredError,
   commitTitanMaulerLineSynchronization,
-  EquipmentSourceHealthError,
   getFoundryEquipmentAcquisitionRuntime,
 } from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
@@ -138,6 +143,7 @@ import {
   executeStartingEquipmentCommand,
   type StartingEquipmentCommand,
 } from "./application/starting-equipment-command-service.js";
+import { localizeStartingEquipmentError } from "./application/starting-equipment-failure.js";
 import {
   getStartingEquipmentUiAdapter,
   resolveStartingEquipmentRenderPlan,
@@ -310,12 +316,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #pendingSearchFocus: { stepId: string; cursor: number } | null = null;
   #pendingStepFocusId: string | null = null;
   #pendingControlFocusId: string | null = null;
+  #pendingEquipmentFocusIds: string[] | null = null;
   #equipmentSearchByStepId = new Map<string, string>();
   #equipmentFiltersByStepId = new Map<string, Record<string, string[]>>();
   #equipmentPreviewByStepId = new Map<string, string>();
   #cachedRenderPlan: ProgressionPlan | null = null;
   #recentlyInvalidatedStepIds = new Set<string>();
   #statusNote: string | null = null;
+  #statusErrorMessage: string | null = null;
   #draftPersistence: DraftPersistenceCoordinator;
   #draftWriteGuard: PersistedDraftWriteGuard;
   #semanticCommands = new SemanticCommandQueue();
@@ -531,6 +539,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         activeStep,
         activePane,
         statusNote: this.#statusNote,
+        statusNoteIsError: this.#statusNote !== null && this.#statusNote === this.#statusErrorMessage,
         planningNote,
         summaryDocuments: {
           ancestry: effectiveAncestry,
@@ -646,11 +655,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       control.focus();
     } else if (pendingStepFocusId && stepHeading?.dataset.wayfinderStepHeading === pendingStepFocusId) {
       stepHeading.focus();
+    } else if (this.#pendingEquipmentFocusIds) {
+      restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
     }
     if (pendingStepFocusId || pendingControlFocusId) {
       this.#pendingStepFocusId = null;
       this.#pendingControlFocusId = null;
     }
+    this.#pendingEquipmentFocusIds = null;
     WayfinderApp.#openApps.add(this);
     this.#patchDraftSaveStatus(this.#draftPersistence.state);
     if (options.wayfinderAcquisitionSmokeQuiescent) {
@@ -739,6 +751,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     event.preventDefault();
     event.stopPropagation();
     this.#rememberInteractiveState();
+    this.#statusErrorMessage = null;
+    this.#pendingEquipmentFocusIds = startingEquipmentFocusCandidates(target);
     if (
       action.type !== "toggle-picker-filter" &&
       action.type !== "toggle-picker-filter-menu" &&
@@ -975,7 +989,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         );
         const amountCopper = parseGoldToCopper(input?.value ?? "");
         if (amountCopper === null) {
-          ui.notifications.warn(localizeAcquisition("wayfinder-pf2e.StartingEquipment.Errors.CustomLumpSum"));
+          const message = localizeAcquisition("wayfinder-pf2e.StartingEquipment.Errors.CustomLumpSum");
+          this.#setStartingEquipmentFailure(message);
+          ui.notifications.warn(message);
+          this.render({ wayfinderEquipmentUpdate: true });
           break;
         }
         await this.#executeStartingEquipmentCommand(action.stepId, {
@@ -1008,12 +1025,20 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         await this.#chooseTitanMaulerEquipment(action.stepId, action.sourceUuid);
         break;
       case "remove-equipment-line":
+        this.#pendingEquipmentFocusIds = this.#equipmentLineRelocationCandidates(action.lineId);
         await this.#executeStartingEquipmentCommand(action.stepId, {
           type: "remove-line",
           lineId: action.lineId,
         });
         break;
       case "change-equipment-quantity":
+        if (
+          action.delta === -1 &&
+          this.#requireDraft().acquisition?.lines.find((line) => line.lineId === action.lineId)?.price
+            .requestedQuantity === 1
+        ) {
+          this.#pendingEquipmentFocusIds = this.#equipmentLineRelocationCandidates(action.lineId);
+        }
         await this.#changeStartingEquipmentQuantity(action.stepId, action.lineId, action.delta);
         break;
       case "toggle-equipment-filter":
@@ -1380,9 +1405,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#requireDraft().acquisitionCorrupt = false;
       this.#requireDraft().equipmentPolicyRequests = [...result.policyRequests];
       this.#statusNote = localizeAcquisitionMessage(localizeAcquisition, result.status);
+      this.#statusErrorMessage = null;
     } catch (error) {
-      const message = localizeStartingEquipmentError(error, "wayfinder-pf2e.StartingEquipment.Errors.Update");
-      this.#statusNote = message;
+      const message = localizeStartingEquipmentError(
+        localizeAcquisition,
+        error,
+        "wayfinder-pf2e.StartingEquipment.Errors.Update"
+      );
+      this.#setStartingEquipmentFailure(message);
       ui.notifications.warn(message);
     }
     this.render({ wayfinderEquipmentUpdate: true });
@@ -1406,17 +1436,27 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         sourceUuid,
         funding,
       });
+      this.#pendingEquipmentFocusIds = [
+        equipmentLineFocusId(line.lineId),
+        ...(this.#pendingEquipmentFocusIds ?? []),
+        STARTING_EQUIPMENT_REVIEW_FOCUS_ID,
+      ];
       await this.#executeStartingEquipmentCommand(stepId, { type: "add-line", line });
     } catch (error) {
       if (error instanceof ConfiguredItemHandoffRequiredError) {
+        this.#pendingEquipmentFocusIds = ["starting-equipment-handoff"];
         await this.#executeStartingEquipmentCommand(stepId, {
           type: "enter-configured-item-handoff",
           reason: error.reason,
         });
         return;
       }
-      const message = localizeStartingEquipmentError(error, "wayfinder-pf2e.StartingEquipment.Errors.Add");
-      this.#statusNote = message;
+      const message = localizeStartingEquipmentError(
+        localizeAcquisition,
+        error,
+        "wayfinder-pf2e.StartingEquipment.Errors.Add"
+      );
+      this.#setStartingEquipmentFailure(message);
       ui.notifications.warn(message);
       this.render({ wayfinderEquipmentUpdate: true });
     }
@@ -1435,13 +1475,19 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         ...this.#startingEquipmentUiRequest(step),
         sourceUuid,
       });
+      this.#pendingEquipmentFocusIds = [
+        equipmentLineFocusId(line.lineId),
+        ...(this.#pendingEquipmentFocusIds ?? []),
+        STARTING_EQUIPMENT_REVIEW_FOCUS_ID,
+      ];
       await this.#executeStartingEquipmentCommand(stepId, { type: "add-line", line });
     } catch (error) {
       const message = localizeStartingEquipmentError(
+        localizeAcquisition,
         error,
         "wayfinder-pf2e.StartingEquipment.Errors.ChooseTitanMauler"
       );
-      this.#statusNote = message;
+      this.#setStartingEquipmentFailure(message);
       ui.notifications.warn(message);
       this.render({ wayfinderEquipmentUpdate: true });
     }
@@ -1456,6 +1502,26 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
     await this.#executeStartingEquipmentCommand(stepId, { type: "set-quantity", lineId, quantity });
+  }
+
+  #equipmentLineRelocationCandidates(lineId: string): string[] {
+    const lines = this.#requireDraft().acquisition?.lines ?? [];
+    const index = lines.findIndex((line) => line.lineId === lineId);
+    const next = index >= 0 ? lines[index + 1] : null;
+    const previous = index > 0 ? lines[index - 1] : null;
+    return [
+      ...(next ? [equipmentLineFocusId(next.lineId)] : []),
+      ...(previous ? [equipmentLineFocusId(previous.lineId)] : []),
+      STARTING_EQUIPMENT_REVIEW_FOCUS_ID,
+    ];
+  }
+
+  #setStartingEquipmentFailure(message: string): void {
+    this.#statusNote = message;
+    this.#statusErrorMessage = message;
+    this.#pendingStepFocusId = null;
+    this.#pendingControlFocusId = STARTING_EQUIPMENT_STATUS_FOCUS_ID;
+    this.#pendingEquipmentFocusIds = null;
   }
 
   #toggleStartingEquipmentFilter(stepId: string, filterKey: string, value: string): void {
@@ -2130,7 +2196,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   async #saveDraft(): Promise<void> {
-    if (this.#reconcileLiveRecoveryDraft() === "conflict") return;
+    if (this.#reconcileLiveRecoveryDraft() === "conflict") {
+      this.render(false);
+      return;
+    }
     try {
       this.#draftPersistence.schedule(this.#requireDraft(), { force: true });
       if (this.#draftPersistence.state.phase === "error") {
@@ -2150,7 +2219,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   async #retryDraftSave(): Promise<void> {
-    if (this.#reconcileLiveRecoveryDraft() === "conflict") return;
+    if (this.#reconcileLiveRecoveryDraft() === "conflict") {
+      this.render(false);
+      return;
+    }
     try {
       this.#draftPersistence.schedule(this.#requireDraft());
       await this.#draftPersistence.retry();
@@ -2179,14 +2251,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   #allowDraftMutation(): boolean {
     if (this.#reconcileLiveRecoveryDraft() === "conflict") {
+      this.render(false);
       return false;
     }
     if (!hasApplyRecoveryState(this.#requireDraft())) {
       return true;
     }
-    this.#statusNote =
-      "Wayfinder partially applied this draft. Retry Apply without changing choices; manual actor recovery is required if the retry cannot finish.";
-    ui.notifications.warn("Wayfinder locked this recovery draft so partial actor changes cannot diverge from it.");
+    const message = localizeAcquisition("wayfinder-pf2e.StartingEquipment.Apply.RecoveryLocked");
+    this.#setStartingEquipmentFailure(message);
+    ui.notifications.warn(message);
     this.render(false);
     return false;
   }
@@ -2215,8 +2288,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#draftPersistence.reset(liveDraft);
       return decision;
     }
-    this.#statusNote =
-      "This actor has a partial-Apply recovery draft from another client. Wayfinder kept your local work unsaved; reopen before continuing.";
+    this.#setStartingEquipmentFailure(localizeAcquisition("wayfinder-pf2e.StartingEquipment.Apply.RecoveryConflict"));
     return "conflict";
   }
 
@@ -2326,45 +2398,46 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
   async #applyDraft(): Promise<boolean> {
     this.#statusNote = null;
+    this.#statusErrorMessage = null;
     if (this.#reconcileLiveRecoveryDraft() === "conflict") {
-      ui.notifications.warn("Wayfinder kept your local work because another client has a recovery draft.");
+      ui.notifications.warn(localizeAcquisition("wayfinder-pf2e.StartingEquipment.Apply.RecoveryConflict"));
       return false;
     }
-    const snapshot = inspectActor(this.actor);
     const draft = cloneData(this.#requireDraft());
-    const acquisitionSmokeCheckpointHook = acquisitionSmokeCheckpointHookFor(this.actor, draft);
-    const acquisitionSession = draft.acquisition ? this.#createAcquisitionExecutionSession(draft) : null;
-    const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
-    const plan = await this.#buildPlan(snapshot, draft);
-    const steps = cloneData(plan.steps);
-    const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
-    const spellRarityCeiling = getSpellRarityCeilingSetting();
-    const recovering = hasApplyRecoveryState(draft);
-    const computedSpellRarityAttestations = buildAppliedSpellRarityAttestations(
-      this.actor.id,
-      draft,
-      recovering ? undefined : steps,
-      recovering ? undefined : spellRarityCeiling
-    );
-    const appliedSpellRarityAttestations = recovering
-      ? cloneData(draft.applySpellRarityAttestations)
-      : computedSpellRarityAttestations;
-    const spellRarityBlockers = (
-      recovering
-        ? listSpellRarityRecoveryProblems(this.actor.id, draft)
-        : listSpellRarityAttestationProblems(this.actor.id, draft, steps, spellRarityCeiling)
-    ).map((problem) => ({
-      code: "access-attestation" as const,
-      stepId: problem.stepId,
-      slotId: problem.slotId,
-      title: problem.title,
-      message: problem.message,
-    }));
-    const physicalGrantBlockers = physicalGrantCoverageIssues(draft, steps);
     const applyCandidate = { value: null as DraftState | null };
     let finalizedDespiteApplyError = false;
     let result: ApplyDraftLifecycleResult;
     try {
+      const snapshot = inspectActor(this.actor);
+      const acquisitionSmokeCheckpointHook = acquisitionSmokeCheckpointHookFor(this.actor, draft);
+      const acquisitionSession = draft.acquisition ? this.#createAcquisitionExecutionSession(draft) : null;
+      const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
+      const plan = await this.#buildPlan(snapshot, draft);
+      const steps = cloneData(plan.steps);
+      const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
+      const spellRarityCeiling = getSpellRarityCeilingSetting();
+      const recovering = hasApplyRecoveryState(draft);
+      const computedSpellRarityAttestations = buildAppliedSpellRarityAttestations(
+        this.actor.id,
+        draft,
+        recovering ? undefined : steps,
+        recovering ? undefined : spellRarityCeiling
+      );
+      const appliedSpellRarityAttestations = recovering
+        ? cloneData(draft.applySpellRarityAttestations)
+        : computedSpellRarityAttestations;
+      const spellRarityBlockers = (
+        recovering
+          ? listSpellRarityRecoveryProblems(this.actor.id, draft)
+          : listSpellRarityAttestationProblems(this.actor.id, draft, steps, spellRarityCeiling)
+      ).map((problem) => ({
+        code: "access-attestation" as const,
+        stepId: problem.stepId,
+        slotId: problem.slotId,
+        title: problem.title,
+        message: problem.message,
+      }));
+      const physicalGrantBlockers = physicalGrantCoverageIssues(draft, steps);
       result = await applyDraftLifecycle({
         actorName: this.actor.name,
         currentLevel: snapshot.level,
@@ -2570,7 +2643,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const currentDraft = readPersistedDraftSnapshot(this.actor, currentSnapshot.level);
         this.#draftWriteGuard.acceptCurrent(currentDraft);
         this.#draft = currentDraft ? cloneData(currentDraft) : createEmptyDraft(currentSnapshot.level);
-        this.#statusNote = draftWriteConflict.message;
+        this.#setStartingEquipmentFailure(draftWriteConflict.message);
         ui.notifications.warn(draftWriteConflict.message);
         this.render(false);
         return false;
@@ -2643,29 +2716,32 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const blocker = error.blockers[0];
         this.#activeStepId = blocker?.stepId ?? this.#activeStepId;
         this.#pendingStepFocusId = blocker?.stepId ?? null;
-        this.#statusNote =
+        const message =
           blocker?.code === "equipment-review"
             ? localizeAcquisition("wayfinder-pf2e.StartingEquipment.Apply.NotReady")
             : (blocker?.message ?? error.message);
+        this.#setStartingEquipmentFailure(message);
         ui.notifications.warn(game.i18n.localize("wayfinder-pf2e.Notifications.MissingSelections"));
         this.render(false);
         return false;
       }
       if (error instanceof WayfinderActorAuthorityError) {
-        this.#statusNote = error.message;
+        this.#setStartingEquipmentFailure(error.message);
         ui.notifications.warn(error.message);
         this.render(false);
         return false;
       }
       if (error instanceof WayfinderApplyDriftError) {
-        this.#statusNote = error.message;
+        this.#setStartingEquipmentFailure(error.message);
         ui.notifications.warn(error.message);
         this.render(false);
         return false;
       }
       console.error("PF2E Wayfinder failed to apply draft", error);
-      this.#statusNote = draft.acquisition
-        ? localizeAcquisition(
+      const failureMessage = draft.acquisition
+        ? localizeStartingEquipmentError(
+            localizeAcquisition,
+            error,
             finalizedDespiteApplyError
               ? "wayfinder-pf2e.StartingEquipment.Apply.LateError"
               : hasApplyRecoveryState(this.#requireDraft())
@@ -2677,6 +2753,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           : hasApplyRecoveryState(this.#requireDraft())
             ? "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console."
             : "Wayfinder could not apply this draft. The draft was kept for review; details are in the console.";
+      this.#setStartingEquipmentFailure(failureMessage);
       ui.notifications.error(game.i18n.localize("wayfinder-pf2e.Notifications.ApplyFailed"));
       this.render(false);
       acquisitionSmokeApplyFailureHandledFor(this.actor, draft, error);
@@ -2685,10 +2762,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     if (result.kind === "warning") {
       this.#draftPersistence.resume();
-      this.#statusNote =
+      const warningMessage =
         result.blockers[0]?.code === "equipment-review"
           ? localizeAcquisition("wayfinder-pf2e.StartingEquipment.Apply.NotReady")
           : (result.blockers[0]?.message ?? null);
+      if (warningMessage) {
+        this.#setStartingEquipmentFailure(warningMessage);
+      }
       const notificationKey =
         result.warning === "no-pending-steps"
           ? "wayfinder-pf2e.Notifications.NoPendingSteps"
@@ -3103,13 +3183,39 @@ function localizeAcquisition(key: string, values?: AcquisitionLocalizationValues
   return values ? String(game.i18n.format(key, values)) : String(game.i18n.localize(key));
 }
 
-function localizeStartingEquipmentError(error: unknown, fallbackKey: string): string {
-  if (error instanceof EquipmentSourceHealthError) {
-    return error.diagnostics
-      .map((diagnostic) => localizeEquipmentSourceDiagnostic(localizeAcquisition, diagnostic))
-      .join(" ");
+function startingEquipmentFocusCandidates(target: HTMLElement | null): string[] | null {
+  if (!target?.closest(".starting-equipment-pane")) return null;
+
+  const candidates: string[] = [];
+  const controlId = target.closest<HTMLElement>("[data-wayfinder-focus-id]")?.dataset.wayfinderFocusId;
+  if (controlId) candidates.push(controlId);
+
+  const sourceUuid = target.dataset.sourceUuid;
+  if (sourceUuid) candidates.push(equipmentItemFocusId(sourceUuid, "preview"));
+
+  const lineId = target.dataset.lineId;
+  if (lineId) candidates.push(equipmentLineFocusId(lineId));
+
+  switch (target.dataset.wayfinderAction) {
+    case "initialize-starting-equipment":
+      candidates.push("starting-equipment-authority", "starting-equipment-clear-filters");
+      break;
+    case "activate-equipment-policy":
+    case "approve-equipment-policy-request":
+    case "revoke-equipment-policy-judgment":
+      candidates.push("starting-equipment-clear-filters", "starting-equipment-authority");
+      break;
+    case "request-equipment-start":
+    case "select-equipment-recipe":
+      candidates.push("starting-equipment-authority");
+      break;
+    case "acknowledge-equipment-handoff":
+      candidates.push("starting-equipment-handoff");
+      break;
   }
-  return localizeAcquisition(fallbackKey);
+
+  candidates.push(STARTING_EQUIPMENT_REVIEW_FOCUS_ID);
+  return [...new Set(candidates)];
 }
 
 function parseGoldToCopper(value: string): number | null {

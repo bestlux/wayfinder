@@ -489,6 +489,11 @@
   opacity: 0.7;
 }
 
+.status-note.error {
+  border-color: var(--wf-warn);
+  color: var(--wf-warn);
+}
+
 .wayfinder-app .wayfinder-empty {
   background: var(--wf-paper);
   color: var(--wf-ink);

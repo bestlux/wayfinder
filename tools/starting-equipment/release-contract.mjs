@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import ts from "typescript";
+import { assertGeneratedScriptsCurrent } from "../release/check-generated-scripts.mjs";
 
 const DEFAULT_REPO_ROOT = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
+const execFileAsync = promisify(execFile);
+const GENERATED_ARTIFACT_CHECK_TIMEOUT_MS = 20_000;
 const SEMANTIC_RULES_DIGEST = "sha256:dc4a57ca21387be073952a1dadcb42309df2fdee6581aa538f1c9749523df2b5";
 const CONTRACT_MAPPING_DIGEST = "sha256:f37329725019474fb52b866ee911347d32ceb68f067f8fdde369376341480c62";
 const NUMERIC_LEVELS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
@@ -513,7 +517,7 @@ export async function validateWf08050ReleaseContract(contract = wf08050ReleaseCo
   }
   throwContractFailures(failures);
 
-  runGeneratedArtifactChecks(repoRoot, failures);
+  await runGeneratedArtifactChecks(repoRoot, failures);
 
   throwContractFailures(failures);
   return Object.freeze({
@@ -714,24 +718,42 @@ async function validateCaseEvidence(repoRoot, evidence, cache, failures) {
   if (!ids.has(evidence.id)) failures.push(`Missing exported case id ${exportKey}:${evidence.id}.`);
 }
 
-function runGeneratedArtifactChecks(repoRoot, failures) {
-  for (const [label, command] of [
-    [
-      "generated Character Wealth",
-      [path.join(repoRoot, "tools/starting-equipment/generate-character-wealth.mjs"), "--check"],
-    ],
-    ["generated scripts", [path.join(repoRoot, "tools/release/check-generated-scripts.mjs")]],
-  ]) {
-    try {
-      execFileSync(process.execPath, command, {
-        cwd: repoRoot,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-    } catch (error) {
-      failures.push(`${label} check failed: ${errorMessage(error)}.`);
-    }
-  }
+async function runGeneratedArtifactChecks(repoRoot, failures) {
+  const signal = AbortSignal.timeout(GENERATED_ARTIFACT_CHECK_TIMEOUT_MS);
+  const checks = [
+    {
+      label: "generated Character Wealth",
+      run: () =>
+        execFileAsync(
+          process.execPath,
+          [path.join(repoRoot, "tools/starting-equipment/generate-character-wealth.mjs"), "--check"],
+          {
+            cwd: repoRoot,
+            encoding: "utf8",
+            signal,
+          },
+        ),
+    },
+    {
+      label: "generated scripts",
+      run: () => assertGeneratedScriptsCurrent({ repoRoot, signal }),
+    },
+  ];
+  failures.push(...(await collectWf08050GeneratedArtifactFailures(checks)));
+}
+
+export async function collectWf08050GeneratedArtifactFailures(checks) {
+  const results = await Promise.all(
+    checks.map(async ({ label, run }) => {
+      try {
+        await run();
+        return null;
+      } catch (error) {
+        return `${label} check failed: ${errorMessage(error)}.`;
+      }
+    }),
+  );
+  return results.filter(Boolean);
 }
 
 function walk(node, visit) {

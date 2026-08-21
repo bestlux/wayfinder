@@ -2,19 +2,24 @@ import { describe, expect, it } from "vitest";
 import { SEMANTIC_WEALTH_RULES } from "../scripts/wayfinder/domain/semantic-wealth-rule-ledger.js";
 import {
   assertWf08050SemanticRuleRows,
+  collectWf08050GeneratedArtifactFailures,
   validateWf08050ReleaseContract,
   wf08050ReleaseContract,
 } from "../tools/starting-equipment/release-contract.mjs";
 
+const RELEASE_CONTRACT_INTEGRATION_TIMEOUT_MS = 30_000;
+
 describe("WF-080-50 release contract", () => {
-  it("binds every required row and acceptance fact to executable repository evidence", async () => {
+  it("binds every required row and acceptance fact to executable repository evidence", {
+    timeout: RELEASE_CONTRACT_INTEGRATION_TIMEOUT_MS,
+  }, async () => {
     await expect(validateWf08050ReleaseContract()).resolves.toEqual({
       numericRowCount: 20,
       semanticRowCount: 20,
       factCount: 39,
       evidenceCount: 96,
     });
-  }, 10_000);
+  });
 
   it("fails closed for missing or duplicate numeric, semantic, and acceptance mappings", async () => {
     const missingNumeric = cloneContract();
@@ -73,7 +78,9 @@ describe("WF-080-50 release contract", () => {
     }
   });
 
-  it("verifies referenced test suites and exact test titles from source", async () => {
+  it("verifies referenced test suites and exact test titles from source", {
+    timeout: RELEASE_CONTRACT_INTEGRATION_TIMEOUT_MS,
+  }, async () => {
     const missingSuite = cloneContract();
     missingSuite.facts[0]!.evidence[0]!.file = "tests/missing-wf08050-suite.test.ts";
     await expect(validateWf08050ReleaseContract(missingSuite)).rejects.toThrow(/cannot read test suite/i);
@@ -102,7 +109,26 @@ describe("WF-080-50 release contract", () => {
     );
   });
 
-  it("pins the actual generated-output and package-build evidence", async () => {
+  it("reports every generated-artifact failure in contract order", {
+    timeout: RELEASE_CONTRACT_INTEGRATION_TIMEOUT_MS,
+  }, async () => {
+    const laterFirstFailure = deferredFailure("wealth drift", 25);
+    const earlierSecondFailure = deferredFailure("scripts drift", 0);
+
+    await expect(
+      collectWf08050GeneratedArtifactFailures([
+        { label: "generated Character Wealth", run: laterFirstFailure },
+        { label: "generated scripts", run: earlierSecondFailure },
+      ])
+    ).resolves.toEqual([
+      "generated Character Wealth check failed: wealth drift.",
+      "generated scripts check failed: scripts drift.",
+    ]);
+  });
+
+  it("pins the actual generated-output and package-build evidence", {
+    timeout: RELEASE_CONTRACT_INTEGRATION_TIMEOUT_MS,
+  }, async () => {
     const missingPackageBuild = cloneContract();
     const packageFact = missingPackageBuild.facts.find((entry) => entry.id === "package-contract")!;
     packageFact.evidence = packageFact.evidence.filter(
@@ -114,7 +140,7 @@ describe("WF-080-50 release contract", () => {
     const generatedFact = replacedGeneratedGate.facts.find((entry) => entry.id === "generated-scripts")!;
     generatedFact.evidence[1]!.title = "requires the concise notice set and original runtime icon";
     await expect(validateWf08050ReleaseContract(replacedGeneratedGate)).rejects.toThrow(/executable mapping drifted/i);
-  }, 10_000);
+  });
 });
 
 function cloneContract(): any {
@@ -124,4 +150,11 @@ function cloneContract(): any {
 function deadTestSyntaxWitness(): void {
   const it = (_title: string, _callback: () => void) => undefined;
   it("dead syntax is not an executable Vitest registration", () => undefined);
+}
+
+function deferredFailure(message: string, delayMs: number): () => Promise<never> {
+  return async () => {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    throw new Error(message);
+  };
 }

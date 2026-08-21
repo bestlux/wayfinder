@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const defaultRepoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 
-export async function assertGeneratedScriptsCurrent({ repoRoot = defaultRepoRoot } = {}) {
+export async function assertGeneratedScriptsCurrent({ repoRoot = defaultRepoRoot, signal } = {}) {
   const generatedRoot = path.join(repoRoot, "dist");
   await mkdir(generatedRoot, { recursive: true });
   const temporaryRoot = await mkdtemp(path.join(generatedRoot, "generated-scripts-check-"));
@@ -20,7 +20,7 @@ export async function assertGeneratedScriptsCurrent({ repoRoot = defaultRepoRoot
     await execFileAsync(
       process.execPath,
       [compilerPath, "-p", path.join(repoRoot, "tsconfig.json"), "--outDir", candidateRoot, "--pretty", "false"],
-      { cwd: repoRoot },
+      { cwd: repoRoot, signal },
     );
 
     const differences = await compareGeneratedScriptDirectories({

@@ -5,13 +5,14 @@ import { applyClassBranchDraft, createBranchSelectorSelection } from "../class-b
 import { applyClassFeatureChoiceDraft } from "../class-feature-choice-service.js";
 import { MODULE_ID } from "../constants.js";
 import { fetchSelectionDocument } from "../pack/access.js";
-import { readManualStaticItemGrants, selectionFromManualStaticGrant, } from "../selector-application.js";
+import { assertManualStaticGrantReconciliation, assertManualStaticGrantSourcesAvailable, readManualStaticItemGrants, selectionFromManualStaticGrant, } from "../selector-application.js";
 import { cloneData } from "../shared/cloning.js";
 import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
-import { listPlannedStaticSkillSources, resolveActiveClassArchetypeProfile, retainActiveClassArchetypeChoices, } from "../wayfinder/application/planned-static-skill-source-service.js";
+import { listPlannedStaticSkillSources, resolveActiveClassArchetypeProfile, synchronizeRetainedClassArchetypeChoice, } from "../wayfinder/application/planned-static-skill-source-service.js";
+import { inspectRetainedClassArchetypeProfileDocuments } from "../wayfinder/class-archetype/registry.js";
 import { assertPreparedClassGrantPlanMatches, reconcilePreparedClassGrants, } from "../wayfinder/domain/class-grant-reconciliation.js";
 import { compileSkillProgression, skillProgressionInputFingerprint, } from "../wayfinder/domain/skill-progression.js";
 import { assertDraftBackedStepsReady, evaluateWayfinderDraftReadiness, evaluateWayfinderStep, WayfinderDraftNotReadyError, } from "../wayfinder/domain/step-evaluation.js";
@@ -115,7 +116,7 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
     assertActorAuthority(actor, deps.validateActorAuthority);
     const draft = cloneData(draftInput);
     const steps = cloneData(stepsInput);
-    retainActiveClassArchetypeChoices(draft, steps);
+    synchronizeRetainedClassArchetypeChoice(draft, steps, listActorItems(actor));
     assertAcquisitionAuthority(actor, draft, deps.assertAcquisitionApplyAuthority);
     const spellRarityProblems = hasDraftRecoveryState(draft)
         ? listSpellRarityRecoveryProblems(typeof actor.id === "string" ? actor.id : "", draft)
@@ -160,6 +161,7 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
     validateDraftChoiceValues(draft, steps);
     await validateSelectedEligibility(draft, steps, selections, deps.validateSelectionEligibility);
     const sources = await prepareSourceCatalog(actor, draft, steps, selections, deps);
+    assertClassArchetypeStaticGrantGraph(actor, draft, steps, sources);
     const validSkillSlugs = buildValidSkillSlugs(actor, deps.validSkillSlugs);
     const skillSourceProjection = projectPreparedSkillSources({
         draft,
@@ -342,6 +344,7 @@ async function validateSelectedEligibility(draft, steps, activeSelections, valid
 export async function executePreparedDraftApplication(prepared, options = {}) {
     assertActorAuthority(prepared.actor, prepared.validateActorAuthority);
     assertAcquisitionAuthority(prepared.actor, prepared.draft, prepared.assertAcquisitionApplyAuthority);
+    assertClassArchetypeStaticGrantGraph(prepared.actor, prepared.draft, prepared.steps, prepared.sources);
     if (prepared.draft.acquisition) {
         if (!options.persistAcquisitionCurrencyConvergenceWitness) {
             throw new Error("Starting-equipment Apply requires durable currency-convergence recovery persistence.");
@@ -567,6 +570,47 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
         receipts,
         classGrantReconciliations: [...classGrantReconciliations],
     };
+}
+function assertClassArchetypeStaticGrantGraph(actor, draft, steps, sources) {
+    const actorItems = listActorItems(actor);
+    const activeProfile = resolveActiveClassArchetypeProfile(draft, steps, actorItems);
+    if (!activeProfile)
+        return;
+    const preparedSource = sources.skillSources.find(({ selection }) => selection.uuid === activeProfile.selection.uuid)?.source;
+    if (!preparedSource) {
+        throw new Error(`Cannot reconcile ${activeProfile.label}: its prepared source is unavailable.`);
+    }
+    const hasActiveDecision = steps.some((step) => step.kind === "class-archetype");
+    if (hasActiveDecision) {
+        const parents = actorItems.filter((item) => itemMatchesSourceId(item, activeProfile.selection.uuid));
+        if (parents.length > 1) {
+            throw new Error(`Cannot reconcile ${activeProfile.label}: its actor provenance is ambiguous.`);
+        }
+        const parent = parents[0];
+        if (parent) {
+            assertManualStaticGrantReconciliation(actor, parent, preparedSource, {
+                parentName: activeProfile.selection.name,
+                replaceDescendantsOwnedById: null,
+            });
+        }
+        else {
+            assertManualStaticGrantSourcesAvailable(actor, preparedSource, activeProfile.selection.name);
+        }
+        return;
+    }
+    const resolution = inspectRetainedClassArchetypeProfileDocuments(actorItems);
+    if (resolution.kind !== "resolved" || resolution.profile.value !== activeProfile.value) {
+        throw new Error("Cannot apply retained class-archetype history: actor provenance is ambiguous or contradictory.");
+    }
+    const retainedProfile = resolution.profile;
+    const parent = actorItems.find((item) => itemMatchesSourceId(item, retainedProfile.selection.uuid));
+    if (!parent) {
+        throw new Error(`Cannot reconcile retained ${retainedProfile.label}: its prepared source is unavailable.`);
+    }
+    assertManualStaticGrantReconciliation(actor, parent, preparedSource, {
+        parentName: retainedProfile.selection.name,
+        replaceDescendantsOwnedById: null,
+    });
 }
 export async function executeRecoveredDraftFinalization(actor, options) {
     assertActorAuthority(actor, options.validateActorAuthority);
@@ -912,9 +956,8 @@ function assertAcquisitionAuthority(actor, draft, assertApplyAuthority) {
 async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps) {
     const refs = collectSourceRefs(actor, draft, steps, activeSelections);
     const activeMaterializedSourceKeys = new Set(activeSelections.map(sourceCatalogKey));
-    for (const { selection, requiredBeforeSkillPhase } of listPlannedStaticSkillSources(draft, steps)) {
-        if (requiredBeforeSkillPhase)
-            activeMaterializedSourceKeys.add(sourceCatalogKey(selection));
+    for (const { selection } of listPlannedStaticSkillSources(draft, steps)) {
+        activeMaterializedSourceKeys.add(sourceCatalogKey(selection));
     }
     const sourcesByKey = new Map();
     const sourcesByUuid = new Map();

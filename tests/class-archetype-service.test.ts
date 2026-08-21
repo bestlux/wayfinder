@@ -103,12 +103,16 @@ describe("class-archetype-service", () => {
   it("reconciles projected dedication grants from an actor-owned Battle Creed during incremental level-up", async () => {
     const { actor } = buildActorHarness({
       items: [
+        { id: "class-1", type: "class", name: "Cleric", system: { slug: "cleric" } },
         {
           id: "doctrine-1",
           type: "feat",
           name: "Doctrine",
           sourceId: CANONICAL_DOCTRINE_UUID,
-          flags: { core: { sourceId: CANONICAL_DOCTRINE_UUID } },
+          flags: {
+            core: { sourceId: CANONICAL_DOCTRINE_UUID },
+            pf2e: { rulesSelections: { doctrine: BATTLE_CREED_UUID } },
+          },
           system: {
             slug: "doctrine",
             category: "classfeature",
@@ -123,14 +127,18 @@ describe("class-archetype-service", () => {
           type: "feat",
           name: "Battle Creed",
           sourceId: BATTLE_CREED_UUID,
-          flags: { core: { sourceId: BATTLE_CREED_UUID } },
+          flags: {
+            core: { sourceId: BATTLE_CREED_UUID },
+            pf2e: { grantedBy: { id: "doctrine-1" } },
+          },
           system: { slug: "battle-creed", category: "classfeature", rules: [] },
         },
       ],
     });
     const draft = createEmptyDraft(5);
+    const steps = [incrementalBattleHarbingerTrainingStep()];
 
-    await applyClassArchetypeDraft(actor as any, draft, [], {
+    await applyClassArchetypeDraft(actor as any, draft, steps, {
       createEmbeddedSource: async (selection) => {
         if (selection.uuid === BATTLE_CREED_UUID) {
           return {
@@ -172,6 +180,44 @@ describe("class-archetype-service", () => {
     });
   });
 });
+
+function incrementalBattleHarbingerTrainingStep(): PendingStep {
+  const slotId = "skill-training-battle-harbinger-dedication-level-2";
+  return {
+    id: slotId,
+    level: 2,
+    kind: "skill-training",
+    slotKind: "skill-training",
+    title: "Battle Harbinger training",
+    description: "",
+    required: true,
+    slotId,
+    training: {
+      classSlug: "cleric",
+      className: "Cleric",
+      fixedSkills: [],
+      fixedLores: [],
+      choiceRules: [
+        {
+          key: "feat:battle-harbinger-dedication:skill",
+          flag: "skill",
+          prompt: "Choose a skill",
+          sourceLabel: "Battle Harbinger Dedication",
+          options: [{ slug: "athletics", label: "Athletics" }],
+          persistence: {
+            sourceItemType: "feat",
+            sourcePackId: "pf2e.feats-srd",
+            sourceDocumentId: "K7YK5ESDoreohCe8",
+            sourceUuid: DEDICATION_UUID,
+            sourceRuleIndex: 0,
+          },
+        },
+      ],
+      loreChoices: [],
+      additionalCount: 0,
+    },
+  };
+}
 
 function classArchetypeStep(): PendingStep {
   return createClassArchetypeStep(1, {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { applySelectorApplication } from "../src/selector-application";
+import { applySelectorApplication, createManualStaticGrantedItems } from "../src/selector-application";
 
 describe("selector application", () => {
   it.each([
@@ -331,6 +331,54 @@ describe("selector application", () => {
       "Item",
       expect.arrayContaining(["old-first", "old-second"])
     );
+  });
+
+  it.each([
+    {
+      label: "source UUID",
+      grants: [
+        { key: "first", uuid: "Compendium.pf2e.classfeatures.Item.shared-child", choices: {} },
+        { key: "second", uuid: "Compendium.pf2e.classfeatures.Item.shared-child", choices: {} },
+      ],
+    },
+    {
+      label: "parent-link key",
+      grants: [
+        { key: "shared", uuid: "Compendium.pf2e.classfeatures.Item.first-child", choices: {} },
+        { key: "shared", uuid: "Compendium.pf2e.classfeatures.Item.second-child", choices: {} },
+      ],
+    },
+  ])("rejects duplicate manual static grant $label values before creating a child", async ({ grants }) => {
+    const createEmbeddedDocuments = vi.fn(async () => [{ id: "unexpected-child" }]);
+    const createEmbeddedSource = vi.fn(async () => ({ name: "Child", type: "feat", system: {}, flags: {} }));
+    const actor = {
+      items: [],
+      createEmbeddedDocuments,
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+    };
+
+    await expect(
+      createManualStaticGrantedItems(
+        actor as never,
+        { id: "parent-1" } as never,
+        {
+          name: "Parent",
+          type: "feat",
+          system: {},
+          flags: { "wayfinder-pf2e": { manualStaticItemGrants: grants } },
+        },
+        {
+          parentSlotId: "class-archetype-parent-level-2",
+          parentName: "Parent",
+          createEmbeddedSource,
+          replaceDescendantsOwnedById: null,
+        }
+      )
+    ).rejects.toThrow(/duplicate grant/i);
+
+    expect(createEmbeddedSource).not.toHaveBeenCalled();
+    expect(createEmbeddedDocuments).not.toHaveBeenCalled();
   });
 
   it("recreates old-owned static children and removes the prepared hierarchy on failure", async () => {

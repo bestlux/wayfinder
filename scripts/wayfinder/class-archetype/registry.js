@@ -1,3 +1,4 @@
+import { MODULE_ID } from "../../constants.js";
 import { slugifyName } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 export const STANDARD_CLASS_PATH = "standard";
@@ -312,17 +313,29 @@ export function classArchetypeProfileForDocument(document) {
     const slug = typeof typed?.system?.slug === "string" ? typed.system.slug.trim().toLowerCase() : (slugifyName(typed?.name) ?? "");
     return (PROFILES.find((profile) => profile.selection.uuid.toLowerCase() === sourceId || (slug.length > 0 && profile.value === slug)) ?? null);
 }
+export function retainedClassArchetypeProfileForDocuments(documentsInput) {
+    const resolution = inspectRetainedClassArchetypeProfileDocuments(documentsInput);
+    return resolution.kind === "resolved" ? resolution.profile : null;
+}
+export function inspectRetainedClassArchetypeProfileDocuments(documentsInput) {
+    const documents = [...documentsInput];
+    const sourceIds = new Set(documents.map((document) => sourceIdOf(document)).filter((value) => value !== null));
+    const candidates = PROFILES.filter((profile) => sourceIds.has(profile.selection.uuid) || sourceIds.has(profile.selector.selection.uuid));
+    if (candidates.length === 0)
+        return { kind: "none", profiles: [] };
+    if (candidates.length !== 1)
+        return { kind: "invalid", profiles: candidates };
+    const profile = candidates[0];
+    if (!profile || !actorDocumentsProveProfile(profile, documents)) {
+        return { kind: "invalid", profiles: candidates };
+    }
+    return { kind: "resolved", profiles: [profile], profile };
+}
 export function activeClassArchetypeProfile(draft, documents) {
     if (Object.keys(draft.classArchetypeChoices).length > 0) {
         return selectedClassArchetypeProfile(draft);
     }
-    for (const document of documents) {
-        const profile = classArchetypeProfileForDocument(document);
-        if (profile) {
-            return profile;
-        }
-    }
-    return null;
+    return retainedClassArchetypeProfileForDocuments(documents);
 }
 export function withExistingClassArchetypeChoice(draft, documents) {
     if (Object.keys(draft.classArchetypeChoices).length > 0) {
@@ -367,5 +380,64 @@ export function documentIsWayOfTheSpellshot(document) {
 }
 export function documentIsPalatineDetective(document) {
     return classArchetypeProfileForDocument(document)?.value === PALATINE_DETECTIVE.value;
+}
+function actorDocumentsProveProfile(profile, documents) {
+    const classDocument = documents.find((document) => {
+        const typed = document;
+        return typed?.type === "class" && typed.system?.slug === profile.classSlug;
+    });
+    if (!classDocument)
+        return false;
+    const profileDocuments = documents.filter((document) => sourceIdOf(document) === profile.selection.uuid);
+    const selectorDocuments = documents.filter((document) => sourceIdOf(document) === profile.selector.selection.uuid);
+    if (profileDocuments.length !== 1 || selectorDocuments.length !== 1)
+        return false;
+    const profileDocument = profileDocuments[0];
+    const selectorDocument = selectorDocuments[0];
+    if (!moduleSlotMatches(profileDocument, profile.decisionSlotId) ||
+        !moduleSlotMatches(selectorDocument, profile.decisionSlotId)) {
+        return false;
+    }
+    const profileDocumentId = itemId(profileDocument);
+    const selectorDocumentId = itemId(selectorDocument);
+    if (!profileDocumentId || !selectorDocumentId)
+        return false;
+    const reverseGrant = itemGrantLink(selectorDocument, profile.selector.flag);
+    return (grantedById(profileDocument) === selectorDocumentId &&
+        selectorRuleSelection(selectorDocument, profile.selector.flag) === profile.selection.uuid &&
+        (!reverseGrant.present || reverseGrant.id === profileDocumentId));
+}
+function moduleSlotMatches(document, expectedSlotId) {
+    const typed = document;
+    const value = typed?.flags?.[MODULE_ID]?.slotId;
+    return value === undefined || value === expectedSlotId;
+}
+function itemId(document) {
+    const value = document?.id;
+    return typeof value === "string" && value.length > 0 ? value : null;
+}
+function grantedById(document) {
+    const value = document?.flags?.pf2e?.grantedBy
+        ?.id;
+    return typeof value === "string" && value.length > 0 ? value : null;
+}
+function itemGrantLink(document, flag) {
+    const grants = document?.flags?.pf2e?.itemGrants;
+    if (!grants || typeof grants !== "object" || Array.isArray(grants) || !Object.hasOwn(grants, flag)) {
+        return { present: false, id: null };
+    }
+    const value = grants[flag];
+    const id = value && typeof value === "object" && !Array.isArray(value) && typeof value.id === "string"
+        ? value.id
+        : null;
+    return { present: true, id: id && id.length > 0 ? id : null };
+}
+function selectorRuleSelection(document, flag) {
+    const typed = document;
+    const pf2eSelections = typed?.flags?.pf2e?.rulesSelections;
+    const value = pf2eSelections && Object.hasOwn(pf2eSelections, flag)
+        ? pf2eSelections[flag]
+        : typed?.flags?.system?.rulesSelections?.[flag];
+    return typeof value === "string" ? value : null;
 }
 //# sourceMappingURL=registry.js.map

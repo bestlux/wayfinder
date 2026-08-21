@@ -151,11 +151,26 @@ describe("wayfinder class archetype service", () => {
   it("recovers the active profile from an actor-owned Battle Creed on later level-ups", () => {
     const draft = createEmptyDraft(5);
     const effective = withExistingClassArchetypeChoice(draft, [
+      { id: "class-1", name: "Cleric", type: "class", system: { slug: "cleric" } },
       {
+        id: "doctrine-1",
+        name: "Doctrine",
+        type: "feat",
+        flags: {
+          core: { sourceId: "Compendium.pf2e.classfeatures.Item.tyrBwBTzo5t9Zho7" },
+          pf2e: { rulesSelections: { doctrine: "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5" } },
+        },
+        system: { slug: "doctrine" },
+      },
+      {
+        id: "battle-creed-1",
         name: "Battle Creed",
         type: "feat",
         system: { slug: "battle-creed" },
-        flags: { core: { sourceId: "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5" } },
+        flags: {
+          core: { sourceId: "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5" },
+          pf2e: { grantedBy: { id: "doctrine-1" } },
+        },
       },
     ]);
 

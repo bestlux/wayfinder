@@ -1219,6 +1219,335 @@ describe("prepared draft application", () => {
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
   });
 
+  it("rejects a contradictory retained selector reverse link before mutation and converges after repair", async () => {
+    const items = retainedBattleCreedItems();
+    const selector = items.find((item) => item.id === "doctrine-1")!;
+    selector.flags!.pf2e!.itemGrants = { doctrine: { id: "unrelated-1", onDelete: "detach" } };
+    items.push({
+      id: "unrelated-1",
+      type: "feat",
+      name: "Unrelated Doctrine Child",
+      flags: {
+        core: { sourceId: "Compendium.pf2e.classfeatures.Item.unrelated" },
+        pf2e: { grantedBy: { id: "doctrine-1", onDelete: "cascade" } },
+      },
+      system: { slug: "unrelated", rules: [] },
+    });
+    const { actor } = buildActorHarness({ items });
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 } } };
+    const draft = battleHarbingerDraft();
+    const training = battleHarbingerTrainingStep();
+    setGamePacks(battleCreedPacks());
+    const before = structuredClone(actor.items.contents);
+
+    await expect(prepareDraftApplication(actor as never, draft, [training])).rejects.toThrow(
+      /ambiguous or contradictory/i
+    );
+
+    expect(actor.items.contents).toEqual(before);
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+
+    selector.flags!.pf2e!.itemGrants = { doctrine: { id: "battle-creed-1", onDelete: "detach" } };
+    await applyDraftToActor(actor as never, draft, [training]);
+    expect(
+      actor.items.contents.filter((item) => item.sourceId === "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5")
+    ).toHaveLength(1);
+    expect(
+      actor.items.contents.filter((item) => item.sourceId === "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8")
+    ).toHaveLength(1);
+  });
+
+  it("hydrates a proven retained class-archetype source before reconciling its deferred grant", async () => {
+    const { actor } = buildActorHarness({ items: retainedBattleCreedItems() });
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 } } };
+    const draft = createEmptyDraft(5);
+    const training = battleHarbingerTrainingStep();
+    draft.skillTrainings[training.slotId] = {
+      ruleChoices: { "feat:battle-harbinger-dedication:skill": "athletics" },
+      additional: [],
+      loreChoices: {},
+    };
+    setGamePacks(battleCreedPacks());
+
+    const prepared = await prepareDraftApplication(actor as never, draft, [training]);
+
+    expect(prepared.draft.classArchetypeChoices).toEqual({
+      "class-archetype-doctrine-level-1": "battle-creed",
+    });
+    const preparedBattleCreed = await prepared.sources.createEmbeddedSource({
+      slotId: "class-archetype-doctrine-level-1",
+      packId: "pf2e.classfeatures",
+      documentId: "49CkgA3kj7Im6gZ5",
+      uuid: "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "Battle Creed",
+      level: 1,
+    });
+    expect(preparedBattleCreed.flags?.[MODULE_ID]?.manualStaticItemGrants).toEqual([
+      expect.objectContaining({
+        uuid: "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8",
+        choices: { skill: "athletics" },
+      }),
+    ]);
+
+    await executePreparedDraftApplication(prepared);
+
+    expect(
+      actor.items.contents.find((item) => item.sourceId === "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8")
+    ).toMatchObject({
+      flags: {
+        pf2e: {
+          grantedBy: { id: "battle-creed-1", onDelete: "cascade" },
+          rulesSelections: { skill: "athletics" },
+        },
+      },
+    });
+
+    await executePreparedDraftApplication(prepared);
+    expect(
+      actor.items.contents.filter((item) => item.sourceId === "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8")
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    { label: "unowned", ownerId: null },
+    { label: "wrong-owner", ownerId: "other-parent" },
+  ])("rejects a $label retained static child before changing its choice and converges after repair", async ({
+    ownerId,
+  }) => {
+    const conflictingChild = retainedBattleHarbingerDedication(ownerId);
+    conflictingChild.flags!.pf2e!.rulesSelections = { skill: "deception" };
+    (conflictingChild.system!.rules![0] as { selection?: string }).selection = "deception";
+    const { actor } = buildActorHarness({ items: [...retainedBattleCreedItems(), conflictingChild] });
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 } } };
+    const draft = battleHarbingerDraft();
+    const training = battleHarbingerTrainingStep();
+    setGamePacks(battleCreedPacks());
+    const before = structuredClone(actor.items.contents.find((item) => item.id === "dedication-1"));
+
+    await expect(prepareDraftApplication(actor as never, draft, [training])).rejects.toThrow(/conflicting provenance/i);
+
+    expect(actor.items.contents.find((item) => item.id === "dedication-1")).toEqual(before);
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.system.details?.level?.value).toBe(1);
+
+    const child = actor.items.contents.find((item) => item.id === "dedication-1")!;
+    child.flags!.pf2e!.grantedBy = { id: "battle-creed-1", onDelete: "cascade" };
+    await applyDraftToActor(actor as never, draft, [training]);
+
+    expect(child.flags?.pf2e?.rulesSelections).toEqual({ skill: "athletics" });
+    expect((child.system?.rules?.[0] as { selection?: string }).selection).toBe("athletics");
+    expect(
+      actor.items.contents.filter((item) => item.sourceId === "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8")
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    { label: "before its profile parent exists", includeProfile: false },
+    { label: "beside its retained profile parent", includeProfile: true },
+  ])("rejects an explicit-route static child collision $label before changing its choice", async ({
+    includeProfile,
+  }) => {
+    const profileItems = retainedBattleCreedItems();
+    if (!includeProfile) {
+      profileItems.splice(
+        profileItems.findIndex((item) => item.id === "battle-creed-1"),
+        1
+      );
+      const selector = profileItems.find((item) => item.id === "doctrine-1")!;
+      selector.flags!.pf2e!.rulesSelections = {};
+    }
+    const conflictingChild = retainedBattleHarbingerDedication("other-parent");
+    conflictingChild.flags!.pf2e!.rulesSelections = { skill: "deception" };
+    (conflictingChild.system!.rules![0] as { selection?: string }).selection = "deception";
+    const { actor } = buildActorHarness({ items: [...profileItems, conflictingChild] });
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 } } };
+    const draft = battleHarbingerDraft();
+    const classArchetypeStep = battleCreedClassArchetypeStep();
+    draft.classArchetypeChoices[classArchetypeStep.slotId] = "battle-creed";
+    const training = battleHarbingerTrainingStep();
+    const steps = [classArchetypeStep, training];
+    setGamePacks(battleCreedPacks());
+    const before = structuredClone(conflictingChild);
+
+    await expect(prepareDraftApplication(actor as never, draft, steps)).rejects.toThrow(/conflicting provenance/i);
+
+    expect(actor.items.contents.find((item) => item.id === "dedication-1")).toEqual(before);
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+
+    actor.items.contents = actor.items.contents.filter((item) => item.id !== "dedication-1");
+    await applyDraftToActor(actor as never, draft, steps);
+    expect(
+      actor.items.contents.filter((item) => item.sourceId === "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8")
+    ).toHaveLength(1);
+    expect(
+      actor.items.contents.find((item) => item.sourceId === "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8")?.flags
+        ?.pf2e?.rulesSelections
+    ).toEqual({ skill: "athletics" });
+  });
+
+  it.each([
+    { label: "retained child", includeOwnedChild: true },
+    { label: "no retained child", includeOwnedChild: false },
+  ])("rejects a conflicting retained-profile parent link with $label before mutation", async ({
+    includeOwnedChild,
+  }) => {
+    const profileItems = retainedBattleCreedItems();
+    const profile = profileItems.find((item) => item.id === "battle-creed-1")!;
+    profile.flags!.pf2e!.itemGrants = { k7yk5esdoreohce8: { id: "unrelated-1", onDelete: "detach" } };
+    const unrelated = {
+      id: "unrelated-1",
+      type: "feat",
+      name: "Unrelated Child",
+      sourceId: "Compendium.pf2e.feats-srd.Item.unrelated",
+      flags: {
+        core: { sourceId: "Compendium.pf2e.feats-srd.Item.unrelated" },
+        pf2e: { grantedBy: { id: "battle-creed-1", onDelete: "cascade" } },
+      },
+      system: { slug: "unrelated", rules: [] },
+    } satisfies ActorItemLike;
+    const items = [
+      ...profileItems,
+      unrelated,
+      ...(includeOwnedChild ? [retainedBattleHarbingerDedication("battle-creed-1")] : []),
+    ];
+    const { actor } = buildActorHarness({ items });
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 } } };
+    const draft = battleHarbingerDraft();
+    const training = battleHarbingerTrainingStep();
+    setGamePacks(battleCreedPacks());
+    const before = structuredClone(actor.items.contents);
+
+    await expect(prepareDraftApplication(actor as never, draft, [training])).rejects.toThrow(/conflicting provenance/i);
+
+    expect(actor.items.contents).toEqual(before);
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+
+    delete profile.flags!.pf2e!.itemGrants;
+    delete unrelated.flags.pf2e.grantedBy;
+    const repairedUnrelated = structuredClone(unrelated);
+    await applyDraftToActor(actor as never, draft, [training]);
+    expect(actor.items.contents.find((item) => item.id === "unrelated-1")).toEqual(repairedUnrelated);
+    expect(
+      actor.items.contents.filter((item) => item.sourceId === "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8")
+    ).toHaveLength(1);
+  });
+
+  it("revalidates the retained-profile child graph before execution and leaves concurrent drift untouched", async () => {
+    const { actor } = buildActorHarness({
+      items: [...retainedBattleCreedItems(), retainedBattleHarbingerDedication("battle-creed-1")],
+    });
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 } } };
+    const draft = battleHarbingerDraft();
+    const training = battleHarbingerTrainingStep();
+    setGamePacks(battleCreedPacks());
+    const prepared = await prepareDraftApplication(actor as never, draft, [training]);
+    const child = actor.items.contents.find((item) => item.id === "dedication-1")!;
+    child.flags!.pf2e!.grantedBy = { id: "concurrent-parent", onDelete: "cascade" };
+    child.flags!.pf2e!.rulesSelections = { skill: "deception" };
+    (child.system!.rules![0] as { selection?: string }).selection = "deception";
+    const before = structuredClone(child);
+
+    await expect(executePreparedDraftApplication(prepared)).rejects.toThrow(/conflicting provenance/i);
+
+    expect(child).toEqual(before);
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+
+    child.flags!.pf2e!.grantedBy = { id: "battle-creed-1", onDelete: "cascade" };
+    await executePreparedDraftApplication(prepared);
+    expect(child.flags?.pf2e?.rulesSelections).toEqual({ skill: "athletics" });
+  });
+
+  it.each([
+    {
+      label: "complete retained-chain removal",
+      replaceItems: (items: ActorItemLike[]) =>
+        items.filter((item) => item.id !== "doctrine-1" && item.id !== "battle-creed-1"),
+    },
+    {
+      label: "replacement by another valid retained profile",
+      replaceItems: () => retainedSpellshotItems(),
+    },
+  ])("rejects $label between Prepare and Execute before mutation", async ({ replaceItems }) => {
+    const { actor } = buildActorHarness({ items: retainedBattleCreedItems() });
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 } } };
+    const draft = battleHarbingerDraft();
+    const training = battleHarbingerTrainingStep();
+    setGamePacks(battleCreedPacks());
+    const prepared = await prepareDraftApplication(actor as never, draft, [training]);
+    const retainedItems = actor.items.contents;
+    actor.items.contents = replaceItems(retainedItems);
+    const before = structuredClone(actor.items.contents);
+
+    await expect(executePreparedDraftApplication(prepared)).rejects.toThrow(/ambiguous or contradictory/i);
+
+    expect(actor.items.contents).toEqual(before);
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+
+    actor.items.contents = retainedItems;
+    await executePreparedDraftApplication(prepared);
+    expect(
+      actor.items.contents.filter((item) => item.sourceId === "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8")
+    ).toHaveLength(1);
+  });
+
+  it("repairs a missing parent item-grant link for an exactly owned retained static child", async () => {
+    const { actor } = buildActorHarness({
+      items: [...retainedBattleCreedItems(), retainedBattleHarbingerDedication("battle-creed-1")],
+    });
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 } } };
+    const draft = battleHarbingerDraft();
+    const training = battleHarbingerTrainingStep();
+    setGamePacks(battleCreedPacks());
+
+    await applyDraftToActor(actor as never, draft, [training]);
+
+    expect(actor.items.contents.find((item) => item.id === "battle-creed-1")).toMatchObject({
+      flags: {
+        pf2e: {
+          itemGrants: { k7yk5esdoreohce8: { id: "dedication-1", onDelete: "detach" } },
+        },
+      },
+    });
+  });
+
+  it("rolls back a newly created retained-profile child when parent-link persistence fails", async () => {
+    const { actor } = buildActorHarness({ items: retainedBattleCreedItems() });
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 } } };
+    const draft = battleHarbingerDraft();
+    const training = battleHarbingerTrainingStep();
+    setGamePacks(battleCreedPacks());
+    const prepared = await prepareDraftApplication(actor as never, draft, [training]);
+    const updateItems = actor.updateEmbeddedDocuments.getMockImplementation() as
+      | ((type: "Item", updates: Record<string, unknown>[]) => Promise<unknown>)
+      | undefined;
+    if (!updateItems) throw new Error("Expected actor update implementation");
+    let updateCall = 0;
+    actor.updateEmbeddedDocuments.mockImplementation(async (type, updates) => {
+      updateCall += 1;
+      if (updateCall === 2) throw new Error("parent-link write failed");
+      return updateItems(type, updates);
+    });
+
+    await expect(executePreparedDraftApplication(prepared)).rejects.toMatchObject({ phase: "class-archetype" });
+    expect(
+      actor.items.contents.filter((item) => item.sourceId === "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8")
+    ).toHaveLength(0);
+
+    actor.updateEmbeddedDocuments.mockImplementation(updateItems);
+    await executePreparedDraftApplication(prepared);
+    expect(
+      actor.items.contents.filter((item) => item.sourceId === "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8")
+    ).toHaveLength(1);
+  });
+
   it("preserves same-skill foundation grants as distinct source evidence", async () => {
     const { actor } = buildActorHarness();
     actor.system = { ...actor.system, skills: { society: { rank: 0 } } };
@@ -3405,6 +3734,41 @@ function spellshotClassArchetypeStep(): PendingStep {
   };
 }
 
+function battleCreedClassArchetypeStep(): PendingStep {
+  const slotId = "class-archetype-doctrine-level-1";
+  return {
+    id: slotId,
+    level: 1,
+    kind: "class-archetype",
+    slotKind: "class-archetype",
+    title: "Doctrine",
+    description: "",
+    required: true,
+    slotId,
+    classArchetype: {
+      slotId,
+      standardValue: "standard",
+      sourceName: "Doctrine",
+      options: [
+        { value: "standard", label: "Standard class path", img: null, detail: null },
+        { value: "battle-creed", label: "Battle Creed", img: null, detail: null },
+      ],
+      selector: {
+        slotId,
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "tyrBwBTzo5t9Zho7",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.tyrBwBTzo5t9Zho7",
+        selectorName: "Doctrine",
+        selectorRuleIndex: 0,
+        flag: "doctrine",
+        optionTag: "cleric-doctrine",
+        classSlug: "cleric",
+        dependsOn: "class",
+      },
+    },
+  };
+}
+
 function classReplacementSkillChoiceScenario(): { draft: ReturnType<typeof createEmptyDraft>; steps: PendingStep[] } {
   const draft = createEmptyDraft(1);
   const classStep = classSelectionStep();
@@ -3453,6 +3817,214 @@ function retainedHeritageSingletonSkillStep(): PendingStep {
       predicate: [],
       rollOption: null,
       options: [{ value: "arcana", label: "Arcana", img: null, detail: null }],
+    },
+  };
+}
+
+function retainedBattleCreedItems(): ActorItemLike[] {
+  const slotId = "class-archetype-doctrine-level-1";
+  const battleCreedUuid = "Compendium.pf2e.classfeatures.Item.49CkgA3kj7Im6gZ5";
+  return [
+    { id: "class-1", type: "class", name: "Cleric", system: { slug: "cleric" } },
+    {
+      id: "doctrine-1",
+      type: "feat",
+      name: "Doctrine",
+      flags: {
+        core: { sourceId: "Compendium.pf2e.classfeatures.Item.tyrBwBTzo5t9Zho7" },
+        pf2e: { rulesSelections: { doctrine: battleCreedUuid } },
+        [MODULE_ID]: { slotId },
+      },
+      system: { slug: "doctrine" },
+    },
+    {
+      id: "battle-creed-1",
+      type: "feat",
+      name: "Battle Creed",
+      sourceId: battleCreedUuid,
+      flags: {
+        core: { sourceId: battleCreedUuid },
+        pf2e: { grantedBy: { id: "doctrine-1", onDelete: "cascade" } },
+        [MODULE_ID]: { slotId },
+      },
+      system: { slug: "battle-creed", rules: [] },
+    },
+  ];
+}
+
+function retainedSpellshotItems(): ActorItemLike[] {
+  const selectorUuid = "Compendium.pf2e.classfeatures.Item.LDqVxLKrwEqSegiu";
+  const profileUuid = "Compendium.pf2e.classfeatures.Item.OmgtSDV1FubDUqWR";
+  return [
+    { id: "class-1", type: "class", name: "Gunslinger", system: { slug: "gunslinger" } },
+    {
+      id: "way-1",
+      type: "feat",
+      name: "Gunslinger's Way",
+      flags: {
+        core: { sourceId: selectorUuid },
+        pf2e: { rulesSelections: { way: profileUuid } },
+      },
+      system: { slug: "gunslingers-way" },
+    },
+    {
+      id: "spellshot-1",
+      type: "feat",
+      name: "Way of the Spellshot",
+      flags: {
+        core: { sourceId: profileUuid },
+        pf2e: { grantedBy: { id: "way-1", onDelete: "cascade" } },
+      },
+      system: { slug: "way-of-the-spellshot", rules: [] },
+    },
+  ];
+}
+
+function retainedBattleHarbingerDedication(ownerId: string | null): ActorItemLike {
+  return {
+    id: "dedication-1",
+    type: "feat",
+    name: "Battle Harbinger Dedication",
+    sourceId: "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8",
+    flags: {
+      core: { sourceId: "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8" },
+      pf2e: {
+        rulesSelections: { skill: "athletics" },
+        ...(ownerId ? { grantedBy: { id: ownerId, onDelete: "cascade" } } : {}),
+      },
+    },
+    system: {
+      slug: "battle-harbinger-dedication",
+      rules: [
+        {
+          key: "ChoiceSet",
+          flag: "skill",
+          selection: "athletics",
+          choices: [{ value: "athletics", label: "Athletics" }],
+        },
+        {
+          key: "ActiveEffectLike",
+          path: "system.skills.{item|flags.system.rulesSelections.skill}.rank",
+          value: 1,
+        },
+      ],
+    },
+  };
+}
+
+function battleHarbingerDraft() {
+  const draft = createEmptyDraft(5);
+  const training = battleHarbingerTrainingStep();
+  draft.skillTrainings[training.slotId] = {
+    ruleChoices: { "feat:battle-harbinger-dedication:skill": "athletics" },
+    additional: [],
+    loreChoices: {},
+  };
+  return draft;
+}
+
+function battleHarbingerTrainingStep(): PendingStep {
+  const slotId = "skill-training-battle-harbinger-dedication-level-2";
+  return {
+    id: slotId,
+    level: 2,
+    kind: "skill-training",
+    slotKind: "skill-training",
+    title: "Battle Harbinger Dedication training",
+    description: "",
+    required: true,
+    slotId,
+    training: {
+      classSlug: "cleric",
+      className: "Cleric",
+      fixedSkills: [],
+      fixedLores: [],
+      choiceRules: [
+        {
+          key: "feat:battle-harbinger-dedication:skill",
+          flag: "skill",
+          prompt: "Choose a skill",
+          sourceLabel: "Battle Harbinger Dedication",
+          options: [{ slug: "athletics", label: "Athletics" }],
+          persistence: {
+            sourceItemType: "feat",
+            sourcePackId: "pf2e.feats-srd",
+            sourceDocumentId: "K7YK5ESDoreohCe8",
+            sourceUuid: "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8",
+            sourceRuleIndex: 0,
+          },
+        },
+      ],
+      loreChoices: [],
+      additionalCount: 0,
+    },
+  };
+}
+
+function battleCreedPacks() {
+  return {
+    "pf2e.classfeatures": {
+      tyrBwBTzo5t9Zho7: {
+        name: "Doctrine",
+        type: "feat",
+        system: {
+          slug: "doctrine",
+          rules: [
+            { key: "ChoiceSet", flag: "doctrine" },
+            { key: "GrantItem", uuid: "{item|flags.pf2e.rulesSelections.doctrine}" },
+          ],
+        },
+      },
+      "49CkgA3kj7Im6gZ5": {
+        name: "Battle Creed",
+        type: "feat",
+        system: {
+          slug: "battle-creed",
+          rules: [
+            {
+              key: "GrantItem",
+              flag: "battleHarbingerDedication",
+              uuid: "Compendium.pf2e.feats-srd.Item.K7YK5ESDoreohCe8",
+              allowDuplicate: true,
+            },
+          ],
+        },
+      },
+      gblTFUOgolqFS9v4: {
+        name: "Divine Font",
+        type: "feat",
+        system: { slug: "divine-font", rules: [{ key: "ChoiceSet", flag: "divineFont" }] },
+      },
+    },
+    "pf2e.feats-srd": {
+      K7YK5ESDoreohCe8: {
+        name: "Battle Harbinger Dedication",
+        type: "feat",
+        system: {
+          slug: "battle-harbinger-dedication",
+          location: "class-2",
+          rules: [
+            { key: "ChoiceSet", flag: "skill", choices: [{ value: "athletics", label: "Athletics" }] },
+            {
+              key: "ActiveEffectLike",
+              path: "system.skills.{item|flags.system.rulesSelections.skill}.rank",
+              value: 1,
+            },
+          ],
+        },
+      },
+    },
+    "pf2e.spells-srd": {
+      "7ZinJNzxq0XF0oMx": {
+        name: "Bane",
+        type: "spell",
+        system: { slug: "bane", rules: [] },
+      },
+      XSujb7EsSwKl19Uu: {
+        name: "Bless",
+        type: "spell",
+        system: { slug: "bless", rules: [] },
+      },
     },
   };
 }

@@ -6,6 +6,8 @@ import { applyClassFeatureChoiceDraft } from "../class-feature-choice-service.js
 import { MODULE_ID } from "../constants.js";
 import { fetchSelectionDocument } from "../pack/access.js";
 import {
+  assertManualStaticGrantReconciliation,
+  assertManualStaticGrantSourcesAvailable,
   readManualStaticItemGrants,
   type SelectorActorLike,
   type SelectorRuleDocumentLike,
@@ -21,8 +23,9 @@ import { captureObservedClassGrantItems } from "../wayfinder/application/class-g
 import {
   listPlannedStaticSkillSources,
   resolveActiveClassArchetypeProfile,
-  retainActiveClassArchetypeChoices,
+  synchronizeRetainedClassArchetypeChoice,
 } from "../wayfinder/application/planned-static-skill-source-service.js";
+import { inspectRetainedClassArchetypeProfileDocuments } from "../wayfinder/class-archetype/registry.js";
 import type { AcquisitionCurrencyConvergenceWitnessV1 } from "../wayfinder/domain/acquisition-currency-convergence.js";
 import {
   assertPreparedClassGrantPlanMatches,
@@ -357,7 +360,7 @@ export async function prepareDraftApplication(
 
   const draft = cloneData(draftInput);
   const steps = cloneData(stepsInput);
-  retainActiveClassArchetypeChoices(draft, steps);
+  synchronizeRetainedClassArchetypeChoice(draft, steps, listActorItems(actor));
   assertAcquisitionAuthority(actor, draft, deps.assertAcquisitionApplyAuthority);
   const spellRarityProblems = hasDraftRecoveryState(draft)
     ? listSpellRarityRecoveryProblems(typeof actor.id === "string" ? actor.id : "", draft)
@@ -419,6 +422,7 @@ export async function prepareDraftApplication(
   validateDraftChoiceValues(draft, steps);
   await validateSelectedEligibility(draft, steps, selections, deps.validateSelectionEligibility);
   const sources = await prepareSourceCatalog(actor, draft, steps, selections, deps);
+  assertClassArchetypeStaticGrantGraph(actor, draft, steps, sources);
   const validSkillSlugs = buildValidSkillSlugs(actor, deps.validSkillSlugs);
   const skillSourceProjection = projectPreparedSkillSources({
     draft,
@@ -641,6 +645,7 @@ export async function executePreparedDraftApplication(
 ): Promise<ExecutePreparedDraftApplicationResult> {
   assertActorAuthority(prepared.actor, prepared.validateActorAuthority);
   assertAcquisitionAuthority(prepared.actor, prepared.draft, prepared.assertAcquisitionApplyAuthority);
+  assertClassArchetypeStaticGrantGraph(prepared.actor, prepared.draft, prepared.steps, prepared.sources);
   if (prepared.draft.acquisition) {
     if (!options.persistAcquisitionCurrencyConvergenceWitness) {
       throw new Error("Starting-equipment Apply requires durable currency-convergence recovery persistence.");
@@ -924,6 +929,56 @@ export async function executePreparedDraftApplication(
     receipts,
     classGrantReconciliations: [...classGrantReconciliations],
   };
+}
+
+function assertClassArchetypeStaticGrantGraph(
+  actor: DraftMutationActor,
+  draft: DraftState,
+  steps: readonly PendingStep[],
+  sources: PreparedSourceCatalog
+): void {
+  const actorItems = listActorItems(actor) as ActorItemLike[];
+  const activeProfile = resolveActiveClassArchetypeProfile(draft, steps, actorItems);
+  if (!activeProfile) return;
+  const preparedSource = sources.skillSources.find(
+    ({ selection }) => selection.uuid === activeProfile.selection.uuid
+  )?.source;
+  if (!preparedSource) {
+    throw new Error(`Cannot reconcile ${activeProfile.label}: its prepared source is unavailable.`);
+  }
+
+  const hasActiveDecision = steps.some((step) => step.kind === "class-archetype");
+  if (hasActiveDecision) {
+    const parents = actorItems.filter((item) => itemMatchesSourceId(item, activeProfile.selection.uuid));
+    if (parents.length > 1) {
+      throw new Error(`Cannot reconcile ${activeProfile.label}: its actor provenance is ambiguous.`);
+    }
+    const parent = parents[0];
+    if (parent) {
+      assertManualStaticGrantReconciliation(actor as SelectorActorLike, parent, preparedSource, {
+        parentName: activeProfile.selection.name,
+        replaceDescendantsOwnedById: null,
+      });
+    } else {
+      assertManualStaticGrantSourcesAvailable(actor as SelectorActorLike, preparedSource, activeProfile.selection.name);
+    }
+    return;
+  }
+
+  const resolution = inspectRetainedClassArchetypeProfileDocuments(actorItems);
+  if (resolution.kind !== "resolved" || resolution.profile.value !== activeProfile.value) {
+    throw new Error("Cannot apply retained class-archetype history: actor provenance is ambiguous or contradictory.");
+  }
+  const retainedProfile = resolution.profile;
+
+  const parent = actorItems.find((item) => itemMatchesSourceId(item, retainedProfile.selection.uuid));
+  if (!parent) {
+    throw new Error(`Cannot reconcile retained ${retainedProfile.label}: its prepared source is unavailable.`);
+  }
+  assertManualStaticGrantReconciliation(actor as SelectorActorLike, parent, preparedSource, {
+    parentName: retainedProfile.selection.name,
+    replaceDescendantsOwnedById: null,
+  });
 }
 
 export async function executeRecoveredDraftFinalization(
@@ -1352,8 +1407,8 @@ async function prepareSourceCatalog(
 ): Promise<PreparedSourceCatalog> {
   const refs = collectSourceRefs(actor, draft, steps, activeSelections);
   const activeMaterializedSourceKeys = new Set(activeSelections.map(sourceCatalogKey));
-  for (const { selection, requiredBeforeSkillPhase } of listPlannedStaticSkillSources(draft, steps)) {
-    if (requiredBeforeSkillPhase) activeMaterializedSourceKeys.add(sourceCatalogKey(selection));
+  for (const { selection } of listPlannedStaticSkillSources(draft, steps)) {
+    activeMaterializedSourceKeys.add(sourceCatalogKey(selection));
   }
   const sourcesByKey = new Map<string, EmbeddedItemSource>();
   const sourcesByUuid = new Map<string, EmbeddedItemSource>();

@@ -376,6 +376,7 @@ export async function createManualStaticGrantedItems(actor, granter, granterSour
     if (grants.length === 0) {
         return { createdItemIds: [], updates: [] };
     }
+    assertManualStaticGrantReconciliation(actor, granter, granterSource, options);
     const actorItems = listActorItems(actor);
     const granterUpdate = {
         _id: granterId,
@@ -383,8 +384,17 @@ export async function createManualStaticGrantedItems(actor, granter, granterSour
     const createdItemIds = [];
     try {
         for (const grant of grants) {
-            if (actorItems.some((item) => itemMatchesSourceId(item, grant.uuid) &&
-                item.flags?.pf2e?.grantedBy?.id !== options.replaceDescendantsOwnedById)) {
+            const retainedMatches = actorItems.filter((item) => itemMatchesSourceId(item, grant.uuid) &&
+                item.flags?.pf2e?.grantedBy?.id !== options.replaceDescendantsOwnedById);
+            if (retainedMatches.length > 1) {
+                throw new Error(`Cannot reconcile a static child for ${options.parentName}: ${grant.uuid} is ambiguous.`);
+            }
+            const retainedMatch = retainedMatches[0];
+            if (retainedMatch) {
+                if (!retainedMatch.id || retainedMatch.flags?.pf2e?.grantedBy?.id !== granterId) {
+                    throw new Error(`Cannot reconcile a static child for ${options.parentName}: ${grant.uuid} has conflicting provenance.`);
+                }
+                granterUpdate[`flags.pf2e.itemGrants.${grant.key}`] = buildItemGrantRecord(retainedMatch.id);
                 continue;
             }
             const selection = selectionFromManualStaticGrant(grant, options.parentSlotId);
@@ -427,6 +437,74 @@ export async function createManualStaticGrantedItems(actor, granter, granterSour
         }
         throw error;
     }
+}
+export function assertManualStaticGrantReconciliation(actor, granter, granterSource, options) {
+    const grants = readManualStaticItemGrants(granterSource);
+    if (grants.length === 0)
+        return;
+    const granterId = typeof granter.id === "string" ? granter.id : null;
+    if (!granterId) {
+        throw new Error(`Cannot reconcile static children for ${options.parentName}: the parent has no document ID.`);
+    }
+    assertUniqueManualStaticGrants(grants, options.parentName);
+    const actorItems = listActorItems(actor);
+    for (const grant of grants) {
+        const retainedMatches = actorItems.filter((item) => itemMatchesSourceId(item, grant.uuid) && item.flags?.pf2e?.grantedBy?.id !== options.replaceDescendantsOwnedById);
+        if (retainedMatches.length > 1) {
+            throw new Error(`Cannot reconcile a static child for ${options.parentName}: ${grant.uuid} is ambiguous.`);
+        }
+        const retainedMatch = retainedMatches[0];
+        if (retainedMatch && (!retainedMatch.id || retainedMatch.flags?.pf2e?.grantedBy?.id !== granterId)) {
+            throw new Error(`Cannot reconcile a static child for ${options.parentName}: ${grant.uuid} has conflicting provenance.`);
+        }
+        const parentLink = itemGrantLinkForFlag(granter, grant.key);
+        if (!parentLink.present)
+            continue;
+        const linkedItem = parentLink.id ? actorItems.find((item) => item.id === parentLink.id) : null;
+        if (!linkedItem ||
+            !itemMatchesSourceId(linkedItem, grant.uuid) ||
+            linkedItem.flags?.pf2e?.grantedBy?.id !== granterId ||
+            retainedMatch?.id !== linkedItem.id) {
+            throw new Error(`Cannot reconcile a static child for ${options.parentName}: grant key ${grant.key} has conflicting provenance.`);
+        }
+    }
+}
+export function assertManualStaticGrantSourcesAvailable(actor, granterSource, parentName) {
+    const grants = readManualStaticItemGrants(granterSource);
+    if (grants.length === 0)
+        return;
+    assertUniqueManualStaticGrants(grants, parentName);
+    const actorItems = listActorItems(actor);
+    for (const grant of grants) {
+        if (actorItems.some((item) => itemMatchesSourceId(item, grant.uuid))) {
+            throw new Error(`Cannot reconcile a static child for ${parentName}: ${grant.uuid} has conflicting provenance.`);
+        }
+    }
+}
+function assertUniqueManualStaticGrants(grants, parentName) {
+    const keys = new Set();
+    const sourceUuids = new Set();
+    for (const grant of grants) {
+        if (keys.has(grant.key)) {
+            throw new Error(`Cannot create static children for ${parentName}: duplicate grant key ${grant.key}.`);
+        }
+        if (sourceUuids.has(grant.uuid)) {
+            throw new Error(`Cannot create static children for ${parentName}: duplicate grant source ${grant.uuid}.`);
+        }
+        keys.add(grant.key);
+        sourceUuids.add(grant.uuid);
+    }
+}
+function itemGrantLinkForFlag(item, flag) {
+    const grants = item.flags?.pf2e?.itemGrants;
+    if (!grants || typeof grants !== "object" || Array.isArray(grants) || !Object.hasOwn(grants, flag)) {
+        return { present: false, id: null };
+    }
+    const value = grants[flag];
+    const id = value && typeof value === "object" && !Array.isArray(value) && typeof value.id === "string"
+        ? value.id
+        : null;
+    return { present: true, id: id && id.length > 0 ? id : null };
 }
 function applyManualChoiceSelections(source, choices) {
     const rules = Array.isArray(source.system?.rules) ? source.system.rules : [];

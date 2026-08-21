@@ -1,3 +1,4 @@
+import { MODULE_ID } from "../../constants.js";
 import { slugifyName } from "../../shared/slug.js";
 import { sourceIdOf } from "../../shared/source-id.js";
 import type { ClassArchetypeMeta, ClassBranchMeta, DraftState, SelectionRef, StepFilters } from "../../types.js";
@@ -43,6 +44,11 @@ export interface ClassArchetypeProfile {
     value: string;
   }>;
 }
+
+export type RetainedClassArchetypeProfileResolution =
+  | { kind: "none"; profiles: readonly [] }
+  | { kind: "resolved"; profiles: readonly [ClassArchetypeProfile]; profile: ClassArchetypeProfile }
+  | { kind: "invalid"; profiles: readonly ClassArchetypeProfile[] };
 
 const BATTLE_CREED: ClassArchetypeProfile = {
   value: "battle-creed",
@@ -392,6 +398,31 @@ export function classArchetypeProfileForDocument(document: unknown): ClassArchet
   );
 }
 
+export function retainedClassArchetypeProfileForDocuments(
+  documentsInput: Iterable<unknown>
+): ClassArchetypeProfile | null {
+  const resolution = inspectRetainedClassArchetypeProfileDocuments(documentsInput);
+  return resolution.kind === "resolved" ? resolution.profile : null;
+}
+
+export function inspectRetainedClassArchetypeProfileDocuments(
+  documentsInput: Iterable<unknown>
+): RetainedClassArchetypeProfileResolution {
+  const documents = [...documentsInput];
+  const sourceIds = new Set(documents.map((document) => sourceIdOf(document)).filter((value) => value !== null));
+  const candidates = PROFILES.filter(
+    (profile) => sourceIds.has(profile.selection.uuid) || sourceIds.has(profile.selector.selection.uuid)
+  );
+  if (candidates.length === 0) return { kind: "none", profiles: [] };
+  if (candidates.length !== 1) return { kind: "invalid", profiles: candidates };
+
+  const profile = candidates[0];
+  if (!profile || !actorDocumentsProveProfile(profile, documents)) {
+    return { kind: "invalid", profiles: candidates };
+  }
+  return { kind: "resolved", profiles: [profile], profile };
+}
+
 export function activeClassArchetypeProfile(
   draft: DraftState,
   documents: Iterable<unknown>
@@ -400,13 +431,7 @@ export function activeClassArchetypeProfile(
     return selectedClassArchetypeProfile(draft);
   }
 
-  for (const document of documents) {
-    const profile = classArchetypeProfileForDocument(document);
-    if (profile) {
-      return profile;
-    }
-  }
-  return null;
+  return retainedClassArchetypeProfileForDocuments(documents);
 }
 
 export function withExistingClassArchetypeChoice(draft: DraftState, documents: Iterable<unknown>): DraftState {
@@ -462,4 +487,79 @@ export function documentIsWayOfTheSpellshot(document: unknown): boolean {
 
 export function documentIsPalatineDetective(document: unknown): boolean {
   return classArchetypeProfileForDocument(document)?.value === PALATINE_DETECTIVE.value;
+}
+
+function actorDocumentsProveProfile(profile: ClassArchetypeProfile, documents: readonly unknown[]): boolean {
+  const classDocument = documents.find((document) => {
+    const typed = document as { type?: unknown; system?: { slug?: unknown } } | null;
+    return typed?.type === "class" && typed.system?.slug === profile.classSlug;
+  });
+  if (!classDocument) return false;
+
+  const profileDocuments = documents.filter((document) => sourceIdOf(document) === profile.selection.uuid);
+  const selectorDocuments = documents.filter((document) => sourceIdOf(document) === profile.selector.selection.uuid);
+  if (profileDocuments.length !== 1 || selectorDocuments.length !== 1) return false;
+  const profileDocument = profileDocuments[0];
+  const selectorDocument = selectorDocuments[0];
+  if (
+    !moduleSlotMatches(profileDocument, profile.decisionSlotId) ||
+    !moduleSlotMatches(selectorDocument, profile.decisionSlotId)
+  ) {
+    return false;
+  }
+  const profileDocumentId = itemId(profileDocument);
+  const selectorDocumentId = itemId(selectorDocument);
+  if (!profileDocumentId || !selectorDocumentId) return false;
+  const reverseGrant = itemGrantLink(selectorDocument, profile.selector.flag);
+
+  return (
+    grantedById(profileDocument) === selectorDocumentId &&
+    selectorRuleSelection(selectorDocument, profile.selector.flag) === profile.selection.uuid &&
+    (!reverseGrant.present || reverseGrant.id === profileDocumentId)
+  );
+}
+
+function moduleSlotMatches(document: unknown, expectedSlotId: string): boolean {
+  const typed = document as { flags?: Record<string, { slotId?: unknown } | undefined> } | null;
+  const value = typed?.flags?.[MODULE_ID]?.slotId;
+  return value === undefined || value === expectedSlotId;
+}
+
+function itemId(document: unknown): string | null {
+  const value = (document as { id?: unknown } | null)?.id;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function grantedById(document: unknown): string | null {
+  const value = (document as { flags?: { pf2e?: { grantedBy?: { id?: unknown } } } } | null)?.flags?.pf2e?.grantedBy
+    ?.id;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function itemGrantLink(document: unknown, flag: string): { present: boolean; id: string | null } {
+  const grants = (document as { flags?: { pf2e?: { itemGrants?: unknown } } } | null)?.flags?.pf2e?.itemGrants;
+  if (!grants || typeof grants !== "object" || Array.isArray(grants) || !Object.hasOwn(grants, flag)) {
+    return { present: false, id: null };
+  }
+  const value = (grants as Record<string, unknown>)[flag];
+  const id =
+    value && typeof value === "object" && !Array.isArray(value) && typeof (value as { id?: unknown }).id === "string"
+      ? (value as { id: string }).id
+      : null;
+  return { present: true, id: id && id.length > 0 ? id : null };
+}
+
+function selectorRuleSelection(document: unknown, flag: string): string | null {
+  const typed = document as {
+    flags?: {
+      system?: { rulesSelections?: Record<string, unknown> };
+      pf2e?: { rulesSelections?: Record<string, unknown> };
+    };
+  } | null;
+  const pf2eSelections = typed?.flags?.pf2e?.rulesSelections;
+  const value =
+    pf2eSelections && Object.hasOwn(pf2eSelections, flag)
+      ? pf2eSelections[flag]
+      : typed?.flags?.system?.rulesSelections?.[flag];
+  return typeof value === "string" ? value : null;
 }

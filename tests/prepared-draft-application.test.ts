@@ -923,6 +923,46 @@ describe("prepared draft application", () => {
     expect(actor.update).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      label: "rule-choice",
+      training: {
+        ruleChoices: { old: "arcana" },
+        additional: ["athletics"],
+        loreChoices: {},
+      },
+    },
+    {
+      label: "Lore-choice",
+      training: {
+        ruleChoices: {},
+        additional: ["athletics"],
+        loreChoices: { old: "Phantom Lore" },
+      },
+    },
+  ])("rejects an unknown persisted $label key before projection", async ({ training }) => {
+    const { actor } = buildActorHarness();
+    actor.system = {
+      ...actor.system,
+      skills: { arcana: { rank: 0 }, athletics: { rank: 0 } },
+    };
+    const draft = createEmptyDraft(3);
+    const step = necromancerTrainingStep();
+    if (step.kind !== "skill-training") {
+      throw new Error("Expected a skill-training step");
+    }
+    step.training.choiceRules = [];
+    step.training.additionalCount = 1;
+    draft.skillTrainings[step.slotId] = training;
+    draft.skillIncreases["skill-increase-level-3"] = "arcana";
+
+    await expect(applyDraftToActor(actor as never, draft, [step, skillIncreaseStep(3)])).rejects.toThrow(
+      "Fighter skill training changed after this draft was prepared"
+    );
+    expect(actor.update).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
   it("accepts an exact skill choice that the same locked recovery draft already applied", async () => {
     const { actor } = buildActorHarness();
     actor.system = {

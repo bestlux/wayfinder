@@ -260,6 +260,14 @@ function validateTrainingChoices(draft, step, validSkillSlugs, projectedRanks, a
     const training = draft.skillTrainings[step.slotId];
     if (!training)
         return;
+    const activeRuleChoiceKeys = new Set(step.training.choiceRules.map((choice) => choice.key));
+    if (Object.keys(training.ruleChoices).some((key) => !activeRuleChoiceKeys.has(key))) {
+        throw staleChoiceError(step);
+    }
+    const activeLoreChoiceKeys = new Set(step.training.loreChoices.map((choice) => choice.key));
+    if (Object.keys(training.loreChoices).some((key) => !activeLoreChoiceKeys.has(key))) {
+        throw staleChoiceError(step);
+    }
     if (training.additional.some((slug) => !validSkillSlugs.has(slug))) {
         throw staleChoiceError(step);
     }

@@ -28,6 +28,31 @@ describe("Foundry Wave 3 equipment live gate", () => {
     expect(new Set(wave3EquipmentCases.map((entry: any) => entry.definitionFingerprint)).size).toBe(
       wave3EquipmentCases.length
     );
+    expect(
+      wave3EquipmentCases.every(
+        (entry: any) =>
+          entry.draftAncestry.slotId === "ancestry-level-1" &&
+          entry.draftAncestry.itemType === "ancestry" &&
+          entry.draftAncestry.uuid === "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX" &&
+          entry.draftAncestry.name === "Human"
+      )
+    ).toBe(true);
+  });
+
+  it("seeds the authoritative drafted ancestry before persisting every live fixture", () => {
+    const fixtureRegistration = browserSuite.indexOf("fixtures.push(fixture)");
+    const ancestryAssignment = browserSuite.indexOf("draft.selections[draftAncestry.slotId] = draftAncestry");
+    const draftPersistence = browserSuite.indexOf('await actor.setFlag(moduleId, "draft", draft)', ancestryAssignment);
+    expect(browserSuite).toContain("resolveExactDraftAncestry(smokeCase.draftAncestry, modules)");
+    expect(browserSuite).toContain("document.uuid !== expected.uuid");
+    expect(fixtureRegistration).toBeGreaterThan(-1);
+    expect(ancestryAssignment).toBeGreaterThan(fixtureRegistration);
+    expect(draftPersistence).toBeGreaterThan(ancestryAssignment);
+    const invalid = structuredClone(wave3EquipmentCases[0]) as any;
+    delete invalid.draftAncestry;
+    expect(validateWave3EquipmentCaseDefinition(invalid)).toContain(
+      "level-5-lump-sum: exact drafted ancestry fixture is invalid."
+    );
   });
 
   it("keeps the Wave 2 tracer frozen while providing a separate guarded two-role lane", () => {

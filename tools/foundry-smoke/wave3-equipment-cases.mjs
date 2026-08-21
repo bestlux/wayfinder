@@ -59,13 +59,28 @@ const RAW_CASES = [
   },
 ];
 
+const DRAFT_ANCESTRY = Object.freeze({
+  slotId: "ancestry-level-1",
+  packId: "pf2e.ancestries",
+  documentId: "IiG7DgeLWYrSNXuX",
+  uuid: "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX",
+  itemType: "ancestry",
+  featType: null,
+  name: "Human",
+  level: 0,
+});
+
 export const wave3EquipmentCases = Object.freeze(
-  RAW_CASES.map((entry) =>
-    Object.freeze({
+  RAW_CASES.map((entry) => {
+    const definition = {
       ...entry,
-      definitionFingerprint: fingerprint(entry),
-    }),
-  ),
+      draftAncestry: DRAFT_ANCESTRY,
+    };
+    return Object.freeze({
+      ...definition,
+      definitionFingerprint: fingerprint(definition),
+    });
+  }),
 );
 
 export function validateWave3EquipmentCaseDefinition(value) {
@@ -77,6 +92,14 @@ export function validateWave3EquipmentCaseDefinition(value) {
   }
   if (!['permanent-items', 'lump-sum'].includes(value.selectedRecipe)) {
     failures.push(`${value.id || "<unknown>"}: selectedRecipe is invalid.`);
+  }
+  if (
+    value.draftAncestry?.slotId !== "ancestry-level-1" ||
+    value.draftAncestry?.itemType !== "ancestry" ||
+    value.draftAncestry?.uuid !== "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX" ||
+    value.draftAncestry?.name !== "Human"
+  ) {
+    failures.push(`${value.id || "<unknown>"}: exact drafted ancestry fixture is invalid.`);
   }
   if (value.definitionFingerprint !== fingerprint(withoutFingerprint(value))) {
     failures.push(`${value.id || "<unknown>"}: definition fingerprint drifted.`);

@@ -16,12 +16,13 @@ function assertUser(expectedUserId, isGM) {
 }
 
 async function loadWave3Modules(moduleId) {
-  const [draftService, commands, steps, runtime, acquisitionDraft] = await Promise.all([
+  const [draftService, commands, steps, runtime, acquisitionDraft, foundryCompat] = await Promise.all([
     import(`/modules/${moduleId}/scripts/draft-service.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/starting-equipment-command-service.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/domain/step-types.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/equipment-acquisition-runtime-service.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/domain/acquisition-draft.js`),
+    import(`/modules/${moduleId}/scripts/shared/foundry-compat.js`),
   ]);
   return {
     createEmptyDraft: draftService.createEmptyDraft,
@@ -33,6 +34,7 @@ async function loadWave3Modules(moduleId) {
     createRuntime: runtime.createEquipmentAcquisitionRuntime,
     ConfiguredItemHandoffRequiredError: runtime.ConfiguredItemHandoffRequiredError,
     createPolicySnapshot: acquisitionDraft.createAcquisitionPolicySnapshot,
+    resolveUuid: foundryCompat.resolveUuid,
   };
 }
 
@@ -165,6 +167,26 @@ function canonicalJson(value) {
   return JSON.stringify(value);
 }
 
+async function resolveExactDraftAncestry(expected, modules) {
+  const document = await modules.resolveUuid(expected.uuid);
+  if (
+    !document ||
+    document.uuid !== expected.uuid ||
+    document.id !== expected.documentId ||
+    document.type !== expected.itemType ||
+    document.name !== expected.name
+  ) {
+    throw new Error(`Wave 3 equipment fixture ancestry drifted from ${expected.name} (${expected.uuid}).`);
+  }
+  return {
+    ...structuredClone(expected),
+    documentId: document.id,
+    uuid: document.uuid,
+    itemType: document.type,
+    name: document.name,
+  };
+}
+
 globalThis.__prepareWayfinderWave3EquipmentSmoke = async function prepareWave3EquipmentSmoke({
   allowDestructive = false,
   cases,
@@ -202,6 +224,7 @@ globalThis.__prepareWayfinderWave3EquipmentSmoke = async function prepareWave3Eq
   await game.settings.set(moduleId, policySetting, guardedPolicy);
   try {
     for (const smokeCase of cases) {
+      const draftAncestry = await resolveExactDraftAncestry(smokeCase.draftAncestry, modules);
       const fixtureName = `${fixturePrefix} - ${runId} - ${smokeCase.id}`;
       const actor = await Actor.create({
         name: fixtureName,
@@ -228,14 +251,17 @@ globalThis.__prepareWayfinderWave3EquipmentSmoke = async function prepareWave3Eq
         },
       });
       if (!actor) throw new Error(`Could not create Wave 3 fixture ${smokeCase.id}.`);
-      await actor.setFlag(moduleId, "draft", modules.createEmptyDraft(smokeCase.targetLevel));
-      fixtures.push({
+      const fixture = {
         actorId: actor.id,
         caseId: smokeCase.id,
         definitionFingerprint: smokeCase.definitionFingerprint,
         fixtureName,
         targetLevel: smokeCase.targetLevel,
-      });
+      };
+      fixtures.push(fixture);
+      const draft = modules.createEmptyDraft(smokeCase.targetLevel);
+      draft.selections[draftAncestry.slotId] = draftAncestry;
+      await actor.setFlag(moduleId, "draft", draft);
     }
   } catch (error) {
     for (const fixture of fixtures) {

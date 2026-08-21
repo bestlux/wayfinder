@@ -94,6 +94,10 @@ export interface AcquisitionExecutionDependencies {
     readonly actor: unknown;
     readonly draft: AcquisitionDraftState;
   }) => AcquisitionPolicySnapshot | Promise<AcquisitionPolicySnapshot>;
+  readonly assertSourceHealth: (args: {
+    readonly actor: unknown;
+    readonly draft: AcquisitionDraftState;
+  }) => void | Promise<void>;
   readonly assertApplyAuthority: (args: {
     readonly actor: unknown;
     readonly draft: AcquisitionDraftState;
@@ -412,6 +416,7 @@ async function prepareExecution(args: {
   ) {
     throw new Error("Current starting-equipment policy differs from the reviewed authority.");
   }
+  await args.dependencies.assertSourceHealth({ actor: args.actor, draft: acquisition });
   const sources = new Map<string, EmbeddedItemSource>();
   const preflightedLineIds = new Set<string>();
   if (!handoff) {

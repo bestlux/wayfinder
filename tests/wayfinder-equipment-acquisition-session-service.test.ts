@@ -16,6 +16,7 @@ describe("equipment acquisition session adapter", () => {
     const policy = acquisition.policySnapshot!;
     const resolveSourceForApply = vi.fn(async () => resolution);
     const resolveCurrentPolicySnapshot = vi.fn(() => policy);
+    const assertCurrentSourceHealth = vi.fn(async () => undefined);
     const readHistory = vi.fn(() => ({
       lastAppliedAt: null,
       lastTargetLevel: null,
@@ -31,7 +32,7 @@ describe("equipment acquisition session adapter", () => {
     }));
     const options = {
       characterDraft,
-      runtime: { resolveSourceForApply, resolveCurrentPolicySnapshot },
+      runtime: { assertCurrentSourceHealth, resolveSourceForApply, resolveCurrentPolicySnapshot },
       readHistory,
       assertApplyAuthority,
       readApplyingUser,
@@ -50,6 +51,8 @@ describe("equipment acquisition session adapter", () => {
     });
     expect(await dependencies.resolveCurrentPolicySnapshot({ actor, draft: acquisition })).toBe(policy);
     expect(resolveCurrentPolicySnapshot).toHaveBeenCalledWith(actor, acquisition);
+    await expect(dependencies.assertSourceHealth({ actor, draft: acquisition })).resolves.toBeUndefined();
+    expect(assertCurrentSourceHealth).toHaveBeenCalledWith({ actor, characterDraft, acquisition });
     expect(dependencies.readHistory).toBe(readHistory);
     expect(dependencies.assertApplyAuthority).toBe(assertApplyAuthority);
     expect(dependencies.readApplyingUser).toBe(readApplyingUser);
@@ -66,6 +69,7 @@ describe("equipment acquisition session adapter", () => {
       createEquipmentAcquisitionExecutionDependencies({
         characterDraft,
         runtime: {
+          assertCurrentSourceHealth: vi.fn(),
           resolveSourceForApply: vi.fn(),
           resolveCurrentPolicySnapshot: vi.fn(),
         },

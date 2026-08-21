@@ -160,6 +160,35 @@ describe("Wave 2 acquisition execution", () => {
     });
   });
 
+  it("rejects unhealthy equipment sources before a retain-all currency or manifest write", async () => {
+    const fixture = reviewedFixture([], "retain-all");
+    const actor = new FakeActor();
+    const session = sessionFor(fixture.acquisition, {
+      sourceHealthError: new Error("Approved equipment sources are unavailable or inconsistent."),
+    });
+
+    await expect(
+      session.executeAcquisitionItems({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/equipment sources/i);
+    await expect(
+      session.executeAcquisitionCurrency({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+        persistCurrencyConvergenceWitness: ignoreCurrencyWitness,
+      })
+    ).rejects.toThrow(/must be prepared/i);
+    expect(actor.addOptions).toEqual([]);
+    expect(actor.currencyAdds).toEqual([]);
+    expect(actor.currencyRemovals).toEqual([]);
+  });
+
   it("acknowledges handoff with durable evidence and zero economic writes", async () => {
     const actor = new FakeActor(25);
     const fixture = handoffFixture(actor);
@@ -1170,6 +1199,7 @@ function sessionFor(
     readonly currentPolicy?: AcquisitionPolicySnapshot;
     readonly events?: string[];
     readonly authorityError?: Error;
+    readonly sourceHealthError?: Error;
     readonly lastAppliedAt?: string | null;
     readonly lastTargetLevel?: number | null;
     readonly completedManifest?: CompletedAcquisitionManifestV1 | null;
@@ -1208,6 +1238,9 @@ function sessionFor(
     resolveCurrentPolicySnapshot: () => {
       options.events?.push("policy");
       return options.currentPolicy ?? acquisition.policySnapshot!;
+    },
+    assertSourceHealth: () => {
+      if (options.sourceHealthError) throw options.sourceHealthError;
     },
     assertApplyAuthority: () => {
       options.events?.push("authority");

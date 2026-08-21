@@ -8,7 +8,10 @@ import type { EquipmentAcquisitionRuntime } from "./equipment-acquisition-runtim
 
 export interface EquipmentAcquisitionSessionOptions {
   readonly characterDraft: DraftState;
-  readonly runtime: Pick<EquipmentAcquisitionRuntime, "resolveCurrentPolicySnapshot" | "resolveSourceForApply">;
+  readonly runtime: Pick<
+    EquipmentAcquisitionRuntime,
+    "assertCurrentSourceHealth" | "resolveCurrentPolicySnapshot" | "resolveSourceForApply"
+  >;
   readonly readHistory: AcquisitionExecutionDependencies["readHistory"];
   readonly assertApplyAuthority: AcquisitionExecutionDependencies["assertApplyAuthority"];
   readonly readApplyingUser: AcquisitionExecutionDependencies["readApplyingUser"];
@@ -33,6 +36,12 @@ export function createEquipmentAcquisitionExecutionDependencies(
       }),
     readHistory: options.readHistory,
     resolveCurrentPolicySnapshot: ({ actor, draft }) => options.runtime.resolveCurrentPolicySnapshot(actor, draft),
+    assertSourceHealth: ({ actor, draft }) =>
+      options.runtime.assertCurrentSourceHealth({
+        actor,
+        characterDraft: options.characterDraft,
+        acquisition: draft,
+      }),
     assertApplyAuthority: options.assertApplyAuthority,
     readApplyingUser: options.readApplyingUser,
     readEnvironment: options.readEnvironment,

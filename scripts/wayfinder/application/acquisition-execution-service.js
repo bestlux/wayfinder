@@ -239,6 +239,7 @@ async function prepareExecution(args) {
         stableJson(currentPolicy.material) !== stableJson(acquisition.policySnapshot.material)) {
         throw new Error("Current starting-equipment policy differs from the reviewed authority.");
     }
+    await args.dependencies.assertSourceHealth({ actor: args.actor, draft: acquisition });
     const sources = new Map();
     const preflightedLineIds = new Set();
     if (!handoff) {

@@ -6,6 +6,7 @@ import {
   commitTitanMaulerLineSynchronization,
   createEquipmentAcquisitionRuntime,
   type EquipmentAcquisitionRuntime,
+  EquipmentSourceHealthError,
 } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
 import {
   createEquipmentAccessRegistry,
@@ -445,6 +446,57 @@ describe("equipment acquisition runtime", () => {
       ],
     });
     expect(getDocument).not.toHaveBeenCalled();
+    expect(request.draft).toEqual(beforeDraft);
+  });
+
+  it("rejects a stale add after a clean projection becomes corrupt", async () => {
+    const source = dagger();
+    let currentIndex: readonly ReturnType<typeof dagger>[] | null = [source];
+    const getDocument = vi.fn(async () => document(source));
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => currentIndex),
+      getDocument,
+    });
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({ state: "ready" });
+    const beforeDraft = structuredClone(request.draft);
+    const documentReads = getDocument.mock.calls.length;
+
+    currentIndex = null;
+    runtime.invalidatePack(PACK_ID);
+
+    await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).rejects.toMatchObject({
+      name: "EquipmentSourceHealthError",
+      diagnostics: [{ code: "equipment-pack-index-corrupt", packId: PACK_ID }],
+    });
+    expect(getDocument).toHaveBeenCalledTimes(documentReads);
+    expect(request.draft).toEqual(beforeDraft);
+  });
+
+  it("rejects Apply preflight before hydration when a reviewed source identity becomes duplicated", async () => {
+    const source = dagger();
+    let currentIndex: readonly ReturnType<typeof dagger>[] = [source];
+    const getDocument = vi.fn(async () => document(source));
+    const { runtime, request } = fixture({
+      getIndex: vi.fn(async () => currentIndex),
+      getDocument,
+    });
+    const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
+    request.draft.acquisition = { ...request.draft.acquisition!, lines: [line] };
+    const beforeDraft = structuredClone(request.draft);
+    const documentReads = getDocument.mock.calls.length;
+
+    currentIndex = [source, dagger({ name: "Duplicate Dagger" })];
+    runtime.invalidatePack(PACK_ID);
+
+    await expect(
+      runtime.resolveSourceForApply({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition,
+        entry: preparedEntry(line),
+      })
+    ).rejects.toBeInstanceOf(EquipmentSourceHealthError);
+    expect(getDocument).toHaveBeenCalledTimes(documentReads);
     expect(request.draft).toEqual(beforeDraft);
   });
 

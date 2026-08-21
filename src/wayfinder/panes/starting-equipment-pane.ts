@@ -56,9 +56,11 @@ export function buildStartingEquipmentPane(
   );
   const availableAllowances =
     policy?.allowances.filter((allowance) => !usedAllowanceIds.has(allowance.allowanceId)) ?? [];
-  const matchingRecords = catalogue.records.filter(
-    (record) => matchesQuery(record, catalogue.query) && matchesFilters(record, catalogue.activeFilters)
-  );
+  const matchingRecords = catalogueReady
+    ? catalogue.records.filter(
+        (record) => matchesQuery(record, catalogue.query) && matchesFilters(record, catalogue.activeFilters)
+      )
+    : [];
   const records = matchingRecords.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS).map((record) => {
     const affordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
     const canBuyWithCurrency = record.available && record.level < step.level && affordable;

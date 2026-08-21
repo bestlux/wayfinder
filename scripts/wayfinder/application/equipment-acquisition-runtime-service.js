@@ -18,6 +18,14 @@ export class ConfiguredItemHandoffRequiredError extends Error {
         this.reason = cloneData(reason);
     }
 }
+export class EquipmentSourceHealthError extends Error {
+    diagnostics;
+    constructor(diagnostics) {
+        super("Approved equipment sources are unavailable or inconsistent. Ask your GM to review them.");
+        this.name = "EquipmentSourceHealthError";
+        this.diagnostics = Object.freeze(diagnostics.map((diagnostic) => Object.freeze({ ...diagnostic })));
+    }
+}
 class PartialUnitPriceRequiredError extends TypeError {
     constructor() {
         super("This item must be purchased in a quantity that produces a nonzero exact PF2E charge.");
@@ -87,6 +95,14 @@ export function createEquipmentAcquisitionRuntime(options) {
             },
         };
     };
+    const requireHealthyCatalogue = async (policy, context) => {
+        const catalogue = catalogueFor(policy);
+        const projection = await catalogue.project(context);
+        const diagnostics = combineSourceDiagnostics(resolveSourceDiagnostics(policy), projection.diagnostics);
+        if (diagnostics.length > 0)
+            throw new EquipmentSourceHealthError(diagnostics);
+        return { catalogue, projection };
+    };
     const uiAdapter = {
         async project(request) {
             const acquisition = request.draft.acquisition;
@@ -105,22 +121,7 @@ export function createEquipmentAcquisitionRuntime(options) {
             }
             try {
                 const { policy, context } = currentContext(request.actor, request.draft, acquisition);
-                const catalogue = catalogueFor(policy);
-                const projection = await catalogue.project(context);
-                const diagnostics = combineSourceDiagnostics(resolveSourceDiagnostics(policy), projection.diagnostics);
-                if (diagnostics.length > 0) {
-                    return {
-                        state: "error",
-                        message: "Approved equipment sources are unavailable or inconsistent. Ask your GM to review them.",
-                        diagnostics,
-                        query: request.query,
-                        records: [],
-                        filters: [],
-                        activeFilters: request.filters,
-                        previewSourceUuid: null,
-                        titanMauler,
-                    };
-                }
+                const { catalogue, projection } = await requireHealthyCatalogue(policy, context);
                 let projectedEntries = projection.entries;
                 if (request.previewSourceUuid) {
                     const preview = await catalogue.hydratePreview(request.previewSourceUuid, context);
@@ -178,7 +179,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     message: error instanceof Error
                         ? error.message
                         : "The gear list would not load. Ask your GM to check the approved equipment sources.",
-                    diagnostics: [],
+                    diagnostics: error instanceof EquipmentSourceHealthError ? error.diagnostics : [],
                     query: request.query,
                     records: [],
                     filters: [],
@@ -191,7 +192,8 @@ export function createEquipmentAcquisitionRuntime(options) {
         async prepareLine(request) {
             const acquisition = requireAcquisition(request);
             const { policy, context } = currentContext(request.actor, request.draft, acquisition);
-            const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
+            const { catalogue } = await requireHealthyCatalogue(policy, context);
+            const resolved = await catalogue.resolveForApply(context, request.sourceUuid);
             assertSupportedCandidate(resolved);
             const targetSize = await draftedEquipmentSize(request.actor, request.draft);
             const priced = await buildResolvedPrice({
@@ -237,7 +239,8 @@ export function createEquipmentAcquisitionRuntime(options) {
             if (!targetSize)
                 throw new TypeError("Titan Mauler cannot prepare a weapon larger than Gargantuan.");
             const { policy, context } = currentContext(request.actor, request.draft, acquisition);
-            const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
+            const { catalogue } = await requireHealthyCatalogue(policy, context);
+            const resolved = await catalogue.resolveForApply(context, request.sourceUuid);
             assertTitanMaulerCandidate(resolved);
             assertExactCompendiumSource(resolved.candidate.sourceUuid, resolved.source);
             return buildTitanMaulerLine({
@@ -257,6 +260,7 @@ export function createEquipmentAcquisitionRuntime(options) {
         uiAdapter,
         async prepareNativeClassGrantLines(request) {
             const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
+            const { catalogue } = await requireHealthyCatalogue(policy, context);
             assertPreparedClassGrantPlanMatches({
                 plan: request.classGrantPlan,
                 actorId: policy.actorId,
@@ -265,7 +269,6 @@ export function createEquipmentAcquisitionRuntime(options) {
                 targetLevel: request.acquisition.targetLevel,
                 persistedGrants: request.acquisition.plannedClassGrants,
             });
-            const catalogue = catalogueFor(policy);
             const targetSize = await draftedEquipmentSize(request.actor, request.characterDraft);
             const nativeGrants = request.classGrantPlan.grants.filter((grant) => grant.materializer === "pf2e-native");
             const lineIds = new Set(request.acquisition.lines.map((line) => line.lineId));
@@ -321,6 +324,10 @@ export function createEquipmentAcquisitionRuntime(options) {
         resolveCurrentPolicySnapshot(actor, acquisition) {
             return createAcquisitionPolicySnapshot(resolveEffectivePolicy(actor, acquisition), acquisition.recipe, acquisition.recipeSelection);
         },
+        async assertCurrentSourceHealth(request) {
+            const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
+            await requireHealthyCatalogue(policy, context);
+        },
         async resolveSourceForApply(request) {
             const persisted = normalizeAcquisitionDraft(cloneData(request.characterDraft.acquisition));
             const requested = normalizeAcquisitionDraft(cloneData(request.acquisition));
@@ -328,13 +335,13 @@ export function createEquipmentAcquisitionRuntime(options) {
                 throw new TypeError("The Apply source request does not match the persisted acquisition state.");
             }
             const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
+            const { catalogue } = await requireHealthyCatalogue(policy, context);
             const lines = request.entry.lineIds.map((lineId) => {
                 const line = request.acquisition.lines.find((candidate) => candidate.lineId === lineId);
                 if (!line)
                     throw new TypeError(`Prepared acquisition line ${lineId} is unavailable.`);
                 return line;
             });
-            const catalogue = catalogueFor(policy);
             const fixedNativeGrant = resolveFixedNativeApplyGrant(request, persisted, lines);
             const resolved = fixedNativeGrant
                 ? await catalogue.resolveFixedNativeSourceForApply(context, request.entry.sourceUuid, fixedNativeSourceAuthority(fixedNativeGrant))
@@ -409,13 +416,15 @@ export function createEquipmentAcquisitionRuntime(options) {
         },
         async resolveCurrentCharacterAccessRef(request) {
             const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
-            const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
+            const { catalogue } = await requireHealthyCatalogue(policy, context);
+            const resolved = await catalogue.resolveForApply(context, request.sourceUuid);
             assertTitanMaulerCandidate(resolved);
             return resolved.policyDecision.characterAccessRef;
         },
         async resolveItemExceptionFacts(request) {
             const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
-            const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
+            const { catalogue } = await requireHealthyCatalogue(policy, context);
+            const resolved = await catalogue.resolveForApply(context, request.sourceUuid);
             const authorityCodes = resolved.unavailableReasons
                 .map((reason) => reason.code)
                 .filter((code) => code === "source-not-allowed" || code === "rarity-not-available");
@@ -470,9 +479,10 @@ export function createEquipmentAcquisitionRuntime(options) {
             let current;
             try {
                 const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
+                const { catalogue } = await requireHealthyCatalogue(policy, context);
                 current = {
                     policy,
-                    resolved: await catalogueFor(policy).resolveForApply(context, line.sourceUuid),
+                    resolved: await catalogue.resolveForApply(context, line.sourceUuid),
                 };
             }
             catch {

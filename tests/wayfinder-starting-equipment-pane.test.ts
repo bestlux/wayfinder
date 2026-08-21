@@ -337,6 +337,62 @@ describe("starting equipment pane", () => {
     expect(template).not.toContain("<img");
   });
 
+  it("fails closed when a stale caller supplies diagnostics together with actionable records", () => {
+    const draft = createEmptyDraft(1);
+    draft.acquisition = acquisitionFixture({ disposition: "unreviewed" }).draft;
+    const record: StartingEquipmentCatalogueRecord = {
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.stale",
+      name: "Stale Dagger",
+      itemType: "weapon",
+      level: 0,
+      rarity: "common",
+      sourceLabel: "Player Core",
+      priceCopper: 20,
+      priceLabel: "2 sp",
+      bulkLabel: "L",
+      handsLabel: "1",
+      traits: ["agile"],
+      available: true,
+      unavailableReason: null,
+      titanMaulerEligible: true,
+      exceptionRequestable: true,
+    };
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(1),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      {
+        state: "error",
+        message: "Approved equipment sources are unavailable or inconsistent.",
+        diagnostics: [
+          {
+            code: "duplicate-equipment-source-identity",
+            packId: "pf2e.equipment-srd",
+            sourceIdentity: record.sourceUuid,
+            message: "Duplicate equipment source identity.",
+          },
+        ],
+        query: "",
+        records: [record],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: record.sourceUuid,
+        titanMauler: { required: true, selectedSourceUuid: null },
+      }
+    );
+
+    expect(pane.catalogue).toMatchObject({
+      state: "error",
+      searchDisabled: true,
+      totalResultCount: 0,
+      visibleResultCount: 0,
+      items: [],
+      preview: null,
+    });
+    expect(pane.review).toMatchObject({ canReviewPurchases: false, canRetainAll: false });
+  });
+
   it("bounds the rendered result window while retaining the total match count", () => {
     const draft = createEmptyDraft(1);
     draft.acquisition = acquisitionFixture({ disposition: "unreviewed" }).draft;

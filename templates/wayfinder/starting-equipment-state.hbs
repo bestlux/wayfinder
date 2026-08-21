@@ -1,0 +1,41 @@
+{{#if activePane.corrupt}}
+  <section class="equipment-callout error" tabindex="-1" data-wayfinder-focus-id="starting-equipment-initialize">
+    <h4>{{localize "wayfinder-pf2e.StartingEquipment.Corrupt.Title"}}</h4>
+    <p>{{localize "wayfinder-pf2e.StartingEquipment.Corrupt.Body"}}</p>
+  </section>
+{{else}}
+  {{#unless activePane.initialized}}
+    <section class="equipment-callout" tabindex="-1" data-wayfinder-focus-id="starting-equipment-initialize">
+      <h4>{{localize "wayfinder-pf2e.StartingEquipment.Initialize.Title"}}</h4>
+      <p>{{localize "wayfinder-pf2e.StartingEquipment.Initialize.Body"}}</p>
+      <button type="button" class="primary" data-wayfinder-action="initialize-starting-equipment" data-wayfinder-focus-id="starting-equipment-start" data-step-id="{{activePane.stepId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.StartShopping"}}</button>
+    </section>
+  {{else}}
+    {{#unless activePane.setup.awaitingAuthority}}
+      {{#if activePane.handoff.active}}
+        <section class="equipment-callout warning" tabindex="-1" data-wayfinder-focus-id="starting-equipment-handoff">
+          <h4>{{localize "wayfinder-pf2e.StartingEquipment.Handoff.Title"}}</h4>
+          {{#each activePane.handoff.reasons}}<p>{{this}}</p>{{/each}}
+          {{#unless activePane.handoff.acknowledged}}
+            <button type="button" class="primary" data-wayfinder-action="acknowledge-equipment-handoff" data-wayfinder-focus-id="starting-equipment-acknowledge-handoff" data-step-id="{{activePane.stepId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.GotIt"}}</button>
+          {{else}}
+            <p class="equipment-reviewed"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>{{localize "wayfinder-pf2e.StartingEquipment.Handoff.Acknowledged"}}</p>
+          {{/unless}}
+        </section>
+      {{else}}
+        {{#if activePane.titanMauler.required}}
+          <section class="equipment-callout warning titan-mauler-callout" tabindex="-1" data-wayfinder-focus-id="starting-equipment-titan-mauler">
+            {{#if activePane.titanMauler.selected}}
+              <h4>{{localize "wayfinder-pf2e.StartingEquipment.TitanMauler.SelectedTitle"}}</h4>
+              <p>{{localize "wayfinder-pf2e.StartingEquipment.TitanMauler.SelectedBody" name=activePane.titanMauler.selectedName}}</p>
+            {{else}}
+              <h4>{{localize "wayfinder-pf2e.StartingEquipment.TitanMauler.ChooseTitle"}}</h4>
+              <p>{{localize "wayfinder-pf2e.StartingEquipment.TitanMauler.ChooseBody"}}</p>
+              <p>{{localize "wayfinder-pf2e.StartingEquipment.TitanMauler.ChooseHint"}}</p>
+            {{/if}}
+          </section>
+        {{/if}}
+      {{/if}}
+    {{/unless}}
+  {{/unless}}
+{{/if}}

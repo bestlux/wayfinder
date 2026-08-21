@@ -508,7 +508,17 @@ describe("starting equipment pane", () => {
   });
 
   it("renders dedicated search, filter, quantity, cart, retain-all, handoff, and focus controls", () => {
-    const template = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
+    const template = [
+      "starting-equipment-pane",
+      "starting-equipment-policy",
+      "starting-equipment-status",
+      "starting-equipment-state",
+      "starting-equipment-catalogue",
+      "starting-equipment-detail",
+      "starting-equipment-cart",
+    ]
+      .map((name) => readFileSync(resolve(`templates/wayfinder/${name}.hbs`), "utf8"))
+      .join("\n");
     for (const token of [
       "data-wayfinder-equipment-search",
       'data-wayfinder-action="toggle-equipment-filter"',

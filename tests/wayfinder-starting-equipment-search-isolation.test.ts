@@ -15,8 +15,105 @@ describe("starting equipment search isolation", () => {
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     expect(handler).toContain("#equipmentSearchScheduler.schedule(stepId, input.value)");
+    expect(handler).toContain("parts: [...startingEquipmentPartsForIntent(equipmentRequest.intent)]");
     expect(handler).toContain("wayfinderEquipmentUpdate: true");
+    expect(handler).toContain("wayfinderEquipmentRequest: equipmentRequest");
     expect(handler).not.toContain("#buildPlan(");
+  });
+
+  it("prepares scoped equipment projections before actor inspection or full-plan work", () => {
+    const start = appShell.indexOf("async _prepareContext");
+    const end = appShell.indexOf("_replaceHTML(", start);
+    const prepare = appShell.slice(start, end);
+    const equipmentBranch = prepare.indexOf("const equipmentRequest = startingEquipmentRenderRequest(options);");
+    const actorInspection = prepare.indexOf("const snapshot = inspectActor(this.actor);");
+
+    expect(equipmentBranch).toBeGreaterThan(-1);
+    expect(actorInspection).toBeGreaterThan(equipmentBranch);
+    expect(prepare.slice(equipmentBranch, actorInspection)).toContain("getStartingEquipmentUiAdapter().project");
+    expect(prepare.slice(equipmentBranch, actorInspection)).toContain('wayfinderRenderScope: "equipment"');
+    expect(prepare.slice(equipmentBranch, actorInspection)).not.toContain("this._buildRenderPlan");
+    expect(prepare.slice(equipmentBranch, actorInspection)).not.toContain("buildWayfinderContext");
+  });
+
+  it("keeps the equipment search control outside all replaceable application parts", () => {
+    const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
+    const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue.hbs"), "utf8");
+
+    expect(pane).toContain("data-wayfinder-equipment-search");
+    expect(catalogue).not.toContain("data-wayfinder-equipment-search");
+    expect(catalogue).toContain('data-application-part="equipment-catalogue"');
+  });
+
+  it("fails closed before replacing stale or mismatched equipment parts", () => {
+    const start = appShell.indexOf("_replaceHTML(");
+    const end = appShell.indexOf("async _onRender(", start);
+    const replace = appShell.slice(start, end);
+
+    expect(replace).toContain("!this.#canCommitStartingEquipmentRender(equipmentRequest)");
+    expect(replace).toContain("!hasStartingEquipmentPartTargets(");
+    expect(replace).toContain("options.wayfinderSkippedReplacement = true;");
+    expect(replace).toContain("startingEquipmentViewRevision !== this.#equipmentSearchScheduler.viewRevision");
+  });
+
+  it("keeps structural, review, retain, setup, handoff, and removal commands on full fallback renders", () => {
+    const dispatchStart = appShell.indexOf("async #dispatchAction");
+    const dispatchEnd = appShell.indexOf("#onSearchInput =", dispatchStart);
+    const dispatch = appShell.slice(dispatchStart, dispatchEnd);
+
+    expect(dispatch).toContain('this.#renderStartingEquipmentPartial(action.stepId, "preview")');
+    const recipeStart = dispatch.indexOf('case "select-equipment-recipe"');
+    const recipeEnd = dispatch.indexOf("break;", recipeStart);
+    expect(dispatch.slice(recipeStart, recipeEnd)).toContain('"recipe"');
+    for (const action of [
+      "initialize-starting-equipment",
+      "activate-equipment-policy",
+      "request-equipment-start",
+      "approve-equipment-policy-request",
+      "request-equipment-item-exception",
+      "approve-equipment-item-exception",
+      "revoke-equipment-policy-judgment",
+      "remove-equipment-line",
+      "review-equipment-purchases",
+      "retain-all-equipment",
+      "acknowledge-equipment-handoff",
+    ]) {
+      const caseStart = dispatch.indexOf(`case "${action}"`);
+      const caseEnd = dispatch.indexOf("break;", caseStart);
+      expect(caseStart, action).toBeGreaterThan(-1);
+      expect(dispatch.slice(caseStart, caseEnd), action).not.toContain("#renderStartingEquipmentPartial");
+    }
+  });
+
+  it("renders only the selected preview in the scoped detail part", () => {
+    const detail = readFileSync(resolve("templates/wayfinder/starting-equipment-detail.hbs"), "utf8");
+
+    expect(detail).toContain("activePane.catalogue.preview.sourceUuid");
+    expect(detail).not.toContain("#each activePane.catalogue.items");
+    expect(detail).not.toContain("hidden");
+  });
+
+  it("retains an existing equipment error for view-only partial actions", () => {
+    const clickStart = appShell.indexOf("#onActionClick =");
+    const clickEnd = appShell.indexOf("#dispatchAction", clickStart);
+    const click = appShell.slice(clickStart, clickEnd);
+    const helperStart = appShell.indexOf("function isStartingEquipmentViewOnlyAction");
+    const helperEnd = appShell.indexOf("function parseGoldToCopper", helperStart);
+    const helper = appShell.slice(helperStart, helperEnd);
+
+    expect(click).toContain("if (!isStartingEquipmentViewOnlyAction(action))");
+    expect(helper).toContain('action.type === "preview-equipment-item"');
+    expect(helper).toContain('action.type === "toggle-equipment-filter"');
+    expect(helper).toContain('action.type === "clear-equipment-filters"');
+  });
+
+  it("suppresses handoff and Titan state while setup awaits authority", () => {
+    const state = readFileSync(resolve("templates/wayfinder/starting-equipment-state.hbs"), "utf8");
+    const guard = state.indexOf("#unless activePane.setup.awaitingAuthority");
+
+    expect(guard).toBeGreaterThan(-1);
+    expect(state.indexOf("activePane.handoff.active")).toBeGreaterThan(guard);
+    expect(state.indexOf("activePane.titanMauler.required")).toBeGreaterThan(guard);
   });
 
   it("reuses the cached render plan for equipment search and cart renders", async () => {

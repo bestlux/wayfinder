@@ -1,0 +1,36 @@
+<div class="equipment-catalogue-projection" data-application-part="equipment-catalogue" data-step-id="{{activePane.stepId}}" data-wayfinder-rendered-query="{{activePane.catalogue.search}}" data-wayfinder-view-revision="{{equipmentRequest.viewRevision}}" data-wayfinder-source-revision="{{equipmentRequest.sourceRevision}}">
+  <div class="equipment-filter-row" role="group" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.FiltersAria"}}" aria-controls="{{activePane.stepId}}-equipment-results">
+    {{#each activePane.catalogue.filters}}
+      <button type="button" class="secondary compact{{#if selected}} is-selected{{/if}}" aria-pressed="{{#if selected}}true{{else}}false{{/if}}" data-wayfinder-action="toggle-equipment-filter" data-wayfinder-focus-id="{{focusId}}" data-step-id="{{../activePane.stepId}}" data-filter-key="{{key}}" data-value="{{value}}">{{label}}</button>
+    {{/each}}
+  </div>
+  <p class="equipment-result-count" role="status" aria-live="polite" aria-atomic="true">{{activePane.catalogue.resultAnnouncement}}</p>
+  {{#unless activePane.catalogue.items.length}}
+    <div class="equipment-catalogue-state {{activePane.catalogue.state}}" role="status" aria-live="polite" aria-atomic="true"><i class="fa-solid fa-box-open" aria-hidden="true"></i><p>{{activePane.catalogue.message}}</p>
+      {{#if activePane.catalogue.diagnostics.length}}
+        <ul class="equipment-source-diagnostics">
+          {{#each activePane.catalogue.diagnostics}}<li data-equipment-source-diagnostic="{{code}}"><strong>{{packId}}</strong>: {{message}}</li>{{/each}}
+        </ul>
+      {{/if}}
+    </div>
+  {{/unless}}
+  <div class="equipment-result-list" id="{{activePane.stepId}}-equipment-results" data-wayfinder-scroll-id="{{activePane.stepId}}:equipment-results">
+    {{#each activePane.catalogue.items}}
+      <article class="equipment-result{{#if previewing}} is-previewing{{/if}}" data-equipment-item data-source-uuid="{{sourceUuid}}" data-filter-rarity="{{rarity}}" data-filter-source="{{sourceLabel}}" data-filter-type="{{itemType}}">
+        <button type="button" class="equipment-result-main" aria-label="{{previewAriaLabel}}" data-wayfinder-action="preview-equipment-item" data-wayfinder-focus-id="{{previewFocusId}}" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">
+          <span><strong>{{name}}</strong><small>{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.ItemMeta" level=level rarity=rarityLabel source=sourceLabel}}</small></span>
+        </button>
+        <span class="equipment-result-price">{{priceLabel}}</span>
+        <div class="equipment-result-actions">
+          {{#if canBuyWithCurrency}}<button type="button" class="primary compact" aria-label="{{buyAriaLabel}}" data-wayfinder-action="add-equipment-item" data-wayfinder-focus-id="{{buyFocusId}}" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}" data-funding="currency">{{localize "wayfinder-pf2e.StartingEquipment.Actions.BuyWithCoin"}}</button>{{/if}}
+          {{#each allowanceOptions}}<button type="button" class="secondary compact" aria-label="{{ariaLabel}}" data-wayfinder-action="add-equipment-item" data-wayfinder-focus-id="{{focusId}}" data-step-id="{{../../activePane.stepId}}" data-source-uuid="{{../sourceUuid}}" data-funding="allowance" data-allowance-id="{{allowanceId}}">{{label}}</button>{{/each}}
+          {{#if canRequestException}}<button type="button" class="secondary compact" aria-label="{{requestExceptionAriaLabel}}" data-wayfinder-action="request-equipment-item-exception" data-wayfinder-focus-id="{{requestExceptionFocusId}}" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.RequestException"}}</button>{{/if}}
+          {{#if canApproveException}}<button type="button" class="secondary compact" aria-label="{{approveExceptionAriaLabel}}" data-wayfinder-action="approve-equipment-item-exception" data-wayfinder-focus-id="{{approveExceptionFocusId}}" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.ApproveException"}}</button>{{/if}}
+          {{#unless canAdd}}<button type="button" class="primary compact" aria-label="{{unavailableAriaLabel}}" disabled>{{localize "wayfinder-pf2e.StartingEquipment.Actions.Add"}}</button>{{/unless}}
+          {{#if canChooseTitanMauler}}<button type="button" class="secondary compact" aria-label="{{titanMaulerAriaLabel}}" data-wayfinder-action="choose-titan-mauler-equipment" data-wayfinder-focus-id="{{titanMaulerFocusId}}" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.ChooseTitanMauler"}}</button>{{/if}}
+        </div>
+        {{#if unavailableReason}}<small class="equipment-unavailable">{{unavailableReason}}</small>{{else}}{{#unless canAdd}}<small class="equipment-unavailable">{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.NoFunding"}}</small>{{/unless}}{{/if}}
+      </article>
+    {{/each}}
+  </div>
+</div>

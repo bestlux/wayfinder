@@ -4,6 +4,12 @@
   min-width: 0;
 }
 
+.wayfinder-app .equipment-render-status,
+.wayfinder-app .equipment-render-policy,
+.wayfinder-app .equipment-catalogue-projection {
+  display: contents;
+}
+
 .wayfinder-app .equipment-policy-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

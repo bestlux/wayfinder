@@ -15,6 +15,12 @@ const implementationCorpus = [
   "src/wayfinder/panes/acquisition-receipt.ts",
   "src/wayfinder/application/starting-equipment-command-service.ts",
   "templates/wayfinder/starting-equipment-pane.hbs",
+  "templates/wayfinder/starting-equipment-policy.hbs",
+  "templates/wayfinder/starting-equipment-status.hbs",
+  "templates/wayfinder/starting-equipment-state.hbs",
+  "templates/wayfinder/starting-equipment-catalogue.hbs",
+  "templates/wayfinder/starting-equipment-detail.hbs",
+  "templates/wayfinder/starting-equipment-cart.hbs",
   "templates/wayfinder/acquisition-receipt.hbs",
 ]
   .map((path) => readFileSync(resolve(path), "utf8"))
@@ -58,6 +64,12 @@ describe("starting-equipment localization", () => {
   it("leaves no hard-coded visible prose in the acquisition templates", () => {
     for (const path of [
       "templates/wayfinder/starting-equipment-pane.hbs",
+      "templates/wayfinder/starting-equipment-policy.hbs",
+      "templates/wayfinder/starting-equipment-status.hbs",
+      "templates/wayfinder/starting-equipment-state.hbs",
+      "templates/wayfinder/starting-equipment-catalogue.hbs",
+      "templates/wayfinder/starting-equipment-detail.hbs",
+      "templates/wayfinder/starting-equipment-cart.hbs",
       "templates/wayfinder/acquisition-receipt.hbs",
     ]) {
       const template = readFileSync(resolve(path), "utf8");

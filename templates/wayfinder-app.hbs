@@ -128,11 +128,15 @@
             </div>
           </header>
 
-          {{#if statusNote}}
-            <div class="status-note{{#if statusNoteIsError}} error{{/if}}" role="{{#if statusNoteIsError}}alert{{else}}status{{/if}}" aria-live="{{#if statusNoteIsError}}assertive{{else}}polite{{/if}}" aria-atomic="true" {{#if statusNoteIsError}}tabindex="-1" data-wayfinder-focus-id="starting-equipment-status"{{/if}}>
-              <i class="fa-solid {{#if statusNoteIsError}}fa-triangle-exclamation{{else}}fa-circle-info{{/if}}" aria-hidden="true"></i>
-              <span>{{statusNote}}</span>
-            </div>
+          {{#if (eq activePane.templateKind "starting-equipment")}}
+            {{> "modules/wayfinder-pf2e/templates/wayfinder/starting-equipment-status.hbs"}}
+          {{else}}
+            {{#if statusNote}}
+              <div class="status-note{{#if statusNoteIsError}} error{{/if}}" role="{{#if statusNoteIsError}}alert{{else}}status{{/if}}" aria-live="{{#if statusNoteIsError}}assertive{{else}}polite{{/if}}" aria-atomic="true" {{#if statusNoteIsError}}tabindex="-1" data-wayfinder-focus-id="starting-equipment-status"{{/if}}>
+                <i class="fa-solid {{#if statusNoteIsError}}fa-triangle-exclamation{{else}}fa-circle-info{{/if}}" aria-hidden="true"></i>
+                <span>{{statusNote}}</span>
+              </div>
+            {{/if}}
           {{/if}}
 
           {{#if (eq activePane.templateKind "manual")}}

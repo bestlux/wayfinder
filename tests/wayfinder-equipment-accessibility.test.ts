@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   equipmentAllowanceFocusId,
@@ -25,7 +27,7 @@ describe("starting equipment accessibility", () => {
 
   it("renders polite atomic status updates and an assertive focusable failure destination", () => {
     const shell = readFileSync(resolve("templates/wayfinder-app.hbs"), "utf8");
-    const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
+    const pane = equipmentTemplateCorpus();
 
     expect(shell).toContain('role="{{#if statusNoteIsError}}alert{{else}}status{{/if}}"');
     expect(shell).toContain('aria-live="{{#if statusNoteIsError}}assertive{{else}}polite{{/if}}"');
@@ -37,7 +39,7 @@ describe("starting equipment accessibility", () => {
   });
 
   it("keeps setup transitions focus-addressable and Apply preflight inside the failure boundary", () => {
-    const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
+    const pane = equipmentTemplateCorpus();
     const shellSource = readFileSync(resolve("src/wayfinder/app-shell.ts"), "utf8");
     for (const focusId of [
       "starting-equipment-start",
@@ -61,5 +63,16 @@ describe("starting equipment accessibility", () => {
   });
 });
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+function equipmentTemplateCorpus(): string {
+  return [
+    "starting-equipment-pane",
+    "starting-equipment-policy",
+    "starting-equipment-status",
+    "starting-equipment-state",
+    "starting-equipment-catalogue",
+    "starting-equipment-detail",
+    "starting-equipment-cart",
+  ]
+    .map((name) => readFileSync(resolve(`templates/wayfinder/${name}.hbs`), "utf8"))
+    .join("\n");
+}

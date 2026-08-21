@@ -145,6 +145,23 @@ import {
 } from "./application/starting-equipment-command-service.js";
 import { localizeStartingEquipmentError } from "./application/starting-equipment-failure.js";
 import {
+  advanceStartingEquipmentRenderSession,
+  canDeriveStartingEquipmentRender,
+  canUseStartingEquipmentCommandPartial,
+  createStartingEquipmentRenderSession,
+  EQUIPMENT_CART_PART,
+  EQUIPMENT_CATALOGUE_PART,
+  EQUIPMENT_DETAIL_PART,
+  EQUIPMENT_POLICY_PART,
+  EQUIPMENT_STATUS_PART,
+  type StartingEquipmentRenderIntent,
+  type StartingEquipmentRenderPart,
+  type StartingEquipmentRenderRequest,
+  type StartingEquipmentRenderSession,
+  startingEquipmentPartsForIntent,
+  startingEquipmentRenderIdentity,
+} from "./application/starting-equipment-render-session.js";
+import {
   getStartingEquipmentUiAdapter,
   resolveStartingEquipmentRenderPlan,
 } from "./application/starting-equipment-ui-adapter.js";
@@ -223,12 +240,25 @@ type PickerSearchRenderContext = {
   activePane: ReturnType<typeof derivePickerRenderSession> | null;
   pickerRequest: PickerSearchRequest;
 };
+type StartingEquipmentPartialRenderContext = {
+  wayfinderRenderScope: "equipment";
+  activePane: StartingEquipmentRenderSession["pane"] | null;
+  statusNote: string | null;
+  statusNoteIsError: boolean;
+  equipmentRequest: StartingEquipmentRenderRequest;
+  equipmentRenderSession: StartingEquipmentRenderSession | null;
+};
 type FullWayfinderRenderContext = WayfinderTemplateContext & {
   wayfinderRenderScope: "full";
   pickerRenderSession: PickerRenderSession | null;
   pickerSourceRevision: number;
+  equipmentRenderSession: StartingEquipmentRenderSession | null;
+  equipmentSourceRevision: number;
 };
-type WayfinderRenderContext = FullWayfinderRenderContext | PickerSearchRenderContext;
+type WayfinderRenderContext =
+  | FullWayfinderRenderContext
+  | PickerSearchRenderContext
+  | StartingEquipmentPartialRenderContext;
 type WayfinderRenderOptions = Record<string, unknown> & {
   parts?: string[];
   wayfinderPickerRequest?: PickerSearchRequest;
@@ -236,7 +266,9 @@ type WayfinderRenderOptions = Record<string, unknown> & {
   wayfinderPickerViewRevision?: number;
   wayfinderSkippedReplacement?: boolean;
   wayfinderEquipmentUpdate?: boolean;
-  wayfinderEquipmentRequest?: PickerSearchRequest;
+  wayfinderEquipmentRequest?: StartingEquipmentRenderRequest;
+  wayfinderEquipmentSourceRevision?: number;
+  wayfinderEquipmentViewRevision?: number;
   wayfinderAcquisitionSmokeQuiescent?: boolean;
 };
 type WayfinderGlobals = typeof globalThis & {
@@ -320,6 +352,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #equipmentSearchByStepId = new Map<string, string>();
   #equipmentFiltersByStepId = new Map<string, Record<string, string[]>>();
   #equipmentPreviewByStepId = new Map<string, string>();
+  #equipmentScheduledRenderIntent: Extract<StartingEquipmentRenderIntent, "search" | "facet"> = "search";
   #cachedRenderPlan: ProgressionPlan | null = null;
   #recentlyInvalidatedStepIds = new Set<string>();
   #statusNote: string | null = null;
@@ -330,6 +363,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #closePromise: Promise<this> | null = null;
   #lastDraftSavePhase: DraftSaveState["phase"] = "idle";
   #pickerRenderSession: { sourceRevision: number; session: PickerRenderSession } | null = null;
+  #equipmentRenderSession: StartingEquipmentRenderSession | null = null;
   #pickerSearchScheduler = new PickerSearchScheduler({
     delayMs: PICKER_SEARCH_DELAY_MS,
     render: (request) => this.#renderPickerSearch(request),
@@ -407,25 +441,37 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       options.wayfinderPickerSourceRevision = this.#pickerSearchScheduler.invalidateSource();
       options.wayfinderPickerViewRevision = this.#pickerSearchScheduler.viewRevision;
     }
-    if (!options.wayfinderEquipmentRequest) {
-      this.#equipmentSearchScheduler.invalidateSource();
+    if (!startingEquipmentRenderRequest(options)) {
+      options.wayfinderEquipmentSourceRevision = this.#equipmentSearchScheduler.invalidateSource();
+      options.wayfinderEquipmentViewRevision = this.#equipmentSearchScheduler.viewRevision;
     }
     super._configureRenderOptions(options);
   }
 
   _configureRenderParts(options: WayfinderRenderOptions): Record<string, unknown> {
     const parts = super._configureRenderParts(options) as Record<string, unknown>;
-    if (!isPickerSearchRender(options)) {
+    if (isPickerSearchRender(options)) {
+      const isSpellChoice = this.#pickerRenderSession?.session.basePane.kind === "spell-choice";
+      parts[PICKER_COUNT_PART] = {
+        template: `modules/${MODULE_ID}/templates/wayfinder/picker-result-count.hbs`,
+      };
+      parts[PICKER_RESULTS_PART] = {
+        template: `modules/${MODULE_ID}/templates/wayfinder/${isSpellChoice ? "spell-choice-results" : "pick-results"}.hbs`,
+      };
       return parts;
     }
-
-    const isSpellChoice = this.#pickerRenderSession?.session.basePane.kind === "spell-choice";
-    parts[PICKER_COUNT_PART] = {
-      template: `modules/${MODULE_ID}/templates/wayfinder/picker-result-count.hbs`,
+    const equipmentRequest = startingEquipmentRenderRequest(options);
+    if (!equipmentRequest) return parts;
+    const templates: Record<StartingEquipmentRenderPart, string> = {
+      [EQUIPMENT_POLICY_PART]: "starting-equipment-policy",
+      [EQUIPMENT_CATALOGUE_PART]: "starting-equipment-catalogue",
+      [EQUIPMENT_DETAIL_PART]: "starting-equipment-detail",
+      [EQUIPMENT_CART_PART]: "starting-equipment-cart",
+      [EQUIPMENT_STATUS_PART]: "starting-equipment-status",
     };
-    parts[PICKER_RESULTS_PART] = {
-      template: `modules/${MODULE_ID}/templates/wayfinder/${isSpellChoice ? "spell-choice-results" : "pick-results"}.hbs`,
-    };
+    for (const part of startingEquipmentPartsForIntent(equipmentRequest.intent)) {
+      parts[part] = { template: `modules/${MODULE_ID}/templates/wayfinder/${templates[part]}.hbs` };
+    }
     return parts;
   }
 
@@ -437,8 +483,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (request && !this.#canCommitPickerSearch(request)) {
       return false;
     }
-    const equipmentRequest = options.wayfinderEquipmentRequest;
-    if (equipmentRequest && !this.#canCommitStartingEquipmentSearch(equipmentRequest)) {
+    const equipmentRequest = startingEquipmentRenderRequest(options);
+    if (equipmentRequest && !this.#canCommitStartingEquipmentRender(equipmentRequest)) {
       return false;
     }
   }
@@ -464,6 +510,59 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             this.#openPickerFilterMenu?.stepId === pickerRequest.stepId ? this.#openPickerFilterMenu.filterKind : null,
         }),
         pickerRequest,
+      };
+    }
+
+    const equipmentRequest = startingEquipmentRenderRequest(options);
+    if (equipmentRequest) {
+      const session = this.#equipmentRenderSession;
+      const draft = this.#requireDraft();
+      const identity = startingEquipmentRenderIdentity(draft, equipmentRequest.stepId, equipmentRequest.sourceRevision);
+      if (
+        !session ||
+        !this.#canCommitStartingEquipmentRender(equipmentRequest) ||
+        !canDeriveStartingEquipmentRender(session, identity, equipmentRequest)
+      ) {
+        options.wayfinderSkippedReplacement = true;
+        return {
+          wayfinderRenderScope: "equipment",
+          activePane: null,
+          statusNote: this.#statusNote,
+          statusNoteIsError: this.#statusNote !== null && this.#statusNote === this.#statusErrorMessage,
+          equipmentRequest,
+          equipmentRenderSession: null,
+        };
+      }
+      const pane = buildStartingEquipmentPane(
+        session.step,
+        draft,
+        session.evaluation,
+        await getStartingEquipmentUiAdapter().project(this.#startingEquipmentUiRequest(session.step)),
+        localizeAcquisition,
+        {
+          worldPolicy: getEquipmentWorldPolicySetting(),
+          judgments: getEquipmentPolicyJudgmentStoreSetting().judgments,
+          isGm: game.user?.isGM === true,
+        }
+      );
+      if (!this.#canCommitStartingEquipmentRender(equipmentRequest)) {
+        options.wayfinderSkippedReplacement = true;
+        return {
+          wayfinderRenderScope: "equipment",
+          activePane: null,
+          statusNote: this.#statusNote,
+          statusNoteIsError: this.#statusNote !== null && this.#statusNote === this.#statusErrorMessage,
+          equipmentRequest,
+          equipmentRenderSession: null,
+        };
+      }
+      return {
+        wayfinderRenderScope: "equipment",
+        activePane: pane,
+        statusNote: this.#statusNote,
+        statusNoteIsError: this.#statusNote !== null && this.#statusNote === this.#statusErrorMessage,
+        equipmentRequest,
+        equipmentRenderSession: advanceStartingEquipmentRenderSession(session, equipmentRequest, pane),
       };
     }
 
@@ -529,6 +628,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           localize: localizeAcquisition,
         })
       : null;
+    const equipmentSourceRevision = numericRenderOption(options.wayfinderEquipmentSourceRevision);
+    const equipmentViewRevision = numericRenderOption(options.wayfinderEquipmentViewRevision);
+    const equipmentRenderSession =
+      activeStep?.kind === "starting-equipment" && activeEvaluation && activePane?.kind === "starting-equipment"
+        ? createStartingEquipmentRenderSession({
+            identity: startingEquipmentRenderIdentity(draft, activeStep.id, equipmentSourceRevision),
+            viewRevision: equipmentViewRevision,
+            step: activeStep,
+            evaluation: activeEvaluation,
+            pane: activePane,
+          })
+        : null;
     return Object.assign(
       await buildWayfinderContext({
         actorId: this.actor.id,
@@ -560,6 +671,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         wayfinderRenderScope: "full" as const,
         pickerRenderSession,
         pickerSourceRevision: numericRenderOption(options.wayfinderPickerSourceRevision),
+        equipmentRenderSession,
+        equipmentSourceRevision,
       }
     );
   }
@@ -575,9 +688,20 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
-    const equipmentRequest = options.wayfinderEquipmentRequest;
-    if (equipmentRequest && !this.#canCommitStartingEquipmentSearch(equipmentRequest)) {
-      options.wayfinderSkippedReplacement = true;
+    const equipmentRequest = startingEquipmentRenderRequest(options);
+    if (equipmentRequest) {
+      if (
+        !this.#canCommitStartingEquipmentRender(equipmentRequest) ||
+        !hasStartingEquipmentPartTargets(
+          content,
+          equipmentRequest.stepId,
+          startingEquipmentPartsForIntent(equipmentRequest.intent)
+        )
+      ) {
+        options.wayfinderSkippedReplacement = true;
+        return;
+      }
+      super._replaceHTML(result, content, options);
       return;
     }
 
@@ -588,6 +712,19 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (this.actor.apps[this.id] === this) {
           void this.render(false).catch((error: unknown) => {
             console.error("PF2E Wayfinder failed to refresh a stale full render", error);
+          });
+        }
+      });
+      return;
+    }
+
+    const startingEquipmentViewRevision = numericRenderOption(options.wayfinderEquipmentViewRevision);
+    if (!options.isFirstRender && startingEquipmentViewRevision !== this.#equipmentSearchScheduler.viewRevision) {
+      options.wayfinderSkippedReplacement = true;
+      queueMicrotask(() => {
+        if (this.actor.apps[this.id] === this) {
+          void this.render(false).catch((error: unknown) => {
+            console.error("PF2E Wayfinder failed to refresh a stale full equipment render", error);
           });
         }
       });
@@ -628,9 +765,37 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       return;
     }
 
+    if (context.wayfinderRenderScope === "equipment") {
+      this.#equipmentRenderSession = context.equipmentRenderSession;
+      for (const part of startingEquipmentPartsForIntent(context.equipmentRequest.intent)) {
+        const target = root.querySelector<HTMLElement>(`[data-application-part="${part}"]`);
+        if (!target) continue;
+        bindWayfinderInteractions(
+          target,
+          {
+            onActionClick: this.#onActionClick,
+            onSearchInput: this.#onSearchInput,
+            onEquipmentSearchInput: this.#onEquipmentSearchInput,
+            onScrollableScroll: this.#onScrollableScroll,
+            onManualChange: this.#onManualChange,
+            onLoreInputChange: this.#onLoreInputChange,
+          },
+          this.#scrollById,
+          null
+        );
+      }
+      if (this.#pendingEquipmentFocusIds) {
+        restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
+      }
+      this.#pendingEquipmentFocusIds = null;
+      this.#pendingSearchFocus = null;
+      return;
+    }
+
     this.#pickerRenderSession = context.pickerRenderSession
       ? { sourceRevision: context.pickerSourceRevision, session: context.pickerRenderSession }
       : null;
+    this.#equipmentRenderSession = context.equipmentRenderSession;
 
     this.#pendingSearchFocus = bindWayfinderInteractions(
       root,
@@ -733,6 +898,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #finalizeClosedState(): void {
     this.#pickerSearchScheduler.dispose();
     this.#equipmentSearchScheduler.dispose();
+    this.#equipmentRenderSession = null;
     this.#semanticCommands.completeTerminalOperation();
     this.#draftPersistence.dispose();
     WayfinderApp.#openApps.delete(this);
@@ -751,7 +917,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     event.preventDefault();
     event.stopPropagation();
     this.#rememberInteractiveState();
-    this.#statusErrorMessage = null;
+    if (!isStartingEquipmentViewOnlyAction(action)) {
+      this.#statusErrorMessage = null;
+    }
     this.#pendingEquipmentFocusIds = startingEquipmentFocusCandidates(target);
     if (
       action.type !== "toggle-picker-filter" &&
@@ -931,10 +1099,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         });
         break;
       case "select-equipment-recipe":
-        await this.#executeStartingEquipmentCommand(action.stepId, {
-          type: "select-recipe",
-          selectedRecipe: action.selectedRecipe,
-        });
+        await this.#executeStartingEquipmentCommand(
+          action.stepId,
+          {
+            type: "select-recipe",
+            selectedRecipe: action.selectedRecipe,
+          },
+          "recipe"
+        );
         break;
       case "activate-equipment-policy":
         await this.#executeStartingEquipmentCommand(action.stepId, {
@@ -1010,7 +1182,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         break;
       case "preview-equipment-item":
         this.#equipmentPreviewByStepId.set(action.stepId, action.sourceUuid);
-        this.render({ wayfinderEquipmentUpdate: true });
+        this.#renderStartingEquipmentPartial(action.stepId, "preview");
         break;
       case "add-equipment-item":
         await this.#addStartingEquipmentItem(
@@ -1046,6 +1218,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         break;
       case "clear-equipment-filters":
         this.#equipmentFiltersByStepId.delete(action.stepId);
+        this.#equipmentScheduledRenderIntent = "facet";
         this.#equipmentSearchScheduler.schedule(action.stepId, this.#equipmentSearchByStepId.get(action.stepId) ?? "");
         break;
       case "review-equipment-purchases":
@@ -1100,23 +1273,56 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (!stepId) return;
     this.#equipmentSearchByStepId.set(stepId, input.value);
     this.#pendingSearchFocus = { stepId, cursor: input.selectionStart ?? input.value.length };
+    this.#equipmentScheduledRenderIntent = "search";
     this.#equipmentSearchScheduler.schedule(stepId, input.value);
   };
 
   async #renderStartingEquipmentSearch(request: PickerSearchRequest): Promise<void> {
-    if (!this.#canCommitStartingEquipmentSearch(request)) return;
+    const equipmentRequest: StartingEquipmentRenderRequest = {
+      ...request,
+      intent: this.#equipmentScheduledRenderIntent,
+    };
+    if (!this.#canCommitStartingEquipmentRender(equipmentRequest)) return;
     await this.render({
+      parts: [...startingEquipmentPartsForIntent(equipmentRequest.intent)],
+      wayfinderEquipmentUpdate: true,
+      wayfinderEquipmentRequest: equipmentRequest,
+    });
+  }
+
+  #renderStartingEquipmentPartial(
+    stepId: string,
+    intent: Exclude<StartingEquipmentRenderIntent, "search" | "facet">
+  ): void {
+    this.#equipmentSearchScheduler.invalidateView();
+    const request: StartingEquipmentRenderRequest = {
+      viewRevision: this.#equipmentSearchScheduler.viewRevision,
+      sourceRevision: this.#equipmentSearchScheduler.sourceRevision,
+      stepId,
+      query: this.#equipmentSearchByStepId.get(stepId) ?? "",
+      intent,
+    };
+    if (!this.#canCommitStartingEquipmentRender(request)) {
+      this.render(false);
+      return;
+    }
+    this.render({
+      parts: [...startingEquipmentPartsForIntent(intent)],
       wayfinderEquipmentUpdate: true,
       wayfinderEquipmentRequest: request,
     });
   }
 
-  #canCommitStartingEquipmentSearch(request: PickerSearchRequest): boolean {
+  #canCommitStartingEquipmentRender(request: StartingEquipmentRenderRequest): boolean {
+    const session = this.#equipmentRenderSession;
     return (
       this.#equipmentSearchScheduler.isCurrent(request) &&
-      this.#activeStepId === request.stepId &&
-      this.#cachedRenderPlan?.steps.some((step) => step.id === request.stepId && step.kind === "starting-equipment") ===
-        true &&
+      session !== null &&
+      canDeriveStartingEquipmentRender(
+        session,
+        startingEquipmentRenderIdentity(this.#requireDraft(), request.stepId, request.sourceRevision),
+        request
+      ) &&
       (this.#equipmentSearchByStepId.get(request.stepId) ?? "") === request.query
     );
   }
@@ -1381,7 +1587,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     };
   }
 
-  async #executeStartingEquipmentCommand(stepId: string, command: StartingEquipmentCommand): Promise<void> {
+  async #executeStartingEquipmentCommand(
+    stepId: string,
+    command: StartingEquipmentCommand,
+    partialIntent?: Extract<StartingEquipmentRenderIntent, "quantity" | "recipe">
+  ): Promise<void> {
+    const partialWasSafe = partialIntent
+      ? canUseStartingEquipmentCommandPartial(this.#requireDraft(), partialIntent)
+      : false;
+    let succeeded = false;
     try {
       const plan = this.#cachedRenderPlan;
       if (!plan) throw new TypeError("The current Wayfinder plan is unavailable.");
@@ -1406,6 +1620,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#requireDraft().equipmentPolicyRequests = [...result.policyRequests];
       this.#statusNote = localizeAcquisitionMessage(localizeAcquisition, result.status);
       this.#statusErrorMessage = null;
+      succeeded = true;
     } catch (error) {
       const message = localizeStartingEquipmentError(
         localizeAcquisition,
@@ -1415,7 +1630,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#setStartingEquipmentFailure(message);
       ui.notifications.warn(message);
     }
-    this.render({ wayfinderEquipmentUpdate: true });
+    if (
+      succeeded &&
+      partialIntent &&
+      partialWasSafe &&
+      canUseStartingEquipmentCommandPartial(this.#requireDraft(), partialIntent)
+    ) {
+      this.#renderStartingEquipmentPartial(stepId, partialIntent);
+    } else {
+      this.render({ wayfinderEquipmentUpdate: true });
+    }
   }
 
   async #addStartingEquipmentItem(
@@ -1501,7 +1725,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       await this.#executeStartingEquipmentCommand(stepId, { type: "remove-line", lineId });
       return;
     }
-    await this.#executeStartingEquipmentCommand(stepId, { type: "set-quantity", lineId, quantity });
+    await this.#executeStartingEquipmentCommand(stepId, { type: "set-quantity", lineId, quantity }, "quantity");
   }
 
   #equipmentLineRelocationCandidates(lineId: string): string[] {
@@ -1533,6 +1757,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       ...current,
       [filterKey]: [...selected].sort((left, right) => left.localeCompare(right)),
     });
+    this.#equipmentScheduledRenderIntent = "facet";
     this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
   }
 
@@ -2999,6 +3224,32 @@ function pickerSearchRequest(options: WayfinderRenderOptions): PickerSearchReque
   return candidate;
 }
 
+function startingEquipmentRenderRequest(options: WayfinderRenderOptions): StartingEquipmentRenderRequest | null {
+  const candidate = options.wayfinderEquipmentRequest;
+  if (
+    !candidate ||
+    !Number.isInteger(candidate.viewRevision) ||
+    !Number.isInteger(candidate.sourceRevision) ||
+    typeof candidate.stepId !== "string" ||
+    typeof candidate.query !== "string" ||
+    !isStartingEquipmentRenderIntent(candidate.intent)
+  ) {
+    return null;
+  }
+  const expectedParts = startingEquipmentPartsForIntent(candidate.intent);
+  if (
+    options.parts?.length !== expectedParts.length ||
+    !expectedParts.every((partId, index) => options.parts?.[index] === partId)
+  ) {
+    return null;
+  }
+  return candidate;
+}
+
+function isStartingEquipmentRenderIntent(value: unknown): value is StartingEquipmentRenderIntent {
+  return value === "search" || value === "facet" || value === "preview" || value === "quantity" || value === "recipe";
+}
+
 function numericRenderOption(value: unknown): number {
   return Number.isInteger(value) ? Number(value) : -1;
 }
@@ -3012,6 +3263,17 @@ function hasPickerPartTargets(root: HTMLElement, stepId: string): boolean {
     countTargets[0]?.dataset.stepId === stepId &&
     resultTargets[0]?.dataset.stepId === stepId
   );
+}
+
+function hasStartingEquipmentPartTargets(
+  root: HTMLElement,
+  stepId: string,
+  parts: readonly StartingEquipmentRenderPart[]
+): boolean {
+  return parts.every((part) => {
+    const targets = [...root.querySelectorAll<HTMLElement>(`[data-application-part="${part}"]`)];
+    return targets.length === 1 && targets[0]?.dataset.stepId === stepId;
+  });
 }
 
 function actorItemLocationId(item: BuildStateActorItem): string | null {
@@ -3216,6 +3478,14 @@ function startingEquipmentFocusCandidates(target: HTMLElement | null): string[] 
 
   candidates.push(STARTING_EQUIPMENT_REVIEW_FOCUS_ID);
   return [...new Set(candidates)];
+}
+
+function isStartingEquipmentViewOnlyAction(action: WayfinderAction): boolean {
+  return (
+    action.type === "preview-equipment-item" ||
+    action.type === "toggle-equipment-filter" ||
+    action.type === "clear-equipment-filters"
+  );
 }
 
 function parseGoldToCopper(value: string): number | null {

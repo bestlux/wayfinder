@@ -6,7 +6,7 @@ const appSource = readFileSync(resolve("src/wayfinder/app-shell.ts"), "utf8");
 
 describe("wayfinder scoped picker search rendering", () => {
   it("schedules search without requesting a full application render", () => {
-    const handler = sourceBetween("#onSearchInput =", "#onScrollableScroll =");
+    const handler = sourceBetween("#onSearchInput =", "#onEquipmentSearchInput =");
 
     expect(handler).toContain("this.#searchByStepId.set(stepId, input.value);");
     expect(handler).toContain("this.#pickerSearchScheduler.schedule(stepId, input.value);");

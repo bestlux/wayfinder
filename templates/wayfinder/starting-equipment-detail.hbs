@@ -1,0 +1,10 @@
+<aside class="equipment-detail" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Detail.Aria"}}" data-application-part="equipment-detail" data-step-id="{{activePane.stepId}}">
+  {{#if activePane.catalogue.preview}}
+    <article data-equipment-preview="{{activePane.catalogue.preview.sourceUuid}}">
+      <p class="eyebrow">{{localize "wayfinder-pf2e.StartingEquipment.Detail.LevelRarity" level=activePane.catalogue.preview.level rarity=activePane.catalogue.preview.rarityLabel}}</p><h4>{{activePane.catalogue.preview.name}}</h4>
+      <dl><div><dt>{{localize "wayfinder-pf2e.StartingEquipment.Detail.Price"}}</dt><dd>{{activePane.catalogue.preview.priceLabel}}</dd></div><div><dt>{{localize "wayfinder-pf2e.StartingEquipment.Detail.Bulk"}}</dt><dd>{{activePane.catalogue.preview.bulkLabel}}</dd></div><div><dt>{{localize "wayfinder-pf2e.StartingEquipment.Detail.Hands"}}</dt><dd>{{activePane.catalogue.preview.handsLabel}}</dd></div><div><dt>{{localize "wayfinder-pf2e.StartingEquipment.Detail.Traits"}}</dt><dd>{{activePane.catalogue.preview.traits}}</dd></div></dl>
+    </article>
+  {{else}}
+    <p class="equipment-detail-empty">{{localize "wayfinder-pf2e.StartingEquipment.Detail.Empty"}}</p>
+  {{/if}}
+</aside>

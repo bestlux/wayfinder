@@ -2,8 +2,59 @@ import { describe, expect, it, vi } from "vitest";
 import { applyClassFeatureChoiceDraft, stripPreselectedClassFeatureEntries } from "../src/class-feature-choice-service";
 import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep, SelectionRef } from "../src/types";
+import { PF2E_841_DRAGON_EIDOLON_RULES } from "./fixtures/pf2e-841-eidolons";
 
 describe("class-feature-choice-service", () => {
+  it("persists Dragon Eidolon's PF2E 8.4.1 compound tradition on an existing granted feature", async () => {
+    const draft = createEmptyDraft(1);
+    draft.classChoices["class-choice-dragon-eidolon-eidolonTradition-level-1"] = "arcane";
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: "class-1",
+            type: "class",
+            name: "Summoner",
+            system: {},
+          },
+          {
+            id: "dragon-1",
+            type: "feat",
+            name: "Dragon Eidolon",
+            flags: {
+              core: { sourceId: "Compendium.pf2e.classfeatures.Item.JttI3raKFGG4C8up" },
+              pf2e: { rulesSelections: {} },
+            },
+            system: { rules: structuredClone(PF2E_841_DRAGON_EIDOLON_RULES) },
+          },
+        ],
+      },
+      createEmbeddedDocuments: vi.fn(async () => []),
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+    };
+
+    await applyClassFeatureChoiceDraft(actor as any, draft, [dragonTraditionStep()], {
+      createEmbeddedSource: async () => null,
+      fetchSelectionDocument: async () => null,
+    });
+
+    expect(actor.updateEmbeddedDocuments).toHaveBeenCalledWith("Item", [
+      expect.objectContaining({
+        _id: "dragon-1",
+        "flags.pf2e.rulesSelections.eidolonTradition": { skill: "arcana", tradition: "arcane" },
+        "system.rules": expect.arrayContaining([
+          expect.objectContaining({
+            key: "ChoiceSet",
+            flag: "eidolonTradition",
+            selection: { skill: "arcana", tradition: "arcane" },
+          }),
+        ]),
+      }),
+    ]);
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
   it("strips class features that Wayfinder owns through granted-item or class-choice draft selections", () => {
     const draft = createEmptyDraft(1);
     draft.selections["deity-level-1"] = selection("pf2e.deities", "gorum", "Gorum", "deity");
@@ -789,6 +840,40 @@ function divineFontStep(): PendingStep {
       options: [
         { value: "heal", label: "Heal", img: null, detail: null },
         { value: "harm", label: "Harm", img: null, detail: null },
+      ],
+    },
+  };
+}
+
+function dragonTraditionStep(): PendingStep {
+  const slotId = "class-choice-dragon-eidolon-eidolonTradition-level-1";
+  return {
+    id: slotId,
+    level: 1,
+    kind: "class-choice",
+    slotKind: "class-choice",
+    title: "Eidolon Tradition",
+    description: "Choose a tradition.",
+    required: true,
+    slotId,
+    classChoice: {
+      slotId,
+      sourcePackId: "pf2e.classfeatures",
+      sourceDocumentId: "JttI3raKFGG4C8up",
+      sourceUuid: "Compendium.pf2e.classfeatures.Item.JttI3raKFGG4C8up",
+      sourceName: "Dragon Eidolon",
+      sourceRuleIndex: 0,
+      flag: "eidolonTradition",
+      classSlug: "summoner",
+      dependsOn: "class",
+      options: [
+        {
+          value: "arcane",
+          label: "Arcane",
+          img: null,
+          detail: null,
+          ruleValue: { skill: "arcana", tradition: "arcane" },
+        },
       ],
     },
   };

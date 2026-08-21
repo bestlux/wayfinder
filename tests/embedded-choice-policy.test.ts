@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { classifyEmbeddedChoices } from "../src/pack/embedded-choice-policy";
+import { pf2e841AngelEidolonEntry, pf2e841DragonEidolonEntry } from "./fixtures/pf2e-841-eidolons";
 
 const testGlobals = globalThis as typeof globalThis & { CONFIG?: any };
 
@@ -168,6 +169,23 @@ describe("embedded choice policy", () => {
     expect(result.covered).toEqual([0]);
     expect(result.uncovered).toEqual([]);
     expect(result.rules).toEqual([{ ruleIndex: 0, coveredBy: ["class-choice"] }]);
+  });
+
+  it("covers Dragon Eidolon's PF2E 8.4.1 tradition prompt while Angel needs no prompt", () => {
+    expect(
+      classifyEmbeddedChoices(pf2e841DragonEidolonEntry() as any, "pf2e.classfeatures", {
+        sourceItemType: "classfeature",
+      })
+    ).toMatchObject({
+      covered: [0],
+      uncovered: [],
+      rules: [{ ruleIndex: 0, coveredBy: ["class-choice"] }],
+    });
+    expect(
+      classifyEmbeddedChoices(pf2e841AngelEidolonEntry() as any, "pf2e.classfeatures", {
+        sourceItemType: "classfeature",
+      })
+    ).toMatchObject({ covered: [], uncovered: [], rules: [] });
   });
 
   it("returns empty coverage for documents without ChoiceSet rules", () => {

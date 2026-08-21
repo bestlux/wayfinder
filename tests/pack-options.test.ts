@@ -8,6 +8,11 @@ import type { ActorSnapshot, OptionContext, PendingStep, PickItemSlotKind, Selec
 import { buildOptionContext } from "../src/wayfinder/application/option-context-service";
 import { createPickItemStep } from "../src/wayfinder/domain/step-types";
 import { withRestrictedSpellRarityAccess } from "../src/wayfinder/spell-choice/rarity-access";
+import {
+  PF2E_841_DRAGON_EIDOLON_RULES,
+  pf2e841AngelEidolonEntry,
+  pf2e841DragonEidolonEntry,
+} from "./fixtures/pf2e-841-eidolons";
 
 const testGlobals = globalThis as typeof globalThis & { CONFIG: any; game: any };
 
@@ -1954,6 +1959,106 @@ describe("pack options dependency filtering", () => {
     );
 
     expect(investigatorOptions.map((option) => option.name)).toEqual(["Interrogation", "Known Methodology"]);
+  });
+
+  it("guides PF2E 8.4.1 Dragon and Angel Eidolons and surfaces an unresolved predicate-backed branch", async () => {
+    const driftedDragon = pf2e841DragonEidolonEntry() as any;
+    driftedDragon._id = "drifted-dragon";
+    driftedDragon.name = "Drifted Dragon Eidolon";
+    driftedDragon.system.slug = "drifted-dragon-eidolon";
+    driftedDragon.system.rules = structuredClone(PF2E_841_DRAGON_EIDOLON_RULES);
+    driftedDragon.system.rules[2].path = "system.skills.{item|flags.system.rulesSelections.other.skill}.rank";
+    setPack("pf2e.classfeatures", [pf2e841DragonEidolonEntry(), pf2e841AngelEidolonEntry(), driftedDragon]);
+    const step: PendingStep = {
+      id: "class-branch-eidolon-level-1",
+      level: 1,
+      kind: "class-branch",
+      slotKind: "class-branch",
+      title: "Eidolon",
+      description: "Choose an eidolon.",
+      required: true,
+      slotId: "class-branch-eidolon-level-1",
+      filters: {
+        itemType: "feat",
+        featTypes: ["classfeature"],
+        predicate: ["item:tag:summoner-eidolon"],
+      },
+      branch: {
+        slotId: "class-branch-eidolon-level-1",
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "qOEpe596B0UjhcG0",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.qOEpe596B0UjhcG0",
+        selectorName: "Eidolon",
+        selectorRuleIndex: 0,
+        flag: "eidolon",
+        optionTag: "summoner-eidolon",
+        classSlug: "summoner",
+        dependsOn: "class",
+      },
+    };
+
+    const query = await getOptionQueryForStep(step, { ...EMPTY_CONTEXT, classSlug: "summoner" });
+
+    expect(query.options.map((option) => option.name)).toEqual(["Angel Eidolon", "Dragon Eidolon"]);
+    expect(query.suppressedOptions).toEqual([
+      {
+        uuid: "Compendium.pf2e.classfeatures.Item.drifted-dragon",
+        name: "Drifted Dragon Eidolon",
+        reason: "unvalidated-granted-choice",
+      },
+    ]);
+  });
+
+  it("keeps PF2E 8.4.1 Psychic minds visible when dedication-only prompts are inactive", async () => {
+    const dedicationChoice = {
+      adjustName: false,
+      choices: "flags.system.psychic.dedication.psiCantrips",
+      flag: "dedicationCantrip",
+      key: "ChoiceSet",
+      predicate: ["feat:psychic-dedication"],
+      prompt: "PF2E.SpecificRule.Prompt.PsiCantrip",
+      rollOption: "selected-psi-cantrip",
+    };
+    setPack("pf2e.classfeatures", [
+      classFeatureEntry("the-distant-grasp", "The Distant Grasp", ["psychic"], ["psychic-conscious-mind"], {
+        rules: [structuredClone(dedicationChoice)],
+      }),
+      classFeatureEntry("the-infinite-eye", "The Infinite Eye", ["psychic"], ["psychic-conscious-mind"], {
+        rules: [structuredClone(dedicationChoice)],
+      }),
+    ]);
+    const step: PendingStep = {
+      id: "class-branch-conscious-mind-level-1",
+      level: 1,
+      kind: "class-branch",
+      slotKind: "class-branch",
+      title: "Conscious Mind",
+      description: "Choose a conscious mind.",
+      required: true,
+      slotId: "class-branch-conscious-mind-level-1",
+      filters: {
+        itemType: "feat",
+        featTypes: ["classfeature"],
+        predicate: ["item:tag:psychic-conscious-mind"],
+      },
+      branch: {
+        slotId: "class-branch-conscious-mind-level-1",
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "conscious-mind",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.conscious-mind",
+        selectorName: "Conscious Mind",
+        selectorRuleIndex: 0,
+        flag: "consciousMind",
+        optionTag: "psychic-conscious-mind",
+        classSlug: "psychic",
+        dependsOn: "class",
+      },
+    };
+
+    const query = await getOptionQueryForStep(step, { ...EMPTY_CONTEXT, classSlug: "psychic" });
+
+    expect(query.options.map((option) => option.name)).toEqual(["The Distant Grasp", "The Infinite Eye"]);
+    expect(query.suppressedOptions).toEqual([]);
   });
 
   it("filters wizard branch choices separately for arcane school and arcane thesis", async () => {

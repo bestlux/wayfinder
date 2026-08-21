@@ -62,6 +62,25 @@ describe("existing-selection-service", () => {
     expect(readExistingClassChoiceSelection(actor, divineFontChoice())).toBe("heal");
   });
 
+  it("projects a stored compound Dragon Eidolon selection back to its draft value", () => {
+    const actor = {
+      items: {
+        contents: [
+          {
+            id: "dragon-1",
+            type: "feat",
+            flags: {
+              core: { sourceId: "Compendium.pf2e.classfeatures.Item.JttI3raKFGG4C8up" },
+              pf2e: { rulesSelections: { eidolonTradition: { tradition: "occult", skill: "occultism" } } },
+            },
+          },
+        ],
+      },
+    };
+
+    expect(readExistingClassChoiceSelection(actor, dragonTraditionChoice())).toBe("occult");
+  });
+
   it("reads a singleton choice selection from the owning singleton item rulesSelections", () => {
     const actor = {
       items: {
@@ -250,6 +269,29 @@ function divineFontChoice(): ClassChoiceMeta {
     classSlug: "cleric",
     dependsOn: "deity",
     options: [{ value: "heal", label: "Heal", img: null, detail: null }],
+  };
+}
+
+function dragonTraditionChoice(): ClassChoiceMeta {
+  return {
+    slotId: "class-choice-dragon-eidolon-eidolonTradition-level-1",
+    sourcePackId: "pf2e.classfeatures",
+    sourceDocumentId: "JttI3raKFGG4C8up",
+    sourceUuid: "Compendium.pf2e.classfeatures.Item.JttI3raKFGG4C8up",
+    sourceName: "Dragon Eidolon",
+    sourceRuleIndex: 0,
+    flag: "eidolonTradition",
+    classSlug: "summoner",
+    dependsOn: "class",
+    options: [
+      {
+        value: "occult",
+        label: "Occult",
+        img: null,
+        detail: null,
+        ruleValue: { skill: "occultism", tradition: "occult" },
+      },
+    ],
   };
 }
 

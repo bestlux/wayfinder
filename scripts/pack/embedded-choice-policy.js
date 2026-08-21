@@ -11,13 +11,6 @@ export function hasUnsupportedEmbeddedChoiceSet(entry, packId, step, optionConte
         return false;
     }
     if (step.kind === "class-branch") {
-        // Predicate-backed branch steps come from a curated selector rule whose
-        // options were already guided end-to-end before per-rule coverage existed
-        // (for example Psychic conscious minds); keep those visible. Tag-based
-        // branch steps had no such curation, so classify their options per rule.
-        if (Array.isArray(step.filters?.predicate) && step.filters.predicate.length > 0) {
-            return false;
-        }
         return (classifyEmbeddedChoices(entry, packId, {
             sourceItemType: "classfeature",
             optionContext,
@@ -42,7 +35,7 @@ export function hasUnsupportedEmbeddedChoiceSet(entry, packId, step, optionConte
 }
 export function hidesUnsupportedEmbeddedChoiceSets(step) {
     if (step.kind === "class-branch") {
-        return !Array.isArray(step.filters?.predicate) || step.filters.predicate.length === 0;
+        return true;
     }
     if (step.kind !== "pick-item" || step.slotKind === "grant-choice") {
         return false;

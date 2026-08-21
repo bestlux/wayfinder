@@ -1,4 +1,8 @@
 import { parseCompendiumItemUuid } from "../../shared/compendium.js";
+import {
+  cloneStructuredEidolonTraditionValue,
+  projectStructuredEidolonTraditionChoiceOptions,
+} from "../../shared/structured-eidolon-tradition-choice.js";
 import type {
   ChoicePredicate,
   ClassBranchMeta,
@@ -317,7 +321,20 @@ export function discoverClassChoiceMeta(args: {
       return;
     }
 
-    const options = resolveClassChoiceOptions(rule.choices, activeRollOptions, localize);
+    const structuredOptions = projectStructuredEidolonTraditionChoiceOptions({
+      sourceItemType: "classfeature",
+      rules,
+      sourceRuleIndex: ruleIndex,
+    });
+    const options = structuredOptions
+      ? structuredOptions.map((option) => ({
+          value: option.value,
+          label: resolveChoiceLabel(option.label, option.value, localize),
+          img: null,
+          detail: null,
+          ruleValue: cloneStructuredEidolonTraditionValue(option),
+        }))
+      : resolveClassChoiceOptions(rule.choices, activeRollOptions, localize);
     const isTrainingChoice = looksLikeSkillChoiceRule(
       rule,
       options.map((option) => option.value.trim().toLowerCase()),

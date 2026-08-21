@@ -1,6 +1,7 @@
 import { applySelectorApplication, buildSelectorSelection, stripSelectedSelectorEntries, } from "./selector-application.js";
 import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
 import { selectedClassArchetypeInternalChoices } from "./wayfinder/class-archetype/registry.js";
+import { materializeClassChoiceSelection } from "./wayfinder/class-choice/selection-value.js";
 export async function applyClassFeatureChoiceDraft(actor, draft, steps, deps) {
     const groups = collectFeatureGroups(draft, steps);
     for (const group of groups) {
@@ -11,7 +12,7 @@ export async function applyClassFeatureChoiceDraft(actor, draft, steps, deps) {
             ruleSelections: group.choiceEntries.map((entry) => ({
                 flag: entry.meta.flag,
                 ruleIndex: entry.meta.sourceRuleIndex,
-                value: entry.value,
+                value: materializeClassChoiceSelection(entry.meta, entry.value),
             })),
             grantPlan: group.grantMeta && group.grantSelection
                 ? {

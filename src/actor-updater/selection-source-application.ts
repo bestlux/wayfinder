@@ -20,6 +20,7 @@ import type {
   SelectionRef,
   SkillTrainingChoiceMeta,
 } from "../types.js";
+import { materializeClassChoiceSelection } from "../wayfinder/class-choice/selection-value.js";
 import { stripManualSystemItemGrants } from "./manual-system-item-grants.js";
 import { EXPLICIT_GRANT_SOURCE_ITEM_TYPES } from "./selection-constants.js";
 import type { CreateEmbeddedSourceDependencies } from "./selection-dependencies.js";
@@ -261,7 +262,12 @@ function applyPendingClassChoices(
       continue;
     }
 
-    applyRuleSelection(source, step.classChoice.sourceRuleIndex, step.classChoice.flag, value);
+    applyRuleSelection(
+      source,
+      step.classChoice.sourceRuleIndex,
+      step.classChoice.flag,
+      materializeClassChoiceSelection(step.classChoice, value)
+    );
   }
 }
 

@@ -10,6 +10,7 @@ import {
 import { usesNativeGrantItemCreation } from "./shared/grant-creation-policy.js";
 import type { ClassChoiceMeta, ClassGrantMeta, DraftState, PendingStep, SelectionRef } from "./types.js";
 import { selectedClassArchetypeInternalChoices } from "./wayfinder/class-archetype/registry.js";
+import { materializeClassChoiceSelection } from "./wayfinder/class-choice/selection-value.js";
 
 type ApplyClassFeatureChoiceDependencies = SelectorApplicationDependencies;
 
@@ -41,7 +42,7 @@ export async function applyClassFeatureChoiceDraft(
       ruleSelections: group.choiceEntries.map((entry) => ({
         flag: entry.meta.flag,
         ruleIndex: entry.meta.sourceRuleIndex,
-        value: entry.value,
+        value: materializeClassChoiceSelection(entry.meta, entry.value),
       })),
       grantPlan:
         group.grantMeta && group.grantSelection

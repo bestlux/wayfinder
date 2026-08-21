@@ -7,6 +7,7 @@ import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js"
 import { applyRuleSelectionToSource, ensureRuleSelections, stampImportedItemSource, } from "../shared/pf2e-item-source.js";
 import { extractDocumentSlug, slugifyName } from "../shared/slug.js";
 import { materializeStructuredCreatureSizeChoice } from "../shared/structured-creature-size-choice.js";
+import { materializeClassChoiceSelection } from "../wayfinder/class-choice/selection-value.js";
 import { stripManualSystemItemGrants } from "./manual-system-item-grants.js";
 import { EXPLICIT_GRANT_SOURCE_ITEM_TYPES } from "./selection-constants.js";
 export const DEFAULT_CREATE_DEPS = {
@@ -189,7 +190,7 @@ function applyPendingClassChoices(source, selection, draft, steps) {
         if (typeof value !== "string" || value.length === 0) {
             continue;
         }
-        applyRuleSelection(source, step.classChoice.sourceRuleIndex, step.classChoice.flag, value);
+        applyRuleSelection(source, step.classChoice.sourceRuleIndex, step.classChoice.flag, materializeClassChoiceSelection(step.classChoice, value));
     }
 }
 function applyPendingTrainingSelections(source, selection, draft, steps) {

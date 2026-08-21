@@ -191,6 +191,7 @@ export interface ClassChoiceMeta {
     label: string;
     img: string | null;
     detail: string | null;
+    ruleValue?: unknown;
   }>;
 }
 

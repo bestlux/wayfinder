@@ -1,4 +1,5 @@
 import { applySelectorApplication, buildSelectorSelection, stripSelectedSelectorEntries, } from "./selector-application.js";
+import { materializeClassChoiceSelection } from "./wayfinder/class-choice/selection-value.js";
 export async function applyClassBranchDraft(actor, draft, steps, deps) {
     const stepOrder = new Map(steps.map((step, index) => [step.slotId, index]));
     const orderedSteps = steps
@@ -24,7 +25,7 @@ export async function applyClassBranchDraft(actor, draft, steps, deps) {
                 ...classChoiceSelections.map((entry) => ({
                     flag: entry.meta.flag,
                     ruleIndex: entry.meta.sourceRuleIndex,
-                    value: entry.value,
+                    value: materializeClassChoiceSelection(entry.meta, entry.value),
                 })),
                 ...selectedSteps.map((step) => ({
                     flag: step.branch.flag,

@@ -8,6 +8,7 @@ import {
   stripSelectedSelectorEntries,
 } from "./selector-application.js";
 import type { ClassBranchMeta, ClassChoiceMeta, DraftState, PendingStep, SelectionRef } from "./types.js";
+import { materializeClassChoiceSelection } from "./wayfinder/class-choice/selection-value.js";
 
 type ApplyClassBranchDraftDependencies = SelectorApplicationDependencies;
 
@@ -44,7 +45,7 @@ export async function applyClassBranchDraft(
         ...classChoiceSelections.map((entry) => ({
           flag: entry.meta.flag,
           ruleIndex: entry.meta.sourceRuleIndex,
-          value: entry.value,
+          value: materializeClassChoiceSelection(entry.meta, entry.value),
         })),
         ...selectedSteps.map((step) => ({
           flag: step.branch!.flag,

@@ -1,6 +1,7 @@
 import { listActorItems } from "../build-state.js";
 import { parseCompendiumItemUuid } from "../shared/compendium.js";
 import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
+import { projectStoredClassChoiceSelection } from "./class-choice/selection-value.js";
 export function readExistingBranchSelection(actor, branch) {
     return readRulesSelection(findActorItemBySourceId(actor, branch.selectorUuid), branch.flag);
 }
@@ -19,7 +20,7 @@ export function readExistingFlagChoiceSelection(actor, choice) {
     return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
 }
 export function readExistingClassChoiceSelection(actor, choice) {
-    return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
+    return projectStoredClassChoiceSelection(choice, readRawRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag));
 }
 export function readExistingSingletonChoiceSelection(actor, choice) {
     return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
@@ -65,8 +66,11 @@ function findGrantedActorItem(actor, selectorItem, grant) {
     return (listTypedActorItems(actor).find((item) => item.type === grant.itemType && item.flags?.pf2e?.grantedBy?.id === selectorId) ?? null);
 }
 function readRulesSelection(item, flag) {
-    const selection = item?.flags?.system?.rulesSelections?.[flag] ?? item?.flags?.pf2e?.rulesSelections?.[flag];
+    const selection = readRawRulesSelection(item, flag);
     return typeof selection === "string" && selection.length > 0 ? selection : null;
+}
+function readRawRulesSelection(item, flag) {
+    return item?.flags?.system?.rulesSelections?.[flag] ?? item?.flags?.pf2e?.rulesSelections?.[flag];
 }
 function readLanguageValues(source) {
     const detailsHolder = source && typeof source === "object" && "system" in source

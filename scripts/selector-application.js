@@ -331,12 +331,38 @@ function assertResolvedUnconditionalChoiceSets(source, sourceName) {
             continue;
         }
         const flag = typeof rule.flag === "string" && rule.flag.length > 0 ? rule.flag : null;
-        const resolvedByRule = typeof rule.selection === "string" && rule.selection.length > 0;
-        const resolvedByFlag = flag && typeof selections[flag] === "string" && selections[flag].length > 0;
+        const resolvedByRule = isResolvedChoiceSelection(rule.selection);
+        const resolvedByFlag = flag ? isResolvedChoiceSelection(selections[flag]) : false;
         if (!resolvedByRule && !resolvedByFlag) {
             throw new Error(`Cannot create ${sourceName}: unresolved unconditional ChoiceSet ${flag ? `"${flag}"` : `at rule ${ruleIndex}`}.`);
         }
     }
+}
+function isResolvedChoiceSelection(value) {
+    if (typeof value === "string")
+        return value.length > 0;
+    if (typeof value === "number")
+        return Number.isFinite(value);
+    if (typeof value === "boolean")
+        return true;
+    if (Array.isArray(value))
+        return value.length > 0 && value.every(isStructuredChoiceValue);
+    if (!isStructuredRecord(value))
+        return false;
+    const entries = Object.entries(value);
+    return entries.length > 0 && entries.every(([, entry]) => isStructuredChoiceValue(entry));
+}
+function isStructuredChoiceValue(value) {
+    if (value === null || typeof value === "string" || typeof value === "boolean")
+        return true;
+    if (typeof value === "number")
+        return Number.isFinite(value);
+    if (Array.isArray(value))
+        return value.every(isStructuredChoiceValue);
+    return isStructuredRecord(value) && Object.values(value).every(isStructuredChoiceValue);
+}
+function isStructuredRecord(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function isUnconditionalPredicate(predicate) {
     return predicate === undefined || (Array.isArray(predicate) && predicate.length === 0);

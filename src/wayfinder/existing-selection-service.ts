@@ -10,6 +10,7 @@ import type {
   SelectionRef,
   SingletonChoiceMeta,
 } from "../types.js";
+import { projectStoredClassChoiceSelection } from "./class-choice/selection-value.js";
 
 interface ActorItemLike extends BuildStateActorItem {
   flags?: BuildStateActorItem["flags"] & {
@@ -49,7 +50,10 @@ export function readExistingFlagChoiceSelection(actor: unknown, choice: FlagChoi
 }
 
 export function readExistingClassChoiceSelection(actor: unknown, choice: ClassChoiceMeta): string | null {
-  return readRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag);
+  return projectStoredClassChoiceSelection(
+    choice,
+    readRawRulesSelection(findActorItemBySourceId(actor, choice.sourceUuid), choice.flag)
+  );
 }
 
 export function readExistingSingletonChoiceSelection(actor: unknown, choice: SingletonChoiceMeta): string | null {
@@ -120,8 +124,12 @@ function findGrantedActorItem(
 }
 
 function readRulesSelection(item: ActorItemLike | null, flag: string): string | null {
-  const selection = item?.flags?.system?.rulesSelections?.[flag] ?? item?.flags?.pf2e?.rulesSelections?.[flag];
+  const selection = readRawRulesSelection(item, flag);
   return typeof selection === "string" && selection.length > 0 ? selection : null;
+}
+
+function readRawRulesSelection(item: ActorItemLike | null, flag: string): unknown {
+  return item?.flags?.system?.rulesSelections?.[flag] ?? item?.flags?.pf2e?.rulesSelections?.[flag];
 }
 
 function readLanguageValues(

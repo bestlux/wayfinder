@@ -35,7 +35,10 @@ export function buildClassChoicePane(args: {
     blockedTitle,
     blockedMessage,
     options: choice.options.map((option) => ({
-      ...option,
+      value: option.value,
+      label: option.label,
+      img: option.img,
+      detail: option.detail,
       selected: option.value === selectedValue,
     })),
   };

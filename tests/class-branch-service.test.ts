@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createEmbeddedSource as prepareEmbeddedSource } from "../src/actor-updater/selection-application";
 import {
   applyClassBranchDraft,
   createBranchSelectorSelection,
@@ -11,8 +12,128 @@ import {
   createClassBranchStep,
   createClassChoiceStep,
 } from "../src/wayfinder/domain/step-types";
+import { pf2e841DragonEidolonEntry } from "./fixtures/pf2e-841-eidolons";
 
 describe("class-branch-service", () => {
+  it("creates a fresh Dragon Eidolon only after installing its compound tradition choice", async () => {
+    const branchSlotId = "class-branch-eidolon-level-1";
+    const choiceSlotId = "class-choice-dragon-eidolon-eidolonTradition-level-1";
+    const draft = createEmptyDraft(1);
+    const dragonSelection = selection(
+      branchSlotId,
+      "pf2e.classfeatures",
+      "JttI3raKFGG4C8up",
+      "Compendium.pf2e.classfeatures.Item.JttI3raKFGG4C8up",
+      "Dragon Eidolon"
+    );
+    dragonSelection.slug = "dragon-eidolon";
+    draft.branchSelections[branchSlotId] = dragonSelection;
+    draft.classChoices[choiceSlotId] = "divine";
+    const steps: PendingStep[] = [
+      createClassBranchStep(1, {
+        slotId: branchSlotId,
+        selectorPackId: "pf2e.classfeatures",
+        selectorDocumentId: "qOEpe596B0UjhcG0",
+        selectorUuid: "Compendium.pf2e.classfeatures.Item.qOEpe596B0UjhcG0",
+        selectorName: "Eidolon",
+        selectorRuleIndex: 0,
+        grantRuleIndex: 1,
+        flag: "eidolon",
+        optionTag: "summoner-eidolon",
+        classSlug: "summoner",
+        dependsOn: "class",
+      }),
+      createClassChoiceStep(1, {
+        slotId: choiceSlotId,
+        sourcePackId: "pf2e.classfeatures",
+        sourceDocumentId: "JttI3raKFGG4C8up",
+        sourceUuid: dragonSelection.uuid,
+        sourceName: "Dragon Eidolon",
+        sourceRuleIndex: 0,
+        flag: "eidolonTradition",
+        classSlug: "summoner",
+        dependsOn: "class",
+        options: [
+          {
+            value: "divine",
+            label: "Divine",
+            img: null,
+            detail: null,
+            ruleValue: { skill: "religion", tradition: "divine" },
+          },
+        ],
+      }),
+    ];
+    const selectorSource = {
+      name: "Eidolon",
+      type: "feat",
+      system: {
+        category: "classfeature",
+        rules: [
+          {
+            adjustName: false,
+            choices: { filter: ["item:tag:summoner-eidolon"], itemType: "feat" },
+            flag: "eidolon",
+            key: "ChoiceSet",
+          },
+          { key: "GrantItem", uuid: "{item|flags.system.rulesSelections.eidolon}" },
+        ],
+      },
+    };
+    const sourceByUuid = new Map<string, Record<string, unknown>>([
+      ["Compendium.pf2e.classfeatures.Item.qOEpe596B0UjhcG0", selectorSource],
+      [dragonSelection.uuid, pf2e841DragonEidolonEntry()],
+    ]);
+    const fetchSelectionDocument = vi.fn(async (picked: SelectionRef): Promise<any> => {
+      const source = sourceByUuid.get(picked.uuid);
+      return source ? { ...structuredClone(source), toObject: () => structuredClone(source) } : null;
+    });
+    const createEmbeddedSource = vi.fn(async (picked: SelectionRef, sourceDraft = draft, sourceSteps = steps) =>
+      prepareEmbeddedSource(picked, sourceDraft, sourceSteps, {
+        fetchSelectionDocument,
+        stripPreselectedClassFeatureEntries: vi.fn(),
+        stripPreselectedClassBranchEntries: vi.fn(),
+      })
+    );
+    const actorItems: any[] = [{ id: "class-1", type: "class" }];
+    const createdIds = ["eidolon-selector-1", "dragon-eidolon-1"];
+    const createEmbeddedDocuments = vi.fn(async (_type: string, sources: any[]) =>
+      sources.map((source) => {
+        const item = { ...structuredClone(source), id: createdIds.shift() };
+        actorItems.push(item);
+        return item;
+      })
+    );
+    const actor = {
+      items: { contents: actorItems },
+      createEmbeddedDocuments,
+      updateEmbeddedDocuments: vi.fn(async () => []),
+      deleteEmbeddedDocuments: vi.fn(async () => []),
+    };
+
+    await applyClassBranchDraft(actor as any, draft, steps, { createEmbeddedSource, fetchSelectionDocument });
+
+    expect(createEmbeddedDocuments).toHaveBeenNthCalledWith(2, "Item", [
+      expect.objectContaining({
+        name: "Dragon Eidolon",
+        system: expect.objectContaining({
+          rules: expect.arrayContaining([
+            expect.objectContaining({
+              key: "ChoiceSet",
+              flag: "eidolonTradition",
+              selection: { skill: "religion", tradition: "divine" },
+            }),
+          ]),
+        }),
+        flags: expect.objectContaining({
+          pf2e: expect.objectContaining({
+            rulesSelections: { eidolonTradition: { skill: "religion", tradition: "divine" } },
+          }),
+        }),
+      }),
+    ]);
+  });
+
   it("strips the replaced Doctrine selector when Battle Creed is selected", () => {
     const draft = createEmptyDraft(1);
     draft.classArchetypeChoices["class-archetype-doctrine-level-1"] = "battle-creed";

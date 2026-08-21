@@ -6,6 +6,7 @@ import {
   discoverGrantedItemMeta,
   discoverSkillTrainingMeta,
 } from "../src/wayfinder/class-choice/rule-discovery";
+import { pf2e841DragonEidolonEntry } from "./fixtures/pf2e-841-eidolons";
 
 const extractSlug = (document: { system?: { slug?: string } } | null | undefined) => document?.system?.slug ?? null;
 
@@ -183,6 +184,42 @@ describe("wayfinder class rule discovery", () => {
         options: [
           { value: "heal", label: "Heal" },
           { value: "mercy", label: "Mercy" },
+        ],
+      },
+    ]);
+  });
+
+  it("projects PF2E 8.4.1 Dragon Eidolon's compound tradition choice", () => {
+    const sourceSelection: SelectionRef = {
+      slotId: "class-branch-eidolon-level-1",
+      packId: "pf2e.classfeatures",
+      documentId: "JttI3raKFGG4C8up",
+      uuid: "Compendium.pf2e.classfeatures.Item.JttI3raKFGG4C8up",
+      itemType: "feat",
+      featType: "classfeature",
+      name: "Dragon Eidolon",
+      level: 1,
+      slug: "dragon-eidolon",
+    };
+
+    expect(
+      discoverClassChoiceMeta({
+        sourceDocument: pf2e841DragonEidolonEntry(),
+        sourceSelection,
+        classSlug: "summoner",
+        extractSlug,
+        localize: (value) => value.replace("PF2E.Trait", ""),
+        rollOptions: new Set(["class:summoner"]),
+      })
+    ).toMatchObject([
+      {
+        slotId: "class-choice-dragon-eidolon-eidolonTradition-level-1",
+        flag: "eidolonTradition",
+        options: [
+          { value: "arcane", label: "Arcane", ruleValue: { skill: "arcana", tradition: "arcane" } },
+          { value: "divine", label: "Divine", ruleValue: { skill: "religion", tradition: "divine" } },
+          { value: "occult", label: "Occult", ruleValue: { skill: "occultism", tradition: "occult" } },
+          { value: "primal", label: "Primal", ruleValue: { skill: "nature", tradition: "primal" } },
         ],
       },
     ]);

@@ -16,8 +16,68 @@ import { createEmptyDraft } from "../src/draft-service";
 import type { ActorItemLike, ActorLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import type { PendingStep, SelectionRef } from "../src/types";
 import { createClassArchetypeStep, createPickItemStep } from "../src/wayfinder/domain/step-types";
+import { pf2e841DragonEidolonEntry } from "./fixtures/pf2e-841-eidolons";
 
 describe("actor-updater selection application", () => {
+  it("materializes Dragon Eidolon's PF2E 8.4.1 compound tradition before creation", async () => {
+    const selection = selectionRef("class-branch-eidolon-level-1", "feat", "JttI3raKFGG4C8up", "Dragon Eidolon");
+    selection.packId = "pf2e.classfeatures";
+    selection.uuid = "Compendium.pf2e.classfeatures.Item.JttI3raKFGG4C8up";
+    selection.featType = "classfeature";
+    selection.slug = "dragon-eidolon";
+    const slotId = "class-choice-dragon-eidolon-eidolonTradition-level-1";
+    const draft = createEmptyDraft(1);
+    draft.classChoices[slotId] = "primal";
+    const step: PendingStep = {
+      id: slotId,
+      level: 1,
+      kind: "class-choice",
+      slotKind: "class-choice",
+      title: "Eidolon Tradition",
+      description: "Choose a tradition.",
+      required: true,
+      slotId,
+      classChoice: {
+        slotId,
+        sourcePackId: selection.packId,
+        sourceDocumentId: selection.documentId,
+        sourceUuid: selection.uuid,
+        sourceName: selection.name,
+        sourceRuleIndex: 0,
+        flag: "eidolonTradition",
+        classSlug: "summoner",
+        dependsOn: "class",
+        options: [
+          {
+            value: "primal",
+            label: "Primal",
+            img: null,
+            detail: null,
+            ruleValue: { skill: "nature", tradition: "primal" },
+          },
+        ],
+      },
+    };
+
+    const source = await createEmbeddedSource(selection, draft, [step], {
+      fetchSelectionDocument: async () => ({
+        toObject: () => structuredClone(pf2e841DragonEidolonEntry()),
+      }),
+      stripPreselectedClassFeatureEntries: vi.fn(),
+      stripPreselectedClassBranchEntries: vi.fn(),
+    });
+
+    expect(source?.system?.rules?.[0]).toMatchObject({
+      key: "ChoiceSet",
+      flag: "eidolonTradition",
+      selection: { skill: "nature", tradition: "primal" },
+    });
+    expect(source?.flags?.pf2e?.rulesSelections?.eidolonTradition).toEqual({
+      skill: "nature",
+      tradition: "primal",
+    });
+  });
+
   it("materializes Awakened Animal's structured size value while preparing its embedded source", async () => {
     const selection = selectionRef("ancestry-level-1", "ancestry", "awakened-animal", "Awakened Animal");
     const slotId = "singleton-choice-ancestry-awakened-animal-choice-level-1";

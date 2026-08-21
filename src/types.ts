@@ -294,10 +294,16 @@ export interface SuppressedPickerOption {
   reason: "unvalidated-granted-choice" | "unvalidated-eligibility" | "ambiguous-heritage-ownership";
 }
 
-export type PickerFilterKind = "rank" | "rarity" | "source";
+export type PickerFilterKind = "rarity" | "source";
+export type PickerFilterMenuKind = "level" | PickerFilterKind;
+
+export interface PickerLevelRangeState {
+  minimum: number;
+  maximum: number;
+}
 
 export interface PickerFilterState {
-  rank: string[];
+  levelRange: PickerLevelRangeState | null;
   rarity: string[];
   source: string[];
 }

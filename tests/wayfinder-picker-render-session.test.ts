@@ -16,7 +16,7 @@ describe("picker render session", () => {
 
     const pane = derivePickerRenderSession(session, {
       search: "winter",
-      filterState: { rank: [], rarity: ["common"], source: ["Player Core"] },
+      filterState: { levelRange: null, rarity: ["common"], source: ["Player Core"] },
       openFilterKind: "source",
     });
 
@@ -31,10 +31,12 @@ describe("picker render session", () => {
         summaryLabel: "Common",
         selectedCount: 1,
         isOpen: false,
+        range: false,
         options: [
           { value: "common", label: "Common", count: 1, selected: true },
           { value: "rare", label: "Rare", count: 1, selected: false },
         ],
+        values: [],
       },
       {
         key: "source",
@@ -42,10 +44,12 @@ describe("picker render session", () => {
         summaryLabel: "Player Core",
         selectedCount: 1,
         isOpen: true,
+        range: false,
         options: [
           { value: "Lost Omens", label: "Lost Omens", count: 1, selected: false },
           { value: "Player Core", label: "Player Core", count: 1, selected: true },
         ],
+        values: [],
       },
     ]);
   });
@@ -90,7 +94,8 @@ describe("picker render session", () => {
       optionContext: context(),
       options,
       suppressedOptions: [],
-      filterKinds: ["rank", "rarity", "source"],
+      selectedValues: [],
+      filterKinds: ["rarity", "source"],
       getPickerInfoState: () => null,
       matchesSearch: nameSearch,
     };
@@ -199,6 +204,40 @@ describe("picker render session", () => {
     expect(projection.infoState?.tone).toBe("blocked");
   });
 
+  it("constrains categorical counts by the active level range", () => {
+    const inputs = pickInputs();
+    inputs.step = {
+      id: "class-feat-level-2",
+      level: 2,
+      kind: "pick-item",
+      slotId: "class-feat-level-2",
+      slotKind: "class-feat",
+      title: "Class feat",
+      description: "Choose a class feat.",
+      required: true,
+      filters: { itemType: "feat", maxLevel: 2 },
+    };
+    inputs.options = [
+      option("test.pack:rare-one", "Rare One", "rare", "Player Core", 1),
+      option("test.pack:rare-two", "Rare Two", "rare", "Player Core", 1),
+      option("test.pack:common-two", "Common Two", "common", "Player Core", 2),
+    ];
+    inputs.selectedValues = [];
+
+    const projection = derivePickerRenderProjection(inputs, {
+      search: "",
+      filterState: { levelRange: { minimum: 2, maximum: 2 }, rarity: ["rare"], source: [] },
+      openFilterKind: "rarity",
+    });
+
+    const rarity = projection.filterGroups.find((group) => group.key === "rarity");
+    expect(rarity?.options).toEqual([
+      { value: "common", label: "Common", count: 1, selected: false },
+      { value: "rare", label: "Rare", count: 0, selected: true },
+    ]);
+    expect(projection.visibleOptions).toEqual([]);
+  });
+
   it("reports prepared fail-closed suppressions and explains a matching name search", () => {
     const inputs = pickInputs();
     inputs.suppressedOptions.push({
@@ -289,6 +328,7 @@ function pickInputs(): PickerRenderInputs {
       option("test.pack:winterbound", "Winterbound", "common", "Lost Omens"),
     ],
     suppressedOptions: [],
+    selectedValues: ["test.pack:wintertouched"],
     filterKinds: ["rarity", "source"],
     getPickerInfoState: () => null,
     matchesSearch: nameSearch,

@@ -16,7 +16,7 @@ describe("wayfinder invalidation helpers", () => {
 
     const previewValueByStepId = new Map<string, string>([[SLOT_IDS.ancestry, "human"]]);
     const pickerFiltersByStepId = new Map<string, PickerFilterState>([
-      [SLOT_IDS.ancestry, { rank: [], rarity: ["common"], source: [] }],
+      [SLOT_IDS.ancestry, { levelRange: null, rarity: ["common"], source: [] }],
     ]);
     const recentlyInvalidatedStepIds = new Set<string>();
     const scrollById = new Map<string, number>([
@@ -86,7 +86,7 @@ describe("wayfinder invalidation helpers", () => {
     const draft = createEmptyDraft(1);
     const previewValueByStepId = new Map<string, string>([["class-branch-cause-level-1", "test.pack:paladin"]]);
     const pickerFiltersByStepId = new Map<string, PickerFilterState>([
-      ["class-branch-cause-level-1", { rank: [], rarity: ["common"], source: ["Player Core"] }],
+      ["class-branch-cause-level-1", { levelRange: null, rarity: ["common"], source: ["Player Core"] }],
     ]);
     const recentlyInvalidatedStepIds = new Set<string>();
     const scrollById = new Map<string, number>([["class-branch-cause-level-1:options", 24]]);

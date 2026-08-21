@@ -7,6 +7,7 @@ const spellTemplate = read("templates/wayfinder/spell-choice-pane.hbs");
 const countTemplate = read("templates/wayfinder/picker-result-count.hbs");
 const pickResultsTemplate = read("templates/wayfinder/pick-results.hbs");
 const spellResultsTemplate = read("templates/wayfinder/spell-choice-results.hbs");
+const filterBarTemplate = read("templates/wayfinder/picker-filter-bar.hbs");
 const wayfinderSource = read("src/wayfinder.ts");
 
 describe("wayfinder picker search parts", () => {
@@ -45,8 +46,15 @@ describe("wayfinder picker search parts", () => {
     expect(pickResultsTemplate).toContain('data-wayfinder-action="select-option"');
     expect(spellResultsTemplate).toContain('data-wayfinder-action="toggle-spell-choice"');
     expect(spellResultsTemplate).toContain("{{rankLabel}}");
+    expect(pickResultsTemplate).toContain("{{level}}");
+    expect(filterBarTemplate).toContain('data-wayfinder-action="set-picker-level-range"');
 
-    for (const template of ["picker-result-count.hbs", "pick-results.hbs", "spell-choice-results.hbs"]) {
+    for (const template of [
+      "picker-result-count.hbs",
+      "picker-filter-bar.hbs",
+      "pick-results.hbs",
+      "spell-choice-results.hbs",
+    ]) {
       expect(wayfinderSource).toContain(`/templates/wayfinder/${template}`);
     }
   });

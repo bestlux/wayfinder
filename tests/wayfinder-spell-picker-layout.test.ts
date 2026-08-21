@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const spellTemplate = readFileSync(resolve("templates/wayfinder/spell-choice-pane.hbs"), "utf8");
 const spellResultsTemplate = readFileSync(resolve("templates/wayfinder/spell-choice-results.hbs"), "utf8");
+const filterBarTemplate = readFileSync(resolve("templates/wayfinder/picker-filter-bar.hbs"), "utf8");
 const pickerStyles = readFileSync(resolve("styles/wayfinder/picker-preview.css"), "utf8");
 
 describe("wayfinder spell picker layout", () => {
@@ -19,7 +20,8 @@ describe("wayfinder spell picker layout", () => {
     expect(selectedSummary).toBeLessThan(headerEnd);
     expect(browserNotes).toBeGreaterThan(headerEnd);
     expect(resultsPartial).toBeGreaterThan(headerEnd);
-    expect(spellResultsTemplate).toContain('class="picker-filter-bar"');
+    expect(spellResultsTemplate).toContain("picker-filter-bar.hbs");
+    expect(filterBarTemplate).toContain('class="picker-filter-bar"');
     expect(pickerStyles).toMatch(/\.option-browser-scroll\s*\{[^}]*overflow:\s*auto;/s);
     expect(pickerStyles).toMatch(/\.browser-header\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;/s);
   });

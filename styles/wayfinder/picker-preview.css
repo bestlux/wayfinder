@@ -475,6 +475,58 @@
   line-height: 1.15;
 }
 
+.picker-level-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 0;
+  overflow: auto;
+}
+
+.picker-level-range-bound {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.picker-level-range-label {
+  color: var(--wf-ink-soft);
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.picker-level-range-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(2rem, 1fr));
+  gap: 0.18rem;
+}
+
+.picker-level-range-value {
+  min-width: 2rem;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid rgba(95, 77, 57, 0.22);
+  border-radius: calc(var(--wf-radius) - 0.02rem);
+  background: rgba(241, 233, 217, 0.55);
+  color: var(--wf-ink);
+  font-size: 0.66rem;
+  line-height: 1;
+}
+
+.picker-level-range-value:hover {
+  background: rgba(95, 77, 57, 0.08);
+}
+
+.picker-level-range-value.is-selected {
+  border-color: rgba(23, 31, 105, 0.4);
+  background: rgba(23, 31, 105, 0.12);
+  color: var(--wf-primary);
+  font-weight: 700;
+}
+
 .picker-filter-count {
   color: var(--wf-ink-soft);
   font-size: 0.62rem;

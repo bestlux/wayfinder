@@ -68,21 +68,21 @@ describe("wayfinder actions", () => {
     });
   });
 
-  it("parses spell rank filters and pinned-summary deselection actions", () => {
+  it("parses shared level-range and pinned-summary deselection actions", () => {
     expect(
       parseWayfinderAction({
         dataset: {
-          wayfinderAction: "toggle-picker-filter",
+          wayfinderAction: "set-picker-level-range",
           stepId: "spell-choice-wizard-spellbook-level-3",
-          filterKind: "rank",
-          value: "rank:2",
+          minimum: "1",
+          maximum: "2",
         },
       } as any)
     ).toEqual({
-      type: "toggle-picker-filter",
+      type: "set-picker-level-range",
       stepId: "spell-choice-wizard-spellbook-level-3",
-      filterKind: "rank",
-      value: "rank:2",
+      minimum: 1,
+      maximum: 2,
     });
 
     expect(

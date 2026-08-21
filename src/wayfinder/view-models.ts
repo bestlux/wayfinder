@@ -2,7 +2,7 @@ import type {
   AbilityKey,
   BoostLevel,
   OptionRecord,
-  PickerFilterKind,
+  PickerFilterMenuKind,
   PickerInfoState,
   PickerSuppressionNotice,
   SingletonChoiceMeta,
@@ -47,16 +47,27 @@ export interface PreviewPane {
 }
 
 export interface PickerFilterGroupPane {
-  key: PickerFilterKind;
+  key: PickerFilterMenuKind;
   label: string;
   summaryLabel: string;
   selectedCount: number;
   isOpen: boolean;
+  range: boolean;
   options: Array<{
     value: string;
     label: string;
     count: number;
     selected: boolean;
+  }>;
+  values: Array<{
+    value: number;
+    label: string;
+    minimumSelected: boolean;
+    maximumSelected: boolean;
+    minimumRangeStart: number;
+    minimumRangeEnd: number;
+    maximumRangeStart: number;
+    maximumRangeEnd: number;
   }>;
 }
 

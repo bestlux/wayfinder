@@ -91,6 +91,13 @@ export function parseWayfinderAction(element) {
                     value: element.dataset.value,
                 }
                 : null;
+        case "set-picker-level-range": {
+            const minimum = Number(element.dataset.minimum);
+            const maximum = Number(element.dataset.maximum);
+            return element.dataset.stepId && Number.isInteger(minimum) && Number.isInteger(maximum) && minimum <= maximum
+                ? { type: action, stepId: element.dataset.stepId, minimum, maximum }
+                : null;
+        }
         case "clear-picker-filters":
         case "toggle-spell-rarity-access":
         case "remove-spell-rarity-attestation":

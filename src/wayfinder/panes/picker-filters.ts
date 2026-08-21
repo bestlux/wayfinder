@@ -1,4 +1,10 @@
-import type { OptionRecord, PickerFilterKind, PickerFilterState } from "../../types.js";
+import type {
+  OptionRecord,
+  PendingStep,
+  PickerFilterKind,
+  PickerFilterState,
+  PickerLevelRangeState,
+} from "../../types.js";
 import { formatSlug } from "../formatting.js";
 
 interface PickerFilterOptionState {
@@ -13,17 +19,38 @@ export interface PickerFilterGroupState {
   label: string;
   summaryLabel: string;
   selectedCount: number;
+  range: false;
   options: PickerFilterOptionState[];
+  values: [];
+}
+
+export interface PickerLevelRangeGroupState {
+  key: "level";
+  label: "Level" | "Rank";
+  summaryLabel: string;
+  selectedCount: number;
+  range: true;
+  options: [];
+  values: Array<{
+    value: number;
+    label: string;
+    minimumSelected: boolean;
+    maximumSelected: boolean;
+    minimumRangeStart: number;
+    minimumRangeEnd: number;
+    maximumRangeStart: number;
+    maximumRangeEnd: number;
+  }>;
+  minimum: number;
+  maximum: number;
+  active: boolean;
 }
 
 const UNKNOWN_RARITY = "__unknown_rarity__";
 const UNKNOWN_SOURCE = "__unknown_source__";
-const CANTRIP_RANK = "cantrip";
-const RANK_PREFIX = "rank:";
-
 export function emptyPickerFilterState(): PickerFilterState {
   return {
-    rank: [],
+    levelRange: null,
     rarity: [],
     source: [],
   };
@@ -34,12 +61,12 @@ export function activePickerFilterCount(state: PickerFilterState | null | undefi
     return 0;
   }
 
-  return state.rank.length + state.rarity.length + state.source.length;
+  return state.rarity.length + state.source.length;
 }
 
 export function normalizePickerFilterState(state: Partial<PickerFilterState> | null | undefined): PickerFilterState {
   return {
-    rank: normalizeFilterValues(state?.rank),
+    levelRange: normalizeLevelRange(state?.levelRange),
     rarity: normalizeFilterValues(state?.rarity),
     source: normalizeFilterValues(state?.source),
   };
@@ -102,9 +129,6 @@ export function buildPickerFilterGroups(
       const counts = new Map<string, number>();
       const labels = new Map<string, string>();
       for (const option of options.filter((entry) => matchesPickerFilters(entry, normalizedState, kind, kinds))) {
-        if (kind === "rank" && option.level === null && !option.traits.includes("cantrip")) {
-          continue;
-        }
         const value = optionFilterValue(option, kind);
         counts.set(value, (counts.get(value) ?? 0) + 1);
         labels.set(value, optionFilterLabel(option, kind));
@@ -121,9 +145,6 @@ export function buildPickerFilterGroups(
 
       const optionStates = [...counts.entries()]
         .sort(([leftValue], [rightValue]) => {
-          if (kind === "rank") {
-            return spellRankFilterOrder(leftValue) - spellRankFilterOrder(rightValue);
-          }
           const leftLabel = labels.get(leftValue) ?? leftValue;
           const rightLabel = labels.get(rightValue) ?? rightValue;
           return leftLabel.localeCompare(rightLabel) || leftValue.localeCompare(rightValue);
@@ -138,10 +159,12 @@ export function buildPickerFilterGroups(
 
       return {
         key: kind,
-        label: kind === "rank" ? "Rank" : kind === "rarity" ? "Rarity" : "Source",
+        label: kind === "rarity" ? "Rarity" : "Source",
         summaryLabel: pickerFilterSummaryLabel(selectedOptions),
         selectedCount: selectedOptions.length,
+        range: false as const,
         options: optionStates,
+        values: [] as [],
       };
     })
     .filter((group) => group.options.length > 0);
@@ -158,10 +181,6 @@ function normalizeFilterValues(values: string[] | undefined): string[] {
 }
 
 function optionFilterValue(option: OptionRecord, kind: PickerFilterKind): string {
-  if (kind === "rank") {
-    return spellRankFilterValue(option);
-  }
-
   if (kind === "rarity") {
     const rarity = option.rarity?.trim().toLowerCase();
     return rarity && rarity.length > 0 ? rarity : UNKNOWN_RARITY;
@@ -172,10 +191,6 @@ function optionFilterValue(option: OptionRecord, kind: PickerFilterKind): string
 }
 
 function optionFilterLabel(option: OptionRecord, kind: PickerFilterKind): string {
-  if (kind === "rank") {
-    return spellRankLabel(option.level, option.traits.includes("cantrip"));
-  }
-
   if (kind === "rarity") {
     const rarity = option.rarity?.trim().toLowerCase();
     return rarity && rarity.length > 0 ? formatSlug(rarity) : "Unspecified";
@@ -186,10 +201,6 @@ function optionFilterLabel(option: OptionRecord, kind: PickerFilterKind): string
 }
 
 function filterLabelFromValue(kind: PickerFilterKind, value: string): string {
-  if (kind === "rank") {
-    return value === CANTRIP_RANK ? "Cantrip" : `Rank ${value.slice(RANK_PREFIX.length)}`;
-  }
-
   if (kind === "rarity") {
     return value === UNKNOWN_RARITY ? "Unspecified" : formatSlug(value);
   }
@@ -222,18 +233,128 @@ export function spellRankLabel(rank: number | null, isCantrip = false): string {
   return rank === null ? "Rank unknown" : `Rank ${rank}`;
 }
 
-function spellRankFilterValue(option: OptionRecord): string {
-  return option.traits.includes("cantrip") || option.level === 0 ? CANTRIP_RANK : `${RANK_PREFIX}${option.level}`;
-}
-
-function spellRankFilterOrder(value: string): number {
-  if (value === CANTRIP_RANK) {
-    return 0;
+export function buildPickerLevelRangeGroup(
+  options: OptionRecord[],
+  step: PendingStep,
+  requested: PickerLevelRangeState | null | undefined
+): PickerLevelRangeGroupState | null {
+  const rankAxis = step.kind === "spell-choice";
+  if (!rankAxis && step.filters?.itemType !== "feat") {
+    return null;
   }
 
-  const rank = Number(value.slice(RANK_PREFIX.length));
-  return Number.isFinite(rank) ? rank : Number.MAX_SAFE_INTEGER;
+  const explicitMinimum = rankAxis ? step.spellChoice?.minRank : undefined;
+  const explicitMaximum = rankAxis ? step.spellChoice?.maxRank : step.filters?.maxLevel;
+  const values = [
+    ...new Set(
+      options
+        .map((option) => pickerAxisValue(option, rankAxis, rankAxis && step.spellChoice.cantrip))
+        .filter(isValidAxisValue)
+    ),
+  ]
+    .filter((value) => explicitMinimum === undefined || value >= explicitMinimum)
+    .filter((value) => explicitMaximum === undefined || value <= explicitMaximum)
+    .sort((left, right) => left - right);
+  if (values.length < 2) {
+    return null;
+  }
+
+  const fullMinimum = values[0]!;
+  const fullMaximum = values.at(-1)!;
+  const normalizedRequest = normalizeLevelRange(requested);
+  const minimum = normalizedRequest
+    ? (values.find((value) => value >= normalizedRequest.minimum) ?? fullMaximum)
+    : fullMinimum;
+  let maximum = normalizedRequest
+    ? ([...values].reverse().find((value) => value <= normalizedRequest.maximum) ?? fullMinimum)
+    : fullMaximum;
+  if (minimum > maximum) {
+    maximum = minimum;
+  }
+
+  const active = minimum !== fullMinimum || maximum !== fullMaximum;
+  const label = rankAxis ? "Rank" : "Level";
+  return {
+    key: "level",
+    label,
+    summaryLabel:
+      active && minimum === maximum
+        ? pickerAxisLabel(minimum, rankAxis)
+        : active
+          ? `${pickerAxisLabel(minimum, rankAxis)}–${pickerAxisLabel(maximum, rankAxis)}`
+          : "All",
+    selectedCount: active ? 1 : 0,
+    range: true,
+    options: [],
+    values: values.map((value) => ({
+      value,
+      label: pickerAxisLabel(value, rankAxis),
+      minimumSelected: value === minimum,
+      maximumSelected: value === maximum,
+      minimumRangeStart: value,
+      minimumRangeEnd: Math.max(value, maximum),
+      maximumRangeStart: Math.min(value, minimum),
+      maximumRangeEnd: value,
+    })),
+    minimum,
+    maximum,
+    active,
+  };
 }
 
-const ALL_FILTER_KINDS: PickerFilterKind[] = ["rank", "rarity", "source"];
+export function matchesPickerLevelRange(
+  option: OptionRecord,
+  group: PickerLevelRangeGroupState | null,
+  selectedValues: ReadonlySet<string>,
+  step: PendingStep
+): boolean {
+  if (!group || selectedValues.has(option.value)) {
+    return true;
+  }
+  const rankAxis = step.kind === "spell-choice";
+  const value = pickerAxisValue(option, rankAxis, rankAxis && step.spellChoice.cantrip);
+  return value === null ? !group.active : value >= group.minimum && value <= group.maximum;
+}
+
+export function matchesPickerLegalLevelBounds(
+  option: OptionRecord,
+  step: PendingStep,
+  selectedValues: ReadonlySet<string>
+): boolean {
+  if (selectedValues.has(option.value)) {
+    return true;
+  }
+  const rankAxis = step.kind === "spell-choice";
+  const value = pickerAxisValue(option, rankAxis, rankAxis && step.spellChoice.cantrip);
+  if (value === null) {
+    return true;
+  }
+  const minimum = rankAxis ? step.spellChoice?.minRank : undefined;
+  const maximum = rankAxis ? step.spellChoice?.maxRank : step.filters?.maxLevel;
+  return (minimum === undefined || value >= minimum) && (maximum === undefined || value <= maximum);
+}
+
+function normalizeLevelRange(value: PickerLevelRangeState | null | undefined): PickerLevelRangeState | null {
+  if (!value || !Number.isInteger(value.minimum) || !Number.isInteger(value.maximum)) {
+    return null;
+  }
+  return {
+    minimum: Math.max(0, value.minimum),
+    maximum: Math.max(0, value.maximum),
+  };
+}
+
+function pickerAxisValue(option: OptionRecord, rankAxis: boolean, forceCantrip = false): number | null {
+  return rankAxis && (forceCantrip || option.traits.includes("cantrip")) ? 0 : option.level;
+}
+
+function isValidAxisValue(value: number | null): value is number {
+  return value !== null && Number.isInteger(value) && value >= 0;
+}
+
+function pickerAxisLabel(value: number, rankAxis: boolean): string {
+  return rankAxis ? spellRankLabel(value, value === 0) : `Level ${value}`;
+}
+
+const ALL_FILTER_KINDS: PickerFilterKind[] = ["rarity", "source"];
 const DEFAULT_FILTER_KINDS: PickerFilterKind[] = ["rarity", "source"];

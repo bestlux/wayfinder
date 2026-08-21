@@ -26,6 +26,7 @@ import type {
   DraftState,
   PendingStep,
   PickerFilterKind,
+  PickerFilterMenuKind,
   PickerFilterState,
   ProgressionPlan,
   SelectionRef,
@@ -152,7 +153,7 @@ import { hasDuplicateDraftSelection } from "./draft-decisions.js";
 import { buildAcquisitionReceiptViewModel } from "./panes/acquisition-receipt.js";
 import { buildBoostPane } from "./panes/boost-pane.js";
 import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
-import { emptyPickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
+import { emptyPickerFilterState, normalizePickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
 import { buildStartingEquipmentPane } from "./panes/starting-equipment-pane.js";
 import { evaluateWayfinderStep, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
@@ -291,7 +292,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #activeStepId: string | null = null;
   #searchByStepId = new Map<string, string>();
   #pickerFiltersByStepId = new Map<string, PickerFilterState>();
-  #openPickerFilterMenu: { stepId: string; filterKind: PickerFilterKind } | null = null;
+  #openPickerFilterMenu: { stepId: string; filterKind: PickerFilterMenuKind } | null = null;
   #previewValueByStepId = new Map<string, string>();
   #scrollById = new Map<string, number>();
   #pendingSearchFocus: { stepId: string; cursor: number } | null = null;
@@ -725,7 +726,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     event.preventDefault();
     event.stopPropagation();
     this.#rememberInteractiveState();
-    if (action.type !== "toggle-picker-filter" && action.type !== "toggle-picker-filter-menu") {
+    if (
+      action.type !== "toggle-picker-filter" &&
+      action.type !== "toggle-picker-filter-menu" &&
+      action.type !== "set-picker-level-range"
+    ) {
       this.#openPickerFilterMenu = null;
     }
 
@@ -837,6 +842,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         break;
       case "toggle-picker-filter":
         this.#togglePickerFilter(action.stepId, action.filterKind, action.value);
+        break;
+      case "set-picker-level-range":
+        this.#setPickerLevelRange(action.stepId, action.minimum, action.maximum);
         break;
       case "clear-picker-filters":
         this.#clearPickerFilters(action.stepId);
@@ -2701,7 +2709,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.render(false);
   }
 
-  #togglePickerFilterMenu(stepId: string, filterKind: PickerFilterKind): void {
+  #togglePickerFilterMenu(stepId: string, filterKind: PickerFilterMenuKind): void {
     this.#statusNote = null;
     if (this.#openPickerFilterMenu?.stepId === stepId && this.#openPickerFilterMenu.filterKind === filterKind) {
       this.#openPickerFilterMenu = null;
@@ -2718,11 +2726,21 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       filterKind,
       value
     );
-    if (next.rank.length === 0 && next.rarity.length === 0 && next.source.length === 0) {
+    if (!next.levelRange && next.rarity.length === 0 && next.source.length === 0) {
       this.#pickerFiltersByStepId.delete(stepId);
     } else {
       this.#pickerFiltersByStepId.set(stepId, next);
     }
+    this.render(false);
+  }
+
+  #setPickerLevelRange(stepId: string, minimum: number, maximum: number): void {
+    this.#statusNote = null;
+    const current = normalizePickerFilterState(this.#pickerFiltersByStepId.get(stepId) ?? emptyPickerFilterState());
+    this.#pickerFiltersByStepId.set(stepId, {
+      ...current,
+      levelRange: { minimum, maximum },
+    });
     this.render(false);
   }
 

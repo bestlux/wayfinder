@@ -53,13 +53,17 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
         ? await deps.getOptionQueryForStep(optionStep, optionContext)
         : { options: await deps.getOptionsForStep(optionStep, optionContext), suppressedOptions: [] };
     const options = optionQuery.options;
-    const filterKinds = step.kind === "spell-choice" ? ["rank", "rarity", "source"] : ["rarity", "source"];
+    const selectedPickerValues = step.kind === "spell-choice"
+        ? (deps.draft.spellChoices[step.slotId] ?? []).map((selection) => `${selection.packId}:${selection.documentId}`)
+        : [selectedValueFor(step, deps.draft)].filter(Boolean);
+    const filterKinds = ["rarity", "source"];
     const openFilterKind = deps.openPickerFilterMenu?.stepId === step.id ? deps.openPickerFilterMenu.filterKind : null;
     const renderInputs = {
         step,
         optionContext,
         options,
         suppressedOptions: optionQuery.suppressedOptions,
+        selectedValues: selectedPickerValues,
         filterKinds,
         getPickerInfoState: deps.getPickerInfoState,
         matchesSearch: deps.matchesSearch,
@@ -73,7 +77,7 @@ export async function buildSelectionPane(step, effectiveBuildState, deps) {
     const contextNote = await deps.buildContextNote(step, optionContext);
     if (step.kind === "spell-choice") {
         const selectedSelections = deps.draft.spellChoices[step.slotId] ?? [];
-        const selectedValues = selectedSelections.map((selection) => `${selection.packId}:${selection.documentId}`);
+        const selectedValues = selectedPickerValues;
         const previewValue = resolvePreviewValue(step.id, projection.visibleOptions, options, selectedValues[0] ?? "", deps.previewValueByStepId);
         const previewBase = previewValue
             ? await deps.buildPreview(options.find((option) => option.value === previewValue) ?? null, selectedValues.includes(previewValue) ? previewValue : "")

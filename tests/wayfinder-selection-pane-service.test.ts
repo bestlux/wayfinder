@@ -155,7 +155,7 @@ describe("wayfinder selection pane service", () => {
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map([[step.id, "winter"]]),
-      pickerFiltersByStepId: new Map([[step.id, { rank: [], rarity: ["common"], source: ["Player Core"] }]]),
+      pickerFiltersByStepId: new Map([[step.id, { levelRange: null, rarity: ["common"], source: ["Player Core"] }]]),
       openPickerFilterMenu: { stepId: step.id, filterKind: "source" },
       previewValueByStepId: new Map([[step.id, "test.pack:wintertouched"]]),
       resolveOptionContext: async () => EMPTY_CONTEXT,
@@ -205,10 +205,12 @@ describe("wayfinder selection pane service", () => {
         summaryLabel: "Common",
         selectedCount: 1,
         isOpen: false,
+        range: false,
         options: [
           { value: "common", label: "Common", count: 1, selected: true },
           { value: "rare", label: "Rare", count: 1, selected: false },
         ],
+        values: [],
       },
       {
         key: "source",
@@ -216,10 +218,12 @@ describe("wayfinder selection pane service", () => {
         summaryLabel: "Player Core",
         selectedCount: 1,
         isOpen: true,
+        range: false,
         options: [
           { value: "Lost Omens", label: "Lost Omens", count: 1, selected: false },
           { value: "Player Core", label: "Player Core", count: 1, selected: true },
         ],
+        values: [],
       },
     ]);
     expect(pane.preview?.value).toBe("test.pack:wintertouched");
@@ -246,7 +250,7 @@ describe("wayfinder selection pane service", () => {
     const pane = await buildSelectionPane(step, {} as EffectiveBuildState, {
       draft,
       searchByStepId: new Map([[step.id, "winter"]]),
-      pickerFiltersByStepId: new Map([[step.id, { rank: [], rarity: ["common"], source: ["Lost Omens"] }]]),
+      pickerFiltersByStepId: new Map([[step.id, { levelRange: null, rarity: ["common"], source: ["Lost Omens"] }]]),
       openPickerFilterMenu: { stepId: step.id, filterKind: "source" },
       previewValueByStepId: new Map(),
       resolveOptionContext: async () => EMPTY_CONTEXT,
@@ -277,10 +281,12 @@ describe("wayfinder selection pane service", () => {
         summaryLabel: "Common",
         selectedCount: 1,
         isOpen: false,
+        range: false,
         options: [
           { value: "common", label: "Common", count: 0, selected: true },
           { value: "rare", label: "Rare", count: 1, selected: false },
         ],
+        values: [],
       },
       {
         key: "source",
@@ -288,10 +294,12 @@ describe("wayfinder selection pane service", () => {
         summaryLabel: "Lost Omens",
         selectedCount: 1,
         isOpen: true,
+        range: false,
         options: [
           { value: "Lost Omens", label: "Lost Omens", count: 0, selected: true },
           { value: "Player Core", label: "Player Core", count: 1, selected: false },
         ],
+        values: [],
       },
     ]);
     expect(pane.infoState?.title).toBe("No options match these filters");
@@ -566,7 +574,7 @@ describe("wayfinder selection pane service", () => {
         [
           step.id,
           {
-            rank: ["rank:2"],
+            levelRange: { minimum: 2, maximum: 2 },
             rarity: [],
             source: [],
           },
@@ -614,17 +622,26 @@ describe("wayfinder selection pane service", () => {
     ]);
     expect(pane.options).toEqual([
       expect.objectContaining({
+        name: "Heal",
+        rankLabel: "Rank 1",
+        selected: true,
+      }),
+      expect.objectContaining({
         name: "Dispel Magic",
         rankLabel: "Rank 2",
         selected: false,
       }),
     ]);
     expect(pane.activeFilterCount).toBe(1);
-    expect(pane.filterGroups.find((group) => group.key === "rank")?.options).toEqual([
-      { value: "rank:1", label: "Rank 1", count: 1, selected: false },
-      { value: "rank:2", label: "Rank 2", count: 1, selected: true },
-    ]);
-    expect(pane.filterGroups.map((group) => group.key)).toEqual(["rank"]);
+    expect(pane.filterGroups.find((group) => group.key === "level")).toMatchObject({
+      label: "Rank",
+      summaryLabel: "Rank 2",
+      selectedCount: 1,
+      range: true,
+      minimum: 2,
+      maximum: 2,
+    });
+    expect(pane.filterGroups.map((group) => group.key)).toEqual(["level"]);
     expect(pane.preview).toMatchObject({
       title: "Heal",
       selectedLabel: "Added to draft",

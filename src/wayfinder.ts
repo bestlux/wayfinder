@@ -36,6 +36,7 @@ Hooks.once("init", () => {
     `modules/${MODULE_ID}/templates/wayfinder/acquisition-receipt.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/pick-pane.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/picker-result-count.hbs`,
+    `modules/${MODULE_ID}/templates/wayfinder/picker-filter-bar.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/pick-results.hbs`,
     `modules/${MODULE_ID}/templates/wayfinder/spell-choice-results.hbs`,
   ]);

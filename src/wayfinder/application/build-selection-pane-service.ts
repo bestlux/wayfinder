@@ -6,6 +6,7 @@ import type {
   OptionRecord,
   PendingStep,
   PickerFilterKind,
+  PickerFilterMenuKind,
   PickerFilterState,
   PickerInfoState,
 } from "../../types.js";
@@ -54,7 +55,7 @@ interface BuildSelectionPaneDependencies {
   pickerFiltersByStepId: Map<string, PickerFilterState>;
   previewValueByStepId: Map<string, string>;
   spellRarityCeiling?: SpellRarityCeiling;
-  openPickerFilterMenu?: { stepId: string; filterKind: PickerFilterKind } | null;
+  openPickerFilterMenu?: { stepId: string; filterKind: PickerFilterMenuKind } | null;
   resolveOptionContext: (step: PendingStep) => Promise<OptionContext>;
   resolveDeityDocument: () => Promise<unknown | null>;
   buildContextNote: (step: PendingStep, context: OptionContext) => Promise<string | null>;
@@ -133,14 +134,18 @@ export async function buildSelectionPane(
     ? await deps.getOptionQueryForStep(optionStep, optionContext)
     : { options: await deps.getOptionsForStep(optionStep, optionContext), suppressedOptions: [] };
   const options = optionQuery.options;
-  const filterKinds: PickerFilterKind[] =
-    step.kind === "spell-choice" ? ["rank", "rarity", "source"] : ["rarity", "source"];
+  const selectedPickerValues =
+    step.kind === "spell-choice"
+      ? (deps.draft.spellChoices[step.slotId] ?? []).map((selection) => `${selection.packId}:${selection.documentId}`)
+      : [selectedValueFor(step, deps.draft)].filter(Boolean);
+  const filterKinds: PickerFilterKind[] = ["rarity", "source"];
   const openFilterKind = deps.openPickerFilterMenu?.stepId === step.id ? deps.openPickerFilterMenu.filterKind : null;
   const renderInputs: PickerRenderInputs = {
     step,
     optionContext,
     options,
     suppressedOptions: optionQuery.suppressedOptions,
+    selectedValues: selectedPickerValues,
     filterKinds,
     getPickerInfoState: deps.getPickerInfoState,
     matchesSearch: deps.matchesSearch,
@@ -155,7 +160,7 @@ export async function buildSelectionPane(
 
   if (step.kind === "spell-choice") {
     const selectedSelections = deps.draft.spellChoices[step.slotId] ?? [];
-    const selectedValues = selectedSelections.map((selection) => `${selection.packId}:${selection.documentId}`);
+    const selectedValues = selectedPickerValues;
     const previewValue = resolvePreviewValue(
       step.id,
       projection.visibleOptions,

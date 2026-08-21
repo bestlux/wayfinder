@@ -1,4 +1,4 @@
-import type { AbilityKey, PickerFilterKind } from "../types.js";
+import type { AbilityKey, PickerFilterKind, PickerFilterMenuKind } from "../types.js";
 
 export type WayfinderAction =
   | { type: "select-step"; stepId: string; focusId?: string }
@@ -6,8 +6,9 @@ export type WayfinderAction =
   | { type: "next-step" }
   | { type: "preview-option"; stepId: string; value: string }
   | { type: "select-option"; stepId: string; value: string }
-  | { type: "toggle-picker-filter-menu"; stepId: string; filterKind: PickerFilterKind }
+  | { type: "toggle-picker-filter-menu"; stepId: string; filterKind: PickerFilterMenuKind }
   | { type: "toggle-picker-filter"; stepId: string; filterKind: PickerFilterKind; value: string }
+  | { type: "set-picker-level-range"; stepId: string; minimum: number; maximum: number }
   | { type: "clear-picker-filters"; stepId: string }
   | { type: "toggle-ancestry-mode"; stepId: string | null }
   | { type: "toggle-voluntary-enabled"; stepId: string | null }
@@ -160,7 +161,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
         ? {
             type: action,
             stepId: element.dataset.stepId,
-            filterKind: element.dataset.filterKind as PickerFilterKind,
+            filterKind: element.dataset.filterKind as PickerFilterMenuKind,
           }
         : null;
     case "toggle-picker-filter":
@@ -172,6 +173,13 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
             value: element.dataset.value,
           }
         : null;
+    case "set-picker-level-range": {
+      const minimum = Number(element.dataset.minimum);
+      const maximum = Number(element.dataset.maximum);
+      return element.dataset.stepId && Number.isInteger(minimum) && Number.isInteger(maximum) && minimum <= maximum
+        ? { type: action, stepId: element.dataset.stepId, minimum, maximum }
+        : null;
+    }
     case "clear-picker-filters":
     case "toggle-spell-rarity-access":
     case "remove-spell-rarity-attestation":

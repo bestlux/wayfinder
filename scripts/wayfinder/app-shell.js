@@ -22,9 +22,10 @@ import { openActorInventorySheet, } from "./application/actor-inventory-navigati
 import { actorRenderFoundationCache, buildActorRenderFoundationKey, buildActorRenderFoundationLanguageSettings, getActorRenderFoundationSourceGeneration, registerActorRenderFoundationSourceInvalidation, } from "./application/actor-render-foundation-service.js";
 import { assertApplyCandidateCurrent, persistApplyCandidateIfCurrent, WayfinderApplyDriftError, } from "./application/apply-candidate-service.js";
 import { buildSelectionPane } from "./application/build-selection-pane-service.js";
-import { buildSkillPane, projectSkillRanks } from "./application/build-skill-pane-service.js";
+import { buildSkillPane } from "./application/build-skill-pane-service.js";
 import { prepareCurrentClassGrantPlan } from "./application/class-grant-projection-service.js";
-import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection, setTrainingRuleSelection, syncLanguageChoiceSelections, syncSkillTrainingSelections, toggleAncestryMode, toggleBoostChoice, toggleSkillIncreaseSelection, toggleTrainingSkillSelection, toggleVoluntaryChoice, toggleVoluntaryEnabled, toggleVoluntaryLegacy, } from "./application/draft-adjustment-service.js";
+import { synchronizeDependentSkillTrainingChoices } from "./application/dependent-skill-training-synchronization-service.js";
+import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection, setTrainingRuleSelection, syncLanguageChoiceSelections, toggleAncestryMode, toggleBoostChoice, toggleSkillIncreaseSelection, toggleTrainingSkillSelection, toggleVoluntaryChoice, toggleVoluntaryEnabled, toggleVoluntaryLegacy, } from "./application/draft-adjustment-service.js";
 import { applyDraftLifecycle, buildApplyAttemptDraft, clearDraftLifecycle, hasApplyRecoveryState, } from "./application/draft-lifecycle-service.js";
 import { DraftPersistenceCoordinator } from "./application/draft-persistence-service.js";
 import { assertDraftSideEffectAllowed, assertFailedApplyRecoveryCandidateCurrent, capturePersistedDraftPrecondition, clearDraftWithWriteGuard, PersistedDraftWriteGuard, readPersistedDraftSnapshot, saveDraftWithWriteGuard, updateActorWithPersistedDraftPrecondition, WayfinderDraftWriteConflictError, } from "./application/draft-write-guard.js";
@@ -1752,17 +1753,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const effectiveBuildState = await getEffectiveBuildState(this.actor, this.#requireDraft());
         const plan = await this.#buildPlan();
         const baseSkillRanks = inspectActor(this.actor).skillRanks;
-        const projectedSkillRanksByStepId = Object.fromEntries(await Promise.all(plan.steps.flatMap((step) => step.kind === "skill-training"
-            ? [
-                projectSkillRanks(this.#requireDraft(), step.slotId, {
-                    baseSkillRanks,
-                    steps: plan.steps,
-                    resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
-                    localize: (value) => game.i18n.localize(value),
-                }).then((ranks) => [step.slotId, ranks]),
-            ]
-            : [])));
-        const trainingChanged = syncSkillTrainingSelections(this.#draftAdjustmentState(), plan.steps, projectedSkillRanksByStepId);
+        const trainingChanged = await synchronizeDependentSkillTrainingChoices({
+            state: this.#draftAdjustmentState(),
+            steps: plan.steps,
+            baseSkillRanks,
+            resolveDocument: (itemType) => this.#resolveDraftOrActorDocument(itemType),
+            localize: (value) => game.i18n.localize(value),
+        });
         const languageChanged = syncLanguageChoiceSelections(this.#draftAdjustmentState(), effectiveBuildState, plan.steps);
         const spellAttestationsChanged = (await this.#selectionInvalidationService().invalidateOrphanedSpellChoices()).length > 0;
         if (spellAttestationsChanged) {
@@ -1882,7 +1879,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (result.kind !== "changed") {
             return;
         }
-        this.#statusNote = (await this.#synchronizeTitanMaulerLine()) ?? result.statusNote;
+        this.#statusNote = result.statusNote;
+        await this.#syncDependentChoicesAfterBuildChange();
         if (result.shouldAdvance) {
             await this.#moveStep(1);
             return;

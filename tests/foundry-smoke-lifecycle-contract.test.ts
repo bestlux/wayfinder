@@ -40,6 +40,19 @@ describe("Foundry smoke lifecycle contract", () => {
     expect(browserSuite).not.toContain("draftForApply.applyAttemptStepIds = []");
   });
 
+  it("reconciles source-derived skill training after every smoke plan rebuild", () => {
+    expect(browserSuite).toContain("dependent-skill-training-synchronization-service.js");
+    expect(browserSuite).toContain(
+      "synchronizeDependentSkillTrainingChoices:\n      dependentSkillTrainingSynchronization.synchronizeDependentSkillTrainingChoices"
+    );
+    expect(browserSuite).toMatch(
+      /const nextPlan = await buildPlan\(actor, draft, modules\);[\s\S]*?modules\.synchronizeDependentSkillTrainingChoices\(\{[\s\S]*?steps: nextPlan\.steps,[\s\S]*?changed = changed \|\| trainingChoicesChanged/u
+    );
+    expect(appShell).toMatch(
+      /async #finalizeSelectionCommand[\s\S]*?this\.#statusNote = result\.statusNote;[\s\S]*?await this\.#syncDependentChoicesAfterBuildChange\(\);[\s\S]*?if \(result\.shouldAdvance\)/u
+    );
+  });
+
   it("locks recovered Apply drafts against divergent semantic edits", () => {
     expect(appShell).toContain("hasApplyRecoveryState(this.#requireDraft())");
     expect(appShell).toContain("isDraftMutationAction(action)");

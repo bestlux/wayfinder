@@ -1843,6 +1843,7 @@ async function loadWayfinderModules(moduleId) {
     pickerState,
     optionContext,
     skillPane,
+    dependentSkillTrainingSynchronization,
     planService,
     actorUpdater,
     draftLifecycle,
@@ -1872,6 +1873,9 @@ async function loadWayfinderModules(moduleId) {
     import(`/modules/${moduleId}/scripts/pack/picker-state.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/option-context-service.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/build-skill-pane-service.js`),
+    import(
+      `/modules/${moduleId}/scripts/wayfinder/application/dependent-skill-training-synchronization-service.js`
+    ),
     import(`/modules/${moduleId}/scripts/wayfinder/plan-service.js`),
     import(`/modules/${moduleId}/scripts/actor-updater.js`),
     import(`/modules/${moduleId}/scripts/wayfinder/application/draft-lifecycle-service.js`),
@@ -1902,6 +1906,8 @@ async function loadWayfinderModules(moduleId) {
     buildSpellRarityAttestationReviewLines: spellRarityAttestation.buildSpellRarityAttestationReviewLines,
     buildOptionContext: optionContext.buildOptionContext,
     buildSkillPane: skillPane.buildSkillPane,
+    synchronizeDependentSkillTrainingChoices:
+      dependentSkillTrainingSynchronization.synchronizeDependentSkillTrainingChoices,
     buildWayfinderAppPlan: planBuilder.buildWayfinderAppPlan,
     createEmptyDraft: draftService.createEmptyDraft,
     createSpellRarityAttestation: spellRarityAttestation.createSpellRarityAttestation,
@@ -2558,6 +2564,14 @@ async function completeDraft(
     }
 
     const nextPlan = await buildPlan(actor, draft, modules);
+    const trainingChoicesChanged = await modules.synchronizeDependentSkillTrainingChoices({
+      state: { draft, recentlyInvalidatedStepIds: new Set() },
+      steps: nextPlan.steps,
+      baseSkillRanks: modules.inspectActor(actor).skillRanks,
+      resolveDocument: (itemType) => modules.getEffectiveSingletonDocument(actor, draft, itemType),
+      localize: (value) => game.i18n.localize(value),
+    });
+    changed = changed || trainingChoicesChanged;
     if (refreshAfterStep) {
       await logCurriculumPlanRefresh(
         actor,

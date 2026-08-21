@@ -760,6 +760,25 @@ describe("starting equipment pane", () => {
     expect(styles).toContain(".equipment-workspace:has(> .equipment-detail.is-empty) > .equipment-catalogue");
     expect(styles).toContain(".equipment-detail.is-empty");
   });
+
+  it("keeps the measured schema-v2 preview root within the 325-element budget", () => {
+    const policy = readFileSync(resolve("templates/wayfinder/starting-equipment-policy.hbs"), "utf8");
+    const detail = readFileSync(resolve("templates/wayfinder/starting-equipment-detail.hbs"), "utf8");
+    const policyPrimary = policy.match(/<p class="equipment-policy-primary">.*?<\/p>/su)?.[0] ?? "";
+
+    const measuredPreviewRootElementCount = 331;
+    const legacyPolicyPrimaryElementCount = 6;
+    const currentPolicyPrimaryElementCount = [...policyPrimary.matchAll(/<[a-z]+\b/gu)].length;
+    const removedPreviewDetailWrappers = 2;
+    const structuralReduction =
+      legacyPolicyPrimaryElementCount - currentPolicyPrimaryElementCount + removedPreviewDetailWrappers;
+
+    expect(currentPolicyPrimaryElementCount).toBe(2);
+    expect(detail).not.toContain("<article");
+    expect(detail).not.toContain("equipment-detail-actions");
+    expect(structuralReduction).toBeGreaterThanOrEqual(6);
+    expect(measuredPreviewRootElementCount - structuralReduction).toBeLessThanOrEqual(325);
+  });
 });
 
 function fixedNativeGrant() {

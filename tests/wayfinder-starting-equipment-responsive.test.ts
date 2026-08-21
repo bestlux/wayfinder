@@ -34,7 +34,7 @@ describe("starting equipment responsive layout", () => {
 
   it("wraps critical policy, browse, cart, review, handoff, failure, and receipt copy", () => {
     for (const selector of [
-      ".equipment-policy-primary > span",
+      ".equipment-policy-primary,",
       ".equipment-policy-context",
       ".equipment-callout p",
       ".equipment-catalogue-state p",

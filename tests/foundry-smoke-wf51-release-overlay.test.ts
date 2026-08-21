@@ -253,7 +253,7 @@ describe("WF-080-51 focused live release overlay", () => {
     );
 
     const corruptManifest = matrixChildren();
-    corruptManifest[0].result.cases[0].evidence.acquisition.manifestCorrupt = true;
+    corruptManifest[0].result.cases[0].actor.moduleStateAfterApply.completedAcquisitionManifestCorrupt = true;
     expect(qualifyFreshWf51Matrix(corruptManifest)).toEqual(
       expect.arrayContaining([expect.stringMatching(/durable retain-all acquisition manifest/i)])
     );
@@ -265,7 +265,7 @@ describe("WF-080-51 focused live release overlay", () => {
     );
 
     const replacedIncrementalManifest = matrixChildren();
-    replacedIncrementalManifest[1].result.cases[1].evidence.acquisition.finalManifestId = "manifest-replaced";
+    replacedIncrementalManifest[1].result.cases[1].evidence.acquisition.retry.finalManifestId = "manifest-replaced";
     expect(qualifyFreshWf51Matrix(replacedIncrementalManifest)).toEqual(
       expect.arrayContaining([expect.stringMatching(/prevented a second acquisition/i)])
     );
@@ -841,19 +841,36 @@ function matrixChildren(): any[] {
         actor: {
           id: actorId,
           levelAfterApply: 5,
-          moduleStateAfterApply: { completedAcquisitionManifest: manifest },
+          moduleDraftAfterApply: null,
+          moduleStateAfterApply: {
+            completedAcquisitionManifest: structuredClone(manifest),
+            completedAcquisitionManifestCorrupt: false,
+          },
           ...itemEvidence,
         },
         evidence: {
           acquisition: {
-            mode: "retain-all",
-            disposition: "retain-all",
-            draftCleared: true,
-            manifestCorrupt: false,
-            manifest,
-            initialManifestId: incremental ? manifest.id : null,
-            finalManifestId: manifest.id,
-            secondAcquisitionPrevented: incremental ? true : null,
+            binding: null,
+            policy: null,
+            currency: {
+              preCopper: 0,
+              budgetCopper: 5000,
+              targetCopper: 5000,
+              observedCopper: 5000,
+              spentCopper: 0,
+              remainingCopper: 5000,
+            },
+            durability: null,
+            manifest: structuredClone(manifest),
+            failureSnapshot: null,
+            retry: incremental
+              ? {
+                  kind: "second-acquisition-prevention",
+                  initialManifestId: manifest.id,
+                  finalManifestId: manifest.id,
+                  secondAcquisitionPrevented: true,
+                }
+              : null,
           },
         },
       };

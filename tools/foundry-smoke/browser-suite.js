@@ -3586,16 +3586,26 @@ function coreAcquisitionEvidence(actorEvidence, mode, initialManifest = null) {
   if (mode !== "retain-all") return emptyAcquisitionEvidence();
   const state = actorEvidence.moduleStateAfterApply ?? {};
   const manifest = state.completedAcquisitionManifest ?? null;
-  return {
-    mode,
-    disposition: manifest?.disposition ?? null,
-    draftCleared: actorEvidence.moduleDraftAfterApply === null,
-    manifestCorrupt: state.completedAcquisitionManifestCorrupt === true,
-    manifest: manifest ? structuredClone(manifest) : null,
-    initialManifestId: initialManifest?.id ?? null,
-    finalManifestId: manifest?.id ?? null,
-    secondAcquisitionPrevented: initialManifest ? initialManifest.id === manifest?.id : null,
-  };
+  const evidence = emptyAcquisitionEvidence();
+  evidence.policy = manifest?.policy
+    ? {
+        source: "completed-acquisition-manifest",
+        version: manifest.policy.version,
+        fingerprint: manifest.policy.fingerprint,
+        snapshot: structuredClone(manifest.policy),
+      }
+    : null;
+  evidence.currency = manifest?.currency ? structuredClone(manifest.currency) : evidence.currency;
+  evidence.manifest = manifest ? structuredClone(manifest) : null;
+  evidence.retry = initialManifest
+    ? {
+        kind: "second-acquisition-prevention",
+        initialManifestId: initialManifest.id ?? null,
+        finalManifestId: manifest?.id ?? null,
+        secondAcquisitionPrevented: initialManifest.id === manifest?.id,
+      }
+    : null;
+  return evidence;
 }
 
 function smokeRuntime(moduleRecord, expectedWorldId) {

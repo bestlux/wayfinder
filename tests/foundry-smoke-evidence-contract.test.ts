@@ -184,6 +184,39 @@ describe("Foundry smoke evidence contract", () => {
     expect(result.qualification.passed).toBe(true);
   });
 
+  it("binds a character-build retain-all manifest to the exact durable module state", () => {
+    const input = resultFixture() as any;
+    const manifest = {
+      id: "manifest-id",
+      actorId: "actor-id",
+      disposition: "retain-all",
+      fingerprint: "manifest-fingerprint",
+    };
+    input.cases[0].actor.moduleStateAfterApply.completedAcquisitionManifest = structuredClone(manifest);
+    input.cases[0].evidence.acquisition = {
+      ...emptyAcquisitionEvidence(),
+      policy: { source: "completed-acquisition-manifest" },
+      currency: {
+        preCopper: 0,
+        budgetCopper: 1500,
+        targetCopper: 1500,
+        observedCopper: 1500,
+        spentCopper: 0,
+        remainingCopper: 1500,
+      },
+      manifest: structuredClone(manifest),
+    };
+
+    const matched = qualifySmokeResult(input);
+    expect(matched.qualification).toMatchObject({ passed: true, unreviewedFindingCount: 0 });
+
+    const mismatched = structuredClone(input);
+    mismatched.cases[0].evidence.acquisition.manifest.id = "foreign-manifest-id";
+    const rejected = qualifySmokeResult(mismatched);
+    expect(rejected.qualification.passed).toBe(false);
+    expect(findingCodes(rejected)).toContain("character-build-state-mismatch");
+  });
+
   it("fails closed when any character-build acquisition envelope field is absent", () => {
     for (const mutate of [
       (input: any) => delete input.cases[0].evidence.acquisition,
@@ -191,6 +224,18 @@ describe("Foundry smoke evidence contract", () => {
         input.cases[0].evidence.acquisition = null;
       },
       (input: any) => delete input.cases[0].evidence.acquisition.currency.preCopper,
+      (input: any) => {
+        input.cases[0].evidence.acquisition = {
+          mode: "retain-all",
+          disposition: "retain-all",
+          draftCleared: true,
+          manifestCorrupt: false,
+          manifest: null,
+          initialManifestId: null,
+          finalManifestId: null,
+          secondAcquisitionPrevented: null,
+        };
+      },
     ]) {
       const input = resultFixture() as any;
       mutate(input);

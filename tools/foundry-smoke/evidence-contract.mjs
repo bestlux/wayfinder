@@ -380,6 +380,7 @@ function characterBuildEvidenceFindings(smokeCase, definition) {
       expectedStepIds,
       expectedExistingCharacterHistory: definition?.expectedExistingCharacterHistory ?? null,
       expectedAppliedSpellRarityAttestations: expectedAttestations,
+      expectedCompletedAcquisitionManifest: evidence?.acquisition?.manifest ?? null,
     })
   ) {
     findings.push(
@@ -1216,6 +1217,7 @@ function finalModuleStateMatches(
     expectedStepIds,
     expectedExistingCharacterHistory,
     expectedAppliedSpellRarityAttestations,
+    expectedCompletedAcquisitionManifest = null,
   }
 ) {
   return (
@@ -1224,7 +1226,7 @@ function finalModuleStateMatches(
     nonEmptyString(value.lastAppliedAt) &&
     Number.isFinite(Date.parse(value.lastAppliedAt)) &&
     value.version === 4 &&
-    value.completedAcquisitionManifest === null &&
+    structuredValueEquals(value.completedAcquisitionManifest, expectedCompletedAcquisitionManifest) &&
     value.completedAcquisitionManifestCorrupt === false &&
     value.lastTargetLevel === targetLevel &&
     uniqueStringArray(expectedStepIds) &&

@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { acquisitionSmokeCases } from "./acquisition-cases.mjs";
 import { applySafetySmokeCases, gradualBoostsSmokeCases, smokeCases } from "./class-cases.mjs";
 import { campaignFeatSmokeCases } from "./campaign-feat-cases.mjs";
@@ -215,10 +217,9 @@ function matrixManifestFailures(children) {
       const manifest = evidence?.manifest;
       const durableManifest = actor?.moduleStateAfterApply?.completedAcquisitionManifest;
       if (
-        evidence?.mode !== "retain-all" ||
-        evidence?.disposition !== "retain-all" ||
-        evidence?.draftCleared !== true ||
-        evidence?.manifestCorrupt !== false ||
+        child.result?.defaultReviewedEquipment?.mode !== "retain-all" ||
+        actor?.moduleDraftAfterApply !== null ||
+        actor?.moduleStateAfterApply?.completedAcquisitionManifestCorrupt !== false ||
         !manifest ||
         manifest.disposition !== "retain-all" ||
         manifest.actorId !== actor?.id ||
@@ -228,18 +229,19 @@ function matrixManifestFailures(children) {
         manifest.environment?.foundryVersion !== child.result?.foundryVersion ||
         manifest.environment?.pf2eVersion !== child.result?.pf2eVersion ||
         manifest.environment?.moduleVersion !== child.result?.moduleVersion ||
-        manifest.id !== durableManifest?.id ||
-        manifest.fingerprint !== durableManifest?.fingerprint
+        !isDeepStrictEqual(manifest, durableManifest)
       ) {
         failures.push(`matrix: ${entry?.id ?? "unknown"} lacks an exact durable retain-all acquisition manifest.`);
         continue;
       }
       if (String(entry.id).endsWith("-incremental-existing")) {
+        const retry = evidence.retry;
         if (
-          typeof evidence.initialManifestId !== "string" ||
-          evidence.initialManifestId.length === 0 ||
-          evidence.finalManifestId !== evidence.initialManifestId ||
-          evidence.secondAcquisitionPrevented !== true ||
+          retry?.kind !== "second-acquisition-prevention" ||
+          typeof retry.initialManifestId !== "string" ||
+          retry.initialManifestId.length === 0 ||
+          retry.finalManifestId !== retry.initialManifestId ||
+          retry.secondAcquisitionPrevented !== true ||
           manifest.targetLevel !== 1
         ) {
           failures.push(`matrix: ${entry.id} did not prove the level-1 manifest prevented a second acquisition.`);

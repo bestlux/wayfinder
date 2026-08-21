@@ -32,7 +32,8 @@
     "profile:equipment:evidence": "node tools/foundry-interaction/build-equipment-profile-evidence.mjs",
     "generate:character-wealth": "node tools/starting-equipment/generate-character-wealth.mjs",
     "check:character-wealth": "node tools/starting-equipment/generate-character-wealth.mjs --check",
-    "check": "npm run format:check && npm run lint && npm run check:character-wealth && npm run build && npm test && npm run check:strict",
+    "check:generated-scripts": "node tools/release/check-generated-scripts.mjs",
+    "check": "npm run format:check && npm run lint && npm run check:character-wealth && npm run check:generated-scripts && npm run build && npm test && npm run check:strict",
     "test": "vitest run",
     "test:watch": "vitest"
   },

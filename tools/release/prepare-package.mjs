@@ -16,10 +16,7 @@ export const requiredPackageEntries = [
   "licenses/OPEN-GAME-LICENSE-1.0A.md",
   "licenses/ORC-NOTICE.md",
   "licenses/THIRD-PARTY-NOTICES.md",
-  "scripts/wayfinder.js",
-  "styles/wayfinder.css",
   "templates/wayfinder-app.hbs",
-  "lang/en.json",
 ];
 const packageDirectories = ["assets", "licenses", "scripts", "styles", "templates", "lang"];
 const requiredTopLevelFiles = ["LEGAL.md", "LICENSE.md"];
@@ -248,10 +245,39 @@ async function pruneSourceMaps(packageRoot) {
   }
 }
 
-export function validatePackageEntries(entries) {
-  const missingEntries = requiredPackageEntries.filter((entry) => !entries.includes(entry));
+export function requiredPackageEntriesForManifest(manifest) {
+  if (!manifest || typeof manifest !== "object") {
+    throw new TypeError("Package validation requires a module manifest.");
+  }
+
+  const referencedEntries = [
+    ...manifestReferences(manifest.esmodules, "esmodules", (entry) => entry),
+    ...manifestReferences(manifest.styles, "styles", (entry) =>
+      typeof entry === "string" ? entry : entry?.src,
+    ),
+    ...manifestReferences(manifest.languages, "languages", (entry) => entry?.path),
+  ];
+  return [...new Set([...requiredPackageEntries, ...referencedEntries])].sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+export function validatePackageEntries(entries, manifest) {
+  const requiredEntries = requiredPackageEntriesForManifest(manifest);
+  const missingEntries = requiredEntries.filter((entry) => !entries.includes(entry));
   if (missingEntries.length > 0) {
     throw new Error(`Package is missing required entries: ${missingEntries.join(", ")}`);
+  }
+
+  const portableEntries = new Map();
+  for (const [index, entry] of entries.entries()) {
+    const normalized = normalizePackageReference(entry, `Package entry[${index}]`);
+    const folded = normalized.toLowerCase();
+    const collision = portableEntries.get(folded);
+    if (collision) {
+      throw new Error(`Package entries collide on case-insensitive filesystems: ${collision}, ${normalized}`);
+    }
+    portableEntries.set(folded, normalized);
   }
 
   const forbiddenEntries = entries.filter((entry) =>
@@ -268,6 +294,46 @@ export function validatePackageEntries(entries) {
   if (unreviewedAssetEntries.length > 0) {
     throw new Error(`Package contains unreviewed asset entries: ${unreviewedAssetEntries.join(", ")}`);
   }
+}
+
+function manifestReferences(value, field, selectPath) {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new TypeError(`module.json ${field} must contain at least one package reference.`);
+  }
+  return value.map((entry, index) =>
+    normalizePackageReference(selectPath(entry), `module.json ${field}[${index}]`),
+  );
+}
+
+function normalizePackageReference(value, label) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new TypeError(`${label} must reference a package file.`);
+  }
+  const normalized = value.replaceAll("\\", "/");
+  if (
+    normalized !== value ||
+    normalized.startsWith("/") ||
+    normalized.includes(":") ||
+    normalized.split("/").some((part) => part === "" || part === "." || part === "..")
+  ) {
+    throw new TypeError(`${label} must use a normalized relative package path.`);
+  }
+  if (normalized.split("/").some((part) => !portablePackageSegment(part))) {
+    throw new TypeError(`${label} must use a Windows-portable package path.`);
+  }
+  return normalized;
+}
+
+function portablePackageSegment(value) {
+  if (
+    /[<>"|?*]/u.test(value) ||
+    /[. ]$/u.test(value) ||
+    [...value].some((character) => character.charCodeAt(0) <= 31)
+  ) {
+    return false;
+  }
+  const stem = value.split(".", 1)[0].toUpperCase();
+  return !/^(?:AUX|CON|NUL|PRN|COM[1-9]|LPT[1-9])$/u.test(stem);
 }
 
 export function buildReleaseManifest(sourceManifest, { repo, tag, version }) {
@@ -489,7 +555,7 @@ async function main() {
   }
 
   const entries = await listFiles(packageRoot);
-  validatePackageEntries(entries);
+  validatePackageEntries(entries, releaseManifest);
 
   const zipBuffer = await createZipFromFiles(packageRoot, entries);
   const zipPath = path.join(outputRoot, "module.zip");

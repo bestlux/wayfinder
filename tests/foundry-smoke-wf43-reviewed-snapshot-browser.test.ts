@@ -36,8 +36,12 @@ browserIt(
           itemSourceUuid: "Compendium.pf2e.equipment-srd.Item.item",
           itemName: "Dagger",
         };
+        const sparseSlots: unknown[] = [];
+        sparseSlots[1] = "kept";
         const reviewedDraft = {
           schemaVersion: 1,
+          metadata: { kept: true, omitted: undefined },
+          sparseSlots,
           acquisition: {
             disposition: { kind: "purchase-ledger" },
             lines: [{ lineId: "line-1", sourceUuid: "Compendium.pf2e.equipment-srd.Item.item" }],
@@ -121,6 +125,14 @@ browserIt(
         const wrongDraft = structuredClone(token);
         wrongDraft.draft.acquisition.lines.push({ lineId: "line-2" });
         const draftFailure = await attempt(wrongDraft);
+        const undefinedDraft = structuredClone(token);
+        undefinedDraft.draft.transient = undefined;
+        const undefinedFailure = await attempt(undefinedDraft);
+        const sparseDraft = structuredClone(token);
+        const sparseLines: unknown[] = [];
+        sparseLines[1] = structuredClone(token.draft.acquisition.lines[0]);
+        sparseDraft.draft.acquisition.lines = sparseLines;
+        const sparseFailure = await attempt(sparseDraft);
         const wrongRun = structuredClone(token);
         wrongRun.subject.runId = "run-2";
         const runFailure = await attempt(wrongRun);
@@ -149,6 +161,42 @@ browserIt(
         const durableFailure = await attempt(token);
         corruptWrites = false;
 
+        const nonSerializableFailure = (value: unknown) => {
+          try {
+            suite.__createWayfinderWf43ReviewedSnapshotToken({
+              actor,
+              draft: value,
+              expectedWorldId,
+              fixture,
+              runId,
+            });
+            return "accepted";
+          } catch (error) {
+            return error instanceof Error ? error.message : String(error);
+          }
+        };
+        const functionDraft: Record<string, unknown> = structuredClone(reviewedDraft);
+        functionDraft.nonSerializable = () => true;
+        const functionFailure = nonSerializableFailure(functionDraft);
+        const bigintDraft: Record<string, unknown> = structuredClone(reviewedDraft);
+        bigintDraft.nonSerializable = 1n;
+        const bigintFailure = nonSerializableFailure(bigintDraft);
+        const cyclicDraft: Record<string, unknown> = structuredClone(reviewedDraft);
+        cyclicDraft.self = cyclicDraft;
+        const cyclicFailure = nonSerializableFailure(cyclicDraft);
+        const customArrayDraft = structuredClone(reviewedDraft);
+        (customArrayDraft.acquisition.lines as unknown as Record<string, unknown>).extra = () => true;
+        const customArrayFailure = nonSerializableFailure(customArrayDraft);
+        const toJsonArrayDraft = structuredClone(reviewedDraft);
+        (toJsonArrayDraft.acquisition.lines as unknown as Record<string, unknown>).toJSON = () => [];
+        const toJsonArrayFailure = nonSerializableFailure(toJsonArrayDraft);
+        const symbolArrayDraft = structuredClone(reviewedDraft);
+        symbolArrayDraft.acquisition.lines[Symbol("hidden")] = 1n;
+        const symbolArrayFailure = nonSerializableFailure(symbolArrayDraft);
+        const prototypeArrayDraft = structuredClone(reviewedDraft);
+        Object.setPrototypeOf(prototypeArrayDraft.acquisition.lines, Object.create(Array.prototype));
+        const prototypeArrayFailure = nonSerializableFailure(prototypeArrayDraft);
+
         storedDraft = structuredClone(handoffDraft);
         const restored = await suite.__restoreWayfinderWf43ReviewedDraft(payload);
         return {
@@ -156,6 +204,8 @@ browserIt(
             missing,
             actorFailure,
             draftFailure,
+            undefinedFailure,
+            sparseFailure,
             runFailure,
             worldFailure,
             subjectFailure,
@@ -164,10 +214,22 @@ browserIt(
             currentIssueFailure,
             extraReasonFailure,
             durableFailure,
+            functionFailure,
+            bigintFailure,
+            cyclicFailure,
+            customArrayFailure,
+            toJsonArrayFailure,
+            symbolArrayFailure,
+            prototypeArrayFailure,
           },
           restored,
           durableDraft: storedDraft,
-          reviewedDraft,
+          tokenDraft: token.draft,
+          normalized: {
+            omittedUndefined: !Object.hasOwn(token.draft.metadata, "omitted"),
+            sparseFirst: token.draft.sparseSlots[0],
+            sparseLength: token.draft.sparseSlots.length,
+          },
           tokenHasDraft: Object.hasOwn(restored.provenance, "draft"),
         };
       });
@@ -176,6 +238,10 @@ browserIt(
         missing: "WF-080-43 reviewed snapshot token is required.",
         actorFailure: "WF-080-43 reviewed snapshot token actor changed.",
         draftFailure: "WF-080-43 reviewed snapshot token draft changed.",
+        undefinedFailure:
+          'WF-080-43 reviewed snapshot token draft is not durable: {"path":"$[\\"transient\\"]","expectedClass":"undefined","observedClass":"missing"}',
+        sparseFailure:
+          'WF-080-43 reviewed snapshot token draft is not durable: {"path":"$[\\"acquisition\\"][\\"lines\\"][0]","expectedClass":"missing","observedClass":"null"}',
         runFailure: "WF-080-43 reviewed snapshot token run changed.",
         worldFailure: "WF-080-43 reviewed snapshot token world changed.",
         subjectFailure: "WF-080-43 reviewed snapshot token subject changed.",
@@ -184,9 +250,21 @@ browserIt(
           "WF-080-43 reviewed snapshot restore requires the configured-item handoff disposition.",
         currentIssueFailure: "WF-080-43 reviewed snapshot restore requires the configured-item handoff disposition.",
         extraReasonFailure: "WF-080-43 reviewed snapshot restore requires the configured-item handoff disposition.",
-        durableFailure: "WF-080-43 reviewed snapshot did not restore durably and exactly.",
+        durableFailure:
+          'WF-080-43 reviewed snapshot restore persistence changed: {"path":"$[\\"corrupted\\"]","expectedClass":"missing","observedClass":"boolean"}',
+        functionFailure: 'WF-080-43 reviewed snapshot is not JSON-durable at $["nonSerializable"] (function).',
+        bigintFailure: 'WF-080-43 reviewed snapshot is not JSON-durable at $["nonSerializable"] (bigint).',
+        cyclicFailure: 'WF-080-43 reviewed snapshot is not JSON-durable at $["self"] (cyclic-object).',
+        customArrayFailure:
+          'WF-080-43 reviewed snapshot is not JSON-durable at $["acquisition"]["lines"] (custom-keyed-array).',
+        toJsonArrayFailure:
+          'WF-080-43 reviewed snapshot is not JSON-durable at $["acquisition"]["lines"] (custom-keyed-array).',
+        symbolArrayFailure:
+          'WF-080-43 reviewed snapshot is not JSON-durable at $["acquisition"]["lines"] (symbol-keyed-array).',
+        prototypeArrayFailure: 'WF-080-43 reviewed snapshot is not JSON-durable at $["acquisition"]["lines"] (array).',
       });
-      expect(evidence.durableDraft).toEqual(evidence.reviewedDraft);
+      expect(evidence.durableDraft).toEqual(evidence.tokenDraft);
+      expect(evidence.normalized).toEqual({ omittedUndefined: true, sparseFirst: null, sparseLength: 2 });
       expect(evidence.restored).toMatchObject({
         actorId: "actor-1",
         kind: "purchase-ledger",

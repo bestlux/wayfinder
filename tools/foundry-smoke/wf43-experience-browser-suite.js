@@ -149,13 +149,21 @@ globalThis.__prepareWayfinderWf43Handoff = async function prepareWf43Handoff({
   if (game.user?.isGM) throw new Error("WF-080-43 handoff projection requires the non-GM owner.");
   const actor = wf43FixtureActor(fixture, moduleId, runId);
   await closeActorApps(actor);
-  const draft = structuredClone(actor.getFlag(moduleId, "draft"));
-  if (draft?.acquisition?.disposition?.kind !== "purchase-ledger") {
+  const inMemoryDraft = structuredClone(actor.getFlag(moduleId, "draft"));
+  if (inMemoryDraft?.acquisition?.disposition?.kind !== "purchase-ledger") {
     throw new Error("WF-080-43 handoff projection requires the reviewed purchase draft.");
   }
+  const durableCandidate = wf43JsonDurableClone(inMemoryDraft);
+  await actor.setFlag(moduleId, "draft", durableCandidate);
+  const durableReviewedDraft = wf43JsonDurableClone(actor.getFlag(moduleId, "draft"));
+  wf43AssertExactDurableSnapshot(
+    durableCandidate,
+    durableReviewedDraft,
+    "WF-080-43 reviewed snapshot preparation persistence changed",
+  );
   const reviewedSnapshot = wf43CreateReviewedSnapshotToken({
     actor,
-    draft,
+    draft: durableReviewedDraft,
     expectedWorldId,
     fixture,
     runId,
@@ -163,6 +171,7 @@ globalThis.__prepareWayfinderWf43Handoff = async function prepareWf43Handoff({
   const { recordConfiguredItemHandoff } = await import(
     `/modules/${moduleId}/scripts/wayfinder/domain/acquisition-draft.js`
   );
+  const draft = structuredClone(durableReviewedDraft);
   draft.acquisition = recordConfiguredItemHandoff(draft.acquisition, {
     code: "unsafe-configured-item",
     sourceUuid: fixture.itemSourceUuid,
@@ -205,9 +214,14 @@ globalThis.__restoreWayfinderWf43ReviewedDraft = async function restoreWf43Revie
     throw new Error("WF-080-43 reviewed snapshot restore requires the configured-item handoff disposition.");
   }
   await actor.setFlag(moduleId, "draft", reviewed);
-  const durable = structuredClone(actor.getFlag(moduleId, "draft"));
-  if (!wf43Same(durable, reviewed) || wf43Fingerprint(durable) !== reviewedSnapshot.draftFingerprint) {
-    throw new Error("WF-080-43 reviewed snapshot did not restore durably and exactly.");
+  const durable = wf43JsonDurableClone(actor.getFlag(moduleId, "draft"));
+  wf43AssertExactDurableSnapshot(
+    reviewed,
+    durable,
+    "WF-080-43 reviewed snapshot restore persistence changed",
+  );
+  if (wf43Fingerprint(durable) !== reviewedSnapshot.draftFingerprint) {
+    throw new Error("WF-080-43 reviewed snapshot restore fingerprint changed after exact durable re-read.");
   }
   return {
     kind: reviewed.acquisition.disposition.kind,
@@ -468,7 +482,7 @@ function wf43CreateReviewedSnapshotToken({ actor, draft, expectedWorldId, fixtur
   if (draft?.acquisition?.disposition?.kind !== "purchase-ledger") {
     throw new Error("WF-080-43 reviewed snapshot requires the purchase-ledger disposition.");
   }
-  const snapshot = structuredClone(draft);
+  const snapshot = wf43JsonDurableClone(draft);
   return {
     schemaVersion: 1,
     purpose: WF43_REVIEWED_SNAPSHOT_PURPOSE,
@@ -528,10 +542,17 @@ function wf43ValidateReviewedSnapshotToken(token, { actor, expectedWorldId, fixt
   ) {
     throw new Error("WF-080-43 reviewed snapshot token disposition changed.");
   }
-  if (token.draftFingerprint !== wf43Fingerprint(token.draft)) {
+  const durableDraft = wf43JsonDurableClone(token.draft);
+  const durableMismatch = wf43FirstMismatch(token.draft, durableDraft);
+  if (durableMismatch) {
+    throw new Error(
+      `WF-080-43 reviewed snapshot token draft is not durable: ${JSON.stringify(durableMismatch)}`,
+    );
+  }
+  if (token.draftFingerprint !== wf43Fingerprint(durableDraft)) {
     throw new Error("WF-080-43 reviewed snapshot token draft changed.");
   }
-  return structuredClone(token.draft);
+  return durableDraft;
 }
 
 function wf43ReviewedSnapshotProvenance(token) {
@@ -549,7 +570,7 @@ function wf43ReviewedSnapshotProvenance(token) {
 }
 
 function wf43Fingerprint(value) {
-  const bytes = new TextEncoder().encode(wf43CanonicalJson(value));
+  const bytes = new TextEncoder().encode(wf43Canonical(value));
   let hash = 0xcbf29ce484222325n;
   for (const byte of bytes) {
     hash ^= BigInt(byte);
@@ -558,15 +579,126 @@ function wf43Fingerprint(value) {
   return `fnv1a64:${hash.toString(16).padStart(16, "0")}`;
 }
 
-function wf43CanonicalJson(value) {
-  if (Array.isArray(value)) return `[${value.map(wf43CanonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${wf43CanonicalJson(value[key])}`)
-      .join(",")}}`;
+function wf43JsonDurableClone(value) {
+  wf43AssertJsonDurable(value, "$", new Set());
+  const serialized = JSON.stringify(value);
+  if (typeof serialized !== "string") {
+    throw new Error(`WF-080-43 reviewed snapshot is not JSON-durable at $ (${wf43ValueClass(value)}).`);
   }
-  return JSON.stringify(value);
+  return JSON.parse(serialized);
+}
+
+function wf43AssertJsonDurable(value, path, ancestors) {
+  if (value === null || value === undefined || ["string", "boolean"].includes(typeof value)) return;
+  if (typeof value === "number") {
+    if (Number.isFinite(value)) return;
+    throw new Error(`WF-080-43 reviewed snapshot is not JSON-durable at ${path} (${wf43ValueClass(value)}).`);
+  }
+  if (typeof value !== "object") {
+    throw new Error(`WF-080-43 reviewed snapshot is not JSON-durable at ${path} (${wf43ValueClass(value)}).`);
+  }
+  if (ancestors.has(value)) {
+    throw new Error(`WF-080-43 reviewed snapshot is not JSON-durable at ${path} (cyclic-object).`);
+  }
+  if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype) {
+      throw new Error(`WF-080-43 reviewed snapshot is not JSON-durable at ${path} (${wf43ValueClass(value)}).`);
+    }
+    for (const key of Reflect.ownKeys(value)) {
+      if (key === "length") continue;
+      if (typeof key === "symbol") {
+        throw new Error(`WF-080-43 reviewed snapshot is not JSON-durable at ${path} (symbol-keyed-array).`);
+      }
+      const index = Number(key);
+      if (!Number.isSafeInteger(index) || index < 0 || String(index) !== key || index >= value.length) {
+        throw new Error(`WF-080-43 reviewed snapshot is not JSON-durable at ${path} (custom-keyed-array).`);
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !("value" in descriptor)) {
+        throw new Error(
+          `WF-080-43 reviewed snapshot is not JSON-durable at ${wf43BoundedPath(`${path}[${index}]`)} (accessor-property).`,
+        );
+      }
+    }
+  } else {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error(`WF-080-43 reviewed snapshot is not JSON-durable at ${path} (${wf43ValueClass(value)}).`);
+    }
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      throw new Error(`WF-080-43 reviewed snapshot is not JSON-durable at ${path} (symbol-keyed-object).`);
+    }
+  }
+  ancestors.add(value);
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      if (index in value) wf43AssertJsonDurable(value[index], wf43BoundedPath(`${path}[${index}]`), ancestors);
+    }
+  } else {
+    for (const key of Object.keys(value)) {
+      wf43AssertJsonDurable(value[key], wf43BoundedPath(`${path}[${JSON.stringify(key)}]`), ancestors);
+    }
+  }
+  ancestors.delete(value);
+}
+
+function wf43AssertExactDurableSnapshot(expected, observed, context) {
+  const mismatch = wf43FirstMismatch(expected, observed);
+  if (mismatch) throw new Error(`${context}: ${JSON.stringify(mismatch)}`);
+}
+
+function wf43FirstMismatch(expected, observed, path = "$", missing = Symbol("missing")) {
+  if (Object.is(expected, observed)) return null;
+  const expectedClass = expected === missing ? "missing" : wf43ValueClass(expected);
+  const observedClass = observed === missing ? "missing" : wf43ValueClass(observed);
+  if (expectedClass !== observedClass) return { path: wf43BoundedPath(path), expectedClass, observedClass };
+  if (Array.isArray(expected) && Array.isArray(observed)) {
+    if (expected.length !== observed.length) {
+      return { path: wf43BoundedPath(`${path}.length`), expectedClass: "number:integer", observedClass: "number:integer" };
+    }
+    for (let index = 0; index < expected.length; index += 1) {
+      const mismatch = wf43FirstMismatch(
+        index in expected ? expected[index] : missing,
+        index in observed ? observed[index] : missing,
+        `${path}[${index}]`,
+        missing,
+      );
+      if (mismatch) return mismatch;
+    }
+    return null;
+  }
+  if (expected && observed && typeof expected === "object" && typeof observed === "object") {
+    const keys = [...new Set([...Object.keys(expected), ...Object.keys(observed)])].sort();
+    for (const key of keys) {
+      const mismatch = wf43FirstMismatch(
+        Object.hasOwn(expected, key) ? expected[key] : missing,
+        Object.hasOwn(observed, key) ? observed[key] : missing,
+        `${path}[${JSON.stringify(key)}]`,
+        missing,
+      );
+      if (mismatch) return mismatch;
+    }
+    return null;
+  }
+  return { path: wf43BoundedPath(path), expectedClass, observedClass };
+}
+
+function wf43ValueClass(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "number:non-finite";
+    return Number.isInteger(value) ? "number:integer" : "number:finite";
+  }
+  if (typeof value === "object") {
+    const name = value?.constructor?.name;
+    return name && name !== "Object" ? `object:${wf43BoundedText(name, 40)}` : "object";
+  }
+  return typeof value;
+}
+
+function wf43BoundedPath(path) {
+  return path.length <= 160 ? path : `${path.slice(0, 159)}…`;
 }
 
 function wf43FixtureActor(fixture, moduleId, runId) {

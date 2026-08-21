@@ -8,6 +8,14 @@ import { buildTitanMaulerCandidate, resolveDraftedAncestryEquipmentSize, titanMa
 import { createEquipmentCatalogueDraftContext, createEquipmentCatalogueService, EMPTY_EQUIPMENT_ACCESS_REGISTRY, } from "./equipment-catalogue-service.js";
 import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
 import { registerStartingEquipmentUiAdapter, } from "./starting-equipment-ui-adapter.js";
+export class ConfiguredItemHandoffRequiredError extends Error {
+    reason;
+    constructor(reason) {
+        super(`${reason.itemName} requires an explicit PF2E inventory-sheet handoff.`);
+        this.name = "ConfiguredItemHandoffRequiredError";
+        this.reason = cloneData(reason);
+    }
+}
 export function commitTitanMaulerLineSynchronization(args) {
     if (args.draft.acquisition !== args.expectedAcquisition ||
         args.currentDraftFingerprint !== args.expectedDraftFingerprint) {
@@ -628,17 +636,22 @@ async function buildResolvedPrice(input) {
             priceFingerprint: input.resolved.priceFingerprint,
         };
     }
-    if (configuration.specific !== null) {
-        throw new Error("This specific configured magic item requires an explicit PF2E inventory-sheet handoff.");
-    }
+    const handoffError = (issue) => new ConfiguredItemHandoffRequiredError({
+        code: "unsafe-configured-item",
+        sourceUuid: input.resolved.candidate.sourceUuid,
+        itemName: input.resolved.candidate.name,
+        issue,
+    });
+    if (configuration.specific !== null)
+        throw handoffError("specific-magic-item");
     if (input.requestedQuantity !== 1 ||
         input.resolved.candidate.price.per !== 1 ||
         input.resolved.candidate.price.sourceQuantity !== 1) {
-        throw new Error("Configured equipment is supported only as one individually priced permanent item.");
+        throw handoffError("unsupported-unit-pricing");
     }
     const pack = input.packs.get(input.resolved.candidate.packId);
     if (!pack)
-        throw new Error("The configured equipment base-item pack is unavailable.");
+        throw handoffError("base-item-unavailable");
     const index = Array.from((await pack.getIndex({
         fields: ["type", "system.slug", "system.level.value", "system.runes", "system.material"],
     })) ?? []);
@@ -648,12 +661,12 @@ async function buildResolvedPrice(input) {
     });
     const baseId = record(baseEntry)._id;
     if (typeof baseId !== "string" || !baseId) {
-        throw new Error("PF2E did not expose the configured equipment's clean base item; use the inventory sheet.");
+        throw handoffError("base-item-unavailable");
     }
     const baseDocument = await pack.getDocument(baseId);
     const baseSource = documentSource(baseDocument);
     if (!baseSource)
-        throw new Error("The configured equipment clean base item is no longer available.");
+        throw handoffError("base-item-unavailable");
     const emptyMaterial = { type: null, grade: null };
     const emptyRunes = configuration.itemType === "weapon"
         ? { potency: 0, striking: 0, property: [] }
@@ -685,7 +698,7 @@ async function buildResolvedPrice(input) {
         actualPrepared.totalCopper !== fullPrepared.totalCopper ||
         canonicalJson(actualPrepared.runes) !== canonicalJson(fullPrepared.runes) ||
         canonicalJson(actualPrepared.material) !== canonicalJson(fullPrepared.material)) {
-        throw new Error("PF2E cannot safely express this configured item as a decomposed starting-equipment choice.");
+        throw handoffError("prepared-components-unsafe");
     }
     const effectiveFundamental = fundamentalPrepared.runes.potency > 0 || meaningfulFundamental(fundamentalPrepared.runes.fundamental);
     const propertyRuneCopper = runeOnlyPrepared.runes.property.length > 0
@@ -694,7 +707,7 @@ async function buildResolvedPrice(input) {
     const preciousMaterialCopper = materialPrepared.material.type && materialPrepared.material.grade ? materialPrepared.totalCopper : 0;
     const baselineAndFundamentalCopper = fullPrepared.totalCopper - propertyRuneCopper - preciousMaterialCopper;
     if (![propertyRuneCopper, preciousMaterialCopper, baselineAndFundamentalCopper].every((value) => Number.isSafeInteger(value) && value >= 0)) {
-        throw new Error("PF2E configured-item components did not converge to a safe exact price.");
+        throw handoffError("prepared-components-unsafe");
     }
     const components = {
         version: 1,
@@ -727,12 +740,15 @@ async function buildResolvedPrice(input) {
         requestedQuantity: 1,
         configurationComponents: components,
     });
-    if (snapshot.ok === false || snapshot.value.unitPriceCopper !== fullPrepared.totalCopper) {
-        throw new Error("Configured equipment price components do not equal PF2E's prepared total.");
+    if (snapshot.ok === false)
+        throw handoffError("prepared-components-unsafe");
+    const preparedPrice = snapshot.value;
+    if (preparedPrice.unitPriceCopper !== fullPrepared.totalCopper) {
+        throw handoffError("prepared-components-unsafe");
     }
     return {
-        price: snapshot.value,
-        priceFingerprint: fingerprintPreparedPrice(snapshot.value),
+        price: preparedPrice,
+        priceFingerprint: fingerprintPreparedPrice(preparedPrice),
     };
 }
 function buildSimpleResolvedPrice(resolved, requestedQuantity, targetSize) {

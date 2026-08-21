@@ -248,6 +248,22 @@ function normalizeEconomicPhysicalItem(raw) {
 function normalizeHandoffReason(raw) {
     if (!isRecord(raw))
         return null;
+    if (raw.code === "unsafe-configured-item") {
+        const issue = raw.issue;
+        return nonEmpty(raw.sourceUuid) &&
+            nonEmpty(raw.itemName) &&
+            (issue === "specific-magic-item" ||
+                issue === "unsupported-unit-pricing" ||
+                issue === "base-item-unavailable" ||
+                issue === "prepared-components-unsafe")
+            ? {
+                code: raw.code,
+                sourceUuid: raw.sourceUuid,
+                itemName: raw.itemName,
+                issue,
+            }
+            : null;
+    }
     if (raw.code === "nonzero-currency") {
         return validCopper(raw.copper) && raw.copper > 0
             ? { code: raw.code, copper: raw.copper }

@@ -1,5 +1,5 @@
 import { getEquipmentWorldPolicySetting } from "../../settings.js";
-import { acknowledgeAcquisitionHandoff, createAcquisitionDraft, createAcquisitionPolicySnapshot, invalidateAcquisitionReview, normalizeAcquisitionDraft, recordEconomicAdmission, recordPlannedClassGrants, } from "../domain/acquisition-draft.js";
+import { acknowledgeAcquisitionHandoff, createAcquisitionDraft, createAcquisitionPolicySnapshot, invalidateAcquisitionReview, normalizeAcquisitionDraft, recordConfiguredItemHandoff, recordEconomicAdmission, recordPlannedClassGrants, } from "../domain/acquisition-draft.js";
 import { mintAcquisitionIdentitySeed } from "../domain/acquisition-identity.js";
 import { createAcquisitionPriceSnapshot, evaluateAcquisitionLedger, reviewPurchaseLedger, reviewRetainAll, } from "../domain/acquisition-ledger.js";
 import { createPreparedClassGrantPlan } from "../domain/class-grant-reconciliation.js";
@@ -282,6 +282,10 @@ export async function executeStartingEquipmentCommand(command, context, dependen
         case "add-line":
             acquisition = addPreparedLine(requireAcquisition(context.draft), command.line);
             statusNote = "Added to your cart.";
+            break;
+        case "enter-configured-item-handoff":
+            acquisition = recordConfiguredItemHandoff(requireAcquisition(context.draft), command.reason);
+            statusNote = `${command.reason.itemName} will be handled on the PF2E inventory sheet.`;
             break;
         case "remove-line":
             acquisition = removeLine(requireAcquisition(context.draft), command.lineId);

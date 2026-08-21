@@ -168,6 +168,20 @@ describe("Wave 2 acquisition execution", () => {
     });
   });
 
+  it("completes an acknowledged configured-item handoff with zero economic writes", async () => {
+    const actor = new FakeActor();
+    const fixture = configuredHandoffFixture(actor);
+    const session = sessionFor(fixture.acquisition);
+
+    await runItemsAndCurrency(session, actor, fixture);
+    const outcome = await verify(session, actor, fixture);
+
+    expect(actor.addOptions).toEqual([]);
+    expect(actor.currencyAdds).toEqual([]);
+    expect(actor.currencyRemovals).toEqual([]);
+    expect(outcome.manifest).toMatchObject({ disposition: "handoff", entries: [] });
+  });
+
   it.each([
     "source",
     "document",
@@ -973,6 +987,32 @@ function handoffFixture(actor: FakeActor) {
     grants: [],
   });
   return { acquisition, classGrantPlan, draft: { ...createEmptyDraft(1), acquisition } };
+}
+
+function configuredHandoffFixture(actor: FakeActor) {
+  const inherited = handoffFixture(actor);
+  const acquisition: AcquisitionDraftState = {
+    ...inherited.acquisition,
+    disposition: {
+      kind: "handoff",
+      handoff: {
+        version: 1,
+        kind: "pf2e-sheet",
+        baselineFingerprint: inherited.acquisition.baseline!.fingerprint,
+        reasons: [
+          {
+            code: "unsafe-configured-item",
+            sourceUuid: "Compendium.pf2e.equipment-srd.Item.specific",
+            itemName: "Chained Mist",
+            issue: "specific-magic-item",
+          },
+        ],
+      },
+      acknowledgedByUserId: "owner-1",
+      acknowledgedAt: NOW,
+    },
+  };
+  return { ...inherited, acquisition, draft: { ...inherited.draft, acquisition } };
 }
 
 function policy(_baseline: ReturnType<typeof createEconomicBaseline>): AcquisitionPolicySnapshot {

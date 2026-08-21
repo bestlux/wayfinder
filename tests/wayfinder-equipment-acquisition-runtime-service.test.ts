@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import { projectPlannedClassGrants } from "../src/wayfinder/application/class-grant-projection-service";
 import {
+  ConfiguredItemHandoffRequiredError,
   commitTitanMaulerLineSynchronization,
   createEquipmentAcquisitionRuntime,
   type EquipmentAcquisitionRuntime,
@@ -26,7 +27,12 @@ import {
   createPreparedClassGrantPlan,
 } from "../src/wayfinder/domain/class-grant-reconciliation";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
-import type { EffectiveEquipmentPolicySnapshotV1 } from "../src/wayfinder/domain/equipment-policy";
+import {
+  buildEquipmentPolicyJudgmentFactsFingerprint,
+  type EffectiveEquipmentPolicySnapshotV1,
+  type EquipmentPolicyJudgmentFacts,
+  type EquipmentPolicyJudgmentRecord,
+} from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 
 const PACK_ID = "pf2e.equipment-srd";
@@ -175,13 +181,86 @@ describe("equipment acquisition runtime", () => {
       },
       { policy: configuredPolicy() }
     );
+    const prepared = runtime.uiAdapter.prepareLine({
+      ...request,
+      sourceUuid: `Compendium.${PACK_ID}.Item.specific`,
+      funding: { lane: "allowance", allowanceId: "level-14-1" },
+    });
+    await expect(prepared).rejects.toBeInstanceOf(ConfiguredItemHandoffRequiredError);
+    await expect(prepared).rejects.toMatchObject({
+      reason: {
+        code: "unsafe-configured-item",
+        sourceUuid: `Compendium.${PACK_ID}.Item.specific`,
+        itemName: "Dagger",
+        issue: "specific-magic-item",
+      },
+    });
+  });
+
+  it("does not let an exact item exception override unsafe configured structure", async () => {
+    const specific = dagger({
+      id: "approved-specific",
+      name: "Approved Specific Blade",
+      level: 13,
+      rarity: "uncommon",
+      baseItem: "clean-blade",
+      runes: { potency: 1, striking: 1, property: ["shadow"] },
+      specific: { value: true },
+    });
+    const sourceUuid = `Compendium.${PACK_ID}.Item.approved-specific`;
+    const facts: EquipmentPolicyJudgmentFacts = {
+      kind: "rarity-source-exception",
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 14,
+      scope: "rarity",
+      sourceUuid,
+      packId: PACK_ID,
+      publicationSlug: "pathfinder-player-core",
+      rarity: "uncommon",
+    };
+    const judgment: EquipmentPolicyJudgmentRecord = {
+      id: "approved-specific-judgment",
+      kind: facts.kind,
+      actorId: facts.actorId,
+      draftId: facts.draftId,
+      targetLevel: facts.targetLevel,
+      factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(facts),
+      authorUserId: "gm-1",
+      authorName: "GM",
+      recordedAt: "2026-08-20T20:00:00.000Z",
+      reason: "Approved exact item",
+      request: {
+        requestId: "approved-specific-request",
+        requesterUserId: "owner-1",
+        requesterName: "Owner",
+        requestedAt: "2026-08-20T19:00:00.000Z",
+        reason: "Request exact item",
+        facts,
+      },
+      revocation: null,
+    };
+    const approvedPolicy = { ...configuredPolicy(), gmJudgments: [judgment] };
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [specific]),
+        getDocument: vi.fn(async () => document(specific)),
+      },
+      { policy: approvedPolicy }
+    );
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      records: [expect.objectContaining({ sourceUuid, available: true })],
+    });
     await expect(
       runtime.uiAdapter.prepareLine({
         ...request,
-        sourceUuid: `Compendium.${PACK_ID}.Item.specific`,
+        sourceUuid,
         funding: { lane: "allowance", allowanceId: "level-14-1" },
       })
-    ).rejects.toThrow(/specific configured magic item.*handoff/i);
+    ).rejects.toMatchObject({
+      reason: { code: "unsafe-configured-item", sourceUuid, issue: "specific-magic-item" },
+    });
   });
 
   it("records PF2E ABP-suppressed rune components without changing the wealth recipe", async () => {

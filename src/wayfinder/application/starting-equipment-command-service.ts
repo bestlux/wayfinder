@@ -6,6 +6,7 @@ import {
   createAcquisitionPolicySnapshot,
   invalidateAcquisitionReview,
   normalizeAcquisitionDraft,
+  recordConfiguredItemHandoff,
   recordEconomicAdmission,
   recordPlannedClassGrants,
 } from "../domain/acquisition-draft.js";
@@ -30,6 +31,7 @@ import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class
 import type { EconomicActorLike } from "./economic-baseline-service.js";
 import { evaluateActorEconomicAdmission } from "./economic-baseline-service.js";
 import {
+  type ConfiguredItemHandoffReason,
   type CurrentEquipmentAccessRequest,
   type CurrentEquipmentExceptionRequest,
   getFoundryEquipmentAcquisitionRuntime,
@@ -62,6 +64,7 @@ export type StartingEquipmentCommand =
   | { readonly type: "set-custom-lump-sum"; readonly amountCopper: number; readonly reason: string }
   | { readonly type: "grant-extra-current-level-allowance"; readonly reason: string }
   | { readonly type: "add-line"; readonly line: AcquisitionLineDraft }
+  | { readonly type: "enter-configured-item-handoff"; readonly reason: ConfiguredItemHandoffReason }
   | { readonly type: "remove-line"; readonly lineId: string }
   | { readonly type: "set-quantity"; readonly lineId: string; readonly quantity: number }
   | { readonly type: "review-purchases" }
@@ -409,6 +412,10 @@ export async function executeStartingEquipmentCommand(
     case "add-line":
       acquisition = addPreparedLine(requireAcquisition(context.draft), command.line);
       statusNote = "Added to your cart.";
+      break;
+    case "enter-configured-item-handoff":
+      acquisition = recordConfiguredItemHandoff(requireAcquisition(context.draft), command.reason);
+      statusNote = `${command.reason.itemName} will be handled on the PF2E inventory sheet.`;
       break;
     case "remove-line":
       acquisition = removeLine(requireAcquisition(context.draft), command.lineId);

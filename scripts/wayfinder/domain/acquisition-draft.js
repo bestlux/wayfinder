@@ -307,6 +307,33 @@ export function recordEconomicAdmission(draft, admission) {
     };
     return baselineChanged ? invalidateAcquisitionReview(next, ["baseline"]) : next;
 }
+export function recordConfiguredItemHandoff(draft, reason) {
+    if (!draft.baseline || !draft.policySnapshot) {
+        throw new TypeError("A configured-item handoff requires active policy and economic baseline facts.");
+    }
+    if (draft.disposition.kind === "handoff") {
+        throw new TypeError("The acquisition is already in PF2E-sheet handoff state.");
+    }
+    const handoff = normalizeEconomicHandoff({
+        version: 1,
+        kind: "pf2e-sheet",
+        baselineFingerprint: draft.baseline.fingerprint,
+        reasons: [reason],
+    });
+    if (!handoff)
+        throw new TypeError("The configured-item handoff reason is malformed.");
+    return {
+        ...draft,
+        lines: [],
+        currencyConvergenceWitness: null,
+        disposition: {
+            kind: "handoff",
+            handoff,
+            acknowledgedByUserId: null,
+            acknowledgedAt: null,
+        },
+    };
+}
 export function acknowledgeAcquisitionHandoff(draft, acknowledgment) {
     if (draft.disposition.kind !== "handoff")
         throw new TypeError("The acquisition is not in handoff state.");

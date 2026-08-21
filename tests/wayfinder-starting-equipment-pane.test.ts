@@ -242,6 +242,55 @@ describe("starting equipment pane", () => {
     expect(pane.review).toMatchObject({ canReviewPurchases: false, canRetainAll: false });
   });
 
+  it("explains configured-item handoff and suppresses further shopping", () => {
+    const draft = createEmptyDraft(1);
+    const acquisition = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    draft.acquisition = {
+      ...acquisition,
+      disposition: {
+        kind: "handoff",
+        handoff: {
+          version: 1,
+          kind: "pf2e-sheet",
+          baselineFingerprint: acquisition.baseline!.fingerprint,
+          reasons: [
+            {
+              code: "unsafe-configured-item",
+              sourceUuid: "Compendium.pf2e.equipment-srd.Item.specific",
+              itemName: "Chained Mist",
+              issue: "specific-magic-item",
+            },
+          ],
+        },
+        acknowledgedByUserId: null,
+        acknowledgedAt: null,
+      },
+    };
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(1),
+      draft,
+      { state: "incomplete", complete: false, status: "Acknowledge handoff", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        records: [],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      }
+    );
+
+    expect(pane.handoff).toMatchObject({
+      active: true,
+      acknowledged: false,
+      reasons: [expect.stringMatching(/Chained Mist.*inventory tab/i)],
+    });
+    expect(pane.catalogue.searchDisabled).toBe(true);
+  });
+
   it("renders dedicated search, filter, quantity, cart, retain-all, handoff, and focus controls", () => {
     const template = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
     for (const token of [
@@ -256,6 +305,7 @@ describe("starting equipment pane", () => {
       'data-wayfinder-action="approve-equipment-item-exception"',
       "Pick your Titan Mauler weapon",
       "data-wayfinder-focus-id",
+      "Wayfinder won't add items or touch your coin",
     ]) {
       expect(template).toContain(token);
     }

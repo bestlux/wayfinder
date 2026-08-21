@@ -11,6 +11,7 @@ import {
   reconcileAcquisitionTargetLevel,
   recordAcquisitionCurrencyConvergenceWitness,
   recordClassGrantReconciliations,
+  recordConfiguredItemHandoff,
   recordEconomicAdmission,
   recordPlannedClassGrants,
 } from "../src/wayfinder/domain/acquisition-draft";
@@ -428,6 +429,32 @@ describe("acquisition draft", () => {
         baseline: foreign,
       }).disposition
     ).toEqual({ kind: "unreviewed", invalidatedFrom: null, reasons: [] });
+  });
+
+  it("enters a configured-item handoff with no automated cart plan", () => {
+    const draft = completeDraft();
+    const withCart = { ...draft, lines: [line("configured-cart-line")] };
+    const handedOff = recordConfiguredItemHandoff(withCart, {
+      code: "unsafe-configured-item",
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.specific",
+      itemName: "Chained Mist",
+      issue: "specific-magic-item",
+    });
+
+    expect(handedOff.lines).toEqual([]);
+    expect(handedOff.disposition).toMatchObject({
+      kind: "handoff",
+      handoff: {
+        baselineFingerprint: draft.baseline!.fingerprint,
+        reasons: [{ code: "unsafe-configured-item", itemName: "Chained Mist" }],
+      },
+      acknowledgedByUserId: null,
+      acknowledgedAt: null,
+    });
+    expect(normalizeAcquisitionDraft(structuredClone(handedOff))).toMatchObject({
+      lines: [],
+      disposition: handedOff.disposition,
+    });
   });
 });
 

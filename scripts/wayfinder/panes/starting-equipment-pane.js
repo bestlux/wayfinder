@@ -318,6 +318,8 @@ function isPermanentItemType(itemType) {
 }
 function handoffReason(reason) {
     switch (reason.code) {
+        case "unsafe-configured-item":
+            return `${reason.itemName} has PF2E pricing or magic-item structure Wayfinder cannot reproduce safely. Add it on the PF2E inventory tab instead.`;
         case "foreign-physical-items":
             return "Your character already owns gear. Wayfinder leaves it alone, so pick up the rest on the PF2E inventory tab.";
         case "nonzero-currency":

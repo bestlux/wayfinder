@@ -26,7 +26,7 @@ import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection
 import { applyDraftLifecycle, buildApplyAttemptDraft, clearDraftLifecycle, hasApplyRecoveryState, } from "./application/draft-lifecycle-service.js";
 import { DraftPersistenceCoordinator } from "./application/draft-persistence-service.js";
 import { assertDraftSideEffectAllowed, assertFailedApplyRecoveryCandidateCurrent, captureDraftSideEffectPrecondition, capturePersistedDraftPrecondition, clearDraftWithWriteGuard, PersistedDraftWriteGuard, readPersistedDraftSnapshot, saveDraftWithWriteGuard, updateActorWithPersistedDraftPrecondition, WayfinderDraftWriteConflictError, } from "./application/draft-write-guard.js";
-import { commitTitanMaulerLineSynchronization, getFoundryEquipmentAcquisitionRuntime, } from "./application/equipment-acquisition-runtime-service.js";
+import { ConfiguredItemHandoffRequiredError, commitTitanMaulerLineSynchronization, getFoundryEquipmentAcquisitionRuntime, } from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
 import { buildExistingCharacterHistory, withExistingCharacterHistory, } from "./application/existing-character-history-service.js";
@@ -1055,6 +1055,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             await this.#executeStartingEquipmentCommand(stepId, { type: "add-line", line });
         }
         catch (error) {
+            if (error instanceof ConfiguredItemHandoffRequiredError) {
+                await this.#executeStartingEquipmentCommand(stepId, {
+                    type: "enter-configured-item-handoff",
+                    reason: error.reason,
+                });
+                return;
+            }
             const message = error instanceof Error ? error.message : "Wayfinder could not add this equipment item.";
             this.#statusNote = message;
             ui.notifications.warn(message);

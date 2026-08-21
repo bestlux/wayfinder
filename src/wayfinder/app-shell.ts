@@ -96,6 +96,7 @@ import {
   WayfinderDraftWriteConflictError,
 } from "./application/draft-write-guard.js";
 import {
+  ConfiguredItemHandoffRequiredError,
   commitTitanMaulerLineSynchronization,
   getFoundryEquipmentAcquisitionRuntime,
 } from "./application/equipment-acquisition-runtime-service.js";
@@ -1394,6 +1395,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       });
       await this.#executeStartingEquipmentCommand(stepId, { type: "add-line", line });
     } catch (error) {
+      if (error instanceof ConfiguredItemHandoffRequiredError) {
+        await this.#executeStartingEquipmentCommand(stepId, {
+          type: "enter-configured-item-handoff",
+          reason: error.reason,
+        });
+        return;
+      }
       const message = error instanceof Error ? error.message : "Wayfinder could not add this equipment item.";
       this.#statusNote = message;
       ui.notifications.warn(message);

@@ -80,7 +80,17 @@ export type EconomicHandoffReason =
   | { readonly code: "foreign-physical-items"; readonly itemIds: readonly string[] }
   | { readonly code: "nonzero-currency"; readonly copper: number }
   | { readonly code: "unresolved-class-grant"; readonly grantIds: readonly string[] }
-  | { readonly code: "ambiguous-class-grant"; readonly grantIds: readonly string[] };
+  | { readonly code: "ambiguous-class-grant"; readonly grantIds: readonly string[] }
+  | {
+      readonly code: "unsafe-configured-item";
+      readonly sourceUuid: string;
+      readonly itemName: string;
+      readonly issue:
+        | "specific-magic-item"
+        | "unsupported-unit-pricing"
+        | "base-item-unavailable"
+        | "prepared-components-unsafe";
+    };
 
 export interface EconomicHandoffV1 {
   readonly version: 1;
@@ -426,6 +436,22 @@ function normalizeEconomicPhysicalItem(raw: unknown): EconomicPhysicalItemV1 | n
 
 function normalizeHandoffReason(raw: unknown): EconomicHandoffReason | null {
   if (!isRecord(raw)) return null;
+  if (raw.code === "unsafe-configured-item") {
+    const issue = raw.issue;
+    return nonEmpty(raw.sourceUuid) &&
+      nonEmpty(raw.itemName) &&
+      (issue === "specific-magic-item" ||
+        issue === "unsupported-unit-pricing" ||
+        issue === "base-item-unavailable" ||
+        issue === "prepared-components-unsafe")
+      ? {
+          code: raw.code,
+          sourceUuid: raw.sourceUuid,
+          itemName: raw.itemName,
+          issue,
+        }
+      : null;
+  }
   if (raw.code === "nonzero-currency") {
     return validCopper(raw.copper as number) && (raw.copper as number) > 0
       ? { code: raw.code, copper: raw.copper as number }

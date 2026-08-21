@@ -257,6 +257,37 @@ describe("starting equipment command service", () => {
     expect(removed.acquisition.lines).toEqual([]);
   });
 
+  it("moves unsafe configured equipment into acknowledged zero-write handoff", async () => {
+    const context = commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft);
+    const result = await executeStartingEquipmentCommand(
+      {
+        type: "enter-configured-item-handoff",
+        reason: {
+          code: "unsafe-configured-item",
+          sourceUuid: "Compendium.pf2e.equipment-srd.Item.specific",
+          itemName: "Chained Mist",
+          issue: "specific-magic-item",
+        },
+      },
+      context
+    );
+
+    expect(result.statusNote).toMatch(/Chained Mist.*inventory sheet/i);
+    expect(result.acquisition.lines).toEqual([]);
+    expect(result.acquisition.disposition).toMatchObject({
+      kind: "handoff",
+      acknowledgedByUserId: null,
+      handoff: { reasons: [{ code: "unsafe-configured-item" }] },
+    });
+
+    context.draft.acquisition = result.acquisition;
+    const acknowledged = await executeStartingEquipmentCommand({ type: "acknowledge-handoff" }, context);
+    expect(acknowledged.acquisition.disposition).toMatchObject({
+      kind: "handoff",
+      acknowledgedByUserId: "owner-1",
+    });
+  });
+
   it("keeps class-grant lines locked against removal and quantity changes", async () => {
     const grant = fixedNativeGrant();
     const line = acquisitionLine({

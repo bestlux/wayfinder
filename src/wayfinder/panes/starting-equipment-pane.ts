@@ -1,5 +1,6 @@
 import type { DraftState } from "../../types.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
+import type { EconomicHandoffReason } from "../domain/economic-baseline.js";
 import type { EquipmentPolicyJudgmentRecord, EquipmentWorldPolicyV1 } from "../domain/equipment-policy.js";
 import type { WayfinderStepEvaluation } from "../domain/step-evaluation.js";
 import type { StartingEquipmentStep } from "../domain/step-types.js";
@@ -381,8 +382,10 @@ function isPermanentItemType(itemType: string): boolean {
   return itemType !== "ammo" && itemType !== "consumable";
 }
 
-function handoffReason(reason: { readonly code: string }): string {
+function handoffReason(reason: EconomicHandoffReason): string {
   switch (reason.code) {
+    case "unsafe-configured-item":
+      return `${reason.itemName} has PF2E pricing or magic-item structure Wayfinder cannot reproduce safely. Add it on the PF2E inventory tab instead.`;
     case "foreign-physical-items":
       return "Your character already owns gear. Wayfinder leaves it alone, so pick up the rest on the PF2E inventory tab.";
     case "nonzero-currency":

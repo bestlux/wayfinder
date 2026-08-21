@@ -659,7 +659,21 @@ function assertEconomicAdmission(
   ignoredNativeItemIds: ReadonlySet<string>
 ): void {
   if (acquisition.disposition.kind === "handoff") {
-    if (admission.kind !== "handoff" || stableJson(admission.handoff) !== stableJson(acquisition.disposition.handoff)) {
+    const configuredItemHandoff = acquisition.disposition.handoff.reasons.some(
+      (reason) => reason.code === "unsafe-configured-item"
+    );
+    if (configuredItemHandoff) {
+      if (
+        acquisition.disposition.handoff.reasons.length !== 1 ||
+        admission.kind !== "eligible-empty" ||
+        !economicBaselinesMatchIgnoringItems(acquisition.baseline!, baseline, ignoredNativeItemIds)
+      ) {
+        throw new Error("The configured-item handoff no longer matches the reviewed actor baseline.");
+      }
+    } else if (
+      admission.kind !== "handoff" ||
+      stableJson(admission.handoff) !== stableJson(acquisition.disposition.handoff)
+    ) {
       throw new Error("The acknowledged starting-equipment handoff no longer matches current actor wealth.");
     }
   } else if (admission.kind !== "eligible-empty" && admission.kind !== "eligible-retry") {

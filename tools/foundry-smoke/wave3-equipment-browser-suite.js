@@ -118,6 +118,21 @@ function inventorySnapshot(actor) {
   };
 }
 
+function recipeEvidence(policy) {
+  if (policy.resolvedRecipe.kind === "permanent-items") {
+    return {
+      kind: "permanent-items",
+      currencyCopper: policy.budgetCopper,
+      allowances: structuredClone(policy.allowances),
+    };
+  }
+  return {
+    ...structuredClone(policy.resolvedRecipe),
+    budgetCopper: policy.budgetCopper,
+    maxItemLevel: policy.subject.targetLevel - 1,
+  };
+}
+
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value !== null && typeof value === "object") {
@@ -429,13 +444,13 @@ globalThis.__runWayfinderWave3PlayerVerification = async function runWave3Player
       actorId: actor.id,
       targetLevel: draft.targetLevel,
       subject: structuredClone(policy.subject),
-      recipe: structuredClone(policy.resolvedRecipe),
+      recipe: recipeEvidence(policy),
       recipeSelection: structuredClone(policy.recipeSelection),
       startEvidence: structuredClone(policy.higherLevelStartEvidence),
     };
     if (smokeCase.configuredItem) {
       const runtime = modules.getRuntime();
-      const allowance = policy.resolvedRecipe.allowances?.find((entry) => entry.itemLevel === smokeCase.targetLevel);
+      const allowance = policy.allowances.find((entry) => entry.itemLevel === smokeCase.targetLevel);
       if (!allowance) throw new Error("Configured item fixture lacks its exact current-level GM allowance.");
       const request = {
         actor,

@@ -5,6 +5,7 @@ const SEARCH_SELECTOR = "[data-wayfinder-equipment-search]";
 const RESULT_SELECTOR = ".equipment-result-list .equipment-result";
 const PACK_ID = "pf2e.equipment-srd";
 const MODULE_ID = "wayfinder-pf2e";
+const SPRAY_PELLETS_SOURCE_UUID = "Compendium.pf2e.equipment-srd.Item.qaAQnuLVia6vS1LU";
 
 let actorId = null;
 let counters = null;
@@ -367,10 +368,20 @@ async function ensureSprayPelletsCart(timeoutMs) {
   const input = currentSearch();
   input.value = "spray pellets";
   input.dispatchEvent(new Event("input", { bubbles: true }));
-  await waitUntil(() => visibleResultValues().includes("Compendium.pf2e.equipment-srd.Item.qaAQnuLVia6vS1LU"), timeoutMs);
-  const add = currentRoot().querySelector(
-    '.equipment-result [data-wayfinder-action="add-equipment-item"][data-funding="currency"]',
+  await waitUntil(() => resultForSourceUuid(SPRAY_PELLETS_SOURCE_UUID), timeoutMs);
+  const result = resultForSourceUuid(SPRAY_PELLETS_SOURCE_UUID);
+  const preview = result?.matches('[data-wayfinder-action="preview-equipment-item"]')
+    ? result
+    : result?.querySelector(
+        `[data-wayfinder-action="preview-equipment-item"][data-source-uuid="${css(SPRAY_PELLETS_SOURCE_UUID)}"]`,
+      );
+  if (!preview) throw new Error("Equipment profile could not select the exact Spray Pellets result.");
+  preview.click();
+  await waitUntil(
+    () => visiblePreviewUuid() === SPRAY_PELLETS_SOURCE_UUID && selectedCurrencyAdd(SPRAY_PELLETS_SOURCE_UUID),
+    timeoutMs,
   );
+  const add = selectedCurrencyAdd(SPRAY_PELLETS_SOURCE_UUID);
   if (!add) throw new Error("Equipment profile could not add Spray Pellets to the fixture cart.");
   add.click();
   await waitUntil(() => currentRoot().querySelector(".equipment-cart-line"), timeoutMs);
@@ -615,9 +626,23 @@ function snapshot() {
 }
 
 function visibleResultValues() {
-  return [...currentRoot().querySelectorAll(RESULT_SELECTOR)].map(
-    (row) => row.querySelector("[data-source-uuid]")?.dataset.sourceUuid ?? "",
-  );
+  return [...currentRoot().querySelectorAll(RESULT_SELECTOR)].map(resultSourceUuid);
+}
+
+function resultSourceUuid(result) {
+  return result.dataset.sourceUuid ?? result.querySelector(":scope [data-source-uuid]")?.dataset.sourceUuid ?? "";
+}
+
+function resultForSourceUuid(sourceUuid) {
+  return [...currentRoot().querySelectorAll(RESULT_SELECTOR)].find((result) => resultSourceUuid(result) === sourceUuid) ?? null;
+}
+
+function selectedCurrencyAdd(sourceUuid) {
+  return currentRoot()
+    .querySelector(`[data-equipment-preview="${css(sourceUuid)}"]`)
+    ?.querySelector(
+      `[data-wayfinder-action="add-equipment-item"][data-source-uuid="${css(sourceUuid)}"][data-funding="currency"]`,
+    );
 }
 
 function visiblePreviewUuid() {

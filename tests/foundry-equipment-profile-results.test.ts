@@ -134,6 +134,28 @@ describe("equipment catalogue performance profile", () => {
     expect(browserProfile).toContain("!== detailBeforeRepeat");
   });
 
+  it("reads compact leaf identities and adds the exact selected Spray Pellets preview", () => {
+    expect(browserProfile).toContain(
+      'result.dataset.sourceUuid ?? result.querySelector(":scope [data-source-uuid]")?.dataset.sourceUuid ?? ""'
+    );
+    expect(browserProfile).toContain("resultSourceUuid(result) === sourceUuid");
+    expect(browserProfile).toContain("visiblePreviewUuid() === SPRAY_PELLETS_SOURCE_UUID");
+    expect(browserProfile).toContain('querySelector(`[data-equipment-preview="${css(sourceUuid)}"]`)');
+    expect(browserProfile).toContain(
+      '`[data-wayfinder-action="add-equipment-item"][data-source-uuid="${css(sourceUuid)}"][data-funding="currency"]`'
+    );
+    expect(browserProfile).toContain("const add = selectedCurrencyAdd(SPRAY_PELLETS_SOURCE_UUID)");
+    expect(browserProfile).toMatch(
+      /const add = selectedCurrencyAdd\(SPRAY_PELLETS_SOURCE_UUID\);[\s\S]*?add\.click\(\);/
+    );
+    expect(browserProfile).toContain(
+      'await waitUntil(() => currentRoot().querySelector(".equipment-cart-line"), timeoutMs)'
+    );
+    expect(browserProfile).not.toContain(
+      '.equipment-result [data-wayfinder-action="add-equipment-item"][data-funding="currency"]'
+    );
+  });
+
   it("qualifies only Long Tasks overlapping primary action intervals", () => {
     const postSettle = { startTime: 200, duration: 60 };
     const observed = sample("cart-quantity");

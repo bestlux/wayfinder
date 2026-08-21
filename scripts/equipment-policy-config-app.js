@@ -1,6 +1,7 @@
 import { MODULE_ID } from "./constants.js";
 import { getEquipmentWorldPolicySetting } from "./settings.js";
 import { saveEquipmentWorldPolicy } from "./wayfinder/application/equipment-policy-service.js";
+import { discoverInstalledEquipmentPackDescriptors } from "./wayfinder/application/equipment-source-policy.js";
 import { requireCurrentGmPrincipal, WayfinderGmCommandAuthorityError, } from "./wayfinder/application/gm-command-authority.js";
 export class EquipmentPolicyConfigApp extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
     static DEFAULT_OPTIONS = {
@@ -70,21 +71,20 @@ export class EquipmentPolicyConfigApp extends foundry.applications.api.Handlebar
 }
 function discoverEquipmentPackFamilies(selectedFamilies) {
     const selected = new Set(selectedFamilies);
-    const packs = game.packs;
-    const values = typeof packs?.values === "function" ? [...packs.values()] : Array.isArray(packs) ? packs : [];
+    const browser = record(record(game.pf2e).compendiumBrowser);
+    const descriptors = discoverInstalledEquipmentPackDescriptors({
+        packs: game.packs,
+        pf2eEquipmentPacks: record(browser.settings).equipment,
+    });
     const counts = new Map();
-    for (const raw of values) {
-        const pack = record(raw);
-        const metadata = record(pack.metadata);
-        if (metadata.type !== "Item" && pack.documentName !== "Item")
+    for (const descriptor of descriptors) {
+        if (descriptor.documentName !== null && descriptor.documentName !== "Item")
             continue;
-        const id = String(pack.collection ?? metadata.id ?? "");
-        const family = id.split(".")[0]?.trim().toLowerCase();
-        if (!family)
-            continue;
-        const packageTitle = String(record(pack.metadata).packageName ?? record(pack).packageName ?? family);
-        const current = counts.get(family);
-        counts.set(family, { label: current?.label ?? packageTitle, count: (current?.count ?? 0) + 1 });
+        const current = counts.get(descriptor.family);
+        counts.set(descriptor.family, {
+            label: current?.label ?? descriptor.packageName,
+            count: (current?.count ?? 0) + 1,
+        });
     }
     for (const family of selected) {
         if (!counts.has(family))

@@ -20,49 +20,14 @@ import {
   normalizeEquipmentWorldPolicy,
   type OfficialEquipmentRecipe,
 } from "../domain/equipment-policy.js";
+import {
+  discoverInstalledEquipmentPackDescriptors,
+  type InstalledEquipmentPackDescriptor,
+  normalizePf2eEquipmentSources,
+} from "./equipment-source-policy.js";
 import { requireCurrentGmPrincipal } from "./gm-command-authority.js";
 
-export interface NormalizedPf2eEquipmentSources {
-  readonly effectivePackIds: readonly string[];
-  readonly enabledSourceSlugs: readonly string[];
-  readonly knownSourceSlugs: readonly string[];
-  readonly showEmptySources: boolean;
-  readonly showUnknownSources: boolean;
-}
-
-const CORE_EQUIPMENT_PACK_ID = "pf2e.equipment-srd";
-
-export function normalizePf2eEquipmentSources(input: {
-  readonly availablePackIds: readonly string[];
-  readonly allowedPackFamilies: readonly string[];
-  readonly compendiumBrowserPacks: unknown;
-  readonly compendiumBrowserSources: unknown;
-}): NormalizedPf2eEquipmentSources {
-  const packRoot = record(input.compendiumBrowserPacks);
-  const equipment = record(packRoot.equipment);
-  const explicitlyConfiguredPacks = new Set(Object.keys(equipment));
-  const families = new Set(input.allowedPackFamilies.map((value) => value.trim().toLowerCase()));
-  const effectivePackIds = [...new Set(input.availablePackIds)]
-    .filter((packId) => families.has(packFamily(packId)))
-    .filter((packId) => packId === CORE_EQUIPMENT_PACK_ID || explicitlyConfiguredPacks.has(packId))
-    .filter((packId) => record(equipment[packId]).load !== false)
-    .sort((left, right) => left.localeCompare(right));
-
-  const sourceRoot = record(input.compendiumBrowserSources);
-  const sources = record(sourceRoot.sources);
-  const knownSourceSlugs = Object.keys(sources).sort((left, right) => left.localeCompare(right));
-  const enabledSourceSlugs = Object.entries(sources)
-    .filter(([, value]) => record(value).load !== false)
-    .map(([slug]) => slug)
-    .sort((left, right) => left.localeCompare(right));
-  return {
-    effectivePackIds,
-    enabledSourceSlugs,
-    knownSourceSlugs,
-    showEmptySources: sourceRoot.showEmptySources === true,
-    showUnknownSources: sourceRoot.showUnknownSources === true,
-  };
-}
+export { normalizePf2eEquipmentSources } from "./equipment-source-policy.js";
 
 export function resolveActorAbpSnapshot(
   actor: unknown,
@@ -92,12 +57,12 @@ export function resolveEquipmentPolicyForActor(input: {
   readonly customLumpSum?: EquipmentPolicyResolutionInput["customLumpSum"];
   readonly extraCurrentLevelAllowanceIds?: readonly string[];
   readonly exceptionJudgmentIds?: readonly string[];
-  readonly availableEquipmentPackIds?: readonly string[];
+  readonly installedEquipmentPacks?: readonly InstalledEquipmentPackDescriptor[];
 }): EffectiveEquipmentPolicySnapshotV1 {
   const actorId = actorIdentity(input.actor);
   const worldPolicy = getEquipmentWorldPolicySetting();
   const sources = normalizePf2eEquipmentSources({
-    availablePackIds: input.availableEquipmentPackIds ?? discoverItemPackIds(),
+    installedEquipmentPacks: input.installedEquipmentPacks ?? discoverCurrentEquipmentPacks(),
     allowedPackFamilies: worldPolicy.allowedEquipmentPackFamilies,
     compendiumBrowserPacks: game.settings.get("pf2e", "compendiumBrowserPacks"),
     compendiumBrowserSources: game.settings.get("pf2e", "compendiumBrowserSources"),
@@ -409,20 +374,12 @@ function actorIdentity(actor: unknown): string {
   return id;
 }
 
-function discoverItemPackIds(): string[] {
-  const packs = game.packs;
-  const values = typeof packs?.values === "function" ? [...packs.values()] : Array.isArray(packs) ? packs : [];
-  return values
-    .filter((pack) => record(record(pack).metadata).type === "Item" || record(pack).documentName === "Item")
-    .map((pack) => {
-      const normalized = record(pack);
-      return String(normalized.collection ?? record(normalized.metadata).id ?? "");
-    })
-    .filter(nonEmpty);
-}
-
-function packFamily(packId: string): string {
-  return (packId.split(".")[0] ?? packId).trim().toLowerCase();
+function discoverCurrentEquipmentPacks(): InstalledEquipmentPackDescriptor[] {
+  const browser = record(record(game.pf2e).compendiumBrowser);
+  return discoverInstalledEquipmentPackDescriptors({
+    packs: game.packs,
+    pf2eEquipmentPacks: record(browser.settings).equipment,
+  });
 }
 
 function validTimestamp(value: unknown): value is string {

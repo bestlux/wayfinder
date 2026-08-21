@@ -36,7 +36,7 @@ describe("equipment policy service", () => {
   it("normalizes PF2E equipment packs and known publication sources without GM-only broadening", () => {
     expect(
       normalizePf2eEquipmentSources({
-        availablePackIds: ["pf2e.equipment-srd", "battlezoo.items", "other.items"],
+        installedEquipmentPacks: equipmentDescriptors(["pf2e.equipment-srd", "battlezoo.items", "other.items"]),
         allowedPackFamilies: ["pf2e", "battlezoo"],
         compendiumBrowserPacks: {
           equipment: { "battlezoo.items": { load: false }, "pf2e.equipment-srd": { load: true } },
@@ -54,13 +54,14 @@ describe("equipment policy service", () => {
       knownSourceSlugs: ["hidden", "player-core"],
       showEmptySources: true,
       showUnknownSources: false,
+      diagnostics: [],
     });
   });
 
   it("defaults to the core equipment pack instead of treating every Item pack as equipment", () => {
     expect(
       normalizePf2eEquipmentSources({
-        availablePackIds: ["pf2e.actionspf2e", "pf2e.equipment-srd", "pf2e.spells-srd", "battlezoo.items"],
+        installedEquipmentPacks: equipmentDescriptors(["pf2e.equipment-srd"]),
         allowedPackFamilies: ["pf2e", "battlezoo"],
         compendiumBrowserPacks: {},
         compendiumBrowserSources: { sources: {} },
@@ -71,7 +72,7 @@ describe("equipment policy service", () => {
   it("adds only explicitly enabled equipment-tab packs and honors an explicit core disable", () => {
     expect(
       normalizePf2eEquipmentSources({
-        availablePackIds: ["pf2e.equipment-srd", "pf2e.spells-srd", "battlezoo.items", "battlezoo.feats"],
+        installedEquipmentPacks: equipmentDescriptors(["pf2e.equipment-srd", "battlezoo.items"]),
         allowedPackFamilies: ["pf2e", "battlezoo"],
         compendiumBrowserPacks: {
           equipment: {
@@ -205,7 +206,7 @@ describe("equipment policy service", () => {
           judgmentId: start.id,
           startKind: "replacement-character",
         },
-        availableEquipmentPackIds: ["pf2e.equipment-srd"],
+        installedEquipmentPacks: equipmentDescriptors(["pf2e.equipment-srd"]),
       }).higherLevelStartEvidence
     ).toMatchObject({ kind: "gm-confirmation", judgment: { authorUserId: "gm-1" } });
 
@@ -238,7 +239,7 @@ describe("equipment policy service", () => {
         targetLevel: 5,
         selectedRecipe: "permanent-items",
         higherLevelStartClaim: attestation,
-        availableEquipmentPackIds: ["pf2e.equipment-srd"],
+        installedEquipmentPacks: equipmentDescriptors(["pf2e.equipment-srd"]),
       }).higherLevelStartEvidence
     ).toEqual(attestation);
   });
@@ -325,4 +326,14 @@ async function trustedStart() {
     reason: "Approved campaign start",
     recordedAt: "2026-08-18T20:00:00.000Z",
   });
+}
+
+function equipmentDescriptors(ids: readonly string[]) {
+  return ids.map((id) => ({
+    id,
+    family: id.split(".")[0]!,
+    label: id,
+    packageName: id.split(".")[0]!,
+    documentName: "Item",
+  }));
 }

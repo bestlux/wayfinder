@@ -2,33 +2,9 @@ import { MODULE_ID, SETTINGS } from "../../constants.js";
 import { assertCanUseWayfinder } from "../../permissions.js";
 import { getEquipmentPolicyJudgmentStoreSetting, getEquipmentWorldPolicySetting } from "../../settings.js";
 import { buildEquipmentPolicyJudgmentFactsFingerprint, createEquipmentPolicyRequest, createEquipmentPolicyResolver, equipmentPolicyJudgmentFactsEqual, normalizeEquipmentPolicyRequest, normalizeEquipmentWorldPolicy, } from "../domain/equipment-policy.js";
+import { discoverInstalledEquipmentPackDescriptors, normalizePf2eEquipmentSources, } from "./equipment-source-policy.js";
 import { requireCurrentGmPrincipal } from "./gm-command-authority.js";
-const CORE_EQUIPMENT_PACK_ID = "pf2e.equipment-srd";
-export function normalizePf2eEquipmentSources(input) {
-    const packRoot = record(input.compendiumBrowserPacks);
-    const equipment = record(packRoot.equipment);
-    const explicitlyConfiguredPacks = new Set(Object.keys(equipment));
-    const families = new Set(input.allowedPackFamilies.map((value) => value.trim().toLowerCase()));
-    const effectivePackIds = [...new Set(input.availablePackIds)]
-        .filter((packId) => families.has(packFamily(packId)))
-        .filter((packId) => packId === CORE_EQUIPMENT_PACK_ID || explicitlyConfiguredPacks.has(packId))
-        .filter((packId) => record(equipment[packId]).load !== false)
-        .sort((left, right) => left.localeCompare(right));
-    const sourceRoot = record(input.compendiumBrowserSources);
-    const sources = record(sourceRoot.sources);
-    const knownSourceSlugs = Object.keys(sources).sort((left, right) => left.localeCompare(right));
-    const enabledSourceSlugs = Object.entries(sources)
-        .filter(([, value]) => record(value).load !== false)
-        .map(([slug]) => slug)
-        .sort((left, right) => left.localeCompare(right));
-    return {
-        effectivePackIds,
-        enabledSourceSlugs,
-        knownSourceSlugs,
-        showEmptySources: sourceRoot.showEmptySources === true,
-        showUnknownSources: sourceRoot.showUnknownSources === true,
-    };
-}
+export { normalizePf2eEquipmentSources } from "./equipment-source-policy.js";
 export function resolveActorAbpSnapshot(actor, pf2e = game.pf2e) {
     const system = record(pf2e);
     const settings = record(record(system.settings).variants);
@@ -47,7 +23,7 @@ export function resolveEquipmentPolicyForActor(input) {
     const actorId = actorIdentity(input.actor);
     const worldPolicy = getEquipmentWorldPolicySetting();
     const sources = normalizePf2eEquipmentSources({
-        availablePackIds: input.availableEquipmentPackIds ?? discoverItemPackIds(),
+        installedEquipmentPacks: input.installedEquipmentPacks ?? discoverCurrentEquipmentPacks(),
         allowedPackFamilies: worldPolicy.allowedEquipmentPackFamilies,
         compendiumBrowserPacks: game.settings.get("pf2e", "compendiumBrowserPacks"),
         compendiumBrowserSources: game.settings.get("pf2e", "compendiumBrowserSources"),
@@ -309,19 +285,12 @@ function actorIdentity(actor) {
         throw new TypeError("Equipment policy requires a bound actor ID.");
     return id;
 }
-function discoverItemPackIds() {
-    const packs = game.packs;
-    const values = typeof packs?.values === "function" ? [...packs.values()] : Array.isArray(packs) ? packs : [];
-    return values
-        .filter((pack) => record(record(pack).metadata).type === "Item" || record(pack).documentName === "Item")
-        .map((pack) => {
-        const normalized = record(pack);
-        return String(normalized.collection ?? record(normalized.metadata).id ?? "");
-    })
-        .filter(nonEmpty);
-}
-function packFamily(packId) {
-    return (packId.split(".")[0] ?? packId).trim().toLowerCase();
+function discoverCurrentEquipmentPacks() {
+    const browser = record(record(game.pf2e).compendiumBrowser);
+    return discoverInstalledEquipmentPackDescriptors({
+        packs: game.packs,
+        pf2eEquipmentPacks: record(browser.settings).equipment,
+    });
 }
 function validTimestamp(value) {
     return nonEmpty(value) && Number.isFinite(Date.parse(value));

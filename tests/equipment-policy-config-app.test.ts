@@ -27,6 +27,7 @@ describe("equipment policy config app", () => {
       user: { id: "gm-1", name: "GM", isGM: true },
       users: { get: vi.fn((id: string) => (id === "gm-1" ? { id: "gm-1", name: "GM", isGM: true } : null)) },
       packs: new Map(),
+      pf2e: { compendiumBrowser: { settings: { equipment: {} } } },
       settings: { get: vi.fn(), set: vi.fn(async () => undefined) },
     };
     globals.ui = { notifications: { error: vi.fn(), info: vi.fn() } };
@@ -77,4 +78,37 @@ describe("equipment policy config app", () => {
     expect(globals.game.settings.set).not.toHaveBeenCalled();
     expect(globals.ui.notifications.error).toHaveBeenCalledTimes(2);
   });
+
+  it("counts only installed packs classified for PF2E's equipment tab", async () => {
+    globals.game.settings.get.mockReturnValue({
+      version: 1,
+      enabledRecipes: ["permanent-items"],
+      defaultRecipe: "permanent-items",
+      allowedEquipmentPackFamilies: ["pf2e", "battlezoo"],
+    });
+    globals.game.packs = new Map([
+      ["pf2e.equipment-srd", pack("pf2e.equipment-srd", "PF2E")],
+      ["battlezoo.items", pack("battlezoo.items", "Battlezoo")],
+      ["battlezoo.feats", pack("battlezoo.feats", "Battlezoo")],
+    ]);
+    globals.game.pf2e.compendiumBrowser.settings.equipment = {
+      "pf2e.equipment-srd": { name: "Equipment", package: "PF2E" },
+      "battlezoo.items": { name: "Items", package: "Battlezoo" },
+    };
+
+    const { EquipmentPolicyConfigApp } = await import("../src/equipment-policy-config-app");
+    const context = await (new EquipmentPolicyConfigApp() as any)._prepareContext();
+    expect(context.families).toEqual([
+      { id: "battlezoo", label: "Battlezoo", packCount: 1, selected: true },
+      { id: "pf2e", label: "PF2E", packCount: 1, selected: true },
+    ]);
+  });
 });
+
+function pack(id: string, packageName: string) {
+  return {
+    collection: id,
+    documentName: "Item",
+    metadata: { id, type: "Item", label: id, packageName },
+  };
+}

@@ -6,6 +6,11 @@ import {
   evaluateEquipmentItemAuthority,
   resolveEquipmentItemExceptionJudgmentIds,
 } from "../domain/equipment-policy.js";
+import {
+  type EquipmentSourceDiagnostic,
+  sortEquipmentSourceDiagnostics,
+  sourceDiagnostic,
+} from "./equipment-source-policy.js";
 
 export const EQUIPMENT_CATALOGUE_PROJECTION_VERSION = 1 as const;
 export const WF_080_21_DAGGER_UUID = "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z";
@@ -125,6 +130,7 @@ export interface EquipmentCatalogueProjection {
   readonly version: typeof EQUIPMENT_CATALOGUE_PROJECTION_VERSION;
   readonly cacheKey: string;
   readonly entries: readonly EquipmentCatalogueEntry[];
+  readonly diagnostics: readonly EquipmentSourceDiagnostic[];
 }
 
 export interface EquipmentCatalogueSearchFilters {
@@ -190,6 +196,12 @@ interface NormalizationResult {
 }
 
 type CachedProjectionCandidate = NormalizationResult;
+
+interface PackProjectionResult {
+  readonly candidates: readonly CachedProjectionCandidate[];
+  readonly diagnostics: readonly EquipmentSourceDiagnostic[];
+  readonly cacheable: boolean;
+}
 
 export function createEquipmentAccessRegistry(
   records: readonly EquipmentSourceAccessRecord[] = []
@@ -264,8 +276,8 @@ export class EquipmentCatalogueService {
   readonly #packs: EquipmentCatalogueServiceOptions["packs"];
   readonly #equipmentPackIds: ReadonlySet<string>;
   readonly #accessRegistry: EquipmentAccessRegistry;
-  readonly #packIndexCache = new Map<string, Promise<readonly CachedProjectionCandidate[]>>();
-  readonly #projectionCache = new Map<string, Promise<readonly CachedProjectionCandidate[]>>();
+  readonly #packIndexCache = new Map<string, Promise<PackProjectionResult>>();
+  readonly #projectionCache = new Map<string, Promise<PackProjectionResult>>();
   readonly #latestCandidateByUuid = new Map<string, NormalizedEquipmentCatalogueCandidate>();
   readonly #previewCache = new Map<string, CachedPreview>();
   readonly #pendingPreviews = new Map<string, PendingPreview>();
@@ -295,14 +307,20 @@ export class EquipmentCatalogueService {
         if (this.#projectionCache.get(cacheKey) === pending) this.#projectionCache.delete(cacheKey);
       });
     }
-    const candidates = await pending;
+    const loaded = await pending;
+    if (!loaded.cacheable && this.#projectionCache.get(cacheKey) === pending) {
+      this.#projectionCache.delete(cacheKey);
+    }
     if (cacheKey !== this.#projectionKey(context.policy, packIds)) return this.project(context);
-    const entries = candidates.map((candidate) => this.#evaluateCandidate(context, candidate)).sort(compareEntries);
+    const entries = loaded.candidates
+      .map((candidate) => this.#evaluateCandidate(context, candidate))
+      .sort(compareEntries);
     for (const entry of entries) this.#latestCandidateByUuid.set(entry.sourceUuid, stripEvaluation(entry));
     return Object.freeze({
       version: EQUIPMENT_CATALOGUE_PROJECTION_VERSION,
       cacheKey,
       entries: Object.freeze(entries),
+      diagnostics: Object.freeze([...loaded.diagnostics]),
     });
   }
 
@@ -467,41 +485,73 @@ export class EquipmentCatalogueService {
     });
   }
 
-  async #loadProjectionCandidates(packIds: readonly string[]): Promise<readonly CachedProjectionCandidate[]> {
+  async #loadProjectionCandidates(packIds: readonly string[]): Promise<PackProjectionResult> {
     const byPack = await Promise.all(packIds.map((packId) => this.#loadPackCandidates(packId)));
-    const flattened = byPack.flat();
+    const diagnostics = byPack.flatMap((result) => result.diagnostics);
+    const candidates: CachedProjectionCandidate[] = [];
     const seen = new Set<string>();
-    for (const { candidate } of flattened) {
+    for (const { candidate, reasons } of byPack.flatMap((result) => result.candidates)) {
       if (seen.has(candidate.sourceUuid)) {
-        throw new TypeError(`Equipment catalogue contains duplicate source UUID ${candidate.sourceUuid}.`);
+        diagnostics.push(
+          sourceDiagnostic(
+            "duplicate-equipment-source-identity",
+            candidate.packId,
+            candidate.sourceUuid,
+            `Equipment source identity ${candidate.sourceUuid} occurs more than once; only the first record was retained.`
+          )
+        );
+        continue;
       }
       seen.add(candidate.sourceUuid);
+      candidates.push({ candidate, reasons });
     }
-    return Object.freeze(flattened);
+    return Object.freeze({
+      candidates: Object.freeze(candidates),
+      diagnostics: Object.freeze(sortEquipmentSourceDiagnostics(diagnostics)),
+      cacheable: byPack.every((result) => result.cacheable),
+    });
   }
 
-  #loadPackCandidates(packId: string): Promise<readonly CachedProjectionCandidate[]> {
+  #loadPackCandidates(packId: string): Promise<PackProjectionResult> {
     const key = `${packId}|${this.#packGeneration(packId)}`;
     let pending = this.#packIndexCache.get(key);
     if (pending !== undefined) return pending;
     const pack = this.#packs.get(packId);
-    if (!pack) throw new TypeError(`Configured equipment pack ${packId} is unavailable.`);
+    if (!pack) {
+      return Promise.resolve(
+        projectionFailure(
+          sourceDiagnostic(
+            "equipment-pack-missing",
+            packId,
+            null,
+            `Configured equipment pack ${packId} is not installed or is unavailable to the current user.`
+          )
+        )
+      );
+    }
     const documentName = pack.documentName ?? pack.metadata?.type;
     if (documentName !== undefined && documentName !== "Item") {
-      throw new TypeError(`Configured equipment pack ${packId} is not an Item pack.`);
+      return Promise.resolve(
+        projectionFailure(
+          sourceDiagnostic(
+            "equipment-pack-not-item",
+            packId,
+            null,
+            `Configured equipment pack ${packId} is not an Item compendium and was excluded.`
+          )
+        )
+      );
     }
-    pending = pack.getIndex({ fields: [...INDEX_FIELDS] }).then((index) =>
-      Object.freeze(
-        Array.from(index ?? []).flatMap((entry) => {
-          const normalized = normalizeIndexEntry(entry, packId);
-          return normalized ? [normalized] : [];
-        })
-      )
-    );
+    pending = loadPackProjection(pack, packId);
     this.#packIndexCache.set(key, pending);
-    pending.catch(() => {
-      if (this.#packIndexCache.get(key) === pending) this.#packIndexCache.delete(key);
-    });
+    void pending.then(
+      (result) => {
+        if (!result.cacheable && this.#packIndexCache.get(key) === pending) this.#packIndexCache.delete(key);
+      },
+      () => {
+        if (this.#packIndexCache.get(key) === pending) this.#packIndexCache.delete(key);
+      }
+    );
     return pending;
   }
 
@@ -605,11 +655,86 @@ export function createEquipmentCatalogueService(options: EquipmentCatalogueServi
   return new EquipmentCatalogueService(options);
 }
 
-function normalizeIndexEntry(entry: unknown, packId: string): CachedProjectionCandidate | null {
+async function loadPackProjection(pack: EquipmentCataloguePackLike, packId: string): Promise<PackProjectionResult> {
+  let index: Iterable<unknown> | null | undefined;
+  try {
+    index = await pack.getIndex({ fields: [...INDEX_FIELDS] });
+  } catch {
+    return projectionFailure(
+      sourceDiagnostic(
+        "equipment-pack-index-failed",
+        packId,
+        null,
+        `Equipment pack ${packId} could not be indexed. Check the installed package and retry.`
+      ),
+      false
+    );
+  }
+  if (!isIterable(index)) {
+    return projectionFailure(
+      sourceDiagnostic(
+        "equipment-pack-index-corrupt",
+        packId,
+        null,
+        `Equipment pack ${packId} returned a malformed index and was excluded.`
+      )
+    );
+  }
+  let entries: unknown[];
+  try {
+    entries = Array.from(index);
+  } catch {
+    return projectionFailure(
+      sourceDiagnostic(
+        "equipment-pack-index-corrupt",
+        packId,
+        null,
+        `Equipment pack ${packId} returned an unreadable index and was excluded.`
+      )
+    );
+  }
+  const candidates: CachedProjectionCandidate[] = [];
+  const diagnostics: EquipmentSourceDiagnostic[] = [];
+  entries.forEach((entry, index) => {
+    const normalized = normalizeIndexEntry(entry, packId, index);
+    if ("diagnostic" in normalized) diagnostics.push(normalized.diagnostic);
+    else candidates.push(normalized.candidate);
+  });
+  return Object.freeze({
+    candidates: Object.freeze(candidates),
+    diagnostics: Object.freeze(sortEquipmentSourceDiagnostics(diagnostics)),
+    cacheable: true,
+  });
+}
+
+function normalizeIndexEntry(
+  entry: unknown,
+  packId: string,
+  index: number
+): { readonly candidate: CachedProjectionCandidate } | { readonly diagnostic: EquipmentSourceDiagnostic } {
   const value = record(entry);
-  const documentId = nonEmpty(value._id) ? value._id : documentIdFromUuid(value.uuid, packId);
-  if (!documentId) return null;
-  return normalizeCandidate(value, packId, `Compendium.${packId}.Item.${documentId}`);
+  const sourceIdentity = indexSourceIdentity(value, packId, index);
+  const documentId = nonEmpty(value._id) ? value._id.trim() : documentIdFromUuid(value.uuid, packId);
+  const uuidIdentity = nonEmpty(value.uuid) ? parseOptionalCompendiumItemUuid(value.uuid) : null;
+  if (
+    !documentId ||
+    (nonEmpty(value.uuid) &&
+      (!uuidIdentity || uuidIdentity.packId !== packId || uuidIdentity.documentId !== documentId))
+  ) {
+    return {
+      diagnostic: sourceDiagnostic(
+        "equipment-source-identity-corrupt",
+        packId,
+        sourceIdentity,
+        `Equipment pack ${packId} contains a record with a missing or contradictory Item identity (${sourceIdentity}).`
+      ),
+    };
+  }
+  return { candidate: normalizeCandidate(value, packId, `Compendium.${packId}.Item.${documentId}`) };
+}
+
+function projectionFailure(diagnostic: EquipmentSourceDiagnostic, cacheable = true): PackProjectionResult {
+  return Object.freeze({ candidates: Object.freeze([]), diagnostics: Object.freeze([diagnostic]), cacheable });
 }
 
 function normalizeCandidate(source: unknown, packId: string, sourceUuid: string): NormalizationResult {
@@ -843,12 +968,27 @@ function parseCompendiumItemUuid(sourceUuid: string): { readonly packId: string;
 
 function documentIdFromUuid(raw: unknown, packId: string): string | null {
   if (!nonEmpty(raw)) return null;
+  const parsed = parseOptionalCompendiumItemUuid(raw);
+  return parsed?.packId === packId ? parsed.documentId : null;
+}
+
+function parseOptionalCompendiumItemUuid(raw: string): { readonly packId: string; readonly documentId: string } | null {
   try {
-    const parsed = parseCompendiumItemUuid(raw);
-    return parsed.packId === packId ? parsed.documentId : null;
+    return parseCompendiumItemUuid(raw);
   } catch {
     return null;
   }
+}
+
+function indexSourceIdentity(value: Record<string, unknown>, packId: string, index: number): string {
+  if (nonEmpty(value.uuid)) return value.uuid.trim();
+  if (nonEmpty(value._id)) return `Compendium.${packId}.Item.${value._id.trim()}`;
+  return `${packId}#index-${index}`;
+}
+
+function isIterable(value: unknown): value is Iterable<unknown> {
+  if (value === null || value === undefined) return false;
+  return typeof (value as { [Symbol.iterator]?: unknown })[Symbol.iterator] === "function";
 }
 
 function equipmentRarity(raw: unknown): EquipmentRarity | null {

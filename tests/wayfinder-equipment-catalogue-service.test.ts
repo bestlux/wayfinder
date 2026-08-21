@@ -240,6 +240,104 @@ describe("minimal equipment catalogue", () => {
     expect(unrelatedIndex).not.toHaveBeenCalled();
   });
 
+  it("returns stable typed diagnostics for unreadable packs and indexes", async () => {
+    const missingPackId = "broken.missing";
+    const journalPackId = "broken.journals";
+    const failedPackId = "broken.failed";
+    const corruptPackId = "broken.corrupt";
+    const packs = new Map<string, EquipmentCataloguePackLike>([
+      [
+        journalPackId,
+        {
+          documentName: "JournalEntry",
+          getIndex: vi.fn(async () => []),
+          getDocument: vi.fn(async () => null),
+        },
+      ],
+      [
+        failedPackId,
+        {
+          documentName: "Item",
+          getIndex: vi.fn(async () => {
+            throw new Error("unstable raw exception text");
+          }),
+          getDocument: vi.fn(async () => null),
+        },
+      ],
+      [
+        corruptPackId,
+        {
+          documentName: "Item",
+          getIndex: vi.fn(async () => null),
+          getDocument: vi.fn(async () => null),
+        },
+      ],
+    ]);
+    const equipmentPackIds = [missingPackId, journalPackId, failedPackId, corruptPackId].sort();
+    const service = createEquipmentCatalogueService({ packs, equipmentPackIds });
+    const currentPolicy = policy();
+    const projection = await service.project(
+      context({
+        policy: policy({
+          sourcePolicy: { ...currentPolicy.sourcePolicy, effectivePackIds: equipmentPackIds },
+        }),
+      })
+    );
+
+    expect(projection.entries).toEqual([]);
+    expect(projection.diagnostics.map(({ code, packId }) => ({ code, packId }))).toEqual([
+      { code: "equipment-pack-index-corrupt", packId: corruptPackId },
+      { code: "equipment-pack-index-failed", packId: failedPackId },
+      { code: "equipment-pack-not-item", packId: journalPackId },
+      { code: "equipment-pack-missing", packId: missingPackId },
+    ]);
+    expect(projection.diagnostics.map((diagnostic) => diagnostic.message).join(" ")).not.toContain(
+      "unstable raw exception text"
+    );
+  });
+
+  it("skips corrupt and duplicate source identities with deterministic diagnostics", async () => {
+    const service = createEquipmentCatalogueService({
+      packs: packMap({
+        entries: [
+          dagger(),
+          dagger({ name: "Duplicate Dagger" }),
+          dagger({ _id: "contradiction", uuid: `Compendium.${PACK_ID}.Item.other-id` }),
+          { name: "Missing Identity", type: "weapon", system: daggerSystem() },
+        ],
+      }),
+      equipmentPackIds: [PACK_ID],
+    });
+
+    const projection = await service.project(context());
+    expect(projection.entries.map((entry) => entry.name)).toEqual(["Dagger"]);
+    expect(projection.diagnostics.map(({ code, sourceIdentity }) => ({ code, sourceIdentity }))).toEqual([
+      {
+        code: "equipment-source-identity-corrupt",
+        sourceIdentity: `Compendium.${PACK_ID}.Item.other-id`,
+      },
+      { code: "duplicate-equipment-source-identity", sourceIdentity: WF_080_21_DAGGER_UUID },
+      { code: "equipment-source-identity-corrupt", sourceIdentity: `${PACK_ID}#index-3` },
+    ]);
+  });
+
+  it("retries a transient equipment index failure without retaining raw exception state", async () => {
+    const getIndex = vi
+      .fn<EquipmentCataloguePackLike["getIndex"]>()
+      .mockRejectedValueOnce(new Error("temporary backend detail"))
+      .mockResolvedValueOnce([dagger()]);
+    const service = createEquipmentCatalogueService({
+      packs: packMap({ getIndex }),
+      equipmentPackIds: [PACK_ID],
+    });
+
+    expect((await service.project(context())).diagnostics).toMatchObject([
+      { code: "equipment-pack-index-failed", packId: PACK_ID },
+    ]);
+    expect((await service.project(context())).entries.map((entry) => entry.name)).toEqual(["Dagger"]);
+    expect(getIndex).toHaveBeenCalledTimes(2);
+  });
+
   it("reuses unchanged equipment-pack indexes when another equipment pack is invalidated", async () => {
     const otherPackId = "pf2e.equipment-extra";
     const primaryIndex = vi.fn(async () => [dagger()]);

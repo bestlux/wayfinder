@@ -1,5 +1,6 @@
 import { cloneData } from "../../shared/cloning.js";
 import { evaluateEquipmentItemAuthority, resolveEquipmentItemExceptionJudgmentIds, } from "../domain/equipment-policy.js";
+import { sortEquipmentSourceDiagnostics, sourceDiagnostic, } from "./equipment-source-policy.js";
 export const EQUIPMENT_CATALOGUE_PROJECTION_VERSION = 1;
 export const WF_080_21_DAGGER_UUID = "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z";
 const INDEX_FIELDS = Object.freeze([
@@ -113,16 +114,22 @@ export class EquipmentCatalogueService {
                     this.#projectionCache.delete(cacheKey);
             });
         }
-        const candidates = await pending;
+        const loaded = await pending;
+        if (!loaded.cacheable && this.#projectionCache.get(cacheKey) === pending) {
+            this.#projectionCache.delete(cacheKey);
+        }
         if (cacheKey !== this.#projectionKey(context.policy, packIds))
             return this.project(context);
-        const entries = candidates.map((candidate) => this.#evaluateCandidate(context, candidate)).sort(compareEntries);
+        const entries = loaded.candidates
+            .map((candidate) => this.#evaluateCandidate(context, candidate))
+            .sort(compareEntries);
         for (const entry of entries)
             this.#latestCandidateByUuid.set(entry.sourceUuid, stripEvaluation(entry));
         return Object.freeze({
             version: EQUIPMENT_CATALOGUE_PROJECTION_VERSION,
             cacheKey,
             entries: Object.freeze(entries),
+            diagnostics: Object.freeze([...loaded.diagnostics]),
         });
     }
     async search(context, filters = {}) {
@@ -272,15 +279,22 @@ export class EquipmentCatalogueService {
     }
     async #loadProjectionCandidates(packIds) {
         const byPack = await Promise.all(packIds.map((packId) => this.#loadPackCandidates(packId)));
-        const flattened = byPack.flat();
+        const diagnostics = byPack.flatMap((result) => result.diagnostics);
+        const candidates = [];
         const seen = new Set();
-        for (const { candidate } of flattened) {
+        for (const { candidate, reasons } of byPack.flatMap((result) => result.candidates)) {
             if (seen.has(candidate.sourceUuid)) {
-                throw new TypeError(`Equipment catalogue contains duplicate source UUID ${candidate.sourceUuid}.`);
+                diagnostics.push(sourceDiagnostic("duplicate-equipment-source-identity", candidate.packId, candidate.sourceUuid, `Equipment source identity ${candidate.sourceUuid} occurs more than once; only the first record was retained.`));
+                continue;
             }
             seen.add(candidate.sourceUuid);
+            candidates.push({ candidate, reasons });
         }
-        return Object.freeze(flattened);
+        return Object.freeze({
+            candidates: Object.freeze(candidates),
+            diagnostics: Object.freeze(sortEquipmentSourceDiagnostics(diagnostics)),
+            cacheable: byPack.every((result) => result.cacheable),
+        });
     }
     #loadPackCandidates(packId) {
         const key = `${packId}|${this.#packGeneration(packId)}`;
@@ -288,18 +302,19 @@ export class EquipmentCatalogueService {
         if (pending !== undefined)
             return pending;
         const pack = this.#packs.get(packId);
-        if (!pack)
-            throw new TypeError(`Configured equipment pack ${packId} is unavailable.`);
+        if (!pack) {
+            return Promise.resolve(projectionFailure(sourceDiagnostic("equipment-pack-missing", packId, null, `Configured equipment pack ${packId} is not installed or is unavailable to the current user.`)));
+        }
         const documentName = pack.documentName ?? pack.metadata?.type;
         if (documentName !== undefined && documentName !== "Item") {
-            throw new TypeError(`Configured equipment pack ${packId} is not an Item pack.`);
+            return Promise.resolve(projectionFailure(sourceDiagnostic("equipment-pack-not-item", packId, null, `Configured equipment pack ${packId} is not an Item compendium and was excluded.`)));
         }
-        pending = pack.getIndex({ fields: [...INDEX_FIELDS] }).then((index) => Object.freeze(Array.from(index ?? []).flatMap((entry) => {
-            const normalized = normalizeIndexEntry(entry, packId);
-            return normalized ? [normalized] : [];
-        })));
+        pending = loadPackProjection(pack, packId);
         this.#packIndexCache.set(key, pending);
-        pending.catch(() => {
+        void pending.then((result) => {
+            if (!result.cacheable && this.#packIndexCache.get(key) === pending)
+                this.#packIndexCache.delete(key);
+        }, () => {
             if (this.#packIndexCache.get(key) === pending)
                 this.#packIndexCache.delete(key);
         });
@@ -386,12 +401,55 @@ export class EquipmentCatalogueService {
 export function createEquipmentCatalogueService(options) {
     return new EquipmentCatalogueService(options);
 }
-function normalizeIndexEntry(entry, packId) {
+async function loadPackProjection(pack, packId) {
+    let index;
+    try {
+        index = await pack.getIndex({ fields: [...INDEX_FIELDS] });
+    }
+    catch {
+        return projectionFailure(sourceDiagnostic("equipment-pack-index-failed", packId, null, `Equipment pack ${packId} could not be indexed. Check the installed package and retry.`), false);
+    }
+    if (!isIterable(index)) {
+        return projectionFailure(sourceDiagnostic("equipment-pack-index-corrupt", packId, null, `Equipment pack ${packId} returned a malformed index and was excluded.`));
+    }
+    let entries;
+    try {
+        entries = Array.from(index);
+    }
+    catch {
+        return projectionFailure(sourceDiagnostic("equipment-pack-index-corrupt", packId, null, `Equipment pack ${packId} returned an unreadable index and was excluded.`));
+    }
+    const candidates = [];
+    const diagnostics = [];
+    entries.forEach((entry, index) => {
+        const normalized = normalizeIndexEntry(entry, packId, index);
+        if ("diagnostic" in normalized)
+            diagnostics.push(normalized.diagnostic);
+        else
+            candidates.push(normalized.candidate);
+    });
+    return Object.freeze({
+        candidates: Object.freeze(candidates),
+        diagnostics: Object.freeze(sortEquipmentSourceDiagnostics(diagnostics)),
+        cacheable: true,
+    });
+}
+function normalizeIndexEntry(entry, packId, index) {
     const value = record(entry);
-    const documentId = nonEmpty(value._id) ? value._id : documentIdFromUuid(value.uuid, packId);
-    if (!documentId)
-        return null;
-    return normalizeCandidate(value, packId, `Compendium.${packId}.Item.${documentId}`);
+    const sourceIdentity = indexSourceIdentity(value, packId, index);
+    const documentId = nonEmpty(value._id) ? value._id.trim() : documentIdFromUuid(value.uuid, packId);
+    const uuidIdentity = nonEmpty(value.uuid) ? parseOptionalCompendiumItemUuid(value.uuid) : null;
+    if (!documentId ||
+        (nonEmpty(value.uuid) &&
+            (!uuidIdentity || uuidIdentity.packId !== packId || uuidIdentity.documentId !== documentId))) {
+        return {
+            diagnostic: sourceDiagnostic("equipment-source-identity-corrupt", packId, sourceIdentity, `Equipment pack ${packId} contains a record with a missing or contradictory Item identity (${sourceIdentity}).`),
+        };
+    }
+    return { candidate: normalizeCandidate(value, packId, `Compendium.${packId}.Item.${documentId}`) };
+}
+function projectionFailure(diagnostic, cacheable = true) {
+    return Object.freeze({ candidates: Object.freeze([]), diagnostics: Object.freeze([diagnostic]), cacheable });
 }
 function normalizeCandidate(source, packId, sourceUuid) {
     const value = record(source);
@@ -609,13 +667,28 @@ function parseCompendiumItemUuid(sourceUuid) {
 function documentIdFromUuid(raw, packId) {
     if (!nonEmpty(raw))
         return null;
+    const parsed = parseOptionalCompendiumItemUuid(raw);
+    return parsed?.packId === packId ? parsed.documentId : null;
+}
+function parseOptionalCompendiumItemUuid(raw) {
     try {
-        const parsed = parseCompendiumItemUuid(raw);
-        return parsed.packId === packId ? parsed.documentId : null;
+        return parseCompendiumItemUuid(raw);
     }
     catch {
         return null;
     }
+}
+function indexSourceIdentity(value, packId, index) {
+    if (nonEmpty(value.uuid))
+        return value.uuid.trim();
+    if (nonEmpty(value._id))
+        return `Compendium.${packId}.Item.${value._id.trim()}`;
+    return `${packId}#index-${index}`;
+}
+function isIterable(value) {
+    if (value === null || value === undefined)
+        return false;
+    return typeof value[Symbol.iterator] === "function";
 }
 function equipmentRarity(raw) {
     return raw === "common" || raw === "uncommon" || raw === "rare" || raw === "unique" ? raw : null;

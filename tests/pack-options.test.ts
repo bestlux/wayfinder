@@ -77,6 +77,31 @@ describe("pack options dependency filtering", () => {
     expect(options.map((option) => option.name)).toEqual(["Dragon"]);
   });
 
+  it("keeps equipment source policy isolated from ancestry, feat, and spell resolution", async () => {
+    testGlobals.game.settings.get = (_moduleId: string, key: string) =>
+      key === "additionalSourcePacks"
+        ? "home.ancestries,home.feats,home.spells"
+        : { allowedEquipmentPackFamilies: ["gear"] };
+    setPack("home.ancestries", [ancestryEntry("homefolk", "Homefolk")]);
+    setPack("home.feats", [featEntry("home-training", "Home Training", "general", [])]);
+    setPack("home.spells", [spellEntry("home-spark", "Home Spark", 1, ["arcane"], ["cantrip"])]);
+    setPack("gear.equipment", [
+      ancestryEntry("gear-ancestry", "Gear Ancestry"),
+      featEntry("gear-feat", "Gear Feat", "general", []),
+      spellEntry("gear-spell", "Gear Spell", 1, ["arcane"], ["cantrip"]),
+    ]);
+
+    const ancestry = await getOptionsForStep(makeStep("ancestry", { itemType: "ancestry" }));
+    const feats = await getOptionsForStep(
+      makeStep("general-feat", { itemType: "feat", featTypes: ["general"], maxLevel: 1 })
+    );
+    const spells = await getOptionsForStep(spellChoiceStep("equipment-isolation", "test-arcane", "arcane"));
+
+    expect(ancestry.map((option) => option.name)).toEqual(["Homefolk"]);
+    expect(feats.map((option) => option.name)).toEqual(["Home Training"]);
+    expect(spells.map((option) => option.name)).toEqual(["Home Spark"]);
+  });
+
   it("shows player ancestries from mixed packs but excludes companion and eidolon support documents", async () => {
     testGlobals.game.settings.get = () => "mixed-content.ancestries";
     const evilEye = ancestryEntry("evil-eye", "Evil Eye");

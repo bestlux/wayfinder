@@ -1596,7 +1596,14 @@ function toUiRecord(entry: EquipmentCatalogueEntry, preparedPrice?: AcquisitionP
     rarity: entry.rarity,
     sourceLabel: publicationLabel(entry.publicationSlug),
     priceCopper: preparedPriceCopper,
-    priceLabel: cataloguePriceLabel(preparedPriceCopper, preparedPrice),
+    priceLabel: formatCopper(preparedPriceCopper),
+    priceContext:
+      preparedPrice && (preparedPrice.materializedQuantity !== 1 || preparedPrice.pricePer !== 1)
+        ? {
+            materializedQuantity: preparedPrice.materializedQuantity,
+            pricePer: preparedPrice.pricePer,
+          }
+        : null,
     bulkLabel: "See item details",
     handsLabel: null,
     traits: [...entry.traits],
@@ -1609,14 +1616,6 @@ function toUiRecord(entry: EquipmentCatalogueEntry, preparedPrice?: AcquisitionP
       ),
     titanMaulerEligible: isPotentialTitanMaulerEntry(entry),
   };
-}
-
-function cataloguePriceLabel(priceCopper: number | null, price?: AcquisitionPriceSnapshot | null): string {
-  const label = formatCopper(priceCopper);
-  if (!price || priceCopper === null) return label;
-  if (price.materializedQuantity === 1 && price.pricePer === 1) return label;
-  const perContext = price.pricePer !== price.materializedQuantity ? ` (priced per ${price.pricePer})` : "";
-  return `${label} for ${price.materializedQuantity}${perContext}`;
 }
 
 function matchesCatalogueRequest(entry: EquipmentCatalogueEntry, request: StartingEquipmentUiRequest): boolean {

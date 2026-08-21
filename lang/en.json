@@ -176,6 +176,304 @@
         "Other": "other items"
       }
     },
+    "StartingEquipment": {
+      "Mode": "Equipment",
+      "Title": "Starting equipment",
+      "Description": "Review the effective equipment policy, build a cart, or explicitly retain all starting wealth.",
+      "Actions": {
+        "Add": "Add",
+        "ApproveCustomSum": "Approve Custom Sum",
+        "ApproveException": "Approve Exact Exception",
+        "ApproveRequest": "Approve Request",
+        "BuyWithCoin": "Buy with coin",
+        "ChooseTitanMauler": "Choose as Titan Mauler",
+        "ClearFilters": "Clear Filters",
+        "ConfirmKit": "Confirm Kit",
+        "CustomLumpSum": "Custom lump sum (gp)",
+        "GotIt": "Got It",
+        "GrantExtraAllowance": "Grant One Extra Level {level} Allowance",
+        "KeepItAll": "Keep It All",
+        "NewCampaignCharacter": "New Campaign Character",
+        "ReplacementCharacter": "Replacement Character",
+        "RequestException": "Request Exception",
+        "RequestNewCampaign": "Request New Campaign Start",
+        "RequestReplacement": "Request Replacement Start",
+        "RevokeApproval": "Revoke GM Approval",
+        "StartShopping": "Start Shopping"
+      },
+      "Allowance": {
+        "Aria": "Permanent item allowances",
+        "Assigned": "Assigned",
+        "Available": "Available",
+        "LevelItem": "Level {level} permanent item",
+        "Use": "Use level {level} allowance"
+      },
+      "Apply": {
+        "Failed": "Wayfinder could not apply this starting-equipment draft. The draft was kept for review; details are in the console.",
+        "LateError": "The actor reached the reviewed final state, but Foundry reported a late Apply error. Review the actor before closing.",
+        "NotReady": "Starting equipment still needs review before Apply.",
+        "Partial": "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console."
+      },
+      "Authority": {
+        "AwaitingGm": "A GM must confirm this higher-level start before shopping.",
+        "ConfirmTitle": "Confirm this higher-level start",
+        "GmChoosesApplies": "Your GM chooses the funding and applies it",
+        "GmChoosesOwnerApplies": "Your GM chooses the funding, you apply it",
+        "GmConfirmation": "Confirm whether this is a new-campaign or replacement-character start before shopping.",
+        "OwnerAttestation": "As an owner, you can attest that this is a new or replacement higher-level character.",
+        "OwnerChoosesApplies": "You choose the funding and apply it",
+        "OwnerChoosesGmApplies": "You choose the funding, your GM applies it",
+        "StaleApproval": "The prior GM approval is no longer current. Request a new approval before Apply."
+      },
+      "Cart": {
+        "Aria": "Starting-equipment cart",
+        "DecreaseQuantity": "Decrease quantity",
+        "Empty": "Nothing in the cart yet. If you would rather keep the coin, say so with Keep It All.",
+        "Eyebrow": "Cart",
+        "FixedQuantityAria": "Fixed quantity for {name}",
+        "IncreaseQuantity": "Increase quantity",
+        "PolicyChanged": "Your world's rules no longer allow this item.",
+        "QuantityAria": "Quantity for {name}",
+        "Remaining": "Remaining",
+        "RemoveAria": "Remove {name}",
+        "Spent": "Spent",
+        "Title": "Your kit"
+      },
+      "Catalogue": {
+        "Aria": "Equipment catalogue",
+        "ExceptionRequired": "This item needs an exact source or rarity exception.",
+        "FiltersAria": "Equipment filters",
+        "ItemMeta": "Level {level} · {rarity} · {source}",
+        "ItemUnavailable": "This item is unavailable under the current equipment policy.",
+        "LoadFailed": "The gear list would not load. Ask your GM to check the approved equipment sources.",
+        "NoFunding": "No available funding option can cover this item.",
+        "NotLoaded": "The gear list is not loaded yet.",
+        "PriceFor": "{price} for {quantity}",
+        "PriceForPer": "{price} for {quantity} (priced per {pricePer})",
+        "Ready": "{count} pieces of gear to browse.",
+        "ResultCount": "Showing {visible} of {total} matching items",
+        "SearchAria": "Search equipment",
+        "SearchPlaceholder": "Search gear by name, source, or rarity…",
+        "SeeItemDetails": "See item details",
+        "StartToLoad": "Start the step above and the gear list loads here."
+      },
+      "Corrupt": {
+        "Body": "Wayfinder can't read the saved cart, and it won't guess at what you owned or spent. Clear the draft to start this step again.",
+        "Title": "This equipment draft is damaged"
+      },
+      "Currency": {
+        "Copper": "{value} cp",
+        "Gold": "{value} gp",
+        "Silver": "{value} sp",
+        "Unavailable": "Unavailable"
+      },
+      "Detail": {
+        "Aria": "Equipment item detail",
+        "Bulk": "Bulk",
+        "Empty": "Pick something on the left to see its price, bulk, hands, and traits.",
+        "Hands": "Hands",
+        "LevelRarity": "Level {level} · {rarity}",
+        "Price": "Price",
+        "Traits": "Traits"
+      },
+      "Errors": {
+        "Add": "Wayfinder could not add this equipment item. Check the equipment policy and try again.",
+        "ChooseTitanMauler": "Wayfinder could not choose this Titan Mauler weapon. Check the equipment policy and try again.",
+        "CustomLumpSum": "Enter a non-negative custom lump sum with at most two decimal places.",
+        "Search": "Wayfinder could not update these equipment results. Reopen the window and try again.",
+        "Update": "Wayfinder could not update starting equipment. Check the current step and try again."
+      },
+      "Diagnostics": {
+        "DuplicateSourceIdentity": "Source {sourceIdentity} appears more than once in {packId}.",
+        "PackIndexCorrupt": "The equipment index for {packId} is malformed.",
+        "PackIndexFailed": "The equipment index for {packId} could not be read.",
+        "PackMissing": "Enabled equipment pack {packId} is not installed or is unavailable to the current user.",
+        "PackNotItem": "Equipment pack {packId} is not an Item compendium and was excluded.",
+        "SourceIdentityCorrupt": "An equipment source identity in {packId} is malformed."
+      },
+      "Funding": {
+        "Allowance": "Permanent item allowance",
+        "ClassGrant": "Granted by your build · free",
+        "Currency": "Paid from starting wealth",
+        "LevelAllowance": "Level {level} permanent item allowance"
+      },
+      "Handoff": {
+        "Acknowledged": "Noted. Wayfinder won't add items or touch your coin.",
+        "AmbiguousGrant": "Your build grants an item that matches more than one thing in your inventory.",
+        "ForeignItems": "Your character already owns gear. Wayfinder leaves it alone, so pick up the rest on the PF2E inventory tab.",
+        "NonzeroCurrency": "Your character already has coin. Wayfinder won't touch it, so spend it from the PF2E inventory tab.",
+        "Title": "Finish this on your character sheet",
+        "UnresolvedGrant": "Your build grants an item Wayfinder couldn't match to anything in your inventory.",
+        "UnsafeConfiguredItem": "{itemName} has PF2E pricing or magic-item structure Wayfinder cannot reproduce safely. Add it on the PF2E inventory tab instead."
+      },
+      "Initialize": {
+        "Body": "Wayfinder reads your world's equipment rules and notes what your character already carries. Nothing gets bought or spent yet.",
+        "Title": "Before you shop"
+      },
+      "ItemType": {
+        "Ammo": "Ammunition",
+        "Armor": "Armor",
+        "Backpack": "Backpack",
+        "Consumable": "Consumable",
+        "Equipment": "Equipment",
+        "Kit": "Kit",
+        "Other": "{itemType}",
+        "Shield": "Shield",
+        "Treasure": "Treasure",
+        "Weapon": "Weapon"
+      },
+      "Policy": {
+        "AbpActive": "PF2E's {mode} mode is active. Configured gear uses PF2E's prepared rune state without changing starting currency.",
+        "AbpOverrideDisabled": "PF2E's {mode} mode is enabled, but this actor's ABP override is disabled.",
+        "Aria": "Effective starting-equipment policy",
+        "Authority": "Who decides",
+        "AutomaticEligibilityMany": "{rarity} gear from {count} approved packs",
+        "AutomaticEligibilityOne": "{rarity} gear from 1 approved pack",
+        "Budget": "Budget",
+        "CommonExplanation": "Anything Common is fair game, as long as its pack is approved.",
+        "DefaultEligibility": "Common gear from approved PF2E sources",
+        "Eligibility": "What you can buy",
+        "ExistingGear": "Gear you already own",
+        "ExistingGearHandoff": "Coin and gear your character already has stay put. Handle those on the PF2E inventory tab.",
+        "FromGmSettings": "From your GM's settings",
+        "Funding": "Funding",
+        "LumpSumExplanation": "You have {budget} in starting coin for Common items below level {level}.",
+        "PermanentItemsExplanation": "Your permanent-item allowances are separate from {budget} in starting coin. Unused allowances never become cash.",
+        "RarityExplanation": "Your GM has opened this up to {rarity} gear.",
+        "SelectedBy": "Funding selected by",
+        "SelectionByUser": "{userName} selected this at {selectedAt}",
+        "SelectionLegacy": "Fixed by legacy world policy at {selectedAt}",
+        "SelectionRecordedOnChoice": "Recorded when funding is selected"
+      },
+      "Price": {
+        "AbpSuppresses": "PF2E ABP suppresses {components}",
+        "Baseline": "baseline/fundamental {price}",
+        "Component": {
+          "Fundamental": "fundamental runes",
+          "Other": "{component}",
+          "Potency": "potency rune",
+          "PropertyRune": "{rune} property rune",
+          "Resilient": "resilient rune",
+          "Striking": "striking rune"
+        },
+        "PreciousMaterial": "precious material {price}",
+        "PropertyRunes": "property runes {price}"
+      },
+      "Rarity": {
+        "Common": "Common",
+        "Rare": "Rare",
+        "Uncommon": "Uncommon",
+        "Unique": "Unique"
+      },
+      "Recipe": {
+        "Aria": "Starting wealth recipe",
+        "CustomLumpSum": "Lump sum set by your GM",
+        "LevelOne": "Level 1 starting wealth",
+        "LumpSum": "Lump sum of coin",
+        "PermanentItems": "Permanent items and coin",
+        "SetOnStart": "Set once you start shopping"
+      },
+      "Request": {
+        "HigherLevelNewCampaignReason": "Requesting a new campaign start at level {level}.",
+        "HigherLevelReplacementReason": "Requesting a replacement character start at level {level}.",
+        "HigherLevelStart": "Level {level} higher-level start",
+        "ItemException": "Exact item exception: {sourceUuid}",
+        "ItemExceptionReason": "Requesting an exact source and rarity exception for this item.",
+        "RequestedBy": "{kind} requested by {requesterName} at {requestedAt}."
+      },
+      "Review": {
+        "ApplyCheck": "Apply checks prices and your world's rules once more before anything is bought.",
+        "Changed": "Something changed, check it",
+        "ChooseGear": "Choose your gear",
+        "Damaged": "Draft is damaged",
+        "HandledOnSheet": "Handled on your sheet",
+        "KeepingCoin": "Keeping all your coin",
+        "KitConfirmed": "Kit confirmed",
+        "NeedsAcknowledgement": "Needs your OK",
+        "NotStarted": "Not started"
+      },
+      "Status": {
+        "AddedToCart": "Added to your cart.",
+        "AlreadyOpen": "Your equipment step is already open.",
+        "AuthorityRevoked": "Equipment authority revoked. Apply is blocked until current approval is recorded.",
+        "ConfiguredItemHandoff": "{itemName} will be handled on the PF2E inventory sheet.",
+        "CustomLumpSumApproved": "Custom lump sum approved for this draft.",
+        "ExtraAllowanceApproved": "One extra current-level permanent-item allowance approved.",
+        "HandoffAcknowledged": "PF2E inventory-sheet handoff acknowledged.",
+        "HigherLevelApprovalRequested": "Higher-level start approval requested from a GM.",
+        "HigherLevelStartApproved": "Higher-level start approved. Ready to shop.",
+        "HigherLevelStartReapproved": "Higher-level start reapproved. Review the current cart before Apply.",
+        "HigherLevelWealthConfirmed": "Higher-level starting wealth confirmed. Ready to shop.",
+        "HigherLevelWealthReapproved": "Higher-level starting wealth reapproved. Review the current cart before Apply.",
+        "ItemExceptionApproved": "Exact item source and rarity exception approved. The item can now be added normally.",
+        "ItemExceptionRequested": "Exact item exception requested from a GM.",
+        "KitConfirmed": "Kit confirmed.",
+        "QuantityUpdated": "Quantity updated.",
+        "Ready": "Ready to shop.",
+        "ReadyTitanSelection": "Ready to shop. Pick your Titan Mauler weapon before you finish.",
+        "RemovedFromCart": "Taken out of your cart.",
+        "RetainAllConfirmed": "You are keeping the rest of your coin.",
+        "SetupAwaitingAuthority": "Starting-equipment setup is ready. Confirm this higher-level start before shopping.",
+        "TitanBuildChanged": "Wayfinder removed the Titan Mauler weapon because Giant Instinct is no longer in this drafted build.",
+        "TitanSizeChanged": "Wayfinder removed the Titan Mauler weapon because the drafted ancestry requires a different weapon size. Choose it again.",
+        "TitanSourceChanged": "Wayfinder removed the Titan Mauler weapon because its current source or Access eligibility changed. Choose an eligible weapon again.",
+        "TitanVerificationFailed": "Wayfinder could not revalidate the Titan Mauler weapon after this build change. The choice was preserved, but equipment review must succeed again before Apply.",
+        "UsingLumpSum": "Using a lump sum.",
+        "UsingPermanentItems": "Using permanent items and coin."
+      },
+      "TitanMauler": {
+        "ChooseBody": "Giant Instinct hands you one level-0 Common weapon, melee or ranged, priced at 9 gp or less. A weapon your character has a registered Access for counts too. Wayfinder builds it oversized to suit your ancestry, charges you nothing for it, and remembers that it can't be sold on.",
+        "ChooseHint": "Choose as Titan Mauler on a weapon below before you finish this step.",
+        "ChooseTitle": "Pick your Titan Mauler weapon",
+        "SelectedBody": "{name} comes free with Giant Instinct. You get exactly one, it costs you nothing, and it's worth nothing if you sell it until you put runes in it. Take it out of the cart to swap for a different weapon.",
+        "SelectedTitle": "Your Titan Mauler weapon"
+      }
+    },
+    "AcquisitionReceipt": {
+      "AppliedAt": "Applied at",
+      "AppliedBy": "Applied by",
+      "Aria": "Last starting-equipment Apply receipt",
+      "At": "at",
+      "Empty": "Nothing was added to your inventory.",
+      "Environment": "Foundry {foundryVersion} · PF2E {pf2eVersion} · Wayfinder {moduleVersion}",
+      "Eyebrow": "Last apply",
+      "FundingSelectedBy": "Funding selected by",
+      "InContainer": "in {containerName}",
+      "ItemsAria": "Starting equipment added",
+      "Judgments": "Judgments",
+      "OpenInventory": "Open Inventory",
+      "OpenInventoryFailed": "Wayfinder could not open this character's PF2E inventory sheet.",
+      "Remaining": "Remaining",
+      "Spent": "Spent",
+      "Authority": {
+        "AppliedByYou": "Applied by you",
+        "FundingChosenByYou": "Funding chosen by you",
+        "FundingSetByGm": "Funding set by your GM",
+        "GmReviewed": "Your GM reviewed this",
+        "HigherLevelConfirmed": "Higher-level start confirmed by your GM",
+        "HigherLevelNoted": "Higher-level start noted by you",
+        "LegacyWorldPolicy": "Fixed by legacy world policy (GM identity unavailable)",
+        "SelectedBy": "Selected by {userName}",
+        "SelectorUnavailable": "Funding selector unavailable"
+      },
+      "ClassGrant": {
+        "Ambiguous": "matched more than one item",
+        "Pending": "not written yet",
+        "Resolved": "found on your sheet",
+        "Summary": "What your build granted",
+        "Unresolved": "not found on your sheet"
+      },
+      "Disposition": {
+        "Handoff": "Finished on the character sheet",
+        "Purchased": "Bought starting gear",
+        "Retained": "Kept all your starting coin"
+      },
+      "Funding": {
+        "Allowance": "Permanent item allowance",
+        "ClassGrant": "Granted by your build",
+        "Currency": "Currency"
+      }
+    },
     "Notifications": {
       "OwnerOnly": "Only the character's owner can use Wayfinder on this sheet.",
       "MissingSelections": "Finish the remaining steps before applying.",

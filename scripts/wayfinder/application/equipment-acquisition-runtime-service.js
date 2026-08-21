@@ -1241,7 +1241,13 @@ function toUiRecord(entry, preparedPrice) {
         rarity: entry.rarity,
         sourceLabel: publicationLabel(entry.publicationSlug),
         priceCopper: preparedPriceCopper,
-        priceLabel: cataloguePriceLabel(preparedPriceCopper, preparedPrice),
+        priceLabel: formatCopper(preparedPriceCopper),
+        priceContext: preparedPrice && (preparedPrice.materializedQuantity !== 1 || preparedPrice.pricePer !== 1)
+            ? {
+                materializedQuantity: preparedPrice.materializedQuantity,
+                pricePer: preparedPrice.pricePer,
+            }
+            : null,
         bulkLabel: "See item details",
         handsLabel: null,
         traits: [...entry.traits],
@@ -1251,15 +1257,6 @@ function toUiRecord(entry, preparedPrice) {
             entry.unavailableReasons.every((reason) => reason.code === "source-not-allowed" || reason.code === "rarity-not-available"),
         titanMaulerEligible: isPotentialTitanMaulerEntry(entry),
     };
-}
-function cataloguePriceLabel(priceCopper, price) {
-    const label = formatCopper(priceCopper);
-    if (!price || priceCopper === null)
-        return label;
-    if (price.materializedQuantity === 1 && price.pricePer === 1)
-        return label;
-    const perContext = price.pricePer !== price.materializedQuantity ? ` (priced per ${price.pricePer})` : "";
-    return `${label} for ${price.materializedQuantity}${perContext}`;
 }
 function matchesCatalogueRequest(entry, request) {
     const query = request.query.trim().toLocaleLowerCase();

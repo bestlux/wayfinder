@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createEmptyDraft, normalizeState } from "../src/draft-service";
+import { localizeAcquisitionMessage } from "../src/wayfinder/application/acquisition-localization";
 import { EquipmentSourceHealthError } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
 import { executeStartingEquipmentCommand } from "../src/wayfinder/application/starting-equipment-command-service";
 import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
@@ -18,6 +19,7 @@ import {
 } from "../src/wayfinder/domain/equipment-policy";
 import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types";
 import { acquisitionFixture, acquisitionLine, acquisitionPrice } from "./fixtures/acquisition-fixture";
+import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
 
 describe("starting equipment command service", () => {
   it("stages a higher-level identity before draft-bound authority exists", async () => {
@@ -46,7 +48,9 @@ describe("starting equipment command service", () => {
         authority: { mode: "owner-delegated" },
       },
     });
-    expect(result.statusNote).toMatch(/confirm this higher-level start/i);
+    expect(localizeAcquisitionMessage(localizeAcquisitionEnglish, result.status)).toMatch(
+      /confirm this higher-level start/i
+    );
     expect(resolvePolicy).not.toHaveBeenCalled();
   });
 
@@ -262,7 +266,7 @@ describe("starting equipment command service", () => {
       kind: "purchase-ledger",
       review: { reviewedByUserId: "owner-1" },
     });
-    expect(result.statusNote).toBe("Kit confirmed.");
+    expect(localizeAcquisitionMessage(localizeAcquisitionEnglish, result.status)).toBe("Kit confirmed.");
   });
 
   it("records retain-all as an explicit reviewed empty-cart decision", async () => {
@@ -373,7 +377,9 @@ describe("starting equipment command service", () => {
       context
     );
 
-    expect(result.statusNote).toMatch(/Chained Mist.*inventory sheet/i);
+    expect(localizeAcquisitionMessage(localizeAcquisitionEnglish, result.status)).toMatch(
+      /Chained Mist.*inventory sheet/i
+    );
     expect(result.acquisition.lines).toEqual([]);
     expect(result.acquisition.disposition).toMatchObject({
       kind: "handoff",
@@ -600,7 +606,9 @@ describe("starting equipment command service", () => {
       baseline: { actorId: "actor-1", currencyCopper: 0 },
       disposition: { kind: "unreviewed" },
     });
-    expect(result.statusNote).toContain("Pick your Titan Mauler weapon before you finish");
+    expect(localizeAcquisitionMessage(localizeAcquisitionEnglish, result.status)).toContain(
+      "Pick your Titan Mauler weapon before you finish"
+    );
     expect(prepareClassGrantPlan).not.toHaveBeenCalled();
   });
 

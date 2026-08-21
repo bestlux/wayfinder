@@ -1,53 +1,53 @@
-<section class="starting-equipment-pane" aria-label="Starting equipment">
-  <section class="equipment-policy-summary" aria-label="Effective starting-equipment policy">
-    <article><span>Funding</span><strong>{{activePane.policy.recipeLabel}}</strong></article>
-    <article><span>Budget</span><strong>{{activePane.policy.budgetLabel}}</strong></article>
-    <article><span>What you can buy</span><strong>{{activePane.policy.automaticEligibilityLabel}}</strong></article>
-    <article><span>Who decides</span><strong>{{activePane.policy.authorityLabel}}</strong></article>
-    <article><span>Funding selected by</span><strong>{{activePane.policy.recipeSelectionLabel}}</strong></article>
-    <article class="equipment-policy-handoff"><span>Gear you already own</span><strong>{{activePane.policy.handoffLabel}}</strong></article>
+<section class="starting-equipment-pane" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Title"}}">
+  <section class="equipment-policy-summary" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Policy.Aria"}}">
+    <article><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.Funding"}}</span><strong>{{activePane.policy.recipeLabel}}</strong></article>
+    <article><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.Budget"}}</span><strong>{{activePane.policy.budgetLabel}}</strong></article>
+    <article><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.Eligibility"}}</span><strong>{{activePane.policy.automaticEligibilityLabel}}</strong></article>
+    <article><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.Authority"}}</span><strong>{{activePane.policy.authorityLabel}}</strong></article>
+    <article><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.SelectedBy"}}</span><strong>{{activePane.policy.recipeSelectionLabel}}</strong></article>
+    <article class="equipment-policy-handoff"><span>{{localize "wayfinder-pf2e.StartingEquipment.Policy.ExistingGear"}}</span><strong>{{activePane.policy.handoffLabel}}</strong></article>
     {{#each activePane.policy.explanations}}<p><i class="fa-solid fa-circle-info" aria-hidden="true"></i>{{this}}</p>{{/each}}
     {{#if activePane.policy.allowances.length}}
-      <div class="equipment-allowance-summary" aria-label="Permanent item allowances">
-        {{#each activePane.policy.allowances}}<span class="{{#if used}}is-used{{/if}}"><strong>{{label}}</strong><small>{{#if used}}Assigned{{else}}Available{{/if}}</small></span>{{/each}}
+      <div class="equipment-allowance-summary" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Allowance.Aria"}}">
+        {{#each activePane.policy.allowances}}<span class="{{#if used}}is-used{{/if}}"><strong>{{label}}</strong><small>{{#if used}}{{localize "wayfinder-pf2e.StartingEquipment.Allowance.Assigned"}}{{else}}{{localize "wayfinder-pf2e.StartingEquipment.Allowance.Available"}}{{/if}}</small></span>{{/each}}
       </div>
     {{/if}}
-    {{#if activePane.setup.canRevoke}}<button type="button" class="secondary compact" data-wayfinder-action="revoke-equipment-policy-judgment" data-step-id="{{activePane.stepId}}" data-judgment-id="{{activePane.setup.activeJudgmentId}}">Revoke GM Approval</button>{{/if}}
+    {{#if activePane.setup.canRevoke}}<button type="button" class="secondary compact" data-wayfinder-action="revoke-equipment-policy-judgment" data-step-id="{{activePane.stepId}}" data-judgment-id="{{activePane.setup.activeJudgmentId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.RevokeApproval"}}</button>{{/if}}
     {{#if activePane.setup.canSetCustomLumpSum}}
       <div class="equipment-gm-override">
-        <label><span>Custom lump sum (gp)</span><input type="number" min="0" step="0.01" data-wayfinder-custom-lump-sum data-step-id="{{activePane.stepId}}" /></label>
-        <button type="button" class="secondary compact" data-wayfinder-action="set-custom-equipment-lump-sum" data-step-id="{{activePane.stepId}}">Approve Custom Sum</button>
+        <label><span>{{localize "wayfinder-pf2e.StartingEquipment.Actions.CustomLumpSum"}}</span><input type="number" min="0" step="0.01" data-wayfinder-custom-lump-sum data-step-id="{{activePane.stepId}}" /></label>
+        <button type="button" class="secondary compact" data-wayfinder-action="set-custom-equipment-lump-sum" data-step-id="{{activePane.stepId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.ApproveCustomSum"}}</button>
       </div>
     {{/if}}
-    {{#if activePane.setup.canGrantExtraAllowance}}<button type="button" class="secondary compact" data-wayfinder-action="grant-extra-equipment-allowance" data-step-id="{{activePane.stepId}}">Grant One Extra Level {{activePane.level}} Allowance</button>{{/if}}
+    {{#if activePane.setup.canGrantExtraAllowance}}<button type="button" class="secondary compact" data-wayfinder-action="grant-extra-equipment-allowance" data-step-id="{{activePane.stepId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.GrantExtraAllowance" level=activePane.level}}</button>{{/if}}
     {{#each activePane.setup.pendingRequests}}
       <article class="equipment-policy-request">
-        <p><strong>{{kindLabel}}</strong> requested by {{requesterName}} at {{requestedAt}}.</p>
+        <p>{{localize "wayfinder-pf2e.StartingEquipment.Request.RequestedBy" kind=kindLabel requesterName=requesterName requestedAt=requestedAt}}</p>
         <small>{{reason}}</small>
-        {{#if canApprove}}<button type="button" class="primary compact" data-wayfinder-action="approve-equipment-policy-request" data-step-id="{{../activePane.stepId}}" data-request-id="{{requestId}}">Approve Request</button>{{/if}}
+        {{#if canApprove}}<button type="button" class="primary compact" data-wayfinder-action="approve-equipment-policy-request" data-step-id="{{../activePane.stepId}}" data-request-id="{{requestId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.ApproveRequest"}}</button>{{/if}}
       </article>
     {{/each}}
   </section>
 
   {{#if activePane.corrupt}}
     <section class="equipment-callout error" tabindex="-1" data-wayfinder-focus-id="starting-equipment-initialize">
-      <h4>This equipment draft is damaged</h4>
-      <p>Wayfinder can't read the saved cart, and it won't guess at what you owned or spent. Clear the draft to start this step again.</p>
+      <h4>{{localize "wayfinder-pf2e.StartingEquipment.Corrupt.Title"}}</h4>
+      <p>{{localize "wayfinder-pf2e.StartingEquipment.Corrupt.Body"}}</p>
     </section>
   {{else}}
     {{#unless activePane.initialized}}
       <section class="equipment-callout" tabindex="-1" data-wayfinder-focus-id="starting-equipment-initialize">
-        <h4>Before you shop</h4>
-        <p>Wayfinder reads your world's equipment rules and notes what your character already carries. Nothing gets bought or spent yet.</p>
-        <button type="button" class="primary" data-wayfinder-action="initialize-starting-equipment" data-step-id="{{activePane.stepId}}">Start Shopping</button>
+        <h4>{{localize "wayfinder-pf2e.StartingEquipment.Initialize.Title"}}</h4>
+        <p>{{localize "wayfinder-pf2e.StartingEquipment.Initialize.Body"}}</p>
+        <button type="button" class="primary" data-wayfinder-action="initialize-starting-equipment" data-step-id="{{activePane.stepId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.StartShopping"}}</button>
       </section>
     {{else}}
       {{#if activePane.setup.awaitingAuthority}}
         <section class="equipment-callout" tabindex="-1" data-wayfinder-focus-id="starting-equipment-authority">
-          <h4>Confirm this higher-level start</h4>
+          <h4>{{localize "wayfinder-pf2e.StartingEquipment.Authority.ConfirmTitle"}}</h4>
           <p>{{activePane.setup.authorityMessage}}</p>
           {{#if activePane.setup.recipeOptions.length}}
-            <div class="equipment-setup-recipes" role="group" aria-label="Starting wealth recipe">
+            <div class="equipment-setup-recipes" role="group" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Recipe.Aria"}}">
               {{#each activePane.setup.recipeOptions}}
                 <button type="button" class="secondary{{#if selected}} is-selected{{/if}}" aria-pressed="{{#if selected}}true{{else}}false{{/if}}" data-wayfinder-action="select-equipment-recipe" data-step-id="{{../activePane.stepId}}" data-recipe="{{value}}" {{#unless ../activePane.setup.canChooseRecipe}}disabled{{/unless}}>{{label}}</button>
               {{/each}}
@@ -55,52 +55,52 @@
           {{/if}}
           {{#if activePane.setup.canActivate}}
             <div class="equipment-setup-actions">
-              <button type="button" class="secondary" data-wayfinder-action="activate-equipment-policy" data-step-id="{{activePane.stepId}}" data-start-kind="new-campaign">New Campaign Character</button>
-              <button type="button" class="primary" data-wayfinder-action="activate-equipment-policy" data-step-id="{{activePane.stepId}}" data-start-kind="replacement-character">Replacement Character</button>
+              <button type="button" class="secondary" data-wayfinder-action="activate-equipment-policy" data-step-id="{{activePane.stepId}}" data-start-kind="new-campaign">{{localize "wayfinder-pf2e.StartingEquipment.Actions.NewCampaignCharacter"}}</button>
+              <button type="button" class="primary" data-wayfinder-action="activate-equipment-policy" data-step-id="{{activePane.stepId}}" data-start-kind="replacement-character">{{localize "wayfinder-pf2e.StartingEquipment.Actions.ReplacementCharacter"}}</button>
             </div>
           {{/if}}
           {{#if activePane.setup.canRequest}}
             <div class="equipment-setup-actions">
-              <button type="button" class="secondary" data-wayfinder-action="request-equipment-start" data-step-id="{{activePane.stepId}}" data-start-kind="new-campaign">Request New Campaign Start</button>
-              <button type="button" class="primary" data-wayfinder-action="request-equipment-start" data-step-id="{{activePane.stepId}}" data-start-kind="replacement-character">Request Replacement Start</button>
+              <button type="button" class="secondary" data-wayfinder-action="request-equipment-start" data-step-id="{{activePane.stepId}}" data-start-kind="new-campaign">{{localize "wayfinder-pf2e.StartingEquipment.Actions.RequestNewCampaign"}}</button>
+              <button type="button" class="primary" data-wayfinder-action="request-equipment-start" data-step-id="{{activePane.stepId}}" data-start-kind="replacement-character">{{localize "wayfinder-pf2e.StartingEquipment.Actions.RequestReplacement"}}</button>
             </div>
           {{/if}}
         </section>
       {{else if activePane.handoff.active}}
         <section class="equipment-callout warning" tabindex="-1" data-wayfinder-focus-id="starting-equipment-handoff">
-          <h4>Finish this on your character sheet</h4>
+          <h4>{{localize "wayfinder-pf2e.StartingEquipment.Handoff.Title"}}</h4>
           {{#each activePane.handoff.reasons}}<p>{{this}}</p>{{/each}}
           {{#unless activePane.handoff.acknowledged}}
-            <button type="button" class="primary" data-wayfinder-action="acknowledge-equipment-handoff" data-step-id="{{activePane.stepId}}">Got It</button>
+            <button type="button" class="primary" data-wayfinder-action="acknowledge-equipment-handoff" data-step-id="{{activePane.stepId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.GotIt"}}</button>
           {{else}}
-            <p class="equipment-reviewed"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Noted. Wayfinder won't add items or touch your coin.</p>
+            <p class="equipment-reviewed"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>{{localize "wayfinder-pf2e.StartingEquipment.Handoff.Acknowledged"}}</p>
           {{/unless}}
         </section>
       {{else}}
         {{#if activePane.titanMauler.required}}
           <section class="equipment-callout warning titan-mauler-callout" tabindex="-1" data-wayfinder-focus-id="starting-equipment-titan-mauler">
             {{#if activePane.titanMauler.selected}}
-              <h4>Your Titan Mauler weapon</h4>
-              <p><strong>{{activePane.titanMauler.selectedName}}</strong> comes free with Giant Instinct. You get exactly one, it costs you nothing, and it's worth nothing if you sell it until you put runes in it. Take it out of the cart to swap for a different weapon.</p>
+              <h4>{{localize "wayfinder-pf2e.StartingEquipment.TitanMauler.SelectedTitle"}}</h4>
+              <p>{{localize "wayfinder-pf2e.StartingEquipment.TitanMauler.SelectedBody" name=activePane.titanMauler.selectedName}}</p>
             {{else}}
-              <h4>Pick your Titan Mauler weapon</h4>
-              <p>Giant Instinct hands you one level-0 Common weapon, melee or ranged, priced at 9 gp or less. A weapon your character has a registered Access for counts too. Wayfinder builds it oversized to suit your ancestry, charges you nothing for it, and remembers that it can't be sold on.</p>
-              <p>Hit <strong>Choose as Titan Mauler</strong> on a weapon below before you finish this step.</p>
+              <h4>{{localize "wayfinder-pf2e.StartingEquipment.TitanMauler.ChooseTitle"}}</h4>
+              <p>{{localize "wayfinder-pf2e.StartingEquipment.TitanMauler.ChooseBody"}}</p>
+              <p>{{localize "wayfinder-pf2e.StartingEquipment.TitanMauler.ChooseHint"}}</p>
             {{/if}}
           </section>
         {{/if}}
         <div class="equipment-workspace">
-          <section class="equipment-catalogue" aria-label="Equipment catalogue">
+          <section class="equipment-catalogue" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.Aria"}}">
             <div class="equipment-search-row">
-              <input type="search" value="{{activePane.catalogue.search}}" placeholder="Search gear by name, source, or rarity…" aria-label="Search equipment" data-wayfinder-equipment-search data-step-id="{{activePane.stepId}}" {{#if activePane.catalogue.searchDisabled}}disabled{{/if}} />
-              <button type="button" class="secondary compact" data-wayfinder-action="clear-equipment-filters" data-step-id="{{activePane.stepId}}" {{#if activePane.catalogue.searchDisabled}}disabled{{/if}}>Clear Filters</button>
+              <input type="search" value="{{activePane.catalogue.search}}" placeholder="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.SearchPlaceholder"}}" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.SearchAria"}}" data-wayfinder-equipment-search data-step-id="{{activePane.stepId}}" {{#if activePane.catalogue.searchDisabled}}disabled{{/if}} />
+              <button type="button" class="secondary compact" data-wayfinder-action="clear-equipment-filters" data-step-id="{{activePane.stepId}}" {{#if activePane.catalogue.searchDisabled}}disabled{{/if}}>{{localize "wayfinder-pf2e.StartingEquipment.Actions.ClearFilters"}}</button>
             </div>
-            <div class="equipment-filter-row" aria-label="Equipment filters">
+            <div class="equipment-filter-row" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.FiltersAria"}}">
               {{#each activePane.catalogue.filters}}
                 <button type="button" class="secondary compact{{#if selected}} is-selected{{/if}}" aria-pressed="{{#if selected}}true{{else}}false{{/if}}" data-wayfinder-action="toggle-equipment-filter" data-step-id="{{../activePane.stepId}}" data-filter-key="{{key}}" data-value="{{value}}">{{label}}</button>
               {{/each}}
             </div>
-            <p class="equipment-result-count">Showing {{activePane.catalogue.visibleResultCount}} of {{activePane.catalogue.totalResultCount}} matching items</p>
+            <p class="equipment-result-count">{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.ResultCount" visible=activePane.catalogue.visibleResultCount total=activePane.catalogue.totalResultCount}}</p>
             {{#unless activePane.catalogue.items.length}}
               <div class="equipment-catalogue-state {{activePane.catalogue.state}}" role="status"><i class="fa-solid fa-box-open" aria-hidden="true"></i><p>{{activePane.catalogue.message}}</p>
                 {{#if activePane.catalogue.diagnostics.length}}
@@ -114,48 +114,48 @@
               {{#each activePane.catalogue.items}}
                 <article class="equipment-result{{#if previewing}} is-previewing{{/if}}" data-equipment-item data-source-uuid="{{sourceUuid}}" data-filter-rarity="{{rarity}}" data-filter-source="{{sourceLabel}}" data-filter-type="{{itemType}}">
                   <button type="button" class="equipment-result-main" data-wayfinder-action="preview-equipment-item" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">
-                    <span><strong>{{name}}</strong><small>Level {{level}} · {{rarity}} · {{sourceLabel}}</small></span>
+                    <span><strong>{{name}}</strong><small>{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.ItemMeta" level=level rarity=rarityLabel source=sourceLabel}}</small></span>
                   </button>
                   <span class="equipment-result-price">{{priceLabel}}</span>
                   <div class="equipment-result-actions">
-                    {{#if canBuyWithCurrency}}<button type="button" class="primary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}" data-funding="currency">Buy with coin</button>{{/if}}
+                    {{#if canBuyWithCurrency}}<button type="button" class="primary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}" data-funding="currency">{{localize "wayfinder-pf2e.StartingEquipment.Actions.BuyWithCoin"}}</button>{{/if}}
                     {{#each allowanceOptions}}<button type="button" class="secondary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../../activePane.stepId}}" data-source-uuid="{{../sourceUuid}}" data-funding="allowance" data-allowance-id="{{allowanceId}}">{{label}}</button>{{/each}}
-                    {{#if canRequestException}}<button type="button" class="secondary compact" data-wayfinder-action="request-equipment-item-exception" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">Request Exception</button>{{/if}}
-                    {{#if canApproveException}}<button type="button" class="secondary compact" data-wayfinder-action="approve-equipment-item-exception" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">Approve Exact Exception</button>{{/if}}
-                    {{#unless canAdd}}<button type="button" class="primary compact" disabled>Add</button>{{/unless}}
-                    {{#if canChooseTitanMauler}}<button type="button" class="secondary compact" data-wayfinder-action="choose-titan-mauler-equipment" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">Choose as Titan Mauler</button>{{/if}}
+                    {{#if canRequestException}}<button type="button" class="secondary compact" data-wayfinder-action="request-equipment-item-exception" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.RequestException"}}</button>{{/if}}
+                    {{#if canApproveException}}<button type="button" class="secondary compact" data-wayfinder-action="approve-equipment-item-exception" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.ApproveException"}}</button>{{/if}}
+                    {{#unless canAdd}}<button type="button" class="primary compact" disabled>{{localize "wayfinder-pf2e.StartingEquipment.Actions.Add"}}</button>{{/unless}}
+                    {{#if canChooseTitanMauler}}<button type="button" class="secondary compact" data-wayfinder-action="choose-titan-mauler-equipment" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.ChooseTitanMauler"}}</button>{{/if}}
                   </div>
-                  {{#if unavailableReason}}<small class="equipment-unavailable">{{unavailableReason}}</small>{{else}}{{#unless canAdd}}<small class="equipment-unavailable">No available funding option can cover this item.</small>{{/unless}}{{/if}}
+                  {{#if unavailableReason}}<small class="equipment-unavailable">{{unavailableReason}}</small>{{else}}{{#unless canAdd}}<small class="equipment-unavailable">{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.NoFunding"}}</small>{{/unless}}{{/if}}
                 </article>
               {{/each}}
             </div>
           </section>
 
-          <aside class="equipment-detail" aria-label="Equipment item detail">
+          <aside class="equipment-detail" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Detail.Aria"}}">
             {{#each activePane.catalogue.items}}
               <article data-equipment-preview="{{sourceUuid}}" {{#unless previewing}}hidden{{/unless}}>
-                <p class="eyebrow">Level {{level}} · {{rarity}}</p><h4>{{name}}</h4>
-                <dl><div><dt>Price</dt><dd>{{priceLabel}}</dd></div><div><dt>Bulk</dt><dd>{{bulkLabel}}</dd></div><div><dt>Hands</dt><dd>{{handsLabel}}</dd></div><div><dt>Traits</dt><dd>{{traits}}</dd></div></dl>
+                <p class="eyebrow">{{localize "wayfinder-pf2e.StartingEquipment.Detail.LevelRarity" level=level rarity=rarityLabel}}</p><h4>{{name}}</h4>
+                <dl><div><dt>{{localize "wayfinder-pf2e.StartingEquipment.Detail.Price"}}</dt><dd>{{priceLabel}}</dd></div><div><dt>{{localize "wayfinder-pf2e.StartingEquipment.Detail.Bulk"}}</dt><dd>{{bulkLabel}}</dd></div><div><dt>{{localize "wayfinder-pf2e.StartingEquipment.Detail.Hands"}}</dt><dd>{{handsLabel}}</dd></div><div><dt>{{localize "wayfinder-pf2e.StartingEquipment.Detail.Traits"}}</dt><dd>{{traits}}</dd></div></dl>
               </article>
             {{/each}}
-            {{#unless activePane.catalogue.preview}}<p class="equipment-detail-empty">Pick something on the left to see its price, bulk, hands, and traits.</p>{{/unless}}
+            {{#unless activePane.catalogue.preview}}<p class="equipment-detail-empty">{{localize "wayfinder-pf2e.StartingEquipment.Detail.Empty"}}</p>{{/unless}}
           </aside>
 
-          <section class="equipment-cart" aria-label="Starting-equipment cart">
-            <header><div><p class="eyebrow">Cart</p><h4>Your kit</h4></div><dl><div><dt>Spent</dt><dd>{{activePane.cart.spentLabel}}</dd></div><div><dt>Remaining</dt><dd>{{activePane.cart.remainingLabel}}</dd></div></dl></header>
-            {{#if activePane.cart.empty}}<p class="equipment-cart-empty">Nothing in the cart yet. If you would rather keep the coin, say so with Keep It All.</p>{{/if}}
+          <section class="equipment-cart" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Cart.Aria"}}">
+            <header><div><p class="eyebrow">{{localize "wayfinder-pf2e.StartingEquipment.Cart.Eyebrow"}}</p><h4>{{localize "wayfinder-pf2e.StartingEquipment.Cart.Title"}}</h4></div><dl><div><dt>{{localize "wayfinder-pf2e.StartingEquipment.Cart.Spent"}}</dt><dd>{{activePane.cart.spentLabel}}</dd></div><div><dt>{{localize "wayfinder-pf2e.StartingEquipment.Cart.Remaining"}}</dt><dd>{{activePane.cart.remainingLabel}}</dd></div></dl></header>
+            {{#if activePane.cart.empty}}<p class="equipment-cart-empty">{{localize "wayfinder-pf2e.StartingEquipment.Cart.Empty"}}</p>{{/if}}
             {{#each activePane.cart.lines}}
               <article class="equipment-cart-line" tabindex="-1" data-wayfinder-focus-id="{{focusId}}">
                 <span><strong>{{name}}</strong><small>{{fundingLabel}} · {{priceLabel}}</small>{{#if configurationLabel}}<small>{{configurationLabel}}</small>{{/if}}{{#each children}}<small>{{#if nested}}↳ {{/if}}{{quantity}} × {{name}}</small>{{/each}}{{#if unavailableReason}}<small class="equipment-unavailable">{{unavailableReason}}</small>{{/if}}</span>
                 {{#if canChangeQuantity}}
-                  <div class="equipment-quantity" aria-label="Quantity for {{name}}"><button type="button" data-wayfinder-action="change-equipment-quantity" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" data-delta="-1" aria-label="Decrease quantity">−</button><strong>{{quantity}}</strong><button type="button" data-wayfinder-action="change-equipment-quantity" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" data-delta="1" aria-label="Increase quantity">+</button></div>
+                  <div class="equipment-quantity" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Cart.QuantityAria" name=name}}"><button type="button" data-wayfinder-action="change-equipment-quantity" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" data-delta="-1" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Cart.DecreaseQuantity"}}">−</button><strong>{{quantity}}</strong><button type="button" data-wayfinder-action="change-equipment-quantity" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" data-delta="1" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Cart.IncreaseQuantity"}}">+</button></div>
                 {{else}}
-                  <div class="equipment-quantity" aria-label="Fixed quantity for {{name}}"><strong>{{quantity}}</strong></div>
+                  <div class="equipment-quantity" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Cart.FixedQuantityAria" name=name}}"><strong>{{quantity}}</strong></div>
                 {{/if}}
-                {{#if canRemove}}<button type="button" class="icon" data-wayfinder-action="remove-equipment-line" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" aria-label="Remove {{name}}"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>{{/if}}
+                {{#if canRemove}}<button type="button" class="icon" data-wayfinder-action="remove-equipment-line" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Cart.RemoveAria" name=name}}"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>{{/if}}
               </article>
             {{/each}}
-            <footer tabindex="-1" data-wayfinder-focus-id="starting-equipment-review"><span><strong>{{activePane.review.label}}</strong><small>Apply checks prices and your world's rules once more before anything is bought.</small></span><div><button type="button" class="secondary" data-wayfinder-action="retain-all-equipment" data-step-id="{{activePane.stepId}}" {{#unless activePane.review.canRetainAll}}disabled{{/unless}}>Keep It All</button><button type="button" class="primary" data-wayfinder-action="review-equipment-purchases" data-step-id="{{activePane.stepId}}" {{#unless activePane.review.canReviewPurchases}}disabled{{/unless}}>Confirm Kit</button></div></footer>
+            <footer tabindex="-1" data-wayfinder-focus-id="starting-equipment-review"><span><strong>{{activePane.review.label}}</strong><small>{{localize "wayfinder-pf2e.StartingEquipment.Review.ApplyCheck"}}</small></span><div><button type="button" class="secondary" data-wayfinder-action="retain-all-equipment" data-step-id="{{activePane.stepId}}" {{#unless activePane.review.canRetainAll}}disabled{{/unless}}>{{localize "wayfinder-pf2e.StartingEquipment.Actions.KeepItAll"}}</button><button type="button" class="primary" data-wayfinder-action="review-equipment-purchases" data-step-id="{{activePane.stepId}}" {{#unless activePane.review.canReviewPurchases}}disabled{{/unless}}>{{localize "wayfinder-pf2e.StartingEquipment.Actions.ConfirmKit"}}</button></div></footer>
           </section>
         </div>
       {{/if}}

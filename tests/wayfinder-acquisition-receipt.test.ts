@@ -2,12 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { reviewRetainAll } from "../src/wayfinder/domain/acquisition-ledger";
 import { buildAcquisitionReceiptViewModel } from "../src/wayfinder/panes/acquisition-receipt";
 import { acquisitionFixture, completedAcquisitionFixture } from "./fixtures/acquisition-fixture";
+import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
 
 describe("completed acquisition receipt", () => {
   it("derives durable item, currency, authority, and runtime details from the manifest", async () => {
     const completed = await completedAcquisitionFixture();
     const resolveItemName = vi.fn(() => "Dagger");
-    const receipt = await buildAcquisitionReceiptViewModel(completed.manifest, { resolveItemName });
+    const receipt = await buildAcquisitionReceiptViewModel(completed.manifest, {
+      resolveItemName,
+      localize: localizeAcquisitionEnglish,
+    });
 
     expect(receipt).toMatchObject({
       manifestId: "manifest-1",
@@ -58,7 +62,9 @@ describe("completed acquisition receipt", () => {
       fixture: { ...fixture, draft },
       draft,
     });
-    const receipt = await buildAcquisitionReceiptViewModel(completed.manifest);
+    const receipt = await buildAcquisitionReceiptViewModel(completed.manifest, {
+      localize: localizeAcquisitionEnglish,
+    });
 
     expect(receipt.dispositionLabel).toBe("Kept all your starting coin");
     expect(receipt.itemRows).toEqual([]);
@@ -66,6 +72,8 @@ describe("completed acquisition receipt", () => {
   });
 
   it("fails closed for malformed durable evidence", async () => {
-    await expect(buildAcquisitionReceiptViewModel({ schemaVersion: 1 })).rejects.toThrow(/valid completed/i);
+    await expect(
+      buildAcquisitionReceiptViewModel({ schemaVersion: 1 }, { localize: localizeAcquisitionEnglish })
+    ).rejects.toThrow(/valid completed/i);
   });
 });

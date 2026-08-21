@@ -36,23 +36,23 @@ export async function executeStartingEquipmentCommand(command, context, dependen
     const before = context.draft.acquisition;
     let acquisition;
     let policyRequests = context.draft.equipmentPolicyRequests;
-    let statusNote;
+    let status;
     switch (command.type) {
         case "initialize": {
             const initialized = before ? null : await initializeAcquisition(context, deps, command.selectedRecipe);
             acquisition = before ?? initialized.acquisition;
-            statusNote = before
-                ? "Your equipment step is already open."
+            status = before
+                ? message("AlreadyOpen")
                 : initialized.awaitingAuthority
-                    ? "Starting-equipment setup is ready. Confirm this higher-level start before shopping."
+                    ? message("SetupAwaitingAuthority")
                     : initialized.pendingTitanSelection
-                        ? "Ready to shop. Pick your Titan Mauler weapon before you finish."
-                        : "Ready to shop.";
+                        ? message("ReadyTitanSelection")
+                        : message("Ready");
             break;
         }
         case "select-recipe":
             acquisition = selectStagedRecipe(requireAcquisition(context.draft), command.selectedRecipe, context, deps);
-            statusNote = `Using ${command.selectedRecipe === "permanent-items" ? "permanent items and coin" : "a lump sum"}.`;
+            status = message(command.selectedRecipe === "permanent-items" ? "UsingPermanentItems" : "UsingLumpSum");
             break;
         case "activate-policy": {
             const staged = requireAcquisition(context.draft);
@@ -60,14 +60,14 @@ export async function executeStartingEquipmentCommand(command, context, dependen
             if (staged.policySnapshot) {
                 const policy = resolveExistingPolicy(staged, context, deps, { higherLevelStartClaim: claim });
                 acquisition = invalidateAcquisitionReview({ ...staged, policySnapshot: createAcquisitionPolicySnapshot(policy, staged.recipe, staged.recipeSelection) }, ["policy"]);
-                statusNote = "Higher-level starting wealth reapproved. Review the current cart before Apply.";
+                status = message("HigherLevelWealthReapproved");
             }
             else {
                 const activated = await activateAcquisition(staged, context, deps, claim);
                 acquisition = activated.acquisition;
-                statusNote = activated.pendingTitanSelection
-                    ? "Ready to shop. Pick your Titan Mauler weapon before you finish."
-                    : "Higher-level starting wealth confirmed. Ready to shop.";
+                status = activated.pendingTitanSelection
+                    ? message("ReadyTitanSelection")
+                    : message("HigherLevelWealthConfirmed");
             }
             break;
         }
@@ -91,7 +91,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                 reason: command.reason,
             });
             policyRequests = replacePolicyRequest(policyRequests, request);
-            statusNote = "Higher-level start approval requested from a GM.";
+            status = message("HigherLevelApprovalRequested");
             break;
         }
         case "approve-policy-request": {
@@ -129,7 +129,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                     ...current,
                     policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe, current.recipeSelection),
                 }, ["policy"]);
-                statusNote = "Exact item source and rarity exception approved. The item can now be added normally.";
+                status = message("ItemExceptionApproved");
                 break;
             }
             if (request.facts.kind !== "higher-level-start") {
@@ -154,12 +154,12 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                     ...current,
                     policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe, current.recipeSelection),
                 }, ["policy"]);
-                statusNote = "Higher-level start reapproved. Review the current cart before Apply.";
+                status = message("HigherLevelStartReapproved");
             }
             else {
                 const activated = await activateAcquisition(current, context, deps, claim);
                 acquisition = activated.acquisition;
-                statusNote = "Higher-level start approved. Ready to shop.";
+                status = message("HigherLevelStartApproved");
             }
             break;
         }
@@ -180,7 +180,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                 reason: command.reason,
             });
             policyRequests = replacePolicyRequest(policyRequests, request);
-            statusNote = "Exact item exception requested from a GM.";
+            status = message("ItemExceptionRequested");
             break;
         }
         case "approve-item-exception": {
@@ -209,7 +209,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                 ...current,
                 policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe, current.recipeSelection),
             }, ["policy"]);
-            statusNote = "Exact item source and rarity exception approved. The item can now be added normally.";
+            status = message("ItemExceptionApproved");
             break;
         }
         case "revoke-policy-judgment": {
@@ -228,7 +228,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                 user: context.user,
             });
             acquisition = invalidateAcquisitionReview(acquisition, ["policy"]);
-            statusNote = "Equipment authority revoked. Apply is blocked until current approval is recorded.";
+            status = message("AuthorityRevoked");
             break;
         }
         case "set-custom-lump-sum": {
@@ -261,7 +261,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                 recipe,
                 policySnapshot: createAcquisitionPolicySnapshot(policy, recipe, current.recipeSelection),
             }, ["recipe", "policy", "budget"]);
-            statusNote = "Custom lump sum approved for this draft.";
+            status = message("CustomLumpSumApproved");
             break;
         }
         case "grant-extra-current-level-allowance": {
@@ -293,37 +293,37 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                 ...current,
                 policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe, current.recipeSelection),
             }, ["policy", "allowance"]);
-            statusNote = "One extra current-level permanent-item allowance approved.";
+            status = message("ExtraAllowanceApproved");
             break;
         }
         case "add-line":
             acquisition = addPreparedLine(requireAcquisition(context.draft), command.line);
-            statusNote = "Added to your cart.";
+            status = message("AddedToCart");
             break;
         case "enter-configured-item-handoff":
             acquisition = recordConfiguredItemHandoff(requireAcquisition(context.draft), command.reason);
-            statusNote = `${command.reason.itemName} will be handled on the PF2E inventory sheet.`;
+            status = message("ConfiguredItemHandoff", { itemName: command.reason.itemName });
             break;
         case "remove-line":
             acquisition = removeLine(requireAcquisition(context.draft), command.lineId);
-            statusNote = "Taken out of your cart.";
+            status = message("RemovedFromCart");
             break;
         case "set-quantity":
             acquisition = setLineQuantity(requireAcquisition(context.draft), command.lineId, command.quantity);
-            statusNote = "Quantity updated.";
+            status = message("QuantityUpdated");
             break;
         case "review-purchases": {
             await assertReviewSourceHealth(context, deps);
             const prepared = await prepareLedger(context, deps);
             acquisition = reviewPurchaseLedger(prepared.acquisition, prepared.ledger, reviewer(context));
-            statusNote = "Kit confirmed.";
+            status = message("KitConfirmed");
             break;
         }
         case "retain-all": {
             await assertReviewSourceHealth(context, deps);
             const prepared = await prepareLedger(context, deps);
             acquisition = reviewRetainAll(prepared.acquisition, prepared.ledger, reviewer(context));
-            statusNote = "You are keeping the rest of your coin.";
+            status = message("RetainAllConfirmed");
             break;
         }
         case "acknowledge-handoff":
@@ -331,15 +331,20 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                 userId: context.userId,
                 acknowledgedAt: context.now(),
             });
-            statusNote = "PF2E inventory-sheet handoff acknowledged.";
+            status = message("HandoffAcknowledged");
             break;
     }
     return {
         acquisition,
         changed: acquisition !== before || policyRequests !== context.draft.equipmentPolicyRequests,
-        statusNote,
+        status,
         policyRequests,
     };
+}
+function message(key, values) {
+    return values
+        ? { key: `wayfinder-pf2e.StartingEquipment.Status.${key}`, values }
+        : { key: `wayfinder-pf2e.StartingEquipment.Status.${key}` };
 }
 async function assertReviewSourceHealth(context, deps) {
     const acquisition = requireAcquisition(context.draft);

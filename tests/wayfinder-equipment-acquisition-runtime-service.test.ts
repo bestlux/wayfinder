@@ -37,7 +37,20 @@ import {
   type EquipmentPolicyJudgmentRecord,
 } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
-import { buildStartingEquipmentPane } from "../src/wayfinder/panes/starting-equipment-pane";
+import { buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized } from "../src/wayfinder/panes/starting-equipment-pane";
+import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
+
+function buildStartingEquipmentPane(
+  ...args: [
+    Parameters<typeof buildStartingEquipmentPaneLocalized>[0],
+    Parameters<typeof buildStartingEquipmentPaneLocalized>[1],
+    Parameters<typeof buildStartingEquipmentPaneLocalized>[2],
+    Parameters<typeof buildStartingEquipmentPaneLocalized>[3],
+    Parameters<typeof buildStartingEquipmentPaneLocalized>[5]?,
+  ]
+) {
+  return buildStartingEquipmentPaneLocalized(args[0], args[1], args[2], args[3], localizeAcquisitionEnglish, args[4]);
+}
 
 const PACK_ID = "pf2e.equipment-srd";
 const DAGGER_ID = "rQWaJhI5Bko5x14Z";
@@ -690,7 +703,10 @@ describe("equipment acquisition runtime", () => {
     );
 
     const projection = await runtime.uiAdapter.project(request);
-    expect(projection.records[0]?.priceLabel).toBe("2 sp 4 cp for 12 (priced per 10)");
+    expect(projection.records[0]).toMatchObject({
+      priceLabel: "2 sp 4 cp",
+      priceContext: { materializedQuantity: 12, pricePer: 10 },
+    });
     expect(
       buildStartingEquipmentPane(
         request.step,

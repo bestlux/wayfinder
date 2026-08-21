@@ -3,10 +3,24 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
+import { createEquipmentPolicyRequest } from "../src/wayfinder/domain/equipment-policy";
 import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types";
-import { buildStartingEquipmentPane } from "../src/wayfinder/panes/starting-equipment-pane";
+import { buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized } from "../src/wayfinder/panes/starting-equipment-pane";
 import type { StartingEquipmentCatalogueRecord } from "../src/wayfinder/view-models";
 import { acquisitionFixture, acquisitionLine, acquisitionPrice } from "./fixtures/acquisition-fixture";
+import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
+
+function buildStartingEquipmentPane(
+  ...args: [
+    Parameters<typeof buildStartingEquipmentPaneLocalized>[0],
+    Parameters<typeof buildStartingEquipmentPaneLocalized>[1],
+    Parameters<typeof buildStartingEquipmentPaneLocalized>[2],
+    Parameters<typeof buildStartingEquipmentPaneLocalized>[3],
+    Parameters<typeof buildStartingEquipmentPaneLocalized>[5]?,
+  ]
+) {
+  return buildStartingEquipmentPaneLocalized(args[0], args[1], args[2], args[3], localizeAcquisitionEnglish, args[4]);
+}
 
 describe("starting equipment pane", () => {
   it("renders level-5 allowance buckets separately from residual coin", () => {
@@ -310,9 +324,107 @@ describe("starting equipment pane", () => {
       }
     );
 
-    expect(pane.catalogue.items[0]).toMatchObject({ canAdd: true, canChooseTitanMauler: true });
+    expect(pane.catalogue.items[0]).toMatchObject({
+      canAdd: true,
+      canChooseTitanMauler: true,
+      traits: ["Versatile P"],
+    });
     expect(pane.titanMauler).toEqual({ required: true, selected: false, selectedName: null });
     expect(pane.review).toMatchObject({ canReviewPurchases: false, canRetainAll: false });
+  });
+
+  it("preserves request rationale as audit content while localizing its shell", () => {
+    const draft = createEmptyDraft(5);
+    draft.acquisition = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    draft.equipmentPolicyRequests = [
+      createEquipmentPolicyRequest({
+        requestId: "request-1",
+        facts: {
+          kind: "higher-level-start",
+          actorId: "actor-1",
+          draftId: draft.acquisition.draftId,
+          targetLevel: 5,
+          startKind: "replacement-character",
+        },
+        requesterUserId: "owner-1",
+        requesterName: "Owner",
+        requestedAt: "2026-08-20T12:00:00.000Z",
+        reason: "Keep this campaign-specific rationale verbatim.",
+      }),
+    ];
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Awaiting approval", issue: null },
+      {
+        state: "pending",
+        message: "",
+        query: "",
+        records: [],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      }
+    );
+
+    expect(pane.setup.pendingRequests[0]).toMatchObject({
+      kindLabel: "Level 5 higher-level start",
+      reason: "Keep this campaign-specific rationale verbatim.",
+    });
+  });
+
+  it("localizes ABP-suppressed configured components at the pane boundary", () => {
+    const draft = createEmptyDraft(1);
+    const configuredLine = acquisitionLine({
+      price: {
+        ...acquisitionPrice(),
+        configurationComponents: {
+          version: 1,
+          itemType: "armor",
+          baseItem: "chain-mail",
+          source: {
+            runes: { potency: 1, fundamental: 1, property: ["fortification"] },
+            material: { type: null, grade: null },
+          },
+          prepared: {
+            runes: { potency: 0, fundamental: 0, property: [] },
+            material: { type: null, grade: null },
+            totalCopper: 100,
+          },
+          baselineAndFundamentalCopper: 100,
+          propertyRuneCopper: 0,
+          preciousMaterialCopper: 0,
+          suppressedByAbp: ["fundamental", "resilient", "property:fortification"],
+        },
+      },
+    });
+    draft.acquisition = acquisitionFixture({ lines: [configuredLine], disposition: "unreviewed" }).draft;
+
+    const pane = buildStartingEquipmentPaneLocalized(
+      createStartingEquipmentStep(1),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        records: [],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      },
+      (key, values) =>
+        key === "PF2E.ArmorPropertyRuneFortification"
+          ? "Localized Fortification"
+          : localizeAcquisitionEnglish(key, values)
+    );
+
+    expect(pane.cart.lines[0]?.configurationLabel).toContain(
+      "PF2E ABP suppresses fundamental runes, resilient rune, Localized Fortification property rune"
+    );
   });
 
   it("explains configured-item handoff and suppresses further shopping", () => {
@@ -376,10 +488,10 @@ describe("starting equipment pane", () => {
       'data-wayfinder-action="choose-titan-mauler-equipment"',
       'data-wayfinder-action="request-equipment-item-exception"',
       'data-wayfinder-action="approve-equipment-item-exception"',
-      "Pick your Titan Mauler weapon",
+      "wayfinder-pf2e.StartingEquipment.TitanMauler.ChooseTitle",
       "data-wayfinder-focus-id",
       "data-equipment-source-diagnostic",
-      "Wayfinder won't add items or touch your coin",
+      "wayfinder-pf2e.StartingEquipment.Handoff.Acknowledged",
     ]) {
       expect(template).toContain(token);
     }

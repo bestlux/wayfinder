@@ -1,3 +1,4 @@
+import type { AcquisitionLocalize } from "../application/acquisition-localization.js";
 import {
   type CompletedAcquisitionManifestV1,
   normalizeCompletedAcquisitionManifest,
@@ -55,13 +56,14 @@ export interface AcquisitionReceiptViewModel {
 }
 
 export interface AcquisitionReceiptDependencies {
+  readonly localize: AcquisitionLocalize;
   resolveItemName?: (sourceUuid: string, actualItemId: string) => string | null | Promise<string | null>;
   resolveContainerName?: (containerId: string) => string | null | Promise<string | null>;
 }
 
 export async function buildAcquisitionReceiptViewModel(
   rawManifest: unknown,
-  deps: AcquisitionReceiptDependencies = {}
+  deps: AcquisitionReceiptDependencies
 ): Promise<AcquisitionReceiptViewModel> {
   const manifest = normalizeCompletedAcquisitionManifest(rawManifest);
   if (!manifest) {
@@ -83,7 +85,7 @@ export async function buildAcquisitionReceiptViewModel(
           quantity: observed.actualQuantity,
           containerId: observed.actualContainerId,
           containerName,
-          fundingLabel: fundingLabel(entry.funding.lane),
+          fundingLabel: fundingLabel(entry.funding.lane, deps.localize),
         };
       })
     )
@@ -99,78 +101,100 @@ export async function buildAcquisitionReceiptViewModel(
     appliedAt: manifest.appliedAt,
     appliedBy: manifest.appliedBy.userName,
     disposition: manifest.disposition,
-    dispositionLabel: dispositionLabel(manifest.disposition),
+    dispositionLabel: dispositionLabel(manifest.disposition, deps.localize),
     itemRows,
     classGrantRows: manifest.classGrants.map((entry) => ({
       grantId: entry.grant.grantId,
       sourceUuid: entry.grant.expected.sourceUuid,
       status: entry.status,
-      statusLabel: classGrantStatusLabel(entry.status),
+      statusLabel: classGrantStatusLabel(entry.status, deps.localize),
       observedItemIds: [...entry.observedItemIds],
     })),
     currency: {
       ...manifest.currency,
-      spentLabel: formatCopper(manifest.currency.spentCopper),
-      remainingLabel: formatCopper(manifest.currency.remainingCopper),
-      observedLabel: formatCopper(manifest.currency.observedCopper),
+      spentLabel: formatCopper(manifest.currency.spentCopper, deps.localize),
+      remainingLabel: formatCopper(manifest.currency.remainingCopper, deps.localize),
+      observedLabel: formatCopper(manifest.currency.observedCopper, deps.localize),
     },
     authority: {
-      applyLabel: authority.apply === "gm-review" ? "Your GM reviewed this" : "Applied by you",
-      recipeChoiceLabel: authority.recipeChoice === "gm-fixed" ? "Funding set by your GM" : "Funding chosen by you",
-      recipeSelectionLabel: recipeSelectionLabel(manifest.policy.material.recipeSelection),
+      applyLabel: deps.localize(
+        authority.apply === "gm-review"
+          ? "wayfinder-pf2e.AcquisitionReceipt.Authority.GmReviewed"
+          : "wayfinder-pf2e.AcquisitionReceipt.Authority.AppliedByYou"
+      ),
+      recipeChoiceLabel: deps.localize(
+        authority.recipeChoice === "gm-fixed"
+          ? "wayfinder-pf2e.AcquisitionReceipt.Authority.FundingSetByGm"
+          : "wayfinder-pf2e.AcquisitionReceipt.Authority.FundingChosenByYou"
+      ),
+      recipeSelectionLabel: recipeSelectionLabel(manifest.policy.material.recipeSelection, deps.localize),
       recipeSelectedAt: manifest.policy.material.recipeSelection?.selectedAt ?? null,
-      higherLevelStartLabel:
+      higherLevelStartLabel: deps.localize(
         authority.higherLevelStart === "gm-confirmation"
-          ? "Higher-level start confirmed by your GM"
-          : "Higher-level start noted by you",
+          ? "wayfinder-pf2e.AcquisitionReceipt.Authority.HigherLevelConfirmed"
+          : "wayfinder-pf2e.AcquisitionReceipt.Authority.HigherLevelNoted"
+      ),
       judgmentIds: manifest.policy.material.gmJudgments.map((judgment) => judgment.id).sort(),
     },
-    environmentLabel: `Foundry ${manifest.environment.foundryVersion} · PF2E ${manifest.environment.pf2eVersion} · Wayfinder ${manifest.environment.moduleVersion}`,
+    environmentLabel: deps.localize("wayfinder-pf2e.AcquisitionReceipt.Environment", {
+      foundryVersion: manifest.environment.foundryVersion,
+      pf2eVersion: manifest.environment.pf2eVersion,
+      moduleVersion: manifest.environment.moduleVersion,
+    }),
     canOpenInventory: true,
   };
 }
 
 function recipeSelectionLabel(
-  selection: CompletedAcquisitionManifestV1["policy"]["material"]["recipeSelection"]
+  selection: CompletedAcquisitionManifestV1["policy"]["material"]["recipeSelection"],
+  localize: AcquisitionLocalize
 ): string {
-  if (!selection) return "Funding selector unavailable";
+  if (!selection) return localize("wayfinder-pf2e.AcquisitionReceipt.Authority.SelectorUnavailable");
   return selection.selector.kind === "unattributed-world-policy"
-    ? "Fixed by legacy world policy (GM identity unavailable)"
-    : `Selected by ${selection.selector.userName}`;
+    ? localize("wayfinder-pf2e.AcquisitionReceipt.Authority.LegacyWorldPolicy")
+    : localize("wayfinder-pf2e.AcquisitionReceipt.Authority.SelectedBy", {
+        userName: selection.selector.userName,
+      });
 }
 
-function classGrantStatusLabel(status: string): string {
+function classGrantStatusLabel(status: string, localize: AcquisitionLocalize): string {
   switch (status) {
     case "resolved":
-      return "found on your sheet";
+      return localize("wayfinder-pf2e.AcquisitionReceipt.ClassGrant.Resolved");
     case "pending":
-      return "not written yet";
+      return localize("wayfinder-pf2e.AcquisitionReceipt.ClassGrant.Pending");
     case "ambiguous":
-      return "matched more than one item";
+      return localize("wayfinder-pf2e.AcquisitionReceipt.ClassGrant.Ambiguous");
     default:
-      return "not found on your sheet";
+      return localize("wayfinder-pf2e.AcquisitionReceipt.ClassGrant.Unresolved");
   }
 }
 
-function dispositionLabel(disposition: CompletedAcquisitionManifestV1["disposition"]): string {
+function dispositionLabel(
+  disposition: CompletedAcquisitionManifestV1["disposition"],
+  localize: AcquisitionLocalize
+): string {
   switch (disposition) {
     case "purchase-ledger":
-      return "Bought starting gear";
+      return localize("wayfinder-pf2e.AcquisitionReceipt.Disposition.Purchased");
     case "retain-all":
-      return "Kept all your starting coin";
+      return localize("wayfinder-pf2e.AcquisitionReceipt.Disposition.Retained");
     case "handoff":
-      return "Finished on the character sheet";
+      return localize("wayfinder-pf2e.AcquisitionReceipt.Disposition.Handoff");
   }
 }
 
-function fundingLabel(lane: CompletedAcquisitionManifestV1["entries"][number]["funding"]["lane"]): string {
+function fundingLabel(
+  lane: CompletedAcquisitionManifestV1["entries"][number]["funding"]["lane"],
+  localize: AcquisitionLocalize
+): string {
   switch (lane) {
     case "currency":
-      return "Currency";
+      return localize("wayfinder-pf2e.AcquisitionReceipt.Funding.Currency");
     case "allowance":
-      return "Permanent item allowance";
+      return localize("wayfinder-pf2e.AcquisitionReceipt.Funding.Allowance");
     case "class-grant":
-      return "Granted by your build";
+      return localize("wayfinder-pf2e.AcquisitionReceipt.Funding.ClassGrant");
   }
 }
 
@@ -179,7 +203,7 @@ function compactSourceLabel(sourceUuid: string): string {
   return documentId || sourceUuid;
 }
 
-function formatCopper(copper: number): string {
+function formatCopper(copper: number, localize: AcquisitionLocalize): string {
   if (!Number.isSafeInteger(copper) || copper < 0) {
     throw new TypeError("Starting-equipment receipt currency is malformed.");
   }
@@ -187,8 +211,10 @@ function formatCopper(copper: number): string {
   const sp = Math.floor((copper % 100) / 10);
   const cp = copper % 10;
   const parts = [];
-  if (gp > 0) parts.push(`${gp} gp`);
-  if (sp > 0) parts.push(`${sp} sp`);
-  if (cp > 0 || parts.length === 0) parts.push(`${cp} cp`);
+  if (gp > 0) parts.push(localize("wayfinder-pf2e.StartingEquipment.Currency.Gold", { value: gp }));
+  if (sp > 0) parts.push(localize("wayfinder-pf2e.StartingEquipment.Currency.Silver", { value: sp }));
+  if (cp > 0 || parts.length === 0) {
+    parts.push(localize("wayfinder-pf2e.StartingEquipment.Currency.Copper", { value: cp }));
+  }
   return parts.join(" ");
 }

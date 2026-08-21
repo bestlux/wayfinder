@@ -43,6 +43,11 @@ import {
   type WayfinderAction,
 } from "./actions.js";
 import {
+  type AcquisitionLocalizationValues,
+  localizeAcquisitionMessage,
+  localizeEquipmentSourceDiagnostic,
+} from "./application/acquisition-localization.js";
+import {
   acquisitionSmokeApplyFailureHandledFor,
   acquisitionSmokeApplyFailureRenderedFor,
   acquisitionSmokeCheckpointHookFor,
@@ -98,6 +103,7 @@ import {
 import {
   ConfiguredItemHandoffRequiredError,
   commitTitanMaulerLineSynchronization,
+  EquipmentSourceHealthError,
   getFoundryEquipmentAcquisitionRuntime,
 } from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
@@ -329,7 +335,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     render: (request) => this.#renderStartingEquipmentSearch(request),
     onError: (error) => {
       console.error("PF2E Wayfinder equipment search render failed", error);
-      ui.notifications.error("Wayfinder could not update these equipment results. Reopen the window and try again.");
+      ui.notifications.error(localizeAcquisition("wayfinder-pf2e.StartingEquipment.Errors.Search"));
     },
   });
 
@@ -512,6 +518,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       ? await buildAcquisitionReceiptViewModel(state.completedAcquisitionManifest, {
           resolveItemName: (_sourceUuid, actualItemId) => actorItemsById.get(actualItemId)?.name ?? null,
           resolveContainerName: (containerId) => actorItemsById.get(containerId)?.name ?? null,
+          localize: localizeAcquisition,
         })
       : null;
     return Object.assign(
@@ -814,7 +821,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         await openActorInventorySheet(this.actor);
       } catch (error) {
         console.error("PF2E Wayfinder could not open the actor inventory", error);
-        ui.notifications.warn("Wayfinder could not open this character's PF2E inventory sheet.");
+        ui.notifications.warn(localizeAcquisition("wayfinder-pf2e.AcquisitionReceipt.OpenInventoryFailed"));
       }
       return;
     }
@@ -926,7 +933,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         await this.#executeStartingEquipmentCommand(action.stepId, {
           type: "request-higher-level-start",
           startKind: action.startKind,
-          reason: `Requesting ${action.startKind === "new-campaign" ? "a new campaign" : "a replacement character"} start at level ${this.#requireDraft().targetLevel}.`,
+          reason: localizeAcquisition(
+            action.startKind === "new-campaign"
+              ? "wayfinder-pf2e.StartingEquipment.Request.HigherLevelNewCampaignReason"
+              : "wayfinder-pf2e.StartingEquipment.Request.HigherLevelReplacementReason",
+            { level: this.#requireDraft().targetLevel }
+          ),
         });
         break;
       case "approve-equipment-policy-request":
@@ -940,7 +952,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         await this.#executeStartingEquipmentCommand(action.stepId, {
           type: "request-item-exception",
           sourceUuid: action.sourceUuid,
-          reason: "Requesting an exact source and rarity exception for this item.",
+          reason: localizeAcquisition("wayfinder-pf2e.StartingEquipment.Request.ItemExceptionReason"),
         });
         break;
       case "approve-equipment-item-exception":
@@ -963,7 +975,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         );
         const amountCopper = parseGoldToCopper(input?.value ?? "");
         if (amountCopper === null) {
-          ui.notifications.warn("Enter a non-negative custom lump sum with at most two decimal places.");
+          ui.notifications.warn(localizeAcquisition("wayfinder-pf2e.StartingEquipment.Errors.CustomLumpSum"));
           break;
         }
         await this.#executeStartingEquipmentCommand(action.stepId, {
@@ -1272,6 +1284,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#requireDraft(),
         stepEvaluation,
         await getStartingEquipmentUiAdapter().project(request),
+        localizeAcquisition,
         {
           worldPolicy: getEquipmentWorldPolicySetting(),
           judgments: getEquipmentPolicyJudgmentStoreSetting().judgments,
@@ -1366,9 +1379,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       this.#requireDraft().acquisition = result.acquisition;
       this.#requireDraft().acquisitionCorrupt = false;
       this.#requireDraft().equipmentPolicyRequests = [...result.policyRequests];
-      this.#statusNote = result.statusNote;
+      this.#statusNote = localizeAcquisitionMessage(localizeAcquisition, result.status);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Wayfinder could not update starting equipment.";
+      const message = localizeStartingEquipmentError(error, "wayfinder-pf2e.StartingEquipment.Errors.Update");
       this.#statusNote = message;
       ui.notifications.warn(message);
     }
@@ -1402,7 +1415,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         });
         return;
       }
-      const message = error instanceof Error ? error.message : "Wayfinder could not add this equipment item.";
+      const message = localizeStartingEquipmentError(error, "wayfinder-pf2e.StartingEquipment.Errors.Add");
       this.#statusNote = message;
       ui.notifications.warn(message);
       this.render({ wayfinderEquipmentUpdate: true });
@@ -1424,7 +1437,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       });
       await this.#executeStartingEquipmentCommand(stepId, { type: "add-line", line });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Wayfinder could not choose this Titan Mauler weapon.";
+      const message = localizeStartingEquipmentError(
+        error,
+        "wayfinder-pf2e.StartingEquipment.Errors.ChooseTitanMauler"
+      );
       this.#statusNote = message;
       ui.notifications.warn(message);
       this.render({ wayfinderEquipmentUpdate: true });
@@ -2030,13 +2046,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     switch (result.reason) {
       case "build-changed":
-        return "Wayfinder removed the Titan Mauler weapon because Giant Instinct is no longer in this drafted build.";
+        return localizeAcquisition("wayfinder-pf2e.StartingEquipment.Status.TitanBuildChanged");
       case "size-changed":
-        return "Wayfinder removed the Titan Mauler weapon because the drafted ancestry requires a different weapon size. Choose it again.";
+        return localizeAcquisition("wayfinder-pf2e.StartingEquipment.Status.TitanSizeChanged");
       case "source-changed":
-        return "Wayfinder removed the Titan Mauler weapon because its current source or Access eligibility changed. Choose an eligible weapon again.";
+        return localizeAcquisition("wayfinder-pf2e.StartingEquipment.Status.TitanSourceChanged");
       case "verification-failed":
-        return "Wayfinder could not revalidate the Titan Mauler weapon after this build change. The choice was preserved, but equipment review must succeed again before Apply.";
+        return localizeAcquisition("wayfinder-pf2e.StartingEquipment.Status.TitanVerificationFailed");
       default:
         return null;
     }
@@ -2627,7 +2643,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const blocker = error.blockers[0];
         this.#activeStepId = blocker?.stepId ?? this.#activeStepId;
         this.#pendingStepFocusId = blocker?.stepId ?? null;
-        this.#statusNote = blocker?.message ?? error.message;
+        this.#statusNote =
+          blocker?.code === "equipment-review"
+            ? localizeAcquisition("wayfinder-pf2e.StartingEquipment.Apply.NotReady")
+            : (blocker?.message ?? error.message);
         ui.notifications.warn(game.i18n.localize("wayfinder-pf2e.Notifications.MissingSelections"));
         this.render(false);
         return false;
@@ -2645,11 +2664,19 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         return false;
       }
       console.error("PF2E Wayfinder failed to apply draft", error);
-      this.#statusNote = finalizedDespiteApplyError
-        ? "The actor reached the reviewed final state, but Foundry reported a late Apply error. Review the actor before closing."
-        : hasApplyRecoveryState(this.#requireDraft())
-          ? "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console."
-          : "Wayfinder could not apply this draft. The draft was kept for review; details are in the console.";
+      this.#statusNote = draft.acquisition
+        ? localizeAcquisition(
+            finalizedDespiteApplyError
+              ? "wayfinder-pf2e.StartingEquipment.Apply.LateError"
+              : hasApplyRecoveryState(this.#requireDraft())
+                ? "wayfinder-pf2e.StartingEquipment.Apply.Partial"
+                : "wayfinder-pf2e.StartingEquipment.Apply.Failed"
+          )
+        : finalizedDespiteApplyError
+          ? "The actor reached the reviewed final state, but Foundry reported a late Apply error. Review the actor before closing."
+          : hasApplyRecoveryState(this.#requireDraft())
+            ? "Wayfinder partially applied this draft. Retry Apply without changing choices; details are in the console."
+            : "Wayfinder could not apply this draft. The draft was kept for review; details are in the console.";
       ui.notifications.error(game.i18n.localize("wayfinder-pf2e.Notifications.ApplyFailed"));
       this.render(false);
       acquisitionSmokeApplyFailureHandledFor(this.actor, draft, error);
@@ -2658,7 +2685,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     if (result.kind === "warning") {
       this.#draftPersistence.resume();
-      this.#statusNote = result.blockers[0]?.message ?? null;
+      this.#statusNote =
+        result.blockers[0]?.code === "equipment-review"
+          ? localizeAcquisition("wayfinder-pf2e.StartingEquipment.Apply.NotReady")
+          : (result.blockers[0]?.message ?? null);
       const notificationKey =
         result.warning === "no-pending-steps"
           ? "wayfinder-pf2e.Notifications.NoPendingSteps"
@@ -3067,6 +3097,19 @@ function fallbackEscapeHtml(value: string): string {
         return "&#39;";
     }
   });
+}
+
+function localizeAcquisition(key: string, values?: AcquisitionLocalizationValues): string {
+  return values ? String(game.i18n.format(key, values)) : String(game.i18n.localize(key));
+}
+
+function localizeStartingEquipmentError(error: unknown, fallbackKey: string): string {
+  if (error instanceof EquipmentSourceHealthError) {
+    return error.diagnostics
+      .map((diagnostic) => localizeEquipmentSourceDiagnostic(localizeAcquisition, diagnostic))
+      .join(" ");
+  }
+  return localizeAcquisition(fallbackKey);
 }
 
 function parseGoldToCopper(value: string): number | null {

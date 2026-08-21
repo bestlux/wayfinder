@@ -1,4 +1,8 @@
 import type { DraftState } from "../../types.js";
+import {
+  type AcquisitionLocalize,
+  localizeEquipmentSourceDiagnostic,
+} from "../application/acquisition-localization.js";
 import type { EquipmentSourceDiagnostic } from "../application/equipment-source-policy.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
 import type { EconomicHandoffReason } from "../domain/economic-baseline.js";
@@ -29,8 +33,9 @@ export const MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS = 12;
 export function buildStartingEquipmentPane(
   step: StartingEquipmentStep,
   draft: DraftState,
-  evaluation: WayfinderStepEvaluation,
+  _evaluation: WayfinderStepEvaluation,
   catalogue: StartingEquipmentCatalogueProjection,
+  localize: AcquisitionLocalize,
   setupOptions?: {
     readonly worldPolicy: EquipmentWorldPolicyV1;
     readonly judgments: readonly EquipmentPolicyJudgmentRecord[];
@@ -72,7 +77,7 @@ export function buildStartingEquipmentPane(
             .filter((allowance) => allowance.itemLevel >= record.level)
             .map((allowance) => ({
               allowanceId: allowance.allowanceId,
-              label: `Use level ${allowance.itemLevel} allowance`,
+              label: localize("wayfinder-pf2e.StartingEquipment.Allowance.Use", { level: allowance.itemLevel }),
             }))
         : [];
     const exceptionPending = draft.equipmentPolicyRequests.some(
@@ -84,6 +89,21 @@ export function buildStartingEquipmentPane(
     );
     return {
       ...record,
+      priceLabel: cataloguePriceLabel(record, localize),
+      rarityLabel: rarityLabel(record.rarity, localize),
+      itemTypeLabel: itemTypeLabel(record.itemType, localize),
+      traits: record.traits.map((trait) => pf2eTraitLabel(trait, localize)),
+      bulkLabel:
+        record.bulkLabel === "See item details"
+          ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.SeeItemDetails")
+          : record.bulkLabel,
+      unavailableReason: record.unavailableReason
+        ? localize(
+            record.exceptionRequestable
+              ? "wayfinder-pf2e.StartingEquipment.Catalogue.ExceptionRequired"
+              : "wayfinder-pf2e.StartingEquipment.Catalogue.ItemUnavailable"
+          )
+        : null,
       affordable,
       previewing: record.sourceUuid === catalogue.previewSourceUuid,
       canAdd: canBuyWithCurrency || allowanceOptions.length > 0,
@@ -113,9 +133,9 @@ export function buildStartingEquipmentPane(
         sourceUuid: line.sourceUuid,
         name: record?.name ?? line.sourceUuid,
         quantity: line.price.materializedQuantity,
-        priceLabel: formatCopper(line.price.linePriceCopper),
-        configurationLabel: configuredPriceLabel(line.price),
-        fundingLabel: fundingLabel(line.funding, policy?.allowances ?? []),
+        priceLabel: formatCopper(line.price.linePriceCopper, localize),
+        configurationLabel: configuredPriceLabel(line.price, localize),
+        fundingLabel: fundingLabel(line.funding, policy?.allowances ?? [], localize),
         canRemove:
           line.funding.lane !== "class-grant" ||
           plannedGrantById.get(line.funding.grant.plannedGrantId)?.materializer !== "pf2e-native",
@@ -124,7 +144,7 @@ export function buildStartingEquipmentPane(
         unavailableReason:
           line.funding.lane === "class-grant" || line.policyDecision.eligible
             ? null
-            : "Your world's rules no longer allow this item.",
+            : localize("wayfinder-pf2e.StartingEquipment.Cart.PolicyChanged"),
         focusId: `starting-equipment-line:${line.lineId}`,
         children:
           line.kitExpansion?.items.map((item) => ({
@@ -163,9 +183,9 @@ export function buildStartingEquipmentPane(
     stepId: step.id,
     slotId: step.slotId,
     level: step.level,
-    modeLabel: "Equipment",
-    title: step.title,
-    description: step.description,
+    modeLabel: localize("wayfinder-pf2e.StartingEquipment.Mode"),
+    title: localize("wayfinder-pf2e.StartingEquipment.Title"),
+    description: localize("wayfinder-pf2e.StartingEquipment.Description"),
     initialized: !!acquisition,
     corrupt: draft.acquisitionCorrupt,
     setup: {
@@ -174,17 +194,21 @@ export function buildStartingEquipmentPane(
       selectedRecipe,
       recipeOptions: (worldPolicy?.enabledRecipes ?? []).map((value) => ({
         value,
-        label: value === "permanent-items" ? "Permanent items and coin" : "Lump sum of coin",
+        label: localize(
+          value === "permanent-items"
+            ? "wayfinder-pf2e.StartingEquipment.Recipe.PermanentItems"
+            : "wayfinder-pf2e.StartingEquipment.Recipe.LumpSum"
+        ),
         selected: value === selectedRecipe,
       })),
       authorityMessage: startAuthorityInvalid
-        ? "The prior GM approval is no longer current. Request a new approval before Apply."
+        ? localize("wayfinder-pf2e.StartingEquipment.Authority.StaleApproval")
         : awaitingAuthority
           ? worldPolicy?.higherLevelStartAuthority === "actor-owner-attestation"
-            ? "As an owner, you can attest that this is a new or replacement higher-level character."
+            ? localize("wayfinder-pf2e.StartingEquipment.Authority.OwnerAttestation")
             : setupOptions?.isGm
-              ? "Confirm whether this is a new-campaign or replacement-character start before shopping."
-              : "A GM must confirm this higher-level start before shopping."
+              ? localize("wayfinder-pf2e.StartingEquipment.Authority.GmConfirmation")
+              : localize("wayfinder-pf2e.StartingEquipment.Authority.AwaitingGm")
           : null,
       canActivate:
         (awaitingAuthority || startAuthorityInvalid) &&
@@ -201,9 +225,13 @@ export function buildStartingEquipmentPane(
         reason: request.reason,
         kindLabel:
           request.facts.kind === "higher-level-start"
-            ? `Level ${request.facts.targetLevel} higher-level start`
+            ? localize("wayfinder-pf2e.StartingEquipment.Request.HigherLevelStart", {
+                level: request.facts.targetLevel,
+              })
             : request.facts.kind === "rarity-source-exception"
-              ? `Exact item exception: ${request.facts.sourceUuid}`
+              ? localize("wayfinder-pf2e.StartingEquipment.Request.ItemException", {
+                  sourceUuid: request.facts.sourceUuid,
+                })
               : request.facts.kind,
         canApprove: setupOptions?.isGm === true,
       })),
@@ -220,32 +248,48 @@ export function buildStartingEquipmentPane(
         !policy.allowances.some((allowance) => allowance.allowanceId.startsWith("gm-extra:")),
     },
     policy: {
-      recipeLabel: policy ? recipeLabel(policy.resolvedRecipe.kind) : "Set once you start shopping",
-      budgetLabel: formatCopper(budgetCopper),
+      recipeLabel: policy
+        ? recipeLabel(policy.resolvedRecipe.kind, localize)
+        : localize("wayfinder-pf2e.StartingEquipment.Recipe.SetOnStart"),
+      budgetLabel: formatCopper(budgetCopper, localize),
       automaticEligibilityLabel: policy
-        ? `${capitalize(policy.rarityPolicy.blanketCeiling)} gear from ${policy.sourcePolicy.effectivePackIds.length} approved pack${policy.sourcePolicy.effectivePackIds.length === 1 ? "" : "s"}`
-        : "Common gear from approved PF2E sources",
+        ? localize(
+            policy.sourcePolicy.effectivePackIds.length === 1
+              ? "wayfinder-pf2e.StartingEquipment.Policy.AutomaticEligibilityOne"
+              : "wayfinder-pf2e.StartingEquipment.Policy.AutomaticEligibilityMany",
+            {
+              rarity: rarityLabel(policy.rarityPolicy.blanketCeiling, localize),
+              count: policy.sourcePolicy.effectivePackIds.length,
+            }
+          )
+        : localize("wayfinder-pf2e.StartingEquipment.Policy.DefaultEligibility"),
       authorityLabel: policy
-        ? authoritySentence(policy.authorityPolicy.recipeChoice, policy.authorityPolicy.apply)
-        : "From your GM's settings",
-      recipeSelectionLabel: recipeSelectionLabel(acquisition?.recipeSelection),
-      handoffLabel: "Coin and gear your character already has stay put. Handle those on the PF2E inventory tab.",
-      explanations: policy && acquisition ? policyExplanations(acquisition) : [],
+        ? authoritySentence(policy.authorityPolicy.recipeChoice, policy.authorityPolicy.apply, localize)
+        : localize("wayfinder-pf2e.StartingEquipment.Policy.FromGmSettings"),
+      recipeSelectionLabel: recipeSelectionLabel(acquisition?.recipeSelection, localize),
+      handoffLabel: localize("wayfinder-pf2e.StartingEquipment.Policy.ExistingGearHandoff"),
+      explanations: policy && acquisition ? policyExplanations(acquisition, localize) : [],
       allowances:
         policy?.allowances.map((allowance) => ({
           ...allowance,
-          label: `Level ${allowance.itemLevel} permanent item`,
+          label: localize("wayfinder-pf2e.StartingEquipment.Allowance.LevelItem", {
+            level: allowance.itemLevel,
+          }),
           used: usedAllowanceIds.has(allowance.allowanceId),
         })) ?? [],
     },
     catalogue: {
       state: catalogue.state,
-      message: catalogue.message,
-      diagnostics: sourceDiagnostics,
+      message: catalogueMessage(catalogue.state, acquisition !== null, matchingRecords.length, localize),
+      diagnostics: sourceDiagnostics.map((diagnostic) => ({
+        ...diagnostic,
+        message: localizeEquipmentSourceDiagnostic(localize, diagnostic),
+      })),
       search: catalogue.query,
       searchDisabled: !acquisition || !catalogueReady || !!handoff,
       filters: catalogue.filters.map((filter) => ({
         ...filter,
+        label: catalogueFilterLabel(filter.key, filter.value, filter.label, localize),
         selected: catalogue.activeFilters[filter.key]?.includes(filter.value) ?? false,
       })),
       totalResultCount: matchingRecords.length,
@@ -256,8 +300,8 @@ export function buildStartingEquipmentPane(
     cart: {
       lines: cartLines,
       empty: cartLines.length === 0,
-      spentLabel: formatCopper(spentCopper),
-      remainingLabel: formatCopper(remainingCopper),
+      spentLabel: formatCopper(spentCopper, localize),
+      remainingLabel: formatCopper(remainingCopper, localize),
     },
     titanMauler: {
       required: catalogue.titanMauler.required,
@@ -266,7 +310,7 @@ export function buildStartingEquipmentPane(
     },
     review: {
       disposition,
-      label: evaluation.status,
+      label: reviewLabel(draft, localize),
       canReviewPurchases:
         !!acquisition &&
         catalogueReady &&
@@ -283,17 +327,25 @@ export function buildStartingEquipmentPane(
     handoff: {
       active: !!handoff,
       acknowledged: !!handoff?.acknowledgedByUserId && !!handoff.acknowledgedAt,
-      reasons: handoff?.handoff.reasons.map(handoffReason) ?? [],
+      reasons: handoff?.handoff.reasons.map((reason) => handoffReason(reason, localize)) ?? [],
     },
   };
 }
 
-function recipeSelectionLabel(selection: NonNullable<DraftState["acquisition"]>["recipeSelection"]): string {
-  if (!selection) return "Recorded when funding is selected";
+function recipeSelectionLabel(
+  selection: NonNullable<DraftState["acquisition"]>["recipeSelection"],
+  localize: AcquisitionLocalize
+): string {
+  if (!selection) return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionRecordedOnChoice");
   if (selection.selector.kind === "unattributed-world-policy") {
-    return `Fixed by legacy world policy at ${selection.selectedAt}`;
+    return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionLegacy", {
+      selectedAt: selection.selectedAt,
+    });
   }
-  return `${selection.selector.userName} selected this at ${selection.selectedAt}`;
+  return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionByUser", {
+    userName: selection.selector.userName,
+    selectedAt: selection.selectedAt,
+  });
 }
 
 function matchesQuery(record: StartingEquipmentCatalogueRecord, query: string): boolean {
@@ -323,53 +375,84 @@ function matchesFilters(
   });
 }
 
-function policyExplanations(acquisition: NonNullable<DraftState["acquisition"]>): readonly string[] {
+function policyExplanations(
+  acquisition: NonNullable<DraftState["acquisition"]>,
+  localize: AcquisitionLocalize
+): readonly string[] {
   const material = acquisition.policySnapshot?.material;
   if (!material) return [];
   const fundingExplanation =
     material.resolvedRecipe.kind === "permanent-items"
-      ? `Your permanent-item allowances are separate from ${formatCopper(material.budgetCopper)} in starting coin. Unused allowances never become cash.`
-      : `You have ${formatCopper(material.budgetCopper)} in starting coin for Common items below level ${material.subject.targetLevel}.`;
+      ? localize("wayfinder-pf2e.StartingEquipment.Policy.PermanentItemsExplanation", {
+          budget: formatCopper(material.budgetCopper, localize),
+        })
+      : localize("wayfinder-pf2e.StartingEquipment.Policy.LumpSumExplanation", {
+          budget: formatCopper(material.budgetCopper, localize),
+          level: material.subject.targetLevel,
+        });
   return [
     fundingExplanation,
     material.rarityPolicy.blanketCeiling === "common"
-      ? "Anything Common is fair game, as long as its pack is approved."
-      : `Your GM has opened this up to ${material.rarityPolicy.blanketCeiling} gear.`,
+      ? localize("wayfinder-pf2e.StartingEquipment.Policy.CommonExplanation")
+      : localize("wayfinder-pf2e.StartingEquipment.Policy.RarityExplanation", {
+          rarity: rarityLabel(material.rarityPolicy.blanketCeiling, localize),
+        }),
     ...(material.abp.enabled
       ? [
           material.abp.actorOverrideDisabled
-            ? `PF2E's ${material.abp.mode ?? "ABP"} mode is enabled, but this actor's ABP override is disabled.`
-            : `PF2E's ${material.abp.mode ?? "ABP"} mode is active. Configured gear uses PF2E's prepared rune state without changing starting currency.`,
+            ? localize("wayfinder-pf2e.StartingEquipment.Policy.AbpOverrideDisabled", {
+                mode: material.abp.mode ?? "ABP",
+              })
+            : localize("wayfinder-pf2e.StartingEquipment.Policy.AbpActive", {
+                mode: material.abp.mode ?? "ABP",
+              }),
         ]
       : []),
   ];
 }
 
-function configuredPriceLabel(price: NonNullable<DraftState["acquisition"]>["lines"][number]["price"]): string | null {
+function configuredPriceLabel(
+  price: NonNullable<DraftState["acquisition"]>["lines"][number]["price"],
+  localize: AcquisitionLocalize
+): string | null {
   const components = price.configurationComponents;
   if (!components) return null;
   return [
-    `baseline/fundamental ${formatCopper(components.baselineAndFundamentalCopper)}`,
-    components.propertyRuneCopper > 0 ? `property runes ${formatCopper(components.propertyRuneCopper)}` : null,
-    components.preciousMaterialCopper > 0
-      ? `precious material ${formatCopper(components.preciousMaterialCopper)}`
+    localize("wayfinder-pf2e.StartingEquipment.Price.Baseline", {
+      price: formatCopper(components.baselineAndFundamentalCopper, localize),
+    }),
+    components.propertyRuneCopper > 0
+      ? localize("wayfinder-pf2e.StartingEquipment.Price.PropertyRunes", {
+          price: formatCopper(components.propertyRuneCopper, localize),
+        })
       : null,
-    components.suppressedByAbp.length > 0 ? `PF2E ABP suppresses ${components.suppressedByAbp.join(", ")}` : null,
+    components.preciousMaterialCopper > 0
+      ? localize("wayfinder-pf2e.StartingEquipment.Price.PreciousMaterial", {
+          price: formatCopper(components.preciousMaterialCopper, localize),
+        })
+      : null,
+    components.suppressedByAbp.length > 0
+      ? localize("wayfinder-pf2e.StartingEquipment.Price.AbpSuppresses", {
+          components: components.suppressedByAbp
+            .map((component) => suppressedComponentLabel(component, components.itemType, localize))
+            .join(", "),
+        })
+      : null,
   ]
     .filter((value): value is string => value !== null)
     .join(" · ");
 }
 
-function recipeLabel(kind: string): string {
+function recipeLabel(kind: string, localize: AcquisitionLocalize): string {
   switch (kind) {
     case "level-1-equivalent":
-      return "Level 1 starting wealth";
+      return localize("wayfinder-pf2e.StartingEquipment.Recipe.LevelOne");
     case "permanent-items":
-      return "Permanent items and coin";
+      return localize("wayfinder-pf2e.StartingEquipment.Recipe.PermanentItems");
     case "lump-sum":
-      return "Lump sum of coin";
+      return localize("wayfinder-pf2e.StartingEquipment.Recipe.LumpSum");
     default:
-      return "Lump sum set by your GM";
+      return localize("wayfinder-pf2e.StartingEquipment.Recipe.CustomLumpSum");
   }
 }
 
@@ -377,27 +460,30 @@ function isGmAuthority(value: string): boolean {
   return value === "gm-fixed" || value === "gm-review" || value === "gm-confirmation";
 }
 
-function authoritySentence(recipeChoice: string, apply: string): string {
+function authoritySentence(recipeChoice: string, apply: string, localize: AcquisitionLocalize): string {
   const gmChooses = isGmAuthority(recipeChoice);
   const gmApplies = isGmAuthority(apply);
-  if (gmChooses && gmApplies) return "Your GM chooses the funding and applies it";
-  if (gmChooses) return "Your GM chooses the funding, you apply it";
-  if (gmApplies) return "You choose the funding, your GM applies it";
-  return "You choose the funding and apply it";
+  if (gmChooses && gmApplies) return localize("wayfinder-pf2e.StartingEquipment.Authority.GmChoosesApplies");
+  if (gmChooses) return localize("wayfinder-pf2e.StartingEquipment.Authority.GmChoosesOwnerApplies");
+  if (gmApplies) return localize("wayfinder-pf2e.StartingEquipment.Authority.OwnerChoosesGmApplies");
+  return localize("wayfinder-pf2e.StartingEquipment.Authority.OwnerChoosesApplies");
 }
 
 function fundingLabel(
   funding: NonNullable<DraftState["acquisition"]>["lines"][number]["funding"],
-  allowances: readonly { readonly allowanceId: string; readonly itemLevel: number }[]
+  allowances: readonly { readonly allowanceId: string; readonly itemLevel: number }[],
+  localize: AcquisitionLocalize
 ): string {
-  if (funding.lane === "class-grant") return "Granted by your build · free";
+  if (funding.lane === "class-grant") return localize("wayfinder-pf2e.StartingEquipment.Funding.ClassGrant");
   if (funding.lane === "allowance") {
     const assignment = funding.assignment;
-    if (assignment.mode === "automatic") return "Permanent item allowance";
+    if (assignment.mode === "automatic") return localize("wayfinder-pf2e.StartingEquipment.Funding.Allowance");
     const allowance = allowances.find((candidate) => candidate.allowanceId === assignment.allowanceId);
-    return allowance ? `Level ${allowance.itemLevel} permanent item allowance` : "Permanent item allowance";
+    return allowance
+      ? localize("wayfinder-pf2e.StartingEquipment.Funding.LevelAllowance", { level: allowance.itemLevel })
+      : localize("wayfinder-pf2e.StartingEquipment.Funding.Allowance");
   }
-  return "Paid from starting wealth";
+  return localize("wayfinder-pf2e.StartingEquipment.Funding.Currency");
 }
 
 function chargedCopper(line: NonNullable<DraftState["acquisition"]>["lines"][number]): number {
@@ -411,30 +497,200 @@ function isPermanentItemType(itemType: string): boolean {
   return itemType !== "ammo" && itemType !== "consumable";
 }
 
-function handoffReason(reason: EconomicHandoffReason): string {
+function handoffReason(reason: EconomicHandoffReason, localize: AcquisitionLocalize): string {
   switch (reason.code) {
     case "unsafe-configured-item":
-      return `${reason.itemName} has PF2E pricing or magic-item structure Wayfinder cannot reproduce safely. Add it on the PF2E inventory tab instead.`;
+      return localize("wayfinder-pf2e.StartingEquipment.Handoff.UnsafeConfiguredItem", {
+        itemName: reason.itemName,
+      });
     case "foreign-physical-items":
-      return "Your character already owns gear. Wayfinder leaves it alone, so pick up the rest on the PF2E inventory tab.";
+      return localize("wayfinder-pf2e.StartingEquipment.Handoff.ForeignItems");
     case "nonzero-currency":
-      return "Your character already has coin. Wayfinder won't touch it, so spend it from the PF2E inventory tab.";
+      return localize("wayfinder-pf2e.StartingEquipment.Handoff.NonzeroCurrency");
     case "unresolved-class-grant":
-      return "Your build grants an item Wayfinder couldn't match to anything in your inventory.";
+      return localize("wayfinder-pf2e.StartingEquipment.Handoff.UnresolvedGrant");
     default:
-      return "Your build grants an item that matches more than one thing in your inventory.";
+      return localize("wayfinder-pf2e.StartingEquipment.Handoff.AmbiguousGrant");
   }
 }
 
-function formatCopper(copper: number): string {
-  if (!Number.isSafeInteger(copper) || copper < 0) return "Unavailable";
-  if (copper === 0) return "0 gp";
+function formatCopper(copper: number, localize: AcquisitionLocalize): string {
+  if (!Number.isSafeInteger(copper) || copper < 0) {
+    return localize("wayfinder-pf2e.StartingEquipment.Currency.Unavailable");
+  }
+  if (copper === 0) return localize("wayfinder-pf2e.StartingEquipment.Currency.Gold", { value: 0 });
   const gp = Math.floor(copper / 100);
   const sp = Math.floor((copper % 100) / 10);
   const cp = copper % 10;
-  return [gp > 0 ? `${gp} gp` : "", sp > 0 ? `${sp} sp` : "", cp > 0 ? `${cp} cp` : ""].filter(Boolean).join(" ");
+  return [
+    gp > 0 ? localize("wayfinder-pf2e.StartingEquipment.Currency.Gold", { value: gp }) : "",
+    sp > 0 ? localize("wayfinder-pf2e.StartingEquipment.Currency.Silver", { value: sp }) : "",
+    cp > 0 ? localize("wayfinder-pf2e.StartingEquipment.Currency.Copper", { value: cp }) : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
-function capitalize(value: string): string {
-  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+function cataloguePriceLabel(record: StartingEquipmentCatalogueRecord, localize: AcquisitionLocalize): string {
+  const price = formatCopper(record.priceCopper ?? -1, localize);
+  const context = record.priceContext;
+  if (!context) return price;
+  if (context.pricePer === context.materializedQuantity) {
+    return localize("wayfinder-pf2e.StartingEquipment.Catalogue.PriceFor", {
+      price,
+      quantity: context.materializedQuantity,
+    });
+  }
+  return localize("wayfinder-pf2e.StartingEquipment.Catalogue.PriceForPer", {
+    price,
+    quantity: context.materializedQuantity,
+    pricePer: context.pricePer,
+  });
+}
+
+function pf2eTraitLabel(trait: string, localize: AcquisitionLocalize): string {
+  const key = `PF2E.Trait${pascalIdentifier(trait)}`;
+  return localizeExternalKey(key, trait, localize);
+}
+
+function suppressedComponentLabel(
+  component: string,
+  itemType: "weapon" | "armor",
+  localize: AcquisitionLocalize
+): string {
+  if (component === "fundamental") {
+    return localize("wayfinder-pf2e.StartingEquipment.Price.Component.Fundamental");
+  }
+  if (component === "potency") return localize("wayfinder-pf2e.StartingEquipment.Price.Component.Potency");
+  if (component === "striking") return localize("wayfinder-pf2e.StartingEquipment.Price.Component.Striking");
+  if (component === "resilient") return localize("wayfinder-pf2e.StartingEquipment.Price.Component.Resilient");
+  if (component.startsWith("property:")) {
+    const rune = component.slice("property:".length);
+    return localize("wayfinder-pf2e.StartingEquipment.Price.Component.PropertyRune", {
+      rune: localizeExternalKey(
+        itemType === "weapon"
+          ? `PF2E.WeaponPropertyRune.${rune}.Name`
+          : `PF2E.ArmorPropertyRune${pascalIdentifier(rune)}`,
+        rune,
+        localize
+      ),
+    });
+  }
+  return localize("wayfinder-pf2e.StartingEquipment.Price.Component.Other", {
+    component: humanizeIdentifier(component),
+  });
+}
+
+function localizeExternalKey(key: string, fallback: string, localize: AcquisitionLocalize): string {
+  try {
+    const label = localize(key);
+    return label === key ? humanizeIdentifier(fallback) : label;
+  } catch {
+    return humanizeIdentifier(fallback);
+  }
+}
+
+function pascalIdentifier(value: string): string {
+  return value
+    .split(/[-_:]/u)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join("");
+}
+
+function humanizeIdentifier(value: string): string {
+  return value
+    .split(/[-_:]/u)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function catalogueMessage(
+  state: StartingEquipmentCatalogueProjection["state"],
+  initialized: boolean,
+  count: number,
+  localize: AcquisitionLocalize
+): string {
+  if (state === "ready") {
+    return localize("wayfinder-pf2e.StartingEquipment.Catalogue.Ready", { count });
+  }
+  if (state === "error") return localize("wayfinder-pf2e.StartingEquipment.Catalogue.LoadFailed");
+  return localize(
+    initialized
+      ? "wayfinder-pf2e.StartingEquipment.Catalogue.NotLoaded"
+      : "wayfinder-pf2e.StartingEquipment.Catalogue.StartToLoad"
+  );
+}
+
+function catalogueFilterLabel(key: string, value: string, fallback: string, localize: AcquisitionLocalize): string {
+  if (key === "rarity" && isRarity(value)) return rarityLabel(value, localize);
+  if (key === "type") return itemTypeLabel(value, localize);
+  return fallback;
+}
+
+function rarityLabel(rarity: "common" | "uncommon" | "rare" | "unique", localize: AcquisitionLocalize): string {
+  switch (rarity) {
+    case "common":
+      return localize("wayfinder-pf2e.StartingEquipment.Rarity.Common");
+    case "uncommon":
+      return localize("wayfinder-pf2e.StartingEquipment.Rarity.Uncommon");
+    case "rare":
+      return localize("wayfinder-pf2e.StartingEquipment.Rarity.Rare");
+    case "unique":
+      return localize("wayfinder-pf2e.StartingEquipment.Rarity.Unique");
+  }
+}
+
+function isRarity(value: string): value is "common" | "uncommon" | "rare" | "unique" {
+  return value === "common" || value === "uncommon" || value === "rare" || value === "unique";
+}
+
+function itemTypeLabel(itemType: string, localize: AcquisitionLocalize): string {
+  switch (itemType) {
+    case "ammo":
+      return localize("wayfinder-pf2e.StartingEquipment.ItemType.Ammo");
+    case "armor":
+      return localize("wayfinder-pf2e.StartingEquipment.ItemType.Armor");
+    case "backpack":
+      return localize("wayfinder-pf2e.StartingEquipment.ItemType.Backpack");
+    case "consumable":
+      return localize("wayfinder-pf2e.StartingEquipment.ItemType.Consumable");
+    case "equipment":
+      return localize("wayfinder-pf2e.StartingEquipment.ItemType.Equipment");
+    case "shield":
+      return localize("wayfinder-pf2e.StartingEquipment.ItemType.Shield");
+    case "weapon":
+      return localize("wayfinder-pf2e.StartingEquipment.ItemType.Weapon");
+    case "kit":
+      return localize("wayfinder-pf2e.StartingEquipment.ItemType.Kit");
+    case "treasure":
+      return localize("wayfinder-pf2e.StartingEquipment.ItemType.Treasure");
+    default:
+      return localize("wayfinder-pf2e.StartingEquipment.ItemType.Other", { itemType });
+  }
+}
+
+function reviewLabel(draft: DraftState, localize: AcquisitionLocalize): string {
+  if (draft.acquisitionCorrupt) return localize("wayfinder-pf2e.StartingEquipment.Review.Damaged");
+  const acquisition = draft.acquisition;
+  if (!acquisition) return localize("wayfinder-pf2e.StartingEquipment.Review.NotStarted");
+  switch (acquisition.disposition.kind) {
+    case "purchase-ledger":
+      return localize("wayfinder-pf2e.StartingEquipment.Review.KitConfirmed");
+    case "retain-all":
+      return localize("wayfinder-pf2e.StartingEquipment.Review.KeepingCoin");
+    case "handoff":
+      return localize(
+        acquisition.disposition.acknowledgedByUserId && acquisition.disposition.acknowledgedAt
+          ? "wayfinder-pf2e.StartingEquipment.Review.HandledOnSheet"
+          : "wayfinder-pf2e.StartingEquipment.Review.NeedsAcknowledgement"
+      );
+    case "unreviewed":
+      return localize(
+        acquisition.disposition.invalidatedFrom
+          ? "wayfinder-pf2e.StartingEquipment.Review.Changed"
+          : "wayfinder-pf2e.StartingEquipment.Review.ChooseGear"
+      );
+  }
 }

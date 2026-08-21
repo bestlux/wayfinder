@@ -411,6 +411,10 @@ export interface StartingEquipmentCatalogueRecord {
   readonly sourceLabel: string;
   readonly priceCopper: number | null;
   readonly priceLabel: string;
+  readonly priceContext?: {
+    readonly materializedQuantity: number;
+    readonly pricePer: number;
+  } | null;
   readonly bulkLabel: string;
   readonly handsLabel: string | null;
   readonly traits: readonly string[];

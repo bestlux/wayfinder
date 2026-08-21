@@ -30,7 +30,7 @@ describe("Wayfinder acquisition app integration", () => {
     expect(receiptInclude).toBeGreaterThan(shellTemplate.indexOf("wayfinder-empty-planner"));
     expect(receiptInclude).toBeLessThan(pendingBranchEnd);
     expect(receiptTemplate).toContain('data-wayfinder-action="open-inventory"');
-    expect(receiptTemplate).toContain("What your build granted");
+    expect(receiptTemplate).toContain("wayfinder-pf2e.AcquisitionReceipt.ClassGrant.Summary");
     expect(receiptTemplate).toContain("acquisitionReceipt.authority.higherLevelStartLabel");
     expect(receiptTemplate).toContain("acquisitionReceipt.authority.judgmentIds.length");
   });

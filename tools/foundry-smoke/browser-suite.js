@@ -3419,7 +3419,10 @@ async function fillSkillTraining(actor, draft, step, smokeCase, modules, planSte
   const used = new Set([...step.training.fixedSkills]);
   const ruleChoices = {};
   const loreChoices = {};
-  const additional = [];
+  const skillSelectionPolicy = globalThis.__wayfinderSmokeSkillSelectionPolicy;
+  if (!skillSelectionPolicy) {
+    throw new Error("Foundry smoke skill-selection policy was not loaded before the browser suite.");
+  }
   const pane = await buildCurrentSkillPane(actor, draft, step, modules, planSteps);
   const choiceSections = new Map((pane?.choiceSections ?? []).map((section) => [section.key, section]));
   const availableAdditional = new Set(
@@ -3447,27 +3450,14 @@ async function fillSkillTraining(actor, draft, step, smokeCase, modules, planSte
     loreChoices[choice.key] = "Wayfinding Lore";
   }
 
-  for (const skill of preferred) {
-    if (additional.length >= step.training.additionalCount) {
-      break;
-    }
-
-    if (!used.has(skill) && availableAdditional.has(skill)) {
-      additional.push(skill);
-      used.add(skill);
-    }
-  }
-
-  for (const option of Object.keys(CONFIG.PF2E?.skills ?? {})) {
-    if (additional.length >= step.training.additionalCount) {
-      break;
-    }
-
-    if (!used.has(option) && availableAdditional.has(option)) {
-      additional.push(option);
-      used.add(option);
-    }
-  }
+  const additional = skillSelectionPolicy.selectAdditionalSkills({
+    availableSkills: availableAdditional,
+    fallbackSkills: Object.keys(CONFIG.PF2E?.skills ?? {}),
+    preferredSkills: preferred,
+    requiredCount: step.training.additionalCount,
+    reservedSkills: skillSelectionPolicy.collectReservedRuleChoiceSkills(smokeCase.preferredRuleChoices),
+    usedSkills: used,
+  });
 
   draft.skillTrainings[step.slotId] = { additional, loreChoices, ruleChoices };
 }

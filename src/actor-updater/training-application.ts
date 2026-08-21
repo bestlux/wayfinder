@@ -147,13 +147,14 @@ export async function applySkillIncreaseDraft(
 ): Promise<Record<string, unknown>> {
   let projectedRanks: Record<string, number> = baseRanks ? { ...baseRanks } : {};
   if (options.steps) {
-    const activeSlotIds = options.activeSlotIds ?? new Set(options.steps.map((step) => step.slotId));
+    const activeStepSlotIds = new Set(options.steps.map((step) => step.slotId));
+    const activeIncreaseSlotIds = options.activeSlotIds ?? activeStepSlotIds;
     const activeDraft = {
       skillIncreases: Object.fromEntries(
-        Object.entries(draft.skillIncreases).filter(([slotId]) => activeSlotIds.has(slotId))
+        Object.entries(draft.skillIncreases).filter(([slotId]) => activeIncreaseSlotIds.has(slotId))
       ),
       skillTrainings: Object.fromEntries(
-        Object.entries(draft.skillTrainings).filter(([slotId]) => activeSlotIds.has(slotId))
+        Object.entries(draft.skillTrainings).filter(([slotId]) => activeStepSlotIds.has(slotId))
       ),
     };
     projectedRanks = projectDraftSkillRanks({

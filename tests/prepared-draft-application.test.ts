@@ -877,6 +877,29 @@ describe("prepared draft application", () => {
     expect(actor.update).toHaveBeenLastCalledWith(expect.objectContaining({ "system.skills.medicine.rank": 1 }));
   });
 
+  it("applies a later increase over active drafted training", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 } } };
+    const draft = createEmptyDraft(3);
+    const training = necromancerTrainingStep();
+    if (training.kind !== "skill-training") {
+      throw new Error("Expected a skill-training step");
+    }
+    training.training.choiceRules = [];
+    training.training.additionalCount = 1;
+    draft.skillTrainings[training.slotId] = {
+      ruleChoices: {},
+      additional: ["athletics"],
+      loreChoices: {},
+    };
+    draft.skillIncreases["skill-increase-level-3"] = "athletics";
+
+    await applyDraftToActor(actor as never, draft, [training, skillIncreaseStep(3)]);
+
+    expect(actor.system?.skills?.athletics?.rank).toBe(2);
+    expect(actor.update).toHaveBeenLastCalledWith(expect.objectContaining({ "system.skills.athletics.rank": 2 }));
+  });
+
   it.each([
     { label: "preferred skill is available", ranks: { occultism: 0, arcana: 0 } },
     { label: "fallback skill is already trained", ranks: { occultism: 1, arcana: 1 } },

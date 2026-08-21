@@ -97,10 +97,11 @@ export async function applyTrainingDraft(actor, draft, steps, options = {}) {
 export async function applySkillIncreaseDraft(actor, draft, baseRanks, options = {}) {
     let projectedRanks = baseRanks ? { ...baseRanks } : {};
     if (options.steps) {
-        const activeSlotIds = options.activeSlotIds ?? new Set(options.steps.map((step) => step.slotId));
+        const activeStepSlotIds = new Set(options.steps.map((step) => step.slotId));
+        const activeIncreaseSlotIds = options.activeSlotIds ?? activeStepSlotIds;
         const activeDraft = {
-            skillIncreases: Object.fromEntries(Object.entries(draft.skillIncreases).filter(([slotId]) => activeSlotIds.has(slotId))),
-            skillTrainings: Object.fromEntries(Object.entries(draft.skillTrainings).filter(([slotId]) => activeSlotIds.has(slotId))),
+            skillIncreases: Object.fromEntries(Object.entries(draft.skillIncreases).filter(([slotId]) => activeIncreaseSlotIds.has(slotId))),
+            skillTrainings: Object.fromEntries(Object.entries(draft.skillTrainings).filter(([slotId]) => activeStepSlotIds.has(slotId))),
         };
         projectedRanks = projectDraftSkillRanks({
             baseSkillRanks: projectedRanks,

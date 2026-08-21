@@ -768,6 +768,23 @@ describe("equipment acquisition runtime", () => {
     expect(prepareDraftedActor).toHaveBeenCalled();
   });
 
+  it("projects actor-sized gear for an existing character whose current ancestry is not copied into the draft", async () => {
+    const source = dagger({ priceGp: 1, sizeSensitive: true });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      { actor: preparedExistingActor("lg") }
+    );
+    delete request.draft.selections["ancestry-level-1"];
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      state: "ready",
+      records: [{ name: "Dagger", priceCopper: 200 }],
+    });
+  });
+
   it.each([
     ["tiny", "tiny", 1_000],
     ["sm", "small", 1_000],
@@ -822,7 +839,7 @@ describe("equipment acquisition runtime", () => {
     );
     delete request.draft.selections["ancestry-level-1"];
     await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).rejects.toThrow(
-      /selected ancestry/i
+      /exactly one effective ancestry/i
     );
   });
 
@@ -1423,6 +1440,37 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(4);
   });
 
+  it("does not require ancestry size when a healthy prepared plan has no native physical grants", async () => {
+    const source = dagger();
+    const prepareDraftedActor = vi.fn(async () => {
+      throw new Error("size preparation must not run");
+    });
+    const getIndex = vi.fn(async () => [source]);
+    const { runtime, request } = fixture(
+      { getIndex, getDocument: vi.fn(async () => document(source)) },
+      { prepareDraftedActor: prepareDraftedActor as never }
+    );
+    delete request.draft.selections["ancestry-level-1"];
+    const classGrantPlan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: "draft-1",
+      batchId: "batch-1",
+      targetLevel: 1,
+      grants: [],
+    });
+
+    await expect(
+      runtime.prepareNativeClassGrantLines({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition!,
+        classGrantPlan,
+      })
+    ).resolves.toEqual([]);
+    expect(getIndex).toHaveBeenCalledTimes(1);
+    expect(prepareDraftedActor).not.toHaveBeenCalled();
+  });
+
   it("does not treat an unavailable ordinary purchase as a fixed native grant", async () => {
     let currentSource = dagger();
     const { runtime, request } = fixture({
@@ -1688,6 +1736,7 @@ function fixture(
     readonly prepareKitExpansion?: NonNullable<
       Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareKitExpansion"]
     >;
+    readonly actor?: unknown;
     readonly ancestrySize?: "tiny" | "sm" | "med" | "lg" | "huge" | "grg";
     readonly sourceDiagnostics?: readonly EquipmentSourceDiagnostic[];
   } = {}
@@ -1737,7 +1786,7 @@ function fixture(
       mintLineId: () => "wf-line-test",
     }),
     request: {
-      actor: { id: "actor-1" },
+      actor: options.actor ?? { id: "actor-1" },
       draft,
       step: {
         id: `starting-equipment-level-${currentPolicy.targetLevel}`,
@@ -1788,6 +1837,14 @@ async function prepareTestDraftedActor(
   const ancestry = input.draft.selections["ancestry-level-1"];
   const document = ancestry ? ((await input.fetchDocumentByUuid(ancestry.uuid)) as Record<string, any> | null) : null;
   return { system: { traits: { size: { value: document?.system?.size ?? null } } } };
+}
+
+function preparedExistingActor(size: string, items: readonly Record<string, unknown>[] = [{ type: "ancestry" }]) {
+  return {
+    id: "actor-1",
+    items: { contents: items },
+    system: { traits: { size: { value: size } } },
+  };
 }
 
 function policy(): EffectiveEquipmentPolicySnapshotV1 {

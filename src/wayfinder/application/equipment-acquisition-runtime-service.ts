@@ -467,8 +467,9 @@ export function createEquipmentAcquisitionRuntime(
         targetLevel: request.acquisition.targetLevel,
         persistedGrants: request.acquisition.plannedClassGrants,
       });
-      const targetSize = await draftedEquipmentSize(request.actor, request.characterDraft);
       const nativeGrants = request.classGrantPlan.grants.filter((grant) => grant.materializer === "pf2e-native");
+      if (nativeGrants.length === 0) return Object.freeze([]);
+      const targetSize = await draftedEquipmentSize(request.actor, request.characterDraft);
       const lineIds = new Set(request.acquisition.lines.map((line) => line.lineId));
       const prepared: AcquisitionLineDraft[] = [];
       for (const grant of nativeGrants) {

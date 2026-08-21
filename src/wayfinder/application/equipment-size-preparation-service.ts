@@ -29,7 +29,32 @@ export function materializedPhysicalItemSize(
 export async function resolvePreparedDraftedEquipmentSize(
   input: PrepareDraftedEquipmentActorInput & { readonly prepareDraftedActor: PrepareDraftedEquipmentActor }
 ): Promise<AcquisitionPriceSnapshot["size"]> {
+  const draftedSelections = Object.values(input.draft.selections).filter(
+    (selection) => selection.itemType === "ancestry" || selection.itemType === "heritage"
+  );
+  const draftedAncestries = draftedSelections.filter((selection) => selection.itemType === "ancestry");
+  const draftedHeritages = draftedSelections.filter((selection) => selection.itemType === "heritage");
+  if (draftedAncestries.length === 0 && draftedHeritages.length === 0) {
+    const actorItems = embeddedActorItems(input.actor);
+    const actorAncestries = actorItems.filter((item) => record(item).type === "ancestry");
+    const actorHeritages = actorItems.filter((item) => record(item).type === "heritage");
+    if (actorAncestries.length !== 1 || actorHeritages.length > 1) {
+      throw new TypeError(
+        "Equipment requires exactly one effective ancestry and at most one effective heritage for authoritative size."
+      );
+    }
+    return requirePreparedEquipmentSize(input.actor);
+  }
+  if (draftedAncestries.length !== 1 || draftedHeritages.length > 1) {
+    throw new TypeError(
+      "Equipment size preparation cannot mix missing or ambiguous drafted ancestry and heritage selections."
+    );
+  }
   const preparedActor = await input.prepareDraftedActor(input);
+  return requirePreparedEquipmentSize(preparedActor);
+}
+
+function requirePreparedEquipmentSize(preparedActor: unknown): AcquisitionPriceSnapshot["size"] {
   const system = record(record(preparedActor).system);
   const traits = record(system.traits);
   const rawNaturalSize = traits.naturalSize;
@@ -129,6 +154,16 @@ function documentSource(document: unknown): Readonly<Record<string, unknown>> | 
   if (typeof toObject !== "function") return null;
   const source = (toObject as (source?: boolean) => unknown).call(document, true);
   return source && typeof source === "object" ? (cloneData(source) as Readonly<Record<string, unknown>>) : null;
+}
+
+function embeddedActorItems(actor: unknown): readonly unknown[] {
+  const items = record(actor).items;
+  if (Array.isArray(items)) return items;
+  const contents = record(items).contents;
+  if (Array.isArray(contents)) return contents;
+  const values = record(items).values;
+  if (typeof values === "function") return [...(values as () => Iterable<unknown>).call(items)];
+  return [];
 }
 
 function equipmentSize(rawSize: unknown): AcquisitionPriceSnapshot["size"] | null {

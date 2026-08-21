@@ -82,6 +82,61 @@ describe("equipment drafted-size preparation", () => {
     ).resolves.toBe("large");
   });
 
+  it("uses the current prepared actor when an existing character has no drafted ancestry selections", async () => {
+    const prepareDraftedActor = vi.fn();
+
+    await expect(
+      resolvePreparedDraftedEquipmentSize({
+        actor: preparedExistingActor("lg"),
+        draft: createEmptyDraft(1),
+        targetLevel: 1,
+        fetchDocumentByUuid: async () => null,
+        prepareDraftedActor,
+      })
+    ).resolves.toBe("large");
+    expect(prepareDraftedActor).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", []],
+    ["ambiguous", [{ type: "ancestry" }, { type: "ancestry" }]],
+    ["multiple heritages", [{ type: "ancestry" }, { type: "heritage" }, { type: "heritage" }]],
+  ])("fails closed for %s embedded ancestry identity", async (_case, items) => {
+    await expect(
+      resolvePreparedDraftedEquipmentSize({
+        actor: preparedExistingActor("med", items),
+        draft: createEmptyDraft(1),
+        targetLevel: 1,
+        fetchDocumentByUuid: async () => null,
+        prepareDraftedActor: vi.fn(),
+      })
+    ).rejects.toThrow(/exactly one effective ancestry/i);
+  });
+
+  it("fails closed when a drafted heritage has no drafted ancestry", async () => {
+    const draft = createEmptyDraft(1);
+    draft.selections["heritage-level-1"] = {
+      slotId: "heritage-level-1",
+      packId: "pf2e.heritages",
+      documentId: "littlehorn",
+      uuid: HERITAGE_UUID,
+      itemType: "heritage",
+      featType: null,
+      name: "Littlehorn Minotaur",
+      level: 0,
+    };
+
+    await expect(
+      resolvePreparedDraftedEquipmentSize({
+        actor: preparedExistingActor("med"),
+        draft,
+        targetLevel: 1,
+        fetchDocumentByUuid: async () => null,
+        prepareDraftedActor: vi.fn(),
+      })
+    ).rejects.toThrow(/cannot mix.*drafted ancestry/i);
+  });
+
   it("uses Awakened Animal's structured size choice for authoritative equipment sizing", async () => {
     vi.stubGlobal("CONFIG", { Actor: { documentClass: PreparedSizeActor } });
     const draft = draftedAncestry();
@@ -202,5 +257,12 @@ function blankActor() {
       type: "character",
       system: { details: { level: { value: 1 } } },
     }),
+  };
+}
+
+function preparedExistingActor(size: string, items: readonly Record<string, unknown>[] = [{ type: "ancestry" }]) {
+  return {
+    items: { contents: items },
+    system: { traits: { size: { value: size } } },
   };
 }

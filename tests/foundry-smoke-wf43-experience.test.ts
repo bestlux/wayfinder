@@ -143,6 +143,17 @@ describe("WF-080-43 live experience qualifier", () => {
       'applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply"',
       forcedTarget
     );
+    const errorFocus = runner.indexOf('interactionStage("forced-failure", "error-focus")', forcedAction);
+    const failureCapture = runner.indexOf('"forced-failure", definition, outDir', errorFocus);
+    const retryBoundary = runner.indexOf('action: "retry-apply"', failureCapture);
+    const retryAnchor = runner.indexOf(
+      'anchorSelector: \'[data-wayfinder-focus-id="starting-equipment-status"][role="alert"]\'',
+      retryBoundary
+    );
+    const retryAction = runner.indexOf(
+      'applyWithKeyboard(playerPage, rootSelector, keyboard, "retry-apply"',
+      retryAnchor
+    );
 
     expect(handoffOpen).toBeGreaterThan(-1);
     expect(handoffBoundary).toBeGreaterThan(handoffOpen);
@@ -153,6 +164,25 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(forcedBoundary).toBeGreaterThan(forcedOpen);
     expect(forcedTarget).toBeGreaterThan(forcedBoundary);
     expect(forcedAction).toBeGreaterThan(forcedTarget);
+    expect(errorFocus).toBeGreaterThan(forcedAction);
+    expect(failureCapture).toBeGreaterThan(errorFocus);
+    expect(retryBoundary).toBeGreaterThan(failureCapture);
+    expect(retryAnchor).toBeGreaterThan(retryBoundary);
+    expect(retryAction).toBeGreaterThan(retryAnchor);
+  });
+
+  it("waits for and persists the product-owned failure alert focus before viewport capture", () => {
+    const apply = runner.indexOf('applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply"');
+    const focusStage = runner.indexOf('interactionStage("forced-failure", "error-focus")', apply);
+    const focusWait = runner.indexOf("document.activeElement === document.querySelector(selector)", focusStage);
+    const persisted = runner.indexOf("failureFocusEntries.push", focusWait);
+    const capture = runner.indexOf('"forced-failure", definition, outDir', persisted);
+
+    expect(apply).toBeGreaterThan(-1);
+    expect(focusStage).toBeGreaterThan(apply);
+    expect(focusWait).toBeGreaterThan(focusStage);
+    expect(persisted).toBeGreaterThan(focusWait);
+    expect(capture).toBeGreaterThan(persisted);
   });
 
   it("records the app-local keyboard entry target instead of traversing arbitrary Foundry chrome", () => {
@@ -227,8 +257,8 @@ describe("WF-080-43 live experience qualifier", () => {
       stepHeading: "",
       tag: "BUTTON",
     };
-    drifted.keyboardEntries[4].observedTraversal[0] = {
-      ...drifted.keyboardEntries[4].observedTraversal[0],
+    drifted.keyboardEntries[5].observedTraversal[0] = {
+      ...drifted.keyboardEntries[5].observedTraversal[0],
       focusId: "",
       keyboardFocus: null,
     };
@@ -239,6 +269,25 @@ describe("WF-080-43 live experience qualifier", () => {
       expect.arrayContaining([
         "en: forced-failure keyboard boundary did not prove scoped visible Tab traversal to apply-draft.",
         "cn: handoff keyboard boundary did not prove scoped visible Tab traversal to acknowledge-equipment-handoff.",
+      ])
+    );
+  });
+
+  it("rejects missing, stale, hidden, or unfocused forced-failure focus evidence", () => {
+    const missing = passingResult();
+    missing.failureFocusEntries.pop();
+    expect(qualifyWf43ExperienceResult(missing).failures).toContain(
+      "WF-080-43 forced-failure focus evidence is duplicated, incomplete, or reordered."
+    );
+
+    const drifted = passingResult();
+    drifted.failureFocusEntries[0].focused = false;
+    drifted.failureFocusEntries[1].visible = false;
+    drifted.failureFocusEntries[1].text = "Apply failed";
+    expect(qualifyWf43ExperienceResult(drifted).failures).toEqual(
+      expect.arrayContaining([
+        "en: forced-failure render did not move focus to the visible localized alert.",
+        "cn: forced-failure render did not move focus to the visible localized alert.",
       ])
     );
   });
@@ -349,6 +398,15 @@ describe("WF-080-43 live experience qualifier", () => {
             target: { visible: true, disabled: false, tabIndex: 0, localOrderIndex: 31 },
           },
         ],
+        failureFocusEntries: [
+          {
+            locale: "en",
+            state: "forced-failure",
+            action: "error-focus",
+            focusId: "starting-equipment-status",
+            focused: true,
+          },
+        ],
         tabTraversalFailures: [
           {
             active: { focusId: "starting-equipment-item:item:coin", name: "Buy Dagger with coin" },
@@ -388,6 +446,7 @@ describe("WF-080-43 live experience qualifier", () => {
         stage: result.stage,
         error: result.error,
         keyboardEntries: result.keyboardEntries,
+        failureFocusEntries: result.failureFocusEntries,
         tabTraversalFailures: result.tabTraversalFailures,
         samples: result.samples,
         cleanup: result.cleanup,
@@ -396,6 +455,7 @@ describe("WF-080-43 live experience qualifier", () => {
       expect(summary).toContain("Stage: keyboard-entry/en/policy/initialize");
       expect(summary).toContain("Completed samples: 1");
       expect(summary).toContain("Keyboard entry diagnostics: 1");
+      expect(summary).toContain("Forced-failure focus diagnostics: 1");
       expect(summary).toContain("Tab traversal failure diagnostics: 1");
       expect(summary).toContain("Keyboard traversal failed");
       expect(summary).toContain("Cleanup attempted: true");
@@ -510,7 +570,34 @@ function passingResult(): any {
         targetFocusId: "",
         targetName: "Apply Changes",
       }),
+      passingKeyboardBoundary(definition.id, definition.fixture.stepId, {
+        action: "retry-apply",
+        mode: "scoped-alert-reentry",
+        state: "forced-failure",
+        targetAction: "apply-draft",
+        targetFocusId: "",
+        targetName: "Apply Changes",
+        anchorFocusId: "starting-equipment-status",
+        anchorName: definition.stateAnchors["forced-failure"] ?? "Apply failed",
+        anchorStepHeading: "",
+        anchorTag: "DIV",
+      }),
     ]),
+    failureFocusEntries: wf43ExperienceCases.map((definition) => ({
+      locale: definition.id,
+      state: "forced-failure",
+      action: "error-focus",
+      role: "alert",
+      ariaLive: "assertive",
+      focusId: "starting-equipment-status",
+      focused: true,
+      visible: true,
+      keyboardFocus: "true",
+      tabIndex: -1,
+      text: definition.stateAnchors["forced-failure"] ?? "Apply failed",
+      textLength: (definition.stateAnchors["forced-failure"] ?? "Apply failed").length,
+      textTruncated: false,
+    })),
     tabTraversalFailures: [],
     locales: wf43ExperienceCases.map((definition) => ({
       id: definition.id,
@@ -668,6 +755,10 @@ function passingKeyboardBoundary(
     targetAction: string;
     targetFocusId: string;
     targetName: string;
+    anchorFocusId?: string;
+    anchorName?: string;
+    anchorStepHeading?: string;
+    anchorTag?: string;
   }
 ): any {
   const target = {
@@ -691,11 +782,11 @@ function passingKeyboardBoundary(
     before: { focusId: "", action: "", name: "", tag: "BODY" },
     visibleWindows: [],
     anchor: {
-      focusId: "",
+      focusId: boundary.anchorFocusId ?? "",
       action: "",
-      name: "Starting equipment",
-      stepHeading: stepId,
-      tag: "H3",
+      name: boundary.anchorName ?? "Starting equipment",
+      stepHeading: boundary.anchorStepHeading ?? stepId,
+      tag: boundary.anchorTag ?? "H3",
       keyboardFocus: "true",
       focused: true,
     },

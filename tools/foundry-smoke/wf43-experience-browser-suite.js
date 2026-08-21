@@ -371,6 +371,7 @@ globalThis.__inspectWayfinderWf43TabTraversal = function inspectWf43TabTraversal
 globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({
   actorId,
   action = "initialize",
+  anchorSelector = "[data-wayfinder-step-heading]",
   mode = "scoped-app-entry",
   state = "policy",
   targetSelector,
@@ -379,7 +380,7 @@ globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({
   const target = root.querySelector(targetSelector);
   const before = wf43FocusDescriptor(document.activeElement);
   const localTabOrder = wf43FocusableElements(root).map(wf43FocusDescriptor);
-  const anchor = root.querySelector("[data-wayfinder-step-heading]");
+  const anchor = root.querySelector(anchorSelector);
   if (!(anchor instanceof HTMLElement)) throw new Error("WF-080-43 could not resolve its app keyboard-entry anchor.");
   anchor.focus();
   const targetEvidence = wf43KeyboardTarget(target);
@@ -406,13 +407,20 @@ globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({
 
 globalThis.__inspectWayfinderWf43Failure = function inspectWf43Failure({ actorId }) {
   const root = wf43ActorApp(game.actors.get(actorId)).element;
-  const failure = root.querySelector(".status-note[role='alert']");
+  const failure = root.querySelector('[data-wayfinder-focus-id="starting-equipment-status"][role="alert"]');
+  const target = wf43KeyboardTarget(failure);
+  const rawText = failure?.textContent?.trim() ?? "";
   return {
     role: failure?.getAttribute("role") ?? null,
     ariaLive: failure?.getAttribute("aria-live") ?? null,
     focusId: failure?.getAttribute("data-wayfinder-focus-id") ?? null,
     focused: document.activeElement === failure,
-    text: failure?.textContent?.trim() ?? "",
+    keyboardFocus: target.keyboardFocus,
+    tabIndex: target.tabIndex,
+    visible: target.visible,
+    text: wf43BoundedText(rawText),
+    textLength: rawText.length,
+    textTruncated: wf43BoundedText(rawText).length < rawText.length,
   };
 };
 

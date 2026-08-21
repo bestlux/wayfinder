@@ -21,6 +21,7 @@ export function qualifyWf43ExperienceResult(result, definitions = wf43Experience
     failures.push("WF-080-43 top-level app widths differ from the frozen release widths.");
   }
   qualifyKeyboardBoundaries(result?.keyboardEntries, definitions, failures);
+  qualifyFailureFocus(result?.failureFocusEntries, definitions, failures);
 
   const localeEntries = result?.locales ?? [];
   if (
@@ -58,6 +59,9 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       stepId: definition.fixture.stepId,
       targetAction: "initialize-starting-equipment",
       targetFocusId: "starting-equipment-start",
+      anchorFocusId: "",
+      anchorTag: "H3",
+      anchorStepId: definition.fixture.stepId,
     },
     {
       locale: definition.id,
@@ -67,6 +71,9 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       stepId: definition.fixture.stepId,
       targetAction: "acknowledge-equipment-handoff",
       targetFocusId: "starting-equipment-acknowledge-handoff",
+      anchorFocusId: "",
+      anchorTag: "H3",
+      anchorStepId: definition.fixture.stepId,
     },
     {
       locale: definition.id,
@@ -76,6 +83,20 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       stepId: definition.fixture.stepId,
       targetAction: "apply-draft",
       targetFocusId: "",
+      anchorFocusId: "",
+      anchorTag: "H3",
+      anchorStepId: definition.fixture.stepId,
+    },
+    {
+      locale: definition.id,
+      mode: "scoped-alert-reentry",
+      state: "forced-failure",
+      action: "retry-apply",
+      targetAction: "apply-draft",
+      targetFocusId: "",
+      anchorFocusId: "starting-equipment-status",
+      anchorTag: "DIV",
+      anchorStepId: "",
     },
   ]);
   if (!Array.isArray(entries) || entries.length !== expected.length) {
@@ -101,10 +122,10 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       entry?.focusMethod !== "programmatic-harness-anchor-before-keyboard-actions" ||
       entry?.anchor?.focused !== true ||
       entry?.anchor?.keyboardFocus !== "true" ||
-      entry?.anchor?.tag !== "H3" ||
+      entry?.anchor?.tag !== boundary.anchorTag ||
       entry?.anchor?.action !== "" ||
-      entry?.anchor?.focusId !== "" ||
-      entry?.anchor?.stepHeading !== boundary.stepId ||
+      entry?.anchor?.focusId !== boundary.anchorFocusId ||
+      entry?.anchor?.stepHeading !== boundary.anchorStepId ||
       entry?.target?.present !== true ||
       entry?.target?.visible !== true ||
       entry?.target?.disabled !== false ||
@@ -126,6 +147,35 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       failures.push(
         `${boundary.locale}: ${boundary.state} keyboard boundary did not prove scoped visible Tab traversal to ${boundary.targetAction}.`,
       );
+    }
+  }
+}
+
+function qualifyFailureFocus(entries, definitions, failures) {
+  if (!Array.isArray(entries) || entries.length !== definitions.length) {
+    failures.push("WF-080-43 forced-failure focus evidence is duplicated, incomplete, or reordered.");
+    return;
+  }
+  for (const [index, definition] of definitions.entries()) {
+    const entry = entries[index];
+    if (
+      entry?.locale !== definition.id ||
+      entry?.state !== "forced-failure" ||
+      entry?.action !== "error-focus" ||
+      entry?.role !== "alert" ||
+      entry?.ariaLive !== "assertive" ||
+      entry?.focusId !== "starting-equipment-status" ||
+      entry?.focused !== true ||
+      entry?.visible !== true ||
+      entry?.keyboardFocus !== "true" ||
+      entry?.tabIndex !== -1 ||
+      typeof entry?.text !== "string" ||
+      !entry.text.trim() ||
+      entry.text.length > 160 ||
+      (definition.stateAnchors?.["forced-failure"] &&
+        !entry.text.includes(definition.stateAnchors["forced-failure"]))
+    ) {
+      failures.push(`${definition.id}: forced-failure render did not move focus to the visible localized alert.`);
     }
   }
 }

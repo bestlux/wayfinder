@@ -23,6 +23,7 @@ export async function writeWf43ExperienceArtifacts(directory, result, qualificat
     `- Stage: ${formatStage(result.stage)}`,
     `- Completed samples: ${result.samples?.length ?? 0}`,
     `- Keyboard entry diagnostics: ${result.keyboardEntries?.length ?? 0}`,
+    `- Forced-failure focus diagnostics: ${result.failureFocusEntries?.length ?? 0}`,
     `- Tab traversal failure diagnostics: ${result.tabTraversalFailures?.length ?? 0}`,
     `- Foundry: ${runtime.foundryVersion ?? "unavailable"}`,
     `- PF2E: ${runtime.pf2eVersion ?? "unavailable"}`,

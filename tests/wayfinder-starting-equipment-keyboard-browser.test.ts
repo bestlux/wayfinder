@@ -255,6 +255,56 @@ browserIt(
   20_000
 );
 
+browserIt("re-enters retry traversal from the visible failure alert without focusing Apply", async () => {
+  const browser = await chromium.launch({ executablePath: chromePath, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`
+      <section class="application wayfinder-app">
+        <h3 tabindex="-1" data-wayfinder-step-heading="starting-equipment-level-5" data-keyboard-focus="true">Starting equipment</h3>
+        <div class="status-note error" role="alert" aria-live="assertive" tabindex="-1"
+          data-wayfinder-focus-id="starting-equipment-status" data-keyboard-focus="true">Apply failed</div>
+        <button type="button" data-wayfinder-action="apply-draft" data-keyboard-focus="true">Apply Changes</button>
+      </section>`);
+    await page.evaluate(() => {
+      const element = document.querySelector<HTMLElement>(".wayfinder-app")!;
+      const actor = { apps: { wayfinder: { element } } };
+      Object.assign(globalThis, {
+        game: { actors: { get: (actorId: string) => (actorId === "actor-1" ? actor : null) } },
+      });
+    });
+    await page.addScriptTag({ content: experienceBrowserScript });
+
+    const entry = await page.evaluate(() =>
+      globalThis.__enterWayfinderWf43KeyboardScope({
+        actorId: "actor-1",
+        action: "retry-apply",
+        anchorSelector: '[data-wayfinder-focus-id="starting-equipment-status"][role="alert"]',
+        mode: "scoped-alert-reentry",
+        state: "forced-failure",
+        targetSelector: '[data-wayfinder-action="apply-draft"]',
+      })
+    );
+    expect(entry).toMatchObject({
+      action: "retry-apply",
+      mode: "scoped-alert-reentry",
+      state: "forced-failure",
+      anchor: { focusId: "starting-equipment-status", focused: true, tag: "DIV" },
+      target: { action: "apply-draft", present: true, visible: true, disabled: false, tabIndex: 0 },
+    });
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-wayfinder-focus-id"))).toBe(
+      "starting-equipment-status"
+    );
+
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-wayfinder-action"))).toBe(
+      "apply-draft"
+    );
+  } finally {
+    await browser.close();
+  }
+});
+
 async function expectFocused(page: Page, accessibleName: string): Promise<void> {
   expect(
     await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.textContent)
@@ -294,6 +344,14 @@ declare global {
       observedTraversal: Array<{ focusId: string; name: string }>;
       observedTraversalCount: number;
       scopeSelector: string;
+      targetSelector: string;
+    }): Record<string, unknown>;
+    __enterWayfinderWf43KeyboardScope(payload: {
+      actorId: string;
+      action: string;
+      anchorSelector: string;
+      mode: string;
+      state: string;
       targetSelector: string;
     }): Record<string, unknown>;
   }

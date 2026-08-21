@@ -70,6 +70,7 @@ async function main() {
   const localeEvidence = [];
   const samples = [];
   const keyboardEntries = [];
+  const failureFocusEntries = [];
   const tabTraversalFailures = [];
 
   try {
@@ -156,6 +157,7 @@ async function main() {
           playerPage,
           runId,
           keyboardEntries,
+          failureFocusEntries,
           samples,
           tabTraversalFailures,
           setStage(nextStage) {
@@ -271,6 +273,7 @@ async function main() {
     appWidths: WF43_APP_WIDTHS,
     locales: localeEvidence,
     keyboardEntries,
+    failureFocusEntries,
     tabTraversalFailures,
     samples,
     cleanup,
@@ -303,6 +306,7 @@ async function runLocale({
   playerPage,
   runId,
   keyboardEntries,
+  failureFocusEntries,
   samples,
   tabTraversalFailures,
   setStage,
@@ -330,11 +334,11 @@ async function runLocale({
   const liveRegionChanges = {};
   let reviewedSnapshotProvenance;
   let reviewedSnapshotToken;
-  const enterScopedKeyboardBoundary = async ({ action, mode, state, targetSelector }) => {
+  const enterScopedKeyboardBoundary = async ({ action, anchorSelector, mode, state, targetSelector }) => {
     setStage({ id: "keyboard-entry", locale: definition.id, state, action });
     const entry = await playerPage.evaluate(
       (value) => globalThis.__enterWayfinderWf43KeyboardScope(value),
-      { actorId: opened.actorId, action, mode, state, targetSelector },
+      { actorId: opened.actorId, action, anchorSelector, mode, state, targetSelector },
     );
     entry.observedTraversal = [];
     keyboardEntries.push({ locale: definition.id, ...entry });
@@ -482,11 +486,19 @@ async function runLocale({
   const beforeFailure = (await liveRegions(playerPage, opened.actorId)).failure || afterReview;
   interactionStage("forced-failure", "apply");
   await applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply", tabTraversalFailures);
-  await waitFor(playerPage, `${rootSelector} [data-wayfinder-focus-id="starting-equipment-status"][role="alert"]`, 120_000);
+  const failureAlertSelector = `${rootSelector} [data-wayfinder-focus-id="starting-equipment-status"][role="alert"]`;
+  await waitFor(playerPage, failureAlertSelector, 120_000);
+  interactionStage("forced-failure", "error-focus");
+  await playerPage.waitForFunction(
+    (selector) => document.activeElement === document.querySelector(selector),
+    failureAlertSelector,
+    { timeout: 30_000 },
+  );
   const failure = await playerPage.evaluate(
     (actorId) => globalThis.__inspectWayfinderWf43Failure({ actorId }),
     opened.actorId,
   );
+  failureFocusEntries.push({ locale: definition.id, state: "forced-failure", action: "error-focus", ...failure });
   const afterFailure = (await liveRegions(playerPage, opened.actorId)).failure;
   liveRegionChanges.failure = { before: beforeFailure, after: afterFailure };
   keyboard.focus.push(await focusEvidence(playerPage));
@@ -497,6 +509,13 @@ async function runLocale({
     expectedWorldId,
     packsSetting: PACKS_SETTING,
     snapshot: packsSnapshot,
+  });
+  await enterScopedKeyboardBoundary({
+    action: "retry-apply",
+    anchorSelector: '[data-wayfinder-focus-id="starting-equipment-status"][role="alert"]',
+    mode: "scoped-alert-reentry",
+    state: "forced-failure",
+    targetSelector: '[data-wayfinder-action="apply-draft"]',
   });
   interactionStage("receipt", "retry-apply");
   await applyWithKeyboard(playerPage, rootSelector, keyboard, "retry-apply", tabTraversalFailures);

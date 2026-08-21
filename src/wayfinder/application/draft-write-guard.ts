@@ -208,7 +208,10 @@ export async function saveDraftWithWriteGuard(
   let updateRejected = false;
   let updateFailure: unknown;
   try {
-    await updateActorWithPersistedDraftPrecondition(actor, update, assertCurrent, { render: false });
+    await updateActorWithPersistedDraftPrecondition(actor, update, assertCurrent, {
+      recursive: false,
+      render: false,
+    });
   } catch (error) {
     updateRejected = true;
     updateFailure = error;
@@ -351,7 +354,10 @@ async function restoreDurableDraft(
   if (durableDraft !== null && isRecord(update[DRAFT_FLAG])) {
     update[DRAFT_FLAG].updatedAt = durableDraft.updatedAt;
   }
-  await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent, { render: false });
+  await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent, {
+    recursive: false,
+    render: false,
+  });
   const restoredDraft = readPersistedDraftSnapshot(actor, currentLevel);
   if (persistedDraftFingerprint(restoredDraft) !== persistedDraftFingerprint(durableDraft)) {
     throw new Error("Foundry did not restore the exact last durable Wayfinder draft.");

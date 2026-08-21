@@ -8,6 +8,7 @@ import {
   clearDraftWithWriteGuard,
   evaluatePersistedDraftWriteGuardHook,
   PersistedDraftWriteGuard,
+  readPersistedDraftSnapshot,
   saveDraftWithWriteGuard,
   updateActorWithPersistedDraftPrecondition,
   WayfinderDraftRoundTripError,
@@ -95,6 +96,58 @@ describe("Wayfinder persisted draft write guard", () => {
     expect(actorAppRender).not.toHaveBeenCalled();
   });
 
+  it("replaces the complete draft when choices are removed before a later save and reopen", async () => {
+    const initial = createEmptyDraft(3);
+    const actor = createFoundryRecursiveMergeActor(initial);
+    const guard = new PersistedDraftWriteGuard(initial);
+    const chosen = structuredClone(initial);
+    chosen.skillIncreases["skill-increase-level-3"] = "deception";
+    chosen.manual["manual-level-3"] = true;
+    chosen.languageChoices["language-choice-level-1"] = ["draconic"];
+    chosen.boosts.levels[1] = ["str", "dex"];
+    chosen.selections["skill-feat-level-2"] = {
+      packId: "pf2e.feats-srd",
+      documentId: "charming-liar",
+      uuid: "Compendium.pf2e.feats-srd.Item.charming-liar",
+      name: "Charming Liar",
+      slotId: "skill-feat-level-2",
+      itemType: "feat",
+      featType: "skill",
+      level: 1,
+    };
+
+    await expect(saveDraftWithWriteGuard(actor, chosen, 3, guard)).resolves.toBeUndefined();
+    const reopenedChosen = readPersistedDraftSnapshot(actor, 3);
+    expect(reopenedChosen).toMatchObject({
+      skillIncreases: { "skill-increase-level-3": "deception" },
+      manual: { "manual-level-3": true },
+      languageChoices: { "language-choice-level-1": ["draconic"] },
+    });
+
+    const revised = structuredClone(reopenedChosen!);
+    delete revised.skillIncreases["skill-increase-level-3"];
+    delete revised.manual["manual-level-3"];
+    delete revised.languageChoices["language-choice-level-1"];
+    delete revised.boosts.levels[1];
+    delete revised.selections["skill-feat-level-2"];
+    revised.skillIncreases["skill-increase-level-5"] = "acrobatics";
+
+    await expect(saveDraftWithWriteGuard(actor, revised, 3, guard)).resolves.toBeUndefined();
+    const reopenedRevised = readPersistedDraftSnapshot(actor, 3);
+    expect(reopenedRevised).toMatchObject({
+      skillIncreases: { "skill-increase-level-5": "acrobatics" },
+      manual: {},
+      languageChoices: {},
+      selections: {},
+    });
+    expect(reopenedRevised?.boosts.levels).toEqual({});
+    expect(actor.update).toHaveBeenCalledTimes(2);
+    expect(actor.update.mock.calls.map(([, operation]) => operation)).toEqual([
+      expect.objectContaining({ recursive: false, render: false }),
+      expect.objectContaining({ recursive: false, render: false }),
+    ]);
+  });
+
   it("restores the exact last durable draft when Foundry persists a malformed round trip", async () => {
     const initial = createEmptyDraft(5);
     initial.manual.durable = true;
@@ -102,9 +155,9 @@ describe("Wayfinder persisted draft write guard", () => {
     let updateCount = 0;
     const actor = {
       getFlag: () => persisted,
-      update: vi.fn(async (update: Record<string, unknown>) => {
+      update: vi.fn(async (update: Record<string, unknown>, operation?: Record<string, unknown>) => {
         updateCount += 1;
-        persisted = structuredClone(update[DRAFT_FLAG]);
+        persisted = applyFoundryRecursiveUpdate(persisted, update[DRAFT_FLAG], operation);
         if (updateCount === 1) {
           (persisted as { targetLevel: number }).targetLevel = 20;
         }
@@ -120,6 +173,10 @@ describe("Wayfinder persisted draft write guard", () => {
       message: expect.stringContaining("restored the last durable draft"),
     });
     expect(actor.update).toHaveBeenCalledTimes(2);
+    expect(actor.update.mock.calls.map(([, operation]) => operation)).toEqual([
+      expect.objectContaining({ recursive: false, render: false }),
+      expect.objectContaining({ recursive: false, render: false }),
+    ]);
     expect(persisted).toEqual(initial);
     expect(() => guard.assertCurrent(initial)).not.toThrow();
   });
@@ -392,7 +449,8 @@ describe("Wayfinder persisted draft write guard", () => {
     let persisted: unknown = initial;
     const actor = {
       getFlag: () => persisted,
-      update: vi.fn(async () => {
+      update: vi.fn(async (_update: Record<string, unknown>, operation?: Record<string, unknown>) => {
+        expect(operation).not.toHaveProperty("recursive");
         persisted = null;
         throw new Error("lost acknowledgement");
       }),
@@ -502,4 +560,33 @@ function recipeMutationDrafts(): { initial: DraftState; candidate: DraftState } 
     },
   });
   return { initial, candidate };
+}
+
+function createFoundryRecursiveMergeActor(initialDraft: DraftState) {
+  let persisted: unknown = structuredClone(initialDraft);
+  const actor = {
+    getFlag: () => persisted,
+    update: vi.fn(async (update: Record<string, unknown>, operation?: Record<string, unknown>) => {
+      persisted = applyFoundryRecursiveUpdate(persisted, update[DRAFT_FLAG], operation);
+      return actor;
+    }),
+  };
+  return actor;
+}
+
+function applyFoundryRecursiveUpdate(current: unknown, update: unknown, operation?: Record<string, unknown>): unknown {
+  return operation?.recursive === false ? structuredClone(update) : mergeFoundryFlag(current, update);
+}
+
+function mergeFoundryFlag(current: unknown, update: unknown): unknown {
+  if (!isPlainRecord(current) || !isPlainRecord(update)) return structuredClone(update);
+  const merged = structuredClone(current);
+  for (const [key, value] of Object.entries(update)) {
+    merged[key] = mergeFoundryFlag(merged[key], value);
+  }
+  return merged;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

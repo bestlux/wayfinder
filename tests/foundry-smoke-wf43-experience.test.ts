@@ -51,7 +51,7 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(browserSuite).toContain("localTabOrder");
     expect(browserSuite).toContain("const descriptor = wf43FocusDescriptor(active)");
     expect(browserSuite).toContain("visibleWindows: wf43VisibleWindowEvidence()");
-    expect(runner).toContain("assertKeyboardEntry(keyboard.entry)");
+    expect(runner).toContain("assertKeyboardEntry(entry, { action, mode, state })");
     expect(frozenWave2).toContain("equipment-l1-owner-common-purchase-retry");
   });
 
@@ -113,6 +113,37 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(browserSuite).toContain("observedTraversalTruncated");
   });
 
+  it("re-enters the scoped app boundary after every programmatic reopen followed by keyboard action", () => {
+    const handoffOpen = runner.indexOf("__prepareWayfinderWf43Handoff");
+    const handoffBoundary = runner.indexOf('state: "handoff"', handoffOpen);
+    const handoffTarget = runner.indexOf(
+      "targetSelector: '[data-wayfinder-action=\"acknowledge-equipment-handoff\"]'",
+      handoffBoundary
+    );
+    const handoffAction = runner.indexOf(
+      'pressAndRecord(playerPage, keyboard, "acknowledge-handoff", "Enter")',
+      handoffTarget
+    );
+    const forcedRestore = runner.indexOf("__restoreWayfinderWf43ReviewedDraft", handoffAction);
+    const forcedOpen = runner.indexOf("__openWayfinderWf43Experience", forcedRestore);
+    const forcedBoundary = runner.indexOf('state: "forced-failure"', forcedOpen);
+    const forcedTarget = runner.indexOf("targetSelector: '[data-wayfinder-action=\"apply-draft\"]'", forcedBoundary);
+    const forcedAction = runner.indexOf(
+      'applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply"',
+      forcedTarget
+    );
+
+    expect(handoffOpen).toBeGreaterThan(-1);
+    expect(handoffBoundary).toBeGreaterThan(handoffOpen);
+    expect(handoffTarget).toBeGreaterThan(handoffBoundary);
+    expect(handoffAction).toBeGreaterThan(handoffTarget);
+    expect(forcedRestore).toBeGreaterThan(handoffAction);
+    expect(forcedOpen).toBeGreaterThan(forcedRestore);
+    expect(forcedBoundary).toBeGreaterThan(forcedOpen);
+    expect(forcedTarget).toBeGreaterThan(forcedBoundary);
+    expect(forcedAction).toBeGreaterThan(forcedTarget);
+  });
+
   it("records the app-local keyboard entry target instead of traversing arbitrary Foundry chrome", () => {
     const result = passingResult();
     result.locales[0].keyboard.entry.target.disabled = true;
@@ -166,6 +197,39 @@ describe("WF-080-43 live experience qualifier", () => {
 
   it("accepts exact responsive, accessible, localized evidence", () => {
     expect(qualifyWf43ExperienceResult(passingResult())).toEqual({ ok: true, failures: [] });
+  });
+
+  it("rejects incomplete, mislabeled, or non-traversed keyboard reopen boundaries", () => {
+    const incomplete = passingResult();
+    incomplete.keyboardEntries.splice(1, 1);
+    expect(qualifyWf43ExperienceResult(incomplete).failures).toContain(
+      "WF-080-43 keyboard boundary evidence is duplicated, incomplete, or reordered."
+    );
+
+    const drifted = passingResult();
+    drifted.keyboardEntries[1].mode = "scoped-app-entry";
+    drifted.keyboardEntries[1].target.action = "apply-draft";
+    drifted.keyboardEntries[1].observedTraversal = [];
+    drifted.keyboardEntries[2].anchor = {
+      ...drifted.keyboardEntries[2].anchor,
+      action: "apply-draft",
+      stepHeading: "",
+      tag: "BUTTON",
+    };
+    drifted.keyboardEntries[4].observedTraversal[0] = {
+      ...drifted.keyboardEntries[4].observedTraversal[0],
+      focusId: "",
+      keyboardFocus: null,
+    };
+    expect(qualifyWf43ExperienceResult(drifted).failures).toContain(
+      "en: handoff keyboard boundary did not prove scoped visible Tab traversal to acknowledge-equipment-handoff."
+    );
+    expect(qualifyWf43ExperienceResult(drifted).failures).toEqual(
+      expect.arrayContaining([
+        "en: forced-failure keyboard boundary did not prove scoped visible Tab traversal to apply-draft.",
+        "cn: handoff keyboard boundary did not prove scoped visible Tab traversal to acknowledge-equipment-handoff.",
+      ])
+    );
   });
 
   it("rejects duplicated, reordered, or non-Enter compact catalogue actions", () => {
@@ -370,6 +434,33 @@ function passingResult(): any {
     },
     viewport: WF43_VIEWPORT,
     appWidths: WF43_APP_WIDTHS,
+    keyboardEntries: wf43ExperienceCases.flatMap((definition) => [
+      passingKeyboardBoundary(definition.id, definition.fixture.stepId, {
+        action: "initialize",
+        mode: "scoped-app-entry",
+        state: "policy",
+        targetAction: "initialize-starting-equipment",
+        targetFocusId: "starting-equipment-start",
+        targetName: "Start Shopping",
+      }),
+      passingKeyboardBoundary(definition.id, definition.fixture.stepId, {
+        action: "acknowledge",
+        mode: "scoped-app-reentry",
+        state: "handoff",
+        targetAction: "acknowledge-equipment-handoff",
+        targetFocusId: "starting-equipment-acknowledge-handoff",
+        targetName: "Got It",
+      }),
+      passingKeyboardBoundary(definition.id, definition.fixture.stepId, {
+        action: "apply",
+        mode: "scoped-app-reentry",
+        state: "forced-failure",
+        targetAction: "apply-draft",
+        targetFocusId: "",
+        targetName: "Apply Changes",
+      }),
+    ]),
+    tabTraversalFailures: [],
     locales: wf43ExperienceCases.map((definition) => ({
       id: definition.id,
       status: "pass",
@@ -491,6 +582,53 @@ function passingResult(): any {
       languageRestored: true,
       restorationFailures: [],
     },
+  };
+}
+
+function passingKeyboardBoundary(
+  locale: string,
+  stepId: string,
+  boundary: {
+    action: string;
+    mode: string;
+    state: string;
+    targetAction: string;
+    targetFocusId: string;
+    targetName: string;
+  }
+): any {
+  const target = {
+    focusId: boundary.targetFocusId,
+    action: boundary.targetAction,
+    name: boundary.targetName,
+    tag: "BUTTON",
+    present: true,
+    visible: true,
+    disabled: false,
+    tabIndex: 0,
+    keyboardFocus: "true",
+    localOrderIndex: 34,
+  };
+  return {
+    locale,
+    action: boundary.action,
+    mode: boundary.mode,
+    state: boundary.state,
+    focusMethod: "programmatic-harness-anchor-before-keyboard-actions",
+    before: { focusId: "", action: "", name: "", tag: "BODY" },
+    visibleWindows: [],
+    anchor: {
+      focusId: "",
+      action: "",
+      name: "Starting equipment",
+      stepHeading: stepId,
+      tag: "H3",
+      keyboardFocus: "true",
+      focused: true,
+    },
+    target,
+    localTabOrder: [target],
+    observedTraversal: [{ ...target, focusId: boundary.targetFocusId || boundary.targetAction, visible: true }],
   };
 }
 

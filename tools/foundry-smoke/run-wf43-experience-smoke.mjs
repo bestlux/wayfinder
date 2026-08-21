@@ -328,24 +328,27 @@ async function runLocale({
     focus: [],
   };
   const liveRegionChanges = {};
+  const enterScopedKeyboardBoundary = async ({ action, mode, state, targetSelector }) => {
+    setStage({ id: "keyboard-entry", locale: definition.id, state, action });
+    const entry = await playerPage.evaluate(
+      (value) => globalThis.__enterWayfinderWf43KeyboardScope(value),
+      { actorId: opened.actorId, action, mode, state, targetSelector },
+    );
+    entry.observedTraversal = [];
+    keyboardEntries.push({ locale: definition.id, ...entry });
+    assertKeyboardEntry(entry, { action, mode, state });
+    await appTabTo(`${rootSelector} ${targetSelector}`, { observedTraversal: entry.observedTraversal });
+    return entry;
+  };
 
   states.push(await captureState(playerPage, opened.actorId, "policy", definition, outDir, samples, setStage));
 
-  setStage({ id: "keyboard-entry", locale: definition.id, state: "policy", action: "initialize" });
-  keyboard.entry = await playerPage.evaluate(
-    (value) => globalThis.__enterWayfinderWf43KeyboardScope(value),
-    {
-      actorId: opened.actorId,
-      targetSelector: '[data-wayfinder-action="initialize-starting-equipment"]',
-    },
-  );
-  keyboard.entry.observedTraversal = [];
-  keyboardEntries.push({ locale: definition.id, ...keyboard.entry });
-  assertKeyboardEntry(keyboard.entry);
-  await appTabTo(
-    `${rootSelector} [data-wayfinder-action="initialize-starting-equipment"]`,
-    { observedTraversal: keyboard.entry.observedTraversal },
-  );
+  keyboard.entry = await enterScopedKeyboardBoundary({
+    action: "initialize",
+    mode: "scoped-app-entry",
+    state: "policy",
+    targetSelector: '[data-wayfinder-action="initialize-starting-equipment"]',
+  });
   interactionStage("policy", "initialize");
   await pressAndRecord(playerPage, keyboard, "initialize", "Enter");
   await waitForEither(playerPage, [
@@ -433,8 +436,13 @@ async function runLocale({
   await playerPage.evaluate((value) => globalThis.__openWayfinderWf43Experience(value), payload);
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-focus-id="starting-equipment-handoff"]`);
   states.push(await captureState(playerPage, opened.actorId, "handoff", definition, outDir, samples, setStage));
+  await enterScopedKeyboardBoundary({
+    action: "acknowledge",
+    mode: "scoped-app-reentry",
+    state: "handoff",
+    targetSelector: '[data-wayfinder-action="acknowledge-equipment-handoff"]',
+  });
   interactionStage("handoff", "acknowledge");
-  await appTabTo(`${rootSelector} [data-wayfinder-action="acknowledge-equipment-handoff"]`);
   await pressAndRecord(playerPage, keyboard, "acknowledge-handoff", "Enter");
   await waitFor(playerPage, `${rootSelector} .equipment-reviewed`);
   keyboard.focus.push(await focusEvidence(playerPage));
@@ -457,6 +465,12 @@ async function runLocale({
   });
   await playerPage.evaluate((value) => globalThis.__openWayfinderWf43Experience(value), payload);
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-action="apply-draft"]`);
+  await enterScopedKeyboardBoundary({
+    action: "apply",
+    mode: "scoped-app-reentry",
+    state: "forced-failure",
+    targetSelector: '[data-wayfinder-action="apply-draft"]',
+  });
   const beforeFailure = (await liveRegions(playerPage, opened.actorId)).failure || afterReview;
   interactionStage("forced-failure", "apply");
   await applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply", tabTraversalFailures);
@@ -685,9 +699,11 @@ function emptyCleanup() {
   };
 }
 
-function assertKeyboardEntry(entry) {
+function assertKeyboardEntry(entry, expected) {
   if (
-    entry?.mode !== "scoped-app-entry" ||
+    entry?.mode !== expected.mode ||
+    entry?.state !== expected.state ||
+    entry?.action !== expected.action ||
     entry?.focusMethod !== "programmatic-harness-anchor-before-keyboard-actions" ||
     entry?.anchor?.focused !== true ||
     entry?.anchor?.keyboardFocus !== "true" ||

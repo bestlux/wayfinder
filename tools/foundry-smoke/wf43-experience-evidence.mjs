@@ -20,6 +20,7 @@ export function qualifyWf43ExperienceResult(result, definitions = wf43Experience
   if (JSON.stringify(result?.appWidths) !== JSON.stringify(WF43_APP_WIDTHS)) {
     failures.push("WF-080-43 top-level app widths differ from the frozen release widths.");
   }
+  qualifyKeyboardBoundaries(result?.keyboardEntries, definitions, failures);
 
   const localeEntries = result?.locales ?? [];
   if (
@@ -45,6 +46,88 @@ export function qualifyWf43ExperienceResult(result, definitions = wf43Experience
     failures.push("WF-080-43 cleanup did not restore the exact actor count, policy, pack setting, and language.");
   }
   return { ok: failures.length === 0, failures };
+}
+
+function qualifyKeyboardBoundaries(entries, definitions, failures) {
+  const expected = definitions.flatMap((definition) => [
+    {
+      locale: definition.id,
+      mode: "scoped-app-entry",
+      state: "policy",
+      action: "initialize",
+      stepId: definition.fixture.stepId,
+      targetAction: "initialize-starting-equipment",
+      targetFocusId: "starting-equipment-start",
+    },
+    {
+      locale: definition.id,
+      mode: "scoped-app-reentry",
+      state: "handoff",
+      action: "acknowledge",
+      stepId: definition.fixture.stepId,
+      targetAction: "acknowledge-equipment-handoff",
+      targetFocusId: "starting-equipment-acknowledge-handoff",
+    },
+    {
+      locale: definition.id,
+      mode: "scoped-app-reentry",
+      state: "forced-failure",
+      action: "apply",
+      stepId: definition.fixture.stepId,
+      targetAction: "apply-draft",
+      targetFocusId: "",
+    },
+  ]);
+  if (!Array.isArray(entries) || entries.length !== expected.length) {
+    failures.push("WF-080-43 keyboard boundary evidence is duplicated, incomplete, or reordered.");
+    return;
+  }
+  for (const [index, boundary] of expected.entries()) {
+    const entry = entries[index];
+    const observedTarget = entry?.observedTraversal?.at(-1);
+    const focusDiagnostics = [
+      entry?.before,
+      entry?.anchor,
+      entry?.target,
+      ...(entry?.localTabOrder ?? []),
+      ...(entry?.observedTraversal ?? []),
+      ...(entry?.visibleWindows ?? []).map((window) => ({ name: window.title })),
+    ].filter(Boolean);
+    if (
+      entry?.locale !== boundary.locale ||
+      entry?.mode !== boundary.mode ||
+      entry?.state !== boundary.state ||
+      entry?.action !== boundary.action ||
+      entry?.focusMethod !== "programmatic-harness-anchor-before-keyboard-actions" ||
+      entry?.anchor?.focused !== true ||
+      entry?.anchor?.keyboardFocus !== "true" ||
+      entry?.anchor?.tag !== "H3" ||
+      entry?.anchor?.action !== "" ||
+      entry?.anchor?.focusId !== "" ||
+      entry?.anchor?.stepHeading !== boundary.stepId ||
+      entry?.target?.present !== true ||
+      entry?.target?.visible !== true ||
+      entry?.target?.disabled !== false ||
+      entry?.target?.keyboardFocus !== "true" ||
+      entry?.target?.action !== boundary.targetAction ||
+      entry?.target?.focusId !== boundary.targetFocusId ||
+      !Number.isInteger(entry?.target?.tabIndex) ||
+      entry.target.tabIndex < 0 ||
+      !Number.isInteger(entry?.target?.localOrderIndex) ||
+      entry.target.localOrderIndex < 0 ||
+      !Array.isArray(entry?.visibleWindows) ||
+      observedTarget?.action !== boundary.targetAction ||
+      observedTarget?.focusId !== (boundary.targetFocusId || boundary.targetAction) ||
+      observedTarget?.keyboardFocus !== "true" ||
+      observedTarget?.tag !== "BUTTON" ||
+      observedTarget?.visible !== true ||
+      focusDiagnostics.some((item) => typeof item.name !== "string" || item.name.length > 160)
+    ) {
+      failures.push(
+        `${boundary.locale}: ${boundary.state} keyboard boundary did not prove scoped visible Tab traversal to ${boundary.targetAction}.`,
+      );
+    }
+  }
 }
 
 function qualifyLocale(entry, definition, failures) {

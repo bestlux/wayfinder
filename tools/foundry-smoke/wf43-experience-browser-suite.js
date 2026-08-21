@@ -306,7 +306,13 @@ globalThis.__inspectWayfinderWf43TabTraversal = function inspectWf43TabTraversal
   };
 };
 
-globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({ actorId, targetSelector }) {
+globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({
+  actorId,
+  action = "initialize",
+  mode = "scoped-app-entry",
+  state = "policy",
+  targetSelector,
+}) {
   const root = wf43ActorApp(game.actors.get(actorId)).element;
   const target = root.querySelector(targetSelector);
   const before = wf43FocusDescriptor(document.activeElement);
@@ -316,7 +322,9 @@ globalThis.__enterWayfinderWf43KeyboardScope = function enterWf43KeyboardScope({
   anchor.focus();
   const targetEvidence = wf43KeyboardTarget(target);
   return {
-    mode: "scoped-app-entry",
+    action,
+    mode,
+    state,
     focusMethod: "programmatic-harness-anchor-before-keyboard-actions",
     before,
     visibleWindows: wf43VisibleWindowEvidence(),
@@ -520,7 +528,16 @@ function wf43FocusableElements(root) {
 
 function wf43FocusDescriptor(element) {
   if (!(element instanceof HTMLElement)) {
-    return { focusId: "", action: "", name: "", nameLength: 0, nameTruncated: false, tag: "", keyboardFocus: null };
+    return {
+      focusId: "",
+      action: "",
+      name: "",
+      nameLength: 0,
+      nameTruncated: false,
+      stepHeading: "",
+      tag: "",
+      keyboardFocus: null,
+    };
   }
   const rawName = element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "";
   const name = wf43BoundedText(rawName);
@@ -530,6 +547,7 @@ function wf43FocusDescriptor(element) {
     name,
     nameLength: rawName.length,
     nameTruncated: name.length < rawName.length,
+    stepHeading: element.dataset.wayfinderStepHeading ?? "",
     tag: element.tagName,
     keyboardFocus: element.dataset.keyboardFocus ?? null,
   };

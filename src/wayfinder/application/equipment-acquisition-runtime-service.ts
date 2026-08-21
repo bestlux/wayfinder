@@ -1120,11 +1120,30 @@ export function getFoundryEquipmentAcquisitionRuntime(): EquipmentAcquisitionRun
   foundryRuntime ??= createEquipmentAcquisitionRuntime({
     packs: {
       get(packId) {
-        return game.packs?.get?.(packId) as EquipmentCataloguePackLike | undefined;
+        return foundryEquipmentPackAdapter(packId);
       },
     },
   });
   return foundryRuntime;
+}
+
+function foundryEquipmentPackAdapter(packId: string): EquipmentCataloguePackLike | undefined {
+  const pack = game.packs?.get?.(packId) as EquipmentCataloguePackLike | undefined;
+  if (!pack) return undefined;
+  return {
+    indexEntryIdentity: "stable-replacement",
+    documentName: pack.documentName,
+    metadata: pack.metadata,
+    getIndex: (options) => pack.getIndex(options),
+    getDocument: (documentId) => pack.getDocument(documentId),
+    ...(typeof pack.getDocuments === "function"
+      ? { getDocuments: (query: { _id: string }) => pack.getDocuments!(query) }
+      : {}),
+    ...(typeof pack.set === "function"
+      ? { set: (documentId: string, document: unknown) => pack.set!(documentId, document) }
+      : {}),
+    ...(typeof pack.delete === "function" ? { delete: (documentId: string) => pack.delete!(documentId) } : {}),
+  };
 }
 
 export function invalidateFoundryEquipmentCataloguePack(packId: string): void {

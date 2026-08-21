@@ -28,6 +28,7 @@ export function fingerprintEquipmentDocument(source) {
         throw new TypeError("Equipment document fingerprinting requires a source object.");
     return fingerprint("equipment-document-v1", source);
 }
+const LARGE_PACK_NORMALIZATION_CHUNK = 3_000;
 export function createEquipmentAccessRegistry(records = []) {
     const byUuid = new Map();
     for (const record of records) {
@@ -89,6 +90,7 @@ export class EquipmentCatalogueService {
     #equipmentPackIds;
     #accessRegistry;
     #packIndexCache = new Map();
+    #packNormalizationSnapshots = new Map();
     #projectionCache = new Map();
     #latestCandidateByUuid = new Map();
     #previewCache = new Map();
@@ -122,11 +124,24 @@ export class EquipmentCatalogueService {
         }
         if (cacheKey !== this.#projectionKey(context.policy, packIds))
             return this.project(context);
-        const entries = loaded.candidates
-            .map((candidate) => this.#evaluateCandidate(context, candidate))
-            .sort(compareEntries);
-        for (const entry of entries)
-            this.#latestCandidateByUuid.set(entry.sourceUuid, stripEvaluation(entry));
+        const sharedAuthority = context.policy.gmJudgments.some((judgment) => judgment.kind === "rarity-source-exception")
+            ? null
+            : new Map();
+        const entries = [];
+        for (let index = 0; index < loaded.candidates.length; index += 1) {
+            entries.push(this.#evaluateCandidate(context, loaded.candidates[index], null, sharedAuthority));
+            if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0)
+                await yieldProjectionTask();
+        }
+        if (entries.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0)
+            await yieldProjectionTask();
+        entries.sort(compareEntries);
+        if (entries.length > 0)
+            await yieldProjectionTask();
+        if (cacheKey !== this.#projectionKey(context.policy, packIds))
+            return this.project(context);
+        for (const { candidate } of loaded.candidates)
+            this.#latestCandidateByUuid.set(candidate.sourceUuid, candidate);
         return Object.freeze({
             version: EQUIPMENT_CATALOGUE_PROJECTION_VERSION,
             cacheKey,
@@ -341,14 +356,21 @@ export class EquipmentCatalogueService {
         const diagnostics = byPack.flatMap((result) => result.diagnostics);
         const candidates = [];
         const seen = new Set();
-        for (const { candidate, reasons } of byPack.flatMap((result) => result.candidates)) {
+        const loadedCandidates = byPack.flatMap((result) => result.candidates);
+        for (let index = 0; index < loadedCandidates.length; index += 1) {
+            const { candidate, reasons } = loadedCandidates[index];
             if (seen.has(candidate.sourceUuid)) {
                 diagnostics.push(sourceDiagnostic("duplicate-equipment-source-identity", candidate.packId, candidate.sourceUuid, `Equipment source identity ${candidate.sourceUuid} occurs more than once; only the first record was retained.`));
-                continue;
             }
-            seen.add(candidate.sourceUuid);
-            candidates.push({ candidate, reasons });
+            else {
+                seen.add(candidate.sourceUuid);
+                candidates.push({ candidate, reasons });
+            }
+            if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0)
+                await yieldProjectionTask();
         }
+        if (loadedCandidates.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0)
+            await yieldProjectionTask();
         return Object.freeze({
             candidates: Object.freeze(candidates),
             diagnostics: Object.freeze(sortEquipmentSourceDiagnostics(diagnostics)),
@@ -368,7 +390,12 @@ export class EquipmentCatalogueService {
         if (documentName !== undefined && documentName !== "Item") {
             return Promise.resolve(projectionFailure(sourceDiagnostic("equipment-pack-not-item", packId, null, `Configured equipment pack ${packId} is not an Item compendium and was excluded.`)));
         }
-        pending = loadPackProjection(pack, packId);
+        const normalizationSnapshot = pack.indexEntryIdentity === "stable-replacement"
+            ? (this.#packNormalizationSnapshots.get(packId) ?? new WeakMap())
+            : null;
+        if (normalizationSnapshot)
+            this.#packNormalizationSnapshots.set(packId, normalizationSnapshot);
+        pending = loadPackProjection(pack, packId, normalizationSnapshot);
         this.#packIndexCache.set(key, pending);
         void pending.then((result) => {
             if (!result.cacheable && this.#packIndexCache.get(key) === pending)
@@ -379,33 +406,43 @@ export class EquipmentCatalogueService {
         });
         return pending;
     }
-    #evaluateCandidate(context, normalized, source = null) {
+    #evaluateCandidate(context, normalized, source = null, sharedAuthority = null) {
         const candidate = normalized.candidate;
-        const blanketAuthorized = rarityAtOrBelow(candidate.rarity, context.policy.rarityPolicy.blanketCeiling);
-        const characterAccessRef = blanketAuthorized || source === null
-            ? null
-            : this.#accessRegistry.resolve({
-                actor: context.actor,
-                draft: cloneAccessDraft(context.draft),
-                candidate,
-                source: source === null ? null : cloneData(source),
+        const sharedKey = source === null && sharedAuthority !== null
+            ? `${candidate.packId}\u0000${candidate.publicationSlug}\u0000${candidate.rarity}`
+            : null;
+        let evaluated = sharedKey === null ? undefined : sharedAuthority?.get(sharedKey);
+        if (evaluated === undefined) {
+            const blanketAuthorized = rarityAtOrBelow(candidate.rarity, context.policy.rarityPolicy.blanketCeiling);
+            const characterAccessRef = blanketAuthorized || source === null
+                ? null
+                : this.#accessRegistry.resolve({
+                    actor: context.actor,
+                    draft: cloneAccessDraft(context.draft),
+                    candidate,
+                    source: cloneData(source),
+                });
+            const exceptionIds = resolveEquipmentItemExceptionJudgmentIds({
+                policy: context.policy,
+                sourceUuid: candidate.sourceUuid,
+                packId: candidate.packId,
+                publicationSlug: candidate.publicationSlug,
+                rarity: candidate.rarity,
             });
-        const exceptionIds = resolveEquipmentItemExceptionJudgmentIds({
-            policy: context.policy,
-            sourceUuid: candidate.sourceUuid,
-            packId: candidate.packId,
-            publicationSlug: candidate.publicationSlug,
-            rarity: candidate.rarity,
-        });
-        const authority = evaluateEquipmentItemAuthority({
-            policy: context.policy,
-            sourceUuid: candidate.sourceUuid,
-            packId: candidate.packId,
-            publicationSlug: candidate.publicationSlug,
-            rarity: candidate.rarity,
-            hasCharacterAccess: characterAccessRef !== null,
-            ...exceptionIds,
-        });
+            const authority = evaluateEquipmentItemAuthority({
+                policy: context.policy,
+                sourceUuid: candidate.sourceUuid,
+                packId: candidate.packId,
+                publicationSlug: candidate.publicationSlug,
+                rarity: candidate.rarity,
+                hasCharacterAccess: characterAccessRef !== null,
+                ...exceptionIds,
+            });
+            evaluated = Object.freeze({ characterAccessRef, exceptionIds, authority });
+            if (sharedKey !== null)
+                sharedAuthority?.set(sharedKey, evaluated);
+        }
+        const { characterAccessRef, exceptionIds, authority } = evaluated;
         const policyReasons = authority.reasons.flatMap((code) => authorityReason(code));
         const unavailableReasons = dedupeReasons([...normalized.reasons, ...policyReasons]);
         const policyDecision = Object.freeze({
@@ -460,7 +497,7 @@ export class EquipmentCatalogueService {
 export function createEquipmentCatalogueService(options) {
     return new EquipmentCatalogueService(options);
 }
-async function loadPackProjection(pack, packId) {
+async function loadPackProjection(pack, packId, normalizationSnapshot) {
     let index;
     try {
         index = await pack.getIndex({ fields: [...INDEX_FIELDS] });
@@ -480,18 +517,99 @@ async function loadPackProjection(pack, packId) {
     }
     const candidates = [];
     const diagnostics = [];
-    entries.forEach((entry, index) => {
+    let normalizationWork = 0;
+    for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index];
+        const witness = isRecord(entry) ? indexNormalizationWitness(entry) : null;
+        const cached = isRecord(entry) ? normalizationSnapshot?.get(entry) : undefined;
+        if (cached && witness !== null && cached.witness === witness) {
+            candidates.push(cached.candidate);
+            continue;
+        }
         const normalized = normalizeIndexEntry(entry, packId, index);
         if ("diagnostic" in normalized)
             diagnostics.push(normalized.diagnostic);
-        else
+        else {
             candidates.push(normalized.candidate);
-    });
+            if (isRecord(entry) && witness !== null) {
+                normalizationSnapshot?.set(entry, Object.freeze({ candidate: normalized.candidate, witness }));
+            }
+        }
+        normalizationWork += 1;
+        if (normalizationWork % LARGE_PACK_NORMALIZATION_CHUNK === 0)
+            await yieldProjectionTask();
+    }
+    if (normalizationWork % LARGE_PACK_NORMALIZATION_CHUNK !== 0)
+        await yieldProjectionTask();
     return Object.freeze({
         candidates: Object.freeze(candidates),
         diagnostics: Object.freeze(sortEquipmentSourceDiagnostics(diagnostics)),
         cacheable: true,
     });
+}
+function indexNormalizationWitness(source) {
+    const system = record(source.system);
+    const traits = record(system.traits);
+    const publication = record(system.publication);
+    const legacySource = record(system.source);
+    const price = record(system.price);
+    const rules = Array.isArray(system.rules) ? system.rules : null;
+    return exactNormalizationWitness([
+        source._id,
+        source.uuid,
+        source.name,
+        source.img,
+        source.type,
+        record(system.level).value,
+        traits.rarity,
+        traits.value,
+        publication.title,
+        legacySource.value,
+        price.value,
+        price.per,
+        system.quantity,
+        rules?.map((rule) => record(rule).key) ?? null,
+    ]);
+}
+function exactNormalizationWitness(value, ancestors = new Set()) {
+    if (value === null)
+        return "null";
+    if (value === undefined)
+        return "undefined";
+    if (typeof value === "string")
+        return `string:${value.length}:${value}`;
+    if (typeof value === "boolean")
+        return value ? "boolean:true" : "boolean:false";
+    if (typeof value === "number")
+        return `number:${Object.is(value, -0) ? "-0" : String(value)}`;
+    if (typeof value === "bigint")
+        return `bigint:${String(value)}`;
+    if (typeof value === "symbol")
+        return `symbol:${String(value.description)}`;
+    if (typeof value === "function")
+        return "function";
+    const objectValue = value;
+    if (ancestors.has(objectValue))
+        return null;
+    ancestors.add(objectValue);
+    const source = value;
+    const result = Array.isArray(value)
+        ? witnessSequence("array", value, ancestors)
+        : witnessSequence("record", Object.keys(source)
+            .sort((left, right) => left.localeCompare(right))
+            .flatMap((key) => [key, source[key]]), ancestors);
+    ancestors.delete(objectValue);
+    return result;
+}
+function witnessSequence(kind, values, ancestors) {
+    const parts = [];
+    for (const value of values) {
+        const part = exactNormalizationWitness(value, ancestors);
+        if (part === null)
+            return null;
+        parts.push(`${part.length}:${part}`);
+    }
+    return `${kind}:${values.length}:${parts.join("")}`;
 }
 function normalizeIndexEntry(entry, packId, index) {
     const value = record(entry);
@@ -505,18 +623,21 @@ function normalizeIndexEntry(entry, packId, index) {
             diagnostic: sourceDiagnostic("equipment-source-identity-corrupt", packId, sourceIdentity, `Equipment pack ${packId} contains a record with a missing or contradictory Item identity (${sourceIdentity}).`),
         };
     }
-    return { candidate: normalizeCandidate(value, packId, `Compendium.${packId}.Item.${documentId}`) };
+    return { candidate: normalizeCandidate(value, packId, `Compendium.${packId}.Item.${documentId}`, documentId) };
 }
 function projectionFailure(diagnostic, cacheable = true) {
     return Object.freeze({ candidates: Object.freeze([]), diagnostics: Object.freeze([diagnostic]), cacheable });
 }
-function normalizeCandidate(source, packId, sourceUuid) {
+function normalizeCandidate(source, packId, sourceUuid, knownDocumentId) {
     const value = record(source);
     const system = record(value.system);
     const traitsRoot = record(system.traits);
     const rulesValid = Array.isArray(system.rules);
     const rawRules = Array.isArray(system.rules) ? system.rules : [];
-    const ruleKeys = uniqueSorted(rawRules.map((rule) => (nonEmpty(record(rule).key) ? String(record(rule).key) : "<unknown>")));
+    const ruleKeys = uniqueSorted(rawRules.map((rule) => {
+        const value = record(rule);
+        return nonEmpty(value.key) ? value.key : "<unknown>";
+    }));
     const itemType = nonEmpty(value.type) ? value.type.trim().toLowerCase() : "unknown";
     const qualifiedKit = sourceUuid === ADVENTURERS_PACK_UUID && itemType === "kit";
     const rarity = qualifiedKit ? "common" : equipmentRarity(traitsRoot.rarity);
@@ -553,7 +674,7 @@ function normalizeCandidate(source, packId, sourceUuid) {
     if (interactiveKeys.length > 0) {
         reasons.push(reason("interactive-rule-unsupported", `Interactive rule elements are not supported: ${interactiveKeys.join(", ")}.`));
     }
-    const parsedUuid = parseCompendiumItemUuid(sourceUuid);
+    const parsedUuid = knownDocumentId ? { packId, documentId: knownDocumentId } : parseCompendiumItemUuid(sourceUuid);
     if (parsedUuid.packId !== packId)
         throw new TypeError(`Equipment source ${sourceUuid} does not belong to ${packId}.`);
     const candidateMaterial = {
@@ -572,7 +693,7 @@ function normalizeCandidate(source, packId, sourceUuid) {
     };
     const candidate = Object.freeze({
         ...candidateMaterial,
-        previewIdentity: fingerprint("equipment-preview-v1", candidateMaterial),
+        previewIdentity: fingerprintEquipmentPreview(candidateMaterial),
     });
     return Object.freeze({ candidate, reasons: Object.freeze(reasons) });
 }
@@ -818,14 +939,64 @@ function uniqueSorted(values) {
 function compareEntries(left, right) {
     return (left.level - right.level || left.name.localeCompare(right.name) || left.sourceUuid.localeCompare(right.sourceUuid));
 }
+function fingerprintEquipmentPreview(candidate) {
+    const price = candidate.price;
+    let hash = 0x811c9dc5;
+    hash = hashFingerprintPart(hash, candidate.sourceUuid);
+    hash = hashFingerprintPart(hash, candidate.name);
+    hash = hashFingerprintPart(hash, candidate.img);
+    hash = hashFingerprintPart(hash, candidate.itemType);
+    hash = hashFingerprintPart(hash, candidate.level);
+    hash = hashFingerprintPart(hash, candidate.rarity);
+    hash = hashFingerprintPart(hash, candidate.publicationSlug);
+    hash = hashFingerprintPart(hash, price.kind);
+    hash = hashFingerprintPart(hash, price.value?.pp ?? null);
+    hash = hashFingerprintPart(hash, price.value?.gp ?? null);
+    hash = hashFingerprintPart(hash, price.value?.sp ?? null);
+    hash = hashFingerprintPart(hash, price.value?.cp ?? null);
+    hash = hashFingerprintPart(hash, price.copperValue);
+    hash = hashFingerprintPart(hash, price.per);
+    hash = hashFingerprintPart(hash, price.sourceQuantity);
+    for (const trait of candidate.traits)
+        hash = hashFingerprintPart(hash, trait);
+    hash = hashFingerprintPart(hash, null);
+    for (const ruleKey of candidate.ruleKeys)
+        hash = hashFingerprintPart(hash, ruleKey);
+    return `equipment-preview-v1-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+async function yieldProjectionTask() {
+    const scheduler = globalThis.scheduler;
+    if (typeof scheduler?.yield === "function") {
+        await scheduler.yield();
+        return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
 function fingerprint(prefix, value) {
-    const text = canonicalJson(value);
+    return fingerprintText(prefix, canonicalJson(value));
+}
+function fingerprintText(prefix, text) {
     let hash = 0x811c9dc5;
     for (let index = 0; index < text.length; index += 1) {
         hash ^= text.charCodeAt(index);
         hash = Math.imul(hash, 0x01000193);
     }
     return `${prefix}-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+function hashFingerprintPart(hash, part) {
+    const text = part === null ? "" : String(part);
+    const length = String(text.length);
+    for (let index = 0; index < length.length; index += 1) {
+        hash ^= length.charCodeAt(index);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    hash ^= 58;
+    hash = Math.imul(hash, 0x01000193);
+    for (let index = 0; index < text.length; index += 1) {
+        hash ^= text.charCodeAt(index);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return hash;
 }
 function canonicalJson(value) {
     if (Array.isArray(value))

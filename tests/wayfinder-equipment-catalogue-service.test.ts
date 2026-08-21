@@ -23,6 +23,204 @@ const UNCOMMON_ID = "uncommon-item";
 const UNCOMMON_UUID = `Compendium.${PACK_ID}.Item.${UNCOMMON_ID}`;
 
 describe("minimal equipment catalogue", () => {
+  it("bounds a production-sized cold projection task while preserving exact source diagnostics", async () => {
+    const yieldTask = vi.fn(async () => undefined);
+    vi.stubGlobal("scheduler", { yield: yieldTask });
+    try {
+      const valid = Array.from({ length: 5_853 }, (_, index) =>
+        dagger({ _id: `cold-${index}`, name: `Cold equipment ${String(index).padStart(4, "0")}` })
+      );
+      const entries = [
+        ...valid,
+        dagger({ _id: undefined }),
+        dagger({ _id: "contradictory", uuid: `Compendium.${PACK_ID}.Item.other-id` }),
+        dagger({ _id: "cold-0", name: "Duplicate cold equipment" }),
+      ];
+      const service = createEquipmentCatalogueService({
+        packs: new Map([
+          [
+            PACK_ID,
+            {
+              indexEntryIdentity: "stable-replacement" as const,
+              documentName: "Item",
+              getIndex: vi.fn(async () => entries),
+              getDocument: vi.fn(async () => null),
+            },
+          ],
+        ]),
+        equipmentPackIds: [PACK_ID],
+      });
+
+      const projection = await service.project(context());
+      service.invalidatePack(PACK_ID);
+      const reconciled = await service.project(context());
+
+      expect(yieldTask).toHaveBeenCalledTimes(13);
+      expect(projection.entries).toHaveLength(valid.length);
+      expect(reconciled.entries).toHaveLength(projection.entries.length);
+      expect(reconciled.diagnostics).toEqual(projection.diagnostics);
+      expect(projection.diagnostics.map(({ code }) => code)).toEqual([
+        "duplicate-equipment-source-identity",
+        "equipment-source-identity-corrupt",
+        "equipment-source-identity-corrupt",
+      ]);
+      expect(projection.entries[0]?.sourceUuid).toBe(`Compendium.${PACK_ID}.Item.cold-0`);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("reconciles stable Foundry index identities while reprocessing replacements and corrupt records", async () => {
+    const reads = new Map<string, number>();
+    const tracked = (key: string, source: Record<string, unknown>): Record<string, unknown> =>
+      new Proxy(source, {
+        get(target, property, receiver) {
+          reads.set(key, (reads.get(key) ?? 0) + 1);
+          return Reflect.get(target, property, receiver);
+        },
+      });
+    const stableA = tracked("stable-a", dagger({ _id: "stable-a", name: "Stable A" }));
+    const stableB = tracked("stable-b", dagger({ _id: "stable-b", name: "Stable B" }));
+    const duplicateA = tracked("duplicate-a", dagger({ _id: "stable-a", name: "Duplicate A" }));
+    const corrupt = tracked("corrupt", dagger({ _id: undefined }));
+    let index = [stableA, stableB, duplicateA, corrupt];
+    const getIndex = vi.fn(async () => index);
+    const service = createEquipmentCatalogueService({
+      packs: new Map([
+        [
+          PACK_ID,
+          {
+            indexEntryIdentity: "stable-replacement" as const,
+            documentName: "Item",
+            getIndex,
+            getDocument: vi.fn(async () => null),
+          },
+        ],
+      ]),
+      equipmentPackIds: [PACK_ID],
+    });
+
+    const first = await service.project(context());
+    const firstReads = new Map(reads);
+    service.invalidatePack(PACK_ID);
+    const unchanged = await service.project(context());
+
+    expect((reads.get("stable-a") ?? 0) - (firstReads.get("stable-a") ?? 0)).toBeLessThan(
+      firstReads.get("stable-a") ?? 0
+    );
+    expect((reads.get("stable-b") ?? 0) - (firstReads.get("stable-b") ?? 0)).toBeLessThan(
+      firstReads.get("stable-b") ?? 0
+    );
+    expect((reads.get("duplicate-a") ?? 0) - (firstReads.get("duplicate-a") ?? 0)).toBeLessThan(
+      firstReads.get("duplicate-a") ?? 0
+    );
+    expect(reads.get("corrupt")).toBeGreaterThan(firstReads.get("corrupt") ?? 0);
+    expect(unchanged.diagnostics).toEqual(first.diagnostics);
+    const unchangedReads = new Map(reads);
+
+    const replacementB = tracked(
+      "replacement-b",
+      dagger({ _id: "stable-b", name: "Replacement B", system: { price: { value: { sp: 3 } } } })
+    );
+    const createdC = tracked("created-c", dagger({ _id: "created-c", name: "Created C" }));
+    index = [replacementB, createdC, corrupt];
+    service.invalidatePack(PACK_ID);
+    const reconciled = await service.project(context());
+
+    expect(getIndex).toHaveBeenCalledTimes(3);
+    expect(reads.get("stable-a")).toBe(unchangedReads.get("stable-a"));
+    expect(reads.get("stable-b")).toBe(unchangedReads.get("stable-b"));
+    expect(reads.get("replacement-b")).toBeGreaterThan(0);
+    expect(reads.get("created-c")).toBeGreaterThan(0);
+    expect(reconciled.entries.map(({ sourceUuid }) => sourceUuid)).toEqual([
+      `Compendium.${PACK_ID}.Item.created-c`,
+      `Compendium.${PACK_ID}.Item.stable-b`,
+    ]);
+    expect(reconciled.entries.find(({ documentId }) => documentId === "stable-b")?.price.copperValue).toBe(30);
+    expect(reconciled.diagnostics.map(({ code }) => code)).toEqual(["equipment-source-identity-corrupt"]);
+  });
+
+  it("renormalizes a stable Foundry index object when a relevant field mutates in place", async () => {
+    const entry = dagger({ name: "Before expansion", img: "icons/before.webp" });
+    const service = createEquipmentCatalogueService({
+      packs: new Map([
+        [
+          PACK_ID,
+          {
+            indexEntryIdentity: "stable-replacement" as const,
+            documentName: "Item",
+            getIndex: vi.fn(async () => [entry]),
+            getDocument: vi.fn(async () => null),
+          },
+        ],
+      ]),
+      equipmentPackIds: [PACK_ID],
+    });
+
+    expect((await service.project(context())).entries[0]).toMatchObject({
+      name: "Before expansion",
+      img: "icons/before.webp",
+    });
+    entry.name = "After expansion";
+    entry.img = "icons/after.webp";
+    service.invalidatePack(PACK_ID);
+
+    expect((await service.project(context())).entries[0]).toMatchObject({
+      name: "After expansion",
+      img: "icons/after.webp",
+    });
+  });
+
+  it("periodically yields normalization and projection work across large and multiple packs", async () => {
+    const secondPackId = "test.extra-equipment";
+    const yieldTask = vi.fn(async () => undefined);
+    vi.stubGlobal("scheduler", { yield: yieldTask });
+    try {
+      const firstEntries = Array.from({ length: 6_001 }, (_, index) =>
+        dagger({ _id: `first-${index}`, name: `First ${index}` })
+      );
+      const secondEntries = Array.from({ length: 2_500 }, (_, index) =>
+        dagger({ _id: `second-${index}`, name: `Second ${index}` })
+      );
+      const service = createEquipmentCatalogueService({
+        packs: new Map([
+          [
+            PACK_ID,
+            {
+              indexEntryIdentity: "stable-replacement" as const,
+              documentName: "Item",
+              getIndex: vi.fn(async () => firstEntries),
+              getDocument: vi.fn(async () => null),
+            },
+          ],
+          [
+            secondPackId,
+            {
+              indexEntryIdentity: "stable-replacement" as const,
+              documentName: "Item",
+              getIndex: vi.fn(async () => secondEntries),
+              getDocument: vi.fn(async () => null),
+            },
+          ],
+        ]),
+        equipmentPackIds: [PACK_ID, secondPackId],
+      });
+      const basePolicy = policy();
+      const projection = await service.project(
+        context({
+          policy: policy({
+            sourcePolicy: { ...basePolicy.sourcePolicy, effectivePackIds: [PACK_ID, secondPackId] },
+          }),
+        })
+      );
+
+      expect(projection.entries).toHaveLength(8_501);
+      expect(yieldTask.mock.calls.length).toBeGreaterThanOrEqual(10);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("deduplicates in-flight indexes and caches by policy projection until pack invalidation", async () => {
     let releaseIndex: ((entries: readonly unknown[]) => void) | null = null;
     let entries = [dagger()];
@@ -84,6 +282,35 @@ describe("minimal equipment catalogue", () => {
 
     expect((await stale).entries[0]?.img).toBe("icons/weapons/daggers/current.webp");
     expect((await current).entries[0]?.img).toBe("icons/weapons/daggers/current.webp");
+  });
+
+  it("retries a projection invalidated during chunked evaluation before publishing stale candidates", async () => {
+    let entry = dagger({ img: "icons/weapons/daggers/stale.webp" });
+    let service: ReturnType<typeof createEquipmentCatalogueService>;
+    let invalidated = false;
+    const yieldTask = vi.fn(async () => {
+      if (invalidated || yieldTask.mock.calls.length < 3) return;
+      invalidated = true;
+      entry = dagger({ img: "icons/weapons/daggers/current.webp" });
+      service.invalidatePack(PACK_ID);
+    });
+    vi.stubGlobal("scheduler", { yield: yieldTask });
+    try {
+      service = createEquipmentCatalogueService({
+        packs: packMap({ getIndex: vi.fn(async () => [entry]) }),
+        equipmentPackIds: [PACK_ID],
+      });
+
+      const projection = await service.project(context());
+
+      expect(invalidated).toBe(true);
+      expect(projection.entries[0]?.img).toBe("icons/weapons/daggers/current.webp");
+      expect((await service.hydratePreview(WF_080_21_DAGGER_UUID))?.previewIdentity).toBe(
+        projection.entries[0]?.previewIdentity
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("keeps the frozen Dagger tracer searchable, Common, priced, and available", async () => {
@@ -441,6 +668,39 @@ describe("minimal equipment catalogue", () => {
     const changed = await service.hydratePreview(WF_080_21_DAGGER_UUID);
     expect(changed?.previewIdentity).not.toBe(first?.previewIdentity);
     expect(getDocument).toHaveBeenCalledTimes(3);
+  });
+
+  it("keys preview identity from every normalized candidate fact without source object-order noise", async () => {
+    let entry = dagger();
+    const service = createEquipmentCatalogueService({
+      packs: packMap({ getIndex: vi.fn(async () => [entry]) }),
+      equipmentPackIds: [PACK_ID],
+    });
+    const projectIdentity = async () => (await service.project(context())).entries[0]!.previewIdentity;
+    const baseline = await projectIdentity();
+
+    entry = dagger({ system: { traits: { value: ["versatile-s", "thrown-10", "finesse", "agile"] } } });
+    service.invalidatePack(PACK_ID);
+    expect(await projectIdentity()).toBe(baseline);
+
+    const changes = [
+      dagger({ name: "Changed Dagger" }),
+      dagger({ img: "icons/changed.webp" }),
+      dagger({ type: "equipment" }),
+      dagger({ system: { level: { value: 1 } } }),
+      dagger({ system: { traits: { rarity: "uncommon" } } }),
+      dagger({ system: { traits: { value: ["agile"] } } }),
+      dagger({ system: { publication: { title: "Pathfinder GM Core" } } }),
+      dagger({ system: { price: { value: { sp: 3 } } } }),
+      dagger({ system: { price: { value: { sp: 2 }, per: 2 } } }),
+      dagger({ system: { quantity: 2 } }),
+      dagger({ system: { rules: [{ key: "FlatModifier" }] } }),
+    ];
+    for (const changed of changes) {
+      entry = changed;
+      service.invalidatePack(PACK_ID);
+      expect(await projectIdentity()).not.toBe(baseline);
+    }
   });
 
   it("deduplicates concurrent preview reads and quarantines an invalidated request that resolves late", async () => {

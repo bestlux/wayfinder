@@ -855,11 +855,30 @@ export function getFoundryEquipmentAcquisitionRuntime() {
     foundryRuntime ??= createEquipmentAcquisitionRuntime({
         packs: {
             get(packId) {
-                return game.packs?.get?.(packId);
+                return foundryEquipmentPackAdapter(packId);
             },
         },
     });
     return foundryRuntime;
+}
+function foundryEquipmentPackAdapter(packId) {
+    const pack = game.packs?.get?.(packId);
+    if (!pack)
+        return undefined;
+    return {
+        indexEntryIdentity: "stable-replacement",
+        documentName: pack.documentName,
+        metadata: pack.metadata,
+        getIndex: (options) => pack.getIndex(options),
+        getDocument: (documentId) => pack.getDocument(documentId),
+        ...(typeof pack.getDocuments === "function"
+            ? { getDocuments: (query) => pack.getDocuments(query) }
+            : {}),
+        ...(typeof pack.set === "function"
+            ? { set: (documentId, document) => pack.set(documentId, document) }
+            : {}),
+        ...(typeof pack.delete === "function" ? { delete: (documentId) => pack.delete(documentId) } : {}),
+    };
 }
 export function invalidateFoundryEquipmentCataloguePack(packId) {
     foundryRuntime?.invalidatePack(packId);

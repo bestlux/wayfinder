@@ -51,7 +51,7 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue, s
                 record.titanMaulerEligible,
         };
     });
-    const recordByUuid = new Map(catalogue.records.map((record) => [record.sourceUuid, record]));
+    const recordByUuid = new Map([...catalogue.records, ...(catalogue.lineRecords ?? [])].map((record) => [record.sourceUuid, record]));
     const plannedGrantById = new Map(acquisition?.plannedClassGrants.map((grant) => [grant.grantId, grant]) ?? []);
     const preview = records.find((record) => record.previewing) ?? null;
     const selectedTitanMaulerRecord = catalogue.titanMauler.selectedSourceUuid

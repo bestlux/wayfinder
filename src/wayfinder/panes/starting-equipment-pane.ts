@@ -13,6 +13,8 @@ export interface StartingEquipmentCatalogueProjection {
   readonly diagnostics?: readonly EquipmentSourceDiagnostic[];
   readonly query: string;
   readonly records: readonly StartingEquipmentCatalogueRecord[];
+  /** Stable metadata for reviewed cart lines that are outside the bounded browse page. */
+  readonly lineRecords?: readonly StartingEquipmentCatalogueRecord[];
   readonly filters: readonly { key: string; label: string; value: string }[];
   readonly activeFilters: Readonly<Record<string, readonly string[]>>;
   readonly previewSourceUuid: string | null;
@@ -95,7 +97,9 @@ export function buildStartingEquipmentPane(
         record.titanMaulerEligible,
     };
   });
-  const recordByUuid = new Map(catalogue.records.map((record) => [record.sourceUuid, record]));
+  const recordByUuid = new Map(
+    [...catalogue.records, ...(catalogue.lineRecords ?? [])].map((record) => [record.sourceUuid, record])
+  );
   const plannedGrantById = new Map(acquisition?.plannedClassGrants.map((grant) => [grant.grantId, grant]) ?? []);
   const preview = records.find((record) => record.previewing) ?? null;
   const selectedTitanMaulerRecord = catalogue.titanMauler.selectedSourceUuid

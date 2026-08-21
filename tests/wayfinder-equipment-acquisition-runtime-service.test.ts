@@ -426,6 +426,116 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(2);
   });
 
+  it("projects reviewed metadata for an ordinary cart line outside the bounded browse page", async () => {
+    const browseSources = Array.from({ length: 12 }, (_, index) =>
+      dagger({ id: `browse-${index}`, name: `Browse item ${String(index).padStart(2, "0")}` })
+    );
+    const offPage = dagger({ id: "off-page", name: "Zed Off-Page Gear", priceGp: 1 });
+    const sources = [...browseSources, offPage];
+    const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
+    const { runtime, request } = fixture({ getIndex: vi.fn(async () => sources), getDocument });
+    const line = await runtime.uiAdapter.prepareLine({
+      ...request,
+      sourceUuid: `Compendium.${PACK_ID}.Item.off-page`,
+    });
+    request.draft.acquisition = { ...request.draft.acquisition!, lines: [line] };
+    getDocument.mockClear();
+
+    const projection = await runtime.uiAdapter.project(request);
+
+    expect(projection.records).toHaveLength(12);
+    expect(projection.records).not.toContainEqual(expect.objectContaining({ name: "Zed Off-Page Gear" }));
+    expect(projection.lineRecords).toEqual([
+      expect.objectContaining({
+        sourceUuid: `Compendium.${PACK_ID}.Item.off-page`,
+        name: "Zed Off-Page Gear",
+        priceCopper: 100,
+      }),
+    ]);
+    expect(getDocument).toHaveBeenCalledTimes(12);
+    expect(getDocument).not.toHaveBeenCalledWith("off-page");
+
+    const pane = buildStartingEquipmentPane(
+      request.step,
+      request.draft,
+      { state: "complete", complete: true, status: "Ready", issue: null },
+      projection
+    );
+    expect(pane.catalogue.items).toHaveLength(12);
+    expect(pane.catalogue.items).not.toContainEqual(expect.objectContaining({ name: "Zed Off-Page Gear" }));
+    expect(pane.cart.lines).toEqual([expect.objectContaining({ name: "Zed Off-Page Gear" })]);
+  });
+
+  it.each([
+    ["Dwarf Clan Dagger", "dwarf-clan-dagger" as const, "Clan Dagger"],
+    ["Sarangay Head Gem", "sarangay-head-gem" as const, "Head Gem"],
+  ])("keeps the reviewed %s native recovery line named outside the browse page", async (_label, profileId, name) => {
+    const grant = nativeAncestryGrant(profileId);
+    const nativeSourceId = grant.expected.sourceUuid.split(".").at(-1)!;
+    const browseSources = Array.from({ length: 12 }, (_, index) =>
+      dagger({ id: `browse-${index}`, name: `Browse item ${String(index).padStart(2, "0")}` })
+    );
+    const nativeSource = dagger({
+      id: nativeSourceId,
+      name,
+      itemType: grant.expected.itemType === "weapon" ? "weapon" : "equipment",
+    });
+    const sources = [...browseSources, nativeSource];
+    const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
+    const { runtime, request } = fixture({ getIndex: vi.fn(async () => sources), getDocument });
+    let acquisition = recordPlannedClassGrants(request.draft.acquisition!, [grant]);
+    request.draft.acquisition = acquisition;
+    const classGrantPlan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: acquisition.draftId,
+      batchId: acquisition.batchId,
+      targetLevel: acquisition.targetLevel,
+      grants: [grant],
+    });
+    const lines = await runtime.prepareNativeClassGrantLines({
+      actor: request.actor,
+      characterDraft: request.draft,
+      acquisition,
+      classGrantPlan,
+    });
+    acquisition = {
+      ...acquisition,
+      lines: [...lines],
+      baseline: createEconomicBaseline({
+        actorId: "actor-1",
+        capturedAt: "2026-08-21T08:00:00.000Z",
+        currencyCopper: 0,
+        physicalItems: [],
+      }),
+    };
+    const reviewed = reviewRetainAll(acquisition, evaluateAcquisitionLedger(acquisition, classGrantPlan), {
+      userId: "owner-1",
+      reviewedAt: "2026-08-21T08:01:00.000Z",
+    });
+    request.draft.acquisition = reviewed;
+    getDocument.mockClear();
+
+    const projection = await runtime.uiAdapter.project(request);
+    const pane = buildStartingEquipmentPane(
+      request.step,
+      request.draft,
+      { state: "complete", complete: true, status: "Keeping all your coin", issue: null },
+      projection
+    );
+
+    expect(projection.records).toHaveLength(12);
+    expect(projection.records).not.toContainEqual(expect.objectContaining({ sourceUuid: grant.expected.sourceUuid }));
+    expect(projection.lineRecords).toEqual([expect.objectContaining({ sourceUuid: grant.expected.sourceUuid, name })]);
+    expect(getDocument).toHaveBeenCalledTimes(12);
+    expect(getDocument).not.toHaveBeenCalledWith(nativeSourceId);
+    expect(pane.catalogue.items).toHaveLength(12);
+    expect(pane.catalogue.items).not.toContainEqual(expect.objectContaining({ name }));
+    expect(pane.review).toMatchObject({ disposition: "retain-all", label: "Keeping all your coin" });
+    expect(pane.cart.lines).toEqual([
+      expect.objectContaining({ name, canRemove: false, fundingLabel: "Granted by your build · free" }),
+    ]);
+  });
+
   it("blocks a missing approved source with its typed diagnostic and no acquisition mutation", async () => {
     const source = dagger();
     const getDocument = vi.fn(async () => document(source));
@@ -2103,6 +2213,34 @@ function fixedNativeGrant() {
     resaleRule: "normal",
     eligibilityEvidence: { kind: "fixed-native-profile" },
     nativeGrantChainSourceUuids: [u.formulaBookFeature, u.alchemyFeature, u.alchemistClass],
+  });
+}
+
+function nativeAncestryGrant(profileId: "dwarf-clan-dagger" | "sarangay-head-gem") {
+  const u = CLASS_GRANT_PROFILE_UUIDS;
+  const dwarf = profileId === "dwarf-clan-dagger";
+  return createPlannedClassGrant({
+    grantId: dwarf
+      ? "class-grant:dwarf-clan-dagger:ancestry-level-1"
+      : "class-grant:sarangay-head-gem:ancestry-level-1",
+    profileId,
+    origin: {
+      sourceSlotId: "ancestry-level-1",
+      sourceUuid: dwarf ? u.dwarfAncestry : u.sarangayAncestry,
+    },
+    granterSourceUuid: dwarf ? u.clanDaggerFeature : u.headGemFeature,
+    expected: {
+      sourceUuid: dwarf ? u.clanDaggerItem : u.headGemItem,
+      quantity: 1,
+      itemType: dwarf ? "weapon" : "equipment",
+    },
+    materializer: "pf2e-native",
+    eligibilityKind: "fixed-class-grant",
+    resaleRule: "normal",
+    eligibilityEvidence: { kind: "fixed-native-profile" },
+    nativeGrantChainSourceUuids: dwarf
+      ? [u.clanDaggerFeature, u.dwarfAncestry]
+      : [u.headGemFeature, u.sarangayAncestry],
   });
 }
 

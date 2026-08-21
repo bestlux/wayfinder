@@ -341,12 +341,23 @@ export function createEquipmentAcquisitionRuntime(
             }
           })
         );
+        const visibleSourceUuids = new Set(records.map((record) => record.sourceUuid));
+        const projectedEntryByUuid = new Map(projectedEntries.map((entry) => [entry.sourceUuid, entry]));
+        const lineRecordSourceUuids = new Set(visibleSourceUuids);
+        const lineRecords = acquisition.lines.flatMap((line) => {
+          if (lineRecordSourceUuids.has(line.sourceUuid)) return [];
+          const entry = projectedEntryByUuid.get(line.sourceUuid);
+          if (!entry) return [];
+          lineRecordSourceUuids.add(line.sourceUuid);
+          return [toUiRecord(entry, line.price)];
+        });
         return {
           state: "ready",
           message: `${entries.length} piece${entries.length === 1 ? "" : "s"} of gear to browse.`,
           diagnostics: [],
           query: request.query,
           records,
+          lineRecords,
           filters: catalogueFilters(entries),
           activeFilters: request.filters,
           previewSourceUuid: request.previewSourceUuid,

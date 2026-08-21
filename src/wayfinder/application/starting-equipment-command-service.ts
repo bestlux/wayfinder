@@ -827,6 +827,9 @@ function setLineQuantity(draft: AcquisitionDraftState, lineId: string, quantity:
   if (current.price.configurationComponents) {
     throw new TypeError("Configured equipment is prepared as one exact PF2E item and has a fixed quantity.");
   }
+  if (current.kitExpansion) {
+    throw new TypeError("Adventurer's Pack is a fixed one-pack purchase.");
+  }
   const price = createAcquisitionPriceSnapshot({
     basePrice: current.price.basePrice,
     size: current.price.size,

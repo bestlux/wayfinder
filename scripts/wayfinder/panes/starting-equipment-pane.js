@@ -69,11 +69,16 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue, s
             fundingLabel: fundingLabel(line.funding, policy?.allowances ?? []),
             canRemove: line.funding.lane !== "class-grant" ||
                 plannedGrantById.get(line.funding.grant.plannedGrantId)?.materializer !== "pf2e-native",
-            canChangeQuantity: line.funding.lane !== "class-grant" && !line.price.configurationComponents,
+            canChangeQuantity: line.funding.lane !== "class-grant" && !line.price.configurationComponents && !line.kitExpansion,
             unavailableReason: line.funding.lane === "class-grant" || line.policyDecision.eligible
                 ? null
                 : "Your world's rules no longer allow this item.",
             focusId: `starting-equipment-line:${line.lineId}`,
+            children: line.kitExpansion?.items.map((item) => ({
+                name: item.name,
+                quantity: item.quantity,
+                nested: item.parentPath !== null,
+            })) ?? [],
         };
     }) ?? [];
     const disposition = acquisition?.disposition.kind ?? "not-started";

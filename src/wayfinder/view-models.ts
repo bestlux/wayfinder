@@ -510,6 +510,7 @@ export interface StartingEquipmentStepPane {
       canChangeQuantity: boolean;
       unavailableReason: string | null;
       focusId: string;
+      children: readonly { name: string; quantity: number; nested: boolean }[];
     }[];
     empty: boolean;
     spentLabel: string;

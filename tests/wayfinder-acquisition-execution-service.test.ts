@@ -400,6 +400,77 @@ describe("Wave 2 acquisition execution", () => {
     expect(outcome.manifest.entries.flatMap((entry) => entry.observedItems)).toHaveLength(2);
   });
 
+  it("preflights, topologically materializes, and retry-converges an Adventurer's Pack graph", async () => {
+    const fixture = reviewedFixture([kitLine()]);
+    const actor = new FakeActor();
+    actor.failBeforeAddOrdinal = 5;
+    const first = sessionFor(fixture.acquisition);
+
+    await expect(
+      first.executeAcquisitionItems({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/forced item failure/i);
+    expect(actor.acquisitionItems()).toHaveLength(4);
+    expect(actor.currencyCopper).toBe(0);
+
+    actor.failBeforeAddOrdinal = null;
+    const recoveryDraft = { ...fixture.draft, applyAttemptStepIds: ["starting-equipment-level-1"] };
+    const retry = sessionFor(fixture.acquisition);
+    await retry.executeAcquisitionItems({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+    });
+    await retry.executeAcquisitionCurrency({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      emitWriteCheckpoint: noCheckpoint,
+      persistCurrencyConvergenceWitness: ignoreCurrencyWitness,
+    });
+    const outcome = await retry.verifyAcquisitionOutcome({
+      actor,
+      draft: recoveryDraft,
+      classGrantPlan: fixture.classGrantPlan,
+      finalClassGrantReconciliation: finalReconciliation(actor, fixture.classGrantPlan),
+    });
+
+    expect(actor.acquisitionItems()).toHaveLength(9);
+    expect(actor.addOptions).toHaveLength(9);
+    expect(actor.currencyCopper).toBe(1_350);
+    const backpack = actor.acquisitionItems().find((item) => item.type === "backpack")!;
+    expect(
+      actor
+        .acquisitionItems()
+        .filter((item) => item.type !== "backpack")
+        .every((item) => item.system.containerId === backpack.id)
+    ).toBe(true);
+    expect(outcome.manifest.entries[0]?.kitExpansion?.profile).toBe("adventurers-pack-v1");
+    expect(outcome.manifest.entries[0]?.observedItems).toHaveLength(9);
+  });
+
+  it("rejects Adventurer's Pack child drift before any acquisition write", async () => {
+    const fixture = reviewedFixture([kitLine()]);
+    const actor = new FakeActor();
+    const session = sessionFor(fixture.acquisition, { drift: "kit-child" });
+
+    await expect(
+      session.executeAcquisitionItems({
+        actor,
+        draft: fixture.draft,
+        classGrantPlan: fixture.classGrantPlan,
+        emitWriteCheckpoint: noCheckpoint,
+      })
+    ).rejects.toThrow(/kit child .* drifted/i);
+    expect(actor.acquisitionItems()).toHaveLength(0);
+    expect(actor.currencyCopper).toBe(0);
+  });
+
   it("observes a PF2E-native formula book without duplicating it and records its exact manifest ID", async () => {
     const grant = formulaGrant();
     const fixture = reviewedFixture(
@@ -1126,6 +1197,59 @@ function line(overrides: Partial<AcquisitionLineDraft> = {}): AcquisitionLineDra
   };
 }
 
+function kitLine(): AcquisitionLineDraft {
+  const kitUuid = "Compendium.pf2e.equipment-srd.Item.2req0jGaxz8hScdB";
+  const childUuids = [
+    "Compendium.pf2e.equipment-srd.Item.3lgwjrFEsQVKzhh7",
+    "Compendium.pf2e.equipment-srd.Item.fyYnQf1NAx9fWFaS",
+    "Compendium.pf2e.equipment-srd.Item.VnPh324pKwd2ZB66",
+    "Compendium.pf2e.equipment-srd.Item.xShIDyydOMkGvGNb",
+    "Compendium.pf2e.equipment-srd.Item.UlIxxLm71UdRgCFE",
+    "Compendium.pf2e.equipment-srd.Item.L9ZV076913otGtiB",
+    "Compendium.pf2e.equipment-srd.Item.8Jdw4yAzWYylGePS",
+    "Compendium.pf2e.equipment-srd.Item.fagzYdmfYyMQ6J77",
+    "Compendium.pf2e.equipment-srd.Item.81aHsD27HFGnq1Nt",
+  ];
+  const quantities = [1, 1, 1, 10, 1, 2, 5, 1, 1];
+  const price = createAcquisitionPriceSnapshot({
+    basePrice: { kind: "priced", value: { sp: 15 } },
+    size: "small",
+    sizeSensitive: false,
+    preciousMaterial: false,
+    adjustedBulkPriceCopper: null,
+    configurationPriceCopper: 0,
+    pricePer: 1,
+    sourceQuantity: 1,
+    requestedQuantity: 1,
+  });
+  if (price.ok === false) throw new Error(price.message);
+  return line({
+    sourceUuid: kitUuid,
+    documentFingerprint: fingerprintEquipmentDocument(freshEmbeddedSource(kitUuid)),
+    priceFingerprint: "adventurers-pack-price",
+    stackingIntent: "separate",
+    price: price.value,
+    kitExpansion: {
+      version: 1,
+      profile: "adventurers-pack-v1",
+      requestedQuantity: 1,
+      items: childUuids.map((sourceUuid, index) => ({
+        expansionPath: index === 0 ? "mca3x" : `mca3x/child-${index}`,
+        parentPath: index === 0 ? null : "mca3x",
+        sourceUuid,
+        documentFingerprint: fingerprintEquipmentDocument({
+          ...freshEmbeddedSource(sourceUuid),
+          type: index === 0 ? "backpack" : "equipment",
+        }),
+        name: index === 0 ? "Backpack" : `Pack child ${index}`,
+        itemType: index === 0 ? ("backpack" as const) : ("equipment" as const),
+        quantity: quantities[index]!,
+        size: "medium",
+      })),
+    },
+  });
+}
+
 function acquisitionPrice(size: AcquisitionLineDraft["price"]["size"] = "medium") {
   const resolved = createAcquisitionPriceSnapshot({
     basePrice: { kind: "priced", value: { gp: 1 } },
@@ -1195,7 +1319,7 @@ function titanGrant(): PlannedClassGrantV1 {
 function sessionFor(
   acquisition: AcquisitionDraftState,
   options: {
-    readonly drift?: "source" | "document" | "price" | "resolved-price" | "policy" | "relabeled-source";
+    readonly drift?: "source" | "document" | "price" | "resolved-price" | "policy" | "relabeled-source" | "kit-child";
     readonly currentPolicy?: AcquisitionPolicySnapshot;
     readonly events?: string[];
     readonly authorityError?: Error;
@@ -1213,6 +1337,13 @@ function sessionFor(
       options.events?.push("source");
       const policyDecision =
         options.drift === "policy" ? { ...entry.policyDecision, rarityBasis: "changed-policy" } : entry.policyDecision;
+      const expandedSources = entry.kitExpansion?.items.map((item, index) => ({
+        expansionPath: item.expansionPath,
+        source:
+          options.drift === "kit-child" && index === 1
+            ? { ...freshEmbeddedSource(item.sourceUuid), type: item.itemType, name: "Drifted child" }
+            : { ...freshEmbeddedSource(item.sourceUuid), type: item.itemType },
+      }));
       return {
         source: freshEmbeddedSource(entry.sourceUuid, options.drift === "relabeled-source"),
         sourceUuid: options.drift === "source" ? `${entry.sourceUuid}.changed` : entry.sourceUuid,
@@ -1221,6 +1352,7 @@ function sessionFor(
         priceFingerprint: options.drift === "price" ? `${entry.priceFingerprint}-changed` : entry.priceFingerprint,
         resolvedPrice: freshSourcePrice(entry, options.drift === "resolved-price"),
         policyDecision,
+        ...(expandedSources ? { expandedSources } : {}),
       };
     },
     readHistory: () => {
@@ -1422,7 +1554,7 @@ interface FakeItem extends ActorItemLike {
       readonly price?: { readonly value: Record<string, number>; readonly per: number };
     };
   };
-  readonly container: null;
+  readonly container: { readonly id: string } | null;
   readonly isOfType: (...types: string[]) => boolean;
 }
 
@@ -1518,6 +1650,7 @@ class FakeActor {
     const flags = structuredClone(source.flags ?? {});
     if (this.itemWriteMode === "merged") delete flags["wayfinder-pf2e"];
     const size = this.itemWriteMode === "wrong-size" ? "med" : source.system?.size;
+    const containerId = typeof source.system?.containerId === "string" ? source.system.containerId : null;
     const item: FakeItem = {
       id: `item-${this.nextItemId++}`,
       type: String(source.type ?? "equipment"),
@@ -1525,9 +1658,9 @@ class FakeActor {
       quantity,
       isCurrency: false,
       flags,
-      system: { quantity, containerId: null, size },
-      _source: { system: { quantity, containerId: null, size } },
-      container: null,
+      system: { quantity, containerId, size },
+      _source: { system: { quantity, containerId, size } },
+      container: containerId ? { id: containerId } : null,
       isOfType: (...types) => types.includes("physical") || types.includes(String(source.type ?? "equipment")),
     };
     this.items.contents.push(item);

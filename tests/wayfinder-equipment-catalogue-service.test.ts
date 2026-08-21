@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  ADVENTURERS_PACK_UUID,
   createEquipmentAccessRegistry,
   createEquipmentCatalogueDraftContext,
   createEquipmentCatalogueService,
@@ -147,6 +148,45 @@ describe("minimal equipment catalogue", () => {
       unavailableReasons: [],
       price: { kind: "priced", value: { cp: 10 }, copperValue: 10, per: 10, sourceQuantity: 12 },
     });
+  });
+
+  it("qualifies only the exact Adventurer's Pack kit profile and leaves adjacent kits unavailable", async () => {
+    const service = createEquipmentCatalogueService({
+      packs: packMap({
+        entries: [
+          {
+            _id: ADVENTURERS_PACK_UUID.split(".").at(-1),
+            name: "Adventurer's Pack",
+            type: "kit",
+            system: {
+              slug: "adventurers-pack",
+              price: { value: { sp: 15 } },
+              publication: { title: "Pathfinder Player Core" },
+              rules: [],
+            },
+          },
+          {
+            _id: "YQLWR9cCXQY5xaaG",
+            name: "Cartographer's Kit",
+            type: "kit",
+            system: { slug: "cartographers-kit", price: { value: { gp: 3 } }, rules: [] },
+          },
+        ],
+      }),
+      equipmentPackIds: [PACK_ID],
+    });
+
+    const projection = await service.project(context());
+    expect(projection.entries.find((entry) => entry.sourceUuid === ADVENTURERS_PACK_UUID)).toMatchObject({
+      available: true,
+      level: 0,
+      rarity: "common",
+      price: { copperValue: 150 },
+      unavailableReasons: [],
+    });
+    const cartographersKit = projection.entries.find((entry) => entry.name === "Cartographer's Kit");
+    expect(cartographersKit?.available).toBe(false);
+    expect(reasonCodes(cartographersKit)).toContain("container-or-kit-excluded");
   });
 
   it("keeps explicit zero purchasable and diagnoses malformed unit pricing", async () => {

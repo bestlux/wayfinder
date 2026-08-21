@@ -9,6 +9,7 @@ import { createEquipmentCatalogueDraftContext, createEquipmentCatalogueService, 
 import { resolveCurrentEquipmentSourceDiagnostics, resolveEquipmentPolicyForActor, } from "./equipment-policy-service.js";
 import { materializedPhysicalItemSize, prepareTransientDraftedEquipmentActor, resolvePreparedDraftedEquipmentSize, } from "./equipment-size-preparation-service.js";
 import { sortEquipmentSourceDiagnostics } from "./equipment-source-policy.js";
+import { isQualifiedKitSource, prepareAdventurersPackExpansion } from "./pf2e-kit-adapter.js";
 import { registerStartingEquipmentUiAdapter, } from "./starting-equipment-ui-adapter.js";
 export class ConfiguredItemHandoffRequiredError extends Error {
     reason;
@@ -50,6 +51,7 @@ export function createEquipmentAcquisitionRuntime(options) {
     const prepareConfiguredItem = options.prepareConfiguredItem ?? prepareTransientConfiguredItem;
     const preparePhysicalItem = options.preparePhysicalItem ?? prepareTransientPhysicalItem;
     const prepareDraftedActor = options.prepareDraftedActor ?? prepareTransientDraftedEquipmentActor;
+    const prepareKitExpansion = options.prepareKitExpansion ?? prepareAdventurersPackExpansion;
     const catalogues = new Map();
     const catalogueFor = (policy) => {
         const packIds = [...new Set(policy.sourcePolicy.effectivePackIds)].sort((left, right) => left.localeCompare(right));
@@ -207,6 +209,14 @@ export function createEquipmentAcquisitionRuntime(options) {
                 preparePhysicalItem,
             });
             const itemPermanence = permanence(resolved.candidate.itemType);
+            const kitExpansion = isQualifiedKitSource(resolved.candidate.sourceUuid)
+                ? await prepareKitExpansion({
+                    sourceUuid: resolved.candidate.sourceUuid,
+                    kitDocument: await requireDocument(fetchDocumentByUuid, resolved.candidate.sourceUuid),
+                    targetSize,
+                    fetchDocumentByUuid,
+                })
+                : null;
             const funding = resolveRequestedFunding(policy, request.funding ?? { lane: "currency" }, resolved.candidate.level, itemPermanence);
             return {
                 schemaVersion: 1,
@@ -219,8 +229,9 @@ export function createEquipmentAcquisitionRuntime(options) {
                 componentKind: "baseline-item",
                 policyDecision: cloneData(resolved.policyDecision),
                 funding,
-                stackingIntent: "aggregate",
+                stackingIntent: kitExpansion ? "separate" : "aggregate",
                 price: priced.price,
+                ...(kitExpansion ? { kitExpansion: cloneData(kitExpansion.snapshot) } : {}),
             };
         },
         async prepareTitanMaulerLine(request) {
@@ -405,6 +416,17 @@ export function createEquipmentAcquisitionRuntime(options) {
                 prepareConfiguredItem,
                 preparePhysicalItem,
             });
+            const kitExpansion = lines[0]?.kitExpansion
+                ? await prepareKitExpansion({
+                    sourceUuid: resolved.candidate.sourceUuid,
+                    kitDocument: await requireDocument(fetchDocumentByUuid, resolved.candidate.sourceUuid),
+                    targetSize,
+                    fetchDocumentByUuid,
+                })
+                : null;
+            if (lines.some((line) => canonicalJson(line.kitExpansion ?? null) !== canonicalJson(kitExpansion?.snapshot ?? null))) {
+                throw new Error(`Acquisition kit expansion drifted for ${request.entry.entryId}.`);
+            }
             return {
                 source: cloneData(resolved.source),
                 sourceUuid: resolved.candidate.sourceUuid,
@@ -412,6 +434,14 @@ export function createEquipmentAcquisitionRuntime(options) {
                 priceFingerprint: priced.priceFingerprint,
                 resolvedPrice: priced.price,
                 policyDecision: cloneData(resolved.policyDecision),
+                ...(kitExpansion
+                    ? {
+                        expandedSources: [...kitExpansion.sources].map(([expansionPath, source]) => ({
+                            expansionPath,
+                            source: cloneData(source),
+                        })),
+                    }
+                    : {}),
             };
         },
         async resolveCurrentCharacterAccessRef(request) {
@@ -730,6 +760,29 @@ function resolveRequestedFunding(policy, requested, itemLevel, itemPermanence) {
     return { lane: "allowance", assignment: { mode: "player", allowanceId: allowance.allowanceId } };
 }
 async function buildResolvedPrice(input) {
+    if (isQualifiedKitSource(input.resolved.candidate.sourceUuid)) {
+        if (input.requestedQuantity !== 1 || input.resolved.candidate.itemType !== "kit") {
+            throw new TypeError("Adventurer's Pack is a fixed one-pack purchase.");
+        }
+        const snapshot = createAcquisitionPriceSnapshot({
+            basePrice: {
+                kind: "priced",
+                value: cloneData(input.resolved.candidate.price.value ?? {}),
+            },
+            size: input.targetSize,
+            sizeSensitive: false,
+            preciousMaterial: false,
+            adjustedBulkPriceCopper: null,
+            configurationPriceCopper: 0,
+            pricePer: 1,
+            sourceQuantity: 1,
+            requestedQuantity: 1,
+        });
+        if (snapshot.ok === false || snapshot.value.linePriceCopper !== 150) {
+            throw new Error("Adventurer's Pack no longer has its qualified 15 sp price.");
+        }
+        return { price: snapshot.value, priceFingerprint: input.resolved.priceFingerprint };
+    }
     const configuration = configuredItemFacts(input.resolved.source, input.resolved.candidate.itemType);
     if (!configuration) {
         return {
@@ -859,6 +912,12 @@ async function buildResolvedPrice(input) {
         price: preparedPrice,
         priceFingerprint: fingerprintPreparedPrice(preparedPrice),
     };
+}
+async function requireDocument(fetchDocumentByUuid, uuid) {
+    const document = await fetchDocumentByUuid(uuid);
+    if (!document)
+        throw new Error(`Equipment document ${uuid} is unavailable.`);
+    return document;
 }
 function buildSimpleResolvedPrice(input) {
     const normalized = input.resolved.candidate.price;

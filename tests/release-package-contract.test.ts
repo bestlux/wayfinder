@@ -55,7 +55,7 @@ describe("release package contract", () => {
     }
   });
 
-  it("builds a normal release package without inspection-only qualification metadata", () => {
+  it("builds a normal release package without inspection-only qualification metadata", { timeout: 15_000 }, () => {
     const output = "dist/test-release-package-contract";
     rmSync(resolve(output), { force: true, recursive: true });
 

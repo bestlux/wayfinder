@@ -328,6 +328,36 @@ describe("starting equipment command service", () => {
     });
   });
 
+  it("keeps an expanded Adventurer's Pack at one logical purchase", async () => {
+    const line = acquisitionLine({
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.2req0jGaxz8hScdB",
+      stackingIntent: "separate",
+      kitExpansion: {
+        version: 1,
+        profile: "adventurers-pack-v1",
+        requestedQuantity: 1,
+        items: Array.from({ length: 9 }, (_, index) => ({
+          expansionPath: index === 0 ? "mca3x" : `mca3x/child-${index}`,
+          parentPath: index === 0 ? null : "mca3x",
+          sourceUuid: `Compendium.pf2e.equipment-srd.Item.child-${index}`,
+          documentFingerprint: `fingerprint-${index}`,
+          name: index === 0 ? "Backpack" : `Child ${index}`,
+          itemType: index === 0 ? ("backpack" as const) : ("equipment" as const),
+          quantity: 1,
+          size: "medium" as const,
+        })),
+      },
+    });
+    const fixture = acquisitionFixture({ lines: [line], disposition: "unreviewed" });
+
+    await expect(
+      executeStartingEquipmentCommand(
+        { type: "set-quantity", lineId: line.lineId, quantity: 2 },
+        commandContext(fixture.draft)
+      )
+    ).rejects.toThrow(/fixed one-pack purchase/i);
+  });
+
   it("moves unsafe configured equipment into acknowledged zero-write handoff", async () => {
     const context = commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft);
     const result = await executeStartingEquipmentCommand(

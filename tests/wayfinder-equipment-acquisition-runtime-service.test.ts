@@ -9,6 +9,7 @@ import {
   EquipmentSourceHealthError,
 } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
 import {
+  ADVENTURERS_PACK_UUID,
   createEquipmentAccessRegistry,
   type EquipmentAccessRegistry,
   type EquipmentCataloguePackLike,
@@ -45,6 +46,66 @@ const FORMULA_BOOK_ID = "qCEOZ6109Yo34tRx";
 const ANCESTRY_UUID = "Compendium.pf2e.ancestries.Item.ancestry";
 
 describe("equipment acquisition runtime", () => {
+  it("persists and revalidates the exact Adventurer's Pack expansion as one 15 sp purchase", async () => {
+    const kit = {
+      _id: ADVENTURERS_PACK_UUID.split(".").at(-1),
+      name: "Adventurer's Pack",
+      type: "kit",
+      system: {
+        slug: "adventurers-pack",
+        price: { value: { sp: 15 } },
+        publication: { title: "Pathfinder Player Core" },
+        rules: [],
+      },
+    };
+    const items = Array.from({ length: 9 }, (_, index) => ({
+      expansionPath: index === 0 ? "mca3x" : `mca3x/child-${index}`,
+      parentPath: index === 0 ? null : "mca3x",
+      sourceUuid: `Compendium.pf2e.equipment-srd.Item.child-${index}`,
+      documentFingerprint: `child-fingerprint-${index}`,
+      name: index === 0 ? "Backpack" : `Child ${index}`,
+      itemType: index === 0 ? ("backpack" as const) : ("equipment" as const),
+      quantity: index === 3 ? 10 : 1,
+      size: "medium" as const,
+    }));
+    const prepareKitExpansion = vi.fn(async () => ({
+      snapshot: { version: 1 as const, profile: "adventurers-pack-v1" as const, requestedQuantity: 1 as const, items },
+      sources: new Map(items.map((item) => [item.expansionPath, { name: item.name, type: item.itemType }])),
+    }));
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [kit]),
+        getDocument: vi.fn(async () => document(kit)),
+      },
+      {
+        prepareKitExpansion,
+        fetchDocumentByUuid: async (uuid) =>
+          uuid === ANCESTRY_UUID
+            ? { type: "ancestry", system: { size: "sm" } }
+            : uuid === ADVENTURERS_PACK_UUID
+              ? { ...kit, createGrantedItems: vi.fn() }
+              : null,
+      }
+    );
+
+    const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: ADVENTURERS_PACK_UUID });
+    expect(line).toMatchObject({
+      sourceUuid: ADVENTURERS_PACK_UUID,
+      stackingIntent: "separate",
+      price: { linePriceCopper: 150, requestedQuantity: 1, materializedQuantity: 1, size: "small" },
+      kitExpansion: { profile: "adventurers-pack-v1" },
+    });
+    expect(line.kitExpansion?.items).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Backpack" })]));
+    const resolved = await runtime.resolveSourceForApply({
+      actor: request.actor,
+      characterDraft: { ...request.draft, acquisition: { ...request.draft.acquisition!, lines: [line] } },
+      acquisition: { ...request.draft.acquisition!, lines: [line] },
+      entry: { ...preparedEntry(line), kitExpansion: line.kitExpansion },
+    });
+    expect(resolved.expandedSources).toHaveLength(9);
+    expect(prepareKitExpansion).toHaveBeenCalledTimes(2);
+  });
+
   it("projects the exact lump-sum boundary and rejects at-level purchases", async () => {
     const boundary = dagger({ id: "boundary", level: 4, priceGp: 1 });
     const atLevel = dagger({ id: "at-level", level: 5, priceGp: 1 });
@@ -1624,6 +1685,9 @@ function fixture(
     readonly prepareDraftedActor?: NonNullable<
       Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareDraftedActor"]
     >;
+    readonly prepareKitExpansion?: NonNullable<
+      Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareKitExpansion"]
+    >;
     readonly ancestrySize?: "tiny" | "sm" | "med" | "lg" | "huge" | "grg";
     readonly sourceDiagnostics?: readonly EquipmentSourceDiagnostic[];
   } = {}
@@ -1669,6 +1733,7 @@ function fixture(
       prepareConfiguredItem: options.prepareConfiguredItem,
       preparePhysicalItem: options.preparePhysicalItem ?? prepareTestPhysicalItem,
       prepareDraftedActor: options.prepareDraftedActor ?? prepareTestDraftedActor,
+      prepareKitExpansion: options.prepareKitExpansion,
       mintLineId: () => "wf-line-test",
     }),
     request: {

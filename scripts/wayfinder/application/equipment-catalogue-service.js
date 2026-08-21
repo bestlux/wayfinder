@@ -1,8 +1,10 @@
 import { cloneData } from "../../shared/cloning.js";
+import { ADVENTURERS_PACK_SOURCE_UUID } from "../domain/acquisition-types.js";
 import { evaluateEquipmentItemAuthority, resolveEquipmentItemExceptionJudgmentIds, } from "../domain/equipment-policy.js";
 import { sortEquipmentSourceDiagnostics, sourceDiagnostic, } from "./equipment-source-policy.js";
 export const EQUIPMENT_CATALOGUE_PROJECTION_VERSION = 1;
 export const WF_080_21_DAGGER_UUID = "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z";
+export const ADVENTURERS_PACK_UUID = ADVENTURERS_PACK_SOURCE_UUID;
 const INDEX_FIELDS = Object.freeze([
     "img",
     "type",
@@ -459,20 +461,21 @@ function normalizeCandidate(source, packId, sourceUuid) {
     const rawRules = Array.isArray(system.rules) ? system.rules : [];
     const ruleKeys = uniqueSorted(rawRules.map((rule) => (nonEmpty(record(rule).key) ? String(record(rule).key) : "<unknown>")));
     const itemType = nonEmpty(value.type) ? value.type.trim().toLowerCase() : "unknown";
-    const rarity = equipmentRarity(traitsRoot.rarity);
+    const qualifiedKit = sourceUuid === ADVENTURERS_PACK_UUID && itemType === "kit";
+    const rarity = qualifiedKit ? "common" : equipmentRarity(traitsRoot.rarity);
     const publication = record(system.publication);
     const legacySource = record(system.source);
     const publicationSlug = slugify(nonEmpty(publication.title) ? publication.title : nonEmpty(legacySource.value) ? legacySource.value : "");
     const price = normalizePrice(system);
-    const level = nonNegativeInteger(record(system.level).value);
+    const level = qualifiedKit ? 0 : nonNegativeInteger(record(system.level).value);
     const reasons = [];
     if (itemType === "treasure") {
         reasons.push(reason("treasure-excluded", "Treasure is excluded from equipment acquisition."));
     }
-    else if (CONTAINER_ITEM_TYPES.has(itemType)) {
+    else if (CONTAINER_ITEM_TYPES.has(itemType) && !qualifiedKit) {
         reasons.push(reason("container-or-kit-excluded", "Kits are not supported in this catalogue."));
     }
-    else if (!PHYSICAL_ITEM_TYPES.has(itemType)) {
+    else if (!PHYSICAL_ITEM_TYPES.has(itemType) && !qualifiedKit) {
         reasons.push(reason("item-type-unsupported", `Item type ${itemType} is not supported for equipment acquisition.`));
     }
     if (price.kind === "missing")

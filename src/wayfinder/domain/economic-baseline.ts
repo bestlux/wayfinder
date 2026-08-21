@@ -65,6 +65,7 @@ export interface EconomicRetryExpectation {
     readonly sourceUuid: string;
     readonly quantity: number;
     readonly containerId: string | null;
+    readonly ownedContainerId?: string | null;
     readonly stackingIntent: AcquisitionStackingIntent;
   }[];
 }
@@ -271,7 +272,7 @@ export function evaluateEconomicAdmission(args: {
     return blocked(baseline, "retry-identity-mismatch", "The retry expectation belongs to a different draft or batch.");
   }
 
-  const retryEntries = new Map(retry?.expectedEntries.map((entry) => [entry.entryId, entry]) ?? []);
+  const retryEntries = new Map(retry?.expectedEntries.map((entry) => [entry.plannedItemId, entry]) ?? []);
   if (retry && retryEntries.size !== retry.expectedEntries.length) {
     return blocked(baseline, "retry-identity-mismatch", "The retry expectation contains duplicate entry identities.");
   }
@@ -280,7 +281,15 @@ export function evaluateEconomicAdmission(args: {
   for (const item of baseline.physicalItems) {
     if (ignoredClassGrantItemIds.has(item.itemId)) continue;
     const identity = item.acquisitionIdentity;
-    const expected = identity ? retryEntries.get(identity.entryId) : null;
+    const expected = identity ? retryEntries.get(identity.plannedItemId) : null;
+    const expectedContainerId =
+      expected?.plannedContainerId === null
+        ? null
+        : (baseline.physicalItems.find(
+            (candidate) =>
+              retryEntries.get(candidate.acquisitionIdentity?.plannedItemId ?? "")?.ownedContainerId ===
+              expected?.plannedContainerId
+          )?.itemId ?? null);
     if (
       retry &&
       identity?.draftId === args.draftId &&
@@ -292,8 +301,7 @@ export function evaluateEconomicAdmission(args: {
       expected.stackingIntent === identity.stackingIntent &&
       expected.sourceUuid === item.sourceUuid &&
       expected.quantity === item.quantity &&
-      expected.containerId === item.containerId &&
-      !observedRetryEntries.includes(identity.entryId)
+      expectedContainerId === item.containerId
     ) {
       observedRetryEntries.push(identity.entryId);
       continue;

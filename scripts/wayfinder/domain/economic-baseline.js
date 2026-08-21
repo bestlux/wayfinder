@@ -101,7 +101,7 @@ export function evaluateEconomicAdmission(args) {
     if (retry && (retry.draftId !== args.draftId || retry.batchId !== args.batchId || !nonEmpty(retry.manifestId))) {
         return blocked(baseline, "retry-identity-mismatch", "The retry expectation belongs to a different draft or batch.");
     }
-    const retryEntries = new Map(retry?.expectedEntries.map((entry) => [entry.entryId, entry]) ?? []);
+    const retryEntries = new Map(retry?.expectedEntries.map((entry) => [entry.plannedItemId, entry]) ?? []);
     if (retry && retryEntries.size !== retry.expectedEntries.length) {
         return blocked(baseline, "retry-identity-mismatch", "The retry expectation contains duplicate entry identities.");
     }
@@ -111,7 +111,11 @@ export function evaluateEconomicAdmission(args) {
         if (ignoredClassGrantItemIds.has(item.itemId))
             continue;
         const identity = item.acquisitionIdentity;
-        const expected = identity ? retryEntries.get(identity.entryId) : null;
+        const expected = identity ? retryEntries.get(identity.plannedItemId) : null;
+        const expectedContainerId = expected?.plannedContainerId === null
+            ? null
+            : (baseline.physicalItems.find((candidate) => retryEntries.get(candidate.acquisitionIdentity?.plannedItemId ?? "")?.ownedContainerId ===
+                expected?.plannedContainerId)?.itemId ?? null);
         if (retry &&
             identity?.draftId === args.draftId &&
             identity.batchId === args.batchId &&
@@ -122,8 +126,7 @@ export function evaluateEconomicAdmission(args) {
             expected.stackingIntent === identity.stackingIntent &&
             expected.sourceUuid === item.sourceUuid &&
             expected.quantity === item.quantity &&
-            expected.containerId === item.containerId &&
-            !observedRetryEntries.includes(identity.entryId)) {
+            expectedContainerId === item.containerId) {
             observedRetryEntries.push(identity.entryId);
             continue;
         }

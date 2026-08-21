@@ -164,6 +164,55 @@ describe("starting equipment pane", () => {
     expect(pane.cart.lines[0]?.quantity).toBe(12);
   });
 
+  it("shows Adventurer's Pack child rows while keeping the logical purchase quantity fixed", () => {
+    const draft = createEmptyDraft(1);
+    const kitLine = acquisitionLine({
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.2req0jGaxz8hScdB",
+      stackingIntent: "separate",
+      kitExpansion: {
+        version: 1,
+        profile: "adventurers-pack-v1",
+        requestedQuantity: 1,
+        items: Array.from({ length: 9 }, (_, index) => ({
+          expansionPath: index === 0 ? "mca3x" : `mca3x/child-${index}`,
+          parentPath: index === 0 ? null : "mca3x",
+          sourceUuid: `Compendium.pf2e.equipment-srd.Item.child-${index}`,
+          documentFingerprint: `fingerprint-${index}`,
+          name: index === 0 ? "Backpack" : `Child ${index}`,
+          itemType: index === 0 ? ("backpack" as const) : ("equipment" as const),
+          quantity: index === 3 ? 10 : 1,
+          size: "medium" as const,
+        })),
+      },
+    });
+    draft.acquisition = acquisitionFixture({ lines: [kitLine], disposition: "unreviewed" }).draft;
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(1),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        records: [],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      }
+    );
+
+    expect(pane.cart.lines[0]).toMatchObject({
+      quantity: 1,
+      canChangeQuantity: false,
+      children: expect.arrayContaining([
+        { name: "Backpack", quantity: 1, nested: false },
+        { name: "Child 3", quantity: 10, nested: true },
+      ]),
+    });
+  });
+
   it("projects class-grant cart lines as fixed and policy-authorized by their grant", () => {
     const draft = createEmptyDraft(1);
     const nativeGrant = fixedNativeGrant();

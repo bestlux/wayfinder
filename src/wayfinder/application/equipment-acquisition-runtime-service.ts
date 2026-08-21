@@ -60,6 +60,7 @@ import {
   resolvePreparedDraftedEquipmentSize,
 } from "./equipment-size-preparation-service.js";
 import { type EquipmentSourceDiagnostic, sortEquipmentSourceDiagnostics } from "./equipment-source-policy.js";
+import { isQualifiedKitSource, prepareAdventurersPackExpansion } from "./pf2e-kit-adapter.js";
 import {
   registerStartingEquipmentUiAdapter,
   type StartingEquipmentUiAdapter,
@@ -94,6 +95,7 @@ export interface EquipmentAcquisitionRuntimeOptions {
     readonly source: Readonly<Record<string, unknown>>;
   }) => unknown;
   readonly prepareDraftedActor?: PrepareDraftedEquipmentActor;
+  readonly prepareKitExpansion?: typeof prepareAdventurersPackExpansion;
 }
 
 export interface EquipmentApplySourceRequest {
@@ -209,6 +211,7 @@ export function createEquipmentAcquisitionRuntime(
   const prepareConfiguredItem = options.prepareConfiguredItem ?? prepareTransientConfiguredItem;
   const preparePhysicalItem = options.preparePhysicalItem ?? prepareTransientPhysicalItem;
   const prepareDraftedActor = options.prepareDraftedActor ?? prepareTransientDraftedEquipmentActor;
+  const prepareKitExpansion = options.prepareKitExpansion ?? prepareAdventurersPackExpansion;
   const catalogues = new Map<string, EquipmentCatalogueService>();
 
   const catalogueFor = (policy: EffectiveEquipmentPolicySnapshotV1): EquipmentCatalogueService => {
@@ -384,6 +387,14 @@ export function createEquipmentAcquisitionRuntime(
         preparePhysicalItem,
       });
       const itemPermanence = permanence(resolved.candidate.itemType);
+      const kitExpansion = isQualifiedKitSource(resolved.candidate.sourceUuid)
+        ? await prepareKitExpansion({
+            sourceUuid: resolved.candidate.sourceUuid,
+            kitDocument: await requireDocument(fetchDocumentByUuid, resolved.candidate.sourceUuid),
+            targetSize,
+            fetchDocumentByUuid,
+          })
+        : null;
       const funding = resolveRequestedFunding(
         policy,
         request.funding ?? { lane: "currency" },
@@ -401,8 +412,9 @@ export function createEquipmentAcquisitionRuntime(
         componentKind: "baseline-item",
         policyDecision: cloneData(resolved.policyDecision),
         funding,
-        stackingIntent: "aggregate",
+        stackingIntent: kitExpansion ? "separate" : "aggregate",
         price: priced.price,
+        ...(kitExpansion ? { kitExpansion: cloneData(kitExpansion.snapshot) } : {}),
       };
     },
     async prepareTitanMaulerLine(request) {
@@ -612,6 +624,19 @@ export function createEquipmentAcquisitionRuntime(
         prepareConfiguredItem,
         preparePhysicalItem,
       });
+      const kitExpansion = lines[0]?.kitExpansion
+        ? await prepareKitExpansion({
+            sourceUuid: resolved.candidate.sourceUuid,
+            kitDocument: await requireDocument(fetchDocumentByUuid, resolved.candidate.sourceUuid),
+            targetSize,
+            fetchDocumentByUuid,
+          })
+        : null;
+      if (
+        lines.some((line) => canonicalJson(line.kitExpansion ?? null) !== canonicalJson(kitExpansion?.snapshot ?? null))
+      ) {
+        throw new Error(`Acquisition kit expansion drifted for ${request.entry.entryId}.`);
+      }
       return {
         source: cloneData(resolved.source) as EmbeddedItemSource,
         sourceUuid: resolved.candidate.sourceUuid,
@@ -619,6 +644,14 @@ export function createEquipmentAcquisitionRuntime(
         priceFingerprint: priced.priceFingerprint,
         resolvedPrice: priced.price,
         policyDecision: cloneData(resolved.policyDecision),
+        ...(kitExpansion
+          ? {
+              expandedSources: [...kitExpansion.sources].map(([expansionPath, source]) => ({
+                expansionPath,
+                source: cloneData(source),
+              })),
+            }
+          : {}),
       };
     },
     async resolveCurrentCharacterAccessRef(request) {
@@ -994,6 +1027,29 @@ async function buildResolvedPrice(input: {
   readonly prepareConfiguredItem: NonNullable<EquipmentAcquisitionRuntimeOptions["prepareConfiguredItem"]>;
   readonly preparePhysicalItem: NonNullable<EquipmentAcquisitionRuntimeOptions["preparePhysicalItem"]>;
 }): Promise<{ readonly price: AcquisitionPriceSnapshot; readonly priceFingerprint: string }> {
+  if (isQualifiedKitSource(input.resolved.candidate.sourceUuid)) {
+    if (input.requestedQuantity !== 1 || input.resolved.candidate.itemType !== "kit") {
+      throw new TypeError("Adventurer's Pack is a fixed one-pack purchase.");
+    }
+    const snapshot = createAcquisitionPriceSnapshot({
+      basePrice: {
+        kind: "priced",
+        value: cloneData(input.resolved.candidate.price.value ?? {}),
+      },
+      size: input.targetSize,
+      sizeSensitive: false,
+      preciousMaterial: false,
+      adjustedBulkPriceCopper: null,
+      configurationPriceCopper: 0,
+      pricePer: 1,
+      sourceQuantity: 1,
+      requestedQuantity: 1,
+    });
+    if (snapshot.ok === false || snapshot.value.linePriceCopper !== 150) {
+      throw new Error("Adventurer's Pack no longer has its qualified 15 sp price.");
+    }
+    return { price: snapshot.value, priceFingerprint: input.resolved.priceFingerprint };
+  }
   const configuration = configuredItemFacts(input.resolved.source, input.resolved.candidate.itemType);
   if (!configuration) {
     return {
@@ -1143,6 +1199,15 @@ async function buildResolvedPrice(input: {
     price: preparedPrice,
     priceFingerprint: fingerprintPreparedPrice(preparedPrice),
   };
+}
+
+async function requireDocument(
+  fetchDocumentByUuid: (uuid: string) => Promise<unknown | null>,
+  uuid: string
+): Promise<unknown> {
+  const document = await fetchDocumentByUuid(uuid);
+  if (!document) throw new Error(`Equipment document ${uuid} is unavailable.`);
+  return document;
 }
 
 function buildSimpleResolvedPrice(input: {

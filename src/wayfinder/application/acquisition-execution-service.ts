@@ -71,6 +71,10 @@ export interface ResolvedAcquisitionSource {
   /** Fresh base-source price facts; execution reapplies the reviewed target size and quantity. */
   readonly resolvedPrice: AcquisitionPriceSnapshot;
   readonly policyDecision: AcquisitionLinePolicyDecision;
+  readonly expandedSources?: readonly {
+    readonly expansionPath: string;
+    readonly source: EmbeddedItemSource;
+  }[];
 }
 
 export interface AcquisitionInventoryAdapter {
@@ -133,7 +137,7 @@ interface PreparedExecution {
   readonly initialBaseline: EconomicBaselineV1;
   readonly targetCopper: number;
   readonly handoff: boolean;
-  readonly sources: ReadonlyMap<string, EmbeddedItemSource>;
+  readonly sources: ReadonlyMap<string, ReadonlyMap<string, EmbeddedItemSource>>;
   readonly persistedRecoveryManifest: CompletedAcquisitionManifestV1 | null;
   readonly persistedCurrencyConvergenceWitness: AcquisitionCurrencyConvergenceWitnessV1 | null;
 }
@@ -175,13 +179,21 @@ export function createAcquisitionExecutionSession(
       assertObservedWayfinderItemSizes(actor, prepared, observation);
       let ordinal = 0;
       for (const entry of prepared.identityPlan.entries) {
-        const source = prepared.sources.get(entry.entryId);
-        if (!source) throw new Error(`Prepared acquisition source ${entry.entryId} is unavailable.`);
+        const entrySources = prepared.sources.get(entry.entryId);
+        if (!entrySources) throw new Error(`Prepared acquisition source ${entry.entryId} is unavailable.`);
         if (entryMaterializer(entry, prepared.classGrantPlan) === "pf2e-native") continue;
         for (const plannedItem of entry.plannedItems) {
           if (observation.evidence.some((item) => item.plannedItemId === plannedItem.plannedItemId)) continue;
           ordinal += 1;
-          const stamped = stampAcquisitionSource(source, entry, plannedItem, prepared.identityPlan.subject);
+          const source = sourceForPlannedItem(entry, entrySources, plannedItem);
+          const actualContainerId = actualContainerForPlannedItem(entry, plannedItem, observation);
+          const stamped = stampAcquisitionSource(
+            source,
+            entry,
+            plannedItem,
+            prepared.identityPlan.subject,
+            actualContainerId
+          );
           await executeItemWrite({
             actor,
             source: stamped,
@@ -417,13 +429,13 @@ async function prepareExecution(args: {
     throw new Error("Current starting-equipment policy differs from the reviewed authority.");
   }
   await args.dependencies.assertSourceHealth({ actor: args.actor, draft: acquisition });
-  const sources = new Map<string, EmbeddedItemSource>();
+  const sources = new Map<string, ReadonlyMap<string, EmbeddedItemSource>>();
   const preflightedLineIds = new Set<string>();
   if (!handoff) {
     for (const entry of identityPlan.entries) {
       const resolved = await args.dependencies.resolveSource({ actor: args.actor, draft: acquisition, entry });
       assertResolvedSourceMatches(entry, resolved);
-      sources.set(entry.entryId, cloneData(resolved.source));
+      sources.set(entry.entryId, resolvedSourcesForEntry(entry, resolved));
       for (const lineId of entry.lineIds) preflightedLineIds.add(lineId);
     }
     assertPreflightCoversEveryLine(acquisition, preflightedLineIds);
@@ -633,6 +645,43 @@ function assertResolvedSourceMatches(entry: PreparedAcquisitionEntryV1, resolved
   if (!resolved.source || typeof resolved.source !== "object") {
     throw new TypeError(`Acquisition source ${entry.entryId} has no embeddable item data.`);
   }
+  resolvedSourcesForEntry(entry, resolved);
+}
+
+function resolvedSourcesForEntry(
+  entry: PreparedAcquisitionEntryV1,
+  resolved: ResolvedAcquisitionSource
+): ReadonlyMap<string, EmbeddedItemSource> {
+  if (!entry.kitExpansion) {
+    if (resolved.expandedSources !== undefined) {
+      throw new Error(`Acquisition source ${entry.entryId} returned an unexpected expansion.`);
+    }
+    return new Map([["root", cloneData(resolved.source)]]);
+  }
+  if (!resolved.expandedSources || resolved.expandedSources.length !== entry.kitExpansion.items.length) {
+    throw new Error(`Acquisition kit source ${entry.entryId} did not preflight every child.`);
+  }
+  const byPath = new Map(resolved.expandedSources.map((item) => [item.expansionPath, item.source]));
+  if (byPath.size !== resolved.expandedSources.length) {
+    throw new Error(`Acquisition kit source ${entry.entryId} returned duplicate expansion paths.`);
+  }
+  for (const expected of entry.kitExpansion.items) {
+    const source = byPath.get(expected.expansionPath);
+    if (
+      !source ||
+      sourceUuidFromSource(source) !== expected.sourceUuid ||
+      fingerprintEquipmentDocument(source) !== expected.documentFingerprint
+    ) {
+      throw new Error(`Acquisition kit child ${expected.expansionPath} drifted before Apply.`);
+    }
+  }
+  return new Map([...byPath].map(([path, source]) => [path, cloneData(source)]));
+}
+
+function sourceUuidFromSource(source: EmbeddedItemSource): string | null {
+  const stats = isRecord(source._stats) ? source._stats.compendiumSource : null;
+  const core = isRecord(source.flags?.core) ? source.flags?.core?.sourceId : null;
+  return typeof stats === "string" && stats ? stats : typeof core === "string" && core ? core : null;
 }
 
 function assertResolvedSourceIdentity(entry: PreparedAcquisitionEntryV1, source: EmbeddedItemSource): void {
@@ -702,14 +751,15 @@ function stampAcquisitionSource(
   sourceInput: EmbeddedItemSource,
   entry: PreparedAcquisitionEntryV1,
   plannedItem: PreparedAcquisitionEntryV1["plannedItems"][number],
-  subject: PreparedAcquisitionIdentityPlanV1["subject"]
+  subject: PreparedAcquisitionIdentityPlanV1["subject"],
+  actualContainerId: string | null
 ): EmbeddedItemSource {
   const source = cloneData(sourceInput);
   delete source._id;
   source.system = {
     ...(source.system ?? {}),
     quantity: plannedItem.quantity,
-    containerId: null,
+    containerId: actualContainerId,
     size: materializedPhysicalItemSize(entry.price.size),
   };
   source.flags = { ...(source.flags ?? {}) };
@@ -730,6 +780,37 @@ function stampAcquisitionSource(
     },
   };
   return source;
+}
+
+function sourceForPlannedItem(
+  entry: PreparedAcquisitionEntryV1,
+  sources: ReadonlyMap<string, EmbeddedItemSource>,
+  plannedItem: PreparedAcquisitionEntryV1["plannedItems"][number]
+): EmbeddedItemSource {
+  if (!entry.kitExpansion) {
+    const source = sources.get("root");
+    if (!source) throw new Error(`Prepared acquisition source ${entry.entryId} is unavailable.`);
+    return source;
+  }
+  const index = entry.plannedItems.findIndex((candidate) => candidate.plannedItemId === plannedItem.plannedItemId);
+  const expansion = entry.kitExpansion.items[index];
+  const source = expansion ? sources.get(expansion.expansionPath) : null;
+  if (!source) throw new Error(`Prepared kit child ${plannedItem.plannedItemId} is unavailable.`);
+  return source;
+}
+
+function actualContainerForPlannedItem(
+  entry: PreparedAcquisitionEntryV1,
+  plannedItem: PreparedAcquisitionEntryV1["plannedItems"][number],
+  observation: AcquisitionItemObservation
+): string | null {
+  if (plannedItem.plannedContainerId === null) return null;
+  const owner = entry.plannedItems.find((candidate) => candidate.ownedContainerId === plannedItem.plannedContainerId);
+  const observed = owner
+    ? observation.evidence.find((candidate) => candidate.plannedItemId === owner.plannedItemId)
+    : null;
+  if (!observed) throw new Error(`Prepared kit container ${plannedItem.plannedContainerId} is not materialized.`);
+  return observed.actualItemId;
 }
 
 async function executeItemWrite(args: {
@@ -895,12 +976,31 @@ function observePlannedItems(
       entry.plannedItems.map((planned) => [planned.plannedItemId, { entry, planned }] as const)
     )
   );
-  const observedByPlannedId = new Map<string, CompletedObservedItemV1>();
-  const observedEntryIds = new Set<string>();
+  const candidatesByPlannedId = new Map<string, EconomicBaselineV1["physicalItems"][number]>();
   for (const item of baseline.physicalItems) {
     const identity = item.acquisitionIdentity;
     if (!identity || identity.draftId !== plan.subject.draftId || identity.batchId !== plan.subject.batchId) continue;
+    if (candidatesByPlannedId.has(identity.plannedItemId)) {
+      throw new Error(`Prepared acquisition item ${identity.plannedItemId} exists more than once.`);
+    }
+    candidatesByPlannedId.set(identity.plannedItemId, item);
+  }
+  const actualContainerByLogicalId = new Map<string, string>();
+  for (const [plannedItemId, item] of candidatesByPlannedId) {
+    const expected = expectedByPlannedId.get(plannedItemId);
+    if (expected?.planned.ownedContainerId) {
+      actualContainerByLogicalId.set(expected.planned.ownedContainerId, item.itemId);
+    }
+  }
+  const observedByPlannedId = new Map<string, CompletedObservedItemV1>();
+  const observedEntryIds = new Set<string>();
+  for (const item of candidatesByPlannedId.values()) {
+    const identity = item.acquisitionIdentity;
+    if (!identity) continue;
     const expected = expectedByPlannedId.get(identity.plannedItemId);
+    const expectedActualContainer = expected?.planned.plannedContainerId
+      ? (actualContainerByLogicalId.get(expected.planned.plannedContainerId) ?? null)
+      : null;
     if (
       !expected ||
       identity.manifestId !== plan.subject.manifestId ||
@@ -912,12 +1012,9 @@ function observePlannedItems(
       identity.stackingIntent !== expected.entry.stackingIntent ||
       item.sourceUuid !== expected.planned.sourceUuid ||
       item.quantity !== expected.planned.quantity ||
-      item.containerId !== expected.planned.plannedContainerId
+      item.containerId !== expectedActualContainer
     ) {
       throw new Error(`Actor item ${item.itemId} has mismatched acquisition identity or material facts.`);
-    }
-    if (observedByPlannedId.has(identity.plannedItemId)) {
-      throw new Error(`Prepared acquisition item ${identity.plannedItemId} exists more than once.`);
     }
     observedByPlannedId.set(identity.plannedItemId, {
       plannedItemId: identity.plannedItemId,
@@ -1071,9 +1168,8 @@ function buildRetryExpectation(
     expectedCurrencyCopper,
     expectedEntries: plan.entries
       .filter((entry) => entryMaterializer(entry, classGrantPlan) !== "pf2e-native")
-      .map((entry) => {
-        const planned = entry.plannedItems[0]!;
-        return {
+      .flatMap((entry) =>
+        entry.plannedItems.map((planned) => ({
           entryId: entry.entryId,
           plannedItemId: planned.plannedItemId,
           plannedContainerId: planned.plannedContainerId,
@@ -1081,9 +1177,10 @@ function buildRetryExpectation(
           sourceUuid: planned.sourceUuid,
           quantity: planned.quantity,
           containerId: planned.plannedContainerId,
+          ownedContainerId: planned.ownedContainerId,
           stackingIntent: entry.stackingIntent,
-        };
-      }),
+        }))
+      ),
     currencyOnlyConvergenceEvidence,
   };
 }
@@ -1154,13 +1251,21 @@ function assertWitnessedCurrencyUnchanged(
 
 function assertSupportedIdentityShape(plan: PreparedAcquisitionIdentityPlanV1): void {
   for (const entry of plan.entries) {
-    if (
-      entry.plannedItems.length !== 1 ||
-      entry.lineIds.length === 0 ||
-      entry.plannedItems[0]!.ownedContainerId !== null ||
-      entry.plannedItems[0]!.plannedContainerId !== null
-    ) {
-      throw new Error("Starting equipment currently supports one non-container root item per prepared entry.");
+    if (entry.lineIds.length === 0 || entry.plannedItems.length === 0) {
+      throw new Error("Starting equipment requires at least one planned item per prepared entry.");
+    }
+    if (!entry.kitExpansion) {
+      if (
+        entry.plannedItems.length !== 1 ||
+        entry.plannedItems[0]!.ownedContainerId !== null ||
+        entry.plannedItems[0]!.plannedContainerId !== null
+      ) {
+        throw new Error("Ordinary starting equipment supports one non-container root item per prepared entry.");
+      }
+      continue;
+    }
+    if (entry.plannedItems.length !== entry.kitExpansion.items.length) {
+      throw new Error("Prepared kit identity does not cover its expansion graph.");
     }
   }
 }

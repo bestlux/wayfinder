@@ -20,6 +20,7 @@ export function qualifyWf43ExperienceResult(result, definitions = wf43Experience
   if (JSON.stringify(result?.appWidths) !== JSON.stringify(WF43_APP_WIDTHS)) {
     failures.push("WF-080-43 top-level app widths differ from the frozen release widths.");
   }
+  qualifyLanguageSwitches(result?.languageSwitches, definitions, failures);
   qualifyKeyboardBoundaries(result?.keyboardEntries, definitions, failures);
   qualifyFailureFocus(result?.failureFocusEntries, definitions, failures);
 
@@ -47,6 +48,39 @@ export function qualifyWf43ExperienceResult(result, definitions = wf43Experience
     failures.push("WF-080-43 cleanup did not restore the exact actor count, policy, pack setting, and language.");
   }
   return { ok: failures.length === 0, failures };
+}
+
+function qualifyLanguageSwitches(entries, definitions, failures) {
+  const expected = definitions.flatMap((definition) =>
+    ["gm", "player"].map((role) => ({
+      role,
+      language: definition.id,
+      path: `modules/wayfinder-pf2e/lang/${definition.id}.json`,
+    })),
+  );
+  if (!Array.isArray(entries) || entries.length !== expected.length) {
+    failures.push("WF-080-43 per-client language switch evidence is duplicated, incomplete, or reordered.");
+    return;
+  }
+  for (const [index, target] of expected.entries()) {
+    const entry = entries[index];
+    if (
+      entry?.role !== target.role ||
+      entry?.requestedLanguage !== target.language ||
+      entry?.setting !== target.language ||
+      entry?.locale !== target.language ||
+      entry?.supported !== true ||
+      entry?.moduleId !== "wayfinder-pf2e" ||
+      entry?.moduleActive !== true ||
+      entry?.moduleLanguageDeclared !== true ||
+      entry?.moduleLanguagePath !== target.path ||
+      Object.values(entry ?? {}).some((value) => typeof value === "string" && value.length > 160)
+    ) {
+      failures.push(
+        `${target.language}/${target.role}: Foundry client language was not supported, module-declared, persisted, and initialized exactly.`,
+      );
+    }
+  }
 }
 
 function qualifyKeyboardBoundaries(entries, definitions, failures) {

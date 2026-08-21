@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global document, game */
+/* global document */
 
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
@@ -17,6 +17,11 @@ import {
   wf43ExperienceCases,
 } from "./wf43-experience-cases.mjs";
 import { qualifyWf43ExperienceResult } from "./wf43-experience-evidence.mjs";
+import {
+  restoreFoundryClientLanguages,
+  snapshotFoundryClientLanguages,
+  switchFoundryClientLanguages,
+} from "./wf43-experience-language.mjs";
 
 const MODULE_ID = "wayfinder-pf2e";
 const POLICY_SETTING = "equipmentPolicy";
@@ -67,6 +72,9 @@ async function main() {
   let setup = null;
   let cleanup = emptyCleanup();
   let playerReady = false;
+  let clientLanguageSnapshots = [];
+  let exactClientLanguageRestored = false;
+  const languageSwitches = [];
   const localeEvidence = [];
   const samples = [];
   const keyboardEntries = [];
@@ -134,10 +142,23 @@ async function main() {
     });
     await installSuites(playerPage);
     playerReady = true;
+    stage = { id: "language-snapshot" };
+    clientLanguageSnapshots = await snapshotFoundryClientLanguages(languageTargets(gmPage, playerPage), MODULE_ID);
+    const gmLanguageSnapshot = clientLanguageSnapshots.find((entry) => entry.role === "gm");
+    if (gmLanguageSnapshot?.setting !== String(setup.snapshots.language)) {
+      throw new Error(
+        `WF-080-43 GM client language snapshot expected ${setup.snapshots.language}, got ${gmLanguageSnapshot?.setting ?? "missing"}.`,
+      );
+    }
 
     for (const definition of wf43ExperienceCases) {
       stage = { id: "locale-switch", locale: definition.id };
-      await setFoundryLanguage(gmPage, playerPage, definition.id);
+      try {
+        languageSwitches.push(...(await setFoundryLanguage(gmPage, playerPage, definition.id)));
+      } catch (error) {
+        if (Array.isArray(error?.languageEvidence)) languageSwitches.push(...error.languageEvidence);
+        throw error;
+      }
       const fixture = setup.fixtures.find((entry) => entry.locale === definition.id);
       if (!fixture) throw new Error(`WF-080-43 is missing its ${definition.id} fixture.`);
       const enrichedFixture = {
@@ -198,9 +219,19 @@ async function main() {
         }
         try {
           stage = { id: "cleanup-language" };
-          await setFoundryLanguage(gmPage, playerReady ? playerPage : null, setup.snapshots.language);
+          const targets = languageTargets(gmPage, playerReady ? playerPage : null);
+          const snapshots =
+            clientLanguageSnapshots.length > 0
+              ? clientLanguageSnapshots
+              : [{ role: "gm", setting: String(setup.snapshots.language), locale: String(setup.snapshots.language) }];
+          const languageRestoration = await restoreFoundryClientLanguages(targets, snapshots, {
+            moduleId: MODULE_ID,
+            reload: reloadSuites,
+          });
+          exactClientLanguageRestored = languageRestoration.restored;
+          restorationFailures.push(...languageRestoration.failures);
         } catch (error) {
-          restorationFailures.push(`language restoration failed: ${errorMessage(error)}`);
+          restorationFailures.push(`language restoration orchestration failed: ${errorMessage(error)}`);
         }
         try {
           stage = { id: "cleanup-verification" };
@@ -216,6 +247,7 @@ async function main() {
             },
           );
           cleanup = { ...cleanup, ...restored };
+          cleanup.languageRestored = exactClientLanguageRestored && restored.languageRestored === true;
         } catch (error) {
           restorationFailures.push(`restoration verification failed: ${errorMessage(error)}`);
         }
@@ -271,6 +303,7 @@ async function main() {
     users: setup?.users ?? null,
     viewport: WF43_VIEWPORT,
     appWidths: WF43_APP_WIDTHS,
+    languageSwitches,
     locales: localeEvidence,
     keyboardEntries,
     failureFocusEntries,
@@ -694,22 +727,17 @@ async function waitForText(page, selector, text) {
 }
 
 async function setFoundryLanguage(gmPage, playerPage, language) {
-  const current = await gmPage.evaluate(() => game.settings.get("core", "language"));
-  if (String(current) !== String(language)) {
-    try {
-      await gmPage.evaluate((value) => game.settings.set("core", "language", value), language);
-    } catch (error) {
-      if (!String(error).includes("Execution context was destroyed")) throw error;
-    }
-  }
-  await reloadSuites(gmPage);
-  if (playerPage) await reloadSuites(playerPage);
-  for (const page of [gmPage, playerPage].filter(Boolean)) {
-    const observed = await page.evaluate(() => ({ setting: game.settings.get("core", "language"), locale: game.i18n?.lang }));
-    if (String(observed.setting) !== String(language) || String(observed.locale) !== String(language)) {
-      throw new Error(`WF-080-43 locale switch expected ${language}, got ${observed.setting}/${observed.locale}.`);
-    }
-  }
+  return switchFoundryClientLanguages(languageTargets(gmPage, playerPage), language, {
+    moduleId: MODULE_ID,
+    reload: reloadSuites,
+  });
+}
+
+function languageTargets(gmPage, playerPage) {
+  return [
+    { role: "gm", page: gmPage },
+    ...(playerPage ? [{ role: "player", page: playerPage }] : []),
+  ];
 }
 
 async function installSuites(page) {

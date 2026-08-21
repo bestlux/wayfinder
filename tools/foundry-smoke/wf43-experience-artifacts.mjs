@@ -25,6 +25,7 @@ export async function writeWf43ExperienceArtifacts(directory, result, qualificat
     `- Keyboard entry diagnostics: ${result.keyboardEntries?.length ?? 0}`,
     `- Forced-failure focus diagnostics: ${result.failureFocusEntries?.length ?? 0}`,
     `- Tab traversal failure diagnostics: ${result.tabTraversalFailures?.length ?? 0}`,
+    `- Per-client language switch diagnostics: ${result.languageSwitches?.length ?? 0}`,
     `- Foundry: ${runtime.foundryVersion ?? "unavailable"}`,
     `- PF2E: ${runtime.pf2eVersion ?? "unavailable"}`,
     `- Module: ${runtime.moduleVersion ?? "unavailable"}`,

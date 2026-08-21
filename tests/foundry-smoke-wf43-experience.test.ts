@@ -18,6 +18,11 @@ import {
   wf43ExperienceCases,
 } from "../tools/foundry-smoke/wf43-experience-cases.mjs";
 import { qualifyWf43ExperienceResult } from "../tools/foundry-smoke/wf43-experience-evidence.mjs";
+import {
+  restoreFoundryClientLanguages,
+  snapshotFoundryClientLanguages,
+  switchFoundryClientLanguages,
+} from "../tools/foundry-smoke/wf43-experience-language.mjs";
 
 const runner = readFileSync(resolve("tools/foundry-smoke/run-wf43-experience-smoke.mjs"), "utf8");
 const browserSuite = readFileSync(resolve("tools/foundry-smoke/wf43-experience-browser-suite.js"), "utf8");
@@ -218,8 +223,131 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(browserSuite).toContain("game.settings.set(moduleId, policySetting, snapshots.policy)");
     expect(browserSuite).toContain('game.settings.set("pf2e", packsSetting, snapshots.packs)');
     expect(browserSuite).toContain("actorCountRestored");
-    expect(runner).toContain("setFoundryLanguage(gmPage");
+    expect(runner).toContain("snapshotFoundryClientLanguages(languageTargets(gmPage, playerPage)");
+    expect(runner).toContain("setFoundryLanguage(gmPage, playerPage");
+    expect(runner).toContain("restoreFoundryClientLanguages(targets, snapshots");
+    expect(runner).toContain('role: "gm"');
+    expect(runner).toContain('role: "player"');
     expect(runner).toContain("setup.snapshots.language");
+  });
+
+  it("switches and initializes the client-scoped Foundry language in both browser contexts", async () => {
+    const gm = new FakeLanguagePage("en");
+    const player = new FakeLanguagePage("en");
+    const targets = [
+      { role: "gm", page: gm },
+      { role: "player", page: player },
+    ];
+    const snapshots = await snapshotFoundryClientLanguages(targets, "wayfinder-pf2e");
+    const evidence = await switchFoundryClientLanguages(targets, "cn", {
+      moduleId: "wayfinder-pf2e",
+      reload: async (page: FakeLanguagePage) => page.reloadLanguage(),
+    });
+
+    expect(snapshots).toEqual([
+      { role: "gm", setting: "en", locale: "en" },
+      { role: "player", setting: "en", locale: "en" },
+    ]);
+    expect(evidence).toEqual([
+      expect.objectContaining({
+        role: "gm",
+        requestedLanguage: "cn",
+        setting: "cn",
+        locale: "cn",
+        supported: true,
+        moduleActive: true,
+        moduleLanguageDeclared: true,
+        moduleLanguagePath: "modules/wayfinder-pf2e/lang/cn.json",
+      }),
+      expect.objectContaining({
+        role: "player",
+        requestedLanguage: "cn",
+        setting: "cn",
+        locale: "cn",
+        supported: true,
+        moduleActive: true,
+        moduleLanguageDeclared: true,
+        moduleLanguagePath: "modules/wayfinder-pf2e/lang/cn.json",
+      }),
+    ]);
+    expect(gm.reloadCount).toBe(1);
+    expect(player.reloadCount).toBe(1);
+  });
+
+  it("fails closed with per-client provider evidence before mutating an unavailable locale", async () => {
+    const gm = new FakeLanguagePage("en");
+    const player = new FakeLanguagePage("en", { declaredLanguages: ["en"] });
+    const operation = switchFoundryClientLanguages(
+      [
+        { role: "gm", page: gm },
+        { role: "player", page: player },
+      ],
+      "cn",
+      {
+        moduleId: "wayfinder-pf2e",
+        reload: async (page: FakeLanguagePage) => page.reloadLanguage(),
+      }
+    );
+
+    await expect(operation).rejects.toMatchObject({
+      message: expect.stringContaining("player client cannot switch to cn"),
+      languageEvidence: [
+        expect.objectContaining({ role: "gm", moduleLanguageDeclared: true }),
+        expect.objectContaining({ role: "player", moduleLanguageDeclared: false }),
+      ],
+    });
+    expect(gm.setting).toBe("en");
+    expect(player.setting).toBe("en");
+    expect(gm.reloadCount).toBe(0);
+    expect(player.reloadCount).toBe(0);
+  });
+
+  it("restores each client to its own exact snapshot and continues after a peer failure", async () => {
+    const gm = new FakeLanguagePage("cn", { failSet: true });
+    const player = new FakeLanguagePage("en");
+    const restoration = await restoreFoundryClientLanguages(
+      [
+        { role: "gm", page: gm },
+        { role: "player", page: player },
+      ],
+      [
+        { role: "gm", setting: "en", locale: "en" },
+        { role: "player", setting: "cn", locale: "cn" },
+      ],
+      {
+        moduleId: "wayfinder-pf2e",
+        reload: async (page: FakeLanguagePage) => page.reloadLanguage(),
+      }
+    );
+
+    expect(restoration.restored).toBe(false);
+    expect(restoration.failures).toEqual(expect.arrayContaining([expect.stringMatching(/gm client language setting/)]));
+    expect(gm.setting).toBe("cn");
+    expect(player.setting).toBe("cn");
+    expect(player.locale).toBe("cn");
+  });
+
+  it("restores distinct GM and player client languages exactly", async () => {
+    const gm = new FakeLanguagePage("cn");
+    const player = new FakeLanguagePage("en");
+    const restoration = await restoreFoundryClientLanguages(
+      [
+        { role: "gm", page: gm },
+        { role: "player", page: player },
+      ],
+      [
+        { role: "gm", setting: "en", locale: "en" },
+        { role: "player", setting: "cn", locale: "cn" },
+      ],
+      {
+        moduleId: "wayfinder-pf2e",
+        reload: async (page: FakeLanguagePage) => page.reloadLanguage(),
+      }
+    );
+
+    expect(restoration).toMatchObject({ restored: true, failures: [] });
+    expect({ setting: gm.setting, locale: gm.locale }).toEqual({ setting: "en", locale: "en" });
+    expect({ setting: player.setting, locale: player.locale }).toEqual({ setting: "cn", locale: "cn" });
   });
 
   it("binds Chinese key parity and exact live anchors instead of accepting English fallback", () => {
@@ -238,6 +366,26 @@ describe("WF-080-43 live experience qualifier", () => {
 
   it("accepts exact responsive, accessible, localized evidence", () => {
     expect(qualifyWf43ExperienceResult(passingResult())).toEqual({ ok: true, failures: [] });
+  });
+
+  it("rejects missing or drifted per-client language persistence and provider evidence", () => {
+    const missing = passingResult();
+    missing.languageSwitches.pop();
+    expect(qualifyWf43ExperienceResult(missing).failures).toContain(
+      "WF-080-43 per-client language switch evidence is duplicated, incomplete, or reordered."
+    );
+
+    const drifted = passingResult();
+    drifted.languageSwitches[1].locale = "cn";
+    drifted.languageSwitches[2].supported = false;
+    drifted.languageSwitches[3].moduleLanguagePath = "lang/en.json";
+    expect(qualifyWf43ExperienceResult(drifted).failures).toEqual(
+      expect.arrayContaining([
+        "en/player: Foundry client language was not supported, module-declared, persisted, and initialized exactly.",
+        "cn/gm: Foundry client language was not supported, module-declared, persisted, and initialized exactly.",
+        "cn/player: Foundry client language was not supported, module-declared, persisted, and initialized exactly.",
+      ])
+    );
   });
 
   it("rejects incomplete, mislabeled, or non-traversed keyboard reopen boundaries", () => {
@@ -423,6 +571,7 @@ describe("WF-080-43 live experience qualifier", () => {
             targetSelector: "[data-delta='-1']",
           },
         ],
+        languageSwitches: [],
         samples: [{ locale: "en", state: "policy", width: 1240, screenshot: "screenshots/en-policy-1240.png" }],
         cleanup: {
           attempted: true,
@@ -457,6 +606,7 @@ describe("WF-080-43 live experience qualifier", () => {
       expect(summary).toContain("Keyboard entry diagnostics: 1");
       expect(summary).toContain("Forced-failure focus diagnostics: 1");
       expect(summary).toContain("Tab traversal failure diagnostics: 1");
+      expect(summary).toContain("Per-client language switch diagnostics: 0");
       expect(summary).toContain("Keyboard traversal failed");
       expect(summary).toContain("Cleanup attempted: true");
     } finally {
@@ -545,6 +695,19 @@ function passingResult(): any {
     },
     viewport: WF43_VIEWPORT,
     appWidths: WF43_APP_WIDTHS,
+    languageSwitches: wf43ExperienceCases.flatMap((definition) =>
+      ["gm", "player"].map((role) => ({
+        role,
+        requestedLanguage: definition.id,
+        setting: definition.id,
+        locale: definition.id,
+        supported: true,
+        moduleId: "wayfinder-pf2e",
+        moduleActive: true,
+        moduleLanguageDeclared: true,
+        moduleLanguagePath: `modules/wayfinder-pf2e/lang/${definition.id}.json`,
+      }))
+    ),
     keyboardEntries: wf43ExperienceCases.flatMap((definition) => [
       passingKeyboardBoundary(definition.id, definition.fixture.stepId, {
         action: "initialize",
@@ -743,6 +906,60 @@ function passingResult(): any {
       restorationFailures: [],
     },
   };
+}
+
+class FakeLanguagePage {
+  setting: string;
+  locale: string;
+  reloadCount = 0;
+  private readonly declaredLanguages: string[];
+  private readonly failSet: boolean;
+
+  constructor(language: string, options: { declaredLanguages?: string[]; failSet?: boolean } = {}) {
+    this.setting = language;
+    this.locale = language;
+    this.declaredLanguages = options.declaredLanguages ?? ["en", "cn"];
+    this.failSet = options.failSet ?? false;
+  }
+
+  async evaluate(callback: (argument?: any) => any, argument?: any): Promise<any> {
+    const previousGame = (globalThis as any).game;
+    const previousConfig = (globalThis as any).CONFIG;
+    (globalThis as any).game = {
+      settings: {
+        get: () => this.setting,
+        set: async (_scope: string, _key: string, value: string) => {
+          if (this.failSet) throw new Error("synthetic set failure");
+          this.setting = value;
+        },
+      },
+      i18n: { lang: this.locale },
+      modules: new Map([
+        [
+          "wayfinder-pf2e",
+          {
+            active: true,
+            languages: this.declaredLanguages.map((lang) => ({
+              lang,
+              path: `modules/wayfinder-pf2e/lang/${lang}.json`,
+            })),
+          },
+        ],
+      ]),
+    };
+    (globalThis as any).CONFIG = { supportedLanguages: { en: "English", cn: "Simplified Chinese" } };
+    try {
+      return await callback(argument);
+    } finally {
+      (globalThis as any).game = previousGame;
+      (globalThis as any).CONFIG = previousConfig;
+    }
+  }
+
+  async reloadLanguage(): Promise<void> {
+    this.reloadCount += 1;
+    this.locale = this.setting;
+  }
 }
 
 function passingKeyboardBoundary(

@@ -55,9 +55,10 @@ describe("minimal equipment catalogue", () => {
       service.invalidatePack(PACK_ID);
       const reconciled = await service.project(context());
 
-      expect(yieldTask).toHaveBeenCalledTimes(13);
+      expect(yieldTask).toHaveBeenCalledTimes(9);
       expect(projection.entries).toHaveLength(valid.length);
       expect(reconciled.entries).toHaveLength(projection.entries.length);
+      expect(reconciled.entries).toBe(projection.entries);
       expect(reconciled.diagnostics).toEqual(projection.diagnostics);
       expect(projection.diagnostics.map(({ code }) => code)).toEqual([
         "duplicate-equipment-source-identity",

@@ -234,6 +234,13 @@ interface CachedCandidateAuthority {
   readonly authority: { readonly eligible: boolean; readonly reasons: readonly string[] };
 }
 
+interface ProjectionMaterialSnapshot {
+  readonly packResults: readonly PackProjectionResult[];
+  readonly result: PackProjectionResult;
+}
+
+const PROJECTION_SNAPSHOT_LIMIT = 8;
+
 export function createEquipmentAccessRegistry(
   records: readonly EquipmentSourceAccessRecord[] = []
 ): EquipmentAccessRegistry {
@@ -309,6 +316,12 @@ export class EquipmentCatalogueService {
   readonly #accessRegistry: EquipmentAccessRegistry;
   readonly #packIndexCache = new Map<string, Promise<PackProjectionResult>>();
   readonly #packNormalizationSnapshots = new Map<string, PackNormalizationSnapshot>();
+  readonly #lastPackProjectionById = new Map<string, PackProjectionResult>();
+  readonly #projectionMaterialSnapshots = new Map<string, ProjectionMaterialSnapshot>();
+  readonly #evaluatedEntriesByMaterial = new WeakMap<
+    PackProjectionResult,
+    Map<string, readonly EquipmentCatalogueEntry[]>
+  >();
   readonly #projectionCache = new Map<string, Promise<PackProjectionResult>>();
   readonly #latestCandidateByUuid = new Map<string, NormalizedEquipmentCatalogueCandidate>();
   readonly #previewCache = new Map<string, CachedPreview>();
@@ -344,23 +357,35 @@ export class EquipmentCatalogueService {
       this.#projectionCache.delete(cacheKey);
     }
     if (cacheKey !== this.#projectionKey(context.policy, packIds)) return this.project(context);
-    const sharedAuthority = context.policy.gmJudgments.some((judgment) => judgment.kind === "rarity-source-exception")
-      ? null
-      : new Map<string, CachedCandidateAuthority>();
-    const entries: EquipmentCatalogueEntry[] = [];
-    for (let index = 0; index < loaded.candidates.length; index += 1) {
-      entries.push(this.#evaluateCandidate(context, loaded.candidates[index]!, null, sharedAuthority));
-      if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0) await yieldProjectionTask();
+    const evaluatedKey = canonicalJson({
+      policy: context.policy,
+      accessRegistryFingerprint: this.#accessRegistry.fingerprint,
+    });
+    let evaluatedByPolicy = this.#evaluatedEntriesByMaterial.get(loaded);
+    let entries = evaluatedByPolicy?.get(evaluatedKey);
+    if (entries === undefined) {
+      const sharedAuthority = context.policy.gmJudgments.some((judgment) => judgment.kind === "rarity-source-exception")
+        ? null
+        : new Map<string, CachedCandidateAuthority>();
+      const evaluatedEntries: EquipmentCatalogueEntry[] = [];
+      for (let index = 0; index < loaded.candidates.length; index += 1) {
+        evaluatedEntries.push(this.#evaluateCandidate(context, loaded.candidates[index]!, null, sharedAuthority));
+        if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0) await yieldProjectionTask();
+      }
+      if (evaluatedEntries.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0) await yieldProjectionTask();
+      evaluatedEntries.sort(compareEntries);
+      if (evaluatedEntries.length > 0) await yieldProjectionTask();
+      entries = Object.freeze(evaluatedEntries);
+      evaluatedByPolicy ??= new Map();
+      setBoundedCache(evaluatedByPolicy, evaluatedKey, entries, PROJECTION_SNAPSHOT_LIMIT);
+      this.#evaluatedEntriesByMaterial.set(loaded, evaluatedByPolicy);
     }
-    if (entries.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0) await yieldProjectionTask();
-    entries.sort(compareEntries);
-    if (entries.length > 0) await yieldProjectionTask();
     if (cacheKey !== this.#projectionKey(context.policy, packIds)) return this.project(context);
     for (const { candidate } of loaded.candidates) this.#latestCandidateByUuid.set(candidate.sourceUuid, candidate);
     return Object.freeze({
       version: EQUIPMENT_CATALOGUE_PROJECTION_VERSION,
       cacheKey,
-      entries: Object.freeze(entries),
+      entries,
       diagnostics: Object.freeze([...loaded.diagnostics]),
     });
   }
@@ -603,6 +628,16 @@ export class EquipmentCatalogueService {
 
   async #loadProjectionCandidates(packIds: readonly string[]): Promise<PackProjectionResult> {
     const byPack = await Promise.all(packIds.map((packId) => this.#loadPackCandidates(packId)));
+    const materialKey = packIds.join("\u0000");
+    const materialSnapshot = this.#projectionMaterialSnapshots.get(materialKey);
+    if (
+      materialSnapshot &&
+      materialSnapshot.packResults.length === byPack.length &&
+      materialSnapshot.packResults.every((result, index) => result === byPack[index])
+    ) {
+      await yieldProjectionTask();
+      return materialSnapshot.result;
+    }
     const diagnostics = byPack.flatMap((result) => result.diagnostics);
     const candidates: CachedProjectionCandidate[] = [];
     const seen = new Set<string>();
@@ -625,11 +660,20 @@ export class EquipmentCatalogueService {
       if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0) await yieldProjectionTask();
     }
     if (loadedCandidates.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0) await yieldProjectionTask();
-    return Object.freeze({
+    const result = Object.freeze({
       candidates: Object.freeze(candidates),
       diagnostics: Object.freeze(sortEquipmentSourceDiagnostics(diagnostics)),
       cacheable: byPack.every((result) => result.cacheable),
     });
+    if (result.cacheable) {
+      setBoundedCache(
+        this.#projectionMaterialSnapshots,
+        materialKey,
+        Object.freeze({ packResults: Object.freeze([...byPack]), result }),
+        PROJECTION_SNAPSHOT_LIMIT
+      );
+    }
+    return result;
   }
 
   #loadPackCandidates(packId: string): Promise<PackProjectionResult> {
@@ -667,7 +711,14 @@ export class EquipmentCatalogueService {
         ? (this.#packNormalizationSnapshots.get(packId) ?? new WeakMap())
         : null;
     if (normalizationSnapshot) this.#packNormalizationSnapshots.set(packId, normalizationSnapshot);
-    pending = loadPackProjection(pack, packId, normalizationSnapshot);
+    const generation = this.#packGeneration(packId);
+    pending = loadPackProjection(pack, packId, normalizationSnapshot).then((result) => {
+      if (!result.cacheable || generation !== this.#packGeneration(packId)) return result;
+      const previous = this.#lastPackProjectionById.get(packId);
+      if (previous && packProjectionEqual(previous, result)) return previous;
+      this.#lastPackProjectionById.set(packId, result);
+      return result;
+    });
     this.#packIndexCache.set(key, pending);
     void pending.then(
       (result) => {
@@ -1298,6 +1349,34 @@ function compareEntries(left: EquipmentCatalogueEntry, right: EquipmentCatalogue
   return (
     left.level - right.level || left.name.localeCompare(right.name) || left.sourceUuid.localeCompare(right.sourceUuid)
   );
+}
+
+function packProjectionEqual(left: PackProjectionResult, right: PackProjectionResult): boolean {
+  return (
+    left.candidates.length === right.candidates.length &&
+    left.candidates.every((candidate, index) => candidate === right.candidates[index]) &&
+    left.diagnostics.length === right.diagnostics.length &&
+    left.diagnostics.every((diagnostic, index) => equipmentDiagnosticEqual(diagnostic, right.diagnostics[index]))
+  );
+}
+
+function equipmentDiagnosticEqual(
+  left: EquipmentSourceDiagnostic,
+  right: EquipmentSourceDiagnostic | undefined
+): boolean {
+  return (
+    right !== undefined &&
+    left.code === right.code &&
+    left.packId === right.packId &&
+    left.sourceIdentity === right.sourceIdentity &&
+    left.message === right.message
+  );
+}
+
+function setBoundedCache<Key, Value>(cache: Map<Key, Value>, key: Key, value: Value, limit: number): void {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > limit) cache.delete(cache.keys().next().value!);
 }
 
 function fingerprintEquipmentPreview(

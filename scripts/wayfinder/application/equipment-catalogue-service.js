@@ -29,6 +29,7 @@ export function fingerprintEquipmentDocument(source) {
     return fingerprint("equipment-document-v1", source);
 }
 const LARGE_PACK_NORMALIZATION_CHUNK = 3_000;
+const PROJECTION_SNAPSHOT_LIMIT = 8;
 export function createEquipmentAccessRegistry(records = []) {
     const byUuid = new Map();
     for (const record of records) {
@@ -91,6 +92,9 @@ export class EquipmentCatalogueService {
     #accessRegistry;
     #packIndexCache = new Map();
     #packNormalizationSnapshots = new Map();
+    #lastPackProjectionById = new Map();
+    #projectionMaterialSnapshots = new Map();
+    #evaluatedEntriesByMaterial = new WeakMap();
     #projectionCache = new Map();
     #latestCandidateByUuid = new Map();
     #previewCache = new Map();
@@ -124,20 +128,32 @@ export class EquipmentCatalogueService {
         }
         if (cacheKey !== this.#projectionKey(context.policy, packIds))
             return this.project(context);
-        const sharedAuthority = context.policy.gmJudgments.some((judgment) => judgment.kind === "rarity-source-exception")
-            ? null
-            : new Map();
-        const entries = [];
-        for (let index = 0; index < loaded.candidates.length; index += 1) {
-            entries.push(this.#evaluateCandidate(context, loaded.candidates[index], null, sharedAuthority));
-            if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0)
+        const evaluatedKey = canonicalJson({
+            policy: context.policy,
+            accessRegistryFingerprint: this.#accessRegistry.fingerprint,
+        });
+        let evaluatedByPolicy = this.#evaluatedEntriesByMaterial.get(loaded);
+        let entries = evaluatedByPolicy?.get(evaluatedKey);
+        if (entries === undefined) {
+            const sharedAuthority = context.policy.gmJudgments.some((judgment) => judgment.kind === "rarity-source-exception")
+                ? null
+                : new Map();
+            const evaluatedEntries = [];
+            for (let index = 0; index < loaded.candidates.length; index += 1) {
+                evaluatedEntries.push(this.#evaluateCandidate(context, loaded.candidates[index], null, sharedAuthority));
+                if ((index + 1) % LARGE_PACK_NORMALIZATION_CHUNK === 0)
+                    await yieldProjectionTask();
+            }
+            if (evaluatedEntries.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0)
                 await yieldProjectionTask();
+            evaluatedEntries.sort(compareEntries);
+            if (evaluatedEntries.length > 0)
+                await yieldProjectionTask();
+            entries = Object.freeze(evaluatedEntries);
+            evaluatedByPolicy ??= new Map();
+            setBoundedCache(evaluatedByPolicy, evaluatedKey, entries, PROJECTION_SNAPSHOT_LIMIT);
+            this.#evaluatedEntriesByMaterial.set(loaded, evaluatedByPolicy);
         }
-        if (entries.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0)
-            await yieldProjectionTask();
-        entries.sort(compareEntries);
-        if (entries.length > 0)
-            await yieldProjectionTask();
         if (cacheKey !== this.#projectionKey(context.policy, packIds))
             return this.project(context);
         for (const { candidate } of loaded.candidates)
@@ -145,7 +161,7 @@ export class EquipmentCatalogueService {
         return Object.freeze({
             version: EQUIPMENT_CATALOGUE_PROJECTION_VERSION,
             cacheKey,
-            entries: Object.freeze(entries),
+            entries,
             diagnostics: Object.freeze([...loaded.diagnostics]),
         });
     }
@@ -353,6 +369,14 @@ export class EquipmentCatalogueService {
     }
     async #loadProjectionCandidates(packIds) {
         const byPack = await Promise.all(packIds.map((packId) => this.#loadPackCandidates(packId)));
+        const materialKey = packIds.join("\u0000");
+        const materialSnapshot = this.#projectionMaterialSnapshots.get(materialKey);
+        if (materialSnapshot &&
+            materialSnapshot.packResults.length === byPack.length &&
+            materialSnapshot.packResults.every((result, index) => result === byPack[index])) {
+            await yieldProjectionTask();
+            return materialSnapshot.result;
+        }
         const diagnostics = byPack.flatMap((result) => result.diagnostics);
         const candidates = [];
         const seen = new Set();
@@ -371,11 +395,15 @@ export class EquipmentCatalogueService {
         }
         if (loadedCandidates.length % LARGE_PACK_NORMALIZATION_CHUNK !== 0)
             await yieldProjectionTask();
-        return Object.freeze({
+        const result = Object.freeze({
             candidates: Object.freeze(candidates),
             diagnostics: Object.freeze(sortEquipmentSourceDiagnostics(diagnostics)),
             cacheable: byPack.every((result) => result.cacheable),
         });
+        if (result.cacheable) {
+            setBoundedCache(this.#projectionMaterialSnapshots, materialKey, Object.freeze({ packResults: Object.freeze([...byPack]), result }), PROJECTION_SNAPSHOT_LIMIT);
+        }
+        return result;
     }
     #loadPackCandidates(packId) {
         const key = `${packId}|${this.#packGeneration(packId)}`;
@@ -395,7 +423,16 @@ export class EquipmentCatalogueService {
             : null;
         if (normalizationSnapshot)
             this.#packNormalizationSnapshots.set(packId, normalizationSnapshot);
-        pending = loadPackProjection(pack, packId, normalizationSnapshot);
+        const generation = this.#packGeneration(packId);
+        pending = loadPackProjection(pack, packId, normalizationSnapshot).then((result) => {
+            if (!result.cacheable || generation !== this.#packGeneration(packId))
+                return result;
+            const previous = this.#lastPackProjectionById.get(packId);
+            if (previous && packProjectionEqual(previous, result))
+                return previous;
+            this.#lastPackProjectionById.set(packId, result);
+            return result;
+        });
         this.#packIndexCache.set(key, pending);
         void pending.then((result) => {
             if (!result.cacheable && this.#packIndexCache.get(key) === pending)
@@ -938,6 +975,25 @@ function uniqueSorted(values) {
 }
 function compareEntries(left, right) {
     return (left.level - right.level || left.name.localeCompare(right.name) || left.sourceUuid.localeCompare(right.sourceUuid));
+}
+function packProjectionEqual(left, right) {
+    return (left.candidates.length === right.candidates.length &&
+        left.candidates.every((candidate, index) => candidate === right.candidates[index]) &&
+        left.diagnostics.length === right.diagnostics.length &&
+        left.diagnostics.every((diagnostic, index) => equipmentDiagnosticEqual(diagnostic, right.diagnostics[index])));
+}
+function equipmentDiagnosticEqual(left, right) {
+    return (right !== undefined &&
+        left.code === right.code &&
+        left.packId === right.packId &&
+        left.sourceIdentity === right.sourceIdentity &&
+        left.message === right.message);
+}
+function setBoundedCache(cache, key, value, limit) {
+    cache.delete(key);
+    cache.set(key, value);
+    while (cache.size > limit)
+        cache.delete(cache.keys().next().value);
 }
 function fingerprintEquipmentPreview(candidate) {
     const price = candidate.price;

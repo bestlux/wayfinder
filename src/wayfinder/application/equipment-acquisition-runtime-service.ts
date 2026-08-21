@@ -433,12 +433,24 @@ export function createEquipmentAcquisitionRuntime(
             : { kind: "pending" as const, entry, browseCacheKey };
         });
         const pendingRows = browseRows.filter((row) => row.kind === "pending");
-        const resolvedRows = await Promise.all(
-          pendingRows.map(async (row) => ({
-            ...row,
-            resolved: await catalogue.resolveForApply(context, row.entry.sourceUuid),
-          }))
+        const browseResolutions = await catalogue.resolveManyForBrowse(
+          context,
+          pendingRows.map(({ entry }) => entry.sourceUuid)
         );
+        if (
+          browseResolutions.length !== pendingRows.length ||
+          browseResolutions.some((result, index) => result.sourceUuid !== pendingRows[index]?.entry.sourceUuid)
+        ) {
+          throw new Error("Equipment bulk hydration returned unstable entry mapping.");
+        }
+        const resolvedRows = pendingRows.map((row, index) => {
+          const result = browseResolutions[index]!;
+          if (result.error !== null) throw result.error;
+          if (result.resolution === null) {
+            throw new Error(`Equipment bulk hydration omitted ${row.entry.sourceUuid}.`);
+          }
+          return { ...row, resolved: result.resolution };
+        });
         const batchRows = resolvedRows.filter(({ resolved }) => usesBrowsePhysicalPreparation(resolved));
         const batchResults =
           batchRows.length === 0

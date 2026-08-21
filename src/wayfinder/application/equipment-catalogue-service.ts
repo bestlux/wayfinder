@@ -43,6 +43,7 @@ export interface EquipmentCataloguePackLike {
   readonly metadata?: { readonly type?: string };
   readonly getIndex: (options: { fields: string[] }) => Promise<Iterable<unknown> | null | undefined>;
   readonly getDocument: (documentId: string) => Promise<unknown | null>;
+  readonly getDocuments?: (query: { _id__in: string[] }) => Promise<Iterable<unknown> | null | undefined>;
 }
 
 export interface EquipmentCatalogueDraftContext {
@@ -161,6 +162,12 @@ export interface EquipmentCatalogueApplyResolution {
   readonly available: boolean;
   readonly unavailableReasons: readonly EquipmentCatalogueUnavailableReason[];
   readonly policyDecision: AcquisitionLinePolicyDecision;
+}
+
+export interface EquipmentCatalogueBrowseResolutionResult {
+  readonly sourceUuid: string;
+  readonly resolution: EquipmentCatalogueApplyResolution | null;
+  readonly error: Error | null;
 }
 
 export interface FixedNativeEquipmentSourceAuthority {
@@ -411,6 +418,115 @@ export class EquipmentCatalogueService {
   }
 
   /**
+   * Bulk-hydrates one bounded visible browse page. Apply, preview, and native-grant
+   * callers deliberately keep using their fresh single-document paths.
+   */
+  async resolveManyForBrowse(
+    context: EquipmentCatalogueContext,
+    sourceUuids: readonly string[]
+  ): Promise<readonly EquipmentCatalogueBrowseResolutionResult[]> {
+    assertContext(context);
+    if (sourceUuids.length > 12) {
+      throw new TypeError("Equipment browse hydration is limited to 12 visible sources.");
+    }
+    const requests = sourceUuids.map((sourceUuid) => {
+      const { pack, packId, documentId } = this.#resolvePack(sourceUuid);
+      if (!this.#equipmentPackIds.has(packId) || !context.policy.sourcePolicy.effectivePackIds.includes(packId)) {
+        throw new TypeError(`Equipment source ${sourceUuid} is outside the current effective pack set.`);
+      }
+      return { sourceUuid, pack, packId, documentId };
+    });
+    const grouped = new Map<string, typeof requests>();
+    for (const request of requests) {
+      const group = grouped.get(request.packId);
+      if (group) group.push(request);
+      else grouped.set(request.packId, [request]);
+    }
+    const generations = new Map([...grouped.keys()].map((packId) => [packId, this.#packGeneration(packId)]));
+    const byUuid = new Map<string, EquipmentCatalogueBrowseResolutionResult>();
+    await Promise.all(
+      [...grouped.entries()].map(async ([packId, group]) => {
+        const getDocuments = group[0]!.pack.getDocuments;
+        if (typeof getDocuments !== "function") {
+          const error = new TypeError(`Equipment pack ${packId} does not support bulk document hydration.`);
+          for (const { sourceUuid } of group) {
+            byUuid.set(sourceUuid, Object.freeze({ sourceUuid, resolution: null, error }));
+          }
+          return;
+        }
+        let documents: Iterable<unknown> | null | undefined;
+        try {
+          documents = await getDocuments.call(group[0]!.pack, {
+            _id__in: [...new Set(group.map(({ documentId }) => documentId))],
+          });
+        } catch (cause) {
+          for (const { sourceUuid } of group) {
+            byUuid.set(
+              sourceUuid,
+              Object.freeze({ sourceUuid, resolution: null, error: bulkHydrationError(sourceUuid, cause) })
+            );
+          }
+          return;
+        }
+        const hydrated = collectBulkDocuments(
+          documents,
+          group.map(({ documentId }) => documentId)
+        );
+        for (const { sourceUuid, documentId } of group) {
+          const result = hydrated.get(documentId);
+          if (result instanceof Error) {
+            byUuid.set(
+              sourceUuid,
+              Object.freeze({ sourceUuid, resolution: null, error: bulkHydrationError(sourceUuid, result) })
+            );
+            continue;
+          }
+          if (!result) {
+            byUuid.set(
+              sourceUuid,
+              Object.freeze({
+                sourceUuid,
+                resolution: null,
+                error: new TypeError(`Equipment source ${sourceUuid} is no longer available.`),
+              })
+            );
+            continue;
+          }
+          try {
+            byUuid.set(
+              sourceUuid,
+              Object.freeze({
+                sourceUuid,
+                resolution: this.#resolutionFromSource(context, sourceUuid, packId, result),
+                error: null,
+              })
+            );
+          } catch (cause) {
+            byUuid.set(
+              sourceUuid,
+              Object.freeze({ sourceUuid, resolution: null, error: bulkHydrationError(sourceUuid, cause) })
+            );
+          }
+        }
+      })
+    );
+    if ([...generations].some(([packId, generation]) => generation !== this.#packGeneration(packId))) {
+      return this.resolveManyForBrowse(context, sourceUuids);
+    }
+    return Object.freeze(
+      requests.map(
+        ({ sourceUuid }) =>
+          byUuid.get(sourceUuid) ??
+          Object.freeze({
+            sourceUuid,
+            resolution: null,
+            error: new TypeError(`Equipment source ${sourceUuid} was omitted from bulk hydration.`),
+          })
+      )
+    );
+  }
+
+  /**
    * Hydrates one exact source for a caller that already proved fixed native-grant authority.
    * This does not add the pack to catalogue projection, search, preview, or ordinary Apply.
    */
@@ -445,6 +561,15 @@ export class EquipmentCatalogueService {
     const document = await pack.getDocument(documentId);
     if (!document) throw new TypeError(`Equipment source ${sourceUuid} is no longer available.`);
     const source = extractDocumentSource(document);
+    return this.#resolutionFromSource(context, sourceUuid, packId, source);
+  }
+
+  #resolutionFromSource(
+    context: EquipmentCatalogueContext,
+    sourceUuid: string,
+    packId: string,
+    source: Readonly<Record<string, unknown>>
+  ): EquipmentCatalogueApplyResolution {
     const normalized = normalizeCandidate(source, packId, sourceUuid);
     const evaluated = this.#evaluateCandidate(context, normalized, source);
     return Object.freeze({
@@ -961,6 +1086,60 @@ function extractDocumentSource(document: unknown): Readonly<Record<string, unkno
         : document;
   if (!isRecord(raw)) throw new TypeError("Equipment document has no serializable source.");
   return cloneData(raw);
+}
+
+function collectBulkDocuments(
+  documents: Iterable<unknown> | null | undefined,
+  requestedDocumentIds: readonly string[]
+): ReadonlyMap<string, Readonly<Record<string, unknown>> | Error> {
+  const requested = new Set(requestedDocumentIds);
+  const collected = new Map<string, Readonly<Record<string, unknown>> | Error>();
+  if (!isIterable(documents)) {
+    const error = new TypeError("Equipment bulk hydration returned malformed data.");
+    for (const documentId of requested) collected.set(documentId, error);
+    return collected;
+  }
+  let unidentifiedError: Error | null = null;
+  for (const document of documents) {
+    const directDocumentId = isRecord(document) && nonEmpty(document.id) ? document.id.trim() : null;
+    let source: Readonly<Record<string, unknown>>;
+    try {
+      source = extractDocumentSource(document);
+    } catch (cause) {
+      const error = cause instanceof Error ? cause : new TypeError("Equipment document hydration failed.");
+      if (directDocumentId !== null && requested.has(directDocumentId)) collected.set(directDocumentId, error);
+      else unidentifiedError = error;
+      continue;
+    }
+    const sourceDocumentId = nonEmpty(source._id) ? source._id.trim() : null;
+    if (sourceDocumentId === null) {
+      unidentifiedError = new TypeError("Equipment bulk hydration returned a document without an exact source ID.");
+      continue;
+    }
+    if (directDocumentId !== null && directDocumentId !== sourceDocumentId) {
+      const error = new TypeError("Equipment bulk hydration returned contradictory document identity.");
+      if (requested.has(directDocumentId)) collected.set(directDocumentId, error);
+      if (requested.has(sourceDocumentId)) collected.set(sourceDocumentId, error);
+      continue;
+    }
+    if (!requested.has(sourceDocumentId)) continue;
+    if (collected.has(sourceDocumentId)) {
+      collected.set(sourceDocumentId, new TypeError("Equipment bulk hydration returned duplicate document identity."));
+      continue;
+    }
+    collected.set(sourceDocumentId, source);
+  }
+  if (unidentifiedError !== null) {
+    for (const documentId of requested) {
+      if (!collected.has(documentId)) collected.set(documentId, unidentifiedError);
+    }
+  }
+  return collected;
+}
+
+function bulkHydrationError(sourceUuid: string, cause: unknown): Error {
+  const detail = cause instanceof Error && nonEmpty(cause.message) ? ` ${cause.message}` : "";
+  return new TypeError(`Equipment source ${sourceUuid} could not be hydrated in bulk.${detail}`);
 }
 
 function parseCompendiumItemUuid(sourceUuid: string): { readonly packId: string; readonly documentId: string } {

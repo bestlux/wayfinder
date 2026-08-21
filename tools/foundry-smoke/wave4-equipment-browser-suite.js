@@ -566,6 +566,7 @@ globalThis.__runWayfinderWave4PlayerInitial = async function playerInitial({
   }
   const afterChildDrift = inventorySnapshot(kitActor);
   const session = executionSession(modules, runtime, kitActor, moduleId);
+  const partialBeforeCreateOrdinals = [];
   let failure = "";
   try {
     await session.executeAcquisitionItems({
@@ -574,10 +575,12 @@ globalThis.__runWayfinderWave4PlayerInitial = async function playerInitial({
       classGrantPlan: plan,
       emitWriteCheckpoint: async (operation, boundary, ordinal) => {
         if (operation === "embedded-item-create" && boundary === "before" && ordinal === kitCase.kit.failBeforeCreateOrdinal) {
+          partialBeforeCreateOrdinals.push(ordinal);
           throw new Error(
             `Wave 4 forced partial kit write failure before child ${kitCase.kit.faultChildSourceUuid} create ordinal ${ordinal}.`,
           );
         }
+        if (operation === "embedded-item-create" && boundary === "before") partialBeforeCreateOrdinals.push(ordinal);
       },
     });
   } catch (error) {
@@ -586,6 +589,17 @@ globalThis.__runWayfinderWave4PlayerInitial = async function playerInitial({
   reviewedDraft.applyAttemptStepIds = ["starting-equipment-level-1"];
   await kitActor.setFlag(moduleId, "draft", reviewedDraft);
   const afterFailure = inventorySnapshot(kitActor);
+  const expectedFailure = `Wave 4 forced partial kit write failure before child ${kitCase.kit.faultChildSourceUuid} create ordinal ${kitCase.kit.failBeforeCreateOrdinal}.`;
+  const partialCreatedItemCount = actorAcquisitionItems(kitActor, moduleId).length;
+  if (
+    failure !== expectedFailure ||
+    canonicalJson(partialBeforeCreateOrdinals) !== canonicalJson([1, 2, 3, 4, 5]) ||
+    partialCreatedItemCount !== kitCase.kit.expectedCreatedBeforeFailure ||
+    afterFailure.currencyCopper !== 0 ||
+    modules.normalizeState(kitActor.getFlag(moduleId, "state")).completedAcquisitionManifest !== null
+  ) {
+    throw new Error(`Wave 4 kit partial-failure boundary drifted: ${failure || "no failure"}`);
+  }
   await kitActor.setFlag(moduleId, "smokeWave4KitEvidence", {
     spray: structuredClone(spray),
     candleMessage,
@@ -598,8 +612,9 @@ globalThis.__runWayfinderWave4PlayerInitial = async function playerInitial({
         createdItemCount: afterChildDrift.items.filter((item) => item.acquisition).length,
         currencyCopper: afterChildDrift.currencyCopper,
       },
+      beforeCreateOrdinals: partialBeforeCreateOrdinals,
       failure,
-      createdItemCount: actorAcquisitionItems(kitActor, moduleId).length,
+      createdItemCount: partialCreatedItemCount,
       currencyCopper: afterFailure.currencyCopper,
       manifest: modules.normalizeState(kitActor.getFlag(moduleId, "state")).completedAcquisitionManifest,
     },

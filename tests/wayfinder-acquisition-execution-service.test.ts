@@ -445,6 +445,7 @@ describe("Wave 2 acquisition execution", () => {
     expect(actor.addOptions).toHaveLength(9);
     expect(actor.currencyCopper).toBe(1_350);
     const backpack = actor.acquisitionItems().find((item) => item.type === "backpack")!;
+    expect(actor.addContainerIds).toEqual([null, ...Array(8).fill(backpack.id)]);
     expect(
       actor
         .acquisitionItems()
@@ -1666,12 +1667,14 @@ class FakeActor {
   readonly id = "actor-1";
   readonly items: { contents: FakeItem[] } = { contents: [] };
   readonly addOptions: Array<{ stack: boolean; render: boolean }> = [];
+  readonly addContainerIds: Array<string | null> = [];
   readonly addedSources: EmbeddedItemSource[] = [];
   readonly currencyAdds: number[] = [];
   readonly currencyRemovals: number[] = [];
   readonly inventory: {
     currency: { copperValue: number };
     add: (source: EmbeddedItemSource, options: { stack: boolean; render: boolean }) => Promise<FakeItem[]>;
+    get: (id: string) => FakeItem | undefined;
     addCurrency: (coins: { cp?: number }) => Promise<void>;
     removeCurrency: (coins: { cp?: number }) => Promise<void>;
   };
@@ -1685,6 +1688,7 @@ class FakeActor {
     this.inventory = {
       currency: { copperValue: currencyCopper },
       add: async (source, options) => this.addItem(source, options),
+      get: (id) => this.items.contents.find((item) => item.id === id),
       addCurrency: async (coins) => this.changeCurrency(coins.cp ?? 0),
       removeCurrency: async (coins) => this.changeCurrency(-(coins.cp ?? 0)),
     };
@@ -1742,10 +1746,14 @@ class FakeActor {
 
   async updateEmbeddedDocuments(): Promise<void> {}
 
-  private async addItem(source: EmbeddedItemSource, options: { stack: boolean; render: boolean }): Promise<FakeItem[]> {
+  private async addItem(
+    source: EmbeddedItemSource,
+    options: { stack: boolean; render: boolean; container?: FakeItem }
+  ): Promise<FakeItem[]> {
     this.addOrdinal += 1;
     if (this.failBeforeAddOrdinal === this.addOrdinal) throw new Error("Forced item failure.");
-    this.addOptions.push({ ...options });
+    this.addOptions.push({ stack: options.stack, render: options.render });
+    this.addContainerIds.push(options.container?.id ?? null);
     this.addedSources.push(structuredClone(source));
     if (this.itemWriteMode === "veto") return [];
     const quantity = Number(source.system?.quantity ?? 0);
@@ -1753,7 +1761,7 @@ class FakeActor {
     const flags = structuredClone(source.flags ?? {});
     if (this.itemWriteMode === "merged") delete flags["wayfinder-pf2e"];
     const size = this.itemWriteMode === "wrong-size" ? "med" : source.system?.size;
-    const containerId = typeof source.system?.containerId === "string" ? source.system.containerId : null;
+    const containerId = options.container?.id ?? null;
     const item: FakeItem = {
       id: `item-${this.nextItemId++}`,
       type: String(source.type ?? "equipment"),

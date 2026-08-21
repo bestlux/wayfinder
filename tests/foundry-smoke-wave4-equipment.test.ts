@@ -257,6 +257,7 @@ function passingResult(): any {
               createdItemCount: 0,
               currencyCopper: 0,
             },
+            beforeCreateOrdinals: [1, 2, 3, 4, 5],
             failure: `Wave 4 forced partial kit write failure before child ${kitDefinition.kit.faultChildSourceUuid} create ordinal ${kitDefinition.kit.failBeforeCreateOrdinal}.`,
             createdItemCount: 4,
             currencyCopper: 0,

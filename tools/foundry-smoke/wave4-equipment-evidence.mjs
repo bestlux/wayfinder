@@ -138,6 +138,7 @@ function qualifyKit(observed, definition, failures) {
     evidence?.initial?.childDrift?.replacementSourceUuid !== definition?.kit?.faultChildReplacementSourceUuid ||
     evidence?.initial?.childDrift?.createdItemCount !== 0 ||
     evidence?.initial?.childDrift?.currencyCopper !== 0 ||
+    JSON.stringify(evidence?.initial?.beforeCreateOrdinals) !== JSON.stringify([1, 2, 3, 4, 5]) ||
     evidence?.initial?.failure !==
       `Wave 4 forced partial kit write failure before child ${definition?.kit?.faultChildSourceUuid} create ordinal ${definition?.kit?.failBeforeCreateOrdinal}.` ||
     evidence?.initial?.createdItemCount !== definition?.kit?.expectedCreatedBeforeFailure ||

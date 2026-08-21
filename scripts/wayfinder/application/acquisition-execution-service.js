@@ -170,11 +170,28 @@ export function createPf2eAcquisitionInventoryAdapter() {
             const add = inventory.add;
             if (typeof add !== "function")
                 throw new Error("PF2E actor inventory item insertion is unavailable.");
-            return Reflect.apply(add, inventory, [source, options]);
+            const container = resolvePf2eInventoryContainer(inventory, source);
+            return Reflect.apply(add, inventory, [source, container ? { ...options, container } : options]);
         },
         addCurrency: async (actor, copper) => callCurrencyMethod(actor, "addCurrency", copper),
         removeCurrency: async (actor, copper) => callCurrencyMethod(actor, "removeCurrency", copper),
     };
+}
+function resolvePf2eInventoryContainer(inventory, source) {
+    const containerId = source.system?.containerId;
+    if (containerId === null || containerId === undefined)
+        return null;
+    if (typeof containerId !== "string" || containerId.length === 0) {
+        throw new TypeError("PF2E acquisition item has an invalid prepared container identity.");
+    }
+    const get = inventory.get;
+    if (typeof get !== "function")
+        throw new Error("PF2E actor inventory container lookup is unavailable.");
+    const container = Reflect.apply(get, inventory, [containerId]);
+    if (!isRecord(container) || container.id !== containerId) {
+        throw new Error(`Prepared PF2E acquisition container ${containerId} is unavailable.`);
+    }
+    return container;
 }
 async function prepareExecution(args) {
     const actorId = actorIdentifier(args.actor);

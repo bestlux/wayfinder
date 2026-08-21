@@ -429,13 +429,13 @@ globalThis.__runWayfinderWave3PlayerVerification = async function runWave3Player
       actorId: actor.id,
       targetLevel: draft.targetLevel,
       subject: structuredClone(policy.subject),
-      recipe: structuredClone(policy.recipe),
+      recipe: structuredClone(policy.resolvedRecipe),
       recipeSelection: structuredClone(policy.recipeSelection),
       startEvidence: structuredClone(policy.higherLevelStartEvidence),
     };
     if (smokeCase.configuredItem) {
       const runtime = modules.getRuntime();
-      const allowance = policy.recipe.allowances?.find((entry) => entry.itemLevel === smokeCase.targetLevel);
+      const allowance = policy.resolvedRecipe.allowances?.find((entry) => entry.itemLevel === smokeCase.targetLevel);
       if (!allowance) throw new Error("Configured item fixture lacks its exact current-level GM allowance.");
       const request = {
         actor,

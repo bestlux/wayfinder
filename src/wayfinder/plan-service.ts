@@ -89,10 +89,9 @@ export async function buildWayfinderPlan(
   ]);
 
   const equipmentSlotId = `starting-equipment-level-${plan.targetLevel}`;
-  const targetLevelSteps =
-    plan.targetLevel === 1 && !snapshot.fulfilledStepIds.includes(equipmentSlotId)
-      ? [...registeredSteps, createStartingEquipmentStep(plan.targetLevel)]
-      : registeredSteps;
+  const targetLevelSteps = !snapshot.fulfilledStepIds.includes(equipmentSlotId)
+    ? [...registeredSteps, createStartingEquipmentStep(plan.targetLevel)]
+    : registeredSteps;
 
   return {
     ...plan,

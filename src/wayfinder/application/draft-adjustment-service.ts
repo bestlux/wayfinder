@@ -1,5 +1,6 @@
 import type { EffectiveBuildState } from "../../build-state.js";
 import type { AbilityKey, DraftState, PendingStep } from "../../types.js";
+import { reconcileAcquisitionTargetLevel } from "../domain/acquisition-draft.js";
 import { isActiveSkillTrainingChoice } from "../domain/skill-training-choice-availability.js";
 import { SLOT_IDS } from "../slot-ids.js";
 
@@ -262,6 +263,9 @@ export function adjustDraftTargetLevel(draft: DraftState, currentLevel: number, 
   }
 
   draft.targetLevel = nextTargetLevel;
+  if (draft.acquisition) {
+    draft.acquisition = reconcileAcquisitionTargetLevel(draft.acquisition, nextTargetLevel);
+  }
   return true;
 }
 

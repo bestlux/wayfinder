@@ -430,6 +430,18 @@ export interface StartingEquipmentStepPane {
   description: string;
   initialized: boolean;
   corrupt: boolean;
+  setup: {
+    awaitingAuthority: boolean;
+    canChooseRecipe: boolean;
+    selectedRecipe: "permanent-items" | "lump-sum" | null;
+    recipeOptions: readonly {
+      value: "permanent-items" | "lump-sum";
+      label: string;
+      selected: boolean;
+    }[];
+    authorityMessage: string | null;
+    canActivate: boolean;
+  };
   policy: {
     recipeLabel: string;
     budgetLabel: string;
@@ -437,6 +449,12 @@ export interface StartingEquipmentStepPane {
     authorityLabel: string;
     handoffLabel: string;
     explanations: readonly string[];
+    allowances: readonly {
+      allowanceId: string;
+      itemLevel: number;
+      label: string;
+      used: boolean;
+    }[];
   };
   catalogue: {
     state: "pending" | "ready" | "error";
@@ -450,6 +468,8 @@ export interface StartingEquipmentStepPane {
       affordable: boolean;
       previewing: boolean;
       canAdd: boolean;
+      canBuyWithCurrency: boolean;
+      allowanceOptions: readonly { allowanceId: string; label: string }[];
       canChooseTitanMauler: boolean;
     })[];
     preview: (StartingEquipmentCatalogueRecord & { affordable: boolean }) | null;

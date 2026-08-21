@@ -1,21 +1,41 @@
+import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
 export const MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS = 12;
-export function buildStartingEquipmentPane(step, draft, evaluation, catalogue) {
+export function buildStartingEquipmentPane(step, draft, evaluation, catalogue, setupOptions) {
     const acquisition = draft.acquisition;
     const policy = acquisition?.policySnapshot?.material ?? null;
     const budgetCopper = policy?.budgetCopper ?? 1_500;
-    const spentCopper = acquisition?.lines.reduce((sum, line) => sum + (line.funding.lane === "class-grant" ? 0 : line.price.linePriceCopper), 0) ?? 0;
+    const spentCopper = acquisition?.lines.reduce((sum, line) => sum + chargedCopper(line), 0) ?? 0;
     const reviewedRemaining = acquisition?.disposition.kind === "purchase-ledger" || acquisition?.disposition.kind === "retain-all"
         ? acquisition.disposition.review.remainingCopper
         : null;
     const remainingCopper = reviewedRemaining ?? Math.max(0, budgetCopper - spentCopper);
+    const usedAllowanceIds = new Set(acquisition?.lines.flatMap((line) => {
+        const funding = line.funding;
+        if (funding.lane !== "allowance")
+            return [];
+        const assignment = funding.assignment;
+        return assignment.mode === "player" ? [assignment.allowanceId] : [];
+    }) ?? []);
+    const availableAllowances = policy?.allowances.filter((allowance) => !usedAllowanceIds.has(allowance.allowanceId)) ?? [];
     const matchingRecords = catalogue.records.filter((record) => matchesQuery(record, catalogue.query) && matchesFilters(record, catalogue.activeFilters));
     const records = matchingRecords.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS).map((record) => {
         const affordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
+        const canBuyWithCurrency = record.available && record.level < step.level && affordable;
+        const allowanceOptions = policy?.resolvedRecipe.kind === "permanent-items" && isPermanentItemType(record.itemType)
+            ? availableAllowances
+                .filter((allowance) => allowance.itemLevel >= record.level)
+                .map((allowance) => ({
+                allowanceId: allowance.allowanceId,
+                label: `Use level ${allowance.itemLevel} allowance`,
+            }))
+            : [];
         return {
             ...record,
             affordable,
             previewing: record.sourceUuid === catalogue.previewSourceUuid,
-            canAdd: record.available && affordable,
+            canAdd: canBuyWithCurrency || allowanceOptions.length > 0,
+            canBuyWithCurrency,
+            allowanceOptions,
             canChooseTitanMauler: catalogue.titanMauler.required &&
                 catalogue.titanMauler.selectedSourceUuid === null &&
                 record.titanMaulerEligible,
@@ -35,7 +55,7 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue) {
             name: record?.name ?? line.sourceUuid,
             quantity: line.price.requestedQuantity,
             priceLabel: formatCopper(line.price.linePriceCopper),
-            fundingLabel: fundingLabel(line.funding.lane),
+            fundingLabel: fundingLabel(line.funding, policy?.allowances ?? []),
             canRemove: line.funding.lane !== "class-grant" ||
                 plannedGrantById.get(line.funding.grant.plannedGrantId)?.materializer !== "pf2e-native",
             canChangeQuantity: line.funding.lane !== "class-grant",
@@ -48,6 +68,11 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue) {
     const disposition = acquisition?.disposition.kind ?? "not-started";
     const currencyLines = acquisition?.lines.filter((line) => line.funding.lane !== "class-grant") ?? [];
     const handoff = acquisition?.disposition.kind === "handoff" ? acquisition.disposition : null;
+    const worldPolicy = setupOptions?.worldPolicy ?? null;
+    const awaitingAuthority = !!acquisition && !policy;
+    const selectedRecipe = acquisition?.recipe.kind === "permanent-items" || acquisition?.recipe.kind === "lump-sum"
+        ? acquisition.recipe.kind
+        : null;
     return {
         kind: "starting-equipment",
         templateKind: "starting-equipment",
@@ -59,6 +84,25 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue) {
         description: step.description,
         initialized: !!acquisition,
         corrupt: draft.acquisitionCorrupt,
+        setup: {
+            awaitingAuthority,
+            canChooseRecipe: awaitingAuthority && worldPolicy?.recipeChoiceAuthority === "actor-owner",
+            selectedRecipe,
+            recipeOptions: (worldPolicy?.enabledRecipes ?? []).map((value) => ({
+                value,
+                label: value === "permanent-items" ? "Permanent items and coin" : "Lump sum of coin",
+                selected: value === selectedRecipe,
+            })),
+            authorityMessage: awaitingAuthority
+                ? worldPolicy?.higherLevelStartAuthority === "actor-owner-attestation"
+                    ? "As an owner, you can attest that this is a new or replacement higher-level character."
+                    : setupOptions?.isGm
+                        ? "Confirm whether this is a new-campaign or replacement-character start before shopping."
+                        : "A GM must confirm this higher-level start before shopping."
+                : null,
+            canActivate: awaitingAuthority &&
+                (worldPolicy?.higherLevelStartAuthority === "actor-owner-attestation" || setupOptions?.isGm === true),
+        },
         policy: {
             recipeLabel: policy ? recipeLabel(policy.resolvedRecipe.kind) : "Set once you start shopping",
             budgetLabel: formatCopper(budgetCopper),
@@ -70,6 +114,11 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue) {
                 : "From your GM's settings",
             handoffLabel: "Coin and gear your character already has stay put. Handle those on the PF2E inventory tab.",
             explanations: policy && acquisition ? policyExplanations(acquisition) : [],
+            allowances: policy?.allowances.map((allowance) => ({
+                ...allowance,
+                label: `Level ${allowance.itemLevel} permanent item`,
+                used: usedAllowanceIds.has(allowance.allowanceId),
+            })) ?? [],
         },
         catalogue: {
             state: catalogue.state,
@@ -142,8 +191,11 @@ function policyExplanations(acquisition) {
     const material = acquisition.policySnapshot?.material;
     if (!material)
         return [];
+    const fundingExplanation = material.resolvedRecipe.kind === "permanent-items"
+        ? `Your permanent-item allowances are separate from ${formatCopper(material.budgetCopper)} in starting coin. Unused allowances never become cash.`
+        : `You have ${formatCopper(material.budgetCopper)} in starting coin for Common items below level ${material.subject.targetLevel}.`;
     return [
-        "At level 1 you have 15 gp to spend, whichever funding option your GM picked.",
+        fundingExplanation,
         material.rarityPolicy.blanketCeiling === "common"
             ? "Anything Common is fair game, as long as its pack is approved."
             : `Your GM has opened this up to ${material.rarityPolicy.blanketCeiling} gear.`,
@@ -175,12 +227,28 @@ function authoritySentence(recipeChoice, apply) {
         return "You choose the funding, your GM applies it";
     return "You choose the funding and apply it";
 }
-function fundingLabel(lane) {
-    if (lane === "class-grant")
+function fundingLabel(funding, allowances) {
+    if (funding.lane === "class-grant")
         return "Granted by your build · free";
-    if (lane === "allowance")
-        return "Permanent item allowance";
+    if (funding.lane === "allowance") {
+        const assignment = funding.assignment;
+        if (assignment.mode === "automatic")
+            return "Permanent item allowance";
+        const allowance = allowances.find((candidate) => candidate.allowanceId === assignment.allowanceId);
+        return allowance ? `Level ${allowance.itemLevel} permanent item allowance` : "Permanent item allowance";
+    }
     return "Paid from starting wealth";
+}
+function chargedCopper(line) {
+    if (line.funding.lane === "class-grant")
+        return 0;
+    const resolved = resolveAcquisitionPrice(line.price);
+    if (resolved.ok === false)
+        return line.price.linePriceCopper;
+    return line.funding.lane === "allowance" ? resolved.value.supplementalCopper : resolved.value.totalCopper;
+}
+function isPermanentItemType(itemType) {
+    return itemType !== "ammo" && itemType !== "consumable";
 }
 function handoffReason(reason) {
     switch (reason.code) {

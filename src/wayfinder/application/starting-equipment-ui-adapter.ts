@@ -15,7 +15,12 @@ export interface StartingEquipmentUiRequest {
 export interface StartingEquipmentUiAdapter {
   /** Project search/filter state from a cached normalized catalogue; do not reread pack indexes or hydrate documents. */
   project(request: StartingEquipmentUiRequest): Promise<StartingEquipmentCatalogueProjection>;
-  prepareLine(request: StartingEquipmentUiRequest & { readonly sourceUuid: string }): Promise<AcquisitionLineDraft>;
+  prepareLine(
+    request: StartingEquipmentUiRequest & {
+      readonly sourceUuid: string;
+      readonly funding?: { readonly lane: "currency" } | { readonly lane: "allowance"; readonly allowanceId: string };
+    }
+  ): Promise<AcquisitionLineDraft>;
   prepareTitanMaulerLine(
     request: StartingEquipmentUiRequest & { readonly sourceUuid: string }
   ): Promise<AcquisitionLineDraft>;

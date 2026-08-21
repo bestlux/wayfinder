@@ -36,6 +36,65 @@ const FORMULA_BOOK_ID = "qCEOZ6109Yo34tRx";
 const ANCESTRY_UUID = "Compendium.pf2e.ancestries.Item.ancestry";
 
 describe("equipment acquisition runtime", () => {
+  it("projects the exact lump-sum boundary and rejects at-level purchases", async () => {
+    const boundary = dagger({ id: "boundary", level: 4, priceGp: 1 });
+    const atLevel = dagger({ id: "at-level", level: 5, priceGp: 1 });
+    const boundaryUuid = `Compendium.${PACK_ID}.Item.boundary`;
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [boundary, atLevel]),
+        getDocument: vi.fn(async (id) => document(id === "boundary" ? boundary : atLevel)),
+      },
+      { policy: higherLevelPolicy("lump-sum") }
+    );
+
+    const projection = await runtime.uiAdapter.project(request);
+    expect(projection.records.map((record) => record.level)).toEqual([4]);
+    await expect(
+      runtime.uiAdapter.prepareLine({
+        ...request,
+        sourceUuid: boundaryUuid,
+        funding: { lane: "currency" },
+      })
+    ).resolves.toMatchObject({ itemLevel: 4, funding: { lane: "currency" } });
+    await expect(
+      runtime.uiAdapter.prepareLine({
+        ...request,
+        sourceUuid: `Compendium.${PACK_ID}.Item.at-level`,
+        funding: { lane: "currency" },
+      })
+    ).rejects.toThrow(/below.*target level/i);
+  });
+
+  it("prepares explicit permanent-item allowance assignments without consuming coin", async () => {
+    const source = dagger({ level: 3, priceGp: 20 });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      { policy: higherLevelPolicy("permanent-items") }
+    );
+
+    await expect(
+      runtime.uiAdapter.prepareLine({
+        ...request,
+        sourceUuid: DAGGER_UUID,
+        funding: { lane: "allowance", allowanceId: "level-4-1" },
+      })
+    ).resolves.toMatchObject({
+      itemLevel: 3,
+      funding: { lane: "allowance", assignment: { mode: "player", allowanceId: "level-4-1" } },
+    });
+    await expect(
+      runtime.uiAdapter.prepareLine({
+        ...request,
+        sourceUuid: DAGGER_UUID,
+        funding: { lane: "allowance", allowanceId: "level-2-1" },
+      })
+    ).rejects.toThrow(/cannot fund/i);
+  });
+
   it("projects the bounded level-1 catalogue and prepares a hydrated Dagger line", async () => {
     const source = dagger();
     const getIndex = vi.fn(async () => [source]);
@@ -117,14 +176,14 @@ describe("equipment acquisition runtime", () => {
     expect(drifted.resolvedPrice).toMatchObject({ unitPriceCopper: 30, linePriceCopper: 30 });
   });
 
-  it("fails closed for non-level-zero and configured material sources", async () => {
+  it("fails closed for at-level currency purchases and configured material sources", async () => {
     const leveled = fixture({
       getIndex: vi.fn(async () => [dagger({ level: 1 })]),
       getDocument: vi.fn(async () => document(dagger({ level: 1 }))),
     });
     await expect(
       leveled.runtime.uiAdapter.prepareLine({ ...leveled.request, sourceUuid: DAGGER_UUID })
-    ).rejects.toThrow(/level-0/i);
+    ).rejects.toThrow(/below.*target level/i);
 
     const material = dagger({ materialType: "cold-iron" });
     const configured = fixture({
@@ -903,17 +962,19 @@ function fixture(
   request: Parameters<EquipmentAcquisitionRuntime["uiAdapter"]["project"]>[0];
 } {
   const currentPolicy = options.policy ?? policy();
+  const recipe =
+    currentPolicy.recipe.kind === "lump-sum" ? ({ kind: "lump-sum" } as const) : ({ kind: "permanent-items" } as const);
   const acquisition = {
     ...createAcquisitionDraft({
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
-      targetLevel: 1,
-      recipe: { kind: "permanent-items" },
+      targetLevel: currentPolicy.targetLevel,
+      recipe,
     }),
-    policySnapshot: createAcquisitionPolicySnapshot(currentPolicy, { kind: "permanent-items" }),
+    policySnapshot: createAcquisitionPolicySnapshot(currentPolicy, recipe),
   };
-  const draft = createEmptyDraft(1);
+  const draft = createEmptyDraft(currentPolicy.targetLevel);
   draft.acquisition = acquisition;
   const packs = new Map<string, EquipmentCataloguePackLike>([
     [PACK_ID, { documentName: "Item", getIndex: pack.getIndex, getDocument: pack.getDocument }],
@@ -930,11 +991,11 @@ function fixture(
       actor: { id: "actor-1" },
       draft,
       step: {
-        id: "starting-equipment-level-1",
-        slotId: "starting-equipment-level-1",
+        id: `starting-equipment-level-${currentPolicy.targetLevel}`,
+        slotId: `starting-equipment-level-${currentPolicy.targetLevel}`,
         kind: "starting-equipment",
         slotKind: "starting-equipment",
-        level: 1,
+        level: currentPolicy.targetLevel,
         title: "Starting Equipment",
         description: "Choose equipment.",
         required: true,
@@ -977,8 +1038,50 @@ function policy(): EffectiveEquipmentPolicySnapshotV1 {
   };
 }
 
+function higherLevelPolicy(recipe: "permanent-items" | "lump-sum"): EffectiveEquipmentPolicySnapshotV1 {
+  const targetLevel = 5;
+  return {
+    ...policy(),
+    targetLevel,
+    recipe:
+      recipe === "lump-sum"
+        ? { kind: "lump-sum", budgetCopper: 27_000, maxItemLevel: 4 }
+        : {
+            kind: "permanent-items",
+            currencyCopper: 5_000,
+            allowances: [
+              { allowanceId: "level-1-1", itemLevel: 1 },
+              { allowanceId: "level-1-2", itemLevel: 1 },
+              { allowanceId: "level-2-1", itemLevel: 2 },
+              { allowanceId: "level-3-1", itemLevel: 3 },
+              { allowanceId: "level-3-2", itemLevel: 3 },
+              { allowanceId: "level-4-1", itemLevel: 4 },
+            ],
+          },
+    higherLevelStartEvidence: {
+      kind: "actor-owner-attestation",
+      startKind: "replacement-character",
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel,
+      authorUserId: "owner-1",
+      authorName: "Owner",
+      recordedAt: "2026-08-20T20:00:00.000Z",
+      reason: "Replacement character",
+    },
+    authorityPolicy: {
+      recipeChoice: "actor-owner",
+      higherLevelStart: "actor-owner-attestation",
+      apply: "actor-owner",
+    },
+    fingerprint: `policy-level-5-${recipe}`,
+  };
+}
+
 function dagger(
   options: {
+    readonly id?: string;
+    readonly name?: string;
     readonly priceSp?: number;
     readonly priceGp?: number;
     readonly level?: number;
@@ -987,8 +1090,8 @@ function dagger(
   } = {}
 ) {
   return {
-    _id: DAGGER_ID,
-    name: "Dagger",
+    _id: options.id ?? DAGGER_ID,
+    name: options.name ?? "Dagger",
     img: "icons/weapons/daggers/dagger-straight-blue.webp",
     type: "weapon",
     system: {

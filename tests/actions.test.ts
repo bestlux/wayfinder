@@ -128,6 +128,36 @@ describe("wayfinder actions", () => {
     expect(
       parseWayfinderAction({
         dataset: {
+          wayfinderAction: "add-equipment-item",
+          stepId: "starting-equipment-level-5",
+          sourceUuid: "Compendium.pf2e.equipment-srd.Item.item",
+          funding: "allowance",
+          allowanceId: "level-4-1",
+        },
+      } as any)
+    ).toEqual({
+      type: "add-equipment-item",
+      stepId: "starting-equipment-level-5",
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.item",
+      funding: "allowance",
+      allowanceId: "level-4-1",
+    });
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "activate-equipment-policy",
+          stepId: "starting-equipment-level-5",
+          startKind: "replacement-character",
+        },
+      } as any)
+    ).toEqual({
+      type: "activate-equipment-policy",
+      stepId: "starting-equipment-level-5",
+      startKind: "replacement-character",
+    });
+    expect(
+      parseWayfinderAction({
+        dataset: {
           wayfinderAction: "change-equipment-quantity",
           stepId: "starting-equipment-level-1",
           lineId: "line-1",

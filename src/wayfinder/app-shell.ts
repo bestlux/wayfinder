@@ -15,7 +15,7 @@ import { getOptionQueryForStep, getOptionsForStep, resolveSelection } from "../p
 import { getPickerInfoState } from "../pack/picker-state.js";
 import { assertCanUseWayfinder, canUseWayfinder, WayfinderActorAuthorityError } from "../permissions.js";
 import type { SelectorActorLike } from "../selector-application.js";
-import { getSpellRarityCeilingSetting } from "../settings.js";
+import { getEquipmentWorldPolicySetting, getSpellRarityCeilingSetting } from "../settings.js";
 import { enqueueActorOperation } from "../shared/actor-operation-queue.js";
 import { cloneData } from "../shared/cloning.js";
 import { extractDocumentSlug } from "../shared/slug.js";
@@ -898,14 +898,36 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         await this.#removeSpellRarityAttestation(action.stepId);
         break;
       case "initialize-starting-equipment":
-        await this.#executeStartingEquipmentCommand(action.stepId, { type: "initialize" });
+        await this.#executeStartingEquipmentCommand(action.stepId, {
+          type: "initialize",
+          ...(action.selectedRecipe ? { selectedRecipe: action.selectedRecipe } : {}),
+        });
+        break;
+      case "select-equipment-recipe":
+        await this.#executeStartingEquipmentCommand(action.stepId, {
+          type: "select-recipe",
+          selectedRecipe: action.selectedRecipe,
+        });
+        break;
+      case "activate-equipment-policy":
+        await this.#executeStartingEquipmentCommand(action.stepId, {
+          type: "activate-policy",
+          startKind: action.startKind,
+          reason: `Confirmed ${action.startKind === "new-campaign" ? "a new campaign" : "a replacement character"} start at level ${this.#requireDraft().targetLevel}.`,
+        });
         break;
       case "preview-equipment-item":
         this.#equipmentPreviewByStepId.set(action.stepId, action.sourceUuid);
         this.render({ wayfinderEquipmentUpdate: true });
         break;
       case "add-equipment-item":
-        await this.#addStartingEquipmentItem(action.stepId, action.sourceUuid);
+        await this.#addStartingEquipmentItem(
+          action.stepId,
+          action.sourceUuid,
+          action.funding === "allowance"
+            ? { lane: "allowance", allowanceId: action.allowanceId! }
+            : { lane: "currency" }
+        );
         break;
       case "choose-titan-mauler-equipment":
         await this.#chooseTitanMaulerEquipment(action.stepId, action.sourceUuid);
@@ -1186,7 +1208,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         step,
         this.#requireDraft(),
         stepEvaluation,
-        await getStartingEquipmentUiAdapter().project(request)
+        await getStartingEquipmentUiAdapter().project(request),
+        { worldPolicy: getEquipmentWorldPolicySetting(), isGm: game.user?.isGM === true }
       );
     }
 
@@ -1270,6 +1293,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         moduleState: normalizeState(this.actor.getFlag(MODULE_ID, "state")),
         steps: plan.steps,
         userId,
+        user: game.user,
         now: () => now,
       });
       this.#requireDraft().acquisition = result.acquisition;
@@ -1283,7 +1307,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     this.render({ wayfinderEquipmentUpdate: true });
   }
 
-  async #addStartingEquipmentItem(stepId: string, sourceUuid: string): Promise<void> {
+  async #addStartingEquipmentItem(
+    stepId: string,
+    sourceUuid: string,
+    funding: { readonly lane: "currency" } | { readonly lane: "allowance"; readonly allowanceId: string }
+  ): Promise<void> {
     try {
       const plan = this.#cachedRenderPlan;
       if (!plan) throw new TypeError("The current Wayfinder plan is unavailable.");
@@ -1295,6 +1323,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
       const line = await getStartingEquipmentUiAdapter().prepareLine({
         ...this.#startingEquipmentUiRequest(step),
         sourceUuid,
+        funding,
       });
       await this.#executeStartingEquipmentCommand(stepId, { type: "add-line", line });
     } catch (error) {

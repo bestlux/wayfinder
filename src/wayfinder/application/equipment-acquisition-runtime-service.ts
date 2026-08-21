@@ -28,7 +28,12 @@ import {
   type TitanMaulerCandidate,
   titanMaulerTargetSize,
 } from "../domain/class-grant-reconciliation.js";
-import type { EffectiveEquipmentPolicySnapshotV1, OfficialEquipmentRecipe } from "../domain/equipment-policy.js";
+import type {
+  EffectiveEquipmentPolicySnapshotV1,
+  EquipmentHigherLevelStartClaim,
+  EquipmentHigherLevelStartEvidence,
+  OfficialEquipmentRecipe,
+} from "../domain/equipment-policy.js";
 import type { ResolvedAcquisitionSource } from "./acquisition-execution-service.js";
 import {
   buildTitanMaulerCandidate,
@@ -206,7 +211,8 @@ export function createEquipmentAcquisitionRuntime(
             );
           }
         }
-        const entries = projectedEntries.filter((entry) => entry.level === 0);
+        const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
+        const entries = projectedEntries.filter((entry) => entry.level <= maximumLevel);
         const records = entries.map(toUiRecord);
         return {
           state: "ready",
@@ -238,8 +244,15 @@ export function createEquipmentAcquisitionRuntime(
       const acquisition = requireAcquisition(request);
       const { policy, context } = currentContext(request.actor, request.draft, acquisition);
       const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
-      assertWaveTwoCandidate(resolved);
+      assertSupportedCandidate(resolved);
       const price = buildResolvedPrice(resolved, 1, sourceSize(resolved.source));
+      const itemPermanence = permanence(resolved.candidate.itemType);
+      const funding = resolveRequestedFunding(
+        policy,
+        request.funding ?? { lane: "currency" },
+        resolved.candidate.level,
+        itemPermanence
+      );
       return {
         schemaVersion: 1,
         lineId: mintLineId(),
@@ -247,10 +260,10 @@ export function createEquipmentAcquisitionRuntime(
         documentFingerprint: resolved.documentFingerprint,
         priceFingerprint: resolved.priceFingerprint,
         itemLevel: resolved.candidate.level,
-        permanence: permanence(resolved.candidate.itemType),
+        permanence: itemPermanence,
         componentKind: "baseline-item",
         policyDecision: cloneData(resolved.policyDecision),
-        funding: { lane: "currency" },
+        funding,
         stackingIntent: "aggregate",
         price,
       };
@@ -275,7 +288,7 @@ export function createEquipmentAcquisitionRuntime(
 
       const { policy, context } = currentContext(request.actor, request.draft, acquisition);
       const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
-      assertWaveTwoCandidate(resolved);
+      assertTitanMaulerCandidate(resolved);
       assertExactCompendiumSource(resolved.candidate.sourceUuid, resolved.source);
       return buildTitanMaulerLine({
         resolved,
@@ -375,7 +388,7 @@ export function createEquipmentAcquisitionRuntime(
       if (fixedNativeGrant) {
         assertFixedNativeSource(fixedNativeGrant, resolved);
       } else {
-        assertWaveTwoCandidate(resolved);
+        assertSupportedCandidate(resolved);
       }
       const currentPermanence = permanence(resolved.candidate.itemType);
       if (
@@ -437,7 +450,7 @@ export function createEquipmentAcquisitionRuntime(
     async resolveCurrentCharacterAccessRef(request) {
       const { policy, context } = currentContext(request.actor, request.characterDraft, request.acquisition);
       const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
-      assertWaveTwoCandidate(resolved);
+      assertTitanMaulerCandidate(resolved);
       return resolved.policyDecision.characterAccessRef;
     },
     async synchronizeTitanMaulerLine(request) {
@@ -482,7 +495,7 @@ export function createEquipmentAcquisitionRuntime(
       }
       try {
         const { policy, resolved } = current;
-        assertWaveTwoCandidate(resolved);
+        assertTitanMaulerCandidate(resolved);
         assertExactCompendiumSource(resolved.candidate.sourceUuid, resolved.source);
         const currentLine = buildTitanMaulerLine({
           resolved,
@@ -673,6 +686,7 @@ function resolveCurrentEffectivePolicy(
     draftId: acquisition.draftId,
     targetLevel: acquisition.targetLevel,
     selectedRecipe: selectedOfficialRecipe(acquisition.recipe.kind),
+    higherLevelStartClaim: higherLevelStartClaim(reviewed.material.higherLevelStartEvidence),
     customLumpSum:
       acquisition.recipe.kind === "custom-lump-sum"
         ? { amountCopper: acquisition.recipe.amountCopper, judgmentId: acquisition.recipe.judgmentRef }
@@ -684,6 +698,14 @@ function resolveCurrentEffectivePolicy(
       .filter((judgment) => judgment.kind === "rarity-source-exception")
       .map((judgment) => judgment.id),
   });
+}
+
+function higherLevelStartClaim(evidence: EquipmentHigherLevelStartEvidence): EquipmentHigherLevelStartClaim | null {
+  if (evidence.kind === "not-required") return null;
+  if (evidence.kind === "gm-confirmation") {
+    return { kind: "gm-confirmation", judgmentId: evidence.judgment.id, startKind: evidence.startKind };
+  }
+  return { ...evidence };
 }
 
 function selectedOfficialRecipe(kind: AcquisitionDraftState["recipe"]["kind"]): OfficialEquipmentRecipe {
@@ -698,16 +720,46 @@ function requireAcquisition(request: StartingEquipmentUiRequest): AcquisitionDra
   return acquisition;
 }
 
-function assertWaveTwoCandidate(resolved: EquipmentCatalogueApplyResolution): void {
+function assertSupportedCandidate(resolved: EquipmentCatalogueApplyResolution): void {
   if (!resolved.available || !resolved.policyDecision.eligible) {
     throw new Error(resolved.unavailableReasons[0]?.message ?? "This equipment is unavailable under current policy.");
-  }
-  if (resolved.candidate.level !== 0) {
-    throw new Error("Wave 2 supports only level-0 items for a level-1 character.");
   }
   if (!resolved.source || typeof resolved.source !== "object") {
     throw new TypeError("The equipment document has no embeddable source.");
   }
+}
+
+function assertTitanMaulerCandidate(resolved: EquipmentCatalogueApplyResolution): void {
+  assertSupportedCandidate(resolved);
+  if (resolved.candidate.level !== 0) {
+    throw new Error("Titan Mauler requires a level-0 weapon.");
+  }
+}
+
+function resolveRequestedFunding(
+  policy: EffectiveEquipmentPolicySnapshotV1,
+  requested: { readonly lane: "currency" } | { readonly lane: "allowance"; readonly allowanceId: string },
+  itemLevel: number,
+  itemPermanence: "consumable" | "permanent"
+): AcquisitionLineDraft["funding"] {
+  if (requested.lane === "currency") {
+    if (itemLevel >= policy.targetLevel) {
+      throw new Error("Starting currency can buy only items below the character's target level.");
+    }
+    return { lane: "currency" };
+  }
+  if (policy.recipe.kind !== "permanent-items") {
+    throw new Error("The lump-sum recipe does not include permanent-item allowances.");
+  }
+  if (itemPermanence !== "permanent") {
+    throw new Error("A permanent-item allowance cannot fund a consumable.");
+  }
+  const allowance = policy.recipe.allowances.find((candidate) => candidate.allowanceId === requested.allowanceId);
+  if (!allowance) throw new Error("The selected permanent-item allowance no longer exists.");
+  if (itemLevel > allowance.itemLevel) {
+    throw new Error(`A level ${allowance.itemLevel} allowance cannot fund a level ${itemLevel} item.`);
+  }
+  return { lane: "allowance", assignment: { mode: "player", allowanceId: allowance.allowanceId } };
 }
 
 function buildResolvedPrice(

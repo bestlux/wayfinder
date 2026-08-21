@@ -1,3 +1,4 @@
+import { getEquipmentWorldPolicySetting } from "../../settings.js";
 import type { DraftState, ModuleState, PendingStep } from "../../types.js";
 import {
   acknowledgeAcquisitionHandoff,
@@ -17,6 +18,11 @@ import {
 } from "../domain/acquisition-ledger.js";
 import type { AcquisitionDraftState, AcquisitionLineDraft } from "../domain/acquisition-types.js";
 import { createPreparedClassGrantPlan, type PlannedClassGrantV1 } from "../domain/class-grant-reconciliation.js";
+import type {
+  EquipmentHigherLevelStartClaim,
+  HigherLevelStartKind,
+  OfficialEquipmentRecipe,
+} from "../domain/equipment-policy.js";
 import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class-grant-projection-service.js";
 import type { EconomicActorLike } from "./economic-baseline-service.js";
 import { evaluateActorEconomicAdmission } from "./economic-baseline-service.js";
@@ -25,10 +31,20 @@ import {
   getFoundryEquipmentAcquisitionRuntime,
   type NativeClassGrantLineRequest,
 } from "./equipment-acquisition-runtime-service.js";
-import { resolveEquipmentPolicyForActor } from "./equipment-policy-service.js";
+import {
+  createOwnerStartAttestation,
+  resolveEquipmentPolicyForActor,
+  saveTrustedEquipmentPolicyJudgment,
+} from "./equipment-policy-service.js";
 
 export type StartingEquipmentCommand =
-  | { readonly type: "initialize" }
+  | { readonly type: "initialize"; readonly selectedRecipe?: OfficialEquipmentRecipe }
+  | { readonly type: "select-recipe"; readonly selectedRecipe: OfficialEquipmentRecipe }
+  | {
+      readonly type: "activate-policy";
+      readonly startKind: HigherLevelStartKind;
+      readonly reason: string;
+    }
   | { readonly type: "add-line"; readonly line: AcquisitionLineDraft }
   | { readonly type: "remove-line"; readonly lineId: string }
   | { readonly type: "set-quantity"; readonly lineId: string; readonly quantity: number }
@@ -42,6 +58,7 @@ export interface StartingEquipmentCommandContext {
   readonly moduleState: ModuleState;
   readonly steps: readonly PendingStep[];
   readonly userId: string;
+  readonly user?: unknown;
   readonly now: () => string;
 }
 
@@ -54,6 +71,10 @@ export interface StartingEquipmentCommandResult {
 interface StartingEquipmentCommandDependencies {
   readonly mintIdentity: typeof mintAcquisitionIdentitySeed;
   readonly resolvePolicy: typeof resolveEquipmentPolicyForActor;
+  readonly getWorldPolicy: typeof getEquipmentWorldPolicySetting;
+  readonly createOwnerStartAttestation: typeof createOwnerStartAttestation;
+  readonly saveJudgment: typeof saveTrustedEquipmentPolicyJudgment;
+  readonly mintJudgmentId: () => string;
   readonly projectClassGrants: typeof projectCurrentClassGrants;
   readonly prepareClassGrantPlan: typeof prepareCurrentClassGrantPlan;
   readonly prepareNativeGrantLines: (request: NativeClassGrantLineRequest) => Promise<readonly AcquisitionLineDraft[]>;
@@ -65,6 +86,10 @@ interface StartingEquipmentCommandDependencies {
 const DEFAULT_DEPS: StartingEquipmentCommandDependencies = {
   mintIdentity: mintAcquisitionIdentitySeed,
   resolvePolicy: resolveEquipmentPolicyForActor,
+  getWorldPolicy: getEquipmentWorldPolicySetting,
+  createOwnerStartAttestation,
+  saveJudgment: saveTrustedEquipmentPolicyJudgment,
+  mintJudgmentId: () => crypto.randomUUID(),
   projectClassGrants: projectCurrentClassGrants,
   prepareClassGrantPlan: prepareCurrentClassGrantPlan,
   prepareNativeGrantLines: (request) => getFoundryEquipmentAcquisitionRuntime().prepareNativeClassGrantLines(request),
@@ -77,8 +102,9 @@ const DEFAULT_DEPS: StartingEquipmentCommandDependencies = {
 export async function executeStartingEquipmentCommand(
   command: StartingEquipmentCommand,
   context: StartingEquipmentCommandContext,
-  deps: StartingEquipmentCommandDependencies = DEFAULT_DEPS
+  dependencyOverrides: Partial<StartingEquipmentCommandDependencies> = {}
 ): Promise<StartingEquipmentCommandResult> {
+  const deps: StartingEquipmentCommandDependencies = { ...DEFAULT_DEPS, ...dependencyOverrides };
   assertCommandContext(context);
   if (context.draft.acquisitionCorrupt) {
     throw new TypeError("The starting-equipment draft is malformed and cannot be changed.");
@@ -89,13 +115,29 @@ export async function executeStartingEquipmentCommand(
 
   switch (command.type) {
     case "initialize": {
-      const initialized = before ? null : await initializeAcquisition(context, deps);
+      const initialized = before ? null : await initializeAcquisition(context, deps, command.selectedRecipe);
       acquisition = before ?? initialized!.acquisition;
       statusNote = before
         ? "Your equipment step is already open."
-        : initialized!.pendingTitanSelection
-          ? "Ready to shop. Pick your Titan Mauler weapon before you finish."
-          : "Ready to shop.";
+        : initialized!.awaitingAuthority
+          ? "Starting-equipment setup is ready. Confirm this higher-level start before shopping."
+          : initialized!.pendingTitanSelection
+            ? "Ready to shop. Pick your Titan Mauler weapon before you finish."
+            : "Ready to shop.";
+      break;
+    }
+    case "select-recipe":
+      acquisition = selectStagedRecipe(requireAcquisition(context.draft), command.selectedRecipe, deps);
+      statusNote = `Using ${command.selectedRecipe === "permanent-items" ? "permanent items and coin" : "a lump sum"}.`;
+      break;
+    case "activate-policy": {
+      const staged = requireAcquisition(context.draft);
+      const claim = await createHigherLevelStartClaim(staged, command.startKind, command.reason, context, deps);
+      const activated = await activateAcquisition(staged, context, deps, claim);
+      acquisition = activated.acquisition;
+      statusNote = activated.pendingTitanSelection
+        ? "Ready to shop. Pick your Titan Mauler weapon before you finish."
+        : "Higher-level starting wealth confirmed. Ready to shop.";
       break;
     }
     case "add-line":
@@ -136,19 +178,51 @@ export async function executeStartingEquipmentCommand(
 
 async function initializeAcquisition(
   context: StartingEquipmentCommandContext,
-  deps: StartingEquipmentCommandDependencies
-): Promise<{ readonly acquisition: AcquisitionDraftState; readonly pendingTitanSelection: boolean }> {
+  deps: StartingEquipmentCommandDependencies,
+  selectedRecipe?: OfficialEquipmentRecipe
+): Promise<{
+  readonly acquisition: AcquisitionDraftState;
+  readonly pendingTitanSelection: boolean;
+  readonly awaitingAuthority: boolean;
+}> {
   const identity = deps.mintIdentity();
+  const worldPolicy = context.draft.targetLevel > 1 ? deps.getWorldPolicy() : null;
+  const recipe = worldPolicy
+    ? worldPolicy.recipeChoiceAuthority === "actor-owner" && selectedRecipe
+      ? selectedRecipe
+      : worldPolicy.defaultRecipe
+    : (selectedRecipe ?? "permanent-items");
+  const staged = createAcquisitionDraft({
+    ...identity,
+    targetLevel: context.draft.targetLevel,
+    recipe: { kind: recipe },
+  });
+  if (context.draft.targetLevel > 1) {
+    return { acquisition: staged, pendingTitanSelection: false, awaitingAuthority: true };
+  }
+  const activated = await activateAcquisition(staged, context, deps, null);
+  return { ...activated, awaitingAuthority: false };
+}
+
+async function activateAcquisition(
+  staged: AcquisitionDraftState,
+  context: StartingEquipmentCommandContext,
+  deps: StartingEquipmentCommandDependencies,
+  higherLevelStartClaim: EquipmentHigherLevelStartClaim | null
+): Promise<{ readonly acquisition: AcquisitionDraftState; readonly pendingTitanSelection: boolean }> {
+  if (staged.policySnapshot || staged.baseline || staged.lines.length > 0) {
+    throw new TypeError("Starting-equipment policy is already active for this draft.");
+  }
   const policy = deps.resolvePolicy({
     actor: context.actor,
-    draftId: identity.draftId,
-    targetLevel: 1,
-    selectedRecipe: null,
+    draftId: staged.draftId,
+    targetLevel: staged.targetLevel,
+    selectedRecipe: staged.recipe.kind === "permanent-items" ? "permanent-items" : "lump-sum",
+    higherLevelStartClaim,
   });
-  const recipe = { kind: policy.worldRecipePolicy.defaultRecipe } as const;
   let acquisition: AcquisitionDraftState = {
-    ...createAcquisitionDraft({ ...identity, targetLevel: 1, recipe }),
-    policySnapshot: createAcquisitionPolicySnapshot(policy, recipe),
+    ...staged,
+    policySnapshot: createAcquisitionPolicySnapshot(policy, staged.recipe),
   };
   const projectionDraft = { ...context.draft, acquisition };
   const classGrantProjection = await deps.projectClassGrants(context.actor, projectionDraft, context.steps);
@@ -195,6 +269,70 @@ async function initializeAcquisition(
   });
   if (admission.kind === "blocked") throw new Error(admission.message);
   return { acquisition: recordEconomicAdmission(acquisition, admission), pendingTitanSelection };
+}
+
+function selectStagedRecipe(
+  acquisition: AcquisitionDraftState,
+  selectedRecipe: OfficialEquipmentRecipe,
+  deps: StartingEquipmentCommandDependencies
+): AcquisitionDraftState {
+  if (acquisition.policySnapshot || acquisition.baseline || acquisition.lines.length > 0) {
+    throw new TypeError("Starting-equipment funding cannot change after shopping begins.");
+  }
+  const policy = deps.getWorldPolicy();
+  if (policy.recipeChoiceAuthority !== "actor-owner") {
+    throw new TypeError("The GM fixed the starting-equipment funding recipe for this world.");
+  }
+  if (!policy.enabledRecipes.includes(selectedRecipe)) {
+    throw new TypeError("That starting-equipment funding recipe is disabled in this world.");
+  }
+  if (acquisition.recipe.kind === selectedRecipe) return acquisition;
+  return { ...acquisition, recipe: { kind: selectedRecipe } };
+}
+
+async function createHigherLevelStartClaim(
+  acquisition: AcquisitionDraftState,
+  startKind: HigherLevelStartKind,
+  reason: string,
+  context: StartingEquipmentCommandContext,
+  deps: StartingEquipmentCommandDependencies
+): Promise<EquipmentHigherLevelStartClaim> {
+  if (acquisition.targetLevel === 1) {
+    throw new TypeError("Level 1 starting equipment does not require higher-level start authority.");
+  }
+  const worldPolicy = deps.getWorldPolicy();
+  if (worldPolicy.higherLevelStartAuthority === "actor-owner-attestation") {
+    return deps.createOwnerStartAttestation({
+      actor: context.actor,
+      draftId: acquisition.draftId,
+      targetLevel: acquisition.targetLevel,
+      startKind,
+      reason,
+      recordedAt: context.now(),
+      user: context.user,
+    });
+  }
+  const judgmentId = deps.mintJudgmentId();
+  await deps.saveJudgment({
+    id: judgmentId,
+    facts: {
+      kind: "higher-level-start",
+      actorId: actorId(context.actor),
+      draftId: acquisition.draftId,
+      targetLevel: acquisition.targetLevel,
+      startKind,
+    },
+    reason,
+    recordedAt: context.now(),
+    user: context.user,
+  });
+  return { kind: "gm-confirmation", judgmentId, startKind };
+}
+
+function actorId(actor: unknown): string {
+  const id = actor && typeof actor === "object" ? (actor as { id?: unknown }).id : null;
+  if (typeof id !== "string" || !id.trim()) throw new TypeError("Starting equipment requires a bound actor.");
+  return id;
 }
 
 async function prepareLedger(context: StartingEquipmentCommandContext, deps: StartingEquipmentCommandDependencies) {
@@ -349,11 +487,8 @@ function requireAcquisition(draft: DraftState): AcquisitionDraftState {
 }
 
 function assertCommandContext(context: StartingEquipmentCommandContext): void {
-  if (context.draft.targetLevel !== 1) {
-    throw new TypeError("The Wave 2 starting-equipment tracer is available only for a level-1 target.");
-  }
-  if (!context.steps.some((step) => step.kind === "starting-equipment" && step.level === 1)) {
-    throw new TypeError("The current plan does not contain the level-1 starting-equipment step.");
+  if (!context.steps.some((step) => step.kind === "starting-equipment" && step.level === context.draft.targetLevel)) {
+    throw new TypeError("The current plan does not contain starting equipment for this target level.");
   }
   if (!context.userId.trim() || !Number.isFinite(Date.parse(context.now()))) {
     throw new TypeError("Starting-equipment commands require a current user and valid timestamp.");

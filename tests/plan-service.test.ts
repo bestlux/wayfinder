@@ -273,7 +273,7 @@ describe("wayfinder plan service", () => {
     expect(steps.map((step) => step.slotKind)).toEqual(["ability-boosts", "class-feat", "starting-equipment"]);
   });
 
-  it("adds the equipment tracer only for an unfulfilled level-1 target", async () => {
+  it("adds starting equipment for every unfulfilled target level", async () => {
     const snapshot = {
       actorId: "actor-1",
       level: 0,
@@ -300,8 +300,25 @@ describe("wayfinder plan service", () => {
     );
     expect(fulfilled.steps.some((step) => step.kind === "starting-equipment")).toBe(false);
 
-    const levelTwo = await buildWayfinderPlan({ ...snapshot, level: 1 }, createEmptyDraft(2), deps);
-    expect(levelTwo.steps.some((step) => step.kind === "starting-equipment")).toBe(false);
+    for (const targetLevel of [2, 5, 20]) {
+      const higherLevel = await buildWayfinderPlan(
+        { ...snapshot, level: Math.max(0, targetLevel - 1) },
+        createEmptyDraft(targetLevel),
+        deps
+      );
+      expect(higherLevel.steps.at(-1)?.slotId).toBe(`starting-equipment-level-${targetLevel}`);
+
+      const higherLevelFulfilled = await buildWayfinderPlan(
+        {
+          ...snapshot,
+          level: Math.max(0, targetLevel - 1),
+          fulfilledStepIds: [`starting-equipment-level-${targetLevel}`],
+        },
+        createEmptyDraft(targetLevel),
+        deps
+      );
+      expect(higherLevelFulfilled.steps.some((step) => step.kind === "starting-equipment")).toBe(false);
+    }
   });
 
   it("uses class-specific skill feat cadence instead of duplicating generic skill feat steps", async () => {

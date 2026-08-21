@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getCharacterWealthRow } from "../src/wayfinder/domain/character-wealth-policy";
 import {
   buildEquipmentPolicyJudgmentFactsFingerprint,
   compareEffectiveEquipmentPolicyMaterial,
@@ -50,6 +51,46 @@ describe("equipment world policy", () => {
 });
 
 describe("effective equipment policy", () => {
+  it("resolves every official higher-level wealth row exactly", () => {
+    for (let targetLevel = 2; targetLevel <= 20; targetLevel += 1) {
+      const row = getCharacterWealthRow(targetLevel);
+      const permanent = resolve(policyInput({ targetLevel, selectedRecipe: "permanent-items" }));
+      const lump = resolve(policyInput({ targetLevel, selectedRecipe: "lump-sum" }));
+      expect(permanent.recipe).toEqual({
+        kind: "permanent-items",
+        currencyCopper: row.permanentRecipeCurrencyCopper,
+        allowances: row.permanentItemAllowances
+          .flatMap((bucket) =>
+            Array.from({ length: bucket.count }, (_, index) => ({
+              allowanceId: `level-${bucket.itemLevel}-${index + 1}`,
+              itemLevel: bucket.itemLevel,
+            }))
+          )
+          .sort((left, right) => left.itemLevel - right.itemLevel || left.allowanceId.localeCompare(right.allowanceId)),
+      });
+      expect(lump.recipe).toEqual({
+        kind: "lump-sum",
+        budgetCopper: row.lumpSumCopper,
+        maxItemLevel: targetLevel - 1,
+      });
+    }
+  });
+
+  it("pins the level-5 permanent-item canary", () => {
+    expect(resolve(policyInput()).recipe).toEqual({
+      kind: "permanent-items",
+      currencyCopper: 5_000,
+      allowances: [
+        { allowanceId: "level-1-1", itemLevel: 1 },
+        { allowanceId: "level-1-2", itemLevel: 1 },
+        { allowanceId: "level-2-1", itemLevel: 2 },
+        { allowanceId: "level-3-1", itemLevel: 3 },
+        { allowanceId: "level-3-2", itemLevel: 3 },
+        { allowanceId: "level-4-1", itemLevel: 4 },
+      ],
+    });
+  });
+
   it("collapses level 1 to the shared 15 gp result without start evidence", () => {
     const permanent = resolve(policyInput({ targetLevel: 1, selectedRecipe: "permanent-items" }));
     const lump = resolve(policyInput({ targetLevel: 1, selectedRecipe: "lump-sum" }));

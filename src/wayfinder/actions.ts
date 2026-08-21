@@ -31,9 +31,21 @@ export type WayfinderAction =
   | { type: "toggle-spell-choice"; stepId: string; value: string }
   | { type: "toggle-spell-rarity-access"; stepId: string }
   | { type: "remove-spell-rarity-attestation"; stepId: string }
-  | { type: "initialize-starting-equipment"; stepId: string }
+  | { type: "initialize-starting-equipment"; stepId: string; selectedRecipe?: "permanent-items" | "lump-sum" }
+  | { type: "select-equipment-recipe"; stepId: string; selectedRecipe: "permanent-items" | "lump-sum" }
+  | {
+      type: "activate-equipment-policy";
+      stepId: string;
+      startKind: "new-campaign" | "replacement-character";
+    }
   | { type: "preview-equipment-item"; stepId: string; sourceUuid: string }
-  | { type: "add-equipment-item"; stepId: string; sourceUuid: string }
+  | {
+      type: "add-equipment-item";
+      stepId: string;
+      sourceUuid: string;
+      funding: "currency" | "allowance";
+      allowanceId?: string;
+    }
   | { type: "choose-titan-mauler-equipment"; stepId: string; sourceUuid: string }
   | { type: "remove-equipment-line"; stepId: string; lineId: string }
   | { type: "change-equipment-quantity"; stepId: string; lineId: string; delta: -1 | 1 }
@@ -183,18 +195,59 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
     case "clear-picker-filters":
     case "toggle-spell-rarity-access":
     case "remove-spell-rarity-attestation":
-    case "initialize-starting-equipment":
     case "clear-equipment-filters":
     case "review-equipment-purchases":
     case "retain-all-equipment":
     case "acknowledge-equipment-handoff":
       return element.dataset.stepId ? { type: action, stepId: element.dataset.stepId } : null;
+    case "initialize-starting-equipment": {
+      const selectedRecipe = equipmentRecipe(element.dataset.recipe);
+      return element.dataset.stepId
+        ? {
+            type: action,
+            stepId: element.dataset.stepId,
+            ...(selectedRecipe ? { selectedRecipe } : {}),
+          }
+        : null;
+    }
+    case "select-equipment-recipe": {
+      const selectedRecipe = equipmentRecipe(element.dataset.recipe);
+      return element.dataset.stepId && selectedRecipe
+        ? { type: action, stepId: element.dataset.stepId, selectedRecipe }
+        : null;
+    }
+    case "activate-equipment-policy": {
+      const startKind = element.dataset.startKind;
+      return element.dataset.stepId && (startKind === "new-campaign" || startKind === "replacement-character")
+        ? { type: action, stepId: element.dataset.stepId, startKind }
+        : null;
+    }
     case "preview-equipment-item":
-    case "add-equipment-item":
     case "choose-titan-mauler-equipment":
       return element.dataset.stepId && element.dataset.sourceUuid
         ? { type: action, stepId: element.dataset.stepId, sourceUuid: element.dataset.sourceUuid }
         : null;
+    case "add-equipment-item": {
+      const funding = element.dataset.funding;
+      if (!element.dataset.stepId || !element.dataset.sourceUuid) return null;
+      if (funding === undefined || funding === "currency") {
+        return {
+          type: action,
+          stepId: element.dataset.stepId,
+          sourceUuid: element.dataset.sourceUuid,
+          funding: "currency",
+        };
+      }
+      return funding === "allowance" && element.dataset.allowanceId
+        ? {
+            type: action,
+            stepId: element.dataset.stepId,
+            sourceUuid: element.dataset.sourceUuid,
+            funding,
+            allowanceId: element.dataset.allowanceId,
+          }
+        : null;
+    }
     case "remove-equipment-line":
       return element.dataset.stepId && element.dataset.lineId
         ? { type: action, stepId: element.dataset.stepId, lineId: element.dataset.lineId }
@@ -279,6 +332,8 @@ export function isDraftMutationAction(action: WayfinderAction): boolean {
     case "toggle-spell-rarity-access":
     case "remove-spell-rarity-attestation":
     case "initialize-starting-equipment":
+    case "select-equipment-recipe":
+    case "activate-equipment-policy":
     case "add-equipment-item":
     case "choose-titan-mauler-equipment":
     case "remove-equipment-line":
@@ -293,4 +348,8 @@ export function isDraftMutationAction(action: WayfinderAction): boolean {
     default:
       return false;
   }
+}
+
+function equipmentRecipe(value: string | undefined): "permanent-items" | "lump-sum" | null {
+  return value === "permanent-items" || value === "lump-sum" ? value : null;
 }

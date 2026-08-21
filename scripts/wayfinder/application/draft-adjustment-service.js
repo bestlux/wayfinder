@@ -1,3 +1,4 @@
+import { reconcileAcquisitionTargetLevel } from "../domain/acquisition-draft.js";
 import { isActiveSkillTrainingChoice } from "../domain/skill-training-choice-availability.js";
 import { SLOT_IDS } from "../slot-ids.js";
 export function setManualStepComplete(state, stepId, complete) {
@@ -194,6 +195,9 @@ export function adjustDraftTargetLevel(draft, currentLevel, delta) {
         return false;
     }
     draft.targetLevel = nextTargetLevel;
+    if (draft.acquisition) {
+        draft.acquisition = reconcileAcquisitionTargetLevel(draft.acquisition, nextTargetLevel);
+    }
     return true;
 }
 export function syncLanguageChoiceSelections(state, effectiveBuildState, steps) {

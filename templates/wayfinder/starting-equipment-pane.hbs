@@ -6,6 +6,11 @@
     <article><span>Who decides</span><strong>{{activePane.policy.authorityLabel}}</strong></article>
     <article class="equipment-policy-handoff"><span>Gear you already own</span><strong>{{activePane.policy.handoffLabel}}</strong></article>
     {{#each activePane.policy.explanations}}<p><i class="fa-solid fa-circle-info" aria-hidden="true"></i>{{this}}</p>{{/each}}
+    {{#if activePane.policy.allowances.length}}
+      <div class="equipment-allowance-summary" aria-label="Permanent item allowances">
+        {{#each activePane.policy.allowances}}<span class="{{#if used}}is-used{{/if}}"><strong>{{label}}</strong><small>{{#if used}}Assigned{{else}}Available{{/if}}</small></span>{{/each}}
+      </div>
+    {{/if}}
   </section>
 
   {{#if activePane.corrupt}}
@@ -21,7 +26,25 @@
         <button type="button" class="primary" data-wayfinder-action="initialize-starting-equipment" data-step-id="{{activePane.stepId}}">Start Shopping</button>
       </section>
     {{else}}
-      {{#if activePane.handoff.active}}
+      {{#if activePane.setup.awaitingAuthority}}
+        <section class="equipment-callout" tabindex="-1" data-wayfinder-focus-id="starting-equipment-authority">
+          <h4>Confirm this higher-level start</h4>
+          <p>{{activePane.setup.authorityMessage}}</p>
+          {{#if activePane.setup.recipeOptions.length}}
+            <div class="equipment-setup-recipes" role="group" aria-label="Starting wealth recipe">
+              {{#each activePane.setup.recipeOptions}}
+                <button type="button" class="secondary{{#if selected}} is-selected{{/if}}" aria-pressed="{{#if selected}}true{{else}}false{{/if}}" data-wayfinder-action="select-equipment-recipe" data-step-id="{{../activePane.stepId}}" data-recipe="{{value}}" {{#unless ../activePane.setup.canChooseRecipe}}disabled{{/unless}}>{{label}}</button>
+              {{/each}}
+            </div>
+          {{/if}}
+          {{#if activePane.setup.canActivate}}
+            <div class="equipment-setup-actions">
+              <button type="button" class="secondary" data-wayfinder-action="activate-equipment-policy" data-step-id="{{activePane.stepId}}" data-start-kind="new-campaign">New Campaign Character</button>
+              <button type="button" class="primary" data-wayfinder-action="activate-equipment-policy" data-step-id="{{activePane.stepId}}" data-start-kind="replacement-character">Replacement Character</button>
+            </div>
+          {{/if}}
+        </section>
+      {{else if activePane.handoff.active}}
         <section class="equipment-callout warning" tabindex="-1" data-wayfinder-focus-id="starting-equipment-handoff">
           <h4>Finish this on your character sheet</h4>
           {{#each activePane.handoff.reasons}}<p>{{this}}</p>{{/each}}
@@ -67,10 +90,12 @@
                   </button>
                   <span class="equipment-result-price">{{priceLabel}}</span>
                   <div class="equipment-result-actions">
-                    <button type="button" class="primary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}" {{#unless canAdd}}disabled{{/unless}}>Add</button>
+                    {{#if canBuyWithCurrency}}<button type="button" class="primary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}" data-funding="currency">Buy with coin</button>{{/if}}
+                    {{#each allowanceOptions}}<button type="button" class="secondary compact" data-wayfinder-action="add-equipment-item" data-step-id="{{../../activePane.stepId}}" data-source-uuid="{{../sourceUuid}}" data-funding="allowance" data-allowance-id="{{allowanceId}}">{{label}}</button>{{/each}}
+                    {{#unless canAdd}}<button type="button" class="primary compact" disabled>Add</button>{{/unless}}
                     {{#if canChooseTitanMauler}}<button type="button" class="secondary compact" data-wayfinder-action="choose-titan-mauler-equipment" data-step-id="{{../activePane.stepId}}" data-source-uuid="{{sourceUuid}}">Choose as Titan Mauler</button>{{/if}}
                   </div>
-                  {{#if unavailableReason}}<small class="equipment-unavailable">{{unavailableReason}}</small>{{else}}{{#unless affordable}}<small class="equipment-unavailable">Costs more than you have left.</small>{{/unless}}{{/if}}
+                  {{#if unavailableReason}}<small class="equipment-unavailable">{{unavailableReason}}</small>{{else}}{{#unless canAdd}}<small class="equipment-unavailable">No available funding option can cover this item.</small>{{/unless}}{{/if}}
                 </article>
               {{/each}}
             </div>

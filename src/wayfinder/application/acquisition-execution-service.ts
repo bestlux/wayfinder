@@ -334,8 +334,8 @@ async function prepareExecution(args: {
   const actorId = actorIdentifier(args.actor);
   const acquisition = normalizeAcquisitionDraft(cloneData(args.draft.acquisition));
   if (!acquisition) throw new TypeError("Starting-equipment execution requires canonical acquisition state.");
-  if (acquisition.targetLevel !== 1 || args.draft.targetLevel !== 1) {
-    throw new Error("Wave 2 starting-equipment execution is limited to level 1.");
+  if (acquisition.targetLevel !== args.draft.targetLevel) {
+    throw new Error("Starting-equipment execution target does not match the character draft.");
   }
   if (args.recoveryFinalization && !hasApplyRecoveryLock(args.draft)) {
     throw new Error("Starting-equipment recovery verification requires persisted Apply recovery evidence.");
@@ -351,7 +351,7 @@ async function prepareExecution(args: {
     ledger,
     classGrantPlan: args.classGrantPlan,
   });
-  assertWaveTwoIdentityShape(identityPlan);
+  assertSupportedIdentityShape(identityPlan);
   const targetCopper =
     acquisition.disposition.kind === "handoff"
       ? acquisition.baseline!.currencyCopper
@@ -1129,7 +1129,7 @@ function assertWitnessedCurrencyUnchanged(
   }
 }
 
-function assertWaveTwoIdentityShape(plan: PreparedAcquisitionIdentityPlanV1): void {
+function assertSupportedIdentityShape(plan: PreparedAcquisitionIdentityPlanV1): void {
   for (const entry of plan.entries) {
     if (
       entry.plannedItems.length !== 1 ||
@@ -1137,7 +1137,7 @@ function assertWaveTwoIdentityShape(plan: PreparedAcquisitionIdentityPlanV1): vo
       entry.plannedItems[0]!.ownedContainerId !== null ||
       entry.plannedItems[0]!.plannedContainerId !== null
     ) {
-      throw new Error("Wave 2 supports one non-container root item per prepared acquisition entry.");
+      throw new Error("Starting equipment currently supports one non-container root item per prepared entry.");
     }
   }
 }

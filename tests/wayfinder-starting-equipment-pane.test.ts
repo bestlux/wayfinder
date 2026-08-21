@@ -9,6 +9,77 @@ import type { StartingEquipmentCatalogueRecord } from "../src/wayfinder/view-mod
 import { acquisitionFixture, acquisitionLine } from "./fixtures/acquisition-fixture";
 
 describe("starting equipment pane", () => {
+  it("renders level-5 allowance buckets separately from residual coin", () => {
+    const draft = createEmptyDraft(5);
+    const allowanceLine = acquisitionLine({
+      itemLevel: 3,
+      funding: { lane: "allowance", assignment: { mode: "player", allowanceId: "level-3-1" } },
+      price: acquisitionLine({ requestedQuantity: 20 }).price,
+    });
+    draft.acquisition = acquisitionFixture({ lines: [allowanceLine], disposition: "unreviewed" }).draft;
+    draft.acquisition = {
+      ...draft.acquisition,
+      policySnapshot: {
+        ...draft.acquisition.policySnapshot!,
+        material: {
+          ...draft.acquisition.policySnapshot!.material,
+          budgetCopper: 5_000,
+          allowances: [
+            { allowanceId: "level-1-1", itemLevel: 1 },
+            { allowanceId: "level-1-2", itemLevel: 1 },
+            { allowanceId: "level-2-1", itemLevel: 2 },
+            { allowanceId: "level-3-1", itemLevel: 3 },
+            { allowanceId: "level-3-2", itemLevel: 3 },
+            { allowanceId: "level-4-1", itemLevel: 4 },
+          ],
+        },
+      },
+    };
+    const record: StartingEquipmentCatalogueRecord = {
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.level-three",
+      name: "Level 3 permanent item",
+      itemType: "equipment",
+      level: 3,
+      rarity: "common",
+      sourceLabel: "Player Core",
+      priceCopper: 2_000,
+      priceLabel: "20 gp",
+      bulkLabel: "L",
+      handsLabel: null,
+      traits: [],
+      available: true,
+      unavailableReason: null,
+      titanMaulerEligible: false,
+    };
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        records: [record],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      }
+    );
+
+    expect(pane.policy.allowances).toHaveLength(6);
+    expect(pane.policy.allowances.find((allowance) => allowance.allowanceId === "level-3-1")?.used).toBe(true);
+    expect(pane.cart).toMatchObject({ spentLabel: "0 gp", remainingLabel: "50 gp" });
+    expect(pane.catalogue.items[0]).toMatchObject({
+      canBuyWithCurrency: true,
+      allowanceOptions: [
+        { allowanceId: "level-3-2", label: "Use level 3 allowance" },
+        { allowanceId: "level-4-1", label: "Use level 4 allowance" },
+      ],
+    });
+  });
+
   it("projects policy, catalogue, affordability, cart quantity, and review state without OptionRecord", () => {
     const draft = createEmptyDraft(1);
     draft.acquisition = acquisitionFixture({ disposition: "unreviewed" }).draft;

@@ -16,6 +16,7 @@ import {
   toggleVoluntaryEnabled,
   toggleVoluntaryLegacy,
 } from "../src/wayfinder/application/draft-adjustment-service";
+import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
 import { createBoostStep } from "../src/wayfinder/domain/step-types";
 
 describe("wayfinder draft adjustment service", () => {
@@ -453,6 +454,24 @@ describe("wayfinder draft adjustment service", () => {
     expect(draft.targetLevel).toBe(2);
     expect(adjustDraftTargetLevel(draft, 2, 30)).toBe(true);
     expect(draft.targetLevel).toBe(20);
+  });
+
+  it("invalidates staged equipment authority when the target level changes", () => {
+    const draft = createEmptyDraft(5);
+    draft.acquisition = createAcquisitionDraft({
+      draftId: "draft-5",
+      batchId: "batch-5",
+      manifestId: "manifest-5",
+      targetLevel: 5,
+      recipe: { kind: "lump-sum" },
+    });
+
+    expect(adjustDraftTargetLevel(draft, 1, 1)).toBe(true);
+    expect(draft.acquisition).toMatchObject({
+      targetLevel: 6,
+      policySnapshot: null,
+      disposition: { kind: "unreviewed", reasons: ["target-level"] },
+    });
   });
 });
 

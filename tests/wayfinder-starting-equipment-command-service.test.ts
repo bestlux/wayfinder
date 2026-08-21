@@ -15,6 +15,29 @@ import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types"
 import { acquisitionFixture, acquisitionLine } from "./fixtures/acquisition-fixture";
 
 describe("starting equipment command service", () => {
+  it("stages a higher-level identity before draft-bound authority exists", async () => {
+    const context = commandContext(null, 5);
+    const resolvePolicy = vi.fn();
+    const result = await executeStartingEquipmentCommand({ type: "initialize", selectedRecipe: "lump-sum" }, context, {
+      mintIdentity: vi.fn(() => ({ draftId: "draft-5", batchId: "batch-5", manifestId: "manifest-5" })),
+      getWorldPolicy: vi.fn(() => ({
+        ...DEFAULT_EQUIPMENT_WORLD_POLICY,
+        higherLevelStartAuthority: "actor-owner-attestation" as const,
+      })),
+      resolvePolicy,
+    });
+
+    expect(result.acquisition).toMatchObject({
+      draftId: "draft-5",
+      targetLevel: 5,
+      recipe: { kind: "lump-sum" },
+      policySnapshot: null,
+      baseline: null,
+    });
+    expect(result.statusNote).toMatch(/confirm this higher-level start/i);
+    expect(resolvePolicy).not.toHaveBeenCalled();
+  });
+
   it("returns a reviewed purchase state without mutating the caller draft", async () => {
     const fixture = acquisitionFixture({ disposition: "unreviewed" });
     const context = commandContext(fixture.draft);
@@ -354,14 +377,15 @@ describe("starting equipment command service", () => {
   });
 });
 
-function commandContext(acquisition: ReturnType<typeof acquisitionFixture>["draft"] | null) {
-  const draft = createEmptyDraft(1);
+function commandContext(acquisition: ReturnType<typeof acquisitionFixture>["draft"] | null, targetLevel?: number) {
+  const level = targetLevel ?? acquisition?.targetLevel ?? 1;
+  const draft = createEmptyDraft(level);
   draft.acquisition = acquisition;
   return {
-    actor: {},
+    actor: { id: "actor-1" },
     draft,
     moduleState: normalizeState(null),
-    steps: [createStartingEquipmentStep(1)],
+    steps: [createStartingEquipmentStep(level)],
     userId: "owner-1",
     now: () => "2026-08-19T20:00:00.000Z",
   };

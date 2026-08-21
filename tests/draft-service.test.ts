@@ -11,10 +11,11 @@ import type { SelectionRef } from "../src/types";
 describe("draft-service", () => {
   it("creates an empty draft", () => {
     expect(createEmptyDraft(4)).toEqual({
-      version: 15,
+      version: 16,
       targetLevel: 4,
       acquisition: null,
       acquisitionCorrupt: false,
+      equipmentPolicyRequests: [],
       applyAttemptStepIds: [],
       applyCompletedStepIds: [],
       applyRecoveryActorUpdate: {},
@@ -273,7 +274,7 @@ describe("draft-service", () => {
 
   it("adds an updated timestamp when patching a draft", () => {
     const patched = buildDraftPatch(createEmptyDraft(2));
-    expect(patched.version).toBe(15);
+    expect(patched.version).toBe(16);
     expect(patched.updatedAt).not.toBeNull();
   });
 

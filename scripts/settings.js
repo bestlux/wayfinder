@@ -66,6 +66,7 @@ export function registerSettings(args = {}) {
         restricted: true,
         type: Object,
         default: DEFAULT_EQUIPMENT_WORLD_POLICY,
+        onChange: args.onEquipmentPolicyChange,
     });
     game.settings.register(MODULE_ID, SETTINGS.equipmentPolicyJudgments, {
         name: "wayfinder-pf2e.Settings.EquipmentPolicy.JudgmentsName",
@@ -74,6 +75,7 @@ export function registerSettings(args = {}) {
         restricted: true,
         type: Object,
         default: EMPTY_EQUIPMENT_POLICY_JUDGMENT_STORE,
+        onChange: args.onEquipmentPolicyChange,
     });
 }
 export function getExtraPackSetting() {

@@ -11,6 +11,14 @@
         {{#each activePane.policy.allowances}}<span class="{{#if used}}is-used{{/if}}"><strong>{{label}}</strong><small>{{#if used}}Assigned{{else}}Available{{/if}}</small></span>{{/each}}
       </div>
     {{/if}}
+    {{#if activePane.setup.canRevoke}}<button type="button" class="secondary compact" data-wayfinder-action="revoke-equipment-policy-judgment" data-step-id="{{activePane.stepId}}" data-judgment-id="{{activePane.setup.activeJudgmentId}}">Revoke GM Approval</button>{{/if}}
+    {{#if activePane.setup.canSetCustomLumpSum}}
+      <div class="equipment-gm-override">
+        <label><span>Custom lump sum (gp)</span><input type="number" min="0" step="0.01" data-wayfinder-custom-lump-sum data-step-id="{{activePane.stepId}}" /></label>
+        <button type="button" class="secondary compact" data-wayfinder-action="set-custom-equipment-lump-sum" data-step-id="{{activePane.stepId}}">Approve Custom Sum</button>
+      </div>
+    {{/if}}
+    {{#if activePane.setup.canGrantExtraAllowance}}<button type="button" class="secondary compact" data-wayfinder-action="grant-extra-equipment-allowance" data-step-id="{{activePane.stepId}}">Grant One Extra Level {{activePane.level}} Allowance</button>{{/if}}
   </section>
 
   {{#if activePane.corrupt}}
@@ -43,6 +51,19 @@
               <button type="button" class="primary" data-wayfinder-action="activate-equipment-policy" data-step-id="{{activePane.stepId}}" data-start-kind="replacement-character">Replacement Character</button>
             </div>
           {{/if}}
+          {{#if activePane.setup.canRequest}}
+            <div class="equipment-setup-actions">
+              <button type="button" class="secondary" data-wayfinder-action="request-equipment-start" data-step-id="{{activePane.stepId}}" data-start-kind="new-campaign">Request New Campaign Start</button>
+              <button type="button" class="primary" data-wayfinder-action="request-equipment-start" data-step-id="{{activePane.stepId}}" data-start-kind="replacement-character">Request Replacement Start</button>
+            </div>
+          {{/if}}
+          {{#each activePane.setup.pendingRequests}}
+            <article class="equipment-policy-request">
+              <p><strong>{{requesterName}}</strong> requested approval at {{requestedAt}}.</p>
+              <small>{{reason}}</small>
+              {{#if canApprove}}<button type="button" class="primary compact" data-wayfinder-action="approve-equipment-policy-request" data-step-id="{{../activePane.stepId}}" data-request-id="{{requestId}}">Approve Request</button>{{/if}}
+            </article>
+          {{/each}}
         </section>
       {{else if activePane.handoff.active}}
         <section class="equipment-callout warning" tabindex="-1" data-wayfinder-focus-id="starting-equipment-handoff">

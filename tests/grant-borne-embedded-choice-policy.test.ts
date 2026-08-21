@@ -758,6 +758,7 @@ async function buildGrantSteps(
       targetLevel: 2,
       acquisition: null,
       acquisitionCorrupt: false,
+      equipmentPolicyRequests: [],
       applyAttemptStepIds: [],
       applyCompletedStepIds: [],
       applyRecoveryActorUpdate: {},

@@ -1,6 +1,7 @@
 import type { AcquisitionDraftState } from "./wayfinder/domain/acquisition-types.js";
 import type { CompletedAcquisitionManifestV1 } from "./wayfinder/domain/completed-acquisition-manifest.js";
 import type { SelectionRef, SkillTrainingDraft } from "./wayfinder/domain/decision-types.js";
+import type { EquipmentPolicyRequestV1 } from "./wayfinder/domain/equipment-policy.js";
 import type {
   CampaignFeatFilter as CampaignFeatFilterType,
   ChoicePredicate as ChoicePredicateType,
@@ -80,6 +81,7 @@ export interface DraftState {
   targetLevel: number;
   acquisition: AcquisitionDraftState | null;
   acquisitionCorrupt: boolean;
+  equipmentPolicyRequests: EquipmentPolicyRequestV1[];
   applyAttemptStepIds: string[];
   applyCompletedStepIds: string[];
   applyRecoveryActorUpdate: Record<string, unknown>;

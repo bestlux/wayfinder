@@ -731,23 +731,33 @@ function reviewer() {
 }
 
 function customJudgment(id: string, amountCopper: number) {
+  const facts = {
+    kind: "custom-lump-sum" as const,
+    actorId: "actor-1",
+    draftId: "draft-1",
+    targetLevel: 5,
+    amountCopper,
+  };
   return {
     id,
     kind: "custom-lump-sum" as const,
     actorId: "actor-1",
     draftId: "draft-1",
     targetLevel: 5,
-    factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint({
-      kind: "custom-lump-sum",
-      actorId: "actor-1",
-      draftId: "draft-1",
-      targetLevel: 5,
-      amountCopper,
-    }),
+    factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(facts),
     authorUserId: "gm-1",
     authorName: "Game Master",
     recordedAt: "2026-08-18T23:00:00.000Z",
     reason: "Custom replacement budget",
+    request: {
+      requestId: `request:${id}`,
+      requesterUserId: "owner-1",
+      requesterName: "Owner",
+      requestedAt: "2026-08-18T22:00:00.000Z",
+      reason: "Custom replacement budget",
+      facts,
+    },
+    revocation: null,
   };
 }
 

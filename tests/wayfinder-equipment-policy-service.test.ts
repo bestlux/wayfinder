@@ -6,6 +6,7 @@ import {
   normalizePf2eEquipmentSources,
   resolveActorAbpSnapshot,
   resolveEquipmentPolicyForActor,
+  revokeTrustedEquipmentPolicyJudgment,
   saveEquipmentWorldPolicy,
   saveTrustedEquipmentPolicyJudgment,
 } from "../src/wayfinder/application/equipment-policy-service";
@@ -19,6 +20,11 @@ describe("equipment policy service", () => {
   beforeEach(() => {
     globals.game = {
       user: { id: "gm-1", name: "Game Master", isGM: true },
+      users: {
+        get: vi.fn((id: string) =>
+          id === "gm-1" ? { id: "gm-1", name: "Game Master", isGM: true } : { id, isGM: false }
+        ),
+      },
       system: { id: "pf2e" },
       settings: { set: vi.fn(), get: vi.fn() },
       packs: [],
@@ -90,9 +96,14 @@ describe("equipment policy service", () => {
   });
 
   it("persists GM judgments in the restricted authority store with exact facts", async () => {
+    let store: unknown = { version: 1, judgments: [] };
     globals.game.settings.get.mockImplementation((moduleId: string, key: string) => {
-      if (moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments) return { version: 1, judgments: [] };
+      if (moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments) return store;
       return null;
+    });
+    globals.game.settings.set.mockImplementation(async (_moduleId: string, key: string, value: unknown) => {
+      if (key === SETTINGS.equipmentPolicyJudgments) store = structuredClone(value);
+      return value;
     });
     await expect(
       saveTrustedEquipmentPolicyJudgment({
@@ -123,6 +134,44 @@ describe("equipment policy service", () => {
     );
   });
 
+  it("revokes an approval with current GM provenance and read-back verification", async () => {
+    let store: unknown = { version: 1, judgments: [] };
+    globals.game.settings.get.mockImplementation((moduleId: string, key: string) =>
+      moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments ? store : null
+    );
+    globals.game.settings.set.mockImplementation(async (_moduleId: string, _key: string, value: unknown) => {
+      store = structuredClone(value);
+      return value;
+    });
+    const approved = await saveTrustedEquipmentPolicyJudgment({
+      id: "start-1",
+      facts: {
+        kind: "higher-level-start",
+        actorId: "actor-1",
+        draftId: "draft-1",
+        targetLevel: 5,
+        startKind: "replacement-character",
+      },
+      reason: "Approved replacement",
+      recordedAt: "2026-08-18T20:00:00.000Z",
+    });
+    const revoked = await revokeTrustedEquipmentPolicyJudgment({
+      judgmentId: approved.id,
+      reason: "Replacement facts changed",
+      revokedAt: "2026-08-18T21:00:00.000Z",
+    });
+
+    expect(revoked).toMatchObject({
+      id: approved.id,
+      request: { requesterUserId: "gm-1", requestedAt: "2026-08-18T20:00:00.000Z" },
+      revocation: {
+        revokedByUserId: "gm-1",
+        revokedAt: "2026-08-18T21:00:00.000Z",
+        reason: "Replacement facts changed",
+      },
+    });
+  });
+
   it("resolves only authority-store judgments and records owner attestations when delegated", async () => {
     const ownerUser = { id: "owner-1", name: "Owner", isGM: false };
     const actor = {
@@ -133,6 +182,9 @@ describe("equipment policy service", () => {
       testUserPermission: vi.fn((user: unknown) => user === ownerUser),
     };
     const start = await trustedStart();
+    globals.game.users = {
+      get: vi.fn((id: string) => (id === "gm-1" ? { id: "gm-1", name: "Game Master", isGM: true } : null)),
+    };
     globals.game.settings.get.mockImplementation((moduleId: string, key: string) => {
       if (moduleId === MODULE_ID && key === SETTINGS.equipmentPolicy) return DEFAULT_EQUIPMENT_WORLD_POLICY;
       if (moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments) {
@@ -228,7 +280,14 @@ describe("equipment policy service", () => {
 });
 
 async function trustedStart() {
-  globals.game.settings.get.mockReturnValue({ version: 1, judgments: [] });
+  let store: unknown = { version: 1, judgments: [] };
+  globals.game.settings.get.mockImplementation((moduleId: string, key: string) =>
+    moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments ? store : null
+  );
+  globals.game.settings.set.mockImplementation(async (_moduleId: string, key: string, value: unknown) => {
+    if (key === SETTINGS.equipmentPolicyJudgments) store = structuredClone(value);
+    return value;
+  });
   return saveTrustedEquipmentPolicyJudgment({
     id: "start-1",
     facts: {

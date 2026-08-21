@@ -21,6 +21,7 @@ Hooks.once("init", () => {
     feedbackMenuType: FeedbackSupportApp,
     onExtraPacksChange: () => invalidatePackSources(rerenderOpenWayfinderApps),
     onSpellRarityCeilingChange: rerenderOpenWayfinderApps,
+    onEquipmentPolicyChange: rerenderOpenWayfinderApps,
   });
   void preloadHandlebarsTemplates([
     `modules/${MODULE_ID}/templates/equipment-policy-config.hbs`,

@@ -38,6 +38,15 @@ export type WayfinderAction =
       stepId: string;
       startKind: "new-campaign" | "replacement-character";
     }
+  | {
+      type: "request-equipment-start";
+      stepId: string;
+      startKind: "new-campaign" | "replacement-character";
+    }
+  | { type: "approve-equipment-policy-request"; stepId: string; requestId: string }
+  | { type: "revoke-equipment-policy-judgment"; stepId: string; judgmentId: string }
+  | { type: "set-custom-equipment-lump-sum"; stepId: string }
+  | { type: "grant-extra-equipment-allowance"; stepId: string }
   | { type: "preview-equipment-item"; stepId: string; sourceUuid: string }
   | {
       type: "add-equipment-item";
@@ -196,6 +205,8 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
     case "toggle-spell-rarity-access":
     case "remove-spell-rarity-attestation":
     case "clear-equipment-filters":
+    case "set-custom-equipment-lump-sum":
+    case "grant-extra-equipment-allowance":
     case "review-equipment-purchases":
     case "retain-all-equipment":
     case "acknowledge-equipment-handoff":
@@ -222,6 +233,20 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
         ? { type: action, stepId: element.dataset.stepId, startKind }
         : null;
     }
+    case "request-equipment-start": {
+      const startKind = element.dataset.startKind;
+      return element.dataset.stepId && (startKind === "new-campaign" || startKind === "replacement-character")
+        ? { type: action, stepId: element.dataset.stepId, startKind }
+        : null;
+    }
+    case "approve-equipment-policy-request":
+      return element.dataset.stepId && element.dataset.requestId
+        ? { type: action, stepId: element.dataset.stepId, requestId: element.dataset.requestId }
+        : null;
+    case "revoke-equipment-policy-judgment":
+      return element.dataset.stepId && element.dataset.judgmentId
+        ? { type: action, stepId: element.dataset.stepId, judgmentId: element.dataset.judgmentId }
+        : null;
     case "preview-equipment-item":
     case "choose-titan-mauler-equipment":
       return element.dataset.stepId && element.dataset.sourceUuid
@@ -334,6 +359,11 @@ export function isDraftMutationAction(action: WayfinderAction): boolean {
     case "initialize-starting-equipment":
     case "select-equipment-recipe":
     case "activate-equipment-policy":
+    case "request-equipment-start":
+    case "approve-equipment-policy-request":
+    case "revoke-equipment-policy-judgment":
+    case "set-custom-equipment-lump-sum":
+    case "grant-extra-equipment-allowance":
     case "add-equipment-item":
     case "choose-titan-mauler-equipment":
     case "remove-equipment-line":

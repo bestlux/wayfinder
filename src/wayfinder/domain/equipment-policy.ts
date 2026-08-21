@@ -48,6 +48,32 @@ export interface EquipmentPolicyJudgmentRecord {
   readonly authorName: string;
   readonly recordedAt: string;
   readonly reason: string;
+  readonly request: {
+    readonly requestId: string;
+    readonly requesterUserId: string;
+    readonly requesterName: string;
+    readonly requestedAt: string;
+    readonly reason: string;
+    readonly facts: EquipmentPolicyJudgmentFacts;
+  };
+  readonly revocation: {
+    readonly revokedByUserId: string;
+    readonly revokedByName: string;
+    readonly revokedAt: string;
+    readonly reason: string;
+  } | null;
+}
+
+export interface EquipmentPolicyRequestV1 {
+  readonly version: 1;
+  readonly requestId: string;
+  readonly facts: EquipmentPolicyJudgmentFacts;
+  readonly factsFingerprint: string;
+  readonly requesterUserId: string;
+  readonly requesterName: string;
+  readonly requestedAt: string;
+  readonly reason: string;
+  readonly withdrawnAt: string | null;
 }
 
 export interface EquipmentPolicyJudgmentStoreV1 {
@@ -267,7 +293,45 @@ export function normalizeEquipmentPolicyJudgment(raw: unknown): EquipmentPolicyJ
     !nonEmpty(raw.authorUserId) ||
     !nonEmpty(raw.authorName) ||
     !validTimestamp(raw.recordedAt) ||
-    !nonEmpty(raw.reason)
+    !nonEmpty(raw.reason) ||
+    !isRecord(raw.request)
+  ) {
+    return null;
+  }
+  const request = normalizeEquipmentPolicyRequest({
+    version: 1,
+    requestId: raw.request.requestId,
+    facts: raw.request.facts,
+    factsFingerprint: raw.factsFingerprint,
+    requesterUserId: raw.request.requesterUserId,
+    requesterName: raw.request.requesterName,
+    requestedAt: raw.request.requestedAt,
+    reason: raw.request.reason,
+    withdrawnAt: null,
+  });
+  const revocation =
+    raw.revocation === null
+      ? null
+      : isRecord(raw.revocation) &&
+          nonEmpty(raw.revocation.revokedByUserId) &&
+          nonEmpty(raw.revocation.revokedByName) &&
+          validTimestamp(raw.revocation.revokedAt) &&
+          nonEmpty(raw.revocation.reason)
+        ? {
+            revokedByUserId: raw.revocation.revokedByUserId,
+            revokedByName: raw.revocation.revokedByName,
+            revokedAt: raw.revocation.revokedAt,
+            reason: raw.revocation.reason.trim(),
+          }
+        : undefined;
+  if (
+    !request ||
+    revocation === undefined ||
+    request.facts.kind !== raw.kind ||
+    request.facts.actorId !== raw.actorId ||
+    request.facts.draftId !== raw.draftId ||
+    request.facts.targetLevel !== raw.targetLevel ||
+    canonicalJson(request.facts) !== canonicalJson(raw.request.facts)
   ) {
     return null;
   }
@@ -282,7 +346,90 @@ export function normalizeEquipmentPolicyJudgment(raw: unknown): EquipmentPolicyJ
     authorName: raw.authorName,
     recordedAt: raw.recordedAt,
     reason: raw.reason.trim(),
+    request: {
+      requestId: request.requestId,
+      requesterUserId: request.requesterUserId,
+      requesterName: request.requesterName,
+      requestedAt: request.requestedAt,
+      reason: request.reason,
+      facts: cloneData(request.facts),
+    },
+    revocation,
   };
+}
+
+export function createEquipmentPolicyRequest(input: {
+  readonly requestId: string;
+  readonly facts: EquipmentPolicyJudgmentFacts;
+  readonly requesterUserId: string;
+  readonly requesterName: string;
+  readonly requestedAt: string;
+  readonly reason: string;
+}): EquipmentPolicyRequestV1 {
+  validateJudgmentFacts(input.facts);
+  if (
+    !nonEmpty(input.requestId) ||
+    !nonEmpty(input.requesterUserId) ||
+    !nonEmpty(input.requesterName) ||
+    !validTimestamp(input.requestedAt) ||
+    !nonEmpty(input.reason)
+  ) {
+    throw new TypeError("Equipment policy request identity, requester, time, and reason are required.");
+  }
+  return {
+    version: 1,
+    requestId: input.requestId,
+    facts: cloneData(input.facts),
+    factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(input.facts),
+    requesterUserId: input.requesterUserId,
+    requesterName: input.requesterName,
+    requestedAt: input.requestedAt,
+    reason: input.reason.trim(),
+    withdrawnAt: null,
+  };
+}
+
+export function normalizeEquipmentPolicyRequest(raw: unknown): EquipmentPolicyRequestV1 | null {
+  if (
+    !isRecord(raw) ||
+    raw.version !== 1 ||
+    !nonEmpty(raw.requestId) ||
+    !isRecord(raw.facts) ||
+    !nonEmpty(raw.factsFingerprint) ||
+    !nonEmpty(raw.requesterUserId) ||
+    !nonEmpty(raw.requesterName) ||
+    !validTimestamp(raw.requestedAt) ||
+    !nonEmpty(raw.reason) ||
+    (raw.withdrawnAt !== null && !validTimestamp(raw.withdrawnAt))
+  ) {
+    return null;
+  }
+  try {
+    const facts = cloneData(raw.facts) as EquipmentPolicyJudgmentFacts;
+    validateJudgmentFacts(facts);
+    if (buildEquipmentPolicyJudgmentFactsFingerprint(facts) !== raw.factsFingerprint) return null;
+    return {
+      version: 1,
+      requestId: raw.requestId,
+      facts,
+      factsFingerprint: raw.factsFingerprint,
+      requesterUserId: raw.requesterUserId,
+      requesterName: raw.requesterName,
+      requestedAt: raw.requestedAt,
+      reason: raw.reason.trim(),
+      withdrawnAt: raw.withdrawnAt as string | null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function withdrawEquipmentPolicyRequest(
+  request: EquipmentPolicyRequestV1,
+  withdrawnAt: string
+): EquipmentPolicyRequestV1 {
+  if (!validTimestamp(withdrawnAt)) throw new TypeError("Equipment request withdrawal requires a valid timestamp.");
+  return request.withdrawnAt ? request : { ...request, withdrawnAt };
 }
 
 export function createEquipmentPolicyResolver(authority: EquipmentPolicyAuthorityPort): EquipmentPolicyResolver {
@@ -292,6 +439,15 @@ export function createEquipmentPolicyResolver(authority: EquipmentPolicyAuthorit
 export function buildEquipmentPolicyJudgmentFactsFingerprint(facts: EquipmentPolicyJudgmentFacts): string {
   validateJudgmentFacts(facts);
   return fingerprint({ version: 1, ...facts });
+}
+
+export function equipmentPolicyJudgmentFactsEqual(
+  left: EquipmentPolicyJudgmentFacts,
+  right: EquipmentPolicyJudgmentFacts
+): boolean {
+  validateJudgmentFacts(left);
+  validateJudgmentFacts(right);
+  return canonicalJson(left) === canonicalJson(right);
 }
 
 export function evaluateEquipmentItemAuthority(input: {
@@ -394,6 +550,9 @@ function resolveEffectiveEquipmentPolicy(
         targetLevel: input.targetLevel,
       })
   );
+  if (extraJudgments.length > 1) {
+    throw new TypeError("Only one extra current-level permanent-item allowance can be approved per draft.");
+  }
   if (extraJudgments.length > 0 && (officialRecipe !== "permanent-items" || input.targetLevel === 1)) {
     throw new TypeError("An extra current-level allowance requires the higher-level permanent-items recipe.");
   }
@@ -553,6 +712,7 @@ function resolveJudgment(
     judgment.actorId !== input.actorId ||
     judgment.draftId !== input.draftId ||
     judgment.targetLevel !== input.targetLevel ||
+    judgment.revocation !== null ||
     !predicate(judgment)
   ) {
     throw new TypeError(`A trusted ${kind} judgment bound to the current facts is required.`);

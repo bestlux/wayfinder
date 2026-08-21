@@ -1,7 +1,7 @@
 import { MODULE_ID, SETTINGS } from "../../constants.js";
 import { assertCanUseWayfinder } from "../../permissions.js";
 import { getEquipmentPolicyJudgmentStoreSetting, getEquipmentWorldPolicySetting } from "../../settings.js";
-import { buildEquipmentPolicyJudgmentFactsFingerprint, createEquipmentPolicyResolver, normalizeEquipmentWorldPolicy, } from "../domain/equipment-policy.js";
+import { buildEquipmentPolicyJudgmentFactsFingerprint, createEquipmentPolicyRequest, createEquipmentPolicyResolver, equipmentPolicyJudgmentFactsEqual, normalizeEquipmentPolicyRequest, normalizeEquipmentWorldPolicy, } from "../domain/equipment-policy.js";
 import { requireCurrentGmPrincipal } from "./gm-command-authority.js";
 const CORE_EQUIPMENT_PACK_ID = "pf2e.equipment-srd";
 export function normalizePf2eEquipmentSources(input) {
@@ -55,7 +55,10 @@ export function resolveEquipmentPolicyForActor(input) {
     const store = getEquipmentPolicyJudgmentStoreSetting();
     const byId = new Map(store.judgments.map((judgment) => [judgment.id, judgment]));
     const resolver = createEquipmentPolicyResolver({
-        resolveGmJudgment: (id) => byId.get(id) ?? null,
+        resolveGmJudgment: (id) => {
+            const judgment = byId.get(id);
+            return judgment && judgment.revocation === null && isCurrentGmUser(judgment.authorUserId) ? judgment : null;
+        },
         verifyOwnerStartAttestation: (attestation) => verifyCurrentOwnerAttestation(input.actor, attestation),
     });
     return resolver.resolve({
@@ -71,6 +74,11 @@ export function resolveEquipmentPolicyForActor(input) {
         extraCurrentLevelAllowanceIds: input.extraCurrentLevelAllowanceIds,
         exceptionJudgmentIds: input.exceptionJudgmentIds,
     });
+}
+function isCurrentGmUser(userId) {
+    const users = game.users;
+    const user = typeof users?.get === "function" ? users.get(userId) : null;
+    return record(user).isGM === true;
 }
 export function assertEquipmentApplyAuthority(input) {
     const policy = input.acquisition.policySnapshot?.material;
@@ -91,16 +99,32 @@ export function assertEquipmentApplyAuthority(input) {
     assertCanUseWayfinder(input.actor);
 }
 export async function saveEquipmentWorldPolicy(raw, user = game.user) {
-    requireCurrentGmPrincipal(user);
+    requireLiveGmPrincipal(record(user));
     const normalized = normalizeEquipmentWorldPolicy(raw);
     await game.settings.set(MODULE_ID, SETTINGS.equipmentPolicy, normalized);
     return normalized;
 }
 export async function saveTrustedEquipmentPolicyJudgment(input) {
     const user = record(input.user ?? game.user);
-    const principal = requireCurrentGmPrincipal(user);
+    const principal = requireLiveGmPrincipal(user);
     if (!nonEmpty(input.id) || !nonEmpty(input.reason) || !validTimestamp(input.recordedAt)) {
         throw new TypeError("Equipment judgment identity, time, and reason are required.");
+    }
+    const request = normalizeEquipmentPolicyRequest(input.request ??
+        createEquipmentPolicyRequest({
+            requestId: `direct:${input.id}`,
+            facts: input.facts,
+            requesterUserId: principal.userId,
+            requesterName: nonEmpty(user.name) ? user.name : principal.userId,
+            requestedAt: input.recordedAt,
+            reason: input.reason,
+        }));
+    if (!request ||
+        request.withdrawnAt !== null ||
+        request.factsFingerprint !== buildEquipmentPolicyJudgmentFactsFingerprint(input.facts) ||
+        !equipmentPolicyJudgmentFactsEqual(request.facts, input.facts) ||
+        Date.parse(input.recordedAt) < Date.parse(request.requestedAt)) {
+        throw new TypeError("Equipment approval requires a current request for the exact approved facts.");
     }
     const judgment = {
         id: input.id,
@@ -113,19 +137,109 @@ export async function saveTrustedEquipmentPolicyJudgment(input) {
         authorName: nonEmpty(user.name) ? user.name : principal.userId,
         recordedAt: input.recordedAt,
         reason: input.reason.trim(),
+        request: {
+            requestId: request.requestId,
+            requesterUserId: request.requesterUserId,
+            requesterName: request.requesterName,
+            requestedAt: request.requestedAt,
+            reason: request.reason,
+            facts: structuredClone(request.facts),
+        },
+        revocation: null,
     };
+    return convergeJudgmentStore((current) => {
+        const existing = current.find((candidate) => candidate.id === judgment.id);
+        if (existing) {
+            if (JSON.stringify({ ...existing, revocation: null }) !== JSON.stringify(judgment)) {
+                throw new TypeError("Equipment judgment ID already belongs to different facts.");
+            }
+            if (existing.revocation)
+                throw new TypeError("A revoked equipment judgment cannot be restored.");
+            return { judgments: current, result: existing };
+        }
+        return { judgments: [...current, judgment], result: judgment };
+    });
+}
+export async function revokeTrustedEquipmentPolicyJudgment(input) {
+    const user = record(input.user ?? game.user);
+    const principal = requireLiveGmPrincipal(user);
+    if (!nonEmpty(input.judgmentId) || !nonEmpty(input.reason) || !validTimestamp(input.revokedAt)) {
+        throw new TypeError("Equipment judgment revocation identity, time, and reason are required.");
+    }
     const current = getEquipmentPolicyJudgmentStoreSetting();
-    const existing = current.judgments.find((candidate) => candidate.id === judgment.id);
-    if (existing && JSON.stringify(existing) !== JSON.stringify(judgment)) {
-        throw new TypeError("Equipment judgment ID already belongs to different facts.");
+    const index = current.judgments.findIndex((candidate) => candidate.id === input.judgmentId);
+    if (index < 0)
+        throw new TypeError("The equipment judgment no longer exists.");
+    const existing = current.judgments[index];
+    if (existing.revocation)
+        return existing;
+    if (Date.parse(input.revokedAt) < Date.parse(existing.recordedAt)) {
+        throw new TypeError("Equipment judgment revocation cannot predate its approval.");
     }
-    if (!existing) {
-        await game.settings.set(MODULE_ID, SETTINGS.equipmentPolicyJudgments, {
-            version: 1,
-            judgments: [...current.judgments, judgment].sort((left, right) => left.id.localeCompare(right.id)),
-        });
+    const revoked = {
+        ...existing,
+        revocation: {
+            revokedByUserId: principal.userId,
+            revokedByName: nonEmpty(user.name) ? user.name : principal.userId,
+            revokedAt: input.revokedAt,
+            reason: input.reason.trim(),
+        },
+    };
+    return convergeJudgmentStore((latest) => {
+        const candidate = latest.find((entry) => entry.id === input.judgmentId);
+        if (!candidate)
+            throw new TypeError("The equipment judgment no longer exists.");
+        if (candidate.revocation)
+            return { judgments: latest, result: candidate };
+        const next = latest.map((entry) => (entry.id === revoked.id ? revoked : entry));
+        return { judgments: next, result: revoked };
+    });
+}
+async function convergeJudgmentStore(mutate) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        const current = getEquipmentPolicyJudgmentStoreSetting().judgments;
+        const mutation = mutate(current);
+        if (mutation.judgments === current)
+            return mutation.result;
+        const intended = mergeJudgmentRecords(current, mutation.judgments);
+        await game.settings.set(MODULE_ID, SETTINGS.equipmentPolicyJudgments, { version: 1, judgments: intended });
+        const persisted = getEquipmentPolicyJudgmentStoreSetting().judgments;
+        if (judgmentStoreContains(persisted, intended)) {
+            return persisted.find((candidate) => candidate.id === mutation.result.id);
+        }
     }
-    return judgment;
+    throw new Error("Equipment authority store did not converge without losing a newer decision.");
+}
+function mergeJudgmentRecords(base, next) {
+    const merged = new Map(base.map((judgment) => [judgment.id, judgment]));
+    for (const judgment of next) {
+        const existing = merged.get(judgment.id);
+        if (!existing) {
+            merged.set(judgment.id, judgment);
+            continue;
+        }
+        if (JSON.stringify({ ...existing, revocation: null }) !== JSON.stringify({ ...judgment, revocation: null })) {
+            throw new TypeError("Equipment judgment ID already belongs to different facts.");
+        }
+        merged.set(judgment.id, existing.revocation ? existing : judgment);
+    }
+    return [...merged.values()].sort((left, right) => left.id.localeCompare(right.id));
+}
+function judgmentStoreContains(persisted, intended) {
+    const byId = new Map(persisted.map((judgment) => [judgment.id, judgment]));
+    return intended.every((judgment) => {
+        const actual = byId.get(judgment.id);
+        if (!actual)
+            return false;
+        if (judgment.revocation && !actual.revocation)
+            return false;
+        return JSON.stringify({ ...actual, revocation: null }) === JSON.stringify({ ...judgment, revocation: null });
+    });
+}
+function requireLiveGmPrincipal(user) {
+    const claimed = requireCurrentGmPrincipal(user);
+    const live = typeof game.users?.get === "function" ? game.users.get(claimed.userId) : null;
+    return requireCurrentGmPrincipal(live);
 }
 export function createOwnerStartAttestation(input) {
     assertCanUseWayfinder(input.actor);

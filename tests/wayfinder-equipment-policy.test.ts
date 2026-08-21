@@ -115,6 +115,19 @@ describe("effective equipment policy", () => {
       kind: "gm-confirmation",
       judgment: { authorUserId: "gm-1", reason: "Approved campaign start" },
     });
+    expect(() =>
+      resolve(policyInput(), [
+        {
+          ...start,
+          revocation: {
+            revokedByUserId: "gm-2",
+            revokedByName: "Other GM",
+            revokedAt: "2026-08-18T21:00:00.000Z",
+            reason: "Campaign facts changed",
+          },
+        },
+      ])
+    ).toThrow(/trusted higher-level-start judgment/i);
 
     const delegatedInput = policyInput({
       worldPolicy: { ...DEFAULT_EQUIPMENT_WORLD_POLICY, higherLevelStartAuthority: "actor-owner-attestation" },
@@ -184,6 +197,19 @@ describe("effective equipment policy", () => {
         authorized(extraInput, extra)
       )
     ).toThrow(/permanent-items recipe/i);
+    const secondExtra = judgment(
+      {
+        kind: "extra-current-level-allowance",
+        actorId: "actor-1",
+        draftId: "draft-1",
+        targetLevel: 5,
+      },
+      "extra-2"
+    );
+    const multipleExtraInput = policyInput({ extraCurrentLevelAllowanceIds: [extra.id, secondExtra.id] });
+    expect(() => resolve(multipleExtraInput, authorized(multipleExtraInput, extra, secondExtra))).toThrow(
+      /only one extra current-level/i
+    );
   });
 
   it("binds source and rarity exceptions to exact item facts", () => {
@@ -313,6 +339,15 @@ function judgment(facts: EquipmentPolicyJudgmentFacts, id = "judgment-1"): Equip
     authorName: "Game Master",
     recordedAt: "2026-08-18T20:00:00.000Z",
     reason: "Approved campaign start",
+    request: {
+      requestId: `request:${id}`,
+      requesterUserId: "owner-1",
+      requesterName: "Owner",
+      requestedAt: "2026-08-18T19:00:00.000Z",
+      reason: "Requested campaign start",
+      facts: structuredClone(facts),
+    },
+    revocation: null,
   };
 }
 

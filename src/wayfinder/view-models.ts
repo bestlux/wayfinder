@@ -441,6 +441,18 @@ export interface StartingEquipmentStepPane {
     }[];
     authorityMessage: string | null;
     canActivate: boolean;
+    canRequest: boolean;
+    pendingRequests: readonly {
+      requestId: string;
+      requesterName: string;
+      requestedAt: string;
+      reason: string;
+      canApprove: boolean;
+    }[];
+    activeJudgmentId: string | null;
+    canRevoke: boolean;
+    canSetCustomLumpSum: boolean;
+    canGrantExtraAllowance: boolean;
   };
   policy: {
     recipeLabel: string;

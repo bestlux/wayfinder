@@ -25,6 +25,7 @@ describe("equipment policy config app", () => {
     globals.game = {
       i18n: { localize: (key: string) => key },
       user: { id: "gm-1", name: "GM", isGM: true },
+      users: { get: vi.fn((id: string) => (id === "gm-1" ? { id: "gm-1", name: "GM", isGM: true } : null)) },
       packs: new Map(),
       settings: { get: vi.fn(), set: vi.fn(async () => undefined) },
     };

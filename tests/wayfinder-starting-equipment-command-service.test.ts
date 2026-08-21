@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createEmptyDraft, normalizeState } from "../src/draft-service";
 import { executeStartingEquipmentCommand } from "../src/wayfinder/application/starting-equipment-command-service";
+import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
 import {
   CLASS_GRANT_PROFILE_UUIDS,
   createPlannedClassGrant,
@@ -36,6 +37,41 @@ describe("starting equipment command service", () => {
     });
     expect(result.statusNote).toMatch(/confirm this higher-level start/i);
     expect(resolvePolicy).not.toHaveBeenCalled();
+  });
+
+  it("records a player request as non-authoritative draft evidence", async () => {
+    const context = commandContext(null, 5);
+    context.draft.acquisition = createAcquisitionDraft({
+      draftId: "draft-5",
+      batchId: "batch-5",
+      manifestId: "manifest-5",
+      targetLevel: 5,
+      recipe: { kind: "permanent-items" },
+    });
+    const result = await executeStartingEquipmentCommand(
+      {
+        type: "request-higher-level-start",
+        startKind: "replacement-character",
+        reason: "Replacing a retired character",
+      },
+      context,
+      { mintRequestId: vi.fn(() => "request-5") }
+    );
+
+    expect(result.acquisition.policySnapshot).toBeNull();
+    expect(result.policyRequests).toEqual([
+      expect.objectContaining({
+        requestId: "request-5",
+        requesterUserId: "owner-1",
+        reason: "Replacing a retired character",
+        facts: expect.objectContaining({
+          kind: "higher-level-start",
+          draftId: "draft-5",
+          targetLevel: 5,
+          startKind: "replacement-character",
+        }),
+      }),
+    ]);
   });
 
   it("returns a reviewed purchase state without mutating the caller draft", async () => {

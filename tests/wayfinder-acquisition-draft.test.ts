@@ -96,7 +96,7 @@ describe("acquisition draft", () => {
     parent.acquisition = acquisition;
     const reopened = normalizeDraft(JSON.parse(JSON.stringify(buildDraftPatch(parent))), 1);
 
-    expect(reopened.version).toBe(15);
+    expect(reopened.version).toBe(16);
     expect(reopened.acquisition?.draftId).toBe("draft-1");
     expect(reopened.acquisition?.batchId).toBe("batch-1");
     expect(reopened.acquisition?.lines.map((line) => line.lineId)).toEqual(["line-1", "line-2"]);
@@ -173,7 +173,7 @@ describe("acquisition draft", () => {
 
   it("migrates old parent drafts to acquisition null", () => {
     expect(normalizeDraft({ version: 13, targetLevel: 3 }, 1)).toMatchObject({
-      version: 15,
+      version: 16,
       targetLevel: 3,
       acquisition: null,
       acquisitionCorrupt: false,
@@ -265,6 +265,15 @@ describe("acquisition draft", () => {
       authorName: "Game Master",
       recordedAt: "2026-08-18T20:00:00.000Z",
       reason: "Approved replacement character",
+      request: {
+        requestId: "request:start-1",
+        requesterUserId: "owner-1",
+        requesterName: "Owner",
+        requestedAt: "2026-08-18T19:00:00.000Z",
+        reason: "Replacement character",
+        facts,
+      },
+      revocation: null,
     };
     const policy = base.policySnapshot!.material;
     const draft: AcquisitionDraftState = {

@@ -73,6 +73,16 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue, s
     const selectedRecipe = acquisition?.recipe.kind === "permanent-items" || acquisition?.recipe.kind === "lump-sum"
         ? acquisition.recipe.kind
         : null;
+    const judgments = setupOptions?.judgments ?? [];
+    const pendingRequests = draft.equipmentPolicyRequests.filter((request) => request.withdrawnAt === null &&
+        request.facts.draftId === acquisition?.draftId &&
+        request.facts.targetLevel === acquisition?.targetLevel &&
+        !judgments.some((judgment) => judgment.request.requestId === request.requestId && judgment.revocation === null));
+    const reviewedStartJudgment = policy?.gmJudgments.find((judgment) => judgment.kind === "higher-level-start") ?? null;
+    const activeJudgment = reviewedStartJudgment
+        ? (judgments.find((judgment) => judgment.id === reviewedStartJudgment.id && judgment.revocation === null) ?? null)
+        : null;
+    const startAuthorityInvalid = reviewedStartJudgment !== null && activeJudgment === null;
     return {
         kind: "starting-equipment",
         templateKind: "starting-equipment",
@@ -85,7 +95,7 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue, s
         initialized: !!acquisition,
         corrupt: draft.acquisitionCorrupt,
         setup: {
-            awaitingAuthority,
+            awaitingAuthority: awaitingAuthority || startAuthorityInvalid,
             canChooseRecipe: awaitingAuthority && worldPolicy?.recipeChoiceAuthority === "actor-owner",
             selectedRecipe,
             recipeOptions: (worldPolicy?.enabledRecipes ?? []).map((value) => ({
@@ -93,15 +103,37 @@ export function buildStartingEquipmentPane(step, draft, evaluation, catalogue, s
                 label: value === "permanent-items" ? "Permanent items and coin" : "Lump sum of coin",
                 selected: value === selectedRecipe,
             })),
-            authorityMessage: awaitingAuthority
-                ? worldPolicy?.higherLevelStartAuthority === "actor-owner-attestation"
-                    ? "As an owner, you can attest that this is a new or replacement higher-level character."
-                    : setupOptions?.isGm
-                        ? "Confirm whether this is a new-campaign or replacement-character start before shopping."
-                        : "A GM must confirm this higher-level start before shopping."
-                : null,
-            canActivate: awaitingAuthority &&
+            authorityMessage: startAuthorityInvalid
+                ? "The prior GM approval is no longer current. Request a new approval before Apply."
+                : awaitingAuthority
+                    ? worldPolicy?.higherLevelStartAuthority === "actor-owner-attestation"
+                        ? "As an owner, you can attest that this is a new or replacement higher-level character."
+                        : setupOptions?.isGm
+                            ? "Confirm whether this is a new-campaign or replacement-character start before shopping."
+                            : "A GM must confirm this higher-level start before shopping."
+                    : null,
+            canActivate: (awaitingAuthority || startAuthorityInvalid) &&
                 (worldPolicy?.higherLevelStartAuthority === "actor-owner-attestation" || setupOptions?.isGm === true),
+            canRequest: (awaitingAuthority || startAuthorityInvalid) &&
+                worldPolicy?.higherLevelStartAuthority === "gm-confirmation" &&
+                setupOptions?.isGm !== true &&
+                pendingRequests.length === 0,
+            pendingRequests: pendingRequests.map((request) => ({
+                requestId: request.requestId,
+                requesterName: request.requesterName,
+                requestedAt: request.requestedAt,
+                reason: request.reason,
+                canApprove: setupOptions?.isGm === true,
+            })),
+            activeJudgmentId: activeJudgment?.id ?? null,
+            canRevoke: setupOptions?.isGm === true && activeJudgment !== null,
+            canSetCustomLumpSum: setupOptions?.isGm === true &&
+                !!policy &&
+                (policy.resolvedRecipe.kind === "lump-sum" || policy.resolvedRecipe.kind === "custom-lump-sum") &&
+                !acquisition?.lines.some((line) => line.funding.lane === "allowance"),
+            canGrantExtraAllowance: setupOptions?.isGm === true &&
+                policy?.resolvedRecipe.kind === "permanent-items" &&
+                !policy.allowances.some((allowance) => allowance.allowanceId.startsWith("gm-extra:")),
         },
         policy: {
             recipeLabel: policy ? recipeLabel(policy.resolvedRecipe.kind) : "Set once you start shopping",

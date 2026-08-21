@@ -9,7 +9,7 @@ import { fetchSelectionDocument } from "../pack/access.js";
 import { getOptionQueryForStep, getOptionsForStep, resolveSelection } from "../pack/options.js";
 import { getPickerInfoState } from "../pack/picker-state.js";
 import { assertCanUseWayfinder, canUseWayfinder, WayfinderActorAuthorityError } from "../permissions.js";
-import { getEquipmentWorldPolicySetting, getSpellRarityCeilingSetting } from "../settings.js";
+import { getEquipmentPolicyJudgmentStoreSetting, getEquipmentWorldPolicySetting, getSpellRarityCeilingSetting, } from "../settings.js";
 import { enqueueActorOperation } from "../shared/actor-operation-queue.js";
 import { cloneData } from "../shared/cloning.js";
 import { extractDocumentSlug } from "../shared/slug.js";
@@ -643,6 +643,47 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     reason: `Confirmed ${action.startKind === "new-campaign" ? "a new campaign" : "a replacement character"} start at level ${this.#requireDraft().targetLevel}.`,
                 });
                 break;
+            case "request-equipment-start":
+                await this.#executeStartingEquipmentCommand(action.stepId, {
+                    type: "request-higher-level-start",
+                    startKind: action.startKind,
+                    reason: `Requesting ${action.startKind === "new-campaign" ? "a new campaign" : "a replacement character"} start at level ${this.#requireDraft().targetLevel}.`,
+                });
+                break;
+            case "approve-equipment-policy-request":
+                await this.#executeStartingEquipmentCommand(action.stepId, {
+                    type: "approve-policy-request",
+                    requestId: action.requestId,
+                    reason: "Approved the requested higher-level starting wealth.",
+                });
+                break;
+            case "revoke-equipment-policy-judgment":
+                await this.#executeStartingEquipmentCommand(action.stepId, {
+                    type: "revoke-policy-judgment",
+                    judgmentId: action.judgmentId,
+                    reason: "Revoked starting-equipment authority from the current draft.",
+                });
+                break;
+            case "set-custom-equipment-lump-sum": {
+                const input = this.element.querySelector(`[data-wayfinder-custom-lump-sum][data-step-id="${action.stepId}"]`);
+                const amountCopper = parseGoldToCopper(input?.value ?? "");
+                if (amountCopper === null) {
+                    ui.notifications.warn("Enter a non-negative custom lump sum with at most two decimal places.");
+                    break;
+                }
+                await this.#executeStartingEquipmentCommand(action.stepId, {
+                    type: "set-custom-lump-sum",
+                    amountCopper,
+                    reason: `Approved a custom ${input.value.trim()} gp starting lump sum.`,
+                });
+                break;
+            }
+            case "grant-extra-equipment-allowance":
+                await this.#executeStartingEquipmentCommand(action.stepId, {
+                    type: "grant-extra-current-level-allowance",
+                    reason: `Approved one extra level ${this.#requireDraft().targetLevel} permanent-item allowance.`,
+                });
+                break;
             case "preview-equipment-item":
                 this.#equipmentPreviewByStepId.set(action.stepId, action.sourceUuid);
                 this.render({ wayfinderEquipmentUpdate: true });
@@ -890,7 +931,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         if (step.kind === "starting-equipment") {
             const request = this.#startingEquipmentUiRequest(step);
-            return buildStartingEquipmentPane(step, this.#requireDraft(), stepEvaluation, await getStartingEquipmentUiAdapter().project(request), { worldPolicy: getEquipmentWorldPolicySetting(), isGm: game.user?.isGM === true });
+            return buildStartingEquipmentPane(step, this.#requireDraft(), stepEvaluation, await getStartingEquipmentUiAdapter().project(request), {
+                worldPolicy: getEquipmentWorldPolicySetting(),
+                judgments: getEquipmentPolicyJudgmentStoreSetting().judgments,
+                isGm: game.user?.isGM === true,
+            });
         }
         const skillPane = await buildSkillPane(step, this.#requireDraft(), {
             baseSkillRanks: inspectActor(this.actor).skillRanks,
@@ -970,6 +1015,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             });
             this.#requireDraft().acquisition = result.acquisition;
             this.#requireDraft().acquisitionCorrupt = false;
+            this.#requireDraft().equipmentPolicyRequests = [...result.policyRequests];
             this.#statusNote = result.statusNote;
         }
         catch (error) {
@@ -2415,6 +2461,14 @@ function fallbackEscapeHtml(value) {
                 return "&#39;";
         }
     });
+}
+function parseGoldToCopper(value) {
+    const normalized = value.trim();
+    if (!/^\d+(?:\.\d{1,2})?$/u.test(normalized))
+        return null;
+    const [gold, fractional = ""] = normalized.split(".");
+    const copper = Number(gold) * 100 + Number(fractional.padEnd(2, "0"));
+    return Number.isSafeInteger(copper) && copper >= 0 ? copper : null;
 }
 function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);

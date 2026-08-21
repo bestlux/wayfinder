@@ -16,6 +16,7 @@ export function registerSettings(
     equipmentPolicyMenuType?: unknown;
     onExtraPacksChange?: () => void;
     onSpellRarityCeilingChange?: () => void;
+    onEquipmentPolicyChange?: () => void;
   } = {}
 ): void {
   if (args.feedbackMenuType) {
@@ -87,6 +88,7 @@ export function registerSettings(
     restricted: true,
     type: Object,
     default: DEFAULT_EQUIPMENT_WORLD_POLICY,
+    onChange: args.onEquipmentPolicyChange,
   });
 
   game.settings.register(MODULE_ID, SETTINGS.equipmentPolicyJudgments, {
@@ -96,6 +98,7 @@ export function registerSettings(
     restricted: true,
     type: Object,
     default: EMPTY_EQUIPMENT_POLICY_JUDGMENT_STORE,
+    onChange: args.onEquipmentPolicyChange,
   });
 }
 

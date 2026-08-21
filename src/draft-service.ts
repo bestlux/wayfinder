@@ -16,13 +16,14 @@ import {
 } from "./wayfinder/class-archetype/registry.js";
 import { normalizeAcquisitionDraft, reconcileAcquisitionTargetLevel } from "./wayfinder/domain/acquisition-draft.js";
 import { normalizeCompletedAcquisitionManifest } from "./wayfinder/domain/completed-acquisition-manifest.js";
+import { normalizeEquipmentPolicyRequest } from "./wayfinder/domain/equipment-policy.js";
 import { SLOT_PREFIXES } from "./wayfinder/slot-ids.js";
 import {
   normalizeAppliedSpellRarityAttestation,
   normalizeSpellRarityAttestation,
 } from "./wayfinder/spell-choice/rarity-attestation.js";
 
-const DRAFT_VERSION = 15;
+const DRAFT_VERSION = 16;
 const STATE_VERSION = 4;
 
 export function createEmptyDraft(targetLevel = 1): DraftState {
@@ -31,6 +32,7 @@ export function createEmptyDraft(targetLevel = 1): DraftState {
     targetLevel: clampLevel(targetLevel),
     acquisition: null,
     acquisitionCorrupt: false,
+    equipmentPolicyRequests: [],
     applyAttemptStepIds: [],
     applyCompletedStepIds: [],
     applyRecoveryActorUpdate: {},
@@ -107,6 +109,7 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     targetLevel,
     acquisition: acquisition ? reconcileAcquisitionTargetLevel(acquisition, targetLevel) : null,
     acquisitionCorrupt,
+    equipmentPolicyRequests: sanitizeEquipmentPolicyRequests(draft.equipmentPolicyRequests),
     applyAttemptStepIds: sanitizeStepIds(draft.applyAttemptStepIds),
     applyCompletedStepIds: sanitizeStepIds(draft.applyCompletedStepIds),
     applyRecoveryActorUpdate: sanitizeRecoveryActorUpdate(draft.applyRecoveryActorUpdate),
@@ -125,6 +128,23 @@ export function normalizeDraft(raw: unknown, fallbackTargetLevel: number): Draft
     spellRarityAttestations,
     updatedAt: typeof draft.updatedAt === "string" ? draft.updatedAt : null,
   };
+}
+
+function sanitizeEquipmentPolicyRequests(raw: unknown): DraftState["equipmentPolicyRequests"] {
+  if (!Array.isArray(raw)) return [];
+  const requests = raw.flatMap((value) => {
+    const request = normalizeEquipmentPolicyRequest(value);
+    return request ? [request] : [];
+  });
+  if (
+    requests.length !== raw.length ||
+    new Set(requests.map((request) => request.requestId)).size !== requests.length
+  ) {
+    return [];
+  }
+  return requests.sort(
+    (left, right) => left.requestedAt.localeCompare(right.requestedAt) || left.requestId.localeCompare(right.requestId)
+  );
 }
 
 function sanitizeRecoveryActorUpdate(value: unknown): Record<string, unknown> {

@@ -77,7 +77,8 @@ describe("Wayfinder settings", () => {
 
   it("registers a restricted equipment-policy menu and atomic hidden world setting", () => {
     class EquipmentPolicyMenu {}
-    registerSettings({ equipmentPolicyMenuType: EquipmentPolicyMenu });
+    const onEquipmentPolicyChange = vi.fn();
+    registerSettings({ equipmentPolicyMenuType: EquipmentPolicyMenu, onEquipmentPolicyChange });
     expect(testGlobals.game.settings.registerMenu).toHaveBeenCalledWith(
       MODULE_ID,
       "equipmentPolicy",
@@ -86,12 +87,24 @@ describe("Wayfinder settings", () => {
     expect(testGlobals.game.settings.register).toHaveBeenCalledWith(
       MODULE_ID,
       SETTINGS.equipmentPolicy,
-      expect.objectContaining({ scope: "world", config: false, restricted: true, type: Object })
+      expect.objectContaining({
+        scope: "world",
+        config: false,
+        restricted: true,
+        type: Object,
+        onChange: onEquipmentPolicyChange,
+      })
     );
     expect(testGlobals.game.settings.register).toHaveBeenCalledWith(
       MODULE_ID,
       SETTINGS.equipmentPolicyJudgments,
-      expect.objectContaining({ scope: "world", config: false, restricted: true, type: Object })
+      expect.objectContaining({
+        scope: "world",
+        config: false,
+        restricted: true,
+        type: Object,
+        onChange: onEquipmentPolicyChange,
+      })
     );
   });
 

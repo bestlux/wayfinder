@@ -3,16 +3,20 @@ import { acknowledgeAcquisitionHandoff, createAcquisitionDraft, createAcquisitio
 import { mintAcquisitionIdentitySeed } from "../domain/acquisition-identity.js";
 import { createAcquisitionPriceSnapshot, evaluateAcquisitionLedger, reviewPurchaseLedger, reviewRetainAll, } from "../domain/acquisition-ledger.js";
 import { createPreparedClassGrantPlan } from "../domain/class-grant-reconciliation.js";
+import { createEquipmentPolicyRequest } from "../domain/equipment-policy.js";
 import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class-grant-projection-service.js";
 import { evaluateActorEconomicAdmission } from "./economic-baseline-service.js";
 import { getFoundryEquipmentAcquisitionRuntime, } from "./equipment-acquisition-runtime-service.js";
-import { createOwnerStartAttestation, resolveEquipmentPolicyForActor, saveTrustedEquipmentPolicyJudgment, } from "./equipment-policy-service.js";
+import { createOwnerStartAttestation, resolveEquipmentPolicyForActor, revokeTrustedEquipmentPolicyJudgment, saveTrustedEquipmentPolicyJudgment, } from "./equipment-policy-service.js";
 const DEFAULT_DEPS = {
     mintIdentity: mintAcquisitionIdentitySeed,
     resolvePolicy: resolveEquipmentPolicyForActor,
     getWorldPolicy: getEquipmentWorldPolicySetting,
     createOwnerStartAttestation,
     saveJudgment: saveTrustedEquipmentPolicyJudgment,
+    revokeJudgment: revokeTrustedEquipmentPolicyJudgment,
+    createRequest: createEquipmentPolicyRequest,
+    mintRequestId: () => crypto.randomUUID(),
     mintJudgmentId: () => crypto.randomUUID(),
     projectClassGrants: projectCurrentClassGrants,
     prepareClassGrantPlan: prepareCurrentClassGrantPlan,
@@ -29,6 +33,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
     }
     const before = context.draft.acquisition;
     let acquisition;
+    let policyRequests = context.draft.equipmentPolicyRequests;
     let statusNote;
     switch (command.type) {
         case "initialize": {
@@ -50,11 +55,149 @@ export async function executeStartingEquipmentCommand(command, context, dependen
         case "activate-policy": {
             const staged = requireAcquisition(context.draft);
             const claim = await createHigherLevelStartClaim(staged, command.startKind, command.reason, context, deps);
-            const activated = await activateAcquisition(staged, context, deps, claim);
-            acquisition = activated.acquisition;
-            statusNote = activated.pendingTitanSelection
-                ? "Ready to shop. Pick your Titan Mauler weapon before you finish."
-                : "Higher-level starting wealth confirmed. Ready to shop.";
+            if (staged.policySnapshot) {
+                const policy = resolveExistingPolicy(staged, context, deps, { higherLevelStartClaim: claim });
+                acquisition = invalidateAcquisitionReview({ ...staged, policySnapshot: createAcquisitionPolicySnapshot(policy, staged.recipe) }, ["policy"]);
+                statusNote = "Higher-level starting wealth reapproved. Review the current cart before Apply.";
+            }
+            else {
+                const activated = await activateAcquisition(staged, context, deps, claim);
+                acquisition = activated.acquisition;
+                statusNote = activated.pendingTitanSelection
+                    ? "Ready to shop. Pick your Titan Mauler weapon before you finish."
+                    : "Higher-level starting wealth confirmed. Ready to shop.";
+            }
+            break;
+        }
+        case "request-higher-level-start": {
+            acquisition = requireAcquisition(context.draft);
+            if (acquisition.targetLevel === 1) {
+                throw new TypeError("A higher-level start request requires a higher-level equipment draft.");
+            }
+            const request = deps.createRequest({
+                requestId: deps.mintRequestId(),
+                facts: {
+                    kind: "higher-level-start",
+                    actorId: actorId(context.actor),
+                    draftId: acquisition.draftId,
+                    targetLevel: acquisition.targetLevel,
+                    startKind: command.startKind,
+                },
+                requesterUserId: context.userId,
+                requesterName: userName(context.user, context.userId),
+                requestedAt: context.now(),
+                reason: command.reason,
+            });
+            policyRequests = replacePolicyRequest(policyRequests, request);
+            statusNote = "Higher-level start approval requested from a GM.";
+            break;
+        }
+        case "approve-policy-request": {
+            const staged = requireAcquisition(context.draft);
+            const request = requireCurrentPolicyRequest(policyRequests, command.requestId, staged, actorId(context.actor));
+            if (request.facts.kind !== "higher-level-start") {
+                throw new TypeError("This equipment approval is not a higher-level start request.");
+            }
+            const judgment = await deps.saveJudgment({
+                id: `approval:${request.requestId}`,
+                facts: request.facts,
+                request,
+                reason: command.reason,
+                recordedAt: context.now(),
+                user: context.user,
+            });
+            const claim = {
+                kind: "gm-confirmation",
+                judgmentId: judgment.id,
+                startKind: request.facts.startKind,
+            };
+            if (staged.policySnapshot) {
+                const policy = resolveExistingPolicy(staged, context, deps, { higherLevelStartClaim: claim });
+                acquisition = invalidateAcquisitionReview({ ...staged, policySnapshot: createAcquisitionPolicySnapshot(policy, staged.recipe) }, ["policy"]);
+                statusNote = "Higher-level start reapproved. Review the current cart before Apply.";
+            }
+            else {
+                const activated = await activateAcquisition(staged, context, deps, claim);
+                acquisition = activated.acquisition;
+                statusNote = "Higher-level start approved. Ready to shop.";
+            }
+            break;
+        }
+        case "revoke-policy-judgment": {
+            acquisition = requireAcquisition(context.draft);
+            const reviewedJudgment = acquisition.policySnapshot?.material.gmJudgments.find((judgment) => judgment.id === command.judgmentId);
+            if (!reviewedJudgment ||
+                reviewedJudgment.actorId !== actorId(context.actor) ||
+                reviewedJudgment.draftId !== acquisition.draftId ||
+                reviewedJudgment.targetLevel !== acquisition.targetLevel) {
+                throw new TypeError("Only an approval bound to this equipment draft can be revoked here.");
+            }
+            await deps.revokeJudgment({
+                judgmentId: command.judgmentId,
+                reason: command.reason,
+                revokedAt: context.now(),
+                user: context.user,
+            });
+            acquisition = invalidateAcquisitionReview(acquisition, ["policy"]);
+            statusNote = "Equipment authority revoked. Apply is blocked until current approval is recorded.";
+            break;
+        }
+        case "set-custom-lump-sum": {
+            const current = requireActiveAcquisition(context.draft);
+            if (current.lines.some((line) => line.funding.lane === "allowance")) {
+                throw new TypeError("Remove allowance-funded items before replacing the recipe with a custom lump sum.");
+            }
+            const judgmentId = deps.mintJudgmentId();
+            await deps.saveJudgment({
+                id: judgmentId,
+                facts: {
+                    kind: "custom-lump-sum",
+                    actorId: actorId(context.actor),
+                    draftId: current.draftId,
+                    targetLevel: current.targetLevel,
+                    amountCopper: command.amountCopper,
+                },
+                reason: command.reason,
+                recordedAt: context.now(),
+                user: context.user,
+            });
+            const policy = resolveExistingPolicy(current, context, deps, {
+                selectedRecipe: "lump-sum",
+                customLumpSum: { amountCopper: command.amountCopper, judgmentId },
+                extraCurrentLevelAllowanceIds: [],
+            });
+            const recipe = { kind: "custom-lump-sum", judgmentRef: judgmentId, amountCopper: command.amountCopper };
+            acquisition = invalidateAcquisitionReview({ ...current, recipe, policySnapshot: createAcquisitionPolicySnapshot(policy, recipe) }, ["recipe", "policy", "budget"]);
+            statusNote = "Custom lump sum approved for this draft.";
+            break;
+        }
+        case "grant-extra-current-level-allowance": {
+            const current = requireActiveAcquisition(context.draft);
+            if (current.recipe.kind !== "permanent-items") {
+                throw new TypeError("An extra current-level allowance requires the permanent-items recipe.");
+            }
+            if (current.policySnapshot.material.allowances.some((allowance) => allowance.allowanceId.startsWith("gm-extra:"))) {
+                throw new TypeError("This draft already has its one extra current-level allowance.");
+            }
+            const judgmentId = deps.mintJudgmentId();
+            await deps.saveJudgment({
+                id: judgmentId,
+                facts: {
+                    kind: "extra-current-level-allowance",
+                    actorId: actorId(context.actor),
+                    draftId: current.draftId,
+                    targetLevel: current.targetLevel,
+                },
+                reason: command.reason,
+                recordedAt: context.now(),
+                user: context.user,
+            });
+            const policy = resolveExistingPolicy(current, context, deps, {
+                selectedRecipe: "permanent-items",
+                extraCurrentLevelAllowanceIds: [judgmentId],
+            });
+            acquisition = invalidateAcquisitionReview({ ...current, policySnapshot: createAcquisitionPolicySnapshot(policy, current.recipe) }, ["policy", "allowance"]);
+            statusNote = "One extra current-level permanent-item allowance approved.";
             break;
         }
         case "add-line":
@@ -89,7 +232,34 @@ export async function executeStartingEquipmentCommand(command, context, dependen
             statusNote = "PF2E inventory-sheet handoff acknowledged.";
             break;
     }
-    return { acquisition, changed: acquisition !== before, statusNote };
+    return {
+        acquisition,
+        changed: acquisition !== before || policyRequests !== context.draft.equipmentPolicyRequests,
+        statusNote,
+        policyRequests,
+    };
+}
+function resolveExistingPolicy(acquisition, context, deps, overrides = {}) {
+    const reviewed = acquisition.policySnapshot?.material;
+    if (!reviewed)
+        throw new TypeError("Starting-equipment policy is not active for this draft.");
+    return deps.resolvePolicy({
+        actor: context.actor,
+        draftId: acquisition.draftId,
+        targetLevel: acquisition.targetLevel,
+        selectedRecipe: acquisition.recipe.kind === "permanent-items" ? "permanent-items" : "lump-sum",
+        higherLevelStartClaim: higherLevelStartClaim(reviewed.higherLevelStartEvidence),
+        customLumpSum: acquisition.recipe.kind === "custom-lump-sum"
+            ? { amountCopper: acquisition.recipe.amountCopper, judgmentId: acquisition.recipe.judgmentRef }
+            : null,
+        extraCurrentLevelAllowanceIds: reviewed.gmJudgments
+            .filter((judgment) => judgment.kind === "extra-current-level-allowance")
+            .map((judgment) => judgment.id),
+        exceptionJudgmentIds: reviewed.gmJudgments
+            .filter((judgment) => judgment.kind === "rarity-source-exception")
+            .map((judgment) => judgment.id),
+        ...overrides,
+    });
 }
 async function initializeAcquisition(context, deps, selectedRecipe) {
     const identity = deps.mintIdentity();
@@ -220,6 +390,30 @@ function actorId(actor) {
     if (typeof id !== "string" || !id.trim())
         throw new TypeError("Starting equipment requires a bound actor.");
     return id;
+}
+function userName(user, fallback) {
+    const name = user && typeof user === "object" ? user.name : null;
+    return typeof name === "string" && name.trim() ? name.trim() : fallback;
+}
+function replacePolicyRequest(requests, request) {
+    const current = requests.find((candidate) => candidate.requestId === request.requestId);
+    if (current && JSON.stringify(current) !== JSON.stringify(request)) {
+        throw new TypeError("Equipment request ID already belongs to different facts.");
+    }
+    return current
+        ? requests
+        : [...requests, request].sort((left, right) => left.requestedAt.localeCompare(right.requestedAt) || left.requestId.localeCompare(right.requestId));
+}
+function requireCurrentPolicyRequest(requests, requestId, acquisition, currentActorId) {
+    const request = requests.find((candidate) => candidate.requestId === requestId);
+    if (!request ||
+        request.withdrawnAt !== null ||
+        request.facts.actorId !== currentActorId ||
+        request.facts.draftId !== acquisition.draftId ||
+        request.facts.targetLevel !== acquisition.targetLevel) {
+        throw new TypeError("Equipment approval request is stale or belongs to different facts.");
+    }
+    return request;
 }
 async function prepareLedger(context, deps) {
     let acquisition = requireAcquisition(context.draft);
@@ -366,6 +560,21 @@ function requireAcquisition(draft) {
     if (!draft.acquisition)
         throw new TypeError("Set up starting equipment before changing its review state.");
     return draft.acquisition;
+}
+function requireActiveAcquisition(draft) {
+    const acquisition = requireAcquisition(draft);
+    if (!acquisition.policySnapshot || !acquisition.baseline) {
+        throw new TypeError("Confirm higher-level starting wealth before adding GM equipment overrides.");
+    }
+    return acquisition;
+}
+function higherLevelStartClaim(evidence) {
+    if (evidence.kind === "not-required")
+        return null;
+    if (evidence.kind === "gm-confirmation") {
+        return { kind: "gm-confirmation", judgmentId: evidence.judgment.id, startKind: evidence.startKind };
+    }
+    return { ...evidence };
 }
 function assertCommandContext(context) {
     if (!context.steps.some((step) => step.kind === "starting-equipment" && step.level === context.draft.targetLevel)) {

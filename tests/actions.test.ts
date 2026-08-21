@@ -158,6 +158,61 @@ describe("wayfinder actions", () => {
     expect(
       parseWayfinderAction({
         dataset: {
+          wayfinderAction: "request-equipment-start",
+          stepId: "starting-equipment-level-5",
+          startKind: "new-campaign",
+        },
+      } as any)
+    ).toEqual({
+      type: "request-equipment-start",
+      stepId: "starting-equipment-level-5",
+      startKind: "new-campaign",
+    });
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "approve-equipment-policy-request",
+          stepId: "starting-equipment-level-5",
+          requestId: "request-1",
+        },
+      } as any)
+    ).toEqual({
+      type: "approve-equipment-policy-request",
+      stepId: "starting-equipment-level-5",
+      requestId: "request-1",
+    });
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "revoke-equipment-policy-judgment",
+          stepId: "starting-equipment-level-5",
+          judgmentId: "judgment-1",
+        },
+      } as any)
+    ).toEqual({
+      type: "revoke-equipment-policy-judgment",
+      stepId: "starting-equipment-level-5",
+      judgmentId: "judgment-1",
+    });
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "set-custom-equipment-lump-sum",
+          stepId: "starting-equipment-level-5",
+        },
+      } as any)
+    ).toEqual({ type: "set-custom-equipment-lump-sum", stepId: "starting-equipment-level-5" });
+    expect(
+      parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "grant-extra-equipment-allowance",
+          stepId: "starting-equipment-level-5",
+        },
+      } as any)
+    ).toEqual({ type: "grant-extra-equipment-allowance", stepId: "starting-equipment-level-5" });
+    expect(
+      parseWayfinderAction({
+        dataset: {
           wayfinderAction: "change-equipment-quantity",
           stepId: "starting-equipment-level-1",
           lineId: "line-1",

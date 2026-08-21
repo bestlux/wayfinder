@@ -2,6 +2,7 @@ import { isGradualAbilityBoostsEnabled } from "./ability-boost-progression.js";
 import { campaignFeatStepId, readCampaignFeatSections } from "./campaign-feat-sections.js";
 import { MODULE_ID } from "./constants.js";
 import type { ActorSnapshot } from "./types.js";
+import { normalizeCompletedAcquisitionManifest } from "./wayfinder/domain/completed-acquisition-manifest.js";
 
 export function inspectActor(actor: any): ActorSnapshot {
   const items = normalizeItems(actor);
@@ -82,6 +83,7 @@ export function inspectActor(actor: any): ActorSnapshot {
     actorId: String(actor?.id ?? ""),
     level,
     isBlank: items.length === 0 && !hasAnySingleton(singletonSlots),
+    hasValidCompletedAcquisitionManifest: readValidCompletedAcquisitionManifest(actor),
     freeArchetypeEnabled,
     campaignFeatSections,
     gradualBoostsEnabled,
@@ -92,6 +94,15 @@ export function inspectActor(actor: any): ActorSnapshot {
     namesByType,
     skillRanks: extractSkillRanks(actor),
   };
+}
+
+function readValidCompletedAcquisitionManifest(actor: any): boolean {
+  const actorId = String(actor?.id ?? "");
+  const state = actor?.flags?.[MODULE_ID]?.state;
+  if (!actorId || state?.completedAcquisitionManifestCorrupt === true) return false;
+
+  const manifest = normalizeCompletedAcquisitionManifest(state?.completedAcquisitionManifest);
+  return manifest?.actorId === actorId;
 }
 
 function extractSkillRanks(actor: any): Record<string, number> {

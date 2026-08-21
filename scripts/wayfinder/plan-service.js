@@ -35,7 +35,7 @@ export async function buildWayfinderPlan(snapshot, draft, deps) {
         ...spellChoiceSteps,
     ]);
     const equipmentSlotId = `starting-equipment-level-${plan.targetLevel}`;
-    const targetLevelSteps = !snapshot.fulfilledStepIds.includes(equipmentSlotId)
+    const targetLevelSteps = !snapshot.hasValidCompletedAcquisitionManifest && !snapshot.fulfilledStepIds.includes(equipmentSlotId)
         ? [...registeredSteps, createStartingEquipmentStep(plan.targetLevel)]
         : registeredSteps;
     return {

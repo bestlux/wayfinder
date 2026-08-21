@@ -273,7 +273,7 @@ describe("wayfinder plan service", () => {
     expect(steps.map((step) => step.slotKind)).toEqual(["ability-boosts", "class-feat", "starting-equipment"]);
   });
 
-  it("adds starting equipment for every unfulfilled target level", async () => {
+  it("adds starting equipment until one valid completed manifest fulfills it globally", async () => {
     const snapshot = {
       actorId: "actor-1",
       level: 0,
@@ -318,6 +318,20 @@ describe("wayfinder plan service", () => {
         deps
       );
       expect(higherLevelFulfilled.steps.some((step) => step.kind === "starting-equipment")).toBe(false);
+    }
+
+    for (const targetLevel of [1, 2, 5, 20]) {
+      const globallyFulfilled = await buildWayfinderPlan(
+        {
+          ...snapshot,
+          level: Math.max(0, targetLevel - 1),
+          hasValidCompletedAcquisitionManifest: true,
+          fulfilledStepIds: [],
+        },
+        createEmptyDraft(targetLevel),
+        deps
+      );
+      expect(globallyFulfilled.steps.some((step) => step.kind === "starting-equipment")).toBe(false);
     }
   });
 

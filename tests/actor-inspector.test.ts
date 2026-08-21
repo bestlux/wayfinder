@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { inspectActor } from "../src/actor-inspector";
+import { completedAcquisitionFixture } from "./fixtures/acquisition-fixture";
 
 describe("actor-inspector", () => {
   afterEach(() => {
@@ -94,6 +95,40 @@ describe("actor-inspector", () => {
       "skill-feat-level-2",
       "starting-equipment-level-1",
     ]);
+  });
+
+  it("recognizes only an intact completed acquisition manifest owned by the inspected actor", async () => {
+    const { manifest } = await completedAcquisitionFixture();
+    const inspectWithState = (actorId: string, state: Record<string, unknown>) =>
+      inspectActor({
+        id: actorId,
+        items: [],
+        flags: { "wayfinder-pf2e": { state } },
+      }).hasValidCompletedAcquisitionManifest;
+
+    expect(inspectWithState("actor-1", { completedAcquisitionManifest: manifest })).toBe(true);
+    expect(inspectWithState("actor-1", {})).toBe(false);
+    expect(
+      inspectWithState("actor-1", {
+        completedAcquisitionManifest: manifest,
+        completedAcquisitionManifestCorrupt: true,
+      })
+    ).toBe(false);
+    expect(inspectWithState("actor-2", { completedAcquisitionManifest: manifest })).toBe(false);
+    expect(
+      inspectWithState("actor-1", {
+        completedAcquisitionManifest: { ...manifest, targetLevel: manifest.targetLevel + 1 },
+      })
+    ).toBe(false);
+    expect(
+      inspectWithState("actor-1", {
+        completedAcquisitionManifest: {
+          schemaVersion: 1,
+          actorId: "actor-1",
+          id: manifest.id,
+        },
+      })
+    ).toBe(false);
   });
 
   it("counts class-category feats in PF2E's archetype locations only in the Free Archetype lane", () => {

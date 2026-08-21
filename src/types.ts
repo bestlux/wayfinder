@@ -175,6 +175,7 @@ export interface ActorSnapshot {
   actorId: string;
   level: number;
   isBlank: boolean;
+  hasValidCompletedAcquisitionManifest?: boolean;
   freeArchetypeEnabled: boolean;
   campaignFeatSections: CampaignFeatSectionSnapshot[];
   gradualBoostsEnabled: boolean;

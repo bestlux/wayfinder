@@ -68,6 +68,29 @@ describe("starting equipment accessibility", () => {
     const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
     expect(pane).toContain('data-wayfinder-equipment-search data-wayfinder-focus-id="starting-equipment-search"');
   });
+
+  it("restores active equipment errors after both full and status-part renders", () => {
+    const shellSource = readFileSync(resolve("src/wayfinder/app-shell.ts"), "utf8");
+    const equipmentBranch = shellSource.slice(
+      shellSource.indexOf('if (context.wayfinderRenderScope === "equipment")'),
+      shellSource.indexOf(
+        "this.#pickerRenderSession",
+        shellSource.indexOf('if (context.wayfinderRenderScope === "equipment")')
+      )
+    );
+    expect(equipmentBranch).toContain("renderedParts.includes(EQUIPMENT_STATUS_PART)");
+    expect(equipmentBranch).toContain("this.#restoreStartingEquipmentErrorFocus(root, pendingStatusFocus)");
+    expect(equipmentBranch.indexOf("this.#restoreStartingEquipmentErrorFocus")).toBeLessThan(
+      equipmentBranch.indexOf("return;")
+    );
+
+    const fullBranch = shellSource.slice(
+      shellSource.indexOf("const pendingStepFocusId"),
+      shellSource.indexOf("_tearDown(options", shellSource.indexOf("const pendingStepFocusId"))
+    );
+    expect(fullBranch).toContain("this.#restoreStartingEquipmentErrorFocus(");
+    expect(fullBranch).toContain("pendingControlFocusId === STARTING_EQUIPMENT_STATUS_FOCUS_ID");
+  });
 });
 
 function equipmentTemplateCorpus(): string {

@@ -43,6 +43,7 @@ import { chooseSelectionOption, selectClassArchetypeValue, selectClassChoiceValu
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
 import { SemanticCommandQueue } from "./application/semantic-command-queue.js";
 import { executeStartingEquipmentCommand, } from "./application/starting-equipment-command-service.js";
+import { StartingEquipmentErrorFocusCoordinator } from "./application/starting-equipment-error-focus-service.js";
 import { localizeStartingEquipmentError } from "./application/starting-equipment-failure.js";
 import { advanceStartingEquipmentRenderSession, canDeriveStartingEquipmentRender, canUseStartingEquipmentCommandPartial, createStartingEquipmentRenderSession, EQUIPMENT_CART_PART, EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART, EQUIPMENT_POLICY_PART, EQUIPMENT_STATUS_PART, startingEquipmentPartsForIntent, startingEquipmentRenderIdentity, } from "./application/starting-equipment-render-session.js";
 import { getStartingEquipmentUiAdapter } from "./application/starting-equipment-ui-adapter.js";
@@ -113,6 +114,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #recentlyInvalidatedStepIds = new Set();
     #statusNote = null;
     #statusErrorMessage = null;
+    #startingEquipmentErrorFocus = new StartingEquipmentErrorFocusCoordinator();
     #draftPersistence;
     #draftWriteGuard;
     #semanticCommands = new SemanticCommandQueue();
@@ -491,7 +493,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         if (context.wayfinderRenderScope === "equipment") {
             this.#equipmentRenderSession = context.equipmentRenderSession;
-            for (const part of startingEquipmentPartsForIntent(context.equipmentRequest.intent)) {
+            const renderedParts = startingEquipmentPartsForIntent(context.equipmentRequest.intent);
+            for (const part of renderedParts) {
                 const target = root.querySelector(`[data-application-part="${part}"]`);
                 if (!target)
                     continue;
@@ -509,6 +512,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
             }
             this.#restoreEquipmentSourceSearchFocus(root);
+            if (renderedParts.includes(EQUIPMENT_STATUS_PART)) {
+                const pendingStatusFocus = this.#pendingControlFocusId === STARTING_EQUIPMENT_STATUS_FOCUS_ID;
+                this.#restoreStartingEquipmentErrorFocus(root, pendingStatusFocus);
+                if (pendingStatusFocus)
+                    this.#pendingControlFocusId = null;
+            }
             this.#pendingEquipmentFocusIds = null;
             this.#pendingSearchFocus = null;
             return;
@@ -542,6 +551,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
         }
         this.#restoreEquipmentSourceSearchFocus(root);
+        this.#restoreStartingEquipmentErrorFocus(root, pendingControlFocusId === STARTING_EQUIPMENT_STATUS_FOCUS_ID);
         if (pendingStepFocusId || pendingControlFocusId) {
             this.#pendingStepFocusId = null;
             this.#pendingControlFocusId = null;
@@ -552,6 +562,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (options.wayfinderAcquisitionSmokeQuiescent) {
             acquisitionSmokeApplyFailureRenderedFor(this.actor);
         }
+    }
+    #restoreStartingEquipmentErrorFocus(root, pending) {
+        this.#startingEquipmentErrorFocus.restore(root, {
+            errorMessage: this.#statusNote !== null && this.#statusNote === this.#statusErrorMessage ? this.#statusErrorMessage : null,
+            pending,
+        });
     }
     _tearDown(options) {
         try {

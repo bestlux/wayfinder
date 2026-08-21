@@ -24,6 +24,10 @@ type TestGlobals = typeof globalThis & {
     data?: {
       operators?: {
         ForcedDeletion?: new () => unknown;
+        ForcedReplacement?: {
+          create: (value: unknown) => unknown;
+          get: (value: unknown) => unknown;
+        };
       };
     };
   };
@@ -33,6 +37,43 @@ type TestGlobals = typeof globalThis & {
 };
 
 class TestForcedDeletion {}
+
+const TEST_OPERATOR_VALUE = Symbol("TestDataFieldOperatorValue");
+
+class TestForcedReplacement {
+  [TEST_OPERATOR_VALUE]: unknown;
+
+  constructor(value: unknown) {
+    this[TEST_OPERATOR_VALUE] = TestForcedReplacement.get(value);
+  }
+
+  static create(value: unknown): unknown {
+    return new Proxy(new TestForcedReplacement(value), {
+      get(target, property, receiver) {
+        if (Reflect.has(target, property)) return Reflect.get(target, property, receiver);
+        const inner = target[TEST_OPERATOR_VALUE];
+        return inner && typeof inner === "object" ? Reflect.get(inner, property, receiver) : undefined;
+      },
+      has(target, property) {
+        if (Reflect.has(target, property)) return true;
+        const inner = target[TEST_OPERATOR_VALUE];
+        return inner && typeof inner === "object" ? Reflect.has(inner, property) : false;
+      },
+      ownKeys(target) {
+        const inner = target[TEST_OPERATOR_VALUE];
+        return inner && typeof inner === "object" ? Reflect.ownKeys(inner) : [];
+      },
+      getOwnPropertyDescriptor(target, property) {
+        const inner = target[TEST_OPERATOR_VALUE];
+        return inner && typeof inner === "object" ? Reflect.getOwnPropertyDescriptor(inner, property) : undefined;
+      },
+    });
+  }
+
+  static get(value: unknown): unknown {
+    return value instanceof TestForcedReplacement ? value[TEST_OPERATOR_VALUE] : value;
+  }
+}
 
 installFoundryV14Globals();
 beforeEach(() => {
@@ -62,6 +103,7 @@ function installFoundryV14Globals(): void {
   globals.foundry.data ??= {};
   globals.foundry.data.operators ??= {};
   globals.foundry.data.operators.ForcedDeletion ??= TestForcedDeletion;
+  globals.foundry.data.operators.ForcedReplacement ??= TestForcedReplacement;
 }
 
 function parseCompendiumItemUuid(uuid: string): { packId: string; documentId: string } | null {

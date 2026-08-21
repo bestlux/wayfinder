@@ -1,5 +1,6 @@
 import { DRAFT_FLAG, MODULE_ID } from "../../constants.js";
 import { normalizeDraft } from "../../draft-service.js";
+import { forceFoundryLeafReplacement } from "../../shared/foundry-data-operators.js";
 import { assertRecoveryDraftWriteAllowed, buildSaveDraftUpdate, hasApplyRecoveryState, WayfinderRecoveryDraftConflictError, } from "./draft-lifecycle-service.js";
 const DRAFT_WRITE_GUARD_OPERATION_OPTION = "wayfinderPf2eDraftWriteGuardOperationId";
 const activeDraftWriteGuardOperations = new Map();
@@ -153,13 +154,11 @@ export async function saveDraftWithWriteGuard(actor, candidateDraft, currentLeve
     };
     const update = buildSaveDraftUpdate(candidateDraft);
     const expectedDraft = normalizeDraft(update[DRAFT_FLAG], currentLevel);
+    update[DRAFT_FLAG] = forceFoundryLeafReplacement(update[DRAFT_FLAG]);
     let updateRejected = false;
     let updateFailure;
     try {
-        await updateActorWithPersistedDraftPrecondition(actor, update, assertCurrent, {
-            recursive: false,
-            render: false,
-        });
+        await updateActorWithPersistedDraftPrecondition(actor, update, assertCurrent, { render: false });
     }
     catch (error) {
         updateRejected = true;
@@ -269,10 +268,8 @@ async function restoreDurableDraft(actor, currentLevel, rejectedDraft, durableDr
     if (durableDraft !== null && isRecord(update[DRAFT_FLAG])) {
         update[DRAFT_FLAG].updatedAt = durableDraft.updatedAt;
     }
-    await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent, {
-        recursive: false,
-        render: false,
-    });
+    update[DRAFT_FLAG] = forceFoundryLeafReplacement(update[DRAFT_FLAG]);
+    await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent, { render: false });
     const restoredDraft = readPersistedDraftSnapshot(actor, currentLevel);
     if (persistedDraftFingerprint(restoredDraft) !== persistedDraftFingerprint(durableDraft)) {
         throw new Error("Foundry did not restore the exact last durable Wayfinder draft.");

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DRAFT_FLAG } from "../src/constants";
+import { DRAFT_FLAG, MODULE_ID } from "../src/constants";
 import { createEmptyDraft } from "../src/draft-service";
 import type { DraftState } from "../src/types";
 import { WayfinderRecoveryDraftConflictError } from "../src/wayfinder/application/draft-lifecycle-service";
@@ -82,7 +82,7 @@ describe("Wayfinder persisted draft write guard", () => {
     const actor = {
       getFlag: () => persisted,
       update: vi.fn(async (update: Record<string, unknown>, operation?: Record<string, unknown>) => {
-        persisted = structuredClone(update[DRAFT_FLAG]);
+        persisted = structuredClone(readFoundryReplacement(update[DRAFT_FLAG]));
         if (operation?.render !== false) actorAppRender(false);
         return actor;
       }),
@@ -141,29 +141,25 @@ describe("Wayfinder persisted draft write guard", () => {
       selections: {},
     });
     expect(reopenedRevised?.boosts.levels).toEqual({});
+    expect(actor.source.flags[MODULE_ID].sameModuleSibling).toEqual({ retained: true, updateCount: 2 });
+    expect(actor.source.flags["other-module"]).toEqual({ retained: true, updateCount: 2 });
     expect(actor.update).toHaveBeenCalledTimes(2);
     expect(actor.update.mock.calls.map(([, operation]) => operation)).toEqual([
-      expect.objectContaining({ recursive: false, render: false }),
-      expect.objectContaining({ recursive: false, render: false }),
+      expect.objectContaining({ render: false }),
+      expect.objectContaining({ render: false }),
     ]);
+    expect(actor.update.mock.calls.every(([, operation]) => !Object.hasOwn(operation ?? {}, "recursive"))).toBe(true);
+    expect(actor.update.mock.calls.every(([update]) => isFoundryReplacement(update[DRAFT_FLAG]))).toBe(true);
   });
 
   it("restores the exact last durable draft when Foundry persists a malformed round trip", async () => {
     const initial = createEmptyDraft(5);
     initial.manual.durable = true;
-    let persisted: unknown = initial;
-    let updateCount = 0;
-    const actor = {
-      getFlag: () => persisted,
-      update: vi.fn(async (update: Record<string, unknown>, operation?: Record<string, unknown>) => {
-        updateCount += 1;
-        persisted = applyFoundryRecursiveUpdate(persisted, update[DRAFT_FLAG], operation);
-        if (updateCount === 1) {
-          (persisted as { targetLevel: number }).targetLevel = 20;
-        }
-        return actor;
-      }),
-    };
+    const actor = createFoundryRecursiveMergeActor(initial, {
+      afterUpdate: (source, updateCount) => {
+        if (updateCount === 1) source.flags[MODULE_ID].draft.targetLevel = 20;
+      },
+    });
     const guard = new PersistedDraftWriteGuard(initial);
     const candidate = structuredClone(initial);
     candidate.manual.newest = true;
@@ -174,10 +170,14 @@ describe("Wayfinder persisted draft write guard", () => {
     });
     expect(actor.update).toHaveBeenCalledTimes(2);
     expect(actor.update.mock.calls.map(([, operation]) => operation)).toEqual([
-      expect.objectContaining({ recursive: false, render: false }),
-      expect.objectContaining({ recursive: false, render: false }),
+      expect.objectContaining({ render: false }),
+      expect.objectContaining({ render: false }),
     ]);
-    expect(persisted).toEqual(initial);
+    expect(actor.update.mock.calls.every(([, operation]) => !Object.hasOwn(operation ?? {}, "recursive"))).toBe(true);
+    expect(actor.update.mock.calls.every(([update]) => isFoundryReplacement(update[DRAFT_FLAG]))).toBe(true);
+    expect(actor.getFlag(MODULE_ID, "draft")).toEqual(initial);
+    expect(actor.source.flags[MODULE_ID].sameModuleSibling).toEqual({ retained: true, updateCount: 2 });
+    expect(actor.source.flags["other-module"]).toEqual({ retained: true, updateCount: 2 });
     expect(() => guard.assertCurrent(initial)).not.toThrow();
   });
 
@@ -207,7 +207,7 @@ describe("Wayfinder persisted draft write guard", () => {
     const actor = {
       getFlag: () => persisted,
       update: vi.fn(async (update: Record<string, unknown>) => {
-        persisted = update[DRAFT_FLAG];
+        persisted = readFoundryReplacement(update[DRAFT_FLAG]);
         throw new Error("lost acknowledgement");
       }),
     };
@@ -228,7 +228,7 @@ describe("Wayfinder persisted draft write guard", () => {
     const actor = {
       getFlag: () => persisted,
       update: vi.fn(async (update: Record<string, unknown>) => {
-        persisted = update[DRAFT_FLAG];
+        persisted = readFoundryReplacement(update[DRAFT_FLAG]);
       }),
     };
     const guard = new PersistedDraftWriteGuard(initial);
@@ -264,7 +264,7 @@ describe("Wayfinder persisted draft write guard", () => {
         if (evaluatePersistedDraftWriteGuardHook(actor, update, operation) === false) {
           return undefined;
         }
-        persisted = update[DRAFT_FLAG];
+        persisted = readFoundryReplacement(update[DRAFT_FLAG]);
         return actor;
       }),
     };
@@ -385,7 +385,7 @@ describe("Wayfinder persisted draft write guard", () => {
     const actor = {
       getFlag: () => persisted,
       update: vi.fn(async (update: Record<string, unknown>) => {
-        persisted = update[DRAFT_FLAG];
+        persisted = readFoundryReplacement(update[DRAFT_FLAG]);
       }),
     };
     const guard = new PersistedDraftWriteGuard(recovery);
@@ -406,7 +406,7 @@ describe("Wayfinder persisted draft write guard", () => {
     const actor = {
       getFlag: () => persisted,
       update: vi.fn(async (update: Record<string, unknown>) => {
-        persisted = update[DRAFT_FLAG];
+        persisted = readFoundryReplacement(update[DRAFT_FLAG]);
         return actor;
       }),
     };
@@ -433,7 +433,7 @@ describe("Wayfinder persisted draft write guard", () => {
     const actor = {
       getFlag: () => persisted,
       update: vi.fn(async (update: Record<string, unknown>) => {
-        persisted = update[DRAFT_FLAG];
+        persisted = readFoundryReplacement(update[DRAFT_FLAG]);
       }),
     };
     const guard = new PersistedDraftWriteGuard(initial);
@@ -477,7 +477,7 @@ describe("Wayfinder persisted draft write guard", () => {
       const saveActor = {
         getFlag: () => savedDraft,
         update: vi.fn(async (update: Record<string, unknown>) => {
-          savedDraft = update[DRAFT_FLAG];
+          savedDraft = readFoundryReplacement(update[DRAFT_FLAG]);
           return saveActor;
         }),
       };
@@ -562,20 +562,68 @@ function recipeMutationDrafts(): { initial: DraftState; candidate: DraftState } 
   return { initial, candidate };
 }
 
-function createFoundryRecursiveMergeActor(initialDraft: DraftState) {
-  let persisted: unknown = structuredClone(initialDraft);
+function createFoundryRecursiveMergeActor(
+  initialDraft: DraftState,
+  options: {
+    afterUpdate?: (source: FoundryActorSource, updateCount: number) => void;
+  } = {}
+) {
+  const source: FoundryActorSource = {
+    flags: {
+      [MODULE_ID]: {
+        draft: structuredClone(initialDraft),
+        sameModuleSibling: { retained: true, updateCount: 0 },
+      },
+      "other-module": { retained: true, updateCount: 0 },
+    },
+  };
+  let updateCount = 0;
   const actor = {
-    getFlag: () => persisted,
+    source,
+    getFlag: (scope: string, key: string) => source.flags[scope]?.[key],
     update: vi.fn(async (update: Record<string, unknown>, operation?: Record<string, unknown>) => {
-      persisted = applyFoundryRecursiveUpdate(persisted, update[DRAFT_FLAG], operation);
+      updateCount += 1;
+      source.flags[MODULE_ID].sameModuleSibling = { retained: true, updateCount };
+      source.flags["other-module"] = { retained: true, updateCount };
+      applyFoundryActorUpdate(source, update, operation);
+      options.afterUpdate?.(source, updateCount);
       return actor;
     }),
   };
   return actor;
 }
 
+interface FoundryActorSource {
+  flags: Record<string, Record<string, any>>;
+}
+
+function applyFoundryActorUpdate(
+  source: FoundryActorSource,
+  update: Record<string, unknown>,
+  operation?: Record<string, unknown>
+): void {
+  for (const [path, value] of Object.entries(update)) {
+    const segments = path.split(".");
+    const leaf = segments.pop();
+    if (!leaf) continue;
+    let parent: Record<string, any> = source as unknown as Record<string, any>;
+    for (const segment of segments) parent = parent[segment] ??= {};
+    parent[leaf] = applyFoundryRecursiveUpdate(parent[leaf], value, operation);
+  }
+}
+
 function applyFoundryRecursiveUpdate(current: unknown, update: unknown, operation?: Record<string, unknown>): unknown {
-  return operation?.recursive === false ? structuredClone(update) : mergeFoundryFlag(current, update);
+  const replacement = readFoundryReplacement(update);
+  if (replacement !== update || operation?.recursive === false) return structuredClone(replacement);
+  return mergeFoundryFlag(current, update);
+}
+
+function isFoundryReplacement(value: unknown): boolean {
+  return readFoundryReplacement(value) !== value;
+}
+
+function readFoundryReplacement(value: unknown): unknown {
+  return foundry.data.operators.ForcedReplacement.get(value);
 }
 
 function mergeFoundryFlag(current: unknown, update: unknown): unknown {

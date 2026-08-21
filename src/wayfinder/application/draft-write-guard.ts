@@ -1,5 +1,6 @@
 import { DRAFT_FLAG, MODULE_ID } from "../../constants.js";
 import { normalizeDraft } from "../../draft-service.js";
+import { forceFoundryLeafReplacement } from "../../shared/foundry-data-operators.js";
 import type { DraftState } from "../../types.js";
 import {
   assertRecoveryDraftWriteAllowed,
@@ -205,13 +206,11 @@ export async function saveDraftWithWriteGuard(
 
   const update = buildSaveDraftUpdate(candidateDraft);
   const expectedDraft = normalizeDraft(update[DRAFT_FLAG], currentLevel);
+  update[DRAFT_FLAG] = forceFoundryLeafReplacement(update[DRAFT_FLAG]);
   let updateRejected = false;
   let updateFailure: unknown;
   try {
-    await updateActorWithPersistedDraftPrecondition(actor, update, assertCurrent, {
-      recursive: false,
-      render: false,
-    });
+    await updateActorWithPersistedDraftPrecondition(actor, update, assertCurrent, { render: false });
   } catch (error) {
     updateRejected = true;
     updateFailure = error;
@@ -354,10 +353,8 @@ async function restoreDurableDraft(
   if (durableDraft !== null && isRecord(update[DRAFT_FLAG])) {
     update[DRAFT_FLAG].updatedAt = durableDraft.updatedAt;
   }
-  await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent, {
-    recursive: false,
-    render: false,
-  });
+  update[DRAFT_FLAG] = forceFoundryLeafReplacement(update[DRAFT_FLAG]);
+  await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent, { render: false });
   const restoredDraft = readPersistedDraftSnapshot(actor, currentLevel);
   if (persistedDraftFingerprint(restoredDraft) !== persistedDraftFingerprint(durableDraft)) {
     throw new Error("Foundry did not restore the exact last durable Wayfinder draft.");

@@ -1,6 +1,7 @@
-import { MODULE_ID, STATE_FLAG } from "../../constants.js";
+import { DRAFT_FLAG, MODULE_ID, STATE_FLAG } from "../../constants.js";
 import { normalizeState } from "../../draft-service.js";
 import { cloneData } from "../../shared/cloning.js";
+import { forceFoundryLeafReplacement } from "../../shared/foundry-data-operators.js";
 import type { DraftState, ExistingCharacterHistory, ModuleState } from "../../types.js";
 import { buildSaveDraftUpdate } from "./draft-lifecycle-service.js";
 import type { DraftFlagActor, PersistedDraftWriteGuard } from "./draft-write-guard.js";
@@ -42,15 +43,16 @@ export async function persistExistingCharacterImport(args: {
   const nextDraft = clearAcquisitionForExistingCharacterImport(args.draft);
   const nextState = withExistingCharacterHistory(args.state, args.history);
   const assertCurrent = captureDraftSideEffectPrecondition(args.actor, args.currentLevel, args.guard);
+  const draftUpdate = buildSaveDraftUpdate(nextDraft);
 
   await updateActorWithPersistedDraftPrecondition(
     args.actor,
     {
-      ...buildSaveDraftUpdate(nextDraft),
-      [STATE_FLAG]: nextState,
+      [DRAFT_FLAG]: forceFoundryLeafReplacement(draftUpdate[DRAFT_FLAG]),
+      [STATE_FLAG]: forceFoundryLeafReplacement(nextState),
     },
     assertCurrent,
-    { render: false, recursive: false }
+    { render: false }
   );
 
   const persistedDraft = readPersistedDraftSnapshot(args.actor, args.currentLevel);

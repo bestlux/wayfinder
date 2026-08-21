@@ -470,19 +470,24 @@ describe("existing character history service", () => {
     ];
     const initialState = createEmptyState();
     const history = importedHistory();
-    let persistedDraft: unknown = structuredClone(initialDraft);
-    let persistedState: unknown = structuredClone(initialState);
+    const actorSource = {
+      flags: {
+        [MODULE_ID]: {
+          draft: structuredClone(initialDraft) as unknown,
+          state: structuredClone(initialState) as unknown,
+          sameModuleSibling: { retained: true, updateCount: 0 },
+        },
+        "other-module": { retained: true, updateCount: 0 },
+      },
+    };
     const actor = {
-      getFlag: (_scope: string, key: string) => (key === "draft" ? persistedDraft : persistedState),
-      update: vi.fn(async (update: Record<string, unknown>, operation?: Record<string, unknown>) => {
-        persistedDraft =
-          operation?.recursive === false
-            ? structuredClone(update[DRAFT_FLAG])
-            : { ...(persistedDraft as object), ...(structuredClone(update[DRAFT_FLAG]) as object) };
-        persistedState =
-          operation?.recursive === false
-            ? structuredClone(update[STATE_FLAG])
-            : { ...(persistedState as object), ...(structuredClone(update[STATE_FLAG]) as object) };
+      getFlag: (scope: string, key: string) =>
+        (actorSource.flags as Record<string, Record<string, unknown>>)[scope]?.[key],
+      update: vi.fn(async (update: Record<string, unknown>, _operation?: Record<string, unknown>) => {
+        actorSource.flags[MODULE_ID].sameModuleSibling = { retained: true, updateCount: 1 };
+        actorSource.flags["other-module"] = { retained: true, updateCount: 1 };
+        actorSource.flags[MODULE_ID].draft = structuredClone(readFoundryReplacement(update[DRAFT_FLAG]));
+        actorSource.flags[MODULE_ID].state = structuredClone(readFoundryReplacement(update[STATE_FLAG]));
         return actor;
       }),
     };
@@ -500,7 +505,10 @@ describe("existing character history service", () => {
     expect(actor.update.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({ [DRAFT_FLAG]: expect.any(Object), [STATE_FLAG]: expect.any(Object) })
     );
-    expect(actor.update.mock.calls[0]?.[1]).toMatchObject({ render: false, recursive: false });
+    expect(actor.update.mock.calls[0]?.[1]).toMatchObject({ render: false });
+    expect(actor.update.mock.calls[0]?.[1]).not.toHaveProperty("recursive");
+    expect(isFoundryReplacement(actor.update.mock.calls[0]?.[0][DRAFT_FLAG])).toBe(true);
+    expect(isFoundryReplacement(actor.update.mock.calls[0]?.[0][STATE_FLAG])).toBe(true);
     expect(result).toMatchObject({
       acquisition: null,
       acquisitionCorrupt: false,
@@ -516,6 +524,8 @@ describe("existing character history service", () => {
       manual: initialDraft.manual,
     });
     expect(normalizeState(actor.getFlag(MODULE_ID, "state")).existingCharacterHistory).toEqual(history);
+    expect(actorSource.flags[MODULE_ID].sameModuleSibling).toEqual({ retained: true, updateCount: 1 });
+    expect(actorSource.flags["other-module"]).toEqual({ retained: true, updateCount: 1 });
   });
 
   it("blocks Apply without writes if a legacy mixed history and acquisition draft is reopened", async () => {
@@ -548,6 +558,14 @@ describe("existing character history service", () => {
     expect(applyDraftToActor).not.toHaveBeenCalled();
   });
 });
+
+function isFoundryReplacement(value: unknown): boolean {
+  return readFoundryReplacement(value) !== value;
+}
+
+function readFoundryReplacement(value: unknown): unknown {
+  return foundry.data.operators.ForcedReplacement.get(value);
+}
 
 function importedHistory(): ExistingCharacterHistory {
   return {

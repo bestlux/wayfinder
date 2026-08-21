@@ -27,13 +27,14 @@ import { prepareCurrentClassGrantPlan } from "./application/class-grant-projecti
 import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection, setTrainingRuleSelection, syncLanguageChoiceSelections, syncSkillTrainingSelections, toggleAncestryMode, toggleBoostChoice, toggleSkillIncreaseSelection, toggleTrainingSkillSelection, toggleVoluntaryChoice, toggleVoluntaryEnabled, toggleVoluntaryLegacy, } from "./application/draft-adjustment-service.js";
 import { applyDraftLifecycle, buildApplyAttemptDraft, clearDraftLifecycle, hasApplyRecoveryState, } from "./application/draft-lifecycle-service.js";
 import { DraftPersistenceCoordinator } from "./application/draft-persistence-service.js";
-import { assertDraftSideEffectAllowed, assertFailedApplyRecoveryCandidateCurrent, captureDraftSideEffectPrecondition, capturePersistedDraftPrecondition, clearDraftWithWriteGuard, PersistedDraftWriteGuard, readPersistedDraftSnapshot, saveDraftWithWriteGuard, updateActorWithPersistedDraftPrecondition, WayfinderDraftWriteConflictError, } from "./application/draft-write-guard.js";
+import { assertDraftSideEffectAllowed, assertFailedApplyRecoveryCandidateCurrent, capturePersistedDraftPrecondition, clearDraftWithWriteGuard, PersistedDraftWriteGuard, readPersistedDraftSnapshot, saveDraftWithWriteGuard, updateActorWithPersistedDraftPrecondition, WayfinderDraftWriteConflictError, } from "./application/draft-write-guard.js";
 import { equipmentLineFocusId, restoreEquipmentFocus, STARTING_EQUIPMENT_REVIEW_FOCUS_ID, STARTING_EQUIPMENT_STATUS_FOCUS_ID, startingEquipmentFocusCandidates, } from "./application/equipment-accessibility.js";
 import { ConfiguredItemHandoffRequiredError, commitTitanMaulerLineSynchronization, getFoundryEquipmentAcquisitionRuntime, } from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
 import { createEquipmentSearchScheduler, scheduleEquipmentSearchInput, } from "./application/equipment-search-input-service.js";
-import { buildExistingCharacterHistory, withExistingCharacterHistory, } from "./application/existing-character-history-service.js";
+import { buildExistingCharacterHistory } from "./application/existing-character-history-service.js";
+import { hasExecutableAcquisition, persistExistingCharacterImport, } from "./application/existing-character-import-service.js";
 import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
 import { createWayfinderApplyConfirmationFocusHandoff, markWayfinderKeyboardFocus, } from "./application/foundry-keyboard-focus-service.js";
 import { buildContextNote, buildOptionContext, resolveSelectionClassHasSpellcasting, resolveSelectionSlug, resolveSelectionTraits, } from "./application/option-context-service.js";
@@ -2178,9 +2179,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         let result;
         try {
             const snapshot = inspectActor(this.actor);
-            const acquisitionSmokeCheckpointHook = acquisitionSmokeCheckpointHookFor(this.actor, draft);
-            const acquisitionSession = draft.acquisition ? this.#createAcquisitionExecutionSession(draft) : null;
             const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
+            const acquisitionSmokeCheckpointHook = acquisitionSmokeCheckpointHookFor(this.actor, draft);
+            const acquisitionSession = hasExecutableAcquisition(draft, state)
+                ? this.#createAcquisitionExecutionSession(draft)
+                : null;
             const plan = await this.#buildPlan(snapshot, draft);
             const steps = cloneData(plan.steps);
             const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
@@ -2569,12 +2572,24 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const history = await buildExistingCharacterHistory(this.actor, {
             gradualBoostsEnabled: inspectActor(this.actor).gradualBoostsEnabled,
         });
-        await enqueueActorOperation(this.actor, async () => {
+        let importedDraft = null;
+        await this.#draftPersistence.discardAndRun(() => enqueueActorOperation(this.actor, async () => {
             const currentLevel = inspectActor(this.actor).level;
             assertDraftSideEffectAllowed(this.actor, currentLevel, this.#draftWriteGuard);
-            const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
-            await updateActorWithPersistedDraftPrecondition(this.actor, { [STATE_FLAG]: withExistingCharacterHistory(state, history) }, captureDraftSideEffectPrecondition(this.actor, currentLevel, this.#draftWriteGuard));
-        });
+            importedDraft = await persistExistingCharacterImport({
+                actor: this.actor,
+                currentLevel,
+                guard: this.#draftWriteGuard,
+                draft: this.#requireDraft(),
+                state: normalizeState(this.actor.getFlag(MODULE_ID, "state")),
+                history,
+            });
+        }));
+        if (!importedDraft) {
+            throw new Error("Wayfinder did not persist the imported character history.");
+        }
+        this.#draft = importedDraft;
+        this.#draftPersistence.reset(importedDraft);
         const mappedCount = history.entries.filter((entry) => entry.status === "mapped").length;
         const reviewCount = history.entries.length - mappedCount;
         this.#statusNote = `Mapped ${mappedCount} observable choices; ${reviewCount} historical decisions need review.`;

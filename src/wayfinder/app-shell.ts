@@ -99,7 +99,6 @@ import { DraftPersistenceCoordinator, type DraftSaveState } from "./application/
 import {
   assertDraftSideEffectAllowed,
   assertFailedApplyRecoveryCandidateCurrent,
-  captureDraftSideEffectPrecondition,
   capturePersistedDraftPrecondition,
   clearDraftWithWriteGuard,
   PersistedDraftWriteGuard,
@@ -126,10 +125,11 @@ import {
   createEquipmentSearchScheduler,
   scheduleEquipmentSearchInput,
 } from "./application/equipment-search-input-service.js";
+import { buildExistingCharacterHistory } from "./application/existing-character-history-service.js";
 import {
-  buildExistingCharacterHistory,
-  withExistingCharacterHistory,
-} from "./application/existing-character-history-service.js";
+  hasExecutableAcquisition,
+  persistExistingCharacterImport,
+} from "./application/existing-character-import-service.js";
 import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
 import {
   createWayfinderApplyConfirmationFocusHandoff,
@@ -2767,9 +2767,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     let result: ApplyDraftLifecycleResult;
     try {
       const snapshot = inspectActor(this.actor);
-      const acquisitionSmokeCheckpointHook = acquisitionSmokeCheckpointHookFor(this.actor, draft);
-      const acquisitionSession = draft.acquisition ? this.#createAcquisitionExecutionSession(draft) : null;
       const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
+      const acquisitionSmokeCheckpointHook = acquisitionSmokeCheckpointHookFor(this.actor, draft);
+      const acquisitionSession = hasExecutableAcquisition(draft, state)
+        ? this.#createAcquisitionExecutionSession(draft)
+        : null;
       const plan = await this.#buildPlan(snapshot, draft);
       const steps = cloneData(plan.steps);
       const effectiveBuildState = await getEffectiveBuildState(this.actor, draft);
@@ -3231,16 +3233,26 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const history = await buildExistingCharacterHistory(this.actor, {
       gradualBoostsEnabled: inspectActor(this.actor).gradualBoostsEnabled,
     });
-    await enqueueActorOperation(this.actor, async () => {
-      const currentLevel = inspectActor(this.actor).level;
-      assertDraftSideEffectAllowed(this.actor, currentLevel, this.#draftWriteGuard);
-      const state = normalizeState(this.actor.getFlag(MODULE_ID, "state"));
-      await updateActorWithPersistedDraftPrecondition(
-        this.actor,
-        { [STATE_FLAG]: withExistingCharacterHistory(state, history) },
-        captureDraftSideEffectPrecondition(this.actor, currentLevel, this.#draftWriteGuard)
-      );
-    });
+    let importedDraft: DraftState | null = null;
+    await this.#draftPersistence.discardAndRun(() =>
+      enqueueActorOperation(this.actor, async () => {
+        const currentLevel = inspectActor(this.actor).level;
+        assertDraftSideEffectAllowed(this.actor, currentLevel, this.#draftWriteGuard);
+        importedDraft = await persistExistingCharacterImport({
+          actor: this.actor,
+          currentLevel,
+          guard: this.#draftWriteGuard,
+          draft: this.#requireDraft(),
+          state: normalizeState(this.actor.getFlag(MODULE_ID, "state")),
+          history,
+        });
+      })
+    );
+    if (!importedDraft) {
+      throw new Error("Wayfinder did not persist the imported character history.");
+    }
+    this.#draft = importedDraft;
+    this.#draftPersistence.reset(importedDraft);
     const mappedCount = history.entries.filter((entry) => entry.status === "mapped").length;
     const reviewCount = history.entries.length - mappedCount;
     this.#statusNote = `Mapped ${mappedCount} observable choices; ${reviewCount} historical decisions need review.`;

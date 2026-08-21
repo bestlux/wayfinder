@@ -363,6 +363,11 @@ describe("wayfinder plan service", () => {
       emptyPlanDependencies()
     );
     expect(replacementCharacter.steps.some((step) => step.kind === "starting-equipment")).toBe(true);
+
+    const inconsistentDraft = createEmptyDraft(8);
+    inconsistentDraft.acquisitionCorrupt = true;
+    const failClosed = await buildWayfinderPlan(snapshot, inconsistentDraft, emptyPlanDependencies());
+    expect(failClosed.steps.some((step) => step.kind === "starting-equipment")).toBe(true);
   });
 
   it("uses class-specific skill feat cadence instead of duplicating generic skill feat steps", async () => {

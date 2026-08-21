@@ -1,9 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createEmptyState } from "../src/draft-service";
+import { DRAFT_FLAG, MODULE_ID, STATE_FLAG } from "../src/constants";
+import { createEmptyDraft, createEmptyState, normalizeDraft, normalizeState } from "../src/draft-service";
+import type { ExistingCharacterHistory } from "../src/types";
+import { applyDraftLifecycle } from "../src/wayfinder/application/draft-lifecycle-service";
+import { PersistedDraftWriteGuard } from "../src/wayfinder/application/draft-write-guard";
 import {
   buildExistingCharacterHistory,
   withExistingCharacterHistory,
 } from "../src/wayfinder/application/existing-character-history-service";
+import {
+  hasExecutableAcquisition,
+  persistExistingCharacterImport,
+} from "../src/wayfinder/application/existing-character-import-service";
+import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
+import { createEquipmentPolicyRequest } from "../src/wayfinder/domain/equipment-policy";
 
 describe("existing character history service", () => {
   afterEach(() => {
@@ -421,7 +431,132 @@ describe("existing character history service", () => {
       }),
     ]);
   });
+
+  it("atomically clears acquisition state while preserving every non-equipment choice", async () => {
+    const initialDraft = createEmptyDraft(7);
+    initialDraft.acquisition = createAcquisitionDraft({
+      draftId: "draft-1",
+      batchId: "batch-1",
+      manifestId: "manifest-1",
+      targetLevel: 7,
+      recipe: { kind: "permanent-items" },
+    });
+    initialDraft.selections["class-feat-level-6"] = {
+      slotId: "class-feat-level-6",
+      packId: "pf2e.feats-srd",
+      documentId: "representative-feat",
+      uuid: "Compendium.pf2e.feats-srd.Item.representative-feat",
+      itemType: "feat",
+      featType: "class",
+      name: "Representative Feat",
+      level: 6,
+    };
+    initialDraft.manual["review-choice-level-7"] = true;
+    initialDraft.equipmentPolicyRequests = [
+      createEquipmentPolicyRequest({
+        requestId: "request-1",
+        facts: {
+          kind: "higher-level-start",
+          actorId: "actor-1",
+          draftId: initialDraft.acquisition.draftId,
+          targetLevel: 7,
+          startKind: "replacement-character",
+        },
+        requesterUserId: "owner-1",
+        requesterName: "Owner",
+        requestedAt: "2026-08-21T12:00:00.000Z",
+        reason: "Replacement character",
+      }),
+    ];
+    const initialState = createEmptyState();
+    const history = importedHistory();
+    let persistedDraft: unknown = structuredClone(initialDraft);
+    let persistedState: unknown = structuredClone(initialState);
+    const actor = {
+      getFlag: (_scope: string, key: string) => (key === "draft" ? persistedDraft : persistedState),
+      update: vi.fn(async (update: Record<string, unknown>, operation?: Record<string, unknown>) => {
+        persistedDraft =
+          operation?.recursive === false
+            ? structuredClone(update[DRAFT_FLAG])
+            : { ...(persistedDraft as object), ...(structuredClone(update[DRAFT_FLAG]) as object) };
+        persistedState =
+          operation?.recursive === false
+            ? structuredClone(update[STATE_FLAG])
+            : { ...(persistedState as object), ...(structuredClone(update[STATE_FLAG]) as object) };
+        return actor;
+      }),
+    };
+
+    const result = await persistExistingCharacterImport({
+      actor,
+      currentLevel: 7,
+      guard: new PersistedDraftWriteGuard(initialDraft),
+      draft: initialDraft,
+      state: initialState,
+      history,
+    });
+
+    expect(actor.update).toHaveBeenCalledOnce();
+    expect(actor.update.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ [DRAFT_FLAG]: expect.any(Object), [STATE_FLAG]: expect.any(Object) })
+    );
+    expect(actor.update.mock.calls[0]?.[1]).toMatchObject({ render: false, recursive: false });
+    expect(result).toMatchObject({
+      acquisition: null,
+      acquisitionCorrupt: false,
+      equipmentPolicyRequests: [],
+      selections: initialDraft.selections,
+      manual: initialDraft.manual,
+    });
+    expect(normalizeDraft(actor.getFlag(MODULE_ID, "draft"), 7)).toMatchObject({
+      acquisition: null,
+      acquisitionCorrupt: false,
+      equipmentPolicyRequests: [],
+      selections: initialDraft.selections,
+      manual: initialDraft.manual,
+    });
+    expect(normalizeState(actor.getFlag(MODULE_ID, "state")).existingCharacterHistory).toEqual(history);
+  });
+
+  it("blocks Apply without writes if a legacy mixed history and acquisition draft is reopened", async () => {
+    const draft = createEmptyDraft(7);
+    draft.acquisition = createAcquisitionDraft({
+      draftId: "draft-legacy",
+      batchId: "batch-legacy",
+      manifestId: "manifest-legacy",
+      targetLevel: 7,
+      recipe: { kind: "lump-sum" },
+    });
+    const state = { ...createEmptyState(), existingCharacterHistory: importedHistory() };
+    const beforeApply = vi.fn();
+    const applyDraftToActor = vi.fn();
+
+    expect(hasExecutableAcquisition(draft, state)).toBe(false);
+    const result = await applyDraftLifecycle({
+      actorName: "Imported Actor",
+      currentLevel: 7,
+      draft,
+      steps: [],
+      acquisitionExecutionAvailable: hasExecutableAcquisition(draft, state),
+      evaluateStep: async () => ({ state: "complete", complete: true, status: "Complete", issue: null }),
+      beforeApply,
+      applyDraftToActor,
+    });
+
+    expect(result).toMatchObject({ kind: "warning", warning: "draft-not-ready" });
+    expect(beforeApply).not.toHaveBeenCalled();
+    expect(applyDraftToActor).not.toHaveBeenCalled();
+  });
 });
+
+function importedHistory(): ExistingCharacterHistory {
+  return {
+    version: 1,
+    importedAt: "2026-08-21T12:30:00.000Z",
+    actorLevel: 7,
+    entries: [],
+  };
+}
 
 function spellAuditEntries<T extends { slotId: string }>(entries: T[]): T[] {
   return entries.filter((entry) => entry.slotId.startsWith("spell-audit-"));

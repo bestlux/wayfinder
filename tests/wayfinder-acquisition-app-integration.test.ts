@@ -13,7 +13,7 @@ describe("Wayfinder acquisition app integration", () => {
       "#createAcquisitionExecutionSession(characterDraft: DraftState)"
     );
 
-    expect(apply.match(/const acquisitionSession = draft\.acquisition/g)).toHaveLength(1);
+    expect(apply.match(/const acquisitionSession = hasExecutableAcquisition\(draft, state\)/g)).toHaveLength(1);
     expect(apply).toContain("acquisitionExecutionAvailable: acquisitionSession !== null");
     expect(apply).toContain("executeAcquisitionItems: acquisitionSession?.executeAcquisitionItems");
     expect(apply).toContain("executeAcquisitionCurrency: acquisitionSession?.executeAcquisitionCurrency");

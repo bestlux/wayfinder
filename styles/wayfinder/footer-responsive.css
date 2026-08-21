@@ -21,6 +21,7 @@
   align-items: center;
   gap: 0.3rem;
   min-width: 5.5rem;
+  overflow-wrap: anywhere;
   color: var(--wf-ink-soft);
   font: 600 0.7rem / 1 var(--sans-serif, sans-serif);
 }
@@ -49,10 +50,11 @@
 
 .footer-readiness {
   display: inline-flex;
+  flex: 1 1 20rem;
   align-items: center;
   gap: 0.32rem;
   min-width: 0;
-  max-width: min(34rem, 52vw);
+  max-width: 34rem;
   padding: 0.28rem 0.45rem;
   border: 1px solid rgba(153, 36, 36, 0.32);
   border-radius: var(--wf-radius);
@@ -68,9 +70,9 @@
 }
 
 .footer-readiness span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .footer-clear,
@@ -133,9 +135,10 @@
   }
 }
 
-@media (max-width: 980px) {
+@container wayfinder-root (max-width: 980px) {
   .wizard-frame {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(7rem, 2fr) minmax(0, 3fr);
   }
 
   .wizard-rail {
@@ -152,11 +155,7 @@
   }
 }
 
-@media (max-width: 760px) {
-  .wayfinder-app .window-content {
-    padding: 0.4rem;
-  }
-
+@container wayfinder-root (max-width: 760px) {
   .selection-stage {
     grid-template-columns: 1fr;
   }
@@ -186,6 +185,12 @@
 
   .wayfinder-footer {
     flex-wrap: wrap;
+  }
+
+  .footer-readiness {
+    flex-basis: 100%;
+    max-width: none;
+    width: 100%;
   }
 
   .footer-save-status {

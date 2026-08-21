@@ -374,10 +374,12 @@
 /* ── Stage ─────────────────────────────────────────────── */
 
 .wizard-stage {
+  container: wayfinder-stage / inline-size;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  overflow: auto;
   background: linear-gradient(180deg, rgba(249, 243, 231, 0.99) 0%, rgba(244, 235, 219, 0.98) 100%);
 }
 

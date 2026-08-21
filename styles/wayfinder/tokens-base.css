@@ -56,6 +56,15 @@
   overflow: hidden;
 }
 
+.wayfinder-app .wayfinder-shell {
+  container: wayfinder-root / inline-size;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .wayfinder-app button,
 .wayfinder-app input {
   font: inherit;

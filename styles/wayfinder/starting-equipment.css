@@ -39,6 +39,19 @@
   line-height: 1.35;
 }
 
+.wayfinder-app .equipment-policy-summary article span,
+.wayfinder-app .equipment-policy-summary article strong,
+.wayfinder-app .equipment-callout h4,
+.wayfinder-app .equipment-callout p,
+.wayfinder-app .equipment-callout li,
+.wayfinder-app .equipment-catalogue-state p,
+.wayfinder-app .equipment-source-diagnostics li,
+.wayfinder-app .equipment-cart header,
+.wayfinder-app .equipment-cart footer {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .wayfinder-app .equipment-policy-summary .equipment-policy-handoff,
 .wayfinder-app .equipment-policy-summary p {
   grid-column: 1 / -1;
@@ -131,6 +144,10 @@
   border-bottom: 1px solid var(--wf-rule);
 }
 
+.wayfinder-app .equipment-result {
+  grid-template-columns: minmax(0, 1.2fr) auto minmax(8rem, 0.8fr);
+}
+
 .wayfinder-app .equipment-result.is-previewing {
   background: var(--wf-accent);
 }
@@ -150,6 +167,7 @@
   flex-wrap: wrap;
   gap: 5px;
   justify-content: end;
+  min-width: 0;
 }
 
 .wayfinder-app .equipment-result-main span,
@@ -162,9 +180,8 @@
 .wayfinder-app .equipment-cart-line strong,
 .wayfinder-app .equipment-cart-line small {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .wayfinder-app .equipment-unavailable {
@@ -231,6 +248,13 @@
 
 .wayfinder-app .equipment-cart footer {
   border-top: 1px solid var(--wf-rule);
+}
+
+.wayfinder-app .equipment-cart footer > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
 }
 
 .wayfinder-app .equipment-cart footer > span strong,
@@ -315,7 +339,22 @@
   display: block;
 }
 
-@container (max-width: 760px) {
+@container wayfinder-stage (max-width: 980px) {
+  .wayfinder-app .equipment-policy-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wayfinder-app .equipment-result {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .wayfinder-app .equipment-result-actions {
+    grid-column: 1 / -1;
+    justify-content: start;
+  }
+}
+
+@container wayfinder-stage (max-width: 760px) {
   .wayfinder-app .equipment-policy-summary,
   .wayfinder-app .equipment-workspace {
     grid-template-columns: 1fr;
@@ -331,6 +370,25 @@
     flex-direction: column;
   }
 
+  .wayfinder-app .equipment-search-row {
+    flex-wrap: wrap;
+  }
+
+  .wayfinder-app .equipment-search-row input {
+    flex-basis: 100%;
+  }
+
+  .wayfinder-app .equipment-cart-line {
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .wayfinder-app .equipment-cart-line > span {
+    grid-column: 1 / -1;
+  }
+}
+
+@container wayfinder-root (max-width: 760px) {
   .wayfinder-app .acquisition-receipt-summary {
     grid-template-columns: 1fr;
   }
@@ -339,5 +397,11 @@
   .wayfinder-app .wayfinder-acquisition-receipt > footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .wayfinder-app .wayfinder-acquisition-receipt button {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 }

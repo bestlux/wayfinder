@@ -227,7 +227,46 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                 revokedAt: context.now(),
                 user: context.user,
             });
-            acquisition = invalidateAcquisitionReview(acquisition, ["policy"]);
+            const remainingJudgments = acquisition.policySnapshot.material.gmJudgments.filter((judgment) => judgment.id !== command.judgmentId);
+            const stagedOfficialRecipe = acquisition.recipeSelection?.selectedRecipe ??
+                acquisition.policySnapshot.material.worldRecipePolicy.defaultRecipe;
+            const stagedRecipe = { kind: stagedOfficialRecipe };
+            const fallbackRecipeSelection = acquisition.recipeSelection?.selectedRecipe === stagedRecipe.kind ? acquisition.recipeSelection : undefined;
+            let invalidationReasons = reviewedJudgment.kind === "custom-lump-sum" || !sameAcquisitionRecipe(acquisition.recipe, stagedRecipe)
+                ? ["recipe", "policy", "budget"]
+                : ["policy"];
+            try {
+                const policy = resolveExistingPolicy(acquisition, context, deps, {
+                    ...(reviewedJudgment.kind === "higher-level-start" ? { higherLevelStartClaim: null } : {}),
+                    ...(reviewedJudgment.kind === "custom-lump-sum"
+                        ? { selectedRecipe: "lump-sum", customLumpSum: null }
+                        : {}),
+                    extraCurrentLevelAllowanceIds: remainingJudgments
+                        .filter((judgment) => judgment.kind === "extra-current-level-allowance")
+                        .map((judgment) => judgment.id),
+                    exceptionJudgmentIds: remainingJudgments
+                        .filter((judgment) => judgment.kind === "rarity-source-exception")
+                        .map((judgment) => judgment.id),
+                });
+                const policySnapshot = createAcquisitionPolicySnapshot(policy, acquisition.recipe, acquisition.recipeSelection);
+                const resolvedRecipe = policySnapshot.material.resolvedRecipe;
+                if (!sameAcquisitionRecipe(acquisition.recipe, resolvedRecipe)) {
+                    invalidationReasons = ["recipe", "policy", "budget"];
+                }
+                const { recipeSelection: _priorRecipeSelection, ...acquisitionWithoutRecipeSelection } = acquisition;
+                acquisition = {
+                    ...acquisitionWithoutRecipeSelection,
+                    recipe: resolvedRecipe,
+                    ...(policySnapshot.material.recipeSelection
+                        ? { recipeSelection: policySnapshot.material.recipeSelection }
+                        : {}),
+                    policySnapshot,
+                };
+            }
+            catch {
+                acquisition = stageAcquisitionAfterAuthorityRevocation(acquisition, stagedRecipe, fallbackRecipeSelection, invalidationReasons);
+            }
+            acquisition = invalidateAcquisitionReview(acquisition, invalidationReasons);
             status = message("AuthorityRevoked");
             break;
         }
@@ -371,6 +410,21 @@ function resolveExistingPolicy(acquisition, context, deps, overrides = {}) {
             .map((judgment) => judgment.id),
         ...overrides,
     });
+}
+function sameAcquisitionRecipe(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
+}
+function stageAcquisitionAfterAuthorityRevocation(acquisition, recipe, recipeSelection, invalidationReasons) {
+    const invalidated = invalidateAcquisitionReview(acquisition, invalidationReasons);
+    const staged = createAcquisitionDraft({
+        draftId: acquisition.draftId,
+        batchId: acquisition.batchId,
+        manifestId: acquisition.manifestId,
+        targetLevel: acquisition.targetLevel,
+        recipe,
+        ...(recipeSelection ? { recipeSelection } : {}),
+    });
+    return { ...staged, disposition: invalidated.disposition };
 }
 async function initializeAcquisition(context, deps, selectedRecipe) {
     const identity = deps.mintIdentity();

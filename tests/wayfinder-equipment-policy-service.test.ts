@@ -12,7 +12,12 @@ import {
   saveTrustedEquipmentPolicyJudgment,
 } from "../src/wayfinder/application/equipment-policy-service";
 import { WayfinderGmCommandAuthorityError } from "../src/wayfinder/application/gm-command-authority";
-import { DEFAULT_EQUIPMENT_WORLD_POLICY } from "../src/wayfinder/domain/equipment-policy";
+import {
+  buildEquipmentPolicyJudgmentFactsFingerprint,
+  DEFAULT_EQUIPMENT_WORLD_POLICY,
+  type EquipmentPolicyJudgmentFacts,
+  type EquipmentPolicyJudgmentRecord,
+} from "../src/wayfinder/domain/equipment-policy";
 import { acquisitionFixture } from "./fixtures/acquisition-fixture";
 
 const globals = globalThis as typeof globalThis & { game: any; CONST: any };
@@ -208,6 +213,145 @@ describe("equipment policy service", () => {
     });
   });
 
+  it("serializes concurrent GM decisions before writing the full authority array", async () => {
+    let store: unknown = { version: 1, judgments: [] };
+    const firstWriteEntered = deferred<void>();
+    const releaseFirstWrite = deferred<void>();
+    let writeCount = 0;
+    globals.game.users.get.mockImplementation((id: string) =>
+      id === "gm-1" || id === "gm-2" ? { id, name: id === "gm-1" ? "First GM" : "Second GM", isGM: true } : null
+    );
+    globals.game.settings.get.mockImplementation((moduleId: string, key: string) =>
+      moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments ? store : null
+    );
+    globals.game.settings.set.mockImplementation(async (_moduleId: string, _key: string, value: unknown) => {
+      writeCount += 1;
+      if (writeCount === 1) {
+        firstWriteEntered.resolve();
+        await releaseFirstWrite.promise;
+      }
+      store = structuredClone(value);
+      return value;
+    });
+
+    const first = saveTrustedEquipmentPolicyJudgment({
+      id: "decision-a",
+      facts: customLumpSumFacts(1_000),
+      reason: "First decision",
+      recordedAt: "2026-08-18T20:00:00.000Z",
+      user: { id: "gm-1", name: "First GM", isGM: true },
+    });
+    await firstWriteEntered.promise;
+    const second = saveTrustedEquipmentPolicyJudgment({
+      id: "decision-b",
+      facts: customLumpSumFacts(2_000),
+      reason: "Second decision",
+      recordedAt: "2026-08-18T20:01:00.000Z",
+      user: { id: "gm-2", name: "Second GM", isGM: true },
+    });
+    await Promise.resolve();
+    releaseFirstWrite.resolve();
+    await Promise.all([first, second]);
+
+    expect((store as { judgments: EquipmentPolicyJudgmentRecord[] }).judgments.map((entry) => entry.id)).toEqual([
+      "decision-a",
+      "decision-b",
+    ]);
+  });
+
+  it("rechecks live GM authority after a queued decision waits for the broker", async () => {
+    let store: unknown = { version: 1, judgments: [] };
+    const firstWriteEntered = deferred<void>();
+    const releaseFirstWrite = deferred<void>();
+    let secondUserIsGm = true;
+    globals.game.users.get.mockImplementation((id: string) => {
+      if (id === "gm-1") return { id, name: "First GM", isGM: true };
+      if (id === "gm-2") return { id, name: "Second GM", isGM: secondUserIsGm };
+      return null;
+    });
+    globals.game.settings.get.mockImplementation((moduleId: string, key: string) =>
+      moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments ? store : null
+    );
+    globals.game.settings.set.mockImplementation(async (_moduleId: string, _key: string, value: unknown) => {
+      firstWriteEntered.resolve();
+      await releaseFirstWrite.promise;
+      store = structuredClone(value);
+      return value;
+    });
+
+    const first = saveTrustedEquipmentPolicyJudgment({
+      id: "decision-a",
+      facts: customLumpSumFacts(1_000),
+      reason: "First decision",
+      recordedAt: "2026-08-18T20:00:00.000Z",
+      user: { id: "gm-1", name: "First GM", isGM: true },
+    });
+    await firstWriteEntered.promise;
+    const second = saveTrustedEquipmentPolicyJudgment({
+      id: "decision-b",
+      facts: customLumpSumFacts(2_000),
+      reason: "Second decision",
+      recordedAt: "2026-08-18T20:01:00.000Z",
+      user: { id: "gm-2", name: "Second GM", isGM: true },
+    });
+    secondUserIsGm = false;
+    const denied = expect(second).rejects.toBeInstanceOf(WayfinderGmCommandAuthorityError);
+    releaseFirstWrite.resolve();
+
+    await first;
+    await denied;
+    expect((store as { judgments: EquipmentPolicyJudgmentRecord[] }).judgments.map((entry) => entry.id)).toEqual([
+      "decision-a",
+    ]);
+  });
+
+  it("carries prior and newly observed decisions across a stale writer retry", async () => {
+    const prior = directJudgment("decision-a", customLumpSumFacts(1_000));
+    const external = directJudgment("decision-c", customLumpSumFacts(3_000));
+    let store: unknown = { version: 1, judgments: [prior] };
+    let writeCount = 0;
+    globals.game.settings.get.mockImplementation((moduleId: string, key: string) =>
+      moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments ? store : null
+    );
+    globals.game.settings.set.mockImplementation(async (_moduleId: string, _key: string, value: unknown) => {
+      writeCount += 1;
+      store = writeCount === 1 ? { version: 1, judgments: [external] } : structuredClone(value);
+      return value;
+    });
+
+    await saveTrustedEquipmentPolicyJudgment({
+      id: "decision-b",
+      facts: customLumpSumFacts(2_000),
+      reason: "Local decision",
+      recordedAt: "2026-08-18T20:01:00.000Z",
+      user: { id: "gm-1", name: "Game Master", isGM: true },
+    });
+
+    expect(writeCount).toBe(2);
+    expect((store as { judgments: EquipmentPolicyJudgmentRecord[] }).judgments.map((entry) => entry.id)).toEqual([
+      "decision-a",
+      "decision-b",
+      "decision-c",
+    ]);
+  });
+
+  it("denies a non-GM revocation without writing the authority store", async () => {
+    const approved = directJudgment("decision-a", customLumpSumFacts(1_000));
+    globals.game.settings.get.mockImplementation((moduleId: string, key: string) =>
+      moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments ? { version: 1, judgments: [approved] } : null
+    );
+
+    await expect(
+      revokeTrustedEquipmentPolicyJudgment({
+        judgmentId: approved.id,
+        reason: "Unauthorized",
+        revokedAt: "2026-08-18T21:00:00.000Z",
+        user: { id: "owner-1", name: "Owner", isGM: false },
+      })
+    ).rejects.toBeInstanceOf(WayfinderGmCommandAuthorityError);
+    expect(globals.game.settings.set).not.toHaveBeenCalled();
+  });
+
   it("resolves only authority-store judgments and records owner attestations when delegated", async () => {
     const ownerUser = { id: "owner-1", name: "Owner", isGM: false };
     const actor = {
@@ -372,4 +516,40 @@ function equipmentDescriptors(ids: readonly string[]) {
     documentName: "Item",
     equipmentTab: true,
   }));
+}
+
+function customLumpSumFacts(amountCopper: number): EquipmentPolicyJudgmentFacts {
+  return { kind: "custom-lump-sum", actorId: "actor-1", draftId: "draft-1", targetLevel: 5, amountCopper };
+}
+
+function directJudgment(id: string, facts: EquipmentPolicyJudgmentFacts): EquipmentPolicyJudgmentRecord {
+  return {
+    id,
+    kind: facts.kind,
+    actorId: facts.actorId,
+    draftId: facts.draftId,
+    targetLevel: facts.targetLevel,
+    factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(facts),
+    authorUserId: "gm-1",
+    authorName: "Game Master",
+    recordedAt: "2026-08-18T20:00:00.000Z",
+    reason: `Approved ${id}`,
+    request: {
+      requestId: `request:${id}`,
+      requesterUserId: "gm-1",
+      requesterName: "Game Master",
+      requestedAt: "2026-08-18T20:00:00.000Z",
+      reason: `Requested ${id}`,
+      facts,
+    },
+    revocation: null,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
 }

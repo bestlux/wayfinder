@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createEmptyDraft, normalizeState } from "../src/draft-service";
 import { localizeAcquisitionMessage } from "../src/wayfinder/application/acquisition-localization";
 import { EquipmentSourceHealthError } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
-import { executeStartingEquipmentCommand } from "../src/wayfinder/application/starting-equipment-command-service";
+import { WayfinderGmCommandAuthorityError } from "../src/wayfinder/application/gm-command-authority";
+import {
+  executeStartingEquipmentCommand,
+  type StartingEquipmentCommandContext,
+} from "../src/wayfinder/application/starting-equipment-command-service";
 import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
 import {
   CLASS_GRANT_PROFILE_UUIDS,
@@ -248,6 +252,269 @@ describe("starting equipment command service", () => {
       )
     ).rejects.toThrow(/bound to this equipment draft/i);
     expect(revokeJudgment).not.toHaveBeenCalled();
+  });
+
+  it("re-resolves policy after approval revocation and invalidates a reviewed purchase", async () => {
+    const context = commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft);
+    const facts = {
+      kind: "rarity-source-exception" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      scope: "rarity" as const,
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.uncommon",
+      packId: "pf2e.equipment-srd",
+      publicationSlug: "player-core",
+      rarity: "uncommon" as const,
+    };
+    const requested = await executeStartingEquipmentCommand(
+      { type: "request-item-exception", sourceUuid: facts.sourceUuid, reason: "Request" },
+      context,
+      {
+        mintRequestId: vi.fn(() => "request-item-1"),
+        resolveItemExceptionFacts: vi.fn(async () => facts),
+      }
+    );
+    context.draft.equipmentPolicyRequests = [...requested.policyRequests];
+    const approvedJudgment = judgment(facts, "approval:request-item-1");
+    const resolvePolicy = vi
+      .fn()
+      .mockReturnValueOnce(effectivePolicyWithJudgments([approvedJudgment]))
+      .mockReturnValueOnce(effectivePolicyWithJudgments([]));
+    const approved = await executeStartingEquipmentCommand(
+      { type: "approve-policy-request", requestId: "request-item-1", reason: "Approve" },
+      context,
+      {
+        resolveItemExceptionFacts: vi.fn(async () => facts),
+        saveJudgment: vi.fn(async () => approvedJudgment),
+        resolvePolicy,
+      }
+    );
+    context.draft.acquisition = {
+      ...approved.acquisition,
+      disposition: acquisitionFixture().draft.disposition,
+    };
+    const revokeJudgment = vi.fn(async () => ({
+      ...approvedJudgment,
+      revocation: {
+        revokedByUserId: "gm-1",
+        revokedByName: "GM",
+        revokedAt: "2026-08-19T20:00:00.000Z",
+        reason: "Withdraw approval",
+      },
+    }));
+
+    const revoked = await executeStartingEquipmentCommand(
+      { type: "revoke-policy-judgment", judgmentId: approvedJudgment.id, reason: "Withdraw approval" },
+      context,
+      { revokeJudgment, resolvePolicy }
+    );
+
+    expect(revokeJudgment).toHaveBeenCalledOnce();
+    expect(resolvePolicy).toHaveBeenCalledTimes(2);
+    expect(resolvePolicy.mock.calls[1]?.[0]).toMatchObject({ exceptionJudgmentIds: [] });
+    expect(revoked.acquisition.policySnapshot?.material.gmJudgments).toEqual([]);
+    expect(revoked.acquisition.disposition).toMatchObject({
+      kind: "unreviewed",
+      invalidatedFrom: "purchase-ledger",
+      reasons: ["policy"],
+    });
+  });
+
+  it("keeps the draft unchanged when a non-GM revocation is denied", async () => {
+    const approvedJudgment = judgment(
+      {
+        kind: "rarity-source-exception",
+        actorId: "actor-1",
+        draftId: "draft-1",
+        targetLevel: 5,
+        scope: "rarity",
+        sourceUuid: "Compendium.pf2e.equipment-srd.Item.uncommon",
+        packId: "pf2e.equipment-srd",
+        publicationSlug: "player-core",
+        rarity: "uncommon",
+      },
+      "approval:request-item-1"
+    );
+    const baseAcquisition = acquisitionFixture().draft;
+    const acquisition = {
+      ...baseAcquisition,
+      policySnapshot: {
+        ...baseAcquisition.policySnapshot!,
+        material: { ...baseAcquisition.policySnapshot!.material, gmJudgments: [approvedJudgment] },
+      },
+    };
+    const context = {
+      ...commandContext(acquisition),
+      user: { id: "owner-1", name: "Owner", isGM: false },
+    };
+    const before = structuredClone(context.draft);
+    const resolvePolicy = vi.fn();
+    const revokeJudgment = vi.fn(async () => {
+      throw new WayfinderGmCommandAuthorityError();
+    });
+
+    await expect(
+      executeStartingEquipmentCommand(
+        { type: "revoke-policy-judgment", judgmentId: approvedJudgment.id, reason: "Unauthorized" },
+        context,
+        { revokeJudgment, resolvePolicy }
+      )
+    ).rejects.toBeInstanceOf(WayfinderGmCommandAuthorityError);
+
+    expect(revokeJudgment).toHaveBeenCalledOnce();
+    expect(resolvePolicy).not.toHaveBeenCalled();
+    expect(context.draft).toEqual(before);
+  });
+
+  it("returns a staged invalidated draft when foundational revocation makes fresh policy resolution fail", async () => {
+    const startFacts = {
+      kind: "higher-level-start" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      startKind: "replacement-character" as const,
+    };
+    const approvedJudgment = judgment(startFacts, "approval:request-start-1");
+    const customJudgment = judgment(
+      {
+        kind: "custom-lump-sum",
+        actorId: "actor-1",
+        draftId: "draft-1",
+        targetLevel: 5,
+        amountCopper: 2_500,
+      },
+      "custom-lump-1"
+    );
+    const extraJudgment = judgment(
+      {
+        kind: "extra-current-level-allowance",
+        actorId: "actor-1",
+        draftId: "draft-1",
+        targetLevel: 5,
+      },
+      "extra-allowance-1"
+    );
+    const baseAcquisition = acquisitionFixture().draft;
+    const lumpSumSelection = { ...baseAcquisition.recipeSelection!, selectedRecipe: "lump-sum" as const };
+    const acquisition = {
+      ...baseAcquisition,
+      recipe: { kind: "custom-lump-sum" as const, judgmentRef: customJudgment.id, amountCopper: 2_500 },
+      recipeSelection: lumpSumSelection,
+      policySnapshot: {
+        ...baseAcquisition.policySnapshot!,
+        material: {
+          ...baseAcquisition.policySnapshot!.material,
+          resolvedRecipe: { kind: "custom-lump-sum" as const, judgmentRef: customJudgment.id, amountCopper: 2_500 },
+          recipeSelection: lumpSumSelection,
+          higherLevelStartEvidence: {
+            kind: "gm-confirmation" as const,
+            startKind: startFacts.startKind,
+            judgment: approvedJudgment,
+          },
+          gmJudgments: [approvedJudgment, customJudgment, extraJudgment],
+        },
+      },
+    };
+    const context = commandContext(acquisition);
+    const revokeJudgment = vi.fn(async () => ({
+      ...approvedJudgment,
+      revocation: {
+        revokedByUserId: "gm-1",
+        revokedByName: "GM",
+        revokedAt: "2026-08-19T20:00:00.000Z",
+        reason: "Withdraw start approval",
+      },
+    }));
+    const resolvePolicy = vi.fn(() => {
+      throw new TypeError("Higher-level start authority is no longer current.");
+    });
+
+    const revoked = await executeStartingEquipmentCommand(
+      { type: "revoke-policy-judgment", judgmentId: approvedJudgment.id, reason: "Withdraw start approval" },
+      context,
+      { revokeJudgment, resolvePolicy }
+    );
+
+    expect(revokeJudgment).toHaveBeenCalledOnce();
+    expect(resolvePolicy).toHaveBeenCalledWith(expect.objectContaining({ higherLevelStartClaim: null }));
+    expect(revoked.acquisition).toMatchObject({
+      recipe: { kind: "lump-sum" },
+      policySnapshot: null,
+      baseline: null,
+      lines: [],
+      plannedClassGrants: [],
+      classGrantReconciliations: [],
+      disposition: {
+        kind: "unreviewed",
+        invalidatedFrom: "purchase-ledger",
+        reasons: ["recipe", "policy", "budget"],
+      },
+    });
+  });
+
+  it("uses the freshly resolved recipe when a provenance-free draft sees world policy drift", async () => {
+    const exception = judgment(
+      {
+        kind: "rarity-source-exception",
+        actorId: "actor-1",
+        draftId: "draft-1",
+        targetLevel: 5,
+        scope: "rarity",
+        sourceUuid: "Compendium.pf2e.equipment-srd.Item.uncommon",
+        packId: "pf2e.equipment-srd",
+        publicationSlug: "player-core",
+        rarity: "uncommon",
+      },
+      "approval:request-item-1"
+    );
+    const baseAcquisition = acquisitionFixture().draft;
+    const { recipeSelection: _topRecipeSelection, ...acquisitionWithoutSelection } = baseAcquisition;
+    const { recipeSelection: _materialRecipeSelection, ...materialWithoutSelection } =
+      baseAcquisition.policySnapshot!.material;
+    const acquisition = {
+      ...acquisitionWithoutSelection,
+      recipe: { kind: "lump-sum" as const },
+      lines: acquisitionWithoutSelection.lines.map((line) => ({
+        ...line,
+        funding: { lane: "allowance" as const, assignment: { mode: "player" as const, allowanceId: "allowance-5" } },
+      })),
+      policySnapshot: {
+        ...baseAcquisition.policySnapshot!,
+        material: {
+          ...materialWithoutSelection,
+          resolvedRecipe: { kind: "lump-sum" as const },
+          gmJudgments: [exception],
+        },
+      },
+    };
+    const resolvePolicy = vi.fn(() => effectivePolicyWithJudgments([]));
+
+    const revoked = await executeStartingEquipmentCommand(
+      { type: "revoke-policy-judgment", judgmentId: exception.id, reason: "Withdraw exception" },
+      commandContext(acquisition),
+      {
+        revokeJudgment: vi.fn(async () => ({
+          ...exception,
+          revocation: {
+            revokedByUserId: "gm-1",
+            revokedByName: "GM",
+            revokedAt: "2026-08-19T20:00:00.000Z",
+            reason: "Withdraw exception",
+          },
+        })),
+        resolvePolicy,
+      }
+    );
+
+    expect(revoked.acquisition.recipe).toEqual({ kind: "permanent-items" });
+    expect(revoked.acquisition.policySnapshot?.material.resolvedRecipe).toEqual({ kind: "permanent-items" });
+    expect(revoked.acquisition.disposition).toMatchObject({
+      kind: "unreviewed",
+      invalidatedFrom: "purchase-ledger",
+      reasons: ["recipe", "policy", "budget"],
+    });
+    expect(revoked.acquisition.lines[0]?.funding).toEqual({ lane: "allowance", assignment: { mode: "automatic" } });
   });
 
   it("returns a reviewed purchase state without mutating the caller draft", async () => {
@@ -710,7 +977,10 @@ describe("starting equipment command service", () => {
   });
 });
 
-function commandContext(acquisition: ReturnType<typeof acquisitionFixture>["draft"] | null, targetLevel?: number) {
+function commandContext(
+  acquisition: ReturnType<typeof acquisitionFixture>["draft"] | null,
+  targetLevel?: number
+): StartingEquipmentCommandContext {
   const level = targetLevel ?? acquisition?.targetLevel ?? 1;
   const draft = createEmptyDraft(level);
   draft.acquisition = acquisition;
@@ -830,6 +1100,10 @@ function judgment(facts: EquipmentPolicyJudgmentFacts, id: string): EquipmentPol
 }
 
 function effectivePolicyWithJudgment(judgment: EquipmentPolicyJudgmentRecord) {
+  return effectivePolicyWithJudgments([judgment]);
+}
+
+function effectivePolicyWithJudgments(judgments: readonly EquipmentPolicyJudgmentRecord[]) {
   const base = acquisitionFixture({ disposition: "unreviewed" }).draft.policySnapshot!.material;
   return {
     version: 1 as const,
@@ -848,7 +1122,7 @@ function effectivePolicyWithJudgment(judgment: EquipmentPolicyJudgmentRecord) {
     authorityPolicy: base.authorityPolicy,
     higherLevelStartEvidence: base.higherLevelStartEvidence,
     abp: base.abp,
-    gmJudgments: [judgment],
+    gmJudgments: judgments,
     fingerprint: "policy-with-exception",
     explanations: [],
   };

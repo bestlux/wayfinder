@@ -108,107 +108,126 @@ export async function saveEquipmentWorldPolicy(raw, user = game.user, now = () =
 }
 export async function saveTrustedEquipmentPolicyJudgment(input) {
     const user = record(input.user ?? game.user);
-    const principal = requireLiveGmPrincipal(user);
+    requireLiveGmPrincipal(user);
     if (!nonEmpty(input.id) || !nonEmpty(input.reason) || !validTimestamp(input.recordedAt)) {
         throw new TypeError("Equipment judgment identity, time, and reason are required.");
     }
-    const request = normalizeEquipmentPolicyRequest(input.request ??
-        createEquipmentPolicyRequest({
-            requestId: `direct:${input.id}`,
-            facts: input.facts,
-            requesterUserId: principal.userId,
-            requesterName: nonEmpty(user.name) ? user.name : principal.userId,
-            requestedAt: input.recordedAt,
-            reason: input.reason,
-        }));
-    if (!request ||
-        request.withdrawnAt !== null ||
-        request.factsFingerprint !== buildEquipmentPolicyJudgmentFactsFingerprint(input.facts) ||
-        !equipmentPolicyJudgmentFactsEqual(request.facts, input.facts) ||
-        Date.parse(input.recordedAt) < Date.parse(request.requestedAt)) {
-        throw new TypeError("Equipment approval requires a current request for the exact approved facts.");
-    }
-    const judgment = {
-        id: input.id,
-        kind: input.facts.kind,
-        actorId: input.facts.actorId,
-        draftId: input.facts.draftId,
-        targetLevel: input.facts.targetLevel,
-        factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(input.facts),
-        authorUserId: principal.userId,
-        authorName: nonEmpty(user.name) ? user.name : principal.userId,
-        recordedAt: input.recordedAt,
-        reason: input.reason.trim(),
-        request: {
-            requestId: request.requestId,
-            requesterUserId: request.requesterUserId,
-            requesterName: request.requesterName,
-            requestedAt: request.requestedAt,
-            reason: request.reason,
-            facts: structuredClone(request.facts),
-        },
-        revocation: null,
-    };
-    return convergeJudgmentStore((current) => {
-        const existing = current.find((candidate) => candidate.id === judgment.id);
-        if (existing) {
-            if (JSON.stringify({ ...existing, revocation: null }) !== JSON.stringify(judgment)) {
-                throw new TypeError("Equipment judgment ID already belongs to different facts.");
-            }
-            if (existing.revocation)
-                throw new TypeError("A revoked equipment judgment cannot be restored.");
-            return { judgments: current, result: existing };
+    return brokerJudgmentStoreWrite(async () => {
+        const principal = requireLiveGmPrincipal(user);
+        const request = normalizeEquipmentPolicyRequest(input.request ??
+            createEquipmentPolicyRequest({
+                requestId: `direct:${input.id}`,
+                facts: input.facts,
+                requesterUserId: principal.userId,
+                requesterName: nonEmpty(user.name) ? user.name : principal.userId,
+                requestedAt: input.recordedAt,
+                reason: input.reason,
+            }));
+        if (!request ||
+            request.withdrawnAt !== null ||
+            request.factsFingerprint !== buildEquipmentPolicyJudgmentFactsFingerprint(input.facts) ||
+            !equipmentPolicyJudgmentFactsEqual(request.facts, input.facts) ||
+            Date.parse(input.recordedAt) < Date.parse(request.requestedAt)) {
+            throw new TypeError("Equipment approval requires a current request for the exact approved facts.");
         }
-        return { judgments: [...current, judgment], result: judgment };
+        const judgment = {
+            id: input.id,
+            kind: input.facts.kind,
+            actorId: input.facts.actorId,
+            draftId: input.facts.draftId,
+            targetLevel: input.facts.targetLevel,
+            factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(input.facts),
+            authorUserId: principal.userId,
+            authorName: nonEmpty(user.name) ? user.name : principal.userId,
+            recordedAt: input.recordedAt,
+            reason: input.reason.trim(),
+            request: {
+                requestId: request.requestId,
+                requesterUserId: request.requesterUserId,
+                requesterName: request.requesterName,
+                requestedAt: request.requestedAt,
+                reason: request.reason,
+                facts: structuredClone(request.facts),
+            },
+            revocation: null,
+        };
+        return convergeJudgmentStore((current) => {
+            const existing = current.find((candidate) => candidate.id === judgment.id);
+            if (existing) {
+                if (JSON.stringify({ ...existing, revocation: null }) !== JSON.stringify(judgment)) {
+                    throw new TypeError("Equipment judgment ID already belongs to different facts.");
+                }
+                if (existing.revocation)
+                    throw new TypeError("A revoked equipment judgment cannot be restored.");
+                return { judgments: current, result: existing };
+            }
+            return { judgments: [...current, judgment], result: judgment };
+        });
     });
 }
 export async function revokeTrustedEquipmentPolicyJudgment(input) {
     const user = record(input.user ?? game.user);
-    const principal = requireLiveGmPrincipal(user);
+    requireLiveGmPrincipal(user);
     if (!nonEmpty(input.judgmentId) || !nonEmpty(input.reason) || !validTimestamp(input.revokedAt)) {
         throw new TypeError("Equipment judgment revocation identity, time, and reason are required.");
     }
-    const current = getEquipmentPolicyJudgmentStoreSetting();
-    const index = current.judgments.findIndex((candidate) => candidate.id === input.judgmentId);
-    if (index < 0)
-        throw new TypeError("The equipment judgment no longer exists.");
-    const existing = current.judgments[index];
-    if (existing.revocation)
-        return existing;
-    if (Date.parse(input.revokedAt) < Date.parse(existing.recordedAt)) {
-        throw new TypeError("Equipment judgment revocation cannot predate its approval.");
-    }
-    const revoked = {
-        ...existing,
-        revocation: {
-            revokedByUserId: principal.userId,
-            revokedByName: nonEmpty(user.name) ? user.name : principal.userId,
-            revokedAt: input.revokedAt,
-            reason: input.reason.trim(),
-        },
-    };
-    return convergeJudgmentStore((latest) => {
-        const candidate = latest.find((entry) => entry.id === input.judgmentId);
-        if (!candidate)
+    return brokerJudgmentStoreWrite(async () => {
+        const principal = requireLiveGmPrincipal(user);
+        const current = getEquipmentPolicyJudgmentStoreSetting();
+        const index = current.judgments.findIndex((candidate) => candidate.id === input.judgmentId);
+        if (index < 0)
             throw new TypeError("The equipment judgment no longer exists.");
-        if (candidate.revocation)
-            return { judgments: latest, result: candidate };
-        const next = latest.map((entry) => (entry.id === revoked.id ? revoked : entry));
-        return { judgments: next, result: revoked };
+        const existing = current.judgments[index];
+        if (existing.revocation)
+            return existing;
+        if (Date.parse(input.revokedAt) < Date.parse(existing.recordedAt)) {
+            throw new TypeError("Equipment judgment revocation cannot predate its approval.");
+        }
+        const revoked = {
+            ...existing,
+            revocation: {
+                revokedByUserId: principal.userId,
+                revokedByName: nonEmpty(user.name) ? user.name : principal.userId,
+                revokedAt: input.revokedAt,
+                reason: input.reason.trim(),
+            },
+        };
+        return convergeJudgmentStore((latest) => {
+            const candidate = latest.find((entry) => entry.id === input.judgmentId);
+            if (!candidate)
+                throw new TypeError("The equipment judgment no longer exists.");
+            if (candidate.revocation)
+                return { judgments: latest, result: candidate };
+            const next = latest.map((entry) => (entry.id === revoked.id ? revoked : entry));
+            return { judgments: next, result: revoked };
+        });
     });
 }
+// Foundry exposes settings as full-value writes without compare-and-swap. This broker prevents
+// lost updates among calls in this loaded module context; convergence below still detects and
+// merges external facts observed while a call is active, but does not claim cross-client atomicity.
+let judgmentStoreWriteTail = Promise.resolve();
+function brokerJudgmentStoreWrite(operation) {
+    const result = judgmentStoreWriteTail.then(operation, operation);
+    judgmentStoreWriteTail = result.then(() => undefined, () => undefined);
+    return result;
+}
 async function convergeJudgmentStore(mutate) {
+    let carried = [];
     for (let attempt = 0; attempt < 5; attempt += 1) {
-        const current = getEquipmentPolicyJudgmentStoreSetting().judgments;
+        const observed = getEquipmentPolicyJudgmentStoreSetting().judgments;
+        const current = mergeJudgmentRecords(carried, observed);
         const mutation = mutate(current);
-        if (mutation.judgments === current)
-            return mutation.result;
         const intended = mergeJudgmentRecords(current, mutation.judgments);
+        if (judgmentStoreContains(observed, intended)) {
+            return observed.find((candidate) => candidate.id === mutation.result.id);
+        }
         await game.settings.set(MODULE_ID, SETTINGS.equipmentPolicyJudgments, { version: 1, judgments: intended });
         const persisted = getEquipmentPolicyJudgmentStoreSetting().judgments;
         if (judgmentStoreContains(persisted, intended)) {
             return persisted.find((candidate) => candidate.id === mutation.result.id);
         }
+        carried = mergeJudgmentRecords(intended, persisted);
     }
     throw new Error("Equipment authority store did not converge without losing a newer decision.");
 }

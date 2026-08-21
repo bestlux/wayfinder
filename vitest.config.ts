@@ -5,7 +5,7 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.{spec,test}.ts"],
     // Process-backed integration tests need CPU headroom beyond Vitest's file worker.
-    maxWorkers: 8,
+    maxWorkers: 4,
     setupFiles: ["tests/support/foundry-v14-globals.ts"],
   },
 });

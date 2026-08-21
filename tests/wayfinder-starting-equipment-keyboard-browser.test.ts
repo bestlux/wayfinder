@@ -261,6 +261,7 @@ browserIt("re-enters retry traversal from the visible failure alert without focu
     const page = await browser.newPage();
     await page.setContent(`
       <section class="application wayfinder-app">
+        <h3 tabindex="-1" data-wayfinder-step-heading="ancestry-level-1" data-keyboard-focus="true">Ancestry</h3>
         <h3 tabindex="-1" data-wayfinder-step-heading="starting-equipment-level-5" data-keyboard-focus="true">Starting equipment</h3>
         <div class="status-note error" role="alert" aria-live="assertive" tabindex="-1"
           data-wayfinder-focus-id="starting-equipment-status" data-keyboard-focus="true">Apply failed</div>
@@ -274,6 +275,20 @@ browserIt("re-enters retry traversal from the visible failure alert without focu
       });
     });
     await page.addScriptTag({ content: experienceBrowserScript });
+
+    const applyEntry = await page.evaluate(() =>
+      globalThis.__enterWayfinderWf43KeyboardScope({
+        actorId: "actor-1",
+        action: "apply",
+        anchorSelector: '[data-wayfinder-step-heading="starting-equipment-level-5"]',
+        mode: "scoped-app-reentry",
+        state: "forced-failure",
+        targetSelector: '[data-wayfinder-action="apply-draft"]',
+      })
+    );
+    expect(applyEntry).toMatchObject({
+      anchor: { name: "Starting equipment", stepHeading: "starting-equipment-level-5", focused: true },
+    });
 
     const entry = await page.evaluate(() =>
       globalThis.__enterWayfinderWf43KeyboardScope({
@@ -300,6 +315,30 @@ browserIt("re-enters retry traversal from the visible failure alert without focu
     expect(await page.evaluate(() => document.activeElement?.getAttribute("data-wayfinder-action"))).toBe(
       "apply-draft"
     );
+  } finally {
+    await browser.close();
+  }
+});
+
+browserIt("reports the real Apply dialog action across Cancel Shift+Tab Apply traversal", async () => {
+  const browser = await chromium.launch({ executablePath: chromePath, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`
+      <section class="application dialog">
+        <form>
+          <button type="submit" data-action="yes" data-keyboard-focus="true">Apply</button>
+          <button type="button" data-action="no" data-keyboard-focus="true">Cancel</button>
+        </form>
+      </section>`);
+    await page.addScriptTag({ content: experienceBrowserScript });
+    await page.locator('button[data-action="no"]').focus();
+    const before = await page.evaluate(() => globalThis.__inspectWayfinderWf43Focus());
+    await page.keyboard.press("Shift+Tab");
+    const after = await page.evaluate(() => globalThis.__inspectWayfinderWf43Focus());
+
+    expect(before).toMatchObject({ dialogAction: "no", name: "Cancel", tag: "BUTTON", keyboardFocus: "true" });
+    expect(after).toMatchObject({ dialogAction: "yes", name: "Apply", tag: "BUTTON", keyboardFocus: "true" });
   } finally {
     await browser.close();
   }

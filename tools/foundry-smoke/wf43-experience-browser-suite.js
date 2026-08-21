@@ -792,6 +792,7 @@ function wf43KeyboardTarget(element) {
       keyboardFocus: null,
       focusId: "",
       action: "",
+      dialogAction: "",
       name: "",
     };
   }
@@ -826,6 +827,7 @@ function wf43FocusDescriptor(element) {
     return {
       focusId: "",
       action: "",
+      dialogAction: "",
       name: "",
       nameLength: 0,
       nameTruncated: false,
@@ -839,6 +841,7 @@ function wf43FocusDescriptor(element) {
   return {
     focusId: element.dataset.wayfinderFocusId ?? "",
     action: element.dataset.wayfinderAction ?? "",
+    dialogAction: element.dataset.action ?? "",
     name,
     nameLength: rawName.length,
     nameTruncated: name.length < rawName.length,

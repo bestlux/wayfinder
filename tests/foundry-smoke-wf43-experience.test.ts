@@ -117,6 +117,14 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(applyHelper).toContain('button[data-action="yes"]');
     expect(applyHelper).toContain('`${action}-confirm-focus`, "Shift+Tab"');
     expect(applyHelper).toContain('pressAndRecord(page, keyboard, `${action}-confirm`, "Enter")');
+    expect(applyHelper).toContain("activationTarget");
+    expect(runner).toContain("applyBoundary.confirmation = await applyWithKeyboard");
+    expect(runner).toContain("retryBoundary.confirmation = await applyWithKeyboard");
+    expect(browserSuite).toContain("dialogAction: element.dataset.action");
+    expect(runner).toContain("const persistedEntry = { locale: definition.id, ...entry }");
+    expect(runner).toContain("keyboardEntries.push(persistedEntry)");
+    expect(runner).toContain("return persistedEntry");
+    expect(runner).not.toContain("keyboardEntries.push({ locale: definition.id, ...entry })");
   });
 
   it("bounds and persists active, target, local-order, and observed Tab failure evidence", () => {
@@ -143,11 +151,12 @@ describe("WF-080-43 live experience qualifier", () => {
     const forcedRestore = runner.indexOf("__restoreWayfinderWf43ReviewedDraft", handoffAction);
     const forcedOpen = runner.indexOf("__openWayfinderWf43Experience", forcedRestore);
     const forcedBoundary = runner.indexOf('state: "forced-failure"', forcedOpen);
-    const forcedTarget = runner.indexOf("targetSelector: '[data-wayfinder-action=\"apply-draft\"]'", forcedBoundary);
-    const forcedAction = runner.indexOf(
-      'applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply"',
-      forcedTarget
+    const forcedAnchor = runner.indexOf(
+      'anchorSelector: `[data-wayfinder-step-heading="${definition.fixture.stepId}"]`',
+      forcedOpen
     );
+    const forcedTarget = runner.indexOf("targetSelector: '[data-wayfinder-action=\"apply-draft\"]'", forcedBoundary);
+    const forcedAction = runner.indexOf("applyBoundary.confirmation = await applyWithKeyboard", forcedTarget);
     const errorFocus = runner.indexOf('interactionStage("forced-failure", "error-focus")', forcedAction);
     const failureCapture = runner.indexOf('"forced-failure", definition, outDir', errorFocus);
     const retryBoundary = runner.indexOf('action: "retry-apply"', failureCapture);
@@ -155,10 +164,7 @@ describe("WF-080-43 live experience qualifier", () => {
       'anchorSelector: \'[data-wayfinder-focus-id="starting-equipment-status"][role="alert"]\'',
       retryBoundary
     );
-    const retryAction = runner.indexOf(
-      'applyWithKeyboard(playerPage, rootSelector, keyboard, "retry-apply"',
-      retryAnchor
-    );
+    const retryAction = runner.indexOf("retryBoundary.confirmation = await applyWithKeyboard", retryAnchor);
 
     expect(handoffOpen).toBeGreaterThan(-1);
     expect(handoffBoundary).toBeGreaterThan(handoffOpen);
@@ -167,6 +173,8 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(forcedRestore).toBeGreaterThan(handoffAction);
     expect(forcedOpen).toBeGreaterThan(forcedRestore);
     expect(forcedBoundary).toBeGreaterThan(forcedOpen);
+    expect(forcedAnchor).toBeGreaterThan(forcedOpen);
+    expect(forcedBoundary).toBeGreaterThan(forcedAnchor);
     expect(forcedTarget).toBeGreaterThan(forcedBoundary);
     expect(forcedAction).toBeGreaterThan(forcedTarget);
     expect(errorFocus).toBeGreaterThan(forcedAction);
@@ -177,7 +185,7 @@ describe("WF-080-43 live experience qualifier", () => {
   });
 
   it("waits for and persists the product-owned failure alert focus before viewport capture", () => {
-    const apply = runner.indexOf('applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply"');
+    const apply = runner.indexOf("applyBoundary.confirmation = await applyWithKeyboard");
     const focusStage = runner.indexOf('interactionStage("forced-failure", "error-focus")', apply);
     const focusWait = runner.indexOf("document.activeElement === document.querySelector(selector)", focusStage);
     const persisted = runner.indexOf("failureFocusEntries.push", focusWait);
@@ -358,10 +366,15 @@ describe("WF-080-43 live experience qualifier", () => {
       flattenKeys(english["wayfinder-pf2e"].AcquisitionReceipt)
     );
     const chineseCase = wf43ExperienceCases.find((entry) => entry.id === "cn")!;
+    const englishCase = wf43ExperienceCases.find((entry) => entry.id === "en")!;
     expect(Object.keys(chineseCase.stateAnchors)).toEqual(WF43_STATE_IDS);
     expect((Object.values(chineseCase.stateAnchors) as string[]).every((value) => /[\u3400-\u9fff]/u.test(value))).toBe(
       true
     );
+    expect(englishCase.stateAnchors["forced-failure"]).toBe("Wayfinder partially applied this draft");
+    expect(chineseCase.stateAnchors["forced-failure"]).toBe("寻路仪已部分应用此起始装备草稿");
+    expect(englishCase.confirmationLabels).toEqual({ cancel: "Cancel", apply: "Apply" });
+    expect(chineseCase.confirmationLabels).toEqual({ cancel: "取消", apply: "应用" });
   });
 
   it("accepts exact responsive, accessible, localized evidence", () => {
@@ -460,11 +473,19 @@ describe("WF-080-43 live experience qualifier", () => {
     for (const entry of result.locales) {
       entry.keyboard.actions = entry.keyboard.actions.filter((item) => !item.action.endsWith("-confirm-focus"));
     }
+    delete result.keyboardEntries.find((item) => item.locale === "en" && item.action === "apply").confirmation;
+    for (const entry of result.keyboardEntries.filter(
+      (item) => ["apply", "retry-apply"].includes(item.action) && item.confirmation
+    )) {
+      entry.confirmation.traversalKey = "programmatic-focus";
+    }
 
     expect(qualifyWf43ExperienceResult(result).failures).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/en: keyboard flow is missing forced-apply-confirm-focus/i),
         expect.stringMatching(/cn: Apply confirmations did not prove ordered Cancel, Shift\+Tab, Apply, Enter/i),
+        expect.stringMatching(/en: apply confirmation did not prove focused Cancel, Shift\+Tab/i),
+        expect.stringMatching(/cn: retry-apply confirmation did not prove focused 取消, Shift\+Tab/i),
       ])
     );
   });
@@ -732,6 +753,7 @@ function passingResult(): any {
         targetAction: "apply-draft",
         targetFocusId: "",
         targetName: "Apply Changes",
+        confirmationLabels: definition.confirmationLabels,
       }),
       passingKeyboardBoundary(definition.id, definition.fixture.stepId, {
         action: "retry-apply",
@@ -744,6 +766,7 @@ function passingResult(): any {
         anchorName: definition.stateAnchors["forced-failure"] ?? "Apply failed",
         anchorStepHeading: "",
         anchorTag: "DIV",
+        confirmationLabels: definition.confirmationLabels,
       }),
     ]),
     failureFocusEntries: wf43ExperienceCases.map((definition) => ({
@@ -857,8 +880,20 @@ function passingResult(): any {
           key: action === "search" ? "Dagger" : action.endsWith("-confirm-focus") ? "Shift+Tab" : "Enter",
           ...(action.endsWith("-confirm-focus")
             ? {
-                before: { action: "no", tag: "BUTTON", keyboardFocus: "true" },
-                after: { action: "yes", tag: "BUTTON", keyboardFocus: "true" },
+                before: {
+                  dialogAction: "no",
+                  name: definition.confirmationLabels.cancel,
+                  tag: "BUTTON",
+                  keyboardFocus: "true",
+                  visible: true,
+                },
+                after: {
+                  dialogAction: "yes",
+                  name: definition.confirmationLabels.apply,
+                  tag: "BUTTON",
+                  keyboardFocus: "true",
+                  visible: true,
+                },
               }
             : {}),
         })),
@@ -976,6 +1011,7 @@ function passingKeyboardBoundary(
     anchorName?: string;
     anchorStepHeading?: string;
     anchorTag?: string;
+    confirmationLabels?: { cancel: string; apply: string };
   }
 ): any {
   const target = {
@@ -990,6 +1026,18 @@ function passingKeyboardBoundary(
     keyboardFocus: "true",
     localOrderIndex: 34,
   };
+  const confirmationControl = (dialogAction: string, name: string) => ({
+    focusId: "BUTTON",
+    action: "",
+    dialogAction,
+    name,
+    nameLength: name.length,
+    nameTruncated: false,
+    stepHeading: "",
+    tag: "BUTTON",
+    keyboardFocus: "true",
+    visible: true,
+  });
   return {
     locale,
     action: boundary.action,
@@ -1010,6 +1058,17 @@ function passingKeyboardBoundary(
     target,
     localTabOrder: [target],
     observedTraversal: [{ ...target, focusId: boundary.targetFocusId || boundary.targetAction, visible: true }],
+    ...(boundary.confirmationLabels
+      ? {
+          confirmation: {
+            before: confirmationControl("no", boundary.confirmationLabels.cancel),
+            traversalKey: "Shift+Tab",
+            after: confirmationControl("yes", boundary.confirmationLabels.apply),
+            activationKey: "Enter",
+            activationTarget: confirmationControl("yes", boundary.confirmationLabels.apply),
+          },
+        }
+      : {}),
   };
 }
 

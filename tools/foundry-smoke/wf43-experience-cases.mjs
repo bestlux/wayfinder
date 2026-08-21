@@ -11,7 +11,7 @@ export const WF43_STATE_IDS = Object.freeze([
   "receipt",
 ]);
 
-const locale = (id, name, stateAnchors = {}) => {
+const locale = (id, name, confirmationLabels, stateAnchors = {}) => {
   const definition = {
     schemaVersion: 1,
     id,
@@ -20,6 +20,7 @@ const locale = (id, name, stateAnchors = {}) => {
     appWidths: WF43_APP_WIDTHS,
     stateIds: WF43_STATE_IDS,
     stateAnchors,
+    confirmationLabels,
     fixture: {
       smokeCaseId: "wizard-l1-l5-apply-rerun",
       stepId: "starting-equipment-level-5",
@@ -36,13 +37,15 @@ const locale = (id, name, stateAnchors = {}) => {
 };
 
 export const wf43ExperienceCases = Object.freeze([
-  locale("en", "English"),
-  locale("cn", "Simplified Chinese", {
+  locale("en", "English", { cancel: "Cancel", apply: "Apply" }, {
+    "forced-failure": "Wayfinder partially applied this draft",
+  }),
+  locale("cn", "Simplified Chinese", { cancel: "取消", apply: "应用" }, {
     policy: "开始选购",
     "browse-cart": "你的装备",
     review: "装备已确认",
     handoff: "请在角色卡上完成此步骤",
-    "forced-failure": "寻路仪无法应用此起始装备草稿",
+    "forced-failure": "寻路仪已部分应用此起始装备草稿",
     receipt: "最近一次应用",
   }),
 ]);
@@ -70,6 +73,14 @@ export function validateWf43ExperienceCaseDefinition(definition) {
     )
   ) {
     failures.push("cn: every required state needs an exact Chinese live anchor.");
+  }
+  if (
+    !definition?.confirmationLabels ||
+    [definition.confirmationLabels.cancel, definition.confirmationLabels.apply].some(
+      (label) => typeof label !== "string" || !label.trim() || label.length > 160,
+    )
+  ) {
+    failures.push(`${definition?.id ?? "unknown"}: confirmation labels must bind exact bounded live controls.`);
   }
   if (
     definition?.fixture?.smokeCaseId !== "wizard-l1-l5-apply-rerun" ||

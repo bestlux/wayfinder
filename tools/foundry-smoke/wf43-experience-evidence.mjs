@@ -96,6 +96,7 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       anchorFocusId: "",
       anchorTag: "H3",
       anchorStepId: definition.fixture.stepId,
+      confirmationLabels: null,
     },
     {
       locale: definition.id,
@@ -108,6 +109,7 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       anchorFocusId: "",
       anchorTag: "H3",
       anchorStepId: definition.fixture.stepId,
+      confirmationLabels: null,
     },
     {
       locale: definition.id,
@@ -120,6 +122,7 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       anchorFocusId: "",
       anchorTag: "H3",
       anchorStepId: definition.fixture.stepId,
+      confirmationLabels: definition.confirmationLabels,
     },
     {
       locale: definition.id,
@@ -131,6 +134,7 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
       anchorFocusId: "starting-equipment-status",
       anchorTag: "DIV",
       anchorStepId: "",
+      confirmationLabels: definition.confirmationLabels,
     },
   ]);
   if (!Array.isArray(entries) || entries.length !== expected.length) {
@@ -182,6 +186,29 @@ function qualifyKeyboardBoundaries(entries, definitions, failures) {
         `${boundary.locale}: ${boundary.state} keyboard boundary did not prove scoped visible Tab traversal to ${boundary.targetAction}.`,
       );
     }
+    if (boundary.confirmationLabels) qualifyKeyboardConfirmation(entry, boundary, failures);
+  }
+}
+
+function qualifyKeyboardConfirmation(entry, boundary, failures) {
+  const confirmation = entry?.confirmation;
+  const focusedControl = (control, action, label) =>
+    control?.dialogAction === action &&
+    control?.name === label &&
+    control?.tag === "BUTTON" &&
+    control?.keyboardFocus === "true" &&
+    control?.visible === true &&
+    control?.nameTruncated === false;
+  if (
+    confirmation?.traversalKey !== "Shift+Tab" ||
+    confirmation?.activationKey !== "Enter" ||
+    !focusedControl(confirmation?.before, "no", boundary.confirmationLabels.cancel) ||
+    !focusedControl(confirmation?.after, "yes", boundary.confirmationLabels.apply) ||
+    !focusedControl(confirmation?.activationTarget, "yes", boundary.confirmationLabels.apply)
+  ) {
+    failures.push(
+      `${boundary.locale}: ${boundary.action} confirmation did not prove focused ${boundary.confirmationLabels.cancel}, Shift+Tab, focused ${boundary.confirmationLabels.apply}, Enter.`,
+    );
   }
 }
 
@@ -356,12 +383,16 @@ function qualifyLocale(entry, definition, failures) {
     (item) => typeof item.action === "string" && item.action.endsWith("-confirm-focus"),
   )) {
     if (
-      action.before?.action !== "no" ||
+      action.before?.dialogAction !== "no" ||
+      action.before?.name !== definition.confirmationLabels?.cancel ||
       action.before?.tag !== "BUTTON" ||
       action.before?.keyboardFocus !== "true" ||
-      action.after?.action !== "yes" ||
+      action.before?.visible !== true ||
+      action.after?.dialogAction !== "yes" ||
+      action.after?.name !== definition.confirmationLabels?.apply ||
       action.after?.tag !== "BUTTON" ||
-      action.after?.keyboardFocus !== "true"
+      action.after?.keyboardFocus !== "true" ||
+      action.after?.visible !== true
     ) {
       failures.push(`${definition.id}: ${action.action} did not bind focused Cancel to focused Apply.`);
     }

@@ -374,10 +374,11 @@ async function runLocale({
       { actorId: opened.actorId, action, anchorSelector, mode, state, targetSelector },
     );
     entry.observedTraversal = [];
-    keyboardEntries.push({ locale: definition.id, ...entry });
+    const persistedEntry = { locale: definition.id, ...entry };
+    keyboardEntries.push(persistedEntry);
     assertKeyboardEntry(entry, { action, mode, state });
     await appTabTo(`${rootSelector} ${targetSelector}`, { observedTraversal: entry.observedTraversal });
-    return entry;
+    return persistedEntry;
   };
 
   states.push(await captureState(playerPage, opened.actorId, "policy", definition, outDir, samples, setStage));
@@ -510,15 +511,22 @@ async function runLocale({
   });
   await playerPage.evaluate((value) => globalThis.__openWayfinderWf43Experience(value), payload);
   await waitFor(playerPage, `${rootSelector} [data-wayfinder-action="apply-draft"]`);
-  await enterScopedKeyboardBoundary({
+  const applyBoundary = await enterScopedKeyboardBoundary({
     action: "apply",
+    anchorSelector: `[data-wayfinder-step-heading="${definition.fixture.stepId}"]`,
     mode: "scoped-app-reentry",
     state: "forced-failure",
     targetSelector: '[data-wayfinder-action="apply-draft"]',
   });
   const beforeFailure = (await liveRegions(playerPage, opened.actorId)).failure || afterReview;
   interactionStage("forced-failure", "apply");
-  await applyWithKeyboard(playerPage, rootSelector, keyboard, "forced-apply", tabTraversalFailures);
+  applyBoundary.confirmation = await applyWithKeyboard(
+    playerPage,
+    rootSelector,
+    keyboard,
+    "forced-apply",
+    tabTraversalFailures,
+  );
   const failureAlertSelector = `${rootSelector} [data-wayfinder-focus-id="starting-equipment-status"][role="alert"]`;
   await waitFor(playerPage, failureAlertSelector, 120_000);
   interactionStage("forced-failure", "error-focus");
@@ -543,7 +551,7 @@ async function runLocale({
     packsSetting: PACKS_SETTING,
     snapshot: packsSnapshot,
   });
-  await enterScopedKeyboardBoundary({
+  const retryBoundary = await enterScopedKeyboardBoundary({
     action: "retry-apply",
     anchorSelector: '[data-wayfinder-focus-id="starting-equipment-status"][role="alert"]',
     mode: "scoped-alert-reentry",
@@ -551,7 +559,13 @@ async function runLocale({
     targetSelector: '[data-wayfinder-action="apply-draft"]',
   });
   interactionStage("receipt", "retry-apply");
-  await applyWithKeyboard(playerPage, rootSelector, keyboard, "retry-apply", tabTraversalFailures);
+  retryBoundary.confirmation = await applyWithKeyboard(
+    playerPage,
+    rootSelector,
+    keyboard,
+    "retry-apply",
+    tabTraversalFailures,
+  );
   await playerPage.waitForFunction(
     (selector) => !document.querySelector(selector),
     rootSelector,
@@ -610,11 +624,19 @@ async function applyWithKeyboard(page, rootSelector, keyboard, action, tabTraver
   });
   await pressAndRecord(page, keyboard, action, "Enter");
   await waitFor(page, 'button[data-action="yes"]', 30_000);
-  await pressAndRecordFocusTransition(page, keyboard, `${action}-confirm-focus`, "Shift+Tab", {
+  const transition = await pressAndRecordFocusTransition(page, keyboard, `${action}-confirm-focus`, "Shift+Tab", {
     from: 'button[data-action="no"][data-keyboard-focus="true"]',
     to: 'button[data-action="yes"][data-keyboard-focus="true"]',
   });
+  const activationTarget = await focusEvidence(page);
   await pressAndRecord(page, keyboard, `${action}-confirm`, "Enter");
+  return {
+    before: transition.before,
+    traversalKey: transition.key,
+    after: transition.after,
+    activationKey: "Enter",
+    activationTarget,
+  };
 }
 
 async function pressAndRecordFocusTransition(page, keyboard, action, key, { from, to }) {
@@ -627,6 +649,7 @@ async function pressAndRecordFocusTransition(page, keyboard, action, key, { from
   if (!(await page.evaluate((selector) => document.activeElement?.matches(selector), to))) {
     throw new Error(`Keyboard focus transition ${action} did not reach ${to}.`);
   }
+  return transition;
 }
 
 async function pressAndRecord(page, keyboard, action, key) {

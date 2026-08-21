@@ -1,5 +1,6 @@
 import {
   normalizeAcquisitionFunding,
+  normalizeAcquisitionKitExpansion,
   normalizeAcquisitionLinePolicyDecision,
   normalizeAcquisitionMaterialLineFacts,
   normalizeAcquisitionPolicySnapshot,
@@ -51,6 +52,7 @@ export interface CompletedAcquisitionEntryV1 {
   readonly price: PreparedAcquisitionEntryV1["price"];
   readonly plannedItems: PreparedAcquisitionEntryV1["plannedItems"];
   readonly observedItems: readonly CompletedObservedItemV1[];
+  readonly kitExpansion?: PreparedAcquisitionEntryV1["kitExpansion"];
 }
 
 export interface CompletedClassGrantV1 {
@@ -191,6 +193,7 @@ export function createCompletedAcquisitionManifest(args: {
       policyDecision: structuredClone(entry.policyDecision),
       price: structuredClone(entry.price),
       plannedItems: structuredClone(entry.plannedItems),
+      ...(entry.kitExpansion ? { kitExpansion: structuredClone(entry.kitExpansion) } : {}),
       observedItems,
     };
   });
@@ -371,6 +374,7 @@ export function assertCompletedAcquisitionManifestMatchesIdentityPlan(
     policyDecision: entry.policyDecision,
     price: entry.price,
     plannedItems: entry.plannedItems,
+    ...(entry.kitExpansion ? { kitExpansion: entry.kitExpansion } : {}),
   }));
   const actualEntries = manifest.entries.map(({ observedItems: _observedItems, ...entry }) => entry);
   const expectedRemaining =
@@ -536,12 +540,14 @@ function normalizeCompletedEntries(
     const funding = normalizeAcquisitionFunding(raw.funding);
     const price = normalizeAcquisitionPriceSnapshot(raw.price);
     const resolvedAllowanceId = raw.resolvedAllowanceId;
+    const kitExpansion = normalizeAcquisitionKitExpansion(raw.kitExpansion);
     if (
       !funding ||
       !price ||
       (resolvedAllowanceId !== null && !nonEmpty(resolvedAllowanceId)) ||
       (funding.lane === "allowance" && resolvedAllowanceId === null) ||
-      (funding.lane !== "allowance" && resolvedAllowanceId !== null)
+      (funding.lane !== "allowance" && resolvedAllowanceId !== null) ||
+      kitExpansion === undefined
     ) {
       return null;
     }
@@ -581,11 +587,30 @@ function normalizeCompletedEntries(
     }
     if (
       plannedItems.length === 0 ||
-      plannedItems.some((item) => item.sourceUuid !== raw.sourceUuid) ||
-      plannedItems.reduce((total, item) => total + item.quantity, 0) !== raw.quantity ||
+      (!kitExpansion && plannedItems.some((item) => item.sourceUuid !== raw.sourceUuid)) ||
+      (!kitExpansion && plannedItems.reduce((total, item) => total + item.quantity, 0) !== raw.quantity) ||
+      (kitExpansion && plannedItems.length !== kitExpansion.items.length) ||
       price.materializedQuantity !== raw.quantity
     ) {
       return null;
+    }
+    if (kitExpansion) {
+      const rootIndex = kitExpansion.items.findIndex((item) => item.parentPath === null);
+      const root = plannedItems[rootIndex];
+      if (!root || root.ownedContainerId === null) return null;
+      for (let index = 0; index < kitExpansion.items.length; index += 1) {
+        const expected = kitExpansion.items[index]!;
+        const planned = plannedItems[index]!;
+        if (
+          planned.sourceUuid !== expected.sourceUuid ||
+          planned.quantity !== expected.quantity ||
+          (expected.parentPath === null
+            ? planned.plannedContainerId !== null
+            : planned.plannedContainerId !== root.ownedContainerId)
+        ) {
+          return null;
+        }
+      }
     }
     const observedPlannedIds = new Set<string>();
     const observedItems: CompletedObservedItemV1[] = [];
@@ -641,6 +666,7 @@ function normalizeCompletedEntries(
       policyDecision,
       price,
       plannedItems,
+      ...(kitExpansion ? { kitExpansion } : {}),
       observedItems,
     });
   }
@@ -778,7 +804,8 @@ function completedEntriesCoverLogicalLines(
         line.stackingIntent !== entry.stackingIntent ||
         canonicalJson(line.funding) !== canonicalJson(entry.funding) ||
         line.resolvedAllowanceId !== entry.resolvedAllowanceId ||
-        canonicalJson(line.policyDecision) !== canonicalJson(entry.policyDecision)
+        canonicalJson(line.policyDecision) !== canonicalJson(entry.policyDecision) ||
+        canonicalJson(line.kitExpansion ?? null) !== canonicalJson(entry.kitExpansion ?? null)
       ) {
         return false;
       }

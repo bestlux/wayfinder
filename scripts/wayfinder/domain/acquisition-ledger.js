@@ -400,6 +400,7 @@ export function captureAcquisitionMaterialFacts(draft, resolvedAllowances = new 
             policyDecision: cloneData(line.policyDecision),
             funding: cloneData(line.funding),
             resolvedAllowanceId: resolvedAllowances.get(line.lineId) ?? null,
+            ...(line.kitExpansion ? { kitExpansion: cloneData(line.kitExpansion) } : {}),
         }))
             .sort((left, right) => left.lineId.localeCompare(right.lineId)),
     };

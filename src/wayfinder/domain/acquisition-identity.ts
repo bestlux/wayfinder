@@ -45,6 +45,7 @@ export interface PreparedAcquisitionEntryV1 {
   readonly policyDecision: AcquisitionLinePolicyDecision;
   readonly price: AcquisitionPriceSnapshot;
   readonly plannedItems: readonly PlannedAcquisitionItemV1[];
+  readonly kitExpansion?: AcquisitionDraftState["lines"][number]["kitExpansion"];
 }
 
 export interface PreparedAcquisitionIdentityPlanV1 {
@@ -163,12 +164,56 @@ export async function prepareAcquisitionIdentityPlan(args: {
       preAggregationKey,
       lineIds,
     });
-    const plannedItemId = await digest("wf-planned-item", {
-      version: 1,
-      batchId: draft.batchId,
-      entryId,
-      expansionPath: "root",
-    });
+    const kitExpansion = first.kitExpansion;
+    if (kitExpansion && (lines.length !== 1 || requestedQuantity !== 1 || quantity !== 1)) {
+      throw new TypeError("Adventurer's Pack must remain one separate logical purchase.");
+    }
+    const plannedItems: PlannedAcquisitionItemV1[] = [];
+    if (kitExpansion) {
+      const containerByPath = new Map<string, string>();
+      for (const item of kitExpansion.items) {
+        if (item.itemType !== "backpack") continue;
+        containerByPath.set(
+          item.expansionPath,
+          await derivePlannedContainerId({
+            batchId: draft.batchId,
+            parentEntryId: entryId,
+            expansionPath: item.expansionPath,
+          })
+        );
+      }
+      for (const item of kitExpansion.items) {
+        const plannedContainerId = item.parentPath === null ? null : (containerByPath.get(item.parentPath) ?? null);
+        if (item.parentPath !== null && plannedContainerId === null) {
+          throw new TypeError(`Kit item ${item.expansionPath} has no planned container owner.`);
+        }
+        plannedItems.push({
+          plannedItemId: await digest("wf-planned-item", {
+            version: 1,
+            batchId: draft.batchId,
+            entryId,
+            expansionPath: item.expansionPath,
+          }),
+          ownedContainerId: containerByPath.get(item.expansionPath) ?? null,
+          sourceUuid: item.sourceUuid,
+          quantity: item.quantity,
+          plannedContainerId,
+        });
+      }
+    } else {
+      plannedItems.push({
+        plannedItemId: await digest("wf-planned-item", {
+          version: 1,
+          batchId: draft.batchId,
+          entryId,
+          expansionPath: "root",
+        }),
+        ownedContainerId: null,
+        sourceUuid: first.sourceUuid,
+        quantity,
+        plannedContainerId: null,
+      });
+    }
     entries.push({
       entryId,
       preAggregationKey,
@@ -182,15 +227,8 @@ export async function prepareAcquisitionIdentityPlan(args: {
       resolvedAllowanceId: firstLedger.resolvedAllowanceId,
       policyDecision: structuredClone(first.policyDecision),
       price: combinedPrice(first.price, requestedQuantity, quantity),
-      plannedItems: [
-        {
-          plannedItemId,
-          ownedContainerId: null,
-          sourceUuid: first.sourceUuid,
-          quantity,
-          plannedContainerId: null,
-        },
-      ],
+      plannedItems,
+      ...(kitExpansion ? { kitExpansion: structuredClone(kitExpansion) } : {}),
     });
   }
   entries.sort((left, right) => left.entryId.localeCompare(right.entryId));
@@ -301,6 +339,7 @@ function captureCurrentMaterialFacts(
         policyDecision: structuredClone(line.policyDecision),
         funding: structuredClone(line.funding),
         resolvedAllowanceId: resolvedAllowances.get(line.lineId) ?? null,
+        ...(line.kitExpansion ? { kitExpansion: structuredClone(line.kitExpansion) } : {}),
       }))
       .sort((left, right) => left.lineId.localeCompare(right.lineId)),
   };
@@ -339,6 +378,7 @@ function freezeEntry(entry: PreparedAcquisitionEntryV1): PreparedAcquisitionEntr
     policyDecision: Object.freeze({ ...entry.policyDecision }),
     price: Object.freeze(structuredClone(entry.price)),
     plannedItems: Object.freeze(entry.plannedItems.map((item) => Object.freeze({ ...item }))),
+    ...(entry.kitExpansion ? { kitExpansion: Object.freeze(structuredClone(entry.kitExpansion)) } : {}),
   });
 }
 

@@ -6,6 +6,7 @@ import type { EffectiveEquipmentPolicySnapshotV1, EquipmentWorldPolicyV1 } from 
 import type { SEMANTIC_WEALTH_POLICY_REF } from "./semantic-wealth-rule-ledger.js";
 
 export type OfficialAcquisitionRecipe = "permanent-items" | "lump-sum";
+export const ADVENTURERS_PACK_SOURCE_UUID = "Compendium.pf2e.equipment-srd.Item.2req0jGaxz8hScdB";
 export type AcquisitionRecipeSelection =
   | { readonly kind: OfficialAcquisitionRecipe }
   | { readonly kind: "custom-lump-sum"; readonly judgmentRef: string; readonly amountCopper: number };
@@ -151,6 +152,24 @@ export interface AcquisitionLinePolicyDecision {
   readonly abpTreatment: string;
 }
 
+export interface AcquisitionKitExpansionItemV1 {
+  readonly expansionPath: string;
+  readonly parentPath: string | null;
+  readonly sourceUuid: string;
+  readonly documentFingerprint: string;
+  readonly name: string;
+  readonly itemType: "ammo" | "backpack" | "consumable" | "equipment";
+  readonly quantity: number;
+  readonly size: "tiny" | "medium" | "large" | "huge" | "gargantuan";
+}
+
+export interface AcquisitionKitExpansionSnapshotV1 {
+  readonly version: 1;
+  readonly profile: "adventurers-pack-v1";
+  readonly requestedQuantity: 1;
+  readonly items: readonly AcquisitionKitExpansionItemV1[];
+}
+
 export interface AcquisitionLineDraft {
   readonly schemaVersion: 1;
   readonly lineId: string;
@@ -164,6 +183,7 @@ export interface AcquisitionLineDraft {
   readonly funding: AcquisitionFunding;
   readonly stackingIntent: AcquisitionStackingIntent;
   readonly price: AcquisitionPriceSnapshot;
+  readonly kitExpansion?: AcquisitionKitExpansionSnapshotV1;
 }
 
 export interface AcquisitionMaterialLineFacts {
@@ -179,6 +199,7 @@ export interface AcquisitionMaterialLineFacts {
   readonly policyDecision: AcquisitionLinePolicyDecision;
   readonly funding: AcquisitionFunding;
   readonly resolvedAllowanceId: string | null;
+  readonly kitExpansion?: AcquisitionKitExpansionSnapshotV1;
 }
 
 export interface AcquisitionMaterialFacts {

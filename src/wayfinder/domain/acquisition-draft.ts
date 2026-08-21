@@ -9,6 +9,7 @@ import type {
   AcquisitionDraftState,
   AcquisitionFunding,
   AcquisitionInvalidationReason,
+  AcquisitionKitExpansionSnapshotV1,
   AcquisitionLineDraft,
   AcquisitionLinePolicyDecision,
   AcquisitionMaterialFacts,
@@ -20,6 +21,7 @@ import type {
   AcquisitionRecipeSelectionProvenanceV1,
   AcquisitionReviewSnapshot,
 } from "./acquisition-types.js";
+import { ADVENTURERS_PACK_SOURCE_UUID } from "./acquisition-types.js";
 import {
   type ClassGrantReconciliationResultV1,
   isClassGrantReconciliationConsistent,
@@ -528,7 +530,8 @@ function compareLineMaterial(
     reviewed.itemLevel !== current.itemLevel ||
     reviewed.stackingIntent !== current.stackingIntent ||
     reviewed.permanence !== current.permanence ||
-    reviewed.componentKind !== current.componentKind
+    reviewed.componentKind !== current.componentKind ||
+    !same(reviewed.kitExpansion ?? null, current.kitExpansion ?? null)
   ) {
     reasons.add("document");
   }
@@ -557,7 +560,17 @@ function normalizeLine(raw: unknown): AcquisitionLineDraft | null {
   const policyDecision = normalizeAcquisitionLinePolicyDecision(raw.policyDecision);
   const funding = normalizeAcquisitionFunding(raw.funding);
   const price = normalizeAcquisitionPriceSnapshot(raw.price);
-  if (!policyDecision || !funding || !price) return null;
+  const kitExpansion = normalizeAcquisitionKitExpansion(raw.kitExpansion);
+  if (!policyDecision || !funding || !price || kitExpansion === undefined) return null;
+  if (
+    kitExpansion &&
+    (raw.sourceUuid !== ADVENTURERS_PACK_SOURCE_UUID ||
+      raw.stackingIntent !== "separate" ||
+      price.requestedQuantity !== 1 ||
+      price.materializedQuantity !== 1)
+  ) {
+    return null;
+  }
   return {
     schemaVersion: 1,
     lineId: raw.lineId,
@@ -571,7 +584,61 @@ function normalizeLine(raw: unknown): AcquisitionLineDraft | null {
     funding,
     stackingIntent: raw.stackingIntent,
     price,
+    ...(kitExpansion ? { kitExpansion } : {}),
   };
+}
+
+export function normalizeAcquisitionKitExpansion(raw: unknown): AcquisitionKitExpansionSnapshotV1 | null | undefined {
+  if (raw === undefined) return null;
+  if (
+    !isRecord(raw) ||
+    raw.version !== 1 ||
+    raw.profile !== "adventurers-pack-v1" ||
+    raw.requestedQuantity !== 1 ||
+    !Array.isArray(raw.items) ||
+    raw.items.length !== 9
+  ) {
+    return undefined;
+  }
+  const paths = new Set<string>();
+  const sourceUuids = new Set<string>();
+  const items: AcquisitionKitExpansionSnapshotV1["items"][number][] = [];
+  for (const item of raw.items) {
+    if (
+      !isRecord(item) ||
+      !nonEmpty(item.expansionPath) ||
+      paths.has(item.expansionPath) ||
+      (item.parentPath !== null && !nonEmpty(item.parentPath)) ||
+      !nonEmpty(item.sourceUuid) ||
+      sourceUuids.has(item.sourceUuid) ||
+      !nonEmpty(item.documentFingerprint) ||
+      !nonEmpty(item.name) ||
+      !isOneOf(item.itemType, ["ammo", "backpack", "consumable", "equipment"]) ||
+      !safePositiveInteger(item.quantity) ||
+      !isOneOf(item.size, ["tiny", "medium", "large", "huge", "gargantuan"])
+    ) {
+      return undefined;
+    }
+    paths.add(item.expansionPath);
+    sourceUuids.add(item.sourceUuid);
+    items.push({
+      expansionPath: item.expansionPath,
+      parentPath: item.parentPath === null ? null : String(item.parentPath),
+      sourceUuid: item.sourceUuid,
+      documentFingerprint: item.documentFingerprint,
+      name: item.name,
+      itemType: item.itemType,
+      quantity: item.quantity,
+      size: item.size,
+    });
+  }
+  if (
+    items.filter((item) => item.parentPath === null).length !== 1 ||
+    items.some((item) => item.parentPath !== null && !paths.has(item.parentPath))
+  ) {
+    return undefined;
+  }
+  return { version: 1, profile: "adventurers-pack-v1", requestedQuantity: 1, items };
 }
 
 export function normalizeAcquisitionFunding(raw: unknown): AcquisitionFunding | null {
@@ -1269,12 +1336,22 @@ export function normalizeAcquisitionMaterialLineFacts(raw: unknown): Acquisition
   const policyDecision = normalizeAcquisitionLinePolicyDecision(raw.policyDecision);
   const funding = normalizeAcquisitionFunding(raw.funding);
   const resolvedAllowanceId = raw.resolvedAllowanceId;
+  const kitExpansion = normalizeAcquisitionKitExpansion(raw.kitExpansion);
   if (
     !policyDecision ||
     !funding ||
     (resolvedAllowanceId !== null && !nonEmpty(resolvedAllowanceId)) ||
     (funding.lane !== "allowance" && resolvedAllowanceId !== null) ||
-    (funding.lane === "allowance" && resolvedAllowanceId === null)
+    (funding.lane === "allowance" && resolvedAllowanceId === null) ||
+    kitExpansion === undefined
+  ) {
+    return null;
+  }
+  if (
+    kitExpansion &&
+    (raw.sourceUuid !== ADVENTURERS_PACK_SOURCE_UUID ||
+      raw.stackingIntent !== "separate" ||
+      raw.requestedQuantity !== 1)
   ) {
     return null;
   }
@@ -1291,6 +1368,7 @@ export function normalizeAcquisitionMaterialLineFacts(raw: unknown): Acquisition
     policyDecision,
     funding,
     resolvedAllowanceId: resolvedAllowanceId === null ? null : String(resolvedAllowanceId),
+    ...(kitExpansion ? { kitExpansion } : {}),
   };
 }
 

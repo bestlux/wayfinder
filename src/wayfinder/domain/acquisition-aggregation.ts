@@ -18,6 +18,7 @@ export function acquisitionPreAggregationMaterial(
     priceBasis: acquisitionPriceBasis(line.price),
     separateLineId: line.stackingIntent === "separate" ? line.lineId : null,
     plannedContainerId: null,
+    ...(line.kitExpansion ? { kitExpansion: line.kitExpansion } : {}),
   };
 }
 

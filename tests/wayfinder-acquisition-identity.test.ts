@@ -50,6 +50,45 @@ describe("acquisition identity", () => {
     expect(first).not.toBe("policy-diagnostic-1");
   });
 
+  it("derives a stable nine-item Adventurer's Pack graph without materializing the logical kit", async () => {
+    const items = Array.from({ length: 9 }, (_, index) => ({
+      expansionPath: index === 0 ? "mca3x" : `mca3x/child-${index}`,
+      parentPath: index === 0 ? null : "mca3x",
+      sourceUuid: `Compendium.pf2e.equipment-srd.Item.child-${index}`,
+      documentFingerprint: `child-fingerprint-${index}`,
+      name: index === 0 ? "Backpack" : `Child ${index}`,
+      itemType: index === 0 ? ("backpack" as const) : ("equipment" as const),
+      quantity: index + 1,
+      size: "medium" as const,
+    }));
+    const line = acquisitionLine({
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.2req0jGaxz8hScdB",
+      stackingIntent: "separate",
+      kitExpansion: {
+        version: 1,
+        profile: "adventurers-pack-v1",
+        requestedQuantity: 1,
+        items,
+      },
+    });
+    const fixture = acquisitionFixture({ lines: [line] });
+    const plan = await prepareAcquisitionIdentityPlan({ actorId: "actor-1", ...fixture });
+    const reopened = await prepareAcquisitionIdentityPlan({
+      actorId: "actor-1",
+      ...acquisitionFixture({ lines: [structuredClone(line)] }),
+    });
+
+    expect(plan.fingerprint).toBe(reopened.fingerprint);
+    expect(plan.entries[0]?.sourceUuid).toBe(line.sourceUuid);
+    expect(plan.entries[0]?.plannedItems).toHaveLength(9);
+    expect(plan.entries[0]?.plannedItems.some((item) => item.sourceUuid === line.sourceUuid)).toBe(false);
+    const root = plan.entries[0]?.plannedItems[0];
+    expect(root?.ownedContainerId).toMatch(/^wf-planned-container-sha256-/u);
+    expect(
+      plan.entries[0]?.plannedItems.slice(1).every((item) => item.plannedContainerId === root?.ownedContainerId)
+    ).toBe(true);
+  });
+
   it("keeps canonical entries stable across line ordering and save/reopen", async () => {
     const lines = [
       acquisitionLine({ lineId: "line-b", requestedQuantity: 2 }),

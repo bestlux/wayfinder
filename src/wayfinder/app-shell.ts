@@ -131,7 +131,11 @@ import {
   withExistingCharacterHistory,
 } from "./application/existing-character-history-service.js";
 import { decideExternalDraftRefresh } from "./application/external-draft-refresh-service.js";
-import { markWayfinderKeyboardFocus } from "./application/foundry-keyboard-focus-service.js";
+import {
+  createWayfinderApplyConfirmationMarker,
+  markWayfinderKeyboardFocus,
+  withWayfinderApplyConfirmationFocus,
+} from "./application/foundry-keyboard-focus-service.js";
 import {
   buildContextNote,
   buildOptionContext,
@@ -3452,13 +3456,16 @@ async function confirmWayfinderApply(message: string): Promise<boolean> {
   const dialog = foundryApi.applications?.api?.DialogV2;
   if (dialog) {
     const escapeHTML = foundryApi.utils?.escapeHTML ?? fallbackEscapeHtml;
-    const result = await dialog.confirm({
-      window: { title: "wayfinder-pf2e.App.ApplyConfirmTitle" },
-      content: `<p style="white-space: pre-line">${escapeHTML(message)}</p>`,
-      modal: true,
-      yes: { label: "wayfinder-pf2e.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
-      no: { label: "wayfinder-pf2e.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
-    });
+    const focusMarker = createWayfinderApplyConfirmationMarker();
+    const result = await withWayfinderApplyConfirmationFocus(Hooks, focusMarker, () =>
+      dialog.confirm({
+        window: { title: "wayfinder-pf2e.App.ApplyConfirmTitle" },
+        content: `<div data-wayfinder-apply-confirmation="${focusMarker}"><p style="white-space: pre-line">${escapeHTML(message)}</p></div>`,
+        modal: true,
+        yes: { label: "wayfinder-pf2e.App.ApplyConfirmYes", icon: "fa-solid fa-check" },
+        no: { label: "wayfinder-pf2e.App.ApplyConfirmNo", icon: "fa-solid fa-xmark", default: true },
+      })
+    );
     return result === true;
   }
 

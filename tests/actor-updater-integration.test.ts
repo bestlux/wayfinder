@@ -1398,7 +1398,13 @@ describe("actor-updater integration", () => {
     draft.singletonChoices["singleton-choice-heritage-skilled-human-trainedSkill-level-1"] = "arcana";
     draft.skillIncreases["skill-increase-level-3"] = "arcana";
 
-    await applyDraftToActor(actor as any, draft, [heritageSingletonSkillChoiceStep(), skillIncreaseStep(3)]);
+    await applyDraftToActor(actor as any, draft, [heritageSingletonSkillChoiceStep(), skillIncreaseStep(3)], {
+      onCheckpoint: (checkpoint) => {
+        if (checkpoint.checkpointId === "phase:skill-training-items:before") {
+          actor.system.skills.arcana.rank = 1;
+        }
+      },
+    });
 
     expect(actor.update).toHaveBeenCalledTimes(1);
     expect(actor.update).toHaveBeenCalledWith(
@@ -1458,10 +1464,18 @@ describe("actor-updater integration", () => {
       loreChoices: {},
     };
 
-    await applyDraftToActor(actor as any, draft, [
-      heritageSelectionStep(),
-      skilledHumanTrainingStep("skill-training-wizard-level-1"),
-    ]);
+    await applyDraftToActor(
+      actor as any,
+      draft,
+      [heritageSelectionStep(), skilledHumanTrainingStep("skill-training-wizard-level-1")],
+      {
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.checkpointId === "phase:skill-training-items:before") {
+            actor.system.skills.society.rank = 1;
+          }
+        },
+      }
+    );
 
     const heritage = createdItems.find((item) => item?.sourceId === "Compendium.pf2e.heritages.Item.skilled-human");
     expect(heritage?.flags?.pf2e?.rulesSelections?.trainedSkill).toBe("society");

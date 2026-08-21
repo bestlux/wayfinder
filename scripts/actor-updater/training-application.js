@@ -4,18 +4,28 @@ import { queueRuleSelectionUpdate } from "../shared/pf2e-item-source.js";
 import { resolveSingletonChoiceSkillGrant } from "../shared/singleton-choice-skill-grants.js";
 import { itemMatchesSourceId } from "../shared/source-id.js";
 import { compileSkillProgression, } from "../wayfinder/domain/skill-progression.js";
+const SKILL_PROGRESSION_CHANGED_MESSAGE = "Skill progression changed during Apply; reopen Wayfinder and review the affected choices.";
 export async function applyTrainingDraft(actor, draft, steps, options = {}) {
     const actorItems = listActorItems(actor);
+    const prepared = options.preparedSkillProgression;
+    if (prepared) {
+        assertPreparedActorSkillRanksCompatible(actor, prepared, options.requiredBeforeSkillGrants ?? prepared.sourceGrants, options.skillPhaseGrants ?? []);
+    }
     const progression = compileSkillProgression({
-        baselineRanks: readActorSkillRanks(actor),
+        baselineRanks: prepared?.baselineRanks ?? readActorSkillRanks(actor),
         draft,
         steps,
-        sourceGrants: collectAppliedSkillSourceGrants(actor, draft, steps),
-        validSkillSlugs: options.validSkillSlugs ?? collectProgressionSkillSlugs(actor, draft, steps),
-        mode: options.mode ?? "editing",
+        sourceGrants: prepared?.sourceGrants ?? collectAppliedSkillSourceGrants(actor, draft, steps),
+        validSkillSlugs: prepared !== undefined
+            ? new Set(prepared.validSkillSlugs)
+            : (options.validSkillSlugs ?? collectProgressionSkillSlugs(actor, draft, steps)),
+        mode: prepared?.mode ?? options.mode ?? "editing",
     });
+    if (prepared && progression.inputFingerprint !== prepared.inputFingerprint) {
+        throw new Error(SKILL_PROGRESSION_CHANGED_MESSAGE);
+    }
     if (progression.issues.length > 0) {
-        throw new Error("Skill progression changed during Apply; reopen Wayfinder and review the affected choices.");
+        throw new Error(SKILL_PROGRESSION_CHANGED_MESSAGE);
     }
     const updatesByItemId = new Map();
     const desiredTrainingLores = new Map();
@@ -192,6 +202,32 @@ function readActorSkillRank(actor, slug) {
 }
 function readActorSkillRanks(actor) {
     return Object.fromEntries(Object.keys(actor.system?.skills ?? {}).map((slug) => [slug, readActorSkillRank(actor, slug)]));
+}
+function assertPreparedActorSkillRanksCompatible(actor, prepared, requiredBeforeSkillGrants, skillPhaseGrants) {
+    const currentRanks = readActorSkillRanks(actor);
+    const requiredRanks = { ...prepared.baselineRanks };
+    for (const grant of requiredBeforeSkillGrants) {
+        requiredRanks[grant.slug] = Math.max(requiredRanks[grant.slug] ?? 0, grant.rank);
+    }
+    const skillPhaseRanks = { ...requiredRanks };
+    for (const grant of skillPhaseGrants) {
+        skillPhaseRanks[grant.slug] = Math.max(skillPhaseRanks[grant.slug] ?? 0, grant.rank);
+    }
+    const slugs = new Set([
+        ...Object.keys(prepared.baselineRanks),
+        ...Object.keys(requiredRanks),
+        ...Object.keys(skillPhaseRanks),
+        ...Object.keys(currentRanks),
+    ]);
+    const drifted = Array.from(slugs).some((slug) => {
+        const requiredRank = requiredRanks[slug] ?? 0;
+        const skillPhaseRank = skillPhaseRanks[slug] ?? requiredRank;
+        const currentRank = currentRanks[slug] ?? 0;
+        return currentRank !== requiredRank && currentRank !== skillPhaseRank;
+    });
+    if (drifted) {
+        throw new Error(SKILL_PROGRESSION_CHANGED_MESSAGE);
+    }
 }
 function queueTrainingRuleSelectionUpdate(actorItems, updatesByItemId, persistence, flag, selection) {
     if (!persistence) {

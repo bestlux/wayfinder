@@ -8,7 +8,7 @@ import { fetchSelectionDocument } from "../pack/access.js";
 import { readManualStaticItemGrants, selectionFromManualStaticGrant, } from "../selector-application.js";
 import { cloneData } from "../shared/cloning.js";
 import { usesNativeGrantItemCreation } from "../shared/grant-creation-policy.js";
-import { itemMatchesSourceId } from "../shared/source-id.js";
+import { itemMatchesSourceId, sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
 import { captureObservedClassGrantItems } from "../wayfinder/application/class-grant-projection-service.js";
 import { activeClassArchetypeProfile } from "../wayfinder/class-archetype/registry.js";
@@ -22,12 +22,14 @@ import { createSingletonGrantItems } from "./explicit-grant-application.js";
 import { buildLanguageChoiceUpdate } from "./language-choice-application.js";
 import { readManualSystemItemGrants, selectionFromSystemGrant } from "./manual-system-item-grants.js";
 import { nativeSpellcastingSourceSelections, syncNativeClassSpellcasting } from "./native-spellcasting-application.js";
+import { projectPreparedSkillSources } from "./prepared-skill-source-projection.js";
 import { createEmbeddedSource, createSingletonSystemGrantItems, hasSourceId, insertFeatSelection, orderSelections, preflightFeatSelection, replaceSingletonItems, restoreSingletonSourceSlotFlags, singletonSelections, } from "./selection-application.js";
 import { DEFAULT_CREATE_DEPS } from "./selection-source-application.js";
 import { applySingletonChoiceDraft } from "./singleton-choice-application.js";
 import { applySpellChoiceDraft } from "./spell-choice-application.js";
 import { spellLocationId } from "./spellcasting-entry-support.js";
 import { applyTrainingDraft, buildTrainingActorUpdate } from "./training-application.js";
+const FOUNDATION_ITEM_TYPES = new Set(["ancestry", "heritage", "background", "class"]);
 export class DraftApplyPhaseError extends Error {
     phase;
     checkpoint;
@@ -126,11 +128,15 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
             message: problem.message,
         })));
     }
-    const validSkillSlugs = buildValidSkillSlugs(actor, deps.validSkillSlugs);
-    const skillProgression = deps.skillProgression ?? compilePreparedSkillProgression(actor, draft, steps, validSkillSlugs);
-    assertSkillProgressionPlanMatches(skillProgression, actor, draft, steps, validSkillSlugs);
-    assertSkillProgressionValid(skillProgression, steps);
-    await assertDraftBackedStepsReady(steps, draft, skillProgression);
+    const preliminarySkillProgression = deps.skillProgression ??
+        compileSkillProgression({
+            baselineRanks: readPreparedSkillRanks(actor),
+            draft,
+            steps,
+            validSkillSlugs: buildValidSkillSlugs(actor, deps.validSkillSlugs),
+            mode: hasDraftRecoveryState(draft) ? "recovery" : "editing",
+        });
+    await assertDraftBackedStepsReady(steps.filter((step) => step.kind !== "skill-training" && step.kind !== "skill-increase"), draft, preliminarySkillProgression);
     const boostSteps = steps.filter((step) => step.kind === "boost");
     if (boostSteps.length > 0) {
         const effectiveBuildState = await getEffectiveBuildState(actor, draft);
@@ -153,8 +159,29 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
     validateDraftChoiceValues(draft, steps);
     await validateSelectedEligibility(draft, steps, selections, deps.validateSelectionEligibility);
     const sources = await prepareSourceCatalog(actor, draft, steps, selections, deps);
+    const validSkillSlugs = buildValidSkillSlugs(actor, deps.validSkillSlugs);
+    const skillSourceProjection = projectPreparedSkillSources({
+        draft,
+        steps,
+        sources: sources.skillSources,
+        validSkillSlugs,
+    });
+    const skillProgression = compileSkillProgression({
+        baselineRanks: readPreparedSkillRanks(actor),
+        draft,
+        steps,
+        sourceGrants: skillSourceProjection.sourceGrants,
+        validSkillSlugs,
+        mode: hasDraftRecoveryState(draft) ? "recovery" : "editing",
+    });
+    if (deps.skillProgression && deps.skillProgression.inputFingerprint !== skillProgression.inputFingerprint) {
+        throw new Error("The compiled skill progression no longer matches the active plan; reopen Wayfinder before Apply.");
+    }
+    assertSkillProgressionPlanMatches(skillProgression, actor, draft, steps, validSkillSlugs);
+    assertSkillProgressionValid(skillProgression, steps);
+    await assertDraftBackedStepsReady(steps, draft, skillProgression);
     const classGrantPlan = await prepareClassGrantAuthority(actor, draft, steps, deps);
-    await validatePersistenceTargets(actor, draft, steps, deps);
+    await validatePersistenceTargets(actor, draft, steps, sources);
     validateSpellDestinations(actor, draft, steps);
     for (const selection of pendingFeatSelections) {
         await deps.preflightFeatSelection(actor, selection, stepsBySlotId.get(selection.slotId) ?? null, sources.insertDependencies);
@@ -168,6 +195,9 @@ export async function prepareDraftApplication(actor, draftInput, stepsInput, dep
         pendingFeatSelections,
         stepsBySlotId,
         validSkillSlugs,
+        skillProgression,
+        requiredBeforeSkillGrants: skillSourceProjection.requiredBeforeSkillGrants,
+        skillPhaseGrants: skillSourceProjection.skillPhaseGrants,
         deferredActorUpdate: {
             ...cloneData(draft.applyRecoveryActorUpdate),
             ...buildLanguageChoiceUpdate(draft, steps),
@@ -217,15 +247,6 @@ function validateDraftChoiceValues(draft, steps) {
         }
     }
 }
-function compilePreparedSkillProgression(actor, draft, steps, validSkillSlugs) {
-    return compileSkillProgression({
-        baselineRanks: readPreparedSkillRanks(actor),
-        draft,
-        steps,
-        validSkillSlugs,
-        mode: hasDraftRecoveryState(draft) ? "recovery" : "editing",
-    });
-}
 function buildValidSkillSlugs(actor, configuredSkillSlugs) {
     return new Set([...PF2E_SKILL_SLUGS, ...Object.keys(actor.system?.skills ?? {}), ...(configuredSkillSlugs ?? [])]);
 }
@@ -239,10 +260,23 @@ function assertSkillProgressionValid(progression, steps) {
     throw new Error("A skill choice changed after this draft was prepared; review it before applying.");
 }
 function assertSkillProgressionPlanMatches(progression, actor, draft, steps, validSkillSlugs) {
+    const foundationSourceIds = new Set([
+        ...Object.values(draft.selections)
+            .filter((selection) => FOUNDATION_ITEM_TYPES.has(selection.itemType))
+            .map((selection) => selection.uuid),
+        ...listActorItems(actor).flatMap((item) => {
+            if (!FOUNDATION_ITEM_TYPES.has(item.type ?? ""))
+                return [];
+            const sourceId = sourceIdOf(item);
+            return sourceId ? [sourceId] : [];
+        }),
+    ]);
     const sourceGrantsMatchPlan = progression.sourceGrants.every((grant) => {
         if (!grant.sourceId) {
             return steps.some((step) => step.kind === "skill-training" && step.training.fixedSkills.includes(grant.slug));
         }
+        if (foundationSourceIds.has(grant.sourceId))
+            return true;
         return steps.some((step) => step.kind === "singleton-choice" &&
             step.singletonChoice.sourceUuid === grant.sourceId &&
             typeof draft.singletonChoices[step.slotId] === "string" &&
@@ -377,8 +411,9 @@ export async function executePreparedDraftApplication(prepared, options = {}) {
                 case "skill-training-items": {
                     const projectedTrainingRanks = await applyTrainingDraft(prepared.actor, prepared.draft, prepared.steps, {
                         persistActorUpdate: false,
-                        validSkillSlugs: prepared.validSkillSlugs,
-                        mode: hasDraftRecoveryState(prepared.draft) ? "recovery" : "editing",
+                        preparedSkillProgression: prepared.skillProgression,
+                        requiredBeforeSkillGrants: prepared.requiredBeforeSkillGrants,
+                        skillPhaseGrants: prepared.skillPhaseGrants,
                     });
                     Object.assign(prepared.deferredActorUpdate, buildTrainingActorUpdate(prepared.actor, projectedTrainingRanks));
                     break;
@@ -874,9 +909,11 @@ function assertAcquisitionAuthority(actor, draft, assertApplyAuthority) {
 }
 async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps) {
     const refs = collectSourceRefs(actor, draft, steps, activeSelections);
+    const activeMaterializedSourceUuids = new Set(activeSelections.map((selection) => selection.uuid));
     const sourcesByKey = new Map();
     const sourcesByUuid = new Map();
     const documentsByUuid = new Map();
+    const skillSources = [];
     const expectedSelections = [];
     const nonMaterializedSelectionKeys = new Set(steps.flatMap((step) => {
         const selection = step.kind === "pick-item" && step.flagChoice ? draft.selections[step.slotId] : null;
@@ -904,15 +941,18 @@ async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps)
         const document = await deps.fetchSelectionDocument(selection);
         const existingSource = existing ? snapshotActorItemSource(existing) : null;
         const resolvedSource = await deps.createEmbeddedSource(selection, draft, steps);
-        const source = resolvedSource ?? existingSource;
+        const isActiveMaterializedSource = activeMaterializedSourceUuids.has(selection.uuid);
+        const source = isActiveMaterializedSource ? resolvedSource : (existingSource ?? resolvedSource);
         if (!source) {
             throw new Error(`Cannot prepare ${selection.name}: source document ${selection.uuid} could not be resolved.`);
         }
         sourcesByKey.set(sourceCatalogKey(selection), cloneData(source));
         if (!sourcesByUuid.has(selection.uuid))
             sourcesByUuid.set(selection.uuid, cloneData(source));
+        skillSources.push({ selection: cloneData(selection), source: cloneData(source) });
         if (!documentsByUuid.has(selection.uuid)) {
-            documentsByUuid.set(selection.uuid, cloneData(existingSource ?? document?.toObject() ?? source));
+            const targetSource = isActiveMaterializedSource ? source : (existingSource ?? document?.toObject() ?? source);
+            documentsByUuid.set(selection.uuid, cloneData(targetSource));
         }
         for (const grant of readManualSystemItemGrants(source)) {
             pending.push(selectionFromSystemGrant(grant));
@@ -956,6 +996,7 @@ async function prepareSourceCatalog(actor, draft, steps, activeSelections, deps)
         },
         fetchSelectionDocument: fetchFromCatalog,
         expectedSelections,
+        skillSources: Object.freeze(skillSources.map((entry) => Object.freeze({ selection: cloneData(entry.selection), source: cloneData(entry.source) }))),
     };
 }
 function sourceCatalogKey(selection) {
@@ -987,6 +1028,16 @@ function collectSourceRefs(actor, draft, steps, activeSelections) {
         refs.set(`${selection.uuid}#${selection.slotId}`, selection);
     };
     activeSelections.forEach(add);
+    const selectedFoundationTypes = new Set(activeSelections
+        .filter((selection) => ["ancestry", "heritage", "background", "class"].includes(selection.itemType))
+        .map((selection) => selection.itemType));
+    for (const item of listActorItems(actor)) {
+        if (selectedFoundationTypes.has(item.type ?? ""))
+            continue;
+        const foundationSelection = selectionFromActorFoundation(item);
+        if (foundationSelection)
+            add(foundationSelection);
+    }
     const activeSlotIds = new Set(steps.map((step) => step.slotId));
     Object.values(draft.branchSelections)
         .filter((selection) => activeSlotIds.has(selection.slotId))
@@ -1016,6 +1067,16 @@ function collectSourceRefs(actor, draft, steps, activeSelections) {
         }
         else if (step.kind === "singleton-choice" && step.singletonChoice && draft.singletonChoices[step.slotId]) {
             add(sourceSelection(step.slotId, step.singletonChoice));
+        }
+        else if (step.kind === "skill-training") {
+            const training = draft.skillTrainings[step.slotId];
+            if (!training)
+                continue;
+            for (const choice of step.training.choiceRules) {
+                if (training.ruleChoices[choice.key] && choice.persistence) {
+                    add(sourceSelection(step.slotId, choice.persistence));
+                }
+            }
         }
         else if (step.kind === "pick-item" && step.flagChoice && draft.selections[step.slotId]) {
             add(sourceSelection(step.slotId, step.flagChoice));
@@ -1050,23 +1111,42 @@ function collectSourceRefs(actor, draft, steps, activeSelections) {
     }
     return refs;
 }
-async function validatePersistenceTargets(actor, draft, steps, deps) {
+function selectionFromActorFoundation(item) {
+    const itemType = item.type ?? "";
+    if (!["ancestry", "heritage", "background", "class"].includes(itemType))
+        return null;
+    const sourceUuid = sourceIdOf(item);
+    const match = sourceUuid ? /^Compendium\.(.+)\.Item\.([^.]+)$/u.exec(sourceUuid) : null;
+    if (!sourceUuid || !match)
+        return null;
+    return {
+        slotId: `${itemType}-level-1`,
+        packId: match[1],
+        documentId: match[2],
+        uuid: sourceUuid,
+        itemType,
+        featType: null,
+        name: typeof item.name === "string" && item.name.length > 0 ? item.name : sourceUuid,
+        level: 1,
+    };
+}
+async function validatePersistenceTargets(actor, draft, steps, sources) {
     const activeProfile = activeClassArchetypeProfile(draft, listActorItems(actor));
     for (const internalChoice of activeProfile?.internalClassFeatureChoices ?? []) {
-        await validateRuleTarget(actor, {
+        await validateRuleTarget({
             ...internalChoice.selection,
             slotId: `class-archetype-internal-${internalChoice.selection.slug ?? internalChoice.selection.documentId}`,
-        }, { sourceRuleIndex: internalChoice.sourceRuleIndex, flag: internalChoice.flag }, deps);
+        }, { sourceRuleIndex: internalChoice.sourceRuleIndex, flag: internalChoice.flag }, sources);
     }
     for (const step of steps) {
         if (step.kind === "singleton-choice" && step.singletonChoice && draft.singletonChoices[step.slotId]) {
-            await validateRuleTarget(actor, sourceSelection(step.slotId, step.singletonChoice), step.singletonChoice, deps);
+            await validateRuleTarget(sourceSelection(step.slotId, step.singletonChoice), step.singletonChoice, sources);
         }
         if (step.kind === "class-choice" && step.classChoice && draft.classChoices[step.slotId]) {
-            await validateRuleTarget(actor, sourceSelection(step.slotId, step.classChoice), step.classChoice, deps);
+            await validateRuleTarget(sourceSelection(step.slotId, step.classChoice), step.classChoice, sources);
         }
         if (step.kind === "pick-item" && step.flagChoice && draft.selections[step.slotId]) {
-            await validateRuleTarget(actor, sourceSelection(step.slotId, step.flagChoice), step.flagChoice, deps);
+            await validateRuleTarget(sourceSelection(step.slotId, step.flagChoice), step.flagChoice, sources);
         }
         if (step.kind === "skill-training" && step.training) {
             const training = draft.skillTrainings[step.slotId];
@@ -1074,21 +1154,20 @@ async function validatePersistenceTargets(actor, draft, steps, deps) {
                 continue;
             for (const choice of step.training.choiceRules) {
                 if (training.ruleChoices[choice.key] && choice.persistence) {
-                    await validateRuleTarget(actor, sourceSelection(step.slotId, choice.persistence), { sourceRuleIndex: choice.persistence.sourceRuleIndex, flag: choice.flag }, deps);
+                    await validateRuleTarget(sourceSelection(step.slotId, choice.persistence), { sourceRuleIndex: choice.persistence.sourceRuleIndex, flag: choice.flag }, sources);
                 }
             }
             for (const choice of step.training.loreChoices) {
                 if (training.loreChoices[choice.key] && choice.persistence) {
-                    await validateRuleTarget(actor, sourceSelection(step.slotId, choice.persistence), { sourceRuleIndex: choice.persistence.sourceRuleIndex, flag: choice.flag }, deps);
+                    await validateRuleTarget(sourceSelection(step.slotId, choice.persistence), { sourceRuleIndex: choice.persistence.sourceRuleIndex, flag: choice.flag }, sources);
                 }
             }
         }
     }
 }
-async function validateRuleTarget(actor, selection, target, deps) {
-    const actorItem = listActorItems(actor).find((item) => itemMatchesSourceId(item, selection.uuid));
-    const document = actorItem ? null : await deps.fetchSelectionDocument(selection);
-    const source = actorItem ?? document?.toObject();
+async function validateRuleTarget(selection, target, sources) {
+    const document = await sources.fetchSelectionDocument(selection);
+    const source = document?.toObject();
     const rules = Array.isArray(source?.system?.rules) ? source.system.rules : [];
     const rule = rules[target.sourceRuleIndex];
     if (!rule ||

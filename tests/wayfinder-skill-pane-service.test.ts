@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
 import type { PendingStep, SkillTrainingDraft } from "../src/types";
-import { buildSkillPane, projectSkillRanks } from "../src/wayfinder/application/build-skill-pane-service";
+import {
+  buildSkillPane,
+  compileSkillPaneProgression,
+  projectSkillRanks,
+} from "../src/wayfinder/application/build-skill-pane-service";
 
 describe("wayfinder skill pane service", () => {
   it("projects fixed skills and prior draft choices before the active slot", async () => {
@@ -122,6 +126,81 @@ describe("wayfinder skill pane service", () => {
     } finally {
       globals.CONFIG = originalConfig;
     }
+  });
+
+  it("binds static foundation grants to exact source identities for Apply", async () => {
+    const draft = createEmptyDraft(3);
+    draft.selections["class-level-1"] = {
+      slotId: "class-level-1",
+      packId: "pf2e.classes",
+      documentId: "fighter",
+      uuid: "Compendium.pf2e.classes.Item.fighter",
+      itemType: "class",
+      featType: null,
+      name: "Fighter",
+      level: 1,
+    };
+
+    const progression = await compileSkillPaneProgression(draft, {
+      baseSkillRanks: { deception: 0, society: 0 },
+      steps: [
+        {
+          id: "class-level-1",
+          level: 1,
+          kind: "pick-item",
+          slotKind: "class",
+          title: "Choose a class",
+          description: "",
+          required: true,
+          slotId: "class-level-1",
+          filters: { itemType: "class" },
+        },
+      ],
+      validSkillSlugs: new Set(["deception", "society"]),
+      resolveDocument: async (itemType) => {
+        if (itemType === "class") {
+          return {
+            system: {
+              trainedSkills: { value: ["society"] },
+              rules: [
+                {
+                  key: "ActiveEffectLike",
+                  path: "system.skills.deception.rank",
+                  value: 1,
+                },
+              ],
+            },
+          };
+        }
+        if (itemType === "background") {
+          return {
+            flags: { core: { sourceId: "Compendium.pf2e.backgrounds.Item.detective" } },
+            system: { trainedSkills: { value: ["society"] } },
+          };
+        }
+        return null;
+      },
+      localize: (value) => value,
+    });
+
+    expect(progression.sourceGrants).toEqual([
+      {
+        slug: "society",
+        rank: 1,
+        sourceId: "Compendium.pf2e.backgrounds.Item.detective",
+      },
+      {
+        slug: "deception",
+        rank: 1,
+        sourceId: "Compendium.pf2e.classes.Item.fighter",
+      },
+      {
+        slug: "society",
+        rank: 1,
+        sourceId: "Compendium.pf2e.classes.Item.fighter",
+      },
+    ]);
+    expect(progression.ranksBeforeSteps).toEqual({ deception: 1, society: 1 });
   });
 
   it("projects level-1 draft training into a level-3 skill increase", async () => {

@@ -411,7 +411,12 @@ describe("wayfinder option context service", () => {
       ],
       skillRanks: { crafting: 0 },
       resolveDocument: async (itemType) =>
-        itemType === "background" ? { system: { trainedSkills: { value: ["crafting"] } } } : null,
+        itemType === "background"
+          ? {
+              flags: { core: { sourceId: "Compendium.pf2e.backgrounds.Item.artisan" } },
+              system: { trainedSkills: { value: ["crafting"] } },
+            }
+          : null,
       listActorItems: () => [],
       fetchSelectionDocument: async () => null,
       extractDocumentSlug: () => null,

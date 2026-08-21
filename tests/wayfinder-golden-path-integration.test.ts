@@ -20,6 +20,11 @@ function applyDraftToActor(
     validateActorAuthority: TEST_ACTOR_AUTHORITY,
     spellRarityCeiling: "common",
     validateSelectionEligibility: () => true,
+    onCheckpoint: (checkpoint) => {
+      if (checkpoint.checkpointId === "phase:skill-training-items:before") {
+        prepareActorSkillRanksFromItems(actor as ReturnType<typeof buildActorHarness>["actor"]);
+      }
+    },
   });
 }
 
@@ -581,6 +586,41 @@ function primeActorSystem(actor: ReturnType<typeof buildActorHarness>["actor"]):
   flags[MODULE_ID] = {
     state: { completedStepIds: ["starting-equipment-level-1"] },
   };
+}
+
+function prepareActorSkillRanksFromItems(actor: ReturnType<typeof buildActorHarness>["actor"]): void {
+  const skills = (actor.system.skills ??= {});
+  for (const item of actor.items.contents) {
+    const trainedSkills = (item.system as { trainedSkills?: { value?: unknown } } | undefined)?.trainedSkills?.value;
+    if (Array.isArray(trainedSkills)) {
+      for (const slug of trainedSkills) {
+        if (typeof slug === "string") skills[slug] = { rank: Math.max(Number(skills[slug]?.rank ?? 0), 1) };
+      }
+    }
+    for (const rule of Array.isArray(item.system?.rules) ? item.system.rules : []) {
+      if (!rule || typeof rule !== "object" || rule.key !== "ActiveEffectLike" || typeof rule.path !== "string") {
+        continue;
+      }
+      const direct = /^system\.skills\.([a-z][a-z0-9-]*)\.rank$/iu.exec(rule.path);
+      const selected = /^system\.skills\.\{item\|flags\.(?:pf2e|system)\.rulesSelections\.([^}]+)\}\.rank$/iu.exec(
+        rule.path
+      );
+      const itemFlags = item.flags as
+        | {
+            pf2e?: { rulesSelections?: Record<string, unknown> };
+            system?: { rulesSelections?: Record<string, unknown> };
+          }
+        | undefined;
+      const selections = itemFlags?.pf2e?.rulesSelections ?? itemFlags?.system?.rulesSelections ?? {};
+      const selectionFlag = selected?.[1];
+      const selectedSlug = selectionFlag ? selections[selectionFlag] : null;
+      const slug = direct?.[1] ?? (typeof selectedSlug === "string" ? selectedSlug : null);
+      const rank = Number(rule.value ?? 0);
+      if (slug && Number.isFinite(rank)) {
+        skills[slug] = { rank: Math.max(Number(skills[slug]?.rank ?? 0), Math.floor(rank)) };
+      }
+    }
+  }
 }
 
 function readPreparedIds(

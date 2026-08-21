@@ -1,8 +1,10 @@
 import { SKILL_LABELS } from "../../constants.js";
 import { resolveSingletonChoiceSkillGrant } from "../../shared/singleton-choice-skill-grants.js";
 import { extractDocumentSlug } from "../../shared/slug.js";
+import { sourceIdOf } from "../../shared/source-id.js";
 import { compileSkillProgression } from "../domain/skill-progression.js";
 import { buildAdditionalTrainingSkillsBySlotId, projectDraftSkillRanks } from "../domain/skill-rank-projection.js";
+import { projectStaticSkillSourceGrants } from "../domain/static-skill-source-grants.js";
 import { formatSlug } from "../formatting.js";
 import { buildSkillIncreasePane, buildSkillTrainingPane } from "../panes/skill-pane.js";
 import { discoverSingletonChoiceSpecs } from "../singleton-choice/rule-discovery.js";
@@ -59,22 +61,51 @@ export async function compileSkillPaneProgression(draft, deps) {
         deps.resolveDocument("background"),
         deps.resolveDocument("class"),
     ]);
+    const sourceDocuments = [
+        { itemType: "background", document: backgroundDocument },
+        { itemType: "ancestry", document: ancestryDocument },
+        { itemType: "heritage", document: heritageDocument },
+        { itemType: "class", document: classDocument },
+    ];
+    const activeSlotIds = new Set((deps.steps ?? []).map((step) => step.slotId));
+    const activeFoundationSourceIds = new Map(Object.values(draft.selections)
+        .filter((selection) => activeSlotIds.has(selection.slotId) && isSkillDocumentType(selection.itemType))
+        .map((selection) => [selection.itemType, selection.uuid]));
+    const acceptedSkillSlugs = deps.validSkillSlugs ?? validSkillSlugs(deps.baseSkillRanks, null);
     const sourceGrants = [
-        ...[backgroundDocument, ancestryDocument, heritageDocument, classDocument].flatMap((document) => extractFixedTrainedSkills(document).map((slug) => ({ slug, rank: 1 }))),
+        ...sourceDocuments.flatMap(({ itemType, document }) => {
+            const sourceId = resolveFoundationSourceId(activeFoundationSourceIds, itemType, document);
+            return sourceId
+                ? projectStaticSkillSourceGrants({ document, sourceId, validSkillSlugs: acceptedSkillSlugs })
+                : [];
+        }),
         ...extractDraftedSingletonSkillChoices(draft, [
             { sourceItemType: "ancestry", document: ancestryDocument },
             { sourceItemType: "heritage", document: heritageDocument },
             { sourceItemType: "background", document: backgroundDocument },
-        ], deps.localize),
+        ], deps.localize, activeFoundationSourceIds),
     ];
     return compileSkillProgression({
         baselineRanks: deps.baseSkillRanks,
         draft,
         steps: deps.steps ?? [],
         sourceGrants,
-        validSkillSlugs: deps.validSkillSlugs ?? validSkillSlugs(deps.baseSkillRanks, null),
+        validSkillSlugs: acceptedSkillSlugs,
         mode: deps.mode ?? "editing",
     });
+}
+function resolveFoundationSourceId(activeFoundationSourceIds, itemType, document) {
+    const selectedSourceId = activeFoundationSourceIds.get(itemType);
+    if (selectedSourceId)
+        return selectedSourceId;
+    const embeddedSourceId = sourceIdOf(document);
+    if (embeddedSourceId)
+        return embeddedSourceId;
+    const documentUuid = document?.uuid;
+    return typeof documentUuid === "string" && documentUuid.startsWith("Compendium.") ? documentUuid : null;
+}
+function isSkillDocumentType(itemType) {
+    return itemType === "ancestry" || itemType === "heritage" || itemType === "background" || itemType === "class";
 }
 function validSkillSlugs(baseSkillRanks, configSkills) {
     return new Set([...Object.keys(SKILL_LABELS), ...Object.keys(baseSkillRanks), ...Object.keys(configSkills ?? {})]);
@@ -88,14 +119,15 @@ function extractFixedTrainedSkills(document) {
         .filter((entry) => typeof entry === "string" && entry.length > 0)
         .map((entry) => entry.trim().toLowerCase());
 }
-function extractDraftedSingletonSkillChoices(draft, sources, localize) {
+function extractDraftedSingletonSkillChoices(draft, sources, localize, activeFoundationSourceIds) {
     return sources.flatMap(({ sourceItemType, document }) => {
         const sourceSlug = extractDocumentSlug(document);
         const sourceRules = document?.system?.rules;
         if (!document || !sourceSlug) {
             return [];
         }
-        const sourceUuid = Object.values(draft.selections).find((selection) => selection.itemType === sourceItemType)?.uuid ??
+        const sourceUuid = activeFoundationSourceIds.get(sourceItemType) ??
+            sourceIdOf(document) ??
             (typeof document.uuid === "string"
                 ? document.uuid
                 : undefined);
@@ -104,6 +136,7 @@ function extractDraftedSingletonSkillChoices(draft, sources, localize) {
             sourceDocument: document,
             sourceSlug,
             localize,
+            includeTrainingChoices: true,
         }).flatMap((choice) => {
             const selection = draft.singletonChoices[choice.slotId] ?? null;
             if (!selection || !choice.options.some((option) => option.value === selection)) {

@@ -16,6 +16,7 @@ import { createEmptyDraft } from "../src/draft-service";
 import type { ActorItemLike, EmbeddedItemSource } from "../src/shared/actor-model";
 import { enqueueActorOperation } from "../src/shared/actor-operation-queue";
 import type { PendingStep, SpellChoiceStep } from "../src/types";
+import { compileSkillPaneProgression } from "../src/wayfinder/application/build-skill-pane-service";
 import {
   capturePersistedDraftPrecondition,
   evaluatePersistedDraftWriteGuardHook,
@@ -856,6 +857,540 @@ describe("prepared draft application", () => {
     expect(actor.update).not.toHaveBeenCalled();
   });
 
+  it("applies the prepared progression after PF2E prepares drafted class training into actor skill ranks", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = {
+      ...actor.system,
+      skills: { athletics: { rank: 0 }, crafting: { rank: 0 }, religion: { rank: 0 } },
+    };
+    const draft = createEmptyDraft(1);
+    const classStep = classSelectionStep();
+    draft.selections[classStep.slotId] = selection(classStep.slotId, "pf2e.classes", "fighter", "class", "Fighter");
+    setGamePacks({
+      "pf2e.classes": {
+        fighter: {
+          name: "Fighter",
+          type: "class",
+          system: {
+            trainedSkills: { value: ["religion"] },
+            rules: [
+              { key: "ChoiceSet", flag: "fighterSkill", choices: { config: "skills" } },
+              {
+                key: "ActiveEffectLike",
+                path: "system.skills.{item|flags.pf2e.rulesSelections.fighterSkill}.rank",
+                value: 1,
+              },
+            ],
+          },
+        },
+      },
+    });
+    const training = necromancerTrainingStep();
+    if (training.kind !== "skill-training") throw new Error("Expected skill training");
+    training.training.fixedSkills = ["religion"];
+    training.training.choiceRules = [
+      {
+        key: "class:fighter:fighterSkill",
+        flag: "fighterSkill",
+        prompt: "Choose a skill",
+        sourceLabel: "Fighter",
+        options: [{ slug: "athletics", label: "Athletics" }],
+        persistence: {
+          sourceItemType: "class",
+          sourcePackId: "pf2e.classes",
+          sourceDocumentId: "fighter",
+          sourceUuid: "Compendium.pf2e.classes.Item.fighter",
+          sourceRuleIndex: 0,
+        },
+      },
+    ];
+    training.training.additionalCount = 0;
+    draft.skillTrainings[training.slotId] = {
+      ruleChoices: { "class:fighter:fighterSkill": "athletics" },
+      additional: [],
+      loreChoices: {},
+    };
+    const steps = [classStep, training];
+    const progression = compileSkillProgression({
+      baselineRanks: { athletics: 0, crafting: 0, religion: 0 },
+      draft,
+      steps,
+      sourceGrants: [{ slug: "religion", rank: 1, sourceId: "Compendium.pf2e.classes.Item.fighter" }],
+      validSkillSlugs: new Set(Object.keys(SKILL_LABELS)),
+      mode: "editing",
+    });
+    const incompleteProgression = compileSkillProgression({
+      baselineRanks: { athletics: 0, crafting: 0, religion: 0 },
+      draft,
+      steps,
+      sourceGrants: [],
+      validSkillSlugs: new Set(Object.keys(SKILL_LABELS)),
+      mode: "editing",
+    });
+    await expect(
+      prepareDraftApplication(actor as never, draft, steps, { skillProgression: incompleteProgression })
+    ).rejects.toThrow("compiled skill progression no longer matches the active plan");
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    const missingRequiredGrant = await prepareDraftApplication(actor as never, draft, steps, {
+      skillProgression: progression,
+    });
+
+    await expect(
+      executePreparedDraftApplication(missingRequiredGrant, {
+        onCheckpoint: atPhaseStart((phase) => {
+          if (phase === "skill-training-items") actor.system.skills.athletics.rank = 1;
+        }),
+      })
+    ).rejects.toMatchObject({
+      phase: "skill-training-items",
+      cause: expect.objectContaining({
+        message: "Skill progression changed during Apply; reopen Wayfinder and review the affected choices.",
+      }),
+    });
+    actor.system.skills.athletics.rank = 0;
+
+    const missingPreparedChoiceGrant = await prepareDraftApplication(actor as never, draft, steps, {
+      skillProgression: progression,
+    });
+    await expect(
+      executePreparedDraftApplication(missingPreparedChoiceGrant, {
+        onCheckpoint: atPhaseStart((phase) => {
+          if (phase === "skill-training-items") actor.system.skills.religion.rank = 1;
+        }),
+      })
+    ).rejects.toMatchObject({
+      phase: "skill-training-items",
+      cause: expect.objectContaining({
+        message: "Skill progression changed during Apply; reopen Wayfinder and review the affected choices.",
+      }),
+    });
+    actor.system.skills.religion.rank = 0;
+
+    const prepared = await prepareDraftApplication(actor as never, draft, steps, {
+      skillProgression: progression,
+    });
+
+    await executePreparedDraftApplication(prepared, {
+      onCheckpoint: atPhaseStart((phase) => {
+        if (phase === "skill-training-items") {
+          // PF2E prepares a newly embedded class item's drafted trainedSkills choices
+          // into system.skills before Wayfinder reaches its skill mutation phase.
+          actor.system.skills.athletics.rank = 1;
+          actor.system.skills.religion.rank = 1;
+        }
+      }),
+    });
+
+    expect(prepared.skillProgression.inputFingerprint).toBe(progression.inputFingerprint);
+    expect(actor.system.skills.athletics.rank).toBe(1);
+    expect(actor.system.skills.religion.rank).toBe(1);
+  });
+
+  it("includes direct foundation rank rules in canonical progression before accepting drafted training", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { deception: { rank: 0 } } };
+    const draft = createEmptyDraft(1);
+    const classStep = classSelectionStep();
+    draft.selections[classStep.slotId] = selection(
+      classStep.slotId,
+      "pf2e.classes",
+      "direct-skill-class",
+      "class",
+      "Direct Skill Class"
+    );
+    setGamePacks({
+      "pf2e.classes": {
+        "direct-skill-class": {
+          name: "Direct Skill Class",
+          type: "class",
+          system: {
+            rules: [
+              {
+                key: "ActiveEffectLike",
+                path: "system.skills.deception.rank",
+                value: 1,
+              },
+            ],
+          },
+        },
+      },
+    });
+    const training = necromancerTrainingStep();
+    if (training.kind !== "skill-training") throw new Error("Expected skill training");
+    training.training.choiceRules = [];
+    training.training.additionalCount = 1;
+    draft.skillTrainings[training.slotId] = {
+      ruleChoices: {},
+      additional: ["deception"],
+      loreChoices: {},
+    };
+
+    await expect(prepareDraftApplication(actor as never, draft, [classStep, training])).rejects.toThrow(
+      "Fighter skill training changed after this draft was prepared"
+    );
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("preserves same-skill foundation grants as distinct source evidence", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { society: { rank: 0 } } };
+    const draft = createEmptyDraft(3);
+    const classStep = classSelectionStep();
+    const backgroundStep = backgroundSelectionStep();
+    draft.selections[classStep.slotId] = selection(
+      classStep.slotId,
+      "pf2e.classes",
+      "society-class",
+      "class",
+      "Society Class"
+    );
+    draft.selections[backgroundStep.slotId] = selection(
+      backgroundStep.slotId,
+      "pf2e.backgrounds",
+      "society-background",
+      "background",
+      "Society Background"
+    );
+    draft.skillIncreases["skill-increase-level-3"] = "society";
+    setGamePacks({
+      "pf2e.classes": {
+        "society-class": {
+          name: "Society Class",
+          type: "class",
+          system: { trainedSkills: { value: ["society"] } },
+        },
+      },
+      "pf2e.backgrounds": {
+        "society-background": {
+          name: "Society Background",
+          type: "background",
+          system: { trainedSkills: { value: ["society"] } },
+        },
+      },
+    });
+    const steps = [classStep, backgroundStep, skillIncreaseStep(3)];
+    const incompleteProgression = compileSkillProgression({
+      baselineRanks: { society: 0 },
+      draft,
+      steps,
+      sourceGrants: [
+        {
+          slug: "society",
+          rank: 1,
+          sourceId: "Compendium.pf2e.classes.Item.society-class",
+        },
+      ],
+      validSkillSlugs: new Set(Object.keys(SKILL_LABELS)),
+      mode: "editing",
+    });
+
+    await expect(
+      prepareDraftApplication(actor as never, draft, steps, { skillProgression: incompleteProgression })
+    ).rejects.toThrow("compiled skill progression no longer matches the active plan");
+    const prepared = await prepareDraftApplication(actor as never, draft, steps);
+    expect(prepared.skillProgression.sourceGrants).toEqual([
+      {
+        slug: "society",
+        rank: 1,
+        sourceId: "Compendium.pf2e.backgrounds.Item.society-background",
+      },
+      {
+        slug: "society",
+        rank: 1,
+        sourceId: "Compendium.pf2e.classes.Item.society-class",
+      },
+    ]);
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("validates a same-UUID draft replacement against the prepared replacement source", async () => {
+    const actorSourceUuid = "Compendium.pf2e.classes.Item.fighter";
+    const { actor } = buildActorHarness({
+      items: [
+        {
+          id: "existing-fighter",
+          type: "class",
+          name: "Fighter",
+          flags: { core: { sourceId: actorSourceUuid } },
+          system: { rules: [{ key: "ChoiceSet", flag: "obsoleteSkill" }] },
+        },
+      ],
+    });
+    const { draft, steps } = classReplacementSkillChoiceScenario();
+    setGamePacks({
+      "pf2e.classes": {
+        fighter: {
+          name: "Fighter",
+          type: "class",
+          system: { rules: [{ key: "ChoiceSet", flag: "fighterSkill" }] },
+        },
+      },
+    });
+
+    await expect(prepareDraftApplication(actor as never, draft, steps)).resolves.toBeDefined();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("rejects a same-UUID draft replacement when only the retained actor source matches", async () => {
+    const actorSourceUuid = "Compendium.pf2e.classes.Item.fighter";
+    const { actor } = buildActorHarness({
+      items: [
+        {
+          id: "existing-fighter",
+          type: "class",
+          name: "Fighter",
+          flags: { core: { sourceId: actorSourceUuid } },
+          system: { rules: [{ key: "ChoiceSet", flag: "fighterSkill" }] },
+        },
+      ],
+    });
+    const { draft, steps } = classReplacementSkillChoiceScenario();
+    setGamePacks({
+      "pf2e.classes": {
+        fighter: {
+          name: "Fighter",
+          type: "class",
+          system: { rules: [{ key: "ChoiceSet", flag: "replacementDrift" }] },
+        },
+      },
+    });
+
+    await expect(prepareDraftApplication(actor as never, draft, steps)).rejects.toThrow(
+      "Cannot persist fighterSkill: expected PF2E ChoiceSet rule 0"
+    );
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to a retained same-UUID actor source when replacement hydration fails", async () => {
+    const actorSourceUuid = "Compendium.pf2e.classes.Item.fighter";
+    const { actor } = buildActorHarness({
+      items: [
+        {
+          id: "existing-fighter",
+          type: "class",
+          name: "Fighter",
+          flags: { core: { sourceId: actorSourceUuid } },
+          system: { rules: [{ key: "ChoiceSet", flag: "fighterSkill" }] },
+        },
+      ],
+    });
+    const { draft, steps } = classReplacementSkillChoiceScenario();
+    setGamePacks({});
+
+    await expect(prepareDraftApplication(actor as never, draft, steps)).rejects.toThrow(
+      "source document Compendium.pf2e.classes.Item.fighter could not be resolved"
+    );
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
+  it("keeps retained actor source authority distinct when no replacement is active", async () => {
+    const actorSourceUuid = "Compendium.pf2e.classes.Item.fighter";
+    const { actor } = buildActorHarness({
+      items: [
+        {
+          id: "existing-fighter",
+          type: "class",
+          name: "Fighter",
+          flags: { core: { sourceId: actorSourceUuid } },
+          system: {
+            rules: [
+              { key: "ChoiceSet", flag: "fighterSkill" },
+              {
+                key: "ActiveEffectLike",
+                path: "system.skills.{item|flags.pf2e.rulesSelections.fighterSkill}.rank",
+                value: 1,
+              },
+            ],
+          },
+        },
+      ],
+    });
+    actor.system = { ...actor.system, skills: { occultism: { rank: 0 } } };
+    const { draft, steps } = classReplacementSkillChoiceScenario();
+    delete draft.selections["class-level-1"];
+    steps.shift();
+    setGamePacks({
+      "pf2e.classes": {
+        fighter: {
+          name: "Fighter",
+          type: "class",
+          system: { rules: [{ key: "ChoiceSet", flag: "replacementDrift" }] },
+        },
+      },
+    });
+
+    const prepared = await prepareDraftApplication(actor as never, draft, steps);
+    await executePreparedDraftApplication(prepared);
+
+    expect(actor.system.skills.occultism.rank).toBe(1);
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("does not let an inactive stale foundation selection suppress the retained actor source", async () => {
+    const retainedSourceUuid = "Compendium.pf2e.classes.Item.fighter";
+    const { actor } = buildActorHarness({
+      items: [
+        {
+          id: "existing-fighter",
+          type: "class",
+          name: "Fighter",
+          flags: { core: { sourceId: retainedSourceUuid } },
+          system: { trainedSkills: { value: ["religion"] } },
+        },
+      ],
+    });
+    actor.system = { ...actor.system, skills: { religion: { rank: 0 } } };
+    const draft = createEmptyDraft(3);
+    draft.selections["class-level-1"] = selection(
+      "class-level-1",
+      "pf2e.classes",
+      "stale-wizard",
+      "class",
+      "Stale Wizard"
+    );
+    draft.skillIncreases["skill-increase-level-3"] = "religion";
+    const steps = [skillIncreaseStep(3)];
+    const paneProgression = await compileSkillPaneProgression(draft, {
+      baseSkillRanks: { religion: 0 },
+      steps,
+      validSkillSlugs: new Set(Object.keys(SKILL_LABELS)),
+      resolveDocument: async (itemType) => (itemType === "class" ? (actor.items.contents[0] as unknown) : null),
+      localize: (value) => value,
+    });
+
+    const prepared = await prepareDraftApplication(actor as never, draft, steps, {
+      skillProgression: paneProgression,
+    });
+
+    expect(prepared.skillProgression.sourceGrants).toContainEqual({
+      slug: "religion",
+      rank: 1,
+      sourceId: retainedSourceUuid,
+    });
+    expect(prepared.skillProgression.inputFingerprint).toBe(paneProgression.inputFingerprint);
+    expect(prepared.skillProgression.finalRanks.religion).toBe(2);
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("keeps retained embedded singleton provenance identical between pane and Apply", async () => {
+    const sourceUuid = "Compendium.pf2e.heritages.Item.skilled-human";
+    const retainedHeritage = {
+      id: "heritage-1",
+      uuid: "Actor.actor-1.Item.heritage-1",
+      type: "heritage",
+      name: "Skilled Human",
+      flags: { core: { sourceId: sourceUuid } },
+      system: {
+        slug: "skilled-human",
+        rules: [
+          { key: "ChoiceSet", flag: "trainedSkill", choices: [{ value: "arcana", label: "Arcana" }] },
+          {
+            key: "ActiveEffectLike",
+            path: "system.skills.{item|flags.pf2e.rulesSelections.trainedSkill}.rank",
+            value: 1,
+          },
+        ],
+      },
+    };
+    const { actor } = buildActorHarness({ items: [retainedHeritage] });
+    actor.system = { ...actor.system, skills: { arcana: { rank: 0 } } };
+    const draft = createEmptyDraft(3);
+    const singletonStep = retainedHeritageSingletonSkillStep();
+    draft.singletonChoices[singletonStep.slotId] = "arcana";
+    draft.skillIncreases["skill-increase-level-3"] = "arcana";
+    const steps = [singletonStep, skillIncreaseStep(3)];
+    const paneProgression = await compileSkillPaneProgression(draft, {
+      baseSkillRanks: { arcana: 0 },
+      steps,
+      validSkillSlugs: new Set(Object.keys(SKILL_LABELS)),
+      resolveDocument: async (itemType) => (itemType === "heritage" ? retainedHeritage : null),
+      localize: (value) => value,
+    });
+
+    const canonical = await prepareDraftApplication(actor as never, draft, steps);
+    expect(paneProgression.sourceGrants).toEqual(canonical.skillProgression.sourceGrants);
+    expect(paneProgression.validSkillSlugs).toEqual(canonical.skillProgression.validSkillSlugs);
+    expect(paneProgression.baselineRanks).toEqual(canonical.skillProgression.baselineRanks);
+    const prepared = await prepareDraftApplication(actor as never, draft, steps, {
+      skillProgression: paneProgression,
+    });
+
+    expect(paneProgression.sourceGrants).toContainEqual({ slug: "arcana", rank: 1, sourceId: sourceUuid });
+    expect(prepared.skillProgression.inputFingerprint).toBe(paneProgression.inputFingerprint);
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("rejects active skill input drift after preparation even when PF2E actor ranks also prepare", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { athletics: { rank: 0 }, crafting: { rank: 0 } } };
+    const draft = createEmptyDraft(1);
+    const training = necromancerTrainingStep();
+    if (training.kind !== "skill-training") throw new Error("Expected skill training");
+    training.training.choiceRules = [];
+    training.training.additionalCount = 1;
+    draft.skillTrainings[training.slotId] = {
+      ruleChoices: {},
+      additional: ["athletics"],
+      loreChoices: {},
+    };
+    const progression = compileSkillProgression({
+      baselineRanks: { athletics: 0, crafting: 0 },
+      draft,
+      steps: [training],
+      validSkillSlugs: new Set(Object.keys(SKILL_LABELS)),
+      mode: "editing",
+    });
+    const prepared = await prepareDraftApplication(actor as never, draft, [training], {
+      skillProgression: progression,
+    });
+    prepared.draft.skillTrainings[training.slotId] = {
+      ruleChoices: {},
+      additional: ["crafting"],
+      loreChoices: {},
+    };
+    actor.system.skills.athletics.rank = 1;
+
+    await expect(executePreparedDraftApplication(prepared)).rejects.toMatchObject({
+      phase: "skill-training-items",
+      cause: expect.objectContaining({
+        message: "Skill progression changed during Apply; reopen Wayfinder and review the affected choices.",
+      }),
+    });
+  });
+
+  it("rejects an unplanned prepared actor rank instead of consuming a skill increase", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { arcana: { rank: 0 } } };
+    const draft = createEmptyDraft(3);
+    const increase = skillIncreaseStep(3);
+    draft.skillIncreases[increase.slotId] = "arcana";
+    const progression = compileSkillProgression({
+      baselineRanks: { arcana: 0 },
+      draft,
+      steps: [increase],
+      validSkillSlugs: new Set(Object.keys(SKILL_LABELS)),
+      mode: "editing",
+    });
+    const prepared = await prepareDraftApplication(actor as never, draft, [increase], {
+      skillProgression: progression,
+    });
+
+    // This can be an external edit, or an omitted selected-source grant that PF2E
+    // exposes only after embedding and preparing the source document.
+    actor.system.skills.arcana.rank = 1;
+
+    await expect(executePreparedDraftApplication(prepared)).rejects.toMatchObject({
+      phase: "skill-training-items",
+      cause: expect.objectContaining({
+        message: "Skill progression changed during Apply; reopen Wayfinder and review the affected choices.",
+      }),
+    });
+    expect(actor.update).not.toHaveBeenCalled();
+  });
+
   it("applies an increase over fixed-only training and creates fixed Lore", async () => {
     const { actor, createdItems } = buildActorHarness();
     actor.system = { ...actor.system, skills: { deception: { rank: 0 } } };
@@ -996,6 +1531,34 @@ describe("prepared draft application", () => {
     );
     expect(actor.update).not.toHaveBeenCalled();
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("fails before writes when a selected skill source cannot be hydrated exactly", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { occultism: { rank: 0 } } };
+    const draft = createEmptyDraft(1);
+    const step = necromancerTrainingStep();
+    if (step.kind !== "skill-training") throw new Error("Expected skill training");
+    const choice = step.training.choiceRules[0];
+    choice.persistence = {
+      sourceItemType: "feat",
+      sourcePackId: "pf2e.feats-srd",
+      sourceDocumentId: "necromancer-dedication",
+      sourceUuid: "Compendium.pf2e.feats-srd.Item.necromancer-dedication",
+      sourceRuleIndex: 0,
+    };
+    draft.skillTrainings[step.slotId] = {
+      ruleChoices: { [choice.key]: "occultism" },
+      additional: ["athletics"],
+      loreChoices: {},
+    };
+
+    await expect(prepareDraftApplication(actor as never, draft, [step])).rejects.toThrow(
+      "source document Compendium.pf2e.feats-srd.Item.necromancer-dedication could not be resolved"
+    );
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    expect(actor.update).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -2603,6 +3166,72 @@ function skillIncreaseStep(level: number): PendingStep {
     description: "",
     required: true,
     slotId,
+  };
+}
+
+function backgroundSelectionStep(): PendingStep {
+  return {
+    id: "background-level-1",
+    level: 1,
+    kind: "pick-item",
+    slotKind: "background",
+    title: "Choose a background",
+    description: "",
+    required: true,
+    slotId: "background-level-1",
+    filters: { itemType: "background" },
+  };
+}
+
+function classReplacementSkillChoiceScenario(): { draft: ReturnType<typeof createEmptyDraft>; steps: PendingStep[] } {
+  const draft = createEmptyDraft(1);
+  const classStep = classSelectionStep();
+  draft.selections[classStep.slotId] = selection(classStep.slotId, "pf2e.classes", "fighter", "class", "Fighter");
+  const training = necromancerTrainingStep();
+  if (training.kind !== "skill-training") throw new Error("Expected skill training");
+  const choice = training.training.choiceRules[0];
+  choice.flag = "fighterSkill";
+  choice.persistence = {
+    sourceItemType: "class",
+    sourcePackId: "pf2e.classes",
+    sourceDocumentId: "fighter",
+    sourceUuid: "Compendium.pf2e.classes.Item.fighter",
+    sourceRuleIndex: 0,
+  };
+  training.training.additionalCount = 0;
+  draft.skillTrainings[training.slotId] = {
+    ruleChoices: { [choice.key]: "occultism" },
+    additional: [],
+    loreChoices: {},
+  };
+  return { draft, steps: [classStep, training] };
+}
+
+function retainedHeritageSingletonSkillStep(): PendingStep {
+  const slotId = "singleton-choice-heritage-skilled-human-trainedSkill-level-1";
+  return {
+    id: slotId,
+    level: 1,
+    kind: "singleton-choice",
+    slotKind: "singleton-choice",
+    title: "Choose a trained skill",
+    description: "",
+    required: true,
+    slotId,
+    singletonChoice: {
+      slotId,
+      sourceItemType: "heritage",
+      sourcePackId: "pf2e.heritages",
+      sourceDocumentId: "skilled-human",
+      sourceUuid: "Compendium.pf2e.heritages.Item.skilled-human",
+      sourceName: "Skilled Human",
+      sourceRuleIndex: 0,
+      flag: "trainedSkill",
+      prompt: "Choose a trained skill",
+      predicate: [],
+      rollOption: null,
+      options: [{ value: "arcana", label: "Arcana", img: null, detail: null }],
+    },
   };
 }
 

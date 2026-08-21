@@ -48,6 +48,7 @@ describe("Foundry smoke lifecycle contract", () => {
     expect(browserSuite).toMatch(
       /const nextPlan = await buildPlan\(actor, draft, modules\);[\s\S]*?modules\.synchronizeDependentSkillTrainingChoices\(\{[\s\S]*?steps: nextPlan\.steps,[\s\S]*?changed = changed \|\| trainingChoicesChanged/u
     );
+    expect(browserSuite.match(/resolveSelectionDocument: modules\.fetchSelectionDocument/g)).toHaveLength(2);
     expect(appShell).toMatch(
       /async #finalizeSelectionCommand[\s\S]*?this\.#statusNote = result\.statusNote;[\s\S]*?await this\.#syncDependentChoicesAfterBuildChange\(\);[\s\S]*?if \(result\.shouldAdvance\)/u
     );

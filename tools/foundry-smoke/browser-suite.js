@@ -3473,6 +3473,7 @@ async function buildCurrentSkillPane(actor, draft, step, modules, planSteps = []
       const selection = draft.selections[`${itemType}-level-1`];
       return selection ? modules.fetchSelectionDocument(selection) : null;
     },
+    resolveSelectionDocument: modules.fetchSelectionDocument,
     configSkills: CONFIG.PF2E?.skills ?? null,
     localize: (value) => game.i18n.localize(value),
     isTrainingStepComplete: () => false,

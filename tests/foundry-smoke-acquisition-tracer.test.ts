@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
 import { prepareAcquisitionIdentityPlan } from "../src/wayfinder/domain/acquisition-identity";
 import {
@@ -21,6 +21,12 @@ import {
 import { createCompletedAcquisitionManifest } from "../src/wayfinder/domain/completed-acquisition-manifest";
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
+import {
+  cleanupAcquisitionFixtures,
+  createAcquisitionDurabilityPage,
+  loadAcquisitionBrowserSuite,
+  reloadAcquisitionBrowserSuite,
+} from "../tools/foundry-smoke/acquisition-browser-lifecycle.mjs";
 import {
   ACQUISITION_CASE_SCHEMA_VERSION,
   acquisitionDefinitionFingerprint,
@@ -489,13 +495,128 @@ describe("Foundry Wave-2 acquisition tracer", () => {
     expect(runner).toContain("__wayfinderAcquisitionSmokeBootstrap");
     expect(runner.match(/browser\.newContext\(/gu)).toHaveLength(3);
     expect(runner.indexOf("await playerContext.close();")).toBeLessThan(
-      runner.indexOf("globalThis.__cleanupWayfinderAcquisitionTracer")
+      runner.indexOf("cleanup = await cleanupAcquisitionFixtures(")
     );
     expect(runner.indexOf("await gmReviewContext.close();")).toBeLessThan(
-      runner.indexOf("globalThis.__cleanupWayfinderAcquisitionTracer")
+      runner.indexOf("cleanup = await cleanupAcquisitionFixtures(")
     );
     expect(runner).toContain("qualifySmokeResult(result, cases)");
     expect(runner).not.toContain("console.error(error)");
+  });
+
+  it("loads the skill-selection policy before the suite in every acquisition browser context", async () => {
+    const calls: string[] = [];
+    const page = {
+      addScriptTag: async ({ path }: { path: string }) => {
+        calls.push(path);
+      },
+    };
+
+    await loadAcquisitionBrowserSuite(page);
+
+    expect(calls.map((scriptPath) => scriptPath.replaceAll("\\", "/").split("/").at(-1))).toEqual([
+      "skill-selection-policy.js",
+      "browser-suite.js",
+    ]);
+    expect(runner).toMatch(
+      /GM setup session ready\."\);\s+await loadAcquisitionBrowserSuite\(setupPage\);\s+equipmentSettingsSnapshot/u
+    );
+    expect(runner).toMatch(
+      /non-GM owner session ready[^;]+;\s+await loadAcquisitionBrowserSuite\(playerPage\);\s+ownerResult/u
+    );
+    expect(runner).toMatch(
+      /GM review session ready[^;]+;\s+await loadAcquisitionBrowserSuite\(gmReviewPage\);\s+gmReviewResult/u
+    );
+    expect(runner).toMatch(
+      /durabilityPage = await createAcquisitionDurabilityPage\(setupContext, foundryUrl\);\s+const durability = await durabilityPage\.evaluate/u
+    );
+    expect(runner).toContain("[setupPage, durabilityPage]");
+    expect(runner).not.toContain(".addScriptTag(");
+  });
+
+  it("reloads to a ready Foundry page before restoring policy-bound acquisition globals", async () => {
+    const calls: string[] = [];
+    const page = {
+      reload: async (options: { waitUntil: string }) => {
+        calls.push(`reload:${options.waitUntil}`);
+      },
+      waitForFunction: async (_predicate: () => boolean, value: unknown, options: { timeout: number }) => {
+        calls.push(`ready:${String(value)}:${options.timeout}`);
+      },
+      addScriptTag: async ({ path }: { path: string }) => {
+        calls.push(`script:${path.replaceAll("\\", "/").split("/").at(-1)}`);
+      },
+    };
+
+    await reloadAcquisitionBrowserSuite(page);
+
+    expect(calls).toEqual([
+      "reload:domcontentloaded",
+      "ready:null:60000",
+      "script:skill-selection-policy.js",
+      "script:browser-suite.js",
+    ]);
+  });
+
+  it("keeps setup cleanup authority when durability bootstrap fails before returning a page", async () => {
+    const cleanupPayload = { runId: "run-id" };
+    const close = vi.fn().mockResolvedValue(undefined);
+    const failedDurabilityPage = {
+      goto: vi.fn().mockResolvedValue(undefined),
+      reload: vi.fn().mockResolvedValue(undefined),
+      waitForFunction: vi.fn().mockResolvedValue(undefined),
+      addScriptTag: vi
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error("Injected browser-suite load failure.")),
+      close,
+    };
+    const context = { newPage: async () => failedDurabilityPage };
+    const durabilityPage = null;
+
+    await expect(createAcquisitionDurabilityPage(context, "http://localhost:30000")).rejects.toThrow(
+      "Injected browser-suite load failure."
+    );
+    expect(close).toHaveBeenCalledOnce();
+
+    const cleanup = vi.fn().mockResolvedValue({ actorsDeleted: 1 });
+    const retainedSetupPage = {
+      evaluate: vi
+        .fn()
+        .mockResolvedValueOnce(true)
+        .mockImplementationOnce(async (_callback, payload) => cleanup(payload)),
+    };
+
+    await expect(cleanupAcquisitionFixtures([retainedSetupPage, durabilityPage], cleanupPayload)).resolves.toEqual({
+      actorsDeleted: 1,
+    });
+    expect(cleanup).toHaveBeenCalledWith(cleanupPayload);
+  });
+
+  it("creates a separately reloaded durability page with the same policy-before-suite contract", async () => {
+    const calls: string[] = [];
+    const page = {
+      goto: async (url: string, options: { waitUntil: string }) => calls.push(`goto:${url}:${options.waitUntil}`),
+      reload: async (options: { waitUntil: string }) => calls.push(`reload:${options.waitUntil}`),
+      waitForFunction: async (_predicate: () => boolean, value: unknown, options: { timeout: number }) => {
+        calls.push(`ready:${String(value)}:${options.timeout}`);
+      },
+      addScriptTag: async ({ path }: { path: string }) => {
+        calls.push(`script:${path.replaceAll("\\", "/").split("/").at(-1)}`);
+      },
+      close: vi.fn(),
+    };
+    const context = { newPage: async () => page };
+
+    await expect(createAcquisitionDurabilityPage(context, "http://localhost:30000")).resolves.toBe(page);
+    expect(calls).toEqual([
+      "goto:http://localhost:30000:domcontentloaded",
+      "ready:null:60000",
+      "reload:domcontentloaded",
+      "ready:null:60000",
+      "script:skill-selection-policy.js",
+      "script:browser-suite.js",
+    ]);
   });
 
   it("publishes one immutable hash-bound acquisition evidence directory", async () => {

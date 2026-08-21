@@ -6,6 +6,11 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 import {
+  cleanupAcquisitionFixtures,
+  createAcquisitionDurabilityPage,
+  loadAcquisitionBrowserSuite,
+} from "./acquisition-browser-lifecycle.mjs";
+import {
   createExclusiveAcquisitionTracerArtifactDirectory,
   writeAcquisitionTracerArtifacts,
 } from "./acquisition-tracer-artifacts.mjs";
@@ -23,7 +28,6 @@ import { qualifySmokeResult } from "./evidence-contract.mjs";
 const MODULE_ID = "wayfinder-pf2e";
 const fixturePrefix = "WF Smoke Harness";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
-const browserSuitePath = path.join(repoRoot, "tools", "foundry-smoke", "browser-suite.js");
 
 function usage() {
   return `Usage: node tools/foundry-smoke/run-acquisition-tracer.mjs [options]
@@ -81,6 +85,7 @@ async function main() {
   const browser = await chromium.launch({ executablePath: chromePath, headless });
   const setupContext = await browser.newContext({ viewport: { height: 1000, width: 1440 } });
   const setupPage = await setupContext.newPage();
+  let durabilityPage = null;
   let playerContext = null;
   let gmReviewContext = null;
   let setup = null;
@@ -98,7 +103,7 @@ async function main() {
       user: options.setupUser,
     });
     console.log("Acquisition tracer: GM setup session ready.");
-    await setupPage.addScriptTag({ path: browserSuitePath });
+    await loadAcquisitionBrowserSuite(setupPage);
     equipmentSettingsSnapshot = await captureEquipmentSettings(setupPage, MODULE_ID);
     await setEquipmentApplyAuthority(setupPage, MODULE_ID, "actor-owner");
     setup = await setupPage.evaluate(
@@ -145,7 +150,7 @@ async function main() {
         user: options.playerUser,
       });
       console.log(`Acquisition tracer: non-GM owner session ready for ${ownerCases.length} case(s).`);
-      await playerPage.addScriptTag({ path: browserSuitePath });
+      await loadAcquisitionBrowserSuite(playerPage);
       ownerResult = await playerPage.evaluate(
         (payload) => globalThis.__runWayfinderAcquisitionTracer(payload),
         {
@@ -194,7 +199,7 @@ async function main() {
         user: options.setupUser,
       });
       console.log(`Acquisition tracer: GM review session ready for ${gmReviewCases.length} case(s).`);
-      await gmReviewPage.addScriptTag({ path: browserSuitePath });
+      await loadAcquisitionBrowserSuite(gmReviewPage);
       gmReviewResult = await gmReviewPage.evaluate(
         (payload) => globalThis.__runWayfinderAcquisitionTracer(payload),
         {
@@ -216,12 +221,8 @@ async function main() {
     await restoreEquipmentSettings(setupPage, MODULE_ID, equipmentSettingsSnapshot);
     equipmentSettingsRestored = true;
     if (result) {
-      await setupPage.reload({ waitUntil: "domcontentloaded" });
-      await setupPage.waitForFunction(() => globalThis.game?.ready === true, null, {
-        timeout: 60000,
-      });
-      await setupPage.addScriptTag({ path: browserSuitePath });
-      const durability = await setupPage.evaluate(
+      durabilityPage = await createAcquisitionDurabilityPage(setupContext, foundryUrl);
+      const durability = await durabilityPage.evaluate(
         (payload) => globalThis.__collectWayfinderAcquisitionDurability(payload),
         {
           cases,
@@ -256,8 +257,8 @@ async function main() {
       } finally {
         try {
           if (setup) {
-            cleanup = await setupPage.evaluate(
-              (payload) => globalThis.__cleanupWayfinderAcquisitionTracer(payload),
+            cleanup = await cleanupAcquisitionFixtures(
+              [setupPage, durabilityPage],
               {
                 allowDestructive: options.allowDestructive,
                 expectedWorldId: options.expectedWorldId,

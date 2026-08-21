@@ -15,8 +15,8 @@ const INDEX_FIELDS = Object.freeze([
     "system.quantity",
     "system.rules",
 ]);
-const PHYSICAL_ITEM_TYPES = new Set(["ammo", "armor", "consumable", "equipment", "shield", "weapon"]);
-const CONTAINER_ITEM_TYPES = new Set(["backpack", "kit"]);
+const PHYSICAL_ITEM_TYPES = new Set(["ammo", "armor", "backpack", "consumable", "equipment", "shield", "weapon"]);
+const CONTAINER_ITEM_TYPES = new Set(["kit"]);
 const INTERACTIVE_RULE_KEYS = new Set(["ChoiceSet", "GrantItem"]);
 const DENOMINATIONS = ["pp", "gp", "sp", "cp"];
 const COPPER_VALUE = Object.freeze({ pp: 1000, gp: 100, sp: 10, cp: 1 });
@@ -412,7 +412,7 @@ function normalizeCandidate(source, packId, sourceUuid) {
         reasons.push(reason("treasure-excluded", "Treasure is excluded from equipment acquisition."));
     }
     else if (CONTAINER_ITEM_TYPES.has(itemType)) {
-        reasons.push(reason("container-or-kit-excluded", "Kits and container items are not supported in this catalogue."));
+        reasons.push(reason("container-or-kit-excluded", "Kits are not supported in this catalogue."));
     }
     else if (!PHYSICAL_ITEM_TYPES.has(itemType)) {
         reasons.push(reason("item-type-unsupported", `Item type ${itemType} is not supported for equipment acquisition.`));

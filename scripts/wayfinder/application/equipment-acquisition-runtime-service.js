@@ -130,10 +130,11 @@ export function createEquipmentAcquisitionRuntime(options) {
             const { policy, context } = currentContext(request.actor, request.draft, acquisition);
             const resolved = await catalogueFor(policy).resolveForApply(context, request.sourceUuid);
             assertSupportedCandidate(resolved);
+            const targetSize = await requireDraftedAncestryEquipmentSize(request.draft, fetchDocumentByUuid);
             const priced = await buildResolvedPrice({
                 resolved,
                 requestedQuantity: 1,
-                targetSize: sourceSize(resolved.source),
+                targetSize,
                 actor: request.actor,
                 targetLevel: policy.targetLevel,
                 packs: options.packs,
@@ -198,6 +199,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 persistedGrants: request.acquisition.plannedClassGrants,
             });
             const catalogue = catalogueFor(policy);
+            const targetSize = await requireDraftedAncestryEquipmentSize(request.characterDraft, fetchDocumentByUuid);
             const nativeGrants = request.classGrantPlan.grants.filter((grant) => grant.materializer === "pf2e-native");
             const lineIds = new Set(request.acquisition.lines.map((line) => line.lineId));
             const prepared = [];
@@ -217,7 +219,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                 const priced = await buildResolvedPrice({
                     resolved,
                     requestedQuantity: 1,
-                    targetSize: sourceSize(resolved.source),
+                    targetSize,
                     actor: request.actor,
                     targetLevel: policy.targetLevel,
                     packs: options.packs,
@@ -283,16 +285,18 @@ export function createEquipmentAcquisitionRuntime(options) {
                 throw new Error(`Acquisition item material drifted for ${request.entry.entryId}.`);
             }
             const titanGrantId = titanMaulerGrantIdForDraft(request.characterDraft);
-            if (request.entry.funding.lane === "class-grant" && request.entry.funding.grant.plannedGrantId === titanGrantId) {
+            const isTitanMauler = request.entry.funding.lane === "class-grant" && request.entry.funding.grant.plannedGrantId === titanGrantId;
+            let targetSize;
+            if (isTitanMauler) {
                 if (lines.length !== 1 || lines[0]?.funding.lane !== "class-grant") {
                     throw new Error("Titan Mauler must resolve from exactly one automatic build-grant line.");
                 }
                 const actorSize = await resolveDraftedAncestryEquipmentSize(request.characterDraft, fetchDocumentByUuid);
-                const targetSize = actorSize ? titanMaulerTargetSize(actorSize) : null;
+                const titanTargetSize = actorSize ? titanMaulerTargetSize(actorSize) : null;
                 if (!actorSize ||
-                    !targetSize ||
-                    request.entry.price.size !== targetSize ||
-                    lines[0].price.size !== targetSize) {
+                    !titanTargetSize ||
+                    request.entry.price.size !== titanTargetSize ||
+                    lines[0].price.size !== titanTargetSize) {
                     throw new Error("The reviewed Titan Mauler weapon size no longer matches the drafted ancestry.");
                 }
                 const candidate = buildTitanMaulerCandidate({
@@ -308,11 +312,18 @@ export function createEquipmentAcquisitionRuntime(options) {
                         ? eligibility.message
                         : "The reviewed Titan Mauler weapon facts are malformed or changed.");
                 }
+                targetSize = titanTargetSize;
+            }
+            else {
+                targetSize = await requireDraftedAncestryEquipmentSize(request.characterDraft, fetchDocumentByUuid);
+                if (request.entry.price.size !== targetSize || lines.some((line) => line.price.size !== targetSize)) {
+                    throw new Error("The reviewed equipment size no longer matches the drafted ancestry.");
+                }
             }
             const priced = await buildResolvedPrice({
                 resolved,
                 requestedQuantity: request.entry.price.requestedQuantity,
-                targetSize: request.entry.price.size,
+                targetSize,
                 actor: request.actor,
                 targetLevel: policy.targetLevel,
                 packs: options.packs,
@@ -675,6 +686,7 @@ async function buildResolvedPrice(input) {
     const prepare = (base, runes, material, forceNonSpecific) => input.prepareConfiguredItem({
         actor: input.actor,
         targetLevel: input.targetLevel,
+        targetSize: input.targetSize,
         baseSource: base,
         runes,
         material,
@@ -893,6 +905,7 @@ function prepareTransientConfiguredItem(input) {
     const itemSystem = record(itemSource.system);
     itemSystem.runes = cloneData(input.runes);
     itemSystem.material = cloneData(input.material);
+    itemSystem.size = pf2eItemSize(input.targetSize);
     if (input.forceNonSpecific)
         itemSystem.specific = null;
     itemSource.system = itemSystem;
@@ -980,24 +993,22 @@ function invalidateTitanMaulerVerification(acquisition) {
         reason: "verification-failed",
     };
 }
-function sourceSize(source) {
-    const raw = record(source.system).size;
+async function requireDraftedAncestryEquipmentSize(draft, fetchDocumentByUuid) {
+    const size = await resolveDraftedAncestryEquipmentSize(draft, fetchDocumentByUuid);
+    if (!size)
+        throw new TypeError("Equipment requires a selected ancestry with a supported authoritative size.");
+    return size;
+}
+function pf2eItemSize(size) {
     const sizes = {
         tiny: "tiny",
-        sm: "small",
-        small: "small",
-        med: "medium",
-        medium: "medium",
-        lg: "large",
-        large: "large",
+        small: "sm",
+        medium: "med",
+        large: "lg",
         huge: "huge",
-        grg: "gargantuan",
-        gargantuan: "gargantuan",
+        gargantuan: "grg",
     };
-    if (typeof raw !== "string" || !sizes[raw.trim().toLowerCase()]) {
-        throw new TypeError("The equipment source has no supported size fact.");
-    }
-    return sizes[raw.trim().toLowerCase()];
+    return sizes[size];
 }
 function permanence(itemType) {
     return itemType === "ammo" || itemType === "consumable" ? "consumable" : "permanent";

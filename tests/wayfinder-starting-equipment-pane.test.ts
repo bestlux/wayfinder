@@ -6,7 +6,7 @@ import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant } from "../src/wayfi
 import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types";
 import { buildStartingEquipmentPane } from "../src/wayfinder/panes/starting-equipment-pane";
 import type { StartingEquipmentCatalogueRecord } from "../src/wayfinder/view-models";
-import { acquisitionFixture, acquisitionLine } from "./fixtures/acquisition-fixture";
+import { acquisitionFixture, acquisitionLine, acquisitionPrice } from "./fixtures/acquisition-fixture";
 
 describe("starting equipment pane", () => {
   it("renders level-5 allowance buckets separately from residual coin", () => {
@@ -138,6 +138,30 @@ describe("starting equipment pane", () => {
     expect(pane.catalogue.filters[0]).toMatchObject({ value: "equipment", selected: true });
     expect(pane.cart.lines[0]).toMatchObject({ quantity: 1, focusId: "starting-equipment-line:line-1" });
     expect(pane.review.canReviewPurchases).toBe(true);
+  });
+
+  it("shows materialized stack quantity rather than the pricing request count", () => {
+    const draft = createEmptyDraft(1);
+    const stackedLine = acquisitionLine({ price: acquisitionPrice({ sourceQuantity: 12, requestedQuantity: 1 }) });
+    draft.acquisition = acquisitionFixture({ lines: [stackedLine], disposition: "unreviewed" }).draft;
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(1),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        records: [],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      }
+    );
+
+    expect(pane.cart.lines[0]?.quantity).toBe(12);
   });
 
   it("projects class-grant cart lines as fixed and policy-authorized by their grant", () => {

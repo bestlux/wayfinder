@@ -121,6 +121,58 @@ describe("minimal equipment catalogue", () => {
     });
   });
 
+  it.each([
+    "ammo",
+    "armor",
+    "backpack",
+    "consumable",
+    "equipment",
+    "shield",
+    "weapon",
+  ])("qualifies %s records with price.per and source quantity", async (itemType) => {
+    const source = dagger({
+      _id: `physical-${itemType}`,
+      name: `Physical ${itemType}`,
+      type: itemType,
+      system: { price: { value: { cp: 10 }, per: 10 }, quantity: 12 },
+    });
+    const service = createEquipmentCatalogueService({
+      packs: packMap({ entries: [source] }),
+      equipmentPackIds: [PACK_ID],
+    });
+
+    expect((await service.project(context())).entries[0]).toMatchObject({
+      itemType,
+      available: true,
+      unavailableReasons: [],
+      price: { kind: "priced", value: { cp: 10 }, copperValue: 10, per: 10, sourceQuantity: 12 },
+    });
+  });
+
+  it("keeps explicit zero purchasable and diagnoses malformed unit pricing", async () => {
+    const service = createEquipmentCatalogueService({
+      packs: packMap({
+        entries: [
+          dagger({ _id: "explicit-zero", name: "Free Item", system: { price: { value: { gp: 0 } } } }),
+          dagger({ _id: "bad-per", name: "Bad Per", system: { price: { value: { gp: 1 }, per: 0 } } }),
+          dagger({ _id: "bad-quantity", name: "Bad Quantity", system: { quantity: 0 } }),
+        ],
+      }),
+      equipmentPackIds: [PACK_ID],
+    });
+
+    const projection = await service.project(context());
+    expect(projection.entries.find((entry) => entry.name === "Free Item")).toMatchObject({
+      available: true,
+      unavailableReasons: [],
+      price: { kind: "priced", copperValue: 0 },
+    });
+    expect(reasonCodes(projection.entries.find((entry) => entry.name === "Bad Per"))).toContain("price-unparseable");
+    expect(reasonCodes(projection.entries.find((entry) => entry.name === "Bad Quantity"))).toContain(
+      "price-unparseable"
+    );
+  });
+
   it("keeps unsupported records visible with explicit treasure, container, price, and rule reasons", async () => {
     const service = createEquipmentCatalogueService({
       packs: packMap({

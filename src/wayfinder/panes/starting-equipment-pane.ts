@@ -102,7 +102,7 @@ export function buildStartingEquipmentPane(
         lineId: line.lineId,
         sourceUuid: line.sourceUuid,
         name: record?.name ?? line.sourceUuid,
-        quantity: line.price.requestedQuantity,
+        quantity: line.price.materializedQuantity,
         priceLabel: formatCopper(line.price.linePriceCopper),
         configurationLabel: configuredPriceLabel(line.price),
         fundingLabel: fundingLabel(line.funding, policy?.allowances ?? []),

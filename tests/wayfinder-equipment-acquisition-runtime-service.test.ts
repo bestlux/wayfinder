@@ -142,7 +142,7 @@ describe("equipment acquisition runtime", () => {
         getIndex: vi.fn(async () => [configured, { ...base, system: { ...base.system, slug: "clean-blade" } }]),
         getDocument: vi.fn(async (id) => document(id === "base" ? base : configured)),
       },
-      { policy: configuredPolicy(), prepareConfiguredItem }
+      { policy: configuredPolicy(), prepareConfiguredItem, ancestrySize: "lg" }
     );
 
     const line = await runtime.uiAdapter.prepareLine({
@@ -164,6 +164,8 @@ describe("equipment acquisition runtime", () => {
     });
     expect(line.priceFingerprint).toMatch(/^equipment-prepared-price-v1-/);
     expect(prepareConfiguredItem).toHaveBeenCalledTimes(5);
+    expect(line.price.size).toBe("large");
+    expect(prepareConfiguredItem).toHaveBeenCalledWith(expect.objectContaining({ targetSize: "large" }));
   });
 
   it("hands specific configured magic items to the PF2E inventory sheet", async () => {
@@ -334,6 +336,7 @@ describe("equipment acquisition runtime", () => {
     expect(projection.records[0]).not.toHaveProperty("img");
 
     const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
+    expect(line.priceFingerprint).toBe("equipment-price-v1-d6e565d1");
     expect(line).toMatchObject({
       schemaVersion: 1,
       lineId: "wf-line-test",
@@ -357,6 +360,118 @@ describe("equipment acquisition runtime", () => {
     });
     expect(getIndex).toHaveBeenCalledTimes(1);
     expect(getDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "ammo",
+    "armor",
+    "backpack",
+    "consumable",
+    "equipment",
+    "shield",
+    "weapon",
+  ] as const)("materializes one actor-sized %s stack from price.per and source quantity", async (itemType) => {
+    const source = dagger({ itemType, priceCp: 10, pricePer: 10, sourceQuantity: 12, sizeSensitive: true });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      { ancestrySize: "lg" }
+    );
+
+    const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
+    expect(line).toMatchObject({
+      permanence: itemType === "ammo" || itemType === "consumable" ? "consumable" : "permanent",
+      stackingIntent: "aggregate",
+      price: {
+        size: "large",
+        pricePer: 10,
+        sourceQuantity: 12,
+        requestedQuantity: 1,
+        materializedQuantity: 12,
+        unitPriceCopper: 20,
+        linePriceCopper: 24,
+      },
+    });
+    expect(preparedEntry(line)).toMatchObject({ quantity: 12, plannedItems: [{ quantity: 12 }] });
+  });
+
+  it("uses listed magic-item pricing while ordinary larger gear scales exactly once", async () => {
+    const ordinary = dagger({ id: "ordinary", priceGp: 10, sizeSensitive: true });
+    const listedMagic = dagger({ id: "listed-magic", priceGp: 100, sizeSensitive: false });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [ordinary, listedMagic]),
+        getDocument: vi.fn(async (id) => document(id === "ordinary" ? ordinary : listedMagic)),
+      },
+      { ancestrySize: "lg" }
+    );
+
+    await expect(
+      runtime.uiAdapter.prepareLine({ ...request, sourceUuid: `Compendium.${PACK_ID}.Item.ordinary` })
+    ).resolves.toMatchObject({ price: { size: "large", unitPriceCopper: 2_000, linePriceCopper: 2_000 } });
+    await expect(
+      runtime.uiAdapter.prepareLine({ ...request, sourceUuid: `Compendium.${PACK_ID}.Item.listed-magic` })
+    ).resolves.toMatchObject({ price: { size: "large", unitPriceCopper: 10_000, linePriceCopper: 10_000 } });
+  });
+
+  it.each([
+    ["tiny", "tiny", 1_000],
+    ["sm", "small", 1_000],
+    ["med", "medium", 1_000],
+    ["lg", "large", 2_000],
+    ["huge", "huge", 4_000],
+    ["grg", "gargantuan", 8_000],
+  ] as const)("derives %s ancestry equipment as %s at %i copper", async (ancestrySize, targetSize, expectedCopper) => {
+    const source = dagger({ priceGp: 10, sizeSensitive: true });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      { ancestrySize }
+    );
+
+    await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).resolves.toMatchObject({
+      price: { size: targetSize, unitPriceCopper: expectedCopper, linePriceCopper: expectedCopper },
+    });
+  });
+
+  it("fails closed without authoritative drafted ancestry size and detects size drift at Apply", async () => {
+    let ancestrySize: unknown = "lg";
+    const source = dagger({ priceGp: 1 });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      {
+        fetchDocumentByUuid: async (uuid) =>
+          uuid === ANCESTRY_UUID ? { type: "ancestry", system: { size: ancestrySize } } : null,
+      }
+    );
+    const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
+    request.draft.acquisition = { ...request.draft.acquisition!, lines: [line] };
+
+    ancestrySize = "med";
+    await expect(
+      runtime.resolveSourceForApply({
+        actor: request.actor,
+        characterDraft: request.draft,
+        acquisition: request.draft.acquisition,
+        entry: preparedEntry(line),
+      })
+    ).rejects.toThrow(/size no longer matches.*ancestry/i);
+
+    ancestrySize = "unsupported";
+    await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).rejects.toThrow(
+      /supported authoritative size/i
+    );
+    delete request.draft.selections["ancestry-level-1"];
+    await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).rejects.toThrow(
+      /selected ancestry/i
+    );
   });
 
   it("derives exact exception facts from the hydrated document and rejects structural failures", async () => {
@@ -1212,6 +1327,7 @@ function fixture(
     readonly prepareConfiguredItem?: NonNullable<
       Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareConfiguredItem"]
     >;
+    readonly ancestrySize?: "tiny" | "sm" | "med" | "lg" | "huge" | "grg";
   } = {}
 ): {
   runtime: EquipmentAcquisitionRuntime;
@@ -1232,6 +1348,7 @@ function fixture(
   };
   const draft = createEmptyDraft(currentPolicy.targetLevel);
   draft.acquisition = acquisition;
+  selectAncestry(draft);
   const packs = new Map<string, EquipmentCataloguePackLike>([
     [PACK_ID, { documentName: "Item", getIndex: pack.getIndex, getDocument: pack.getDocument }],
   ]);
@@ -1239,7 +1356,16 @@ function fixture(
     runtime: createEquipmentAcquisitionRuntime({
       packs,
       accessRegistry: options.accessRegistry,
-      fetchDocumentByUuid: options.fetchDocumentByUuid,
+      fetchDocumentByUuid:
+        options.fetchDocumentByUuid ??
+        (async (uuid) =>
+          uuid === ANCESTRY_UUID
+            ? {
+                type: "ancestry",
+                _stats: { compendiumSource: ANCESTRY_UUID },
+                system: { size: options.ancestrySize ?? "med" },
+              }
+            : null),
       resolveEffectivePolicy: () => currentPolicy,
       prepareConfiguredItem: options.prepareConfiguredItem,
       mintLineId: () => "wf-line-test",
@@ -1363,6 +1489,11 @@ function dagger(
     readonly name?: string;
     readonly priceSp?: number;
     readonly priceGp?: number;
+    readonly priceCp?: number;
+    readonly pricePer?: number;
+    readonly sourceQuantity?: number;
+    readonly sizeSensitive?: boolean;
+    readonly itemType?: "ammo" | "armor" | "backpack" | "consumable" | "equipment" | "shield" | "weapon";
     readonly level?: number;
     readonly materialType?: string | null;
     readonly materialGrade?: string | null;
@@ -1376,15 +1507,24 @@ function dagger(
     _id: options.id ?? DAGGER_ID,
     name: options.name ?? "Dagger",
     img: "icons/weapons/daggers/dagger-straight-blue.webp",
-    type: "weapon",
+    type: options.itemType ?? "weapon",
     system: {
       level: { value: options.level ?? 0 },
       category: "simple",
       range: null,
       traits: { rarity: options.rarity ?? "common", value: ["agile", "finesse"] },
       publication: { title: "Pathfinder Player Core" },
-      price: { value: options.priceGp === undefined ? { sp: options.priceSp ?? 2 } : { gp: options.priceGp } },
-      quantity: 1,
+      price: {
+        value:
+          options.priceGp !== undefined
+            ? { gp: options.priceGp }
+            : options.priceCp !== undefined
+              ? { cp: options.priceCp }
+              : { sp: options.priceSp ?? 2 },
+        ...(options.pricePer === undefined ? {} : { per: options.pricePer }),
+        ...(options.sizeSensitive === undefined ? {} : { sizeSensitive: options.sizeSensitive }),
+      },
+      quantity: options.sourceQuantity ?? 1,
       rules: [],
       size: "med",
       baseItem: options.baseItem ?? null,
@@ -1396,16 +1536,7 @@ function dagger(
 }
 
 function selectGiantInstinct(draft: ReturnType<typeof createEmptyDraft>): void {
-  draft.selections["ancestry-level-1"] = {
-    slotId: "ancestry-level-1",
-    packId: "pf2e.ancestries",
-    documentId: "ancestry",
-    uuid: ANCESTRY_UUID,
-    itemType: "ancestry",
-    featType: null,
-    name: "Test Ancestry",
-    level: 0,
-  };
+  selectAncestry(draft);
   draft.selections["class-level-1"] = {
     slotId: "class-level-1",
     packId: "pf2e.classes",
@@ -1425,6 +1556,19 @@ function selectGiantInstinct(draft: ReturnType<typeof createEmptyDraft>): void {
     featType: "classfeature",
     name: "Giant Instinct",
     level: 1,
+  };
+}
+
+function selectAncestry(draft: ReturnType<typeof createEmptyDraft>): void {
+  draft.selections["ancestry-level-1"] = {
+    slotId: "ancestry-level-1",
+    packId: "pf2e.ancestries",
+    documentId: "ancestry",
+    uuid: ANCESTRY_UUID,
+    itemType: "ancestry",
+    featType: null,
+    name: "Test Ancestry",
+    level: 0,
   };
 }
 

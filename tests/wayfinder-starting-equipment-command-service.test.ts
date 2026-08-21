@@ -16,7 +16,7 @@ import {
   type EquipmentPolicyJudgmentRecord,
 } from "../src/wayfinder/domain/equipment-policy";
 import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types";
-import { acquisitionFixture, acquisitionLine } from "./fixtures/acquisition-fixture";
+import { acquisitionFixture, acquisitionLine, acquisitionPrice } from "./fixtures/acquisition-fixture";
 
 describe("starting equipment command service", () => {
   it("stages a higher-level identity before draft-bound authority exists", async () => {
@@ -305,6 +305,26 @@ describe("starting equipment command service", () => {
       commandContext(quantity.acquisition)
     );
     expect(removed.acquisition.lines).toEqual([]);
+  });
+
+  it("recomputes requested quantity over the source stack and price.per basis", async () => {
+    const line = acquisitionLine({
+      price: acquisitionPrice({ pricePer: 10, sourceQuantity: 12, requestedQuantity: 1 }),
+    });
+    const fixture = acquisitionFixture({ lines: [line], disposition: "unreviewed" });
+
+    const result = await executeStartingEquipmentCommand(
+      { type: "set-quantity", lineId: line.lineId, quantity: 3 },
+      commandContext(fixture.draft)
+    );
+
+    expect(result.acquisition.lines[0]?.price).toMatchObject({
+      pricePer: 10,
+      sourceQuantity: 12,
+      requestedQuantity: 3,
+      materializedQuantity: 36,
+      linePriceCopper: 360,
+    });
   });
 
   it("moves unsafe configured equipment into acknowledged zero-write handoff", async () => {

@@ -17,6 +17,16 @@ export class WayfinderDraftPreUpdateGuardUnavailableError extends Error {
         this.name = "WayfinderDraftPreUpdateGuardUnavailableError";
     }
 }
+export class WayfinderDraftRoundTripError extends Error {
+    constructor(outcome, options = {}) {
+        super(outcome === "unchanged"
+            ? "Foundry did not persist the complete draft. The last durable draft remains intact; reopen before continuing."
+            : outcome === "restored"
+                ? "Foundry altered the draft while saving. Wayfinder restored the last durable draft; reopen before continuing."
+                : "Foundry altered the draft while saving, and Wayfinder could not prove that the last durable draft was restored.", options);
+        this.name = "WayfinderDraftRoundTripError";
+    }
+}
 export class PersistedDraftWriteGuard {
     #expectedFingerprint;
     constructor(initialSnapshot) {
@@ -99,11 +109,11 @@ export async function updateActorWithPersistedDraftPrecondition(actor, updates, 
         if (activeOperation.blocked) {
             throw activeOperation.failure;
         }
-        if (draftWriteGuardHookRegistered && !activeOperation.observed) {
-            throw new WayfinderDraftPreUpdateGuardUnavailableError();
-        }
         if (updateRejected) {
             throw updateFailure;
+        }
+        if (draftWriteGuardHookRegistered && !activeOperation.observed) {
+            throw new WayfinderDraftPreUpdateGuardUnavailableError();
         }
         return updatedActor;
     }
@@ -127,6 +137,12 @@ export function readPersistedDraftSnapshot(actor, currentLevel) {
 }
 export async function saveDraftWithWriteGuard(actor, candidateDraft, currentLevel, guard) {
     const assertExpected = guard.captureExpectation();
+    const durableBeforeSave = readPersistedDraftSnapshot(actor, currentLevel);
+    assertExpected(durableBeforeSave);
+    if (persistedDraftContentFingerprint(durableBeforeSave) === persistedDraftContentFingerprint(candidateDraft)) {
+        guard.acceptCurrent(durableBeforeSave);
+        return;
+    }
     const assertCurrent = () => {
         const liveDraft = readPersistedDraftSnapshot(actor, currentLevel);
         assertExpected(liveDraft);
@@ -153,10 +169,25 @@ export async function saveDraftWithWriteGuard(actor, candidateDraft, currentLeve
         guard.acceptCurrent(observedDraft);
         return;
     }
+    if (persistedDraftFingerprint(observedDraft) === persistedDraftFingerprint(durableBeforeSave)) {
+        if (updateRejected)
+            throw updateFailure;
+        throw new WayfinderDraftRoundTripError("unchanged");
+    }
+    if (snapshotCarriesAttemptIdentity(observedDraft, expectedDraft)) {
+        try {
+            await restoreDurableDraft(actor, currentLevel, observedDraft, durableBeforeSave);
+            guard.acceptCurrent(durableBeforeSave);
+        }
+        catch (restoreError) {
+            throw new WayfinderDraftRoundTripError("unproven", { cause: restoreError });
+        }
+        throw new WayfinderDraftRoundTripError("restored", { cause: updateRejected ? updateFailure : undefined });
+    }
     if (updateRejected) {
         throw updateFailure;
     }
-    throw new Error("Foundry did not persist Wayfinder's complete draft candidate.");
+    throw new WayfinderDraftRoundTripError("unproven");
 }
 export async function clearDraftWithWriteGuard(actor, currentLevel, guard) {
     const assertExpected = guard.captureExpectation();
@@ -212,6 +243,33 @@ export function captureDraftSideEffectPrecondition(actor, currentLevel, guard) {
 }
 function persistedDraftFingerprint(snapshot) {
     return snapshot === null ? "null" : JSON.stringify(snapshot);
+}
+function persistedDraftContentFingerprint(snapshot) {
+    return snapshot === null ? "null" : JSON.stringify({ ...snapshot, updatedAt: null });
+}
+function snapshotCarriesAttemptIdentity(observedDraft, expectedDraft) {
+    return (observedDraft !== null &&
+        expectedDraft !== null &&
+        typeof expectedDraft.updatedAt === "string" &&
+        expectedDraft.updatedAt.length > 0 &&
+        observedDraft.updatedAt === expectedDraft.updatedAt);
+}
+async function restoreDurableDraft(actor, currentLevel, rejectedDraft, durableDraft) {
+    const rejectedFingerprint = persistedDraftFingerprint(rejectedDraft);
+    const assertRejectedCurrent = () => {
+        if (persistedDraftFingerprint(readPersistedDraftSnapshot(actor, currentLevel)) !== rejectedFingerprint) {
+            throw new WayfinderDraftWriteConflictError();
+        }
+    };
+    const update = durableDraft === null ? { [DRAFT_FLAG]: null } : buildSaveDraftUpdate(durableDraft);
+    if (durableDraft !== null && isRecord(update[DRAFT_FLAG])) {
+        update[DRAFT_FLAG].updatedAt = durableDraft.updatedAt;
+    }
+    await updateActorWithPersistedDraftPrecondition(actor, update, assertRejectedCurrent);
+    const restoredDraft = readPersistedDraftSnapshot(actor, currentLevel);
+    if (persistedDraftFingerprint(restoredDraft) !== persistedDraftFingerprint(durableDraft)) {
+        throw new Error("Foundry did not restore the exact last durable Wayfinder draft.");
+    }
 }
 function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);

@@ -9,6 +9,7 @@ import {
   PersistedDraftWriteGuard,
   saveDraftWithWriteGuard,
   updateActorWithPersistedDraftPrecondition,
+  WayfinderDraftRoundTripError,
   WayfinderDraftWriteConflictError,
 } from "../src/wayfinder/application/draft-write-guard";
 
@@ -45,10 +46,75 @@ describe("Wayfinder persisted draft write guard", () => {
     const candidate = structuredClone(initial);
     candidate.targetLevel = 6;
 
-    await expect(saveDraftWithWriteGuard(actor, candidate, 5, guard)).rejects.toThrow(
-      "did not persist Wayfinder's complete draft candidate"
+    await expect(saveDraftWithWriteGuard(actor, candidate, 5, guard)).rejects.toBeInstanceOf(
+      WayfinderDraftRoundTripError
     );
     expect(persisted).toBe(initial);
+  });
+
+  it("acknowledges an already-durable semantic snapshot without issuing a Foundry no-op update", async () => {
+    const initial = createEmptyDraft(5);
+    initial.updatedAt = "2026-08-21T04:00:00.000Z";
+    const actor = {
+      getFlag: () => initial,
+      update: vi.fn(async () => actor),
+    };
+    const candidate = structuredClone(initial);
+    candidate.updatedAt = null;
+    const guard = new PersistedDraftWriteGuard(initial);
+
+    await expect(saveDraftWithWriteGuard(actor, candidate, 5, guard)).resolves.toBeUndefined();
+    expect(actor.update).not.toHaveBeenCalled();
+    expect(() => guard.assertCurrent(initial)).not.toThrow();
+  });
+
+  it("restores the exact last durable draft when Foundry persists a malformed round trip", async () => {
+    const initial = createEmptyDraft(5);
+    initial.manual.durable = true;
+    let persisted: unknown = initial;
+    let updateCount = 0;
+    const actor = {
+      getFlag: () => persisted,
+      update: vi.fn(async (update: Record<string, unknown>) => {
+        updateCount += 1;
+        persisted = structuredClone(update[DRAFT_FLAG]);
+        if (updateCount === 1) {
+          (persisted as { targetLevel: number }).targetLevel = 20;
+        }
+        return actor;
+      }),
+    };
+    const guard = new PersistedDraftWriteGuard(initial);
+    const candidate = structuredClone(initial);
+    candidate.manual.newest = true;
+
+    await expect(saveDraftWithWriteGuard(actor, candidate, 5, guard)).rejects.toMatchObject({
+      name: "WayfinderDraftRoundTripError",
+      message: expect.stringContaining("restored the last durable draft"),
+    });
+    expect(actor.update).toHaveBeenCalledTimes(2);
+    expect(persisted).toEqual(initial);
+    expect(() => guard.assertCurrent(initial)).not.toThrow();
+  });
+
+  it("keeps the last durable draft untouched when PF2E permanently rejects the update", async () => {
+    const initial = createEmptyDraft(5);
+    const persisted: unknown = initial;
+    const validationError = new Error("Actor sheet validation rejected the draft");
+    validationError.name = "DataModelValidationError";
+    const actor = {
+      getFlag: () => persisted,
+      update: vi.fn(async () => {
+        throw validationError;
+      }),
+    };
+    const guard = new PersistedDraftWriteGuard(initial);
+    const candidate = structuredClone(initial);
+    candidate.manual.newest = true;
+
+    await expect(saveDraftWithWriteGuard(actor, candidate, 5, guard)).rejects.toBe(validationError);
+    expect(persisted).toBe(initial);
+    expect(actor.update).toHaveBeenCalledOnce();
   });
 
   it("accepts a lost acknowledgement only when the exact candidate converged", async () => {
@@ -67,7 +133,7 @@ describe("Wayfinder persisted draft write guard", () => {
 
     await expect(saveDraftWithWriteGuard(actor, candidate, 5, guard)).resolves.toBeUndefined();
     await expect(saveDraftWithWriteGuard(actor, candidate, 5, guard)).resolves.toBeUndefined();
-    expect(actor.update).toHaveBeenCalledTimes(2);
+    expect(actor.update).toHaveBeenCalledOnce();
   });
 
   it("rejects a stale ordinary save after another window establishes recovery", async () => {
@@ -345,6 +411,24 @@ describe("Wayfinder persisted draft write guard", () => {
       await expect(
         guardModule.clearDraftWithWriteGuard(clearActor, 5, new guardModule.PersistedDraftWriteGuard(initial))
       ).rejects.toBeInstanceOf(guardModule.WayfinderDraftPreUpdateGuardUnavailableError);
+
+      const rejected = new Error("Network timeout before the Foundry update hook");
+      const rejectedActor = {
+        getFlag: () => initial,
+        update: vi.fn(async () => {
+          throw rejected;
+        }),
+      };
+      const changed = structuredClone(initial);
+      changed.targetLevel = 6;
+      await expect(
+        guardModule.saveDraftWithWriteGuard(
+          rejectedActor,
+          changed,
+          5,
+          new guardModule.PersistedDraftWriteGuard(initial)
+        )
+      ).rejects.toBe(rejected);
     } finally {
       vi.unstubAllGlobals();
     }

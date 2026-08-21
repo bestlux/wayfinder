@@ -86,8 +86,22 @@ export function buildDraftSaveView(state) {
                 : phase === "error"
                     ? "wayfinder-pf2e.App.DraftSaveFailed"
                     : "",
+        message: phase === "error" ? draftSaveFailureMessage(state) : null,
         live: phase === "error" ? "assertive" : "polite",
     };
+}
+function draftSaveFailureMessage(state) {
+    const cause = state?.message?.trim() || "Foundry did not provide a specific cause.";
+    const guidance = state?.failureKind === "conflict"
+        ? "Another client changed this actor's draft. Reopen Wayfinder before making more changes."
+        : state?.failureKind === "integrity"
+            ? "Foundry did not round-trip the complete draft. The last durable draft was preserved; reopen Wayfinder before continuing."
+            : state?.failureKind === "rejected"
+                ? "PF2E rejected the draft update. The last durable draft was preserved; correct the invalid choice or reopen Wayfinder."
+                : state?.failureKind === "transient"
+                    ? "The latest changes remain in this window and the last durable draft is intact. Retry from the footer."
+                    : "The latest changes remain in this window and the last durable draft is intact. Retry once; reopen Wayfinder if it fails again.";
+    return `${guidance} Cause: ${cause}`;
 }
 function buildExistingCharacterHistoryView(history) {
     if (!history) {

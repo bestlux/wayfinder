@@ -62,6 +62,7 @@ export class DraftPersistenceCoordinator {
     }
     async flush() {
         this.#assertUsable();
+        this.#assertRetryAllowed();
         this.#clearTimer();
         await this.#ensureDrain();
     }
@@ -70,6 +71,7 @@ export class DraftPersistenceCoordinator {
         if (!this.#pending) {
             return;
         }
+        this.#assertRetryAllowed();
         this.#setState(createSaveState("saving", this.#state.revision, this.#state.durableRevision, null));
         await this.flush();
     }
@@ -105,7 +107,7 @@ export class DraftPersistenceCoordinator {
                 this.#pending = restored;
                 this.#latestSnapshot = restored;
                 this.#lastFingerprint = restored.fingerprint;
-                this.#setState(createSaveState("error", restored.revision, this.#state.durableRevision, errorMessage(error)));
+                this.#setState(createFailureState(restored.revision, this.#state.durableRevision, error));
             }
             throw error;
         }
@@ -196,7 +198,7 @@ export class DraftPersistenceCoordinator {
                     if (!newerPending || newerPending.revision < pending.revision) {
                         this.#pending = pending;
                     }
-                    this.#setState(createSaveState("error", this.#state.revision, this.#state.durableRevision, errorMessage(error)));
+                    this.#setState(createFailureState(this.#state.revision, this.#state.durableRevision, error));
                 }
                 throw error;
             }
@@ -217,7 +219,9 @@ export class DraftPersistenceCoordinator {
         if (state.phase === this.#state.phase &&
             state.revision === this.#state.revision &&
             state.durableRevision === this.#state.durableRevision &&
-            state.message === this.#state.message) {
+            state.retryable === this.#state.retryable &&
+            state.message === this.#state.message &&
+            state.failureKind === this.#state.failureKind) {
             return;
         }
         this.#state = state;
@@ -228,14 +232,35 @@ export class DraftPersistenceCoordinator {
             throw new Error("Wayfinder draft persistence is disposed.");
         }
     }
+    #assertRetryAllowed() {
+        if (this.#state.phase === "error" && !this.#state.retryable) {
+            throw new DraftPersistenceRetryUnavailableError(this.#state.message);
+        }
+    }
 }
-function createSaveState(phase, revision, durableRevision, message) {
+export class DraftPersistenceRetryUnavailableError extends Error {
+    constructor(causeMessage) {
+        super(causeMessage
+            ? `This draft save cannot be retried unchanged. ${causeMessage}`
+            : "This draft save cannot be retried unchanged.");
+        this.name = "DraftPersistenceRetryUnavailableError";
+    }
+}
+function createSaveState(phase, revision, durableRevision, message, failureKind = null) {
     return {
         phase,
         revision,
         durableRevision,
         retryable: phase === "error",
         message,
+        failureKind,
+    };
+}
+function createFailureState(revision, durableRevision, error) {
+    const failure = classifyDraftSaveFailure(error);
+    return {
+        ...createSaveState("error", revision, durableRevision, failure.message, failure.kind),
+        retryable: failure.retryable,
     };
 }
 function clonePending(pending) {
@@ -247,7 +272,36 @@ function clonePending(pending) {
 function draftFingerprint(draft) {
     return JSON.stringify(draft);
 }
-function errorMessage(error) {
-    return error instanceof Error && error.message ? error.message : "Wayfinder could not save this draft.";
+function classifyDraftSaveFailure(error) {
+    const name = error instanceof Error ? error.name : "";
+    const rawMessage = error instanceof Error && error.message ? error.message : "Wayfinder could not save this draft.";
+    const message = rawMessage.trim().slice(0, 500);
+    const evidence = `${name} ${message}`.toLowerCase();
+    if (evidence.includes("draftwriteconflicterror") || evidence.includes("recoverydraftconflicterror")) {
+        return { kind: "conflict", message, retryable: false };
+    }
+    if (evidence.includes("draftpreupdateguardunavailableerror") ||
+        evidence.includes("draftroundtriperror") ||
+        evidence.includes("did not persist wayfinder's complete draft") ||
+        evidence.includes("malformed")) {
+        return { kind: "integrity", message, retryable: false };
+    }
+    if (evidence.includes("validation") ||
+        evidence.includes("invalid") ||
+        evidence.includes("rejected") ||
+        evidence.includes("permission") ||
+        evidence.includes("ownership") ||
+        evidence.includes("not permitted")) {
+        return { kind: "rejected", message, retryable: false };
+    }
+    if (evidence.includes("timeout") ||
+        evidence.includes("timed out") ||
+        evidence.includes("network") ||
+        evidence.includes("socket") ||
+        evidence.includes("disconnected") ||
+        evidence.includes("temporarily unavailable")) {
+        return { kind: "transient", message, retryable: true };
+    }
+    return { kind: "unknown", message, retryable: true };
 }
 //# sourceMappingURL=draft-persistence-service.js.map

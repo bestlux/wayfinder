@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyDraft } from "../src/draft-service";
-import { DraftPersistenceCoordinator } from "../src/wayfinder/application/draft-persistence-service";
+import {
+  DraftPersistenceCoordinator,
+  DraftPersistenceRetryUnavailableError,
+} from "../src/wayfinder/application/draft-persistence-service";
 
 describe("Wayfinder draft persistence coordinator", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -72,7 +75,7 @@ describe("Wayfinder draft persistence coordinator", () => {
       saveDraft: async (draft) => {
         attempts += 1;
         payloads.push(Object.keys(draft.manual));
-        if (attempts === 1) throw new Error("disk full");
+        if (attempts === 1) throw new Error("Network timeout while saving");
       },
     });
     const draft = createEmptyDraft(1);
@@ -80,14 +83,38 @@ describe("Wayfinder draft persistence coordinator", () => {
     draft.manual.a = true;
     coordinator.schedule(draft);
 
-    await expect(coordinator.flush()).rejects.toThrow("disk full");
-    expect(coordinator.state).toMatchObject({ phase: "error", retryable: true, message: "disk full" });
+    await expect(coordinator.flush()).rejects.toThrow("Network timeout while saving");
+    expect(coordinator.state).toMatchObject({
+      phase: "error",
+      retryable: true,
+      failureKind: "transient",
+      message: "Network timeout while saving",
+    });
 
     draft.manual.b = true;
     coordinator.schedule(draft);
     await coordinator.retry();
     expect(payloads).toEqual([["a"], ["a", "b"]]);
     expect(coordinator.state).toMatchObject({ phase: "saved", retryable: false });
+  });
+
+  it("does not loop or offer unchanged retry after a permanent PF2E rejection", async () => {
+    const saveDraft = vi.fn(async () => {
+      const error = new Error("Actor sheet validation rejected flags.wayfinder-pf2e.draft");
+      error.name = "DataModelValidationError";
+      throw error;
+    });
+    const coordinator = new DraftPersistenceCoordinator({ saveDraft });
+    const draft = createEmptyDraft(1);
+    coordinator.initialize(draft);
+    draft.manual.a = true;
+    coordinator.schedule(draft);
+
+    await expect(coordinator.flush()).rejects.toThrow("validation rejected");
+    expect(coordinator.state).toMatchObject({ phase: "error", retryable: false, failureKind: "rejected" });
+    await expect(coordinator.retry()).rejects.toBeInstanceOf(DraftPersistenceRetryUnavailableError);
+    await expect(coordinator.flush()).rejects.toBeInstanceOf(DraftPersistenceRetryUnavailableError);
+    expect(saveDraft).toHaveBeenCalledOnce();
   });
 
   it("flushes immediately without leaving a delayed duplicate", async () => {

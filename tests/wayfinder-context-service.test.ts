@@ -316,6 +316,7 @@ describe("wayfinder context service", () => {
         durableRevision: 1,
         retryable: false,
         message: null,
+        failureKind: null,
       },
     });
     const failed = await buildWayfinderContext({
@@ -326,6 +327,7 @@ describe("wayfinder context service", () => {
         durableRevision: 1,
         retryable: true,
         message: "save failed",
+        failureKind: "transient",
       },
     });
     const busy = await buildWayfinderContext({ ...base, lifecycleBusy: true });
@@ -338,7 +340,12 @@ describe("wayfinder context service", () => {
     expect(failed).toMatchObject({
       readinessReady: true,
       canApplyDraft: false,
-      draftSave: { error: true, retryable: true, live: "assertive" },
+      draftSave: {
+        error: true,
+        retryable: true,
+        live: "assertive",
+        message: expect.stringContaining("Cause: save failed"),
+      },
     });
     expect(failed.applyBlocker).toBeNull();
     expect(busy).toMatchObject({ readinessReady: true, canApplyDraft: false, lifecycleBusy: true });

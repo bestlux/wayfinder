@@ -425,10 +425,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             catch (error) {
                 this.#draftPersistence.resume();
                 this.#semanticCommands.releaseBarrier();
-                this.#statusNote =
-                    "Wayfinder could not save the latest draft, so the window stayed open. Retry the save first.";
+                const saveView = buildDraftSaveView(this.#draftPersistence.state);
+                this.#statusNote = saveView.message ?? "Wayfinder could not save the latest draft, so the window stayed open.";
                 this.#patchDraftSaveStatus(this.#draftPersistence.state);
-                ui.notifications.error("Wayfinder kept this window open because the latest draft could not be saved.");
+                ui.notifications.error(this.#statusNote);
                 console.error("PF2E Wayfinder failed to save before close", error);
                 this.render(false);
                 return this;
@@ -1591,7 +1591,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         catch (error) {
             console.error("PF2E Wayfinder failed to save draft", error);
-            ui.notifications.error("Wayfinder could not save this draft. Review the save status and retry.");
+            ui.notifications.error(buildDraftSaveView(this.#draftPersistence.state).message ??
+                "Wayfinder could not save this draft. Review the save status.");
         }
         this.render(false);
     }
@@ -1605,7 +1606,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         catch (error) {
             console.error("PF2E Wayfinder failed to retry draft save", error);
-            ui.notifications.error("Wayfinder still could not save this draft.");
+            ui.notifications.error(buildDraftSaveView(this.#draftPersistence.state).message ?? "Wayfinder still could not save this draft.");
         }
         this.render(false);
     }
@@ -1713,7 +1714,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     #onDraftSaveStateChange(state) {
         if (state.phase === "error" && this.#lastDraftSavePhase !== "error") {
-            ui.notifications.error("Wayfinder could not autosave the latest draft. Retry from the footer.");
+            ui.notifications.error(buildDraftSaveView(state).message ?? "Wayfinder could not autosave the latest draft.");
         }
         this.#lastDraftSavePhase = state.phase;
         this.#patchDraftSaveStatus(state);
@@ -1734,7 +1735,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             status.setAttribute("aria-live", view.live);
             const message = status.querySelector("[data-wayfinder-save-message]");
             if (message) {
-                message.textContent = game.i18n.localize(view.labelKey);
+                message.textContent = view.message ?? game.i18n.localize(view.labelKey);
             }
             const icon = status.querySelector("i");
             if (icon) {

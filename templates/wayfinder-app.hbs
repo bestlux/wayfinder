@@ -261,7 +261,7 @@
       {{#unless draftSave.visible}}hidden{{/unless}}
     >
       <i class="fa-solid {{#if draftSave.saving}}fa-spinner fa-spin{{else}}{{#if draftSave.saved}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}}{{/if}}" aria-hidden="true"></i>
-      <span data-wayfinder-save-message>{{localize draftSave.labelKey}}</span>
+      <span data-wayfinder-save-message>{{#if draftSave.message}}{{draftSave.message}}{{else}}{{localize draftSave.labelKey}}{{/if}}</span>
       <button type="button" class="footer-save-retry" data-wayfinder-action="retry-draft-save" {{#unless draftSave.retryable}}hidden{{/unless}}>{{localize "wayfinder-pf2e.App.DraftSaveRetry"}}</button>
     </div>
     {{#if applyBlocker}}

@@ -203,7 +203,7 @@ describe("wayfinder draft lifecycle service", () => {
 
     guard.acceptCurrent(recovery);
     await saveDraftWithWriteGuard(actor, recovery, 5, guard);
-    expect(update).toHaveBeenCalledOnce();
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("refuses to apply when any planned step is incomplete", async () => {

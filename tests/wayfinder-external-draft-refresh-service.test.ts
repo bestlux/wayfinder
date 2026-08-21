@@ -122,6 +122,7 @@ function idleState(): DraftSaveState {
     durableRevision: 0,
     retryable: false,
     message: null,
+    failureKind: null,
   };
 }
 

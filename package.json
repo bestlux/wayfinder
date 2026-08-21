@@ -21,6 +21,7 @@
     "audit:embedded-choices": "node tools/foundry-smoke/audit-embedded-choices.mjs",
     "smoke:foundry": "node tools/foundry-smoke/run-foundry-smoke.mjs",
     "smoke:foundry:acquisition": "node tools/foundry-smoke/run-acquisition-tracer.mjs",
+    "smoke:foundry:drafts": "node tools/foundry-smoke/run-draft-persistence-tracer.mjs",
     "smoke:foundry:owner": "node tools/foundry-smoke/run-owner-access-probe.mjs",
     "smoke:character-wealth": "node tools/foundry-smoke/run-character-wealth-compatibility.mjs",
     "profile:picker": "node tools/foundry-interaction/run-picker-profile.mjs",

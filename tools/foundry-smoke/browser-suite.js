@@ -420,6 +420,370 @@ globalThis.__cleanupWayfinderOwnerProbe = async function cleanupWayfinderOwnerPr
   };
 };
 
+globalThis.__prepareWayfinderDraftPersistenceTracer = async function prepareWayfinderDraftPersistenceTracer({
+  allowDestructive = false,
+  expectedWorldId = "",
+  fixturePrefix,
+  moduleId,
+  playerName,
+  runId,
+}) {
+  if (!allowDestructive || !String(expectedWorldId ?? "").trim()) {
+    throw new Error("Draft persistence tracer setup requires destructive cleanup opt-in and an exact world id.");
+  }
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (!game.user?.isGM) throw new Error("Draft persistence tracer setup must run as a current GM.");
+  const moduleRecord = game.modules.get(moduleId);
+  if (!moduleRecord?.active) throw new Error(`${moduleId} is not active in this world.`);
+  const player = game.users.find((user) => user.name === playerName);
+  if (!player || player.isGM || player.id === game.user.id) {
+    throw new Error("Draft persistence tracer requires a distinct, pre-existing non-GM player.");
+  }
+  const fixtureName = `${fixturePrefix} - draft-persistence-${runId}`;
+  const actor = await Actor.create({
+    name: fixtureName,
+    type: "character",
+    ownership: fixtureOwnershipFor(player),
+    system: { details: { level: { value: 1 } } },
+  });
+  try {
+    await enforceFixtureOwnership(actor, player);
+    await actor.setFlag(moduleId, "smokeDraftPersistence", { runId });
+    return {
+      actorId: actor.id,
+      fixtureName,
+      playerId: player.id,
+      setupUserId: game.user.id,
+      runId,
+      runtime: smokeRuntime(moduleRecord, expectedWorldId),
+    };
+  } catch (error) {
+    await actor.delete();
+    throw error;
+  }
+};
+
+globalThis.__runWayfinderDraftPersistenceTracer = async function runWayfinderDraftPersistenceTracer({
+  actorId,
+  expectedRole,
+  expectedUserId,
+  expectedWorldId,
+  moduleId,
+  runId,
+}) {
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  const isExpectedRole = expectedRole === "gm" ? game.user?.isGM : !game.user?.isGM;
+  if (!isExpectedRole || game.user?.id !== expectedUserId) {
+    throw new Error(`Draft persistence tracer did not run as the expected ${expectedRole} user.`);
+  }
+  const moduleRecord = game.modules.get(moduleId);
+  if (!moduleRecord?.active) throw new Error(`${moduleId} is not active in this world.`);
+  const actor = game.actors.get(actorId);
+  if (!actor || actor.getFlag(moduleId, "smokeDraftPersistence")?.runId !== runId) {
+    throw new Error("Draft persistence tracer could not resolve the exact guarded actor.");
+  }
+  if (!actor.isOwner || !actor.canUserModify(game.user, "update")) {
+    throw new Error("Draft persistence tracer user cannot update the guarded actor.");
+  }
+  const modules = await loadWayfinderModules(moduleId);
+  const repeated = await runDraftPersistenceRoundTrip(actor, modules, moduleId);
+  const faultCases = expectedRole === "owner" ? await runDraftPersistenceFaultCases(actor, modules, moduleId) : null;
+  return {
+    session: { id: game.user.id, name: game.user.name, role: Number(game.user.role), isGM: Boolean(game.user.isGM) },
+    repeated,
+    faultCases,
+    runtime: smokeRuntime(moduleRecord, expectedWorldId),
+  };
+};
+
+globalThis.__cleanupWayfinderDraftPersistenceTracer = async function cleanupWayfinderDraftPersistenceTracer({
+  actorId,
+  allowDestructive = false,
+  expectedWorldId = "",
+  fixtureName,
+  moduleId,
+  runId,
+}) {
+  if (!allowDestructive || !String(expectedWorldId ?? "").trim()) {
+    throw new Error("Draft persistence tracer cleanup requires destructive opt-in and an exact world id.");
+  }
+  assertExpectedWorldId(game.world?.id, expectedWorldId);
+  if (!game.user?.isGM) throw new Error("Draft persistence tracer cleanup must run as a current GM.");
+  const actor = game.actors.get(actorId);
+  const exactFixtureMatched = Boolean(
+    actor && actor.name === fixtureName && actor.getFlag(moduleId, "smokeDraftPersistence")?.runId === runId,
+  );
+  if (!exactFixtureMatched) {
+    throw new Error("Draft persistence tracer cleanup refused an actor that did not match the guarded fixture.");
+  }
+  for (const app of Object.values(actor.apps ?? {})) await app.close?.({ animate: false });
+  await actor.delete();
+  return { exactFixtureMatched: true, actorDeleted: true, actorMissingAfterCleanup: !game.actors.has(actorId) };
+};
+
+async function runDraftPersistenceRoundTrip(actor, modules, moduleId) {
+  let app = await openDraftPersistenceApp(actor, modules);
+  await clickDraftAction(app, "target-up");
+  await waitForPersistedDraftTarget(actor, moduleId, 2);
+  await waitForDraftSavePhase(app, "saved");
+  await closeDraftPersistenceApp(app);
+
+  app = await openDraftPersistenceApp(actor, modules);
+  const firstReopenTarget = readDraftTargetFromApp(app);
+  await clickDraftAction(app, "target-down");
+  await waitForPersistedDraftTarget(actor, moduleId, 1);
+  await waitForDraftSavePhase(app, "saved");
+  await closeDraftPersistenceApp(app);
+
+  app = await openDraftPersistenceApp(actor, modules);
+  const secondReopenTarget = readDraftTargetFromApp(app);
+  await closeDraftPersistenceApp(app);
+  return {
+    savedTargets: [2, 1],
+    reopenedTargets: [firstReopenTarget, secondReopenTarget],
+    exactPersistence: firstReopenTarget === 2 && secondReopenTarget === 1,
+  };
+}
+
+async function runDraftPersistenceFaultCases(actor, modules, moduleId) {
+  const transient = await runTransientDraftPersistenceCase(actor, modules, moduleId);
+  const permanent = await runPermanentDraftPersistenceCase(actor, modules, moduleId);
+  const malformed = await runMalformedDraftPersistenceCase(actor, modules, moduleId);
+  return { transient, permanent, malformed };
+}
+
+async function runTransientDraftPersistenceCase(actor, modules, moduleId) {
+  const durableBefore = structuredClone(actor.getFlag(moduleId, "draft"));
+  let updateAttempts = 0;
+  let restoreUpdate = () => undefined;
+  restoreUpdate = interceptActorUpdate(actor, async ({ callOriginal, operation, updates }) => {
+    if (Object.hasOwn(updates, `flags.${moduleId}.draft`) && updateAttempts++ === 0) {
+      restoreUpdate();
+      throw new Error("Network timeout forced by the Wayfinder draft persistence tracer.");
+    }
+    return callOriginal(updates, operation);
+  });
+  let app = await openDraftPersistenceApp(actor, modules);
+  try {
+    await clickDraftAction(app, "target-up");
+    const error = await waitForDraftSavePhase(app, "error");
+    const durableAfterFailure = structuredClone(actor.getFlag(moduleId, "draft"));
+    const retry = rootElementOf(app.element)?.querySelector("[data-wayfinder-action='retry-draft-save']");
+    const retryVisible = Boolean(retry && !retry.hidden);
+    retry?.click();
+    try {
+      await waitForPersistedDraftTarget(actor, moduleId, 2);
+    } catch (retryError) {
+      const status = rootElementOf(app.element)?.querySelector("[data-wayfinder-save-status]");
+      const phase = status?.dataset.phase ?? "missing";
+      const message = status?.querySelector("[data-wayfinder-save-message]")?.textContent?.trim() ?? "missing";
+      throw new Error(
+        `Transient retry did not persist (visible ${retryVisible}; attempts ${updateAttempts}; phase ${phase}; message ${message}; durable ${JSON.stringify(actor.getFlag(moduleId, "draft"))}).`,
+        { cause: retryError },
+      );
+    }
+    await waitForDraftSavePhase(app, "saved");
+    const closeUpdates = [];
+    const restoreCloseObserver = interceptActorUpdate(actor, ({ callOriginal, operation, updates }) => {
+      closeUpdates.push(structuredClone(updates));
+      return callOriginal(updates, operation);
+    });
+    try {
+      await closeDraftPersistenceApp(app);
+    } catch (closeError) {
+      throw new Error(
+        `${closeError instanceof Error ? closeError.message : String(closeError)} Close updates: ${JSON.stringify(closeUpdates)}. Durable: ${JSON.stringify(actor.getFlag(moduleId, "draft"))}.`,
+        { cause: closeError },
+      );
+    } finally {
+      restoreCloseObserver();
+    }
+    app = null;
+    return {
+      durableUnchangedAfterFailure: JSON.stringify(durableAfterFailure) === JSON.stringify(durableBefore),
+      failureMessage: error.message,
+      retryVisible,
+      updateAttempts,
+      newestTargetPersisted: actor.getFlag(moduleId, "draft")?.targetLevel === 2,
+    };
+  } finally {
+    restoreUpdate();
+    await closeDraftPersistenceApp(app).catch(() => undefined);
+  }
+}
+
+async function runPermanentDraftPersistenceCase(actor, modules, moduleId) {
+  const durableBefore = structuredClone(actor.getFlag(moduleId, "draft"));
+  let updateAttempts = 0;
+  const restoreUpdate = interceptActorUpdate(actor, async ({ callOriginal, operation, updates }) => {
+    if (Object.hasOwn(updates, `flags.${moduleId}.draft`)) {
+      updateAttempts += 1;
+      const error = new Error("Actor sheet validation rejected flags.wayfinder-pf2e.draft (forced tracer case).");
+      error.name = "DataModelValidationError";
+      throw error;
+    }
+    return callOriginal(updates, operation);
+  });
+  const app = await openDraftPersistenceApp(actor, modules);
+  try {
+    await clickDraftAction(app, "target-down");
+    const error = await waitForDraftSavePhase(app, "error");
+    const root = rootElementOf(app.element);
+    const retry = root?.querySelector("[data-wayfinder-action='retry-draft-save']");
+    const retryHidden = !retry || retry.hidden;
+    const durableAfterFailure = structuredClone(actor.getFlag(moduleId, "draft"));
+    root?.querySelector("[data-wayfinder-action='save-draft']")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await app.close({ animate: false });
+    const windowStayedOpen = Boolean(rootElementOf(app.element)?.isConnected);
+    return {
+      durableUnchangedAfterFailure: JSON.stringify(durableAfterFailure) === JSON.stringify(durableBefore),
+      failureMessage: error.message,
+      retryHidden,
+      updateAttempts,
+      noRetryLoop: updateAttempts === 1,
+      windowStayedOpen,
+    };
+  } finally {
+    restoreUpdate();
+    await clickDraftAction(app, "target-up");
+    await waitForPersistedDraftTarget(actor, moduleId, 2);
+    await waitForDraftSavePhase(app, "saved");
+    await closeDraftPersistenceApp(app);
+  }
+}
+
+async function runMalformedDraftPersistenceCase(actor, modules, moduleId) {
+  const durableBefore = structuredClone(actor.getFlag(moduleId, "draft"));
+  let alteredWrites = 0;
+  let restoreUpdate = () => undefined;
+  restoreUpdate = interceptActorUpdate(actor, async ({ callOriginal, operation, updates }) => {
+    const draftKey = `flags.${moduleId}.draft`;
+    if (Object.hasOwn(updates, draftKey) && alteredWrites++ === 0) {
+      const altered = structuredClone(updates);
+      altered[draftKey].targetLevel = 20;
+      delete altered[draftKey].selections;
+      const result = await callOriginal(altered, operation);
+      restoreUpdate();
+      return result;
+    }
+    return callOriginal(updates, operation);
+  });
+  const app = await openDraftPersistenceApp(actor, modules);
+  try {
+    await clickDraftAction(app, "target-down");
+    const error = await waitForDraftSavePhase(app, "error");
+    const durableAfterFailure = structuredClone(actor.getFlag(moduleId, "draft"));
+    const retry = rootElementOf(app.element)?.querySelector("[data-wayfinder-action='retry-draft-save']");
+    return {
+      alteredWrites,
+      durableRestoredExactly: JSON.stringify(durableAfterFailure) === JSON.stringify(durableBefore),
+      failureMessage: error.message,
+      retryHidden: !retry || retry.hidden,
+    };
+  } finally {
+    restoreUpdate();
+    await clickDraftAction(app, "target-up");
+    await waitForPersistedDraftTarget(actor, moduleId, 2);
+    await waitForDraftSavePhase(app, "saved");
+    await closeDraftPersistenceApp(app);
+  }
+}
+
+function interceptActorUpdate(actor, interceptor) {
+  const ownDescriptor = Object.getOwnPropertyDescriptor(actor, "update");
+  const originalUpdate = actor.update;
+  let restored = false;
+  Object.defineProperty(actor, "update", {
+    configurable: true,
+    value(updates, operation) {
+      return interceptor({
+        callOriginal: (nextUpdates, nextOperation) => originalUpdate.call(actor, nextUpdates, nextOperation),
+        operation,
+        updates,
+      });
+    },
+    writable: true,
+  });
+  return () => {
+    if (restored) return;
+    restored = true;
+    if (ownDescriptor) Object.defineProperty(actor, "update", ownDescriptor);
+    else delete actor.update;
+  };
+}
+
+async function openDraftPersistenceApp(actor, modules) {
+  modules.WayfinderApp.open(actor);
+  const app = await waitForCondition(
+    () =>
+      Object.values(actor.apps ?? {}).find(
+        (candidate) => candidate instanceof modules.WayfinderApp && candidate.actor?.id === actor.id,
+      ) ?? null,
+    10000,
+    "Draft persistence tracer could not open the actor-bound Wayfinder app.",
+  );
+  await waitForCondition(
+    () => (rootElementOf(app.element)?.isConnected ? true : null),
+    10000,
+    "Draft persistence tracer app did not complete its render lifecycle.",
+  );
+  return app;
+}
+
+async function closeDraftPersistenceApp(app) {
+  if (!app || !rootElementOf(app.element)?.isConnected) return;
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  await app.close({ animate: false });
+  try {
+    await waitForCondition(
+      () => (!rootElementOf(app.element)?.isConnected ? true : null),
+      10000,
+      "Draft persistence tracer app did not close.",
+    );
+  } catch (error) {
+    const status = rootElementOf(app.element)?.querySelector("[data-wayfinder-save-status]");
+    const phase = status?.dataset.phase ?? "missing";
+    const message = status?.querySelector("[data-wayfinder-save-message]")?.textContent?.trim() ?? "missing";
+    throw new Error(`Draft persistence tracer app did not close (phase ${phase}; message ${message}).`, {
+      cause: error,
+    });
+  }
+}
+
+async function clickDraftAction(app, action) {
+  const control = await waitForCondition(
+    () => rootElementOf(app.element)?.querySelector(`[data-wayfinder-action='${action}']`) ?? null,
+    10000,
+    `Draft persistence tracer could not find ${action}.`,
+  );
+  control.click();
+}
+
+async function waitForPersistedDraftTarget(actor, moduleId, targetLevel) {
+  return waitForCondition(
+    () => (actor.getFlag(moduleId, "draft")?.targetLevel === targetLevel ? true : null),
+    10000,
+    `Draft persistence tracer did not persist target level ${targetLevel}.`,
+  );
+}
+
+async function waitForDraftSavePhase(app, phase) {
+  const status = await waitForCondition(
+    () => {
+      const candidate = rootElementOf(app.element)?.querySelector("[data-wayfinder-save-status]");
+      return candidate?.dataset.phase === phase ? candidate : null;
+    },
+    10000,
+    `Draft persistence tracer did not reach save phase ${phase}.`,
+  );
+  return { message: status.querySelector("[data-wayfinder-save-message]")?.textContent?.trim() ?? "" };
+}
+
+function readDraftTargetFromApp(app) {
+  return Number(rootElementOf(app.element)?.querySelector(".level-badge.target strong")?.textContent?.trim());
+}
+
 const ACQUISITION_BASE_BUILD = Object.freeze([
   {
     uuid: "Compendium.pf2e.ancestries.Item.IiG7DgeLWYrSNXuX",

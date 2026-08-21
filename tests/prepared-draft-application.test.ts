@@ -963,6 +963,57 @@ describe("prepared draft application", () => {
     expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { label: "duplicate", additional: ["athletics", "athletics"], fixedSkills: [], trainedSkill: null },
+    { label: "fixed", additional: ["deception"], fixedSkills: ["deception"], trainedSkill: null },
+    { label: "already trained", additional: ["medicine"], fixedSkills: [], trainedSkill: "medicine" },
+  ])("rejects a $label additional training selection before Apply", async ({
+    additional,
+    fixedSkills,
+    trainedSkill,
+  }) => {
+    const { actor } = buildActorHarness();
+    actor.system = {
+      ...actor.system,
+      skills: {
+        athletics: { rank: 0 },
+        deception: { rank: 0 },
+        medicine: { rank: trainedSkill === "medicine" ? 1 : 0 },
+      },
+    };
+    const draft = createEmptyDraft(1);
+    const step = necromancerTrainingStep();
+    if (step.kind !== "skill-training") {
+      throw new Error("Expected a skill-training step");
+    }
+    step.training.fixedSkills = fixedSkills;
+    step.training.choiceRules = [];
+    step.training.additionalCount = additional.length;
+    draft.skillTrainings[step.slotId] = { ruleChoices: {}, additional, loreChoices: {} };
+
+    await expect(applyDraftToActor(actor as never, draft, [step])).rejects.toThrow(
+      "Fighter skill training changed after this draft was prepared"
+    );
+    expect(actor.update).not.toHaveBeenCalled();
+    expect(actor.createEmbeddedDocuments).not.toHaveBeenCalled();
+  });
+
+  it("accepts recovered additional training already present on the actor", async () => {
+    const { actor } = buildActorHarness();
+    actor.system = { ...actor.system, skills: { athletics: { rank: 1 } } };
+    const draft = createEmptyDraft(1);
+    const step = necromancerTrainingStep();
+    if (step.kind !== "skill-training") {
+      throw new Error("Expected a skill-training step");
+    }
+    step.training.choiceRules = [];
+    step.training.additionalCount = 1;
+    draft.applyAttemptStepIds = [step.slotId];
+    draft.skillTrainings[step.slotId] = { ruleChoices: {}, additional: ["athletics"], loreChoices: {} };
+
+    await expect(prepareDraftApplication(actor as never, draft, [step])).resolves.toBeDefined();
+  });
+
   it("accepts an exact skill choice that the same locked recovery draft already applied", async () => {
     const { actor } = buildActorHarness();
     actor.system = {

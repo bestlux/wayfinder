@@ -367,6 +367,33 @@ describe("wayfinder draft adjustment service", () => {
     expect(state.recentlyInvalidatedStepIds.has("skill-training-wizard-level-1")).toBe(true);
   });
 
+  it("removes additional training invalidated by changed fixed, rule, and projected skills", () => {
+    const draft = createEmptyDraft(1);
+    const step = necromancerTrainingStep();
+    if (step.kind !== "skill-training") {
+      throw new Error("Expected a skill-training step");
+    }
+    step.training.fixedSkills = ["deception"];
+    step.training.additionalCount = 2;
+    draft.skillTrainings[step.slotId] = {
+      ruleChoices: { "feat:necromancer-dedication:dedication-skill-1": "arcana" },
+      additional: ["deception", "arcana", "medicine", "medicine", "nature", "society", "stealth"],
+      loreChoices: {},
+    };
+    const state = adjustmentState(draft);
+
+    expect(
+      syncSkillTrainingSelections(state, [step], {
+        [step.slotId]: { occultism: 1, medicine: 1 },
+      })
+    ).toBe(true);
+    expect(draft.skillTrainings[step.slotId]).toMatchObject({
+      ruleChoices: { "feat:necromancer-dedication:dedication-skill-1": "arcana" },
+      additional: ["nature", "society"],
+    });
+    expect(state.recentlyInvalidatedStepIds).toEqual(new Set([step.slotId]));
+  });
+
   it("retains a valid dedication fallback skill when the preferred skill is already trained", () => {
     const draft = createEmptyDraft(1);
     draft.skillTrainings["skill-training-fighter-level-1"] = {
@@ -417,7 +444,7 @@ describe("wayfinder draft adjustment service", () => {
       additional: ["arcana"],
       ranks: { occultism: 1, arcana: 0 },
     },
-  ])("clears a dedication fallback that is $label", ({ additional, ranks }) => {
+  ])("reconciles a dedication fallback that is $label", ({ label, additional, ranks }) => {
     const draft = createEmptyDraft(1);
     draft.skillTrainings["skill-training-fighter-level-1"] = {
       ruleChoices: { "feat:necromancer-dedication:dedication-skill-1": "arcana" },
@@ -431,7 +458,14 @@ describe("wayfinder draft adjustment service", () => {
         "skill-training-fighter-level-1": ranks,
       })
     ).toBe(true);
-    expect(draft.skillTrainings["skill-training-fighter-level-1"]?.ruleChoices).toEqual({});
+    expect(draft.skillTrainings["skill-training-fighter-level-1"]).toMatchObject(
+      label === "reserved elsewhere in the step"
+        ? {
+            ruleChoices: { "feat:necromancer-dedication:dedication-skill-1": "arcana" },
+            additional: [],
+          }
+        : { ruleChoices: {} }
+    );
   });
 
   it("updates manual completion and training rule choices, and clamps target level changes", () => {

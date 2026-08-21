@@ -271,6 +271,18 @@ function validateTrainingChoices(draft, step, validSkillSlugs, projectedRanks, a
     if (training.additional.some((slug) => !validSkillSlugs.has(slug))) {
         throw staleChoiceError(step);
     }
+    const additionalSkills = new Set(training.additional);
+    const reservedAdditionalSkills = new Set([
+        ...step.training.fixedSkills,
+        ...Object.entries(training.ruleChoices)
+            .filter(([key, value]) => activeRuleChoiceKeys.has(key) && typeof value === "string" && value.length > 0)
+            .map(([, value]) => value),
+    ]);
+    if (additionalSkills.size !== training.additional.length ||
+        training.additional.length > step.training.additionalCount ||
+        training.additional.some((slug) => reservedAdditionalSkills.has(slug) || ((projectedRanks[slug] ?? 0) >= 1 && !allowRecoveredSelection))) {
+        throw staleChoiceError(step);
+    }
     for (const choice of step.training.choiceRules) {
         const selected = training.ruleChoices[choice.key];
         if (!selected)

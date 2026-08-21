@@ -233,11 +233,32 @@ export function syncSkillTrainingSelections(state, steps, projectedSkillRanksByS
             continue;
         }
         let nextChanged = false;
-        if (current.additional.length > step.training.additionalCount) {
-            current.additional = current.additional.slice(0, step.training.additionalCount);
+        const allowedRuleKeys = new Set(step.training.choiceRules.map((choice) => choice.key));
+        const reservedAdditionalSkills = new Set([
+            ...step.training.fixedSkills,
+            ...Object.entries(current.ruleChoices)
+                .filter(([key, value]) => allowedRuleKeys.has(key) && typeof value === "string" && value.length > 0)
+                .map(([, value]) => value),
+        ]);
+        const seenAdditionalSkills = new Set();
+        const validAdditional = current.additional
+            .filter((slug) => {
+            if (typeof slug !== "string" ||
+                slug.length === 0 ||
+                seenAdditionalSkills.has(slug) ||
+                reservedAdditionalSkills.has(slug) ||
+                (projectedSkillRanksByStepId[step.slotId]?.[slug] ?? 0) >= 1) {
+                return false;
+            }
+            seenAdditionalSkills.add(slug);
+            return true;
+        })
+            .slice(0, step.training.additionalCount);
+        if (validAdditional.length !== current.additional.length ||
+            validAdditional.some((slug, index) => slug !== current.additional[index])) {
+            current.additional = validAdditional;
             nextChanged = true;
         }
-        const allowedRuleKeys = new Set(step.training.choiceRules.map((choice) => choice.key));
         const validRuleChoices = Object.fromEntries(Object.entries(current.ruleChoices).filter(([key, value]) => {
             if (!allowedRuleKeys.has(key) || typeof value !== "string" || value.length === 0) {
                 return false;

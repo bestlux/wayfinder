@@ -1,17 +1,63 @@
-<section class="equipment-cart" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Cart.Aria"}}" data-application-part="equipment-cart" data-step-id="{{activePane.stepId}}">
+<section class="equipment-cart{{#if activePane.review.settled}} is-settled{{/if}}" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Cart.Aria"}}" data-application-part="equipment-cart" data-step-id="{{activePane.stepId}}">
   <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{activePane.cart.announcement}}</p>
-  <p class="equipment-cart-summary">{{localize "wayfinder-pf2e.StartingEquipment.Cart.Eyebrow"}} · <strong>{{localize "wayfinder-pf2e.StartingEquipment.Cart.Title"}}</strong> · {{localize "wayfinder-pf2e.StartingEquipment.Cart.Spent"}}: {{activePane.cart.spentLabel}} · {{localize "wayfinder-pf2e.StartingEquipment.Cart.Remaining"}}: {{activePane.cart.remainingLabel}}</p>
-  {{#if activePane.cart.empty}}<p class="equipment-cart-empty">{{localize "wayfinder-pf2e.StartingEquipment.Cart.Empty"}}</p>{{/if}}
-  {{#each activePane.cart.lines}}
-    <article class="equipment-cart-line" tabindex="-1" data-wayfinder-focus-id="{{focusId}}">
-      <span><strong>{{name}}</strong> · {{fundingLabel}} · {{priceLabel}} {{#if configurationLabel}}· {{configurationLabel}}{{/if}} {{#each children}}· {{#if nested}}↳ {{/if}}{{quantity}} × {{name}}{{/each}} {{#if unavailableReason}}· <small class="equipment-unavailable">{{unavailableReason}}</small>{{/if}}</span>
-      {{#if canChangeQuantity}}
-        <div class="equipment-quantity" aria-label="{{quantityAriaLabel}}"><button type="button" data-wayfinder-action="change-equipment-quantity" data-wayfinder-focus-id="{{decreaseFocusId}}" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" data-delta="-1" aria-label="{{decreaseAriaLabel}}">−</button><strong>{{quantity}}</strong><button type="button" data-wayfinder-action="change-equipment-quantity" data-wayfinder-focus-id="{{increaseFocusId}}" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" data-delta="1" aria-label="{{increaseAriaLabel}}">+</button></div>
-      {{else}}
-        <strong class="equipment-fixed-quantity" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Cart.FixedQuantityAria" name=name}}">{{quantity}}</strong>
-      {{/if}}
-      {{#if canRemove}}<button type="button" class="icon" data-wayfinder-action="remove-equipment-line" data-wayfinder-focus-id="{{removeFocusId}}" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" aria-label="{{removeAriaLabel}}"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>{{/if}}
-    </article>
-  {{/each}}
-  <footer tabindex="-1" data-wayfinder-focus-id="starting-equipment-review"><span><strong>{{activePane.review.label}}</strong> · {{localize "wayfinder-pf2e.StartingEquipment.Review.ApplyCheck"}}</span><div><button type="button" class="secondary" data-wayfinder-action="retain-all-equipment" data-wayfinder-focus-id="starting-equipment-retain-all" data-step-id="{{activePane.stepId}}" {{#unless activePane.review.canRetainAll}}disabled{{/unless}}>{{localize "wayfinder-pf2e.StartingEquipment.Actions.KeepItAll"}}</button><button type="button" class="primary" data-wayfinder-action="review-equipment-purchases" data-wayfinder-focus-id="starting-equipment-confirm-kit" data-step-id="{{activePane.stepId}}" {{#unless activePane.review.canReviewPurchases}}disabled{{/unless}}>{{localize "wayfinder-pf2e.StartingEquipment.Actions.ConfirmKit"}}</button></div></footer>
+
+  <header class="equipment-cart-summary">
+    <span class="equipment-cart-title">
+      <i class="fa-solid fa-sack-dollar" aria-hidden="true"></i>
+      <strong>{{localize "wayfinder-pf2e.StartingEquipment.Cart.Title"}}</strong>
+      <small>{{localize "wayfinder-pf2e.StartingEquipment.Cart.Lines" count=activePane.cart.count}}</small>
+    </span>
+
+    <span class="equipment-purse{{#if activePane.cart.overspent}} is-overspent{{/if}}">
+      <span class="equipment-purse-figures">
+        <span><em>{{localize "wayfinder-pf2e.StartingEquipment.Cart.Spent"}}</em><strong>{{activePane.cart.spentLabel}}</strong></span>
+        <span><em>{{localize "wayfinder-pf2e.StartingEquipment.Cart.Remaining"}}</em><strong>{{activePane.cart.remainingLabel}}</strong></span>
+      </span>
+      <span class="equipment-purse-track" role="img" aria-label="{{activePane.cart.announcement}}">
+        <span class="equipment-purse-fill" style="width: {{activePane.cart.spentPercent}}%"></span>
+      </span>
+    </span>
+  </header>
+
+  {{#if activePane.cart.empty}}
+    <p class="equipment-cart-empty"><i class="fa-solid fa-feather" aria-hidden="true"></i>{{localize "wayfinder-pf2e.StartingEquipment.Cart.Empty"}}</p>
+  {{/if}}
+
+  <div class="equipment-cart-lines">
+    {{#each activePane.cart.lines}}
+      <article class="equipment-cart-line{{#if unavailableReason}} is-blocked{{/if}}" tabindex="-1" data-wayfinder-focus-id="{{focusId}}">
+        <span class="equipment-cart-copy">
+          <strong>{{name}}</strong>
+          <small class="equipment-cart-funding">{{fundingLabel}}{{#if configurationLabel}} · {{configurationLabel}}{{/if}}</small>
+          {{#if children.length}}
+            <small class="equipment-cart-children">
+              {{#each children}}<span>{{#if nested}}↳ {{/if}}{{quantity}} × {{name}}</span>{{/each}}
+            </small>
+          {{/if}}
+          {{#if unavailableReason}}<small class="equipment-unavailable"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>{{unavailableReason}}</small>{{/if}}
+        </span>
+
+        <span class="equipment-cart-price">{{priceLabel}}</span>
+
+        {{#if canChangeQuantity}}
+          <div class="equipment-quantity" aria-label="{{quantityAriaLabel}}"><button type="button" data-wayfinder-action="change-equipment-quantity" data-wayfinder-focus-id="{{decreaseFocusId}}" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" data-delta="-1" aria-label="{{decreaseAriaLabel}}">−</button><strong>{{quantity}}</strong><button type="button" data-wayfinder-action="change-equipment-quantity" data-wayfinder-focus-id="{{increaseFocusId}}" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" data-delta="1" aria-label="{{increaseAriaLabel}}">+</button></div>
+        {{else}}
+          <strong class="equipment-fixed-quantity" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Cart.FixedQuantityAria" name=name}}">×{{quantity}}</strong>
+        {{/if}}
+
+        {{#if canRemove}}<button type="button" class="icon equipment-cart-remove" data-wayfinder-action="remove-equipment-line" data-wayfinder-focus-id="{{removeFocusId}}" data-step-id="{{../activePane.stepId}}" data-line-id="{{lineId}}" aria-label="{{removeAriaLabel}}"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>{{else}}<span class="equipment-cart-remove-spacer" aria-hidden="true"></span>{{/if}}
+      </article>
+    {{/each}}
+  </div>
+
+  <footer tabindex="-1" data-wayfinder-focus-id="starting-equipment-review">
+    <span class="equipment-review-copy">
+      <strong>{{activePane.review.label}}</strong>
+      <small>{{localize "wayfinder-pf2e.StartingEquipment.Review.ApplyCheck"}}</small>
+    </span>
+    <div>
+      <button type="button" class="secondary" data-wayfinder-action="retain-all-equipment" data-wayfinder-focus-id="starting-equipment-retain-all" data-step-id="{{activePane.stepId}}" {{#unless activePane.review.canRetainAll}}disabled{{/unless}}>{{localize "wayfinder-pf2e.StartingEquipment.Actions.KeepItAll"}}</button>
+      <button type="button" class="primary" data-wayfinder-action="review-equipment-purchases" data-wayfinder-focus-id="starting-equipment-confirm-kit" data-step-id="{{activePane.stepId}}" {{#unless activePane.review.canReviewPurchases}}disabled{{/unless}}>{{#if activePane.review.settled}}<i class="fa-solid fa-circle-check" aria-hidden="true"></i>{{/if}}{{localize "wayfinder-pf2e.StartingEquipment.Actions.ConfirmKit"}}</button>
+    </div>
+  </footer>
 </section>

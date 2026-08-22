@@ -466,7 +466,7 @@ describe("equipment acquisition runtime", () => {
     expect(projection.matchedRecordCount).toBe(levelQualified.length);
     expect(projection.records).toHaveLength(12);
     expect(pane.catalogue).toMatchObject({
-      message: `${levelQualified.length} pieces of gear to browse.`,
+      message: `${levelQualified.length} pieces of gear on the shelves.`,
       totalResultCount: levelQualified.length,
       visibleResultCount: 12,
     });

@@ -179,27 +179,27 @@
     "StartingEquipment": {
       "Mode": "Equipment",
       "Title": "Starting equipment",
-      "Description": "Review the effective equipment policy, build a cart, or explicitly retain all starting wealth.",
+      "Description": "Spend your starting wealth, or keep the coin and shop later.",
       "Actions": {
         "Add": "Add",
-        "ApproveCustomSum": "Approve Custom Sum",
-        "ApproveException": "Approve Exact Exception",
+        "ApproveCustomSum": "Approve sum",
+        "ApproveException": "Approve this item",
         "ApproveRequest": "Approve Request",
         "BuyWithCoin": "Buy with coin",
         "ChooseTitanMauler": "Choose as Titan Mauler",
-        "ClearFilters": "Clear Filters",
-        "ConfirmKit": "Confirm Kit",
+        "ClearFilters": "Reset",
+        "ConfirmKit": "Confirm this kit",
         "CustomLumpSum": "Custom lump sum (gp)",
-        "GotIt": "Got It",
-        "GrantExtraAllowance": "Grant One Extra Level {level} Allowance",
-        "KeepItAll": "Keep It All",
-        "NewCampaignCharacter": "New Campaign Character",
-        "ReplacementCharacter": "Replacement Character",
-        "RequestException": "Request Exception",
-        "RequestNewCampaign": "Request New Campaign Start",
-        "RequestReplacement": "Request Replacement Start",
-        "RevokeApproval": "Revoke GM Approval",
-        "StartShopping": "Start Shopping"
+        "GotIt": "Understood",
+        "GrantExtraAllowance": "Grant an extra level {level} allowance",
+        "KeepItAll": "Keep the coin instead",
+        "NewCampaignCharacter": "New campaign character",
+        "ReplacementCharacter": "Replacement character",
+        "RequestException": "Ask your GM",
+        "RequestNewCampaign": "Ask for a new-campaign start",
+        "RequestReplacement": "Ask for a replacement start",
+        "RevokeApproval": "Revoke approval",
+        "StartShopping": "Open the outfitter"
       },
       "Accessibility": {
         "ApproveExceptionForItem": "Approve an exact exception for {name}",
@@ -218,7 +218,9 @@
         "Assigned": "Assigned",
         "Available": "Available",
         "LevelItem": "Level {level} permanent item",
-        "Use": "Use level {level} allowance"
+        "Use": "Use a level {level} allowance",
+        "Heading": "Permanent item allowances",
+        "UseWithCount": "Use a level {level} allowance ({count} left)"
       },
       "Apply": {
         "Failed": "Wayfinder could not apply this starting-equipment draft. The draft was kept for review; details are in the console.",
@@ -237,47 +239,50 @@
         "OwnerAttestation": "As an owner, you can attest that this is a new or replacement higher-level character.",
         "OwnerChoosesApplies": "You choose the funding and apply it",
         "OwnerChoosesGmApplies": "You choose the funding, your GM applies it",
-        "StaleApproval": "The prior GM approval is no longer current. Request a new approval before Apply."
+        "StaleApproval": "The prior GM approval is no longer current. Request a new approval before Apply.",
+        "RecipeHeading": "How is this character funded?",
+        "StartHeading": "Why is this character starting above level 1?"
       },
       "Cart": {
         "Aria": "Starting-equipment cart",
-        "Empty": "Nothing in the cart yet. If you would rather keep the coin, say so with Keep It All.",
-        "Eyebrow": "Cart",
+        "Empty": "Your kit is empty. Browse the shelves on the left, or keep the coin and sort it out in play.",
         "FixedQuantityAria": "Fixed quantity for {name}",
         "PolicyChanged": "Your world's rules no longer allow this item.",
         "QuantityAria": "Quantity for {name}",
         "Remaining": "Remaining",
         "RemoveAria": "Remove {name}",
         "Spent": "Spent",
-        "Title": "Your kit"
+        "Title": "Your kit",
+        "Lines": "{count} in your kit"
       },
       "Catalogue": {
         "ActiveFilterLabel": "{label} ({count} selected)",
-        "Aria": "Equipment catalogue",
+        "Aria": "Gear shelves",
         "Available": "Available",
-        "ExceptionRequired": "This item needs an exact source or rarity exception.",
+        "ExceptionRequired": "Needs your GM to allow this source or rarity.",
         "FiltersAria": "Equipment filters",
         "ItemMeta": "Level {level} · {rarity} · {source}",
-        "ItemUnavailable": "This item is unavailable under the current equipment policy.",
-        "LoadFailed": "The gear list would not load. Ask your GM to check the approved equipment sources.",
-        "NoFunding": "No available funding option can cover this item.",
-        "NotLoaded": "The gear list is not loaded yet.",
+        "ItemUnavailable": "Your world's rules put this out of reach.",
+        "LoadFailed": "The shelves would not stock. Ask your GM to check the approved equipment sources.",
+        "NoFunding": "Nothing you have will pay for this.",
+        "NotLoaded": "The shelves are still being stocked.",
         "PriceFor": "{price} for {quantity}",
         "PriceForPer": "{price} for {quantity} (priced per {pricePer})",
-        "Ready": "{count} pieces of gear to browse.",
+        "Ready": "{count} pieces of gear on the shelves.",
         "RarityFilters": "Rarity",
         "RarityFiltersAria": "Filter equipment by rarity",
         "ResultLabel": "{name} · {meta} · {price} · {availability}",
-        "ResultCount": "Showing {visible} of {total} matching items",
+        "ResultCount": "Showing {visible} of {total}",
         "SearchAria": "Search equipment",
-        "SearchPlaceholder": "Search gear by name, source, or rarity…",
-        "SeeItemDetails": "See item details",
+        "SearchPlaceholder": "Search gear by name, source, or trait…",
         "SourceFilters": "Source",
         "SourceFiltersAria": "Filter equipment by source",
         "SourceResultCount": "Showing {visible} of {total} matching sources",
         "SourceSearchAria": "Search equipment sources",
         "SourceSearchPlaceholder": "Search sources…",
-        "StartToLoad": "Start the step above and the gear list loads here."
+        "StartToLoad": "Open the outfitter above and the shelves stock themselves here.",
+        "NarrowSearch": "{hidden} more match. Search or filter to bring them into view.",
+        "LevelTag": "Lvl {level}"
       },
       "Corrupt": {
         "Body": "Wayfinder can't read the saved cart, and it won't guess at what you owned or spent. Clear the draft to start this step again.",
@@ -290,13 +295,14 @@
         "Unavailable": "Unavailable"
       },
       "Detail": {
-        "Aria": "Equipment item detail",
+        "Aria": "Gear details",
         "Bulk": "Bulk",
-        "Empty": "Pick something on the left to see its price, bulk, hands, and traits.",
+        "Empty": "Pick something off the shelf to weigh it up.",
         "Hands": "Hands",
-        "LevelRarity": "Level {level} · {rarity}",
-        "Price": "Price",
-        "Traits": "Traits"
+        "Traits": "Traits",
+        "EmptyTitle": "Nothing in hand",
+        "Level": "Level",
+        "FundingHeading": "How you'll pay for it"
       },
       "Errors": {
         "Add": "Wayfinder could not add this equipment item. Check the equipment policy and try again.",
@@ -329,8 +335,9 @@
         "UnsafeConfiguredItem": "{itemName} has PF2E pricing or magic-item structure Wayfinder cannot reproduce safely. Add it on the PF2E inventory tab instead."
       },
       "Initialize": {
-        "Body": "Wayfinder reads your world's equipment rules and notes what your character already carries. Nothing gets bought or spent yet.",
-        "Title": "Before you shop"
+        "Body": "Wayfinder reads your world's equipment rules and takes note of what you already carry. Nothing is bought or spent yet.",
+        "Title": "Before you shop",
+        "Eyebrow": "Starting gear"
       },
       "ItemType": {
         "Ammo": "Ammunition",
@@ -347,25 +354,29 @@
       "Policy": {
         "AbpActive": "PF2E's {mode} mode is active. Configured gear uses PF2E's prepared rune state without changing starting currency.",
         "AbpOverrideDisabled": "PF2E's {mode} mode is enabled, but this actor's ABP override is disabled.",
-        "Aria": "Effective starting-equipment policy",
+        "Aria": "Your starting-equipment terms",
         "Authority": "Who decides",
         "AutomaticEligibilityMany": "{rarity} gear from {count} approved packs",
         "AutomaticEligibilityOne": "{rarity} gear from 1 approved pack",
-        "Budget": "Budget",
+        "Budget": "Coin to spend",
+        "BudgetPending": "Set with your funding",
         "CommonExplanation": "Anything Common is fair game, as long as its pack is approved.",
         "DefaultEligibility": "Common gear from approved PF2E sources",
+        "Details": "How this works",
         "Eligibility": "What you can buy",
         "ExistingGear": "Gear you already own",
         "ExistingGearHandoff": "Coin and gear your character already has stay put. Handle those on the PF2E inventory tab.",
         "FromGmSettings": "From your GM's settings",
         "Funding": "Funding",
+        "GmTools": "GM tools",
+        "Heading": "Your terms",
         "LumpSumExplanation": "You have {budget} in starting coin for Common items below level {level}.",
         "PermanentItemsExplanation": "Your permanent-item allowances are separate from {budget} in starting coin. Unused allowances never become cash.",
         "RarityExplanation": "Your GM has opened this up to {rarity} gear.",
-        "SelectedBy": "Funding selected by",
-        "SelectionByUser": "{userName} selected this at {selectedAt}",
-        "SelectionLegacy": "Fixed by legacy world policy at {selectedAt}",
-        "SelectionRecordedOnChoice": "Recorded when funding is selected"
+        "SelectedBy": "Chosen by",
+        "SelectionByUser": "{userName}, {selectedAt}",
+        "SelectionLegacy": "Legacy world policy, {selectedAt}",
+        "SelectionRecordedOnChoice": "Recorded when you pick a funding option"
       },
       "Price": {
         "AbpSuppresses": "PF2E ABP suppresses {components}",
@@ -404,7 +415,7 @@
         "RequestedBy": "{kind} requested by {requesterName} at {requestedAt}."
       },
       "Review": {
-        "ApplyCheck": "Apply checks prices and your world's rules once more before anything is bought.",
+        "ApplyCheck": "Apply re-checks prices and your world's rules before anything is bought.",
         "Changed": "Something changed, check it",
         "ChooseGear": "Choose your gear",
         "Damaged": "Draft is damaged",

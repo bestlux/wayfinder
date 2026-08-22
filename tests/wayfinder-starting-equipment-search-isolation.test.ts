@@ -113,7 +113,9 @@ describe("starting equipment search isolation", () => {
 
     expect(detail).toContain("activePane.catalogue.preview.sourceUuid");
     expect(detail).not.toContain("#each activePane.catalogue.items");
-    expect(detail).not.toContain("hidden");
+    // No `hidden` attribute: unselected previews must not be rendered at all. `aria-hidden` on
+    // decorative icons is unrelated and allowed.
+    expect(detail.replace(/aria-hidden/gu, "")).not.toContain("hidden");
   });
 
   it("treats activation of the already selected preview as a focus-preserving no-op", () => {

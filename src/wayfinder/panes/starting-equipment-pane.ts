@@ -97,17 +97,23 @@ export function buildStartingEquipmentPane(
     const canBuyWithCurrency = record.available && record.level < step.level && affordable;
     const allowanceOptions =
       policy?.resolvedRecipe.kind === "permanent-items" && isPermanentItemType(record.itemType)
-        ? availableAllowances
-            .filter((allowance) => allowance.itemLevel >= record.level)
-            .map((allowance) => ({
+        ? dedupeAllowanceLevels(availableAllowances.filter((allowance) => allowance.itemLevel >= record.level)).map(
+            (allowance) => ({
               allowanceId: allowance.allowanceId,
-              label: localize("wayfinder-pf2e.StartingEquipment.Allowance.Use", { level: allowance.itemLevel }),
+              label:
+                allowance.remaining > 1
+                  ? localize("wayfinder-pf2e.StartingEquipment.Allowance.UseWithCount", {
+                      level: allowance.itemLevel,
+                      count: allowance.remaining,
+                    })
+                  : localize("wayfinder-pf2e.StartingEquipment.Allowance.Use", { level: allowance.itemLevel }),
               ariaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.UseAllowanceForItem", {
                 level: allowance.itemLevel,
                 name: record.name,
               }),
               focusId: equipmentAllowanceFocusId(record.sourceUuid, allowance.allowanceId),
-            }))
+            })
+          )
         : [];
     const exceptionPending = draft.equipmentPolicyRequests.some(
       (request) =>
@@ -145,12 +151,11 @@ export function buildStartingEquipmentPane(
       ...record,
       priceLabel,
       rarityLabel: localizedRarity,
+      typeIcon: itemTypeIcon(record.itemType),
       itemTypeLabel: itemTypeLabel(record.itemType, localize),
       traits: record.traits.map((trait) => pf2eTraitLabel(trait, localize)),
-      bulkLabel:
-        record.bulkLabel === "See item details"
-          ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.SeeItemDetails")
-          : record.bulkLabel,
+      // The compendium index carries no bulk, so the placeholder is dropped rather than shown as a non-answer.
+      bulkLabel: record.bulkLabel === "See item details" ? "" : record.bulkLabel,
       unavailableReason,
       affordable,
       previewing: record.sourceUuid === catalogue.previewSourceUuid,
@@ -263,6 +268,11 @@ export function buildStartingEquipmentPane(
     ? (judgments.find((judgment) => judgment.id === reviewedStartJudgment.id && judgment.revocation === null) ?? null)
     : null;
   const startAuthorityInvalid = reviewedStartJudgment !== null && activeJudgment === null;
+  const canSetCustomLumpSum =
+    setupOptions?.isGm === true &&
+    !!policy &&
+    (policy.resolvedRecipe.kind === "lump-sum" || policy.resolvedRecipe.kind === "custom-lump-sum") &&
+    !acquisition?.lines.some((line) => line.funding.lane === "allowance");
   const localizedFilters = catalogue.filters.map((filter) => ({
     ...filter,
     label: catalogueFilterLabel(filter.key, filter.value, filter.label, localize),
@@ -272,7 +282,7 @@ export function buildStartingEquipmentPane(
   const typeFilterByValue = new Map(localizedFilters.filter(isTypeFilter).map((filter) => [filter.value, filter]));
   const typeFilters = INLINE_STARTING_EQUIPMENT_TYPE_FILTERS.flatMap((value) => {
     const filter = typeFilterByValue.get(value);
-    return filter ? [filter] : [];
+    return filter ? [{ ...filter, icon: itemTypeIcon(value) }] : [];
   });
   const rarityFilters = selectedFirst(localizedFilters.filter(isRarityFilter));
   const selectedRarityFilterCount = rarityFilters.filter((filter) => filter.selected).length;
@@ -332,6 +342,7 @@ export function buildStartingEquipmentPane(
         requesterName: request.requesterName,
         requestedAt: request.requestedAt,
         reason: request.reason,
+        requestedAtLabel: readableTimestamp(request.requestedAt),
         kindLabel:
           request.facts.kind === "higher-level-start"
             ? localize("wayfinder-pf2e.StartingEquipment.Request.HigherLevelStart", {
@@ -346,11 +357,7 @@ export function buildStartingEquipmentPane(
       })),
       activeJudgmentId: activeJudgment?.id ?? null,
       canRevoke: setupOptions?.isGm === true && activeJudgment !== null,
-      canSetCustomLumpSum:
-        setupOptions?.isGm === true &&
-        !!policy &&
-        (policy.resolvedRecipe.kind === "lump-sum" || policy.resolvedRecipe.kind === "custom-lump-sum") &&
-        !acquisition?.lines.some((line) => line.funding.lane === "allowance"),
+      canSetCustomLumpSum,
       canGrantExtraAllowance:
         setupOptions?.isGm === true &&
         policy?.resolvedRecipe.kind === "permanent-items" &&
@@ -384,8 +391,19 @@ export function buildStartingEquipmentPane(
           label: localize("wayfinder-pf2e.StartingEquipment.Allowance.LevelItem", {
             level: allowance.itemLevel,
           }),
+          statusLabel: localize(
+            usedAllowanceIds.has(allowance.allowanceId)
+              ? "wayfinder-pf2e.StartingEquipment.Allowance.Assigned"
+              : "wayfinder-pf2e.StartingEquipment.Allowance.Available"
+          ),
           used: usedAllowanceIds.has(allowance.allowanceId),
         })) ?? [],
+      gmToolsAvailable:
+        setupOptions?.isGm === true &&
+        (activeJudgment !== null ||
+          canSetCustomLumpSum ||
+          (policy?.resolvedRecipe.kind === "permanent-items" &&
+            !policy.allowances.some((allowance) => allowance.allowanceId.startsWith("gm-extra:")))),
     },
     catalogue: {
       state: catalogue.state,
@@ -431,14 +449,25 @@ export function buildStartingEquipmentPane(
         visible: records.length,
         total: matchedRecordCount,
       }),
+      hiddenResultCount: Math.max(0, matchedRecordCount - records.length),
+      narrowSearchHint:
+        matchedRecordCount > records.length
+          ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.NarrowSearch", {
+              hidden: matchedRecordCount - records.length,
+            })
+          : null,
       items: records,
       preview,
     },
     cart: {
       lines: cartLines,
       empty: cartLines.length === 0,
+      count: cartLines.length,
+      budgetLabel: formatCopper(budgetCopper, localize),
       spentLabel: formatCopper(spentCopper, localize),
       remainingLabel: formatCopper(remainingCopper, localize),
+      spentPercent: budgetCopper > 0 ? Math.min(100, Math.round((spentCopper / budgetCopper) * 100)) : 0,
+      overspent: spentCopper > budgetCopper,
       announcement: localize("wayfinder-pf2e.StartingEquipment.Accessibility.CartSummary", {
         count: cartLines.length,
         spent: formatCopper(spentCopper, localize),
@@ -453,6 +482,7 @@ export function buildStartingEquipmentPane(
     review: {
       disposition,
       label: reviewLabel(draft, localize),
+      settled: disposition === "purchase-ledger" || disposition === "retain-all",
       canReviewPurchases:
         !!acquisition &&
         catalogueReady &&
@@ -499,13 +529,24 @@ function recipeSelectionLabel(
   if (!selection) return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionRecordedOnChoice");
   if (selection.selector.kind === "unattributed-world-policy") {
     return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionLegacy", {
-      selectedAt: selection.selectedAt,
+      selectedAt: readableTimestamp(selection.selectedAt),
     });
   }
   return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionByUser", {
     userName: selection.selector.userName,
-    selectedAt: selection.selectedAt,
+    selectedAt: readableTimestamp(selection.selectedAt),
   });
+}
+
+/** ISO instants are storage detail; the pane shows a local, human-legible stamp instead. */
+function readableTimestamp(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  try {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed);
+  } catch {
+    return parsed.toLocaleString();
+  }
 }
 
 function matchesQuery(record: StartingEquipmentCatalogueRecord, query: string): boolean {
@@ -655,6 +696,42 @@ function chargedCopper(line: NonNullable<DraftState["acquisition"]>["lines"][num
 
 function isPermanentItemType(itemType: string): boolean {
   return itemType !== "ammo" && itemType !== "consumable";
+}
+
+const EQUIPMENT_TYPE_ICONS: Readonly<Record<string, string>> = Object.freeze({
+  ammo: "fa-bolt",
+  armor: "fa-shirt",
+  backpack: "fa-suitcase",
+  consumable: "fa-flask",
+  equipment: "fa-toolbox",
+  kit: "fa-box-open",
+  shield: "fa-shield-halved",
+  treasure: "fa-gem",
+  weapon: "fa-hammer",
+});
+
+function itemTypeIcon(itemType: string): string {
+  return EQUIPMENT_TYPE_ICONS[itemType] ?? "fa-cube";
+}
+
+/** One button per allowance level, so repeated levels read as a count instead of duplicate controls. */
+function dedupeAllowanceLevels<T extends { readonly allowanceId: string; readonly itemLevel: number }>(
+  allowances: readonly T[]
+): { allowanceId: string; itemLevel: number; remaining: number }[] {
+  const byLevel = new Map<number, { allowanceId: string; itemLevel: number; remaining: number }>();
+  for (const allowance of allowances) {
+    const existing = byLevel.get(allowance.itemLevel);
+    if (existing) {
+      existing.remaining += 1;
+      continue;
+    }
+    byLevel.set(allowance.itemLevel, {
+      allowanceId: allowance.allowanceId,
+      itemLevel: allowance.itemLevel,
+      remaining: 1,
+    });
+  }
+  return [...byLevel.values()].sort((left, right) => left.itemLevel - right.itemLevel);
 }
 
 function handoffReason(reason: EconomicHandoffReason, localize: AcquisitionLocalize): string {

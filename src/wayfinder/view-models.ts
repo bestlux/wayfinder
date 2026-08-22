@@ -451,6 +451,7 @@ export interface StartingEquipmentStepPane {
       requestId: string;
       requesterName: string;
       requestedAt: string;
+      requestedAtLabel: string;
       reason: string;
       kindLabel: string;
       canApprove: boolean;
@@ -472,8 +473,10 @@ export interface StartingEquipmentStepPane {
       allowanceId: string;
       itemLevel: number;
       label: string;
+      statusLabel: string;
       used: boolean;
     }[];
+    gmToolsAvailable: boolean;
   };
   catalogue: {
     state: "pending" | "ready" | "error";
@@ -487,7 +490,14 @@ export interface StartingEquipmentStepPane {
     search: string;
     searchDisabled: boolean;
     filters: readonly { key: string; label: string; value: string; selected: boolean; focusId: string }[];
-    typeFilters: readonly { key: "type"; label: string; value: string; selected: boolean; focusId: string }[];
+    typeFilters: readonly {
+      key: "type";
+      label: string;
+      value: string;
+      icon: string;
+      selected: boolean;
+      focusId: string;
+    }[];
     rarityFilters: readonly { key: "rarity"; label: string; value: string; selected: boolean; focusId: string }[];
     sourceFilters: readonly { key: "source"; label: string; value: string; selected: boolean; focusId: string }[];
     hasSourceFilters: boolean;
@@ -503,7 +513,10 @@ export interface StartingEquipmentStepPane {
     totalResultCount: number;
     visibleResultCount: number;
     resultAnnouncement: string;
+    hiddenResultCount: number;
+    narrowSearchHint: string | null;
     items: readonly (StartingEquipmentCatalogueRecord & {
+      typeIcon: string;
       affordable: boolean;
       previewing: boolean;
       canAdd: boolean;
@@ -527,6 +540,7 @@ export interface StartingEquipmentStepPane {
     })[];
     preview:
       | (StartingEquipmentCatalogueRecord & {
+          typeIcon: string;
           affordable: boolean;
           canAdd: boolean;
           canBuyWithCurrency: boolean;
@@ -569,8 +583,12 @@ export interface StartingEquipmentStepPane {
       children: readonly { name: string; quantity: number; nested: boolean }[];
     }[];
     empty: boolean;
+    count: number;
+    budgetLabel: string;
     spentLabel: string;
     remainingLabel: string;
+    spentPercent: number;
+    overspent: boolean;
     announcement: string;
   };
   titanMauler: {
@@ -581,6 +599,7 @@ export interface StartingEquipmentStepPane {
   review: {
     disposition: "not-started" | "unreviewed" | "purchase-ledger" | "retain-all" | "handoff";
     label: string;
+    settled: boolean;
     canReviewPurchases: boolean;
     canRetainAll: boolean;
   };

@@ -2122,8 +2122,14 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
   await executeAndPersist(actor, titanDraft, { type: "add-line", line }, modules, moduleId);
   const material = titanDraft.acquisition.policySnapshot.material;
   const policy = effectivePolicyFromMaterial(material);
-  const titanResult = await modules.projectGrants({
+  const titanSubject = {
     ...subject,
+    draftId: titanDraft.acquisition.draftId,
+    batchId: titanDraft.acquisition.batchId,
+    targetLevel: titanDraft.acquisition.targetLevel,
+  };
+  const titanResult = await modules.projectGrants({
+    ...titanSubject,
     draft: titanDraft,
     activeSteps,
     currentEquipmentPolicy: policy,

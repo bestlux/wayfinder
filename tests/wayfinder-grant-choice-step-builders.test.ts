@@ -2,6 +2,56 @@ import { describe, expect, it } from "vitest";
 import { buildGrantChoiceStepsFromRules } from "../src/wayfinder/grant-choice/step-builders";
 
 describe("wayfinder grant choice step builders", () => {
+  it("resolves self:level from the source document when a higher-level feat is granted early", () => {
+    const steps = buildGrantChoiceStepsFromRules({
+      sourceItemType: "feat",
+      effectiveSourceDocument: {
+        name: "Rogue Dedication",
+        system: {
+          slug: "rogue-dedication",
+          level: { value: 2 },
+          rules: [
+            {
+              choices: {
+                filter: ["item:trait:skill", { lte: ["item:level", "self:level"] }],
+                itemType: "feat",
+              },
+              flag: "skillFeat",
+              key: "ChoiceSet",
+            },
+            {
+              key: "GrantItem",
+              uuid: "{item|flags.system.rulesSelections.skillFeat}",
+            },
+          ],
+        },
+      },
+      sourceSelection: {
+        slotId: "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+        packId: "pf2e.feats-srd",
+        documentId: "rogue-dedication",
+        uuid: "Compendium.pf2e.feats-srd.Item.rogue-dedication",
+        itemType: "feat",
+        featType: "class",
+        name: "Rogue Dedication",
+        level: 1,
+      },
+      sourceLevel: 1,
+      extractSlug: (document) => (document as { system?: { slug?: string } } | null)?.system?.slug ?? null,
+    });
+
+    expect(steps).toMatchObject([
+      {
+        level: 1,
+        slotId: "grant-choice-none-feat-rogue-dedication-skillFeat-level-1",
+        filters: {
+          itemType: "feat",
+          predicate: ["item:trait:skill", { lte: ["item:level", 2] }],
+        },
+      },
+    ]);
+  });
+
   it("builds a class-dependent grant-choice step for Ancient Elf", () => {
     const steps = buildGrantChoiceStepsFromRules({
       sourceItemType: "heritage",

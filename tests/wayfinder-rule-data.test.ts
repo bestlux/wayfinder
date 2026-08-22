@@ -101,6 +101,21 @@ describe("wayfinder rule data helpers", () => {
     ).toBeNull();
   });
 
+  it("distinguishes a source document's self level from its acquisition level", () => {
+    expect(
+      resolveChoiceSetFilters(
+        {
+          key: "ChoiceSet",
+          choices: {
+            itemType: "feat",
+            filter: [{ lte: ["item:level", "self:level"] }, { gte: ["item:level", "parent:granter:level"] }],
+          },
+        },
+        { sourceLevel: 1, sourceDocumentLevel: 2 }
+      )?.filters.predicate
+    ).toEqual([{ lte: ["item:level", 2] }, { gte: ["item:level", 1] }]);
+  });
+
   it("resolves Kineticist gate placeholders throughout nested impulse predicates", () => {
     const result = resolveChoiceSetFilters(
       {

@@ -17,7 +17,10 @@ export interface ChoiceSetFilterResolution {
 }
 
 interface ResolveChoiceSetFiltersOptions {
+  /** Level where the source was acquired; used by parent:granter:level. */
   sourceLevel: number;
+  /** Level declared by the source document; used by self:level. */
+  sourceDocumentLevel?: number;
   actorContext?: ChoiceFilterActorContext | null;
   requireResolvedActorPlaceholders?: boolean;
 }
@@ -59,7 +62,7 @@ export function resolveChoiceSetFilters(
     if (!Array.isArray(choices.filter) || !choices.filter.every(isChoicePredicate)) {
       return null;
     }
-    const rawPredicate = choices.filter.map((entry) => resolveParentGranterLevel(entry, options.sourceLevel));
+    const rawPredicate = choices.filter.map((entry) => resolveChoiceLevelReferences(entry, options));
     const resolvedPredicate = resolveActorInjectedPredicate(rawPredicate, options);
     if (!resolvedPredicate) {
       return null;
@@ -86,49 +89,57 @@ export function resolveChoiceSetFilters(
   return resolveStaticUuidChoiceFilters(rule, options);
 }
 
-function resolveParentGranterLevel(predicate: ChoicePredicate, level: number): ChoicePredicate {
+function resolveChoiceLevelReferences(
+  predicate: ChoicePredicate,
+  options: Pick<ResolveChoiceSetFiltersOptions, "sourceLevel" | "sourceDocumentLevel">
+): ChoicePredicate {
   if (typeof predicate === "string") {
     return predicate;
   }
 
   if (Array.isArray(predicate)) {
-    return predicate.map((entry) => resolveParentGranterLevel(entry, level));
+    return predicate.map((entry) => resolveChoiceLevelReferences(entry, options));
   }
 
   const result = { ...predicate };
   if (Array.isArray(result.and)) {
-    result.and = result.and.map((entry) => resolveParentGranterLevel(entry, level));
+    result.and = result.and.map((entry) => resolveChoiceLevelReferences(entry, options));
   }
   if (Array.isArray(result.nand)) {
-    result.nand = result.nand.map((entry) => resolveParentGranterLevel(entry, level));
+    result.nand = result.nand.map((entry) => resolveChoiceLevelReferences(entry, options));
   }
   if (Array.isArray(result.xor)) {
-    result.xor = result.xor.map((entry) => resolveParentGranterLevel(entry, level));
+    result.xor = result.xor.map((entry) => resolveChoiceLevelReferences(entry, options));
   }
   for (const key of ["eq", "lt", "lte", "gt", "gte"] as const) {
     const comparator = result[key];
-    if (Array.isArray(comparator) && comparator[1] === "parent:granter:level") {
-      result[key] = [comparator[0], level];
+    if (!Array.isArray(comparator)) {
+      continue;
+    }
+    if (comparator[1] === "parent:granter:level") {
+      result[key] = [comparator[0], options.sourceLevel];
+    } else if (comparator[1] === "self:level") {
+      result[key] = [comparator[0], options.sourceDocumentLevel ?? options.sourceLevel];
     }
   }
 
   if (Array.isArray(result.or)) {
-    result.or = result.or.map((entry) => resolveParentGranterLevel(entry, level));
+    result.or = result.or.map((entry) => resolveChoiceLevelReferences(entry, options));
   }
   if (Array.isArray(result.nor)) {
-    result.nor = result.nor.map((entry) => resolveParentGranterLevel(entry, level));
+    result.nor = result.nor.map((entry) => resolveChoiceLevelReferences(entry, options));
   }
   if (result.not) {
-    result.not = resolveParentGranterLevel(result.not, level);
+    result.not = resolveChoiceLevelReferences(result.not, options);
   }
   if (result.if) {
-    result.if = resolveParentGranterLevel(result.if, level);
+    result.if = resolveChoiceLevelReferences(result.if, options);
   }
   if (result.then) {
-    result.then = resolveParentGranterLevel(result.then, level);
+    result.then = resolveChoiceLevelReferences(result.then, options);
   }
   if (Array.isArray(result.iff)) {
-    result.iff = result.iff.map((entry) => resolveParentGranterLevel(entry, level));
+    result.iff = result.iff.map((entry) => resolveChoiceLevelReferences(entry, options));
   }
 
   return result;

@@ -699,6 +699,38 @@ describe("wayfinder level 1 breadth coverage", () => {
       ])
     );
   });
+
+  it("projects an early-granted Rogue Dedication into a selectable skill feat grant", async () => {
+    const draft = createBaseDraft({ ancestryId: "elf", heritageId: "ancient-elf", classId: "bard" });
+    draft.selections["grant-choice-class-heritage-ancient-elf-ancientElf-level-1"] = selection(
+      "grant-choice-class-heritage-ancient-elf-ancientElf-level-1",
+      "pf2e.feats-srd",
+      "rogue-dedication",
+      "feat",
+      "Rogue Dedication",
+      "class"
+    );
+
+    const plan = await buildPlan(buildActor(), draft);
+    const skillFeatStep = expectStep(plan, "grant-choice-none-feat-rogue-dedication-skillFeat-level-1");
+    expect(skillFeatStep).toMatchObject({
+      level: 1,
+      filters: {
+        itemType: "feat",
+        predicate: ["item:trait:skill", { lte: ["item:level", 2] }],
+      },
+    });
+    await expectOptionNames(
+      skillFeatStep,
+      {
+        ...EMPTY_CONTEXT,
+        ancestrySlug: "elf",
+        ancestryTraits: ["elf"],
+        classSlug: "bard",
+      },
+      ["Battle Medicine", "Cat Fall"]
+    );
+  });
 });
 
 async function buildPlan(actor: ReturnType<typeof buildActor>, draft: DraftState) {
@@ -1067,6 +1099,8 @@ function buildLevel1Packs(): Record<string, Record<string, PackDocumentDefinitio
           },
         ],
       }),
+      "battle-medicine": featDocument("Battle Medicine", "battle-medicine", "skill", ["skill"]),
+      "cat-fall": featDocument("Cat Fall", "cat-fall", "skill", ["skill"]),
       "reactive-strike": featDocument("Reactive Strike", "reactive-strike", "class", ["fighter"]),
       "sudden-charge": featDocument("Sudden Charge", "sudden-charge", "class", ["barbarian", "fighter"]),
       "animal-companion": featDocument("Animal Companion", "animal-companion", "class", ["fighter"]),
@@ -1125,6 +1159,39 @@ function buildLevel1Packs(): Record<string, Record<string, PackDocumentDefinitio
           level: {
             value: 2,
           },
+          description: {
+            value:
+              "<p>You gain a skill feat. In addition, you become trained in Stealth or Thievery plus one skill of your choice.</p>",
+          },
+          rules: [
+            {
+              choices: [
+                { label: "PF2E.Skill.Stealth", value: "system.skills.stealth.rank" },
+                { label: "PF2E.Skill.Thievery", value: "system.skills.thievery.rank" },
+              ],
+              flag: "rogueDedication",
+              key: "ChoiceSet",
+              prompt: "PF2E.SpecificRule.Rogue.TrainSkill.Prompt",
+            },
+            {
+              key: "ActiveEffectLike",
+              mode: "upgrade",
+              path: "{item|flags.system.rulesSelections.rogueDedication}",
+              value: 1,
+            },
+            {
+              choices: {
+                filter: ["item:trait:skill", { lte: ["item:level", "self:level"] }],
+                itemType: "feat",
+              },
+              flag: "skillFeat",
+              key: "ChoiceSet",
+            },
+            {
+              key: "GrantItem",
+              uuid: "{item|flags.system.rulesSelections.skillFeat}",
+            },
+          ],
         }
       ),
       "wizard-dedication": featDocument(

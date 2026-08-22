@@ -41,6 +41,7 @@ export function discoverGrantSelectionMeta(args: {
     }
     const resolution = resolveChoiceSetFilters(rule, {
       sourceLevel: level,
+      sourceDocumentLevel: documentFeatureLevel(sourceDocument),
       actorContext: args.actorContext,
       requireResolvedActorPlaceholders: args.requireResolvedActorPlaceholders,
     });

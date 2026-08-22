@@ -772,6 +772,17 @@ function recipeEvidence(policy) {
 function investigatorSteps(modules) {
   return [
     {
+      id: ANCESTRY_STEP_ID,
+      level: 1,
+      kind: "pick-item",
+      slotKind: "ancestry",
+      title: "Choose an ancestry",
+      description: "",
+      required: true,
+      slotId: ANCESTRY_STEP_ID,
+      filters: { itemType: "ancestry" },
+    },
+    {
       id: "class-level-1",
       level: 1,
       kind: "pick-item",
@@ -816,6 +827,7 @@ function actorItemsBySource(actor, sourceUuid) {
 async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) {
   const steps = investigatorSteps(modules);
   const draft = modules.createEmptyDraft(1);
+  draft.selections[ANCESTRY_STEP_ID] = selection(ANCESTRY_STEP_ID, HUMAN_UUID, "Human", "ancestry");
   draft.selections["class-level-1"] = selection("class-level-1", INVESTIGATOR_UUID, "Investigator", "class");
   draft.branchSelections.methodology = selection(
     "class-branch-methodology-level-1",

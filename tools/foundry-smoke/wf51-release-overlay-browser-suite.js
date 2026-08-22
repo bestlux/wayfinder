@@ -2136,7 +2136,20 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
   const titanGrant = titanResult.grants.find((entry) => entry.profileId === "giant-instinct-titan-mauler");
   const rejectedRoute = rejected.find((entry) => entry.routeId === "ancient-elf-alchemist-formula-book");
   if (!alchemistGrant || !investigatorGrant || !titanGrant || !rejectedRoute) {
-    throw new Error("WF-080-51 planned grant route evidence is incomplete.");
+    throw new Error(
+      `WF-080-51 planned grant route evidence is incomplete: ${JSON.stringify({
+        alchemist: {
+          profiles: alchemistResult.grants.map((entry) => entry.profileId),
+          blockers: alchemistResult.blockers,
+        },
+        investigator: {
+          profiles: investigatorResult.grants.map((entry) => entry.profileId),
+          blockers: investigatorResult.blockers,
+        },
+        titan: { profiles: titanResult.grants.map((entry) => entry.profileId), blockers: titanResult.blockers },
+        rejectedRoutes: rejected.map((entry) => entry.routeId),
+      })}.`,
+    );
   }
   const projectionEconomicWritesUnchanged = before === snapshotEconomic(modules, actor);
   await executeAndPersist(actor, titanDraft, { type: "review-purchases" }, modules, moduleId);

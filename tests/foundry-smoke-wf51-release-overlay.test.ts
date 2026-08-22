@@ -132,6 +132,8 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(browserSuite).toContain(
       'driftDraft.selections[ANCESTRY_STEP_ID] = selection(ANCESTRY_STEP_ID, HUMAN_UUID, "Human", "ancestry")'
     );
+    expect(browserSuite).toContain("planned grant route evidence is incomplete:");
+    expect(browserSuite).toContain("rejectedRoutes: rejected.map");
     expect(browserSuite).toContain("EXISTING_IMPORT_SOURCES");
     expect(browserSuite).toContain("snapshotEconomic(modules, existingImportActor)");
     expect(browserSuite).toContain('actor.getFlag("pf2e", "wf51OverlaySentinel")');

@@ -197,10 +197,7 @@ export function captureObservedClassGrantItems(actor: unknown): ObservedClassGra
       : isRecord(rawLocation) && nonEmpty(rawLocation.value)
         ? rawLocation.value
         : null;
-    const quantity = Number(item.quantity ?? (isRecord(item.system) ? item.system.quantity : 1) ?? 1);
-    if (!Number.isSafeInteger(quantity) || quantity <= 0) {
-      throw new TypeError(`Actor item ${item.id} has an invalid quantity.`);
-    }
+    const quantity = observedClassGrantQuantity(item);
     observed.push({
       itemId: item.id,
       sourceUuid: sourceIdOf(item),
@@ -221,6 +218,33 @@ export function captureObservedClassGrantItems(actor: unknown): ObservedClassGra
     throw new TypeError("Actor class-grant observation contains duplicate item IDs.");
   }
   return observed;
+}
+
+const PHYSICAL_CLASS_GRANT_ITEM_TYPES = new Set([
+  "ammo",
+  "armor",
+  "backpack",
+  "consumable",
+  "equipment",
+  "kit",
+  "shield",
+  "treasure",
+  "weapon",
+]);
+
+function observedClassGrantQuantity(item: Record<string, unknown>): number {
+  const isOfType = item.isOfType;
+  const physical =
+    typeof isOfType === "function"
+      ? Boolean(isOfType.call(item, "physical"))
+      : PHYSICAL_CLASS_GRANT_ITEM_TYPES.has(String(item.type));
+  if (!physical) return 1;
+
+  const quantity = Number(item.quantity ?? (isRecord(item.system) ? item.system.quantity : 1) ?? 1);
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+    throw new TypeError(`Actor item ${String(item.id)} has an invalid quantity.`);
+  }
+  return quantity;
 }
 
 export async function projectPlannedClassGrants(args: {

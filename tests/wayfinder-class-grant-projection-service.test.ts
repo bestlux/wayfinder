@@ -58,10 +58,11 @@ describe("class-grant projection service", () => {
           {
             id: "formula",
             type: "feat",
-            quantity: 1,
+            quantity: 0,
             sourceId: UUID.formulaFeature,
             flags: { pf2e: { grantedBy: { id: "alchemy" } } },
-            system: { quantity: 1, location: "class" },
+            system: { location: "class" },
+            isOfType: vi.fn(() => false),
           },
           {
             id: "weapon",
@@ -90,12 +91,38 @@ describe("class-grant projection service", () => {
       },
     };
     expect(captureObservedClassGrantItems(actor)).toEqual([
-      expect.objectContaining({ itemId: "formula", grantedByItemId: "alchemy", locationItemId: "class" }),
+      expect.objectContaining({
+        itemId: "formula",
+        quantity: 1,
+        grantedByItemId: "alchemy",
+        locationItemId: "class",
+      }),
       expect.objectContaining({
         itemId: "weapon",
         acquisitionIdentity: expect.objectContaining({ plannedGrantId: "grant-titan" }),
       }),
     ]);
+  });
+
+  it("still rejects a non-positive prepared physical quantity", () => {
+    const actor = {
+      id: "actor-1",
+      items: {
+        contents: [
+          {
+            id: "formula",
+            type: "equipment",
+            quantity: 0,
+            sourceId: UUID.formulaItem,
+            flags: {},
+            system: { quantity: 0 },
+            isOfType: vi.fn((type: string) => type === "physical"),
+          },
+        ],
+      },
+    };
+
+    expect(() => captureObservedClassGrantItems(actor)).toThrow("Actor item formula has an invalid quantity.");
   });
 
   it("projects the exact Alchemist native Formula Book chain from a prepared Coins shape", async () => {

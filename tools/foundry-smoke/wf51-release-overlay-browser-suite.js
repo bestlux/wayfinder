@@ -2053,7 +2053,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     observedActorItems: [],
     fetchDocumentByUuid,
   };
-  const activeSteps = [
+  const projectionSteps = [
     { slotId: "ancestry-level-1" },
     { slotId: "heritage-level-1" },
     { slotId: "class-level-1" },
@@ -2061,9 +2061,10 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     { slotId: "class-branch-instinct-level-1" },
     { slotId: "grant-choice-class-heritage-ancient-elf-ancientElf-level-1" },
   ];
+  const commandSteps = [...projectionSteps, modules.createStep(1)];
   const alchemist = modules.createEmptyDraft(1);
   alchemist.selections["class-level-1"] = selection("class-level-1", u.alchemistClass, "Alchemist", "class");
-  const alchemistResult = await modules.projectGrants({ ...subject, draft: alchemist, activeSteps });
+  const alchemistResult = await modules.projectGrants({ ...subject, draft: alchemist, activeSteps: projectionSteps });
 
   const investigator = modules.createEmptyDraft(1);
   investigator.selections["class-level-1"] = selection(
@@ -2079,7 +2080,11 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     "feat",
     "classfeature",
   );
-  const investigatorResult = await modules.projectGrants({ ...subject, draft: investigator, activeSteps });
+  const investigatorResult = await modules.projectGrants({
+    ...subject,
+    draft: investigator,
+    activeSteps: projectionSteps,
+  });
 
   const ancientElf = modules.createEmptyDraft(1);
   ancientElf.selections["heritage-level-1"] = selection(
@@ -2095,7 +2100,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     "feat",
     "archetype",
   );
-  const rejected = modules.findUnsupportedRoutes(ancientElf, activeSteps);
+  const rejected = modules.findUnsupportedRoutes(ancientElf, projectionSteps);
 
   const titanDraft = modules.createEmptyDraft(1);
   titanDraft.selections["ancestry-level-1"] = selection("ancestry-level-1", HUMAN_UUID, "Human", "ancestry");
@@ -2113,7 +2118,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     { type: "initialize", selectedRecipe: "permanent-items" },
     modules,
     moduleId,
-    activeSteps,
+    commandSteps,
   );
   const runtime = modules.getRuntime();
   const line = await runtime.uiAdapter.prepareTitanMaulerLine({
@@ -2126,7 +2131,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     funding: { lane: "currency" },
     sourceUuid: DAGGER_UUID,
   });
-  await executeAndPersist(actor, titanDraft, { type: "add-line", line }, modules, moduleId, activeSteps);
+  await executeAndPersist(actor, titanDraft, { type: "add-line", line }, modules, moduleId, commandSteps);
   const material = titanDraft.acquisition.policySnapshot.material;
   const policy = effectivePolicyFromMaterial(material);
   const titanSubject = {
@@ -2138,7 +2143,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
   const titanResult = await modules.projectGrants({
     ...titanSubject,
     draft: titanDraft,
-    activeSteps,
+    activeSteps: projectionSteps,
     currentEquipmentPolicy: policy,
     actorSize: "medium",
   });
@@ -2165,7 +2170,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     );
   }
   const projectionEconomicWritesUnchanged = before === snapshotEconomic(modules, actor);
-  await executeAndPersist(actor, titanDraft, { type: "review-purchases" }, modules, moduleId, activeSteps);
+  await executeAndPersist(actor, titanDraft, { type: "review-purchases" }, modules, moduleId, commandSteps);
   const reviewedTitanDraft = modules.normalizeDraft(actor.getFlag(moduleId, "draft"), 1);
   const reviewedTitanAcquisition = reviewedTitanDraft.acquisition;
   const titanPlan = modules.createPreparedPlan({

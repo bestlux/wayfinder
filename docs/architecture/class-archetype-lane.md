@@ -12,7 +12,7 @@ Three profiles are registered and guided through level 5:
 
 The release matrix passed live apply/rerun smoke on 2026-07-11 against Foundry VTT 14.364 and PF2E 8.3.0: 35 direct level-1-to-5 cases plus seven incremental existing-character cases, with 42 passing, zero classified/manual, and zero failed. Direct and incremental cases cover all three registered profiles; Battle Creed also retains its skill and static-grant fallback cases. Artifact: `.wayfinder-smoke/release-0.4.0-full-4`.
 
-The last published full-release evidence is Wayfinder 0.7.3 against Foundry VTT 14.366 and PF2E 8.4.0: 55 executions representing 54 unique scenarios, including all three registered profiles and three Free Archetype paths, with zero classified/manual and zero failed. The 0.8.0 candidate raises its PF2E minimum to 8.4.1 and retains these profiles in its executable release contract; its exact-candidate full matrix remains pending. See [the release smoke log](../coverage/beta-readiness-smoke.md). The older artifacts below remain the focused evidence for the lane's initial implementation.
+The last published full-release evidence is Wayfinder 0.7.3 against Foundry VTT 14.366 and PF2E 8.4.0: 55 executions representing 54 unique scenarios, including all three registered profiles and three Free Archetype paths, with zero classified/manual and zero failed. The 0.8.0 candidate raises its PF2E minimum to 8.4.1 and retained these profiles in its live-proven exact-candidate matrix; package binding and independent review remain pending. See [the release smoke log](../coverage/beta-readiness-smoke.md). The older artifacts below remain the focused evidence for the lane's initial implementation.
 
 ## Why this is a separate lane
 

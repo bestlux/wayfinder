@@ -23,10 +23,10 @@ export function resolveActorAbpSnapshot(actor, pf2e = game.pf2e) {
     const settings = record(record(system.settings).variants);
     const mode = typeof settings.abp === "string" ? settings.abp : null;
     const variantRules = record(system.variantRules);
-    const abp = record(variantRules.AutomaticBonusProgression);
-    const isEnabled = abp.isEnabled;
+    const abp = variantRules.AutomaticBonusProgression;
+    const isEnabled = property(abp, "isEnabled");
     const enabled = typeof isEnabled === "function"
-        ? isEnabled(actor) === true
+        ? Reflect.apply(isEnabled, abp, [actor]) === true
         : mode !== null && mode !== "noABP";
     const actorRecord = record(actor);
     const flags = record(record(actorRecord.flags).pf2e);
@@ -328,5 +328,10 @@ function nonEmpty(value) {
 }
 function record(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+}
+function property(value, key) {
+    return (typeof value === "object" && value !== null) || typeof value === "function"
+        ? Reflect.get(value, key)
+        : undefined;
 }
 //# sourceMappingURL=equipment-policy-service.js.map

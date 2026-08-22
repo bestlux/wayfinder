@@ -136,6 +136,24 @@ describe("equipment policy service", () => {
     ).toEqual({ enabled: false, mode: "ABPRulesAsWritten", actorOverrideDisabled: true });
   });
 
+  it("uses PF2E's class-shaped static ABP API with its receiver intact", () => {
+    const actor = { flags: { pf2e: { disableABP: true } } };
+    class AutomaticBonusProgression {
+      static expectedActor = actor;
+
+      static isEnabled(candidate: unknown): boolean {
+        return this.expectedActor === candidate && !(candidate as typeof actor).flags.pf2e.disableABP;
+      }
+    }
+
+    expect(
+      resolveActorAbpSnapshot(actor, {
+        settings: { variants: { abp: "ABPRulesAsWritten" } },
+        variantRules: { AutomaticBonusProgression },
+      })
+    ).toEqual({ enabled: false, mode: "ABPRulesAsWritten", actorOverrideDisabled: true });
+  });
+
   it("persists GM judgments in the restricted authority store with exact facts", async () => {
     let store: unknown = { version: 1, judgments: [] };
     globals.game.settings.get.mockImplementation((moduleId: string, key: string) => {

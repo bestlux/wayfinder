@@ -519,12 +519,12 @@ async function runLocale({
   interactionStage("browse-cart", "increase-quantity");
   await appTabTo(increaseQuantitySelector);
   await pressAndRecord(playerPage, keyboard, "increase-quantity", "Enter");
-  await waitForText(playerPage, `${rootSelector} .equipment-quantity strong`, "2");
+  await waitForInputValue(playerPage, `${rootSelector} .equipment-quantity input`, "2");
   keyboard.focus.push(await focusEvidence(playerPage));
   interactionStage("browse-cart", "decrease-quantity");
   await appTabTo(decreaseQuantitySelector, { key: "Shift+Tab" });
   await pressAndRecord(playerPage, keyboard, "decrease-quantity", "Enter");
-  await waitForText(playerPage, `${rootSelector} .equipment-quantity strong`, "1");
+  await waitForInputValue(playerPage, `${rootSelector} .equipment-quantity input`, "1");
   keyboard.focus.push(await focusEvidence(playerPage));
   const afterItem = await itemEvidence(playerPage, opened.actorId, definition.fixture.item.sourceUuid);
   const item = {
@@ -821,10 +821,10 @@ async function waitForEither(page, selectors) {
   });
 }
 
-async function waitForText(page, selector, text) {
+async function waitForInputValue(page, selector, value) {
   await page.waitForFunction(
-    ({ candidate, expected }) => document.querySelector(candidate)?.textContent?.trim() === expected,
-    { candidate: selector, expected: text },
+    ({ candidate, expected }) => document.querySelector(candidate)?.value === expected,
+    { candidate: selector, expected: value },
     { timeout: 30_000 },
   );
 }

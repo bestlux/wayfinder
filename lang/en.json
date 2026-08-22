@@ -310,6 +310,8 @@
         "Add": "Wayfinder could not add this equipment item. Check the equipment policy and try again.",
         "ChooseTitanMauler": "Wayfinder could not choose this Titan Mauler weapon. Check the equipment policy and try again.",
         "CustomLumpSum": "Enter a non-negative custom lump sum with at most two decimal places.",
+        "QuantityInteger": "Enter a whole-number quantity from {minimum} to {maximum}.",
+        "QuantityMultiple": "This item comes in stacks of {multiple}; enter a multiple of {multiple}.",
         "Search": "Wayfinder could not update these equipment results. Reopen the window and try again.",
         "Update": "Wayfinder could not update starting equipment. Check the current step and try again."
       },

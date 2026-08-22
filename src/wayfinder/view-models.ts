@@ -577,6 +577,8 @@ export interface StartingEquipmentStepPane {
       unavailableReason: string | null;
       focusId: string;
       quantityAriaLabel: string;
+      quantityStep: number;
+      quantityFocusId: string;
       decreaseAriaLabel: string;
       decreaseFocusId: string;
       increaseAriaLabel: string;

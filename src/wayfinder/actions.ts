@@ -83,6 +83,7 @@ interface InteractionHandlers {
   onSearchInput: (event: Event) => void;
   onEquipmentSearchInput: (event: Event) => void;
   onEquipmentSourceSearchInput: (event: Event) => void;
+  onEquipmentQuantityCommit: (event: Event) => void | Promise<void>;
   onScrollableScroll: (event: Event) => void;
   onManualChange: (event: Event) => void | Promise<void>;
   onLoreInputChange: (event: Event) => void | Promise<void>;
@@ -111,6 +112,17 @@ export function bindWayfinderInteractions(
   const equipmentSourceSearch = root.querySelector<HTMLInputElement>("[data-wayfinder-equipment-source-search]");
   if (equipmentSourceSearch) {
     equipmentSourceSearch.addEventListener("input", handlers.onEquipmentSourceSearchInput);
+  }
+
+  for (const input of root.querySelectorAll<HTMLInputElement>("[data-wayfinder-equipment-quantity]")) {
+    input.dataset.wayfinderCommittedValue = input.value;
+    const commit = (event: Event): void => {
+      if (input.dataset.wayfinderCommittedValue === input.value) return;
+      input.dataset.wayfinderCommittedValue = input.value;
+      void handlers.onEquipmentQuantityCommit(event);
+    };
+    input.addEventListener("change", commit);
+    input.addEventListener("blur", commit);
   }
 
   const scrollables = [

@@ -195,7 +195,7 @@ globalThis.__wayfinderEquipmentProfile = {
         const button = currentRoot().querySelector('[data-wayfinder-action="change-equipment-quantity"][data-delta="1"]');
         if (!button) throw new Error("Equipment profile requires a mutable cart line.");
         const line = button.closest(".equipment-cart-line");
-        const previous = Number(line?.querySelector(".equipment-quantity strong")?.textContent ?? 0);
+        const previous = Number(line?.querySelector(".equipment-quantity input")?.value ?? 0);
         const lineId = button.dataset.lineId;
         primaryInterval = startActionInterval(sample, actionId);
         button.click();
@@ -204,7 +204,7 @@ globalThis.__wayfinderEquipmentProfile = {
             currentRoot()
               .querySelector(`[data-wayfinder-action="change-equipment-quantity"][data-line-id="${css(lineId)}"]`)
               ?.closest(".equipment-cart-line")
-              ?.querySelector(".equipment-quantity strong")?.textContent ?? 0,
+              ?.querySelector(".equipment-quantity input")?.value ?? 0,
           );
         semantic = () => observedQuantity() === previous + 1;
         actionOutcome = () => ({ lineId, previousQuantity: previous, observedQuantity: observedQuantity() });

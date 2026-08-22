@@ -1185,11 +1185,23 @@
   background: rgba(94, 0, 0, 0.08);
 }
 
-.wayfinder-app .equipment-quantity strong {
-  min-width: 1.1rem;
+.wayfinder-app .equipment-quantity input {
+  width: 2.6rem;
+  min-width: 0;
+  min-height: 1.25rem;
+  padding: 0 0.12rem;
+  border: 1px solid transparent;
+  border-radius: var(--wf-radius);
+  background: transparent;
   color: var(--wf-ink);
   font: 700 0.76rem / 1 var(--serif, serif);
   text-align: center;
+}
+
+.wayfinder-app .equipment-quantity input:focus {
+  border-color: var(--wf-rule-strong);
+  outline: none;
+  background: var(--wf-paper);
 }
 
 .wayfinder-app .equipment-fixed-quantity {

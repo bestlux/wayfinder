@@ -162,6 +162,8 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             quantityAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Cart.QuantityAria", {
                 name: record?.name ?? line.sourceUuid,
             }),
+            quantityStep: line.price.sourceQuantity,
+            quantityFocusId: equipmentLineControlFocusId(line.lineId, "quantity"),
             decreaseAriaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.DecreaseItemQuantity", {
                 name: record?.name ?? line.sourceUuid,
             }),

@@ -17,7 +17,10 @@ export function equipmentLineFocusId(lineId: string): string {
   return `starting-equipment-line:${lineId}`;
 }
 
-export function equipmentLineControlFocusId(lineId: string, action: "decrease" | "increase" | "remove"): string {
+export function equipmentLineControlFocusId(
+  lineId: string,
+  action: "decrease" | "quantity" | "increase" | "remove"
+): string {
   return `${equipmentLineFocusId(lineId)}:${action}`;
 }
 

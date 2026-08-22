@@ -14,6 +14,17 @@ export function bindWayfinderInteractions(root, handlers, scrollById, pendingSea
     if (equipmentSourceSearch) {
         equipmentSourceSearch.addEventListener("input", handlers.onEquipmentSourceSearchInput);
     }
+    for (const input of root.querySelectorAll("[data-wayfinder-equipment-quantity]")) {
+        input.dataset.wayfinderCommittedValue = input.value;
+        const commit = (event) => {
+            if (input.dataset.wayfinderCommittedValue === input.value)
+                return;
+            input.dataset.wayfinderCommittedValue = input.value;
+            void handlers.onEquipmentQuantityCommit(event);
+        };
+        input.addEventListener("change", commit);
+        input.addEventListener("blur", commit);
+    }
     const scrollables = [
         ...(root.matches("[data-wayfinder-scroll-id]") ? [root] : []),
         ...root.querySelectorAll("[data-wayfinder-scroll-id]"),

@@ -427,6 +427,8 @@ describe("starting equipment pane", () => {
     );
 
     expect(pane.cart.lines[0]?.quantity).toBe(12);
+    expect(pane.cart.lines[0]?.quantityStep).toBe(12);
+    expect(pane.cart.lines[0]?.quantityFocusId).toBe("starting-equipment-line:line-1:quantity");
     expect(pane.cart.count).toBe(12);
   });
 
@@ -1003,6 +1005,7 @@ describe("starting equipment pane", () => {
       "data-wayfinder-equipment-search",
       'data-wayfinder-action="toggle-equipment-filter"',
       'data-wayfinder-action="change-equipment-quantity"',
+      "data-wayfinder-equipment-quantity",
       'data-wayfinder-action="review-equipment-purchases"',
       'data-wayfinder-action="retain-all-equipment"',
       'data-wayfinder-action="acknowledge-equipment-handoff"',

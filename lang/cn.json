@@ -321,6 +321,8 @@
         "Add": "寻路仪无法添加此装备物品。请检查装备政策后重试。",
         "ChooseTitanMauler": "寻路仪无法选择此泰坦重击武器。请检查装备政策后重试。",
         "CustomLumpSum": "请输入不小于零且最多保留两位小数的自定义一次性金额。",
+        "QuantityInteger": "请输入从{minimum}到{maximum}之间的整数数量。",
+        "QuantityMultiple": "此物品每组包含{multiple}件；请输入{multiple}的倍数。",
         "Search": "寻路仪无法更新装备搜索结果。请重新打开窗口后重试。",
         "Update": "寻路仪无法更新起始装备。请检查当前步骤后重试。"
       },

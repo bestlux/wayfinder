@@ -33,6 +33,7 @@ import { equipmentLineFocusId, restoreEquipmentFocus, STARTING_EQUIPMENT_REVIEW_
 import { ConfiguredItemHandoffRequiredError, commitTitanMaulerLineSynchronization, getFoundryEquipmentAcquisitionRuntime, } from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
 import { assertEquipmentApplyAuthority } from "./application/equipment-policy-service.js";
+import { parseMaterializedEquipmentQuantity } from "./application/equipment-quantity-entry.js";
 import { createEquipmentSearchScheduler, scheduleEquipmentSearchInput, } from "./application/equipment-search-input-service.js";
 import { buildExistingCharacterHistory } from "./application/existing-character-history-service.js";
 import { hasExecutableAcquisition, persistExistingCharacterImport, } from "./application/existing-character-import-service.js";
@@ -501,6 +502,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     onSearchInput: this.#onSearchInput,
                     onEquipmentSearchInput: this.#onEquipmentSearchInput,
                     onEquipmentSourceSearchInput: this.#onEquipmentSourceSearchInput,
+                    onEquipmentQuantityCommit: this.#onEquipmentQuantityCommit,
                     onScrollableScroll: this.#onScrollableScroll,
                     onManualChange: this.#onManualChange,
                     onLoreInputChange: this.#onLoreInputChange,
@@ -521,6 +523,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     onSearchInput: this.#onSearchInput,
                     onEquipmentSearchInput: this.#onEquipmentSearchInput,
                     onEquipmentSourceSearchInput: this.#onEquipmentSourceSearchInput,
+                    onEquipmentQuantityCommit: this.#onEquipmentQuantityCommit,
                     onScrollableScroll: this.#onScrollableScroll,
                     onManualChange: this.#onManualChange,
                     onLoreInputChange: this.#onLoreInputChange,
@@ -549,6 +552,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             onSearchInput: this.#onSearchInput,
             onEquipmentSearchInput: this.#onEquipmentSearchInput,
             onEquipmentSourceSearchInput: this.#onEquipmentSourceSearchInput,
+            onEquipmentQuantityCommit: this.#onEquipmentQuantityCommit,
             onScrollableScroll: this.#onScrollableScroll,
             onManualChange: this.#onManualChange,
             onLoreInputChange: this.#onLoreInputChange,
@@ -1114,6 +1118,61 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             this.render(false);
         }
     };
+    #onEquipmentQuantityCommit = async (event) => {
+        const input = event.currentTarget;
+        const stepId = input?.dataset.stepId;
+        const lineId = input?.dataset.lineId;
+        if (!input || !stepId || !lineId || !this.#allowDraftMutation())
+            return;
+        this.#rememberInteractiveState();
+        this.#statusErrorMessage = null;
+        this.#pendingEquipmentFocusIds = startingEquipmentFocusCandidates(input);
+        const rawValue = input.value;
+        const queued = this.#semanticCommands.enqueue(async () => {
+            const line = this.#requireDraft().acquisition?.lines.find((candidate) => candidate.lineId === lineId);
+            if (!line) {
+                this.#reportStartingEquipmentQuantityFailure(stepId, localizeAcquisition("wayfinder-pf2e.StartingEquipment.Errors.Update"));
+                return;
+            }
+            const parsed = parseMaterializedEquipmentQuantity(rawValue, line.price.sourceQuantity);
+            if (parsed.ok === false) {
+                const message = parsed.reason === "invalid-stack-multiple"
+                    ? localizeAcquisition("wayfinder-pf2e.StartingEquipment.Errors.QuantityMultiple", {
+                        multiple: parsed.multiple,
+                    })
+                    : localizeAcquisition("wayfinder-pf2e.StartingEquipment.Errors.QuantityInteger", {
+                        minimum: parsed.minimum,
+                        maximum: parsed.maximum,
+                    });
+                this.#reportStartingEquipmentQuantityFailure(stepId, message);
+                return;
+            }
+            if (parsed.requestedQuantity === line.price.requestedQuantity) {
+                input.value = String(line.price.materializedQuantity);
+                return;
+            }
+            const before = draftFingerprint(this.#draft);
+            try {
+                await this.#executeStartingEquipmentCommand(stepId, { type: "set-quantity", lineId, quantity: parsed.requestedQuantity }, "quantity");
+            }
+            finally {
+                if (draftFingerprint(this.#draft) !== before)
+                    this.#draftDidChange();
+            }
+        });
+        if (queued !== null)
+            await queued;
+    };
+    #reportStartingEquipmentQuantityFailure(stepId, message) {
+        this.#setStartingEquipmentFailure(message);
+        ui.notifications.warn(message);
+        if (canUseStartingEquipmentCommandPartial(this.#requireDraft(), "quantity")) {
+            this.#renderStartingEquipmentPartial(stepId, "quantity");
+        }
+        else {
+            this.render({ wayfinderEquipmentUpdate: true });
+        }
+    }
     #onLoreInputChange = async (event) => {
         const input = event.currentTarget;
         const stepId = input?.dataset.stepId;

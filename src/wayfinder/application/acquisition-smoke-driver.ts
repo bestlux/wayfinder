@@ -1311,7 +1311,7 @@ function assertExpectedItemCreateCheckpoints(caseDefinition: AcquisitionSmokeCas
 async function waitForCartQuantity(application: Record<string, unknown>, quantity: number): Promise<void> {
   await waitForValue(() => {
     const line = daggerCartLine(application);
-    return Number(line?.querySelector<HTMLElement>(".equipment-quantity > strong")?.textContent?.trim()) === quantity
+    return Number(line?.querySelector<HTMLInputElement>(".equipment-quantity > input")?.value) === quantity
       ? true
       : null;
   }, `Dagger cart quantity ${quantity}`);

@@ -21,6 +21,7 @@ describe("starting equipment accessibility", () => {
     );
     expect(equipmentLineFocusId("line-1")).toBe("starting-equipment-line:line-1");
     expect(equipmentLineControlFocusId("line-1", "decrease")).toBe("starting-equipment-line:line-1:decrease");
+    expect(equipmentLineControlFocusId("line-1", "quantity")).toBe("starting-equipment-line:line-1:quantity");
     expect(equipmentFilterFocusId("source", "Player Core")).toBe("starting-equipment-filter:source:Player Core");
     expect(STARTING_EQUIPMENT_REVIEW_FOCUS_ID).toBe("starting-equipment-review");
     expect(STARTING_EQUIPMENT_SEARCH_FOCUS_ID).toBe("starting-equipment-search");
@@ -67,6 +68,13 @@ describe("starting equipment accessibility", () => {
   it("gives the browse search a stable relocation identity", () => {
     const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
     expect(pane).toContain('data-wayfinder-equipment-search data-wayfinder-focus-id="starting-equipment-search"');
+  });
+
+  it("gives direct cart quantity entry an accessible label and stable focus identity", () => {
+    const cart = readFileSync(resolve("templates/wayfinder/starting-equipment-cart.hbs"), "utf8");
+    expect(cart).toContain('type="number" inputmode="numeric"');
+    expect(cart).toContain('aria-label="{{quantityAriaLabel}}" data-wayfinder-equipment-quantity');
+    expect(cart).toContain('data-wayfinder-focus-id="{{quantityFocusId}}"');
   });
 
   it("restores active equipment errors after both full and status-part renders", () => {

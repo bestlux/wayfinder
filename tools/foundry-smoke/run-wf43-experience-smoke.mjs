@@ -22,13 +22,22 @@ import {
   snapshotFoundryClientLanguages,
   switchFoundryClientLanguages,
 } from "./wf43-experience-language.mjs";
+import {
+  loadWayfinderBrowserSuite,
+  reloadWayfinderBrowserSuite,
+} from "./shared-browser-suite-lifecycle.mjs";
+import {
+  cleanupWf43ExperienceWithRecovery,
+  createWf43RecoveryPage,
+  recoverWf43FailedSetupWithRecovery,
+  restoreWf43WorldSettingsWithRecovery,
+} from "./wf43-experience-browser-lifecycle.mjs";
 
 const MODULE_ID = "wayfinder-pf2e";
 const POLICY_SETTING = "equipmentPolicy";
 const PACKS_SETTING = "compendiumBrowserPacks";
 const FIXTURE_PREFIX = "WF Smoke Harness - WF-080-43 experience";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
-const sharedSuitePath = path.join(repoRoot, "tools", "foundry-smoke", "browser-suite.js");
 const suitePath = path.join(repoRoot, "tools", "foundry-smoke", "wf43-experience-browser-suite.js");
 
 function usage() {
@@ -70,8 +79,10 @@ async function main() {
   let playerPage = null;
   let options = null;
   let setup = null;
+  let setupSnapshots = null;
   let cleanup = emptyCleanup();
   let playerReady = false;
+  let recoveryPage = null;
   let clientLanguageSnapshots = [];
   let exactClientLanguageRestored = false;
   const languageSwitches = [];
@@ -115,6 +126,7 @@ async function main() {
       password: process.env.FOUNDRY_PASSWORD ?? "",
     });
     await installSuites(gmPage);
+    setupSnapshots = await snapshotWf43SetupBoundary(gmPage);
     stage = { id: "fixture-setup" };
     setupAttempted = true;
     setup = await gmPage.evaluate(
@@ -193,14 +205,37 @@ async function main() {
     failedStage = { ...stage };
   } finally {
     try {
+      const recoverGmPage = async () => {
+        if (recoveryPage) return recoveryPage;
+        const recovery = await createWf43RecoveryPage({
+          browser,
+          failedContext: gmContext,
+          login: (page) =>
+            loginToFoundryWorld(page, {
+              foundryUrl: process.env.FOUNDRY_URL || "http://localhost:30000",
+              user: options.gmUser,
+              password: process.env.FOUNDRY_PASSWORD ?? "",
+            }),
+          load: installSuites,
+        });
+        gmContext = recovery.context;
+        gmPage = recovery.page;
+        recoveryPage = recovery.page;
+        return recoveryPage;
+      };
       if (setup) {
         const restorationFailures = [];
         cleanup = { ...emptyCleanup(), attempted: true, setupCompleted: true };
+        let cleanupReloadError = null;
         try {
           stage = { id: "cleanup-actors-policy-packs" };
-          await reloadSuites(gmPage);
-          const guardedCleanup = await gmPage.evaluate(
-            (payload) => globalThis.__cleanupWayfinderWf43Experience(payload),
+          try {
+            await reloadSuites(gmPage);
+          } catch (error) {
+            cleanupReloadError = error;
+          }
+          const guardedCleanup = await cleanupWf43ExperienceWithRecovery(
+            [gmPage],
             {
               allowDestructive: options.allowDestructive,
               expectedWorldId: options.expectedWorldId,
@@ -211,11 +246,41 @@ async function main() {
               runId,
               snapshots: setup.snapshots,
             },
+            recoverGmPage,
           );
           cleanup = { ...cleanup, ...guardedCleanup };
           restorationFailures.push(...(cleanup.restorationFailures ?? []));
         } catch (error) {
-          restorationFailures.push(`guarded actor/policy/pack cleanup failed: ${errorMessage(error)}`);
+          const combined = cleanupReloadError
+            ? new AggregateError(
+                [cleanupReloadError, error],
+                "WF-080-43 cleanup reload and guarded cleanup both failed.",
+                { cause: error },
+              )
+            : error;
+          restorationFailures.push(`guarded actor/policy/pack cleanup failed: ${errorMessage(combined)}`);
+        }
+        try {
+          stage = { id: "cleanup-settings-recovery" };
+          const settings = await restoreWf43WorldSettingsWithRecovery(
+            [gmPage],
+            {
+              expectedWorldId: options.expectedWorldId,
+              moduleId: MODULE_ID,
+              packsSetting: PACKS_SETTING,
+              policySetting: POLICY_SETTING,
+              snapshots: setup.snapshots,
+            },
+            recoverGmPage,
+          );
+          cleanup.policyRestored = settings.policyRestored;
+          cleanup.packsRestored = settings.packsRestored;
+          if (settings.policyRestored && settings.packsRestored) {
+            removeResolvedSettingsFailures(restorationFailures);
+          }
+          restorationFailures.push(...settings.failures);
+        } catch (error) {
+          restorationFailures.push(`policy/pack recovery failed: ${errorMessage(error)}`);
         }
         try {
           stage = { id: "cleanup-language" };
@@ -257,15 +322,31 @@ async function main() {
             ? "WF-080-43: exact actors, policy, PF2E packs, and language restored."
             : `WF-080-43: cleanup completed with ${restorationFailures.length} restoration failure(s).`,
         );
-      } else if (setupAttempted) {
-        cleanup = {
-          ...emptyCleanup(),
-          attempted: false,
-          setupCompleted: false,
-          restorationFailures: [
-            "Fixture setup did not return its guarded snapshot; its internal rollback could not be independently verified.",
-          ],
-        };
+      } else if (setupAttempted && setupSnapshots) {
+        try {
+          stage = { id: "failed-setup-recovery" };
+          cleanup = await recoverWf43FailedSetupWithRecovery(
+            [gmPage],
+            {
+              allowDestructive: options.allowDestructive,
+              expectedFixtures: expectedWf43FixtureIdentities(runId),
+              expectedWorldId: options.expectedWorldId,
+              moduleId: MODULE_ID,
+              packsSetting: PACKS_SETTING,
+              policySetting: POLICY_SETTING,
+              runId,
+              snapshots: setupSnapshots,
+            },
+            recoverGmPage,
+          );
+        } catch (error) {
+          cleanup = {
+            ...emptyCleanup(),
+            attempted: true,
+            setupCompleted: false,
+            restorationFailures: [`failed fixture setup recovery failed: ${errorMessage(error)}`],
+          };
+        }
       }
     } finally {
       try {
@@ -763,14 +844,33 @@ function languageTargets(gmPage, playerPage) {
 }
 
 async function installSuites(page) {
-  await page.addScriptTag({ path: sharedSuitePath });
-  await page.addScriptTag({ path: suitePath });
+  await loadWayfinderBrowserSuite(page, { afterSuitePaths: [suitePath] });
+}
+
+async function snapshotWf43SetupBoundary(page) {
+  return page.evaluate(({ moduleId, packsSetting, policySetting }) => ({
+    actorCount: globalThis.game.actors.size,
+    language: structuredClone(globalThis.game.settings.get("core", "language")),
+    packs: structuredClone(globalThis.game.settings.get("pf2e", packsSetting)),
+    policy: structuredClone(globalThis.game.settings.get(moduleId, policySetting)),
+  }), {
+    moduleId: MODULE_ID,
+    packsSetting: PACKS_SETTING,
+    policySetting: POLICY_SETTING,
+  });
+}
+
+function expectedWf43FixtureIdentities(runId) {
+  return wf43ExperienceCases.map((definition) => ({
+    definitionFingerprint: definition.definitionFingerprint,
+    fixtureName: `${FIXTURE_PREFIX} - ${definition.id} - wf43-experience-${definition.id}-${runId} - ${runId}`,
+    locale: definition.id,
+    profileId: `wf43-experience-${definition.id}-${runId}`,
+  }));
 }
 
 async function reloadSuites(page) {
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => globalThis.game?.ready === true, null, { timeout: 60_000 });
-  await installSuites(page);
+  await reloadWayfinderBrowserSuite(page, { afterSuitePaths: [suitePath] });
 }
 
 function nonEmptyValues(value) {
@@ -790,6 +890,15 @@ function emptyCleanup() {
     languageRestored: false,
     restorationFailures: [],
   };
+}
+
+function removeResolvedSettingsFailures(failures) {
+  const unresolved = failures.filter(
+    (failure) =>
+      !failure.startsWith("equipment policy restoration failed:") &&
+      !failure.startsWith("PF2E pack restoration failed:"),
+  );
+  failures.splice(0, failures.length, ...unresolved);
 }
 
 function assertKeyboardEntry(entry, expected) {

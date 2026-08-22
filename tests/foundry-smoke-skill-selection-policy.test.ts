@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { smokeCases } from "../tools/foundry-smoke/class-cases.mjs";
+import { loadWayfinderBrowserSuite } from "../tools/foundry-smoke/shared-browser-suite-lifecycle.mjs";
 
 interface SkillSelectionPolicy {
   collectReservedRuleChoiceSkills: (choices: Record<string, unknown> | null) => string[];
@@ -19,7 +20,6 @@ declare global {
   var __wayfinderSmokeSkillSelectionPolicy: SkillSelectionPolicy | undefined;
 }
 
-const runner = readFileSync(resolve("tools/foundry-smoke/run-foundry-smoke.mjs"), "utf8");
 const browserSuite = readFileSync(resolve("tools/foundry-smoke/browser-suite.js"), "utf8");
 
 describe("Foundry smoke skill-selection policy", () => {
@@ -64,11 +64,13 @@ describe("Foundry smoke skill-selection policy", () => {
     ).toEqual(["medicine", "diplomacy", "nature", "society"]);
   });
 
-  it("loads the shared policy before the browser suite and consumes it at the fill boundary", () => {
-    expect(runner.indexOf("page.addScriptTag({ path: skillSelectionPolicyPath })")).toBeGreaterThan(-1);
-    expect(runner.indexOf("page.addScriptTag({ path: browserSuitePath })")).toBeGreaterThan(
-      runner.indexOf("page.addScriptTag({ path: skillSelectionPolicyPath })")
-    );
+  it("loads the shared policy before the browser suite and consumes it at the fill boundary", async () => {
+    const calls: string[] = [];
+    await loadWayfinderBrowserSuite({
+      addScriptTag: async ({ path }: { path: string }) => calls.push(path.replaceAll("\\", "/").split("/").at(-1)!),
+    });
+
+    expect(calls).toEqual(["skill-selection-policy.js", "browser-suite.js"]);
     expect(browserSuite).toContain("skillSelectionPolicy.collectReservedRuleChoiceSkills");
     expect(browserSuite).toContain("skillSelectionPolicy.selectAdditionalSkills");
   });

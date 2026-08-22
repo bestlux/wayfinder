@@ -14,12 +14,11 @@ import {
   resolveFoundryChromePath,
 } from "./browser-session.mjs";
 import { validateSmokeSafety } from "./safety.mjs";
+import { loadWayfinderBrowserSuite } from "./shared-browser-suite-lifecycle.mjs";
 
 const MODULE_ID = "wayfinder-pf2e";
 const fixturePrefix = "WF Smoke Harness";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
-const browserSuitePath = path.join(repoRoot, "tools", "foundry-smoke", "browser-suite.js");
-const skillSelectionPolicyPath = path.join(repoRoot, "tools", "foundry-smoke", "skill-selection-policy.js");
 const defaultArtifactRoot = ".wayfinder-smoke";
 const allSmokeCases = [
   ...smokeCases,
@@ -283,8 +282,7 @@ async function main() {
       password: process.env.FOUNDRY_PASSWORD ?? "",
       user: process.env.FOUNDRY_USER ?? "",
     });
-    await page.addScriptTag({ path: skillSelectionPolicyPath });
-    await page.addScriptTag({ path: browserSuitePath });
+    await loadWayfinderBrowserSuite(page);
 
     const variantStates = {
       freeArchetypeVariant: await readVariantState(page, {

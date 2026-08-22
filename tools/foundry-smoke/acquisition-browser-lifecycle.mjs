@@ -1,17 +1,18 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  loadWayfinderBrowserSuite,
+  reloadWayfinderBrowserSuite,
+} from "./shared-browser-suite-lifecycle.mjs";
+
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const cleanupScriptPath = path.join(repoRoot, "tools", "foundry-smoke", "acquisition-cleanup-browser.js");
-const skillSelectionPolicyPath = path.join(repoRoot, "tools", "foundry-smoke", "skill-selection-policy.js");
-const browserSuitePath = path.join(repoRoot, "tools", "foundry-smoke", "browser-suite.js");
 
 class AcquisitionCleanupAuthorityUnavailableError extends Error {}
 
 export async function loadAcquisitionBrowserSuite(page) {
-  await loadAcquisitionCleanup(page);
-  await page.addScriptTag({ path: skillSelectionPolicyPath });
-  await page.addScriptTag({ path: browserSuitePath });
+  await loadWayfinderBrowserSuite(page, { beforeSuitePaths: [cleanupScriptPath] });
 }
 
 export async function loadAcquisitionCleanup(page) {
@@ -19,10 +20,10 @@ export async function loadAcquisitionCleanup(page) {
 }
 
 export async function reloadAcquisitionBrowserSuite(page) {
-  await page.addInitScript({ path: cleanupScriptPath });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitForFoundryReady(page);
-  await loadAcquisitionBrowserSuite(page);
+  await reloadWayfinderBrowserSuite(page, {
+    beforeSuitePaths: [cleanupScriptPath],
+    initScriptPaths: [cleanupScriptPath],
+  });
 }
 
 export async function cleanupAcquisitionFixtures(pages, payload) {
@@ -106,10 +107,4 @@ export async function createAcquisitionRecoveryPage({
     await context.close().catch(() => undefined);
     throw error;
   }
-}
-
-async function waitForFoundryReady(page) {
-  await page.waitForFunction(() => globalThis.game?.ready === true, null, {
-    timeout: 60000,
-  });
 }

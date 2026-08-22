@@ -15,11 +15,11 @@ import {
   resolveFoundryChromePath,
 } from "./browser-session.mjs";
 import { buildOwnerProbeEvidence, validateOwnerProbeOptions } from "./owner-probe-contract.mjs";
+import { loadWayfinderBrowserSuite } from "./shared-browser-suite-lifecycle.mjs";
 
 const MODULE_ID = "wayfinder-pf2e";
 const fixturePrefix = "WF Smoke Harness";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
-const browserSuitePath = path.join(repoRoot, "tools", "foundry-smoke", "browser-suite.js");
 
 function usage() {
   return `Usage: node tools/foundry-smoke/run-owner-access-probe.mjs [options]
@@ -84,7 +84,7 @@ async function main() {
         password: process.env.FOUNDRY_PASSWORD ?? "",
         user: options.setupUser,
       });
-      await setupPage.addScriptTag({ path: browserSuitePath });
+      await loadWayfinderBrowserSuite(setupPage);
       setup = await setupPage.evaluate(
         (payload) => globalThis.__prepareWayfinderOwnerProbe(payload),
         {
@@ -109,7 +109,7 @@ async function main() {
           password: process.env.FOUNDRY_SMOKE_PLAYER_PASSWORD ?? "",
           user: options.playerUser,
         });
-        await playerPage.addScriptTag({ path: browserSuitePath });
+        await loadWayfinderBrowserSuite(playerPage);
         player = await playerPage.evaluate(
           (payload) => globalThis.__runWayfinderOwnerProbe(payload),
           {

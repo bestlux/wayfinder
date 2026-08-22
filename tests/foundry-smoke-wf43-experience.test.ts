@@ -232,6 +232,13 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(runner).toContain('role: "gm"');
     expect(runner).toContain('role: "player"');
     expect(runner).toContain("setup.snapshots.language");
+    expect(runner).toContain("cleanupWf43ExperienceWithRecovery(");
+    expect(runner).toContain("restoreWf43WorldSettingsWithRecovery(");
+    expect(runner).toContain("recoverWf43FailedSetupWithRecovery(");
+    expect(runner).toContain("setupSnapshots = await snapshotWf43SetupBoundary(gmPage)");
+    expect(runner).toContain("expectedFixtures: expectedWf43FixtureIdentities(runId)");
+    expect(runner).toContain("createWf43RecoveryPage({");
+    expect(runner.indexOf("failedContext: gmContext")).toBeLessThan(runner.indexOf("gmContext = recovery.context"));
   });
 
   it("switches and initializes the client-scoped Foundry language in both browser contexts", async () => {
@@ -648,7 +655,7 @@ describe("WF-080-43 live experience qualifier", () => {
     const awaitedLocale = runner.indexOf("await runLocale({", guardedTry);
     const mainCatch = runner.indexOf("  } catch (error) {", awaitedLocale);
     const mainFinally = runner.indexOf("  } finally {", mainCatch);
-    const guardedCleanup = runner.indexOf("__cleanupWayfinderWf43Experience", mainFinally);
+    const guardedCleanup = runner.indexOf("cleanupWf43ExperienceWithRecovery(", mainFinally);
     const mainEnd = runner.indexOf("\n}\n\nasync function runLocale", mainFinally);
     const localeStart = runner.indexOf("async function runLocale");
     const localeEnd = runner.indexOf("async function captureState", localeStart);

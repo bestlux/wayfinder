@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const bootstrap = read("src/wayfinder.ts");
+const templateService = read("src/wayfinder/application/wayfinder-template-service.ts");
 const templatePaths = [
   "templates/wayfinder-app.hbs",
   "templates/wayfinder/starting-equipment-pane.hbs",
@@ -27,7 +27,7 @@ describe("starting-equipment template registration", () => {
     ];
     expect(partialPaths).toEqual(expect.arrayContaining(startingEquipmentPartials));
     for (const path of new Set(partialPaths)) {
-      expect(bootstrap).toContain(`modules/\${MODULE_ID}/${path}`);
+      expect(templateService).toContain(`modules/\${MODULE_ID}/${path}`);
     }
   });
 });

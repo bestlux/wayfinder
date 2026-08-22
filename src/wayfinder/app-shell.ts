@@ -187,6 +187,7 @@ import {
   type WayfinderTemplateContext,
 } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
+import { ensureWayfinderTemplatesLoaded } from "./application/wayfinder-template-service.js";
 import {
   acquisitionPolicyMaterialMatches,
   recordAcquisitionCurrencyConvergenceWitness,
@@ -512,6 +513,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   }
 
   async _prepareContext(options: WayfinderRenderOptions = {}): Promise<WayfinderRenderContext> {
+    await ensureWayfinderTemplatesLoaded();
     const pickerRequest = pickerSearchRequest(options);
     if (pickerRequest) {
       const session = this.#pickerRenderSession?.session;

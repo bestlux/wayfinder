@@ -8,7 +8,7 @@ const countTemplate = read("templates/wayfinder/picker-result-count.hbs");
 const pickResultsTemplate = read("templates/wayfinder/pick-results.hbs");
 const spellResultsTemplate = read("templates/wayfinder/spell-choice-results.hbs");
 const filterBarTemplate = read("templates/wayfinder/picker-filter-bar.hbs");
-const wayfinderSource = read("src/wayfinder.ts");
+const templateServiceSource = read("src/wayfinder/application/wayfinder-template-service.ts");
 
 describe("wayfinder picker search parts", () => {
   it("keeps the live search input outside both replaceable parts", () => {
@@ -55,7 +55,7 @@ describe("wayfinder picker search parts", () => {
       "pick-results.hbs",
       "spell-choice-results.hbs",
     ]) {
-      expect(wayfinderSource).toContain(`/templates/wayfinder/${template}`);
+      expect(templateServiceSource).toContain(`/templates/wayfinder/${template}`);
     }
   });
 });

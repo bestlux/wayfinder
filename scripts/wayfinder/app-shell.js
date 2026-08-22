@@ -52,6 +52,7 @@ import { advanceStartingEquipmentRenderSession, canDeriveStartingEquipmentRender
 import { getStartingEquipmentUiAdapter } from "./application/starting-equipment-ui-adapter.js";
 import { buildDraftSaveView, buildWayfinderContext, } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
+import { ensureWayfinderTemplatesLoaded } from "./application/wayfinder-template-service.js";
 import { acquisitionPolicyMaterialMatches, recordAcquisitionCurrencyConvergenceWitness, recordClassGrantReconciliations, } from "./domain/acquisition-draft.js";
 import { manifestsDescribeSameOutcome } from "./domain/completed-acquisition-manifest.js";
 import { physicalGrantCoverageIssues, withPhysicalGrantCoverageReadiness } from "./domain/physical-grant-coverage.js";
@@ -239,6 +240,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
     }
     async _prepareContext(options = {}) {
+        await ensureWayfinderTemplatesLoaded();
         const pickerRequest = pickerSearchRequest(options);
         if (pickerRequest) {
             const session = this.#pickerRenderSession?.session;

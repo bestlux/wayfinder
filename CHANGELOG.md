@@ -2,6 +2,8 @@
 
 ## 0.8.1 - Unreleased
 
+- Wayfinder now waits for its shared, retryable Handlebars partial preload before every full or scoped render, preventing a cold client from opening the app before newly installed picker templates are registered.
+
 ## 0.8.0 - 2026-08-22
 
 - Added guided Starting Equipment for eligible new and replacement characters. Level 1 uses the official 15 gp budget; levels 2–20 support both remastered Character Wealth recipes, with permanent-item allowances and residual currency kept distinct from the optional lump sum.

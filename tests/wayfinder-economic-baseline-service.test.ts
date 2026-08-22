@@ -80,6 +80,9 @@ describe("economic baseline actor service", () => {
         sourceUuid: "Compendium.pf2e.equipment-srd.Item.ljT5pe8D7rudJqus",
       }),
     ]);
+
+    delete (temporaryVial as { isTemporary?: boolean }).isTemporary;
+    expect(captureActorEconomicBaseline(actorFixture([temporaryVial])).physicalItems).toEqual([]);
   });
 
   it("fails closed on missing currency, malformed quantity, or unusable item classification", () => {

@@ -77,7 +77,7 @@ function isTemporaryPhysicalItem(item) {
     // durable character wealth. Source identity, zero Price, and the infused trait
     // alone are insufficient: only PF2E's prepared temporary classification excludes
     // the document from economic admission.
-    return prepared === true;
+    return prepared === true || (prepared === undefined && system === true);
 }
 export function evaluateActorEconomicAdmission(args) {
     const classGrantReconciliation = reconcilePreparedClassGrants({

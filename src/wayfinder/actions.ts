@@ -63,7 +63,12 @@ export type WayfinderAction =
   | { type: "remove-equipment-line"; stepId: string; lineId: string }
   | { type: "change-equipment-quantity"; stepId: string; lineId: string; delta: -1 | 1 }
   | { type: "toggle-equipment-filter"; stepId: string; filterKey: string; value: string }
-  | { type: "toggle-equipment-filter-panel"; stepId: string; filterKey: "rarity" | "source" }
+  | {
+      type: "toggle-equipment-filter-panel";
+      stepId: string;
+      filterKey: "level" | "rarity" | "source" | "trait";
+    }
+  | { type: "set-equipment-level-range"; stepId: string; minimum: number; maximum: number }
   | { type: "clear-equipment-filters"; stepId: string }
   | { type: "set-equipment-result-window"; stepId: string; offset: number }
   | { type: "review-equipment-purchases"; stepId: string }
@@ -111,7 +116,9 @@ export function bindWayfinderInteractions(
     equipmentSearch.addEventListener("input", handlers.onEquipmentSearchInput);
   }
 
-  const equipmentSourceSearch = root.querySelector<HTMLInputElement>("[data-wayfinder-equipment-source-search]");
+  const equipmentSourceSearch = root.querySelector<HTMLInputElement>(
+    "[data-wayfinder-equipment-source-search], [data-wayfinder-equipment-trait-search]"
+  );
   if (equipmentSourceSearch) {
     equipmentSourceSearch.addEventListener("input", handlers.onEquipmentSourceSearchInput);
   }
@@ -343,9 +350,22 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
         : null;
     case "toggle-equipment-filter-panel":
       return element.dataset.stepId &&
-        (element.dataset.filterKey === "rarity" || element.dataset.filterKey === "source")
+        (element.dataset.filterKey === "level" ||
+          element.dataset.filterKey === "rarity" ||
+          element.dataset.filterKey === "source" ||
+          element.dataset.filterKey === "trait")
         ? { type: action, stepId: element.dataset.stepId, filterKey: element.dataset.filterKey }
         : null;
+    case "set-equipment-level-range": {
+      const minimum = Number(element.dataset.minimum);
+      const maximum = Number(element.dataset.maximum);
+      return element.dataset.stepId &&
+        Number.isSafeInteger(minimum) &&
+        Number.isSafeInteger(maximum) &&
+        minimum <= maximum
+        ? { type: action, stepId: element.dataset.stepId, minimum, maximum }
+        : null;
+    }
     case "set-equipment-result-window": {
       const offset = Number(element.dataset.offset);
       return element.dataset.stepId && Number.isSafeInteger(offset) && offset >= 0

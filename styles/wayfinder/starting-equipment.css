@@ -517,6 +517,13 @@
   transform: rotate(180deg);
 }
 
+.wayfinder-app .equipment-filter-count {
+  margin-left: auto;
+  color: var(--wf-ink-soft);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
 .wayfinder-app .equipment-filter-panel,
 .wayfinder-app .equipment-source-filter-panel {
   display: flex;

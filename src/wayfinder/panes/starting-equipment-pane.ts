@@ -43,13 +43,21 @@ export interface StartingEquipmentCatalogueProjection {
   readonly previewRecord?: StartingEquipmentCatalogueRecord | null;
   /** Stable metadata for reviewed cart lines that are outside the bounded browse page. */
   readonly lineRecords?: readonly StartingEquipmentCatalogueRecord[];
-  readonly filters: readonly { key: string; label: string; value: string }[];
+  readonly filters: readonly { key: string; label: string; value: string; count?: number }[];
+  readonly levelFilter?: {
+    readonly values: readonly number[];
+    readonly minimum: number;
+    readonly maximum: number;
+    readonly fullMinimum: number;
+    readonly fullMaximum: number;
+    readonly active: boolean;
+  } | null;
   readonly activeFilters: Readonly<Record<string, readonly string[]>>;
   readonly previewSourceUuid: string | null;
   /** Hydrated and enriched data for the selected item only; browse rows remain index-backed. */
   readonly preview?: EquipmentPreviewProjection | null;
-  readonly openFilterPanel?: "rarity" | "source" | null;
-  readonly sourceFilterQuery?: string;
+  readonly openFilterPanel?: "level" | "rarity" | "source" | "trait" | null;
+  readonly facetFilterQueries?: Readonly<Partial<Record<"source" | "trait", string>>>;
   readonly titanMauler: {
     readonly required: boolean;
     readonly selectedSourceUuid: string | null;
@@ -350,6 +358,7 @@ export function buildStartingEquipmentPane(
   const recipeSelection = recipeSelectionLabel(acquisition?.recipeSelection, localize, setupOptions?.locale);
   const localizedFilters = catalogue.filters.map((filter) => ({
     ...filter,
+    count: filter.count ?? 0,
     label: catalogueFilterLabel(filter.key, filter.value, filter.label, localize),
     selected: catalogue.activeFilters[filter.key]?.includes(filter.value) ?? false,
     focusId: equipmentFilterFocusId(filter.key, filter.value),
@@ -359,9 +368,11 @@ export function buildStartingEquipmentPane(
     const filter = typeFilterByValue.get(value);
     return filter ? [{ ...filter, icon: itemTypeIcon(value) }] : [];
   });
+  const availabilityFilter = localizedFilters.find(isAvailabilityFilter) ?? null;
+  const titanMaulerFilter = localizedFilters.find(isTitanMaulerFilter) ?? null;
   const rarityFilters = selectedFirst(localizedFilters.filter(isRarityFilter));
   const selectedRarityFilterCount = rarityFilters.filter((filter) => filter.selected).length;
-  const sourceSearch = catalogue.sourceFilterQuery?.trim() ?? "";
+  const sourceSearch = catalogue.facetFilterQueries?.source?.trim() ?? "";
   const normalizedSourceSearch = sourceSearch.toLocaleLowerCase();
   const matchingSourceFilters = selectedFirst(localizedFilters.filter(isSourceFilter)).filter(
     (filter) => !normalizedSourceSearch || filter.label.toLocaleLowerCase().includes(normalizedSourceSearch)
@@ -370,6 +381,40 @@ export function buildStartingEquipmentPane(
   const selectedSourceFilterCount = localizedFilters.filter(
     (filter) => isSourceFilter(filter) && filter.selected
   ).length;
+  const traitFiltersAll = selectedFirst(localizedFilters.filter(isTraitFilter));
+  const traitSearch = catalogue.facetFilterQueries?.trait?.trim() ?? "";
+  const normalizedTraitSearch = traitSearch.toLocaleLowerCase();
+  const matchingTraitFilters = traitFiltersAll.filter(
+    (filter) => !normalizedTraitSearch || filter.label.toLocaleLowerCase().includes(normalizedTraitSearch)
+  );
+  const traitFilters = matchingTraitFilters.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_SOURCE_FILTERS);
+  const selectedTraitFilterCount = traitFiltersAll.filter((filter) => filter.selected).length;
+  const levelFilter = catalogue.levelFilter
+    ? {
+        active: catalogue.levelFilter.active,
+        label: localize("wayfinder-pf2e.StartingEquipment.Catalogue.LevelFilters"),
+        summaryLabel: catalogue.levelFilter.active
+          ? catalogue.levelFilter.minimum === catalogue.levelFilter.maximum
+            ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.LevelValue", {
+                level: catalogue.levelFilter.minimum,
+              })
+            : localize("wayfinder-pf2e.StartingEquipment.Catalogue.LevelRange", {
+                minimum: catalogue.levelFilter.minimum,
+                maximum: catalogue.levelFilter.maximum,
+              })
+          : localize("wayfinder-pf2e.StartingEquipment.Catalogue.AllLevels"),
+        values: catalogue.levelFilter.values.map((value) => ({
+          value,
+          label: localize("wayfinder-pf2e.StartingEquipment.Catalogue.LevelValue", { level: value }),
+          minimumSelected: value === catalogue.levelFilter!.minimum,
+          maximumSelected: value === catalogue.levelFilter!.maximum,
+          minimumRangeStart: value,
+          minimumRangeEnd: Math.max(value, catalogue.levelFilter!.maximum),
+          maximumRangeStart: Math.min(value, catalogue.levelFilter!.minimum),
+          maximumRangeEnd: value,
+        })),
+      }
+    : null;
 
   return {
     kind: "starting-equipment",
@@ -499,7 +544,12 @@ export function buildStartingEquipmentPane(
       typeFilters,
       rarityFilters,
       sourceFilters,
+      traitFilters,
+      availabilityFilter,
+      titanMaulerFilter,
+      levelFilter,
       hasSourceFilters: localizedFilters.some(isSourceFilter),
+      hasTraitFilters: localizedFilters.some(isTraitFilter),
       rarityFilterActive: selectedRarityFilterCount > 0,
       rarityFilterLabel:
         selectedRarityFilterCount > 0
@@ -516,13 +566,28 @@ export function buildStartingEquipmentPane(
               count: selectedSourceFilterCount,
             })
           : localize("wayfinder-pf2e.StartingEquipment.Catalogue.SourceFilters"),
+      traitFilterActive: selectedTraitFilterCount > 0,
+      traitFilterLabel:
+        selectedTraitFilterCount > 0
+          ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.ActiveFilterLabel", {
+              label: localize("wayfinder-pf2e.StartingEquipment.Catalogue.TraitFilters"),
+              count: selectedTraitFilterCount,
+            })
+          : localize("wayfinder-pf2e.StartingEquipment.Catalogue.TraitFilters"),
       openFilterPanel: catalogue.openFilterPanel ?? null,
+      levelPanelOpen: catalogue.openFilterPanel === "level",
       rarityPanelOpen: catalogue.openFilterPanel === "rarity",
       sourcePanelOpen: catalogue.openFilterPanel === "source",
+      traitPanelOpen: catalogue.openFilterPanel === "trait",
       sourceSearch,
       sourceResultAnnouncement: localize("wayfinder-pf2e.StartingEquipment.Catalogue.SourceResultCount", {
         visible: sourceFilters.length,
         total: matchingSourceFilters.length,
+      }),
+      traitSearch,
+      traitResultAnnouncement: localize("wayfinder-pf2e.StartingEquipment.Catalogue.TraitResultCount", {
+        visible: traitFilters.length,
+        total: matchingTraitFilters.length,
       }),
       totalResultCount: matchedRecordCount,
       visibleResultCount: records.length,
@@ -622,6 +687,22 @@ function isRarityFilter(filter: EquipmentFilterPane): filter is EquipmentFilterP
 
 function isSourceFilter(filter: EquipmentFilterPane): filter is EquipmentFilterPane & { key: "source" } {
   return filter.key === "source";
+}
+
+function isTraitFilter(filter: EquipmentFilterPane): filter is EquipmentFilterPane & { key: "trait" } {
+  return filter.key === "trait";
+}
+
+function isAvailabilityFilter(
+  filter: EquipmentFilterPane
+): filter is EquipmentFilterPane & { key: "availability"; value: "available" } {
+  return filter.key === "availability" && filter.value === "available";
+}
+
+function isTitanMaulerFilter(
+  filter: EquipmentFilterPane
+): filter is EquipmentFilterPane & { key: "titan-mauler"; value: "eligible" } {
+  return filter.key === "titan-mauler" && filter.value === "eligible";
 }
 
 function selectedFirst<T extends { readonly selected: boolean }>(filters: readonly T[]): T[] {
@@ -957,6 +1038,9 @@ function catalogueMessage(
 function catalogueFilterLabel(key: string, value: string, fallback: string, localize: AcquisitionLocalize): string {
   if (key === "rarity" && isRarity(value)) return rarityLabel(value, localize);
   if (key === "type") return itemTypeLabel(value, localize);
+  if (key === "trait") return pf2eTraitLabel(value, localize);
+  if (key === "availability") return localize("wayfinder-pf2e.StartingEquipment.Catalogue.PolicyAvailable");
+  if (key === "titan-mauler") return localize("wayfinder-pf2e.StartingEquipment.Catalogue.TitanMaulerEligible");
   return fallback;
 }
 

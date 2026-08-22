@@ -1165,6 +1165,7 @@ describe("starting equipment pane", () => {
         matchedRecordCount: 1,
         records: [record],
         filters: [
+          { key: "availability", label: "Policy available", value: "available", count: 42 },
           ...typeValues.map((value) => ({ key: "type", label: value, value })),
           ...(["common", "uncommon", "rare", "unique"] as const).map((value) => ({
             key: "rarity",
@@ -1172,8 +1173,23 @@ describe("starting equipment pane", () => {
             value,
           })),
           ...sourceValues.map((value) => ({ key: "source", label: value, value })),
+          { key: "trait", label: "agile", value: "agile", count: 7 },
         ],
-        activeFilters: { type: ["kit"], rarity: ["common"], source: ["Source 19"] },
+        levelFilter: {
+          values: [0, 1, 2],
+          minimum: 0,
+          maximum: 1,
+          fullMinimum: 0,
+          fullMaximum: 2,
+          active: true,
+        },
+        activeFilters: {
+          availability: ["available"],
+          type: ["kit"],
+          rarity: ["common"],
+          source: ["Source 19"],
+          trait: ["agile"],
+        },
         previewSourceUuid: record.sourceUuid,
         preview: {
           sourceUuid: record.sourceUuid,
@@ -1182,7 +1198,7 @@ describe("starting equipment pane", () => {
           handsLabel: "1",
         },
         openFilterPanel: "source",
-        sourceFilterQuery: "Source",
+        facetFilterQueries: { source: "Source" },
         titanMauler: { required: false, selectedSourceUuid: null },
       }
     );
@@ -1192,6 +1208,11 @@ describe("starting equipment pane", () => {
     expect(pane.catalogue.typeFilters.map((filter) => filter.value)).toContain("weapon");
     expect(pane.catalogue.typeFilters.map((filter) => filter.value)).not.toContain("treasure");
     expect(pane.catalogue.rarityFilters).toHaveLength(4);
+    expect(pane.catalogue.availabilityFilter).toMatchObject({ selected: true, count: 42 });
+    expect(pane.catalogue.traitFilters).toEqual([
+      expect.objectContaining({ value: "agile", label: "Agile", selected: true, count: 7 }),
+    ]);
+    expect(pane.catalogue.levelFilter).toMatchObject({ active: true, summaryLabel: "Level 0–Level 1" });
     expect(pane.catalogue.sourceFilters).toHaveLength(12);
     expect(pane.catalogue.sourceFilters[0]).toMatchObject({ value: "Source 19", selected: true });
     expect(pane.catalogue).toMatchObject({

@@ -50,9 +50,12 @@ import {
   prepareTransientBrowsePhysicalItems,
 } from "./equipment-browse-preparation-service.js";
 import {
+  buildEquipmentCatalogueFacetOptions,
+  buildEquipmentCatalogueLevelFacet,
   equipmentCatalogueSourceLabel,
   isTitanMaulerEligibleEntry,
   matchesEquipmentCatalogueFilters,
+  type NormalizedEquipmentCatalogueFilters,
   normalizeEquipmentCatalogueFilters,
 } from "./equipment-catalogue-filters.js";
 import {
@@ -428,6 +431,10 @@ export function createEquipmentAcquisitionRuntime(
         const normalizedFilters = normalizeEquipmentCatalogueFilters({
           query: request.query,
           filters: request.filters,
+          defaults: {
+            policyAvailable: true,
+            titanMaulerEligible: titanMauler.required && titanMauler.selectedSourceUuid === null,
+          },
         });
         const matchedEntries = rankCatalogueMatches(
           entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, normalizedFilters)),
@@ -600,8 +607,9 @@ export function createEquipmentAcquisitionRuntime(
             records.find((record) => record.sourceUuid === request.previewSourceUuid) ??
             (hydratedPreviewEntry ? toUiRecord(hydratedPreviewEntry) : null),
           lineRecords,
-          filters: catalogueFilters(entries),
-          activeFilters: request.filters,
+          filters: catalogueFilters(entries, normalizedFilters, request.filters, titanMauler),
+          levelFilter: buildEquipmentCatalogueLevelFacet(entries, normalizedFilters),
+          activeFilters: effectiveCatalogueFilters(request.filters, normalizedFilters, titanMauler),
           previewSourceUuid: request.previewSourceUuid,
           preview: projectedPreview,
           titanMauler,
@@ -1986,29 +1994,37 @@ async function yieldBetweenEquipmentPreparationChunks(): Promise<void> {
   }
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
-function catalogueFilters(entries: readonly EquipmentCatalogueEntry[]) {
-  const values = [
-    ...uniqueSorted(entries.map((entry) => entry.itemType)).map((value) => ({
-      key: "type",
-      label: title(value),
-      value,
-    })),
-    ...uniqueSorted(entries.map((entry) => entry.rarity)).map((value) => ({
-      key: "rarity",
-      label: title(value),
-      value,
-    })),
-    ...uniqueSorted(entries.map((entry) => equipmentCatalogueSourceLabel(entry.publicationSlug))).map((value) => ({
-      key: "source",
-      label: value,
-      value,
-    })),
+
+function catalogueFilters(
+  entries: readonly EquipmentCatalogueEntry[],
+  filters: NormalizedEquipmentCatalogueFilters,
+  requested: StartingEquipmentUiRequest["filters"],
+  titanMauler: ReturnType<typeof titanMaulerProjection>
+) {
+  const facet = (key: "availability" | "rarity" | "source" | "titan-mauler" | "trait" | "type") =>
+    buildEquipmentCatalogueFacetOptions(entries, filters, key, requested[key]);
+  return [
+    ...facet("availability"),
+    ...facet("type"),
+    ...facet("rarity"),
+    ...facet("source"),
+    ...facet("trait"),
+    ...(titanMauler.required && titanMauler.selectedSourceUuid === null ? facet("titan-mauler") : []),
   ];
-  return values;
 }
 
-function title(value: string): string {
-  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+function effectiveCatalogueFilters(
+  requested: StartingEquipmentUiRequest["filters"],
+  filters: NormalizedEquipmentCatalogueFilters,
+  titanMauler: ReturnType<typeof titanMaulerProjection>
+): Readonly<Record<string, readonly string[]>> {
+  return {
+    ...requested,
+    availability: [filters.policyAvailable ? "available" : "all"],
+    ...(titanMauler.required && titanMauler.selectedSourceUuid === null
+      ? { "titan-mauler": [filters.titanMaulerEligible ? "eligible" : "all"] }
+      : {}),
+  };
 }
 
 function formatCopper(copper: number | null): string {
@@ -2022,10 +2038,6 @@ function formatCopper(copper: number | null): string {
 
 function sortedRecord(input: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
   return Object.fromEntries(Object.entries(input).sort(([left], [right]) => left.localeCompare(right)));
-}
-
-function uniqueSorted(values: readonly string[]): string[] {
-  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
 function equipmentBrowsePreparedRecordCacheKey(input: {

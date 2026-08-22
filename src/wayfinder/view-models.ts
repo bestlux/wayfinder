@@ -502,27 +502,95 @@ export interface StartingEquipmentStepPane {
     }[];
     search: string;
     searchDisabled: boolean;
-    filters: readonly { key: string; label: string; value: string; selected: boolean; focusId: string }[];
+    filters: readonly {
+      key: string;
+      label: string;
+      value: string;
+      count: number;
+      selected: boolean;
+      focusId: string;
+    }[];
     typeFilters: readonly {
       key: "type";
       label: string;
       value: string;
       icon: string;
+      count: number;
       selected: boolean;
       focusId: string;
     }[];
-    rarityFilters: readonly { key: "rarity"; label: string; value: string; selected: boolean; focusId: string }[];
-    sourceFilters: readonly { key: "source"; label: string; value: string; selected: boolean; focusId: string }[];
+    rarityFilters: readonly {
+      key: "rarity";
+      label: string;
+      value: string;
+      count: number;
+      selected: boolean;
+      focusId: string;
+    }[];
+    sourceFilters: readonly {
+      key: "source";
+      label: string;
+      value: string;
+      count: number;
+      selected: boolean;
+      focusId: string;
+    }[];
+    traitFilters: readonly {
+      key: "trait";
+      label: string;
+      value: string;
+      count: number;
+      selected: boolean;
+      focusId: string;
+    }[];
+    availabilityFilter: null | {
+      key: "availability";
+      label: string;
+      value: "available";
+      count: number;
+      selected: boolean;
+      focusId: string;
+    };
+    titanMaulerFilter: null | {
+      key: "titan-mauler";
+      label: string;
+      value: "eligible";
+      count: number;
+      selected: boolean;
+      focusId: string;
+    };
+    levelFilter: null | {
+      active: boolean;
+      label: string;
+      summaryLabel: string;
+      values: readonly {
+        value: number;
+        label: string;
+        minimumSelected: boolean;
+        maximumSelected: boolean;
+        minimumRangeStart: number;
+        minimumRangeEnd: number;
+        maximumRangeStart: number;
+        maximumRangeEnd: number;
+      }[];
+    };
     hasSourceFilters: boolean;
+    hasTraitFilters: boolean;
     rarityFilterActive: boolean;
     rarityFilterLabel: string;
     sourceFilterActive: boolean;
     sourceFilterLabel: string;
-    openFilterPanel: "rarity" | "source" | null;
+    traitFilterActive: boolean;
+    traitFilterLabel: string;
+    openFilterPanel: "level" | "rarity" | "source" | "trait" | null;
+    levelPanelOpen: boolean;
     rarityPanelOpen: boolean;
     sourcePanelOpen: boolean;
+    traitPanelOpen: boolean;
     sourceSearch: string;
     sourceResultAnnouncement: string;
+    traitSearch: string;
+    traitResultAnnouncement: string;
     totalResultCount: number;
     visibleResultCount: number;
     resultOffset: number;

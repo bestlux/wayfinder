@@ -8,7 +8,7 @@ import { assertPreparedClassGrantPlanMatches, evaluateTitanMaulerCandidate, norm
 import { clampStartingEquipmentResultWindow, STARTING_EQUIPMENT_RESULT_WINDOW, } from "../starting-equipment-result-window.js";
 import { buildTitanMaulerCandidate, titanMaulerGrantIdForDraft } from "./class-grant-projection-service.js";
 import { isBrowsePhysicalBatchSafeSource, prepareTransientBrowsePhysicalItems, } from "./equipment-browse-preparation-service.js";
-import { equipmentCatalogueSourceLabel, isTitanMaulerEligibleEntry, matchesEquipmentCatalogueFilters, normalizeEquipmentCatalogueFilters, } from "./equipment-catalogue-filters.js";
+import { buildEquipmentCatalogueFacetOptions, buildEquipmentCatalogueLevelFacet, equipmentCatalogueSourceLabel, isTitanMaulerEligibleEntry, matchesEquipmentCatalogueFilters, normalizeEquipmentCatalogueFilters, } from "./equipment-catalogue-filters.js";
 import { createEquipmentCatalogueDraftContext, createEquipmentCatalogueService, EMPTY_EQUIPMENT_ACCESS_REGISTRY, } from "./equipment-catalogue-service.js";
 import { resolveCurrentEquipmentSourceDiagnostics, resolveEquipmentPolicyForActor, } from "./equipment-policy-service.js";
 import { createEquipmentPreviewProjector } from "./equipment-preview-projector.js";
@@ -222,6 +222,10 @@ export function createEquipmentAcquisitionRuntime(options) {
                 const normalizedFilters = normalizeEquipmentCatalogueFilters({
                     query: request.query,
                     filters: request.filters,
+                    defaults: {
+                        policyAvailable: true,
+                        titanMaulerEligible: titanMauler.required && titanMauler.selectedSourceUuid === null,
+                    },
                 });
                 const matchedEntries = rankCatalogueMatches(entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, normalizedFilters)), request.query);
                 const resultWindow = clampStartingEquipmentResultWindow(request, matchedEntries.length);
@@ -375,8 +379,9 @@ export function createEquipmentAcquisitionRuntime(options) {
                     previewRecord: records.find((record) => record.sourceUuid === request.previewSourceUuid) ??
                         (hydratedPreviewEntry ? toUiRecord(hydratedPreviewEntry) : null),
                     lineRecords,
-                    filters: catalogueFilters(entries),
-                    activeFilters: request.filters,
+                    filters: catalogueFilters(entries, normalizedFilters, request.filters, titanMauler),
+                    levelFilter: buildEquipmentCatalogueLevelFacet(entries, normalizedFilters),
+                    activeFilters: effectiveCatalogueFilters(request.filters, normalizedFilters, titanMauler),
                     previewSourceUuid: request.previewSourceUuid,
                     preview: projectedPreview,
                     titanMauler,
@@ -1558,28 +1563,25 @@ async function yieldBetweenEquipmentPreparationChunks() {
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
-function catalogueFilters(entries) {
-    const values = [
-        ...uniqueSorted(entries.map((entry) => entry.itemType)).map((value) => ({
-            key: "type",
-            label: title(value),
-            value,
-        })),
-        ...uniqueSorted(entries.map((entry) => entry.rarity)).map((value) => ({
-            key: "rarity",
-            label: title(value),
-            value,
-        })),
-        ...uniqueSorted(entries.map((entry) => equipmentCatalogueSourceLabel(entry.publicationSlug))).map((value) => ({
-            key: "source",
-            label: value,
-            value,
-        })),
+function catalogueFilters(entries, filters, requested, titanMauler) {
+    const facet = (key) => buildEquipmentCatalogueFacetOptions(entries, filters, key, requested[key]);
+    return [
+        ...facet("availability"),
+        ...facet("type"),
+        ...facet("rarity"),
+        ...facet("source"),
+        ...facet("trait"),
+        ...(titanMauler.required && titanMauler.selectedSourceUuid === null ? facet("titan-mauler") : []),
     ];
-    return values;
 }
-function title(value) {
-    return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+function effectiveCatalogueFilters(requested, filters, titanMauler) {
+    return {
+        ...requested,
+        availability: [filters.policyAvailable ? "available" : "all"],
+        ...(titanMauler.required && titanMauler.selectedSourceUuid === null
+            ? { "titan-mauler": [filters.titanMaulerEligible ? "eligible" : "all"] }
+            : {}),
+    };
 }
 function formatCopper(copper) {
     if (copper === null || !Number.isSafeInteger(copper) || copper < 0)
@@ -1593,9 +1595,6 @@ function formatCopper(copper) {
 }
 function sortedRecord(input) {
     return Object.fromEntries(Object.entries(input).sort(([left], [right]) => left.localeCompare(right)));
-}
-function uniqueSorted(values) {
-    return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 function equipmentBrowsePreparedRecordCacheKey(input) {
     return fingerprintRuntimeMaterial("equipment-browse-prepared-record-v1", {

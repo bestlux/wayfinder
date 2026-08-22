@@ -69,6 +69,19 @@ describe("Wayfinder actions", () => {
     ).toBe(false);
     expect(
       parseWayfinderAction({
+        dataset: {
+          wayfinderAction: "set-equipment-level-range",
+          stepId: "equipment",
+          minimum: "1",
+          maximum: "4",
+        },
+      } as unknown as HTMLElement)
+    ).toEqual({ type: "set-equipment-level-range", stepId: "equipment", minimum: 1, maximum: 4 });
+    expect(
+      isDraftMutationAction({ type: "set-equipment-level-range", stepId: "equipment", minimum: 1, maximum: 4 })
+    ).toBe(false);
+    expect(
+      parseWayfinderAction({
         dataset: { wayfinderAction: "set-equipment-result-window", stepId: "equipment", offset: "24" },
       } as unknown as HTMLElement)
     ).toEqual({ type: "set-equipment-result-window", stepId: "equipment", offset: 24 });

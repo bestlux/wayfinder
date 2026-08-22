@@ -37,9 +37,7 @@ export function matchesEquipmentCatalogueFilters(entry, filters, excludedKey) {
         !filters.publicationSlugs.has(entry.publicationSlug)) {
         return false;
     }
-    if (excludedKey !== "trait" &&
-        filters.traits.size > 0 &&
-        [...filters.traits].some((trait) => !entry.traits.includes(trait))) {
+    if (excludedKey !== "trait" && filters.traits.size > 0 && !entry.traits.some((trait) => filters.traits.has(trait))) {
         return false;
     }
     if (excludedKey !== "level" &&
@@ -51,6 +49,64 @@ export function matchesEquipmentCatalogueFilters(entry, filters, excludedKey) {
         return true;
     const searchable = normalizeSearchText([entry.name, entry.itemType, entry.publicationSlug, ...entry.traits].join(" "));
     return filters.queryTerms.every((term) => searchable.includes(term));
+}
+export function buildEquipmentCatalogueFacetOptions(entries, filters, key, selectedValues = []) {
+    const values = new Set(selectedValues.map((value) => normalizeSearchText(value)).filter(Boolean));
+    if (key === "availability")
+        values.add("available");
+    else if (key === "titan-mauler")
+        values.add("eligible");
+    else {
+        for (const entry of entries) {
+            if (key === "trait")
+                for (const trait of entry.traits)
+                    values.add(trait);
+            else
+                values.add(equipmentCatalogueFilterValue(entry, key));
+        }
+    }
+    const counts = new Map();
+    for (const entry of entries) {
+        if (!matchesEquipmentCatalogueFilters(entry, filters, key))
+            continue;
+        const entryValues = key === "trait" ? entry.traits : [equipmentCatalogueFilterValue(entry, key)];
+        for (const value of new Set(entryValues))
+            counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    const normalizedSelected = new Set(selectedValues.map((value) => normalizeSearchText(value)).filter(Boolean));
+    return [...values]
+        .map((value) => ({
+        key,
+        value,
+        label: equipmentCatalogueFacetValueLabel(key, value),
+        count: counts.get(value) ?? 0,
+    }))
+        .filter((option) => option.count > 0 || normalizedSelected.has(option.value) || key === "availability" || key === "titan-mauler")
+        .sort((left, right) => left.label.localeCompare(right.label) || left.value.localeCompare(right.value));
+}
+export function buildEquipmentCatalogueLevelFacet(entries, filters) {
+    const values = [
+        ...new Set(entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, filters, "level")).map((entry) => entry.level)),
+    ].sort((left, right) => left - right);
+    if (values.length < 2)
+        return null;
+    const fullMinimum = values[0];
+    const fullMaximum = values.at(-1);
+    const minimum = filters.levelRange
+        ? (values.find((value) => value >= filters.levelRange.minimum) ?? fullMaximum)
+        : fullMinimum;
+    const maximumCandidate = filters.levelRange
+        ? ([...values].reverse().find((value) => value <= filters.levelRange.maximum) ?? fullMinimum)
+        : fullMaximum;
+    const maximum = Math.max(minimum, maximumCandidate);
+    return Object.freeze({
+        values: Object.freeze(values),
+        minimum,
+        maximum,
+        fullMinimum,
+        fullMaximum,
+        active: minimum !== fullMinimum || maximum !== fullMaximum,
+    });
 }
 export function isTitanMaulerEligibleEntry(entry) {
     return (entry.available &&
@@ -65,6 +121,20 @@ export function isTitanMaulerEligibleEntry(entry) {
 }
 export function equipmentCatalogueSourceLabel(publicationSlug) {
     return humanizeIdentifier(publicationSlug);
+}
+function equipmentCatalogueFacetValueLabel(key, value) {
+    switch (key) {
+        case "availability":
+            return value === "available" ? "Policy available" : humanizeIdentifier(value);
+        case "source":
+            return equipmentCatalogueSourceLabel(value);
+        case "titan-mauler":
+            return value === "eligible" ? "Titan Mauler eligible" : humanizeIdentifier(value);
+        case "rarity":
+        case "trait":
+        case "type":
+            return humanizeIdentifier(value);
+    }
 }
 export function equipmentCatalogueFilterValue(entry, key) {
     switch (key) {

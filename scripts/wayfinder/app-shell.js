@@ -117,6 +117,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #equipmentFiltersByStepId = new Map();
     #equipmentFilterPanelByStepId = new Map();
     #equipmentSourceSearchByStepId = new Map();
+    #equipmentTraitSearchByStepId = new Map();
     #equipmentPreviewByStepId = new Map();
     #equipmentResultWindowStateByStepId = new Map();
     #equipmentCriteriaRevisionByStepId = new Map();
@@ -1017,8 +1018,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             case "toggle-equipment-filter-panel":
                 this.#toggleStartingEquipmentFilterPanel(action.stepId, action.filterKey);
                 break;
+            case "set-equipment-level-range":
+                this.#setStartingEquipmentLevelRange(action.stepId, action.minimum, action.maximum);
+                break;
             case "clear-equipment-filters":
-                this.#equipmentFiltersByStepId.delete(action.stepId);
+                this.#clearStartingEquipmentFilters(action.stepId);
                 this.#resetEquipmentResultWindow(action.stepId);
                 this.#equipmentScheduledRenderIntent = "facet";
                 this.#equipmentSearchScheduler.schedule(action.stepId, this.#equipmentSearchByStepId.get(action.stepId) ?? "");
@@ -1086,10 +1090,18 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const stepId = input?.dataset.stepId;
         if (!stepId)
             return;
-        this.#equipmentSourceSearchByStepId.set(stepId, input.value);
+        const filterKey = input.dataset.filterKey === "trait" ? "trait" : "source";
+        if (filterKey === "trait")
+            this.#equipmentTraitSearchByStepId.set(stepId, input.value);
+        else
+            this.#equipmentSourceSearchByStepId.set(stepId, input.value);
         this.#cancelEquipmentResultWindowRequests(stepId);
         this.#pendingSearchFocus = null;
-        this.#pendingEquipmentSourceSearchFocus = { stepId, cursor: input.selectionStart ?? input.value.length };
+        this.#pendingEquipmentSourceSearchFocus = {
+            stepId,
+            filterKey,
+            cursor: input.selectionStart ?? input.value.length,
+        };
         this.#equipmentScheduledRenderIntent = "facet";
         this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
     };
@@ -1440,7 +1452,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         return {
             ...(await getStartingEquipmentUiAdapter().project(this.#startingEquipmentUiRequest(step, resultWindow))),
             openFilterPanel: this.#equipmentFilterPanelByStepId.get(step.id) ?? null,
-            sourceFilterQuery: this.#equipmentSourceSearchByStepId.get(step.id) ?? "",
+            facetFilterQueries: {
+                source: this.#equipmentSourceSearchByStepId.get(step.id) ?? "",
+                trait: this.#equipmentTraitSearchByStepId.get(step.id) ?? "",
+            },
         };
     }
     async #executeStartingEquipmentCommand(stepId, command, partialIntent) {
@@ -1949,7 +1964,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     #toggleStartingEquipmentFilter(stepId, filterKey, value) {
         const current = this.#equipmentFiltersByStepId.get(stepId) ?? {};
-        const selected = new Set(current[filterKey] ?? []);
+        const defaultOnValue = filterKey === "availability" ? "available" : filterKey === "titan-mauler" ? "eligible" : null;
+        const selected = new Set(current[filterKey] ?? (defaultOnValue ? [defaultOnValue] : []));
         if (selected.has(value))
             selected.delete(value);
         else
@@ -1961,6 +1977,22 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#resetEquipmentResultWindow(stepId);
         this.#equipmentScheduledRenderIntent = "facet";
         this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
+    }
+    #setStartingEquipmentLevelRange(stepId, minimum, maximum) {
+        const current = this.#equipmentFiltersByStepId.get(stepId) ?? {};
+        this.#equipmentFiltersByStepId.set(stepId, { ...current, level: [`${minimum}:${maximum}`] });
+        this.#resetEquipmentResultWindow(stepId);
+        this.#equipmentScheduledRenderIntent = "facet";
+        this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
+    }
+    #clearStartingEquipmentFilters(stepId) {
+        const pane = this.#equipmentRenderSession?.pane;
+        this.#equipmentFiltersByStepId.set(stepId, {
+            availability: ["all"],
+            ...(pane?.stepId === stepId && pane.titanMauler.required && !pane.titanMauler.selected
+                ? { "titan-mauler": ["all"] }
+                : {}),
+        });
     }
     #toggleStartingEquipmentFilterPanel(stepId, filterKey) {
         if (this.#equipmentFilterPanelByStepId.get(stepId) === filterKey) {
@@ -1977,7 +2009,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         const pending = this.#pendingEquipmentSourceSearchFocus;
         if (!pending)
             return;
-        const input = root.querySelector(`[data-wayfinder-equipment-source-search][data-step-id="${pending.stepId}"]`);
+        const input = root.querySelector(`[data-wayfinder-equipment-${pending.filterKey}-search][data-step-id="${pending.stepId}"]`);
         if (input) {
             input.focus();
             const cursor = Math.min(pending.cursor, input.value.length);
@@ -3461,6 +3493,7 @@ function isStartingEquipmentViewOnlyAction(action) {
     return (action.type === "preview-equipment-item" ||
         action.type === "toggle-equipment-filter" ||
         action.type === "toggle-equipment-filter-panel" ||
+        action.type === "set-equipment-level-range" ||
         action.type === "clear-equipment-filters" ||
         action.type === "set-equipment-result-window");
 }

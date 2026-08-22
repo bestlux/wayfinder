@@ -10,7 +10,7 @@ export function bindWayfinderInteractions(root, handlers, scrollById, pendingSea
     if (equipmentSearch) {
         equipmentSearch.addEventListener("input", handlers.onEquipmentSearchInput);
     }
-    const equipmentSourceSearch = root.querySelector("[data-wayfinder-equipment-source-search]");
+    const equipmentSourceSearch = root.querySelector("[data-wayfinder-equipment-source-search], [data-wayfinder-equipment-trait-search]");
     if (equipmentSourceSearch) {
         equipmentSourceSearch.addEventListener("input", handlers.onEquipmentSourceSearchInput);
     }
@@ -231,9 +231,22 @@ export function parseWayfinderAction(element) {
                 : null;
         case "toggle-equipment-filter-panel":
             return element.dataset.stepId &&
-                (element.dataset.filterKey === "rarity" || element.dataset.filterKey === "source")
+                (element.dataset.filterKey === "level" ||
+                    element.dataset.filterKey === "rarity" ||
+                    element.dataset.filterKey === "source" ||
+                    element.dataset.filterKey === "trait")
                 ? { type: action, stepId: element.dataset.stepId, filterKey: element.dataset.filterKey }
                 : null;
+        case "set-equipment-level-range": {
+            const minimum = Number(element.dataset.minimum);
+            const maximum = Number(element.dataset.maximum);
+            return element.dataset.stepId &&
+                Number.isSafeInteger(minimum) &&
+                Number.isSafeInteger(maximum) &&
+                minimum <= maximum
+                ? { type: action, stepId: element.dataset.stepId, minimum, maximum }
+                : null;
+        }
         case "set-equipment-result-window": {
             const offset = Number(element.dataset.offset);
             return element.dataset.stepId && Number.isSafeInteger(offset) && offset >= 0

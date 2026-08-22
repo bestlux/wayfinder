@@ -539,7 +539,15 @@ describe("equipment acquisition runtime", () => {
     const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
     const { runtime, request } = fixture({ getIndex: vi.fn(async () => sources), getDocument });
 
-    const projection = await runtime.uiAdapter.project({ ...request, query: "rope" });
+    const defaultProjection = await runtime.uiAdapter.project({ ...request, query: "rope" });
+    expect(defaultProjection.records).not.toContainEqual(expect.objectContaining({ available: false }));
+    expect(defaultProjection.activeFilters).toMatchObject({ availability: ["available"] });
+
+    const projection = await runtime.uiAdapter.project({
+      ...request,
+      query: "rope",
+      filters: { availability: ["all"] },
+    });
 
     expect(projection.records.map(({ sourceUuid, available }) => [sourceUuid.split(".").at(-1), available])).toEqual([
       ["exact-a", true],
@@ -1857,7 +1865,15 @@ describe("equipment acquisition runtime", () => {
       }
     );
     selectGiantInstinct(over.request.draft);
-    expect((await over.runtime.uiAdapter.project(over.request)).records[0]?.titanMaulerEligible).toBe(false);
+    expect((await over.runtime.uiAdapter.project(over.request)).records).toEqual([]);
+    expect(
+      (
+        await over.runtime.uiAdapter.project({
+          ...over.request,
+          filters: { "titan-mauler": ["all"] },
+        })
+      ).records[0]?.titanMaulerEligible
+    ).toBe(false);
     await expect(
       over.runtime.uiAdapter.prepareTitanMaulerLine({ ...over.request, sourceUuid: DAGGER_UUID })
     ).rejects.toThrow(/9 gp or less/i);

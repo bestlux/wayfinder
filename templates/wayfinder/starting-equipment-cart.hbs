@@ -23,7 +23,7 @@
     <p class="equipment-cart-empty"><i class="fa-solid fa-feather" aria-hidden="true"></i>{{localize "wayfinder-pf2e.StartingEquipment.Cart.Empty"}}</p>
   {{/if}}
 
-  <div class="equipment-cart-lines">
+  <div class="equipment-cart-lines" data-wayfinder-scroll-id="{{activePane.stepId}}:equipment-cart">
     {{#each activePane.cart.lines}}
       <article class="equipment-cart-line{{#if unavailableReason}} is-blocked{{/if}}" tabindex="-1" data-wayfinder-focus-id="{{focusId}}">
         <span class="equipment-cart-copy">

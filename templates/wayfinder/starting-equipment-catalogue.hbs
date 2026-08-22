@@ -21,7 +21,7 @@
         <input type="search" value="{{activePane.catalogue.sourceSearch}}" placeholder="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.SourceSearchPlaceholder"}}" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.SourceSearchAria"}}" aria-controls="{{activePane.stepId}}-equipment-source-options" data-wayfinder-equipment-source-search data-wayfinder-focus-id="starting-equipment-source-search" data-step-id="{{activePane.stepId}}" />
       </label>
       <p role="status" aria-live="polite" aria-atomic="true">{{activePane.catalogue.sourceResultAnnouncement}}</p>
-      <div id="{{activePane.stepId}}-equipment-source-options" role="group" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.SourceFiltersAria"}}">
+      <div id="{{activePane.stepId}}-equipment-source-options" role="group" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.SourceFiltersAria"}}" data-wayfinder-scroll-id="{{activePane.stepId}}:equipment-source-filters">
         {{#each activePane.catalogue.sourceFilters}}<button type="button" class="equipment-filter-option{{#if selected}} is-selected{{/if}}" aria-pressed="{{#if selected}}true{{else}}false{{/if}}" data-wayfinder-action="toggle-equipment-filter" data-wayfinder-focus-id="{{focusId}}" data-step-id="{{../activePane.stepId}}" data-filter-key="{{key}}" data-value="{{value}}"><span class="equipment-filter-check"><i class="fa-solid fa-check" aria-hidden="true"></i></span>{{label}}</button>{{/each}}
       </div>
     </div>

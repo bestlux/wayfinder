@@ -15,7 +15,7 @@ import { cloneData } from "../shared/cloning.js";
 import { extractDocumentSlug } from "../shared/slug.js";
 import { sourceIdOf } from "../shared/source-id.js";
 import { findSpellcastingEntryForChoice } from "../shared/spellcasting.js";
-import { bindWayfinderInteractions, isDraftMutationAction, parseWayfinderAction, } from "./actions.js";
+import { bindWayfinderInteractions, isDraftMutationAction, parseWayfinderAction, scrollActiveStepIntoView, } from "./actions.js";
 import { localizeAcquisitionMessage, } from "./application/acquisition-localization.js";
 import { acquisitionSmokeApplyFailureHandledFor, acquisitionSmokeApplyFailureRenderedFor, acquisitionSmokeCheckpointHookFor, } from "./application/acquisition-smoke-driver.js";
 import { openActorInventorySheet, } from "./application/actor-inventory-navigation-service.js";
@@ -106,6 +106,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #scrollById = new Map();
     #pendingSearchFocus = null;
     #pendingStepFocusId = null;
+    #pendingActiveStepVisibility = false;
     #pendingControlFocusId = null;
     #pendingEquipmentFocusIds = null;
     #equipmentSearchByStepId = new Map();
@@ -554,6 +555,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }, this.#scrollById, this.#pendingSearchFocus).pendingSearchFocus;
         const pendingStepFocusId = this.#pendingStepFocusId;
         const pendingControlFocusId = this.#pendingControlFocusId;
+        if (this.#pendingActiveStepVisibility) {
+            scrollActiveStepIntoView(root);
+            this.#pendingActiveStepVisibility = false;
+        }
         const control = pendingControlFocusId
             ? root.querySelector(`[data-wayfinder-focus-id="${CSS.escape(pendingControlFocusId)}"]`)
             : null;
@@ -750,6 +755,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 this.#activeStepId = action.stepId;
                 this.#pendingStepFocusId = action.stepId;
                 this.#pendingControlFocusId = action.focusId ?? null;
+                this.#pendingActiveStepVisibility = Boolean(action.focusId);
                 this.render(false);
                 break;
             case "previous-step":
@@ -1832,7 +1838,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             return;
         }
         const nextIndex = Math.min(plan.steps.length - 1, Math.max(0, currentIndex + delta));
-        this.#activeStepId = plan.steps[nextIndex]?.id ?? this.#activeStepId;
+        const nextStepId = plan.steps[nextIndex]?.id;
+        if (nextStepId && nextStepId !== this.#activeStepId) {
+            this.#activeStepId = nextStepId;
+            this.#pendingActiveStepVisibility = true;
+        }
         this.render(false);
     }
     #selectionInvalidationService(draft = this.#requireDraft()) {
@@ -2478,6 +2488,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 const blocker = error.blockers[0];
                 this.#activeStepId = blocker?.stepId ?? this.#activeStepId;
                 this.#pendingStepFocusId = blocker?.stepId ?? null;
+                this.#pendingActiveStepVisibility = Boolean(blocker?.stepId);
                 const message = blocker?.code === "equipment-review"
                     ? localizeAcquisition("wayfinder-pf2e.StartingEquipment.Apply.NotReady")
                     : (blocker?.message ?? error.message);

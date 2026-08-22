@@ -113,7 +113,11 @@ export function bindWayfinderInteractions(
     equipmentSourceSearch.addEventListener("input", handlers.onEquipmentSourceSearchInput);
   }
 
-  for (const scrollable of root.querySelectorAll<HTMLElement>("[data-wayfinder-scroll-id]")) {
+  const scrollables = [
+    ...(root.matches("[data-wayfinder-scroll-id]") ? [root] : []),
+    ...root.querySelectorAll<HTMLElement>("[data-wayfinder-scroll-id]"),
+  ];
+  for (const scrollable of scrollables) {
     const scrollId = scrollable.dataset.wayfinderScrollId;
     if (!scrollId) {
       continue;
@@ -148,6 +152,14 @@ export function bindWayfinderInteractions(
   }
 
   return { pendingSearchFocus: null };
+}
+
+export function scrollActiveStepIntoView(root: HTMLElement, reduceMotion = prefersReducedMotion()): void {
+  root.querySelector<HTMLElement>(".wizard-step-list .step-link.active")?.scrollIntoView({
+    behavior: reduceMotion ? "auto" : "smooth",
+    block: "nearest",
+    inline: "nearest",
+  });
 }
 
 export function parseWayfinderAction(element: HTMLElement | null): WayfinderAction | null {
@@ -406,4 +418,8 @@ export function isDraftMutationAction(action: WayfinderAction): boolean {
 
 function equipmentRecipe(value: string | undefined): "permanent-items" | "lump-sum" | null {
   return value === "permanent-items" || value === "lump-sum" ? value : null;
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }

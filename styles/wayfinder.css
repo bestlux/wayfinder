@@ -8,3 +8,21 @@
 @import "./wayfinder/compendium-source-config.css";
 @import "./wayfinder/equipment-policy-config.css";
 @import "./wayfinder/starting-equipment.css";
+
+@media (prefers-reduced-motion: reduce) {
+  .wayfinder-app,
+  .wayfinder-app *,
+  .wayfinder-app *::before,
+  .wayfinder-app *::after,
+  .wayfinder-feedback,
+  .wayfinder-feedback *,
+  .wayfinder-feedback *::before,
+  .wayfinder-feedback *::after {
+    animation-delay: -0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -42,7 +42,7 @@
   gap: 0.5rem;
 }
 
-.browser-header h4 {
+.browser-header .picker-result-count {
   margin: 0;
   color: var(--wf-primary);
   font: 600 0.9rem / 1.1 var(--serif, "Signika", serif);

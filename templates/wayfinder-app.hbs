@@ -91,7 +91,7 @@
           </div>
         </header>
 
-        <div class="wizard-step-list">
+        <div class="wizard-step-list" data-wayfinder-scroll-id="wizard-steps">
           {{#each steps}}
             {{#if firstInLevel}}
               <div class="step-level-divider">
@@ -109,7 +109,7 @@
         </div>
       </aside>
 
-      <main class="wizard-stage">
+      <main class="wizard-stage" data-wayfinder-scroll-id="{{#if activePane}}{{activePane.stepId}}:stage{{else}}wizard-stage{{/if}}">
         {{#if activePane}}
           <header class="stage-bar">
             <div class="stage-bar-copy">

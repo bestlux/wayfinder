@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isDraftMutationAction, parseWayfinderAction } from "../src/wayfinder/actions";
+import {
+  bindWayfinderInteractions,
+  isDraftMutationAction,
+  parseWayfinderAction,
+  scrollActiveStepIntoView,
+} from "../src/wayfinder/actions";
 
 describe("Wayfinder actions", () => {
   it("parses the existing-character history import action", () => {
@@ -49,5 +54,54 @@ describe("Wayfinder actions", () => {
     expect(
       isDraftMutationAction({ type: "toggle-equipment-filter-panel", stepId: "equipment", filterKey: "rarity" })
     ).toBe(false);
+  });
+
+  it("keeps the active rail step visible without smooth motion when reduced motion is requested", () => {
+    const options: ScrollIntoViewOptions[] = [];
+    const activeStep = {
+      scrollIntoView: (value: ScrollIntoViewOptions) => options.push(value),
+    } as unknown as HTMLElement;
+    const root = {
+      querySelector: (selector: string) => (selector === ".wizard-step-list .step-link.active" ? activeStep : null),
+    } as unknown as HTMLElement;
+
+    scrollActiveStepIntoView(root, false);
+    scrollActiveStepIntoView(root, true);
+
+    expect(options).toEqual([
+      { behavior: "smooth", block: "nearest", inline: "nearest" },
+      { behavior: "auto", block: "nearest", inline: "nearest" },
+    ]);
+  });
+
+  it("restores a scoped render target when the target is itself the scroll container", () => {
+    const listeners: string[] = [];
+    const root = {
+      addEventListener: (type: string) => listeners.push(type),
+      dataset: { wayfinderScrollId: "equipment:detail" },
+      matches: (selector: string) => selector === "[data-wayfinder-scroll-id]",
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      scrollTop: 0,
+    } as unknown as HTMLElement;
+    const noop = () => undefined;
+
+    bindWayfinderInteractions(
+      root,
+      {
+        onActionClick: noop,
+        onSearchInput: noop,
+        onEquipmentSearchInput: noop,
+        onEquipmentSourceSearchInput: noop,
+        onScrollableScroll: noop,
+        onManualChange: noop,
+        onLoreInputChange: noop,
+      },
+      new Map([["equipment:detail", 144]]),
+      null
+    );
+
+    expect(root.scrollTop).toBe(144);
+    expect(listeners).toEqual(["scroll"]);
   });
 });

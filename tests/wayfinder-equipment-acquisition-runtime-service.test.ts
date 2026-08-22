@@ -517,11 +517,26 @@ describe("equipment acquisition runtime", () => {
   });
 
   it("reuses successful browse preparations while a newly selected preview hydrates once", async () => {
-    const sources = Array.from({ length: 12 }, (_, index) =>
-      dagger({ id: `browse-cache-${index}`, name: `Browse cache ${String(index).padStart(2, "0")}` })
-    );
+    const sources = Array.from({ length: 12 }, (_, index) => {
+      const source = dagger({
+        id: `browse-cache-${index}`,
+        name: `Browse cache ${String(index).padStart(2, "0")}`,
+      });
+      return index === 0
+        ? {
+            ...source,
+            system: {
+              ...source.system,
+              description: { value: "<p>Selected equipment rules.</p>" },
+              bulk: { value: 0.1 },
+              usage: { value: "held-in-one-hand" },
+            },
+          }
+        : source;
+    });
     const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
-    const { runtime, request } = fixture({ getIndex: vi.fn(async () => sources), getDocument });
+    const getIndex = vi.fn(async (_options: { fields: string[] }) => sources);
+    const { runtime, request } = fixture({ getIndex, getDocument });
     const previewSourceUuid = `Compendium.${PACK_ID}.Item.browse-cache-0`;
 
     await runtime.uiAdapter.project(request);
@@ -530,9 +545,20 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(12);
 
     const beforeFirstPreview = getDocument.mock.calls.length;
-    await runtime.uiAdapter.project({ ...request, previewSourceUuid });
+    const selected = await runtime.uiAdapter.project({ ...request, previewSourceUuid });
     const afterFirstPreview = getDocument.mock.calls.length;
     expect(afterFirstPreview - beforeFirstPreview).toBe(1);
+    expect(selected.preview).toEqual({
+      sourceUuid: previewSourceUuid,
+      description: "<p>Selected equipment rules.</p>",
+      bulkLabel: "L",
+      handsLabel: "1",
+    });
+    expect(selected.records[0]).toMatchObject({ bulkLabel: "See item details", handsLabel: null });
+    expect(selected.records[0]).not.toHaveProperty("description");
+    expect(getIndex.mock.calls[0]?.[0].fields).not.toContain("system.description.value");
+    expect(getIndex.mock.calls[0]?.[0].fields).not.toContain("system.bulk.value");
+    expect(getIndex.mock.calls[0]?.[0].fields).not.toContain("system.usage.value");
     await runtime.uiAdapter.project({ ...request, previewSourceUuid });
     expect(getDocument.mock.calls.length - afterFirstPreview).toBe(0);
   });

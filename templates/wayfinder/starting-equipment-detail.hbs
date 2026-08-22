@@ -41,6 +41,12 @@
       </div>
     {{/if}}
 
+    {{#if description}}
+      <section class="equipment-detail-description preview-description prose">
+        {{{description}}}
+      </section>
+    {{/if}}
+
     <div class="equipment-detail-actions">
       <span class="equipment-detail-actions-label">{{localize "wayfinder-pf2e.StartingEquipment.Detail.FundingHeading"}}</span>
 

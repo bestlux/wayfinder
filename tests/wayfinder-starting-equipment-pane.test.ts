@@ -1144,8 +1144,8 @@ describe("starting equipment pane", () => {
       sourceLabel: "Source 19",
       priceCopper: 20,
       priceLabel: "2 sp",
-      bulkLabel: "L",
-      handsLabel: "1",
+      bulkLabel: "See item details",
+      handsLabel: null,
       traits: ["agile"],
       available: true,
       unavailableReason: null,
@@ -1176,6 +1176,12 @@ describe("starting equipment pane", () => {
         ],
         activeFilters: { type: ["kit"], rarity: ["common"], source: ["Source 19"] },
         previewSourceUuid: record.sourceUuid,
+        preview: {
+          sourceUuid: record.sourceUuid,
+          description: "<p>Selected equipment rules.</p>",
+          bulkLabel: "L",
+          handsLabel: "1",
+        },
         openFilterPanel: "source",
         sourceFilterQuery: "Source",
         titanMauler: { required: false, selectedSourceUuid: null },
@@ -1200,8 +1206,12 @@ describe("starting equipment pane", () => {
       sourceResultAnnouncement: "Showing 12 of 20 matching sources",
     });
     expect(pane.catalogue.items[0]?.resultLabel).toBe("Dagger · Level 0 · Common · Source 19 · 2 sp · Available");
+    expect(pane.catalogue.items[0]).toMatchObject({ bulkLabel: "", handsLabel: null });
     expect(pane.catalogue.preview).toMatchObject({
       sourceUuid: record.sourceUuid,
+      description: "<p>Selected equipment rules.</p>",
+      bulkLabel: "L",
+      handsLabel: "1",
       buyFocusId: `starting-equipment-item:${record.sourceUuid}:coin`,
       canChooseTitanMauler: false,
     });
@@ -1239,8 +1249,11 @@ describe("starting equipment pane", () => {
     }
     expect(detail).toContain("{{#unless activePane.catalogue.preview}} is-empty{{/unless}}");
     expect(detail).toContain("{{#unless activePane.catalogue.preview}}aria-description=");
+    expect(detail).toContain("{{#if description}}");
+    expect(detail).toContain("{{{description}}}");
     expect(pane).not.toContain("is-detail-empty");
     expect(styles).toContain(".equipment-detail.is-empty");
+    expect(styles).toContain(".equipment-detail-description");
   });
 
   it("keeps the equipment pane free of image requests and mounts the preview root once", () => {

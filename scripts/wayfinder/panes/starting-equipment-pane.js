@@ -138,7 +138,16 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
     });
     const recordByUuid = new Map([...catalogue.records, ...(catalogue.lineRecords ?? [])].map((record) => [record.sourceUuid, record]));
     const plannedGrantById = new Map(acquisition?.plannedClassGrants.map((grant) => [grant.grantId, grant]) ?? []);
-    const preview = records.find((record) => record.previewing) ?? null;
+    const previewRecord = records.find((record) => record.previewing) ?? null;
+    const previewDetails = previewRecord && catalogue.preview?.sourceUuid === previewRecord.sourceUuid ? catalogue.preview : null;
+    const preview = previewRecord
+        ? {
+            ...previewRecord,
+            description: previewDetails?.description ?? "",
+            bulkLabel: previewDetails?.bulkLabel ?? "",
+            handsLabel: previewDetails?.handsLabel ?? null,
+        }
+        : null;
     const selectedTitanMaulerRecord = catalogue.titanMauler.selectedSourceUuid
         ? recordByUuid.get(catalogue.titanMauler.selectedSourceUuid)
         : null;

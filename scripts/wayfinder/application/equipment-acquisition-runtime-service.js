@@ -9,6 +9,7 @@ import { buildTitanMaulerCandidate, titanMaulerGrantIdForDraft } from "./class-g
 import { isBrowsePhysicalBatchSafeSource, prepareTransientBrowsePhysicalItems, } from "./equipment-browse-preparation-service.js";
 import { createEquipmentCatalogueDraftContext, createEquipmentCatalogueService, EMPTY_EQUIPMENT_ACCESS_REGISTRY, } from "./equipment-catalogue-service.js";
 import { resolveCurrentEquipmentSourceDiagnostics, resolveEquipmentPolicyForActor, } from "./equipment-policy-service.js";
+import { createEquipmentPreviewProjector } from "./equipment-preview-projector.js";
 import { materializedPhysicalItemSize, prepareTransientDraftedEquipmentActor, resolvePreparedDraftedEquipmentSize, } from "./equipment-size-preparation-service.js";
 import { sortEquipmentSourceDiagnostics } from "./equipment-source-policy.js";
 import { isQualifiedKitSource, prepareAdventurersPackExpansion } from "./pf2e-kit-adapter.js";
@@ -69,6 +70,7 @@ export function createEquipmentAcquisitionRuntime(options) {
         throw new TypeError("The drafted equipment size cache limit must be a positive integer.");
     }
     const catalogues = new Map();
+    const previewProjector = createEquipmentPreviewProjector();
     const browsePreparedRecordCache = new Map();
     const draftedEquipmentSizeCache = new Map();
     const cachedBrowseRecord = (key) => {
@@ -199,10 +201,12 @@ export function createEquipmentAcquisitionRuntime(options) {
                 const { policy, context } = currentContext(request.actor, request.draft, acquisition);
                 const { catalogue, projection } = await requireHealthyCatalogue(policy, context);
                 let projectedEntries = projection.entries;
+                let projectedPreview = null;
                 if (request.previewSourceUuid) {
                     const preview = await catalogue.hydratePreview(request.previewSourceUuid, context);
                     if (preview?.entry) {
                         projectedEntries = projection.entries.map((entry) => entry.sourceUuid === preview.entry.sourceUuid ? preview.entry : entry);
+                        projectedPreview = await previewProjector.project(preview);
                     }
                 }
                 const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
@@ -346,6 +350,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                     filters: catalogueFilters(entries),
                     activeFilters: request.filters,
                     previewSourceUuid: request.previewSourceUuid,
+                    preview: projectedPreview,
                     titanMauler,
                 };
             }

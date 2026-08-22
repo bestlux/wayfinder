@@ -861,6 +861,11 @@
   padding: 0.4rem 0.5rem 0;
 }
 
+.wayfinder-app .equipment-detail-description {
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
+}
+
 .wayfinder-app .equipment-detail-traits-label,
 .wayfinder-app .equipment-detail-actions-label {
   color: var(--wf-primary);

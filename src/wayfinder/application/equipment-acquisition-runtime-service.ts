@@ -60,6 +60,7 @@ import {
   resolveCurrentEquipmentSourceDiagnostics,
   resolveEquipmentPolicyForActor,
 } from "./equipment-policy-service.js";
+import { createEquipmentPreviewProjector, type EquipmentPreviewProjection } from "./equipment-preview-projector.js";
 import {
   materializedPhysicalItemSize,
   type PrepareDraftedEquipmentActor,
@@ -243,6 +244,7 @@ export function createEquipmentAcquisitionRuntime(
     throw new TypeError("The drafted equipment size cache limit must be a positive integer.");
   }
   const catalogues = new Map<string, EquipmentCatalogueService>();
+  const previewProjector = createEquipmentPreviewProjector();
   const browsePreparedRecordCache = new Map<string, StartingEquipmentCatalogueRecord>();
   const draftedEquipmentSizeCache = new Map<string, Promise<AcquisitionPriceSnapshot["size"]>>();
 
@@ -394,12 +396,14 @@ export function createEquipmentAcquisitionRuntime(
         const { policy, context } = currentContext(request.actor, request.draft, acquisition);
         const { catalogue, projection } = await requireHealthyCatalogue(policy, context);
         let projectedEntries = projection.entries;
+        let projectedPreview: EquipmentPreviewProjection | null = null;
         if (request.previewSourceUuid) {
           const preview = await catalogue.hydratePreview(request.previewSourceUuid, context);
           if (preview?.entry) {
             projectedEntries = projection.entries.map((entry) =>
               entry.sourceUuid === preview.entry!.sourceUuid ? preview.entry! : entry
             );
+            projectedPreview = await previewProjector.project(preview);
           }
         }
         const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
@@ -547,6 +551,7 @@ export function createEquipmentAcquisitionRuntime(
           filters: catalogueFilters(entries),
           activeFilters: request.filters,
           previewSourceUuid: request.previewSourceUuid,
+          preview: projectedPreview,
           titanMauler,
         };
       } catch (error) {

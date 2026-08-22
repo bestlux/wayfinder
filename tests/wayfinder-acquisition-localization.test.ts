@@ -74,7 +74,7 @@ describe("starting-equipment localization", () => {
     ]) {
       const template = readFileSync(resolve(path), "utf8");
       const visibleText = [...template.matchAll(/>([^<]+)</gu)]
-        .map((match) => (match[1] ?? "").replace(/\{\{[^}]+\}\}/gu, "").replace(/[\s·:×↳+−,.]/gu, ""))
+        .map((match) => (match[1] ?? "").replace(/\{\{\{?[^}]+\}\}\}?/gu, "").replace(/[\s·:×↳+−,.]/gu, ""))
         .filter(Boolean);
       expect(visibleText, path).toEqual([]);
     }

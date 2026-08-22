@@ -543,6 +543,7 @@ export interface StartingEquipmentStepPane {
     })[];
     preview:
       | (StartingEquipmentCatalogueRecord & {
+          description: string;
           typeIcon: string;
           currencyAffordable: boolean;
           canAdd: boolean;

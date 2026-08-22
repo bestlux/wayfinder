@@ -10,6 +10,7 @@ import {
   equipmentLineControlFocusId,
   equipmentLineFocusId,
 } from "../application/equipment-accessibility.js";
+import type { EquipmentPreviewProjection } from "../application/equipment-preview-projector.js";
 import type { EquipmentSourceDiagnostic } from "../application/equipment-source-policy.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
 import type { EconomicHandoffReason } from "../domain/economic-baseline.js";
@@ -37,6 +38,8 @@ export interface StartingEquipmentCatalogueProjection {
   readonly filters: readonly { key: string; label: string; value: string }[];
   readonly activeFilters: Readonly<Record<string, readonly string[]>>;
   readonly previewSourceUuid: string | null;
+  /** Hydrated and enriched data for the selected item only; browse rows remain index-backed. */
+  readonly preview?: EquipmentPreviewProjection | null;
   readonly openFilterPanel?: "rarity" | "source" | null;
   readonly sourceFilterQuery?: string;
   readonly titanMauler: {
@@ -215,7 +218,17 @@ export function buildStartingEquipmentPane(
     [...catalogue.records, ...(catalogue.lineRecords ?? [])].map((record) => [record.sourceUuid, record])
   );
   const plannedGrantById = new Map(acquisition?.plannedClassGrants.map((grant) => [grant.grantId, grant]) ?? []);
-  const preview = records.find((record) => record.previewing) ?? null;
+  const previewRecord = records.find((record) => record.previewing) ?? null;
+  const previewDetails =
+    previewRecord && catalogue.preview?.sourceUuid === previewRecord.sourceUuid ? catalogue.preview : null;
+  const preview = previewRecord
+    ? {
+        ...previewRecord,
+        description: previewDetails?.description ?? "",
+        bulkLabel: previewDetails?.bulkLabel ?? "",
+        handsLabel: previewDetails?.handsLabel ?? null,
+      }
+    : null;
   const selectedTitanMaulerRecord = catalogue.titanMauler.selectedSourceUuid
     ? recordByUuid.get(catalogue.titanMauler.selectedSourceUuid)
     : null;

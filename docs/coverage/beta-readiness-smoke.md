@@ -1,6 +1,6 @@
 # Beta Readiness Foundry Smoke
 
-Last updated: 2026-08-21.
+Last updated: 2026-08-22.
 
 This is the launch-readiness live smoke layer for Wayfinder. It complements unit tests by exercising the built module inside a real Foundry world against live PF2E compendia.
 
@@ -47,7 +47,7 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
-## 2026-08-21 Release 0.8.0 Candidate Feature Gates
+## 2026-08-22 Release 0.8.0
 
 The required Starting Equipment behavior through Wave 4 is live-proven against Foundry VTT 14.366 / PF2E 8.4.1 in `testing-world`:
 
@@ -59,9 +59,9 @@ The required Starting Equipment behavior through Wave 4 is live-proven against F
 - The candidate contract now includes an exact existing-character import lane: imported history suppresses the creation-only equipment pane, clears stale cart/request intent, preserves unrelated choices and actor flags, and performs no item, currency, or manifest writes. Its draft-replacement lane exercises choose, save, clear, replace, save, and reload through production controls. Skill projection is compiled from ordered actor/source/draft facts so fixed training and later increases agree across the pane and Apply.
 - Physical-grant support is source-owned by one executable 51-route registry. All 162 scanner discoveries have an explicit disposition, and a changed or new scanner key cannot pass without a supported route, a typed handoff route, or an explicit reviewed non-physical classification. Unsupported higher-level grant routes are rejected before acquisition identity, policy, or GM judgment mutation.
 - Adjacent 0.8.0 player-trust coverage includes PF2E-prepared fixed ancestry flaws: Lizardfolk Intelligence and Elf Constitution affect projected abilities and downstream choices, while alternate ancestry boosts exclude the printed flaw set. This is contract coverage for issue #32 alongside, rather than inside, the equipment-wave definitions.
-- WF-080-51 coordinator run `3688b140-acde-46bc-992a-4c290baf9322` at candidate `816b75c5e8adf10ca273426b54c931aa1c8aad97` passed all eleven fresh child lanes: 55 executions / 54 unique scenarios, the ten-case acquisition tracer, five Wave 3 cases, three Wave 4 cases, English and Chinese experience coverage, all seven focused cases, and the ordered fifteen-row release overlay. Candidate drift was false for every child; final cleanup deleted all nine focused fixtures and restored exact actor IDs/count, Equipment Policy, judgments, and PF2E ABP state. The owned completion evidence is `.wayfinder-smoke/wf51-release-816b75c/final`, result SHA-256 `7d63bc1c31293d74a401b70e304f426367c56503a706c63bb93600313f0bd029`, served-script manifest SHA-256 `2f213d2cdb824b79d068c18e9e2ba3130dc416019fcb2a1cc42f6c816d3d9114`.
+- The final WF-080-51 coordinator artifact `.wayfinder-smoke/wf51-release-c29c3f9-final` at candidate `c29c3f95c8cc6a805c4e45ea7065d5d8de6f39f6` passed all eleven fresh child lanes: 55 executions / 54 unique scenarios, the ten-case acquisition tracer, five Wave 3 cases, three Wave 4 cases, English and Chinese experience coverage, all seven focused cases, and the ordered fifteen-row release overlay. Candidate drift was false for every child; final cleanup deleted all nine focused fixtures and restored exact actor IDs/count, Equipment Policy, judgments, and PF2E ABP state. Completion evidence ID `df5ccef3-94ab-4f32-b567-74fb7da96bd3` has result SHA-256 `a577f2244ea037418982703553c41a03813c75fb25f86f8c6ce88b577f001e2b` and served-script manifest SHA-256 `a52cc54a8ec43ad55fdb72c22975ccfa81c63f90320fd640946f39c84f4e0122`.
 
-This is feature-gate evidence, not a publication claim. `WF-080-51` is proven; the post-documentation-freeze rerun, `WF-080-52` package binding, and independent exact-candidate review remain the publication gate. No 0.8.0 tag, push, Foundry registration, or publication is represented here.
+WF-080-52 bound the exact candidate and live evidence to the published ZIP SHA-256 `92ddf1effd48dd92d9b5de05cc3bf22c00c68b8f17c60d2192ae103fcce8270a`. GitHub Actions run `32596264328` validated the repository, published tag and release `v0.8.0`, and completed both Foundry's dry-run validation and package registration. Independent download verification matched the public ZIP to the qualified local hash; the latest and version-pinned manifests both report 0.8.0 and point to the version-pinned ZIP.
 
 ## 2026-08-18 Release 0.7.5 Focused Matrix
 

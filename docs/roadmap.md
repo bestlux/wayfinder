@@ -1,10 +1,10 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-21 for the 0.8.0 Starting Equipment release candidate. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-08-22 after the 0.8.0 Starting Equipment release. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
-The 0.8.0 candidate adds reviewed Starting Equipment to Wayfinder's existing guided creation and level-up flow. Its required functional waves and exact-candidate live matrix are proven against Foundry VTT 14.366 and PF2E 8.4.1; package binding and independent release verification remain the final publication gates. The current full-regression gate contains 55 executions representing 54 unique scenarios. Wayfinder continues to guide 27 maintained PF2E classes through level 5 along one maintained path, five representative profiles through level 10, and Fighter through level 20. Necromancer and Runesmith base classes remain outside that maintained class matrix.
+Release 0.8.0 adds reviewed Starting Equipment to Wayfinder's existing guided creation and level-up flow. Its required functional waves, exact-candidate live matrix, package binding, independent verification, and Foundry registration are complete against Foundry VTT 14.366 and PF2E 8.4.1. The full-regression gate contains 55 executions representing 54 unique scenarios. Wayfinder continues to guide 27 maintained PF2E classes through level 5 along one maintained path, five representative profiles through level 10, and Fighter through level 20. Necromancer and Runesmith base classes remain outside that maintained class matrix.
 
 The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, Gradual Ability Boosts, and creation-time Starting Equipment. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation. Adjacent 0.8.0 player-trust hardening also projects PF2E-prepared fixed ancestry flaws before later ability and skill choices (issue #32).
 
@@ -13,7 +13,7 @@ GMs currently have world settings for Equipment Policy, supplemental Item packs,
 - [#22 — allow temporarily invalid drafts and gate Apply](https://github.com/bestlux/wayfinder/issues/22) supplied the shared readiness and review foundation now used by the 0.8.0 cart. Its remaining scope is broader draft-editing UX and bookkeeping, not an apply-correctness prerequisite.
 - [#7 — class archetypes at level 1](https://github.com/bestlux/wayfinder/issues/7) remains a parallel, profile-by-profile expansion track.
 
-After the 0.8.0 candidate, the largest remaining product gaps are a satisfying character-completion chapter and high-level caster evidence beyond level 10. The apply path now prepares supported authority and sources before writing, executes named per-actor phases, verifies outcomes, and retains the draft when a phase fails.
+After 0.8.0, the largest remaining product gaps are a satisfying character-completion chapter and high-level caster evidence beyond level 10. The apply path now prepares supported authority and sources before writing, executes named per-actor phases, verifies outcomes, and retains the draft when a phase fails.
 
 ## Product thesis
 
@@ -45,7 +45,7 @@ Before equipment branches into catalogue, ledger, and Apply work, 0.7.4 ships in
 
 ### 0.8.0 — Starting Equipment and Wealth
 
-The accepted design is recorded in [Starting Equipment and Wealth Architecture](architecture/starting-equipment-and-wealth.md), its provenance contract lives in [Starting Equipment Rules Assurance](architecture/starting-equipment-rules-assurance.md), and implementation status plus exact evidence live in the [0.8.0 implementation plan](development/starting-equipment-0.8.0.md). Required functional work through Wave 4 and WF-080-51's exact-candidate matrix are complete and live-proven; WF-080-52 package binding plus independent review still gate publication. The release is creation-time acquisition, not a persistent shop.
+The accepted design is recorded in [Starting Equipment and Wealth Architecture](architecture/starting-equipment-and-wealth.md), its provenance contract lives in [Starting Equipment Rules Assurance](architecture/starting-equipment-rules-assurance.md), and implementation status plus exact evidence live in the [0.8.0 implementation plan](development/starting-equipment-0.8.0.md). Required functional work through Wave 4, WF-080-51's exact-candidate matrix, and WF-080-52's package and publication proof are complete. The release is creation-time acquisition, not a persistent shop.
 
 Rules and policy:
 

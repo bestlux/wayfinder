@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.8.0 - Unreleased
+## 0.8.1 - Unreleased
+
+## 0.8.0 - 2026-08-22
 
 - Added guided Starting Equipment for eligible new and replacement characters. Level 1 uses the official 15 gp budget; levels 2–20 support both remastered Character Wealth recipes, with permanent-item allowances and residual currency kept distinct from the optional lump sum.
 - Added a searchable, source-isolated physical-item catalogue with quantities, actor-size pricing, supported configured gear, and deterministic Adventurer's Pack expansion that preserves nested quantities and container relationships.

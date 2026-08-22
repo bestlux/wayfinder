@@ -1,6 +1,6 @@
 # 0.8.0 Starting Equipment Implementation Plan
 
-Status: release-candidate qualification, updated 2026-08-21 after the WF-080-51 live gate. Required functional stories through Wave 4 and the exact-candidate live matrix are complete; WF-080-52 package binding and independent release verification remain pending.
+Status: released 2026-08-22. Required functional stories through Wave 4, the WF-080-51 exact-candidate live matrix, WF-080-52 package binding, independent verification, GitHub publication, and Foundry registration are complete.
 
 Architecture and rules contracts:
 
@@ -548,7 +548,7 @@ Acceptance if undertaken:
 
 ## Wave 5 — Prove and package the exact release
 
-Implementation status (2026-08-21): `WF-080-50`'s executable contract suite is complete. The candidate also centralizes ordered skill progression and all physical-grant support/handoff behavior, with exact scanner-to-runtime classification and pre-review zero-write rejection for unsupported routes. Adjacent player-trust hardening normalizes PF2E-prepared fixed ancestry flaws at the build-state boundary (issue #32); that correction is release scope, not an equipment wave. `WF-080-51` is live-proven on Foundry 14.366 / PF2E 8.4.1: coordinator run `3688b140-acde-46bc-992a-4c290baf9322` at candidate `816b75c5e8adf10ca273426b54c931aa1c8aad97` passed all 55 executions / 54 unique scenarios, all eleven child lanes, the seven focused cases, and the ordered fifteen-row overlay with no candidate drift or restoration failure. Its completion evidence is `.wayfinder-smoke/wf51-release-816b75c/final` with result SHA-256 `7d63bc1c31293d74a401b70e304f426367c56503a706c63bb93600313f0bd029` and served-script manifest SHA-256 `2f213d2cdb824b79d068c18e9e2ba3130dc416019fcb2a1cc42f6c816d3d9114`. That run proves the WF-080-51 behavior gate; the final `WF-080-52` input must be rerun after the documentation freeze with the live module manifest reporting 0.8.0, then package-bound and independently reviewed. Wave 5 and the release therefore remain incomplete; nothing in this note claims a push, tag, publication, or Foundry package registration.
+Implementation status (2026-08-22): Wave 5 and release 0.8.0 are complete. `WF-080-50`'s executable contract suite is complete. The final post-freeze `WF-080-51` coordinator artifact `.wayfinder-smoke/wf51-release-c29c3f9-final` at candidate `c29c3f95c8cc6a805c4e45ea7065d5d8de6f39f6` passed all 55 executions / 54 unique scenarios, all eleven child lanes, the seven focused cases, and the ordered fifteen-row overlay with no candidate drift or restoration failure. Completion evidence ID `df5ccef3-94ab-4f32-b567-74fb7da96bd3` has result SHA-256 `a577f2244ea037418982703553c41a03813c75fb25f86f8c6ce88b577f001e2b` and served-script manifest SHA-256 `a52cc54a8ec43ad55fdb72c22975ccfa81c63f90320fd640946f39c84f4e0122`. `WF-080-52` bound that SHA and evidence to the qualified ZIP SHA-256 `92ddf1effd48dd92d9b5de05cc3bf22c00c68b8f17c60d2192ae103fcce8270a`. Tag `v0.8.0`, the GitHub release assets, latest and version-pinned manifests, and the Foundry package registration all resolve to that exact release.
 
 ### WF-080-50 — Automated contract suite
 

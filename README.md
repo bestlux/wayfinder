@@ -25,6 +25,14 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 - **Resumable drafts.** Progress is saved on the actor, so you can leave mid-build and come back later.
 - **Honest about its limits.** When Wayfinder can't model a step confidently, it says so and points you at the right native PF2E control instead of silently guessing.
 
+## What's new in 0.8.0
+
+- **Starting Equipment from intent to receipt.** New and authorized replacement characters can choose either official higher-level wealth recipe, use GM-approved sources and exceptions, purchase exact quantities, expand an Adventurer's Pack, and keep a durable acquisition receipt after Apply.
+- **Safe acquisition and retry.** Wayfinder prepares exact compendium sources, reconciles native physical grants without charging twice, converges currency to an absolute target, and retries interrupted work without duplicating items or replacing a completed manifest.
+- **Creation and level-up stay distinct.** Existing-character imports preserve settled history and unrelated actor flags while suppressing the creation-only shop and clearing stale equipment intent.
+- **More trustworthy pickers.** Champion sanctification, Exemplar embedded choices, inclusive feat-level filters, fixed ancestry flaws, and ordered skill-rank projection now follow PF2E's prepared data more accurately. When eligibility cannot be validated, the picker explains the suppression instead of silently dropping options.
+- **Measured Foundry-native UX.** The equipment flow includes English and Simplified Chinese coverage, keyboard and focus handling, responsive fixed-window layouts, and a qualified catalogue interaction profile.
+
 ## Installation
 
 Paste this manifest URL into Foundry's **Install Module** dialog:
@@ -35,7 +43,7 @@ https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 
 Foundry's package updater will follow it for future versions. Older releases stay installable from their own [release pages](https://github.com/bestlux/wayfinder/releases).
 
-**Requirements:** Foundry VTT v14 with the PF2E system 8.4.1 or newer. The 0.8.0 feature gates and exact-candidate live matrix are verified against Foundry VTT 14.366 and PF2E 8.4.1; package binding and independent release review remain the final publication gates.
+**Requirements:** Foundry VTT v14 with the PF2E system 8.4.1 or newer. Release 0.8.0 is verified against Foundry VTT 14.366 and PF2E 8.4.1, including its exact-candidate live matrix and package binding.
 
 ## Using Wayfinder
 

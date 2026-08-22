@@ -196,7 +196,7 @@ async function main() {
         validateWf51RecoveryBoundary(
           await gmPage.evaluate(
             (payload) => globalThis.__captureWf51ReleaseOverlayBoundary(payload),
-            boundaryPayload(options, runId),
+            boundaryPayload(options, runId, coordinatorManifest.actorIds),
           ),
           { expectedWorldId: options.expectedWorldId, runId },
         ),
@@ -207,7 +207,10 @@ async function main() {
       () =>
         gmPage.evaluate(
           (payload) => globalThis.__prepareWf51ReleaseOverlay(payload),
-          sharedPayload({ options, runId, priorActorIds: coordinatorManifest.actorIds }),
+          {
+            ...sharedPayload({ options, runId, priorActorIds: coordinatorManifest.actorIds }),
+            snapshots: boundary.snapshots,
+          },
         ),
       { context: gmContext, timeoutMs: phaseTimeoutMs },
     );
@@ -565,13 +568,15 @@ function sharedPayload({ options, runId, priorActorIds }) {
   };
 }
 
-function boundaryPayload(options, runId) {
+function boundaryPayload(options, runId, priorActorIds) {
   return {
     abpSetting: ABP_SETTING,
     expectedWorldId: options.expectedWorldId,
     judgmentSetting: JUDGMENT_SETTING,
     moduleId: MODULE_ID,
+    playerName: options.playerUser,
     policySetting: POLICY_SETTING,
+    priorActorIds,
     runId,
   };
 }

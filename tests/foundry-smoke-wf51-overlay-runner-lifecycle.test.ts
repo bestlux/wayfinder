@@ -223,6 +223,9 @@ describe("WF-080-51 overlay runner lifecycle", () => {
     expect(runner).toContain("markerPurpose: MARKER_PURPOSE");
     expect(runner).toContain("fixturePrefix: FIXTURE_PREFIX");
     expect(runner).toContain("runId,");
+    expect(runner).toContain("playerName: options.playerUser");
+    expect(runner).toContain("boundaryPayload(options, runId, coordinatorManifest.actorIds)");
+    expect(runner).toContain("snapshots: boundary.snapshots");
     expect(runner).toContain("recoveryPayload(boundary, options, runId)");
     expect(runner).toContain('status: runError ? "failed" : "complete"');
   });

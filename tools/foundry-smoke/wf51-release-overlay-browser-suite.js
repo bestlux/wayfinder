@@ -1,4 +1,4 @@
-/* global Actor, CONFIG, CONST, fromUuid, game, getComputedStyle, HTMLButtonElement, HTMLElement, ui */
+/* global Actor, CONFIG, CONST, fromUuid, game, getComputedStyle, HTMLButtonElement, HTMLElement, MutationObserver, ui */
 
 const WF51_PURPOSE = "wf51-release-overlay";
 const DAGGER_UUID = "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z";
@@ -30,8 +30,6 @@ const EXISTING_IMPORT_SOURCES = [
     name: "Fighter",
     type: "class",
     historySlotId: "class-level-1",
-    keyAbility: "str",
-    rulesSelections: { fighterSkill: "athletics" },
   },
   {
     uuid: "Compendium.pf2e.feats-srd.Item.lwLcUHQMOqfaNND4",
@@ -288,9 +286,16 @@ function snapshotUnrelatedFlags(actor, moduleId, runId, caseId, ordinal) {
     purpose: WF51_PURPOSE,
     runId,
     caseId,
+    definitionFingerprint: actual.wayfinderSmoke?.definitionFingerprint,
     ordinal,
   };
-  if (canonicalJson(actual.pf2e) !== canonicalJson(expected) || canonicalJson(actual.wayfinderSmoke) !== canonicalJson(expected)) {
+  const expectedPf2e = { purpose: WF51_PURPOSE, runId, caseId, ordinal };
+  if (
+    typeof expected.definitionFingerprint !== "string" ||
+    expected.definitionFingerprint.length === 0 ||
+    canonicalJson(actual.pf2e) !== canonicalJson(expectedPf2e) ||
+    canonicalJson(actual.wayfinderSmoke) !== canonicalJson(expected)
+  ) {
     throw new Error(`WF-080-51 unrelated actor flags drifted for ${caseId}/${ordinal}.`);
   }
   return canonicalJson(actual);
@@ -338,13 +343,41 @@ async function waitForValue(read, label, timeoutMs = 15_000) {
   throw new Error(`WF-080-51 timed out waiting for ${label}.`);
 }
 
-async function importExistingHistoryThroughUi(modules, actor, moduleId) {
+async function withTimeout(operation, label, timeoutMs = 15_000) {
+  let timeoutId = null;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error(`WF-080-51 timed out waiting for ${label}.`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+  }
+}
+
+async function openConnectedWayfinderApp(modules, actor, label) {
   modules.WayfinderApp.open(actor);
   const app = await waitForValue(
-    () => Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp),
-    "the actor-bound existing-character Wayfinder app",
+    () =>
+      Object.values(actor.apps ?? {}).find(
+        (candidate) => candidate instanceof modules.WayfinderApp && candidate.actor?.id === actor.id,
+      ) ?? null,
+    `${label} actor-bound Wayfinder app`,
   );
-  await app.render(true);
+  await waitForValue(
+    () => (app.element instanceof HTMLElement && app.element.isConnected ? app : null),
+    `${label} connected render lifecycle`,
+  );
+  return app;
+}
+
+async function importExistingHistoryThroughUi(modules, actor, moduleId) {
+  const app = await openConnectedWayfinderApp(modules, actor, "the existing-character");
   const before = equipmentSurface(app.element);
   const action = app.element?.querySelector('[data-wayfinder-action="import-existing-history"]');
   if (!(action instanceof HTMLElement)) throw new Error("WF-080-51 existing-history UI action is missing.");
@@ -364,12 +397,7 @@ async function importExistingHistoryThroughUi(modules, actor, moduleId) {
 }
 
 async function renderExistingImportAfterReload(modules, actor) {
-  modules.WayfinderApp.open(actor);
-  const app = await waitForValue(
-    () => Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp),
-    "the reloaded existing-character Wayfinder app",
-  );
-  await app.render(true);
+  const app = await openConnectedWayfinderApp(modules, actor, "the reloaded existing-character");
   const report = await waitForValue(
     () => app.element?.querySelector(".history-report"),
     "the reloaded existing-character report",
@@ -423,14 +451,37 @@ function interceptIntegrityNotifications() {
   };
 }
 
-async function waitForDraftSaved(app) {
-  return waitForValue(
-    () => {
-      const status = app.element?.querySelector("[data-wayfinder-save-status]");
-      return status?.dataset?.phase === "saved" ? status : null;
-    },
-    "the exact persisted draft save",
-  );
+function watchDraftSaveGeneration(app, label) {
+  const root = app.element;
+  if (!(root instanceof HTMLElement) || !root.isConnected) {
+    throw new Error(`WF-080-51 cannot observe ${label} on a disconnected Wayfinder app.`);
+  }
+  let observedPhaseMutation = false;
+  const observer = new MutationObserver((records) => {
+    if (
+      records.some(
+        (record) =>
+          record.type === "attributes" &&
+          record.attributeName === "data-phase" &&
+          record.target instanceof HTMLElement &&
+          record.target.matches("[data-wayfinder-save-status]"),
+      )
+    ) {
+      observedPhaseMutation = true;
+    }
+  });
+  observer.observe(root, { attributes: true, attributeFilter: ["data-phase"], subtree: true });
+  return {
+    disconnect: () => observer.disconnect(),
+    wait: () =>
+      waitForValue(
+        () => {
+          const status = app.element?.querySelector("[data-wayfinder-save-status]");
+          return observedPhaseMutation && status?.dataset?.phase === "saved" ? status : null;
+        },
+        `${label} save generation`,
+      ),
+  };
 }
 
 async function manualSaveDraft(app) {
@@ -441,8 +492,13 @@ async function manualSaveDraft(app) {
   if (!(save instanceof HTMLButtonElement) || save.disabled) {
     throw new Error("WF-080-51 production Save Draft control is unavailable.");
   }
-  save.click();
-  await waitForDraftSaved(app);
+  const generation = watchDraftSaveGeneration(app, "the manual draft save");
+  try {
+    save.click();
+    await generation.wait();
+  } finally {
+    generation.disconnect();
+  }
 }
 
 async function choosePickerOption(app, actor, modules, moduleId, uuid) {
@@ -455,12 +511,17 @@ async function choosePickerOption(app, actor, modules, moduleId, uuid) {
     () => app.element?.querySelector(`[data-wayfinder-action="select-option"][data-value="${uuid}"]`),
     `the production picker selection ${uuid}`,
   );
-  select.click();
-  await waitForValue(
-    () => draftSelectionUuids(modules, actor, moduleId)["ancestry-level-1"] === uuid,
-    `the autosaved picker selection ${uuid}`,
-  );
-  await waitForDraftSaved(app);
+  const generation = watchDraftSaveGeneration(app, `the picker selection ${uuid}`);
+  try {
+    select.click();
+    await waitForValue(
+      () => draftSelectionUuids(modules, actor, moduleId)["ancestry-level-1"] === uuid,
+      `the autosaved picker selection ${uuid}`,
+    );
+    await generation.wait();
+  } finally {
+    generation.disconnect();
+  }
 }
 
 async function clearAncestryPickerOption(app, actor, modules, moduleId) {
@@ -476,12 +537,17 @@ async function clearAncestryPickerOption(app, actor, modules, moduleId) {
     () => app.element?.querySelector('[data-wayfinder-action="clear-option"][data-step-id="ancestry-level-1"]'),
     "the production ancestry clear control",
   );
-  clear.click();
-  await waitForValue(
-    () => !Object.hasOwn(draftSelectionUuids(modules, actor, moduleId), "ancestry-level-1"),
-    "the persisted ancestry-key deletion",
-  );
-  await waitForDraftSaved(app);
+  const generation = watchDraftSaveGeneration(app, "the ancestry clear");
+  try {
+    clear.click();
+    await waitForValue(
+      () => !Object.hasOwn(draftSelectionUuids(modules, actor, moduleId), "ancestry-level-1"),
+      "the persisted ancestry-key deletion",
+    );
+    await generation.wait();
+  } finally {
+    generation.disconnect();
+  }
 }
 
 async function exerciseDraftReplacementUi(modules, actor, moduleId) {
@@ -493,14 +559,9 @@ async function exerciseDraftReplacementUi(modules, actor, moduleId) {
     "background",
   );
   await actor.setFlag(moduleId, "draft", draft);
-  modules.WayfinderApp.open(actor);
-  const app = await waitForValue(
-    () => Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp),
-    "the draft-replacement Wayfinder app",
-  );
+  const app = await openConnectedWayfinderApp(modules, actor, "the draft-replacement");
   const notifications = interceptIntegrityNotifications();
   try {
-    await app.render(true);
     const initial = draftSelectionUuids(modules, actor, moduleId);
     await choosePickerOption(app, actor, modules, moduleId, HUMAN_UUID);
     await manualSaveDraft(app);
@@ -522,12 +583,7 @@ async function verifyDraftReplacementAfterReload(modules, actor, moduleId) {
   const notifications = interceptIntegrityNotifications();
   let app = null;
   try {
-    modules.WayfinderApp.open(actor);
-    app = await waitForValue(
-      () => Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp),
-      "the reloaded draft-replacement Wayfinder app",
-    );
-    await app.render(true);
+    app = await openConnectedWayfinderApp(modules, actor, "the reloaded draft-replacement");
     await manualSaveDraft(app);
     const root = app.element;
     return {
@@ -570,11 +626,11 @@ function selection(slotId, uuid, name, itemType, featType = null) {
 }
 
 async function renderAttestationReceipt(modules, actor) {
-  modules.WayfinderApp.open(actor);
-  const app = Object.values(actor.apps ?? {}).find((candidate) => candidate instanceof modules.WayfinderApp);
-  if (!app) throw new Error("WF-080-51 could not resolve the actor-bound Wayfinder app.");
-  await app.render(true);
-  const receipt = app.element?.querySelector(".wayfinder-attestation-receipt") ?? null;
+  const app = await openConnectedWayfinderApp(modules, actor, "the attestation-receipt");
+  const receipt = await waitForValue(
+    () => app.element?.querySelector(".wayfinder-attestation-receipt"),
+    "the attestation receipt",
+  );
   const disclaimer = receipt?.querySelector(".attestation-disclaimer")?.textContent?.trim() ?? "";
   const definitionTerms = [...(receipt?.querySelectorAll("dt") ?? [])];
   const basisTerm = definitionTerms.find((entry) => entry.textContent?.trim() === "Claimed under") ?? null;
@@ -839,6 +895,47 @@ async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) 
   };
 }
 
+function passiveExistingHistorySource(document, expected) {
+  const source = document.toObject(false);
+  delete source._id;
+  source.flags = source.flags ?? {};
+  source.flags.core = { ...(source.flags.core ?? {}), sourceId: expected.uuid };
+  source._stats = { ...(source._stats ?? {}), compendiumSource: expected.uuid };
+  source.system = source.system ?? {};
+  source.system.rules = [];
+  if (Object.hasOwn(source.system, "items")) source.system.items = {};
+  if (expected.location) source.system.location = expected.location;
+  return source;
+}
+
+function assertPassiveExistingHistoryItems(actor) {
+  const observed = EXISTING_IMPORT_SOURCES.map((expected) => {
+    const matches = actor.items.filter(
+      (item) =>
+        (item.sourceId ?? item.flags?.core?.sourceId) === expected.uuid &&
+        item.name === expected.name &&
+        item.type === expected.type,
+    );
+    const item = matches[0] ?? null;
+    const location =
+      typeof item?.system?.location === "string" ? item.system.location : (item?.system?.location?.value ?? null);
+    if (matches.length !== 1 || (expected.location && location !== expected.location)) {
+      throw new Error(`WF-080-51 existing-import passive source drifted: ${expected.uuid}.`);
+    }
+    return {
+      historySlotId: expected.historySlotId,
+      location: expected.location ?? null,
+      name: item.name,
+      type: item.type,
+      uuid: item.sourceId ?? item.flags?.core?.sourceId,
+    };
+  });
+  if (actor.items.size !== EXISTING_IMPORT_SOURCES.length) {
+    throw new Error("WF-080-51 existing-import passive seed triggered unexpected PF2E item grants.");
+  }
+  return observed;
+}
+
 async function seedExistingImportActor(actor) {
   const itemSources = [];
   for (const expected of EXISTING_IMPORT_SOURCES) {
@@ -846,25 +943,13 @@ async function seedExistingImportActor(actor) {
     if (!document || document.name !== expected.name || document.type !== expected.type) {
       throw new Error(`WF-080-51 existing-import source drifted: ${expected.uuid}.`);
     }
-    const source = document.toObject(false);
-    delete source._id;
-    if (expected.location) source.system.location = expected.location;
-    if (expected.keyAbility && source.system?.keyAbility) source.system.keyAbility.selected = expected.keyAbility;
-    if (expected.rulesSelections) {
-      for (const rule of Array.isArray(source.system?.rules) ? source.system.rules : []) {
-        if (rule?.key === "ChoiceSet" && typeof rule.flag === "string" && rule.flag in expected.rulesSelections) {
-          rule.selection = expected.rulesSelections[rule.flag];
-        }
-      }
-      source.flags = source.flags ?? {};
-      source.flags.pf2e = {
-        ...(source.flags.pf2e ?? {}),
-        rulesSelections: { ...(source.flags.pf2e?.rulesSelections ?? {}), ...expected.rulesSelections },
-      };
-    }
-    itemSources.push(source);
+    itemSources.push(passiveExistingHistorySource(document, expected));
   }
-  await actor.createEmbeddedDocuments("Item", itemSources, { render: false });
+  await withTimeout(
+    actor.createEmbeddedDocuments("Item", itemSources, { render: false }),
+    "the passive existing-character history items",
+    20_000,
+  );
   await actor.update(
     {
       "system.details.level.value": EXISTING_IMPORT_LEVEL,
@@ -875,16 +960,204 @@ async function seedExistingImportActor(actor) {
     },
     { render: false },
   );
-  const sourceIds = new Set(actor.items.map((item) => item.sourceId ?? item.flags?.core?.sourceId ?? null));
-  const missing = EXISTING_IMPORT_SOURCES.filter((entry) => !sourceIds.has(entry.uuid));
-  if (missing.length > 0 || Number(actor.system?.details?.level?.value) !== EXISTING_IMPORT_LEVEL) {
+  const observedSources = assertPassiveExistingHistoryItems(actor);
+  if (Number(actor.system?.details?.level?.value) !== EXISTING_IMPORT_LEVEL) {
     throw new Error("WF-080-51 existing-import actor did not prepare the pinned level-7 source documents.");
   }
+  return observedSources;
 }
+
+function snapshotUser(user) {
+  return {
+    id: String(user?.id ?? ""),
+    isGM: Boolean(user?.isGM),
+    name: String(user?.name ?? ""),
+    role: Number(user?.role ?? 0),
+  };
+}
+
+function assertPriorActorsAbsent(priorActorIds) {
+  const normalized = (Array.isArray(priorActorIds) ? priorActorIds : []).map(String);
+  const remaining = normalized.filter((actorId) => game.actors.has(actorId));
+  if (remaining.length > 0) {
+    throw new Error(`WF-080-51 prior child cleanup left actors: ${remaining.join(", ")}.`);
+  }
+  return normalized;
+}
+
+function resolveBoundaryPlayer(playerName) {
+  const matches = game.users.filter(
+    (candidate) => candidate.name === playerName && !candidate.isGM && candidate.id !== game.user?.id,
+  );
+  if (matches.length !== 1) {
+    throw new Error("WF-080-51 requires one exact configured non-GM player.");
+  }
+  return matches[0];
+}
+
+function captureWf51Boundary({
+  abpSetting,
+  expectedWorldId,
+  judgmentSetting,
+  moduleId,
+  playerName,
+  policySetting,
+  priorActorIds = [],
+  runId,
+}) {
+  assertWorld(expectedWorldId);
+  if (!game.user?.isGM) throw new Error("WF-080-51 boundary capture requires a GM.");
+  if (!runId) throw new Error("WF-080-51 boundary capture requires an exact run id.");
+  const normalizedPriorActorIds = assertPriorActorsAbsent(priorActorIds);
+  const player = resolveBoundaryPlayer(playerName);
+  const snapshots = {
+    moduleId,
+    runId,
+    worldId: game.world.id,
+    gm: snapshotUser(game.user),
+    player: snapshotUser(player),
+    runtime: runtimeEvidence(moduleId),
+    priorActorIds: normalizedPriorActorIds,
+    policy: structuredClone(game.settings.get(moduleId, policySetting)),
+    judgments: structuredClone(game.settings.get(moduleId, judgmentSetting)),
+    abp: structuredClone(game.settings.get("pf2e", abpSetting)),
+    actorCount: game.actors.size,
+    actorIds: game.actors.map((actor) => actor.id).sort(),
+  };
+  return { ...snapshots, snapshots: structuredClone(snapshots) };
+}
+
+function normalizeWf51Boundary(value) {
+  if (!value || typeof value !== "object") return null;
+  return value.snapshots && typeof value.snapshots === "object" ? value.snapshots : value;
+}
+
+function validateWf51Boundary(value, payload) {
+  const boundary = normalizeWf51Boundary(value);
+  if (!boundary) {
+    throw new Error("WF-080-51 prepare requires a captured pre-mutation boundary.");
+  }
+  assertWorld(payload.expectedWorldId);
+  if (!game.user?.isGM) throw new Error("WF-080-51 boundary validation requires a GM.");
+  const player = resolveBoundaryPlayer(payload.playerName);
+  const currentActorIds = game.actors.map((actor) => actor.id).sort();
+  const identityMatches =
+    boundary.moduleId === payload.moduleId &&
+    boundary.runId === payload.runId &&
+    boundary.worldId === game.world.id &&
+    canonicalJson(boundary.gm) === canonicalJson(snapshotUser(game.user)) &&
+    canonicalJson(boundary.player) === canonicalJson(snapshotUser(player)) &&
+    canonicalJson(boundary.runtime) === canonicalJson(runtimeEvidence(payload.moduleId)) &&
+    canonicalJson(boundary.priorActorIds) === canonicalJson(assertPriorActorsAbsent(payload.priorActorIds)) &&
+    canonicalJson(boundary.actorIds) === canonicalJson(currentActorIds) &&
+    boundary.actorCount === game.actors.size &&
+    canonicalJson(boundary.policy) ===
+      canonicalJson(game.settings.get(payload.moduleId, payload.policySetting)) &&
+    canonicalJson(boundary.judgments) ===
+      canonicalJson(game.settings.get(payload.moduleId, payload.judgmentSetting)) &&
+    canonicalJson(boundary.abp) === canonicalJson(game.settings.get("pf2e", payload.abpSetting));
+  if (!identityMatches) {
+    throw new Error("WF-080-51 captured boundary no longer matches the exact pre-mutation world state.");
+  }
+  return { boundary, player, snapshots: structuredClone(boundary) };
+}
+
+function exactRunActors(moduleId, runId, fixturePrefix = "") {
+  return game.actors.filter((actor) => {
+    const moduleMarker = actor.getFlag(moduleId, "smokeWf51Overlay");
+    const pf2eMarker = actor.getFlag("pf2e", "wf51OverlaySentinel");
+    return (
+      moduleMarker?.purpose === WF51_PURPOSE &&
+      moduleMarker?.runId === runId &&
+      pf2eMarker?.purpose === WF51_PURPOSE &&
+      pf2eMarker?.runId === runId &&
+      (!fixturePrefix || actor.name.startsWith(`${fixturePrefix} - ${runId} - `))
+    );
+  });
+}
+
+async function recoverWf51Boundary({
+  abpSetting,
+  allowDestructive,
+  expectedWorldId,
+  fixturePrefix = "",
+  judgmentSetting,
+  markerPurpose,
+  moduleId,
+  policySetting,
+  runId,
+  snapshots: suppliedSnapshots,
+}) {
+  if (!allowDestructive) throw new Error("WF-080-51 recovery requires destructive opt-in.");
+  assertWorld(expectedWorldId);
+  if (!game.user?.isGM) throw new Error("WF-080-51 recovery requires a GM.");
+  if (markerPurpose !== WF51_PURPOSE) {
+    throw new Error("WF-080-51 recovery refused a changed marker purpose.");
+  }
+  const boundary = normalizeWf51Boundary(suppliedSnapshots);
+  if (
+    !boundary ||
+    boundary.moduleId !== moduleId ||
+    boundary.runId !== runId ||
+    boundary.worldId !== game.world.id ||
+    canonicalJson(boundary.gm) !== canonicalJson(snapshotUser(game.user))
+  ) {
+    throw new Error("WF-080-51 recovery refused a boundary with changed guarded identity.");
+  }
+  const boundaryPlayer = game.users.get(boundary.player?.id);
+  if (canonicalJson(boundary.player) !== canonicalJson(snapshotUser(boundaryPlayer)) || boundaryPlayer?.isGM) {
+    throw new Error("WF-080-51 recovery refused a changed configured player.");
+  }
+  const restorationFailures = [];
+  const actors = exactRunActors(moduleId, runId, fixturePrefix);
+  let actorsDeleted = 0;
+  for (const actor of actors) {
+    try {
+      await actor.delete();
+      actorsDeleted += 1;
+    } catch (error) {
+      restorationFailures.push(`actor ${actor.id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  for (const [scope, key, value] of [
+    [moduleId, judgmentSetting, boundary.judgments],
+    [moduleId, policySetting, boundary.policy],
+    ["pf2e", abpSetting, boundary.abp],
+  ]) {
+    try {
+      await game.settings.set(scope, key, value);
+    } catch (error) {
+      restorationFailures.push(`${scope}.${key}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return {
+    attempted: true,
+    actorsDeleted,
+    actorsMissingAfterCleanup: exactRunActors(moduleId, runId, fixturePrefix).length === 0,
+    actorCountRestored: game.actors.size === boundary.actorCount,
+    actorIdsRestored:
+      canonicalJson(game.actors.map((actor) => actor.id).sort()) === canonicalJson(boundary.actorIds),
+    policyRestored:
+      canonicalJson(game.settings.get(moduleId, policySetting)) === canonicalJson(boundary.policy),
+    judgmentsRestored:
+      canonicalJson(game.settings.get(moduleId, judgmentSetting)) === canonicalJson(boundary.judgments),
+    abpRestored: canonicalJson(game.settings.get("pf2e", abpSetting)) === canonicalJson(boundary.abp),
+    restorationFailures,
+  };
+}
+
+globalThis.__captureWf51ReleaseOverlayBoundary = async function captureBoundary(payload) {
+  return captureWf51Boundary(payload);
+};
+
+globalThis.__recoverWf51ReleaseOverlay = async function recover(payload) {
+  return recoverWf51Boundary(payload);
+};
 
 globalThis.__prepareWf51ReleaseOverlay = async function prepare({
   abpSetting,
   allowDestructive,
+  boundary,
   cases,
   expectedWorldId,
   fixturePrefix,
@@ -894,22 +1167,22 @@ globalThis.__prepareWf51ReleaseOverlay = async function prepare({
   policySetting,
   priorActorIds,
   runId,
+  snapshots: suppliedSnapshots,
 }) {
   if (!allowDestructive) throw new Error("WF-080-51 setup requires destructive opt-in.");
   assertWorld(expectedWorldId);
   if (!game.user?.isGM) throw new Error("WF-080-51 setup requires a GM.");
-  const remainingPriorActorIds = (priorActorIds ?? []).filter((actorId) => game.actors.has(actorId));
-  if (remainingPriorActorIds.length > 0) {
-    throw new Error(`WF-080-51 prior child cleanup left actors: ${remainingPriorActorIds.join(", ")}.`);
-  }
-  const player = game.users.find((candidate) => candidate.name === playerName && !candidate.isGM && candidate.id !== game.user.id);
-  if (!player) throw new Error("WF-080-51 configured non-GM player is unavailable.");
-  const snapshots = {
-    policy: structuredClone(game.settings.get(moduleId, policySetting)),
-    judgments: structuredClone(game.settings.get(moduleId, judgmentSetting)),
-    abp: structuredClone(game.settings.get("pf2e", abpSetting)),
-    actorCount: game.actors.size,
-  };
+  const validatedBoundary = validateWf51Boundary(suppliedSnapshots ?? boundary, {
+    abpSetting,
+    expectedWorldId,
+    judgmentSetting,
+    moduleId,
+    playerName,
+    policySetting,
+    priorActorIds,
+    runId,
+  });
+  const { player, snapshots } = validatedBoundary;
   const guardedPolicy = {
     ...snapshots.policy,
     version: 1,
@@ -929,6 +1202,7 @@ globalThis.__prepareWf51ReleaseOverlay = async function prepare({
   const dagger = await fromUuid(DAGGER_UUID);
   if (!dagger) throw new Error("WF-080-51 could not resolve the exact foreign Dagger fixture.");
   const fixtures = [];
+  let existingImportSources;
   try {
     await game.settings.set(moduleId, policySetting, guardedPolicy);
     for (const definition of cases) {
@@ -946,6 +1220,7 @@ globalThis.__prepareWf51ReleaseOverlay = async function prepare({
                 runId,
                 caseId: definition.id,
                 definitionFingerprint: definition.definitionFingerprint,
+                ordinal,
               },
             },
             pf2e: {
@@ -975,27 +1250,23 @@ globalThis.__prepareWf51ReleaseOverlay = async function prepare({
     delete source._id;
     await itemActor.createEmbeddedDocuments("Item", [source], { render: false });
     await currencyActor.inventory.addCoins({ cp: 25 });
-    await seedExistingImportActor(existingImportActor);
+    existingImportSources = await seedExistingImportActor(existingImportActor);
   } catch (error) {
-    const cleanupFailures = [];
-    for (const fixture of fixtures) {
-      try {
-        await game.actors.get(fixture.actorId)?.delete();
-      } catch (cleanupError) {
-        cleanupFailures.push(`actor ${fixture.actorId}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
-      }
-    }
-    for (const [scope, key, value] of [
-      [moduleId, judgmentSetting, snapshots.judgments],
-      [moduleId, policySetting, snapshots.policy],
-      ["pf2e", abpSetting, snapshots.abp],
-    ]) {
-      try {
-        await game.settings.set(scope, key, value);
-      } catch (cleanupError) {
-        cleanupFailures.push(`${scope}.${key}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
-      }
-    }
+    const recovery = await recoverWf51Boundary({
+      abpSetting,
+      allowDestructive,
+      expectedWorldId,
+      fixturePrefix,
+      judgmentSetting,
+      markerPurpose: WF51_PURPOSE,
+      moduleId,
+      policySetting,
+      runId,
+      snapshots,
+    }).catch((recoveryError) => ({
+      restorationFailures: [recoveryError instanceof Error ? recoveryError.message : String(recoveryError)],
+    }));
+    const cleanupFailures = recovery.restorationFailures ?? [];
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${message}${cleanupFailures.length > 0 ? ` Setup cleanup failures: ${cleanupFailures.join("; ")}` : ""}`, {
       cause: error,
@@ -1003,6 +1274,8 @@ globalThis.__prepareWf51ReleaseOverlay = async function prepare({
   }
   return {
     fixtures,
+    boundary: snapshots,
+    existingImportSources,
     gm: userEvidence(),
     playerId: player.id,
     priorActorCleanup: {
@@ -1255,7 +1528,9 @@ globalThis.__runWf51PlayerInitial = async function playerInitial({
         },
         expectedSources: EXISTING_IMPORT_SOURCES.map((entry) => ({
           historySlotId: entry.historySlotId,
+          location: entry.location ?? null,
           name: entry.name,
+          type: entry.type,
           uuid: entry.uuid,
         })),
         before: importBefore,

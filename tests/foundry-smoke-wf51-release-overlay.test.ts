@@ -132,6 +132,36 @@ describe("WF-080-51 focused live release overlay", () => {
     );
   });
 
+  it("keeps the focused browser lifecycle passive, generation-aware, and recoverable before setup returns", () => {
+    expect(browserSuite.match(/WayfinderApp\.open\(actor\)/gu)).toHaveLength(1);
+    expect(browserSuite).not.toContain("await app.render(true)");
+    expect(browserSuite).toContain("openConnectedWayfinderApp");
+    expect(browserSuite).toContain("app.element instanceof HTMLElement && app.element.isConnected");
+
+    expect(browserSuite).toContain("function watchDraftSaveGeneration");
+    expect(browserSuite).toContain('attributeFilter: ["data-phase"]');
+    expect(browserSuite).toContain('observedPhaseMutation && status?.dataset?.phase === "saved"');
+    expect(browserSuite).not.toContain("async function waitForDraftSaved");
+
+    expect(browserSuite).toContain("function passiveExistingHistorySource");
+    expect(browserSuite).toContain("source.system.rules = []");
+    expect(browserSuite).toContain("source.system.items = {}");
+    expect(browserSuite).toContain("compendiumSource: expected.uuid");
+    expect(browserSuite).toContain("sourceId: expected.uuid");
+    expect(browserSuite).toContain("actor.items.size !== EXISTING_IMPORT_SOURCES.length");
+    expect(browserSuite).toContain('"the passive existing-character history items"');
+    expect(browserSuite).toContain("historySlotId: expected.historySlotId");
+
+    expect(browserSuite).toContain("__captureWf51ReleaseOverlayBoundary");
+    expect(browserSuite).toContain("__recoverWf51ReleaseOverlay");
+    expect(browserSuite).toContain("validateWf51Boundary(suppliedSnapshots ?? boundary");
+    expect(browserSuite).toContain("moduleMarker?.purpose === WF51_PURPOSE");
+    expect(browserSuite).toContain("pf2eMarker?.purpose === WF51_PURPOSE");
+    expect(browserSuite).toContain("markerPurpose !== WF51_PURPOSE");
+    expect(browserSuite).toContain("actorIdsRestored");
+    expect(browserSuite).toContain("recoverWf51Boundary({");
+  });
+
   it("qualifies exact start, handoff, drift, ABP, spell-trust, grant, candidate, and cleanup evidence", () => {
     const result = passingResult();
     expect(qualifyWf51ReleaseOverlay(result)).toEqual({ ok: true, failures: [] });

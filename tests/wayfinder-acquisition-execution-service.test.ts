@@ -757,7 +757,7 @@ describe("Wave 2 acquisition execution", () => {
         classGrantPlan: fixture.classGrantPlan,
         emitWriteCheckpoint: noCheckpoint,
       })
-    ).rejects.toThrow(/economic admission failed/i);
+    ).rejects.toThrow(/economic admission failed: current wealth requires PF2E-sheet handoff:.*nonzero-currency/i);
 
     expect(actor.currencyAdds).toEqual([1_500]);
     expect(actor.currencyCopper).toBe(1_500);

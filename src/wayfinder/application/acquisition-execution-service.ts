@@ -751,7 +751,10 @@ function assertEconomicAdmission(
       throw new Error("The acknowledged starting-equipment handoff no longer matches current actor wealth.");
     }
   } else if (admission.kind !== "eligible-empty" && admission.kind !== "eligible-retry") {
-    const detail = admission.kind === "blocked" ? admission.message : "current wealth requires PF2E-sheet handoff";
+    const detail =
+      admission.kind === "blocked"
+        ? admission.message
+        : `current wealth requires PF2E-sheet handoff: ${stableJson(admission.handoff.reasons)}`;
     throw new Error(`Starting-equipment economic admission failed: ${detail}.`);
   }
   if (admission.baseline.fingerprint !== baseline.fingerprint) {

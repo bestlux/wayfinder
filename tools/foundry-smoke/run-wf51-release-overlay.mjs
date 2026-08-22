@@ -20,6 +20,16 @@ import {
 } from "./wf51-release-overlay-cases.mjs";
 import { qualifyWf51FocusedOverlay } from "./wf51-release-overlay-evidence.mjs";
 import { closeFoundryBrowser, loginToFoundryWorld, resolveFoundryChromePath } from "./browser-session.mjs";
+import {
+  assertCompleteWf51Recovery,
+  createWf51OverlayProgressTracker,
+  DEFAULT_WF51_PHASE_TIMEOUT_MS,
+  DEFAULT_WF51_RECOVERY_TIMEOUT_MS,
+  positiveIntegerFromEnvironment,
+  runWithHardDeadline,
+  validateWf51RecoveryBoundary,
+  Wf51PhaseDeadlineError,
+} from "./wf51-release-overlay-runner-lifecycle.mjs";
 
 const execFileAsync = promisify(execFile);
 const MODULE_ID = "wayfinder-pf2e";
@@ -27,6 +37,7 @@ const POLICY_SETTING = "equipmentPolicy";
 const JUDGMENT_SETTING = "equipmentPolicyJudgments";
 const ABP_SETTING = "automaticBonusVariant";
 const FIXTURE_PREFIX = "WF Smoke Harness - WF-080-51 overlay";
+const MARKER_PURPOSE = "wf51-release-overlay";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const suitePath = path.join(repoRoot, "tools", "foundry-smoke", "wf51-release-overlay-browser-suite.js");
 
@@ -51,6 +62,9 @@ Environment:
   FOUNDRY_SMOKE_ALLOW_DESTRUCTIVE     true/false. Required for guarded fixture cleanup.
   FOUNDRY_CHROME_PATH                 Chrome/Edge executable path override.
   FOUNDRY_SMOKE_HEADLESS              true/false. Defaults to true.
+  FOUNDRY_SMOKE_WF51_PHASE_TIMEOUT_MS Hard deadline for each browser evaluate. Defaults to 300000.
+  FOUNDRY_SMOKE_WF51_RECOVERY_TIMEOUT_MS
+                                      Hard deadline for recovery operations. Defaults to 120000.
 `;
 }
 
@@ -77,6 +91,16 @@ async function main() {
   const runId = randomUUID();
   const startedAt = new Date().toISOString();
   const outDir = await createWf51ReleaseOverlayArtifactDirectory(repoRoot, cli.outDir, evidenceId);
+  const phaseTimeoutMs = positiveIntegerFromEnvironment(
+    "FOUNDRY_SMOKE_WF51_PHASE_TIMEOUT_MS",
+    DEFAULT_WF51_PHASE_TIMEOUT_MS,
+  );
+  const recoveryTimeoutMs = positiveIntegerFromEnvironment(
+    "FOUNDRY_SMOKE_WF51_RECOVERY_TIMEOUT_MS",
+    DEFAULT_WF51_RECOVERY_TIMEOUT_MS,
+  );
+  const progress = createWf51OverlayProgressTracker({ directory: outDir, evidenceId, runId, startedAt });
+  await progress.initialize();
   let candidate = emptyCandidate();
   let coordinatorManifest = null;
   let browser = null;
@@ -84,100 +108,230 @@ async function main() {
   let playerContext = null;
   let gmPage;
   let playerPage;
+  let boundary = null;
   let setup = null;
   let initial = null;
   let gm = null;
   let verification = null;
   let cleanup = emptyCleanup();
+  const recovery = { attempted: false, status: "not-attempted", failures: [] };
+  const observabilityFailures = [];
   let runError = null;
+  let primaryError = null;
   let stage = "candidate-capture";
 
-  try {
-    candidate = await captureCandidate(path.dirname(path.resolve(cli.coordinatorManifest)));
-    coordinatorManifest = await loadCoordinatorManifest(cli.coordinatorManifest, candidate);
-    stage = "browser-launch";
-    browser = await chromium.launch({
-      executablePath: chromePath,
-      headless: cli.headed ? false : envFlag("FOUNDRY_SMOKE_HEADLESS", true),
-    });
-    gmContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-    playerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-    gmPage = await gmContext.newPage();
-    playerPage = await playerContext.newPage();
+  const runPhase = async (
+    id,
+    operation,
+    { closeContext = null, context = null, progressTimeoutMs = null, timeoutMs = null } = {},
+  ) => {
+    stage = id;
+    const reportedTimeoutMs = progressTimeoutMs ?? timeoutMs;
+    await progress.startPhase(id, reportedTimeoutMs ? { timeoutMs: reportedTimeoutMs } : {});
+    let value;
+    try {
+      value = timeoutMs
+        ? await runWithHardDeadline({
+            closeContext: closeContext ?? (() => context?.close()),
+            operation,
+            phaseId: id,
+            timeoutMs,
+          })
+        : await operation();
+    } catch (error) {
+      try {
+        await progress.failPhase(id, error);
+      } catch (progressError) {
+        recordObservabilityFailure(observabilityFailures, `${id} failure checkpoint`, progressError);
+      }
+      throw error;
+    }
+    try {
+      await progress.finishPhase(id);
+    } catch (error) {
+      recordObservabilityFailure(observabilityFailures, `${id} completion checkpoint`, error);
+      throw error;
+    }
+    return value;
+  };
 
-    stage = "gm-login";
-    await loginToFoundryWorld(gmPage, {
-      foundryUrl: process.env.FOUNDRY_URL || "http://localhost:30000",
-      user: options.gmUser,
-      password: process.env.FOUNDRY_PASSWORD ?? "",
+  try {
+    candidate = await runPhase("candidate-capture", () =>
+      captureCandidate(path.dirname(path.resolve(cli.coordinatorManifest))),
+    );
+    coordinatorManifest = await runPhase("coordinator-manifest", () =>
+      loadCoordinatorManifest(cli.coordinatorManifest, candidate),
+    );
+    await runPhase("browser-launch", async () => {
+      browser = await chromium.launch({
+        executablePath: chromePath,
+        headless: cli.headed ? false : envFlag("FOUNDRY_SMOKE_HEADLESS", true),
+      });
+      gmContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      playerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      gmPage = await gmContext.newPage();
+      playerPage = await playerContext.newPage();
     });
-    await installSuite(gmPage);
-    stage = "served-byte-capture";
-    const servedModuleFiles = await gmPage.evaluate(
-      (payload) => globalThis.__collectWf51ServedModuleFiles(payload),
-      { moduleId: MODULE_ID, paths: candidate.localModuleFiles.map((entry) => entry.path) },
+    await runPhase("gm-login", async () => {
+      await loginToFoundryWorld(gmPage, {
+        foundryUrl: process.env.FOUNDRY_URL || "http://localhost:30000",
+        user: options.gmUser,
+        password: process.env.FOUNDRY_PASSWORD ?? "",
+      });
+      await installSuite(gmPage);
+    });
+    const servedModuleFiles = await runPhase(
+      "served-byte-capture",
+      () =>
+        gmPage.evaluate((payload) => globalThis.__collectWf51ServedModuleFiles(payload), {
+          moduleId: MODULE_ID,
+          paths: candidate.localModuleFiles.map((entry) => entry.path),
+        }),
+      { context: gmContext, timeoutMs: phaseTimeoutMs },
     );
     candidate = bindServedFiles(candidate, servedModuleFiles);
-    stage = "fixture-setup";
-    setup = await gmPage.evaluate(
-      (payload) => globalThis.__prepareWf51ReleaseOverlay(payload),
-      sharedPayload({ options, runId, priorActorIds: coordinatorManifest.actorIds }),
+    boundary = await runPhase(
+      "boundary-capture",
+      async () =>
+        validateWf51RecoveryBoundary(
+          await gmPage.evaluate(
+            (payload) => globalThis.__captureWf51ReleaseOverlayBoundary(payload),
+            boundaryPayload(options, runId),
+          ),
+          { expectedWorldId: options.expectedWorldId, runId },
+        ),
+      { context: gmContext, timeoutMs: phaseTimeoutMs },
+    );
+    setup = await runPhase(
+      "fixture-setup",
+      () =>
+        gmPage.evaluate(
+          (payload) => globalThis.__prepareWf51ReleaseOverlay(payload),
+          sharedPayload({ options, runId, priorActorIds: coordinatorManifest.actorIds }),
+        ),
+      { context: gmContext, timeoutMs: phaseTimeoutMs },
     );
 
-    stage = "player-initial";
-    await loginToFoundryWorld(playerPage, {
-      foundryUrl: process.env.FOUNDRY_URL || "http://localhost:30000",
-      user: options.playerUser,
-      password: process.env.FOUNDRY_SMOKE_PLAYER_PASSWORD ?? "",
+    await runPhase("player-login", async () => {
+      await loginToFoundryWorld(playerPage, {
+        foundryUrl: process.env.FOUNDRY_URL || "http://localhost:30000",
+        user: options.playerUser,
+        password: process.env.FOUNDRY_SMOKE_PLAYER_PASSWORD ?? "",
+      });
+      await installSuite(playerPage);
     });
-    await installSuite(playerPage);
-    initial = await playerPage.evaluate(
-      (payload) => globalThis.__runWf51PlayerInitial(payload),
-      phasePayload(setup, options, runId, setup.playerId),
+    initial = await runPhase(
+      "player-initial",
+      () =>
+        playerPage.evaluate(
+          (payload) => globalThis.__runWf51PlayerInitial(payload),
+          phasePayload(setup, options, runId, setup.playerId),
+        ),
+      { context: playerContext, timeoutMs: phaseTimeoutMs },
     );
 
-    stage = "gm-review";
-    await reloadSuite(gmPage);
-    gm = await gmPage.evaluate(
-      (payload) => globalThis.__runWf51GmPhase(payload),
-      { ...phasePayload(setup, options, runId, setup.gm.id), abpSetting: ABP_SETTING, cases: wf51FocusedCases },
+    await runPhase("gm-review-reload", () => reloadSuite(gmPage));
+    gm = await runPhase(
+      "gm-review",
+      () =>
+        gmPage.evaluate(
+          (payload) => globalThis.__runWf51GmPhase(payload),
+          { ...phasePayload(setup, options, runId, setup.gm.id), abpSetting: ABP_SETTING, cases: wf51FocusedCases },
+        ),
+      { context: gmContext, timeoutMs: phaseTimeoutMs },
     );
 
-    stage = "player-verification";
-    await reloadSuite(playerPage);
-    verification = await playerPage.evaluate(
-      (payload) => globalThis.__runWf51PlayerVerification(payload),
-      phasePayload(setup, options, runId, setup.playerId),
+    await runPhase("player-verification-reload", () => reloadSuite(playerPage));
+    verification = await runPhase(
+      "player-verification",
+      () =>
+        playerPage.evaluate(
+          (payload) => globalThis.__runWf51PlayerVerification(payload),
+          phasePayload(setup, options, runId, setup.playerId),
+        ),
+      { context: playerContext, timeoutMs: phaseTimeoutMs },
     );
     stage = "complete";
   } catch (error) {
+    primaryError = error;
     runError = serializeError(error);
   } finally {
-    stage = runError ? stage : "cleanup";
-    if (setup && gmPage) {
+    const failedStage = runError ? stage : null;
+    if (boundary && browser) {
+      recovery.attempted = true;
       try {
-        await reloadSuite(gmPage);
-        cleanup = await gmPage.evaluate(
-          (payload) => globalThis.__cleanupWf51ReleaseOverlay(payload),
-          {
-            abpSetting: ABP_SETTING,
-            allowDestructive: options.allowDestructive,
-            expectedWorldId: options.expectedWorldId,
-            fixtures: setup.fixtures,
-            judgmentSetting: JUDGMENT_SETTING,
-            moduleId: MODULE_ID,
-            policySetting: POLICY_SETTING,
-            runId,
-            snapshots: setup.snapshots,
-          },
-        );
+        const recoveryDeadlineAt = Date.now() + recoveryTimeoutMs;
+        const recovered = await runPhase("recovery", async () => {
+          if (primaryError instanceof Wf51PhaseDeadlineError && primaryError.contextCloseConfirmed === false) {
+            browser = await restartBrowserForRecovery({
+              browser,
+              chromePath,
+              cli,
+              deadlineAt: recoveryDeadlineAt,
+              timeoutMs: recoveryTimeoutMs,
+            });
+            gmContext = null;
+            gmPage = null;
+            playerContext = null;
+            playerPage = null;
+          }
+          const recoverySession = await createRecoveryGmSession({
+            browser,
+            context: gmContext,
+            deadlineAt: recoveryDeadlineAt,
+            page: gmPage,
+            options,
+            recoveryTimeoutMs,
+          });
+          gmContext = recoverySession.context;
+          gmPage = recoverySession.page;
+          return runWithHardDeadline({
+            closeContext: () => gmContext?.close(),
+            operation: () =>
+              gmPage.evaluate(
+                (payload) => {
+                  if (typeof globalThis.__recoverWf51ReleaseOverlay !== "function") {
+                    throw new Error(
+                      "WF-080-51 requires boundary recovery; __cleanupWf51ReleaseOverlay cannot recover interrupted setup.",
+                    );
+                  }
+                  return globalThis.__recoverWf51ReleaseOverlay(payload);
+                },
+                recoveryPayload(boundary, options, runId),
+              ),
+            phaseId: "recovery-evaluate",
+            timeoutMs: remainingRecoveryMs(recoveryDeadlineAt, recoveryTimeoutMs),
+          });
+        }, { progressTimeoutMs: recoveryTimeoutMs });
+        cleanup = normalizeCleanupEvidence(recovered);
+        assertCompleteWf51Recovery(cleanup);
+        recovery.status = "complete";
       } catch (error) {
-        cleanup.restorationFailures.push(error instanceof Error ? error.message : String(error));
-        if (!runError) runError = serializeError(error);
+        recovery.status = "failed";
+        recovery.failures.push(serializeError(error));
+        cleanup.restorationFailures.push(`recovery failed: ${error instanceof Error ? error.message : String(error)}`);
+        if (!runError) {
+          primaryError = error;
+          runError = serializeError(error);
+        }
+      }
+      try {
+        await progress.recordRecovery({
+          attempted: recovery.attempted,
+          failures: recovery.failures,
+          status: recovery.status,
+        });
+      } catch (error) {
+        recordObservabilityFailure(observabilityFailures, "recovery checkpoint", error);
+        if (!runError) {
+          primaryError = error;
+          runError = serializeError(error);
+        }
       }
     }
+    stage = runError ? (failedStage ?? stage) : "cleanup";
     try {
-      if (playerContext) await playerContext.close();
+      if (playerContext) await closeContextWithDeadline(playerContext, "player-context-close");
     } catch (error) {
       cleanup.restorationFailures.push(`player browser close: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -187,7 +341,22 @@ async function main() {
         else await browser.close();
       } catch (error) {
         cleanup.restorationFailures.push(`GM browser close: ${error instanceof Error ? error.message : String(error)}`);
-        if (!runError) runError = serializeError(error);
+        if (!runError) {
+          primaryError = error;
+          runError = serializeError(error);
+        }
+      }
+    }
+    try {
+      await progress.finish({
+        error: primaryError,
+        stage,
+        status: runError ? "failed" : "complete",
+      });
+    } catch (error) {
+      recordObservabilityFailure(observabilityFailures, "terminal checkpoint", error);
+      if (!runError) {
+        runError = serializeError(error);
       }
     }
   }
@@ -212,6 +381,11 @@ async function main() {
     },
     cases,
     cleanup,
+    recovery,
+    observability: {
+      progressArtifact: path.basename(progress.path),
+      failures: observabilityFailures,
+    },
     error: runError,
   };
   const qualification = qualifyWf51FocusedOverlay(result);
@@ -391,6 +565,32 @@ function sharedPayload({ options, runId, priorActorIds }) {
   };
 }
 
+function boundaryPayload(options, runId) {
+  return {
+    abpSetting: ABP_SETTING,
+    expectedWorldId: options.expectedWorldId,
+    judgmentSetting: JUDGMENT_SETTING,
+    moduleId: MODULE_ID,
+    policySetting: POLICY_SETTING,
+    runId,
+  };
+}
+
+function recoveryPayload(boundary, options, runId) {
+  return {
+    abpSetting: ABP_SETTING,
+    allowDestructive: options.allowDestructive,
+    expectedWorldId: options.expectedWorldId,
+    fixturePrefix: FIXTURE_PREFIX,
+    judgmentSetting: JUDGMENT_SETTING,
+    markerPurpose: MARKER_PURPOSE,
+    moduleId: MODULE_ID,
+    policySetting: POLICY_SETTING,
+    runId,
+    snapshots: boundary.snapshots,
+  };
+}
+
 function phasePayload(setup, options, runId, expectedUserId) {
   return {
     expectedUserId,
@@ -410,6 +610,119 @@ async function reloadSuite(page) {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => globalThis.game?.ready === true, null, { timeout: 60_000 });
   await installSuite(page);
+}
+
+async function createRecoveryGmSession({ browser, context, deadlineAt, page, options, recoveryTimeoutMs }) {
+  let reuseFailure = null;
+  if (context && page && !page.isClosed()) {
+    try {
+      await runWithHardDeadline({
+        closeContext: () => context.close(),
+        operation: () => reloadSuite(page),
+        phaseId: "recovery-page-reload",
+        timeoutMs: remainingRecoveryMs(deadlineAt, recoveryTimeoutMs),
+      });
+      return { context, page, reused: true };
+    } catch (error) {
+      reuseFailure = error;
+      console.warn(`WF-080-51 recovery: existing GM page unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      if (error instanceof Wf51PhaseDeadlineError && error.contextCloseConfirmed === false) {
+        throw new Error("WF-080-51 refused fresh-session recovery while the prior GM context remained active.", {
+          cause: error,
+        });
+      }
+    }
+  }
+  if (context) {
+    const closeTimeoutMs = Math.min(5_000, remainingRecoveryMs(deadlineAt, recoveryTimeoutMs));
+    try {
+      await closeContextWithDeadline(context, "failed-gm-context-close", closeTimeoutMs);
+    } catch (error) {
+      if (!page?.isClosed()) {
+        throw new Error("WF-080-51 could not quiesce the prior GM context before fresh-session recovery.", {
+          cause: error,
+        });
+      }
+    }
+  }
+  const freshContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const freshPage = await freshContext.newPage();
+  try {
+    await runWithHardDeadline({
+      closeContext: () => freshContext.close(),
+      operation: async () => {
+        await loginToFoundryWorld(freshPage, {
+          foundryUrl: process.env.FOUNDRY_URL || "http://localhost:30000",
+          user: options.gmUser,
+          password: process.env.FOUNDRY_PASSWORD ?? "",
+        });
+        await installSuite(freshPage);
+      },
+      phaseId: "recovery-fresh-gm-login",
+      timeoutMs: remainingRecoveryMs(deadlineAt, recoveryTimeoutMs),
+    });
+    return { context: freshContext, page: freshPage, reused: false };
+  } catch (error) {
+    if (!reuseFailure) throw error;
+    throw new AggregateError(
+      [reuseFailure, error],
+      "WF-080-51 could not recover through the existing or a fresh GM session.",
+      { cause: error },
+    );
+  }
+}
+
+async function restartBrowserForRecovery({ browser, chromePath, cli, deadlineAt, timeoutMs }) {
+  const closeTimeoutMs = Math.min(10_000, remainingRecoveryMs(deadlineAt, timeoutMs));
+  try {
+    await runWithHardDeadline({
+      closeContext: () => browser.close(),
+      contextCloseTimeoutMs: Math.min(5_000, closeTimeoutMs),
+      operation: () => browser.close(),
+      phaseId: "recovery-browser-quiescence",
+      timeoutMs: closeTimeoutMs,
+    });
+  } catch (error) {
+    if (!(error instanceof Wf51PhaseDeadlineError) || error.contextCloseConfirmed !== true) throw error;
+  }
+  return runWithHardDeadline({
+    closeContext: () => undefined,
+    operation: () =>
+      chromium.launch({
+        executablePath: chromePath,
+        headless: cli.headed ? false : envFlag("FOUNDRY_SMOKE_HEADLESS", true),
+      }),
+    phaseId: "recovery-browser-relaunch",
+    timeoutMs: remainingRecoveryMs(deadlineAt, timeoutMs),
+  });
+}
+
+function remainingRecoveryMs(deadlineAt, timeoutMs) {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw new Wf51PhaseDeadlineError("recovery", timeoutMs);
+  return remaining;
+}
+
+async function closeContextWithDeadline(context, phaseId, timeoutMs = 5_000) {
+  await runWithHardDeadline({
+    closeContext: () => context.close(),
+    operation: () => context.close(),
+    phaseId,
+    timeoutMs,
+  });
+}
+
+function normalizeCleanupEvidence(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !Array.isArray(value.restorationFailures)) {
+    throw new Error("WF-080-51 recovery did not return cleanup evidence.");
+  }
+  return { ...emptyCleanup(), ...value, restorationFailures: [...value.restorationFailures] };
+}
+
+function recordObservabilityFailure(failures, operation, error) {
+  const failure = `${operation}: ${error instanceof Error ? error.message : String(error)}`;
+  failures.push(failure);
+  console.error(`WF-080-51 observability failure: ${failure}`);
 }
 
 function validateOptions(options) {
@@ -481,11 +794,18 @@ function sha256(value) {
 }
 
 function serializeError(error) {
-  return {
+  const serialized = {
     name: error instanceof Error ? error.name : "Error",
     message: error instanceof Error ? error.message : String(error),
     stack: error instanceof Error && typeof error.stack === "string" ? error.stack : null,
   };
+  if (error instanceof Wf51PhaseDeadlineError) {
+    serialized.phaseId = error.phaseId;
+    serialized.timeoutMs = error.timeoutMs;
+    serialized.contextCloseConfirmed = error.contextCloseConfirmed;
+    serialized.contextCloseError = error.contextCloseError;
+  }
+  return serialized;
 }
 
 function envFlag(name, fallback) {

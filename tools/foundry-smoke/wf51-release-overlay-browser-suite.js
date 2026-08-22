@@ -2107,7 +2107,14 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     "feat",
     "classfeature",
   );
-  await executeAndPersist(actor, titanDraft, { type: "initialize", selectedRecipe: "permanent-items" }, modules, moduleId);
+  await executeAndPersist(
+    actor,
+    titanDraft,
+    { type: "initialize", selectedRecipe: "permanent-items" },
+    modules,
+    moduleId,
+    activeSteps,
+  );
   const runtime = modules.getRuntime();
   const line = await runtime.uiAdapter.prepareTitanMaulerLine({
     actor,
@@ -2119,7 +2126,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     funding: { lane: "currency" },
     sourceUuid: DAGGER_UUID,
   });
-  await executeAndPersist(actor, titanDraft, { type: "add-line", line }, modules, moduleId);
+  await executeAndPersist(actor, titanDraft, { type: "add-line", line }, modules, moduleId, activeSteps);
   const material = titanDraft.acquisition.policySnapshot.material;
   const policy = effectivePolicyFromMaterial(material);
   const titanSubject = {
@@ -2158,7 +2165,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     );
   }
   const projectionEconomicWritesUnchanged = before === snapshotEconomic(modules, actor);
-  await executeAndPersist(actor, titanDraft, { type: "review-purchases" }, modules, moduleId);
+  await executeAndPersist(actor, titanDraft, { type: "review-purchases" }, modules, moduleId, activeSteps);
   const reviewedTitanDraft = modules.normalizeDraft(actor.getFlag(moduleId, "draft"), 1);
   const reviewedTitanAcquisition = reviewedTitanDraft.acquisition;
   const titanPlan = modules.createPreparedPlan({

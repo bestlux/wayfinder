@@ -136,6 +136,9 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(browserSuite).toContain("rejectedRoutes: rejected.map");
     expect(browserSuite).toContain("draftId: titanDraft.acquisition.draftId");
     expect(browserSuite).toContain("...titanSubject");
+    expect(browserSuite).toContain(
+      'executeAndPersist(actor, titanDraft, { type: "review-purchases" }, modules, moduleId, activeSteps)'
+    );
     expect(browserSuite).toContain("EXISTING_IMPORT_SOURCES");
     expect(browserSuite).toContain("snapshotEconomic(modules, existingImportActor)");
     expect(browserSuite).toContain('actor.getFlag("pf2e", "wf51OverlaySentinel")');

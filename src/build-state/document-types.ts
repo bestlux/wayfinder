@@ -2,11 +2,11 @@ import type { AbilityKey } from "../types.js";
 
 export type SingletonItemType = "ancestry" | "heritage" | "background" | "class" | "deity";
 
-export interface BuildStateBoostRecord {
+export interface BuildStateAbilitySlotRecord {
   value: AbilityKey[];
   selected: AbilityKey | null;
 }
-export type EffectiveBoostRecord = BuildStateBoostRecord;
+export type BuildStateBoostRecord = BuildStateAbilitySlotRecord;
 
 export interface BuildStateVoluntaryRecord {
   touched?: boolean;
@@ -27,6 +27,7 @@ export interface BuildStateDocument {
       custom?: string;
     };
     boosts?: Record<string, BuildStateBoostRecord>;
+    flaws?: Record<string, BuildStateAbilitySlotRecord>;
     alternateAncestryBoosts?: unknown;
     languages?: {
       value?: string[];

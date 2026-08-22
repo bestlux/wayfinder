@@ -39,12 +39,15 @@ async function getEffectiveBuildState(actor, draft) {
 }
 function buildEffectiveAncestryState(document, boosts) {
     const boostEntries = Object.entries(document?.system?.boosts ?? {});
+    const normalizedBoosts = normalizeAbilitySlotRecord(document?.system?.boosts, true);
+    const printedFlaws = selectedAbilitiesFromSlotRecord(document?.system?.flaws, true);
     const committedMode = Array.isArray(document?.system?.alternateAncestryBoosts) ? "alternate" : "standard";
     const mode = boosts.ancestry.modeTouched ? boosts.ancestry.mode : committedMode;
-    const selectedBoosts = Object.fromEntries(boostEntries.map(([key, boost]) => [key, boosts.ancestry.selectedBoosts[key] ?? normalizeAbility(boost?.selected)]));
-    const lockedBoosts = boostEntries
-        .flatMap(([, boost]) => (boost.value.length === 1 ? boost.value : []))
-        .filter(isAbilityKey);
+    const selectedBoosts = Object.fromEntries(boostEntries.map(([key]) => [
+        key,
+        normalizeAbility(boosts.ancestry.selectedBoosts[key]) ?? normalizedBoosts[key]?.selected ?? null,
+    ]));
+    const lockedBoosts = Object.values(normalizedBoosts).flatMap((slot) => slot.options.length === 1 && slot.selected ? [slot.selected] : []);
     const alternateBoosts = mode === "alternate"
         ? normalizeAbilityList(boosts.ancestry.modeTouched ? boosts.ancestry.alternateBoosts : document?.system?.alternateAncestryBoosts, 2)
         : [];
@@ -63,14 +66,15 @@ function buildEffectiveAncestryState(document, boosts) {
         lockedBoosts,
         voluntary,
         buildBoosts,
-        buildFlaws: voluntary.enabled ? [...voluntary.flaws] : [],
+        buildFlaws: [...(mode === "standard" ? printedFlaws : []), ...(voluntary.enabled ? voluntary.flaws : [])],
     };
 }
 function buildEffectiveBackgroundState(document, boosts) {
     const boostEntries = Object.entries(document?.system?.boosts ?? {});
-    const selectedBoosts = Object.fromEntries(boostEntries.map(([key, boost]) => [
+    const normalizedBoosts = normalizeAbilitySlotRecord(document?.system?.boosts);
+    const selectedBoosts = Object.fromEntries(boostEntries.map(([key]) => [
         key,
-        boosts.background.selectedBoosts[key] ?? normalizeAbility(boost?.selected),
+        normalizeAbility(boosts.background.selectedBoosts[key]) ?? normalizedBoosts[key]?.selected ?? null,
     ]));
     return {
         document,
@@ -119,6 +123,43 @@ function normalizeAbilityList(value, maxLength = 6) {
     }
     return Array.from(new Set(value.map((entry) => normalizeAbility(entry)).filter((entry) => entry !== null))).slice(0, maxLength);
 }
+function normalizeAbilitySlotRecord(value, inferSoleSelection = false) {
+    if (!isRecord(value)) {
+        return {};
+    }
+    return Object.fromEntries(Object.entries(value).flatMap(([key, slot]) => {
+        const normalized = normalizeAbilitySlot(slot, inferSoleSelection);
+        return normalized ? [[key, normalized]] : [];
+    }));
+}
+function selectedAbilitiesFromSlotRecord(value, inferSoleSelection = false) {
+    return Object.values(normalizeAbilitySlotRecord(value, inferSoleSelection)).flatMap((slot) => slot.selected ? [slot.selected] : []);
+}
+function normalizeAbilitySlot(value, inferSoleSelection) {
+    if (!isRecord(value) || !Array.isArray(value.value) || value.value.length === 0) {
+        return null;
+    }
+    const options = value.value.map((entry) => normalizeAbility(entry));
+    if (options.some((entry) => entry === null)) {
+        return null;
+    }
+    const normalizedOptions = options;
+    if (new Set(normalizedOptions).size !== normalizedOptions.length) {
+        return null;
+    }
+    const hasPreparedSelection = value.selected !== null && value.selected !== undefined;
+    const preparedSelection = normalizeAbility(value.selected);
+    if (preparedSelection && normalizedOptions.includes(preparedSelection)) {
+        return { options: normalizedOptions, selected: preparedSelection };
+    }
+    if (hasPreparedSelection && !(inferSoleSelection && normalizedOptions.length === 1)) {
+        return null;
+    }
+    return {
+        options: normalizedOptions,
+        selected: inferSoleSelection && normalizedOptions.length === 1 ? normalizedOptions[0] : null,
+    };
+}
 function normalizeStringList(value) {
     if (!Array.isArray(value)) {
         return [];
@@ -146,6 +187,9 @@ function normalizeVoluntaryState(value) {
 }
 function isAbilityKey(value) {
     return typeof value === "string" && ABILITY_KEYS.includes(value);
+}
+function isRecord(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
 }
 function toNonNegativeNumber(value) {
     const numeric = Number(value);

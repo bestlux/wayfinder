@@ -76,7 +76,7 @@ describe("build-state", () => {
     expect(buildState.levelBoosts[1]).toEqual(["cha", "con", "dex", "int"]);
     expect(buildState.levelBoosts[5]).toEqual(["wis", "cha"]);
     expect(buildState.class?.selectedKeyAbility).toBe("int");
-    expect(buildState.projectedAbilities.str.flawCount).toBe(2);
+    expect(buildState.projectedAbilities.str.flawCount).toBe(3);
     expect(buildState.projectedAbilities.int.modifier).toBe(3);
     expect(buildState.projectedAbilities.cha.modifier).toBe(3);
     expect(buildState.languages).toEqual({
@@ -176,6 +176,137 @@ describe("build-state", () => {
       flaws: ["str", "str"],
     });
   });
+
+  it.each([
+    ["Lizardfolk", "int"],
+    ["Elf", "con"],
+  ] as const)("projects %s's prepared %s flaw", async (name, flaw) => {
+    const actor = actorWithAncestry({
+      name,
+      type: "ancestry",
+      system: {
+        boosts: {
+          fixed: { value: ["str"], selected: "str" },
+        },
+        flaws: {
+          fixed: { value: [flaw], selected: flaw },
+        },
+      },
+    });
+
+    const buildState = await getEffectiveBuildState(actor, createEmptyDraft(1));
+
+    expect(buildState.ancestry?.buildBoosts).toEqual(["str"]);
+    expect(buildState.ancestry?.buildFlaws).toEqual([flaw]);
+    expect(buildState.projectedAbilities[flaw].flawCount).toBe(1);
+    expect(buildState.projectedAbilities[flaw].modifier).toBe(-1);
+  });
+
+  it("falls back to a sole source value for unprepared printed boost and flaw slots", async () => {
+    const actor = actorWithAncestry({
+      name: "Lizardfolk",
+      type: "ancestry",
+      system: {
+        boosts: {
+          fixed: { value: ["wis"], selected: "cha" },
+        },
+        flaws: {
+          fixed: { value: ["int"], selected: "" },
+        },
+      },
+    });
+
+    const buildState = await getEffectiveBuildState(actor, createEmptyDraft(1));
+
+    expect(buildState.ancestry?.selectedBoosts).toEqual({ fixed: "wis" });
+    expect(buildState.ancestry?.lockedBoosts).toEqual(["wis"]);
+    expect(buildState.ancestry?.buildBoosts).toEqual(["wis"]);
+    expect(buildState.ancestry?.buildFlaws).toEqual(["int"]);
+  });
+
+  it("does not infer a sole background boost without an explicit selection", async () => {
+    const actor = {
+      system: {},
+      items: {
+        contents: [
+          {
+            id: "background-1",
+            name: "Custom Background",
+            type: "background",
+            system: {
+              boosts: {
+                fixed: { value: ["int"], selected: null },
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const buildState = await getEffectiveBuildState(actor, createEmptyDraft(1));
+
+    expect(buildState.background?.selectedBoosts).toEqual({ fixed: null });
+    expect(buildState.background?.buildBoosts).toEqual([]);
+    expect(buildState.projectedAbilities.int.boostCount).toBe(0);
+  });
+
+  it("ignores printed flaws in alternate mode while retaining voluntary flaws", async () => {
+    const actor = actorWithAncestry({
+      name: "Elf",
+      type: "ancestry",
+      system: {
+        alternateAncestryBoosts: ["dex", "int"],
+        boosts: {
+          fixed: { value: ["dex"], selected: "dex" },
+        },
+        flaws: {
+          fixed: { value: ["con"], selected: "con" },
+        },
+      },
+    });
+    const draft = createEmptyDraft(1);
+    draft.boosts.ancestry.voluntary = {
+      touched: true,
+      enabled: true,
+      legacy: false,
+      boost: null,
+      flaws: ["str"],
+    };
+
+    const buildState = await getEffectiveBuildState(actor, draft);
+
+    expect(buildState.ancestry?.mode).toBe("alternate");
+    expect(buildState.ancestry?.buildBoosts).toEqual(["dex", "int"]);
+    expect(buildState.ancestry?.buildFlaws).toEqual(["str"]);
+    expect(buildState.projectedAbilities.con.flawCount).toBe(0);
+    expect(buildState.projectedAbilities.str.flawCount).toBe(1);
+  });
+
+  it("fail-closes malformed and unresolved multi-option printed slots", async () => {
+    const actor = actorWithAncestry({
+      name: "Malformed Ancestry",
+      type: "ancestry",
+      system: {
+        boosts: {},
+        flaws: {
+          prepared: { value: ["con"], selected: "con" },
+          unresolved: { value: ["int", "wis"], selected: null },
+          invalidOption: { value: ["str", "invalid"], selected: null },
+          mismatchedSelection: { value: ["dex", "wis"], selected: "cha" },
+          duplicate: { value: ["int", "int"], selected: "int" },
+        },
+      },
+    });
+
+    const buildState = await getEffectiveBuildState(actor, createEmptyDraft(1));
+
+    expect(buildState.ancestry?.buildFlaws).toEqual(["con"]);
+    expect(
+      Object.fromEntries(
+        Object.entries(buildState.projectedAbilities).map(([key, ability]) => [key, ability.flawCount])
+      )
+    ).toEqual({ str: 0, dex: 0, con: 1, int: 0, wis: 0, cha: 0 });
+  });
 });
 
 function setPack(id: string, documents: Record<string, any>): void {
@@ -268,6 +399,20 @@ function classDocument(name: string): any {
         value: ["int", "wis"],
         selected: null,
       },
+    },
+  };
+}
+
+function actorWithAncestry(ancestry: any): any {
+  return {
+    system: {},
+    items: {
+      contents: [
+        {
+          id: "ancestry-1",
+          ...ancestry,
+        },
+      ],
     },
   };
 }

@@ -1,6 +1,6 @@
 import { allowedAbilityBoosts, BOOST_LEVELS, isGradualAbilityBoostsEnabled } from "./ability-boost-progression.js";
 import { type ProjectedAbilityState, projectAbilities } from "./build-state/ability-projection.js";
-import type { BuildStateActor, BuildStateDocument, EffectiveBoostRecord } from "./build-state/document-types.js";
+import type { BuildStateActor, BuildStateDocument } from "./build-state/document-types.js";
 import { getEffectiveSingletonDocument, listActorItems } from "./build-state/singleton-resolution.js";
 import { ABILITY_KEYS } from "./constants.js";
 import type { AbilityKey, BoostDraftState, BoostLevel, DraftState } from "./types.js";
@@ -91,16 +91,21 @@ async function getEffectiveBuildState(actor: BuildStateActor, draft: DraftState)
 }
 
 function buildEffectiveAncestryState(document: BuildStateDocument, boosts: BoostDraftState): EffectiveAncestryState {
-  const boostEntries = Object.entries(document?.system?.boosts ?? {}) as Array<[string, EffectiveBoostRecord]>;
+  const boostEntries = Object.entries(document?.system?.boosts ?? {});
+  const normalizedBoosts = normalizeAbilitySlotRecord(document?.system?.boosts, true);
+  const printedFlaws = selectedAbilitiesFromSlotRecord(document?.system?.flaws, true);
   const committedMode = Array.isArray(document?.system?.alternateAncestryBoosts) ? "alternate" : "standard";
   const mode = boosts.ancestry.modeTouched ? boosts.ancestry.mode : committedMode;
   const selectedBoosts = Object.fromEntries(
-    boostEntries.map(([key, boost]) => [key, boosts.ancestry.selectedBoosts[key] ?? normalizeAbility(boost?.selected)])
+    boostEntries.map(([key]) => [
+      key,
+      normalizeAbility(boosts.ancestry.selectedBoosts[key]) ?? normalizedBoosts[key]?.selected ?? null,
+    ])
   ) as Record<string, AbilityKey | null>;
 
-  const lockedBoosts = boostEntries
-    .flatMap(([, boost]) => (boost.value.length === 1 ? boost.value : []))
-    .filter(isAbilityKey);
+  const lockedBoosts = Object.values(normalizedBoosts).flatMap((slot) =>
+    slot.options.length === 1 && slot.selected ? [slot.selected] : []
+  );
   const alternateBoosts =
     mode === "alternate"
       ? normalizeAbilityList(
@@ -128,7 +133,7 @@ function buildEffectiveAncestryState(document: BuildStateDocument, boosts: Boost
     lockedBoosts,
     voluntary,
     buildBoosts,
-    buildFlaws: voluntary.enabled ? [...voluntary.flaws] : [],
+    buildFlaws: [...(mode === "standard" ? printedFlaws : []), ...(voluntary.enabled ? voluntary.flaws : [])],
   };
 }
 
@@ -136,11 +141,12 @@ function buildEffectiveBackgroundState(
   document: BuildStateDocument,
   boosts: BoostDraftState
 ): EffectiveBackgroundState {
-  const boostEntries = Object.entries(document?.system?.boosts ?? {}) as Array<[string, EffectiveBoostRecord]>;
+  const boostEntries = Object.entries(document?.system?.boosts ?? {});
+  const normalizedBoosts = normalizeAbilitySlotRecord(document?.system?.boosts);
   const selectedBoosts = Object.fromEntries(
-    boostEntries.map(([key, boost]) => [
+    boostEntries.map(([key]) => [
       key,
-      boosts.background.selectedBoosts[key] ?? normalizeAbility(boost?.selected),
+      normalizeAbility(boosts.background.selectedBoosts[key]) ?? normalizedBoosts[key]?.selected ?? null,
     ])
   ) as Record<string, AbilityKey | null>;
 
@@ -218,6 +224,60 @@ function normalizeAbilityList(value: unknown, maxLength = 6): AbilityKey[] {
   ).slice(0, maxLength);
 }
 
+interface NormalizedAbilitySlot {
+  options: AbilityKey[];
+  selected: AbilityKey | null;
+}
+
+function normalizeAbilitySlotRecord(value: unknown, inferSoleSelection = false): Record<string, NormalizedAbilitySlot> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, slot]) => {
+      const normalized = normalizeAbilitySlot(slot, inferSoleSelection);
+      return normalized ? [[key, normalized]] : [];
+    })
+  );
+}
+
+function selectedAbilitiesFromSlotRecord(value: unknown, inferSoleSelection = false): AbilityKey[] {
+  return Object.values(normalizeAbilitySlotRecord(value, inferSoleSelection)).flatMap((slot) =>
+    slot.selected ? [slot.selected] : []
+  );
+}
+
+function normalizeAbilitySlot(value: unknown, inferSoleSelection: boolean): NormalizedAbilitySlot | null {
+  if (!isRecord(value) || !Array.isArray(value.value) || value.value.length === 0) {
+    return null;
+  }
+
+  const options = value.value.map((entry) => normalizeAbility(entry));
+  if (options.some((entry) => entry === null)) {
+    return null;
+  }
+
+  const normalizedOptions = options as AbilityKey[];
+  if (new Set(normalizedOptions).size !== normalizedOptions.length) {
+    return null;
+  }
+
+  const hasPreparedSelection = value.selected !== null && value.selected !== undefined;
+  const preparedSelection = normalizeAbility(value.selected);
+  if (preparedSelection && normalizedOptions.includes(preparedSelection)) {
+    return { options: normalizedOptions, selected: preparedSelection };
+  }
+  if (hasPreparedSelection && !(inferSoleSelection && normalizedOptions.length === 1)) {
+    return null;
+  }
+
+  return {
+    options: normalizedOptions,
+    selected: inferSoleSelection && normalizedOptions.length === 1 ? normalizedOptions[0] : null,
+  };
+}
+
 function normalizeStringList(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -255,6 +315,10 @@ function normalizeVoluntaryState(
 
 function isAbilityKey(value: unknown): value is AbilityKey {
   return typeof value === "string" && ABILITY_KEYS.includes(value as AbilityKey);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function toNonNegativeNumber(value: unknown): number {

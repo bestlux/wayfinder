@@ -928,6 +928,24 @@ async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) 
   const state = modules.normalizeState(actor.getFlag(moduleId, "state"));
   const manifest = state.completedAcquisitionManifest;
   const formula = afterRetry[0];
+  const materializationDiagnostic = {
+    firstFailure: firstFailure
+      ? {
+          message: firstFailure.message ?? String(firstFailure),
+          phase: firstFailure.phase ?? null,
+          failureKind: firstFailure.failureKind ?? null,
+          checkpoint: firstFailure.checkpoint?.checkpointId ?? null,
+          observedCheckpoints: (firstFailure.wf51Checkpoints ?? []).map((entry) => entry.checkpointId),
+        }
+      : null,
+    retryKind: retry.result.kind,
+    afterFailure: afterFailure.map((item) => item.id),
+    afterRetry: afterRetry.map((item) => item.id),
+    methodologyItems: methodologyItems.map((item) => item.id),
+    formulaGrantedById: formula?.flags?.pf2e?.grantedBy?.id ?? null,
+    acquisitionStamped: formula?.getFlag?.(moduleId, "acquisition") != null,
+    manifestPresent: Boolean(manifest),
+  };
   if (
     !firstFailure ||
     firstFailure.checkpoint?.checkpointId !== "phase:class-grant-reconcile-final:after" ||
@@ -940,7 +958,9 @@ async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) 
     formula?.getFlag?.(moduleId, "acquisition") != null ||
     !manifest
   ) {
-    throw new Error("WF-080-51 Investigator Formula Book materialization or retry evidence is incomplete.");
+    throw new Error(
+      `WF-080-51 Investigator Formula Book materialization or retry evidence is incomplete: ${JSON.stringify(materializationDiagnostic)}.`,
+    );
   }
   const grant = manifest.classGrants.find(
     (entry) => entry.grant.grantId === "class-grant:investigator-formula-book:class-branch-methodology-level-1",

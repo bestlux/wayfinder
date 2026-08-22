@@ -548,7 +548,7 @@ Acceptance if undertaken:
 
 ## Wave 5 — Prove and package the exact release
 
-Implementation status (2026-08-21): `WF-080-50`'s executable contract suite is complete. The candidate also centralizes ordered skill progression and all physical-grant support/handoff behavior, with exact scanner-to-runtime classification and pre-review zero-write rejection for unsupported routes. The `WF-080-51` exact release coordinator and `WF-080-52` package binder are built and reviewed, but their live and packaged proof has not yet run against the immutable 0.8.0 candidate. Wave 5 and the release therefore remain incomplete; nothing in this note claims a push, tag, publication, or Foundry package registration.
+Implementation status (2026-08-21): `WF-080-50`'s executable contract suite is complete. The candidate also centralizes ordered skill progression and all physical-grant support/handoff behavior, with exact scanner-to-runtime classification and pre-review zero-write rejection for unsupported routes. Adjacent player-trust hardening normalizes PF2E-prepared fixed ancestry flaws at the build-state boundary (issue #32); that correction is release scope, not an equipment wave. The `WF-080-51` exact release coordinator and `WF-080-52` package binder are built and reviewed, but their live and packaged proof has not yet run against the immutable 0.8.0 candidate. Wave 5 and the release therefore remain incomplete; nothing in this note claims a push, tag, publication, or Foundry package registration.
 
 ### WF-080-50 — Automated contract suite
 

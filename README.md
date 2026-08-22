@@ -47,6 +47,8 @@ Foundry's package updater will follow it for future versions. Older releases sta
 
 Wayfinder is a planning layer on top of the PF2E system, not a replacement for it. The actor and its items remain the source of truth; Wayfinder's job is to get you to a clean, valid state without clicking through twelve places to do it.
 
+Wayfinder evaluates ancestry boosts and fixed ancestry flaws before it calculates later choices, so ability projections, skill training, and supported prerequisites follow the effective character build. Selecting PF2E's alternate ancestry boosts replaces the printed boost-and-flaw set as normal.
+
 ## Starting Equipment
 
 Starting Equipment is creation-time acquisition, not a persistent shop. A blank level-1 character receives the official 15 gp budget. A higher-level new or replacement character requires a current GM-approved start context, then uses either the permanent-items-plus-currency recipe or the optional lump sum according to world policy. The catalogue shows price, quantity, Bulk, hands, traits, rarity, level, source, and allowance context; the Adventurer's Pack expands into its contained items during Apply.

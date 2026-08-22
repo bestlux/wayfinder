@@ -114,6 +114,8 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(browserSuite).toContain("async function activatePickerStep");
     expect(browserSuite).toContain("results && results !== previous && document.activeElement === heading");
     expect(browserSuite).toContain("pickerSurfaceDiagnostic(app)");
+    expect(browserSuite).toContain("function pickerValueFromUuid");
+    expect(browserSuite).toContain('data-value="${pickerValue}"');
     expect(browserSuite).toContain("EXISTING_IMPORT_SOURCES");
     expect(browserSuite).toContain("snapshotEconomic(modules, existingImportActor)");
     expect(browserSuite).toContain('actor.getFlag("pf2e", "wf51OverlaySentinel")');

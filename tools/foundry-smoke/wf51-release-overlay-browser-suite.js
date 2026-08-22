@@ -537,10 +537,21 @@ function pickerSurfaceDiagnostic(app) {
   const viewRevision = results.dataset.wayfinderViewRevision ?? "<missing>";
   const sourceRevision = results.dataset.wayfinderSourceRevision ?? "<missing>";
   const resultCount = results.dataset.wayfinderResultCount ?? "<missing>";
-  return `picker step=${stepId} query=${JSON.stringify(query)} view=${viewRevision} source=${sourceRevision} count=${resultCount}`;
+  const options = [...results.querySelectorAll('[data-wayfinder-action="preview-option"]')].map((option) => ({
+    value: option.dataset.value ?? "<missing>",
+    name: option.querySelector(".option-name")?.textContent?.trim() ?? "<missing>",
+  }));
+  return `picker step=${stepId} query=${JSON.stringify(query)} view=${viewRevision} source=${sourceRevision} count=${resultCount} options=${JSON.stringify(options)}`;
+}
+
+function pickerValueFromUuid(uuid) {
+  const match = /^Compendium\.(.+)\.Item\.([^.]+)$/u.exec(uuid);
+  if (!match) throw new Error(`WF-080-51 cannot derive a picker value from ${uuid}.`);
+  return `${match[1]}:${match[2]}`;
 }
 
 async function choosePickerOption(app, actor, modules, moduleId, uuid, query) {
+  const pickerValue = pickerValueFromUuid(uuid);
   await activatePickerStep(app, ANCESTRY_STEP_ID);
   const search = await waitForValue(
     () => app.element?.querySelector(`input[data-wayfinder-search][data-step-id="${ANCESTRY_STEP_ID}"]`),
@@ -556,7 +567,7 @@ async function choosePickerOption(app, actor, modules, moduleId, uuid, query) {
           `[data-application-part="picker-results"][data-step-id="${ANCESTRY_STEP_ID}"][data-wayfinder-rendered-query="${query}"]`,
         );
         const candidate = settled?.querySelector(
-          `[data-wayfinder-action="preview-option"][data-value="${uuid}"]`,
+          `[data-wayfinder-action="preview-option"][data-value="${pickerValue}"]`,
         );
         return settled?.isConnected && candidate?.isConnected ? candidate : null;
       },
@@ -569,7 +580,7 @@ async function choosePickerOption(app, actor, modules, moduleId, uuid, query) {
   }
   preview.click();
   const select = await waitForValue(
-    () => app.element?.querySelector(`[data-wayfinder-action="select-option"][data-value="${uuid}"]`),
+    () => app.element?.querySelector(`[data-wayfinder-action="select-option"][data-value="${pickerValue}"]`),
     `the production picker selection ${uuid}`,
   );
   const generation = watchDraftSaveGeneration(app, `the picker selection ${uuid}`);

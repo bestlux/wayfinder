@@ -207,30 +207,80 @@
   scrollbar-color: var(--wf-rule) transparent;
 }
 
-/* ── Level Group Dividers ──────────────────────────────── */
+/* ── Level Disclosures ─────────────────────────────────── */
 
-.step-level-divider {
+.rail-level-group {
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(95, 77, 57, 0.12);
+}
+
+.rail-level-summary {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.55rem 0.15rem;
-  flex-shrink: 0;
+  gap: 0.34rem;
+  min-height: 1.65rem;
+  padding: 0.25rem 0.55rem;
+  color: var(--wf-ink-soft);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
 }
 
-.step-level-divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--wf-rule);
+.rail-level-summary::-webkit-details-marker {
+  display: none;
 }
 
-.step-level-divider-label {
+.rail-level-summary:hover {
+  background: rgba(94, 0, 0, 0.04);
+}
+
+.rail-level-summary:focus-visible {
+  outline: 2px solid var(--wf-primary);
+  outline-offset: -2px;
+}
+
+.rail-level-group.active > .rail-level-summary {
+  cursor: default;
+}
+
+.rail-level-chevron {
+  width: 0.55rem;
+  color: var(--wf-accent-contrast);
+  font-size: 0.48rem;
+  text-align: center;
+  transition: transform var(--wf-transition);
+}
+
+.rail-level-group[open] > .rail-level-summary .rail-level-chevron {
+  transform: rotate(90deg);
+}
+
+.rail-level-label {
   color: var(--wf-accent-contrast);
   font: 700 0.5rem / 1 var(--sans-serif, sans-serif);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
-  flex-shrink: 0;
+}
+
+.rail-level-progress {
+  margin-left: auto;
+  font: 700 0.5rem / 1 var(--sans-serif, sans-serif);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.rail-level-warning {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wf-warn);
+  font-size: 0.58rem;
+}
+
+.rail-level-steps {
+  display: flex;
+  flex-direction: column;
 }
 
 .step-link {

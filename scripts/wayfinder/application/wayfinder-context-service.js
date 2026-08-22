@@ -1,5 +1,6 @@
 import { modeLabel } from "../plan-service.js";
 import { spellRarityAttestationBasisLabel } from "../spell-choice/rarity-attestation.js";
+import { deriveRailLevelDisclosures, emptyRailLevelDisclosureState, } from "./rail-level-disclosure-state.js";
 export async function buildWayfinderContext(args) {
     const summary = buildSummaryItems(args.summaryDocuments);
     const dossierLine = summary
@@ -32,6 +33,7 @@ export async function buildWayfinderContext(args) {
             firstInLevel: index === 0 || args.steps[index - 1]?.level !== step.level,
         };
     });
+    const railLevels = deriveRailLevelDisclosures(stepRows, args.railLevelDisclosureState ?? emptyRailLevelDisclosureState());
     return {
         actorName: args.actorName,
         dossierLine,
@@ -50,6 +52,8 @@ export async function buildWayfinderContext(args) {
         statusNoteIsError: args.statusNoteIsError ?? false,
         planningNote: args.planningNote ?? null,
         steps: stepRows,
+        levelGroups: railLevels.groups,
+        railLevelDisclosureState: railLevels.state,
         activePane: args.activePane,
         canGoPrevious: activeStepIndex > 0,
         canGoNext: activeStepIndex >= 0 && activeStepIndex < args.steps.length - 1,

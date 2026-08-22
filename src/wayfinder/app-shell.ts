@@ -147,6 +147,11 @@ import {
 import { derivePickerRenderSession, type PickerRenderSession } from "./application/picker-render-session.js";
 import { type PickerSearchRequest, PickerSearchScheduler } from "./application/picker-search-scheduler.js";
 import {
+  emptyRailLevelDisclosureState,
+  type RailLevelDisclosureState,
+  setRailLevelExpansionOverride,
+} from "./application/rail-level-disclosure-state.js";
+import {
   chooseSelectionOption,
   type SelectionCommandResult,
   type SelectionCommandState,
@@ -381,6 +386,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   #equipmentScheduledRenderIntent: Extract<StartingEquipmentRenderIntent, "search" | "facet"> = "search";
   #cachedRenderPlan: ProgressionPlan | null = null;
   #recentlyInvalidatedStepIds = new Set<string>();
+  #railLevelDisclosureState: RailLevelDisclosureState = emptyRailLevelDisclosureState();
   #statusNote: string | null = null;
   #statusErrorMessage: string | null = null;
   #startingEquipmentErrorFocus = new StartingEquipmentErrorFocusCoordinator();
@@ -747,41 +753,41 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             pane: activePane,
           })
         : null;
-    return Object.assign(
-      await buildWayfinderContext({
-        actorId: this.actor.id,
-        actorName: this.actor.name,
-        currentLevel: snapshot.level,
-        targetLevel: plan.targetLevel,
-        steps: plan.steps,
-        activeStep,
-        activePane,
-        statusNote: this.#statusNote,
-        statusNoteIsError: this.#statusNote !== null && this.#statusNote === this.#statusErrorMessage,
-        planningNote,
-        summaryDocuments: {
-          ancestry: effectiveAncestry,
-          heritage: effectiveHeritage,
-          background: effectiveBackground,
-          classDocument: effectiveClass,
-          deity: effectiveDeity,
-        },
-        readiness,
-        canImportExistingHistory: !snapshot.isBlank,
-        existingCharacterHistory: state.existingCharacterHistory,
-        lastAppliedSpellRarityAttestations: state.lastAppliedSpellRarityAttestations,
-        acquisitionReceipt,
-        draftSaveState: this.#draftPersistence.state,
-        lifecycleBusy: this.#semanticCommands.barrierActive,
-      }),
-      {
-        wayfinderRenderScope: "full" as const,
-        pickerRenderSession,
-        pickerSourceRevision: numericRenderOption(options.wayfinderPickerSourceRevision),
-        equipmentRenderSession,
-        equipmentSourceRevision,
-      }
-    );
+    const templateContext = await buildWayfinderContext({
+      actorId: this.actor.id,
+      actorName: this.actor.name,
+      currentLevel: snapshot.level,
+      targetLevel: plan.targetLevel,
+      steps: plan.steps,
+      activeStep,
+      activePane,
+      statusNote: this.#statusNote,
+      statusNoteIsError: this.#statusNote !== null && this.#statusNote === this.#statusErrorMessage,
+      planningNote,
+      summaryDocuments: {
+        ancestry: effectiveAncestry,
+        heritage: effectiveHeritage,
+        background: effectiveBackground,
+        classDocument: effectiveClass,
+        deity: effectiveDeity,
+      },
+      readiness,
+      canImportExistingHistory: !snapshot.isBlank,
+      existingCharacterHistory: state.existingCharacterHistory,
+      lastAppliedSpellRarityAttestations: state.lastAppliedSpellRarityAttestations,
+      acquisitionReceipt,
+      draftSaveState: this.#draftPersistence.state,
+      lifecycleBusy: this.#semanticCommands.barrierActive,
+      railLevelDisclosureState: this.#railLevelDisclosureState,
+    });
+    this.#railLevelDisclosureState = templateContext.railLevelDisclosureState;
+    return Object.assign(templateContext, {
+      wayfinderRenderScope: "full" as const,
+      pickerRenderSession,
+      pickerSourceRevision: numericRenderOption(options.wayfinderPickerSourceRevision),
+      equipmentRenderSession,
+      equipmentSourceRevision,
+    });
   }
 
   _replaceHTML(result: Record<string, HTMLElement>, content: HTMLElement, options: WayfinderRenderOptions): void {
@@ -1153,6 +1159,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#pendingStepFocusId = action.stepId;
         this.#pendingControlFocusId = action.focusId ?? null;
         this.#pendingActiveStepVisibility = Boolean(action.focusId);
+        this.render(false);
+        break;
+      case "toggle-rail-level":
+        this.#railLevelDisclosureState = setRailLevelExpansionOverride(
+          this.#railLevelDisclosureState,
+          action.level,
+          action.expanded
+        );
+        this.#pendingControlFocusId = `rail-level-${action.level}`;
         this.render(false);
         break;
       case "previous-step":
@@ -2691,6 +2706,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     if (!adjustDraftTargetLevel(draft, snapshot.level, delta)) {
       return;
     }
+    this.#pendingActiveStepVisibility = true;
     if ((await this.#selectionInvalidationService(draft).invalidateOrphanedSpellChoices()).length > 0) {
       this.#statusNote = "Wayfinder removed player spell attestations whose steps are no longer in the plan.";
     }

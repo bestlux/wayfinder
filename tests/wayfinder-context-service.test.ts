@@ -74,6 +74,16 @@ describe("wayfinder context service", () => {
         firstInLevel: false,
       }),
     ]);
+    expect(context.levelGroups).toEqual([
+      expect.objectContaining({
+        level: 1,
+        completedCount: 2,
+        stepCount: 3,
+        active: true,
+        invalidated: true,
+        expanded: true,
+      }),
+    ]);
   });
 
   it("falls back to missing labels and hides deity when it is not relevant", async () => {

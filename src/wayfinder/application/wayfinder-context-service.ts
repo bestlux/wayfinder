@@ -8,8 +8,13 @@ import { type WayfinderDraftReadiness, type WayfinderStepIssue } from "../domain
 import type { AcquisitionReceiptViewModel } from "../panes/acquisition-receipt.js";
 import { modeLabel } from "../plan-service.js";
 import { spellRarityAttestationBasisLabel } from "../spell-choice/rarity-attestation.js";
-import type { ActivePane, StepNavRow, SummaryItem } from "../view-models.js";
+import type { ActivePane, RailLevelGroup, StepNavRow, SummaryItem } from "../view-models.js";
 import type { DraftSaveState } from "./draft-persistence-service.js";
+import {
+  deriveRailLevelDisclosures,
+  emptyRailLevelDisclosureState,
+  type RailLevelDisclosureState,
+} from "./rail-level-disclosure-state.js";
 
 interface NamedDocument {
   name: string;
@@ -42,6 +47,7 @@ export interface BuildWayfinderContextArgs {
   acquisitionReceipt?: AcquisitionReceiptViewModel | null;
   draftSaveState?: DraftSaveState;
   lifecycleBusy?: boolean;
+  railLevelDisclosureState?: RailLevelDisclosureState;
 }
 
 export interface WayfinderTemplateContext {
@@ -62,6 +68,8 @@ export interface WayfinderTemplateContext {
   statusNoteIsError: boolean;
   planningNote: string | null;
   steps: StepNavRow[];
+  levelGroups: readonly RailLevelGroup[];
+  railLevelDisclosureState: RailLevelDisclosureState;
   activePane: ActivePane | null;
   canGoPrevious: boolean;
   canGoNext: boolean;
@@ -139,6 +147,10 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
       firstInLevel: index === 0 || args.steps[index - 1]?.level !== step.level,
     };
   });
+  const railLevels = deriveRailLevelDisclosures(
+    stepRows,
+    args.railLevelDisclosureState ?? emptyRailLevelDisclosureState()
+  );
 
   return {
     actorName: args.actorName,
@@ -158,6 +170,8 @@ export async function buildWayfinderContext(args: BuildWayfinderContextArgs): Pr
     statusNoteIsError: args.statusNoteIsError ?? false,
     planningNote: args.planningNote ?? null,
     steps: stepRows,
+    levelGroups: railLevels.groups,
+    railLevelDisclosureState: railLevels.state,
     activePane: args.activePane,
     canGoPrevious: activeStepIndex > 0,
     canGoNext: activeStepIndex >= 0 && activeStepIndex < args.steps.length - 1,

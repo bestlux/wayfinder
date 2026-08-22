@@ -78,6 +78,13 @@ export function parseWayfinderAction(element) {
                     ...(element.dataset.focusId ? { focusId: element.dataset.focusId } : {}),
                 }
                 : null;
+        case "toggle-rail-level": {
+            const level = Number(element.dataset.level);
+            const open = element.dataset.levelOpen;
+            return Number.isInteger(level) && level >= 1 && (open === "true" || open === "false")
+                ? { type: action, level, expanded: open !== "true" }
+                : null;
+        }
         case "previous-step":
         case "next-step":
         case "target-up":

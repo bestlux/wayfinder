@@ -2,6 +2,7 @@ import type { AbilityKey, PickerFilterKind, PickerFilterMenuKind } from "../type
 
 export type WayfinderAction =
   | { type: "select-step"; stepId: string; focusId?: string }
+  | { type: "toggle-rail-level"; level: number; expanded: boolean }
   | { type: "previous-step" }
   | { type: "next-step" }
   | { type: "preview-option"; stepId: string; value: string }
@@ -189,6 +190,13 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
             ...(element.dataset.focusId ? { focusId: element.dataset.focusId } : {}),
           }
         : null;
+    case "toggle-rail-level": {
+      const level = Number(element.dataset.level);
+      const open = element.dataset.levelOpen;
+      return Number.isInteger(level) && level >= 1 && (open === "true" || open === "false")
+        ? { type: action, level, expanded: open !== "true" }
+        : null;
+    }
     case "previous-step":
     case "next-step":
     case "target-up":

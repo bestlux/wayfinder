@@ -21,6 +21,16 @@ export interface StepNavRow {
   firstInLevel: boolean;
 }
 
+export interface RailLevelGroup {
+  level: number;
+  steps: readonly StepNavRow[];
+  completedCount: number;
+  stepCount: number;
+  active: boolean;
+  invalidated: boolean;
+  expanded: boolean;
+}
+
 export interface SummaryItem {
   label: string;
   value: string;

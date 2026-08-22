@@ -7,6 +7,19 @@ import {
 } from "../src/wayfinder/actions";
 
 describe("Wayfinder actions", () => {
+  it("parses rail level disclosure toggles as ephemeral view actions", () => {
+    const collapse = {
+      dataset: { wayfinderAction: "toggle-rail-level", level: "5", levelOpen: "true" },
+    } as unknown as HTMLElement;
+    const expand = {
+      dataset: { wayfinderAction: "toggle-rail-level", level: "5", levelOpen: "false" },
+    } as unknown as HTMLElement;
+
+    expect(parseWayfinderAction(collapse)).toEqual({ type: "toggle-rail-level", level: 5, expanded: false });
+    expect(parseWayfinderAction(expand)).toEqual({ type: "toggle-rail-level", level: 5, expanded: true });
+    expect(isDraftMutationAction(parseWayfinderAction(expand)!)).toBe(false);
+  });
+
   it("parses the existing-character history import action", () => {
     const element = {
       dataset: {

@@ -1731,6 +1731,7 @@ globalThis.__runWf51GmPhase = async function gmPhase({
 
   const driftActor = fixtureActor(fixtures, "material-drift-zero-write", moduleId, runId);
   const driftDraft = modules.createEmptyDraft(1);
+  driftDraft.selections[ANCESTRY_STEP_ID] = selection(ANCESTRY_STEP_ID, HUMAN_UUID, "Human", "ancestry");
   await executeAndPersist(driftActor, driftDraft, { type: "initialize", selectedRecipe: "lump-sum" }, modules, moduleId);
   const driftRuntime = modules.getRuntime();
   const preparedDriftLine = await driftRuntime.uiAdapter.prepareLine({

@@ -1344,7 +1344,7 @@ describe("equipment acquisition runtime", () => {
         { state: "incomplete", complete: false, status: "Review purchases", issue: null },
         projection
       ).catalogue.items[0]
-    ).toMatchObject({ affordable: true, canBuyWithCurrency: true, canAdd: true });
+    ).toMatchObject({ currencyAffordable: true, canBuyWithCurrency: true, canAdd: true });
     await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).resolves.toMatchObject({
       price: { sizeSensitive: false, unitPriceCopper: 1_000, linePriceCopper: 1_000 },
     });

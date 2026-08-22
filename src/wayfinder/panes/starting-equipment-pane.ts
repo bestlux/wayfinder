@@ -40,6 +40,10 @@ export interface StartingEquipmentCatalogueProjection {
 }
 
 export const MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS = 12;
+
+const FOUNDRY_INTL_LOCALE_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  cn: "zh-CN",
+});
 const INLINE_STARTING_EQUIPMENT_TYPE_FILTERS = [
   "ammo",
   "armor",
@@ -95,12 +99,10 @@ export function buildStartingEquipmentPane(
     : [];
   const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
   const records = matchingRecords.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS).map((record) => {
-    // Coin-only. A permanent-item allowance can still cover an item this is false for, so
-    // presentation keys off canAdd rather than this.
-    const affordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
-    const canBuyWithCurrency = record.available && record.level < step.level && affordable;
+    const currencyAffordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
+    const canBuyWithCurrency = record.available && record.level < step.level && currencyAffordable;
     const allowanceOptions =
-      policy?.resolvedRecipe.kind === "permanent-items" && isPermanentItemType(record.itemType)
+      record.available && policy?.resolvedRecipe.kind === "permanent-items" && isPermanentItemType(record.itemType)
         ? dedupeAllowanceLevels(availableAllowances.filter((allowance) => allowance.itemLevel >= record.level)).map(
             (allowance) => ({
               allowanceId: allowance.allowanceId,
@@ -161,7 +163,7 @@ export function buildStartingEquipmentPane(
       // The compendium index carries no bulk, so the placeholder is dropped rather than shown as a non-answer.
       bulkLabel: record.bulkLabel === "See item details" ? "" : record.bulkLabel,
       unavailableReason,
-      affordable,
+      currencyAffordable,
       previewing: record.sourceUuid === catalogue.previewSourceUuid,
       canAdd: canBuyWithCurrency || allowanceOptions.length > 0,
       resultLabel,
@@ -549,9 +551,23 @@ function readableTimestamp(value: string, locale: string | undefined): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   try {
-    return new Intl.DateTimeFormat(locale || undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed);
+    return new Intl.DateTimeFormat(foundryIntlLocale(locale), {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(parsed);
   } catch {
     return parsed.toLocaleString();
+  }
+}
+
+function foundryIntlLocale(locale: string | undefined): string | undefined {
+  const foundryLocale = locale?.trim().replaceAll("_", "-");
+  if (!foundryLocale) return undefined;
+  const candidate = FOUNDRY_INTL_LOCALE_ALIASES[foundryLocale.toLowerCase()] ?? foundryLocale;
+  try {
+    return Intl.DateTimeFormat.supportedLocalesOf([candidate]).length > 0 ? candidate : undefined;
+  } catch {
+    return undefined;
   }
 }
 

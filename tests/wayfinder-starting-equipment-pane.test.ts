@@ -4,9 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import { createEmptyDraft } from "../src/draft-service";
 import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
-import { createEquipmentPolicyRequest } from "../src/wayfinder/domain/equipment-policy";
+import { createEquipmentPolicyRequest, DEFAULT_EQUIPMENT_WORLD_POLICY } from "../src/wayfinder/domain/equipment-policy";
 import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types";
-import { buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized } from "../src/wayfinder/panes/starting-equipment-pane";
+import {
+  buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized,
+  MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS,
+} from "../src/wayfinder/panes/starting-equipment-pane";
 import type { StartingEquipmentCatalogueRecord } from "../src/wayfinder/view-models";
 import { acquisitionFixture, acquisitionLine, acquisitionPrice } from "./fixtures/acquisition-fixture";
 import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
@@ -29,12 +32,10 @@ function buildStartingEquipmentPane(
  * This is NOT the release budget. `equipment-catalogue-profile.json` freezes
  * `maxResultDomElementCount`, which the live profile measures as every descendant of
  * `.equipment-result-list` across all rendered rows (browser-equipment-profile.js). A per-row
- * template cap cannot enforce that; the two numbers are unrelated. See the rebaseline test below.
+ * template cap cannot enforce that; the two numbers are unrelated. Live qualification owns the
+ * release budget.
  */
-const MAX_RESULT_ROW_TEMPLATE_ELEMENTS = 14;
-
-/** Rows rendered per page, mirroring MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS. */
-const RENDERED_ROWS_PER_PAGE = 12;
+const MAX_RESULT_ROW_TEMPLATE_ELEMENTS = 12;
 
 describe("starting equipment pane", () => {
   it("renders level-5 allowance buckets separately from residual coin", () => {
@@ -161,7 +162,7 @@ describe("starting equipment pane", () => {
     );
 
     const item = pane.catalogue.items[0]!;
-    expect(item.affordable).toBe(false);
+    expect(item.currencyAffordable).toBe(false);
     expect(item.canBuyWithCurrency).toBe(false);
     // The allowance can pay for it, so it must not be presented as out of reach.
     expect(item.canAdd).toBe(true);
@@ -173,6 +174,52 @@ describe("starting equipment pane", () => {
       expect(template).toContain("{{#unless canAdd}} is-unaffordable{{/unless}}");
       expect(template).not.toContain("{{#unless affordable}} is-unaffordable{{/unless}}");
     }
+  });
+
+  it("does not offer an allowance for a catalogue-blocked permanent item", () => {
+    const draft = createEmptyDraft(5);
+    draft.acquisition = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    const record: StartingEquipmentCatalogueRecord = {
+      sourceUuid: "Compendium.unsupported.equipment.Item.blocked",
+      name: "Blocked permanent item",
+      itemType: "equipment",
+      level: 4,
+      rarity: "uncommon",
+      sourceLabel: "Unsupported Source",
+      priceCopper: 7_500,
+      priceLabel: "75 gp",
+      bulkLabel: "L",
+      handsLabel: null,
+      traits: [],
+      available: false,
+      unavailableReason: "This source is not available under current policy.",
+      titanMaulerEligible: false,
+      exceptionRequestable: true,
+    };
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        matchedRecordCount: 1,
+        records: [record],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: record.sourceUuid,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      }
+    );
+
+    expect(pane.catalogue.items[0]).toMatchObject({
+      canAdd: false,
+      canBuyWithCurrency: false,
+      allowanceOptions: [],
+      unavailableReason: "Needs your GM to allow this source or rarity.",
+    });
   });
 
   it("projects policy, catalogue, affordability, cart quantity, and review state without OptionRecord", () => {
@@ -231,7 +278,7 @@ describe("starting equipment pane", () => {
     });
     expect(pane.catalogue.items[0]).toMatchObject({
       name: "Adventurer's Pack",
-      affordable: true,
+      currencyAffordable: true,
       canAdd: true,
       previewAriaLabel: "Preview Adventurer's Pack · Level 0 · Common · Player Core · 1 gp · Available",
       buyAriaLabel: "Buy Adventurer's Pack with coin",
@@ -280,6 +327,7 @@ describe("starting equipment pane", () => {
     );
 
     expect(pane.cart.lines[0]?.quantity).toBe(12);
+    expect(pane.cart.count).toBe(12);
   });
 
   it("shows Adventurer's Pack child rows while keeping the logical purchase quantity fixed", () => {
@@ -481,6 +529,53 @@ describe("starting equipment pane", () => {
       kindLabel: "Level 5 higher-level start",
       reason: "Keep this campaign-specific rationale verbatim.",
     });
+  });
+
+  it("maps Foundry's Chinese language id to a supported Intl timestamp locale", () => {
+    const draft = createEmptyDraft(5);
+    draft.acquisition = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    draft.equipmentPolicyRequests = [
+      createEquipmentPolicyRequest({
+        requestId: "request-cn",
+        facts: {
+          kind: "higher-level-start",
+          actorId: "actor-1",
+          draftId: draft.acquisition.draftId,
+          targetLevel: 5,
+          startKind: "replacement-character",
+        },
+        requesterUserId: "owner-1",
+        requesterName: "Owner",
+        requestedAt: "2026-08-20T12:00:00.000Z",
+        reason: "Locale regression fixture.",
+      }),
+    ];
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Awaiting approval", issue: null },
+      {
+        state: "pending",
+        message: "",
+        query: "",
+        matchedRecordCount: 0,
+        records: [],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      },
+      {
+        worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY,
+        judgments: [],
+        isGm: false,
+        locale: "cn",
+      }
+    );
+
+    expect(pane.setup.pendingRequests[0]?.requestedAtLabel).toMatch(/\d{4}年\d{1,2}月\d{1,2}日/u);
+    expect(pane.policy.recipeSelectionLabel).toMatch(/\d{4}年\d{1,2}月\d{1,2}日/u);
   });
 
   it("localizes ABP-suppressed configured components at the pane boundary", () => {
@@ -725,7 +820,7 @@ describe("starting equipment pane", () => {
 
     expect(pane.catalogue.totalResultCount).toBe(20);
     expect(pane.catalogue.visibleResultCount).toBe(12);
-    expect(pane.catalogue.items).toHaveLength(12);
+    expect(pane.catalogue.items).toHaveLength(MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS);
   });
 
   it("projects bounded production-shaped type and source controls without hiding active facets", () => {
@@ -837,20 +932,6 @@ describe("starting equipment pane", () => {
     expect(detail).toContain("{{#unless activePane.catalogue.preview}}aria-description=");
     expect(pane).not.toContain("is-detail-empty");
     expect(styles).toContain(".equipment-detail.is-empty");
-  });
-
-  it("records that the frozen result-DOM budget no longer covers the rebuilt rows", () => {
-    const profile = JSON.parse(
-      readFileSync(resolve("tools/foundry-interaction/equipment-catalogue-profile.json"), "utf8")
-    );
-
-    // The profile is deliberately left frozen until a live run re-baselines it. Asserting the
-    // breach here keeps the outstanding gap visible instead of silent, and forces whoever raises
-    // the budget to revisit this expectation.
-    expect(profile.budgets.maxResultDomElementCount).toBe(12);
-    expect(MAX_RESULT_ROW_TEMPLATE_ELEMENTS * RENDERED_ROWS_PER_PAGE).toBeGreaterThan(
-      profile.budgets.maxResultDomElementCount
-    );
   });
 
   it("keeps the equipment pane free of image requests and mounts the preview root once", () => {

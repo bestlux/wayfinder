@@ -517,7 +517,7 @@ export interface StartingEquipmentStepPane {
     narrowSearchHint: string | null;
     items: readonly (StartingEquipmentCatalogueRecord & {
       typeIcon: string;
-      affordable: boolean;
+      currencyAffordable: boolean;
       previewing: boolean;
       canAdd: boolean;
       resultLabel: string;
@@ -541,7 +541,7 @@ export interface StartingEquipmentStepPane {
     preview:
       | (StartingEquipmentCatalogueRecord & {
           typeIcon: string;
-          affordable: boolean;
+          currencyAffordable: boolean;
           canAdd: boolean;
           canBuyWithCurrency: boolean;
           buyAriaLabel: string;

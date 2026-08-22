@@ -54,6 +54,7 @@
   "postSettleMs": 350,
   "keyDelayMs": 8,
   "timingSemantics": {
+    "catalogueOpenPrimary": "open-dispatch-to-semantic-catalogue-ready",
     "rapidSearchPrimary": "final-input-dispatch-to-final-results",
     "rapidSearchDiagnostic": "first-input-dispatch-to-final-results",
     "previewPrimary": ["new-preview-dispatch-to-visible", "repeat-preview-dispatch-to-visible"],

@@ -57,6 +57,7 @@ const FROZEN_IDENTITY = {
 };
 const FROZEN_TIMING = { keyDelayMs: 8, settleTimeoutMs: 15000, postSettleMs: 350 };
 const FROZEN_TIMING_SEMANTICS = {
+  catalogueOpenPrimary: "open-dispatch-to-semantic-catalogue-ready",
   rapidSearchPrimary: "final-input-dispatch-to-final-results",
   rapidSearchDiagnostic: "first-input-dispatch-to-final-results",
   previewPrimary: ["new-preview-dispatch-to-visible", "repeat-preview-dispatch-to-visible"],
@@ -118,7 +119,9 @@ export function validateEquipmentProfile(profile) {
     failures.push("Equipment profile must preserve the frozen 8ms key delay, 15s settle timeout, and 350ms observation window.");
   }
   if (stableJson(profile?.timingSemantics) !== stableJson(FROZEN_TIMING_SEMANTICS)) {
-    failures.push("Equipment profile timing semantics drifted from the final-input, split-preview, and action-overlap contract.");
+    failures.push(
+      "Equipment profile timing semantics drifted from the semantic-open, final-input, split-preview, and action-overlap contract.",
+    );
   }
   if (stableJson(profile?.viewport) !== stableJson(FROZEN_VIEWPORT)) {
     failures.push("Equipment profile must freeze the 1440x1000 viewport.");

@@ -144,6 +144,16 @@ describe("equipment catalogue performance profile", () => {
     expect(browserProfile).toContain("!== detailBeforeRepeat");
   });
 
+  it("measures catalogue reopen through semantic readiness without fixed post-open frame padding", () => {
+    expect(profile.timingSemantics.catalogueOpenPrimary).toBe("open-dispatch-to-semantic-catalogue-ready");
+    const reopenSource = browserProfile.slice(
+      browserProfile.indexOf("async function reopen("),
+      browserProfile.indexOf("async function ensureSprayPelletsCart(")
+    );
+    expect(reopenSource).toContain("currentApp().setPosition?.({ width })");
+    expect(reopenSource).not.toContain("await frames(2)");
+  });
+
   it("reads compact leaf identities and adds the exact selected Spray Pellets preview", () => {
     expect(browserProfile).toContain(
       'result.dataset.sourceUuid ?? result.querySelector(":scope [data-source-uuid]")?.dataset.sourceUuid ?? ""'

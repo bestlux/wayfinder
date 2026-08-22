@@ -360,7 +360,6 @@ async function reopen(cold, timeoutMs) {
   WayfinderApp.open(actor);
   await waitUntil(() => currentApp()?.element?.querySelector?.(SEARCH_SELECTOR), timeoutMs);
   currentApp().setPosition?.({ width });
-  await frames(2);
 }
 
 async function ensureSprayPelletsCart(timeoutMs) {

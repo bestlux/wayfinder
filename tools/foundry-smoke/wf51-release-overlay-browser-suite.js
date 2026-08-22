@@ -501,10 +501,32 @@ async function manualSaveDraft(app) {
   }
 }
 
-async function choosePickerOption(app, actor, modules, moduleId, uuid) {
+async function choosePickerOption(app, actor, modules, moduleId, uuid, query) {
+  const ancestryStep = await waitForValue(
+    () =>
+      app.element?.querySelector(
+        '[data-wayfinder-action="select-step"][data-step-id="ancestry-level-1"]',
+      ),
+    "the production ancestry step control",
+  );
+  ancestryStep.click();
+  const search = await waitForValue(
+    () => app.element?.querySelector('input[data-wayfinder-search][data-step-id="ancestry-level-1"]'),
+    "the production ancestry search input",
+  );
+  search.value = query;
+  search.dispatchEvent(new Event("input", { bubbles: true }));
   const preview = await waitForValue(
-    () => app.element?.querySelector(`[data-wayfinder-action="preview-option"][data-value="${uuid}"]`),
-    `the production picker option ${uuid}`,
+    () => {
+      const results = app.element?.querySelector(
+        `[data-application-part="picker-results"][data-wayfinder-rendered-query="${query}"]`,
+      );
+      const candidate = results?.querySelector(
+        `[data-wayfinder-action="preview-option"][data-value="${uuid}"]`,
+      );
+      return results?.isConnected && candidate?.isConnected ? candidate : null;
+    },
+    `the settled production picker option ${uuid}`,
   );
   preview.click();
   const select = await waitForValue(
@@ -563,13 +585,13 @@ async function exerciseDraftReplacementUi(modules, actor, moduleId) {
   const notifications = interceptIntegrityNotifications();
   try {
     const initial = draftSelectionUuids(modules, actor, moduleId);
-    await choosePickerOption(app, actor, modules, moduleId, HUMAN_UUID);
+    await choosePickerOption(app, actor, modules, moduleId, HUMAN_UUID, "Human");
     await manualSaveDraft(app);
     const chosen = draftSelectionUuids(modules, actor, moduleId);
     await clearAncestryPickerOption(app, actor, modules, moduleId);
     await manualSaveDraft(app);
     const cleared = draftSelectionUuids(modules, actor, moduleId);
-    await choosePickerOption(app, actor, modules, moduleId, DWARF_UUID);
+    await choosePickerOption(app, actor, modules, moduleId, DWARF_UUID, "Dwarf");
     await manualSaveDraft(app);
     const replaced = draftSelectionUuids(modules, actor, moduleId);
     return { initial, chosen, cleared, replaced, alerts: draftAlerts(app), notifications: notifications.calls };

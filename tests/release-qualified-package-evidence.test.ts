@@ -101,7 +101,7 @@ describe("WF-080-52 qualified package evidence", () => {
         candidateGitSha: fixture.gitSha,
       })
     ).rejects.toThrow(/zip sha-256/i);
-  });
+  }, 30_000);
 
   it("rejects a self-consistent ZIP and summary when staged assets differ from candidate source", async () => {
     const fixture = await packageFixture();

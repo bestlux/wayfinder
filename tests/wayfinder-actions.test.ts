@@ -93,6 +93,7 @@ describe("Wayfinder actions", () => {
         onSearchInput: noop,
         onEquipmentSearchInput: noop,
         onEquipmentSourceSearchInput: noop,
+        onEquipmentQuantityCommit: noop,
         onScrollableScroll: noop,
         onManualChange: noop,
         onLoreInputChange: noop,

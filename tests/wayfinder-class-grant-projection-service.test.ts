@@ -104,25 +104,25 @@ describe("class-grant projection service", () => {
     ]);
   });
 
-  it("still rejects a non-positive prepared physical quantity", () => {
+  it("omits a zero-quantity prepared physical placeholder but still rejects a negative quantity", () => {
+    const item = {
+      id: "vial",
+      type: "weapon",
+      quantity: 0,
+      sourceId: "Compendium.pf2e.equipment-srd.Item.versatile-vial",
+      flags: {},
+      system: { quantity: 0 },
+      isOfType: vi.fn((type: string) => type === "physical"),
+    };
     const actor = {
       id: "actor-1",
-      items: {
-        contents: [
-          {
-            id: "formula",
-            type: "equipment",
-            quantity: 0,
-            sourceId: UUID.formulaItem,
-            flags: {},
-            system: { quantity: 0 },
-            isOfType: vi.fn((type: string) => type === "physical"),
-          },
-        ],
-      },
+      items: { contents: [item] },
     };
 
-    expect(() => captureObservedClassGrantItems(actor)).toThrow("Actor item formula has an invalid quantity.");
+    expect(captureObservedClassGrantItems(actor)).toEqual([]);
+    item.quantity = -1;
+    item.system.quantity = -1;
+    expect(() => captureObservedClassGrantItems(actor)).toThrow("Actor item vial has an invalid quantity.");
   });
 
   it("projects the exact Alchemist native Formula Book chain from a prepared Coins shape", async () => {

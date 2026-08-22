@@ -198,19 +198,21 @@ export function captureObservedClassGrantItems(actor: unknown): ObservedClassGra
         ? rawLocation.value
         : null;
     const quantity = observedClassGrantQuantity(item);
-    observed.push({
-      itemId: item.id,
-      sourceUuid: sourceIdOf(item),
-      itemType: item.type,
-      quantity,
-      grantedByItemId,
-      locationItemId,
-      wayfinderSlotId:
-        isRecord(item.flags) && isRecord(item.flags[MODULE_ID]) && nonEmpty(item.flags[MODULE_ID].slotId)
-          ? item.flags[MODULE_ID].slotId
-          : null,
-      acquisitionIdentity,
-    });
+    if (quantity !== null) {
+      observed.push({
+        itemId: item.id,
+        sourceUuid: sourceIdOf(item),
+        itemType: item.type,
+        quantity,
+        grantedByItemId,
+        locationItemId,
+        wayfinderSlotId:
+          isRecord(item.flags) && isRecord(item.flags[MODULE_ID]) && nonEmpty(item.flags[MODULE_ID].slotId)
+            ? item.flags[MODULE_ID].slotId
+            : null,
+        acquisitionIdentity,
+      });
+    }
     for (const child of collectionContents(item.subitems)) visit(child);
   };
   for (const item of contents) visit(item);
@@ -232,7 +234,7 @@ const PHYSICAL_CLASS_GRANT_ITEM_TYPES = new Set([
   "weapon",
 ]);
 
-function observedClassGrantQuantity(item: Record<string, unknown>): number {
+function observedClassGrantQuantity(item: Record<string, unknown>): number | null {
   const isOfType = item.isOfType;
   const physical =
     typeof isOfType === "function"
@@ -241,10 +243,10 @@ function observedClassGrantQuantity(item: Record<string, unknown>): number {
   if (!physical) return 1;
 
   const quantity = Number(item.quantity ?? (isRecord(item.system) ? item.system.quantity : 1) ?? 1);
-  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+  if (!Number.isSafeInteger(quantity) || quantity < 0) {
     throw new TypeError(`Actor item ${String(item.id)} has an invalid quantity.`);
   }
-  return quantity;
+  return quantity === 0 ? null : quantity;
 }
 
 export async function projectPlannedClassGrants(args: {

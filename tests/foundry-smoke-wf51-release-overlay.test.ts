@@ -138,7 +138,9 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(browserSuite).toContain("...titanSubject");
     expect(browserSuite).toContain('titanDraft.branchSelections["class-branch-instinct-level-1"]');
     expect(browserSuite).toContain("const commandSteps = [...projectionSteps, modules.createStep(1)]");
-    expect(browserSuite).toContain('root?.matches?.(".wayfinder-shell")');
+    expect(browserSuite).toContain(
+      'app = await openConnectedWayfinderApp(modules, actor, "the reloaded draft-replacement")'
+    );
     expect(browserSuite).toContain(
       'executeAndPersist(actor, titanDraft, { type: "retain-all" }, modules, moduleId, commandSteps)'
     );

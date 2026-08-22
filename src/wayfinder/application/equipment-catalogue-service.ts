@@ -140,16 +140,6 @@ export interface EquipmentCatalogueProjection {
   readonly diagnostics: readonly EquipmentSourceDiagnostic[];
 }
 
-export interface EquipmentCatalogueSearchFilters {
-  readonly query?: string;
-  readonly itemTypes?: readonly string[];
-  readonly rarities?: readonly EquipmentRarity[];
-  readonly publicationSlugs?: readonly string[];
-  readonly traits?: readonly string[];
-  readonly maximumLevel?: number;
-  readonly availability?: "all" | "available" | "unavailable";
-}
-
 export interface EquipmentCataloguePreview {
   readonly sourceUuid: string;
   readonly previewIdentity: string;
@@ -387,34 +377,6 @@ export class EquipmentCatalogueService {
       cacheKey,
       entries,
       diagnostics: Object.freeze([...loaded.diagnostics]),
-    });
-  }
-
-  async search(
-    context: EquipmentCatalogueContext,
-    filters: EquipmentCatalogueSearchFilters = {}
-  ): Promise<readonly EquipmentCatalogueEntry[]> {
-    const projection = await this.project(context);
-    const queryTerms = tokenize(filters.query ?? "");
-    const itemTypes = normalizedSet(filters.itemTypes);
-    const rarities = new Set(filters.rarities ?? []);
-    const publications = normalizedSet(filters.publicationSlugs);
-    const traits = normalizedSet(filters.traits);
-    const availability = filters.availability ?? "all";
-    const maximumLevel = filters.maximumLevel;
-    return projection.entries.filter((entry) => {
-      if (availability === "available" && !entry.available) return false;
-      if (availability === "unavailable" && entry.available) return false;
-      if (itemTypes.size > 0 && !itemTypes.has(entry.itemType)) return false;
-      if (rarities.size > 0 && !rarities.has(entry.rarity)) return false;
-      if (publications.size > 0 && !publications.has(entry.publicationSlug)) return false;
-      if (traits.size > 0 && [...traits].some((trait) => !entry.traits.includes(trait))) return false;
-      if (maximumLevel !== undefined && entry.level > maximumLevel) return false;
-      if (queryTerms.length === 0) return true;
-      const searchable = normalizeSearchText(
-        [entry.name, entry.itemType, entry.publicationSlug, ...entry.traits].join(" ")
-      );
-      return queryTerms.every((term) => searchable.includes(term));
     });
   }
 
@@ -1328,18 +1290,6 @@ function slugify(raw: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-function normalizedSet(values: readonly string[] | undefined): ReadonlySet<string> {
-  return new Set((values ?? []).map((value) => normalizeSearchText(value)).filter(Boolean));
-}
-
-function tokenize(value: string): string[] {
-  return uniqueSorted(normalizeSearchText(value).split(/\s+/).filter(Boolean));
-}
-
-function normalizeSearchText(value: string): string {
-  return value.trim().toLowerCase();
 }
 
 function uniqueSorted(values: readonly string[]): string[] {

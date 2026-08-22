@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  matchesEquipmentCatalogueFilters,
+  normalizeEquipmentCatalogueFilters,
+} from "../src/wayfinder/application/equipment-catalogue-filters";
+import {
   ADVENTURERS_PACK_UUID,
   createEquipmentAccessRegistry,
   createEquipmentCatalogueDraftContext,
@@ -320,12 +324,12 @@ describe("minimal equipment catalogue", () => {
       equipmentPackIds: [PACK_ID],
     });
 
-    const results = await service.search(context(), {
+    const projection = await service.project(context());
+    const filters = normalizeEquipmentCatalogueFilters({
       query: "dagger finesse",
-      itemTypes: ["weapon"],
-      maximumLevel: 0,
-      availability: "available",
+      filters: { type: ["weapon"], level: ["0:0"], availability: ["available"] },
     });
+    const results = projection.entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, filters));
 
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({

@@ -8,6 +8,7 @@ import { assertPreparedClassGrantPlanMatches, evaluateTitanMaulerCandidate, norm
 import { clampStartingEquipmentResultWindow, STARTING_EQUIPMENT_RESULT_WINDOW, } from "../starting-equipment-result-window.js";
 import { buildTitanMaulerCandidate, titanMaulerGrantIdForDraft } from "./class-grant-projection-service.js";
 import { isBrowsePhysicalBatchSafeSource, prepareTransientBrowsePhysicalItems, } from "./equipment-browse-preparation-service.js";
+import { equipmentCatalogueSourceLabel, isTitanMaulerEligibleEntry, matchesEquipmentCatalogueFilters, normalizeEquipmentCatalogueFilters, } from "./equipment-catalogue-filters.js";
 import { createEquipmentCatalogueDraftContext, createEquipmentCatalogueService, EMPTY_EQUIPMENT_ACCESS_REGISTRY, } from "./equipment-catalogue-service.js";
 import { resolveCurrentEquipmentSourceDiagnostics, resolveEquipmentPolicyForActor, } from "./equipment-policy-service.js";
 import { createEquipmentPreviewProjector } from "./equipment-preview-projector.js";
@@ -218,7 +219,11 @@ export function createEquipmentAcquisitionRuntime(options) {
                 const entries = projectedEntries.filter((entry) => entry.level <= maximumLevel);
                 const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
                 const targetSize = await cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint);
-                const matchedEntries = rankCatalogueMatches(entries.filter((entry) => matchesCatalogueRequest(entry, request)), request.query);
+                const normalizedFilters = normalizeEquipmentCatalogueFilters({
+                    query: request.query,
+                    filters: request.filters,
+                });
+                const matchedEntries = rankCatalogueMatches(entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, normalizedFilters)), request.query);
                 const resultWindow = clampStartingEquipmentResultWindow(request, matchedEntries.length);
                 const visibleEntries = matchedEntries.slice(resultWindow.offset, resultWindow.offset + resultWindow.limit);
                 const browseRows = visibleEntries.map((entry) => {
@@ -1484,7 +1489,7 @@ function toUiRecord(entry, preparedPrice) {
         itemType: entry.itemType,
         level: entry.level,
         rarity: entry.rarity,
-        sourceLabel: publicationLabel(entry.publicationSlug),
+        sourceLabel: equipmentCatalogueSourceLabel(entry.publicationSlug),
         priceCopper: preparedPriceCopper,
         priceLabel: formatCopper(preparedPriceCopper),
         priceContext: preparedPrice && (preparedPrice.materializedQuantity !== 1 || preparedPrice.pricePer !== 1)
@@ -1500,30 +1505,8 @@ function toUiRecord(entry, preparedPrice) {
         unavailableReason: entry.unavailableReasons[0]?.message ?? null,
         exceptionRequestable: entry.unavailableReasons.length > 0 &&
             entry.unavailableReasons.every((reason) => reason.code === "source-not-allowed" || reason.code === "rarity-not-available"),
-        titanMaulerEligible: isPotentialTitanMaulerEntry(entry),
+        titanMaulerEligible: isTitanMaulerEligibleEntry(entry),
     };
-}
-function matchesCatalogueRequest(entry, request) {
-    const query = request.query.trim().toLocaleLowerCase();
-    if (query &&
-        ![entry.name, publicationLabel(entry.publicationSlug), entry.rarity, entry.itemType, ...entry.traits]
-            .join(" ")
-            .toLocaleLowerCase()
-            .includes(query)) {
-        return false;
-    }
-    return Object.entries(request.filters).every(([key, values]) => {
-        if (values.length === 0)
-            return true;
-        const actual = key === "rarity"
-            ? entry.rarity
-            : key === "source"
-                ? publicationLabel(entry.publicationSlug)
-                : key === "type"
-                    ? entry.itemType
-                    : null;
-        return actual !== null && values.includes(actual);
-    });
 }
 function rankCatalogueMatches(entries, query) {
     const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -1575,16 +1558,6 @@ async function yieldBetweenEquipmentPreparationChunks() {
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
-function isPotentialTitanMaulerEntry(entry) {
-    return (entry.available &&
-        entry.itemType === "weapon" &&
-        !entry.traits.includes("unarmed") &&
-        entry.price.kind === "priced" &&
-        entry.price.copperValue !== null &&
-        entry.price.copperValue <= 900 &&
-        entry.price.sourceQuantity === 1 &&
-        (entry.rarity === "common" || entry.policyDecision.characterAccessRef !== null));
-}
 function catalogueFilters(entries) {
     const values = [
         ...uniqueSorted(entries.map((entry) => entry.itemType)).map((value) => ({
@@ -1597,16 +1570,13 @@ function catalogueFilters(entries) {
             label: title(value),
             value,
         })),
-        ...uniqueSorted(entries.map((entry) => publicationLabel(entry.publicationSlug))).map((value) => ({
+        ...uniqueSorted(entries.map((entry) => equipmentCatalogueSourceLabel(entry.publicationSlug))).map((value) => ({
             key: "source",
             label: value,
             value,
         })),
     ];
     return values;
-}
-function publicationLabel(slug) {
-    return title(slug.replace(/-/g, " "));
 }
 function title(value) {
     return value.replace(/\b\w/g, (letter) => letter.toUpperCase());

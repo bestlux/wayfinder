@@ -232,7 +232,7 @@
   background: rgba(233, 215, 161, 0.26);
 }
 
-.wayfinder-app .equipment-policy-request > div {
+.wayfinder-app .equipment-policy-request-copy {
   flex: 1;
   min-width: 0;
 }
@@ -246,6 +246,22 @@
 .wayfinder-app .equipment-policy-request-reason {
   color: var(--wf-ink-soft);
   font-weight: 400 !important;
+}
+
+.wayfinder-app .equipment-policy-request > .equipment-policy-request-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.wayfinder-app .equipment-policy-request-outcome {
+  align-items: center;
+  color: var(--wf-ink-soft);
+  display: flex;
+  gap: 0.45rem;
+  margin: 0.55rem 0;
 }
 
 /* ── Callouts ──────────────────────────────────────────── */

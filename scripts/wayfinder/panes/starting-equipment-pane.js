@@ -1,6 +1,7 @@
 import { localizeEquipmentSourceDiagnostic, } from "../application/acquisition-localization.js";
 import { equipmentAllowanceFocusId, equipmentFilterFocusId, equipmentItemFocusId, equipmentLineControlFocusId, equipmentLineFocusId, } from "../application/equipment-accessibility.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
+import { equipmentPolicyJudgmentFactsEqual } from "../domain/equipment-policy.js";
 export const MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS = 12;
 const FOUNDRY_INTL_LOCALE_ALIASES = Object.freeze({
     cn: "zh-CN",
@@ -40,6 +41,8 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         ? catalogue.records.filter((record) => matchesQuery(record, catalogue.query) && matchesFilters(record, catalogue.activeFilters))
         : [];
     const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
+    const requestDecisions = setupOptions?.requestDecisions ?? [];
+    const requestDecisionById = new Map(requestDecisions.map((decision) => [decision.request.requestId, decision]));
     const records = matchingRecords.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS).map((record) => {
         const currencyAffordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
         const canBuyWithCurrency = record.available && record.level < step.level && currencyAffordable;
@@ -60,6 +63,8 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             }))
             : [];
         const exceptionPending = draft.equipmentPolicyRequests.some((request) => request.withdrawnAt === null &&
+            request.decline === null &&
+            requestDecisionFor(request, requestDecisionById)?.outcome !== "declined" &&
             request.facts.kind === "rarity-source-exception" &&
             request.facts.draftId === acquisition?.draftId &&
             request.facts.sourceUuid === record.sourceUuid);
@@ -149,7 +154,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             fundingLabel: fundingLabel(line.funding, policy?.allowances ?? [], localize),
             canRemove: line.funding.lane !== "class-grant" ||
                 plannedGrantById.get(line.funding.grant.plannedGrantId)?.materializer !== "pf2e-native",
-            canChangeQuantity: line.funding.lane !== "class-grant" && !line.price.configurationComponents && !line.kitExpansion,
+            canChangeQuantity: line.funding.lane === "currency" && !line.price.configurationComponents && !line.kitExpansion,
             unavailableReason: line.funding.lane === "class-grant" || line.policyDecision.eligible
                 ? null
                 : localize("wayfinder-pf2e.StartingEquipment.Cart.PolicyChanged"),
@@ -185,10 +190,22 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         ? acquisition.recipe.kind
         : null;
     const judgments = setupOptions?.judgments ?? [];
-    const pendingRequests = draft.equipmentPolicyRequests.filter((request) => request.withdrawnAt === null &&
+    const appliedJudgmentIds = new Set(policy?.gmJudgments.map((judgment) => judgment.id) ?? []);
+    const matchingRequests = draft.equipmentPolicyRequests.filter((request) => request.withdrawnAt === null &&
         request.facts.draftId === acquisition?.draftId &&
-        request.facts.targetLevel === acquisition?.targetLevel &&
-        !judgments.some((judgment) => judgment.request.requestId === request.requestId && judgment.revocation === null));
+        request.facts.targetLevel === acquisition?.targetLevel);
+    const hasAuthoritativeDecline = matchingRequests.some((request) => requestDecisionFor(request, requestDecisionById)?.outcome === "declined");
+    const pendingRequests = draft.equipmentPolicyRequests.filter((request) => {
+        const decision = requestDecisionFor(request, requestDecisionById);
+        return (request.withdrawnAt === null &&
+            request.decline === null &&
+            decision?.outcome !== "declined" &&
+            request.facts.draftId === acquisition?.draftId &&
+            request.facts.targetLevel === acquisition?.targetLevel &&
+            !judgments.some((judgment) => judgment.request.requestId === request.requestId &&
+                judgment.revocation === null &&
+                appliedJudgmentIds.has(judgment.id)));
+    });
     const reviewedStartJudgment = policy?.gmJudgments.find((judgment) => judgment.kind === "higher-level-start") ?? null;
     const activeJudgment = reviewedStartJudgment
         ? (judgments.find((judgment) => judgment.id === reviewedStartJudgment.id && judgment.revocation === null) ?? null)
@@ -254,7 +271,11 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
                 worldPolicy?.higherLevelStartAuthority === "gm-confirmation" &&
                 setupOptions?.isGm !== true &&
                 pendingRequests.length === 0,
+            requestOutcomeMessage: hasAuthoritativeDecline
+                ? localize("wayfinder-pf2e.StartingEquipment.Status.PolicyRequestDeclined")
+                : null,
             pendingRequests: pendingRequests.map((request) => ({
+                approvalRecorded: requestDecisionFor(request, requestDecisionById)?.outcome === "approved",
                 requestId: request.requestId,
                 requesterName: request.requesterName,
                 requestedAt: request.requestedAt,
@@ -269,7 +290,8 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
                             sourceUuid: request.facts.sourceUuid,
                         })
                         : request.facts.kind,
-                canApprove: setupOptions?.isGm === true,
+                canApprove: setupOptions?.isGm === true && requestDecisionFor(request, requestDecisionById)?.outcome !== "declined",
+                canDecline: setupOptions?.isGm === true && !requestDecisionFor(request, requestDecisionById),
             })),
             activeJudgmentId: activeJudgment?.id ?? null,
             canRevoke: setupOptions?.isGm === true && activeJudgment !== null,
@@ -405,6 +427,19 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             reasons: handoff?.handoff.reasons.map((reason) => handoffReason(reason, localize)) ?? [],
         },
     };
+}
+function requestDecisionFor(request, decisions) {
+    const decision = decisions.get(request.requestId);
+    if (!decision || decision.factsFingerprint !== request.factsFingerprint)
+        return null;
+    return decision.request.requestId === request.requestId &&
+        decision.request.requesterUserId === request.requesterUserId &&
+        decision.request.requesterName === request.requesterName &&
+        decision.request.requestedAt === request.requestedAt &&
+        decision.request.reason === request.reason &&
+        equipmentPolicyJudgmentFactsEqual(decision.request.facts, request.facts)
+        ? decision
+        : null;
 }
 function isTypeFilter(filter) {
     return filter.key === "type";

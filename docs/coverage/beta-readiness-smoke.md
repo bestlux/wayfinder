@@ -47,6 +47,17 @@ The companion static class audit checks the maintained smoke matrix against the 
 npm run audit:classes
 ```
 
+## 2026-08-22 Release 0.8.1
+
+The final built 0.8.1 bundle passed the focused `fighter-l1-l5-apply-rerun` lifecycle against Foundry VTT 14.366 / PF2E 8.4.1 in `testing-world` as the `smoke` GM. Artifact `.wayfinder-smoke/release-0.8.1-final-focused` records successful level-5 Apply, fixture cleanup, and a zero-step rerun using the permanent-items policy with the explicit retain-all disposition.
+
+The release-specific Starting Equipment paths were also exercised live in the same world:
+
+- A GM declined request `qa-request-1787433920788`; the actor flag and world judgment store both retained the attributed decline. The player then submitted the same facts as fresh request `qa-rerequest-1787434114395`, which exposed a new Approve/Decline decision rather than reviving the closed request. Declining it produced two immutable decisions and no remaining action buttons. The disposable actor and both QA decisions were removed afterward; unrelated world judgments were preserved.
+- Adding Alcohol to quantity four and then buying two more produced one currency-funded cart line at quantity six and 6 cp. Actor draft inspection agreed with the rendered cart, and the disposable actor was removed afterward.
+
+The final authority design additionally passed 132 focused unit tests across command, coordinator, policy, pane, action, and search-isolation boundaries. These cover active-GM election drift while queued, bounded accepted-but-unfinished socket work, post-write readback after authority changes, semantic retry identities for direct GM judgments, request approval/decline conflicts, same-item re-request, and proposed-versus-durable judgment ID mismatches for higher-level start, custom lump sum, and extra allowance commands.
+
 ## 2026-08-22 Release 0.8.0
 
 The required Starting Equipment behavior through Wave 4 is live-proven against Foundry VTT 14.366 / PF2E 8.4.1 in `testing-world`:

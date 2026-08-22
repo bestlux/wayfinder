@@ -1,4 +1,5 @@
 import { getEquipmentWorldPolicySetting } from "../../settings.js";
+import { findCurrencyCartAggregationTargets } from "../domain/acquisition-aggregation.js";
 import { acknowledgeAcquisitionHandoff, createAcquisitionDraft, createAcquisitionPolicySnapshot, invalidateAcquisitionReview, normalizeAcquisitionDraft, recordConfiguredItemHandoff, recordEconomicAdmission, recordPlannedClassGrants, } from "../domain/acquisition-draft.js";
 import { mintAcquisitionIdentitySeed } from "../domain/acquisition-identity.js";
 import { createAcquisitionPriceSnapshot, evaluateAcquisitionLedger, reviewPurchaseLedger, reviewRetainAll, } from "../domain/acquisition-ledger.js";
@@ -8,7 +9,7 @@ import { physicalGrantCoverageBlockers } from "../domain/physical-grant-coverage
 import { prepareCurrentClassGrantPlan, projectCurrentClassGrants } from "./class-grant-projection-service.js";
 import { evaluateActorEconomicAdmission } from "./economic-baseline-service.js";
 import { getFoundryEquipmentAcquisitionRuntime, } from "./equipment-acquisition-runtime-service.js";
-import { createOwnerStartAttestation, resolveEquipmentPolicyForActor, revokeTrustedEquipmentPolicyJudgment, saveTrustedEquipmentPolicyJudgment, } from "./equipment-policy-service.js";
+import { createOwnerStartAttestation, resolveEquipmentPolicyForActor, revokeTrustedEquipmentPolicyJudgment, saveTrustedEquipmentPolicyJudgment, saveTrustedEquipmentPolicyRequestDecline, } from "./equipment-policy-service.js";
 export class StartingEquipmentPhysicalGrantCoverageError extends Error {
     blocker;
     blockers;
@@ -29,6 +30,7 @@ const DEFAULT_DEPS = {
     createOwnerStartAttestation,
     saveJudgment: saveTrustedEquipmentPolicyJudgment,
     revokeJudgment: revokeTrustedEquipmentPolicyJudgment,
+    declineRequest: saveTrustedEquipmentPolicyRequestDecline,
     createRequest: createEquipmentPolicyRequest,
     mintRequestId: () => crypto.randomUUID(),
     mintJudgmentId: () => crypto.randomUUID(),
@@ -179,6 +181,19 @@ export async function executeStartingEquipmentCommand(command, context, dependen
             }
             break;
         }
+        case "decline-policy-request": {
+            acquisition = requireAcquisition(context.draft);
+            const request = requireCurrentPolicyRequest(policyRequests, command.requestId, acquisition, actorId(context.actor));
+            const declined = await deps.declineRequest({
+                request,
+                declinedAt: context.now(),
+                reason: command.reason,
+                user: context.user,
+            });
+            policyRequests = policyRequests.map((candidate) => candidate.requestId === declined.requestId ? declined : candidate);
+            status = message("PolicyRequestDeclined");
+            break;
+        }
         case "request-item-exception": {
             acquisition = requireActiveAcquisition(context.draft);
             const facts = await deps.resolveItemExceptionFacts({
@@ -292,7 +307,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                 throw new TypeError("Remove allowance-funded items before replacing the recipe with a custom lump sum.");
             }
             const judgmentId = deps.mintJudgmentId();
-            await deps.saveJudgment({
+            const judgment = await deps.saveJudgment({
                 id: judgmentId,
                 facts: {
                     kind: "custom-lump-sum",
@@ -307,14 +322,19 @@ export async function executeStartingEquipmentCommand(command, context, dependen
             });
             const policy = resolveExistingPolicy(current, context, deps, {
                 selectedRecipe: "lump-sum",
-                customLumpSum: { amountCopper: command.amountCopper, judgmentId },
+                customLumpSum: { amountCopper: command.amountCopper, judgmentId: judgment.id },
                 extraCurrentLevelAllowanceIds: [],
             });
-            const recipe = { kind: "custom-lump-sum", judgmentRef: judgmentId, amountCopper: command.amountCopper };
+            const recipe = {
+                kind: "custom-lump-sum",
+                judgmentRef: judgment.id,
+                amountCopper: command.amountCopper,
+            };
+            const { recipeSelection: _supersededRecipeSelection, ...currentWithoutRecipeSelection } = current;
             acquisition = invalidateAcquisitionReview({
-                ...current,
+                ...currentWithoutRecipeSelection,
                 recipe,
-                policySnapshot: createAcquisitionPolicySnapshot(policy, recipe, current.recipeSelection),
+                policySnapshot: createAcquisitionPolicySnapshot(policy, recipe),
             }, ["recipe", "policy", "budget"]);
             status = message("CustomLumpSumApproved");
             break;
@@ -328,7 +348,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
                 throw new TypeError("This draft already has its one extra current-level allowance.");
             }
             const judgmentId = deps.mintJudgmentId();
-            await deps.saveJudgment({
+            const judgment = await deps.saveJudgment({
                 id: judgmentId,
                 facts: {
                     kind: "extra-current-level-allowance",
@@ -342,7 +362,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
             });
             const policy = resolveExistingPolicy(current, context, deps, {
                 selectedRecipe: "permanent-items",
-                extraCurrentLevelAllowanceIds: [judgmentId],
+                extraCurrentLevelAllowanceIds: [judgment.id],
             });
             acquisition = invalidateAcquisitionReview({
                 ...current,
@@ -397,6 +417,7 @@ export async function executeStartingEquipmentCommand(command, context, dependen
     };
 }
 const PHYSICAL_GRANT_RECOVERY_COMMANDS = new Set([
+    "decline-policy-request",
     "remove-line",
     "revoke-policy-judgment",
 ]);
@@ -597,7 +618,7 @@ async function createHigherLevelStartClaim(acquisition, startKind, reason, conte
         });
     }
     const judgmentId = deps.mintJudgmentId();
-    await deps.saveJudgment({
+    const judgment = await deps.saveJudgment({
         id: judgmentId,
         facts: {
             kind: "higher-level-start",
@@ -610,7 +631,7 @@ async function createHigherLevelStartClaim(acquisition, startKind, reason, conte
         recordedAt: context.now(),
         user: context.user,
     });
-    return { kind: "gm-confirmation", judgmentId, startKind };
+    return { kind: "gm-confirmation", judgmentId: judgment.id, startKind };
 }
 function actorId(actor) {
     const id = actor && typeof actor === "object" ? actor.id : null;
@@ -635,6 +656,7 @@ function requireCurrentPolicyRequest(requests, requestId, acquisition, currentAc
     const request = requests.find((candidate) => candidate.requestId === requestId);
     if (!request ||
         request.withdrawnAt !== null ||
+        request.decline !== null ||
         request.facts.actorId !== currentActorId ||
         request.facts.draftId !== acquisition.draftId ||
         request.facts.targetLevel !== acquisition.targetLevel) {
@@ -674,6 +696,21 @@ function addPreparedLine(draft, line) {
     if (draft.lines.some((candidate) => candidate.lineId === line.lineId)) {
         throw new TypeError("The starting-equipment line already exists.");
     }
+    const aggregationTargets = findCurrencyCartAggregationTargets(draft.lines, line);
+    const aggregationTarget = aggregationTargets[0];
+    if (aggregationTarget) {
+        const requestedQuantity = [...aggregationTargets, line].reduce((total, candidate) => {
+            const next = total + candidate.price.requestedQuantity;
+            if (!Number.isSafeInteger(next))
+                throw new RangeError("Starting-equipment quantity exceeds safe arithmetic.");
+            return next;
+        }, 0);
+        const updated = setLineQuantity(draft, aggregationTarget.lineId, requestedQuantity);
+        const duplicateLineIds = new Set(aggregationTargets.slice(1).map((candidate) => candidate.lineId));
+        return duplicateLineIds.size === 0
+            ? updated
+            : { ...updated, lines: updated.lines.filter((candidate) => !duplicateLineIds.has(candidate.lineId)) };
+    }
     const candidate = normalizeAcquisitionDraft({ ...draft, lines: [...draft.lines, line] });
     if (!candidate)
         throw new TypeError("The prepared starting-equipment line is malformed.");
@@ -709,6 +746,9 @@ function setLineQuantity(draft, lineId, quantity) {
     const current = draft.lines[index];
     if (current.funding.lane === "class-grant") {
         throw new TypeError("Automatic build-granted equipment quantity is fixed by its authoritative grant.");
+    }
+    if (current.funding.lane === "allowance") {
+        throw new TypeError("A permanent-item allowance funds exactly one item and has a fixed quantity.");
     }
     if (current.price.configurationComponents) {
         throw new TypeError("Configured equipment is prepared as one exact PF2E item and has a fixed quantity.");

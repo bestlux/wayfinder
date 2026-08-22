@@ -141,6 +141,7 @@ export function parseWayfinderAction(element) {
                 : null;
         }
         case "approve-equipment-policy-request":
+        case "decline-equipment-policy-request":
             return element.dataset.stepId && element.dataset.requestId
                 ? { type: action, stepId: element.dataset.stepId, requestId: element.dataset.requestId }
                 : null;
@@ -272,6 +273,7 @@ export function isDraftMutationAction(action) {
         case "activate-equipment-policy":
         case "request-equipment-start":
         case "approve-equipment-policy-request":
+        case "decline-equipment-policy-request":
         case "request-equipment-item-exception":
         case "approve-equipment-item-exception":
         case "revoke-equipment-policy-judgment":

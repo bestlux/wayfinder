@@ -61,14 +61,21 @@
   {{/if}}
   </details>
 
+  {{#if activePane.setup.requestOutcomeMessage}}
+    <p class="equipment-policy-request-outcome"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>{{activePane.setup.requestOutcomeMessage}}</p>
+  {{/if}}
+
   {{#each activePane.setup.pendingRequests}}
     <article class="equipment-policy-request">
       <i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>
-      <div>
+      <div class="equipment-policy-request-copy">
         <p>{{localize "wayfinder-pf2e.StartingEquipment.Request.RequestedBy" kind=kindLabel requesterName=requesterName requestedAt=requestedAtLabel}}</p>
         {{#if reason}}<p class="equipment-policy-request-reason">{{reason}}</p>{{/if}}
       </div>
-      {{#if canApprove}}<button type="button" class="primary compact" data-wayfinder-action="approve-equipment-policy-request" data-wayfinder-focus-id="starting-equipment-approve-request:{{requestId}}" data-step-id="{{../activePane.stepId}}" data-request-id="{{requestId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.ApproveRequest"}}</button>{{/if}}
+      <div class="equipment-policy-request-actions">
+        {{#if canDecline}}<button type="button" class="secondary compact" data-wayfinder-action="decline-equipment-policy-request" data-wayfinder-focus-id="starting-equipment-decline-request:{{requestId}}" data-step-id="{{../activePane.stepId}}" data-request-id="{{requestId}}">{{localize "wayfinder-pf2e.StartingEquipment.Actions.DeclineRequest"}}</button>{{/if}}
+        {{#if canApprove}}<button type="button" class="primary compact" data-wayfinder-action="approve-equipment-policy-request" data-wayfinder-focus-id="starting-equipment-approve-request:{{requestId}}" data-step-id="{{../activePane.stepId}}" data-request-id="{{requestId}}">{{#if approvalRecorded}}{{localize "wayfinder-pf2e.StartingEquipment.Actions.RetryApproval"}}{{else}}{{localize "wayfinder-pf2e.StartingEquipment.Actions.ApproveRequest"}}{{/if}}</button>{{/if}}
+      </div>
     </article>
   {{/each}}
 </section>

@@ -10,10 +10,12 @@ import {
   revokeTrustedEquipmentPolicyJudgment,
   saveEquipmentWorldPolicy,
   saveTrustedEquipmentPolicyJudgment,
+  saveTrustedEquipmentPolicyRequestDecline,
 } from "../src/wayfinder/application/equipment-policy-service";
 import { WayfinderGmCommandAuthorityError } from "../src/wayfinder/application/gm-command-authority";
 import {
   buildEquipmentPolicyJudgmentFactsFingerprint,
+  createEquipmentPolicyRequest,
   DEFAULT_EQUIPMENT_WORLD_POLICY,
   type EquipmentPolicyJudgmentFacts,
   type EquipmentPolicyJudgmentRecord,
@@ -186,11 +188,123 @@ describe("equipment policy service", () => {
       authorName: "Game Master",
       reason: "Campaign replacement budget",
     });
+    const recovered = await saveTrustedEquipmentPolicyJudgment({
+      id: "a-new-random-id-after-timeout",
+      facts: { kind: "custom-lump-sum", actorId: "actor-1", draftId: "draft-1", targetLevel: 5, amountCopper: 1234 },
+      reason: "Retry after an outcome-unknown response",
+      recordedAt: "2026-08-18T20:05:00.000Z",
+      user: { id: "gm-1", name: "Game Master", isGM: true },
+    });
+    expect(recovered).toEqual(saved);
     expect(globals.game.settings.set).toHaveBeenCalledWith(
       MODULE_ID,
       SETTINGS.equipmentPolicyJudgments,
       expect.objectContaining({ judgments: [saved] })
     );
+  });
+
+  it("refuses to approve a request after a GM has declined it", async () => {
+    let store: unknown = { version: 1, judgments: [] };
+    globals.game.settings.get.mockImplementation((moduleId: string, key: string) =>
+      moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments ? store : null
+    );
+    globals.game.settings.set.mockImplementation(async (_moduleId: string, _key: string, value: unknown) => {
+      store = structuredClone(value);
+      return value;
+    });
+    const facts = {
+      kind: "higher-level-start" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      startKind: "replacement-character" as const,
+    };
+    const request = createEquipmentPolicyRequest({
+      requestId: "request-1",
+      facts,
+      requesterUserId: "owner-1",
+      requesterName: "Owner",
+      requestedAt: "2026-08-18T19:00:00.000Z",
+      reason: "Replacement character",
+    });
+    const declined = await saveTrustedEquipmentPolicyRequestDecline({
+      request,
+      declinedAt: "2026-08-18T20:00:00.000Z",
+      reason: "Use a new character start",
+    });
+    const retried = await saveTrustedEquipmentPolicyRequestDecline({
+      request,
+      declinedAt: "2026-08-18T20:02:00.000Z",
+      reason: "Retry after the actor draft write failed",
+    });
+    expect(retried.decline).toEqual(declined.decline);
+
+    await expect(
+      saveTrustedEquipmentPolicyJudgment({
+        id: "approval:request-1",
+        facts,
+        request,
+        reason: "Late approval",
+        recordedAt: "2026-08-18T20:01:00.000Z",
+      })
+    ).rejects.toThrow(/different authoritative decision/i);
+    expect((store as { requestDecisions: { outcome: string }[] }).requestDecisions).toMatchObject([
+      { outcome: "declined" },
+    ]);
+    expect((store as { requestDecisions: unknown[] }).requestDecisions).toHaveLength(1);
+  });
+
+  it("refuses to decline a request after a GM has approved it", async () => {
+    let store: unknown = { version: 1, judgments: [] };
+    globals.game.settings.get.mockImplementation((moduleId: string, key: string) =>
+      moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments ? store : null
+    );
+    globals.game.settings.set.mockImplementation(async (_moduleId: string, _key: string, value: unknown) => {
+      store = structuredClone(value);
+      return value;
+    });
+    const facts = {
+      kind: "higher-level-start" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      startKind: "replacement-character" as const,
+    };
+    const request = createEquipmentPolicyRequest({
+      requestId: "request-1",
+      facts,
+      requesterUserId: "owner-1",
+      requesterName: "Owner",
+      requestedAt: "2026-08-18T19:00:00.000Z",
+      reason: "Replacement character",
+    });
+    const approved = await saveTrustedEquipmentPolicyJudgment({
+      id: "approval:request-1",
+      facts,
+      request,
+      reason: "Approved",
+      recordedAt: "2026-08-18T20:00:00.000Z",
+    });
+    const recovered = await saveTrustedEquipmentPolicyJudgment({
+      id: "approval:request-1",
+      facts,
+      request,
+      reason: "Retry after the actor draft write failed",
+      recordedAt: "2026-08-18T20:02:00.000Z",
+    });
+    expect(recovered).toEqual(approved);
+    expect((store as { judgments: unknown[] }).judgments).toHaveLength(1);
+
+    await expect(
+      saveTrustedEquipmentPolicyRequestDecline({
+        request,
+        declinedAt: "2026-08-18T20:01:00.000Z",
+        reason: "Late decline",
+      })
+    ).rejects.toThrow(/different authoritative decision/i);
+    expect((store as { requestDecisions: { outcome: string }[] }).requestDecisions).toMatchObject([
+      { outcome: "approved" },
+    ]);
   });
 
   it("revokes an approval with current GM provenance and read-back verification", async () => {
@@ -229,6 +343,61 @@ describe("equipment policy service", () => {
         reason: "Replacement facts changed",
       },
     });
+    const reapproved = await saveTrustedEquipmentPolicyJudgment({
+      id: "another-random-client-id",
+      facts: approved.request.facts,
+      reason: "Approved again after revocation",
+      recordedAt: "2026-08-18T22:00:00.000Z",
+    });
+    expect(reapproved.id).not.toBe(approved.id);
+    expect(reapproved.id).toMatch(/:2$/);
+  });
+
+  it("returns success when a delayed setting write committed before active-GM authority changed", async () => {
+    let store: unknown = { version: 1, judgments: [] };
+    let releaseWrite: (() => void) | null = null;
+    const writeBlocked = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const gm1 = { id: "gm-1", name: "Game Master", isGM: true, isActiveGM: true };
+    const gm2 = { id: "gm-2", name: "Other GM", isGM: true, isActiveGM: false };
+    const active = { current: gm1 };
+    globals.game.user = gm1;
+    globals.game.socket = { emit: vi.fn(), on: vi.fn() };
+    globals.game.users = {
+      get: vi.fn((id: string) => (id === gm1.id ? gm1 : id === gm2.id ? gm2 : null)),
+      get activeGM() {
+        return active.current;
+      },
+    };
+    globals.game.settings.get.mockImplementation((moduleId: string, key: string) =>
+      moduleId === MODULE_ID && key === SETTINGS.equipmentPolicyJudgments ? store : null
+    );
+    globals.game.settings.set.mockImplementation(async (_moduleId: string, _key: string, value: unknown) => {
+      store = structuredClone(value);
+      await writeBlocked;
+      return value;
+    });
+
+    const saving = saveTrustedEquipmentPolicyJudgment({
+      id: "client-random-id",
+      facts: {
+        kind: "custom-lump-sum",
+        actorId: "actor-1",
+        draftId: "draft-delayed",
+        targetLevel: 5,
+        amountCopper: 5000,
+      },
+      reason: "Delayed committed write",
+      recordedAt: "2026-08-18T20:00:00.000Z",
+    });
+    await vi.waitFor(() => expect(globals.game.settings.set).toHaveBeenCalledTimes(1));
+    active.current = gm2;
+    gm1.isActiveGM = false;
+    gm2.isActiveGM = true;
+    releaseWrite!();
+
+    await expect(saving).resolves.toMatchObject({ reason: "Delayed committed write" });
   });
 
   it("serializes concurrent GM decisions before writing the full authority array", async () => {
@@ -271,10 +440,11 @@ describe("equipment policy service", () => {
     releaseFirstWrite.resolve();
     await Promise.all([first, second]);
 
-    expect((store as { judgments: EquipmentPolicyJudgmentRecord[] }).judgments.map((entry) => entry.id)).toEqual([
-      "decision-a",
-      "decision-b",
-    ]);
+    expect(
+      (store as { judgments: EquipmentPolicyJudgmentRecord[] }).judgments.map(
+        (entry) => (entry.request.facts as { amountCopper: number }).amountCopper
+      )
+    ).toEqual([1_000, 2_000]);
   });
 
   it("rechecks live GM authority after a queued decision waits for the broker", async () => {
@@ -318,9 +488,11 @@ describe("equipment policy service", () => {
 
     await first;
     await denied;
-    expect((store as { judgments: EquipmentPolicyJudgmentRecord[] }).judgments.map((entry) => entry.id)).toEqual([
-      "decision-a",
-    ]);
+    expect(
+      (store as { judgments: EquipmentPolicyJudgmentRecord[] }).judgments.map(
+        (entry) => (entry.request.facts as { amountCopper: number }).amountCopper
+      )
+    ).toEqual([1_000]);
   });
 
   it("carries prior and newly observed decisions across a stale writer retry", async () => {
@@ -346,10 +518,10 @@ describe("equipment policy service", () => {
     });
 
     expect(writeCount).toBe(2);
-    expect((store as { judgments: EquipmentPolicyJudgmentRecord[] }).judgments.map((entry) => entry.id)).toEqual([
-      "decision-a",
-      "decision-b",
-      "decision-c",
+    const persisted = (store as { judgments: EquipmentPolicyJudgmentRecord[] }).judgments;
+    expect(persisted.map((entry) => entry.id)).toEqual(["decision-a", "decision-c", expect.stringMatching(/^direct:/)]);
+    expect(persisted.map((entry) => (entry.request.facts as { amountCopper: number }).amountCopper)).toEqual([
+      1_000, 3_000, 2_000,
     ]);
   });
 

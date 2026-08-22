@@ -16,6 +16,7 @@ export const DEFAULT_EQUIPMENT_WORLD_POLICY = Object.freeze({
 export const EMPTY_EQUIPMENT_POLICY_JUDGMENT_STORE = Object.freeze({
     version: 1,
     judgments: Object.freeze([]),
+    requestDecisions: Object.freeze([]),
 });
 export function normalizeEquipmentWorldPolicy(raw) {
     if (!isRecord(raw) || raw.version !== 1)
@@ -70,17 +71,68 @@ function normalizeRecipeDecision(raw) {
     return { version: 1 };
 }
 export function normalizeEquipmentPolicyJudgmentStore(raw) {
-    if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.judgments))
-        return { version: 1, judgments: [] };
+    if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.judgments)) {
+        return { version: 1, judgments: [], requestDecisions: [] };
+    }
     const judgments = raw.judgments.flatMap((value) => {
         const judgment = normalizeEquipmentPolicyJudgment(value);
         return judgment ? [judgment] : [];
     });
+    const rawDecisions = raw.requestDecisions === undefined ? [] : raw.requestDecisions;
+    if (!Array.isArray(rawDecisions))
+        return { version: 1, judgments: [], requestDecisions: [] };
+    const requestDecisions = rawDecisions.flatMap((value) => {
+        const decision = normalizeEquipmentPolicyRequestDecision(value);
+        return decision ? [decision] : [];
+    });
     if (judgments.length !== raw.judgments.length ||
-        new Set(judgments.map((value) => value.id)).size !== judgments.length) {
-        return { version: 1, judgments: [] };
+        new Set(judgments.map((value) => value.id)).size !== judgments.length ||
+        requestDecisions.length !== rawDecisions.length ||
+        new Set(requestDecisions.map((value) => value.request.requestId)).size !== requestDecisions.length) {
+        return { version: 1, judgments: [], requestDecisions: [] };
     }
-    return { version: 1, judgments: judgments.sort((left, right) => left.id.localeCompare(right.id)) };
+    return {
+        version: 1,
+        judgments: judgments.sort((left, right) => left.id.localeCompare(right.id)),
+        requestDecisions: requestDecisions.sort((left, right) => left.request.requestId.localeCompare(right.request.requestId)),
+    };
+}
+export function normalizeEquipmentPolicyRequestDecision(raw) {
+    if (!isRecord(raw) ||
+        raw.version !== 1 ||
+        (raw.outcome !== "approved" && raw.outcome !== "declined") ||
+        !nonEmpty(raw.factsFingerprint) ||
+        !isRecord(raw.request) ||
+        !nonEmpty(raw.decidedByUserId) ||
+        !nonEmpty(raw.decidedByName) ||
+        !validTimestamp(raw.decidedAt) ||
+        !nonEmpty(raw.reason)) {
+        return null;
+    }
+    const request = normalizeEquipmentPolicyRequest({
+        version: 1,
+        requestId: raw.request.requestId,
+        facts: raw.request.facts,
+        factsFingerprint: raw.factsFingerprint,
+        requesterUserId: raw.request.requesterUserId,
+        requesterName: raw.request.requesterName,
+        requestedAt: raw.request.requestedAt,
+        reason: raw.request.reason,
+        withdrawnAt: null,
+        decline: null,
+    });
+    if (!request || Date.parse(raw.decidedAt) < Date.parse(request.requestedAt))
+        return null;
+    return {
+        version: 1,
+        outcome: raw.outcome,
+        factsFingerprint: request.factsFingerprint,
+        request: equipmentPolicyRequestEvidence(request),
+        decidedByUserId: raw.decidedByUserId,
+        decidedByName: raw.decidedByName,
+        decidedAt: raw.decidedAt,
+        reason: raw.reason.trim(),
+    };
 }
 export function normalizeEquipmentPolicyJudgment(raw) {
     if (!isRecord(raw) ||
@@ -107,6 +159,7 @@ export function normalizeEquipmentPolicyJudgment(raw) {
         requestedAt: raw.request.requestedAt,
         reason: raw.request.reason,
         withdrawnAt: null,
+        decline: null,
     });
     const revocation = raw.revocation === null
         ? null
@@ -172,9 +225,38 @@ export function createEquipmentPolicyRequest(input) {
         requestedAt: input.requestedAt,
         reason: input.reason.trim(),
         withdrawnAt: null,
+        decline: null,
+    };
+}
+export function equipmentPolicyRequestEvidence(request) {
+    return {
+        requestId: request.requestId,
+        requesterUserId: request.requesterUserId,
+        requesterName: request.requesterName,
+        requestedAt: request.requestedAt,
+        reason: request.reason,
+        facts: cloneData(request.facts),
     };
 }
 export function normalizeEquipmentPolicyRequest(raw) {
+    const decline = raw &&
+        typeof raw === "object" &&
+        !Array.isArray(raw) &&
+        (raw.decline === undefined || raw.decline === null)
+        ? null
+        : isRecord(raw) &&
+            isRecord(raw.decline) &&
+            nonEmpty(raw.decline.declinedByUserId) &&
+            nonEmpty(raw.decline.declinedByName) &&
+            validTimestamp(raw.decline.declinedAt) &&
+            nonEmpty(raw.decline.reason)
+            ? {
+                declinedByUserId: raw.decline.declinedByUserId,
+                declinedByName: raw.decline.declinedByName,
+                declinedAt: raw.decline.declinedAt,
+                reason: raw.decline.reason.trim(),
+            }
+            : undefined;
     if (!isRecord(raw) ||
         raw.version !== 1 ||
         !nonEmpty(raw.requestId) ||
@@ -184,7 +266,10 @@ export function normalizeEquipmentPolicyRequest(raw) {
         !nonEmpty(raw.requesterName) ||
         !validTimestamp(raw.requestedAt) ||
         !nonEmpty(raw.reason) ||
-        (raw.withdrawnAt !== null && !validTimestamp(raw.withdrawnAt))) {
+        (raw.withdrawnAt !== null && !validTimestamp(raw.withdrawnAt)) ||
+        decline === undefined ||
+        (raw.withdrawnAt !== null && decline !== null) ||
+        (decline !== null && Date.parse(decline.declinedAt) < Date.parse(raw.requestedAt))) {
         return null;
     }
     try {
@@ -202,6 +287,7 @@ export function normalizeEquipmentPolicyRequest(raw) {
             requestedAt: raw.requestedAt,
             reason: raw.reason.trim(),
             withdrawnAt: raw.withdrawnAt,
+            decline,
         };
     }
     catch {
@@ -211,7 +297,33 @@ export function normalizeEquipmentPolicyRequest(raw) {
 export function withdrawEquipmentPolicyRequest(request, withdrawnAt) {
     if (!validTimestamp(withdrawnAt))
         throw new TypeError("Equipment request withdrawal requires a valid timestamp.");
+    if (request.decline)
+        throw new TypeError("A declined equipment request cannot be withdrawn.");
     return request.withdrawnAt ? request : { ...request, withdrawnAt };
+}
+export function declineEquipmentPolicyRequest(request, input) {
+    if (!nonEmpty(input.declinedByUserId) ||
+        !nonEmpty(input.declinedByName) ||
+        !validTimestamp(input.declinedAt) ||
+        !nonEmpty(input.reason)) {
+        throw new TypeError("Equipment request decline identity, time, and reason are required.");
+    }
+    if (request.withdrawnAt !== null)
+        throw new TypeError("A withdrawn equipment request cannot be declined.");
+    if (Date.parse(input.declinedAt) < Date.parse(request.requestedAt)) {
+        throw new TypeError("Equipment request decline cannot predate the request.");
+    }
+    if (request.decline)
+        return request;
+    return {
+        ...request,
+        decline: {
+            declinedByUserId: input.declinedByUserId.trim(),
+            declinedByName: input.declinedByName.trim(),
+            declinedAt: input.declinedAt,
+            reason: input.reason.trim(),
+        },
+    };
 }
 export function createEquipmentPolicyResolver(authority) {
     return { resolve: (input) => resolveEffectiveEquipmentPolicy(input, authority) };

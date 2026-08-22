@@ -184,6 +184,19 @@ describe("wayfinder actions", () => {
     expect(
       parseWayfinderAction({
         dataset: {
+          wayfinderAction: "decline-equipment-policy-request",
+          stepId: "starting-equipment-level-5",
+          requestId: "request-1",
+        },
+      } as any)
+    ).toEqual({
+      type: "decline-equipment-policy-request",
+      stepId: "starting-equipment-level-5",
+      requestId: "request-1",
+    });
+    expect(
+      parseWayfinderAction({
+        dataset: {
           wayfinderAction: "revoke-equipment-policy-judgment",
           stepId: "starting-equipment-level-5",
           judgmentId: "judgment-1",

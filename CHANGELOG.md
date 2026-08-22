@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.8.1 - Unreleased
+## 0.8.1 - 2026-08-22
 
 - Wayfinder now waits for its shared, retryable Handlebars partial preload before every full or scoped render, preventing a cold client from opening the app before newly installed picker templates are registered.
+- GMs can decline a pending Starting Equipment request. A decline closes that exact request with an attributed audit record while allowing the player to ask for the same item again under a fresh request ID; approval and decline are serialized through Foundry's active GM and converge on one durable judgment across retries. Custom lump sums now replace superseded official-recipe provenance instead of producing a contradictory draft.
+- Repeated currency purchases of the same stackable item now combine into one cart line and reprice from the total quantity. The next matching purchase also repairs duplicate stacks left by 0.8.0, while kits, configured gear, allowances, class grants, and explicitly separate items remain distinct.
 
 ## 0.8.0 - 2026-08-22
 

@@ -19,6 +19,12 @@ export function acquisitionPreAggregationMaterial(line, resolvedAllowanceId) {
 export function canonicalAcquisitionAggregationKey(material) {
     return canonicalJson(material);
 }
+export function findCurrencyCartAggregationTargets(lines, incoming) {
+    const incomingKey = currencyCartAggregationKey(incoming);
+    if (incomingKey === null)
+        return [];
+    return lines.filter((line) => currencyCartAggregationKey(line) === incomingKey);
+}
 export function aggregateRequestedQuantity(prices) {
     let total = 0;
     for (const price of prices) {
@@ -44,6 +50,15 @@ export function acquisitionPriceBasis(price) {
 }
 function fundingMaterial(funding, resolvedAllowanceId) {
     return { funding, resolvedAllowanceId };
+}
+function currencyCartAggregationKey(line) {
+    if (line.stackingIntent !== "aggregate" ||
+        line.funding.lane !== "currency" ||
+        line.kitExpansion ||
+        line.price.configurationComponents) {
+        return null;
+    }
+    return canonicalAcquisitionAggregationKey(acquisitionPreAggregationMaterial(line, null));
 }
 function canonicalJson(value) {
     if (value === null || typeof value === "boolean" || typeof value === "string" || typeof value === "number") {

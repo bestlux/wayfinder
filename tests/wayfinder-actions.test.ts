@@ -25,6 +25,9 @@ describe("Wayfinder actions", () => {
     expect(isDraftMutationAction({ type: "preview-option", stepId: "step", value: "item" })).toBe(false);
     expect(isDraftMutationAction({ type: "clear-picker-filters", stepId: "step" })).toBe(false);
     expect(isDraftMutationAction({ type: "retain-all-equipment", stepId: "equipment" })).toBe(true);
+    expect(
+      isDraftMutationAction({ type: "decline-equipment-policy-request", stepId: "equipment", requestId: "request-1" })
+    ).toBe(true);
     expect(isDraftMutationAction({ type: "open-inventory" })).toBe(false);
     expect(
       isDraftMutationAction({

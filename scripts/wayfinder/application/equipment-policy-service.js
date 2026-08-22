@@ -1,7 +1,8 @@
 import { MODULE_ID, SETTINGS } from "../../constants.js";
 import { assertCanUseWayfinder } from "../../permissions.js";
 import { getEquipmentPolicyJudgmentStoreSetting, getEquipmentWorldPolicySetting } from "../../settings.js";
-import { buildEquipmentPolicyJudgmentFactsFingerprint, createEquipmentPolicyRequest, createEquipmentPolicyResolver, equipmentPolicyJudgmentFactsEqual, normalizeEquipmentPolicyRequest, normalizeEquipmentWorldPolicy, } from "../domain/equipment-policy.js";
+import { buildEquipmentPolicyJudgmentFactsFingerprint, createEquipmentPolicyRequest, createEquipmentPolicyResolver, declineEquipmentPolicyRequest, equipmentPolicyJudgmentFactsEqual, equipmentPolicyRequestEvidence, normalizeEquipmentPolicyRequest, normalizeEquipmentWorldPolicy, } from "../domain/equipment-policy.js";
+import { assertCurrentEquipmentAuthorityWriter, coordinateEquipmentAuthorityOperation, setEquipmentAuthorityHandler, } from "./equipment-authority-coordinator.js";
 import { discoverInstalledEquipmentPackDescriptors, normalizePf2eEquipmentSources, } from "./equipment-source-policy.js";
 import { requireCurrentGmPrincipal } from "./gm-command-authority.js";
 export { normalizePf2eEquipmentSources } from "./equipment-source-policy.js";
@@ -107,6 +108,10 @@ export async function saveEquipmentWorldPolicy(raw, user = game.user, now = () =
     return attributed;
 }
 export async function saveTrustedEquipmentPolicyJudgment(input) {
+    const { user = game.user, ...operationInput } = input;
+    return coordinateEquipmentAuthorityOperation({ type: "approve-request", input: operationInput }, user);
+}
+async function saveTrustedEquipmentPolicyJudgmentLocally(input) {
     const user = record(input.user ?? game.user);
     requireLiveGmPrincipal(user);
     if (!nonEmpty(input.id) || !nonEmpty(input.reason) || !validTimestamp(input.recordedAt)) {
@@ -114,58 +119,105 @@ export async function saveTrustedEquipmentPolicyJudgment(input) {
     }
     return brokerJudgmentStoreWrite(async () => {
         const principal = requireLiveGmPrincipal(user);
-        const request = normalizeEquipmentPolicyRequest(input.request ??
-            createEquipmentPolicyRequest({
-                requestId: `direct:${input.id}`,
-                facts: input.facts,
-                requesterUserId: principal.userId,
-                requesterName: nonEmpty(user.name) ? user.name : principal.userId,
-                requestedAt: input.recordedAt,
-                reason: input.reason,
-            }));
+        const factsFingerprint = buildEquipmentPolicyJudgmentFactsFingerprint(input.facts);
+        if (!input.request) {
+            return convergeAuthorityStore((current) => {
+                const directPrefix = `direct:${factsFingerprint}:`;
+                const matching = current.judgments.filter((candidate) => candidate.request.requestId.startsWith(directPrefix) &&
+                    equipmentPolicyJudgmentFactsEqual(candidate.request.facts, input.facts));
+                const active = matching.find((candidate) => candidate.revocation === null && isCurrentGmUser(candidate.authorUserId));
+                if (active)
+                    return { store: current, result: active };
+                const directId = `${directPrefix}${matching.length + 1}`;
+                const request = createEquipmentPolicyRequest({
+                    requestId: directId,
+                    facts: input.facts,
+                    requesterUserId: principal.userId,
+                    requesterName: nonEmpty(user.name) ? user.name : principal.userId,
+                    requestedAt: input.recordedAt,
+                    reason: input.reason,
+                });
+                const judgment = createJudgmentRecord(directId, request, principal, user, input.recordedAt, input.reason);
+                const decision = createRequestDecision(request, "approved", principal, user, input.recordedAt, input.reason);
+                return {
+                    store: {
+                        ...current,
+                        judgments: [...current.judgments, judgment],
+                        requestDecisions: mergeRequestDecisionRecords(current.requestDecisions, [decision]),
+                    },
+                    result: judgment,
+                };
+            });
+        }
+        const request = normalizeEquipmentPolicyRequest(input.request);
         if (!request ||
             request.withdrawnAt !== null ||
-            request.factsFingerprint !== buildEquipmentPolicyJudgmentFactsFingerprint(input.facts) ||
+            request.decline !== null ||
+            request.factsFingerprint !== factsFingerprint ||
             !equipmentPolicyJudgmentFactsEqual(request.facts, input.facts) ||
             Date.parse(input.recordedAt) < Date.parse(request.requestedAt)) {
             throw new TypeError("Equipment approval requires a current request for the exact approved facts.");
         }
-        const judgment = {
-            id: input.id,
-            kind: input.facts.kind,
-            actorId: input.facts.actorId,
-            draftId: input.facts.draftId,
-            targetLevel: input.facts.targetLevel,
-            factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(input.facts),
-            authorUserId: principal.userId,
-            authorName: nonEmpty(user.name) ? user.name : principal.userId,
-            recordedAt: input.recordedAt,
-            reason: input.reason.trim(),
-            request: {
-                requestId: request.requestId,
-                requesterUserId: request.requesterUserId,
-                requesterName: request.requesterName,
-                requestedAt: request.requestedAt,
-                reason: request.reason,
-                facts: structuredClone(request.facts),
-            },
-            revocation: null,
-        };
-        return convergeJudgmentStore((current) => {
-            const existing = current.find((candidate) => candidate.id === judgment.id);
+        const judgment = createJudgmentRecord(input.id, request, principal, user, input.recordedAt, input.reason);
+        const decision = createRequestDecision(request, "approved", principal, user, input.recordedAt, input.reason);
+        return convergeAuthorityStore((current) => {
+            const requestDecisions = mergeRequestDecisionRecords(current.requestDecisions, [decision]);
+            const existing = current.judgments.find((candidate) => candidate.id === judgment.id);
             if (existing) {
-                if (JSON.stringify({ ...existing, revocation: null }) !== JSON.stringify(judgment)) {
+                if (JSON.stringify(judgmentIdentity(existing)) !== JSON.stringify(judgmentIdentity(judgment))) {
                     throw new TypeError("Equipment judgment ID already belongs to different facts.");
                 }
                 if (existing.revocation)
                     throw new TypeError("A revoked equipment judgment cannot be restored.");
-                return { judgments: current, result: existing };
+                return { store: { ...current, requestDecisions }, result: existing };
             }
-            return { judgments: [...current, judgment], result: judgment };
+            return {
+                store: { ...current, judgments: [...current.judgments, judgment], requestDecisions },
+                result: judgment,
+            };
+        });
+    });
+}
+export async function saveTrustedEquipmentPolicyRequestDecline(input) {
+    const { user = game.user, ...operationInput } = input;
+    return coordinateEquipmentAuthorityOperation({ type: "decline-request", input: operationInput }, user);
+}
+async function saveTrustedEquipmentPolicyRequestDeclineLocally(input) {
+    const user = record(input.user ?? game.user);
+    requireLiveGmPrincipal(user);
+    if (!nonEmpty(input.reason) || !validTimestamp(input.declinedAt)) {
+        throw new TypeError("Equipment request decline time and reason are required.");
+    }
+    return brokerJudgmentStoreWrite(async () => {
+        const principal = requireLiveGmPrincipal(user);
+        const request = normalizeEquipmentPolicyRequest(input.request);
+        if (!request ||
+            request.withdrawnAt !== null ||
+            request.decline !== null ||
+            Date.parse(input.declinedAt) < Date.parse(request.requestedAt)) {
+            throw new TypeError("Equipment decline requires a current request for the exact requested facts.");
+        }
+        const decision = createRequestDecision(request, "declined", principal, user, input.declinedAt, input.reason);
+        const persisted = await convergeAuthorityStore((current) => {
+            const requestDecisions = mergeRequestDecisionRecords(current.requestDecisions, [decision]);
+            return {
+                store: { ...current, requestDecisions },
+                result: requestDecisions.find((candidate) => candidate.request.requestId === request.requestId),
+            };
+        });
+        return declineEquipmentPolicyRequest(request, {
+            declinedByUserId: persisted.decidedByUserId,
+            declinedByName: persisted.decidedByName,
+            declinedAt: persisted.decidedAt,
+            reason: persisted.reason,
         });
     });
 }
 export async function revokeTrustedEquipmentPolicyJudgment(input) {
+    const { user = game.user, ...operationInput } = input;
+    return coordinateEquipmentAuthorityOperation({ type: "revoke-judgment", input: operationInput }, user);
+}
+async function revokeTrustedEquipmentPolicyJudgmentLocally(input) {
     const user = record(input.user ?? game.user);
     requireLiveGmPrincipal(user);
     if (!nonEmpty(input.judgmentId) || !nonEmpty(input.reason) || !validTimestamp(input.revokedAt)) {
@@ -192,44 +244,70 @@ export async function revokeTrustedEquipmentPolicyJudgment(input) {
                 reason: input.reason.trim(),
             },
         };
-        return convergeJudgmentStore((latest) => {
-            const candidate = latest.find((entry) => entry.id === input.judgmentId);
+        return convergeAuthorityStore((latest) => {
+            const candidate = latest.judgments.find((entry) => entry.id === input.judgmentId);
             if (!candidate)
                 throw new TypeError("The equipment judgment no longer exists.");
             if (candidate.revocation)
-                return { judgments: latest, result: candidate };
-            const next = latest.map((entry) => (entry.id === revoked.id ? revoked : entry));
-            return { judgments: next, result: revoked };
+                return { store: latest, result: candidate };
+            const judgments = latest.judgments.map((entry) => (entry.id === revoked.id ? revoked : entry));
+            return { store: { ...latest, judgments }, result: revoked };
         });
     });
 }
-// Foundry exposes settings as full-value writes without compare-and-swap. This broker prevents
-// lost updates among calls in this loaded module context; convergence below still detects and
-// merges external facts observed while a call is active, but does not claim cross-client atomicity.
+setEquipmentAuthorityHandler(async (operation, requester) => {
+    switch (operation.type) {
+        case "approve-request":
+            return saveTrustedEquipmentPolicyJudgmentLocally({
+                ...operation.input,
+                user: requester,
+            });
+        case "decline-request":
+            return saveTrustedEquipmentPolicyRequestDeclineLocally({
+                ...operation.input,
+                user: requester,
+            });
+        case "revoke-judgment":
+            return revokeTrustedEquipmentPolicyJudgmentLocally({
+                ...operation.input,
+                user: requester,
+            });
+    }
+});
+// The socket coordinator routes every public decision through Foundry's one active GM. This
+// module-local broker is the second serialization boundary for authority operations already
+// accepted by that client; convergence below preserves independently added store facts.
 let judgmentStoreWriteTail = Promise.resolve();
 function brokerJudgmentStoreWrite(operation) {
     const result = judgmentStoreWriteTail.then(operation, operation);
     judgmentStoreWriteTail = result.then(() => undefined, () => undefined);
     return result;
 }
-async function convergeJudgmentStore(mutate) {
-    let carried = [];
+async function convergeAuthorityStore(mutate) {
+    let carried = { version: 1, judgments: [], requestDecisions: [] };
     for (let attempt = 0; attempt < 5; attempt += 1) {
-        const observed = getEquipmentPolicyJudgmentStoreSetting().judgments;
-        const current = mergeJudgmentRecords(carried, observed);
+        const observed = getEquipmentPolicyJudgmentStoreSetting();
+        const current = mergeAuthorityStores(carried, observed);
         const mutation = mutate(current);
-        const intended = mergeJudgmentRecords(current, mutation.judgments);
-        if (judgmentStoreContains(observed, intended)) {
-            return observed.find((candidate) => candidate.id === mutation.result.id);
-        }
-        await game.settings.set(MODULE_ID, SETTINGS.equipmentPolicyJudgments, { version: 1, judgments: intended });
-        const persisted = getEquipmentPolicyJudgmentStoreSetting().judgments;
-        if (judgmentStoreContains(persisted, intended)) {
-            return persisted.find((candidate) => candidate.id === mutation.result.id);
-        }
-        carried = mergeJudgmentRecords(intended, persisted);
+        const intended = mergeAuthorityStores(current, mutation.store);
+        if (authorityStoreContains(observed, intended))
+            return mutation.result;
+        assertCurrentEquipmentAuthorityWriter();
+        await game.settings.set(MODULE_ID, SETTINGS.equipmentPolicyJudgments, intended);
+        const persisted = getEquipmentPolicyJudgmentStoreSetting();
+        if (authorityStoreContains(persisted, intended))
+            return mutation.result;
+        assertCurrentEquipmentAuthorityWriter();
+        carried = mergeAuthorityStores(intended, persisted);
     }
     throw new Error("Equipment authority store did not converge without losing a newer decision.");
+}
+function mergeAuthorityStores(base, next) {
+    return {
+        version: 1,
+        judgments: mergeJudgmentRecords(base.judgments, next.judgments),
+        requestDecisions: mergeRequestDecisionRecords(base.requestDecisions, next.requestDecisions),
+    };
 }
 function mergeJudgmentRecords(base, next) {
     const merged = new Map(base.map((judgment) => [judgment.id, judgment]));
@@ -246,9 +324,9 @@ function mergeJudgmentRecords(base, next) {
     }
     return [...merged.values()].sort((left, right) => left.id.localeCompare(right.id));
 }
-function judgmentStoreContains(persisted, intended) {
-    const byId = new Map(persisted.map((judgment) => [judgment.id, judgment]));
-    return intended.every((judgment) => {
+function authorityStoreContains(persisted, intended) {
+    const byId = new Map(persisted.judgments.map((judgment) => [judgment.id, judgment]));
+    const judgmentsPresent = intended.judgments.every((judgment) => {
         const actual = byId.get(judgment.id);
         if (!actual)
             return false;
@@ -256,6 +334,68 @@ function judgmentStoreContains(persisted, intended) {
             return false;
         return JSON.stringify({ ...actual, revocation: null }) === JSON.stringify({ ...judgment, revocation: null });
     });
+    if (!judgmentsPresent)
+        return false;
+    const decisionsByRequestId = new Map(persisted.requestDecisions.map((decision) => [decision.request.requestId, decision]));
+    return intended.requestDecisions.every((decision) => JSON.stringify(decisionsByRequestId.get(decision.request.requestId)) === JSON.stringify(decision));
+}
+function mergeRequestDecisionRecords(base, next) {
+    const merged = new Map(base.map((decision) => [decision.request.requestId, decision]));
+    for (const decision of next) {
+        const existing = merged.get(decision.request.requestId);
+        if (existing &&
+            JSON.stringify(requestDecisionIdentity(existing)) !== JSON.stringify(requestDecisionIdentity(decision))) {
+            throw new TypeError("Equipment request already has a different authoritative decision.");
+        }
+        merged.set(decision.request.requestId, existing ?? decision);
+    }
+    return [...merged.values()].sort((left, right) => left.request.requestId.localeCompare(right.request.requestId));
+}
+function requestDecisionIdentity(decision) {
+    return {
+        outcome: decision.outcome,
+        factsFingerprint: decision.factsFingerprint,
+        request: decision.request,
+    };
+}
+function judgmentIdentity(judgment) {
+    return {
+        id: judgment.id,
+        kind: judgment.kind,
+        actorId: judgment.actorId,
+        draftId: judgment.draftId,
+        targetLevel: judgment.targetLevel,
+        factsFingerprint: judgment.factsFingerprint,
+        request: judgment.request,
+    };
+}
+function createJudgmentRecord(id, request, principal, user, recordedAt, reason) {
+    return {
+        id,
+        kind: request.facts.kind,
+        actorId: request.facts.actorId,
+        draftId: request.facts.draftId,
+        targetLevel: request.facts.targetLevel,
+        factsFingerprint: request.factsFingerprint,
+        authorUserId: principal.userId,
+        authorName: nonEmpty(user.name) ? user.name : principal.userId,
+        recordedAt,
+        reason: reason.trim(),
+        request: equipmentPolicyRequestEvidence(request),
+        revocation: null,
+    };
+}
+function createRequestDecision(request, outcome, principal, user, decidedAt, reason) {
+    return {
+        version: 1,
+        outcome,
+        factsFingerprint: request.factsFingerprint,
+        request: equipmentPolicyRequestEvidence(request),
+        decidedByUserId: principal.userId,
+        decidedByName: nonEmpty(user.name) ? user.name : principal.userId,
+        decidedAt,
+        reason: reason.trim(),
+    };
 }
 function requireLiveGmPrincipal(user) {
     const claimed = requireCurrentGmPrincipal(user);

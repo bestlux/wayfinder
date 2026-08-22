@@ -8,6 +8,7 @@ import { registerSheetControls, registerWayfinderActorRefresh, rerenderOpenWayfi
 import { registerAcquisitionSmokeDriver } from "./wayfinder/application/acquisition-smoke-driver.js";
 import { registerPersistedDraftWriteGuardHook } from "./wayfinder/application/draft-write-guard.js";
 import { invalidateFoundryEquipmentCataloguePack, registerFoundryEquipmentAcquisitionRuntime, } from "./wayfinder/application/equipment-acquisition-runtime-service.js";
+import { registerEquipmentAuthorityCoordinator } from "./wayfinder/application/equipment-authority-coordinator.js";
 import { warmWayfinderTemplates } from "./wayfinder/application/wayfinder-template-service.js";
 Hooks.once("init", () => {
     registerAcquisitionSmokeDriver();
@@ -29,5 +30,8 @@ Hooks.once("init", () => {
     registerSheetControls();
     registerWayfinderActorRefresh();
     console.log(`${MODULE_ID} | initialized`);
+});
+Hooks.once("ready", () => {
+    registerEquipmentAuthorityCoordinator();
 });
 //# sourceMappingURL=wayfinder.js.map

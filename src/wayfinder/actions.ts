@@ -44,6 +44,7 @@ export type WayfinderAction =
       startKind: "new-campaign" | "replacement-character";
     }
   | { type: "approve-equipment-policy-request"; stepId: string; requestId: string }
+  | { type: "decline-equipment-policy-request"; stepId: string; requestId: string }
   | { type: "request-equipment-item-exception"; stepId: string; sourceUuid: string }
   | { type: "approve-equipment-item-exception"; stepId: string; sourceUuid: string }
   | { type: "revoke-equipment-policy-judgment"; stepId: string; judgmentId: string }
@@ -249,6 +250,7 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
         : null;
     }
     case "approve-equipment-policy-request":
+    case "decline-equipment-policy-request":
       return element.dataset.stepId && element.dataset.requestId
         ? { type: action, stepId: element.dataset.stepId, requestId: element.dataset.requestId }
         : null;
@@ -380,6 +382,7 @@ export function isDraftMutationAction(action: WayfinderAction): boolean {
     case "activate-equipment-policy":
     case "request-equipment-start":
     case "approve-equipment-policy-request":
+    case "decline-equipment-policy-request":
     case "request-equipment-item-exception":
     case "approve-equipment-item-exception":
     case "revoke-equipment-policy-judgment":

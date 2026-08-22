@@ -4,7 +4,14 @@ import { describe, expect, it } from "vitest";
 
 import { createEmptyDraft } from "../src/draft-service";
 import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
-import { createEquipmentPolicyRequest, DEFAULT_EQUIPMENT_WORLD_POLICY } from "../src/wayfinder/domain/equipment-policy";
+import {
+  buildEquipmentPolicyJudgmentFactsFingerprint,
+  createEquipmentPolicyRequest,
+  DEFAULT_EQUIPMENT_WORLD_POLICY,
+  declineEquipmentPolicyRequest,
+  type EquipmentPolicyJudgmentRecord,
+  type EquipmentPolicyRequestDecisionV1,
+} from "../src/wayfinder/domain/equipment-policy";
 import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types";
 import {
   buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized,
@@ -222,6 +229,99 @@ describe("starting equipment pane", () => {
     });
   });
 
+  it("unblocks an item re-request only after decline, not while an approval still needs repair", () => {
+    const draft = createEmptyDraft(5);
+    draft.acquisition = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    const record: StartingEquipmentCatalogueRecord = {
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.uncommon",
+      name: "Reviewed item",
+      itemType: "equipment",
+      level: 1,
+      rarity: "uncommon",
+      sourceLabel: "Player Core",
+      priceCopper: 100,
+      priceLabel: "1 gp",
+      bulkLabel: "L",
+      handsLabel: null,
+      traits: [],
+      available: false,
+      unavailableReason: "Requires approval.",
+      titanMaulerEligible: false,
+      exceptionRequestable: true,
+    };
+    const request = createEquipmentPolicyRequest({
+      requestId: "request-item-1",
+      facts: {
+        kind: "rarity-source-exception",
+        actorId: "actor-1",
+        draftId: draft.acquisition.draftId,
+        targetLevel: 5,
+        scope: "rarity",
+        sourceUuid: record.sourceUuid,
+        packId: "pf2e.equipment-srd",
+        publicationSlug: "player-core",
+        rarity: "uncommon",
+      },
+      requesterUserId: "owner-1",
+      requesterName: "Owner",
+      requestedAt: "2026-08-20T12:00:00.000Z",
+      reason: "Please review this item",
+    });
+    draft.equipmentPolicyRequests = [request];
+    const decision: EquipmentPolicyRequestDecisionV1 = {
+      version: 1,
+      outcome: "approved",
+      factsFingerprint: request.factsFingerprint,
+      request: {
+        requestId: request.requestId,
+        requesterUserId: request.requesterUserId,
+        requesterName: request.requesterName,
+        requestedAt: request.requestedAt,
+        reason: request.reason,
+        facts: request.facts,
+      },
+      decidedByUserId: "gm-1",
+      decidedByName: "Game Master",
+      decidedAt: "2026-08-20T13:00:00.000Z",
+      reason: "Reviewed",
+    };
+    const catalogue = {
+      state: "ready" as const,
+      message: "",
+      query: "",
+      matchedRecordCount: 1,
+      records: [record],
+      filters: [],
+      activeFilters: {},
+      previewSourceUuid: record.sourceUuid,
+      titanMauler: { required: false, selectedSourceUuid: null },
+    };
+    const setup = {
+      worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY,
+      judgments: [],
+      requestDecisions: [decision],
+      isGm: false,
+    };
+
+    const approvalRepair = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Awaiting approval", issue: null },
+      catalogue,
+      setup
+    );
+    expect(approvalRepair.catalogue.items[0]?.canRequestException).toBe(false);
+
+    const declined = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Declined", issue: null },
+      catalogue,
+      { ...setup, requestDecisions: [{ ...decision, outcome: "declined" }] }
+    );
+    expect(declined.catalogue.items[0]?.canRequestException).toBe(true);
+  });
+
   it("projects policy, catalogue, affordability, cart quantity, and review state without OptionRecord", () => {
     const draft = createEmptyDraft(1);
     draft.acquisition = acquisitionFixture({ disposition: "unreviewed" }).draft;
@@ -380,6 +480,33 @@ describe("starting equipment pane", () => {
     });
   });
 
+  it("keeps permanent-item allowance quantities fixed in the cart", () => {
+    const draft = createEmptyDraft(5);
+    const allowanceLine = acquisitionLine({
+      funding: { lane: "allowance", assignment: { mode: "player", allowanceId: "allowance-5" } },
+    });
+    draft.acquisition = acquisitionFixture({ lines: [allowanceLine], disposition: "unreviewed" }).draft;
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        matchedRecordCount: 0,
+        records: [],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: null,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      }
+    );
+
+    expect(pane.cart.lines[0]).toMatchObject({ quantity: 1, canChangeQuantity: false });
+  });
+
   it("projects class-grant cart lines as fixed and policy-authorized by their grant", () => {
     const draft = createEmptyDraft(1);
     const nativeGrant = fixedNativeGrant();
@@ -529,6 +656,185 @@ describe("starting equipment pane", () => {
       kindLabel: "Level 5 higher-level start",
       reason: "Keep this campaign-specific rationale verbatim.",
     });
+  });
+
+  it("offers both GM decisions and removes a declined request from the pending projection", () => {
+    const draft = createEmptyDraft(5);
+    draft.acquisition = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    const request = createEquipmentPolicyRequest({
+      requestId: "request-1",
+      facts: {
+        kind: "higher-level-start",
+        actorId: "actor-1",
+        draftId: draft.acquisition.draftId,
+        targetLevel: 5,
+        startKind: "replacement-character",
+      },
+      requesterUserId: "owner-1",
+      requesterName: "Owner",
+      requestedAt: "2026-08-20T12:00:00.000Z",
+      reason: "Replacement character",
+    });
+    draft.equipmentPolicyRequests = [request];
+    const catalogue = {
+      state: "pending" as const,
+      message: "",
+      query: "",
+      matchedRecordCount: 0,
+      records: [],
+      filters: [],
+      activeFilters: {},
+      previewSourceUuid: null,
+      titanMauler: { required: false, selectedSourceUuid: null },
+    };
+    const gmPane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Awaiting approval", issue: null },
+      catalogue,
+      { worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY, judgments: [], isGm: true }
+    );
+    expect(gmPane.setup.pendingRequests).toEqual([
+      expect.objectContaining({ requestId: "request-1", canApprove: true, canDecline: true }),
+    ]);
+
+    draft.equipmentPolicyRequests = [
+      declineEquipmentPolicyRequest(request, {
+        declinedByUserId: "gm-1",
+        declinedByName: "Game Master",
+        declinedAt: "2026-08-20T13:00:00.000Z",
+        reason: "Declined",
+      }),
+    ];
+    const playerPane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Awaiting approval", issue: null },
+      catalogue,
+      { worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY, judgments: [], isGm: false }
+    );
+    expect(playerPane.setup.pendingRequests).toEqual([]);
+  });
+
+  it("keeps an approved request repairable until its judgment is captured in the acquisition snapshot", () => {
+    const draft = createEmptyDraft(5);
+    const fixture = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    const request = createEquipmentPolicyRequest({
+      requestId: "request-recovery",
+      facts: {
+        kind: "higher-level-start",
+        actorId: "actor-1",
+        draftId: fixture.draftId,
+        targetLevel: 5,
+        startKind: "replacement-character",
+      },
+      requesterUserId: "owner-1",
+      requesterName: "Owner",
+      requestedAt: "2026-08-20T12:00:00.000Z",
+      reason: "Replacement character",
+    });
+    const judgment: EquipmentPolicyJudgmentRecord = {
+      id: "approval:request-recovery",
+      kind: request.facts.kind,
+      actorId: request.facts.actorId,
+      draftId: request.facts.draftId,
+      targetLevel: request.facts.targetLevel,
+      factsFingerprint: buildEquipmentPolicyJudgmentFactsFingerprint(request.facts),
+      authorUserId: "gm-1",
+      authorName: "Game Master",
+      recordedAt: "2026-08-20T13:00:00.000Z",
+      reason: "Approved",
+      request: {
+        requestId: request.requestId,
+        requesterUserId: request.requesterUserId,
+        requesterName: request.requesterName,
+        requestedAt: request.requestedAt,
+        reason: request.reason,
+        facts: request.facts,
+      },
+      revocation: null,
+    };
+    const decision: EquipmentPolicyRequestDecisionV1 = {
+      version: 1,
+      outcome: "approved",
+      factsFingerprint: judgment.factsFingerprint,
+      request: judgment.request,
+      decidedByUserId: judgment.authorUserId,
+      decidedByName: judgment.authorName,
+      decidedAt: judgment.recordedAt,
+      reason: judgment.reason,
+    };
+    draft.acquisition = { ...fixture, policySnapshot: null };
+    draft.equipmentPolicyRequests = [request];
+    const catalogue = {
+      state: "pending" as const,
+      message: "",
+      query: "",
+      matchedRecordCount: 0,
+      records: [],
+      filters: [],
+      activeFilters: {},
+      previewSourceUuid: null,
+      titanMauler: { required: false, selectedSourceUuid: null },
+    };
+
+    const repairPane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Awaiting approval", issue: null },
+      catalogue,
+      {
+        worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY,
+        judgments: [judgment],
+        requestDecisions: [decision],
+        isGm: true,
+      }
+    );
+    expect(repairPane.setup.pendingRequests).toEqual([
+      expect.objectContaining({
+        requestId: request.requestId,
+        approvalRecorded: true,
+        canApprove: true,
+        canDecline: false,
+      }),
+    ]);
+
+    draft.acquisition = {
+      ...fixture,
+      policySnapshot: {
+        ...fixture.policySnapshot!,
+        material: { ...fixture.policySnapshot!.material, gmJudgments: [judgment] },
+      },
+    };
+    const appliedPane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Approved", issue: null },
+      catalogue,
+      {
+        worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY,
+        judgments: [judgment],
+        requestDecisions: [decision],
+        isGm: true,
+      }
+    );
+    expect(appliedPane.setup.pendingRequests).toEqual([]);
+
+    draft.acquisition = { ...fixture, policySnapshot: null };
+    const declinedPane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Declined", issue: null },
+      catalogue,
+      {
+        worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY,
+        judgments: [],
+        requestDecisions: [{ ...decision, outcome: "declined" }],
+        isGm: true,
+      }
+    );
+    expect(declinedPane.setup.pendingRequests).toEqual([]);
+    expect(declinedPane.setup.requestOutcomeMessage).toMatch(/player can revise/i);
   });
 
   it("maps Foundry's Chinese language id to a supported Intl timestamp locale", () => {
@@ -939,6 +1245,9 @@ describe("starting equipment pane", () => {
     const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue.hbs"), "utf8");
     const cart = readFileSync(resolve("templates/wayfinder/starting-equipment-cart.hbs"), "utf8");
     const policy = readFileSync(resolve("templates/wayfinder/starting-equipment-policy.hbs"), "utf8");
+
+    expect(policy).toContain('data-wayfinder-action="approve-equipment-policy-request"');
+    expect(policy).toContain('data-wayfinder-action="decline-equipment-policy-request"');
 
     // The measured release envelope allows zero image requests per sample; type identity comes from icon glyphs.
     for (const template of [detail, catalogue, cart, policy]) {

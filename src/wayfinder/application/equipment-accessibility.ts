@@ -48,6 +48,7 @@ export function startingEquipmentFocusCandidates(target: HTMLElement | null): st
       break;
     case "activate-equipment-policy":
     case "approve-equipment-policy-request":
+    case "decline-equipment-policy-request":
       candidates.push(
         STARTING_EQUIPMENT_SEARCH_FOCUS_ID,
         "starting-equipment-clear-filters",

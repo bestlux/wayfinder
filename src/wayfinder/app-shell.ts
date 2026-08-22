@@ -188,6 +188,7 @@ import {
 } from "./application/wayfinder-context-service.js";
 import { buildWayfinderAppPlan, findPlanStepBySlotId } from "./application/wayfinder-plan-builder-service.js";
 import { ensureWayfinderTemplatesLoaded } from "./application/wayfinder-template-service.js";
+import { findCurrencyCartAggregationTargets } from "./domain/acquisition-aggregation.js";
 import {
   acquisitionPolicyMaterialMatches,
   recordAcquisitionCurrencyConvergenceWitness,
@@ -557,6 +558,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           equipmentRenderSession: null,
         };
       }
+      const authorityStore = getEquipmentPolicyJudgmentStoreSetting();
       const pane = buildStartingEquipmentPane(
         session.step,
         draft,
@@ -565,7 +567,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         localizeAcquisition,
         {
           worldPolicy: getEquipmentWorldPolicySetting(),
-          judgments: getEquipmentPolicyJudgmentStoreSetting().judgments,
+          judgments: authorityStore.judgments,
+          requestDecisions: authorityStore.requestDecisions,
           isGm: game.user?.isGM === true,
           locale: String(game.i18n.lang ?? ""),
         }
@@ -1256,6 +1259,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           reason: "Approved the requested higher-level starting wealth.",
         });
         break;
+      case "decline-equipment-policy-request":
+        await this.#executeStartingEquipmentCommand(action.stepId, {
+          type: "decline-policy-request",
+          requestId: action.requestId,
+          reason: "Declined the pending starting-equipment request.",
+        });
+        break;
       case "request-equipment-item-exception":
         await this.#executeStartingEquipmentCommand(action.stepId, {
           type: "request-item-exception",
@@ -1651,6 +1661,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
 
     if (step.kind === "starting-equipment") {
+      const authorityStore = getEquipmentPolicyJudgmentStoreSetting();
       return buildStartingEquipmentPane(
         step,
         this.#requireDraft(),
@@ -1659,7 +1670,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         localizeAcquisition,
         {
           worldPolicy: getEquipmentWorldPolicySetting(),
-          judgments: getEquipmentPolicyJudgmentStoreSetting().judgments,
+          judgments: authorityStore.judgments,
+          requestDecisions: authorityStore.requestDecisions,
           isGm: game.user?.isGM === true,
           locale: String(game.i18n.lang ?? ""),
         }
@@ -1814,8 +1826,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         sourceUuid,
         funding,
       });
+      const focusLineId =
+        findCurrencyCartAggregationTargets(this.#requireDraft().acquisition?.lines ?? [], line)[0]?.lineId ??
+        line.lineId;
       this.#pendingEquipmentFocusIds = [
-        equipmentLineFocusId(line.lineId),
+        equipmentLineFocusId(focusLineId),
         ...(this.#pendingEquipmentFocusIds ?? []),
         STARTING_EQUIPMENT_REVIEW_FOCUS_ID,
       ];

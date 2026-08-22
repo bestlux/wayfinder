@@ -3,14 +3,18 @@ import { getCharacterWealthRow } from "../src/wayfinder/domain/character-wealth-
 import {
   buildEquipmentPolicyJudgmentFactsFingerprint,
   compareEffectiveEquipmentPolicyMaterial,
+  createEquipmentPolicyRequest,
   createEquipmentPolicyResolver,
   DEFAULT_EQUIPMENT_WORLD_POLICY,
+  declineEquipmentPolicyRequest,
   type EquipmentPolicyAuthorityPort,
   type EquipmentPolicyJudgmentFacts,
   type EquipmentPolicyJudgmentRecord,
   type EquipmentPolicyResolutionInput,
   evaluateEquipmentItemAuthority,
   normalizeEquipmentPolicyJudgment,
+  normalizeEquipmentPolicyJudgmentStore,
+  normalizeEquipmentPolicyRequest,
   normalizeEquipmentWorldPolicy,
 } from "../src/wayfinder/domain/equipment-policy";
 
@@ -49,6 +53,82 @@ describe("equipment world policy", () => {
         defaultRecipe: "permanent-items",
       })
     ).toMatchObject({ enabledRecipes: ["lump-sum"], defaultRecipe: "lump-sum" });
+  });
+});
+
+describe("equipment policy requests", () => {
+  const facts = {
+    kind: "higher-level-start" as const,
+    actorId: "actor-1",
+    draftId: "draft-1",
+    targetLevel: 5,
+    startKind: "replacement-character" as const,
+  };
+
+  it("normalizes pre-0.8.1 requests as open and preserves an attributed decline", () => {
+    const legacyJudgment = judgment(facts);
+    expect(normalizeEquipmentPolicyJudgmentStore({ version: 1, judgments: [legacyJudgment] })).toEqual({
+      version: 1,
+      judgments: [legacyJudgment],
+      requestDecisions: [],
+    });
+    const legacy = createEquipmentPolicyRequest({
+      requestId: "request-1",
+      facts,
+      requesterUserId: "owner-1",
+      requesterName: "Owner",
+      requestedAt: "2026-08-18T19:00:00.000Z",
+      reason: "Replacement character",
+    });
+    const normalizedLegacy = normalizeEquipmentPolicyRequest(
+      Object.fromEntries(Object.entries(legacy).filter(([key]) => key !== "decline"))
+    );
+    expect(normalizedLegacy?.decline).toBeNull();
+
+    const declined = declineEquipmentPolicyRequest(normalizedLegacy!, {
+      declinedByUserId: "gm-1",
+      declinedByName: "Game Master",
+      declinedAt: "2026-08-18T20:00:00.000Z",
+      reason: "Use the standard level-one budget",
+    });
+    expect(normalizeEquipmentPolicyRequest(declined)).toEqual(declined);
+    expect(declined.decline).toEqual({
+      declinedByUserId: "gm-1",
+      declinedByName: "Game Master",
+      declinedAt: "2026-08-18T20:00:00.000Z",
+      reason: "Use the standard level-one budget",
+    });
+  });
+
+  it("fails closed on contradictory or temporally impossible request resolution", () => {
+    const request = createEquipmentPolicyRequest({
+      requestId: "request-1",
+      facts,
+      requesterUserId: "owner-1",
+      requesterName: "Owner",
+      requestedAt: "2026-08-18T19:00:00.000Z",
+      reason: "Replacement character",
+    });
+    expect(
+      normalizeEquipmentPolicyRequest({
+        ...request,
+        withdrawnAt: "2026-08-18T19:30:00.000Z",
+        decline: {
+          declinedByUserId: "gm-1",
+          declinedByName: "Game Master",
+          declinedAt: "2026-08-18T20:00:00.000Z",
+          reason: "Declined",
+        },
+      })
+    ).toBeNull();
+    expect(() =>
+      declineEquipmentPolicyRequest(request, {
+        declinedByUserId: "gm-1",
+        declinedByName: "Game Master",
+        declinedAt: "2026-08-18T18:59:59.000Z",
+        reason: "Declined",
+      })
+    ).toThrow(/cannot predate/i);
   });
 });
 

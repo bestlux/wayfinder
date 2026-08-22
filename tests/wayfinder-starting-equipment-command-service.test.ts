@@ -17,8 +17,10 @@ import {
 import { createEconomicBaseline } from "../src/wayfinder/domain/economic-baseline";
 import {
   buildEquipmentPolicyJudgmentFactsFingerprint,
+  createEquipmentPolicyRequest,
   createEquipmentPolicyResolver,
   DEFAULT_EQUIPMENT_WORLD_POLICY,
+  declineEquipmentPolicyRequest,
   type EquipmentPolicyJudgmentFacts,
   type EquipmentPolicyJudgmentRecord,
 } from "../src/wayfinder/domain/equipment-policy";
@@ -145,6 +147,93 @@ describe("starting equipment command service", () => {
     ]);
   });
 
+  it("records an attributed GM decline and allows a fresh request afterward", async () => {
+    const context = commandContext(null, 5);
+    context.draft.acquisition = createAcquisitionDraft({
+      draftId: "draft-5",
+      batchId: "batch-5",
+      manifestId: "manifest-5",
+      targetLevel: 5,
+      recipe: { kind: "permanent-items" },
+    });
+    const requested = await executeStartingEquipmentCommand(
+      {
+        type: "request-higher-level-start",
+        startKind: "replacement-character",
+        reason: "Replacing a retired character",
+      },
+      context,
+      { mintRequestId: vi.fn(() => "request-5") }
+    );
+    context.draft.equipmentPolicyRequests = [...requested.policyRequests];
+    const gmContext = { ...context, userId: "gm-1", user: { id: "gm-1", name: "Game Master", isGM: true } };
+
+    const declined = await executeStartingEquipmentCommand(
+      { type: "decline-policy-request", requestId: "request-5", reason: "Use a standard new character" },
+      gmContext,
+      { declineRequest: trustedDeclineRequest }
+    );
+
+    expect(declined.acquisition).toBe(context.draft.acquisition);
+    expect(declined.policyRequests).toEqual([
+      expect.objectContaining({
+        requestId: "request-5",
+        decline: {
+          declinedByUserId: "gm-1",
+          declinedByName: "Game Master",
+          declinedAt: "2026-08-19T20:00:00.000Z",
+          reason: "Use a standard new character",
+        },
+      }),
+    ]);
+    expect(localizeAcquisitionMessage(localizeAcquisitionEnglish, declined.status)).toMatch(/player can revise/i);
+
+    context.draft.equipmentPolicyRequests = [...declined.policyRequests];
+    const requestedAgain = await executeStartingEquipmentCommand(
+      { type: "request-higher-level-start", startKind: "new-campaign", reason: "Revised request" },
+      context,
+      { mintRequestId: vi.fn(() => "request-6") }
+    );
+    expect(requestedAgain.policyRequests.map((request) => request.requestId)).toEqual(["request-5", "request-6"]);
+    expect(requestedAgain.policyRequests[1]?.decline).toBeNull();
+  });
+
+  it("rejects a non-GM decline without changing the draft", async () => {
+    const context = commandContext(null, 5);
+    context.draft.acquisition = createAcquisitionDraft({
+      draftId: "draft-5",
+      batchId: "batch-5",
+      manifestId: "manifest-5",
+      targetLevel: 5,
+      recipe: { kind: "permanent-items" },
+    });
+    context.draft.equipmentPolicyRequests = [
+      createEquipmentPolicyRequest({
+        requestId: "request-5",
+        facts: {
+          kind: "higher-level-start",
+          actorId: "actor-1",
+          draftId: "draft-5",
+          targetLevel: 5,
+          startKind: "replacement-character",
+        },
+        requesterUserId: "owner-1",
+        requesterName: "Owner",
+        requestedAt: "2026-08-19T19:00:00.000Z",
+        reason: "Replacement character",
+      }),
+    ];
+    const before = structuredClone(context.draft);
+
+    await expect(
+      executeStartingEquipmentCommand(
+        { type: "decline-policy-request", requestId: "request-5", reason: "Unauthorized" },
+        { ...context, user: { id: "owner-1", name: "Owner", isGM: false } }
+      )
+    ).rejects.toBeInstanceOf(WayfinderGmCommandAuthorityError);
+    expect(context.draft).toEqual(before);
+  });
+
   it("records an exact hydrated item-exception request without an authority write", async () => {
     const context = commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft);
     const saveJudgment = vi.fn();
@@ -249,6 +338,141 @@ describe("starting equipment command service", () => {
     expect(saveJudgment).toHaveBeenCalledOnce();
     expect(result.acquisition.lines).toEqual(context.draft.acquisition!.lines);
     expect(result.acquisition.policySnapshot?.material.gmJudgments).toContainEqual(approved);
+  });
+
+  it("uses the durable judgment identity returned for a custom lump sum", async () => {
+    const context = commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft);
+    const facts = {
+      kind: "custom-lump-sum" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      amountCopper: 2_500,
+    };
+    const durable = judgment(facts, "direct:custom-lump-sum:durable");
+    const policy = {
+      ...effectivePolicyWithJudgment(durable),
+      recipe: {
+        kind: "custom-lump-sum" as const,
+        budgetCopper: facts.amountCopper,
+        maxItemLevel: facts.targetLevel,
+        judgment: durable,
+      },
+    };
+    const resolvePolicy = vi.fn(() => policy);
+
+    const result = await executeStartingEquipmentCommand(
+      { type: "set-custom-lump-sum", amountCopper: facts.amountCopper, reason: "Use a campaign budget" },
+      context,
+      {
+        mintJudgmentId: vi.fn(() => "proposed-custom-id"),
+        saveJudgment: vi.fn(async () => durable),
+        resolvePolicy,
+      }
+    );
+
+    expect(resolvePolicy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customLumpSum: { amountCopper: facts.amountCopper, judgmentId: durable.id },
+      })
+    );
+    expect(result.acquisition.recipe).toEqual({
+      kind: "custom-lump-sum",
+      judgmentRef: durable.id,
+      amountCopper: facts.amountCopper,
+    });
+    expect(result.acquisition.recipeSelection).toBeUndefined();
+    expect(result.acquisition.policySnapshot?.material.recipeSelection).toBeUndefined();
+  });
+
+  it("uses the durable judgment identity returned for an extra allowance", async () => {
+    const context = commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft);
+    const facts = {
+      kind: "extra-current-level-allowance" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+    };
+    const durable = judgment(facts, "direct:extra-allowance:durable");
+    const basePolicy = effectivePolicyWithJudgment(durable);
+    const policy = {
+      ...basePolicy,
+      recipe: {
+        ...basePolicy.recipe,
+        allowances: [
+          ...basePolicy.recipe.allowances,
+          { allowanceId: `gm-extra:${durable.id}`, itemLevel: facts.targetLevel },
+        ],
+      },
+    };
+    const resolvePolicy = vi.fn(() => policy);
+
+    const result = await executeStartingEquipmentCommand(
+      { type: "grant-extra-current-level-allowance", reason: "Campaign award" },
+      context,
+      {
+        mintJudgmentId: vi.fn(() => "proposed-allowance-id"),
+        saveJudgment: vi.fn(async () => durable),
+        resolvePolicy,
+      }
+    );
+
+    expect(resolvePolicy).toHaveBeenCalledWith(
+      expect.objectContaining({ extraCurrentLevelAllowanceIds: [durable.id] })
+    );
+    expect(result.acquisition.policySnapshot?.material.allowances).toContainEqual({
+      allowanceId: `gm-extra:${durable.id}`,
+      itemLevel: facts.targetLevel,
+    });
+  });
+
+  it("uses the durable judgment identity returned for direct higher-level approval", async () => {
+    const context = commandContext(acquisitionFixture({ disposition: "unreviewed" }).draft);
+    const facts = {
+      kind: "higher-level-start" as const,
+      actorId: "actor-1",
+      draftId: "draft-1",
+      targetLevel: 5,
+      startKind: "replacement-character" as const,
+    };
+    const durable = judgment(facts, "direct:higher-level-start:durable");
+    const policy = {
+      ...effectivePolicyWithJudgment(durable),
+      higherLevelStartEvidence: {
+        kind: "gm-confirmation" as const,
+        startKind: facts.startKind,
+        judgment: durable,
+      },
+    };
+    const resolvePolicy = vi.fn(() => policy);
+
+    const result = await executeStartingEquipmentCommand(
+      { type: "activate-policy", startKind: facts.startKind, reason: "Replacement character" },
+      context,
+      {
+        getWorldPolicy: vi.fn(() => ({
+          ...DEFAULT_EQUIPMENT_WORLD_POLICY,
+          higherLevelStartAuthority: "gm-confirmation" as const,
+        })),
+        mintJudgmentId: vi.fn(() => "proposed-higher-level-id"),
+        saveJudgment: vi.fn(async () => durable),
+        resolvePolicy,
+      }
+    );
+
+    expect(resolvePolicy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        higherLevelStartClaim: {
+          kind: "gm-confirmation",
+          judgmentId: durable.id,
+          startKind: facts.startKind,
+        },
+      })
+    );
+    expect(result.acquisition.policySnapshot?.material.higherLevelStartEvidence).toMatchObject({
+      kind: "gm-confirmation",
+      judgment: { id: durable.id },
+    });
   });
 
   it("refuses to revoke an approval outside the current acquisition scope", async () => {
@@ -586,6 +810,97 @@ describe("starting equipment command service", () => {
       commandContext(quantity.acquisition)
     );
     expect(removed.acquisition.lines).toEqual([]);
+  });
+
+  it("merges equivalent currency purchases into one cart stack", async () => {
+    const existing = acquisitionLine({ requestedQuantity: 4 });
+    const incoming = acquisitionLine({ lineId: "line-2", requestedQuantity: 2 });
+    const fixture = acquisitionFixture({ lines: [existing] });
+
+    const result = await executeStartingEquipmentCommand(
+      { type: "add-line", line: incoming },
+      commandContext(fixture.draft)
+    );
+
+    expect(result.acquisition.lines).toHaveLength(1);
+    expect(result.acquisition.lines[0]).toMatchObject({
+      lineId: existing.lineId,
+      price: { requestedQuantity: 6, materializedQuantity: 6, linePriceCopper: 600 },
+    });
+    expect(result.acquisition.disposition).toMatchObject({ kind: "unreviewed", reasons: ["quantity"] });
+  });
+
+  it("folds pre-0.8.1 duplicate stacks into the surviving cart line on the next purchase", async () => {
+    const first = acquisitionLine({ lineId: "line-1", requestedQuantity: 4 });
+    const duplicate = acquisitionLine({ lineId: "line-2", requestedQuantity: 2 });
+    const incoming = acquisitionLine({ lineId: "line-3", requestedQuantity: 1 });
+    const fixture = acquisitionFixture({ lines: [first, duplicate], disposition: "unreviewed" });
+
+    const result = await executeStartingEquipmentCommand(
+      { type: "add-line", line: incoming },
+      commandContext(fixture.draft)
+    );
+
+    expect(result.acquisition.lines).toHaveLength(1);
+    expect(result.acquisition.lines[0]).toMatchObject({
+      lineId: first.lineId,
+      price: { requestedQuantity: 7, materializedQuantity: 7, linePriceCopper: 700 },
+    });
+  });
+
+  it("keeps explicitly separate currency purchases as distinct cart lines", async () => {
+    const existing = acquisitionLine({ stackingIntent: "separate", requestedQuantity: 4 });
+    const incoming = acquisitionLine({ lineId: "line-2", stackingIntent: "separate", requestedQuantity: 2 });
+    const fixture = acquisitionFixture({ lines: [existing], disposition: "unreviewed" });
+
+    const result = await executeStartingEquipmentCommand(
+      { type: "add-line", line: incoming },
+      commandContext(fixture.draft)
+    );
+
+    expect(result.acquisition.lines).toHaveLength(2);
+    expect(result.acquisition.lines.map((line) => line.price.requestedQuantity)).toEqual([4, 2]);
+  });
+
+  it("reprices a merged stack from its combined quantity instead of summing rounded line totals", async () => {
+    const price = acquisitionPrice({
+      basePrice: { kind: "priced", value: { cp: 2 } },
+      pricePer: 3,
+      requestedQuantity: 1,
+    });
+    const existing = acquisitionLine({ price });
+    const incoming = acquisitionLine({ lineId: "line-2", price });
+    const fixture = acquisitionFixture({ lines: [existing], disposition: "unreviewed" });
+
+    const result = await executeStartingEquipmentCommand(
+      { type: "add-line", line: incoming },
+      commandContext(fixture.draft)
+    );
+
+    expect(existing.price.linePriceCopper + incoming.price.linePriceCopper).toBe(0);
+    expect(result.acquisition.lines[0]?.price).toMatchObject({ requestedQuantity: 2, linePriceCopper: 1 });
+  });
+
+  it("keeps allowance-funded purchases separate and fixes their quantity at one", async () => {
+    const allowance = {
+      lane: "allowance" as const,
+      assignment: { mode: "player" as const, allowanceId: "allowance-5" },
+    };
+    const existing = acquisitionLine({ funding: allowance });
+    const incoming = acquisitionLine({ lineId: "line-2", funding: allowance });
+    const fixture = acquisitionFixture({ lines: [existing], disposition: "unreviewed" });
+
+    const added = await executeStartingEquipmentCommand(
+      { type: "add-line", line: incoming },
+      commandContext(fixture.draft)
+    );
+    expect(added.acquisition.lines).toHaveLength(2);
+    await expect(
+      executeStartingEquipmentCommand(
+        { type: "set-quantity", lineId: existing.lineId, quantity: 2 },
+        commandContext(fixture.draft)
+      )
+    ).rejects.toThrow(/fixed quantity/i);
   });
 
   it("recomputes requested quantity over the source stack and price.per basis", async () => {
@@ -1057,6 +1372,38 @@ describe("starting equipment command service", () => {
     }
   });
 
+  it("preserves GM decline recovery when the drafted build gains an unsupported physical grant", async () => {
+    const guarded = unsupportedArmorCommandContext(acquisitionFixture({ disposition: "unreviewed" }).draft, 5);
+    guarded.draft.equipmentPolicyRequests = [
+      createEquipmentPolicyRequest({
+        requestId: "request-5",
+        facts: {
+          kind: "higher-level-start",
+          actorId: "actor-1",
+          draftId: guarded.draft.acquisition!.draftId,
+          targetLevel: 5,
+          startKind: "replacement-character",
+        },
+        requesterUserId: "owner-1",
+        requesterName: "Owner",
+        requestedAt: "2026-08-19T19:00:00.000Z",
+        reason: "Replacement character",
+      }),
+    ];
+    const resolvePhysicalGrantCoverageBlockers = vi.fn(() => {
+      throw new Error("Decline recovery must not enter the physical-grant pre-review blocker.");
+    });
+
+    const result = await executeStartingEquipmentCommand(
+      { type: "decline-policy-request", requestId: "request-5", reason: "Declined" },
+      { ...guarded, userId: "gm-1", user: { id: "gm-1", name: "GM", isGM: true } },
+      { resolvePhysicalGrantCoverageBlockers, declineRequest: trustedDeclineRequest }
+    );
+
+    expect(resolvePhysicalGrantCoverageBlockers).not.toHaveBeenCalled();
+    expect(result.policyRequests[0]?.decline).toMatchObject({ declinedByUserId: "gm-1", reason: "Declined" });
+  });
+
   it("preserves line-removal recovery when a newly selected route becomes unsupported", async () => {
     const fixture = acquisitionFixture();
     const context = unsupportedArmorCommandContext(fixture.draft, fixture.draft.targetLevel);
@@ -1150,6 +1497,19 @@ function commandContext(
     userId: "owner-1",
     now: () => "2026-08-19T20:00:00.000Z",
   };
+}
+
+async function trustedDeclineRequest(
+  input: Parameters<NonNullable<Parameters<typeof executeStartingEquipmentCommand>[2]>["declineRequest"]>[0]
+) {
+  const user = input.user as { id: string; name: string; isGM: boolean };
+  if (!user?.isGM) throw new WayfinderGmCommandAuthorityError();
+  return declineEquipmentPolicyRequest(input.request, {
+    declinedByUserId: user.id,
+    declinedByName: user.name,
+    declinedAt: input.declinedAt,
+    reason: input.reason,
+  });
 }
 
 function unsupportedArmorCommandContext(

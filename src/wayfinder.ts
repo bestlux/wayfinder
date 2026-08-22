@@ -11,6 +11,7 @@ import {
   invalidateFoundryEquipmentCataloguePack,
   registerFoundryEquipmentAcquisitionRuntime,
 } from "./wayfinder/application/equipment-acquisition-runtime-service.js";
+import { registerEquipmentAuthorityCoordinator } from "./wayfinder/application/equipment-authority-coordinator.js";
 import { warmWayfinderTemplates } from "./wayfinder/application/wayfinder-template-service.js";
 
 Hooks.once("init", () => {
@@ -33,4 +34,8 @@ Hooks.once("init", () => {
   registerSheetControls();
   registerWayfinderActorRefresh();
   console.log(`${MODULE_ID} | initialized`);
+});
+
+Hooks.once("ready", () => {
+  registerEquipmentAuthorityCoordinator();
 });

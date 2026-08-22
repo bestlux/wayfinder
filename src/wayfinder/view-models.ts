@@ -447,6 +447,7 @@ export interface StartingEquipmentStepPane {
     authorityMessage: string | null;
     canActivate: boolean;
     canRequest: boolean;
+    requestOutcomeMessage: string | null;
     pendingRequests: readonly {
       requestId: string;
       requesterName: string;
@@ -454,7 +455,9 @@ export interface StartingEquipmentStepPane {
       requestedAtLabel: string;
       reason: string;
       kindLabel: string;
+      approvalRecorded: boolean;
       canApprove: boolean;
+      canDecline: boolean;
     }[];
     activeJudgmentId: string | null;
     canRevoke: boolean;

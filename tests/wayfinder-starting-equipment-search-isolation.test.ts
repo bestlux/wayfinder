@@ -93,6 +93,7 @@ describe("starting equipment search isolation", () => {
       "activate-equipment-policy",
       "request-equipment-start",
       "approve-equipment-policy-request",
+      "decline-equipment-policy-request",
       "request-equipment-item-exception",
       "approve-equipment-item-exception",
       "revoke-equipment-policy-judgment",
@@ -129,6 +130,15 @@ describe("starting equipment search isolation", () => {
     expect(preview).toContain("this.#equipmentPreviewByStepId.get(action.stepId) === action.sourceUuid");
     expect(preview).toContain("this.#pendingEquipmentFocusIds = null");
     expect(preview.indexOf("break")).toBeLessThan(preview.indexOf("#renderStartingEquipmentPartial"));
+  });
+
+  it("restores focus to the surviving cart row when an added item merges into a stack", () => {
+    const start = appShell.indexOf("  async #addStartingEquipmentItem(");
+    const end = appShell.indexOf("  async #chooseTitanMaulerEquipment", start);
+    const add = appShell.slice(start, end);
+
+    expect(add).toContain("findCurrencyCartAggregationTargets(");
+    expect(add).toContain("equipmentLineFocusId(focusLineId)");
   });
 
   it("retains an existing equipment error for view-only partial actions", () => {

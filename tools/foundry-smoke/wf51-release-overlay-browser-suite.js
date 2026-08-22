@@ -824,6 +824,32 @@ function actorItemsBySource(actor, sourceUuid) {
   return actor.items.filter((item) => (item.sourceId ?? item.flags?.core?.sourceId) === sourceUuid);
 }
 
+async function seedPassiveInvestigatorGrantParents(actor, moduleId) {
+  const investigator = await fromUuid(INVESTIGATOR_UUID);
+  const methodology = await fromUuid(METHODOLOGY_SELECTOR_UUID);
+  if (!investigator || !methodology) {
+    throw new Error("WF-080-51 Investigator native-grant parent sources are unavailable.");
+  }
+  const classSource = passiveExistingHistorySource(investigator, {
+    uuid: INVESTIGATOR_UUID,
+    name: "Investigator",
+    type: "class",
+  });
+  classSource.flags[moduleId] = { ...(classSource.flags[moduleId] ?? {}), slotId: "class-level-1" };
+  const [classItem] = await actor.createEmbeddedDocuments("Item", [classSource]);
+  if (!classItem) throw new Error("WF-080-51 could not seed the passive Investigator parent.");
+
+  const methodologySource = passiveExistingHistorySource(methodology, {
+    uuid: METHODOLOGY_SELECTOR_UUID,
+    name: "Methodology",
+    type: "feat",
+  });
+  methodologySource.system.location = classItem.id;
+  const [methodologyItem] = await actor.createEmbeddedDocuments("Item", [methodologySource]);
+  if (!methodologyItem) throw new Error("WF-080-51 could not seed the passive Methodology parent.");
+  return { classItemId: classItem.id, methodologyItemId: methodologyItem.id };
+}
+
 async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) {
   const projectionSteps = investigatorSteps(modules);
   const applySteps = projectionSteps.filter(
@@ -839,6 +865,7 @@ async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) 
     "feat",
     "classfeature",
   );
+  await seedPassiveInvestigatorGrantParents(actor, moduleId);
   await executeAndPersist(
     actor,
     draft,

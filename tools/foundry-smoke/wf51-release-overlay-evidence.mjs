@@ -432,7 +432,7 @@ function qualifyGrants(evidence, failures) {
   if (
     titan?.resaleRule !== "zero-until-rune-investment" ||
     evidence?.projectionEconomicWritesUnchanged !== true ||
-    materialization?.disposition !== "purchase-ledger" ||
+    materialization?.disposition !== "retain-all" ||
     materialization?.partialItemCount !== 1 ||
     materialization?.itemCount !== 1 ||
     materialization?.acquisitionStampCount !== 1 ||

@@ -138,7 +138,7 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(browserSuite).toContain("...titanSubject");
     expect(browserSuite).toContain("const commandSteps = [...projectionSteps, modules.createStep(1)]");
     expect(browserSuite).toContain(
-      'executeAndPersist(actor, titanDraft, { type: "review-purchases" }, modules, moduleId, commandSteps)'
+      'executeAndPersist(actor, titanDraft, { type: "retain-all" }, modules, moduleId, commandSteps)'
     );
     expect(browserSuite).toContain("EXISTING_IMPORT_SOURCES");
     expect(browserSuite).toContain("snapshotEconomic(modules, existingImportActor)");

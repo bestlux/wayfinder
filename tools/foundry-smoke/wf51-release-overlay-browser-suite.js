@@ -2170,7 +2170,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     );
   }
   const projectionEconomicWritesUnchanged = before === snapshotEconomic(modules, actor);
-  await executeAndPersist(actor, titanDraft, { type: "review-purchases" }, modules, moduleId, commandSteps);
+  await executeAndPersist(actor, titanDraft, { type: "retain-all" }, modules, moduleId, commandSteps);
   const reviewedTitanDraft = modules.normalizeDraft(actor.getFlag(moduleId, "draft"), 1);
   const reviewedTitanAcquisition = reviewedTitanDraft.acquisition;
   const titanPlan = modules.createPreparedPlan({

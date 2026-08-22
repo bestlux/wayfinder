@@ -541,9 +541,12 @@ function pickerSurfaceDiagnostic(app) {
 }
 
 async function choosePickerOption(app, actor, modules, moduleId, uuid, query) {
-  const results = await activatePickerStep(app, ANCESTRY_STEP_ID);
+  await activatePickerStep(app, ANCESTRY_STEP_ID);
   const search = await waitForValue(
-    () => results.querySelector(`input[data-wayfinder-search][data-step-id="${ANCESTRY_STEP_ID}"]`),
+    () =>
+      connectedPickerSurface(app, ANCESTRY_STEP_ID)?.querySelector(
+        `input[data-wayfinder-search][data-step-id="${ANCESTRY_STEP_ID}"]`,
+      ),
     "the production ancestry search input",
   );
   search.value = query;

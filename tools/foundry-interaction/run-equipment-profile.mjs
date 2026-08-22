@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { smokeCases } from "../foundry-smoke/class-cases.mjs";
 import { loginToFoundryWorld, resolveFoundryChromePath } from "../foundry-smoke/browser-session.mjs";
+import { loadWayfinderBrowserSuite } from "../foundry-smoke/shared-browser-suite-lifecycle.mjs";
 import {
   summarizeEquipmentProfile,
   validateEquipmentBudgets,
@@ -25,6 +26,13 @@ const defaultProfilePath = path.join(repoRoot, "tools", "foundry-interaction", "
 const browserSuitePath = path.join(repoRoot, "tools", "foundry-smoke", "browser-suite.js");
 const browserSessionPath = path.join(repoRoot, "tools", "foundry-smoke", "browser-session.mjs");
 const classCasesPath = path.join(repoRoot, "tools", "foundry-smoke", "class-cases.mjs");
+const sharedBrowserSuiteLifecyclePath = path.join(
+  repoRoot,
+  "tools",
+  "foundry-smoke",
+  "shared-browser-suite-lifecycle.mjs"
+);
+const skillSelectionPolicyPath = path.join(repoRoot, "tools", "foundry-smoke", "skill-selection-policy.js");
 const browserProfilePath = path.join(repoRoot, "tools", "foundry-interaction", "browser-equipment-profile.js");
 const profileResultsPath = path.join(repoRoot, "tools", "foundry-interaction", "equipment-profile-results.mjs");
 const evidenceBuilderPath = path.join(repoRoot, "tools", "foundry-interaction", "build-equipment-profile-evidence.mjs");
@@ -132,7 +140,7 @@ async function main() {
       };
     }, MODULE_ID);
     failureStage = "gm-driver-injection";
-    await gmPage.addScriptTag({ path: browserSuitePath });
+    await loadWayfinderBrowserSuite(gmPage);
     failureStage = "preflight";
     preflight = await gmPage.evaluate(
       (payload) => globalThis.__preflightWayfinderEquipmentProfile(payload),
@@ -164,7 +172,7 @@ async function main() {
       password: process.env.FOUNDRY_SMOKE_PLAYER_PASSWORD ?? "",
     });
     failureStage = "player-driver-injection";
-    await playerPage.addScriptTag({ path: browserSuitePath });
+    await loadWayfinderBrowserSuite(playerPage);
     failureStage = "player-open";
     const playerOpen = await playerPage.evaluate(
       (payload) => globalThis.__openWayfinderEquipmentProfile(payload),
@@ -495,6 +503,8 @@ async function inspectDriver() {
     browserSuitePath,
     browserSessionPath,
     classCasesPath,
+    sharedBrowserSuiteLifecyclePath,
+    skillSelectionPolicyPath,
     browserProfilePath,
     profileResultsPath,
     evidenceBuilderPath,

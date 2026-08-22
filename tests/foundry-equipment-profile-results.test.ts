@@ -22,8 +22,18 @@ const browserProfile = readFileSync(
   fileURLToPath(new URL("../tools/foundry-interaction/browser-equipment-profile.js", import.meta.url)),
   "utf8"
 );
+const runner = readFileSync(
+  fileURLToPath(new URL("../tools/foundry-interaction/run-equipment-profile.mjs", import.meta.url)),
+  "utf8"
+);
 
 describe("equipment catalogue performance profile", () => {
+  it("loads the shared smoke policy before the browser suite in both equipment contexts", () => {
+    expect(runner.match(/await loadWayfinderBrowserSuite\((?:gmPage|playerPage)\)/gu)).toHaveLength(2);
+    expect(runner).not.toContain("await gmPage.addScriptTag({ path: browserSuitePath })");
+    expect(runner).not.toContain("await playerPage.addScriptTag({ path: browserSuitePath })");
+  });
+
   it("freezes the inherited release envelope and exact action contracts", () => {
     expect(validateEquipmentProfile(profile)).toEqual([]);
     expect(profile.appWidths).toEqual([1240, 1180, 980, 760]);
@@ -613,6 +623,8 @@ function driverProvenance() {
     "tools/foundry-smoke/browser-suite.js",
     "tools/foundry-smoke/browser-session.mjs",
     "tools/foundry-smoke/class-cases.mjs",
+    "tools/foundry-smoke/shared-browser-suite-lifecycle.mjs",
+    "tools/foundry-smoke/skill-selection-policy.js",
     "tools/foundry-interaction/browser-equipment-profile.js",
     "tools/foundry-interaction/equipment-profile-results.mjs",
     "tools/foundry-interaction/build-equipment-profile-evidence.mjs",

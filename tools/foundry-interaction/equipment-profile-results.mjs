@@ -62,6 +62,8 @@ const FROZEN_DRIVER_PATHS = [
   "tools/foundry-smoke/browser-suite.js",
   "tools/foundry-smoke/browser-session.mjs",
   "tools/foundry-smoke/class-cases.mjs",
+  "tools/foundry-smoke/shared-browser-suite-lifecycle.mjs",
+  "tools/foundry-smoke/skill-selection-policy.js",
   "tools/foundry-interaction/browser-equipment-profile.js",
   "tools/foundry-interaction/equipment-profile-results.mjs",
   "tools/foundry-interaction/build-equipment-profile-evidence.mjs",

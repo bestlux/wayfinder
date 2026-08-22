@@ -38,6 +38,8 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         : [];
     const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
     const records = matchingRecords.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS).map((record) => {
+        // Coin-only. A permanent-item allowance can still cover an item this is false for, so
+        // presentation keys off canAdd rather than this.
         const affordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
         const canBuyWithCurrency = record.available && record.level < step.level && affordable;
         const allowanceOptions = policy?.resolvedRecipe.kind === "permanent-items" && isPermanentItemType(record.itemType)
@@ -195,6 +197,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         !!policy &&
         (policy.resolvedRecipe.kind === "lump-sum" || policy.resolvedRecipe.kind === "custom-lump-sum") &&
         !acquisition?.lines.some((line) => line.funding.lane === "allowance");
+    const recipeSelection = recipeSelectionLabel(acquisition?.recipeSelection, localize, setupOptions?.locale);
     const localizedFilters = catalogue.filters.map((filter) => ({
         ...filter,
         label: catalogueFilterLabel(filter.key, filter.value, filter.label, localize),
@@ -255,7 +258,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
                 requesterName: request.requesterName,
                 requestedAt: request.requestedAt,
                 reason: request.reason,
-                requestedAtLabel: readableTimestamp(request.requestedAt),
+                requestedAtLabel: readableTimestamp(request.requestedAt, setupOptions?.locale),
                 kindLabel: request.facts.kind === "higher-level-start"
                     ? localize("wayfinder-pf2e.StartingEquipment.Request.HigherLevelStart", {
                         level: request.facts.targetLevel,
@@ -290,7 +293,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             authorityLabel: policy
                 ? authoritySentence(policy.authorityPolicy.recipeChoice, policy.authorityPolicy.apply, localize)
                 : localize("wayfinder-pf2e.StartingEquipment.Policy.FromGmSettings"),
-            recipeSelectionLabel: recipeSelectionLabel(acquisition?.recipeSelection, localize),
+            recipeSelectionLabel: recipeSelection,
             handoffLabel: localize("wayfinder-pf2e.StartingEquipment.Policy.ExistingGearHandoff"),
             explanations: policy && acquisition ? policyExplanations(acquisition, localize) : [],
             allowances: policy?.allowances.map((allowance) => ({
@@ -363,7 +366,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         cart: {
             lines: cartLines,
             empty: cartLines.length === 0,
-            count: cartLines.length,
+            count: cartLines.reduce((total, line) => total + line.quantity, 0),
             budgetLabel: formatCopper(budgetCopper, localize),
             spentLabel: formatCopper(spentCopper, localize),
             remainingLabel: formatCopper(remainingCopper, localize),
@@ -414,26 +417,26 @@ function isSourceFilter(filter) {
 function selectedFirst(filters) {
     return [...filters].sort((left, right) => Number(right.selected) - Number(left.selected));
 }
-function recipeSelectionLabel(selection, localize) {
+function recipeSelectionLabel(selection, localize, locale) {
     if (!selection)
         return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionRecordedOnChoice");
     if (selection.selector.kind === "unattributed-world-policy") {
         return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionLegacy", {
-            selectedAt: readableTimestamp(selection.selectedAt),
+            selectedAt: readableTimestamp(selection.selectedAt, locale),
         });
     }
     return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionByUser", {
         userName: selection.selector.userName,
-        selectedAt: readableTimestamp(selection.selectedAt),
+        selectedAt: readableTimestamp(selection.selectedAt, locale),
     });
 }
 /** ISO instants are storage detail; the pane shows a local, human-legible stamp instead. */
-function readableTimestamp(value) {
+function readableTimestamp(value, locale) {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime()))
         return value;
     try {
-        return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed);
+        return new Intl.DateTimeFormat(locale || undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed);
     }
     catch {
         return parsed.toLocaleString();

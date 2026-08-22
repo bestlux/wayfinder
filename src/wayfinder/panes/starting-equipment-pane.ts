@@ -63,6 +63,8 @@ export function buildStartingEquipmentPane(
     readonly worldPolicy: EquipmentWorldPolicyV1;
     readonly judgments: readonly EquipmentPolicyJudgmentRecord[];
     readonly isGm: boolean;
+    /** Foundry's selected language, so recorded instants read in the session's locale. */
+    readonly locale?: string;
   }
 ): StartingEquipmentStepPane {
   const acquisition = draft.acquisition;
@@ -93,6 +95,8 @@ export function buildStartingEquipmentPane(
     : [];
   const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
   const records = matchingRecords.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS).map((record) => {
+    // Coin-only. A permanent-item allowance can still cover an item this is false for, so
+    // presentation keys off canAdd rather than this.
     const affordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
     const canBuyWithCurrency = record.available && record.level < step.level && affordable;
     const allowanceOptions =
@@ -273,6 +277,7 @@ export function buildStartingEquipmentPane(
     !!policy &&
     (policy.resolvedRecipe.kind === "lump-sum" || policy.resolvedRecipe.kind === "custom-lump-sum") &&
     !acquisition?.lines.some((line) => line.funding.lane === "allowance");
+  const recipeSelection = recipeSelectionLabel(acquisition?.recipeSelection, localize, setupOptions?.locale);
   const localizedFilters = catalogue.filters.map((filter) => ({
     ...filter,
     label: catalogueFilterLabel(filter.key, filter.value, filter.label, localize),
@@ -342,7 +347,7 @@ export function buildStartingEquipmentPane(
         requesterName: request.requesterName,
         requestedAt: request.requestedAt,
         reason: request.reason,
-        requestedAtLabel: readableTimestamp(request.requestedAt),
+        requestedAtLabel: readableTimestamp(request.requestedAt, setupOptions?.locale),
         kindLabel:
           request.facts.kind === "higher-level-start"
             ? localize("wayfinder-pf2e.StartingEquipment.Request.HigherLevelStart", {
@@ -382,7 +387,7 @@ export function buildStartingEquipmentPane(
       authorityLabel: policy
         ? authoritySentence(policy.authorityPolicy.recipeChoice, policy.authorityPolicy.apply, localize)
         : localize("wayfinder-pf2e.StartingEquipment.Policy.FromGmSettings"),
-      recipeSelectionLabel: recipeSelectionLabel(acquisition?.recipeSelection, localize),
+      recipeSelectionLabel: recipeSelection,
       handoffLabel: localize("wayfinder-pf2e.StartingEquipment.Policy.ExistingGearHandoff"),
       explanations: policy && acquisition ? policyExplanations(acquisition, localize) : [],
       allowances:
@@ -462,7 +467,7 @@ export function buildStartingEquipmentPane(
     cart: {
       lines: cartLines,
       empty: cartLines.length === 0,
-      count: cartLines.length,
+      count: cartLines.reduce((total, line) => total + line.quantity, 0),
       budgetLabel: formatCopper(budgetCopper, localize),
       spentLabel: formatCopper(spentCopper, localize),
       remainingLabel: formatCopper(remainingCopper, localize),
@@ -524,26 +529,27 @@ function selectedFirst<T extends { readonly selected: boolean }>(filters: readon
 
 function recipeSelectionLabel(
   selection: NonNullable<DraftState["acquisition"]>["recipeSelection"],
-  localize: AcquisitionLocalize
+  localize: AcquisitionLocalize,
+  locale: string | undefined
 ): string {
   if (!selection) return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionRecordedOnChoice");
   if (selection.selector.kind === "unattributed-world-policy") {
     return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionLegacy", {
-      selectedAt: readableTimestamp(selection.selectedAt),
+      selectedAt: readableTimestamp(selection.selectedAt, locale),
     });
   }
   return localize("wayfinder-pf2e.StartingEquipment.Policy.SelectionByUser", {
     userName: selection.selector.userName,
-    selectedAt: readableTimestamp(selection.selectedAt),
+    selectedAt: readableTimestamp(selection.selectedAt, locale),
   });
 }
 
 /** ISO instants are storage detail; the pane shows a local, human-legible stamp instead. */
-function readableTimestamp(value: string): string {
+function readableTimestamp(value: string, locale: string | undefined): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   try {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed);
+    return new Intl.DateTimeFormat(locale || undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed);
   } catch {
     return parsed.toLocaleString();
   }

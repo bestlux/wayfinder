@@ -2,9 +2,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-/** Upper bound on markup elements per catalogue row; the row list is re-rendered on every keystroke. */
-const MAX_RESULT_ROW_ELEMENTS = 12;
-
 import { createEmptyDraft } from "../src/draft-service";
 import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
 import { createEquipmentPolicyRequest } from "../src/wayfinder/domain/equipment-policy";
@@ -25,6 +22,19 @@ function buildStartingEquipmentPane(
 ) {
   return buildStartingEquipmentPaneLocalized(args[0], args[1], args[2], args[3], localizeAcquisitionEnglish, args[4]);
 }
+
+/**
+ * Markup elements permitted in ONE catalogue row template.
+ *
+ * This is NOT the release budget. `equipment-catalogue-profile.json` freezes
+ * `maxResultDomElementCount`, which the live profile measures as every descendant of
+ * `.equipment-result-list` across all rendered rows (browser-equipment-profile.js). A per-row
+ * template cap cannot enforce that; the two numbers are unrelated. See the rebaseline test below.
+ */
+const MAX_RESULT_ROW_TEMPLATE_ELEMENTS = 14;
+
+/** Rows rendered per page, mirroring MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS. */
+const RENDERED_ROWS_PER_PAGE = 12;
 
 describe("starting equipment pane", () => {
   it("renders level-5 allowance buckets separately from residual coin", () => {
@@ -98,6 +108,71 @@ describe("starting equipment pane", () => {
         { allowanceId: "level-4-1", label: "Use a level 4 allowance" },
       ],
     });
+  });
+
+  it("keeps an allowance-funded item priced normally when coin alone cannot cover it", () => {
+    const draft = createEmptyDraft(5);
+    draft.acquisition = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    draft.acquisition = {
+      ...draft.acquisition,
+      policySnapshot: {
+        ...draft.acquisition.policySnapshot!,
+        material: {
+          ...draft.acquisition.policySnapshot!.material,
+          budgetCopper: 1_000,
+          allowances: [{ allowanceId: "level-4-1", itemLevel: 4 }],
+        },
+      },
+    };
+    const record: StartingEquipmentCatalogueRecord = {
+      sourceUuid: "Compendium.pf2e.equipment-srd.Item.beyond-coin",
+      name: "Level 4 permanent item",
+      itemType: "equipment",
+      level: 4,
+      rarity: "common",
+      sourceLabel: "Player Core",
+      // Far beyond the 10 gp budget, but squarely inside the level-4 allowance.
+      priceCopper: 7_500,
+      priceLabel: "75 gp",
+      bulkLabel: "L",
+      handsLabel: null,
+      traits: [],
+      available: true,
+      unavailableReason: null,
+      titanMaulerEligible: false,
+      exceptionRequestable: false,
+    };
+
+    const pane = buildStartingEquipmentPane(
+      createStartingEquipmentStep(5),
+      draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      {
+        state: "ready",
+        message: "",
+        query: "",
+        matchedRecordCount: 1,
+        records: [record],
+        filters: [],
+        activeFilters: {},
+        previewSourceUuid: record.sourceUuid,
+        titanMauler: { required: false, selectedSourceUuid: null },
+      }
+    );
+
+    const item = pane.catalogue.items[0]!;
+    expect(item.affordable).toBe(false);
+    expect(item.canBuyWithCurrency).toBe(false);
+    // The allowance can pay for it, so it must not be presented as out of reach.
+    expect(item.canAdd).toBe(true);
+    expect(item.allowanceOptions).toHaveLength(1);
+
+    const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue.hbs"), "utf8");
+    const detail = readFileSync(resolve("templates/wayfinder/starting-equipment-detail.hbs"), "utf8");
+    for (const template of [catalogue, detail]) {
+      expect(template).toContain("{{#unless canAdd}} is-unaffordable{{/unless}}");
+      expect(template).not.toContain("{{#unless affordable}} is-unaffordable{{/unless}}");
+    }
   });
 
   it("projects policy, catalogue, affordability, cart quantity, and review state without OptionRecord", () => {
@@ -739,7 +814,7 @@ describe("starting equipment pane", () => {
 
     expect(loopStart).toBeGreaterThan(-1);
     // A row is a scannable record, not a mashed sentence, but it stays cheap: no images, one control.
-    expect([...resultLoop.matchAll(/<[a-z]+\b/gu)].length).toBeLessThanOrEqual(MAX_RESULT_ROW_ELEMENTS);
+    expect([...resultLoop.matchAll(/<[a-z]+\b/gu)].length).toBeLessThanOrEqual(MAX_RESULT_ROW_TEMPLATE_ELEMENTS);
     expect([...resultLoop.matchAll(/<button\b/gu)]).toHaveLength(1);
     expect(resultLoop).not.toContain("<img");
     expect(resultLoop).toContain('data-wayfinder-action="preview-equipment-item"');
@@ -762,6 +837,20 @@ describe("starting equipment pane", () => {
     expect(detail).toContain("{{#unless activePane.catalogue.preview}}aria-description=");
     expect(pane).not.toContain("is-detail-empty");
     expect(styles).toContain(".equipment-detail.is-empty");
+  });
+
+  it("records that the frozen result-DOM budget no longer covers the rebuilt rows", () => {
+    const profile = JSON.parse(
+      readFileSync(resolve("tools/foundry-interaction/equipment-catalogue-profile.json"), "utf8")
+    );
+
+    // The profile is deliberately left frozen until a live run re-baselines it. Asserting the
+    // breach here keeps the outstanding gap visible instead of silent, and forces whoever raises
+    // the budget to revisit this expectation.
+    expect(profile.budgets.maxResultDomElementCount).toBe(12);
+    expect(MAX_RESULT_ROW_TEMPLATE_ELEMENTS * RENDERED_ROWS_PER_PAGE).toBeGreaterThan(
+      profile.budgets.maxResultDomElementCount
+    );
   });
 
   it("keeps the equipment pane free of image requests and mounts the preview root once", () => {

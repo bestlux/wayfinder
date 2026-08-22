@@ -564,6 +564,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           worldPolicy: getEquipmentWorldPolicySetting(),
           judgments: getEquipmentPolicyJudgmentStoreSetting().judgments,
           isGm: game.user?.isGM === true,
+          locale: String(game.i18n.lang ?? ""),
         }
       );
       if (!this.#canCommitStartingEquipmentRender(equipmentRequest)) {
@@ -1657,6 +1658,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
           worldPolicy: getEquipmentWorldPolicySetting(),
           judgments: getEquipmentPolicyJudgmentStoreSetting().judgments,
           isGm: game.user?.isGM === true,
+          locale: String(game.i18n.lang ?? ""),
         }
       );
     }

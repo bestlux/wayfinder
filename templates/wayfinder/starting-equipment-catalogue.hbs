@@ -57,7 +57,7 @@
             </span>
             <span class="equipment-result-meta">{{itemTypeLabel}} · {{sourceLabel}}{{#if unavailableReason}} · <span class="equipment-result-block">{{unavailableReason}}</span>{{/if}}</span>
           </span>
-          <span class="equipment-result-price{{#unless affordable}} is-unaffordable{{/unless}}">{{priceLabel}}</span>
+          <span class="equipment-result-price{{#unless canAdd}} is-unaffordable{{/unless}}">{{priceLabel}}</span>
         </button>
       </article>
     {{/each}}

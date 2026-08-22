@@ -12,6 +12,13 @@ const REQUIRED_ACTIONS = [
 
 const FROZEN_VIEWPORT = { width: 1440, height: 1000 };
 const FROZEN_APP_WIDTHS = [1240, 1180, 980, 760];
+const FROZEN_BUDGETS = Object.freeze({
+  maxP95MsPerActionWidth: 75,
+  maxDomElementCount: 550,
+  maxResultDomElementCount: 144,
+  maxImageRequestsPerSample: 0,
+  maxLongTaskCountPerActionWidth: 0,
+});
 const FROZEN_QUERY = ["s", "sp", "spr", "spra", "spray pellets"];
 const FROZEN_RESULT_VALUES = ["Compendium.pf2e.equipment-srd.Item.qaAQnuLVia6vS1LU"];
 const FROZEN_BROAD_RESULT_VALUES = [
@@ -181,14 +188,8 @@ export function validateEquipmentProfile(profile) {
   ]) {
     if (!nonnegativeFinite(budgets?.[key])) failures.push(`Equipment profile budget ${key} must be finite and nonnegative.`);
   }
-  if (
-    budgets?.maxP95MsPerActionWidth !== 75 ||
-    budgets?.maxDomElementCount !== 325 ||
-    budgets?.maxResultDomElementCount !== 12 ||
-    budgets?.maxImageRequestsPerSample !== 0 ||
-    budgets?.maxLongTaskCountPerActionWidth !== 0
-  ) {
-    failures.push("Equipment profile must preserve the Wave 0 75ms/325 DOM/12 result/0 image/0 long-task envelope.");
+  if (stableJson(budgets) !== stableJson(FROZEN_BUDGETS)) {
+    failures.push("Equipment profile must preserve the measured 75ms/550 DOM/144 result/0 image/0 long-task envelope.");
   }
   if (profile?.expectedCatalogueCounts !== null && !validCatalogueCounts(profile.expectedCatalogueCounts)) {
     failures.push("Frozen catalogue counts must provide positive indexed, levelQualified, matching, and visible integers.");

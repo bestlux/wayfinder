@@ -39,8 +39,8 @@ describe("equipment catalogue performance profile", () => {
     expect(profile.appWidths).toEqual([1240, 1180, 980, 760]);
     expect(profile.budgets).toEqual({
       maxP95MsPerActionWidth: 75,
-      maxDomElementCount: 325,
-      maxResultDomElementCount: 12,
+      maxDomElementCount: 550,
+      maxResultDomElementCount: 144,
       maxImageRequestsPerSample: 0,
       maxLongTaskCountPerActionWidth: 0,
     });
@@ -62,7 +62,7 @@ describe("equipment catalogue performance profile", () => {
       expect.arrayContaining([
         expect.stringContaining("app widths"),
         expect.stringContaining("30 measured"),
-        expect.stringContaining("Wave 0"),
+        expect.stringContaining("measured"),
         expect.stringContaining("zero unchanged-repeat"),
         expect.stringContaining("counter limits"),
         expect.stringContaining("exact Wizard"),

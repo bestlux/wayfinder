@@ -123,8 +123,8 @@
   ],
   "budgets": {
     "maxP95MsPerActionWidth": 75,
-    "maxDomElementCount": 325,
-    "maxResultDomElementCount": 12,
+    "maxDomElementCount": 550,
+    "maxResultDomElementCount": 144,
     "maxImageRequestsPerSample": 0,
     "maxLongTaskCountPerActionWidth": 0
   }

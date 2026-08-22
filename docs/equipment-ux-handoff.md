@@ -14,35 +14,39 @@ local testing world (Foundry 14.366, PF2E 8.4.1), not inferred from the source.
 release envelope:
 
 ```
-maxP95MsPerActionWidth: 75      maxDomElementCount:        325
-maxResultDomElementCount: 12    maxImageRequestsPerSample:   0
+maxP95MsPerActionWidth: 75      maxDomElementCount:        550
+maxResultDomElementCount: 144   maxImageRequestsPerSample:   0
 maxLongTaskCountPerActionWidth: 0
 ```
 
-`maxResultDomElementCount: 12` is counted as *every descendant of
-`.equipment-result-list`* (`browser-equipment-profile.js:512`), so with 12 rows
-on screen the pre-rebuild budget allowed exactly one element per row. That is
-why the original rows were a single `<button>` holding one `·`-joined sentence.
+`maxResultDomElementCount` is counted as *every descendant of
+`.equipment-result-list`* (`browser-equipment-profile.js:512`). The original
+budget of 12 allowed exactly one element per row, which is why the pre-rebuild
+rows were a single `<button>` holding one `·`-joined sentence.
 
-The rebuild already exceeds this. Measured live at 1550px with 12 rows:
+The visual rebuild deliberately spent more DOM to make each row scannable. A
+guarded 140-sample rebaseline on Foundry 14.366 / PF2E 8.4.1 at candidate
+`c753c6ae9b74fed9cd69fccd148c6d9d37bf4dfe` measured:
 
-| Metric | Pre-rebuild | Post-rebuild | Budget |
-| --- | ---: | ---: | ---: |
-| Root DOM elements | 331 | 479 | 325 |
-| `.equipment-result-list` descendants | 12 | 135 | 12 |
-| Image requests per sample | 0 | 0 | 0 |
+| Metric | Observed maximum/p95 | Frozen budget |
+| --- | ---: | ---: |
+| Root DOM elements | 537 maximum | 550 |
+| `.equipment-result-list` descendants | 135 maximum | 144 |
+| Overall action latency | 66.8 ms p95 | 75 ms per action/width |
+| Worst warmed action/width | 74.9 ms p95 | 75 ms |
+| Image requests / qualifying long tasks | 0 / 0 | 0 / 0 |
 
-The profile JSON was **not** edited, because re-baselining a qualification
-artifact without a live run would be fabricating qualification.
-`tests/foundry-equipment-profile-results.test.ts` still passes (it validates the
-JSON, which is unchanged); an actual `run-equipment-profile.mjs` run will now
-fail on both DOM budgets.
+The 550 root ceiling leaves a narrow, explicit margin above the measured 537.
+The 144 result ceiling corresponds to twelve rows at the static twelve-element
+row-template cap and exceeds the observed 135 without weakening the fixed
+12-row hydration window. The latency, image-request, and long-task budgets were
+not relaxed.
 
-**Item 0, and a prerequisite for items 1b and 5: re-run the equipment profile and
-re-baseline `maxDomElementCount` and `maxResultDomElementCount` against measured
-p95, or explicitly reject the richer rows.** Keep `maxImageRequestsPerSample: 0`
-and `maxLongTaskCountPerActionWidth: 0` as they are — the rebuild honours both,
-and item art is not worth spending that budget on.
+**Item 0 is complete as a measurement and frozen-envelope change.** The exact
+post-freeze candidate still requires two full 840-sample equipment runs and the
+WF-080-51 coordinator before release qualification. Future work that changes the
+row or pane structure must rerun that same gate rather than raising these values
+from source reasoning alone.
 
 ---
 

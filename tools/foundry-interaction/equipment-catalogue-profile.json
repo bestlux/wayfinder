@@ -10,6 +10,11 @@
     "height": 1000
   },
   "appWidths": [1240, 1180, 980, 760],
+  "resultWindowProfiles": [
+    { "id": "default", "appHeight": 820, "expectedMountedRows": 12 },
+    { "id": "expanded", "appHeight": 1200, "expectedMountedRows": 24 },
+    { "id": "tall", "appHeight": 1500, "expectedMountedRows": 36 }
+  ],
   "querySequence": ["s", "sp", "spr", "spra", "spray pellets"],
   "expectedFinalResultValues": ["Compendium.pf2e.equipment-srd.Item.qaAQnuLVia6vS1LU"],
   "expectedBroadResultValues": [
@@ -124,8 +129,11 @@
   ],
   "budgets": {
     "maxP95MsPerActionWidth": 75,
-    "maxDomElementCount": 550,
-    "maxResultDomElementCount": 144,
+    "maxDomElementCount": 850,
+    "maxResultDomElementCount": 434,
+    "maxMountedResultCount": 36,
+    "maxResultDomElementsPerMountedRow": 12,
+    "maxResultChromeDomElementCount": 2,
     "maxImageRequestsPerSample": 0,
     "maxLongTaskCountPerActionWidth": 0
   }

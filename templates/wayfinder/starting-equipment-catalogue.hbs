@@ -1,4 +1,4 @@
-<div class="equipment-catalogue-projection" data-application-part="equipment-catalogue" data-step-id="{{activePane.stepId}}" data-wayfinder-rendered-query="{{activePane.catalogue.search}}" data-wayfinder-view-revision="{{equipmentRequest.viewRevision}}" data-wayfinder-source-revision="{{equipmentRequest.sourceRevision}}">
+<div class="equipment-catalogue-projection" data-application-part="equipment-catalogue" data-step-id="{{activePane.stepId}}" data-wayfinder-rendered-query="{{activePane.catalogue.search}}" data-wayfinder-result-offset="{{activePane.catalogue.resultOffset}}" data-wayfinder-result-limit="{{activePane.catalogue.resultLimit}}" data-wayfinder-view-revision="{{equipmentRequest.viewRevision}}" data-wayfinder-source-revision="{{equipmentRequest.sourceRevision}}">
   <div class="equipment-filter-row" role="group" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.FiltersAria"}}" aria-controls="{{activePane.stepId}}-equipment-results">
     {{#each activePane.catalogue.typeFilters}}<button type="button" class="equipment-type-chip{{#if selected}} is-selected{{/if}}" aria-pressed="{{#if selected}}true{{else}}false{{/if}}" data-wayfinder-action="toggle-equipment-filter" data-wayfinder-focus-id="{{focusId}}" data-step-id="{{../activePane.stepId}}" data-filter-key="{{key}}" data-value="{{value}}"><i class="fa-solid {{icon}}" aria-hidden="true"></i><span>{{label}}</span></button>{{/each}}
 
@@ -27,7 +27,7 @@
     </div>
   {{/if}}
 
-  <p class="equipment-result-count" role="status" aria-live="polite" aria-atomic="true">
+  <p class="equipment-result-count" role="status" aria-live="{{#if equipmentRequest.announceWindow}}polite{{else}}off{{/if}}" aria-atomic="true">
     <span>{{activePane.catalogue.resultAnnouncement}}</span>
     {{#if activePane.catalogue.narrowSearchHint}}<small>{{activePane.catalogue.narrowSearchHint}}</small>{{/if}}
   </p>
@@ -44,9 +44,10 @@
     </div>
   {{/unless}}
 
-  <div class="equipment-result-list" id="{{activePane.stepId}}-equipment-results" data-wayfinder-scroll-id="{{activePane.stepId}}:equipment-results">
+  <div class="equipment-result-list" id="{{activePane.stepId}}-equipment-results" role="list" aria-label="{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.ResultsAria"}}" aria-busy="false" data-wayfinder-equipment-virtual-list data-total-results="{{activePane.catalogue.totalResultCount}}" data-result-offset="{{activePane.catalogue.resultOffset}}" data-step-id="{{activePane.stepId}}" data-wayfinder-scroll-id="{{activePane.stepId}}:equipment-results">
+    <div class="equipment-result-spacer" style="height: {{activePane.catalogue.leadingSpacerPx}}px" data-equipment-leading-spacer aria-hidden="true"></div>
     {{#each activePane.catalogue.items}}
-      <article class="equipment-result-row{{#if previewing}} is-previewing{{/if}}{{#unless canAdd}} is-blocked{{/unless}}">
+      <article class="equipment-result-row{{#if previewing}} is-previewing{{/if}}{{#unless canAdd}} is-blocked{{/unless}}" role="listitem" aria-posinset="{{resultPosition}}" aria-setsize="{{../activePane.catalogue.totalResultCount}}" data-result-index="{{resultIndex}}" data-source-uuid="{{sourceUuid}}">
         <button type="button" class="equipment-result" aria-label="{{previewAriaLabel}}" aria-pressed="{{#if previewing}}true{{else}}false{{/if}}" data-equipment-item data-source-uuid="{{sourceUuid}}" data-filter-rarity="{{rarity}}" data-filter-source="{{sourceLabel}}" data-filter-type="{{itemType}}" data-wayfinder-action="preview-equipment-item" data-wayfinder-focus-id="{{previewFocusId}}" data-step-id="{{../activePane.stepId}}">
           <span class="equipment-result-art"><i class="fa-solid {{typeIcon}}" aria-hidden="true"></i></span>
           <span class="equipment-result-copy">
@@ -61,5 +62,12 @@
         </button>
       </article>
     {{/each}}
+    <div class="equipment-result-spacer" style="height: {{activePane.catalogue.trailingSpacerPx}}px" data-equipment-trailing-spacer aria-hidden="true"></div>
   </div>
+  {{#if activePane.catalogue.hasPreviousWindow}}
+    <button type="button" class="equipment-window-fallback previous" data-wayfinder-action="set-equipment-result-window" data-step-id="{{activePane.stepId}}" data-offset="{{activePane.catalogue.previousWindowOffset}}">{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.PreviousResults"}}</button>
+  {{/if}}
+  {{#if activePane.catalogue.hasNextWindow}}
+    <button type="button" class="equipment-window-fallback next" data-wayfinder-action="set-equipment-result-window" data-step-id="{{activePane.stepId}}" data-offset="{{activePane.catalogue.nextWindowOffset}}">{{localize "wayfinder-pf2e.StartingEquipment.Catalogue.NextResults"}}</button>
+  {{/if}}
 </div>

@@ -1,7 +1,7 @@
 import type { DraftState } from "../../types.js";
 import type { WayfinderStepEvaluation } from "../domain/step-evaluation.js";
 import type { StartingEquipmentStep } from "../domain/step-types.js";
-import { MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS } from "../panes/starting-equipment-pane.js";
+import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../starting-equipment-result-window.js";
 import type { StartingEquipmentStepPane } from "../view-models.js";
 import type { PickerSearchRequest } from "./picker-search-scheduler.js";
 
@@ -20,7 +20,7 @@ export const EQUIPMENT_RENDER_PARTS = [
 ] as const;
 
 export type StartingEquipmentRenderPart = (typeof EQUIPMENT_RENDER_PARTS)[number];
-export type StartingEquipmentRenderIntent = "search" | "facet" | "preview" | "quantity" | "recipe";
+export type StartingEquipmentRenderIntent = "search" | "facet" | "window" | "preview" | "quantity" | "recipe";
 
 export interface StartingEquipmentRenderIdentity {
   readonly stepId: string;
@@ -39,6 +39,10 @@ export interface StartingEquipmentRenderSession {
 
 export interface StartingEquipmentRenderRequest extends PickerSearchRequest {
   readonly intent: StartingEquipmentRenderIntent;
+  readonly criteriaRevision: number;
+  readonly announceWindow: boolean;
+  readonly offset: number;
+  readonly limit: number;
 }
 
 export function startingEquipmentRenderIdentity(
@@ -108,6 +112,7 @@ export function startingEquipmentPartsForIntent(
   switch (intent) {
     case "search":
     case "facet":
+    case "window":
     case "preview":
       return [EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART];
     case "recipe":
@@ -140,7 +145,7 @@ function sameStartingEquipmentRenderIdentity(
 }
 
 function assertBoundedPane(pane: StartingEquipmentStepPane): void {
-  if (pane.catalogue.items.length > MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS) {
+  if (pane.catalogue.items.length > STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize) {
     throw new RangeError("Starting-equipment render sessions may only retain the bounded visible catalogue page.");
   }
 }

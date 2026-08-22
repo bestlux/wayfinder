@@ -274,7 +274,10 @@
         "RarityFilters": "Rarity",
         "RarityFiltersAria": "Filter equipment by rarity",
         "ResultLabel": "{name} · {meta} · {price} · {availability}",
-        "ResultCount": "Showing {visible} of {total}",
+        "ResultCount": "Showing {start}–{end} of {total}",
+        "ResultsAria": "Equipment results",
+        "PreviousResults": "Previous results",
+        "NextResults": "Next results",
         "SearchAria": "Search equipment",
         "SearchPlaceholder": "Search gear by name, source, or trait…",
         "SourceFilters": "Source",
@@ -283,7 +286,6 @@
         "SourceSearchAria": "Search equipment sources",
         "SourceSearchPlaceholder": "Search sources…",
         "StartToLoad": "Open the outfitter above and the shelves stock themselves here.",
-        "NarrowSearch": "{hidden} more match. Search or filter to bring them into view.",
         "LevelTag": "Lvl {level}"
       },
       "Corrupt": {

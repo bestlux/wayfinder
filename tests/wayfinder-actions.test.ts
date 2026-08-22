@@ -67,6 +67,12 @@ describe("Wayfinder actions", () => {
     expect(
       isDraftMutationAction({ type: "toggle-equipment-filter-panel", stepId: "equipment", filterKey: "rarity" })
     ).toBe(false);
+    expect(
+      parseWayfinderAction({
+        dataset: { wayfinderAction: "set-equipment-result-window", stepId: "equipment", offset: "24" },
+      } as unknown as HTMLElement)
+    ).toEqual({ type: "set-equipment-result-window", stepId: "equipment", offset: 24 });
+    expect(isDraftMutationAction({ type: "set-equipment-result-window", stepId: "equipment", offset: 24 })).toBe(false);
   });
 
   it("keeps the active rail step visible without smooth motion when reduced motion is requested", () => {

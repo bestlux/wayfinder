@@ -234,6 +234,12 @@ export function parseWayfinderAction(element) {
                 (element.dataset.filterKey === "rarity" || element.dataset.filterKey === "source")
                 ? { type: action, stepId: element.dataset.stepId, filterKey: element.dataset.filterKey }
                 : null;
+        case "set-equipment-result-window": {
+            const offset = Number(element.dataset.offset);
+            return element.dataset.stepId && Number.isSafeInteger(offset) && offset >= 0
+                ? { type: action, stepId: element.dataset.stepId, offset }
+                : null;
+        }
         case "toggle-ancestry-mode":
         case "toggle-voluntary-enabled":
         case "toggle-voluntary-legacy":

@@ -23,6 +23,10 @@ import type {
 import { equipmentPolicyJudgmentFactsEqual } from "../domain/equipment-policy.js";
 import type { WayfinderStepEvaluation } from "../domain/step-evaluation.js";
 import type { StartingEquipmentStep } from "../domain/step-types.js";
+import {
+  clampStartingEquipmentResultWindow,
+  STARTING_EQUIPMENT_RESULT_WINDOW,
+} from "../starting-equipment-result-window.js";
 import type { StartingEquipmentCatalogueRecord, StartingEquipmentStepPane } from "../view-models.js";
 
 export interface StartingEquipmentCatalogueProjection {
@@ -30,9 +34,13 @@ export interface StartingEquipmentCatalogueProjection {
   readonly message: string;
   readonly diagnostics?: readonly EquipmentSourceDiagnostic[];
   readonly query: string;
+  readonly offset?: number;
+  readonly limit?: number;
   /** Uncapped query/facet matches after the active recipe's level boundary is applied. */
   readonly matchedRecordCount: number;
   readonly records: readonly StartingEquipmentCatalogueRecord[];
+  /** Hydrated selected detail retained independently of the mounted browse window. */
+  readonly previewRecord?: StartingEquipmentCatalogueRecord | null;
   /** Stable metadata for reviewed cart lines that are outside the bounded browse page. */
   readonly lineRecords?: readonly StartingEquipmentCatalogueRecord[];
   readonly filters: readonly { key: string; label: string; value: string }[];
@@ -47,8 +55,6 @@ export interface StartingEquipmentCatalogueProjection {
     readonly selectedSourceUuid: string | null;
   };
 }
-
-export const MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS = 12;
 
 const FOUNDRY_INTL_LOCALE_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   cn: "zh-CN",
@@ -102,15 +108,25 @@ export function buildStartingEquipmentPane(
   );
   const availableAllowances =
     policy?.allowances.filter((allowance) => !usedAllowanceIds.has(allowance.allowanceId)) ?? [];
-  const matchingRecords = catalogueReady
-    ? catalogue.records.filter(
-        (record) => matchesQuery(record, catalogue.query) && matchesFilters(record, catalogue.activeFilters)
-      )
-    : [];
+  const browseRecords = catalogueReady ? catalogue.records : [];
+  const projectedRecords = [
+    ...browseRecords,
+    ...(catalogue.previewRecord &&
+    !browseRecords.some((record) => record.sourceUuid === catalogue.previewRecord?.sourceUuid)
+      ? [catalogue.previewRecord]
+      : []),
+  ];
   const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
+  const resultWindow = clampStartingEquipmentResultWindow(
+    {
+      offset: catalogue.offset ?? 0,
+      limit: catalogue.limit ?? STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize,
+    },
+    matchedRecordCount
+  );
   const requestDecisions = setupOptions?.requestDecisions ?? [];
   const requestDecisionById = new Map(requestDecisions.map((decision) => [decision.request.requestId, decision]));
-  const records = matchingRecords.slice(0, MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS).map((record) => {
+  const paneRecords = projectedRecords.map((record, index) => {
     const currencyAffordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
     const canBuyWithCurrency = record.available && record.level < step.level && currencyAffordable;
     const allowanceOptions =
@@ -169,6 +185,8 @@ export function buildStartingEquipmentPane(
     });
     return {
       ...record,
+      resultIndex: resultWindow.offset + Math.min(index, Math.max(0, browseRecords.length - 1)),
+      resultPosition: resultWindow.offset + Math.min(index, Math.max(0, browseRecords.length - 1)) + 1,
       priceLabel,
       rarityLabel: localizedRarity,
       typeIcon: itemTypeIcon(record.itemType),
@@ -214,11 +232,16 @@ export function buildStartingEquipmentPane(
       titanMaulerFocusId: equipmentItemFocusId(record.sourceUuid, "titan"),
     };
   });
+  const records = paneRecords.slice(0, browseRecords.length);
   const recordByUuid = new Map(
-    [...catalogue.records, ...(catalogue.lineRecords ?? [])].map((record) => [record.sourceUuid, record])
+    [
+      ...catalogue.records,
+      ...(catalogue.previewRecord ? [catalogue.previewRecord] : []),
+      ...(catalogue.lineRecords ?? []),
+    ].map((record) => [record.sourceUuid, record])
   );
   const plannedGrantById = new Map(acquisition?.plannedClassGrants.map((grant) => [grant.grantId, grant]) ?? []);
-  const previewRecord = records.find((record) => record.previewing) ?? null;
+  const previewRecord = paneRecords.find((record) => record.previewing) ?? null;
   const previewDetails =
     previewRecord && catalogue.preview?.sourceUuid === previewRecord.sourceUuid ? catalogue.preview : null;
   const preview = previewRecord
@@ -503,17 +526,26 @@ export function buildStartingEquipmentPane(
       }),
       totalResultCount: matchedRecordCount,
       visibleResultCount: records.length,
+      resultOffset: resultWindow.offset,
+      resultLimit: resultWindow.limit,
+      leadingSpacerPx: resultWindow.offset * STARTING_EQUIPMENT_RESULT_WINDOW.initialRowHeightPx,
+      trailingSpacerPx:
+        Math.max(0, matchedRecordCount - resultWindow.offset - records.length) *
+        STARTING_EQUIPMENT_RESULT_WINDOW.initialRowHeightPx,
+      hasPreviousWindow: resultWindow.offset > 0,
+      hasNextWindow: resultWindow.offset + records.length < matchedRecordCount,
+      previousWindowOffset: Math.max(0, resultWindow.offset - STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize),
+      nextWindowOffset: Math.min(
+        Math.max(0, matchedRecordCount - resultWindow.limit),
+        resultWindow.offset + STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize
+      ),
       resultAnnouncement: localize("wayfinder-pf2e.StartingEquipment.Catalogue.ResultCount", {
-        visible: records.length,
+        start: records.length > 0 ? resultWindow.offset + 1 : 0,
+        end: resultWindow.offset + records.length,
         total: matchedRecordCount,
       }),
       hiddenResultCount: Math.max(0, matchedRecordCount - records.length),
-      narrowSearchHint:
-        matchedRecordCount > records.length
-          ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.NarrowSearch", {
-              hidden: matchedRecordCount - records.length,
-            })
-          : null,
+      narrowSearchHint: null,
       items: records,
       preview,
     },
@@ -636,33 +668,6 @@ function foundryIntlLocale(locale: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function matchesQuery(record: StartingEquipmentCatalogueRecord, query: string): boolean {
-  const normalized = query.trim().toLocaleLowerCase();
-  if (!normalized) return true;
-  return [record.name, record.sourceLabel, record.rarity, record.itemType, ...record.traits]
-    .join(" ")
-    .toLocaleLowerCase()
-    .includes(normalized);
-}
-
-function matchesFilters(
-  record: StartingEquipmentCatalogueRecord,
-  filters: Readonly<Record<string, readonly string[]>>
-): boolean {
-  return Object.entries(filters).every(([key, values]) => {
-    if (values.length === 0) return true;
-    const actual =
-      key === "rarity"
-        ? record.rarity
-        : key === "source"
-          ? record.sourceLabel
-          : key === "type"
-            ? record.itemType
-            : null;
-    return actual !== null && values.includes(actual);
-  });
 }
 
 function policyExplanations(

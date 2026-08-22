@@ -71,6 +71,7 @@ import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
 import { canGrantRestrictedSpellRarityAccess, withRestrictedSpellRarityAccess, } from "./spell-choice/rarity-access.js";
 import { buildAppliedSpellRarityAttestations, buildSpellRarityAttestationReviewLines, createSpellRarityAttestation, evaluateSpellRarityAttestation, frozenSpellRarityAttestationForStep, listSpellRarityAttestationProblems, listSpellRarityRecoveryProblems, } from "./spell-choice/rarity-attestation.js";
 import { buildHistoricalSpellChoicePlanningNote } from "./spell-choice-service.js";
+import { clampStartingEquipmentResultWindow, clampStartingEquipmentRowHeight, normalizeStartingEquipmentResultLimit, STARTING_EQUIPMENT_RESULT_WINDOW, startingEquipmentPrefixHeight, startingEquipmentResultWindowForViewport, } from "./starting-equipment-result-window.js";
 const PICKER_COUNT_PART = "picker-count";
 const PICKER_RESULTS_PART = "picker-results";
 const PICKER_SEARCH_PARTS = [PICKER_COUNT_PART, PICKER_RESULTS_PART];
@@ -116,6 +117,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     #equipmentFilterPanelByStepId = new Map();
     #equipmentSourceSearchByStepId = new Map();
     #equipmentPreviewByStepId = new Map();
+    #equipmentResultWindowByStepId = new Map();
+    #equipmentCriteriaRevisionByStepId = new Map();
+    #equipmentResultMeasurementsByStepId = new Map();
+    #equipmentResultResizeObserver = null;
+    #equipmentResultAnimationFrame = null;
+    #pendingEquipmentWindowEdgeFocus = null;
+    #equipmentWindowAnnouncementPending = false;
     #pendingEquipmentSourceSearchFocus = null;
     #equipmentScheduledRenderIntent = "search";
     #cachedRenderPlan = null;
@@ -518,6 +526,8 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         }
         if (context.wayfinderRenderScope === "equipment") {
             this.#equipmentRenderSession = context.equipmentRenderSession;
+            if (context.equipmentRenderSession)
+                this.#syncEquipmentResultWindow(context.equipmentRenderSession.pane);
             const renderedParts = startingEquipmentPartsForIntent(context.equipmentRequest.intent);
             for (const part of renderedParts) {
                 const target = root.querySelector(`[data-application-part="${part}"]`);
@@ -537,6 +547,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             if (this.#pendingEquipmentFocusIds) {
                 restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
             }
+            this.#restoreEquipmentWindowEdgeFocus(root);
             this.#restoreEquipmentSourceSearchFocus(root);
             if (renderedParts.includes(EQUIPMENT_STATUS_PART)) {
                 const pendingStatusFocus = this.#pendingControlFocusId === STARTING_EQUIPMENT_STATUS_FOCUS_ID;
@@ -546,12 +557,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             }
             this.#pendingEquipmentFocusIds = null;
             this.#pendingSearchFocus = null;
+            this.#observeEquipmentResultWindow(root);
             return;
         }
         this.#pickerRenderSession = context.pickerRenderSession
             ? { sourceRevision: context.pickerSourceRevision, session: context.pickerRenderSession }
             : null;
         this.#equipmentRenderSession = context.equipmentRenderSession;
+        if (context.equipmentRenderSession)
+            this.#syncEquipmentResultWindow(context.equipmentRenderSession.pane);
         this.#pendingSearchFocus = bindWayfinderInteractions(root, {
             onActionClick: this.#onActionClick,
             onSearchInput: this.#onSearchInput,
@@ -581,6 +595,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         else if (this.#pendingEquipmentFocusIds) {
             restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
         }
+        this.#restoreEquipmentWindowEdgeFocus(root);
         this.#restoreEquipmentSourceSearchFocus(root);
         this.#restoreStartingEquipmentErrorFocus(root, pendingControlFocusId === STARTING_EQUIPMENT_STATUS_FOCUS_ID);
         if (pendingStepFocusId || pendingControlFocusId) {
@@ -588,6 +603,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             this.#pendingControlFocusId = null;
         }
         this.#pendingEquipmentFocusIds = null;
+        this.#observeEquipmentResultWindow(root);
         _a.#openApps.add(this);
         this.#patchDraftSaveStatus(this.#draftPersistence.state);
         if (options.wayfinderAcquisitionSmokeQuiescent) {
@@ -602,6 +618,11 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     }
     _tearDown(options) {
         try {
+            if (this.#equipmentResultAnimationFrame !== null)
+                cancelAnimationFrame(this.#equipmentResultAnimationFrame);
+            this.#equipmentResultAnimationFrame = null;
+            this.#equipmentResultResizeObserver?.disconnect();
+            this.#equipmentResultResizeObserver = null;
             super._tearDown(options);
         }
         finally {
@@ -970,8 +991,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 break;
             case "clear-equipment-filters":
                 this.#equipmentFiltersByStepId.delete(action.stepId);
+                this.#resetEquipmentResultWindow(action.stepId);
                 this.#equipmentScheduledRenderIntent = "facet";
                 this.#equipmentSearchScheduler.schedule(action.stepId, this.#equipmentSearchByStepId.get(action.stepId) ?? "");
+                break;
+            case "set-equipment-result-window":
+                this.#setEquipmentResultWindow(action.stepId, action.offset);
                 break;
             case "review-equipment-purchases":
                 await this.#executeStartingEquipmentCommand(action.stepId, { type: "review-purchases" });
@@ -1021,6 +1046,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         if (!input)
             return;
         scheduleEquipmentSearchInput(input, this.#equipmentSearchScheduler, ({ stepId, query, cursor }) => {
+            this.#resetEquipmentResultWindow(stepId);
             this.#equipmentSearchByStepId.set(stepId, query);
             this.#pendingEquipmentSourceSearchFocus = null;
             this.#pendingSearchFocus = { stepId, cursor };
@@ -1039,9 +1065,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
     };
     async #renderStartingEquipmentSearch(request) {
+        const announceWindow = this.#equipmentScheduledRenderIntent !== "window" || this.#equipmentWindowAnnouncementPending;
+        this.#equipmentWindowAnnouncementPending = false;
         const equipmentRequest = {
             ...request,
             intent: this.#equipmentScheduledRenderIntent,
+            criteriaRevision: this.#equipmentCriteriaRevision(request.stepId),
+            announceWindow,
+            ...this.#equipmentResultWindow(request.stepId),
         };
         if (!this.#canCommitStartingEquipmentRender(equipmentRequest))
             return;
@@ -1059,6 +1090,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             stepId,
             query: this.#equipmentSearchByStepId.get(stepId) ?? "",
             intent,
+            criteriaRevision: this.#equipmentCriteriaRevision(stepId),
+            announceWindow: false,
+            ...this.#equipmentResultWindow(stepId),
         };
         if (!this.#canCommitStartingEquipmentRender(request)) {
             this.render(false);
@@ -1075,6 +1109,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         return (this.#equipmentSearchScheduler.isCurrent(request) &&
             session !== null &&
             canDeriveStartingEquipmentRender(session, startingEquipmentRenderIdentity(this.#requireDraft(), request.stepId, request.sourceRevision), request) &&
+            request.criteriaRevision === this.#equipmentCriteriaRevision(request.stepId) &&
             (this.#equipmentSearchByStepId.get(request.stepId) ?? "") === request.query);
     }
     async #renderPickerSearch(request) {
@@ -1103,6 +1138,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             return;
         }
         this.#scrollById.set(scrollId, scrollable.scrollTop);
+        if (scrollable.matches("[data-wayfinder-equipment-virtual-list]")) {
+            this.#captureEquipmentResultAnchor(scrollable);
+            if (this.#equipmentResultAnimationFrame !== null)
+                cancelAnimationFrame(this.#equipmentResultAnimationFrame);
+            this.#equipmentResultAnimationFrame = requestAnimationFrame(() => {
+                this.#equipmentResultAnimationFrame = null;
+                this.#scheduleEquipmentResultWindow(scrollable);
+            });
+        }
     };
     #onManualChange = async (event) => {
         const input = event.currentTarget;
@@ -1350,6 +1394,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             step,
             query: this.#equipmentSearchByStepId.get(step.id) ?? "",
             filters: this.#equipmentFiltersByStepId.get(step.id) ?? {},
+            ...this.#equipmentResultWindow(step.id),
             previewSourceUuid: this.#equipmentPreviewByStepId.get(step.id) ?? null,
         };
     }
@@ -1497,6 +1542,189 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#pendingControlFocusId = STARTING_EQUIPMENT_STATUS_FOCUS_ID;
         this.#pendingEquipmentFocusIds = null;
     }
+    #equipmentResultWindow(stepId) {
+        return (this.#equipmentResultWindowByStepId.get(stepId) ?? {
+            offset: 0,
+            limit: STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize,
+        });
+    }
+    #resetEquipmentResultWindow(stepId) {
+        if (this.#equipmentResultAnimationFrame !== null)
+            cancelAnimationFrame(this.#equipmentResultAnimationFrame);
+        this.#equipmentResultAnimationFrame = null;
+        this.#equipmentCriteriaRevisionByStepId.set(stepId, this.#equipmentCriteriaRevision(stepId) + 1);
+        const current = this.#equipmentResultWindow(stepId);
+        this.#equipmentResultWindowByStepId.set(stepId, { offset: 0, limit: current.limit });
+        this.#scrollById.set(`${stepId}:equipment-results`, 0);
+        const measurements = this.#equipmentResultMeasurements(stepId);
+        measurements.measuredRows.clear();
+        measurements.anchor = null;
+    }
+    #equipmentCriteriaRevision(stepId) {
+        return this.#equipmentCriteriaRevisionByStepId.get(stepId) ?? 0;
+    }
+    #syncEquipmentResultWindow(pane) {
+        this.#equipmentResultWindowByStepId.set(pane.stepId, {
+            offset: pane.catalogue.resultOffset,
+            limit: pane.catalogue.resultLimit,
+        });
+    }
+    #setEquipmentResultWindow(stepId, requestedOffset) {
+        const pane = this.#equipmentRenderSession?.pane;
+        if (!pane || pane.stepId !== stepId)
+            return;
+        const current = this.#equipmentResultWindow(stepId);
+        const next = clampStartingEquipmentResultWindow({ offset: requestedOffset, limit: current.limit }, pane.catalogue.totalResultCount);
+        const measurements = this.#equipmentResultMeasurements(stepId);
+        measurements.anchor = null;
+        this.#equipmentResultWindowByStepId.set(stepId, next);
+        this.#scrollById.set(`${stepId}:equipment-results`, startingEquipmentPrefixHeight(next.offset, measurements.measuredRows, measurements.estimatedRowPx));
+        this.#pendingEquipmentWindowEdgeFocus = next.offset >= current.offset ? "first" : "last";
+        this.#equipmentWindowAnnouncementPending = true;
+        this.#equipmentScheduledRenderIntent = "window";
+        this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
+    }
+    #restoreEquipmentWindowEdgeFocus(root) {
+        const edge = this.#pendingEquipmentWindowEdgeFocus;
+        if (!edge)
+            return;
+        const results = [
+            ...root.querySelectorAll("[data-wayfinder-equipment-virtual-list] [data-equipment-item]"),
+        ];
+        (edge === "first" ? results[0] : results.at(-1))?.focus();
+        this.#pendingEquipmentWindowEdgeFocus = null;
+    }
+    #scheduleEquipmentResultWindow(list) {
+        const stepId = list.dataset.stepId;
+        const total = Number(list.dataset.totalResults);
+        if (!stepId || !Number.isSafeInteger(total) || total < 0)
+            return;
+        const measurements = this.#equipmentResultMeasurements(stepId);
+        let next = startingEquipmentResultWindowForViewport({
+            clientHeight: list.clientHeight,
+            scrollTop: list.scrollTop,
+            total,
+            measurements,
+        });
+        const current = this.#equipmentResultWindow(stepId);
+        const active = list.ownerDocument.activeElement;
+        const focusedRow = active && list.contains(active) ? active.closest("[data-result-index]") : null;
+        const focusedIndex = Number(focusedRow?.dataset.resultIndex);
+        if (Number.isSafeInteger(focusedIndex) &&
+            (focusedIndex < next.offset || focusedIndex >= next.offset + next.limit)) {
+            const unionStart = Math.min(focusedIndex, next.offset);
+            const unionEnd = Math.max(focusedIndex + 1, next.offset + next.limit);
+            if (unionEnd - unionStart > STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize)
+                return;
+            const expandedLimit = normalizeStartingEquipmentResultLimit(unionEnd - unionStart);
+            next = clampStartingEquipmentResultWindow({ offset: Math.min(unionStart, Math.max(0, total - expandedLimit)), limit: expandedLimit }, total);
+        }
+        if (next.offset === current.offset && next.limit === current.limit)
+            return;
+        const focusId = active && list.contains(active) ? active.dataset.wayfinderFocusId : null;
+        if (focusId)
+            this.#pendingEquipmentFocusIds = [focusId];
+        this.#equipmentResultWindowByStepId.set(stepId, next);
+        list.setAttribute("aria-busy", "true");
+        this.#equipmentScheduledRenderIntent = "window";
+        this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
+    }
+    #observeEquipmentResultWindow(root) {
+        this.#equipmentResultResizeObserver?.disconnect();
+        this.#equipmentResultResizeObserver = null;
+        const list = root.querySelector("[data-wayfinder-equipment-virtual-list]");
+        if (!list || typeof ResizeObserver !== "function")
+            return;
+        const stepId = list.dataset.stepId;
+        if (!stepId)
+            return;
+        const measurements = this.#equipmentResultMeasurements(stepId);
+        this.#restoreEquipmentResultAnchor(list, measurements);
+        this.#equipmentResultResizeObserver = new ResizeObserver((entries) => {
+            const width = list.getBoundingClientRect().width;
+            if (measurements.widthPx > 0 && Math.abs(width - measurements.widthPx) > 1) {
+                this.#captureEquipmentResultAnchor(list);
+                measurements.measuredRows.clear();
+                measurements.estimatedRowPx = STARTING_EQUIPMENT_RESULT_WINDOW.initialRowHeightPx;
+            }
+            measurements.widthPx = width;
+            for (const entry of entries) {
+                const row = entry.target;
+                const index = Number(row.dataset.resultIndex);
+                if (Number.isSafeInteger(index))
+                    measurements.measuredRows.set(index, entry.contentRect.height);
+            }
+            if (measurements.measuredRows.size > 0) {
+                const heights = [...measurements.measuredRows.values()].sort((left, right) => left - right);
+                measurements.estimatedRowPx = clampStartingEquipmentRowHeight(heights[Math.floor(heights.length / 2)]);
+            }
+            this.#applyEquipmentResultSpacerGeometry(list, measurements);
+            this.#scheduleEquipmentResultWindow(list);
+        });
+        this.#equipmentResultResizeObserver.observe(list);
+        for (const row of list.querySelectorAll("[data-result-index]")) {
+            this.#equipmentResultResizeObserver.observe(row);
+        }
+        this.#applyEquipmentResultSpacerGeometry(list, measurements);
+    }
+    #equipmentResultMeasurements(stepId) {
+        let measurements = this.#equipmentResultMeasurementsByStepId.get(stepId);
+        if (!measurements) {
+            measurements = {
+                estimatedRowPx: STARTING_EQUIPMENT_RESULT_WINDOW.initialRowHeightPx,
+                measuredRows: new Map(),
+                widthPx: 0,
+                anchor: null,
+            };
+            this.#equipmentResultMeasurementsByStepId.set(stepId, measurements);
+        }
+        return measurements;
+    }
+    #captureEquipmentResultAnchor(list) {
+        const stepId = list.dataset.stepId;
+        if (!stepId)
+            return;
+        const viewportTop = list.getBoundingClientRect().top;
+        const row = [...list.querySelectorAll("[data-result-index]")].find((candidate) => candidate.getBoundingClientRect().bottom > viewportTop);
+        const index = Number(row?.dataset.resultIndex);
+        const sourceUuid = row?.dataset.sourceUuid;
+        if (!row || !sourceUuid || !Number.isSafeInteger(index))
+            return;
+        this.#equipmentResultMeasurements(stepId).anchor = {
+            sourceUuid,
+            index,
+            offsetFromViewportTopPx: row.getBoundingClientRect().top - viewportTop,
+        };
+    }
+    #restoreEquipmentResultAnchor(list, measurements) {
+        const anchor = measurements.anchor;
+        if (!anchor)
+            return;
+        const row = [...list.querySelectorAll("[data-source-uuid]")].find((candidate) => candidate.dataset.sourceUuid === anchor.sourceUuid);
+        if (!row)
+            return;
+        const currentOffset = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+        list.scrollTop += currentOffset - anchor.offsetFromViewportTopPx;
+        const scrollId = list.dataset.wayfinderScrollId;
+        if (scrollId)
+            this.#scrollById.set(scrollId, list.scrollTop);
+    }
+    #applyEquipmentResultSpacerGeometry(list, measurements) {
+        const total = Number(list.dataset.totalResults);
+        const offset = Number(list.dataset.resultOffset);
+        const count = list.querySelectorAll("[data-result-index]").length;
+        if (![total, offset].every(Number.isSafeInteger))
+            return;
+        const leading = list.querySelector("[data-equipment-leading-spacer]");
+        const trailing = list.querySelector("[data-equipment-trailing-spacer]");
+        if (leading) {
+            leading.style.height = `${startingEquipmentPrefixHeight(offset, measurements.measuredRows, measurements.estimatedRowPx)}px`;
+        }
+        if (trailing) {
+            trailing.style.height = `${Math.max(0, startingEquipmentPrefixHeight(total, measurements.measuredRows, measurements.estimatedRowPx) -
+                startingEquipmentPrefixHeight(offset + count, measurements.measuredRows, measurements.estimatedRowPx))}px`;
+        }
+    }
     #toggleStartingEquipmentFilter(stepId, filterKey, value) {
         const current = this.#equipmentFiltersByStepId.get(stepId) ?? {};
         const selected = new Set(current[filterKey] ?? []);
@@ -1508,6 +1736,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             ...current,
             [filterKey]: [...selected].sort((left, right) => left.localeCompare(right)),
         });
+        this.#resetEquipmentResultWindow(stepId);
         this.#equipmentScheduledRenderIntent = "facet";
         this.#equipmentSearchScheduler.schedule(stepId, this.#equipmentSearchByStepId.get(stepId) ?? "");
     }
@@ -2815,6 +3044,14 @@ function startingEquipmentRenderRequest(options) {
         !Number.isInteger(candidate.sourceRevision) ||
         typeof candidate.stepId !== "string" ||
         typeof candidate.query !== "string" ||
+        !Number.isSafeInteger(candidate.criteriaRevision) ||
+        candidate.criteriaRevision < 0 ||
+        typeof candidate.announceWindow !== "boolean" ||
+        !Number.isSafeInteger(candidate.offset) ||
+        candidate.offset < 0 ||
+        !Number.isSafeInteger(candidate.limit) ||
+        candidate.limit < STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize ||
+        candidate.limit > STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize ||
         !isStartingEquipmentRenderIntent(candidate.intent)) {
         return null;
     }
@@ -2826,7 +3063,12 @@ function startingEquipmentRenderRequest(options) {
     return candidate;
 }
 function isStartingEquipmentRenderIntent(value) {
-    return value === "search" || value === "facet" || value === "preview" || value === "quantity" || value === "recipe";
+    return (value === "search" ||
+        value === "facet" ||
+        value === "window" ||
+        value === "preview" ||
+        value === "quantity" ||
+        value === "recipe");
 }
 function numericRenderOption(value) {
     return Number.isInteger(value) ? Number(value) : -1;
@@ -2996,7 +3238,8 @@ function isStartingEquipmentViewOnlyAction(action) {
     return (action.type === "preview-equipment-item" ||
         action.type === "toggle-equipment-filter" ||
         action.type === "toggle-equipment-filter-panel" ||
-        action.type === "clear-equipment-filters");
+        action.type === "clear-equipment-filters" ||
+        action.type === "set-equipment-result-window");
 }
 function parseGoldToCopper(value) {
     const normalized = value.trim();

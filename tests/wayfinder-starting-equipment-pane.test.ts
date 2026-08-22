@@ -13,10 +13,8 @@ import {
   type EquipmentPolicyRequestDecisionV1,
 } from "../src/wayfinder/domain/equipment-policy";
 import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types";
-import {
-  buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized,
-  MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS,
-} from "../src/wayfinder/panes/starting-equipment-pane";
+import { buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized } from "../src/wayfinder/panes/starting-equipment-pane";
+import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../src/wayfinder/starting-equipment-result-window";
 import type { StartingEquipmentCatalogueRecord } from "../src/wayfinder/view-models";
 import { acquisitionFixture, acquisitionLine, acquisitionPrice } from "./fixtures/acquisition-fixture";
 import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
@@ -391,7 +389,7 @@ describe("starting equipment pane", () => {
       selected: true,
       focusId: "starting-equipment-filter:type:equipment",
     });
-    expect(pane.catalogue.resultAnnouncement).toBe("Showing 1 of 1");
+    expect(pane.catalogue.resultAnnouncement).toBe("Showing 1–1 of 1");
     expect(pane.cart.lines[0]).toMatchObject({
       quantity: 1,
       focusId: "starting-equipment-line:line-1",
@@ -1086,7 +1084,7 @@ describe("starting equipment pane", () => {
     expect(pane.review).toMatchObject({ canReviewPurchases: false, canRetainAll: false });
   });
 
-  it("bounds the rendered result window while retaining the total match count", () => {
+  it("preserves the bounded projection window while retaining the total match count", () => {
     const draft = createEmptyDraft(1);
     draft.acquisition = acquisitionFixture({ disposition: "unreviewed" }).draft;
     const records = Array.from(
@@ -1119,7 +1117,7 @@ describe("starting equipment pane", () => {
         message: "",
         query: "common",
         matchedRecordCount: 20,
-        records,
+        records: records.slice(0, STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize),
         filters: [],
         activeFilters: {},
         previewSourceUuid: null,
@@ -1129,7 +1127,7 @@ describe("starting equipment pane", () => {
 
     expect(pane.catalogue.totalResultCount).toBe(20);
     expect(pane.catalogue.visibleResultCount).toBe(12);
-    expect(pane.catalogue.items).toHaveLength(MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS);
+    expect(pane.catalogue.items).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
   });
 
   it("projects bounded production-shaped type and source controls without hiding active facets", () => {

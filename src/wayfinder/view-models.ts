@@ -525,11 +525,21 @@ export interface StartingEquipmentStepPane {
     sourceResultAnnouncement: string;
     totalResultCount: number;
     visibleResultCount: number;
+    resultOffset: number;
+    resultLimit: number;
+    leadingSpacerPx: number;
+    trailingSpacerPx: number;
+    hasPreviousWindow: boolean;
+    hasNextWindow: boolean;
+    previousWindowOffset: number;
+    nextWindowOffset: number;
     resultAnnouncement: string;
     hiddenResultCount: number;
     narrowSearchHint: string | null;
     items: readonly (StartingEquipmentCatalogueRecord & {
       typeIcon: string;
+      resultIndex: number;
+      resultPosition: number;
       currencyAffordable: boolean;
       previewing: boolean;
       canAdd: boolean;

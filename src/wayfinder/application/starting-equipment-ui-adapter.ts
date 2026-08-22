@@ -9,6 +9,8 @@ export interface StartingEquipmentUiRequest {
   readonly step: StartingEquipmentStep;
   readonly query: string;
   readonly filters: Readonly<Record<string, readonly string[]>>;
+  readonly offset: number;
+  readonly limit: number;
   readonly previewSourceUuid: string | null;
 }
 
@@ -43,6 +45,8 @@ const UNAVAILABLE_ADAPTER: StartingEquipmentUiAdapter = {
       state: "pending",
       message: "The gear list is not loaded yet.",
       query: request.query,
+      offset: 0,
+      limit: request.limit,
       matchedRecordCount: 0,
       records: [],
       filters: [],

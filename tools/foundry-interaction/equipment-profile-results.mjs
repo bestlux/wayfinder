@@ -12,10 +12,18 @@ const REQUIRED_ACTIONS = [
 
 const FROZEN_VIEWPORT = { width: 1440, height: 1000 };
 const FROZEN_APP_WIDTHS = [1240, 1180, 980, 760];
+const FROZEN_RESULT_WINDOW_PROFILES = [
+  { id: "default", appHeight: 820, expectedMountedRows: 12 },
+  { id: "expanded", appHeight: 1200, expectedMountedRows: 24 },
+  { id: "tall", appHeight: 1500, expectedMountedRows: 36 },
+];
 const FROZEN_BUDGETS = Object.freeze({
   maxP95MsPerActionWidth: 75,
-  maxDomElementCount: 550,
-  maxResultDomElementCount: 144,
+  maxDomElementCount: 850,
+  maxResultDomElementCount: 434,
+  maxMountedResultCount: 36,
+  maxResultDomElementsPerMountedRow: 12,
+  maxResultChromeDomElementCount: 2,
   maxImageRequestsPerSample: 0,
   maxLongTaskCountPerActionWidth: 0,
 });
@@ -129,6 +137,9 @@ export function validateEquipmentProfile(profile) {
   if (stableJson(profile?.appWidths) !== stableJson(FROZEN_APP_WIDTHS)) {
     failures.push("Equipment profile must freeze app widths 1240, 1180, 980, and 760 in order.");
   }
+  if (stableJson(profile?.resultWindowProfiles) !== stableJson(FROZEN_RESULT_WINDOW_PROFILES)) {
+    failures.push("Equipment profile must freeze default, expanded, and tall 12/24/36-row result windows.");
+  }
   if (profile?.warmupSamplesPerActionWidth !== 2 || profile?.measuredSamplesPerActionWidth !== 30) {
     failures.push("Equipment profile must freeze two warmups and 30 measured samples per action and width.");
   }
@@ -186,13 +197,16 @@ export function validateEquipmentProfile(profile) {
     "maxP95MsPerActionWidth",
     "maxDomElementCount",
     "maxResultDomElementCount",
+    "maxMountedResultCount",
+    "maxResultDomElementsPerMountedRow",
+    "maxResultChromeDomElementCount",
     "maxImageRequestsPerSample",
     "maxLongTaskCountPerActionWidth",
   ]) {
     if (!nonnegativeFinite(budgets?.[key])) failures.push(`Equipment profile budget ${key} must be finite and nonnegative.`);
   }
   if (stableJson(budgets) !== stableJson(FROZEN_BUDGETS)) {
-    failures.push("Equipment profile must preserve the measured 75ms/550 DOM/144 result/0 image/0 long-task envelope.");
+    failures.push("Equipment profile must preserve the adaptive 12/24/36-row measured envelope.");
   }
   if (profile?.expectedCatalogueCounts !== null && !validCatalogueCounts(profile.expectedCatalogueCounts)) {
     failures.push("Frozen catalogue counts must provide positive indexed, levelQualified, matching, and visible integers.");
@@ -308,6 +322,20 @@ export function validateEquipmentSample(sample, profile) {
   }
   for (const key of ["domElementCount", "resultDomElementCount", "imageRequestCount"]) {
     if (!nonnegativeInteger(sample[key])) failures.push(`Sample ${key} is missing or invalid.`);
+  }
+  for (const key of ["mountedResultCount", "resultOffset", "resultEnd"]) {
+    if (!nonnegativeInteger(sample[key])) failures.push(`Sample ${key} is missing or invalid.`);
+  }
+  if (nonnegativeInteger(sample.mountedResultCount)) {
+    if (sample.mountedResultCount > profile.budgets.maxMountedResultCount) {
+      failures.push(`Sample mounted ${sample.mountedResultCount} results; limit ${profile.budgets.maxMountedResultCount}.`);
+    }
+    const resultDomLimit =
+      sample.mountedResultCount * profile.budgets.maxResultDomElementsPerMountedRow +
+      profile.budgets.maxResultChromeDomElementCount;
+    if (sample.resultDomElementCount > resultDomLimit) {
+      failures.push(`Sample result DOM exceeded its ${resultDomLimit}-element mounted-window limit.`);
+    }
   }
   if (sample.longTaskSupported !== true) failures.push("This browser did not expose Long Task performance entries.");
   if (sample.planBuildCounterSupported !== true) failures.push("The render-plan execution counter is unavailable.");

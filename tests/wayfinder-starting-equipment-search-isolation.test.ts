@@ -59,6 +59,16 @@ describe("starting equipment search isolation", () => {
     );
   });
 
+  it("rewindows equipment through passive animation-frame scroll and row/list resize observation", () => {
+    expect(appShell).toContain('scrollable.matches("[data-wayfinder-equipment-virtual-list]")');
+    expect(appShell).toContain("requestAnimationFrame(() => {");
+    expect(appShell).toContain("new ResizeObserver((entries) => {");
+    expect(appShell).toContain("#captureEquipmentResultAnchor(scrollable)");
+    expect(appShell).toContain("#restoreEquipmentResultAnchor(list, measurements)");
+    expect(appShell).toContain('this.#equipmentScheduledRenderIntent = "window"');
+    expect(appShell).toContain("request.criteriaRevision === this.#equipmentCriteriaRevision(request.stepId)");
+  });
+
   it("keeps the equipment search control outside all replaceable application parts", () => {
     const pane = readFileSync(resolve("templates/wayfinder/starting-equipment-pane.hbs"), "utf8");
     const catalogue = readFileSync(resolve("templates/wayfinder/starting-equipment-catalogue.hbs"), "utf8");

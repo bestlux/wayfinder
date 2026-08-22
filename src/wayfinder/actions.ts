@@ -65,6 +65,7 @@ export type WayfinderAction =
   | { type: "toggle-equipment-filter"; stepId: string; filterKey: string; value: string }
   | { type: "toggle-equipment-filter-panel"; stepId: string; filterKey: "rarity" | "source" }
   | { type: "clear-equipment-filters"; stepId: string }
+  | { type: "set-equipment-result-window"; stepId: string; offset: number }
   | { type: "review-equipment-purchases"; stepId: string }
   | { type: "retain-all-equipment"; stepId: string }
   | { type: "acknowledge-equipment-handoff"; stepId: string }
@@ -345,6 +346,12 @@ export function parseWayfinderAction(element: HTMLElement | null): WayfinderActi
         (element.dataset.filterKey === "rarity" || element.dataset.filterKey === "source")
         ? { type: action, stepId: element.dataset.stepId, filterKey: element.dataset.filterKey }
         : null;
+    case "set-equipment-result-window": {
+      const offset = Number(element.dataset.offset);
+      return element.dataset.stepId && Number.isSafeInteger(offset) && offset >= 0
+        ? { type: action, stepId: element.dataset.stepId, offset }
+        : null;
+    }
     case "toggle-ancestry-mode":
     case "toggle-voluntary-enabled":
     case "toggle-voluntary-legacy":

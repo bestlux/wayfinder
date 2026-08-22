@@ -82,6 +82,7 @@ describe("starting equipment render session", () => {
   it("maps only steady actions to replaceable equipment parts", () => {
     expect(startingEquipmentPartsForIntent("search")).toEqual([EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART]);
     expect(startingEquipmentPartsForIntent("facet")).toEqual([EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART]);
+    expect(startingEquipmentPartsForIntent("window")).toEqual([EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART]);
     expect(startingEquipmentPartsForIntent("preview")).toEqual([EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART]);
     expect(startingEquipmentPartsForIntent("recipe")).toEqual([EQUIPMENT_POLICY_PART, EQUIPMENT_STATUS_PART]);
     expect(startingEquipmentPartsForIntent("quantity")).toEqual([
@@ -115,7 +116,7 @@ describe("starting equipment render session", () => {
         viewRevision: 1,
         step: STEP,
         evaluation: EVALUATION,
-        pane: pane(Array.from({ length: 13 }, (_, index) => ({ sourceUuid: `item-${index}` }))),
+        pane: pane(Array.from({ length: 37 }, (_, index) => ({ sourceUuid: `item-${index}` }))),
       })
     ).toThrow(/bounded visible catalogue page/i);
   });
@@ -158,6 +159,10 @@ function request(overrides: Partial<StartingEquipmentRenderRequest> = {}): Start
     stepId: STEP.id,
     query: "",
     intent: "search",
+    criteriaRevision: 0,
+    announceWindow: true,
+    offset: 0,
+    limit: 12,
     ...overrides,
   };
 }

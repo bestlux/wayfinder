@@ -470,6 +470,9 @@ function finishSample(sample, semanticPassed, previewSplit, actionOutcome) {
   document.removeEventListener("input", sample.inputListener, true);
   const root = currentRoot();
   const search = root.querySelector(SEARCH_SELECTOR);
+  const resultList = root.querySelector(".equipment-result-list");
+  const mountedResults = [...(resultList?.querySelectorAll("[data-result-index]") ?? [])];
+  const resultOffset = Number(resultList?.dataset.resultOffset ?? 0);
   const urls = new Set([...sample.imageUrlsAtStart, ...imageUrls(root)]);
   const images = performance
     .getEntriesByType("resource")
@@ -508,7 +511,14 @@ function finishSample(sample, semanticPassed, previewSplit, actionOutcome) {
     semanticPassed,
     actualAppWidth: root.getBoundingClientRect().width,
     domElementCount: root.querySelectorAll("*").length,
-    resultDomElementCount: root.querySelector(".equipment-result-list")?.querySelectorAll("*").length ?? 0,
+    resultDomElementCount: resultList?.querySelectorAll("*").length ?? 0,
+    mountedResultCount: mountedResults.length,
+    resultOffset,
+    resultEnd: resultOffset + mountedResults.length,
+    firstMountedSourceUuid: mountedResults[0]?.dataset.sourceUuid ?? null,
+    lastMountedSourceUuid: mountedResults.at(-1)?.dataset.sourceUuid ?? null,
+    leadingSpacerPx: Number.parseFloat(resultList?.querySelector("[data-equipment-leading-spacer]")?.style.height ?? "0"),
+    trailingSpacerPx: Number.parseFloat(resultList?.querySelector("[data-equipment-trailing-spacer]")?.style.height ?? "0"),
     imageRequestCount: images.length,
     longTaskSupported: sample.longTaskSupported,
     observedLongTasks,

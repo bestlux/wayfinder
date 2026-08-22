@@ -473,6 +473,91 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(12);
   });
 
+  it("expands and shifts a bounded hydration window, then clamps it when the query context shrinks", async () => {
+    const sources = Array.from({ length: 36 }, (_, index) =>
+      dagger({ id: `window-${index}`, name: `Gear ${String(index).padStart(2, "0")}` })
+    );
+    let activeReads = 0;
+    let maxConcurrentReads = 0;
+    const getDocument = vi.fn(async (id) => {
+      activeReads += 1;
+      maxConcurrentReads = Math.max(maxConcurrentReads, activeReads);
+      await Promise.resolve();
+      activeReads -= 1;
+      return document(sources.find((source) => source._id === id)!);
+    });
+    const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => sources), getDocument },
+      { prepareBrowsePhysicalItems }
+    );
+
+    const tall = await runtime.uiAdapter.project({ ...request, offset: 12, limit: 24 });
+    expect(tall).toMatchObject({ offset: 12, limit: 24, matchedRecordCount: 36 });
+    expect(tall.records).toHaveLength(24);
+    expect(tall.records.at(0)?.name).toBe("Gear 12");
+    expect(tall.records.at(-1)?.name).toBe("Gear 35");
+    expect(getDocument).toHaveBeenCalledTimes(24);
+    expect(maxConcurrentReads).toBe(12);
+    expect(prepareBrowsePhysicalItems.mock.calls.map(([input]) => input.entries.length)).toEqual([12, 12]);
+
+    const previewed = await runtime.uiAdapter.project({
+      ...request,
+      offset: 12,
+      limit: 24,
+      previewSourceUuid: `Compendium.${PACK_ID}.Item.window-0`,
+    });
+    expect(previewed.records).not.toContainEqual(expect.objectContaining({ name: "Gear 00" }));
+    expect(previewed.previewRecord).toMatchObject({ name: "Gear 00" });
+    const previewPane = buildStartingEquipmentPane(
+      request.step,
+      request.draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      previewed
+    );
+    expect(previewPane.catalogue.preview).toMatchObject({ name: "Gear 00", previewing: true });
+
+    const end = await runtime.uiAdapter.project({ ...request, offset: 25, limit: 12 });
+    expect(end).toMatchObject({ offset: 24, limit: 12 });
+    expect(end.records.map(({ name }) => name)).toEqual(sources.slice(24).map(({ name }) => name));
+
+    const narrowed = await runtime.uiAdapter.project({ ...request, query: "gear 29", offset: 25, limit: 12 });
+    expect(narrowed).toMatchObject({ offset: 0, limit: 12, matchedRecordCount: 1 });
+    expect(narrowed.records.map(({ name }) => name)).toEqual(["Gear 29"]);
+  });
+
+  it("ranks policy-available and exact, prefix, then substring name matches before browse hydration", async () => {
+    const sources = [
+      dagger({ id: "unavailable-exact", name: "Rope", rarity: "uncommon" }),
+      dagger({ id: "substring", name: "Silken Rope" }),
+      dagger({ id: "prefix-b", name: "Rope Snare" }),
+      dagger({ id: "exact-b", name: "Rope" }),
+      dagger({ id: "prefix-a", name: "Rope Ladder" }),
+      dagger({ id: "exact-a", name: "Rope" }),
+    ];
+    const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
+    const { runtime, request } = fixture({ getIndex: vi.fn(async () => sources), getDocument });
+
+    const projection = await runtime.uiAdapter.project({ ...request, query: "rope" });
+
+    expect(projection.records.map(({ sourceUuid, available }) => [sourceUuid.split(".").at(-1), available])).toEqual([
+      ["exact-a", true],
+      ["exact-b", true],
+      ["prefix-a", true],
+      ["prefix-b", true],
+      ["substring", true],
+      ["unavailable-exact", false],
+    ]);
+    expect(getDocument.mock.calls.map(([id]) => id)).toEqual([
+      "exact-a",
+      "exact-b",
+      "prefix-a",
+      "prefix-b",
+      "substring",
+      "unavailable-exact",
+    ]);
+  });
+
   it("concurrently fetches the cold visible page and refetches it only after explicit pack invalidation", async () => {
     let sources = Array.from({ length: 12 }, (_, index) =>
       dagger({ id: `bulk-${index}`, name: `Bulk gear ${String(index).padStart(2, "0")}` })
@@ -2482,6 +2567,8 @@ function fixture(
       },
       query: "",
       filters: {},
+      offset: 0,
+      limit: 12,
       previewSourceUuid: null,
     },
   };

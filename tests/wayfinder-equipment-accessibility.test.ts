@@ -36,7 +36,9 @@ describe("starting equipment accessibility", () => {
     expect(shell).toContain('aria-live="{{#if statusNoteIsError}}assertive{{else}}polite{{/if}}"');
     expect(shell).toContain('data-wayfinder-focus-id="starting-equipment-status"');
     expect(shell).toContain('aria-atomic="true"');
-    expect(pane).toContain('class="equipment-result-count" role="status" aria-live="polite" aria-atomic="true"');
+    expect(pane).toContain(
+      'class="equipment-result-count" role="status" aria-live="{{#if equipmentRequest.announceWindow}}polite{{else}}off{{/if}}" aria-atomic="true"'
+    );
     expect(pane).toContain('class="sr-only" role="status" aria-live="polite" aria-atomic="true"');
     expect(pane).toContain('role="group" aria-label="{{localize');
   });

@@ -629,6 +629,30 @@
   scrollbar-color: var(--wf-rule) transparent;
 }
 
+.wayfinder-app .equipment-result-spacer {
+  flex: 0 0 auto;
+  width: 1px;
+  pointer-events: none;
+}
+
+.wayfinder-app .equipment-window-fallback {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.wayfinder-app .equipment-window-fallback:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 0.25rem 0.45rem;
+  clip-path: none;
+}
+
 .wayfinder-app .equipment-result-row {
   display: flex;
   align-items: stretch;

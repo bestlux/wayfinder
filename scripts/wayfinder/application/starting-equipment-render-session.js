@@ -1,4 +1,4 @@
-import { MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS } from "../panes/starting-equipment-pane.js";
+import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../starting-equipment-result-window.js";
 export const EQUIPMENT_POLICY_PART = "equipment-policy";
 export const EQUIPMENT_CATALOGUE_PART = "equipment-catalogue";
 export const EQUIPMENT_DETAIL_PART = "equipment-detail";
@@ -52,6 +52,7 @@ export function startingEquipmentPartsForIntent(intent) {
     switch (intent) {
         case "search":
         case "facet":
+        case "window":
         case "preview":
             return [EQUIPMENT_CATALOGUE_PART, EQUIPMENT_DETAIL_PART];
         case "recipe":
@@ -75,7 +76,7 @@ function sameStartingEquipmentRenderIdentity(left, right) {
         left.sourceRevision === right.sourceRevision);
 }
 function assertBoundedPane(pane) {
-    if (pane.catalogue.items.length > MAX_VISIBLE_STARTING_EQUIPMENT_RESULTS) {
+    if (pane.catalogue.items.length > STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize) {
         throw new RangeError("Starting-equipment render sessions may only retain the bounded visible catalogue page.");
     }
 }

@@ -5,6 +5,7 @@ import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot, inva
 import { mintAcquisitionLineId } from "../domain/acquisition-identity.js";
 import { createAcquisitionPriceSnapshot } from "../domain/acquisition-ledger.js";
 import { assertPreparedClassGrantPlanMatches, evaluateTitanMaulerCandidate, normalizePlannedClassGrant, titanMaulerTargetSize, } from "../domain/class-grant-reconciliation.js";
+import { clampStartingEquipmentResultWindow, STARTING_EQUIPMENT_RESULT_WINDOW, } from "../starting-equipment-result-window.js";
 import { buildTitanMaulerCandidate, titanMaulerGrantIdForDraft } from "./class-grant-projection-service.js";
 import { isBrowsePhysicalBatchSafeSource, prepareTransientBrowsePhysicalItems, } from "./equipment-browse-preparation-service.js";
 import { createEquipmentCatalogueDraftContext, createEquipmentCatalogueService, EMPTY_EQUIPMENT_ACCESS_REGISTRY, } from "./equipment-catalogue-service.js";
@@ -189,6 +190,8 @@ export function createEquipmentAcquisitionRuntime(options) {
                     state: "pending",
                     message: "Start the step above and the gear list loads here.",
                     query: request.query,
+                    offset: 0,
+                    limit: request.limit,
                     matchedRecordCount: 0,
                     records: [],
                     filters: [],
@@ -202,9 +205,11 @@ export function createEquipmentAcquisitionRuntime(options) {
                 const { catalogue, projection } = await requireHealthyCatalogue(policy, context);
                 let projectedEntries = projection.entries;
                 let projectedPreview = null;
+                let hydratedPreviewEntry = null;
                 if (request.previewSourceUuid) {
                     const preview = await catalogue.hydratePreview(request.previewSourceUuid, context);
                     if (preview?.entry) {
+                        hydratedPreviewEntry = preview.entry;
                         projectedEntries = projection.entries.map((entry) => entry.sourceUuid === preview.entry.sourceUuid ? preview.entry : entry);
                         projectedPreview = await previewProjector.project(preview);
                     }
@@ -213,8 +218,9 @@ export function createEquipmentAcquisitionRuntime(options) {
                 const entries = projectedEntries.filter((entry) => entry.level <= maximumLevel);
                 const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
                 const targetSize = await cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint);
-                const matchedEntries = entries.filter((entry) => matchesCatalogueRequest(entry, request));
-                const visibleEntries = matchedEntries.slice(0, 12);
+                const matchedEntries = rankCatalogueMatches(entries.filter((entry) => matchesCatalogueRequest(entry, request)), request.query);
+                const resultWindow = clampStartingEquipmentResultWindow(request, matchedEntries.length);
+                const visibleEntries = matchedEntries.slice(resultWindow.offset, resultWindow.offset + resultWindow.limit);
                 const browseRows = visibleEntries.map((entry) => {
                     if (entry.price.kind !== "priced" ||
                         entry.unavailableReasons.some((reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available")) {
@@ -236,89 +242,96 @@ export function createEquipmentAcquisitionRuntime(options) {
                         : { kind: "pending", entry, browseCacheKey };
                 });
                 const pendingRows = browseRows.filter((row) => row.kind === "pending");
-                const browseResolutions = await catalogue.resolveManyForBrowse(context, pendingRows.map(({ entry }) => entry.sourceUuid));
-                if (browseResolutions.length !== pendingRows.length ||
-                    browseResolutions.some((result, index) => result.sourceUuid !== pendingRows[index]?.entry.sourceUuid)) {
-                    throw new Error("Equipment bulk hydration returned unstable entry mapping.");
-                }
-                const resolvedRows = pendingRows.map((row, index) => {
-                    const result = browseResolutions[index];
-                    if (result.error !== null)
-                        throw result.error;
-                    if (result.resolution === null) {
-                        throw new Error(`Equipment bulk hydration omitted ${row.entry.sourceUuid}.`);
+                const resolvedRows = [];
+                for (const pendingChunk of chunksOf(pendingRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize)) {
+                    const browseResolutions = await catalogue.resolveManyForBrowse(context, pendingChunk.map(({ entry }) => entry.sourceUuid));
+                    if (browseResolutions.length !== pendingChunk.length ||
+                        browseResolutions.some((result, index) => result.sourceUuid !== pendingChunk[index]?.entry.sourceUuid)) {
+                        throw new Error("Equipment bulk hydration returned unstable entry mapping.");
                     }
-                    return { ...row, resolved: result.resolution };
-                });
+                    resolvedRows.push(...pendingChunk.map((row, index) => {
+                        const result = browseResolutions[index];
+                        if (result.error !== null)
+                            throw result.error;
+                        if (result.resolution === null) {
+                            throw new Error(`Equipment bulk hydration omitted ${row.entry.sourceUuid}.`);
+                        }
+                        return { ...row, resolved: result.resolution };
+                    }));
+                }
                 const batchRows = resolvedRows.filter(({ resolved }) => usesBrowsePhysicalPreparation(resolved));
-                const batchResults = batchRows.length === 0
-                    ? []
-                    : await prepareBrowsePhysicalItems({
+                const batchResultByKey = new Map();
+                for (const batchChunk of chunksOf(batchRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize)) {
+                    const batchResults = await prepareBrowsePhysicalItems({
                         actor: request.actor,
                         targetLevel: policy.targetLevel,
                         targetSize,
-                        entries: batchRows.map(({ entry, resolved }) => ({
+                        entries: batchChunk.map(({ entry, resolved }) => ({
                             key: entry.sourceUuid,
                             source: resolved.source,
                         })),
                     });
-                if (batchResults.length !== batchRows.length ||
-                    batchResults.some((result, index) => result.key !== batchRows[index]?.entry.sourceUuid)) {
-                    throw new Error("PF2E browse equipment preparation returned unstable entry mapping.");
+                    if (batchResults.length !== batchChunk.length ||
+                        batchResults.some((result, index) => result.key !== batchChunk[index]?.entry.sourceUuid)) {
+                        throw new Error("PF2E browse equipment preparation returned unstable entry mapping.");
+                    }
+                    for (const result of batchResults)
+                        batchResultByKey.set(result.key, result);
                 }
-                const batchResultByKey = new Map(batchResults.map((result) => [result.key, result]));
                 const preparedRecordByUuid = new Map();
-                await Promise.all(resolvedRows.map(async ({ entry, browseCacheKey, resolved }) => {
-                    try {
-                        const batchResult = batchResultByKey.get(entry.sourceUuid);
-                        let price;
-                        if (usesBrowsePhysicalPreparation(resolved)) {
-                            if (!batchResult)
-                                throw new Error("PF2E browse equipment preparation omitted a visible entry.");
-                            if (batchResult.error !== null)
-                                throw batchResult.error;
-                            price = buildSimpleResolvedPriceFromPrepared({
-                                resolved,
-                                requestedQuantity: 1,
-                                targetSize,
-                                prepared: batchResult.prepared,
-                            });
-                        }
-                        else {
-                            price = (await buildResolvedPrice({
-                                resolved,
-                                requestedQuantity: 1,
-                                targetSize,
-                                actor: request.actor,
-                                targetLevel: policy.targetLevel,
-                                packs: options.packs,
-                                prepareConfiguredItem,
-                                preparePhysicalItem,
-                            })).price;
-                        }
-                        const record = toUiRecord(entry, price);
-                        if (browseCacheKey)
-                            cacheBrowseRecord(browseCacheKey, record);
-                        preparedRecordByUuid.set(entry.sourceUuid, record);
-                    }
-                    catch (error) {
-                        if (error instanceof ConfiguredItemHandoffRequiredError) {
-                            const record = toUiRecord(entry);
+                for (const resolvedChunk of chunksOf(resolvedRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize)) {
+                    await Promise.all(resolvedChunk.map(async ({ entry, browseCacheKey, resolved }) => {
+                        try {
+                            const batchResult = batchResultByKey.get(entry.sourceUuid);
+                            let price;
+                            if (usesBrowsePhysicalPreparation(resolved)) {
+                                if (!batchResult)
+                                    throw new Error("PF2E browse equipment preparation omitted a visible entry.");
+                                if (batchResult.error !== null)
+                                    throw batchResult.error;
+                                price = buildSimpleResolvedPriceFromPrepared({
+                                    resolved,
+                                    requestedQuantity: 1,
+                                    targetSize,
+                                    prepared: batchResult.prepared,
+                                });
+                            }
+                            else {
+                                price = (await buildResolvedPrice({
+                                    resolved,
+                                    requestedQuantity: 1,
+                                    targetSize,
+                                    actor: request.actor,
+                                    targetLevel: policy.targetLevel,
+                                    packs: options.packs,
+                                    prepareConfiguredItem,
+                                    preparePhysicalItem,
+                                })).price;
+                            }
+                            const record = toUiRecord(entry, price);
                             if (browseCacheKey)
                                 cacheBrowseRecord(browseCacheKey, record);
                             preparedRecordByUuid.set(entry.sourceUuid, record);
-                            return;
                         }
-                        if (error instanceof PartialUnitPriceRequiredError) {
-                            const record = { ...toUiRecord(entry, null), available: false, unavailableReason: error.message };
-                            if (browseCacheKey)
-                                cacheBrowseRecord(browseCacheKey, record);
-                            preparedRecordByUuid.set(entry.sourceUuid, record);
-                            return;
+                        catch (error) {
+                            if (error instanceof ConfiguredItemHandoffRequiredError) {
+                                const record = toUiRecord(entry);
+                                if (browseCacheKey)
+                                    cacheBrowseRecord(browseCacheKey, record);
+                                preparedRecordByUuid.set(entry.sourceUuid, record);
+                                return;
+                            }
+                            if (error instanceof PartialUnitPriceRequiredError) {
+                                const record = { ...toUiRecord(entry, null), available: false, unavailableReason: error.message };
+                                if (browseCacheKey)
+                                    cacheBrowseRecord(browseCacheKey, record);
+                                preparedRecordByUuid.set(entry.sourceUuid, record);
+                                return;
+                            }
+                            throw error;
                         }
-                        throw error;
-                    }
-                }));
+                    }));
+                }
                 const records = browseRows.map((row) => {
                     if (row.kind === "record")
                         return row.record;
@@ -344,8 +357,12 @@ export function createEquipmentAcquisitionRuntime(options) {
                     message: `${entries.length} piece${entries.length === 1 ? "" : "s"} of gear to browse.`,
                     diagnostics: [],
                     query: request.query,
+                    offset: resultWindow.offset,
+                    limit: resultWindow.limit,
                     matchedRecordCount: matchedEntries.length,
                     records,
+                    previewRecord: records.find((record) => record.sourceUuid === request.previewSourceUuid) ??
+                        (hydratedPreviewEntry ? toUiRecord(hydratedPreviewEntry) : null),
                     lineRecords,
                     filters: catalogueFilters(entries),
                     activeFilters: request.filters,
@@ -362,6 +379,8 @@ export function createEquipmentAcquisitionRuntime(options) {
                         : "The gear list would not load. Ask your GM to check the approved equipment sources.",
                     diagnostics: error instanceof EquipmentSourceHealthError ? error.diagnostics : [],
                     query: request.query,
+                    offset: 0,
+                    limit: request.limit,
                     matchedRecordCount: 0,
                     records: [],
                     filters: [],
@@ -1499,6 +1518,33 @@ function matchesCatalogueRequest(entry, request) {
                     : null;
         return actual !== null && values.includes(actual);
     });
+}
+function rankCatalogueMatches(entries, query) {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    return entries
+        .map((entry, index) => ({ entry, index, relevance: catalogueQueryRelevance(entry, normalizedQuery) }))
+        .sort((left, right) => Number(right.entry.available) - Number(left.entry.available) ||
+        left.relevance - right.relevance ||
+        left.index - right.index)
+        .map(({ entry }) => entry);
+}
+function catalogueQueryRelevance(entry, normalizedQuery) {
+    if (!normalizedQuery)
+        return 0;
+    const name = entry.name.trim().toLocaleLowerCase();
+    if (name === normalizedQuery)
+        return 0;
+    if (name.startsWith(normalizedQuery))
+        return 1;
+    if (name.includes(normalizedQuery))
+        return 2;
+    return 3;
+}
+function chunksOf(values, size) {
+    const chunks = [];
+    for (let index = 0; index < values.length; index += size)
+        chunks.push(values.slice(index, index + size));
+    return chunks;
 }
 function isPotentialTitanMaulerEntry(entry) {
     return (entry.available &&

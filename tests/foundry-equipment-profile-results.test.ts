@@ -39,11 +39,19 @@ describe("equipment catalogue performance profile", () => {
     expect(profile.appWidths).toEqual([1240, 1180, 980, 760]);
     expect(profile.budgets).toEqual({
       maxP95MsPerActionWidth: 75,
-      maxDomElementCount: 550,
-      maxResultDomElementCount: 144,
+      maxDomElementCount: 850,
+      maxResultDomElementCount: 434,
+      maxMountedResultCount: 36,
+      maxResultDomElementsPerMountedRow: 12,
+      maxResultChromeDomElementCount: 2,
       maxImageRequestsPerSample: 0,
       maxLongTaskCountPerActionWidth: 0,
     });
+    expect(profile.resultWindowProfiles).toEqual([
+      { id: "default", appHeight: 820, expectedMountedRows: 12 },
+      { id: "expanded", appHeight: 1200, expectedMountedRows: 24 },
+      { id: "tall", appHeight: 1500, expectedMountedRows: 36 },
+    ]);
     expect(profile.expectedCatalogueCounts).toEqual({ indexed: 5856, levelQualified: 2283, matching: 1, visible: 1 });
     expect(profile.schemaVersion).toBe(2);
   });
@@ -547,6 +555,9 @@ function sample(actionId: string) {
     actionOutcome: outcomes[actionId as keyof typeof outcomes] ?? null,
     domElementCount: 300,
     resultDomElementCount: 12,
+    mountedResultCount: 1,
+    resultOffset: 0,
+    resultEnd: 1,
     imageRequestCount: 0,
     longTaskSupported: true,
     observedLongTasks: [],

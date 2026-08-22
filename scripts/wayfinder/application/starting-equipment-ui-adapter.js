@@ -9,6 +9,8 @@ const UNAVAILABLE_ADAPTER = {
             state: "pending",
             message: "The gear list is not loaded yet.",
             query: request.query,
+            offset: 0,
+            limit: request.limit,
             matchedRecordCount: 0,
             records: [],
             filters: [],

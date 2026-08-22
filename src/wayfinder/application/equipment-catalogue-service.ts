@@ -534,6 +534,7 @@ export class EquipmentCatalogueService {
         }
       })
     );
+    if (requests.length > 0) await yieldProjectionTask();
     if ([...generations].some(([packId, generation]) => generation !== this.#packGeneration(packId))) {
       return this.#resolveManyForBrowse(context, sourceUuids, true);
     }

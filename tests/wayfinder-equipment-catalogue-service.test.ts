@@ -966,6 +966,47 @@ describe("minimal equipment catalogue", () => {
     expect(results.every(({ error }) => error === null)).toBe(true);
   });
 
+  it("yields after visible document hydration while preserving request order", async () => {
+    const trace: string[] = [];
+    let releaseYield!: () => void;
+    const yieldTask = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          trace.push("yield");
+          releaseYield = resolve;
+        })
+    );
+    vi.stubGlobal("scheduler", { yield: yieldTask });
+    try {
+      const sources = new Map([
+        [DAGGER_ID, daggerSource()],
+        [UNCOMMON_ID, uncommonSource()],
+      ]);
+      const getDocument = vi.fn(async (documentId: string) => {
+        trace.push(`hydrate:${documentId}`);
+        return sources.get(documentId) ?? null;
+      });
+      const service = createEquipmentCatalogueService({
+        packs: packMap({ entries: [...sources.values()], getDocument }),
+        equipmentPackIds: [PACK_ID],
+      });
+
+      let settled = false;
+      const pending = service.resolveManyForBrowse(context(), [WF_080_21_DAGGER_UUID, UNCOMMON_UUID]).finally(() => {
+        settled = true;
+      });
+      await vi.waitFor(() => expect(yieldTask).toHaveBeenCalledOnce());
+
+      expect(trace).toEqual([`hydrate:${DAGGER_ID}`, `hydrate:${UNCOMMON_ID}`, "yield"]);
+      expect(settled).toBe(false);
+      releaseYield();
+      const results = await pending;
+      expect(results.map(({ sourceUuid }) => sourceUuid)).toEqual([WF_080_21_DAGGER_UUID, UNCOMMON_UUID]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("force-refreshes and repairs a stale pack cache after invalidated concurrent browse reads", async () => {
     let resolveOld!: (document: unknown) => void;
     let cachedDocument: unknown = null;

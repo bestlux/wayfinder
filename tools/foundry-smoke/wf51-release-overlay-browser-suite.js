@@ -2073,7 +2073,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
     "Investigator",
     "class",
   );
-  investigator.branchSelections.methodology = selection(
+  investigator.branchSelections["class-branch-methodology-level-1"] = selection(
     "class-branch-methodology-level-1",
     u.alchemicalSciences,
     "Alchemical Sciences",
@@ -2105,7 +2105,7 @@ async function collectGrantEvidence({ modules, actor, moduleId }) {
   const titanDraft = modules.createEmptyDraft(1);
   titanDraft.selections["ancestry-level-1"] = selection("ancestry-level-1", HUMAN_UUID, "Human", "ancestry");
   titanDraft.selections["class-level-1"] = selection("class-level-1", u.barbarianClass, "Barbarian", "class");
-  titanDraft.branchSelections.instinct = selection(
+  titanDraft.branchSelections["class-branch-instinct-level-1"] = selection(
     "class-branch-instinct-level-1",
     u.giantInstinct,
     "Giant Instinct",

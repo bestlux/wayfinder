@@ -136,6 +136,7 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(browserSuite).toContain("rejectedRoutes: rejected.map");
     expect(browserSuite).toContain("draftId: titanDraft.acquisition.draftId");
     expect(browserSuite).toContain("...titanSubject");
+    expect(browserSuite).toContain('titanDraft.branchSelections["class-branch-instinct-level-1"]');
     expect(browserSuite).toContain("const commandSteps = [...projectionSteps, modules.createStep(1)]");
     expect(browserSuite).toContain(
       'executeAndPersist(actor, titanDraft, { type: "retain-all" }, modules, moduleId, commandSteps)'

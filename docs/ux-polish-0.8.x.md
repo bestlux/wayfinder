@@ -7,6 +7,12 @@
 > Findings are from source inspection at `6b455ad` plus the live level-5 session
 > recorded during the 0.8.0 visual rebuild. Where something was reasoned from
 > source rather than observed running, it says so.
+>
+> **Revised after review.** A1, A2, B1, C2, C4, D1, D2, D3 and the suggested
+> ordering all carried errors in the first version — a wrong Apply lifecycle, two
+> bad greps, pre-Remaster ability scores, and effort estimates that were too
+> optimistic. Each correction is marked inline rather than silently patched, so
+> the original reasoning stays auditable.
 
 ## Reading order
 
@@ -32,18 +38,24 @@ is just a flattened signal of it. Render each level as a disclosure with a
 one-line summary (level number, N of M complete, and a warning marker when any
 child step is invalidated).
 
-**The part worth getting right is the collapse rule.** Derive it; do not store it
-as plain per-level state, or it will fight the player:
+**The part worth getting right is the collapse rule.** The model is *derived
+defaults plus ephemeral session overrides* — a manual toggle is inherently state,
+so the goal is to keep that state minimal and short-lived, not to pretend it away:
 
 - Default collapsed when every step in the level is complete **and** it is not
   the active level.
 - Default expanded when the level is active, or contains any incomplete step.
-- **Force expanded when any child step is `invalidated`,** and clear any player
-  override at that moment. This is the behaviour asked for: a later choice
-  invalidating an earlier one must re-open that level rather than hide a problem
-  behind a collapsed summary.
-- A manual toggle overrides the default for that level only, and is discarded
-  when the level's invalidation state changes.
+- **Force expanded when any child step is `invalidated`.**
+- A manual toggle overrides the default for that level only, lives in session
+  state, and is not persisted to the draft.
+- Clear a level's override when its invalidation state transitions from absent to
+  present — **on that transition, not on every render while it stays
+  invalidated.** Clearing continuously would re-open the level every render and
+  make it impossible to collapse a level the player has chosen to set aside.
+
+That transition rule is the behaviour asked for: a later choice invalidating an
+earlier one re-opens that level once, rather than hiding a problem behind a
+collapsed summary.
 
 **Acceptance.** A level-10 draft with levels 1–4 complete opens showing four
 collapsed summaries and the active level expanded. Changing a class feat that
@@ -56,9 +68,27 @@ makes the lost scroll position less painful but does not fix it.
 ### A2. The rail loses its scroll position on every re-render — P1, S
 
 **Problem.** Scroll restoration is opt-in via `data-wayfinder-scroll-id`
-(`actions.ts:115-127`). Every scrollable region in every pane carries one.
-`.wizard-step-list` does not. Every re-render therefore snaps the rail back to
-the top.
+(`actions.ts:115-127`). `.wizard-step-list` scrolls and has no id, so every
+re-render snaps the rail back to the top.
+
+**And it is not the only one.** An earlier version of this item claimed every
+other scrollable region carries an id. It does not. Six scroll containers have
+`overflow: auto` and no `data-wayfinder-scroll-id`:
+
+| Region | Introduced |
+| --- | --- |
+| `.wizard-step-list` | pre-existing |
+| `.wizard-stage` | pre-existing |
+| `.wayfinder-acquisition-receipt` | pre-existing |
+| `.equipment-detail` | 0.8.0 visual rebuild |
+| `.equipment-cart-lines` | 0.8.0 visual rebuild |
+| `.equipment-source-filter-panel > div` | 0.8.0 visual rebuild |
+
+Three of the six were introduced by the rebuild, so this is partly a regression
+that shipped in 0.8.0, not only a pre-existing gap. Scrolled cart lines and a
+scrolled detail panel both reset on the next re-render — and in the cart, a
+re-render happens on every quantity change, so adjusting a line near the bottom
+of a long kit throws the player back to the top.
 
 **Observed.** During the 0.8.0 rebuild session this reproduced repeatedly: after
 a re-render, a scripted click on the level-5 equipment step landed on a
@@ -66,8 +96,9 @@ level-4 step instead, because the rail had scrolled back to the top between the
 render and the click. A player experiences it as the rail jumping away while
 they work.
 
-**Approach.** Add `data-wayfinder-scroll-id="rail:steps"` to the rail list. One
-attribute; the existing machinery does the rest.
+**Approach.** Add a `data-wayfinder-scroll-id` to each of the six. One attribute
+each; the existing machinery does the rest. The rail and the cart are the two
+that matter most.
 
 Consider also scrolling the active step into view when the active step changes
 for a reason other than a direct rail click — Next/Previous navigation and
@@ -78,9 +109,11 @@ visible.
 
 ## B. Equipment — additions to the handoff
 
-These are new; the eight items in `equipment-ux-handoff.md` still stand.
+These are new. The items in `equipment-ux-handoff.md` still stand, with the
+corrections applied there after review — note especially that handoff item 6
+should now be delivered together with B1 below.
 
-### B1. The detail panel never shows what an item does — P0, S
+### B1. The detail panel never shows what an item does — P0, M
 
 **Problem.** The equipment detail panel answers Level, Price, Rarity, Type,
 Source and Traits. It never shows the item's description. A player cannot read
@@ -92,13 +125,22 @@ This is the largest remaining content gap in the shopping experience, and
 arguably a worse one than the catalogue cap, because no amount of filtering
 compensates for not knowing what you are buying.
 
-**Why it is cheap.** `hydratePreview`
-(`equipment-catalogue-service.ts:421`) already fetches the full document and
-returns it as `EquipmentCataloguePreview.source`; the description is in memory
-the moment a row is previewed. The picker already has the helper:
-`pick-pane.ts:111` does `enrichHtml(String(system.description?.value ?? ""), { async: true })`.
-Project the same field onto the equipment preview view-model and render it in
-`starting-equipment-detail.hbs` with the existing `.prose` treatment.
+**The data is already fetched — but currently thrown away.** `hydratePreview`
+(`equipment-catalogue-service.ts:421`) loads the full document and returns it as
+`EquipmentCataloguePreview.source`. Runtime then keeps only `preview.entry` and
+**discards `preview.source`** (`equipment-acquisition-runtime-service.ts:397`).
+So no re-fetch is needed, but the description has to be threaded through runtime,
+the projection, the view-model, async enrichment, the template and tests. An
+earlier version of this item called it cheap; it is a contained M, not an S.
+
+The helper exists: `pick-pane.ts:111` does
+`enrichHtml(String(system.description?.value ?? ""), { async: true })`. Render
+into `starting-equipment-detail.hbs` with the existing `.prose` treatment.
+
+**Do this together with handoff item 6.** Bulk and hands/usage come from the same
+already-hydrated document. One piece of work on the preview path delivers all
+three, and it removes the reason handoff item 6 wanted to index two more fields
+across 5856 entries.
 
 **Cost to watch.** Enrichment is async and per-preview. The profile measures
 preview latency (`timingSemantics.previewPrimary`, both new and repeat preview
@@ -182,8 +224,12 @@ bare `<h4>` with no live region (`picker-result-count.hbs`). A screen-reader use
 typing in the feat or spell search gets no feedback that the result set changed —
 in the panes they will use most.
 
-Grepping live regions across templates: equipment has six, every other pane has
-zero.
+**Correcting an earlier count.** This document previously said every pane outside
+equipment has zero live regions. That was a bad grep: it excluded
+`templates/wayfinder-app.hbs`, which has three (the status note, the save status,
+and the empty-planner status), and `compendium-source-config.hbs`, which has two.
+The shell announces lifecycle state properly. The specific gap is narrower and
+still real: **search result counts are announced in equipment and nowhere else.**
 
 **Approach.** Give `picker-count` the same treatment. Also reconsider `<h4>` for
 a changing count — a heading whose text is a live number is odd semantically, and
@@ -222,9 +268,17 @@ three.
 
 ### C4. No `prefers-reduced-motion` handling — P2, S
 
-Roughly sixty `transition` declarations across the stylesheets and no
-`@media (prefers-reduced-motion: reduce)` block anywhere. One media query in
-`tokens-base.css` neutralising transition durations covers the whole app.
+There is no `@media (prefers-reduced-motion: reduce)` block anywhere in the
+stylesheets.
+
+**Correcting an earlier count.** This document said "roughly sixty transition
+declarations". The real figure is **22**; the earlier number counted lines
+containing the substring `transition`, which is inflated by every use of the
+`var(--wf-transition)` token. The fix is worth doing regardless, and 22 is small
+enough that it is genuinely a one-query change.
+
+Cover `animation` and `scroll-behavior` in the same block, not just `transition`
+— any scroll-into-view added for A2 should respect the preference too.
 
 ### C5. Search affordances are inconsistent — P3, S
 
@@ -248,45 +302,62 @@ The roadmap already names the gap: *"the largest remaining product gaps are a
 satisfying character-completion chapter and high-level caster evidence beyond
 level 10."* These are ideas for the first half of that, ordered by confidence.
 
-### D1. Show scores, not just modifiers, in the boost pane — P1, S
+### D1. Show modifier movement in the boost pane — P1, M
 
-`abilitySummary` projects `modifierLabel` and `partial` only
-(`boost-pane.ts:37-42`). PF2E players think in both scores and modifiers, and the
-interesting information during levelling is the *change*: `STR 16 → 18`. The
-pane's own eyebrow promises "Where your modifiers land", and it under-delivers by
-showing only the landing value with no journey.
+**Corrected.** An earlier version of this item asked for ability *scores*
+(`STR 16 → 18`). That is pre-Remaster presentation: the PF2E Remaster removed
+ability scores in favour of attribute modifiers, and the world runs PF2E 8.4.1.
+Showing scores would be actively wrong for the system Wayfinder targets.
 
-`effectiveBuildState.projectedAbilities` is already the source; check whether the
-score and the pre-boost value are available there before committing to this.
+The real gap stands. `abilitySummary` projects `modifierLabel` and `partial` only
+(`boost-pane.ts:37-42`), so the pane shows where a modifier landed but not that it
+moved. The pane's own eyebrow promises "Where your modifiers land" and
+under-delivers on the journey. Show the movement — `+3 → +4` — and make
+partial-boost progress legible rather than a bare "Partial" tag.
 
-### D2. A completion chapter — P2, L
+**Not S.** `projectedAbilities` carries the projected modifier; it does not carry
+a pre-step value to compare against. Sizing depends on where that baseline comes
+from, which is a real question, not a lookup.
 
-Apply currently ends with a receipt (`acquisition-receipt.hbs`): applied-by,
-applied-at, spent, remaining, item rows. It is an audit artifact, and a good one.
-It is not an ending.
+### D2. A completion chapter — P2, L–XL
 
-The moment a character becomes table-ready is the emotional peak of the whole
-flow and Wayfinder currently spends it on a table of provenance. A closing
-chapter — the character's name and ancestry/class line, what they carry, what
-they can do, what changed at this level — would cost little and would be the
-single most memorable screen in the module. Keep the receipt; put it behind a
-disclosure under the chapter.
+**Correcting an earlier version of this item.** It claimed Apply ends on the
+receipt and proposed putting that receipt behind a disclosure. That is not what
+happens. A successful Apply **closes Wayfinder outright** —
+`await this.close({ animate: false })` (`app-shell.ts:1091`). The acquisition
+receipt is not an ending screen at all; it renders only if the player later
+reopens Wayfinder on that actor.
 
-This is explicitly a product decision, not a polish item, and it should not jump
-the queue ahead of section A.
+So the moment a character becomes table-ready — the emotional peak of the entire
+flow — is currently a window disappearing. That is a real product gap, and it is
+the one the roadmap already names.
+
+But the fix is not a template. There is no post-apply surface to put a chapter
+on, so this needs a new lifecycle: a terminal state Apply transitions *into*
+rather than closing from, with its own render path, its own dismissal, and a
+decision about what happens on reopen. That is L–XL, not the "costs little" this
+document originally claimed.
+
+Worth doing. Not worth starting until sections A–C are done, and worth a design
+note before any code.
 
 ### D3. Starting-kit shortcuts — P2, M
 
-PF2E ships class kits, and the catalogue already understands kit expansion. A
-short list of "typical kit for a Swashbuckler" — a handful of pre-filled carts a
-player can take wholesale and then edit — would turn the hardest part of the step
-(facing 2283 items with no idea what a level-1 character needs) into a starting
-point.
+Facing 2283 items with no idea what a level-1 character needs is the hardest part
+of the step. A short list of pre-filled, visibly editable starting carts would
+turn it into a starting point.
 
-**Caution.** This edges toward recommending choices rather than guiding them,
-which the product thesis is careful about. Framing matters: "a common starting
-kit" that is visibly editable, not "recommended gear". Worth a design decision
-before any implementation.
+**Correcting an earlier claim.** This document previously said "PF2E ships class
+kits, and the catalogue already understands kit expansion", implying the
+groundwork exists. It does not. `prepareAdventurersPackExpansion`
+(`pf2e-kit-adapter.ts:36`) hard-throws for any UUID that is not the exact
+Adventurer's Pack, and re-checks the document's slug and type before expanding.
+Wayfinder supports precisely one qualified kit profile. Any class-kit feature
+needs its own catalogue and rules verification per kit, which is most of the work.
+
+**Caution.** This also edges toward recommending choices rather than guiding
+them, which the product thesis is careful about. "A common starting kit" that is
+visibly editable, not "recommended gear". Design decision first.
 
 ### D4. Budget pacing feedback — P3, S
 
@@ -300,20 +371,27 @@ most one non-blocking note.
 
 ## Suggested 0.8.x ordering
 
-Cheap and high-value first, and deliberately front-loading the two items that
-cost almost nothing:
+Revised after review. An earlier version labelled `1a → 2 → 3` "the equipment
+reachability chain", which was wrong: **1b** is the item that makes results past
+the first page reachable. Ranking improves the first page; it is not a substitute
+for paging.
 
-1. **A2** rail scroll (one attribute) and **C4** reduced motion (one media query).
-2. **B1** item descriptions — biggest content gap, low structural risk.
-3. **C2** live regions for picker result counts.
-4. Handoff **1a → 2 → 3** (cap constant, ranking, availability facet) — the
-   equipment reachability chain.
-5. **A1** rail collapse.
-6. **B2** quantity entry.
-7. Everything else by the ranking above.
+1. **A2** scroll restoration (six attributes), **C4** reduced motion (one media
+   query), **C2** picker result-count status. All near-free.
+2. Handoff **1a** — one authoritative result-window constant.
+3. Handoff **2** — deterministic policy-aware and relevance ranking.
+4. Handoff **1b** — constant-size paging, for actual reachability.
+5. **B1** + handoff **6** — description, bulk and hands together off the
+   hydrated preview.
+6. **B2** direct quantity entry.
+7. **A1** rail grouping and collapse.
+8. Handoff **8** — consolidate the equipment filter predicates *before* adding
+   3a, 3b, B3 or 7. Four new facets across two parallel implementations is twice
+   the work and twice the drift.
+9. Section D, by its own ranking, and not before a design note.
 
-Items needing a profile rerun: **B1** (preview latency only), plus handoff 1b and
-5. **A1**, **A2**, **B2**, **C2** and **C4** touch the rail, the cart or the
-stylesheet rather than the catalogue row list, so they do not disturb
-`maxResultDomElementCount`; confirm against `maxDomElementCount` before assuming
-the same for A1, which adds per-level disclosure elements to the rail.
+Profile impact: **B1**/handoff 6 touch preview latency only. Handoff 1b needs a
+rerun only if virtualization is chosen over constant-size paging. **A2**, **B2**,
+**C2** and **C4** touch the rail, cart or stylesheet rather than the row list.
+**A1** adds per-level disclosure elements to the rail, so check it against
+`maxDomElementCount` rather than assuming it is free.

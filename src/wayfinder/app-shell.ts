@@ -155,6 +155,7 @@ import {
   toggleSpellChoiceSelection,
 } from "./application/selection-command-service.js";
 import { createSelectionInvalidationService } from "./application/selection-invalidation-service.js";
+import { isSelectionMaterializedOnActor } from "./application/selection-materialization-service.js";
 import { SemanticCommandQueue } from "./application/semantic-command-queue.js";
 import {
   executeStartingEquipmentCommand,
@@ -3253,14 +3254,15 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
   ): Promise<boolean> {
     if (spellRarityCeiling === null) return false;
     const normalizedUuid = selection.uuid.trim().toLowerCase();
-    const alreadyApplied = listActorItems(this.actor).some((item) => {
-      if (sourceIdOf(item)?.trim().toLowerCase() !== normalizedUuid) return false;
-      const wayfinderFlags = (item?.flags as Record<string, { slotId?: unknown }> | undefined)?.[MODULE_ID];
-      if (wayfinderFlags?.slotId === selection.slotId) return true;
-      if (step.kind !== "spell-choice") return false;
-      const entry = findSpellcastingEntryForChoice(this.actor, step.spellChoice);
-      return typeof entry?.id === "string" && actorItemLocationId(item) === entry.id;
-    });
+    const actorItems = listActorItems(this.actor);
+    const alreadyApplied =
+      isSelectionMaterializedOnActor(actorItems, selection, step) ||
+      (step.kind === "spell-choice" &&
+        actorItems.some((item) => {
+          if (sourceIdOf(item)?.trim().toLowerCase() !== normalizedUuid) return false;
+          const entry = findSpellcastingEntryForChoice(this.actor, step.spellChoice);
+          return typeof entry?.id === "string" && actorItemLocationId(item) === entry.id;
+        }));
     if (alreadyApplied) return true;
 
     if ((step.kind !== "pick-item" && step.kind !== "class-branch" && step.kind !== "spell-choice") || !step.filters) {

@@ -122,6 +122,11 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(browserSuite).toContain('draft.branchSelections["class-branch-methodology-level-1"] = selection(');
     expect(browserSuite).toContain("materializationDiagnostic");
     expect(browserSuite).toContain("formulaGrantedById");
+    expect(browserSuite).toContain("const projectionSteps = investigatorSteps(modules)");
+    expect(browserSuite).toContain(
+      'step.id === "class-branch-methodology-level-1" || step.kind === "starting-equipment"'
+    );
+    expect(browserSuite).toContain("modules.applyDraftToActor(actor, applyDraft, applySteps");
     expect(browserSuite).toContain("EXISTING_IMPORT_SOURCES");
     expect(browserSuite).toContain("snapshotEconomic(modules, existingImportActor)");
     expect(browserSuite).toContain('actor.getFlag("pf2e", "wf51OverlaySentinel")');

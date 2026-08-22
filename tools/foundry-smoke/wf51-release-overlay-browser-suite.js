@@ -825,7 +825,10 @@ function actorItemsBySource(actor, sourceUuid) {
 }
 
 async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) {
-  const steps = investigatorSteps(modules);
+  const projectionSteps = investigatorSteps(modules);
+  const applySteps = projectionSteps.filter(
+    (step) => step.id === "class-branch-methodology-level-1" || step.kind === "starting-equipment",
+  );
   const draft = modules.createEmptyDraft(1);
   draft.selections[ANCESTRY_STEP_ID] = selection(ANCESTRY_STEP_ID, HUMAN_UUID, "Human", "ancestry");
   draft.selections["class-level-1"] = selection("class-level-1", INVESTIGATOR_UUID, "Investigator", "class");
@@ -836,11 +839,18 @@ async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) 
     "feat",
     "classfeature",
   );
-  await executeAndPersist(actor, draft, { type: "initialize", selectedRecipe: "permanent-items" }, modules, moduleId, steps);
-  await executeAndPersist(actor, draft, { type: "retain-all" }, modules, moduleId, steps);
+  await executeAndPersist(
+    actor,
+    draft,
+    { type: "initialize", selectedRecipe: "permanent-items" },
+    modules,
+    moduleId,
+    projectionSteps,
+  );
+  await executeAndPersist(actor, draft, { type: "retain-all" }, modules, moduleId, projectionSteps);
   const reviewed = modules.normalizeDraft(actor.getFlag(moduleId, "draft"), 1);
   const runtime = modules.getRuntime();
-  const classGrantPlan = await modules.prepareCurrentClassGrantPlan(actor, reviewed, steps, {
+  const classGrantPlan = await modules.prepareCurrentClassGrantPlan(actor, reviewed, projectionSteps, {
     fetchDocumentByUuid: (uuid) => fromUuid(uuid),
     resolveCharacterAccessRef: (sourceUuid) =>
       runtime.resolveCurrentCharacterAccessRef({
@@ -863,12 +873,12 @@ async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) 
         acquisitionExecutionAvailable: true,
         assertAcquisitionApplyAuthority: () =>
           modules.assertApplyAuthority({ actor, acquisition: applyDraft.acquisition, user: game.user }),
-        steps,
+        steps: applySteps,
         evaluateStep: (step) => modules.evaluateWayfinderStep(step, applyDraft, new Set(), {}),
         confirmApply: async () => true,
         beforeApply: async (applyAttemptDraft) => actor.setFlag(moduleId, "draft", applyAttemptDraft),
         applyDraftToActor: (buildFinalActorUpdate) =>
-          modules.applyDraftToActor(actor, applyDraft, steps, {
+          modules.applyDraftToActor(actor, applyDraft, applySteps, {
           resolveFinalActorUpdate: (evidence) =>
             buildFinalActorUpdate(modules.normalizeState(actor.getFlag(moduleId, "state")), evidence),
           beforeFinalActorUpdate: () => modules.assertCanUseWayfinder(actor),

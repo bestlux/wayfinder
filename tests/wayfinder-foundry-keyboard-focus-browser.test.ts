@@ -64,13 +64,15 @@ browserIt(
       expect(await page.evaluate(() => window.cycleViewCount)).toBe(1);
 
       expect(await page.evaluate(() => window.markWayfinderKeyboardFocus(document.querySelector("#wayfinder")!))).toBe(
-        5
+        6
       );
       await page.locator("#heading").focus();
       await page.keyboard.press("Tab");
       expect(await page.evaluate(() => document.activeElement?.id)).toBe("previous");
       await page.keyboard.press("Tab");
       expect(await page.evaluate(() => document.activeElement?.id)).toBe("start");
+      await page.keyboard.press("Tab");
+      expect(await page.evaluate(() => document.activeElement?.id)).toBe("policy-details");
       await page.keyboard.press("Tab");
       expect(await page.evaluate(() => document.activeElement?.id)).toBe("search");
       await page.keyboard.type("Dagger");
@@ -238,6 +240,7 @@ const fixture = `
     <button id="previous" type="button">Previous step</button>
     <button id="next" type="button" disabled>Next step</button>
     <button id="start" type="button">Start Shopping</button>
+    <details><summary id="policy-details">How this works</summary><p>Policy details.</p></details>
     <input id="search" aria-label="Search equipment" />
   </main>`;
 

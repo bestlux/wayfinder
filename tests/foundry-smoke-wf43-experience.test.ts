@@ -213,7 +213,7 @@ describe("WF-080-43 live experience qualifier", () => {
   });
 
   it("marks Foundry keyboard focus centrally before both full and partial render branches", () => {
-    expect(keyboardFocusService).toContain('"button, input, select, textarea, a[href], [tabindex]"');
+    expect(keyboardFocusService).toContain('"button, input, select, textarea, summary, a[href], [tabindex]"');
     const markerCall = appShell.indexOf("markWayfinderKeyboardFocus(root);");
     expect(markerCall).toBeGreaterThan(appShell.indexOf("async _onRender"));
     expect(markerCall).toBeLessThan(appShell.indexOf('context.wayfinderRenderScope === "picker-search"', markerCall));

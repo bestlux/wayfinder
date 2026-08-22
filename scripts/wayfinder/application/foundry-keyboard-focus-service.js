@@ -1,4 +1,4 @@
-const WAYFINDER_KEYBOARD_FOCUS_SELECTOR = "button, input, select, textarea, a[href], [tabindex]";
+const WAYFINDER_KEYBOARD_FOCUS_SELECTOR = "button, input, select, textarea, summary, a[href], [tabindex]";
 const WAYFINDER_APPLY_CONFIRMATION_SELECTOR = "[data-wayfinder-apply-confirmation]";
 const WAYFINDER_APPLY_FOCUS_ATTEMPTS = 2;
 let wayfinderApplyConfirmationSequence = 0;

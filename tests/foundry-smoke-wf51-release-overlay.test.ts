@@ -119,6 +119,7 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(browserSuite).toContain(
       'draft.selections[ANCESTRY_STEP_ID] = selection(ANCESTRY_STEP_ID, HUMAN_UUID, "Human", "ancestry")'
     );
+    expect(browserSuite).toContain('draft.branchSelections["class-branch-methodology-level-1"] = selection(');
     expect(browserSuite).toContain("materializationDiagnostic");
     expect(browserSuite).toContain("formulaGrantedById");
     expect(browserSuite).toContain("EXISTING_IMPORT_SOURCES");

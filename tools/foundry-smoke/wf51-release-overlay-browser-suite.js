@@ -829,7 +829,7 @@ async function materializeInvestigatorFormulaBook({ actor, moduleId, modules }) 
   const draft = modules.createEmptyDraft(1);
   draft.selections[ANCESTRY_STEP_ID] = selection(ANCESTRY_STEP_ID, HUMAN_UUID, "Human", "ancestry");
   draft.selections["class-level-1"] = selection("class-level-1", INVESTIGATOR_UUID, "Investigator", "class");
-  draft.branchSelections.methodology = selection(
+  draft.branchSelections["class-branch-methodology-level-1"] = selection(
     "class-branch-methodology-level-1",
     METHODOLOGY_UUID,
     "Alchemical Sciences",

@@ -1,4 +1,4 @@
-/* global Actor, CONFIG, CONST, fromUuid, game, getComputedStyle, HTMLButtonElement, HTMLElement, MutationObserver, ui */
+/* global Actor, CONFIG, CONST, document, fromUuid, game, getComputedStyle, HTMLButtonElement, HTMLElement, MutationObserver, ui */
 
 const WF51_PURPOSE = "wf51-release-overlay";
 const DAGGER_UUID = "Compendium.pf2e.equipment-srd.Item.rQWaJhI5Bko5x14Z";
@@ -10,6 +10,7 @@ const METHODOLOGY_UUID = "Compendium.pf2e.classfeatures.Item.ln2Y1a4SxlU9sizX";
 const METHODOLOGY_SELECTOR_UUID = "Compendium.pf2e.classfeatures.Item.uhHg9BXBiHpL5ndS";
 const FORMULA_BOOK_UUID = "Compendium.pf2e.equipment-srd.Item.qCEOZ6109Yo34tRx";
 const MIND_READING_UUID = "Compendium.pf2e.spells-srd.Item.KHnhPHL4x1AQHfbC";
+const ANCESTRY_STEP_ID = "ancestry-level-1";
 const EXISTING_IMPORT_LEVEL = 7;
 const EXISTING_IMPORT_SOURCES = [
   { uuid: HUMAN_UUID, name: "Human", type: "ancestry", historySlotId: "ancestry-level-1" },
@@ -501,33 +502,71 @@ async function manualSaveDraft(app) {
   }
 }
 
-async function choosePickerOption(app, actor, modules, moduleId, uuid, query) {
-  const ancestryStep = await waitForValue(
+function connectedPickerSurface(app, stepId) {
+  const results = app.element?.querySelector(
+    `[data-application-part="picker-results"][data-step-id="${stepId}"]`,
+  );
+  return results instanceof HTMLElement && results.isConnected ? results : null;
+}
+
+async function activatePickerStep(app, stepId) {
+  const previous = app.element?.querySelector('[data-application-part="picker-results"]') ?? null;
+  const step = await waitForValue(
     () =>
       app.element?.querySelector(
-        '[data-wayfinder-action="select-step"][data-step-id="ancestry-level-1"]',
+        `[data-wayfinder-action="select-step"][data-step-id="${stepId}"]`,
       ),
-    "the production ancestry step control",
+    `the production ${stepId} step control`,
   );
-  ancestryStep.click();
+  step.click();
+  return waitForValue(
+    () => {
+      const results = connectedPickerSurface(app, stepId);
+      const heading = app.element?.querySelector(`[data-wayfinder-step-heading="${stepId}"]`);
+      return results && results !== previous && document.activeElement === heading ? results : null;
+    },
+    `the production ${stepId} picker render`,
+  );
+}
+
+function pickerSurfaceDiagnostic(app) {
+  const results = app.element?.querySelector('[data-application-part="picker-results"]');
+  if (!(results instanceof HTMLElement)) return "picker=missing";
+  const stepId = results.dataset.stepId ?? "<missing>";
+  const query = results.dataset.wayfinderRenderedQuery ?? "<missing>";
+  const viewRevision = results.dataset.wayfinderViewRevision ?? "<missing>";
+  const sourceRevision = results.dataset.wayfinderSourceRevision ?? "<missing>";
+  const resultCount = results.dataset.wayfinderResultCount ?? "<missing>";
+  return `picker step=${stepId} query=${JSON.stringify(query)} view=${viewRevision} source=${sourceRevision} count=${resultCount}`;
+}
+
+async function choosePickerOption(app, actor, modules, moduleId, uuid, query) {
+  const results = await activatePickerStep(app, ANCESTRY_STEP_ID);
   const search = await waitForValue(
-    () => app.element?.querySelector('input[data-wayfinder-search][data-step-id="ancestry-level-1"]'),
+    () => results.querySelector(`input[data-wayfinder-search][data-step-id="${ANCESTRY_STEP_ID}"]`),
     "the production ancestry search input",
   );
   search.value = query;
   search.dispatchEvent(new Event("input", { bubbles: true }));
-  const preview = await waitForValue(
-    () => {
-      const results = app.element?.querySelector(
-        `[data-application-part="picker-results"][data-wayfinder-rendered-query="${query}"]`,
-      );
-      const candidate = results?.querySelector(
-        `[data-wayfinder-action="preview-option"][data-value="${uuid}"]`,
-      );
-      return results?.isConnected && candidate?.isConnected ? candidate : null;
-    },
-    `the settled production picker option ${uuid}`,
-  );
+  let preview;
+  try {
+    preview = await waitForValue(
+      () => {
+        const settled = app.element?.querySelector(
+          `[data-application-part="picker-results"][data-step-id="${ANCESTRY_STEP_ID}"][data-wayfinder-rendered-query="${query}"]`,
+        );
+        const candidate = settled?.querySelector(
+          `[data-wayfinder-action="preview-option"][data-value="${uuid}"]`,
+        );
+        return settled?.isConnected && candidate?.isConnected ? candidate : null;
+      },
+      `the settled production picker option ${uuid}`,
+    );
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : String(error)} Observed ${pickerSurfaceDiagnostic(app)}.`, {
+      cause: error,
+    });
+  }
   preview.click();
   const select = await waitForValue(
     () => app.element?.querySelector(`[data-wayfinder-action="select-option"][data-value="${uuid}"]`),
@@ -547,14 +586,7 @@ async function choosePickerOption(app, actor, modules, moduleId, uuid, query) {
 }
 
 async function clearAncestryPickerOption(app, actor, modules, moduleId) {
-  const ancestryStep = await waitForValue(
-    () =>
-      app.element?.querySelector(
-        '[data-wayfinder-action="select-step"][data-step-id="ancestry-level-1"]',
-      ),
-    "the production ancestry step control",
-  );
-  ancestryStep.click();
+  await activatePickerStep(app, ANCESTRY_STEP_ID);
   const clear = await waitForValue(
     () => app.element?.querySelector('[data-wayfinder-action="clear-option"][data-step-id="ancestry-level-1"]'),
     "the production ancestry clear control",

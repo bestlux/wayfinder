@@ -109,7 +109,11 @@ describe("WF-080-51 focused live release overlay", () => {
     expect(browserSuite).toContain("getBoundingClientRect");
     expect(browserSuite).toContain('data-wayfinder-action="import-existing-history"');
     expect(browserSuite).toContain('data-wayfinder-rendered-query="${query}"');
-    expect(browserSuite).toContain('input[data-wayfinder-search][data-step-id="ancestry-level-1"]');
+    expect(browserSuite).toContain('input[data-wayfinder-search][data-step-id="${ANCESTRY_STEP_ID}"]');
+    expect(browserSuite).toContain("function connectedPickerSurface");
+    expect(browserSuite).toContain("async function activatePickerStep");
+    expect(browserSuite).toContain("results && results !== previous && document.activeElement === heading");
+    expect(browserSuite).toContain("pickerSurfaceDiagnostic(app)");
     expect(browserSuite).toContain("EXISTING_IMPORT_SOURCES");
     expect(browserSuite).toContain("snapshotEconomic(modules, existingImportActor)");
     expect(browserSuite).toContain('actor.getFlag("pf2e", "wf51OverlaySentinel")');

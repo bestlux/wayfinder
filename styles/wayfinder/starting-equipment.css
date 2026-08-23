@@ -642,6 +642,25 @@
   outline-offset: -2px;
 }
 
+.wayfinder-app .equipment-result-list.is-stable-catalogue {
+  display: block;
+  overflow-anchor: none;
+}
+
+.wayfinder-app .equipment-stable-catalogue-canvas {
+  position: relative;
+  width: 100%;
+  min-height: 100%;
+}
+
+.wayfinder-app .equipment-stable-result-row {
+  position: absolute;
+  right: 0;
+  left: 0;
+  box-sizing: border-box;
+  contain: layout paint style;
+}
+
 .wayfinder-app .equipment-result-spacer {
   flex: 0 0 auto;
   width: 1px;

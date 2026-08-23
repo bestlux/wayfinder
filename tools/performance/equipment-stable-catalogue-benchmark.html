@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Equipment stable catalogue A/B</title>
+    <link rel="stylesheet" href="../../styles/wayfinder.css" />
+    <style>
+      body { margin: 0; background: #eee5d5; }
+      .wayfinder-app { width: 760px; height: 620px; margin: 1rem; }
+      .wayfinder-app, .wayfinder-app * { box-sizing: border-box; }
+      .benchmark-host, .equipment-result-list { width: 720px; height: 480px; }
+      pre { margin: 1rem; padding: 1rem; background: white; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <main class="wayfinder-app"><div class="benchmark-host" data-benchmark-host></div></main>
+    <pre data-results>Running…</pre>
+    <script type="module">
+      import { EquipmentStableCatalogue } from "../../scripts/wayfinder/application/equipment-stable-catalogue.js";
+
+      const ROW_HEIGHT = 48;
+      const TOTAL = 1_138;
+      const WINDOW = 36;
+      const host = document.querySelector("[data-benchmark-host]");
+      const output = document.querySelector("[data-results]");
+      const rows = Array.from({ length: TOTAL }, (_, index) => ({
+        sourceUuid: `Compendium.pf2e.equipment-srd.Item.${index}`,
+        name: `Equipment ${index}`,
+        previewAriaLabel: `Preview Equipment ${index}`,
+        levelLabel: `Level ${index % 21}`,
+        rarity: index % 11 === 0 ? "uncommon" : "common",
+        rarityLabel: "Uncommon",
+        itemTypeLabel: index % 3 === 0 ? "Weapon" : "Equipment",
+        sourceLabel: "Player Core",
+        unavailableReason: null,
+        priceLabel: `${index + 1} cp`,
+        canAdd: true,
+        previewing: false,
+      }));
+      const jumps = Array.from({ length: 180 }, (_, index) => ((index * 293 + (index % 7) * 97) % (TOTAL - 12)));
+
+      const replacement = await benchmarkReplacement();
+      const stable = await benchmarkStable();
+      const result = {
+        environment: navigator.userAgent,
+        rows: TOTAL,
+        jumps: jumps.length,
+        replacement,
+        stable,
+        ratios: {
+          syncP95: stable.sync.p95 / replacement.sync.p95,
+          rapidBurstP95: stable.rapidBurst.p95 / replacement.rapidBurst.p95,
+        },
+      };
+      output.textContent = JSON.stringify(result, null, 2);
+      window.__equipmentStableBenchmark = result;
+
+      async function benchmarkReplacement() {
+        const sync = [];
+        const nextFrameLatency = [];
+        let maximumGapPx = 0;
+        renderReplacement(0);
+        for (const start of jumps) {
+          const began = performance.now();
+          renderReplacement(start);
+          forceLayout(host);
+          sync.push(performance.now() - began);
+          maximumGapPx = Math.max(maximumGapPx, visibleGap(host.querySelector("[role='list']")));
+          await nextFrame();
+          forceLayout(host);
+          nextFrameLatency.push(performance.now() - began);
+        }
+        const rapidBurst = await replacementRapidBurst();
+        return { sync: summarize(sync), nextFrameLatency: summarize(nextFrameLatency), rapidBurst, maximumGapPx };
+      }
+
+      async function replacementRapidBurst() {
+        const durations = [];
+        let maximumGapPx = 0;
+        for (let burst = 0; burst < 15; burst += 1) {
+          const began = performance.now();
+          for (let step = 0; step < 12; step += 1) {
+            renderReplacement(jumps[burst * 12 + step]);
+            forceLayout(host);
+            maximumGapPx = Math.max(maximumGapPx, visibleGap(host.querySelector("[role='list']")));
+          }
+          durations.push(performance.now() - began);
+          await nextFrame();
+        }
+        return { ...summarize(durations), maximumGapPx };
+      }
+
+      function renderReplacement(start) {
+        const end = Math.min(TOTAL, start + WINDOW);
+        const rowHtml = rows.slice(start, end).map((row, offset) => replacementRow(row, start + offset)).join("");
+        host.innerHTML = `<div class="equipment-catalogue-projection">
+          <div class="equipment-filter-row"><button>Available</button><button>Weapons</button><button>Armor</button><button>Level</button><button>Source</button></div>
+          <p class="equipment-result-count" role="status">Showing ${end - start} of ${TOTAL}</p>
+          <div class="equipment-result-list" role="list" tabindex="-1">
+            <div class="equipment-result-spacer" style="height:${start * ROW_HEIGHT}px;flex:0 0 ${start * ROW_HEIGHT}px"></div>
+            ${rowHtml}
+            <div class="equipment-result-spacer" style="height:${(TOTAL - end) * ROW_HEIGHT}px;flex:0 0 ${(TOTAL - end) * ROW_HEIGHT}px"></div>
+          </div>
+        </div>`;
+        host.querySelector("[role='list']").scrollTop = start * ROW_HEIGHT;
+      }
+
+      async function benchmarkStable() {
+        host.innerHTML = `<div class="equipment-filter-row"><button>Available</button><button>Weapons</button><button>Armor</button><button>Level</button><button>Source</button></div>
+          <p class="equipment-result-count" role="status">Showing ${TOTAL}</p>
+          <div class="equipment-result-list" role="list" tabindex="-1" data-stable-list>
+            <div class="equipment-stable-catalogue-canvas" role="presentation" data-stable-canvas></div>
+          </div>`;
+        const viewport = host.querySelector("[data-stable-list]");
+        const canvas = host.querySelector("[data-stable-canvas]");
+        const controller = new EquipmentStableCatalogue({ viewport, canvas, rowHeightPx: ROW_HEIGHT });
+        controller.setProjection({ key: "benchmark", rows });
+        await nextFrame();
+        const sync = [];
+        const nextFrameLatency = [];
+        let maximumGapPx = 0;
+        let maximumMountedRows = 0;
+        for (const start of jumps) {
+          const began = performance.now();
+          viewport.scrollTop = start * ROW_HEIGHT;
+          viewport.dispatchEvent(new Event("scroll"));
+          forceLayout(viewport);
+          sync.push(performance.now() - began);
+          maximumGapPx = Math.max(maximumGapPx, visibleGap(viewport));
+          maximumMountedRows = Math.max(maximumMountedRows, viewport.querySelectorAll("[role='listitem']").length);
+          await nextFrame();
+          forceLayout(viewport);
+          nextFrameLatency.push(performance.now() - began);
+        }
+        const rapidBurst = await stableRapidBurst(viewport);
+        const result = { sync: summarize(sync), nextFrameLatency: summarize(nextFrameLatency), rapidBurst, maximumGapPx, maximumMountedRows };
+        controller.dispose();
+        return result;
+      }
+
+      async function stableRapidBurst(viewport) {
+        const durations = [];
+        let maximumGapPx = 0;
+        for (let burst = 0; burst < 15; burst += 1) {
+          const began = performance.now();
+          for (let step = 0; step < 12; step += 1) {
+            viewport.scrollTop = jumps[burst * 12 + step] * ROW_HEIGHT;
+            viewport.dispatchEvent(new Event("scroll"));
+            forceLayout(viewport);
+            maximumGapPx = Math.max(maximumGapPx, visibleGap(viewport));
+          }
+          durations.push(performance.now() - began);
+          await nextFrame();
+        }
+        return { ...summarize(durations), maximumGapPx };
+      }
+
+      function replacementRow(row, index) {
+        return `<article class="equipment-result-row" role="listitem" aria-posinset="${index + 1}" aria-setsize="${TOTAL}" style="height:${ROW_HEIGHT}px;flex:0 0 ${ROW_HEIGHT}px">
+          <button class="equipment-result"><span class="equipment-result-art"></span><span class="equipment-result-copy"><span class="equipment-result-title"><span class="equipment-result-name">${row.name}</span><span class="tag">${row.levelLabel}</span></span><span class="equipment-result-meta">${row.itemTypeLabel} · ${row.sourceLabel}</span></span><span class="equipment-result-price">${row.priceLabel}</span></button>
+        </article>`;
+      }
+
+      function summarize(values) {
+        const sorted = [...values].sort((left, right) => left - right);
+        return {
+          median: percentile(sorted, 0.5),
+          p95: percentile(sorted, 0.95),
+          maximum: sorted.at(-1),
+        };
+      }
+
+      function percentile(sorted, fraction) {
+        return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
+      }
+
+      function nextFrame() {
+        return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      }
+
+      function forceLayout(root) {
+        root.getBoundingClientRect();
+        root.querySelector("[role='listitem']:last-of-type")?.getBoundingClientRect();
+      }
+
+      function visibleGap(viewport) {
+        const bounds = viewport.getBoundingClientRect();
+        const coverage = [...viewport.querySelectorAll("[role='listitem']")]
+          .map((row) => row.getBoundingClientRect())
+          .filter((row) => row.bottom > bounds.top && row.top < bounds.bottom)
+          .map((row) => ({ start: Math.max(bounds.top, row.top), end: Math.min(bounds.bottom, row.bottom) }))
+          .sort((left, right) => left.start - right.start);
+        let cursor = bounds.top;
+        let gap = 0;
+        for (const interval of coverage) {
+          gap = Math.max(gap, interval.start - cursor);
+          cursor = Math.max(cursor, interval.end);
+        }
+        return Math.max(gap, bounds.bottom - cursor);
+      }
+    </script>
+  </body>
+</html>

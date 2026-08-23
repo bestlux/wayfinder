@@ -29,6 +29,15 @@ describe("Wayfinder UX accessibility", () => {
     expect(count).not.toContain("<h4>");
   });
 
+  it("gives equipment level range bounds distinct programmatic group labels", () => {
+    const catalogue = read("templates/wayfinder/starting-equipment-catalogue.hbs");
+
+    expect(catalogue).toContain('role="group" aria-labelledby="{{activePane.stepId}}-equipment-level-from-label"');
+    expect(catalogue).toContain('id="{{activePane.stepId}}-equipment-level-from-label"');
+    expect(catalogue).toContain('role="group" aria-labelledby="{{activePane.stepId}}-equipment-level-through-label"');
+    expect(catalogue).toContain('id="{{activePane.stepId}}-equipment-level-through-label"');
+  });
+
   it("globally shortens module motion and disables smooth scrolling for reduced-motion users", () => {
     const styles = read("styles/wayfinder.css");
     const reducedMotion = styles.slice(styles.indexOf("@media (prefers-reduced-motion: reduce)"));

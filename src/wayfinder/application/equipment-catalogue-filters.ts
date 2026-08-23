@@ -56,10 +56,10 @@ export function normalizeEquipmentCatalogueFilters(input: {
   return Object.freeze({
     query: input.query?.trim() ?? "",
     queryTerms: Object.freeze(tokenize(input.query ?? "")),
-    itemTypes: normalizedSet(filters.type),
-    rarities: normalizedSet(filters.rarity),
-    publicationSlugs: normalizedSet(filters.source),
-    traits: normalizedSet(filters.trait),
+    itemTypes: normalizedIdentifierSet(filters.type),
+    rarities: normalizedIdentifierSet(filters.rarity),
+    publicationSlugs: normalizedIdentifierSet(filters.source),
+    traits: normalizedIdentifierSet(filters.trait),
     levelRange: normalizeLevelRange(filters.level?.[0]),
     policyAvailable: normalizeDefaultOnMode(filters.availability, "available", defaults.policyAvailable === true),
     titanMaulerEligible: normalizeDefaultOnMode(
@@ -79,16 +79,32 @@ export function matchesEquipmentCatalogueFilters(
   if (excludedKey !== "titan-mauler" && filters.titanMaulerEligible && !isTitanMaulerEligibleEntry(entry)) {
     return false;
   }
-  if (excludedKey !== "type" && filters.itemTypes.size > 0 && !filters.itemTypes.has(entry.itemType)) return false;
-  if (excludedKey !== "rarity" && filters.rarities.size > 0 && !filters.rarities.has(entry.rarity)) return false;
   if (
-    excludedKey !== "source" &&
-    filters.publicationSlugs.size > 0 &&
-    !filters.publicationSlugs.has(entry.publicationSlug)
+    excludedKey !== "type" &&
+    filters.itemTypes.size > 0 &&
+    !filters.itemTypes.has(normalizeIdentifier(entry.itemType))
   ) {
     return false;
   }
-  if (excludedKey !== "trait" && filters.traits.size > 0 && !entry.traits.some((trait) => filters.traits.has(trait))) {
+  if (
+    excludedKey !== "rarity" &&
+    filters.rarities.size > 0 &&
+    !filters.rarities.has(normalizeIdentifier(entry.rarity))
+  ) {
+    return false;
+  }
+  if (
+    excludedKey !== "source" &&
+    filters.publicationSlugs.size > 0 &&
+    !filters.publicationSlugs.has(normalizeIdentifier(entry.publicationSlug))
+  ) {
+    return false;
+  }
+  if (
+    excludedKey !== "trait" &&
+    filters.traits.size > 0 &&
+    !entry.traits.some((trait) => filters.traits.has(normalizeIdentifier(trait)))
+  ) {
     return false;
   }
   if (
@@ -111,12 +127,12 @@ export function buildEquipmentCatalogueFacetOptions(
   key: Exclude<EquipmentCatalogueFilterKey, "level">,
   selectedValues: readonly string[] = []
 ): EquipmentCatalogueFacetOption[] {
-  const values = new Set(selectedValues.map((value) => normalizeSearchText(value)).filter(Boolean));
+  const values = new Set(selectedValues.map((value) => normalizeIdentifier(value)).filter(Boolean));
   if (key === "availability") values.add("available");
   else if (key === "titan-mauler") values.add("eligible");
   else {
     for (const entry of entries) {
-      if (key === "trait") for (const trait of entry.traits) values.add(trait);
+      if (key === "trait") for (const trait of entry.traits) values.add(normalizeIdentifier(trait));
       else values.add(equipmentCatalogueFilterValue(entry, key));
     }
   }
@@ -124,11 +140,14 @@ export function buildEquipmentCatalogueFacetOptions(
   const counts = new Map<string, number>();
   for (const entry of entries) {
     if (!matchesEquipmentCatalogueFilters(entry, filters, key)) continue;
-    const entryValues = key === "trait" ? entry.traits : [equipmentCatalogueFilterValue(entry, key)];
+    const entryValues =
+      key === "trait"
+        ? entry.traits.map((trait) => normalizeIdentifier(trait))
+        : [equipmentCatalogueFilterValue(entry, key)];
     for (const value of new Set(entryValues)) counts.set(value, (counts.get(value) ?? 0) + 1);
   }
 
-  const normalizedSelected = new Set(selectedValues.map((value) => normalizeSearchText(value)).filter(Boolean));
+  const normalizedSelected = new Set(selectedValues.map((value) => normalizeIdentifier(value)).filter(Boolean));
   return [...values]
     .map((value) => ({
       key,
@@ -147,28 +166,37 @@ export function buildEquipmentCatalogueLevelFacet(
   entries: readonly EquipmentCatalogueEntry[],
   filters: NormalizedEquipmentCatalogueFilters
 ): EquipmentCatalogueLevelFacet | null {
-  const values = [
+  const contextualValues = [
     ...new Set(
       entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, filters, "level")).map((entry) => entry.level)
     ),
   ].sort((left, right) => left - right);
-  if (values.length < 2) return null;
-  const fullMinimum = values[0]!;
-  const fullMaximum = values.at(-1)!;
-  const minimum = filters.levelRange
-    ? (values.find((value) => value >= filters.levelRange!.minimum) ?? fullMaximum)
-    : fullMinimum;
-  const maximumCandidate = filters.levelRange
-    ? ([...values].reverse().find((value) => value <= filters.levelRange!.maximum) ?? fullMinimum)
-    : fullMaximum;
-  const maximum = Math.max(minimum, maximumCandidate);
+  const allValues = [...new Set(entries.map((entry) => entry.level))].sort((left, right) => left - right);
+  const requested = filters.levelRange;
+  const allMinimum = allValues[0];
+  const allMaximum = allValues.at(-1);
+  const active =
+    requested !== null &&
+    (allMinimum === undefined || requested.minimum > allMinimum || requested.maximum < (allMaximum ?? allMinimum));
+  if (contextualValues.length < 2 && !active) return null;
+  const values = [
+    ...new Set([
+      ...(contextualValues.length < 2 ? allValues : contextualValues),
+      ...(requested ? [requested.minimum, requested.maximum] : []),
+    ]),
+  ].sort((left, right) => left - right);
+  const fullMinimum = allMinimum ?? requested?.minimum;
+  const fullMaximum = allMaximum ?? requested?.maximum;
+  if (fullMinimum === undefined || fullMaximum === undefined || values.length === 0) return null;
+  const minimum = requested?.minimum ?? contextualValues[0] ?? fullMinimum;
+  const maximum = requested?.maximum ?? contextualValues.at(-1) ?? fullMaximum;
   return Object.freeze({
     values: Object.freeze(values),
     minimum,
     maximum,
     fullMinimum,
     fullMaximum,
-    active: minimum !== fullMinimum || maximum !== fullMaximum,
+    active,
   });
 }
 
@@ -215,20 +243,20 @@ export function equipmentCatalogueFilterValue(
     case "level":
       return String(entry.level);
     case "rarity":
-      return entry.rarity;
+      return normalizeIdentifier(entry.rarity);
     case "source":
-      return entry.publicationSlug;
+      return normalizeIdentifier(entry.publicationSlug);
     case "titan-mauler":
       return isTitanMaulerEligibleEntry(entry) ? "eligible" : "ineligible";
     case "trait":
       throw new TypeError("Trait facets have multiple values per equipment entry.");
     case "type":
-      return entry.itemType;
+      return normalizeIdentifier(entry.itemType);
   }
 }
 
 export function normalizeEquipmentCatalogueFilterValues(values: readonly string[] | undefined): string[] {
-  return [...normalizedSet(values)];
+  return [...normalizedIdentifierSet(values)];
 }
 
 function normalizeDefaultOnMode(
@@ -237,8 +265,9 @@ function normalizeDefaultOnMode(
   fallback: boolean
 ): boolean {
   if (!values) return fallback;
-  if (values.includes("all")) return false;
-  return values.includes(enabledValue);
+  const normalized = normalizedIdentifierSet(values);
+  if (normalized.has("all")) return false;
+  return normalized.has(enabledValue);
 }
 
 function normalizeLevelRange(value: string | undefined): { minimum: number; maximum: number } | null {
@@ -253,13 +282,17 @@ function normalizeLevelRange(value: string | undefined): { minimum: number; maxi
   return Object.freeze({ minimum, maximum });
 }
 
-function normalizedSet(values: readonly string[] | undefined): ReadonlySet<string> {
+function normalizedIdentifierSet(values: readonly string[] | undefined): ReadonlySet<string> {
   return new Set(
     (values ?? [])
-      .map((value) => normalizeSearchText(value))
+      .map((value) => normalizeIdentifier(value))
       .filter((value) => value.length > 0)
       .sort((left, right) => left.localeCompare(right))
   );
+}
+
+function normalizeIdentifier(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function tokenize(value: string): string[] {

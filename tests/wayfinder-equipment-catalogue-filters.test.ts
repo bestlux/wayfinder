@@ -40,6 +40,26 @@ describe("equipment catalogue filters", () => {
     expect(isTitanMaulerEligibleEntry({ ...entries[0]!, level: 1 })).toBe(false);
   });
 
+  it("preserves source and hyphenated trait identifiers while free-text search still folds punctuation", () => {
+    const candidate = entry({
+      name: "Bastard Sword",
+      publicationSlug: "pathfinder-player-core",
+      traits: ["two-hand-d12"],
+    });
+    const filters = normalizeEquipmentCatalogueFilters({
+      query: "two hand d12",
+      filters: { source: ["pathfinder-player-core"], trait: ["two-hand-d12"] },
+    });
+
+    expect(matchesEquipmentCatalogueFilters(candidate, filters)).toBe(true);
+    expect(buildEquipmentCatalogueFacetOptions([candidate], filters, "source", ["pathfinder-player-core"])).toEqual([
+      expect.objectContaining({ value: "pathfinder-player-core", count: 1 }),
+    ]);
+    expect(buildEquipmentCatalogueFacetOptions([candidate], filters, "trait", ["two-hand-d12"])).toEqual([
+      expect.objectContaining({ value: "two-hand-d12", label: "Two Hand D12", count: 1 }),
+    ]);
+  });
+
   it("computes facet counts with the current query and every other facet applied", () => {
     const entries = [
       entry({ name: "Agile Hatchet", traits: ["agile", "sweep"] }),
@@ -75,6 +95,21 @@ describe("equipment catalogue filters", () => {
       maximum: 2,
       fullMinimum: 0,
       fullMaximum: 4,
+      active: true,
+    });
+  });
+
+  it.each([
+    ["one", { type: ["armor"], level: ["1:4"] }, ""],
+    ["zero", { level: ["1:4"] }, "no matching equipment"],
+  ])("retains an active level facet across a %s-level contextual domain", (_label, filterMap, query) => {
+    const entries = [entry({ level: 0 }), entry({ level: 2, itemType: "armor" }), entry({ level: 4 })];
+    const filters = normalizeEquipmentCatalogueFilters({ filters: filterMap, query });
+
+    expect(buildEquipmentCatalogueLevelFacet(entries, filters)).toMatchObject({
+      values: [0, 1, 2, 4],
+      minimum: 1,
+      maximum: 4,
       active: true,
     });
   });

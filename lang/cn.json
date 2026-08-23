@@ -26,6 +26,11 @@
       "NoPending": "寻路仪引导步骤均已完成。但角色卡中仍可能保留系统原生或手动选项。",
       "Guidance": "寻路仪负责处理如族裔，专长，职业分支，法术等构筑选项，以及属性提升和技能提升。寻路仪无法准确模拟的内容将交给你的角色卡处理。"
     },
+    "Rail": {
+      "Level": "等级 {level}",
+      "Progress": "已完成 {completed}/{total}",
+      "InvalidatedChoices": "包含已失效的选择"
+    },
     "Feedback": {
       "Title": "寻路仪反馈",
       "Eyebrow": "寻路仪",

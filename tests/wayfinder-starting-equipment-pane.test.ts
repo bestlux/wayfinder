@@ -1087,8 +1087,9 @@ describe("starting equipment pane", () => {
   it("preserves the bounded projection window while retaining the total match count", () => {
     const draft = createEmptyDraft(1);
     draft.acquisition = acquisitionFixture({ disposition: "unreviewed" }).draft;
+    const totalRecordCount = STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize + 8;
     const records = Array.from(
-      { length: 20 },
+      { length: totalRecordCount },
       (_, index): StartingEquipmentCatalogueRecord => ({
         sourceUuid: `Compendium.pf2e.equipment-srd.Item.item-${index}`,
         name: `Common item ${index}`,
@@ -1116,7 +1117,7 @@ describe("starting equipment pane", () => {
         state: "ready",
         message: "",
         query: "common",
-        matchedRecordCount: 20,
+        matchedRecordCount: totalRecordCount,
         records: records.slice(0, STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize),
         filters: [],
         activeFilters: {},
@@ -1125,8 +1126,8 @@ describe("starting equipment pane", () => {
       }
     );
 
-    expect(pane.catalogue.totalResultCount).toBe(20);
-    expect(pane.catalogue.visibleResultCount).toBe(12);
+    expect(pane.catalogue.totalResultCount).toBe(totalRecordCount);
+    expect(pane.catalogue.visibleResultCount).toBe(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(pane.catalogue.items).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
   });
 

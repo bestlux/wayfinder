@@ -620,6 +620,7 @@
 /* ── Result list ───────────────────────────────────────── */
 
 .wayfinder-app .equipment-result-list {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -627,6 +628,11 @@
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--wf-rule) transparent;
+}
+
+.wayfinder-app .equipment-result-list:focus-visible {
+  outline: 2px solid var(--wf-focus);
+  outline-offset: -2px;
 }
 
 .wayfinder-app .equipment-result-spacer {
@@ -669,6 +675,73 @@
 .wayfinder-app .equipment-result-row.is-previewing {
   background: linear-gradient(90deg, rgba(233, 215, 161, 0.6) 0%, rgba(233, 215, 161, 0.24) 100%);
   box-shadow: inset 3px 0 0 var(--wf-primary);
+}
+
+.wayfinder-app .equipment-result-skeleton-band {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.wayfinder-app .equipment-result-skeleton {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr) 3.5rem;
+  gap: 0.45rem;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0.28rem 0.45rem;
+  background: rgba(250, 246, 236, 0.96);
+}
+
+.wayfinder-app .equipment-result-skeleton-art,
+.wayfinder-app .equipment-result-skeleton-copy span,
+.wayfinder-app .equipment-result-skeleton-price {
+  border-radius: var(--wf-radius);
+  background: linear-gradient(90deg, rgba(95, 77, 57, 0.08), rgba(95, 77, 57, 0.18), rgba(95, 77, 57, 0.08));
+  background-size: 200% 100%;
+  animation: wayfinder-equipment-loading 1.4s ease-in-out infinite;
+}
+
+.wayfinder-app .equipment-result-skeleton-art {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.wayfinder-app .equipment-result-skeleton-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.wayfinder-app .equipment-result-skeleton-copy span:first-child {
+  width: min(18rem, 72%);
+  height: 0.72rem;
+}
+
+.wayfinder-app .equipment-result-skeleton-copy span:last-child {
+  width: min(24rem, 92%);
+  height: 0.48rem;
+}
+
+.wayfinder-app .equipment-result-skeleton-price {
+  width: 3.5rem;
+  height: 0.68rem;
+}
+
+@keyframes wayfinder-equipment-loading {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
 }
 
 .wayfinder-app .equipment-result-row.is-blocked .equipment-result-art,

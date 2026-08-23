@@ -96,10 +96,10 @@
             <details class="rail-level-group{{#if active}} active{{/if}}{{#if invalidated}} invalidated{{/if}}" data-wayfinder-level="{{level}}" {{#if expanded}}open{{/if}}>
               <summary class="rail-level-summary" data-wayfinder-action="toggle-rail-level" data-level="{{level}}" data-level-open="{{#if expanded}}true{{else}}false{{/if}}" data-wayfinder-focus-id="rail-level-{{level}}" {{#if active}}aria-disabled="true"{{/if}}>
                 <i class="fa-solid fa-chevron-right rail-level-chevron" aria-hidden="true"></i>
-                <span class="rail-level-label">Level {{level}}</span>
-                <span class="rail-level-progress">{{completedCount}}/{{stepCount}} complete</span>
+                <span class="rail-level-label">{{localize "wayfinder-pf2e.Rail.Level" level=level}}</span>
+                <span class="rail-level-progress">{{localize "wayfinder-pf2e.Rail.Progress" completed=completedCount total=stepCount}}</span>
                 {{#if invalidated}}
-                  <span class="rail-level-warning" aria-label="Contains invalidated choices" title="Contains invalidated choices"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span>
+                  <span class="rail-level-warning" aria-label="{{localize "wayfinder-pf2e.Rail.InvalidatedChoices"}}" title="{{localize "wayfinder-pf2e.Rail.InvalidatedChoices"}}"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span>
                 {{/if}}
               </summary>
               <div class="rail-level-steps">

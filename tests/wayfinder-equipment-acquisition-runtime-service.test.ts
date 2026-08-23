@@ -39,6 +39,7 @@ import {
 } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 import { buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized } from "../src/wayfinder/panes/starting-equipment-pane";
+import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../src/wayfinder/starting-equipment-result-window";
 import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
 
 function buildStartingEquipmentPane(
@@ -464,17 +465,17 @@ describe("equipment acquisition runtime", () => {
     );
 
     expect(projection.matchedRecordCount).toBe(levelQualified.length);
-    expect(projection.records).toHaveLength(12);
+    expect(projection.records).toHaveLength(20);
     expect(pane.catalogue).toMatchObject({
       message: `${levelQualified.length} pieces of gear on the shelves.`,
       totalResultCount: levelQualified.length,
-      visibleResultCount: 12,
+      visibleResultCount: 20,
     });
-    expect(getDocument).toHaveBeenCalledTimes(12);
+    expect(getDocument).toHaveBeenCalledTimes(20);
   });
 
   it("expands and shifts a bounded hydration window, then clamps it when the query context shrinks", async () => {
-    const sources = Array.from({ length: 36 }, (_, index) =>
+    const sources = Array.from({ length: 72 }, (_, index) =>
       dagger({ id: `window-${index}`, name: `Gear ${String(index).padStart(2, "0")}` })
     );
     let activeReads = 0;
@@ -492,19 +493,19 @@ describe("equipment acquisition runtime", () => {
       { prepareBrowsePhysicalItems }
     );
 
-    const tall = await runtime.uiAdapter.project({ ...request, offset: 12, limit: 24 });
-    expect(tall).toMatchObject({ offset: 12, limit: 24, matchedRecordCount: 36 });
-    expect(tall.records).toHaveLength(24);
+    const tall = await runtime.uiAdapter.project({ ...request, offset: 12, limit: 48 });
+    expect(tall).toMatchObject({ offset: 12, limit: 48, matchedRecordCount: 72 });
+    expect(tall.records).toHaveLength(48);
     expect(tall.records.at(0)?.name).toBe("Gear 12");
-    expect(tall.records.at(-1)?.name).toBe("Gear 35");
-    expect(getDocument).toHaveBeenCalledTimes(24);
-    expect(maxConcurrentReads).toBe(12);
-    expect(prepareBrowsePhysicalItems.mock.calls.map(([input]) => input.entries.length)).toEqual([12, 12]);
+    expect(tall.records.at(-1)?.name).toBe("Gear 59");
+    expect(getDocument).toHaveBeenCalledTimes(48);
+    expect(maxConcurrentReads).toBe(24);
+    expect(prepareBrowsePhysicalItems.mock.calls.map(([input]) => input.entries.length)).toEqual([12, 12, 12, 12]);
 
     const previewed = await runtime.uiAdapter.project({
       ...request,
       offset: 12,
-      limit: 24,
+      limit: 48,
       previewSourceUuid: `Compendium.${PACK_ID}.Item.window-0`,
     });
     expect(previewed.records).not.toContainEqual(expect.objectContaining({ name: "Gear 00" }));
@@ -517,13 +518,13 @@ describe("equipment acquisition runtime", () => {
     );
     expect(previewPane.catalogue.preview).toMatchObject({ name: "Gear 00", previewing: true });
 
-    const end = await runtime.uiAdapter.project({ ...request, offset: 25, limit: 12 });
-    expect(end).toMatchObject({ offset: 24, limit: 12 });
-    expect(end.records.map(({ name }) => name)).toEqual(sources.slice(24).map(({ name }) => name));
+    const end = await runtime.uiAdapter.project({ ...request, offset: 61, limit: 36 });
+    expect(end).toMatchObject({ offset: 36, limit: 36 });
+    expect(end.records.map(({ name }) => name)).toEqual(sources.slice(36).map(({ name }) => name));
 
-    const narrowed = await runtime.uiAdapter.project({ ...request, query: "gear 29", offset: 25, limit: 12 });
-    expect(narrowed).toMatchObject({ offset: 0, limit: 12, matchedRecordCount: 1 });
-    expect(narrowed.records.map(({ name }) => name)).toEqual(["Gear 29"]);
+    const narrowed = await runtime.uiAdapter.project({ ...request, query: "gear 69", offset: 61, limit: 36 });
+    expect(narrowed).toMatchObject({ offset: 0, limit: 36, matchedRecordCount: 1 });
+    expect(narrowed.records.map(({ name }) => name)).toEqual(["Gear 69"]);
   });
 
   it("ranks policy-available and exact, prefix, then substring name matches before browse hydration", async () => {
@@ -1074,7 +1075,7 @@ describe("equipment acquisition runtime", () => {
   });
 
   it("projects reviewed metadata for an ordinary cart line outside the bounded browse page", async () => {
-    const browseSources = Array.from({ length: 12 }, (_, index) =>
+    const browseSources = Array.from({ length: STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize }, (_, index) =>
       dagger({ id: `browse-${index}`, name: `Browse item ${String(index).padStart(2, "0")}` })
     );
     const offPage = dagger({ id: "off-page", name: "Zed Off-Page Gear", priceGp: 1 });
@@ -1090,7 +1091,7 @@ describe("equipment acquisition runtime", () => {
 
     const projection = await runtime.uiAdapter.project(request);
 
-    expect(projection.records).toHaveLength(12);
+    expect(projection.records).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(projection.matchedRecordCount).toBe(sources.length);
     expect(projection.records).not.toContainEqual(expect.objectContaining({ name: "Zed Off-Page Gear" }));
     expect(projection.lineRecords).toEqual([
@@ -1100,7 +1101,7 @@ describe("equipment acquisition runtime", () => {
         priceCopper: 100,
       }),
     ]);
-    expect(getDocument).toHaveBeenCalledTimes(12);
+    expect(getDocument).toHaveBeenCalledTimes(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(getDocument).not.toHaveBeenCalledWith("off-page");
 
     const pane = buildStartingEquipmentPane(
@@ -1109,7 +1110,7 @@ describe("equipment acquisition runtime", () => {
       { state: "complete", complete: true, status: "Ready", issue: null },
       projection
     );
-    expect(pane.catalogue.items).toHaveLength(12);
+    expect(pane.catalogue.items).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(pane.catalogue.items).not.toContainEqual(expect.objectContaining({ name: "Zed Off-Page Gear" }));
     expect(pane.cart.lines).toEqual([expect.objectContaining({ name: "Zed Off-Page Gear" })]);
   });
@@ -1120,7 +1121,7 @@ describe("equipment acquisition runtime", () => {
   ])("keeps the reviewed %s native recovery line named outside the browse page", async (_label, profileId, name) => {
     const grant = nativeAncestryGrant(profileId);
     const nativeSourceId = grant.expected.sourceUuid.split(".").at(-1)!;
-    const browseSources = Array.from({ length: 12 }, (_, index) =>
+    const browseSources = Array.from({ length: STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize }, (_, index) =>
       dagger({ id: `browse-${index}`, name: `Browse item ${String(index).padStart(2, "0")}` })
     );
     const nativeSource = dagger({
@@ -1171,12 +1172,12 @@ describe("equipment acquisition runtime", () => {
       projection
     );
 
-    expect(projection.records).toHaveLength(12);
+    expect(projection.records).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(projection.records).not.toContainEqual(expect.objectContaining({ sourceUuid: grant.expected.sourceUuid }));
     expect(projection.lineRecords).toEqual([expect.objectContaining({ sourceUuid: grant.expected.sourceUuid, name })]);
-    expect(getDocument).toHaveBeenCalledTimes(12);
+    expect(getDocument).toHaveBeenCalledTimes(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(getDocument).not.toHaveBeenCalledWith(nativeSourceId);
-    expect(pane.catalogue.items).toHaveLength(12);
+    expect(pane.catalogue.items).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(pane.catalogue.items).not.toContainEqual(expect.objectContaining({ name }));
     expect(pane.review).toMatchObject({ disposition: "retain-all", label: "Keeping all your coin" });
     expect(pane.cart.lines).toEqual([
@@ -2568,7 +2569,7 @@ function fixture(
       query: "",
       filters: {},
       offset: 0,
-      limit: 12,
+      limit: STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize,
       previewSourceUuid: null,
     },
   };

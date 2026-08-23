@@ -26,6 +26,11 @@
       "DecreaseTarget": "Decrease target level",
       "Guidance": "Wayfinder walks you through ancestry, feats, class paths, spells, ability boosts, and skill increases. Anything it can't handle cleanly, it hands back to your character sheet."
     },
+    "Rail": {
+      "Level": "Level {level}",
+      "Progress": "{completed}/{total} complete",
+      "InvalidatedChoices": "Contains invalidated choices"
+    },
     "Feedback": {
       "Title": "Wayfinder feedback",
       "Eyebrow": "Wayfinder",

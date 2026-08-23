@@ -38,10 +38,14 @@ describe("starting equipment search isolation", () => {
 
     expect(equipmentBranch).toBeGreaterThan(-1);
     expect(actorInspection).toBeGreaterThan(equipmentBranch);
-    expect(prepare.slice(equipmentBranch, actorInspection)).toContain("this.#projectStartingEquipmentCatalogue");
-    expect(prepare.slice(equipmentBranch, actorInspection)).toContain('wayfinderRenderScope: "equipment"');
-    expect(prepare.slice(equipmentBranch, actorInspection)).not.toContain("this._buildRenderPlan");
-    expect(prepare.slice(equipmentBranch, actorInspection)).not.toContain("buildWayfinderContext");
+    const scopedEquipmentPrepare = prepare.slice(equipmentBranch, actorInspection);
+    expect(scopedEquipmentPrepare).toContain("this.#projectStartingEquipmentCatalogue");
+    expect(scopedEquipmentPrepare).toMatch(
+      /this\.#projectStartingEquipmentCatalogue\(session\.step,\s*\{\s*offset: equipmentRequest\.offset,\s*limit: equipmentRequest\.limit,\s*\}\)/
+    );
+    expect(scopedEquipmentPrepare).toContain('wayfinderRenderScope: "equipment"');
+    expect(scopedEquipmentPrepare).not.toContain("this._buildRenderPlan");
+    expect(scopedEquipmentPrepare).not.toContain("buildWayfinderContext");
   });
 
   it("keeps equipment evaluation, readiness, and pane assembly outside the actor foundation", () => {
@@ -67,6 +71,20 @@ describe("starting equipment search isolation", () => {
     expect(appShell).toContain("#restoreEquipmentResultAnchor(list, measurements)");
     expect(appShell).toContain('this.#equipmentScheduledRenderIntent = "window"');
     expect(appShell).toContain("request.criteriaRevision === this.#equipmentCriteriaRevision(request.stepId)");
+    expect(appShell).toContain("if (!this.#isCurrentEquipmentResultList(scrollable)) return;");
+    expect(appShell).toContain("const pendingViewport = startingEquipmentResultWindowForViewport({");
+    expect(appShell).toContain("this.#requestEquipmentResultWindow(list, pending);");
+    expect(appShell).toContain("#recoverEquipmentResultWindowAfterFailure(request.stepId)");
+    expect(appShell).toContain("wayfinderEquipmentRecoveryEdgeFocus: recoveryEdgeFocus");
+    expect(appShell).toContain("wayfinderEquipmentRecoveryFocusStepId: recoveryFocusStepId");
+    expect(appShell).toContain("#restoreEquipmentWindowEdgeFocus(root, queuedEquipmentWindow !== null)");
+    expect(appShell).toContain("#restoreEquipmentListFocus(root, queuedEquipmentWindow !== null)");
+    expect(appShell).toMatch(
+      /if \(preserveForQueuedWindow\) \{\s*root\s*\.querySelector<HTMLElement>\("\[data-equipment-focus-sentinel\]"\)\?\.focus\(\{ preventScroll: true \}\);\s*return;/
+    );
+    expect(appShell).toMatch(
+      /this\.#applyEquipmentResultSpacerGeometry\(list, measurements\);\s*this\.#restoreEquipmentResultAnchor\(list, measurements\);\s*measurements\.lastScrollTopPx = list\.scrollTop;/
+    );
   });
 
   it("keeps the equipment search control outside all replaceable application parts", () => {

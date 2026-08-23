@@ -16,6 +16,7 @@ import {
   startingEquipmentRenderIdentity,
 } from "../src/wayfinder/application/starting-equipment-render-session";
 import type { StartingEquipmentStep } from "../src/wayfinder/domain/step-types";
+import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../src/wayfinder/starting-equipment-result-window";
 import type { StartingEquipmentStepPane } from "../src/wayfinder/view-models";
 import { acquisitionFixture } from "./fixtures/acquisition-fixture";
 
@@ -116,7 +117,11 @@ describe("starting equipment render session", () => {
         viewRevision: 1,
         step: STEP,
         evaluation: EVALUATION,
-        pane: pane(Array.from({ length: 37 }, (_, index) => ({ sourceUuid: `item-${index}` }))),
+        pane: pane(
+          Array.from({ length: STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize + 1 }, (_, index) => ({
+            sourceUuid: `item-${index}`,
+          }))
+        ),
       })
     ).toThrow(/bounded visible catalogue page/i);
   });
@@ -162,7 +167,7 @@ function request(overrides: Partial<StartingEquipmentRenderRequest> = {}): Start
     criteriaRevision: 0,
     announceWindow: true,
     offset: 0,
-    limit: 12,
+    limit: STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize,
     ...overrides,
   };
 }

@@ -79,7 +79,8 @@ import {
   type StartingEquipmentUiRequest,
 } from "./starting-equipment-ui-adapter.js";
 
-export const DEFAULT_BROWSE_PREPARED_RECORD_CACHE_LIMIT = 96;
+export const DEFAULT_BROWSE_PREPARED_RECORD_CACHE_LIMIT =
+  STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize * 2 + STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize;
 export const DEFAULT_DRAFTED_EQUIPMENT_SIZE_CACHE_LIMIT = 32;
 
 export interface EquipmentAcquisitionRuntimeOptions {
@@ -450,100 +451,116 @@ export function createEquipmentAcquisitionRuntime(
         });
         const pendingRows = browseRows.filter((row) => row.kind === "pending");
         type PendingBrowseRow = (typeof pendingRows)[number];
-        const resolvedRows: Array<PendingBrowseRow & { readonly resolved: EquipmentCatalogueApplyResolution }> = [];
-        for (const pendingChunk of chunksOf(pendingRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize)) {
-          const browseResolutions = await catalogue.resolveManyForBrowse(
-            context,
-            pendingChunk.map(({ entry }) => entry.sourceUuid)
-          );
-          if (
-            browseResolutions.length !== pendingChunk.length ||
-            browseResolutions.some((result, index) => result.sourceUuid !== pendingChunk[index]?.entry.sourceUuid)
-          ) {
-            throw new Error("Equipment bulk hydration returned unstable entry mapping.");
-          }
-          resolvedRows.push(
-            ...pendingChunk.map((row, index) => {
-              const result = browseResolutions[index]!;
-              if (result.error !== null) throw result.error;
-              if (result.resolution === null) {
-                throw new Error(`Equipment bulk hydration omitted ${row.entry.sourceUuid}.`);
+        const resolvedRows = (
+          await mapChunksWithConcurrency(
+            chunksOf(pendingRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize),
+            STARTING_EQUIPMENT_RESULT_WINDOW.prefetchConcurrency,
+            async (pendingChunk) => {
+              const browseResolutions = await catalogue.resolveManyForBrowse(
+                context,
+                pendingChunk.map(({ entry }) => entry.sourceUuid)
+              );
+              if (
+                browseResolutions.length !== pendingChunk.length ||
+                browseResolutions.some((result, index) => result.sourceUuid !== pendingChunk[index]?.entry.sourceUuid)
+              ) {
+                throw new Error("Equipment bulk hydration returned unstable entry mapping.");
               }
-              return { ...row, resolved: result.resolution };
-            })
-          );
-        }
+              return pendingChunk.map((row, index) => {
+                const result = browseResolutions[index]!;
+                if (result.error !== null) throw result.error;
+                if (result.resolution === null) {
+                  throw new Error(`Equipment bulk hydration omitted ${row.entry.sourceUuid}.`);
+                }
+                return { ...row, resolved: result.resolution };
+              });
+            }
+          )
+        ).flat() as Array<PendingBrowseRow & { readonly resolved: EquipmentCatalogueApplyResolution }>;
         const batchRows = resolvedRows.filter(({ resolved }) => usesBrowsePhysicalPreparation(resolved));
         const batchResultByKey = new Map<string, Awaited<ReturnType<typeof prepareBrowsePhysicalItems>>[number]>();
-        for (const batchChunk of chunksOf(batchRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize)) {
-          const batchResults = await prepareBrowsePhysicalItems({
-            actor: request.actor,
-            targetLevel: policy.targetLevel,
-            targetSize,
-            entries: batchChunk.map(({ entry, resolved }) => ({
-              key: entry.sourceUuid,
-              source: resolved.source,
-            })),
-          });
-          if (
-            batchResults.length !== batchChunk.length ||
-            batchResults.some((result, index) => result.key !== batchChunk[index]?.entry.sourceUuid)
-          ) {
-            throw new Error("PF2E browse equipment preparation returned unstable entry mapping.");
+        const preparedChunks = await mapChunksWithConcurrency(
+          chunksOf(batchRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize),
+          STARTING_EQUIPMENT_RESULT_WINDOW.prefetchConcurrency,
+          async (batchChunk, chunkIndex) => {
+            if (chunkIndex > 0) await yieldBetweenEquipmentPreparationChunks();
+            const batchResults = await prepareBrowsePhysicalItems({
+              actor: request.actor,
+              targetLevel: policy.targetLevel,
+              targetSize,
+              entries: batchChunk.map(({ entry, resolved }) => ({
+                key: entry.sourceUuid,
+                source: resolved.source,
+              })),
+            });
+            if (
+              batchResults.length !== batchChunk.length ||
+              batchResults.some((result, index) => result.key !== batchChunk[index]?.entry.sourceUuid)
+            ) {
+              throw new Error("PF2E browse equipment preparation returned unstable entry mapping.");
+            }
+            return batchResults;
           }
+        );
+        for (const batchResults of preparedChunks) {
           for (const result of batchResults) batchResultByKey.set(result.key, result);
         }
         const preparedRecordByUuid = new Map<string, StartingEquipmentCatalogueRecord>();
-        for (const resolvedChunk of chunksOf(resolvedRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize)) {
-          await Promise.all(
-            resolvedChunk.map(async ({ entry, browseCacheKey, resolved }) => {
-              try {
-                const batchResult = batchResultByKey.get(entry.sourceUuid);
-                let price: AcquisitionPriceSnapshot;
-                if (usesBrowsePhysicalPreparation(resolved)) {
-                  if (!batchResult) throw new Error("PF2E browse equipment preparation omitted a visible entry.");
-                  if (batchResult.error !== null) throw batchResult.error;
-                  price = buildSimpleResolvedPriceFromPrepared({
-                    resolved,
-                    requestedQuantity: 1,
-                    targetSize,
-                    prepared: batchResult.prepared,
-                  });
-                } else {
-                  price = (
-                    await buildResolvedPrice({
+        await mapChunksWithConcurrency(
+          chunksOf(resolvedRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize),
+          STARTING_EQUIPMENT_RESULT_WINDOW.prefetchConcurrency,
+          async (resolvedChunk, chunkIndex) => {
+            if (chunkIndex > 0) await yieldBetweenEquipmentPreparationChunks();
+            await Promise.all(
+              resolvedChunk.map(async ({ entry, browseCacheKey, resolved }) => {
+                try {
+                  const batchResult = batchResultByKey.get(entry.sourceUuid);
+                  let price: AcquisitionPriceSnapshot;
+                  if (usesBrowsePhysicalPreparation(resolved)) {
+                    if (!batchResult) throw new Error("PF2E browse equipment preparation omitted a visible entry.");
+                    if (batchResult.error !== null) throw batchResult.error;
+                    price = buildSimpleResolvedPriceFromPrepared({
                       resolved,
                       requestedQuantity: 1,
                       targetSize,
-                      actor: request.actor,
-                      targetLevel: policy.targetLevel,
-                      packs: options.packs,
-                      prepareConfiguredItem,
-                      preparePhysicalItem,
-                    })
-                  ).price;
-                }
-                const record = toUiRecord(entry, price);
-                if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
-                preparedRecordByUuid.set(entry.sourceUuid, record);
-              } catch (error) {
-                if (error instanceof ConfiguredItemHandoffRequiredError) {
-                  const record = toUiRecord(entry);
+                      prepared: batchResult.prepared,
+                    });
+                  } else {
+                    price = (
+                      await buildResolvedPrice({
+                        resolved,
+                        requestedQuantity: 1,
+                        targetSize,
+                        actor: request.actor,
+                        targetLevel: policy.targetLevel,
+                        packs: options.packs,
+                        prepareConfiguredItem,
+                        preparePhysicalItem,
+                      })
+                    ).price;
+                  }
+                  const record = toUiRecord(entry, price);
                   if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
                   preparedRecordByUuid.set(entry.sourceUuid, record);
-                  return;
+                } catch (error) {
+                  if (error instanceof ConfiguredItemHandoffRequiredError) {
+                    const record = toUiRecord(entry);
+                    if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
+                    preparedRecordByUuid.set(entry.sourceUuid, record);
+                    return;
+                  }
+                  if (error instanceof PartialUnitPriceRequiredError) {
+                    const record = { ...toUiRecord(entry, null), available: false, unavailableReason: error.message };
+                    if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
+                    preparedRecordByUuid.set(entry.sourceUuid, record);
+                    return;
+                  }
+                  throw error;
                 }
-                if (error instanceof PartialUnitPriceRequiredError) {
-                  const record = { ...toUiRecord(entry, null), available: false, unavailableReason: error.message };
-                  if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
-                  preparedRecordByUuid.set(entry.sourceUuid, record);
-                  return;
-                }
-                throw error;
-              }
-            })
-          );
-        }
+              })
+            );
+          }
+        );
         const records = browseRows.map((row) => {
           if (row.kind === "record") return row.record;
           const prepared = preparedRecordByUuid.get(row.entry.sourceUuid);
@@ -1953,6 +1970,36 @@ function chunksOf<T>(values: readonly T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
   return chunks;
+}
+
+async function mapChunksWithConcurrency<T, R>(
+  chunks: readonly T[],
+  concurrency: number,
+  worker: (chunk: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (chunks.length === 0) return [];
+  const results = new Array<R>(chunks.length);
+  let nextIndex = 0;
+  const runWorker = async (): Promise<void> => {
+    while (nextIndex < chunks.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(chunks[index]!, index);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(1, Math.floor(concurrency)), chunks.length) }, () => runWorker())
+  );
+  return results;
+}
+
+async function yieldBetweenEquipmentPreparationChunks(): Promise<void> {
+  const taskScheduler = (globalThis as typeof globalThis & { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  if (typeof taskScheduler?.yield === "function") {
+    await taskScheduler.yield();
+    return;
+  }
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
 function isPotentialTitanMaulerEntry(entry: EquipmentCatalogueEntry): boolean {

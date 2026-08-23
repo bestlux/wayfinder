@@ -219,6 +219,9 @@ describe("equipment catalogue performance profile", () => {
     expect(browserProfile).toContain("app.setPosition?.({ height, width })");
     expect(browserProfile).toContain("if (list.scrollTop !== 0) scrollResultList(0)");
     expect(browserProfile).toContain("scrollResultList(list.scrollTop)");
+    expect(browserProfile).toContain("resultWindowReadyForQualification(lastObservation, { height, width })");
+    expect(browserProfile).toContain("Equipment result window did not become observable. Last observation:");
+    expect(browserProfile).not.toContain("window.mountedResultCount === expectedMountedRows");
     expect(browserProfile).toContain("async probeStableHostScroll({ framesAfterScroll");
     expect(browserProfile).toContain("const immediateShelf = visibleShelfSnapshot()");
     expect(browserProfile).toContain("stableHostPreserved: currentResultList() === stableHost");
@@ -889,6 +892,7 @@ function resultWindowObservations() {
       domElementCount: expectedMountedRows * 10 + 300,
       listClientHeight,
       measuredRowHeightPx,
+      expectedMountedResultCount: expectedMountedRows,
       totalResultCount,
       scrollTop: 0,
       mountedResultCount: expectedMountedRows,

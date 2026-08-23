@@ -72,22 +72,20 @@ globalThis.__wayfinderEquipmentProfile = {
     // A same-position event neutralizes the controller's prior direction. The exact
     // top range therefore uses the frozen 12-behind/24-ahead settled contract.
     scrollResultList(list.scrollTop);
-    await waitUntil(() => {
-      const window = resultWindowSnapshot();
-      const expectedMountedRows = expectedMountedRowsForGeometry(resultWindowSizing, window);
-      return (
-        Math.abs(window.actualAppHeight - height) <= 2 &&
-        Math.abs(window.actualAppWidth - width) <= 2 &&
-        window.mountedResultCount === expectedMountedRows &&
-        window.firstMountedResultIndex === 0 &&
-        window.lastMountedResultIndex === expectedMountedRows - 1 &&
-        window.mountedIndexesContiguous &&
-        window.stableHost &&
-        window.maxVisibleGapPx <= 2
+    let lastObservation = resultWindowObservation(resultWindowSizing);
+    try {
+      await waitUntil(() => {
+        lastObservation = resultWindowObservation(resultWindowSizing);
+        return resultWindowReadyForQualification(lastObservation, { height, width });
+      }, settleTimeoutMs);
+    } catch (error) {
+      throw new Error(
+        `Equipment result window did not become observable. Last observation: ${JSON.stringify(lastObservation)}`,
+        { cause: error },
       );
-    }, settleTimeoutMs);
+    }
     await frames(2);
-    return resultWindowSnapshot();
+    return resultWindowObservation(resultWindowSizing);
   },
 
   async probeStableHostScroll({ framesAfterScroll, height, rapidFullScreenScrolls, resultWindowSizing, settleTimeoutMs, width }) {
@@ -826,8 +824,45 @@ function resultWindowSnapshot() {
     stableHost: resultList.classList.contains("is-stable-catalogue") && Boolean(stableCanvas),
     canvasHeightPx: Number.parseFloat(stableCanvas?.style.height ?? "0"),
     maxVisibleGapPx: shelf.maxVisibleGapPx,
+    focusedSourceUuid:
+      resultList.ownerDocument.activeElement?.closest?.("[data-result-index]")?.dataset.sourceUuid ?? null,
+    rowHeightToken:
+      resultList.ownerDocument.defaultView
+        ?.getComputedStyle(resultList)
+        .getPropertyValue("--wayfinder-equipment-result-row-height")
+        .trim() ?? null,
     resultDomElementCount: resultList.querySelectorAll("*").length,
   };
+}
+
+function resultWindowObservation(resultWindowSizing) {
+  const observation = resultWindowSnapshot();
+  return {
+    ...observation,
+    expectedMountedResultCount: expectedMountedRowsForGeometry(resultWindowSizing, observation),
+  };
+}
+
+function resultWindowReadyForQualification(observation, requested) {
+  if (
+    Math.abs(observation.actualAppHeight - requested.height) > 2 ||
+    Math.abs(observation.actualAppWidth - requested.width) > 2 ||
+    !observation.stableHost ||
+    observation.totalResultCount < 1 ||
+    observation.listClientHeight <= 0 ||
+    observation.measuredRowHeightPx <= 0 ||
+    observation.mountedResultCount < 1 ||
+    !observation.mountedIndexesContiguous ||
+    observation.maxVisibleGapPx > 2 ||
+    observation.canvasHeightPx <= 0
+  ) {
+    return false;
+  }
+  const firstVisibleResultIndex = Math.floor(observation.scrollTop / observation.measuredRowHeightPx);
+  return (
+    observation.firstMountedResultIndex <= firstVisibleResultIndex &&
+    observation.lastMountedResultIndex >= firstVisibleResultIndex
+  );
 }
 
 function measuredRowHeight(rows) {

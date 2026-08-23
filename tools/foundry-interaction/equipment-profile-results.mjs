@@ -563,6 +563,9 @@ export function validateEquipmentResultWindowObservation(observation, profile) {
   if (!nonnegativeInteger(expectedMountedRows)) {
     failures.push(`${windowProfile.id} result-window could not derive mounted rows from live geometry.`);
   }
+  if (observation?.expectedMountedResultCount !== expectedMountedRows) {
+    failures.push(`${windowProfile.id} result-window stored a stale mounted-row expectation.`);
+  }
   if (
     observation?.mountedResultCount !== expectedMountedRows ||
     observation?.firstMountedResultIndex !== 0 ||

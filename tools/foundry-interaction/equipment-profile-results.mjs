@@ -35,11 +35,15 @@ const FROZEN_SCROLL_SAMPLING = {
   framesWhilePending: 3,
   maxVisibleGapPx: 2,
 };
+const FROZEN_PARTIAL_RENDER_RECOVERY_SAMPLING = {
+  resultWindowProfileId: "default",
+  forcedRejections: 1,
+};
 const FROZEN_SAMPLING_SEMANTICS = {
   performance:
-    "Each required action is sampled at every app width using the default 820px result-window profile and the frozen 1440x1000 browser viewport; warmup and measured depths apply per action-width cell, and mounted rows are derived from the live list height and measured row height.",
+    "Each required action is sampled at every app width using the default 820px result-window profile and the frozen 1440x1000 browser viewport; warmup and measured depths apply per action-width cell, the exact default policy-available usefulness-ranked shelf is required, and mounted rows are derived from positive live list geometry.",
   resultWindows:
-    "One settled broad-catalogue layout observation is recorded per result-window profile at 1240px app width; these probes are not timing samples, browser height is max(1000px, app height plus 100px), mounted rows are max(36, three viewport heights, visible rows plus 24) rounded to 12 and capped at 144, and the tall probe adds one full-screen scroll while a prior prefetch is held pending.",
+    "One settled default policy-available shelf layout observation is recorded per result-window profile at 1240px app width; these probes are not timing samples, browser height is max(1000px, app height plus 100px), mounted rows are max(36, three viewport heights, visible rows plus 24) rounded to 12 and capped at 144, the tall probe adds one full-screen scroll while a prior prefetch is held pending, and the default-height probe forces one real partial-render rejection followed by recovery and retry.",
 };
 const FROZEN_BUDGETS = Object.freeze({
   maxP95MsPerActionWidth: 75,
@@ -56,24 +60,49 @@ const FROZEN_BUDGETS = Object.freeze({
 });
 const FROZEN_QUERY = ["s", "sp", "spr", "spra", "spray pellets"];
 const FROZEN_RESULT_VALUES = ["Compendium.pf2e.equipment-srd.Item.qaAQnuLVia6vS1LU"];
-const FROZEN_BROAD_RESULT_VALUES = [
-  "Compendium.pf2e.equipment-srd.Item.oLLpwiNApEEAFbXF",
-  "Compendium.pf2e.equipment-srd.Item.VbjANEHtdxO8kV1n",
-  "Compendium.pf2e.equipment-srd.Item.Zo5MZWVBKssVPEcv",
-  "Compendium.pf2e.equipment-srd.Item.8WH6ub3FVFYtcXCT",
+const FROZEN_DEFAULT_SHELF_VALUES = [
   "Compendium.pf2e.equipment-srd.Item.2req0jGaxz8hScdB",
   "Compendium.pf2e.equipment-srd.Item.8V4mgecGASsQ7fjl",
-  "Compendium.pf2e.equipment-srd.Item.7SPJO9xr89N8E23s",
   "Compendium.pf2e.equipment-srd.Item.rHugmTjO3kgyiTH0",
-  "Compendium.pf2e.equipment-srd.Item.SzUynRs4HVtnpnel",
-  "Compendium.pf2e.equipment-srd.Item.YnPYSKCQBLIOtm0J",
-  "Compendium.pf2e.equipment-srd.Item.nIlx1IQhYJfQtpVF",
-  "Compendium.pf2e.equipment-srd.Item.hnzNKdD5hjQc1NUx",
+  "Compendium.pf2e.equipment-srd.Item.k6xZkDUpF7E1Totd",
+  "Compendium.pf2e.equipment-srd.Item.4ftXXUCBHcf4b0MH",
+  "Compendium.pf2e.equipment-srd.Item.UMAXLDpI6YLSfYX1",
+  "Compendium.pf2e.equipment-srd.Item.GbR8rgZMCVBn3Evb",
+  "Compendium.pf2e.equipment-srd.Item.TqqWFIiJYA5tXlSE",
+  "Compendium.pf2e.equipment-srd.Item.40T4HrQdIIwGHMDq",
+  "Compendium.pf2e.equipment-srd.Item.pr2xsD4tk0mzWhms",
+  "Compendium.pf2e.equipment-srd.Item.K3qNqWRvBhnlwE3Q",
+  "Compendium.pf2e.equipment-srd.Item.GvAGrcl14Ywcgm2I",
+  "Compendium.pf2e.equipment-srd.Item.bkbL0YitEh46Ne0f",
+  "Compendium.pf2e.equipment-srd.Item.w2ENw2VMPcsbif8g",
+  "Compendium.pf2e.equipment-srd.Item.y34yjumCFakrbtdw",
+  "Compendium.pf2e.equipment-srd.Item.Ka49l6JYNi41tgVi",
+  "Compendium.pf2e.equipment-srd.Item.3lgwjrFEsQVKzhh7",
+  "Compendium.pf2e.equipment-srd.Item.A1CDXAP4bNGgntE7",
+  "Compendium.pf2e.equipment-srd.Item.Hl2JP8PQKrKxAfAD",
+  "Compendium.pf2e.equipment-srd.Item.ZWTK4Q2JlvJ5Bx6A",
+  "Compendium.pf2e.equipment-srd.Item.8SkeqnhhYm4QGuJQ",
+  "Compendium.pf2e.equipment-srd.Item.w4Hd6nunVVqw3GWj",
+  "Compendium.pf2e.equipment-srd.Item.IGgK7NAdfyAPm8V0",
+  "Compendium.pf2e.equipment-srd.Item.kKnMlymiqZLVEAtI",
+  "Compendium.pf2e.equipment-srd.Item.6KWYmeRMxsQfWhhJ",
+  "Compendium.pf2e.equipment-srd.Item.War0uyLBx1jA0Ge7",
+  "Compendium.pf2e.equipment-srd.Item.7mXZyzL5v3K6Buu2",
+  "Compendium.pf2e.equipment-srd.Item.jm5gQnfvVeUiVfdW",
+  "Compendium.pf2e.equipment-srd.Item.VTFTlP8xmPKKV4S6",
+  "Compendium.pf2e.equipment-srd.Item.fagzYdmfYyMQ6J77",
+  "Compendium.pf2e.equipment-srd.Item.f0A1zqCFiUJuXc9U",
+  "Compendium.pf2e.equipment-srd.Item.IM2pz0wnO4OEMr1f",
+  "Compendium.pf2e.equipment-srd.Item.2DoUHoueAyyP4lMN",
+  "Compendium.pf2e.equipment-srd.Item.FPwsiGqMCNPLHmjX",
+  "Compendium.pf2e.equipment-srd.Item.sqhr1crb184s3Vnd",
+  "Compendium.pf2e.equipment-srd.Item.hMYdSFmMWzidzHih",
 ];
-const FROZEN_COUNTS = { indexed: 5856, levelQualified: 2283, matching: 1, visible: 1 };
+const FROZEN_COUNTS = { indexed: 5856, levelQualified: 2283, defaultShelf: 1138, matching: 1, visible: 1 };
 const FROZEN_COUNT_SEMANTICS = {
   indexed: "Raw entries in the exact core equipment pack index.",
   levelQualified: "Runtime browse entries after recipe maximum-level filtering, including policy-unavailable rows.",
+  defaultShelf: "Runtime browse entries after the default policy-available facet, before the adaptive mounted window.",
   matching: "Registered runtime-adapter records for the exact final query before the 12-row cap.",
   visible: "Rendered result rows for the exact final query.",
 };
@@ -176,6 +205,12 @@ export function validateEquipmentProfile(profile) {
   if (stableJson(profile?.scrollSampling) !== stableJson(FROZEN_SCROLL_SAMPLING)) {
     failures.push("Equipment profile must freeze one pending-prefetch full-screen scroll probe at the tall height.");
   }
+  if (
+    stableJson(profile?.partialRenderRecoverySampling) !==
+    stableJson(FROZEN_PARTIAL_RENDER_RECOVERY_SAMPLING)
+  ) {
+    failures.push("Equipment profile must freeze one real partial-render rejection, recovery, and retry probe.");
+  }
   if (stableJson(profile?.samplingSemantics) !== stableJson(FROZEN_SAMPLING_SEMANTICS)) {
     failures.push("Equipment profile sampling semantics must distinguish default-height timing samples from layout probes.");
   }
@@ -198,8 +233,11 @@ export function validateEquipmentProfile(profile) {
   if (stableJson(profile?.expectedFinalResultValues) !== stableJson(FROZEN_RESULT_VALUES)) {
     failures.push("Equipment profile final identity drifted from the frozen Spray Pellets source.");
   }
-  if (stableJson(profile?.expectedBroadResultValues) !== stableJson(FROZEN_BROAD_RESULT_VALUES)) {
-    failures.push("Equipment profile broad ready-state identities drifted from the frozen 12-row catalogue page.");
+  if (stableJson(profile?.expectedDefaultShelfValues) !== stableJson(FROZEN_DEFAULT_SHELF_VALUES)) {
+    failures.push("Equipment profile default-shelf identities drifted from the frozen 36-row usefulness ranking.");
+  }
+  if (profile?.expectedDefaultShelfValues?.length !== profile?.resultWindowSizing?.baselineMountedRows) {
+    failures.push("Equipment profile must bind every baseline mounted row to an exact default-shelf identity.");
   }
   if (stableJson(profile?.expectedRuntime) !== stableJson(FROZEN_RUNTIME)) {
     failures.push("Equipment profile runtime must remain Foundry 14.366 and PF2E 8.4.1.");
@@ -251,7 +289,9 @@ export function validateEquipmentProfile(profile) {
     failures.push("Equipment profile must preserve the adaptive 12/24/36-row measured envelope.");
   }
   if (profile?.expectedCatalogueCounts !== null && !validCatalogueCounts(profile.expectedCatalogueCounts)) {
-    failures.push("Frozen catalogue counts must provide positive indexed, levelQualified, matching, and visible integers.");
+    failures.push(
+      "Frozen catalogue counts must provide positive indexed, levelQualified, defaultShelf, matching, and visible integers.",
+    );
   }
   if (stableJson(profile?.expectedCatalogueCounts) !== stableJson(FROZEN_COUNTS)) {
     failures.push("Equipment profile catalogue counts drifted from the frozen live tuple.");
@@ -334,16 +374,14 @@ export function validateEquipmentSample(sample, profile) {
     }
   }
   const outcome = sample.actionOutcome;
-  const expectedMountedRows = expectedEquipmentMountedRows(profile, sample);
   if (
     ["cold-open", "warm-reopen"].includes(sample.actionId) &&
     (outcome?.searchDisabled !== false ||
       outcome?.diagnosticCount !== 0 ||
       outcome?.catalogueStatePresent !== false ||
-      outcome?.visibleResultValues?.length !== expectedMountedRows ||
-      !sameStrings(outcome?.visibleResultValues?.slice(0, profile.expectedBroadResultValues.length) ?? [], profile.expectedBroadResultValues))
+      !sameStrings(outcome?.visibleResultValues ?? [], profile.expectedDefaultShelfValues))
   ) {
-    failures.push(`${sample.actionId} did not record the exact enabled, healthy geometry-derived catalogue outcome.`);
+    failures.push(`${sample.actionId} did not record the exact enabled, healthy default shelf.`);
   }
   if (sample.actionId === "facet-change") {
     if (!nonempty(outcome?.filterKey) || !nonempty(outcome?.filterValue)) {
@@ -383,8 +421,13 @@ export function validateEquipmentSample(sample, profile) {
   }
   if (nonnegativeInteger(sample.mountedResultCount)) {
     const expectedMountedRows = expectedEquipmentMountedRows(profile, sample);
+    if (["cold-open", "warm-reopen"].includes(sample.actionId) && expectedMountedRows === null) {
+      failures.push("Default-height timing sample list geometry is collapsed or unmeasurable.");
+    }
     if (
-      (["cold-open", "warm-reopen"].includes(sample.actionId) && sample.mountedResultCount !== expectedMountedRows) ||
+      (["cold-open", "warm-reopen"].includes(sample.actionId) &&
+        expectedMountedRows !== null &&
+        sample.mountedResultCount !== expectedMountedRows) ||
       sample.mountedResultCount > profile.budgets.maxDefaultMountedResultCount
     ) {
       failures.push("Default-height timing sample did not preserve its geometry-derived mounted-row budget.");
@@ -498,15 +541,18 @@ export function validateEquipmentResultWindowObservation(observation, profile) {
       `${windowProfile.id} result-window observation did not mount the geometry-derived 0-${expectedMountedRows - 1} window.`,
     );
   }
-  if (observation?.totalResultCount !== profile.expectedCatalogueCounts?.levelQualified) {
-    failures.push(`${windowProfile.id} result-window total disagreed with the frozen level-qualified catalogue count.`);
+  if (observation?.totalResultCount !== profile.expectedCatalogueCounts?.defaultShelf) {
+    failures.push(`${windowProfile.id} result-window total disagreed with the frozen default-shelf count.`);
   }
   const values = observation?.mountedResultValues;
   if (
     !Array.isArray(values) ||
     values.length !== expectedMountedRows ||
     values.some((value) => !nonempty(value)) ||
-    !sameStrings(values?.slice(0, profile.expectedBroadResultValues.length) ?? [], profile.expectedBroadResultValues) ||
+    !sameStrings(
+      values?.slice(0, profile.expectedDefaultShelfValues.length) ?? [],
+      profile.expectedDefaultShelfValues,
+    ) ||
     observation?.firstMountedSourceUuid !== values?.[0] ||
     observation?.lastMountedSourceUuid !== values?.at(-1)
   ) {
@@ -648,6 +694,101 @@ export function validateEquipmentScrollProbe(profile, probe) {
     probe?.settledShelf?.pendingDocumentReads !== 0
   ) {
     failures.push("Equipment scroll shelf observations did not remain bound to pending and settled prefetch state.");
+  }
+  return failures;
+}
+
+export function validateEquipmentPartialRenderRecoveryProbe(profile, probe) {
+  const failures = [];
+  const windowProfile = profile.resultWindowProfiles?.find(
+    (entry) => entry.id === profile.partialRenderRecoverySampling?.resultWindowProfileId,
+  );
+  if (probe?.schemaVersion !== 3) failures.push("Equipment partial-render recovery probe requires schemaVersion 3.");
+  if (!windowProfile || probe?.resultWindowProfileId !== windowProfile.id) {
+    failures.push("Equipment partial-render recovery probe used the wrong result-window profile.");
+    return failures;
+  }
+  if (stableJson(probe?.browserViewport) !== stableJson(resultWindowBrowserViewport(profile, windowProfile))) {
+    failures.push("Equipment partial-render recovery probe used the wrong browser viewport.");
+  }
+  if (
+    probe?.requestedAppWidth !== profile.resultWindowSampling.appWidth ||
+    probe?.requestedAppHeight !== windowProfile.appHeight
+  ) {
+    failures.push("Equipment partial-render recovery probe used the wrong application size.");
+  }
+  if (
+    probe?.forcedRejectionCount !== profile.partialRenderRecoverySampling.forcedRejections ||
+    probe?.forcedRejectionStage !== "post-context-preparation" ||
+    probe?.recoveryFullRenderCount !== 1 ||
+    probe?.successfulRetryEquipmentRenderCount !== 1
+  ) {
+    failures.push(
+      "Equipment partial-render recovery probe did not force exactly one post-context rejection, full recovery, and retry render.",
+    );
+  }
+  const initial = probe?.initialState;
+  const pending = probe?.rejectionPendingState;
+  const recovered = probe?.recoveredState;
+  const retry = probe?.retryState;
+  const initialValues = initial?.window?.mountedResultValues;
+  if (
+    !Array.isArray(initialValues) ||
+    initialValues.length !== expectedEquipmentMountedRows(profile, initial?.window) ||
+    initial?.window?.resultOffset !== 0 ||
+    initial?.window?.totalResultCount !== profile.expectedCatalogueCounts?.defaultShelf ||
+    !sameStrings(initialValues, profile.expectedDefaultShelfValues)
+  ) {
+    failures.push("Equipment partial-render recovery probe did not start from the exact committed default shelf.");
+  }
+  if (
+    pending?.ariaBusy !== true ||
+    typeof pending?.skeletonHidden !== "boolean" ||
+    !nonnegativeInteger(pending?.skeletonCount) ||
+    (pending.skeletonHidden ? pending.skeletonCount !== 0 : pending.skeletonCount < 1) ||
+    !sameStrings(pending?.window?.mountedResultValues ?? [], initialValues ?? []) ||
+    pending?.window?.resultOffset !== initial?.window?.resultOffset ||
+    pending?.focusedSourceUuid !== initialValues?.[0]
+  ) {
+    failures.push("Rejected equipment partial render did not preserve committed rows and focus in a coherent busy state.");
+  }
+  if (
+    recovered?.ariaBusy !== false ||
+    recovered?.skeletonHidden !== true ||
+    recovered?.skeletonCount !== 0 ||
+    !sameStrings(recovered?.window?.mountedResultValues ?? [], initialValues ?? []) ||
+    recovered?.window?.resultOffset !== initial?.window?.resultOffset ||
+    recovered?.focusedSourceUuid !== initialValues?.[0]
+  ) {
+    failures.push("Equipment partial-render recovery did not restore the committed shelf, focus, and idle state.");
+  }
+  const retryValues = retry?.window?.mountedResultValues;
+  const expectedRetryOffset = profile.resultWindowSizing?.hydrationChunkRows;
+  const expectedRetryRows = expectedEquipmentMountedRows(profile, retry?.window);
+  const frozenRetryValues = profile.expectedDefaultShelfValues.slice(
+    expectedRetryOffset,
+    Math.min(profile.expectedDefaultShelfValues.length, expectedRetryOffset + (expectedRetryRows ?? 0)),
+  );
+  if (
+    retry?.ariaBusy !== false ||
+    retry?.skeletonHidden !== true ||
+    retry?.skeletonCount !== 0 ||
+    !Array.isArray(retryValues) ||
+    expectedRetryRows === null ||
+    retryValues.length !== expectedRetryRows ||
+    retry?.window?.totalResultCount !== profile.expectedCatalogueCounts?.defaultShelf ||
+    retry?.window?.resultLimit !== expectedRetryRows ||
+    retry?.window?.mountedResultCount !== expectedRetryRows ||
+    retry?.window?.resultOffset !== expectedRetryOffset ||
+    retry?.window?.resultEnd !== expectedRetryOffset + expectedRetryRows ||
+    retry?.window?.firstMountedResultIndex !== expectedRetryOffset ||
+    retry?.window?.lastMountedResultIndex !== expectedRetryOffset + expectedRetryRows - 1 ||
+    retry?.window?.firstMountedSourceUuid !== retryValues[0] ||
+    retry?.window?.lastMountedSourceUuid !== retryValues.at(-1) ||
+    retryValues.some((value) => !nonempty(value)) ||
+    !sameStrings(retryValues.slice(0, frozenRetryValues.length), frozenRetryValues)
+  ) {
+    failures.push("Equipment partial-render retry did not preserve its exact advanced window and clear loading state.");
   }
   return failures;
 }
@@ -886,6 +1027,9 @@ export function validateEquipmentBudgets(profile, summary, options = {}) {
     ? validateEquipmentResultWindows(profile, options.resultWindowObservations)
     : [];
   if (options.scrollProbe !== undefined) failures.push(...validateEquipmentScrollProbe(profile, options.scrollProbe));
+  if (options.partialRenderRecoveryProbe !== undefined) {
+    failures.push(...validateEquipmentPartialRenderRecoveryProbe(profile, options.partialRenderRecoveryProbe));
+  }
   const required = options.requireQualificationSamples === false ? null : profile.measuredSamplesPerActionWidth;
   for (const row of summary.byActionWidth ?? []) {
     const label = `${row.actionId} at ${row.requestedAppWidth}px`;
@@ -923,6 +1067,7 @@ export function compactEquipmentEvidence(result) {
       resultWindowSizing: result.profile.resultWindowSizing,
       resultWindowSampling: result.profile.resultWindowSampling,
       scrollSampling: result.profile.scrollSampling,
+      partialRenderRecoverySampling: result.profile.partialRenderRecoverySampling,
       sampleDepth: {
         warmup: result.profile.warmupSamplesPerActionWidth,
         measured: result.profile.measuredSamplesPerActionWidth,
@@ -933,6 +1078,7 @@ export function compactEquipmentEvidence(result) {
       counts: result.fixture.catalogueCounts,
       countSemantics: result.profile.catalogueCountSemantics,
       finalResultValues: result.profile.expectedFinalResultValues,
+      defaultShelfValues: result.profile.expectedDefaultShelfValues,
     },
     candidate: result.candidate,
     driver: {
@@ -946,6 +1092,7 @@ export function compactEquipmentEvidence(result) {
     runIds: [result.runId],
     resultWindowObservations: result.resultWindowObservations,
     scrollProbe: result.scrollProbe,
+    partialRenderRecoveryProbe: result.partialRenderRecoveryProbe,
     byActionWidth: result.summary.byActionWidth,
   };
 }
@@ -1057,10 +1204,18 @@ function deriveQualifiedRun(result, label) {
   if (stableJson(result?.scrollProbe?.failures ?? []) !== stableJson(scrollFailures)) {
     failures.push(`${label} stored failures disagree with derived validation for the pending-prefetch scroll probe.`);
   }
+  const recoveryFailures = validateEquipmentPartialRenderRecoveryProbe(
+    profile,
+    result?.partialRenderRecoveryProbe,
+  );
+  if (stableJson(result?.partialRenderRecoveryProbe?.failures ?? []) !== stableJson(recoveryFailures)) {
+    failures.push(`${label} stored failures disagree with derived validation for the partial-render recovery probe.`);
+  }
   const summary = summarizeEquipmentProfile(profile, samples);
   const qualification = validateEquipmentBudgets(profile, summary, {
     resultWindowObservations: observations,
     scrollProbe: result?.scrollProbe,
+    partialRenderRecoveryProbe: result?.partialRenderRecoveryProbe,
   });
   if (stableJson(result?.summary) !== stableJson(summary)) failures.push(`${label} stored summary disagrees with raw samples.`);
   if (stableJson(result?.qualification) !== stableJson(qualification)) {
@@ -1153,7 +1308,9 @@ function validGrowingPrefixes(values) {
 }
 
 function validCatalogueCounts(value) {
-  return ["indexed", "levelQualified", "matching", "visible"].every((key) => Number.isInteger(value?.[key]) && value[key] > 0);
+  return ["indexed", "levelQualified", "defaultShelf", "matching", "visible"].every(
+    (key) => Number.isInteger(value?.[key]) && value[key] > 0,
+  );
 }
 
 function maximum(values, key) {

@@ -16,6 +16,7 @@ import {
   summarizeEquipmentProfile,
   validateEquipmentBudgets,
   validateEquipmentFixture,
+  validateEquipmentPartialRenderRecoveryProbe,
   validateEquipmentProfile,
   validateEquipmentResultWindowObservation,
   validateEquipmentScrollProbe,
@@ -108,6 +109,7 @@ async function main() {
   const samples = [];
   const resultWindowObservations = [];
   let scrollProbe = null;
+  let partialRenderRecoveryProbe = null;
   try {
     candidate = inspectCandidate(options.moduleRoot, options.moduleRef);
     failureStage = "driver-provenance";
@@ -278,6 +280,37 @@ async function main() {
     };
     scrollProbe.failures = validateEquipmentScrollProbe(profile, scrollProbe);
 
+    failureStage = "partial-render-recovery";
+    const recoveryWindowProfile = profile.resultWindowProfiles.find(
+      (entry) => entry.id === profile.partialRenderRecoverySampling.resultWindowProfileId,
+    );
+    if (!recoveryWindowProfile) {
+      throw new Error("Equipment profile partial-render recovery sampling names an unknown result-window profile.");
+    }
+    const recoveryBrowserViewport = resultWindowBrowserViewport(profile, recoveryWindowProfile);
+    await playerPage.setViewportSize(recoveryBrowserViewport);
+    const observedRecovery = await playerPage.evaluate(
+      (payload) => globalThis.__wayfinderEquipmentProfile.probePartialRenderRecovery(payload),
+      {
+        expectedDefaultShelfValues: profile.expectedDefaultShelfValues,
+        height: recoveryWindowProfile.appHeight,
+        resultWindowSizing: profile.resultWindowSizing,
+        settleTimeoutMs: profile.settleTimeoutMs,
+        width: profile.resultWindowSampling.appWidth,
+      },
+    );
+    partialRenderRecoveryProbe = {
+      ...observedRecovery,
+      browserViewport: recoveryBrowserViewport,
+      requestedAppHeight: recoveryWindowProfile.appHeight,
+      requestedAppWidth: profile.resultWindowSampling.appWidth,
+      resultWindowProfileId: recoveryWindowProfile.id,
+    };
+    partialRenderRecoveryProbe.failures = validateEquipmentPartialRenderRecoveryProbe(
+      profile,
+      partialRenderRecoveryProbe,
+    );
+
     failureStage = "sampling";
     const defaultWindow = profile.resultWindowProfiles.find((entry) => entry.id === "default");
     if (!defaultWindow) throw new Error("Equipment profile has no default result-window profile.");
@@ -296,11 +329,11 @@ async function main() {
             (payload) => globalThis.__wayfinderEquipmentProfile.runSample(payload),
             {
               actionId: action.id,
+              expectedDefaultShelfValues: profile.expectedDefaultShelfValues,
               finalResultValues: profile.expectedFinalResultValues,
               keyDelayMs: profile.keyDelayMs,
               postSettleMs: profile.postSettleMs,
               querySequence: profile.querySequence,
-              resultWindowSizing: profile.resultWindowSizing,
               settleTimeoutMs: profile.settleTimeoutMs,
             },
           );
@@ -389,6 +422,7 @@ async function main() {
     observedRuntime,
     preflight,
     profile,
+    partialRenderRecoveryProbe,
     routeFailures,
     resultWindowObservations,
     scrollProbe,
@@ -421,6 +455,7 @@ export function buildEquipmentProfileResult({
   observedRuntime,
   preflight,
   profile,
+  partialRenderRecoveryProbe = null,
   routeFailures,
   resultWindowObservations = [],
   scrollProbe = null,
@@ -436,6 +471,7 @@ export function buildEquipmentProfileResult({
     requireQualificationSamples: !developmentOverride,
     resultWindowObservations,
     scrollProbe,
+    partialRenderRecoveryProbe,
   });
   const failed = Boolean(orchestrationFailure) || cleanupFailures.length > 0 || routeFailures.length > 0;
   const failure =
@@ -491,6 +527,7 @@ export function buildEquipmentProfileResult({
     servedModuleFiles: servedFiles,
     resultWindowObservations,
     scrollProbe,
+    partialRenderRecoveryProbe,
     samples,
     summary,
     qualification,

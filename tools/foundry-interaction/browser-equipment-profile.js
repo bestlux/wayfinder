@@ -11,6 +11,7 @@ let actorId = null;
 let counters = null;
 let configured = false;
 let documentReadGate = null;
+let partialRenderRejectionGate = null;
 let readyDraftSnapshot = null;
 
 globalThis.__wayfinderEquipmentProfile = {
@@ -147,6 +148,88 @@ globalThis.__wayfinderEquipmentProfile = {
     }
   },
 
+  async probePartialRenderRecovery({ expectedDefaultShelfValues, height, resultWindowSizing, settleTimeoutMs, width }) {
+    await this.inspectResultWindow({
+      height,
+      resultWindowSizing,
+      settleTimeoutMs,
+      width,
+    });
+    const initialState = resultListStateSnapshot();
+    if (!sameStrings(initialState.window.mountedResultValues, expectedDefaultShelfValues)) {
+      throw new Error("Equipment partial-render recovery probe did not start from the exact default shelf.");
+    }
+    const initialFocusTarget = currentResultList().querySelector("[data-equipment-item]");
+    if (!initialFocusTarget) throw new Error("Equipment partial-render recovery probe could not focus a committed row.");
+    initialFocusTarget.focus({ preventScroll: true });
+
+    const rejection = holdNextEquipmentWindowRenderRejection();
+    const fullRendersBefore = counters.fullRender;
+    const equipmentRendersBefore = counters.equipmentRender;
+    try {
+      const next = currentRoot().querySelector(".equipment-window-fallback.next");
+      if (!next) throw new Error("Equipment partial-render recovery probe could not resolve the next-window control.");
+      next.click();
+      await waitUntil(
+        () => rejection.intercepted && currentResultList().getAttribute("aria-busy") === "true",
+        settleTimeoutMs,
+      );
+      const rejectionPendingState = resultListStateSnapshot();
+      rejection.reject();
+      await waitUntil(() => {
+        const state = resultListStateSnapshot();
+        return (
+          state.ariaBusy === false &&
+          state.skeletonHidden === true &&
+          state.skeletonCount === 0 &&
+          sameStrings(state.window.mountedResultValues, expectedDefaultShelfValues) &&
+          state.focusedSourceUuid === expectedDefaultShelfValues[0]
+        );
+      }, settleTimeoutMs);
+      const recoveredState = resultListStateSnapshot();
+      const retryList = currentResultList();
+      retryList.focus({ preventScroll: true });
+      const retryRowHeight = recoveredState.window.measuredRowHeightPx ?? 48;
+      const retryScrollTop = Math.min(
+        Math.max(0, retryList.scrollHeight - retryList.clientHeight),
+        Math.max(
+          retryList.clientHeight,
+          (recoveredState.window.resultEnd - 2) * retryRowHeight - retryList.clientHeight,
+        ),
+      );
+      scrollResultList(retryScrollTop);
+      try {
+        await waitUntil(() => {
+          const state = resultListStateSnapshot();
+          return (
+            state.window.resultOffset > initialState.window.resultOffset &&
+            state.ariaBusy === false &&
+            state.skeletonHidden === true &&
+            state.skeletonCount === 0
+          );
+        }, settleTimeoutMs);
+      } catch (error) {
+        throw new Error(
+          `Equipment partial-render retry did not settle: ${JSON.stringify(resultListStateSnapshot())}`,
+          { cause: error },
+        );
+      }
+      return {
+        schemaVersion: 3,
+        forcedRejectionCount: rejection.intercepted ? 1 : 0,
+        forcedRejectionStage: rejection.stage,
+        recoveryFullRenderCount: counters.fullRender - fullRendersBefore,
+        successfulRetryEquipmentRenderCount: counters.equipmentRender - equipmentRendersBefore - 1,
+        initialState,
+        rejectionPendingState,
+        recoveredState,
+        retryState: resultListStateSnapshot(),
+      };
+    } finally {
+      rejection.reject();
+    }
+  },
+
   async discoverCatalogueCounts({ finalResultValues, querySequence, settleTimeoutMs }) {
     const actor = game.actors.get(actorId);
     const draft = structuredClone(actor?.getFlag(MODULE_ID, "draft") ?? null);
@@ -190,6 +273,7 @@ globalThis.__wayfinderEquipmentProfile = {
     const counts = {
       indexed: Number(rawIndex?.size ?? rawIndex?.length ?? 0),
       levelQualified: Number(levelQualifiedMatch[1]),
+      defaultShelf: emptyProjection.matchedRecordCount,
       matching: matchingValues.length,
       visible: filtered.visibleResultCount,
     };
@@ -205,11 +289,11 @@ globalThis.__wayfinderEquipmentProfile = {
 
   async runSample({
     actionId,
+    expectedDefaultShelfValues,
     finalResultValues,
     keyDelayMs,
     postSettleMs,
     querySequence,
-    resultWindowSizing,
     settleTimeoutMs,
   }) {
     await prepareAction(actionId, settleTimeoutMs);
@@ -224,12 +308,11 @@ globalThis.__wayfinderEquipmentProfile = {
         await reopen(actionId === "cold-open", settleTimeoutMs);
         const ready = () => {
           const root = currentRoot();
-          const window = resultWindowSnapshot();
           return (
             root.querySelector(SEARCH_SELECTOR)?.disabled === false &&
             root.querySelectorAll("[data-equipment-source-diagnostic]").length === 0 &&
             !root.querySelector(".equipment-catalogue-state") &&
-            window.mountedResultCount === expectedMountedRowsForGeometry(resultWindowSizing, window)
+            sameStrings(visibleResultValues(), expectedDefaultShelfValues)
           );
         };
         semantic = ready;
@@ -673,6 +756,15 @@ async function instrumentAppPrototype() {
     const context = await prepare.apply(this, args);
     if (this.actor?.id === actorId) {
       counters[context?.wayfinderRenderScope === "equipment" ? "equipmentPrepareContext" : "fullPrepareContext"] += 1;
+      if (
+        partialRenderRejectionGate &&
+        context?.wayfinderRenderScope === "equipment" &&
+        context?.equipmentRequest?.intent === "window"
+      ) {
+        partialRenderRejectionGate.intercepted = true;
+        partialRenderRejectionGate.stage = "post-context-preparation";
+        return partialRenderRejectionGate.promise;
+      }
     }
     return context;
   };
@@ -783,6 +875,19 @@ function resultWindowSnapshot() {
   };
 }
 
+function resultListStateSnapshot() {
+  const list = currentResultList();
+  const band = list.querySelector("[data-equipment-skeleton-band]");
+  const focused = list.ownerDocument.activeElement;
+  return {
+    window: resultWindowSnapshot(),
+    ariaBusy: list.getAttribute("aria-busy") === "true",
+    skeletonHidden: band?.hidden === true,
+    skeletonCount: band?.querySelectorAll("[data-equipment-result-skeleton]").length ?? 0,
+    focusedSourceUuid: focused?.closest?.("[data-result-index]")?.dataset.sourceUuid ?? null,
+  };
+}
+
 function measuredRowHeight(rows) {
   const heights = rows
     .map((row) => row.clientHeight)
@@ -832,6 +937,31 @@ function holdEquipmentDocumentReads() {
   };
   counters.maxPendingEquipmentPackDocument = counters.pendingEquipmentPackDocument;
   documentReadGate = gate;
+  return gate;
+}
+
+function holdNextEquipmentWindowRenderRejection() {
+  if (partialRenderRejectionGate) {
+    throw new Error("Equipment profile partial-render rejection is already armed.");
+  }
+  let rejectPromise;
+  let settled = false;
+  const gate = {
+    intercepted: false,
+    stage: null,
+    promise: new Promise((_, reject) => {
+      rejectPromise = reject;
+    }),
+    reject() {
+      if (settled) return;
+      settled = true;
+      if (partialRenderRejectionGate === gate) partialRenderRejectionGate = null;
+      const error = new Error("Forced equipment partial-render rejection for live recovery qualification.");
+      error.name = "WayfinderEquipmentProfileForcedRenderError";
+      rejectPromise(error);
+    },
+  };
+  partialRenderRejectionGate = gate;
   return gate;
 }
 

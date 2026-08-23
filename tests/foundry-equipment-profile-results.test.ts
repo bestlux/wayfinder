@@ -11,6 +11,7 @@ import {
   summarizeEquipmentProfile,
   validateEquipmentBudgets,
   validateEquipmentFixture,
+  validateEquipmentPartialRenderRecoveryProbe,
   validateEquipmentProfile,
   validateEquipmentResultWindowObservation,
   validateEquipmentResultWindows,
@@ -78,9 +79,20 @@ describe("equipment catalogue performance profile", () => {
       framesWhilePending: 3,
       maxVisibleGapPx: 2,
     });
+    expect(profile.partialRenderRecoverySampling).toEqual({
+      resultWindowProfileId: "default",
+      forcedRejections: 1,
+    });
     expect(profile.samplingSemantics.performance).toContain("default 820px");
     expect(profile.samplingSemantics.resultWindows).toContain("not timing samples");
-    expect(profile.expectedCatalogueCounts).toEqual({ indexed: 5856, levelQualified: 2283, matching: 1, visible: 1 });
+    expect(profile.expectedCatalogueCounts).toEqual({
+      indexed: 5856,
+      levelQualified: 2283,
+      defaultShelf: 1138,
+      matching: 1,
+      visible: 1,
+    });
+    expect(profile.expectedDefaultShelfValues).toHaveLength(36);
     expect(profile.schemaVersion).toBe(3);
   });
 
@@ -96,6 +108,7 @@ describe("equipment catalogue performance profile", () => {
     changed.resultWindowSampling.observationsPerProfile = 0;
     changed.resultWindowSizing.maximumMountedRows = 36;
     changed.scrollSampling.rapidFullScreenScrollsWhilePending = 0;
+    changed.partialRenderRecoverySampling.forcedRejections = 0;
     changed.samplingSemantics.resultWindows = "all height profiles are timing samples";
     changed.actions.find((action: { id: string }) => action.id === "rapid-search").maxPlanBuilds = 999_999;
     expect(validateEquipmentProfile(changed)).toEqual(
@@ -111,6 +124,7 @@ describe("equipment catalogue performance profile", () => {
         expect.stringContaining("result-window profile once"),
         expect.stringContaining("36-to-144-row"),
         expect.stringContaining("pending-prefetch full-screen scroll"),
+        expect.stringContaining("partial-render rejection"),
         expect.stringContaining("sampling semantics"),
       ])
     );
@@ -212,6 +226,26 @@ describe("equipment catalogue performance profile", () => {
     expect(browserProfile).toContain('querySelector("[data-equipment-skeleton-band]")');
     expect(browserProfile).toContain('querySelectorAll("[data-equipment-result-skeleton]")');
     expect(browserProfile).toContain('hasAttribute("data-equipment-loading-index")');
+    expect(browserProfile).toContain("async probePartialRenderRecovery(");
+    expect(browserProfile).toContain('context?.equipmentRequest?.intent === "window"');
+    expect(browserProfile).toContain('partialRenderRejectionGate.stage = "post-context-preparation"');
+    expect(browserProfile).toContain("holdNextEquipmentWindowRenderRejection()");
+    expect(browserProfile).toContain("sameStrings(state.window.mountedResultValues, expectedDefaultShelfValues)");
+  });
+
+  it("injects the recovery failure only after the real equipment context preparation completes", () => {
+    const renderWrapper = browserProfile.slice(
+      browserProfile.indexOf("prototype.render = function"),
+      browserProfile.indexOf("const prepare = prototype._prepareContext")
+    );
+    const prepareWrapper = browserProfile.slice(
+      browserProfile.indexOf("prototype._prepareContext = async function"),
+      browserProfile.indexOf('if (typeof prototype._buildRenderPlan === "function")')
+    );
+    expect(renderWrapper).not.toContain("partialRenderRejectionGate");
+    expect(prepareWrapper).toMatch(
+      /const context = await prepare\.apply\(this, args\)[\s\S]*context\?\.equipmentRequest\?\.intent === "window"[\s\S]*return partialRenderRejectionGate\.promise/
+    );
   });
 
   it("reads compact leaf identities and adds the exact selected Spray Pellets preview", () => {
@@ -267,12 +301,22 @@ describe("equipment catalogue performance profile", () => {
     const cold = sample("cold-open");
     (cold.actionOutcome as { searchDisabled: boolean }).searchDisabled = true;
     expect(validateEquipmentSample(cold, profile)).toContain(
-      "cold-open did not record the exact enabled, healthy geometry-derived catalogue outcome."
+      "cold-open did not record the exact enabled, healthy default shelf."
     );
     const cart = sample("cart-quantity");
     const cartOutcome = cart.actionOutcome as { observedQuantity: number; previousQuantity: number };
     cartOutcome.observedQuantity = cartOutcome.previousQuantity;
     expect(validateEquipmentSample(cart, profile)).toContain("Cart quantity did not record the exact line increment.");
+  });
+
+  it("keeps a collapsed narrow catalogue viewport as an explicit semantic failure", () => {
+    const narrow = sample("cold-open");
+    narrow.requestedAppWidth = 760;
+    narrow.actualAppWidth = 760;
+    narrow.listClientHeight = 0;
+    expect(validateEquipmentSample(narrow, profile)).toContain(
+      "Default-height timing sample list geometry is collapsed or unmeasurable."
+    );
   });
 
   it("requires one truthful mounted-window observation at every declared app height", () => {
@@ -326,6 +370,37 @@ describe("equipment catalogue performance profile", () => {
     settledEarly.shelvesWhilePending[0].pendingDocumentReads = 0;
     expect(validateEquipmentScrollProbe(profile, settledEarly)).toContain(
       "Equipment scroll shelf observations did not remain bound to pending and settled prefetch state."
+    );
+  });
+
+  it("requires a real partial-render rejection to preserve rows, clean loading state, restore focus, and retry", () => {
+    const probe = partialRenderRecoveryProbe();
+    expect(validateEquipmentPartialRenderRecoveryProbe(profile, probe)).toEqual([]);
+
+    const droppedRows = structuredClone(probe);
+    droppedRows.rejectionPendingState.window.mountedResultValues = [];
+    expect(validateEquipmentPartialRenderRecoveryProbe(profile, droppedRows)).toContain(
+      "Rejected equipment partial render did not preserve committed rows and focus in a coherent busy state."
+    );
+
+    const dirtyRecovery = structuredClone(probe);
+    dirtyRecovery.recoveredState.ariaBusy = true;
+    dirtyRecovery.recoveredState.skeletonHidden = false;
+    dirtyRecovery.recoveredState.skeletonCount = 12;
+    expect(validateEquipmentPartialRenderRecoveryProbe(profile, dirtyRecovery)).toContain(
+      "Equipment partial-render recovery did not restore the committed shelf, focus, and idle state."
+    );
+
+    const failedRetry = structuredClone(probe);
+    failedRetry.retryState.window.resultOffset = 0;
+    expect(validateEquipmentPartialRenderRecoveryProbe(profile, failedRetry)).toContain(
+      "Equipment partial-render retry did not preserve its exact advanced window and clear loading state."
+    );
+
+    const extraRecovery = structuredClone(probe);
+    extraRecovery.recoveryFullRenderCount = 2;
+    expect(validateEquipmentPartialRenderRecoveryProbe(profile, extraRecovery)).toContain(
+      "Equipment partial-render recovery probe did not force exactly one post-context rejection, full recovery, and retry render."
     );
   });
 
@@ -503,6 +578,7 @@ describe("equipment catalogue performance profile", () => {
       runId: "run-1",
       resultWindowObservations: resultWindowObservations(),
       scrollProbe: pendingPrefetchScrollProbe(),
+      partialRenderRecoveryProbe: partialRenderRecoveryProbe(),
       summary,
     });
     expect(compact.runIds).toEqual(["run-1"]);
@@ -511,6 +587,7 @@ describe("equipment catalogue performance profile", () => {
     expect(compact.profile.samplingSemantics).toEqual(profile.samplingSemantics);
     expect(compact.resultWindowObservations).toHaveLength(3);
     expect(compact.scrollProbe.failures).toEqual([]);
+    expect(compact.partialRenderRecoveryProbe.failures).toEqual([]);
     expect(compact.byActionWidth).toHaveLength(28);
     expect(compact).not.toHaveProperty("samples");
   });
@@ -723,6 +800,7 @@ function qualifiedResult(runId: string) {
   qualifiedFixture.catalogueCounts = structuredClone(qualifiedProfile.expectedCatalogueCounts);
   const windows = resultWindowObservations();
   const scroll = pendingPrefetchScrollProbe();
+  const recovery = partialRenderRecoveryProbe();
   return {
     schemaVersion: 3,
     status: "completed",
@@ -754,11 +832,13 @@ function qualifiedResult(runId: string) {
     },
     resultWindowObservations: windows,
     scrollProbe: scroll,
+    partialRenderRecoveryProbe: recovery,
     samples,
     summary: summarizeEquipmentProfile(qualifiedProfile, samples),
     qualification: validateEquipmentBudgets(qualifiedProfile, summarizeEquipmentProfile(qualifiedProfile, samples), {
       resultWindowObservations: windows,
       scrollProbe: scroll,
+      partialRenderRecoveryProbe: recovery,
     }),
   };
 }
@@ -781,7 +861,7 @@ function resultWindowObservations() {
       domElementCount: expectedMountedRows * 10 + 300,
       listClientHeight,
       measuredRowHeightPx,
-      totalResultCount: profile.expectedCatalogueCounts.levelQualified,
+      totalResultCount: profile.expectedCatalogueCounts.defaultShelf,
       resultLimit: expectedMountedRows,
       mountedResultCount: expectedMountedRows,
       resultOffset: 0,
@@ -792,7 +872,7 @@ function resultWindowObservations() {
       lastMountedSourceUuid: values.at(-1),
       mountedResultValues: values,
       leadingSpacerPx: 0,
-      trailingSpacerPx: (profile.expectedCatalogueCounts.levelQualified - expectedMountedRows) * 48,
+      trailingSpacerPx: (profile.expectedCatalogueCounts.defaultShelf - expectedMountedRows) * 48,
       resultDomElementCount: expectedMountedRows * 10 + 2,
     };
     return { ...observation, failures: validateEquipmentResultWindowObservation(observation, profile) };
@@ -801,10 +881,10 @@ function resultWindowObservations() {
 
 function mountedResultValues(count: number) {
   return [
-    ...profile.expectedBroadResultValues,
+    ...profile.expectedDefaultShelfValues,
     ...Array.from(
-      { length: count - profile.expectedBroadResultValues.length },
-      (_, resultIndex) => `Compendium.pf2e.equipment-srd.Item.synthetic-${resultIndex + 13}`
+      { length: count - profile.expectedDefaultShelfValues.length },
+      (_, resultIndex) => `Compendium.pf2e.equipment-srd.Item.synthetic-${resultIndex + 37}`
     ),
   ];
 }
@@ -848,6 +928,73 @@ function pendingPrefetchScrollProbe() {
     settledShelf: { ...pendingShelf, pendingDocumentReads: 0 },
   };
   return { ...probe, failures: validateEquipmentScrollProbe(profile, probe) };
+}
+
+function partialRenderRecoveryProbe() {
+  const windowProfile = profile.resultWindowProfiles.find(
+    (entry: { id: string }) => entry.id === profile.partialRenderRecoverySampling.resultWindowProfileId
+  );
+  const initialWindow = {
+    listClientHeight: 192,
+    measuredRowHeightPx: 48,
+    totalResultCount: profile.expectedCatalogueCounts.defaultShelf,
+    resultLimit: 36,
+    mountedResultCount: 36,
+    resultOffset: 0,
+    resultEnd: 36,
+    firstMountedResultIndex: 0,
+    lastMountedResultIndex: 35,
+    firstMountedSourceUuid: profile.expectedDefaultShelfValues[0],
+    lastMountedSourceUuid: profile.expectedDefaultShelfValues.at(-1),
+    mountedResultValues: [...profile.expectedDefaultShelfValues],
+  };
+  const initialState = {
+    window: structuredClone(initialWindow),
+    ariaBusy: false,
+    skeletonHidden: true,
+    skeletonCount: 0,
+    focusedSourceUuid: null,
+  };
+  const probe = {
+    schemaVersion: 3,
+    resultWindowProfileId: windowProfile.id,
+    browserViewport: resultWindowBrowserViewport(profile, windowProfile),
+    requestedAppWidth: profile.resultWindowSampling.appWidth,
+    requestedAppHeight: windowProfile.appHeight,
+    forcedRejectionCount: 1,
+    forcedRejectionStage: "post-context-preparation",
+    recoveryFullRenderCount: 1,
+    successfulRetryEquipmentRenderCount: 1,
+    initialState,
+    rejectionPendingState: {
+      ...structuredClone(initialState),
+      ariaBusy: true,
+      skeletonHidden: false,
+      skeletonCount: 12,
+      focusedSourceUuid: profile.expectedDefaultShelfValues[0],
+    },
+    recoveredState: {
+      ...structuredClone(initialState),
+      focusedSourceUuid: profile.expectedDefaultShelfValues[0],
+    },
+    retryState: {
+      window: {
+        ...structuredClone(initialWindow),
+        resultOffset: 12,
+        resultEnd: 48,
+        firstMountedResultIndex: 12,
+        lastMountedResultIndex: 47,
+        mountedResultValues: mountedResultValues(48).slice(12, 48),
+        firstMountedSourceUuid: mountedResultValues(48)[12],
+        lastMountedSourceUuid: mountedResultValues(48)[47],
+      },
+      ariaBusy: false,
+      skeletonHidden: true,
+      skeletonCount: 0,
+      focusedSourceUuid: null,
+    },
+  };
+  return { ...probe, failures: validateEquipmentPartialRenderRecoveryProbe(profile, probe) };
 }
 
 function driverProvenance() {

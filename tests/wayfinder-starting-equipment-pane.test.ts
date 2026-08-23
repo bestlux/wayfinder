@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createEmptyDraft } from "../src/draft-service";
 import { CLASS_GRANT_PROFILE_UUIDS, createPlannedClassGrant } from "../src/wayfinder/domain/class-grant-reconciliation";
@@ -1129,6 +1129,124 @@ describe("starting equipment pane", () => {
     expect(pane.catalogue.totalResultCount).toBe(totalRecordCount);
     expect(pane.catalogue.visibleResultCount).toBe(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(pane.catalogue.items).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
+  });
+
+  it("reuses localized row invariants while updating only changed funding and preview state", () => {
+    const draft = createEmptyDraft(1);
+    draft.acquisition = acquisitionFixture({ lines: [], disposition: "unreviewed" }).draft;
+    const records: StartingEquipmentCatalogueRecord[] = [
+      {
+        sourceUuid: "Compendium.pf2e.equipment-srd.Item.cheap",
+        name: "Cheap gear",
+        itemType: "consumable",
+        level: 0,
+        rarity: "common",
+        sourceLabel: "Player Core",
+        priceCopper: 100,
+        priceLabel: "1 gp",
+        bulkLabel: "L",
+        handsLabel: null,
+        traits: ["common"],
+        available: true,
+        unavailableReason: null,
+        titanMaulerEligible: false,
+        exceptionRequestable: false,
+      },
+      {
+        sourceUuid: "Compendium.pf2e.equipment-srd.Item.expensive",
+        name: "Expensive gear",
+        itemType: "consumable",
+        level: 0,
+        rarity: "common",
+        sourceLabel: "Player Core",
+        priceCopper: 900,
+        priceLabel: "9 gp",
+        bulkLabel: "L",
+        handsLabel: null,
+        traits: ["common"],
+        available: true,
+        unavailableReason: null,
+        titanMaulerEligible: false,
+        exceptionRequestable: false,
+      },
+    ];
+    const localize = vi.fn(localizeAcquisitionEnglish);
+    const step = createStartingEquipmentStep(1);
+    const evaluation = { state: "incomplete", complete: false, status: "Review purchases", issue: null } as const;
+    const setup = { worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY, judgments: [], isGm: false, locale: "en" };
+    const projection = (previewSourceUuid: string | null) => ({
+      state: "ready" as const,
+      message: "",
+      query: "",
+      rowOrderKey: "stable-order",
+      matchedRecordCount: records.length,
+      records,
+      filters: [],
+      activeFilters: {},
+      previewSourceUuid,
+      titanMauler: { required: false, selectedSourceUuid: null },
+    });
+
+    const first = buildStartingEquipmentPaneLocalized(step, draft, evaluation, projection(null), localize, setup);
+    const invariantCalls = localize.mock.calls.filter(
+      ([key]) =>
+        key === "wayfinder-pf2e.StartingEquipment.Catalogue.LevelTag" ||
+        key === "PF2E.TraitCommon" ||
+        key === "wayfinder-pf2e.StartingEquipment.ItemType.Consumable"
+    ).length;
+    const previewed = buildStartingEquipmentPaneLocalized(
+      step,
+      draft,
+      evaluation,
+      projection(records[1]!.sourceUuid),
+      localize,
+      setup
+    );
+    const repeatedPreview = buildStartingEquipmentPaneLocalized(
+      step,
+      draft,
+      evaluation,
+      projection(records[1]!.sourceUuid),
+      localize,
+      setup
+    );
+
+    expect(previewed.catalogue.items[0]).toBe(first.catalogue.items[0]);
+    expect(previewed.catalogue.items[1]).not.toBe(first.catalogue.items[1]);
+    expect(repeatedPreview.catalogue.items[1]).toBe(previewed.catalogue.items[1]);
+    expect(
+      localize.mock.calls.filter(
+        ([key]) =>
+          key === "wayfinder-pf2e.StartingEquipment.Catalogue.LevelTag" ||
+          key === "PF2E.TraitCommon" ||
+          key === "wayfinder-pf2e.StartingEquipment.ItemType.Consumable"
+      )
+    ).toHaveLength(invariantCalls);
+    const changedLocale = buildStartingEquipmentPaneLocalized(
+      step,
+      draft,
+      evaluation,
+      projection(records[1]!.sourceUuid),
+      localize,
+      { ...setup, locale: "cn" }
+    );
+    expect(changedLocale.catalogue.items[0]).not.toBe(previewed.catalogue.items[0]);
+
+    draft.acquisition = {
+      ...draft.acquisition!,
+      lines: [acquisitionLine({ price: acquisitionPrice({ basePrice: { kind: "priced", value: { gp: 2 } } }) })],
+    };
+    const funded = buildStartingEquipmentPaneLocalized(
+      step,
+      draft,
+      evaluation,
+      projection(records[1]!.sourceUuid),
+      localize,
+      setup
+    );
+    expect(funded.catalogue.items[0]).toBe(previewed.catalogue.items[0]);
+    expect(funded.catalogue.items[1]).not.toBe(previewed.catalogue.items[1]);
+    expect(funded.catalogue.items[1]).toMatchObject({ currencyAffordable: false, canBuyWithCurrency: false });
   });
 
   it("projects bounded production-shaped type and source controls without hiding active facets", () => {

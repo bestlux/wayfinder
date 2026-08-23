@@ -636,10 +636,12 @@ describe("equipment acquisition runtime", () => {
     const { runtime, request } = fixture({ getIndex, getDocument });
     const previewSourceUuid = `Compendium.${PACK_ID}.Item.browse-cache-0`;
 
-    await runtime.uiAdapter.project(request);
+    const firstBrowse = await runtime.uiAdapter.project(request);
     expect(getDocument).toHaveBeenCalledTimes(12);
-    await runtime.uiAdapter.project(request);
+    const repeatedBrowse = await runtime.uiAdapter.project(request);
     expect(getDocument).toHaveBeenCalledTimes(12);
+    expect(repeatedBrowse.records).toBe(firstBrowse.records);
+    expect(repeatedBrowse.records[1]).toBe(firstBrowse.records[1]);
 
     const beforeFirstPreview = getDocument.mock.calls.length;
     const selected = await runtime.uiAdapter.project({ ...request, previewSourceUuid });
@@ -653,6 +655,7 @@ describe("equipment acquisition runtime", () => {
     });
     expect(selected.records[0]).toMatchObject({ bulkLabel: "See item details", handsLabel: null });
     expect(selected.records[0]).not.toHaveProperty("description");
+    expect(selected.records).toBe(firstBrowse.records);
     expect(getIndex.mock.calls[0]?.[0].fields).not.toContain("system.description.value");
     expect(getIndex.mock.calls[0]?.[0].fields).not.toContain("system.bulk.value");
     expect(getIndex.mock.calls[0]?.[0].fields).not.toContain("system.usage.value");

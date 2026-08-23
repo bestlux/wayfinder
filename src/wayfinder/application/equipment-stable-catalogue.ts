@@ -1,5 +1,4 @@
 export interface EquipmentStableCatalogueRow {
-  readonly stepId: string;
   readonly sourceUuid: string;
   readonly name: string;
   readonly previewAriaLabel: string;
@@ -19,7 +18,11 @@ export interface EquipmentStableCatalogueRow {
 }
 
 export interface EquipmentStableCatalogueProjection {
+  /** Changes for any visible row state change. */
   readonly key: string;
+  /** Identifies the ordered source UUID sequence; equal keys guarantee equal order. */
+  readonly orderKey: string;
+  readonly stepId: string;
   readonly rows: readonly EquipmentStableCatalogueRow[];
 }
 
@@ -31,7 +34,7 @@ export interface EquipmentStableCatalogueOptions {
   readonly rowsAhead?: number;
   readonly previousPageButton?: HTMLButtonElement | null;
   readonly nextPageButton?: HTMLButtonElement | null;
-  readonly onPreview?: (row: EquipmentStableCatalogueRow, button: HTMLButtonElement) => void;
+  readonly onPreview?: (row: EquipmentStableCatalogueRow, button: HTMLButtonElement, stepId: string) => void;
 }
 
 interface EquipmentStableCatalogueRange {
@@ -79,6 +82,7 @@ export class EquipmentStableCatalogue {
   #projection: EquipmentStableCatalogueProjection | null = null;
   #indexBySourceUuid = new Map<string, number>();
   #mountedRange: EquipmentStableCatalogueRange = { start: 0, end: 0 };
+  #orderIndexBuildCount = 0;
   #lastScrollTop = 0;
   #direction: -1 | 0 | 1 = 0;
   #frame: number | null = null;
@@ -111,6 +115,21 @@ export class EquipmentStableCatalogue {
   setProjection(projection: EquipmentStableCatalogueProjection): void {
     this.#assertActive();
     this.#refreshRowHeight();
+    const preservesOrder =
+      this.#projection !== null &&
+      this.#projection.orderKey === projection.orderKey &&
+      this.#projection.rows.length === projection.rows.length;
+    if (preservesOrder) {
+      this.#projection = projection;
+      this.#viewport.dataset.projectionKey = projection.key;
+      const range =
+        this.#mountedRange.end > this.#mountedRange.start
+          ? this.#mountedRange
+          : this.#emergencyRange(this.#visibleRange());
+      this.#bindRange(range);
+      this.#scheduleFrame();
+      return;
+    }
     const indexBySourceUuid = new Map<string, number>();
     projection.rows.forEach((row, index) => {
       if (!row.sourceUuid || indexBySourceUuid.has(row.sourceUuid)) {
@@ -122,9 +141,11 @@ export class EquipmentStableCatalogue {
     const focusedSourceUuid = this.#focusedSourceUuid();
     this.#projection = projection;
     this.#indexBySourceUuid = indexBySourceUuid;
+    this.#orderIndexBuildCount += 1;
     this.#canvas.style.height = `${projection.rows.length * this.#rowHeightPx}px`;
     this.#viewport.dataset.totalResults = String(projection.rows.length);
     this.#viewport.dataset.projectionKey = projection.key;
+    this.#viewport.dataset.orderIndexBuildCount = String(this.#orderIndexBuildCount);
 
     if (focusedSourceUuid && !indexBySourceUuid.has(focusedSourceUuid)) {
       this.#viewport.focus({ preventScroll: true });
@@ -200,9 +221,10 @@ export class EquipmentStableCatalogue {
     const button = target.closest<HTMLButtonElement>("[data-equipment-item]");
     if (!button || !this.#canvas.contains(button)) return;
     const mounted = this.#mountedBySourceUuid.get(button.dataset.sourceUuid ?? "");
-    if (!mounted) return;
+    const projection = this.#projection;
+    if (!mounted || !projection) return;
     event.preventDefault();
-    this.#onPreview?.(mounted.row, button);
+    this.#onPreview?.(mounted.row, button, projection.stepId);
   };
 
   #onPreviousPage = (event: Event): void => {
@@ -409,7 +431,6 @@ function patchMountedRow(mounted: MountedEquipmentRow, row: EquipmentStableCatal
   mounted.button.dataset.filterRarity = row.rarity;
   mounted.button.dataset.filterSource = row.sourceLabel;
   mounted.button.dataset.filterType = row.itemType;
-  mounted.button.dataset.stepId = row.stepId;
   mounted.button.dataset.wayfinderFocusId = row.previewFocusId;
   mounted.icon.className = `fa-solid ${row.typeIcon}`;
   mounted.name.textContent = row.name;

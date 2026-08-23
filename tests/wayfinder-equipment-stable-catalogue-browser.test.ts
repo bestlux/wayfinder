@@ -80,8 +80,27 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         canAdd: index !== 5 && index !== 6,
         previewing: false,
       }));
-      controller.setProjection({ key: "fixture", rows });
+      controller.setProjection({
+        key: "fixture",
+        orderKey: "fixture-order",
+        stepId: "starting-equipment-level-1",
+        rows,
+      });
       await nextFrame();
+      const firstRoot = viewport.querySelector<HTMLElement>("[data-result-index='0']")!;
+      const updatedRows = [...rows];
+      updatedRows[0] = { ...rows[0]!, name: "Updated Equipment 0" };
+      controller.setProjection({
+        key: "fixture:preview",
+        orderKey: "fixture-order",
+        stepId: "starting-equipment-level-1",
+        rows: updatedRows,
+      });
+      const stableOrderUpdate = {
+        indexBuilds: viewport.dataset.orderIndexBuildCount,
+        nodePreserved: firstRoot === viewport.querySelector("[data-result-index='0']"),
+        updatedName: firstRoot.querySelector(".equipment-result-name")?.textContent,
+      };
       const pendingRoot = viewport.querySelector<HTMLElement>("[data-result-index='5']")!;
       const blockedRoot = viewport.querySelector<HTMLElement>("[data-result-index='6']")!;
       const pendingPresentation = {
@@ -149,6 +168,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         pinnedRemovedAfterBlur: !focusButton.isConnected,
         previewedSourceUuid,
         stableViewport: stableViewport === document.querySelector("[data-stable-list]"),
+        stableOrderUpdate,
         totalCanvasHeight: canvas.style.height,
       };
       controller.dispose();
@@ -167,6 +187,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
       pinnedRemovedAfterBlur: true,
       previewedSourceUuid: "Compendium.pf2e.equipment-srd.Item.720",
       stableViewport: true,
+      stableOrderUpdate: { indexBuilds: "1", nodePreserved: true, updatedName: "Updated Equipment 0" },
       totalCanvasHeight: `${1_138 * 48}px`,
     });
     expect(evidence.immediateRows).toBeLessThanOrEqual(20);
@@ -218,7 +239,12 @@ browserIt("keeps long localized rows bounded across narrow layouts, text zoom, a
         previewing: false,
       }));
       const controller = new window.EquipmentStableCatalogue({ viewport, canvas });
-      const projection = { key: "localized", rows };
+      const projection = {
+        key: "localized",
+        orderKey: "localized-order",
+        stepId: "starting-equipment-level-1",
+        rows,
+      };
       controller.setProjection(projection);
       await nextFrame();
       await nextFrame();

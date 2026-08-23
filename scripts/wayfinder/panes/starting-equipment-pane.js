@@ -18,6 +18,8 @@ const INLINE_STARTING_EQUIPMENT_TYPE_FILTERS = [
 ];
 export const MAX_INLINE_STARTING_EQUIPMENT_TYPE_FILTERS = INLINE_STARTING_EQUIPMENT_TYPE_FILTERS.length;
 export const MAX_VISIBLE_STARTING_EQUIPMENT_SOURCE_FILTERS = 12;
+const localizedCatalogueInvariantCache = new WeakMap();
+const cataloguePaneRowCache = new WeakMap();
 export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, localize, setupOptions) {
     const acquisition = draft.acquisition;
     const sourceDiagnostics = catalogue.diagnostics ?? [];
@@ -51,44 +53,61 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         limit: catalogue.limit ?? STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize,
     }, matchedRecordCount);
     const requestDecisions = setupOptions?.requestDecisions ?? [];
+    const locale = setupOptions?.locale ?? "";
     const requestDecisionById = new Map(requestDecisions.map((decision) => [decision.request.requestId, decision]));
+    const pendingExceptionSourceUuids = new Set(draft.equipmentPolicyRequests.flatMap((request) => request.withdrawnAt === null &&
+        request.decline === null &&
+        requestDecisionFor(request, requestDecisionById)?.outcome !== "declined" &&
+        request.facts.kind === "rarity-source-exception" &&
+        request.facts.draftId === acquisition?.draftId
+        ? [request.facts.sourceUuid]
+        : []));
     const paneRecords = projectedRecords.map((record, index) => {
         const currencyAffordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
         const canBuyWithCurrency = record.available && record.level < step.level && currencyAffordable;
-        const allowanceOptions = record.available && policy?.resolvedRecipe.kind === "permanent-items" && isPermanentItemType(record.itemType)
-            ? dedupeAllowanceLevels(availableAllowances.filter((allowance) => allowance.itemLevel >= record.level)).map((allowance) => ({
-                allowanceId: allowance.allowanceId,
-                label: allowance.remaining > 1
-                    ? localize("wayfinder-pf2e.StartingEquipment.Allowance.UseWithCount", {
-                        level: allowance.itemLevel,
-                        count: allowance.remaining,
-                    })
-                    : localize("wayfinder-pf2e.StartingEquipment.Allowance.Use", { level: allowance.itemLevel }),
-                ariaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.UseAllowanceForItem", {
-                    level: allowance.itemLevel,
-                    name: record.name,
-                }),
-                focusId: equipmentAllowanceFocusId(record.sourceUuid, allowance.allowanceId),
-            }))
+        const eligibleAllowances = record.available && policy?.resolvedRecipe.kind === "permanent-items" && isPermanentItemType(record.itemType)
+            ? dedupeAllowanceLevels(availableAllowances.filter((allowance) => allowance.itemLevel >= record.level))
             : [];
-        const exceptionPending = draft.equipmentPolicyRequests.some((request) => request.withdrawnAt === null &&
-            request.decline === null &&
-            requestDecisionFor(request, requestDecisionById)?.outcome !== "declined" &&
-            request.facts.kind === "rarity-source-exception" &&
-            request.facts.draftId === acquisition?.draftId &&
-            request.facts.sourceUuid === record.sourceUuid);
-        const unavailableReason = record.unavailableReason
-            ? localize(record.exceptionRequestable
-                ? "wayfinder-pf2e.StartingEquipment.Catalogue.ExceptionRequired"
-                : "wayfinder-pf2e.StartingEquipment.Catalogue.ItemUnavailable")
-            : null;
+        const exceptionPending = pendingExceptionSourceUuids.has(record.sourceUuid);
+        const previewing = record.sourceUuid === catalogue.previewSourceUuid;
+        const volatileKey = JSON.stringify([
+            resultWindow.offset + Math.min(index, Math.max(0, browseRecords.length - 1)),
+            currencyAffordable,
+            canBuyWithCurrency,
+            eligibleAllowances.map((allowance) => [allowance.allowanceId, allowance.itemLevel, allowance.remaining]),
+            exceptionPending,
+            setupOptions?.isGm === true,
+            catalogue.titanMauler.required,
+            catalogue.titanMauler.selectedSourceUuid,
+            previewing,
+            step.level,
+        ]);
+        const cachedRow = cataloguePaneRowCache.get(record)?.get(localize)?.get(locale);
+        if (cachedRow?.volatileKey === volatileKey)
+            return cachedRow.row;
+        const allowanceOptions = eligibleAllowances.map((allowance) => ({
+            allowanceId: allowance.allowanceId,
+            label: allowance.remaining > 1
+                ? localize("wayfinder-pf2e.StartingEquipment.Allowance.UseWithCount", {
+                    level: allowance.itemLevel,
+                    count: allowance.remaining,
+                })
+                : localize("wayfinder-pf2e.StartingEquipment.Allowance.Use", { level: allowance.itemLevel }),
+            ariaLabel: localize("wayfinder-pf2e.StartingEquipment.Accessibility.UseAllowanceForItem", {
+                level: allowance.itemLevel,
+                name: record.name,
+            }),
+            focusId: equipmentAllowanceFocusId(record.sourceUuid, allowance.allowanceId),
+        }));
+        const invariant = localizedCatalogueInvariant(record, localize, locale);
+        const unavailableReason = invariant.unavailableReason;
         const noFundingReason = (record.pricePending ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.ViewForPrice") : unavailableReason) ??
             (!canBuyWithCurrency && allowanceOptions.length === 0
                 ? localize("wayfinder-pf2e.StartingEquipment.Catalogue.NoFunding")
                 : null);
         const resultAvailability = noFundingReason ?? localize("wayfinder-pf2e.StartingEquipment.Catalogue.Available");
-        const priceLabel = cataloguePriceLabel(record, localize);
-        const localizedRarity = rarityLabel(record.rarity, localize);
+        const priceLabel = invariant.priceLabel;
+        const localizedRarity = invariant.rarityLabel;
         const resultLabel = localize("wayfinder-pf2e.StartingEquipment.Catalogue.ResultLabel", {
             name: record.name,
             meta: localize("wayfinder-pf2e.StartingEquipment.Catalogue.ItemMeta", {
@@ -99,21 +118,20 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             price: priceLabel,
             availability: resultAvailability,
         });
-        return {
+        const row = {
             ...record,
             resultIndex: resultWindow.offset + Math.min(index, Math.max(0, browseRecords.length - 1)),
             resultPosition: resultWindow.offset + Math.min(index, Math.max(0, browseRecords.length - 1)) + 1,
-            levelLabel: localize("wayfinder-pf2e.StartingEquipment.Catalogue.LevelTag", { level: record.level }),
+            levelLabel: invariant.levelLabel,
             priceLabel,
             rarityLabel: localizedRarity,
-            typeIcon: itemTypeIcon(record.itemType),
-            itemTypeLabel: itemTypeLabel(record.itemType, localize),
-            traits: record.traits.map((trait) => pf2eTraitLabel(trait, localize)),
-            // The compendium index carries no bulk, so the placeholder is dropped rather than shown as a non-answer.
-            bulkLabel: record.bulkLabel === "See item details" ? "" : record.bulkLabel,
-            unavailableReason,
+            typeIcon: invariant.typeIcon,
+            itemTypeLabel: invariant.itemTypeLabel,
+            traits: invariant.traits,
+            bulkLabel: invariant.bulkLabel,
+            unavailableReason: invariant.unavailableReason,
             currencyAffordable,
-            previewing: record.sourceUuid === catalogue.previewSourceUuid,
+            previewing,
             canAdd: canBuyWithCurrency || allowanceOptions.length > 0,
             resultLabel,
             canBuyWithCurrency,
@@ -147,6 +165,18 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             }),
             titanMaulerFocusId: equipmentItemFocusId(record.sourceUuid, "titan"),
         };
+        let localizedRows = cataloguePaneRowCache.get(record);
+        if (!localizedRows) {
+            localizedRows = new WeakMap();
+            cataloguePaneRowCache.set(record, localizedRows);
+        }
+        let rowsByLocale = localizedRows.get(localize);
+        if (!rowsByLocale) {
+            rowsByLocale = new Map();
+            localizedRows.set(localize, rowsByLocale);
+        }
+        rowsByLocale.set(locale, { volatileKey, row });
+        return row;
     });
     const records = paneRecords.slice(0, browseRecords.length);
     const recordByUuid = new Map([
@@ -471,6 +501,8 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             }),
             hiddenResultCount: Math.max(0, matchedRecordCount - records.length),
             narrowSearchHint: null,
+            rowOrderKey: catalogue.rowOrderKey ??
+                `uncached:${catalogue.query}:${catalogue.records.map((record) => record.sourceUuid).join("\u0000")}`,
             items: records,
             preview,
         },
@@ -784,6 +816,38 @@ function cataloguePriceLabel(record, localize) {
         quantity: context.materializedQuantity,
         pricePer: context.pricePer,
     });
+}
+function localizedCatalogueInvariant(record, localize, locale) {
+    let byLocalize = localizedCatalogueInvariantCache.get(record);
+    const cached = byLocalize?.get(localize)?.get(locale);
+    if (cached)
+        return cached;
+    const invariant = Object.freeze({
+        levelLabel: localize("wayfinder-pf2e.StartingEquipment.Catalogue.LevelTag", { level: record.level }),
+        priceLabel: cataloguePriceLabel(record, localize),
+        rarityLabel: rarityLabel(record.rarity, localize),
+        typeIcon: itemTypeIcon(record.itemType),
+        itemTypeLabel: itemTypeLabel(record.itemType, localize),
+        traits: Object.freeze(record.traits.map((trait) => pf2eTraitLabel(trait, localize))),
+        // The compendium index carries no bulk, so the placeholder is dropped rather than shown as a non-answer.
+        bulkLabel: record.bulkLabel === "See item details" ? "" : record.bulkLabel,
+        unavailableReason: record.unavailableReason
+            ? localize(record.exceptionRequestable
+                ? "wayfinder-pf2e.StartingEquipment.Catalogue.ExceptionRequired"
+                : "wayfinder-pf2e.StartingEquipment.Catalogue.ItemUnavailable")
+            : null,
+    });
+    if (!byLocalize) {
+        byLocalize = new WeakMap();
+        localizedCatalogueInvariantCache.set(record, byLocalize);
+    }
+    let byLocale = byLocalize.get(localize);
+    if (!byLocale) {
+        byLocale = new Map();
+        byLocalize.set(localize, byLocale);
+    }
+    byLocale.set(locale, invariant);
+    return invariant;
 }
 function pf2eTraitLabel(trait, localize) {
     const key = `PF2E.Trait${pascalIdentifier(trait)}`;

@@ -2169,21 +2169,21 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         previousPageButton:
           catalogueRoot?.querySelector<HTMLButtonElement>("[data-equipment-stable-page='previous']") ?? null,
         nextPageButton: catalogueRoot?.querySelector<HTMLButtonElement>("[data-equipment-stable-page='next']") ?? null,
-        onPreview: (row, button) => {
+        onPreview: (row, button, stepId) => {
           this.#rememberInteractiveState();
           this.#pendingEquipmentFocusIds = [row.previewFocusId];
           const renderedPreviewSourceUuid =
             root.querySelector<HTMLElement>("[data-equipment-preview]")?.dataset.equipmentPreview;
           if (
-            this.#equipmentPreviewByStepId.get(row.stepId) === row.sourceUuid &&
+            this.#equipmentPreviewByStepId.get(stepId) === row.sourceUuid &&
             renderedPreviewSourceUuid === row.sourceUuid
           ) {
             this.#pendingEquipmentFocusIds = null;
             return;
           }
-          this.#equipmentPreviewByStepId.set(row.stepId, row.sourceUuid);
+          this.#equipmentPreviewByStepId.set(stepId, row.sourceUuid);
           button.setAttribute("aria-pressed", "true");
-          this.#renderStartingEquipmentPartial(row.stepId, "preview");
+          this.#renderStartingEquipmentPartial(stepId, "preview");
         },
       });
       this.#equipmentStableCatalogue = { viewport, controller };
@@ -2191,7 +2191,9 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
 
     this.#equipmentStableCatalogue.controller.setProjection({
       key: `${session.identity.sourceRevision}:${session.viewRevision}:${session.pane.catalogue.search}`,
-      rows: session.pane.catalogue.items.map((item) => ({ ...item, stepId: session.pane.stepId })),
+      orderKey: session.pane.catalogue.rowOrderKey,
+      stepId: session.pane.stepId,
+      rows: session.pane.catalogue.items,
     });
     const scrollId = viewport.dataset.wayfinderScrollId;
     const savedScrollTop = scrollId ? this.#scrollById.get(scrollId) : undefined;

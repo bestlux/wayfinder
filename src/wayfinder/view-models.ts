@@ -606,6 +606,8 @@ export interface StartingEquipmentStepPane {
     resultAnnouncement: string;
     hiddenResultCount: number;
     narrowSearchHint: string | null;
+    /** Identifies the ordered source UUID sequence for the stable catalogue controller. */
+    rowOrderKey: string;
     items: readonly (StartingEquipmentCatalogueRecord & {
       typeIcon: string;
       levelLabel: string;

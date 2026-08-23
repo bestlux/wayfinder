@@ -261,23 +261,56 @@ export function createEquipmentAcquisitionRuntime(
   const previewProjector = createEquipmentPreviewProjector();
   const browsePreparedRecordCache = new Map<string, StartingEquipmentCatalogueRecord>();
   const draftedEquipmentSizeCache = new Map<string, Promise<AcquisitionPriceSnapshot["size"]>>();
+  type BrowseProjectionSnapshot = {
+    readonly orderKey: string;
+    readonly matchedEntries: readonly EquipmentCatalogueEntry[];
+    readonly indexBySourceUuid: ReadonlyMap<string, number>;
+    records: readonly StartingEquipmentCatalogueRecord[];
+    readonly filters: ReturnType<typeof catalogueFilters>;
+    readonly levelFilter: ReturnType<typeof buildEquipmentCatalogueLevelFacet>;
+    readonly activeFilters: ReturnType<typeof effectiveCatalogueFilters>;
+  };
+  const browseProjectionCache = new Map<string, BrowseProjectionSnapshot>();
+  const entryIndexes = new WeakMap<readonly EquipmentCatalogueEntry[], ReadonlyMap<string, EquipmentCatalogueEntry>>();
 
   const cachedBrowseRecord = (key: string): StartingEquipmentCatalogueRecord | null => {
     const cached = browsePreparedRecordCache.get(key);
     if (!cached) return null;
     browsePreparedRecordCache.delete(key);
     browsePreparedRecordCache.set(key, cached);
-    return cloneData(cached);
+    return cached;
   };
 
   const cacheBrowseRecord = (key: string, value: StartingEquipmentCatalogueRecord): void => {
     browsePreparedRecordCache.delete(key);
-    browsePreparedRecordCache.set(key, cloneData(value));
+    browsePreparedRecordCache.set(key, value);
     while (browsePreparedRecordCache.size > browsePreparedRecordCacheLimit) {
       const oldest = browsePreparedRecordCache.keys().next().value;
       if (typeof oldest !== "string") break;
       browsePreparedRecordCache.delete(oldest);
     }
+  };
+
+  const indexEntries = (entries: readonly EquipmentCatalogueEntry[]) => {
+    let indexed = entryIndexes.get(entries);
+    if (!indexed) {
+      indexed = new Map(entries.map((entry) => [entry.sourceUuid, entry]));
+      entryIndexes.set(entries, indexed);
+    }
+    return indexed;
+  };
+
+  const cacheBrowseProjection = (key: string, snapshot: BrowseProjectionSnapshot): BrowseProjectionSnapshot => {
+    browseProjectionCache.delete(key);
+    browseProjectionCache.set(key, snapshot);
+    // Search/facet changes deliberately rebuild order; this cache only deepens repeated
+    // preview/cart projections for the one active catalogue view.
+    while (browseProjectionCache.size > 1) {
+      const oldest = browseProjectionCache.keys().next().value;
+      if (typeof oldest !== "string") break;
+      browseProjectionCache.delete(oldest);
+    }
+    return snapshot;
   };
 
   const catalogueFor = (policy: EffectiveEquipmentPolicySnapshotV1): EquipmentCatalogueService => {
@@ -413,7 +446,6 @@ export function createEquipmentAcquisitionRuntime(
         const { policy, context } = currentContext(request.actor, request.draft, acquisition);
         const { catalogue, projection } = await requireHealthyCatalogue(policy, context);
         throwIfStartingEquipmentProjectionAborted(request.signal);
-        let projectedEntries = projection.entries;
         let projectedPreview: EquipmentPreviewProjection | null = null;
         let hydratedPreviewEntry: EquipmentCatalogueEntry | null = null;
         if (request.previewSourceUuid) {
@@ -421,15 +453,25 @@ export function createEquipmentAcquisitionRuntime(
           throwIfStartingEquipmentProjectionAborted(request.signal);
           if (preview?.entry) {
             hydratedPreviewEntry = preview.entry;
-            projectedEntries = projection.entries.map((entry) =>
-              entry.sourceUuid === preview.entry!.sourceUuid ? preview.entry! : entry
-            );
             projectedPreview = await previewProjector.project(preview);
             throwIfStartingEquipmentProjectionAborted(request.signal);
           }
         }
         const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
-        const entries = projectedEntries.filter((entry) => entry.level <= maximumLevel);
+        const entries = projection.entries.filter((entry) => entry.level <= maximumLevel);
+        let matchingEntries = entries;
+        let previewOrderMaterial: ReturnType<typeof equipmentBrowseEntryOrderMaterial> | null = null;
+        if (hydratedPreviewEntry) {
+          const indexedPreviewEntry = indexEntries(projection.entries).get(hydratedPreviewEntry.sourceUuid);
+          if (indexedPreviewEntry && !equipmentBrowseEntryOrderEqual(indexedPreviewEntry, hydratedPreviewEntry)) {
+            const previewIndex = entries.indexOf(indexedPreviewEntry);
+            if (previewIndex >= 0) {
+              matchingEntries = [...entries];
+              matchingEntries[previewIndex] = hydratedPreviewEntry;
+              previewOrderMaterial = equipmentBrowseEntryOrderMaterial(hydratedPreviewEntry);
+            }
+          }
+        }
         const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
         const targetSize = await cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint);
         throwIfStartingEquipmentProjectionAborted(request.signal);
@@ -441,62 +483,106 @@ export function createEquipmentAcquisitionRuntime(
             titanMaulerEligible: titanMauler.required && titanMauler.selectedSourceUuid === null,
           },
         });
-        const matchedEntries = rankCatalogueMatches(
-          entries.filter((entry) => matchesEquipmentCatalogueFilters(entry, normalizedFilters)),
-          request.query
-        );
+        const orderKey = equipmentBrowseOrderKey({
+          projectionCacheKey: projection.cacheKey,
+          maximumLevel,
+          filters: normalizedFilters,
+          previewOrderMaterial,
+        });
+        const browseProjectionKey = fingerprintRuntimeMaterial("equipment-browse-projection-v1", {
+          orderKey,
+          actorPricingFingerprint,
+          accessFactsFingerprint: context.draft.accessFactsFingerprint,
+          targetSize,
+        });
+        let browseSnapshot = actorPricingFingerprint ? browseProjectionCache.get(browseProjectionKey) : undefined;
+        if (browseSnapshot) {
+          browseProjectionCache.delete(browseProjectionKey);
+          browseProjectionCache.set(browseProjectionKey, browseSnapshot);
+        } else {
+          const matchedEntries = Object.freeze(
+            rankCatalogueMatches(
+              matchingEntries.filter((entry) => matchesEquipmentCatalogueFilters(entry, normalizedFilters)),
+              request.query
+            )
+          );
+          const records = Object.freeze(
+            matchedEntries.map((entry) => {
+              if (
+                entry.price.kind !== "priced" ||
+                entry.unavailableReasons.some(
+                  (reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available"
+                )
+              ) {
+                return toUiRecord(entry);
+              }
+              const browseCacheKey = actorPricingFingerprint
+                ? equipmentBrowsePreparedRecordCacheKey({
+                    projectionCacheKey: projection.cacheKey,
+                    entry,
+                    actorPricingFingerprint,
+                    accessFactsFingerprint: context.draft.accessFactsFingerprint,
+                    targetLevel: policy.targetLevel,
+                    targetSize,
+                  })
+                : null;
+              const cached = browseCacheKey ? cachedBrowseRecord(browseCacheKey) : null;
+              const indexedPrice = indexedBrowsePrice(entry, targetSize);
+              return (
+                cached ??
+                (indexedPrice
+                  ? toUiRecord(entry, indexedPrice)
+                  : freezeUiRecord({ ...toUiRecord(entry, null), pricePending: true }))
+              );
+            })
+          );
+          const nextSnapshot: BrowseProjectionSnapshot = {
+            orderKey,
+            matchedEntries,
+            indexBySourceUuid: new Map(matchedEntries.map((entry, index) => [entry.sourceUuid, index])),
+            records,
+            filters: catalogueFilters(matchingEntries, normalizedFilters, request.filters, titanMauler),
+            levelFilter: buildEquipmentCatalogueLevelFacet(matchingEntries, normalizedFilters),
+            activeFilters: effectiveCatalogueFilters(request.filters, normalizedFilters, titanMauler),
+          };
+          browseSnapshot = actorPricingFingerprint
+            ? cacheBrowseProjection(browseProjectionKey, nextSnapshot)
+            : nextSnapshot;
+        }
+        const matchedEntries = browseSnapshot.matchedEntries;
         const enrichmentWindow = clampStartingEquipmentResultWindow(request, matchedEntries.length);
-        type ReadyBrowseRow = {
-          readonly kind: "record";
-          readonly index: number;
-          readonly record: StartingEquipmentCatalogueRecord;
-        };
         type PendingBrowseRow = {
-          readonly kind: "pending";
           readonly index: number;
           readonly entry: EquipmentCatalogueEntry;
           readonly browseCacheKey: string | null;
-          readonly pendingRecord: StartingEquipmentCatalogueRecord;
         };
-        const browseRows: Array<ReadyBrowseRow | PendingBrowseRow> = matchedEntries.map((entry, index) => {
-          if (
-            entry.price.kind !== "priced" ||
-            entry.unavailableReasons.some(
-              (reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available"
-            )
-          ) {
-            return { kind: "record" as const, index, record: toUiRecord(entry) };
-          }
-          const browseCacheKey = actorPricingFingerprint
-            ? equipmentBrowsePreparedRecordCacheKey({
-                projectionCacheKey: projection.cacheKey,
-                entry,
-                actorPricingFingerprint,
-                accessFactsFingerprint: context.draft.accessFactsFingerprint,
-                targetLevel: policy.targetLevel,
-                targetSize,
-              })
-            : null;
-          const cached = browseCacheKey ? cachedBrowseRecord(browseCacheKey) : null;
-          const indexedPrice = indexedBrowsePrice(entry, targetSize);
-          return cached
-            ? { kind: "record" as const, index, record: cached }
-            : indexedPrice
-              ? { kind: "record" as const, index, record: toUiRecord(entry, indexedPrice) }
-              : {
-                  kind: "pending" as const,
-                  index,
+        const pendingIndexes = new Set<number>();
+        const enrichmentEnd = Math.min(matchedEntries.length, enrichmentWindow.offset + enrichmentWindow.limit);
+        for (let index = enrichmentWindow.offset; index < enrichmentEnd; index += 1) pendingIndexes.add(index);
+        const previewIndex = request.previewSourceUuid
+          ? browseSnapshot.indexBySourceUuid.get(request.previewSourceUuid)
+          : undefined;
+        if (previewIndex !== undefined) pendingIndexes.add(previewIndex);
+        const pendingRows: PendingBrowseRow[] = [];
+        for (const index of pendingIndexes) {
+          if (browseSnapshot.records[index]?.pricePending !== true) continue;
+          const entry = matchedEntries[index];
+          if (!entry) continue;
+          pendingRows.push({
+            index,
+            entry,
+            browseCacheKey: actorPricingFingerprint
+              ? equipmentBrowsePreparedRecordCacheKey({
+                  projectionCacheKey: projection.cacheKey,
                   entry,
-                  browseCacheKey,
-                  pendingRecord: { ...toUiRecord(entry, null), pricePending: true },
-                };
-        });
-        const pendingRows = browseRows.filter(
-          (row): row is PendingBrowseRow =>
-            row.kind === "pending" &&
-            ((row.index >= enrichmentWindow.offset && row.index < enrichmentWindow.offset + enrichmentWindow.limit) ||
-              row.entry.sourceUuid === request.previewSourceUuid)
-        );
+                  actorPricingFingerprint,
+                  accessFactsFingerprint: context.draft.accessFactsFingerprint,
+                  targetLevel: policy.targetLevel,
+                  targetSize,
+                })
+              : null,
+          });
+        }
         const resolvedRows = (
           await mapChunksWithConcurrency(
             chunksOf(pendingRows, STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize),
@@ -607,7 +693,11 @@ export function createEquipmentAcquisitionRuntime(
                     return;
                   }
                   if (error instanceof UnsupportedPreparedPriceError) {
-                    const record = { ...toUiRecord(entry, null), available: false, unavailableReason: error.message };
+                    const record = freezeUiRecord({
+                      ...toUiRecord(entry, null),
+                      available: false,
+                      unavailableReason: error.message,
+                    });
                     if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
                     preparedRecordByUuid.set(entry.sourceUuid, record);
                     return;
@@ -620,18 +710,26 @@ export function createEquipmentAcquisitionRuntime(
           },
           request.signal
         );
-        const records = browseRows.map((row) => {
-          if (row.kind === "record") return row.record;
-          const prepared = preparedRecordByUuid.get(row.entry.sourceUuid);
-          return prepared ?? row.pendingRecord;
-        });
+        let records = browseSnapshot.records;
+        if (preparedRecordByUuid.size > 0) {
+          const updated = [...records];
+          for (const [sourceUuid, record] of preparedRecordByUuid) {
+            const index = browseSnapshot.indexBySourceUuid.get(sourceUuid);
+            if (index !== undefined) updated[index] = record;
+          }
+          records = Object.freeze(updated);
+          browseSnapshot.records = records;
+        }
         throwIfStartingEquipmentProjectionAborted(request.signal);
-        const visibleSourceUuids = new Set(records.map((record) => record.sourceUuid));
-        const projectedEntryByUuid = new Map(projectedEntries.map((entry) => [entry.sourceUuid, entry]));
-        const lineRecordSourceUuids = new Set(visibleSourceUuids);
+        const projectedEntryByUuid = indexEntries(projection.entries);
+        const lineRecordSourceUuids = new Set<string>();
         const lineRecords = acquisition.lines.flatMap((line) => {
-          if (lineRecordSourceUuids.has(line.sourceUuid)) return [];
-          const entry = projectedEntryByUuid.get(line.sourceUuid);
+          if (browseSnapshot.indexBySourceUuid.has(line.sourceUuid) || lineRecordSourceUuids.has(line.sourceUuid))
+            return [];
+          const entry =
+            hydratedPreviewEntry?.sourceUuid === line.sourceUuid
+              ? hydratedPreviewEntry
+              : projectedEntryByUuid.get(line.sourceUuid);
           if (!entry) return [];
           lineRecordSourceUuids.add(line.sourceUuid);
           return [toUiRecord(entry, line.price)];
@@ -644,16 +742,17 @@ export function createEquipmentAcquisitionRuntime(
           offset: 0,
           limit: enrichmentWindow.limit,
           matchedRecordCount: matchedEntries.length,
+          rowOrderKey: orderKey,
           records,
           previewRecord:
             preparedRecordByUuid.get(request.previewSourceUuid ?? "") ??
-            records.find((record) => record.sourceUuid === request.previewSourceUuid) ??
+            (previewIndex === undefined ? null : records[previewIndex]) ??
             (hydratedPreviewEntry ? toUiRecord(hydratedPreviewEntry) : null) ??
             null,
           lineRecords,
-          filters: catalogueFilters(entries, normalizedFilters, request.filters, titanMauler),
-          levelFilter: buildEquipmentCatalogueLevelFacet(entries, normalizedFilters),
-          activeFilters: effectiveCatalogueFilters(request.filters, normalizedFilters, titanMauler),
+          filters: browseSnapshot.filters,
+          levelFilter: browseSnapshot.levelFilter,
+          activeFilters: browseSnapshot.activeFilters,
           previewSourceUuid: request.previewSourceUuid,
           preview: projectedPreview,
           titanMauler,
@@ -2000,10 +2099,13 @@ function titanMaulerProjection(draft: DraftState): {
   return { required: true, selectedSourceUuid: selected?.sourceUuid ?? null };
 }
 
-function toUiRecord(entry: EquipmentCatalogueEntry, preparedPrice?: AcquisitionPriceSnapshot | null) {
+function toUiRecord(
+  entry: EquipmentCatalogueEntry,
+  preparedPrice?: AcquisitionPriceSnapshot | null
+): StartingEquipmentCatalogueRecord {
   const preparedPriceCopper =
     preparedPrice === undefined ? entry.price.copperValue : (preparedPrice?.linePriceCopper ?? null);
-  return {
+  return freezeUiRecord({
     sourceUuid: entry.sourceUuid,
     name: entry.name,
     itemType: entry.itemType,
@@ -2014,14 +2116,14 @@ function toUiRecord(entry: EquipmentCatalogueEntry, preparedPrice?: AcquisitionP
     priceLabel: formatCopper(preparedPriceCopper),
     priceContext:
       preparedPrice && (preparedPrice.materializedQuantity !== 1 || preparedPrice.pricePer !== 1)
-        ? {
+        ? Object.freeze({
             materializedQuantity: preparedPrice.materializedQuantity,
             pricePer: preparedPrice.pricePer,
-          }
+          })
         : null,
     bulkLabel: "See item details",
     handsLabel: null,
-    traits: [...entry.traits],
+    traits: Object.freeze([...entry.traits]),
     available: entry.available,
     unavailableReason: entry.unavailableReasons[0]?.message ?? null,
     exceptionRequestable:
@@ -2030,7 +2132,52 @@ function toUiRecord(entry: EquipmentCatalogueEntry, preparedPrice?: AcquisitionP
         (reason) => reason.code === "source-not-allowed" || reason.code === "rarity-not-available"
       ),
     titanMaulerEligible: isTitanMaulerEligibleEntry(entry),
+  });
+}
+
+function freezeUiRecord<T extends StartingEquipmentCatalogueRecord>(record: T): T {
+  return Object.freeze(record);
+}
+
+function equipmentBrowseOrderKey(input: {
+  readonly projectionCacheKey: string;
+  readonly maximumLevel: number;
+  readonly filters: NormalizedEquipmentCatalogueFilters;
+  readonly previewOrderMaterial: ReturnType<typeof equipmentBrowseEntryOrderMaterial> | null;
+}): string {
+  return fingerprintRuntimeMaterial("equipment-browse-order-v1", {
+    projectionCacheKey: input.projectionCacheKey,
+    maximumLevel: input.maximumLevel,
+    query: input.filters.query,
+    itemTypes: [...input.filters.itemTypes],
+    rarities: [...input.filters.rarities],
+    publicationSlugs: [...input.filters.publicationSlugs],
+    traits: [...input.filters.traits],
+    levelRange: input.filters.levelRange,
+    policyAvailable: input.filters.policyAvailable,
+    titanMaulerEligible: input.filters.titanMaulerEligible,
+    previewOrderMaterial: input.previewOrderMaterial,
+  });
+}
+
+function equipmentBrowseEntryOrderMaterial(entry: EquipmentCatalogueEntry) {
+  return {
+    sourceUuid: entry.sourceUuid,
+    name: entry.name,
+    itemType: entry.itemType,
+    level: entry.level,
+    rarity: entry.rarity,
+    publicationSlug: entry.publicationSlug,
+    traits: entry.traits,
+    available: entry.available,
+    titanMaulerEligible: isTitanMaulerEligibleEntry(entry),
   };
+}
+
+function equipmentBrowseEntryOrderEqual(left: EquipmentCatalogueEntry, right: EquipmentCatalogueEntry): boolean {
+  return (
+    canonicalJson(equipmentBrowseEntryOrderMaterial(left)) === canonicalJson(equipmentBrowseEntryOrderMaterial(right))
+  );
 }
 
 function rankCatalogueMatches(entries: readonly EquipmentCatalogueEntry[], query: string): EquipmentCatalogueEntry[] {

@@ -24,6 +24,7 @@ export class EquipmentStableCatalogue {
     #projection = null;
     #indexBySourceUuid = new Map();
     #mountedRange = { start: 0, end: 0 };
+    #orderIndexBuildCount = 0;
     #lastScrollTop = 0;
     #direction = 0;
     #frame = null;
@@ -53,6 +54,19 @@ export class EquipmentStableCatalogue {
     setProjection(projection) {
         this.#assertActive();
         this.#refreshRowHeight();
+        const preservesOrder = this.#projection !== null &&
+            this.#projection.orderKey === projection.orderKey &&
+            this.#projection.rows.length === projection.rows.length;
+        if (preservesOrder) {
+            this.#projection = projection;
+            this.#viewport.dataset.projectionKey = projection.key;
+            const range = this.#mountedRange.end > this.#mountedRange.start
+                ? this.#mountedRange
+                : this.#emergencyRange(this.#visibleRange());
+            this.#bindRange(range);
+            this.#scheduleFrame();
+            return;
+        }
         const indexBySourceUuid = new Map();
         projection.rows.forEach((row, index) => {
             if (!row.sourceUuid || indexBySourceUuid.has(row.sourceUuid)) {
@@ -63,9 +77,11 @@ export class EquipmentStableCatalogue {
         const focusedSourceUuid = this.#focusedSourceUuid();
         this.#projection = projection;
         this.#indexBySourceUuid = indexBySourceUuid;
+        this.#orderIndexBuildCount += 1;
         this.#canvas.style.height = `${projection.rows.length * this.#rowHeightPx}px`;
         this.#viewport.dataset.totalResults = String(projection.rows.length);
         this.#viewport.dataset.projectionKey = projection.key;
+        this.#viewport.dataset.orderIndexBuildCount = String(this.#orderIndexBuildCount);
         if (focusedSourceUuid && !indexBySourceUuid.has(focusedSourceUuid)) {
             this.#viewport.focus({ preventScroll: true });
         }
@@ -142,10 +158,11 @@ export class EquipmentStableCatalogue {
         if (!button || !this.#canvas.contains(button))
             return;
         const mounted = this.#mountedBySourceUuid.get(button.dataset.sourceUuid ?? "");
-        if (!mounted)
+        const projection = this.#projection;
+        if (!mounted || !projection)
             return;
         event.preventDefault();
-        this.#onPreview?.(mounted.row, button);
+        this.#onPreview?.(mounted.row, button, projection.stepId);
     };
     #onPreviousPage = (event) => {
         event.preventDefault();
@@ -341,7 +358,6 @@ function patchMountedRow(mounted, row) {
     mounted.button.dataset.filterRarity = row.rarity;
     mounted.button.dataset.filterSource = row.sourceLabel;
     mounted.button.dataset.filterType = row.itemType;
-    mounted.button.dataset.stepId = row.stepId;
     mounted.button.dataset.wayfinderFocusId = row.previewFocusId;
     mounted.icon.className = `fa-solid ${row.typeIcon}`;
     mounted.name.textContent = row.name;

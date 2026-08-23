@@ -91,20 +91,53 @@ globalThis.__wayfinderEquipmentProfile = {
   async probePendingPrefetchScroll({ framesWhilePending, height, settleTimeoutMs, width }) {
     await this.resize({ height, width });
     const initial = resultWindowSnapshot();
-    const initialList = currentResultList();
-    const rows = [...initialList.querySelectorAll("[data-result-index]")];
-    const measuredRowHeight = initial.measuredRowHeightPx ?? rows.find((row) => row.clientHeight > 0)?.clientHeight ?? 48;
-    const maxScrollTop = Math.max(0, initialList.scrollHeight - initialList.clientHeight);
-    const firstTargetScrollTop = Math.min(
-      maxScrollTop,
-      Math.max(initialList.clientHeight, (initial.resultEnd - 2) * measuredRowHeight - initialList.clientHeight),
+    const runtime = await import(
+      "/modules/wayfinder-pf2e/scripts/wayfinder/application/equipment-acquisition-runtime-service.js"
     );
+    runtime.invalidateFoundryEquipmentCataloguePack(PACK_ID);
+    const documentReadsBeforeNavigation = { ...counters.documentReads };
     const gate = holdEquipmentDocumentReads();
     try {
-      scrollResultList(firstTargetScrollTop);
-      await waitUntil(() => counters.pendingEquipmentPackDocument > 0, settleTimeoutMs);
+      let navigationAttemptsBeforePending = 0;
+      let firstTargetScrollTop = currentResultList().scrollTop;
+      while (counters.pendingEquipmentPackDocument === 0) {
+        const prior = resultWindowSnapshot();
+        if (prior.resultEnd >= prior.totalResultCount) {
+          throw new Error("Equipment profile could not find a genuinely prepared browse window.");
+        }
+        const list = currentResultList();
+        const measuredRowHeight =
+          prior.measuredRowHeightPx ??
+          [...list.querySelectorAll("[data-result-index]")].find((row) => row.clientHeight > 0)?.clientHeight ??
+          48;
+        const maxScrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+        firstTargetScrollTop = Math.min(
+          maxScrollTop,
+          Math.max(
+            list.scrollTop + list.clientHeight,
+            (prior.resultEnd - 2) * measuredRowHeight - list.clientHeight,
+          ),
+        );
+        navigationAttemptsBeforePending += 1;
+        scrollResultList(firstTargetScrollTop);
+        await waitUntil(
+          () =>
+            counters.pendingEquipmentPackDocument > 0 ||
+            resultWindowSnapshot().resultOffset !== prior.resultOffset,
+          settleTimeoutMs,
+        );
+      }
       const firstObservedScrollTop = currentResultList().scrollTop;
       const pendingBeforeRapidScroll = counters.pendingEquipmentPackDocument;
+      const pendingSourceUuids = Object.entries(counters.documentReads)
+        .flatMap(([key, count]) => {
+          const previous = documentReadsBeforeNavigation[key] ?? 0;
+          const [packId, documentId] = key.split("|");
+          return packId === PACK_ID && count > previous && documentId
+            ? [`Compendium.${PACK_ID}.Item.${documentId}`]
+            : [];
+        })
+        .sort((left, right) => left.localeCompare(right));
       const pendingTargetList = currentResultList();
       const requestedScrollDeltaPx = pendingTargetList.clientHeight;
       const rapidTargetScrollTop = Math.min(
@@ -131,6 +164,8 @@ globalThis.__wayfinderEquipmentProfile = {
         initialWindow: initial,
         firstTargetScrollTop,
         firstObservedScrollTop,
+        navigationAttemptsBeforePending,
+        pendingSourceUuids,
         rapidTargetScrollTop,
         rapidObservedScrollTop,
         requestedScrollDeltaPx,

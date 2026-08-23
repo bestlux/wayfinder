@@ -83,6 +83,7 @@ describe("equipment catalogue performance profile", () => {
       resultWindowProfileId: "default",
       forcedRejections: 1,
     });
+    expect(profile.actions.find((action: { id: string }) => action.id === "cold-open").maxPackDocumentReads).toBe(0);
     expect(profile.samplingSemantics.performance).toContain("default 820px");
     expect(profile.samplingSemantics.resultWindows).toContain("not timing samples");
     expect(profile.expectedCatalogueCounts).toEqual({
@@ -221,7 +222,9 @@ describe("equipment catalogue performance profile", () => {
     expect(browserProfile).toContain(
       "async probePendingPrefetchScroll({ framesWhilePending, height, settleTimeoutMs, width })"
     );
-    expect(browserProfile).toContain("await waitUntil(() => counters.pendingEquipmentPackDocument > 0");
+    expect(browserProfile).toContain("runtime.invalidateFoundryEquipmentCataloguePack(PACK_ID)");
+    expect(browserProfile).toContain("navigationAttemptsBeforePending");
+    expect(browserProfile).toContain("pendingSourceUuids");
     expect(browserProfile).toContain("shelvesWhilePending.push(visibleShelfSnapshot())");
     expect(browserProfile).toContain('querySelector("[data-equipment-skeleton-band]")');
     expect(browserProfile).toContain('querySelectorAll("[data-equipment-result-skeleton]")');
@@ -920,6 +923,8 @@ function pendingPrefetchScrollProbe() {
     requestedAppWidth: profile.resultWindowSampling.appWidth,
     requestedAppHeight: windowProfile.appHeight,
     rapidFullScreenScrollCount: 1,
+    navigationAttemptsBeforePending: 2,
+    pendingSourceUuids: ["Compendium.pf2e.equipment-srd.Item.prepared-probe"],
     initialWindow: {
       mountedResultCount: 72,
       resultOffset: 0,

@@ -157,7 +157,7 @@ const COUNTER_LIMITS = [
   ["fullPrepareContextCount", "maxFullContextPreparations", "full context preparations"],
 ];
 const FROZEN_ACTION_CONTRACTS = [
-  ["cold-open", 1, 36, 1, 1, 1],
+  ["cold-open", 1, 0, 1, 1, 1],
   ["warm-reopen", 0, 12, 1, 1, 1],
   ["rapid-search", 0, 12, 0, 0, 0],
   ["facet-change", 0, 12, 0, 0, 0],
@@ -664,6 +664,14 @@ export function validateEquipmentScrollProbe(profile, probe) {
     failures.push("Equipment pending-prefetch probe did not perform the exact full-screen scroll while pending.");
   }
   if (
+    !nonnegativeInteger(probe?.navigationAttemptsBeforePending) ||
+    probe.navigationAttemptsBeforePending < 1 ||
+    !Array.isArray(probe?.pendingSourceUuids) ||
+    probe.pendingSourceUuids.length < 1 ||
+    probe.pendingSourceUuids.some(
+      (sourceUuid) => !/^Compendium\.pf2e\.equipment-srd\.Item\.[^.]+$/.test(sourceUuid),
+    ) ||
+    new Set(probe.pendingSourceUuids).size !== probe.pendingSourceUuids.length ||
     !nonnegativeInteger(probe?.pendingBeforeRapidScroll) ||
     probe.pendingBeforeRapidScroll < 1 ||
     !nonnegativeInteger(probe?.pendingAfterRapidScroll) ||
@@ -672,7 +680,9 @@ export function validateEquipmentScrollProbe(profile, probe) {
     probe.maxPendingDocumentReads < probe.pendingBeforeRapidScroll ||
     probe?.pendingAfterSettle !== 0
   ) {
-    failures.push("Equipment scroll probe did not prove a prior prefetch stayed pending through the rapid scroll and settled.");
+    failures.push(
+      "Equipment scroll probe did not select a genuine prepared-item window, keep its prefetch pending through rapid scroll, and settle.",
+    );
   }
   if (
     probe?.initialWindow?.mountedResultCount !== expectedEquipmentMountedRows(profile, probe?.initialWindow) ||

@@ -123,7 +123,7 @@
     {
       "id": "cold-open",
       "maxPackIndexReads": 1,
-      "maxPackDocumentReads": 36,
+      "maxPackDocumentReads": 0,
       "maxPlanBuilds": 1,
       "maxFullRenders": 1,
       "maxFullContextPreparations": 1

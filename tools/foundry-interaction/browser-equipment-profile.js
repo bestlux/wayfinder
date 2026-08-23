@@ -239,7 +239,7 @@ globalThis.__wayfinderEquipmentProfile = {
     if (finalProjection.state !== "ready" || (finalProjection.diagnostics?.length ?? 0) > 0) {
       throw new Error("Equipment count discovery found a non-ready or unhealthy final projection.");
     }
-    const matchingValues = finalProjection.records.map((entry) => entry.sourceUuid);
+    const matchingValues = [...finalProjection.recordSource.sourceUuids];
     if (matchingValues.length >= 12 || !sameStrings(matchingValues, finalResultValues)) {
       throw new Error("Equipment count discovery final identities drifted from the profile.");
     }
@@ -259,7 +259,7 @@ globalThis.__wayfinderEquipmentProfile = {
     if (filtered.visibleResultCount !== counts.visible) {
       throw new Error("Equipment count discovery disagreed with the rendered final-query visible count.");
     }
-    orderedCatalogueSourceUuids = emptyProjection.records.map((entry) => entry.sourceUuid);
+    orderedCatalogueSourceUuids = [...emptyProjection.recordSource.sourceUuids];
     if (
       orderedCatalogueSourceUuids.length !== counts.defaultShelf ||
       new Set(orderedCatalogueSourceUuids).size !== orderedCatalogueSourceUuids.length

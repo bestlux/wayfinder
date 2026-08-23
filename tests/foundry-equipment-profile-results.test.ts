@@ -413,6 +413,10 @@ describe("equipment catalogue performance profile", () => {
     expect(browserProfile).toContain("canvasBounds.top + logicalCanvasHeight");
     expect(browserProfile).toContain("bottom: Math.min(bounds.bottom, canvasBounds.top + logicalCanvasHeight)");
     expect(browserProfile).toContain("stableHostPreserved: currentResultList() === stableHost");
+    expect(browserProfile).toContain("[...finalProjection.recordSource.sourceUuids]");
+    expect(browserProfile).toContain("[...emptyProjection.recordSource.sourceUuids]");
+    expect(browserProfile).not.toContain("finalProjection.records");
+    expect(browserProfile).not.toContain("emptyProjection.records");
     expect(browserProfile).toContain(
       "stableHostPreserved: sample.stableHostAtStart === null ? null : resultList === sample.stableHostAtStart"
     );

@@ -66,6 +66,10 @@ describe("Foundry Wave 4 equipment live gate", () => {
     expect(browserSuite).toContain("ignoreAsGM");
     expect(browserSuite).toContain("packsRestored");
     expect(browserSuite).toContain("sourcesRestored");
+    expect(browserSuite).toContain("treasureProjection.recordSource.sourceUuids.indexOf");
+    expect(browserSuite).toContain("saltProjection.recordSource.sourceUuids.indexOf");
+    expect(browserSuite).not.toContain("treasureProjection.records");
+    expect(browserSuite).not.toContain("saltProjection.records");
     expect(wave2Cases).toContain("equipment-l1-owner-common-purchase-retry");
   });
 

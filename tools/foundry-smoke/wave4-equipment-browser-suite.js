@@ -453,7 +453,8 @@ globalThis.__runWayfinderWave4PlayerInitial = async function playerInitial({
     ...requestFor(physicalActor, physicalDraft),
     query: physicalCase.treasure.name,
   });
-  const treasure = treasureProjection.records.find((entry) => entry.sourceUuid === physicalCase.treasure.sourceUuid) ?? null;
+  const treasureIndex = treasureProjection.recordSource.sourceUuids.indexOf(physicalCase.treasure.sourceUuid);
+  const treasure = treasureIndex < 0 ? null : treasureProjection.recordSource.recordAt(treasureIndex);
   const listedMagic = await runtime.uiAdapter.prepareLine(
     requestFor(physicalActor, physicalDraft, physicalCase.listedMagic.sourceUuid),
   );
@@ -630,7 +631,8 @@ globalThis.__runWayfinderWave4PlayerInitial = async function playerInitial({
   const afterDenied = durableSnapshot(physicalActor, moduleId, policySetting, packsSetting, sourcesSetting);
   const playerSources = sourceProbe(modules, sourceCase.allowedFamilies, packsSetting, sourcesSetting, sourceCase);
   const saltProjection = await runtime.uiAdapter.project({ ...requestFor(physicalActor, physicalDraft), query: sourceCase.supplemental.name });
-  const saltStake = saltProjection.records.find((entry) => entry.sourceUuid === sourceCase.supplemental.sourceUuid) ?? null;
+  const saltStakeIndex = saltProjection.recordSource.sourceUuids.indexOf(sourceCase.supplemental.sourceUuid);
+  const saltStake = saltStakeIndex < 0 ? null : saltProjection.recordSource.recordAt(saltStakeIndex);
   const material = physicalDraft.acquisition?.policySnapshot?.material;
   if (!material) throw new Error("Wave 4 source evidence requires the reviewed physical policy material.");
   const effectivePolicy = effectivePolicyFromMaterial(material);

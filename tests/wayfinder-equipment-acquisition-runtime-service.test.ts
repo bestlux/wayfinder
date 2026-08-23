@@ -714,7 +714,7 @@ describe("equipment acquisition runtime", () => {
     expect(preparePhysicalItem).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps ambiguous trusted-index pricing on the prepared browse path", async () => {
+  it("derives PF2E magical size pricing from a trusted index without document preparation", async () => {
     const source = dagger({ priceGp: 10 });
     source.system.traits.value.push("magical");
     const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
@@ -730,10 +730,49 @@ describe("equipment acquisition runtime", () => {
 
     await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
       state: "ready",
-      records: [{ name: "Dagger", priceCopper: 2_000, priceLabel: "20 gp" }],
+      records: [{ name: "Dagger", priceCopper: 1_000, priceLabel: "10 gp" }],
     });
-    expect(getDocument).toHaveBeenCalledTimes(1);
+    expect(getDocument).not.toHaveBeenCalled();
+    expect(prepareBrowsePhysicalItems).not.toHaveBeenCalled();
+  });
+
+  it("keeps price-neutral actor rules index-backed while failing closed for possible self-alteration", async () => {
+    const rollOption = dagger({ id: "roll-option", name: "Roll Option", itemType: "equipment" });
+    rollOption.system.rules = [{ key: "RollOption", option: "implement-held" }];
+    const otherTypeAlteration = dagger({ id: "other-type", name: "Other Type", itemType: "equipment" });
+    otherTypeAlteration.system.rules = [
+      { key: "ItemAlteration", itemType: "armor", property: "runes-potency", mode: "add", value: 1 },
+    ];
+    const possibleSelfAlteration = dagger({ id: "self-alteration", name: "Self Alteration" });
+    possibleSelfAlteration.system.rules = [
+      { key: "ItemAlteration", itemType: "weapon", property: "runes-potency", mode: "add", value: 1 },
+    ];
+    const shoddy = dagger({ id: "shoddy", name: "Shoddy", otherTags: ["shoddy"] });
+    const sources = [rollOption, otherTypeAlteration, possibleSelfAlteration, shoddy];
+    const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
+    const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
+    const { runtime, request } = fixture(
+      {
+        indexedBrowsePricing: "pf2e-physical-source-v1",
+        getIndex: vi.fn(async () => sources),
+        getDocument,
+      },
+      { ancestrySize: "lg", prepareBrowsePhysicalItems }
+    );
+
+    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+      state: "ready",
+      records: [
+        { name: "Other Type", priceCopper: 40 },
+        { name: "Roll Option", priceCopper: 40 },
+        { name: "Self Alteration", priceCopper: 40 },
+        { name: "Shoddy", priceCopper: 40 },
+      ],
+    });
+    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(getDocument.mock.calls.map(([id]) => id)).toEqual(["self-alteration", "shoddy"]);
     expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
+    expect(prepareBrowsePhysicalItems.mock.calls[0]![0].entries).toHaveLength(1);
   });
 
   it("keeps mixed browse outcomes ordered and makes a repeated facet document-free", async () => {
@@ -2857,6 +2896,7 @@ function dagger(
     readonly level?: number;
     readonly materialType?: string | null;
     readonly materialGrade?: string | null;
+    readonly otherTags?: readonly string[];
     readonly rarity?: "common" | "uncommon";
     readonly baseItem?: string | null;
     readonly runes?: Record<string, unknown>;
@@ -2872,7 +2912,11 @@ function dagger(
       level: { value: options.level ?? 0 },
       category: "simple",
       range: null,
-      traits: { rarity: options.rarity ?? "common", value: ["agile", "finesse"] },
+      traits: {
+        rarity: options.rarity ?? "common",
+        value: ["agile", "finesse"],
+        ...(options.otherTags === undefined ? {} : { otherTags: [...options.otherTags] }),
+      },
       publication: { title: "Pathfinder Player Core" },
       price: {
         value:

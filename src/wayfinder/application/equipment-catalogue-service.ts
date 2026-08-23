@@ -23,6 +23,7 @@ const INDEX_FIELDS = Object.freeze([
   "system.level.value",
   "system.traits.rarity",
   "system.traits.value",
+  "system.traits.otherTags",
   "system.publication.title",
   "system.source.value",
   "system.price.value",
@@ -916,6 +917,7 @@ function indexNormalizationWitness(source: Readonly<Record<string, unknown>>): s
     record(system.level).value,
     traits.rarity,
     traits.value,
+    traits.otherTags,
     publication.title,
     legacySource.value,
     price.value,
@@ -1124,16 +1126,34 @@ function normalizeIndexedBrowsePriceFacts(
 ): IndexedEquipmentBrowsePriceFacts | null {
   if (price.kind !== "priced") return null;
   const rules = system.rules;
-  if (!Array.isArray(rules) || rules.length > 0) return null;
+  if (!Array.isArray(rules) || rulesCanAlterOwnPrice(rules, itemType)) return null;
   const subitems = system.subitems;
   if (subitems !== undefined && subitems !== null && (!Array.isArray(subitems) || subitems.length > 0)) return null;
   if (hasConfiguredPricing(system, itemType)) return null;
   const traits = new Set(stringArray(traitsRoot.value).map((trait) => trait.toLowerCase()));
-  if (traits.has("shoddy")) return null;
+  const otherTags = traitsRoot.otherTags;
+  if (otherTags !== undefined && otherTags !== null && !Array.isArray(otherTags)) return null;
+  if (stringArray(otherTags).some((tag) => tag.toLowerCase() === "shoddy")) return null;
   const rawSizeSensitive = record(system.price).sizeSensitive;
+  if (["arcane", "divine", "magical", "occult", "primal", "tech"].some((trait) => traits.has(trait))) {
+    return Object.freeze({ sizeSensitive: false });
+  }
   if (typeof rawSizeSensitive === "boolean") return Object.freeze({ sizeSensitive: rawSizeSensitive });
-  if (["arcane", "divine", "magical", "occult", "primal", "tech"].some((trait) => traits.has(trait))) return null;
   return Object.freeze({ sizeSensitive: true });
+}
+
+/**
+ * PF2E derives physical-item price from source price, size, material, grade, runes,
+ * specific-item state, and shoddy state. Ordinary actor rule elements do not rewrite
+ * those item fields. ItemAlteration is the one rule family that can mutate an item;
+ * it is browse-price-neutral only when its explicit target type excludes this source.
+ */
+function rulesCanAlterOwnPrice(rules: readonly unknown[], itemType: string): boolean {
+  return rules.some((rawRule) => {
+    const rule = record(rawRule);
+    if (rule.key !== "ItemAlteration") return false;
+    return !nonEmpty(rule.itemType) || rule.itemType.trim().toLowerCase() === itemType;
+  });
 }
 
 function hasConfiguredPricing(system: Record<string, unknown>, itemType: string): boolean {

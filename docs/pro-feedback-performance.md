@@ -22,7 +22,7 @@
 
 **Yes: stop treating a scroll-window change as a Foundry render.** Keep ApplicationV2 and Handlebars for the window shell, filters, detail panel, cart, status, and genuine domain-state changes. Inside that shell, mount a stable, imperative virtual-list controller that renders immediately from lightweight browse data.
 
-The current architecture makes viewport coverage depend on work that has nothing to do with scrolling: filtering/ranking, document hydration, PF2E preparation, view-model assembly, Handlebars rendering, DOM replacement, measurement, and focus restoration.  Worse, both `"window"` and `"preview"` currently rerender the catalogue and detail parts together. 
+The current architecture makes viewport coverage depend on work that has nothing to do with scrolling: filtering/ranking, document hydration, PF2E preparation, view-model assembly, Handlebars rendering, DOM replacement, measurement, and focus restoration.  Worse, both `"window"` and `"preview"` currently rerender the catalogue and detail parts together.
 
 Foundry’s own ApplicationV2 documentation describes `render()` as replacing the application’s inner HTML, and `_replaceHTML` as inserting the rendering backend’s replacement result. That is a reasonable application lifecycle primitive, but a bad high-frequency scrolling primitive. ([Foundry Virtual Tabletop][1])
 
@@ -83,7 +83,7 @@ Existing transaction runtime
 
 ## 1. Retain the complete lightweight browse projection
 
-All 1,138 matching lightweight rows should exist as an immutable in-memory array. That scale is unremarkable for plain DTOs. More importantly, the catalogue service already retains a complete evaluated `entries` array; the runtime subsequently filters, ranks, and slices it for every requested window. 
+All 1,138 matching lightweight rows should exist as an immutable in-memory array. That scale is unremarkable for plain DTOs. More importantly, the catalogue service already retains a complete evaluated `entries` array; the runtime subsequently filters, ranks, and slices it for every requested window.
 
 Introduce something like:
 
@@ -144,7 +144,7 @@ Available synchronously for every row:
 * Image URL
 * A classification saying whether indexed price is sufficient
 
-The current compendium index already requests most of these fields, including the image, price, quantity, traits, and rule keys.  The current UI mapper can already use indexed copper when no prepared price is passed, so the code is closer to this separation than it may appear. 
+The current compendium index already requests most of these fields, including the image, price, quantity, traits, and rule keys.  The current UI mapper can already use indexed copper when no prepared price is passed, so the code is closer to this separation than it may appear.
 
 ### Browse enrichment
 
@@ -270,7 +270,7 @@ The current 36–144 policy combines three unrelated concerns:
 2. How much DOM overscan is useful
 3. How many documents must be prepared
 
-Its larger windows compensate for a data pipeline that cannot keep up, but they also multiply the costly preparation work. The current constants explicitly use a 36 baseline, 144 maximum, three viewport heights, and 12-row hydration chunks. 
+Its larger windows compensate for a data pipeline that cannot keep up, but they also multiply the costly preparation work. The current constants explicitly use a 36 baseline, 144 maximum, three viewport heights, and 12-row hydration chunks.
 
 After decoupling, use approximately:
 
@@ -366,7 +366,7 @@ Batch `ResizeObserver` results into one animation frame and use `overflow-anchor
 
 ## Separate I/O concurrency from CPU preparation
 
-The existing `mapChunksWithConcurrency` treats both document resolution and PF2E preparation as chunked asynchronous work. Cooperative abort checks occur before and after workers, but synchronous work inside a worker remains uninterruptible. 
+The existing `mapChunksWithConcurrency` treats both document resolution and PF2E preparation as chunked asynchronous work. Cooperative abort checks occur before and after workers, but synchronous work inside a worker remains uninterruptible.
 
 I would use:
 
@@ -686,7 +686,7 @@ Announcements:
 * Do not announce window offsets while the user scrolls.
 * Preserve the existing paging fallback as an optional accessibility and failure-recovery mode.
 
-The current focus-sentinel mechanism can remain as a fallback. 
+The current focus-sentinel mechanism can remain as a fallback.
 
 ---
 
@@ -831,7 +831,7 @@ No PF2E preparation started for a semantically stale job
 * Remove `"window"` as a Foundry render intent.
 * Make `"preview"` render only `EQUIPMENT_DETAIL_PART`.
 * Search/facet completion should set a new projection on the catalogue controller rather than replace catalogue HTML.
-* Stop using a bounded pane as the only retained browse state; retain a separate lightweight full projection. The current session explicitly rejects more than the maximum mounted page. 
+* Stop using a bounded pane as the only retained browse state; retain a separate lightweight full projection. The current session explicitly rejects more than the maximum mounted page.
 
 ## `equipment-acquisition-runtime-service.ts`
 
@@ -978,7 +978,7 @@ The public Foundry v14 API documentation currently identifies itself as 14.365, 
 
 Foundry parts can declare `scrollable` selectors, and its directory implementations expose part-state synchronization hooks. Verify whether those are useful for preserving scroll on the **rare real part replacement**, but do not mistake them for a virtualization mechanism. ([Foundry Virtual Tabletop][9])
 
-The current Foundry adapter asserts `"stable-replacement"` index-entry identity and forwards `getIndex`, `getDocument`, `getDocuments`, `set`, and `delete`. That identity behavior and all relevant pack invalidation hooks should be tested against 14.366 rather than treated as an undocumented permanent guarantee. 
+The current Foundry adapter asserts `"stable-replacement"` index-entry identity and forwards `getIndex`, `getDocument`, `getDocuments`, `set`, and `delete`. That identity behavior and all relevant pack invalidation hooks should be tested against 14.366 rather than treated as an undocumented permanent guarantee.
 
 Verify under a non-GM account:
 

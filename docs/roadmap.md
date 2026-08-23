@@ -1,10 +1,10 @@
 # Wayfinder Roadmap
 
-Updated 2026-08-22 after the 0.8.0 Starting Equipment release. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
+Updated 2026-08-23 for the 0.8.2 Starting Equipment stabilization work. This is the forward-looking product plan; shipped behavior and exact evidence live in the [coverage matrices](coverage/) and [release smoke log](coverage/beta-readiness-smoke.md).
 
 ## Where Wayfinder stands
 
-Release 0.8.0 adds reviewed Starting Equipment to Wayfinder's existing guided creation and level-up flow. Its required functional waves, exact-candidate live matrix, package binding, independent verification, and Foundry registration are complete against Foundry VTT 14.366 and PF2E 8.4.1. The full-regression gate contains 55 executions representing 54 unique scenarios. Wayfinder continues to guide 27 maintained PF2E classes through level 5 along one maintained path, five representative profiles through level 10, and Fighter through level 20. Necromancer and Runesmith base classes remain outside that maintained class matrix.
+Release 0.8.0 added reviewed Starting Equipment to Wayfinder's existing guided creation and level-up flow. The 0.8.1 and 0.8.2 stabilization work hardens real-player request, stacking, cold-template, catalogue-reachability, and interaction-performance paths without weakening acquisition authority. The adaptive catalogue retains the complete lightweight matching shelf, mounts a bounded window around the viewport, and keeps preview and Apply on fresh PF2E authority. Wayfinder continues to guide 27 maintained PF2E classes through level 5 along one maintained path, five representative profiles through level 10, and Fighter through level 20. Necromancer and Runesmith base classes remain outside that maintained class matrix.
 
 The common mechanical path now includes ancestry, heritage, background, class, supported class branches and class archetypes, feats, boosts, skills, languages, spells, Free Archetype, Ancestry Paragon and other PF2E campaign feat sections, Gradual Ability Boosts, and creation-time Starting Equipment. Archetype legality is checked against projected draft state where PF2E data is structured. Existing characters can be mapped and their spell progression audited without mutation. Adjacent 0.8.0 player-trust hardening also projects PF2E-prepared fixed ancestry flaws before later ability and skill choices (issue #32).
 
@@ -60,7 +60,7 @@ Acquisition experience:
 - Start level-1 characters from the official 15 gp budget. At higher levels, show permanent-item allowances separately from residual currency, including its consumable/lower-level-item restriction, or the selected lump-sum budget.
 - Offer the structured Adventurer's Pack and a searchable equipment catalogue with quantity, price, Bulk, hands, traits, rarity, level, source, availability, and allowance context.
 - Reconcile physical equipment explicitly granted by the same prepared build in a separate no-charge lane, including exact class, ancestry, heritage, background, and feat provenance; never infer that arbitrary existing inventory was “PF2E-granted.”
-- Quick Equipment Packages were cut from 0.8.0 as one complete slice; no partial package set ships. The cited Player Core and Player Core 2 packages can be reconsidered for 0.8.1. Unreviewed classes receive no implied package, and Wayfinder-derived suggestions remain later work.
+- Quick Equipment Packages were cut from 0.8.0 as one complete slice; no partial package set ships. The cited Player Core and Player Core 2 packages can be reconsidered in a later release. Unreviewed classes receive no implied package, and Wayfinder-derived suggestions remain later work.
 - Treat `keep all currency` as a positive completed disposition, not a blocked empty cart.
 - Protect draft work with truthful persistence state, default-cancel Clear confirmation, actionable readiness reasons, Apply progress, and a reviewable success receipt.
 
@@ -77,6 +77,14 @@ Scope fence: no selling, merchant inventory, downtime shopping, rune transfer, a
 ### 0.8.1 — Equipment beta stabilization
 
 Respond to real-player findings after both official funding recipes ship: unusual physical-item types, third-party price/stacking shapes, translated compendium behavior, granted-equipment conflicts, GM policy wording, and evidence-based suggestion refinements. Consider a separately designed custom permanent-item schedule, additive existing-inventory flow, or conditional batch reversal only when their safety contracts are explicit; none is implied by 0.8.0.
+
+Shipped as a narrow live-finding patch: shared partials preload before cold-client rendering, GMs can decline and durably close an exact request without preventing a fresh re-request, and repeated purchases of the same stackable item converge into one repriced cart line.
+
+### 0.8.2 — Catalogue and workflow polish
+
+Starting Equipment exposes the full matching catalogue through an adaptive stable virtual list rather than a fixed first page. Search, ranking, policy availability, level, type, rarity, source, trait, and Titan Mauler facets operate over the complete lightweight shelf; only mounted or focused rows are projected into the DOM. Item details include enriched rules text, Bulk, and hands, and cart quantities accept direct numeric entry.
+
+The wizard rail now collapses completed levels while reopening invalidated work, scroll positions survive relevant renders, changing picker counts have accessible announcements, and reduced-motion preferences are honored. Catalogue performance has explicit stage timing, visible-gap, stable-host, document-read, recovery, long-task, and adaptive-height gates. Fresh PF2E hydration and authority remain mandatory for preview recovery and Apply.
 
 ### 0.9.0 — Identity Epilogue and completion
 

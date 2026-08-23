@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.2 - 2026-08-23
+
+- Starting Equipment now exposes the complete matching catalogue through an adaptive virtual list. The mounted window grows with Wayfinder's height, stays ahead of rapid and large scroll jumps, and preserves its host, focus, and scroll position while search, filters, previews, and cart changes update around it.
+- Equipment results are ranked and filterable by policy availability, level, type, rarity, source, traits, and contextual Titan Mauler eligibility. Item previews include enriched rules text, Bulk, and hands, while cart quantities accept direct numeric entry for ammunition and other bulk purchases.
+- Completed levels collapse into compact rail summaries, invalidated work reopens visibly, scrollable regions retain their positions across renders, result-count changes are announced to assistive technology, and reduced-motion preferences are respected.
+- Catalogue browsing now reuses lightweight indexed facts, materializes only mounted or focused records, and skips unchanged stable index identities. Preview and Apply keep their fresh PF2E document, price, policy, and authority checks; browse caching never becomes transaction authority.
+- The live catalogue profile now attributes normalization, policy, filtering, ranking, source assembly, pane assembly, mounted projection, and Foundry render stages, and fails closed on visible gaps, host replacement, stale work, unexpected document reads, or recovery drift.
+
 ## 0.8.1 - 2026-08-22
 
 - Wayfinder now waits for its shared, retryable Handlebars partial preload before every full or scoped render, preventing a cold client from opening the app before newly installed picker templates are registered.

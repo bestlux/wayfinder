@@ -1,5 +1,21 @@
 # Starting-equipment UX handoff
 
+> **Implementation status (2026-08-23, 0.8.2 candidate).** This handoff records
+> the pre-implementation findings that shaped the 0.8.2 catalogue work; its
+> present-tense problem statements and original 12-row/550-element/144-result-
+> element envelope are historical. The candidate replaces the fixed 12-row
+> shelf with an adaptive stable virtual list, ranks and facets the complete
+> lightweight shelf, and projects only mounted rows. Items 1a, 1b, 2, 3a, 4, 6,
+> 7, and 8 are complete; item 3b (funding-aware affordability) and item 5 (row
+> quick-buy) remain deferred. Current limits live in
+> `tools/foundry-interaction/equipment-catalogue-profile.json`.
+>
+> Two clean 840-sample runs at production commit
+> `b5e51e7e473193144783b4bde3278a046c6d8ee7` passed with zero failed samples
+> and zero long tasks. Their overall p95 values were 52.8 ms and 53.3 ms; their
+> worst action/width p95 values were 66.9 ms and 64.8 ms. Final 0.8.2 version,
+> package, and exact-candidate binding remain release gates.
+
 > Follow-on work after the 0.8.0 visual rebuild of the starting-equipment views
 > (`feat(equipment): rebuild the starting-equipment views on the app's design language`).
 > The rebuild covered layout, copy, and theming. This document covers the
@@ -50,20 +66,20 @@ from source reasoning alone.
 
 ---
 
-## Ranked backlog
+## Original ranked backlog and disposition
 
-| Rank | Value | Effort | Item | Needs profile re-baseline |
-| ---: | :---: | :---: | --- | :---: |
-| 1a | P0 | S | Single source of truth for the result cap *(prerequisite for 1b)* | No |
-| 1b | P0 | M–L | Reachability past the first 12 results (constant-size paging) | Only if virtualized |
-| 2 | P1 | S | Rank browse results by policy availability and relevance | No |
-| 3a | P1 | S | "Policy-available only" facet | No |
-| 3b | P2 | M | "Only what I can buy" — needs a funding projection | No |
-| 4 | P1 | S | Titan Mauler eligibility facet | No |
-| 5 | P2 | S | Row-level quick-buy | Yes |
-| 6 | P2 | M | Bulk and hands from the hydrated preview *(do with polish B1)* | Preview latency |
-| 7 | P3 | S | Trait facet | No |
-| 8 | P3 | S | Retire the dead `EquipmentCatalogueSearchFilters` API | No |
+| Rank | Value | Effort | Item | Status |
+| ---: | :---: | :---: | --- | --- |
+| 1a | P0 | S | Single source of truth for the result cap *(prerequisite for 1b)* | Complete |
+| 1b | P0 | M–L | Reachability past the first 12 results (constant-size paging) | Complete via adaptive virtualization |
+| 2 | P1 | S | Rank browse results by policy availability and relevance | Complete |
+| 3a | P1 | S | "Policy-available only" facet | Complete |
+| 3b | P2 | M | "Only what I can buy" — needs a funding projection | Deferred |
+| 4 | P1 | S | Titan Mauler eligibility facet | Complete |
+| 5 | P2 | S | Row-level quick-buy | Deferred |
+| 6 | P2 | M | Bulk and hands from the hydrated preview *(do with polish B1)* | Complete |
+| 7 | P3 | S | Trait facet | Complete |
+| 8 | P3 | S | Retire the dead `EquipmentCatalogueSearchFilters` API | Complete |
 
 Item 8 is a prerequisite in practice for 3a, 3b, 4 and 7: all four add predicates,
 and adding them across two parallel filter implementations doubles the work and

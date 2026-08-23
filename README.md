@@ -25,13 +25,13 @@ Character creation and leveling in PF2E means juggling class tables, compendium 
 - **Resumable drafts.** Progress is saved on the actor, so you can leave mid-build and come back later.
 - **Honest about its limits.** When Wayfinder can't model a step confidently, it says so and points you at the right native PF2E control instead of silently guessing.
 
-## What's new in 0.8.0
+## What's new in 0.8.2
 
-- **Starting Equipment from intent to receipt.** New and authorized replacement characters can choose either official higher-level wealth recipe, use GM-approved sources and exceptions, purchase exact quantities, expand an Adventurer's Pack, and keep a durable acquisition receipt after Apply.
-- **Safe acquisition and retry.** Wayfinder prepares exact compendium sources, reconciles native physical grants without charging twice, converges currency to an absolute target, and retries interrupted work without duplicating items or replacing a completed manifest.
-- **Creation and level-up stay distinct.** Existing-character imports preserve settled history and unrelated actor flags while suppressing the creation-only shop and clearing stale equipment intent.
-- **More trustworthy pickers.** Champion sanctification, Exemplar embedded choices, inclusive feat-level filters, fixed ancestry flaws, and ordered skill-rank projection now follow PF2E's prepared data more accurately. When eligibility cannot be validated, the picker explains the suppression instead of silently dropping options.
-- **Measured Foundry-native UX.** The equipment flow includes English and Simplified Chinese coverage, keyboard and focus handling, responsive fixed-window layouts, and a qualified catalogue interaction profile.
+- **The whole outfitter, with no blank-scroll wait.** Starting Equipment keeps the complete matching shelf in memory and mounts a bounded adaptive window around the viewport. The list grows with a taller Wayfinder window and remains populated through rapid and large scroll jumps.
+- **Useful ways to narrow the shelf.** Results prioritize policy-available and query-relevant gear and can be filtered by availability, level, type, rarity, source, traits, and contextual Titan Mauler eligibility. Counts stay visible so a filter never feels like a blind guess.
+- **Enough detail to make the purchase.** Item previews now show enriched rules text, Bulk, and hands. Cart quantities also accept direct numeric entry, so buying ammunition no longer means dozens of clicks.
+- **A calmer long build.** Completed levels collapse into compact rail summaries, invalidated work reopens visibly, scroll positions survive updates, changing result counts are announced accessibly, and reduced-motion preferences are respected.
+- **Browse speed without weaker Apply checks.** The catalogue reuses lightweight compendium facts and materializes only mounted rows. Preview and Apply still resolve current PF2E documents, prices, world policy, and authority before anything is purchased or written.
 
 ## Installation
 
@@ -43,7 +43,7 @@ https://github.com/bestlux/wayfinder/releases/latest/download/module.json
 
 Foundry's package updater will follow it for future versions. Older releases stay installable from their own [release pages](https://github.com/bestlux/wayfinder/releases).
 
-**Requirements:** Foundry VTT v14 with the PF2E system 8.4.1 or newer. Release 0.8.0 is verified against Foundry VTT 14.366 and PF2E 8.4.1, including its exact-candidate live matrix and package binding.
+**Requirements:** Foundry VTT v14 with the PF2E system 8.4.1 or newer. Wayfinder supports Foundry VTT 14.366 and PF2E 8.4.1; the [live smoke log](docs/coverage/beta-readiness-smoke.md) records exact release evidence.
 
 ## Using Wayfinder
 

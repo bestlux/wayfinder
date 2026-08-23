@@ -1,8 +1,17 @@
 # UX polish backlog — 0.8.x
 
-> Companion to [equipment-ux-handoff.md](equipment-ux-handoff.md), which stays the
-> authority on the starting-equipment catalogue. This document covers the rest of
-> the app, plus equipment items discovered after that handoff was written.
+> **Implementation status (2026-08-23, 0.8.2 candidate).** The detailed
+> findings below are retained as the design record for the 0.8.x polish pass,
+> but their present-tense problem statements describe the pre-implementation
+> app. The candidate completes A1, A2, B1–B4, C2, C4, and the equipment-predicate
+> portion of C3. B5, C1, cross-surface C3, C5, C6, and D1–D4 remain backlog. The
+> equipment catalogue's authoritative current behavior and measured envelope
+> live in `tools/foundry-interaction/equipment-catalogue-profile.json`, not in
+> the original estimates below.
+
+> Companion to [equipment-ux-handoff.md](equipment-ux-handoff.md), which records
+> the original starting-equipment catalogue backlog. This document covers the
+> rest of the app, plus equipment items discovered after that handoff was written.
 >
 > Findings are from source inspection at `6b455ad` plus the live level-5 session
 > recorded during the 0.8.0 visual rebuild. Where something was reasoned from
@@ -369,7 +378,7 @@ most one non-blocking note.
 
 ---
 
-## Suggested 0.8.x ordering
+## Original ordering
 
 Revised after review. An earlier version labelled `1a → 2 → 3` "the equipment
 reachability chain", which was wrong: **1b** is the item that makes results past

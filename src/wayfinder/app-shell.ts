@@ -110,7 +110,7 @@ import {
 } from "./application/draft-write-guard.js";
 import {
   equipmentLineFocusId,
-  restoreEquipmentFocus,
+  restoreEquipmentFocusAfterRender,
   STARTING_EQUIPMENT_REVIEW_FOCUS_ID,
   STARTING_EQUIPMENT_STATUS_FOCUS_ID,
   startingEquipmentFocusCandidates,
@@ -1012,7 +1012,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         })
       );
       if (this.#pendingEquipmentFocusIds) {
-        restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
+        restoreEquipmentFocusAfterRender(root, this.#pendingEquipmentFocusIds);
       }
       this.#restoreEquipmentListFocus(root);
       this.#restoreEquipmentWindowEdgeFocus(root);
@@ -1075,7 +1075,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     } else if (pendingStepFocusId && stepHeading?.dataset.wayfinderStepHeading === pendingStepFocusId) {
       stepHeading.focus();
     } else if (this.#pendingEquipmentFocusIds) {
-      restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
+      restoreEquipmentFocusAfterRender(root, this.#pendingEquipmentFocusIds);
     }
     this.#restoreEquipmentListFocus(root);
     this.#restoreEquipmentWindowEdgeFocus(root);

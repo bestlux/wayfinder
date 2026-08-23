@@ -29,7 +29,7 @@ import { adjustDraftTargetLevel, setManualStepComplete, setTrainingLoreSelection
 import { applyDraftLifecycle, buildApplyAttemptDraft, clearDraftLifecycle, hasApplyRecoveryState, } from "./application/draft-lifecycle-service.js";
 import { DraftPersistenceCoordinator } from "./application/draft-persistence-service.js";
 import { assertDraftSideEffectAllowed, assertFailedApplyRecoveryCandidateCurrent, capturePersistedDraftPrecondition, clearDraftWithWriteGuard, PersistedDraftWriteGuard, readPersistedDraftSnapshot, saveDraftWithWriteGuard, updateActorWithPersistedDraftPrecondition, WayfinderDraftWriteConflictError, } from "./application/draft-write-guard.js";
-import { equipmentLineFocusId, restoreEquipmentFocus, STARTING_EQUIPMENT_REVIEW_FOCUS_ID, STARTING_EQUIPMENT_STATUS_FOCUS_ID, startingEquipmentFocusCandidates, } from "./application/equipment-accessibility.js";
+import { equipmentLineFocusId, restoreEquipmentFocusAfterRender, STARTING_EQUIPMENT_REVIEW_FOCUS_ID, STARTING_EQUIPMENT_STATUS_FOCUS_ID, startingEquipmentFocusCandidates, } from "./application/equipment-accessibility.js";
 import { ConfiguredItemHandoffRequiredError, commitTitanMaulerLineSynchronization, getFoundryEquipmentAcquisitionRuntime, } from "./application/equipment-acquisition-runtime-service.js";
 import { createEquipmentAcquisitionExecutionSession } from "./application/equipment-acquisition-session-service.js";
 import { profileEquipmentStage } from "./application/equipment-performance-profiler.js";
@@ -597,7 +597,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 projectedRowCount: (mountedRowSource?.projectedRowCount ?? 0) - mountedRowCountBefore,
             }));
             if (this.#pendingEquipmentFocusIds) {
-                restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
+                restoreEquipmentFocusAfterRender(root, this.#pendingEquipmentFocusIds);
             }
             this.#restoreEquipmentListFocus(root);
             this.#restoreEquipmentWindowEdgeFocus(root);
@@ -653,7 +653,7 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             stepHeading.focus();
         }
         else if (this.#pendingEquipmentFocusIds) {
-            restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
+            restoreEquipmentFocusAfterRender(root, this.#pendingEquipmentFocusIds);
         }
         this.#restoreEquipmentListFocus(root);
         this.#restoreEquipmentWindowEdgeFocus(root);

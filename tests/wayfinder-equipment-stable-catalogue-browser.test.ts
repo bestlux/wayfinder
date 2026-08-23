@@ -111,6 +111,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
       await nextFrame();
       const initialRowProjectionCalls = rowProjectionCalls;
       const firstRoot = viewport.querySelector<HTMLElement>("[data-result-index='0']")!;
+      const initialKeyboardFocusMarker = firstRoot.querySelector("button")?.getAttribute("data-keyboard-focus");
       const updatedRows = [...rows];
       updatedRows[0] = { ...rows[0]!, name: "Updated Equipment 0" };
       controller.setProjection({
@@ -174,6 +175,7 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         position: destination.getAttribute("aria-posinset"),
         setSize: destination.getAttribute("aria-setsize"),
       };
+      const destinationKeyboardFocusMarker = destination.querySelector("button")?.getAttribute("data-keyboard-focus");
       await nextFrame();
 
       const focusButton = viewport.querySelector<HTMLButtonElement>("[data-result-index='720'] button")!;
@@ -189,11 +191,13 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
 
       const outcome = {
         destinationA11y,
+        destinationKeyboardFocusMarker,
         expandedGapPx,
         focusPinnedAfterFrame,
         focusPinnedImmediately,
         immediateGapPx,
         immediateRows,
+        initialKeyboardFocusMarker,
         mountedAfterFrame: viewport.querySelectorAll("[role='listitem']").length,
         pagingAtStart,
         pendingPresentation,
@@ -214,10 +218,12 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
 
     expect(evidence).toMatchObject({
       destinationA11y: { position: "721", setSize: "1138" },
+      destinationKeyboardFocusMarker: "true",
       expandedGapPx: 0,
       focusPinnedAfterFrame: true,
       focusPinnedImmediately: true,
       immediateGapPx: 0,
+      initialKeyboardFocusMarker: "true",
       pagingAtStart: { previousDisabled: true, nextDisabled: false },
       pendingPresentation: { blocked: false, pricePending: "true", unaffordable: false },
       blockedPresentation: { blocked: true, unaffordable: true },

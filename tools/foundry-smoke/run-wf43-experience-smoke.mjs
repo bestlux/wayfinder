@@ -502,6 +502,24 @@ async function runLocale({
   await pressAndRecord(playerPage, keyboard, "select-item", "Enter");
   const currencyActionSelector = `${rootSelector} [data-application-part="equipment-detail"] [data-wayfinder-action="add-equipment-item"][data-source-uuid="${definition.fixture.item.sourceUuid}"][data-funding="currency"]`;
   await waitFor(playerPage, currencyActionSelector);
+  await playerPage.waitForFunction(
+    async ({ focusSelector, targetSelector }) => {
+      const target = document.querySelector(targetSelector);
+      const active = document.activeElement;
+      if (
+        active?.matches(focusSelector) !== true ||
+        target?.getAttribute("data-keyboard-focus") !== "true"
+      ) {
+        return false;
+      }
+      await new Promise((resolve) =>
+        globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve)),
+      );
+      return active.isConnected && document.activeElement === active && target.isConnected;
+    },
+    { focusSelector: itemSelector, targetSelector: currencyActionSelector },
+    { timeout: 30_000 },
+  );
 
   interactionStage("browse-cart", "add-item");
   await appTabTo(currencyActionSelector);
@@ -765,6 +783,9 @@ async function tabTo(
       const matched = await page.evaluate((candidate) => document.activeElement?.matches(candidate) === true, selector);
       if (matched) return;
       await page.keyboard.press(key);
+      await page.evaluate(
+        () => new Promise((resolve) => globalThis.requestAnimationFrame(resolve)),
+      );
       const focus = await focusEvidence(page);
       observedTraversalCount += 1;
       boundedTraversal.push(focus);

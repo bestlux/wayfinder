@@ -429,6 +429,9 @@ function createMountedRow(document: Document, row: EquipmentStableCatalogueRow, 
   button.type = "button";
   button.className = "equipment-result";
   button.dataset.equipmentItem = "";
+  // Stable rows are mounted after the app's render-boundary focus pass. Foundry
+  // reserves Tab unless dynamically created controls opt into keyboard focus.
+  button.dataset.keyboardFocus = "true";
   button.dataset.sourceUuid = row.sourceUuid;
   button.dataset.wayfinderAction = "preview-equipment-item";
 

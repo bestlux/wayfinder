@@ -17,6 +17,7 @@ const accessibilityScript = readFileSync(resolve("scripts/wayfinder/application/
   .replaceAll("export ", "")
   .concat(
     "\nwindow.restoreEquipmentFocus = restoreEquipmentFocus;",
+    "\nwindow.restoreEquipmentFocusAfterRender = restoreEquipmentFocusAfterRender;",
     "\nwindow.startingEquipmentFocusCandidates = startingEquipmentFocusCandidates;"
   );
 const experienceBrowserScript = readFileSync(resolve("tools/foundry-smoke/wf43-experience-browser-suite.js"), "utf8");
@@ -255,6 +256,45 @@ browserIt(
   20_000
 );
 
+browserIt("recovers render focus from Foundry's late document-body handoff without overriding the user", async () => {
+  const browser = await chromium.launch({ executablePath: chromePath, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`
+      <main data-root>
+        <button data-wayfinder-focus-id="preview">Preview item</button>
+        <button data-wayfinder-focus-id="buy">Buy item</button>
+      </main>`);
+    await page.addScriptTag({ content: accessibilityScript });
+
+    await page.evaluate(() => {
+      const root = document.querySelector<HTMLElement>("[data-root]")!;
+      window.restoreEquipmentFocusAfterRender(root, ["preview"]);
+      document.body.tabIndex = -1;
+      let remainingFrames = 4;
+      const moveFocusLate = (): void => {
+        requestAnimationFrame(() => {
+          remainingFrames -= 1;
+          if (remainingFrames === 0) {
+            document.body.focus();
+            return;
+          }
+          moveFocusLate();
+        });
+      };
+      moveFocusLate();
+    });
+    await page.waitForTimeout(150);
+    await expectFocusId(page, "preview");
+    await page.keyboard.press("Tab");
+    await expectFocusId(page, "buy");
+    await page.waitForTimeout(50);
+    await expectFocusId(page, "buy");
+  } finally {
+    await browser.close();
+  }
+});
+
 browserIt("re-enters retry traversal from the visible failure alert without focusing Apply", async () => {
   const browser = await chromium.launch({ executablePath: chromePath, headless: true });
   try {
@@ -383,6 +423,7 @@ const keyboardFixture = `
 declare global {
   interface Window {
     restoreEquipmentFocus(root: ParentNode, candidateIds: readonly string[]): HTMLElement | null;
+    restoreEquipmentFocusAfterRender(root: HTMLElement, candidateIds: readonly string[]): HTMLElement | null;
     startingEquipmentFocusCandidates(target: HTMLElement | null): string[] | null;
     __inspectWayfinderWf43TabTraversal(payload: {
       key: string;

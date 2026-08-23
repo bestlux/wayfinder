@@ -1,6 +1,7 @@
 export const STARTING_EQUIPMENT_STATUS_FOCUS_ID = "starting-equipment-status";
 export const STARTING_EQUIPMENT_REVIEW_FOCUS_ID = "starting-equipment-review";
 export const STARTING_EQUIPMENT_SEARCH_FOCUS_ID = "starting-equipment-search";
+const EQUIPMENT_RENDER_FOCUS_SETTLEMENT_ATTEMPTS = 8;
 export function equipmentItemFocusId(sourceUuid, action) {
     return `starting-equipment-item:${sourceUuid}:${action}`;
 }
@@ -67,6 +68,32 @@ export function restoreEquipmentFocus(root, candidateIds) {
         }
     }
     return null;
+}
+/**
+ * Restores equipment focus during ApplicationV2 render and guards it across
+ * Foundry's late window-focus pass. A user who has already moved to another
+ * control wins; only focus lost back to the application root or document body
+ * is recovered.
+ */
+export function restoreEquipmentFocusAfterRender(root, candidateIds) {
+    const restored = restoreEquipmentFocus(root, candidateIds);
+    const view = root.ownerDocument.defaultView;
+    if (!restored || !view)
+        return restored;
+    const settle = (attempt) => {
+        view.requestAnimationFrame(() => {
+            if (!root.isConnected)
+                return;
+            const active = root.ownerDocument.activeElement;
+            if (active === null || active === root || active === root.ownerDocument.body) {
+                restoreEquipmentFocus(root, candidateIds);
+            }
+            if (attempt + 1 < EQUIPMENT_RENDER_FOCUS_SETTLEMENT_ATTEMPTS)
+                settle(attempt + 1);
+        });
+    };
+    settle(0);
+    return restored;
 }
 function isDisabled(element) {
     return element instanceof HTMLButtonElement || element instanceof HTMLInputElement

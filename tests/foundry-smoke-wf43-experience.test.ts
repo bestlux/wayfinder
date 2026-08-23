@@ -69,7 +69,14 @@ describe("WF-080-43 live experience qualifier", () => {
     const detailSelector = runner.indexOf('data-application-part="equipment-detail"', selectAction);
     const currencySelector = runner.indexOf('data-funding="currency"', detailSelector);
     const detailWait = runner.indexOf("await waitFor(playerPage, currencyActionSelector)", currencySelector);
-    const addTab = runner.indexOf("await appTabTo(currencyActionSelector)", detailWait);
+    const focusSettlement = runner.indexOf("active?.matches(focusSelector)", detailWait);
+    const keyboardMarker = runner.indexOf('target?.getAttribute("data-keyboard-focus")', focusSettlement);
+    const stableFrames = runner.indexOf(
+      "globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve))",
+      keyboardMarker
+    );
+    const stableActive = runner.indexOf("document.activeElement === active", stableFrames);
+    const addTab = runner.indexOf("await appTabTo(currencyActionSelector)", stableActive);
     const addAction = runner.indexOf('pressAndRecord(playerPage, keyboard, "add-item", "Enter")', detailWait);
 
     expect(itemSelector).toBeGreaterThan(-1);
@@ -79,7 +86,11 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(detailSelector).toBeGreaterThan(selectAction);
     expect(currencySelector).toBeGreaterThan(detailSelector);
     expect(detailWait).toBeGreaterThan(currencySelector);
-    expect(addTab).toBeGreaterThan(detailWait);
+    expect(focusSettlement).toBeGreaterThan(detailWait);
+    expect(keyboardMarker).toBeGreaterThan(focusSettlement);
+    expect(stableFrames).toBeGreaterThan(keyboardMarker);
+    expect(stableActive).toBeGreaterThan(stableFrames);
+    expect(addTab).toBeGreaterThan(stableActive);
     expect(addAction).toBeGreaterThan(addTab);
     expect(runner).not.toContain('`${itemSelector} [data-wayfinder-action="add-equipment-item"]');
   });
@@ -107,6 +118,19 @@ describe("WF-080-43 live experience qualifier", () => {
     expect(increaseAction).toBeGreaterThan(increment);
     expect(decrementReturn).toBeGreaterThan(increaseAction);
     expect(decreaseAction).toBeGreaterThan(decrementReturn);
+  });
+
+  it("paces bounded Tab traversal by animation frames so render focus recovery can settle", () => {
+    const traversalStart = runner.indexOf("async function tabTo(");
+    const traversalEnd = runner.indexOf("function nonEmptyValues", traversalStart);
+    const traversal = runner.slice(traversalStart, traversalEnd);
+    const keyPress = traversal.indexOf("await page.keyboard.press(key)");
+    const animationFrame = traversal.indexOf("globalThis.requestAnimationFrame(resolve)", keyPress);
+    const focusEvidence = traversal.indexOf("const focus = await focusEvidence(page)", animationFrame);
+
+    expect(keyPress).toBeGreaterThan(-1);
+    expect(animationFrame).toBeGreaterThan(keyPress);
+    expect(focusEvidence).toBeGreaterThan(animationFrame);
   });
 
   it("uses the safe Cancel default and adjacent backward traversal for Apply confirmation", () => {

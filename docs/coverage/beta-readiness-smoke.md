@@ -53,7 +53,9 @@ The hosted `Player Character` draft reproduced a final-ledger disagreement after
 
 Two focused regressions reproduce the exact boundary. The ledger test proves a level-1 currency line at item level 1 is valid and reviewable; the command-service test confirms a level-1 kit containing two live-UUID Healing Potions (Minor). Both failed before the fix and pass afterward. The focused item-boundary, ledger, command, and runtime set passed 167/167 tests, and `npm run check` passed 2,082 tests across 189 files with generated scripts current.
 
-This is an intentionally scoped patch qualification. The 55-execution / 54-scenario character-build coordinator was not rerun because the change replaces one final-ledger level predicate with the already-qualified shared boundary and does not alter character planning, source resolution, actor mutation, catalogue virtualization, or higher-level limits. Package and publication evidence is appended after the exact release workflow completes.
+This is an intentionally scoped patch qualification. The 55-execution / 54-scenario character-build coordinator was not rerun because the change replaces one final-ledger level predicate with the already-qualified shared boundary and does not alter character planning, source resolution, actor mutation, catalogue virtualization, or higher-level limits.
+
+Release candidate `616cc25b1367c4eba3eff78b26a8f8c70a669e21` was published as `v0.8.4` by [workflow 32659022239](https://github.com/bestlux/wayfinder/actions/runs/32659022239). Packaging, GitHub publication, and Foundry package registration all completed successfully. The public versioned and `latest` manifests both identify 0.8.4 and resolve to the versioned ZIP; the downloaded ZIP SHA-256 is `267a9378b26e0accb7fe4dc2f96b47c427efb86981a5dcf462c2f46fdb51ab38`, matching the workflow package manifest and GitHub asset digest.
 
 ## 2026-08-23 Release 0.8.3
 

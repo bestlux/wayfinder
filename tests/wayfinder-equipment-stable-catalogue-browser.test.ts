@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "playwright-core";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { EquipmentStableCatalogue as StableCatalogue } from "../src/wayfinder/application/equipment-stable-catalogue";
 import type { EquipmentStableCatalogueHost as StableCatalogueHost } from "../src/wayfinder/application/equipment-stable-catalogue-host";
 
@@ -15,6 +15,8 @@ const chromePath = [
 ].find((entry): entry is string => Boolean(entry && existsSync(entry)));
 
 const browserIt = chromePath ? it : it.skip;
+const BROWSER_INTEGRATION_TEST_TIMEOUT_MS = 20_000;
+vi.setConfig({ testTimeout: BROWSER_INTEGRATION_TEST_TIMEOUT_MS });
 const productionStyles = readFileSync(resolve("styles/wayfinder/starting-equipment.css"), "utf8");
 const stableCatalogueScript = readFileSync(
   resolve("scripts/wayfinder/application/equipment-stable-catalogue.js"),

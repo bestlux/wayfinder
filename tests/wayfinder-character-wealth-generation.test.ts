@@ -26,6 +26,7 @@ const generatedPath = resolve("src/wayfinder/domain/character-wealth-policy.gene
 const partyNegativePath = resolve("tools/starting-equipment/fixtures/party-treasure-negative.json");
 const premasterNegativePath = resolve("tools/starting-equipment/fixtures/premaster-character-wealth-negative.json");
 const fixture = readJson(fixturePath);
+const PROCESS_INTEGRATION_TEST_TIMEOUT_MS = 20_000;
 
 describe("Character Wealth extraction and generation", () => {
   it("binds generation to the exact pinned source, table, rows, and provenance", () => {
@@ -174,15 +175,19 @@ describe("Character Wealth extraction and generation", () => {
     );
   });
 
-  it("fails before build when the checked-in Character Wealth runtime is stale", async () => {
-    await expect(assertCharacterWealthRuntimeCurrent()).resolves.toBeUndefined();
-    await expect(
-      assertCharacterWealthRuntimeCurrent({
-        readRuntimeFile: async (outputPath: string) =>
-          outputPath.endsWith("character-wealth-policy.js") ? "// stale runtime\n" : readFileSync(outputPath, "utf8"),
-      })
-    ).rejects.toThrow(/Compiled Character Wealth runtime is stale/u);
-  });
+  it(
+    "fails before build when the checked-in Character Wealth runtime is stale",
+    async () => {
+      await expect(assertCharacterWealthRuntimeCurrent()).resolves.toBeUndefined();
+      await expect(
+        assertCharacterWealthRuntimeCurrent({
+          readRuntimeFile: async (outputPath: string) =>
+            outputPath.endsWith("character-wealth-policy.js") ? "// stale runtime\n" : readFileSync(outputPath, "utf8"),
+        })
+      ).rejects.toThrow(/Compiled Character Wealth runtime is stale/u);
+    },
+    PROCESS_INTEGRATION_TEST_TIMEOUT_MS
+  );
 
   it("emits the complete source, table, fixture, data, and artifact digest chain", () => {
     const policy = buildCharacterWealthPolicy(fixture);

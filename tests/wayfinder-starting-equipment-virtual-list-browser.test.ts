@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "playwright-core";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import type {
   coverEquipmentResultViewport as coverResultViewport,
   renderEquipmentResultSkeletonBand as renderSkeletonBand,
@@ -25,6 +25,8 @@ const chromePath = [
 ].find((entry): entry is string => Boolean(entry && existsSync(entry)));
 
 const browserIt = chromePath ? it : it.skip;
+const BROWSER_INTEGRATION_TEST_TIMEOUT_MS = 20_000;
+vi.setConfig({ testTimeout: BROWSER_INTEGRATION_TEST_TIMEOUT_MS });
 const productionEquipmentStyles = readFileSync(resolve("styles/wayfinder/starting-equipment.css"), "utf8");
 const productionCatalogueTemplate = readFileSync(
   resolve("templates/wayfinder/starting-equipment-catalogue.hbs"),

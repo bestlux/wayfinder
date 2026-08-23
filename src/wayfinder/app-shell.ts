@@ -2365,13 +2365,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
     const requested = requestStartingEquipmentResultWindow(this.#equipmentResultWindowState(stepId), target);
     this.#equipmentResultWindowStateByStepId.set(stepId, requested.state);
     if (!requested.state.pending) return;
+    if (requested.scheduled) {
+      this.#startEquipmentResultWindowRender(list, requested.scheduled);
+      return;
+    }
     coverEquipmentResultViewport({
       list,
       total,
       measurements: this.#equipmentResultMeasurements(stepId),
       pending: true,
     });
-    if (requested.scheduled) this.#startEquipmentResultWindowRender(list, requested.scheduled);
   }
 
   #startEquipmentResultWindowRender(root: HTMLElement, target: StartingEquipmentResultWindow): boolean {

@@ -1780,14 +1780,16 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
         this.#equipmentResultWindowStateByStepId.set(stepId, requested.state);
         if (!requested.state.pending)
             return;
+        if (requested.scheduled) {
+            this.#startEquipmentResultWindowRender(list, requested.scheduled);
+            return;
+        }
         coverEquipmentResultViewport({
             list,
             total,
             measurements: this.#equipmentResultMeasurements(stepId),
             pending: true,
         });
-        if (requested.scheduled)
-            this.#startEquipmentResultWindowRender(list, requested.scheduled);
     }
     #startEquipmentResultWindowRender(root, target) {
         const list = root.matches("[data-wayfinder-equipment-virtual-list]")

@@ -68,11 +68,18 @@ describe("starting equipment search isolation", () => {
     const handlerStart = appShell.indexOf("  #onScrollableScroll = ");
     const handlerEnd = appShell.indexOf("  #onManualChange = ", handlerStart);
     const handler = appShell.slice(handlerStart, handlerEnd);
+    const requestStart = appShell.indexOf("  #requestEquipmentResultWindow(");
+    const requestEnd = appShell.indexOf("  #startEquipmentResultWindowRender(", requestStart);
+    const request = appShell.slice(requestStart, requestEnd);
 
     expect(appShell).toContain('scrollable.matches("[data-wayfinder-equipment-virtual-list]")');
     expect(actions).toContain('scrollable.addEventListener("scroll", handlers.onScrollableScroll, { passive: true })');
     expect(handler).toContain("this.#scheduleEquipmentResultWindow(scrollable);");
     expect(handler).not.toContain("requestAnimationFrame");
+    expect(request.match(/coverEquipmentResultViewport/g)).toHaveLength(1);
+    expect(request).toMatch(
+      /if \(requested\.scheduled\) \{\s*this\.#startEquipmentResultWindowRender\(list, requested\.scheduled\);\s*return;\s*\}\s*coverEquipmentResultViewport/
+    );
     expect(appShell).toContain("new ResizeObserver((entries) => {");
     expect(appShell).toContain("#captureEquipmentResultAnchor(scrollable)");
     expect(appShell).toContain("#restoreEquipmentResultAnchor(list, measurements)");

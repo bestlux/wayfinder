@@ -31,6 +31,7 @@ import {
 } from "../domain/class-grant-reconciliation.js";
 import type { EconomicHandoffReason } from "../domain/economic-baseline.js";
 import {
+  equipmentCurrencyBoundaryMessage,
   itemLevelWithinCurrencyBoundary,
   resolveEquipmentItemLevelBoundary,
 } from "../domain/equipment-item-level-boundary.js";
@@ -1623,7 +1624,7 @@ function resolveRequestedFunding(
   if (requested.lane === "currency") {
     const boundary = resolveEquipmentItemLevelBoundary(policy.targetLevel, policy.recipe.kind);
     if (!itemLevelWithinCurrencyBoundary(boundary, itemLevel)) {
-      throw new Error(`Starting currency can buy only items up to level ${boundary.currencyMaximum}.`);
+      throw new Error(equipmentCurrencyBoundaryMessage(boundary));
     }
     return { lane: "currency" };
   }

@@ -8,7 +8,7 @@ import {
   type StartingEquipmentCommandContext,
   StartingEquipmentPhysicalGrantCoverageError,
 } from "../src/wayfinder/application/starting-equipment-command-service";
-import { createAcquisitionDraft } from "../src/wayfinder/domain/acquisition-draft";
+import { createAcquisitionDraft, createAcquisitionPolicySnapshot } from "../src/wayfinder/domain/acquisition-draft";
 import {
   CLASS_GRANT_PROFILE_UUIDS,
   createPlannedClassGrant,
@@ -766,6 +766,54 @@ describe("starting equipment command service", () => {
       kind: "purchase-ledger",
       review: { reviewedByUserId: "owner-1" },
     });
+    expect(localizeAcquisitionMessage(localizeAcquisitionEnglish, result.status)).toBe("Kit confirmed.");
+  });
+
+  it("confirms a level-1 kit containing an at-level healing consumable", async () => {
+    const policy = levelOnePolicy();
+    const acquisition = {
+      ...createAcquisitionDraft({
+        draftId: "draft-1",
+        batchId: "batch-1",
+        manifestId: "manifest-1",
+        targetLevel: 1,
+        recipe: { kind: "permanent-items" },
+      }),
+      policySnapshot: createAcquisitionPolicySnapshot(policy, { kind: "permanent-items" }),
+      baseline: createEconomicBaseline({
+        actorId: "actor-1",
+        capturedAt: "2026-08-19T20:00:00.000Z",
+        currencyCopper: 0,
+        physicalItems: [],
+      }),
+      lines: [
+        acquisitionLine({
+          sourceUuid: "Compendium.pf2e.equipment-srd.Item.2RuepCemJhrpKKao",
+          itemLevel: 1,
+          permanence: "consumable",
+          price: acquisitionPrice({
+            basePrice: { kind: "priced", value: { gp: 4 } },
+            requestedQuantity: 2,
+          }),
+        }),
+      ],
+    };
+    const context = commandContext(acquisition);
+    const classGrantPlan = createPreparedClassGrantPlan({
+      actorId: "actor-1",
+      draftId: acquisition.draftId,
+      batchId: acquisition.batchId,
+      targetLevel: acquisition.targetLevel,
+      grants: [],
+    });
+
+    const result = await executeStartingEquipmentCommand({ type: "review-purchases" }, context, {
+      assertSourceHealth: vi.fn(async () => undefined),
+      prepareClassGrantPlan: vi.fn(async () => classGrantPlan),
+      prepareNativeGrantLines: vi.fn(async () => []),
+    });
+
+    expect(result.acquisition.disposition).toMatchObject({ kind: "purchase-ledger" });
     expect(localizeAcquisitionMessage(localizeAcquisitionEnglish, result.status)).toBe("Kit confirmed.");
   });
 

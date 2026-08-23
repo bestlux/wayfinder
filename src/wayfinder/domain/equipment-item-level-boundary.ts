@@ -44,3 +44,7 @@ export function resolveEquipmentItemLevelBoundary(
 export function itemLevelWithinCurrencyBoundary(boundary: EquipmentItemLevelBoundary, itemLevel: number): boolean {
   return Number.isSafeInteger(itemLevel) && itemLevel >= 0 && itemLevel <= boundary.currencyMaximum;
 }
+
+export function equipmentCurrencyBoundaryMessage(boundary: EquipmentItemLevelBoundary): string {
+  return `Starting currency can buy only items up to level ${boundary.currencyMaximum}.`;
+}

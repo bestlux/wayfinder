@@ -5,7 +5,7 @@ import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot, inva
 import { mintAcquisitionLineId } from "../domain/acquisition-identity.js";
 import { createAcquisitionPriceSnapshot } from "../domain/acquisition-ledger.js";
 import { assertPreparedClassGrantPlanMatches, evaluateTitanMaulerCandidate, normalizePlannedClassGrant, titanMaulerTargetSize, } from "../domain/class-grant-reconciliation.js";
-import { itemLevelWithinCurrencyBoundary, resolveEquipmentItemLevelBoundary, } from "../domain/equipment-item-level-boundary.js";
+import { equipmentCurrencyBoundaryMessage, itemLevelWithinCurrencyBoundary, resolveEquipmentItemLevelBoundary, } from "../domain/equipment-item-level-boundary.js";
 import { clampStartingEquipmentResultWindow, STARTING_EQUIPMENT_RESULT_WINDOW, } from "../starting-equipment-result-window.js";
 import { buildTitanMaulerCandidate, titanMaulerGrantIdForDraft } from "./class-grant-projection-service.js";
 import { isBrowsePhysicalBatchSafeSource, prepareTransientBrowsePhysicalItems, } from "./equipment-browse-preparation-service.js";
@@ -1245,7 +1245,7 @@ function resolveRequestedFunding(policy, requested, itemLevel, itemPermanence) {
     if (requested.lane === "currency") {
         const boundary = resolveEquipmentItemLevelBoundary(policy.targetLevel, policy.recipe.kind);
         if (!itemLevelWithinCurrencyBoundary(boundary, itemLevel)) {
-            throw new Error(`Starting currency can buy only items up to level ${boundary.currencyMaximum}.`);
+            throw new Error(equipmentCurrencyBoundaryMessage(boundary));
         }
         return { lane: "currency" };
     }

@@ -17,6 +17,11 @@ import type {
   AcquisitionReviewSnapshot,
 } from "./acquisition-types.js";
 import { assertPreparedClassGrantPlanMatches, type PreparedClassGrantPlanV1 } from "./class-grant-reconciliation.js";
+import {
+  equipmentCurrencyBoundaryMessage,
+  itemLevelWithinCurrencyBoundary,
+  resolveEquipmentItemLevelBoundary,
+} from "./equipment-item-level-boundary.js";
 import { SEMANTIC_WEALTH_POLICY } from "./semantic-wealth-policy.js";
 
 interface ResolvedAcquisitionPrice {
@@ -233,15 +238,9 @@ export function evaluateAcquisitionLedger(
       if (grant) usedGrantIds.add(grant.grantId);
       baselineChargedCopper = 0;
     } else {
-      const eligibility = evaluateCurrencyPurchase(draft, line.itemLevel, line.permanence);
-      if (!eligibility.ok) {
-        blockers.push(
-          blocker(
-            "item-ineligible",
-            line.lineId,
-            eligibility.diagnostics[0]?.message ?? "The item is not eligible under this recipe."
-          )
-        );
+      const boundaryError = evaluateCurrencyPurchase(draft, line.itemLevel);
+      if (boundaryError) {
+        blockers.push(blocker("item-ineligible", line.lineId, boundaryError));
       }
     }
 
@@ -607,22 +606,9 @@ export function invalidationReasonsForReviewedLedger(
   return compareAcquisitionMaterialFacts(draft.disposition.review.materialFacts, ledger.materialFacts);
 }
 
-function evaluateCurrencyPurchase(
-  draft: AcquisitionDraftState,
-  itemLevel: number,
-  permanence: "consumable" | "permanent"
-) {
-  return officialRecipe(draft) === "permanent-items"
-    ? SEMANTIC_WEALTH_POLICY.evaluatePermanentRecipePurchase({
-        characterLevel: draft.targetLevel,
-        itemLevel,
-        permanence,
-      })
-    : SEMANTIC_WEALTH_POLICY.evaluateLumpSumPurchase({
-        characterLevel: draft.targetLevel,
-        itemLevel,
-        rarity: "common",
-      });
+function evaluateCurrencyPurchase(draft: AcquisitionDraftState, itemLevel: number): string | null {
+  const boundary = resolveEquipmentItemLevelBoundary(draft.targetLevel, draft.recipe.kind);
+  return itemLevelWithinCurrencyBoundary(boundary, itemLevel) ? null : equipmentCurrencyBoundaryMessage(boundary);
 }
 
 function allowanceLineEligible(line: AcquisitionDraftState["lines"][number]): boolean {

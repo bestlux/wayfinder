@@ -2,6 +2,7 @@ import { cloneData } from "../../shared/cloning.js";
 import { acquisitionPreAggregationMaterial, aggregateRequestedQuantity, canonicalAcquisitionAggregationKey, } from "./acquisition-aggregation.js";
 import { compareAcquisitionMaterialFacts, isAcquisitionPolicyAuthorityConsistent } from "./acquisition-draft.js";
 import { assertPreparedClassGrantPlanMatches } from "./class-grant-reconciliation.js";
+import { equipmentCurrencyBoundaryMessage, itemLevelWithinCurrencyBoundary, resolveEquipmentItemLevelBoundary, } from "./equipment-item-level-boundary.js";
 import { SEMANTIC_WEALTH_POLICY } from "./semantic-wealth-policy.js";
 export function evaluateAcquisitionLedger(draft, preparedClassGrantPlan) {
     const policy = draft.policySnapshot;
@@ -153,9 +154,9 @@ export function evaluateAcquisitionLedger(draft, preparedClassGrantPlan) {
             baselineChargedCopper = 0;
         }
         else {
-            const eligibility = evaluateCurrencyPurchase(draft, line.itemLevel, line.permanence);
-            if (!eligibility.ok) {
-                blockers.push(blocker("item-ineligible", line.lineId, eligibility.diagnostics[0]?.message ?? "The item is not eligible under this recipe."));
+            const boundaryError = evaluateCurrencyPurchase(draft, line.itemLevel);
+            if (boundaryError) {
+                blockers.push(blocker("item-ineligible", line.lineId, boundaryError));
             }
         }
         const totalChargedCopper = safeAdd(baselineChargedCopper, supplementalChargedCopper);
@@ -470,18 +471,9 @@ export function invalidationReasonsForReviewedLedger(draft, ledger) {
     }
     return compareAcquisitionMaterialFacts(draft.disposition.review.materialFacts, ledger.materialFacts);
 }
-function evaluateCurrencyPurchase(draft, itemLevel, permanence) {
-    return officialRecipe(draft) === "permanent-items"
-        ? SEMANTIC_WEALTH_POLICY.evaluatePermanentRecipePurchase({
-            characterLevel: draft.targetLevel,
-            itemLevel,
-            permanence,
-        })
-        : SEMANTIC_WEALTH_POLICY.evaluateLumpSumPurchase({
-            characterLevel: draft.targetLevel,
-            itemLevel,
-            rarity: "common",
-        });
+function evaluateCurrencyPurchase(draft, itemLevel) {
+    const boundary = resolveEquipmentItemLevelBoundary(draft.targetLevel, draft.recipe.kind);
+    return itemLevelWithinCurrencyBoundary(boundary, itemLevel) ? null : equipmentCurrencyBoundaryMessage(boundary);
 }
 function allowanceLineEligible(line) {
     return line.componentKind === "baseline-item" && line.permanence === "permanent";

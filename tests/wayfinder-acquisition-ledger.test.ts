@@ -368,6 +368,18 @@ describe("acquisition ledger", () => {
     });
   });
 
+  it("reviews level-1 currency purchases at the level-1 item boundary", () => {
+    const draft = acquisitionDraft({
+      targetLevel: 1,
+      lines: [line({ itemLevel: 1, permanence: "consumable", funding: { lane: "currency" } })],
+    });
+
+    const ledger = evaluateAcquisitionLedger(draft);
+
+    expect(ledger).toMatchObject({ valid: true, spentCopper: 100, remainingCopper: 1400 });
+    expect(reviewPurchaseLedger(draft, ledger, reviewer()).disposition).toMatchObject({ kind: "purchase-ledger" });
+  });
+
   it("enforces recipe caps, current policy eligibility, and the currency budget", () => {
     const atLevelPermanent = acquisitionDraft({ lines: [line({ itemLevel: 5, funding: { lane: "currency" } })] });
     expect(evaluateAcquisitionLedger(atLevelPermanent).blockers.map((entry) => entry.code)).toContain(
@@ -522,29 +534,34 @@ function acquisitionDraft(options: {
   lines?: AcquisitionLineDraft[];
   recipe?: AcquisitionRecipeSelection;
   plannedClassGrants?: PlannedClassGrantV1[];
+  targetLevel?: number;
 }): AcquisitionDraftState {
   const recipe = options.recipe ?? { kind: "permanent-items" };
+  const targetLevel = options.targetLevel ?? 5;
+  const levelOne = targetLevel === 1;
   return {
     ...createAcquisitionDraft({
       draftId: "draft-1",
       batchId: "batch-1",
       manifestId: "manifest-1",
-      targetLevel: 5,
+      targetLevel,
       recipe,
     }),
     policySnapshot: {
       version: 1,
       fingerprint: "diagnostic-policy-fingerprint",
       material: {
-        subject: { actorId: "actor-1", draftId: "draft-1", targetLevel: 5 },
+        subject: { actorId: "actor-1", draftId: "draft-1", targetLevel },
         numericPolicyRef: CHARACTER_WEALTH_POLICY_REF,
         semanticPolicyRef: SEMANTIC_WEALTH_POLICY_REF,
         resolvedRecipe: recipe,
-        budgetCopper: 1000,
-        allowances: [
-          { allowanceId: "allowance-3", itemLevel: 3 },
-          { allowanceId: "allowance-4", itemLevel: 4 },
-        ],
+        budgetCopper: levelOne ? 1500 : 1000,
+        allowances: levelOne
+          ? []
+          : [
+              { allowanceId: "allowance-3", itemLevel: 3 },
+              { allowanceId: "allowance-4", itemLevel: 4 },
+            ],
         worldRecipePolicy: { enabledRecipes: ["permanent-items", "lump-sum"], defaultRecipe: "permanent-items" },
         sourcePolicy: {
           configuredPackFamilies: ["pf2e"],
@@ -560,17 +577,19 @@ function acquisitionDraft(options: {
           higherLevelStart: "actor-owner-attestation",
           apply: "actor-owner",
         },
-        higherLevelStartEvidence: {
-          kind: "actor-owner-attestation",
-          startKind: "replacement-character",
-          actorId: "actor-1",
-          draftId: "draft-1",
-          targetLevel: 5,
-          authorUserId: "owner-1",
-          authorName: "Owner",
-          recordedAt: "2026-08-18T20:00:00.000Z",
-          reason: "Replacement character",
-        },
+        higherLevelStartEvidence: levelOne
+          ? { kind: "not-required" }
+          : {
+              kind: "actor-owner-attestation",
+              startKind: "replacement-character",
+              actorId: "actor-1",
+              draftId: "draft-1",
+              targetLevel,
+              authorUserId: "owner-1",
+              authorName: "Owner",
+              recordedAt: "2026-08-18T20:00:00.000Z",
+              reason: "Replacement character",
+            },
         abp: { enabled: false, mode: "noABP", actorOverrideDisabled: false },
         gmJudgments: [],
       },

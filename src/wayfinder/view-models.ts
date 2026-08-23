@@ -436,6 +436,35 @@ export interface StartingEquipmentCatalogueRecord {
   readonly titanMaulerEligible: boolean;
 }
 
+export interface StartingEquipmentCataloguePaneRow extends StartingEquipmentCatalogueRecord {
+  readonly typeIcon: string;
+  readonly levelLabel: string;
+  readonly rarityLabel: string;
+  readonly itemTypeLabel: string;
+  readonly resultIndex: number;
+  readonly resultPosition: number;
+  readonly currencyAffordable: boolean;
+  readonly previewing: boolean;
+  readonly canAdd: boolean;
+  readonly resultLabel: string;
+  readonly canBuyWithCurrency: boolean;
+  readonly previewAriaLabel: string;
+  readonly previewFocusId: string;
+  readonly buyAriaLabel: string;
+  readonly buyFocusId: string;
+  readonly unavailableAriaLabel: string;
+  readonly allowanceOptions: readonly { allowanceId: string; label: string; ariaLabel: string; focusId: string }[];
+  readonly canChooseTitanMauler: boolean;
+  readonly titanMaulerAriaLabel: string;
+  readonly titanMaulerFocusId: string;
+  readonly canRequestException: boolean;
+  readonly requestExceptionAriaLabel: string;
+  readonly requestExceptionFocusId: string;
+  readonly canApproveException: boolean;
+  readonly approveExceptionAriaLabel: string;
+  readonly approveExceptionFocusId: string;
+}
+
 export interface StartingEquipmentStepPane {
   kind: "starting-equipment";
   templateKind: "starting-equipment";
@@ -608,34 +637,9 @@ export interface StartingEquipmentStepPane {
     narrowSearchHint: string | null;
     /** Identifies the ordered source UUID sequence for the stable catalogue controller. */
     rowOrderKey: string;
-    items: readonly (StartingEquipmentCatalogueRecord & {
-      typeIcon: string;
-      levelLabel: string;
-      rarityLabel: string;
-      itemTypeLabel: string;
-      resultIndex: number;
-      resultPosition: number;
-      currencyAffordable: boolean;
-      previewing: boolean;
-      canAdd: boolean;
-      resultLabel: string;
-      canBuyWithCurrency: boolean;
-      previewAriaLabel: string;
-      previewFocusId: string;
-      buyAriaLabel: string;
-      buyFocusId: string;
-      unavailableAriaLabel: string;
-      allowanceOptions: readonly { allowanceId: string; label: string; ariaLabel: string; focusId: string }[];
-      canChooseTitanMauler: boolean;
-      titanMaulerAriaLabel: string;
-      titanMaulerFocusId: string;
-      canRequestException: boolean;
-      requestExceptionAriaLabel: string;
-      requestExceptionFocusId: string;
-      canApproveException: boolean;
-      approveExceptionAriaLabel: string;
-      approveExceptionFocusId: string;
-    })[];
+    /** Ordered lightweight identities; row localization is deferred to the mounted-row controller. */
+    sourceUuids: readonly string[];
+    hasItems: boolean;
     preview:
       | (StartingEquipmentCatalogueRecord & {
           description: string;

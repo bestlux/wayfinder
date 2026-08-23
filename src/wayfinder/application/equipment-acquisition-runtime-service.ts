@@ -261,6 +261,8 @@ export function createEquipmentAcquisitionRuntime(
   const previewProjector = createEquipmentPreviewProjector();
   const browsePreparedRecordCache = new Map<string, StartingEquipmentCatalogueRecord>();
   const draftedEquipmentSizeCache = new Map<string, Promise<AcquisitionPriceSnapshot["size"]>>();
+  const uiRecordByEntry = new WeakMap<EquipmentCatalogueEntry, Map<string, StartingEquipmentCatalogueRecord>>();
+  const pendingUiRecordByEntry = new WeakMap<EquipmentCatalogueEntry, StartingEquipmentCatalogueRecord>();
   type BrowseProjectionSnapshot = {
     readonly orderKey: string;
     readonly matchedEntries: readonly EquipmentCatalogueEntry[];
@@ -272,6 +274,36 @@ export function createEquipmentAcquisitionRuntime(
   };
   const browseProjectionCache = new Map<string, BrowseProjectionSnapshot>();
   const entryIndexes = new WeakMap<readonly EquipmentCatalogueEntry[], ReadonlyMap<string, EquipmentCatalogueEntry>>();
+
+  const cachedUiRecord = (
+    entry: EquipmentCatalogueEntry,
+    preparedPrice?: AcquisitionPriceSnapshot | null
+  ): StartingEquipmentCatalogueRecord => {
+    const key =
+      preparedPrice === undefined
+        ? "indexed"
+        : preparedPrice === null
+          ? "pending"
+          : `${preparedPrice.linePriceCopper}:${preparedPrice.materializedQuantity}:${preparedPrice.pricePer}`;
+    let records = uiRecordByEntry.get(entry);
+    if (!records) {
+      records = new Map();
+      uiRecordByEntry.set(entry, records);
+    }
+    const cached = records.get(key);
+    if (cached) return cached;
+    const record = toUiRecord(entry, preparedPrice);
+    records.set(key, record);
+    return record;
+  };
+
+  const cachedPendingUiRecord = (entry: EquipmentCatalogueEntry): StartingEquipmentCatalogueRecord => {
+    const cached = pendingUiRecordByEntry.get(entry);
+    if (cached) return cached;
+    const record = freezeUiRecord({ ...cachedUiRecord(entry, null), pricePending: true });
+    pendingUiRecordByEntry.set(entry, record);
+    return record;
+  };
 
   const cachedBrowseRecord = (key: string): StartingEquipmentCatalogueRecord | null => {
     const cached = browsePreparedRecordCache.get(key);
@@ -507,7 +539,7 @@ export function createEquipmentAcquisitionRuntime(
                   (reason) => reason.code !== "source-not-allowed" && reason.code !== "rarity-not-available"
                 )
               ) {
-                return toUiRecord(entry);
+                return cachedUiRecord(entry);
               }
               const browseCacheKey = actorPricingFingerprint
                 ? equipmentBrowsePreparedRecordCacheKey({
@@ -521,12 +553,7 @@ export function createEquipmentAcquisitionRuntime(
                 : null;
               const cached = browseCacheKey ? cachedBrowseRecord(browseCacheKey) : null;
               const indexedPrice = indexedBrowsePrice(entry, targetSize);
-              return (
-                cached ??
-                (indexedPrice
-                  ? toUiRecord(entry, indexedPrice)
-                  : freezeUiRecord({ ...toUiRecord(entry, null), pricePending: true }))
-              );
+              return cached ?? (indexedPrice ? cachedUiRecord(entry, indexedPrice) : cachedPendingUiRecord(entry));
             })
           );
           const nextSnapshot: BrowseProjectionSnapshot = {
@@ -675,19 +702,19 @@ export function createEquipmentAcquisitionRuntime(
                     ).price;
                     throwIfStartingEquipmentProjectionAborted(request.signal);
                   }
-                  const record = toUiRecord(entry, price);
+                  const record = cachedUiRecord(entry, price);
                   if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
                   preparedRecordByUuid.set(entry.sourceUuid, record);
                 } catch (error) {
                   if (error instanceof ConfiguredItemHandoffRequiredError) {
-                    const record = toUiRecord(entry);
+                    const record = cachedUiRecord(entry);
                     if (browseCacheKey) cacheBrowseRecord(browseCacheKey, record);
                     preparedRecordByUuid.set(entry.sourceUuid, record);
                     return;
                   }
                   if (error instanceof UnsupportedPreparedPriceError) {
                     const record = freezeUiRecord({
-                      ...toUiRecord(entry, null),
+                      ...cachedUiRecord(entry, null),
                       available: false,
                       unavailableReason: error.message,
                     });
@@ -725,7 +752,7 @@ export function createEquipmentAcquisitionRuntime(
               : projectedEntryByUuid.get(line.sourceUuid);
           if (!entry) return [];
           lineRecordSourceUuids.add(line.sourceUuid);
-          return [toUiRecord(entry, line.price)];
+          return [cachedUiRecord(entry, line.price)];
         });
         return {
           state: "ready",
@@ -740,7 +767,7 @@ export function createEquipmentAcquisitionRuntime(
           previewRecord:
             preparedRecordByUuid.get(request.previewSourceUuid ?? "") ??
             (hydratedPreviewEntry
-              ? toUiRecord(hydratedPreviewEntry, indexedBrowsePrice(hydratedPreviewEntry, targetSize) ?? undefined)
+              ? cachedUiRecord(hydratedPreviewEntry, indexedBrowsePrice(hydratedPreviewEntry, targetSize) ?? undefined)
               : null) ??
             (previewIndex === undefined ? null : records[previewIndex]) ??
             null,

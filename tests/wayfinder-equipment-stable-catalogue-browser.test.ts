@@ -80,13 +80,19 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         canAdd: index !== 5 && index !== 6,
         previewing: false,
       }));
+      let rowProjectionCalls = 0;
       controller.setProjection({
         key: "fixture",
         orderKey: "fixture-order",
         stepId: "starting-equipment-level-1",
-        rows,
+        sourceUuids: rows.map((row) => row.sourceUuid),
+        rowAt: (index) => {
+          rowProjectionCalls += 1;
+          return rows[index]!;
+        },
       });
       await nextFrame();
+      const initialRowProjectionCalls = rowProjectionCalls;
       const firstRoot = viewport.querySelector<HTMLElement>("[data-result-index='0']")!;
       const updatedRows = [...rows];
       updatedRows[0] = { ...rows[0]!, name: "Updated Equipment 0" };
@@ -94,8 +100,13 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         key: "fixture:preview",
         orderKey: "fixture-order",
         stepId: "starting-equipment-level-1",
-        rows: updatedRows,
+        sourceUuids: updatedRows.map((row) => row.sourceUuid),
+        rowAt: (index) => {
+          rowProjectionCalls += 1;
+          return updatedRows[index]!;
+        },
       });
+      const volatilePatchProjectionCalls = rowProjectionCalls - initialRowProjectionCalls;
       const stableOrderUpdate = {
         indexBuilds: viewport.dataset.orderIndexBuildCount,
         nodePreserved: firstRoot === viewport.querySelector("[data-result-index='0']"),
@@ -167,6 +178,8 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
         pagingScrollTop,
         pinnedRemovedAfterBlur: !focusButton.isConnected,
         previewedSourceUuid,
+        initialRowProjectionCalls,
+        volatilePatchProjectionCalls,
         stableViewport: stableViewport === document.querySelector("[data-stable-list]"),
         stableOrderUpdate,
         totalCanvasHeight: canvas.style.height,
@@ -192,6 +205,10 @@ browserIt("mounts real rows synchronously across jumps and pins the focused row"
     });
     expect(evidence.immediateRows).toBeLessThanOrEqual(20);
     expect(evidence.mountedAfterFrame).toBeLessThanOrEqual(48);
+    expect(evidence.initialRowProjectionCalls).toBeGreaterThan(0);
+    expect(evidence.initialRowProjectionCalls).toBeLessThanOrEqual(48);
+    expect(evidence.volatilePatchProjectionCalls).toBeGreaterThan(0);
+    expect(evidence.volatilePatchProjectionCalls).toBeLessThanOrEqual(48);
     expect(Number(evidence.pagingFocusedPosition)).toBeGreaterThan(0);
     expect(evidence.pagingScrollTop).toBeGreaterThan(0);
   } finally {
@@ -243,7 +260,8 @@ browserIt("keeps long localized rows bounded across narrow layouts, text zoom, a
         key: "localized",
         orderKey: "localized-order",
         stepId: "starting-equipment-level-1",
-        rows,
+        sourceUuids: rows.map((row) => row.sourceUuid),
+        rowAt: (index: number) => rows[index]!,
       };
       controller.setProjection(projection);
       await nextFrame();

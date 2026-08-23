@@ -154,7 +154,7 @@ describe("starting equipment render session", () => {
         }))
       ),
     });
-    expect(session.pane.catalogue.items).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize + 1);
+    expect(session.pane.catalogue.sourceUuids).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize + 1);
   });
 });
 
@@ -209,6 +209,12 @@ function pane(
 ): StartingEquipmentStepPane {
   return {
     kind: "starting-equipment",
-    catalogue: { items, state },
+    catalogue: {
+      sourceUuids: items.map((item, index) =>
+        typeof item === "object" && item !== null && "sourceUuid" in item ? String(item.sourceUuid) : `item-${index}`
+      ),
+      hasItems: items.length > 0,
+      state,
+    },
   } as unknown as StartingEquipmentStepPane;
 }

@@ -38,7 +38,10 @@ import {
   type EquipmentPolicyJudgmentRecord,
 } from "../src/wayfinder/domain/equipment-policy";
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
-import { buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized } from "../src/wayfinder/panes/starting-equipment-pane";
+import {
+  buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized,
+  startingEquipmentCatalogueRowSource,
+} from "../src/wayfinder/panes/starting-equipment-pane";
 import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../src/wayfinder/starting-equipment-result-window";
 import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
 import { PF2E_841_TACTICAL_WEAPON_PRICE_WITNESS } from "./fixtures/pf2e-841-physical-price";
@@ -53,6 +56,11 @@ function buildStartingEquipmentPane(
   ]
 ) {
   return buildStartingEquipmentPaneLocalized(args[0], args[1], args[2], args[3], localizeAcquisitionEnglish, args[4]);
+}
+
+function catalogueRows(pane: ReturnType<typeof buildStartingEquipmentPaneLocalized>) {
+  const source = startingEquipmentCatalogueRowSource(pane);
+  return source.sourceUuids.map((_, index) => source.rowAt(index));
 }
 
 const PACK_ID = "pf2e.equipment-srd";
@@ -661,6 +669,11 @@ describe("equipment acquisition runtime", () => {
     expect(getIndex.mock.calls[0]?.[0].fields).not.toContain("system.usage.value");
     await runtime.uiAdapter.project({ ...request, previewSourceUuid });
     expect(getDocument.mock.calls.length - afterFirstPreview).toBe(0);
+
+    const narrowedBrowse = await runtime.uiAdapter.project({ ...request, query: "browse cache 01" });
+    expect(narrowedBrowse.records).toHaveLength(1);
+    expect(narrowedBrowse.records[0]).toBe(firstBrowse.records[1]);
+    expect(getDocument).toHaveBeenCalledTimes(afterFirstPreview);
   });
 
   it.each([
@@ -709,7 +722,7 @@ describe("equipment acquisition runtime", () => {
     expect(previewed.records).toBe(browse.records);
     expect(previewed.records[0]).toMatchObject({ priceCopper: 100 });
     expect(previewed.previewRecord).toMatchObject({ priceCopper: 200 });
-    expect(pane.catalogue.items[0]).toMatchObject({ priceCopper: 200, previewing: true });
+    expect(catalogueRows(pane)[0]).toMatchObject({ priceCopper: 200, previewing: true });
     expect(pane.catalogue.preview).toMatchObject({ priceCopper: 200 });
   });
 
@@ -1408,8 +1421,8 @@ describe("equipment acquisition runtime", () => {
       { state: "complete", complete: true, status: "Ready", issue: null },
       projection
     );
-    expect(pane.catalogue.items).toHaveLength(sources.length);
-    expect(pane.catalogue.items).toContainEqual(expect.objectContaining({ name: "Zed Off-Page Gear" }));
+    expect(catalogueRows(pane)).toHaveLength(sources.length);
+    expect(catalogueRows(pane)).toContainEqual(expect.objectContaining({ name: "Zed Off-Page Gear" }));
     expect(pane.cart.lines).toEqual([expect.objectContaining({ name: "Zed Off-Page Gear" })]);
   });
 
@@ -1502,8 +1515,8 @@ describe("equipment acquisition runtime", () => {
     expect(projection.lineRecords).toEqual([]);
     expect(getDocument).toHaveBeenCalledTimes(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(getDocument).not.toHaveBeenCalledWith(nativeSourceId);
-    expect(pane.catalogue.items).toHaveLength(sources.length);
-    expect(pane.catalogue.items).toContainEqual(expect.objectContaining({ name }));
+    expect(catalogueRows(pane)).toHaveLength(sources.length);
+    expect(catalogueRows(pane)).toContainEqual(expect.objectContaining({ name }));
     expect(pane.review).toMatchObject({ disposition: "retain-all", label: "Keeping all your coin" });
     expect(pane.cart.lines).toEqual([
       expect.objectContaining({ name, canRemove: false, fundingLabel: "Granted by your build · free" }),
@@ -1544,7 +1557,8 @@ describe("equipment acquisition runtime", () => {
       state: "error",
       searchDisabled: true,
       diagnostics: [missingDiagnostic],
-      items: [],
+      sourceUuids: [],
+      hasItems: false,
     });
     expect(pane.review).toMatchObject({ canReviewPurchases: false, canRetainAll: false });
     expect(getDocument).not.toHaveBeenCalled();
@@ -1668,14 +1682,13 @@ describe("equipment acquisition runtime", () => {
       priceLabel: "2 sp 4 cp",
       priceContext: { materializedQuantity: 12, pricePer: 10 },
     });
-    expect(
-      buildStartingEquipmentPane(
-        request.step,
-        request.draft,
-        { state: "incomplete", complete: false, status: "Review purchases", issue: null },
-        projection
-      ).catalogue.items[0]?.priceLabel
-    ).toBe("2 sp 4 cp for 12 (priced per 10)");
+    const pane = buildStartingEquipmentPane(
+      request.step,
+      request.draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      projection
+    );
+    expect(catalogueRows(pane)[0]?.priceLabel).toBe("2 sp 4 cp for 12 (priced per 10)");
 
     const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
     expect(line).toMatchObject({
@@ -1774,14 +1787,13 @@ describe("equipment acquisition runtime", () => {
       state: "ready",
       records: [{ priceCopper: 1_000, priceLabel: "10 gp" }],
     });
-    expect(
-      buildStartingEquipmentPane(
-        request.step,
-        request.draft,
-        { state: "incomplete", complete: false, status: "Review purchases", issue: null },
-        projection
-      ).catalogue.items[0]
-    ).toMatchObject({ currencyAffordable: true, canBuyWithCurrency: true, canAdd: true });
+    const pane = buildStartingEquipmentPane(
+      request.step,
+      request.draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      projection
+    );
+    expect(catalogueRows(pane)[0]).toMatchObject({ currencyAffordable: true, canBuyWithCurrency: true, canAdd: true });
     await expect(runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID })).resolves.toMatchObject({
       price: { sizeSensitive: false, unitPriceCopper: 1_000, linePriceCopper: 1_000 },
     });

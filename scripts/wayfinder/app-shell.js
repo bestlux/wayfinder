@@ -67,7 +67,7 @@ import { buildAcquisitionReceiptViewModel } from "./panes/acquisition-receipt.js
 import { buildBoostPane } from "./panes/boost-pane.js";
 import { buildPreview, matchesSearch } from "./panes/pick-pane.js";
 import { emptyPickerFilterState, normalizePickerFilterState, togglePickerFilterValue } from "./panes/picker-filters.js";
-import { buildStartingEquipmentPane } from "./panes/starting-equipment-pane.js";
+import { buildStartingEquipmentPane, startingEquipmentCatalogueRowSource } from "./panes/starting-equipment-pane.js";
 import { evaluateWayfinderStep, resolveActiveStep } from "./plan-service.js";
 import { isWizardArcaneSchoolSlotId } from "./slot-ids.js";
 import { canGrantRestrictedSpellRarityAccess, withRestrictedSpellRarityAccess, } from "./spell-choice/rarity-access.js";
@@ -1626,11 +1626,13 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             });
             this.#equipmentStableCatalogue = { viewport, controller };
         }
+        const rowSource = startingEquipmentCatalogueRowSource(session.pane);
         this.#equipmentStableCatalogue.controller.setProjection({
             key: `${session.identity.sourceRevision}:${session.viewRevision}:${session.pane.catalogue.search}`,
             orderKey: session.pane.catalogue.rowOrderKey,
             stepId: session.pane.stepId,
-            rows: session.pane.catalogue.items,
+            sourceUuids: rowSource.sourceUuids,
+            rowAt: (index) => rowSource.rowAt(index),
         });
         const scrollId = viewport.dataset.wayfinderScrollId;
         const savedScrollTop = scrollId ? this.#scrollById.get(scrollId) : undefined;

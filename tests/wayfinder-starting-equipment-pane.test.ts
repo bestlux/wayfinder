@@ -13,7 +13,10 @@ import {
   type EquipmentPolicyRequestDecisionV1,
 } from "../src/wayfinder/domain/equipment-policy";
 import { createStartingEquipmentStep } from "../src/wayfinder/domain/step-types";
-import { buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized } from "../src/wayfinder/panes/starting-equipment-pane";
+import {
+  buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized,
+  startingEquipmentCatalogueRowSource,
+} from "../src/wayfinder/panes/starting-equipment-pane";
 import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../src/wayfinder/starting-equipment-result-window";
 import type { StartingEquipmentCatalogueRecord } from "../src/wayfinder/view-models";
 import { acquisitionFixture, acquisitionLine, acquisitionPrice } from "./fixtures/acquisition-fixture";
@@ -29,6 +32,11 @@ function buildStartingEquipmentPane(
   ]
 ) {
   return buildStartingEquipmentPaneLocalized(args[0], args[1], args[2], args[3], localizeAcquisitionEnglish, args[4]);
+}
+
+function catalogueRows(pane: ReturnType<typeof buildStartingEquipmentPaneLocalized>) {
+  const source = startingEquipmentCatalogueRowSource(pane);
+  return source.sourceUuids.map((_, index) => source.rowAt(index));
 }
 
 /**
@@ -106,7 +114,7 @@ describe("starting equipment pane", () => {
     expect(pane.policy.allowances).toHaveLength(6);
     expect(pane.policy.allowances.find((allowance) => allowance.allowanceId === "level-3-1")?.used).toBe(true);
     expect(pane.cart).toMatchObject({ spentLabel: "0 gp", remainingLabel: "50 gp" });
-    expect(pane.catalogue.items[0]).toMatchObject({
+    expect(catalogueRows(pane)[0]).toMatchObject({
       canBuyWithCurrency: true,
       allowanceOptions: [
         { allowanceId: "level-3-2", label: "Use a level 3 allowance" },
@@ -165,7 +173,7 @@ describe("starting equipment pane", () => {
       }
     );
 
-    const item = pane.catalogue.items[0]!;
+    const item = catalogueRows(pane)[0]!;
     expect(item.currencyAffordable).toBe(false);
     expect(item.canBuyWithCurrency).toBe(false);
     // The allowance can pay for it, so it must not be presented as out of reach.
@@ -219,7 +227,7 @@ describe("starting equipment pane", () => {
       }
     );
 
-    expect(pane.catalogue.items[0]).toMatchObject({
+    expect(catalogueRows(pane)[0]).toMatchObject({
       canAdd: false,
       canBuyWithCurrency: false,
       allowanceOptions: [],
@@ -308,7 +316,7 @@ describe("starting equipment pane", () => {
       catalogue,
       setup
     );
-    expect(approvalRepair.catalogue.items[0]?.canRequestException).toBe(false);
+    expect(catalogueRows(approvalRepair)[0]?.canRequestException).toBe(false);
 
     const declined = buildStartingEquipmentPane(
       createStartingEquipmentStep(5),
@@ -317,7 +325,7 @@ describe("starting equipment pane", () => {
       catalogue,
       { ...setup, requestDecisions: [{ ...decision, outcome: "declined" }] }
     );
-    expect(declined.catalogue.items[0]?.canRequestException).toBe(true);
+    expect(catalogueRows(declined)[0]?.canRequestException).toBe(true);
   });
 
   it("projects policy, catalogue, affordability, cart quantity, and review state without OptionRecord", () => {
@@ -374,7 +382,7 @@ describe("starting equipment pane", () => {
       budgetLabel: "10 gp",
       automaticEligibilityLabel: "Common gear from 1 approved pack",
     });
-    expect(pane.catalogue.items[0]).toMatchObject({
+    expect(catalogueRows(pane)[0]).toMatchObject({
       name: "Adventurer's Pack",
       currencyAffordable: true,
       canAdd: true,
@@ -606,7 +614,7 @@ describe("starting equipment pane", () => {
       }
     );
 
-    expect(pane.catalogue.items[0]).toMatchObject({
+    expect(catalogueRows(pane)[0]).toMatchObject({
       canAdd: true,
       canChooseTitanMauler: true,
       traits: ["Versatile P"],
@@ -1078,7 +1086,8 @@ describe("starting equipment pane", () => {
       searchDisabled: true,
       totalResultCount: 0,
       visibleResultCount: 0,
-      items: [],
+      sourceUuids: [],
+      hasItems: false,
       preview: null,
     });
     expect(pane.review).toMatchObject({ canReviewPurchases: false, canRetainAll: false });
@@ -1128,7 +1137,78 @@ describe("starting equipment pane", () => {
 
     expect(pane.catalogue.totalResultCount).toBe(totalRecordCount);
     expect(pane.catalogue.visibleResultCount).toBe(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
-    expect(pane.catalogue.items).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
+    expect(catalogueRows(pane)).toHaveLength(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
+  });
+
+  it("defers localization for thousand-row catalogues to exact mounted indexes and preserves facet order", () => {
+    const draft = createEmptyDraft(1);
+    draft.acquisition = acquisitionFixture({ disposition: "unreviewed" }).draft;
+    const records = Array.from(
+      { length: 1_200 },
+      (_, index): StartingEquipmentCatalogueRecord => ({
+        sourceUuid: `Compendium.pf2e.equipment-srd.Item.lazy-${index}`,
+        name: `Lazy item ${index}`,
+        itemType: "equipment",
+        level: index % 2,
+        rarity: "common",
+        sourceLabel: "Player Core",
+        priceCopper: 10 + index,
+        priceLabel: `${10 + index} cp`,
+        bulkLabel: "L",
+        handsLabel: null,
+        traits: ["common"],
+        available: true,
+        unavailableReason: null,
+        titanMaulerEligible: false,
+        exceptionRequestable: false,
+      })
+    );
+    const localize = vi.fn(localizeAcquisitionEnglish);
+    const step = createStartingEquipmentStep(1);
+    const evaluation = { state: "incomplete", complete: false, status: "Review purchases", issue: null } as const;
+    const projection = (ordered: readonly StartingEquipmentCatalogueRecord[], rowOrderKey: string) => ({
+      state: "ready" as const,
+      message: "",
+      query: "",
+      rowOrderKey,
+      matchedRecordCount: ordered.length,
+      records: ordered,
+      filters: [],
+      activeFilters: {},
+      previewSourceUuid: null,
+      titanMauler: { required: false, selectedSourceUuid: null },
+    });
+    const rowLocalizationCount = () =>
+      localize.mock.calls.filter(([key]) => key === "wayfinder-pf2e.StartingEquipment.Catalogue.LevelTag").length;
+
+    const pane = buildStartingEquipmentPaneLocalized(step, draft, evaluation, projection(records, "all"), localize, {
+      worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY,
+      judgments: [],
+      isGm: false,
+      locale: "en",
+    });
+    const source = startingEquipmentCatalogueRowSource(pane);
+    expect(source.sourceUuids).toHaveLength(1_200);
+    expect(rowLocalizationCount()).toBe(0);
+
+    const mountedRows = Array.from({ length: 29 }, (_, index) => source.rowAt(index));
+    expect(mountedRows.map((row) => row.sourceUuid)).toEqual(source.sourceUuids.slice(0, 29));
+    expect(rowLocalizationCount()).toBe(29);
+
+    const reversed = [...records].reverse();
+    const reorderedPane = buildStartingEquipmentPaneLocalized(
+      step,
+      draft,
+      evaluation,
+      projection(reversed, "reversed"),
+      localize,
+      { worldPolicy: DEFAULT_EQUIPMENT_WORLD_POLICY, judgments: [], isGm: false, locale: "en" }
+    );
+    const reordered = startingEquipmentCatalogueRowSource(reorderedPane);
+    expect(rowLocalizationCount()).toBe(29);
+    expect(reordered.sourceUuids[0]).toBe(records.at(-1)!.sourceUuid);
+    expect(reordered.rowAt(0).sourceUuid).toBe(reordered.sourceUuids[0]);
+    expect(rowLocalizationCount()).toBe(30);
   });
 
   it("reuses localized row invariants while updating only changed funding and preview state", () => {
@@ -1188,6 +1268,7 @@ describe("starting equipment pane", () => {
     });
 
     const first = buildStartingEquipmentPaneLocalized(step, draft, evaluation, projection(null), localize, setup);
+    const firstRows = catalogueRows(first);
     const invariantCalls = localize.mock.calls.filter(
       ([key]) =>
         key === "wayfinder-pf2e.StartingEquipment.Catalogue.LevelTag" ||
@@ -1211,9 +1292,11 @@ describe("starting equipment pane", () => {
       setup
     );
 
-    expect(previewed.catalogue.items[0]).toBe(first.catalogue.items[0]);
-    expect(previewed.catalogue.items[1]).not.toBe(first.catalogue.items[1]);
-    expect(repeatedPreview.catalogue.items[1]).toBe(previewed.catalogue.items[1]);
+    const previewedRows = catalogueRows(previewed);
+    const repeatedPreviewRows = catalogueRows(repeatedPreview);
+    expect(previewedRows[0]).toBe(firstRows[0]);
+    expect(previewedRows[1]).not.toBe(firstRows[1]);
+    expect(repeatedPreviewRows[1]).toBe(previewedRows[1]);
     expect(
       localize.mock.calls.filter(
         ([key]) =>
@@ -1230,7 +1313,7 @@ describe("starting equipment pane", () => {
       localize,
       { ...setup, locale: "cn" }
     );
-    expect(changedLocale.catalogue.items[0]).not.toBe(previewed.catalogue.items[0]);
+    expect(catalogueRows(changedLocale)[0]).not.toBe(previewedRows[0]);
 
     draft.acquisition = {
       ...draft.acquisition!,
@@ -1244,9 +1327,9 @@ describe("starting equipment pane", () => {
       localize,
       setup
     );
-    expect(funded.catalogue.items[0]).toBe(previewed.catalogue.items[0]);
-    expect(funded.catalogue.items[1]).not.toBe(previewed.catalogue.items[1]);
-    expect(funded.catalogue.items[1]).toMatchObject({ currencyAffordable: false, canBuyWithCurrency: false });
+    expect(catalogueRows(funded)[0]).toBe(previewedRows[0]);
+    expect(catalogueRows(funded)[1]).not.toBe(previewedRows[1]);
+    expect(catalogueRows(funded)[1]).toMatchObject({ currencyAffordable: false, canBuyWithCurrency: false });
   });
 
   it("projects bounded production-shaped type and source controls without hiding active facets", () => {
@@ -1343,8 +1426,8 @@ describe("starting equipment pane", () => {
       sourceSearch: "Source",
       sourceResultAnnouncement: "Showing 12 of 20 matching sources",
     });
-    expect(pane.catalogue.items[0]?.resultLabel).toBe("Dagger · Level 0 · Common · Source 19 · 2 sp · Available");
-    expect(pane.catalogue.items[0]).toMatchObject({ bulkLabel: "", handsLabel: null });
+    expect(catalogueRows(pane)[0]?.resultLabel).toBe("Dagger · Level 0 · Common · Source 19 · 2 sp · Available");
+    expect(catalogueRows(pane)[0]).toMatchObject({ bulkLabel: "", handsLabel: null });
     expect(pane.catalogue.preview).toMatchObject({
       sourceUuid: record.sourceUuid,
       description: "<p>Selected equipment rules.</p>",

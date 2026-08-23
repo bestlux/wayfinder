@@ -27,7 +27,11 @@ import {
   clampStartingEquipmentResultWindow,
   STARTING_EQUIPMENT_RESULT_WINDOW,
 } from "../starting-equipment-result-window.js";
-import type { StartingEquipmentCatalogueRecord, StartingEquipmentStepPane } from "../view-models.js";
+import type {
+  StartingEquipmentCataloguePaneRow,
+  StartingEquipmentCatalogueRecord,
+  StartingEquipmentStepPane,
+} from "../view-models.js";
 
 export interface StartingEquipmentCatalogueProjection {
   readonly state: "pending" | "ready" | "error";
@@ -82,7 +86,13 @@ const INLINE_STARTING_EQUIPMENT_TYPE_FILTERS = [
 export const MAX_INLINE_STARTING_EQUIPMENT_TYPE_FILTERS = INLINE_STARTING_EQUIPMENT_TYPE_FILTERS.length;
 export const MAX_VISIBLE_STARTING_EQUIPMENT_SOURCE_FILTERS = 12;
 
-type CataloguePaneRow = StartingEquipmentStepPane["catalogue"]["items"][number];
+type CataloguePaneRow = StartingEquipmentCataloguePaneRow;
+export interface StartingEquipmentCatalogueRowSource {
+  readonly sourceUuids: readonly string[];
+  rowAt(index: number): StartingEquipmentCataloguePaneRow;
+}
+
+const catalogueRowSourceByPane = new WeakMap<StartingEquipmentStepPane, StartingEquipmentCatalogueRowSource>();
 type LocalizedCatalogueInvariant = Pick<
   CataloguePaneRow,
   | "levelLabel"
@@ -102,6 +112,14 @@ const cataloguePaneRowCache = new WeakMap<
   StartingEquipmentCatalogueRecord,
   WeakMap<AcquisitionLocalize, Map<string, { readonly volatileKey: string; readonly row: CataloguePaneRow }>>
 >();
+
+export function startingEquipmentCatalogueRowSource(
+  pane: StartingEquipmentStepPane
+): StartingEquipmentCatalogueRowSource {
+  const source = catalogueRowSourceByPane.get(pane);
+  if (!source) throw new Error("Starting-equipment pane has no mounted-row projection source.");
+  return source;
+}
 
 export function buildStartingEquipmentPane(
   step: StartingEquipmentStep,
@@ -140,19 +158,11 @@ export function buildStartingEquipmentPane(
   const availableAllowances =
     policy?.allowances.filter((allowance) => !usedAllowanceIds.has(allowance.allowanceId)) ?? [];
   const browseRecords = catalogueReady ? catalogue.records : [];
-  const previewRecordIndex = catalogue.previewRecord
-    ? browseRecords.findIndex((record) => record.sourceUuid === catalogue.previewRecord?.sourceUuid)
+  const sourceUuids = Object.freeze(browseRecords.map((record) => record.sourceUuid));
+  const previewSourceUuid = catalogue.previewRecord?.sourceUuid ?? catalogue.previewSourceUuid;
+  const previewRecordIndex = previewSourceUuid
+    ? browseRecords.findIndex((record) => record.sourceUuid === previewSourceUuid)
     : -1;
-  const projectedRecords =
-    catalogue.previewRecord && previewRecordIndex >= 0
-      ? [
-          ...browseRecords.slice(0, previewRecordIndex),
-          catalogue.previewRecord,
-          ...browseRecords.slice(previewRecordIndex + 1),
-        ]
-      : catalogue.previewRecord
-        ? [...browseRecords, catalogue.previewRecord]
-        : browseRecords;
   const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
   const resultWindow = clampStartingEquipmentResultWindow(
     {
@@ -175,7 +185,7 @@ export function buildStartingEquipmentPane(
         : []
     )
   );
-  const paneRecords = projectedRecords.map((record, index) => {
+  const projectRecord = (record: StartingEquipmentCatalogueRecord, index: number): CataloguePaneRow => {
     const currencyAffordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
     const canBuyWithCurrency = record.available && record.level < step.level && currencyAffordable;
     const eligibleAllowances =
@@ -185,7 +195,7 @@ export function buildStartingEquipmentPane(
     const exceptionPending = pendingExceptionSourceUuids.has(record.sourceUuid);
     const previewing = record.sourceUuid === catalogue.previewSourceUuid;
     const volatileKey = JSON.stringify([
-      resultWindow.offset + Math.min(index, Math.max(0, browseRecords.length - 1)),
+      resultWindow.offset + Math.max(0, index),
       currencyAffordable,
       canBuyWithCurrency,
       eligibleAllowances.map((allowance) => [allowance.allowanceId, allowance.itemLevel, allowance.remaining]),
@@ -235,8 +245,8 @@ export function buildStartingEquipmentPane(
     });
     const row: CataloguePaneRow = {
       ...record,
-      resultIndex: resultWindow.offset + Math.min(index, Math.max(0, browseRecords.length - 1)),
-      resultPosition: resultWindow.offset + Math.min(index, Math.max(0, browseRecords.length - 1)) + 1,
+      resultIndex: resultWindow.offset + Math.max(0, index),
+      resultPosition: resultWindow.offset + Math.max(0, index) + 1,
       levelLabel: invariant.levelLabel,
       priceLabel,
       rarityLabel: localizedRarity,
@@ -293,8 +303,22 @@ export function buildStartingEquipmentPane(
     }
     rowsByLocale.set(locale, { volatileKey, row });
     return row;
+  };
+  const rowSource: StartingEquipmentCatalogueRowSource = Object.freeze({
+    sourceUuids,
+    rowAt(index: number): StartingEquipmentCataloguePaneRow {
+      if (!Number.isSafeInteger(index) || index < 0 || index >= browseRecords.length) {
+        throw new RangeError(`Starting-equipment catalogue row index ${index} is outside the projection.`);
+      }
+      const indexed = browseRecords[index]!;
+      const record = catalogue.previewRecord?.sourceUuid === indexed.sourceUuid ? catalogue.previewRecord : indexed;
+      const row = projectRecord(record, index);
+      if (row.sourceUuid !== sourceUuids[index]) {
+        throw new Error("Starting-equipment mounted row drifted from its ordered source identity.");
+      }
+      return row;
+    },
   });
-  const records = paneRecords.slice(0, browseRecords.length);
   const recordByUuid = new Map(
     [
       ...catalogue.records,
@@ -303,7 +327,13 @@ export function buildStartingEquipmentPane(
     ].map((record) => [record.sourceUuid, record])
   );
   const plannedGrantById = new Map(acquisition?.plannedClassGrants.map((grant) => [grant.grantId, grant]) ?? []);
-  const previewRecord = paneRecords.find((record) => record.previewing) ?? null;
+  const rawPreviewRecord =
+    catalogue.previewRecord ??
+    browseRecords.find((record) => record.sourceUuid === catalogue.previewSourceUuid) ??
+    null;
+  const previewRecord = rawPreviewRecord
+    ? projectRecord(rawPreviewRecord, previewRecordIndex >= 0 ? previewRecordIndex : 0)
+    : null;
   const previewDetails =
     previewRecord && catalogue.preview?.sourceUuid === previewRecord.sourceUuid ? catalogue.preview : null;
   const preview = previewRecord
@@ -470,7 +500,7 @@ export function buildStartingEquipmentPane(
       }
     : null;
 
-  return {
+  const pane: StartingEquipmentStepPane = {
     kind: "starting-equipment",
     templateKind: "starting-equipment",
     stepId: step.id,
@@ -644,31 +674,32 @@ export function buildStartingEquipmentPane(
         total: matchingTraitFilters.length,
       }),
       totalResultCount: matchedRecordCount,
-      visibleResultCount: records.length,
+      visibleResultCount: sourceUuids.length,
       resultOffset: resultWindow.offset,
       resultLimit: resultWindow.limit,
       leadingSpacerPx: resultWindow.offset * STARTING_EQUIPMENT_RESULT_WINDOW.initialRowHeightPx,
       trailingSpacerPx:
-        Math.max(0, matchedRecordCount - resultWindow.offset - records.length) *
+        Math.max(0, matchedRecordCount - resultWindow.offset - sourceUuids.length) *
         STARTING_EQUIPMENT_RESULT_WINDOW.initialRowHeightPx,
       hasPreviousWindow: resultWindow.offset > 0,
-      hasNextWindow: resultWindow.offset + records.length < matchedRecordCount,
+      hasNextWindow: resultWindow.offset + sourceUuids.length < matchedRecordCount,
       previousWindowOffset: Math.max(0, resultWindow.offset - STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize),
       nextWindowOffset: Math.min(
         Math.max(0, matchedRecordCount - resultWindow.limit),
         resultWindow.offset + STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize
       ),
       resultAnnouncement: localize("wayfinder-pf2e.StartingEquipment.Catalogue.ResultCount", {
-        start: records.length > 0 ? resultWindow.offset + 1 : 0,
-        end: resultWindow.offset + records.length,
+        start: sourceUuids.length > 0 ? resultWindow.offset + 1 : 0,
+        end: resultWindow.offset + sourceUuids.length,
         total: matchedRecordCount,
       }),
-      hiddenResultCount: Math.max(0, matchedRecordCount - records.length),
+      hiddenResultCount: Math.max(0, matchedRecordCount - sourceUuids.length),
       narrowSearchHint: null,
       rowOrderKey:
         catalogue.rowOrderKey ??
         `uncached:${catalogue.query}:${catalogue.records.map((record) => record.sourceUuid).join("\u0000")}`,
-      items: records,
+      sourceUuids,
+      hasItems: sourceUuids.length > 0,
       preview,
     },
     cart: {
@@ -714,6 +745,8 @@ export function buildStartingEquipmentPane(
       reasons: handoff?.handoff.reasons.map((reason) => handoffReason(reason, localize)) ?? [],
     },
   };
+  catalogueRowSourceByPane.set(pane, rowSource);
+  return pane;
 }
 
 function requestDecisionFor(

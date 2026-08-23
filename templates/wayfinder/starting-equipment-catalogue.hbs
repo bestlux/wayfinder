@@ -55,7 +55,7 @@
     {{#if activePane.catalogue.narrowSearchHint}}<small>{{activePane.catalogue.narrowSearchHint}}</small>{{/if}}
   </p>
 
-  {{#unless activePane.catalogue.items.length}}
+  {{#unless activePane.catalogue.hasItems}}
     <div class="equipment-catalogue-state {{activePane.catalogue.state}}" role="status" aria-live="polite" aria-atomic="true">
       <i class="fa-solid fa-box-open" aria-hidden="true"></i>
       <p>{{activePane.catalogue.message}}</p>

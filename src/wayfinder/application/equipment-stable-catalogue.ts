@@ -23,7 +23,8 @@ export interface EquipmentStableCatalogueProjection {
   /** Identifies the ordered source UUID sequence; equal keys guarantee equal order. */
   readonly orderKey: string;
   readonly stepId: string;
-  readonly rows: readonly EquipmentStableCatalogueRow[];
+  readonly sourceUuids: readonly string[];
+  readonly rowAt: (index: number) => EquipmentStableCatalogueRow;
 }
 
 export interface EquipmentStableCatalogueOptions {
@@ -118,7 +119,7 @@ export class EquipmentStableCatalogue {
     const preservesOrder =
       this.#projection !== null &&
       this.#projection.orderKey === projection.orderKey &&
-      this.#projection.rows.length === projection.rows.length;
+      this.#projection.sourceUuids.length === projection.sourceUuids.length;
     if (preservesOrder) {
       this.#projection = projection;
       this.#viewport.dataset.projectionKey = projection.key;
@@ -131,19 +132,19 @@ export class EquipmentStableCatalogue {
       return;
     }
     const indexBySourceUuid = new Map<string, number>();
-    projection.rows.forEach((row, index) => {
-      if (!row.sourceUuid || indexBySourceUuid.has(row.sourceUuid)) {
+    projection.sourceUuids.forEach((sourceUuid, index) => {
+      if (!sourceUuid || indexBySourceUuid.has(sourceUuid)) {
         throw new TypeError("Stable equipment catalogue rows require unique source UUIDs.");
       }
-      indexBySourceUuid.set(row.sourceUuid, index);
+      indexBySourceUuid.set(sourceUuid, index);
     });
 
     const focusedSourceUuid = this.#focusedSourceUuid();
     this.#projection = projection;
     this.#indexBySourceUuid = indexBySourceUuid;
     this.#orderIndexBuildCount += 1;
-    this.#canvas.style.height = `${projection.rows.length * this.#rowHeightPx}px`;
-    this.#viewport.dataset.totalResults = String(projection.rows.length);
+    this.#canvas.style.height = `${projection.sourceUuids.length * this.#rowHeightPx}px`;
+    this.#viewport.dataset.totalResults = String(projection.sourceUuids.length);
     this.#viewport.dataset.projectionKey = projection.key;
     this.#viewport.dataset.orderIndexBuildCount = String(this.#orderIndexBuildCount);
 
@@ -151,7 +152,10 @@ export class EquipmentStableCatalogue {
       this.#viewport.focus({ preventScroll: true });
     }
 
-    const maximumScrollTop = Math.max(0, projection.rows.length * this.#rowHeightPx - this.#viewport.clientHeight);
+    const maximumScrollTop = Math.max(
+      0,
+      projection.sourceUuids.length * this.#rowHeightPx - this.#viewport.clientHeight
+    );
     if (this.#viewport.scrollTop > maximumScrollTop) this.#viewport.scrollTop = maximumScrollTop;
     this.#lastScrollTop = this.#viewport.scrollTop;
     this.#mountedRange = { start: 0, end: 0 };
@@ -161,7 +165,7 @@ export class EquipmentStableCatalogue {
 
   restoreScrollTop(scrollTop: number): void {
     this.#assertActive();
-    const totalHeight = (this.#projection?.rows.length ?? 0) * this.#rowHeightPx;
+    const totalHeight = (this.#projection?.sourceUuids.length ?? 0) * this.#rowHeightPx;
     const maximumScrollTop = Math.max(0, totalHeight - this.#viewport.clientHeight);
     this.#viewport.scrollTop = clamp(Number.isFinite(scrollTop) ? scrollTop : 0, 0, maximumScrollTop);
     this.#lastScrollTop = this.#viewport.scrollTop;
@@ -247,7 +251,7 @@ export class EquipmentStableCatalogue {
   }
 
   #visibleRange(): EquipmentStableCatalogueRange {
-    const total = this.#projection?.rows.length ?? 0;
+    const total = this.#projection?.sourceUuids.length ?? 0;
     if (total === 0) return { start: 0, end: 0 };
     const start = clamp(Math.floor(this.#viewport.scrollTop / this.#rowHeightPx), 0, total - 1);
     const visibleCount = Math.max(1, Math.ceil(this.#viewport.clientHeight / this.#rowHeightPx) + 1);
@@ -255,7 +259,7 @@ export class EquipmentStableCatalogue {
   }
 
   #emergencyRange(visible: EquipmentStableCatalogueRange): EquipmentStableCatalogueRange {
-    const total = this.#projection?.rows.length ?? 0;
+    const total = this.#projection?.sourceUuids.length ?? 0;
     return {
       start: Math.max(0, visible.start - 1),
       end: Math.min(total, visible.end + 1),
@@ -263,7 +267,7 @@ export class EquipmentStableCatalogue {
   }
 
   #overscanRange(visible: EquipmentStableCatalogueRange): EquipmentStableCatalogueRange {
-    const total = this.#projection?.rows.length ?? 0;
+    const total = this.#projection?.sourceUuids.length ?? 0;
     const before = this.#direction < 0 ? this.#rowsAhead : this.#rowsBehind;
     const after = this.#direction < 0 ? this.#rowsBehind : this.#rowsAhead;
     return {
@@ -280,18 +284,17 @@ export class EquipmentStableCatalogue {
     const mounted: MountedEquipmentRow[] = [];
 
     for (let index = range.start; index < range.end; index += 1) {
-      const row = projection.rows[index];
-      if (!row) continue;
+      const row = this.#rowAt(index);
       wanted.add(row.sourceUuid);
-      mounted.push(this.#mountOrPatch(row, index, projection.rows.length));
+      mounted.push(this.#mountOrPatch(row, index, projection.sourceUuids.length));
     }
 
     if (focusedSourceUuid && !wanted.has(focusedSourceUuid)) {
       const focusedIndex = this.#indexBySourceUuid.get(focusedSourceUuid);
-      const focusedRow = focusedIndex === undefined ? undefined : projection.rows[focusedIndex];
+      const focusedRow = focusedIndex === undefined ? undefined : this.#rowAt(focusedIndex);
       if (focusedRow && focusedIndex !== undefined) {
         wanted.add(focusedSourceUuid);
-        mounted.push(this.#mountOrPatch(focusedRow, focusedIndex, projection.rows.length));
+        mounted.push(this.#mountOrPatch(focusedRow, focusedIndex, projection.sourceUuids.length));
       }
     }
 
@@ -316,20 +319,20 @@ export class EquipmentStableCatalogue {
 
   #scrollPage(direction: -1 | 1): void {
     const projection = this.#projection;
-    if (!projection || projection.rows.length === 0) return;
+    if (!projection || projection.sourceUuids.length === 0) return;
     const visible = this.#visibleRange();
     const pageSize = Math.max(1, visible.end - visible.start - 1);
-    const targetIndex = clamp(visible.start + direction * pageSize, 0, projection.rows.length - 1);
+    const targetIndex = clamp(visible.start + direction * pageSize, 0, projection.sourceUuids.length - 1);
     this.#viewport.scrollTop = targetIndex * this.#rowHeightPx;
     this.#onScroll();
     requestAnimationFrame(() => {
-      this.#mountedBySourceUuid.get(projection.rows[targetIndex]!.sourceUuid)?.button.focus({ preventScroll: true });
+      this.#mountedBySourceUuid.get(projection.sourceUuids[targetIndex]!)?.button.focus({ preventScroll: true });
     });
   }
 
   #updatePagingFallback(): void {
     const visible = this.#visibleRange();
-    const total = this.#projection?.rows.length ?? 0;
+    const total = this.#projection?.sourceUuids.length ?? 0;
     if (this.#previousPageButton) this.#previousPageButton.disabled = visible.start === 0;
     if (this.#nextPageButton) this.#nextPageButton.disabled = visible.end >= total;
   }
@@ -370,10 +373,22 @@ export class EquipmentStableCatalogue {
     const prior = this.#rowHeightPx;
     const anchor = prior > 0 ? this.#viewport.scrollTop / prior : 0;
     this.#rowHeightPx = next;
-    this.#canvas.style.height = `${(this.#projection?.rows.length ?? 0) * next}px`;
+    this.#canvas.style.height = `${(this.#projection?.sourceUuids.length ?? 0) * next}px`;
     this.#viewport.scrollTop = anchor * next;
     this.#lastScrollTop = this.#viewport.scrollTop;
     this.#mountedRange = { start: 0, end: 0 };
+  }
+
+  #rowAt(index: number): EquipmentStableCatalogueRow {
+    const projection = this.#projection;
+    if (!projection) throw new Error("Stable equipment catalogue has no active projection.");
+    const sourceUuid = projection.sourceUuids[index];
+    if (!sourceUuid) throw new RangeError(`Stable equipment catalogue row ${index} is outside the projection.`);
+    const row = projection.rowAt(index);
+    if (row.sourceUuid !== sourceUuid) {
+      throw new Error("Stable equipment catalogue row drifted from its ordered source identity.");
+    }
+    return row;
   }
 }
 

@@ -46,12 +46,10 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         return assignment.mode === "player" ? [assignment.allowanceId] : [];
     }) ?? []);
     const availableAllowances = policy?.allowances.filter((allowance) => !usedAllowanceIds.has(allowance.allowanceId)) ?? [];
-    const browseRecords = catalogueReady ? catalogue.records : [];
-    const sourceUuids = Object.freeze(browseRecords.map((record) => record.sourceUuid));
+    const browseRecordSource = catalogueReady ? catalogue.recordSource : null;
+    const sourceUuids = browseRecordSource?.sourceUuids ?? [];
     const previewSourceUuid = catalogue.previewRecord?.sourceUuid ?? catalogue.previewSourceUuid;
-    const previewRecordIndex = previewSourceUuid
-        ? browseRecords.findIndex((record) => record.sourceUuid === previewSourceUuid)
-        : -1;
+    const previewRecordIndex = previewSourceUuid ? sourceUuids.indexOf(previewSourceUuid) : -1;
     const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
     const resultWindow = clampStartingEquipmentResultWindow({
         offset: catalogue.offset ?? 0,
@@ -67,6 +65,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
         request.facts.draftId === acquisition?.draftId
         ? [request.facts.sourceUuid]
         : []));
+    let projectedRowCount = 0;
     const projectRecord = (record, index) => {
         const currencyAffordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
         const canBuyWithCurrency = record.available && record.level < step.level && currencyAffordable;
@@ -181,15 +180,19 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             localizedRows.set(localize, rowsByLocale);
         }
         rowsByLocale.set(locale, { volatileKey, row });
+        projectedRowCount += 1;
         return row;
     };
     const rowSource = Object.freeze({
         sourceUuids,
+        get projectedRowCount() {
+            return projectedRowCount;
+        },
         rowAt(index) {
-            if (!Number.isSafeInteger(index) || index < 0 || index >= browseRecords.length) {
+            if (!browseRecordSource || !Number.isSafeInteger(index) || index < 0 || index >= sourceUuids.length) {
                 throw new RangeError(`Starting-equipment catalogue row index ${index} is outside the projection.`);
             }
-            const indexed = browseRecords[index];
+            const indexed = browseRecordSource.recordAt(index);
             const record = catalogue.previewRecord?.sourceUuid === indexed.sourceUuid ? catalogue.previewRecord : indexed;
             const row = projectRecord(record, index);
             if (row.sourceUuid !== sourceUuids[index]) {
@@ -198,14 +201,13 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             return row;
         },
     });
-    const recordByUuid = new Map([
-        ...catalogue.records,
-        ...(catalogue.previewRecord ? [catalogue.previewRecord] : []),
-        ...(catalogue.lineRecords ?? []),
-    ].map((record) => [record.sourceUuid, record]));
+    const recordByUuid = new Map([...(catalogue.previewRecord ? [catalogue.previewRecord] : []), ...(catalogue.lineRecords ?? [])].map((record) => [
+        record.sourceUuid,
+        record,
+    ]));
     const plannedGrantById = new Map(acquisition?.plannedClassGrants.map((grant) => [grant.grantId, grant]) ?? []);
     const rawPreviewRecord = catalogue.previewRecord ??
-        browseRecords.find((record) => record.sourceUuid === catalogue.previewSourceUuid) ??
+        (previewRecordIndex >= 0 ? browseRecordSource?.recordAt(previewRecordIndex) : null) ??
         null;
     const previewRecord = rawPreviewRecord
         ? projectRecord(rawPreviewRecord, previewRecordIndex >= 0 ? previewRecordIndex : 0)
@@ -525,8 +527,7 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
             }),
             hiddenResultCount: Math.max(0, matchedRecordCount - sourceUuids.length),
             narrowSearchHint: null,
-            rowOrderKey: catalogue.rowOrderKey ??
-                `uncached:${catalogue.query}:${catalogue.records.map((record) => record.sourceUuid).join("\u0000")}`,
+            rowOrderKey: catalogue.rowOrderKey ?? `uncached:${catalogue.query}:${sourceUuids.join("\u0000")}`,
             sourceUuids,
             hasItems: sourceUuids.length > 0,
             preview,

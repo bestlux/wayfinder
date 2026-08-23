@@ -25,7 +25,7 @@ const EQUIPMENT_STAGE_NAMES = new Set([
   "actor-pricing-fingerprint",
   "drafted-size-resolution",
   "criteria-filter-facet-projection",
-  "browse-record-projection",
+  "browse-record-source-assembly",
   "criteria-rank",
   "equipment-ui-projection",
   "equipment-pane-assembly",
@@ -43,7 +43,7 @@ const REQUIRED_COLD_STAGE_NAMES = [
   "actor-pricing-fingerprint",
   "drafted-size-resolution",
   "criteria-filter-facet-projection",
-  "browse-record-projection",
+  "browse-record-source-assembly",
   "criteria-rank",
   "equipment-ui-projection",
   "equipment-pane-assembly",
@@ -57,7 +57,7 @@ const REQUIRED_FACET_STAGE_NAMES = [
   "actor-pricing-fingerprint",
   "drafted-size-resolution",
   "criteria-filter-facet-projection",
-  "browse-record-projection",
+  "browse-record-source-assembly",
   "criteria-rank",
   "equipment-ui-projection",
   "equipment-pane-assembly",
@@ -82,7 +82,7 @@ const EQUIPMENT_STAGE_DETAIL_KEYS = Object.freeze({
   "actor-pricing-fingerprint": ["itemCount", "effectCount", "sourceCharacterCount"],
   "drafted-size-resolution": ["actorPricingFingerprintAvailable"],
   "criteria-filter-facet-projection": ["inputEntryCount", "filteredEntryCount", "projectedFacetCount"],
-  "browse-record-projection": ["matchedEntryCount", "recordCount"],
+  "browse-record-source-assembly": ["matchedEntryCount", "sourceIdentityCount"],
   "criteria-rank": ["inputEntryCount", "matchedEntryCount"],
   "equipment-ui-projection": [
     "queryLength",
@@ -91,8 +91,8 @@ const EQUIPMENT_STAGE_DETAIL_KEYS = Object.freeze({
     "requestedLimit",
     "previewRequested",
   ],
-  "equipment-pane-assembly": ["recordCount", "matchedRecordCount"],
-  "mounted-row-projection": ["matchedRecordCount"],
+  "equipment-pane-assembly": ["sourceIdentityCount", "matchedRecordCount"],
+  "mounted-row-projection": ["matchedRecordCount", "projectedRowCount"],
   "foundry-prepare-context": [],
   "foundry-template-render": [],
   "foundry-html-replacement": [],
@@ -776,11 +776,11 @@ function validateEquipmentStageDetails(stage, details) {
       failures.push("Rank stage output count does not preserve its input count.");
     }
   }
-  if (stage === "browse-record-projection") {
-    if (!nonnegativeCounters("matchedEntryCount", "recordCount")) {
-      failures.push("Browse-record stage lacks nonnegative input and output counters.");
-    } else if (details.recordCount !== details.matchedEntryCount) {
-      failures.push("Browse-record output count does not reconcile with matched entries.");
+  if (stage === "browse-record-source-assembly") {
+    if (!nonnegativeCounters("matchedEntryCount", "sourceIdentityCount")) {
+      failures.push("Browse-record-source stage lacks nonnegative input and identity counters.");
+    } else if (details.sourceIdentityCount !== details.matchedEntryCount) {
+      failures.push("Browse-record-source identity count does not reconcile with matched entries.");
     }
   }
   if (stage === "equipment-ui-projection") {
@@ -793,14 +793,18 @@ function validateEquipmentStageDetails(stage, details) {
     }
   }
   if (stage === "equipment-pane-assembly") {
-    if (!nonnegativeCounters("recordCount", "matchedRecordCount")) {
-      failures.push("Equipment pane stage lacks nonnegative record counters.");
-    } else if (details.recordCount > details.matchedRecordCount) {
-      failures.push("Equipment pane record count exceeds its matched-record input.");
+    if (!nonnegativeCounters("sourceIdentityCount", "matchedRecordCount")) {
+      failures.push("Equipment pane stage lacks nonnegative source-identity counters.");
+    } else if (details.sourceIdentityCount !== details.matchedRecordCount) {
+      failures.push("Equipment pane source-identity count does not reconcile with its matched-record input.");
     }
   }
-  if (stage === "mounted-row-projection" && !nonnegativeCounters("matchedRecordCount")) {
-    failures.push("Mounted-row stage lacks a nonnegative matched-record count.");
+  if (stage === "mounted-row-projection") {
+    if (!nonnegativeCounters("matchedRecordCount", "projectedRowCount")) {
+      failures.push("Mounted-row stage lacks nonnegative matched and projected-row counts.");
+    } else if (details.projectedRowCount > details.matchedRecordCount) {
+      failures.push("Mounted-row projection count exceeds the matched catalogue size.");
+    }
   }
   return failures;
 }

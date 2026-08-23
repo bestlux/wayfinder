@@ -10,6 +10,7 @@ import {
   equipmentLineControlFocusId,
   equipmentLineFocusId,
 } from "../application/equipment-accessibility.js";
+import type { StartingEquipmentCatalogueRecordSource } from "../application/equipment-catalogue-record-source.js";
 import type { EquipmentPreviewProjection } from "../application/equipment-preview-projector.js";
 import type { EquipmentSourceDiagnostic } from "../application/equipment-source-policy.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
@@ -44,10 +45,11 @@ export interface StartingEquipmentCatalogueProjection {
   readonly limit?: number;
   /** Uncapped query/facet matches after the active recipe's level boundary is applied. */
   readonly matchedRecordCount: number;
-  readonly records: readonly StartingEquipmentCatalogueRecord[];
+  /** Complete ordered browse source; records are materialized only for mounted/focused rows. */
+  readonly recordSource: StartingEquipmentCatalogueRecordSource;
   /** Hydrated selected detail retained independently of the mounted browse window. */
   readonly previewRecord?: StartingEquipmentCatalogueRecord | null;
-  /** Stable metadata for reviewed cart lines that are outside the bounded browse page. */
+  /** Authoritative stable metadata for every reviewed cart source. */
   readonly lineRecords?: readonly StartingEquipmentCatalogueRecord[];
   readonly filters: readonly { key: string; label: string; value: string; count?: number }[];
   readonly levelFilter?: {
@@ -89,6 +91,8 @@ export const MAX_VISIBLE_STARTING_EQUIPMENT_SOURCE_FILTERS = 12;
 type CataloguePaneRow = StartingEquipmentCataloguePaneRow;
 export interface StartingEquipmentCatalogueRowSource {
   readonly sourceUuids: readonly string[];
+  /** Number of records actually converted into localized pane rows so far. */
+  readonly projectedRowCount: number;
   rowAt(index: number): StartingEquipmentCataloguePaneRow;
 }
 
@@ -157,12 +161,10 @@ export function buildStartingEquipmentPane(
   );
   const availableAllowances =
     policy?.allowances.filter((allowance) => !usedAllowanceIds.has(allowance.allowanceId)) ?? [];
-  const browseRecords = catalogueReady ? catalogue.records : [];
-  const sourceUuids = Object.freeze(browseRecords.map((record) => record.sourceUuid));
+  const browseRecordSource = catalogueReady ? catalogue.recordSource : null;
+  const sourceUuids = browseRecordSource?.sourceUuids ?? [];
   const previewSourceUuid = catalogue.previewRecord?.sourceUuid ?? catalogue.previewSourceUuid;
-  const previewRecordIndex = previewSourceUuid
-    ? browseRecords.findIndex((record) => record.sourceUuid === previewSourceUuid)
-    : -1;
+  const previewRecordIndex = previewSourceUuid ? sourceUuids.indexOf(previewSourceUuid) : -1;
   const matchedRecordCount = catalogueReady ? catalogue.matchedRecordCount : 0;
   const resultWindow = clampStartingEquipmentResultWindow(
     {
@@ -185,6 +187,7 @@ export function buildStartingEquipmentPane(
         : []
     )
   );
+  let projectedRowCount = 0;
   const projectRecord = (record: StartingEquipmentCatalogueRecord, index: number): CataloguePaneRow => {
     const currencyAffordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
     const canBuyWithCurrency = record.available && record.level < step.level && currencyAffordable;
@@ -302,15 +305,19 @@ export function buildStartingEquipmentPane(
       localizedRows.set(localize, rowsByLocale);
     }
     rowsByLocale.set(locale, { volatileKey, row });
+    projectedRowCount += 1;
     return row;
   };
   const rowSource: StartingEquipmentCatalogueRowSource = Object.freeze({
     sourceUuids,
+    get projectedRowCount(): number {
+      return projectedRowCount;
+    },
     rowAt(index: number): StartingEquipmentCataloguePaneRow {
-      if (!Number.isSafeInteger(index) || index < 0 || index >= browseRecords.length) {
+      if (!browseRecordSource || !Number.isSafeInteger(index) || index < 0 || index >= sourceUuids.length) {
         throw new RangeError(`Starting-equipment catalogue row index ${index} is outside the projection.`);
       }
-      const indexed = browseRecords[index]!;
+      const indexed = browseRecordSource.recordAt(index);
       const record = catalogue.previewRecord?.sourceUuid === indexed.sourceUuid ? catalogue.previewRecord : indexed;
       const row = projectRecord(record, index);
       if (row.sourceUuid !== sourceUuids[index]) {
@@ -320,16 +327,15 @@ export function buildStartingEquipmentPane(
     },
   });
   const recordByUuid = new Map(
-    [
-      ...catalogue.records,
-      ...(catalogue.previewRecord ? [catalogue.previewRecord] : []),
-      ...(catalogue.lineRecords ?? []),
-    ].map((record) => [record.sourceUuid, record])
+    [...(catalogue.previewRecord ? [catalogue.previewRecord] : []), ...(catalogue.lineRecords ?? [])].map((record) => [
+      record.sourceUuid,
+      record,
+    ])
   );
   const plannedGrantById = new Map(acquisition?.plannedClassGrants.map((grant) => [grant.grantId, grant]) ?? []);
   const rawPreviewRecord =
     catalogue.previewRecord ??
-    browseRecords.find((record) => record.sourceUuid === catalogue.previewSourceUuid) ??
+    (previewRecordIndex >= 0 ? browseRecordSource?.recordAt(previewRecordIndex) : null) ??
     null;
   const previewRecord = rawPreviewRecord
     ? projectRecord(rawPreviewRecord, previewRecordIndex >= 0 ? previewRecordIndex : 0)
@@ -695,9 +701,7 @@ export function buildStartingEquipmentPane(
       }),
       hiddenResultCount: Math.max(0, matchedRecordCount - sourceUuids.length),
       narrowSearchHint: null,
-      rowOrderKey:
-        catalogue.rowOrderKey ??
-        `uncached:${catalogue.query}:${catalogue.records.map((record) => record.sourceUuid).join("\u0000")}`,
+      rowOrderKey: catalogue.rowOrderKey ?? `uncached:${catalogue.query}:${sourceUuids.join("\u0000")}`,
       sourceUuids,
       hasItems: sourceUuids.length > 0,
       preview,

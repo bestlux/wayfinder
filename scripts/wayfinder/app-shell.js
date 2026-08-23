@@ -328,7 +328,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 requestDecisions: authorityStore.requestDecisions,
                 isGm: game.user?.isGM === true,
                 locale: String(game.i18n.lang ?? ""),
-            }), () => ({ recordCount: catalogue.records.length, matchedRecordCount: catalogue.matchedRecordCount }));
+            }), () => ({
+                sourceIdentityCount: catalogue.recordSource.sourceUuids.length,
+                matchedRecordCount: catalogue.matchedRecordCount,
+            }));
             if (!this.#canCommitStartingEquipmentRender(equipmentRequest)) {
                 options.wayfinderSkippedReplacement = true;
                 return {
@@ -587,7 +590,12 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                     onLoreInputChange: this.#onLoreInputChange,
                 }, this.#scrollById, null);
             }
-            profileEquipmentStage("mounted-row-projection", () => this.#mountEquipmentStableCatalogue(root, committedSession), () => ({ matchedRecordCount: committedSession?.pane.catalogue.totalResultCount ?? 0 }));
+            const mountedRowSource = committedSession ? startingEquipmentCatalogueRowSource(committedSession.pane) : null;
+            const mountedRowCountBefore = mountedRowSource?.projectedRowCount ?? 0;
+            profileEquipmentStage("mounted-row-projection", () => this.#mountEquipmentStableCatalogue(root, committedSession), () => ({
+                matchedRecordCount: committedSession?.pane.catalogue.totalResultCount ?? 0,
+                projectedRowCount: (mountedRowSource?.projectedRowCount ?? 0) - mountedRowCountBefore,
+            }));
             if (this.#pendingEquipmentFocusIds) {
                 restoreEquipmentFocus(root, this.#pendingEquipmentFocusIds);
             }
@@ -620,7 +628,14 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
             onManualChange: this.#onManualChange,
             onLoreInputChange: this.#onLoreInputChange,
         }, this.#scrollById, this.#pendingSearchFocus).pendingSearchFocus;
-        profileEquipmentStage("mounted-row-projection", () => this.#mountEquipmentStableCatalogue(root, context.equipmentRenderSession), () => ({ matchedRecordCount: context.equipmentRenderSession?.pane.catalogue.totalResultCount ?? 0 }));
+        const mountedRowSource = context.equipmentRenderSession
+            ? startingEquipmentCatalogueRowSource(context.equipmentRenderSession.pane)
+            : null;
+        const mountedRowCountBefore = mountedRowSource?.projectedRowCount ?? 0;
+        profileEquipmentStage("mounted-row-projection", () => this.#mountEquipmentStableCatalogue(root, context.equipmentRenderSession), () => ({
+            matchedRecordCount: context.equipmentRenderSession?.pane.catalogue.totalResultCount ?? 0,
+            projectedRowCount: (mountedRowSource?.projectedRowCount ?? 0) - mountedRowCountBefore,
+        }));
         const pendingStepFocusId = this.#pendingStepFocusId;
         const pendingControlFocusId = this.#pendingControlFocusId;
         if (this.#pendingActiveStepVisibility) {
@@ -1397,7 +1412,10 @@ export class WayfinderApp extends foundry.applications.api.HandlebarsApplication
                 requestDecisions: authorityStore.requestDecisions,
                 isGm: game.user?.isGM === true,
                 locale: String(game.i18n.lang ?? ""),
-            }), () => ({ recordCount: catalogue.records.length, matchedRecordCount: catalogue.matchedRecordCount }));
+            }), () => ({
+                sourceIdentityCount: catalogue.recordSource.sourceUuids.length,
+                matchedRecordCount: catalogue.matchedRecordCount,
+            }));
         }
         const skillPane = await buildSkillPane(step, this.#requireDraft(), {
             baseSkillRanks: inspectActor(this.actor).skillRanks,

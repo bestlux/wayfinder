@@ -169,6 +169,8 @@ export interface EquipmentCataloguePreview {
   readonly source: Readonly<Record<string, unknown>> | null;
   /** Hydrated, current-policy reevaluation when a context was supplied. */
   readonly entry: EquipmentCatalogueEntry | null;
+  /** Exact hydrated authority for actor-aware preview pricing when a context was supplied. */
+  readonly resolution: EquipmentCatalogueApplyResolution | null;
 }
 
 export interface EquipmentCatalogueApplyResolution {
@@ -597,6 +599,13 @@ export class EquipmentCatalogueService {
   ): EquipmentCatalogueApplyResolution {
     const normalized = normalizeCandidate(source, packId, sourceUuid);
     const evaluated = this.#evaluateCandidate(context, normalized, source);
+    return this.#resolutionFromEvaluatedSource(source, evaluated);
+  }
+
+  #resolutionFromEvaluatedSource(
+    source: Readonly<Record<string, unknown>>,
+    evaluated: EquipmentCatalogueEntry
+  ): EquipmentCatalogueApplyResolution {
     return Object.freeze({
       source: cloneData(source),
       candidate: stripEvaluation(evaluated),
@@ -850,11 +859,14 @@ export class EquipmentCatalogueService {
             undefined,
             pack?.indexedBrowsePricing === "pf2e-physical-source-v1"
           );
+    const entry = context && current ? this.#evaluateCandidate(context, current, source) : null;
+    const resolution = source && entry ? this.#resolutionFromEvaluatedSource(source, entry) : null;
     return Object.freeze({
       sourceUuid,
       previewIdentity: cached.previewIdentity,
       source,
-      entry: context && current ? this.#evaluateCandidate(context, current, source) : null,
+      entry,
+      resolution,
     });
   }
 }

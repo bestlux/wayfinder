@@ -2,6 +2,7 @@ import type { DraftState, ProgressionPlan } from "../../types.js";
 import type { AcquisitionLineDraft } from "../domain/acquisition-types.js";
 import type { StartingEquipmentStep } from "../domain/step-types.js";
 import type { StartingEquipmentCatalogueProjection } from "../panes/starting-equipment-pane.js";
+import { EMPTY_EQUIPMENT_CATALOGUE_RECORD_SOURCE } from "./equipment-catalogue-record-source.js";
 
 export interface StartingEquipmentUiRequest {
   readonly actor: unknown;
@@ -50,7 +51,7 @@ const UNAVAILABLE_ADAPTER: StartingEquipmentUiAdapter = {
       offset: 0,
       limit: request.limit,
       matchedRecordCount: 0,
-      records: [],
+      recordSource: EMPTY_EQUIPMENT_CATALOGUE_RECORD_SOURCE,
       filters: [],
       activeFilters: request.filters,
       previewSourceUuid: request.previewSourceUuid,

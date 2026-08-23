@@ -6,7 +6,7 @@ export const EQUIPMENT_PROFILE_STAGES = Object.freeze([
     "actor-pricing-fingerprint",
     "drafted-size-resolution",
     "criteria-filter-facet-projection",
-    "browse-record-projection",
+    "browse-record-source-assembly",
     "criteria-rank",
     "equipment-ui-projection",
     "equipment-pane-assembly",

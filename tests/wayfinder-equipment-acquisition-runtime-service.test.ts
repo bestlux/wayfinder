@@ -14,6 +14,7 @@ import {
   ADVENTURERS_PACK_UUID,
   createEquipmentAccessRegistry,
   type EquipmentAccessRegistry,
+  type EquipmentCatalogueEntry,
   type EquipmentCataloguePackLike,
 } from "../src/wayfinder/application/equipment-catalogue-service";
 import type { EquipmentSourceDiagnostic } from "../src/wayfinder/application/equipment-source-policy";
@@ -24,7 +25,11 @@ import {
 } from "../src/wayfinder/domain/acquisition-draft";
 import type { PreparedAcquisitionEntryV1 } from "../src/wayfinder/domain/acquisition-identity";
 import { evaluateAcquisitionLedger, reviewRetainAll } from "../src/wayfinder/domain/acquisition-ledger";
-import type { AcquisitionDraftState, AcquisitionLineDraft } from "../src/wayfinder/domain/acquisition-types";
+import type {
+  AcquisitionDraftState,
+  AcquisitionLineDraft,
+  AcquisitionPriceSnapshot,
+} from "../src/wayfinder/domain/acquisition-types";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
 import {
   CLASS_GRANT_PROFILE_UUIDS,
@@ -41,6 +46,7 @@ import {
 import { SEMANTIC_WEALTH_POLICY_REF } from "../src/wayfinder/domain/semantic-wealth-rule-ledger";
 import {
   buildStartingEquipmentPane as buildStartingEquipmentPaneLocalized,
+  type StartingEquipmentCatalogueProjection,
   startingEquipmentCatalogueRowSource,
 } from "../src/wayfinder/panes/starting-equipment-pane";
 import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../src/wayfinder/starting-equipment-result-window";
@@ -63,6 +69,38 @@ function buildStartingEquipmentPane(
 function catalogueRows(pane: ReturnType<typeof buildStartingEquipmentPaneLocalized>) {
   const source = startingEquipmentCatalogueRowSource(pane);
   return source.sourceUuids.map((_, index) => source.rowAt(index));
+}
+
+function catalogueRecords(projection: StartingEquipmentCatalogueProjection) {
+  return projection.recordSource.sourceUuids.map((_, index) => projection.recordSource.recordAt(index));
+}
+
+function materializedProjection(projection: StartingEquipmentCatalogueProjection) {
+  return { ...projection, records: catalogueRecords(projection) };
+}
+
+function testUiRecord(
+  entry: EquipmentCatalogueEntry,
+  preparedPrice?: AcquisitionPriceSnapshot | null
+): StartingEquipmentCatalogueRecord {
+  const priceCopper = preparedPrice === undefined ? entry.price.copperValue : (preparedPrice?.linePriceCopper ?? null);
+  return Object.freeze({
+    sourceUuid: entry.sourceUuid,
+    name: entry.name,
+    itemType: entry.itemType,
+    level: entry.level,
+    rarity: entry.rarity,
+    sourceLabel: entry.publicationSlug,
+    priceCopper,
+    priceLabel: priceCopper === null ? "—" : `${priceCopper} cp`,
+    bulkLabel: "See item details",
+    handsLabel: null,
+    traits: entry.traits,
+    available: entry.available,
+    unavailableReason: entry.unavailableReasons[0]?.message ?? null,
+    exceptionRequestable: false,
+    titanMaulerEligible: false,
+  });
 }
 
 const PACK_ID = "pf2e.equipment-srd";
@@ -145,7 +183,7 @@ describe("equipment acquisition runtime", () => {
     );
 
     const projection = await runtime.uiAdapter.project(request);
-    expect(projection.records.map((record) => record.level)).toEqual([4]);
+    expect(catalogueRecords(projection).map((record) => record.level)).toEqual([4]);
     await expect(
       runtime.uiAdapter.prepareLine({
         ...request,
@@ -274,7 +312,7 @@ describe("equipment acquisition runtime", () => {
       },
       { policy: configuredPolicy(), prepareBrowsePhysicalItems }
     );
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       state: "ready",
       records: [{ name: "Dagger" }],
     });
@@ -347,7 +385,7 @@ describe("equipment acquisition runtime", () => {
       { policy: approvedPolicy }
     );
 
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       records: [expect.objectContaining({ sourceUuid, available: true })],
     });
     await expect(
@@ -413,7 +451,7 @@ describe("equipment acquisition runtime", () => {
     const { runtime, request } = fixture({ getIndex, getDocument });
 
     const projection = await runtime.uiAdapter.project(request);
-    expect(projection).toMatchObject({
+    expect(materializedProjection(projection)).toMatchObject({
       state: "ready",
       records: [
         {
@@ -429,7 +467,7 @@ describe("equipment acquisition runtime", () => {
         },
       ],
     });
-    expect(projection.records[0]).not.toHaveProperty("img");
+    expect(catalogueRecords(projection)[0]).not.toHaveProperty("img");
 
     const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
     expect(line.priceFingerprint).toBe("equipment-price-v1-d6e565d1");
@@ -476,13 +514,55 @@ describe("equipment acquisition runtime", () => {
     );
 
     expect(projection.matchedRecordCount).toBe(levelQualified.length);
-    expect(projection.records).toHaveLength(20);
+    expect(catalogueRecords(projection)).toHaveLength(20);
     expect(pane.catalogue).toMatchObject({
       message: `${levelQualified.length} pieces of gear on the shelves.`,
       totalResultCount: levelQualified.length,
       visibleResultCount: 20,
     });
     expect(getDocument).toHaveBeenCalledTimes(20);
+  });
+
+  it("keeps a 2,000-entry runtime projection lazy through pane assembly and converts exactly requested rows", async () => {
+    const sources = Array.from({ length: 2_048 }, (_, index) =>
+      dagger({ id: `lazy-${index}`, name: `Lazy gear ${String(index).padStart(4, "0")}` })
+    );
+    const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
+    const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
+    const projectBrowseRecord = vi.fn((entry, preparedPrice) => testUiRecord(entry, preparedPrice));
+    const { runtime, request } = fixture(
+      {
+        indexedBrowsePricing: "pf2e-physical-source-v1",
+        getIndex: vi.fn(async () => sources),
+        getDocument,
+      },
+      { prepareBrowsePhysicalItems, projectBrowseRecord }
+    );
+
+    const projection = await runtime.uiAdapter.project(request);
+    const pane = buildStartingEquipmentPane(
+      request.step,
+      request.draft,
+      { state: "incomplete", complete: false, status: "Review purchases", issue: null },
+      projection
+    );
+    const mounted = startingEquipmentCatalogueRowSource(pane);
+
+    expect(projection.recordSource.sourceUuids).toHaveLength(2_048);
+    expect(mounted.sourceUuids).toEqual(projection.recordSource.sourceUuids);
+    expect(mounted.projectedRowCount).toBe(0);
+    expect(projectBrowseRecord).not.toHaveBeenCalled();
+    expect(getDocument).not.toHaveBeenCalled();
+    expect(prepareBrowsePhysicalItems).not.toHaveBeenCalled();
+
+    const requestedIndexes = [0, 17, 511, 1_024, 2_047];
+    const rows = requestedIndexes.map((index) => mounted.rowAt(index));
+    expect(mounted.projectedRowCount).toBe(requestedIndexes.length);
+    expect(projectBrowseRecord).toHaveBeenCalledTimes(requestedIndexes.length);
+    expect(rows.map((row) => row.name)).toEqual(requestedIndexes.map((index) => sources[index]!.name));
+    expect(mounted.rowAt(requestedIndexes[0]!)).toBe(rows[0]);
+    expect(mounted.projectedRowCount).toBe(requestedIndexes.length);
+    expect(projectBrowseRecord).toHaveBeenCalledTimes(requestedIndexes.length);
   });
 
   it("retains the complete lightweight projection while bounding exact-price hydration", async () => {
@@ -506,11 +586,11 @@ describe("equipment acquisition runtime", () => {
 
     const tall = await runtime.uiAdapter.project({ ...request, offset: 12, limit: 48 });
     expect(tall).toMatchObject({ offset: 0, limit: 48, matchedRecordCount: 72 });
-    expect(tall.records).toHaveLength(72);
-    expect(tall.records.at(0)).toMatchObject({ name: "Gear 00", pricePending: true });
-    expect(tall.records.at(12)).toMatchObject({ name: "Gear 12" });
-    expect(tall.records.at(12)?.pricePending).toBeUndefined();
-    expect(tall.records.at(-1)).toMatchObject({ name: "Gear 71", pricePending: true });
+    expect(catalogueRecords(tall)).toHaveLength(72);
+    expect(catalogueRecords(tall).at(0)).toMatchObject({ name: "Gear 00", pricePending: true });
+    expect(catalogueRecords(tall).at(12)).toMatchObject({ name: "Gear 12" });
+    expect(catalogueRecords(tall).at(12)?.pricePending).toBeUndefined();
+    expect(catalogueRecords(tall).at(-1)).toMatchObject({ name: "Gear 71", pricePending: true });
     expect(getDocument).toHaveBeenCalledTimes(48);
     expect(maxConcurrentReads).toBe(24);
     expect(prepareBrowsePhysicalItems.mock.calls.map(([input]) => input.entries.length)).toEqual([12, 12, 12, 12]);
@@ -521,7 +601,7 @@ describe("equipment acquisition runtime", () => {
       limit: 48,
       previewSourceUuid: `Compendium.${PACK_ID}.Item.window-0`,
     });
-    expect(previewed.records).toContainEqual(expect.objectContaining({ name: "Gear 00" }));
+    expect(catalogueRecords(previewed)).toContainEqual(expect.objectContaining({ name: "Gear 00" }));
     expect(previewed.previewRecord).toMatchObject({ name: "Gear 00" });
     const previewPane = buildStartingEquipmentPane(
       request.step,
@@ -533,11 +613,11 @@ describe("equipment acquisition runtime", () => {
 
     const end = await runtime.uiAdapter.project({ ...request, offset: 61, limit: 36 });
     expect(end).toMatchObject({ offset: 0, limit: 36 });
-    expect(end.records.map(({ name }) => name)).toEqual(sources.map(({ name }) => name));
+    expect(catalogueRecords(end).map(({ name }) => name)).toEqual(sources.map(({ name }) => name));
 
     const narrowed = await runtime.uiAdapter.project({ ...request, query: "gear 69", offset: 61, limit: 36 });
     expect(narrowed).toMatchObject({ offset: 0, limit: 36, matchedRecordCount: 1 });
-    expect(narrowed.records.map(({ name }) => name)).toEqual(["Gear 69"]);
+    expect(catalogueRecords(narrowed).map(({ name }) => name)).toEqual(["Gear 69"]);
   });
 
   it("ranks policy-available and exact, prefix, then substring name matches before browse hydration", async () => {
@@ -553,7 +633,7 @@ describe("equipment acquisition runtime", () => {
     const { runtime, request } = fixture({ getIndex: vi.fn(async () => sources), getDocument });
 
     const defaultProjection = await runtime.uiAdapter.project({ ...request, query: "rope" });
-    expect(defaultProjection.records).not.toContainEqual(expect.objectContaining({ available: false }));
+    expect(catalogueRecords(defaultProjection)).not.toContainEqual(expect.objectContaining({ available: false }));
     expect(defaultProjection.activeFilters).toMatchObject({ availability: ["available"] });
 
     const projection = await runtime.uiAdapter.project({
@@ -562,7 +642,9 @@ describe("equipment acquisition runtime", () => {
       filters: { availability: ["all"] },
     });
 
-    expect(projection.records.map(({ sourceUuid, available }) => [sourceUuid.split(".").at(-1), available])).toEqual([
+    expect(
+      catalogueRecords(projection).map(({ sourceUuid, available }) => [sourceUuid.split(".").at(-1), available])
+    ).toEqual([
       ["exact-a", true],
       ["exact-b", true],
       ["prefix-a", true],
@@ -601,7 +683,7 @@ describe("equipment acquisition runtime", () => {
     const cold = await coldProjection;
     await runtime.uiAdapter.project(request);
 
-    expect(cold.records.map(({ sourceUuid }) => sourceUuid)).toEqual(
+    expect(catalogueRecords(cold).map(({ sourceUuid }) => sourceUuid)).toEqual(
       sources.map(({ _id }) => `Compendium.${PACK_ID}.Item.${_id}`)
     );
     expect(getDocument).toHaveBeenCalledTimes(12);
@@ -620,7 +702,10 @@ describe("equipment acquisition runtime", () => {
 
     expect(getIndex).toHaveBeenCalledTimes(2);
     expect(getDocument).toHaveBeenCalledTimes(24);
-    expect(invalidated.records[0]).toMatchObject({ sourceUuid: `Compendium.${PACK_ID}.Item.bulk-0`, priceCopper: 30 });
+    expect(catalogueRecords(invalidated)[0]).toMatchObject({
+      sourceUuid: `Compendium.${PACK_ID}.Item.bulk-0`,
+      priceCopper: 30,
+    });
   });
 
   it("reuses successful browse preparations while a newly selected preview hydrates once", async () => {
@@ -650,8 +735,8 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(12);
     const repeatedBrowse = await runtime.uiAdapter.project(request);
     expect(getDocument).toHaveBeenCalledTimes(12);
-    expect(repeatedBrowse.records).toBe(firstBrowse.records);
-    expect(repeatedBrowse.records[1]).toBe(firstBrowse.records[1]);
+    expect(repeatedBrowse.recordSource).toBe(firstBrowse.recordSource);
+    expect(repeatedBrowse.recordSource.recordAt(1)).toBe(firstBrowse.recordSource.recordAt(1));
 
     const beforeFirstPreview = getDocument.mock.calls.length;
     const selected = await runtime.uiAdapter.project({ ...request, previewSourceUuid });
@@ -663,9 +748,9 @@ describe("equipment acquisition runtime", () => {
       bulkLabel: "L",
       handsLabel: "1",
     });
-    expect(selected.records[0]).toMatchObject({ bulkLabel: "See item details", handsLabel: null });
-    expect(selected.records[0]).not.toHaveProperty("description");
-    expect(selected.records).toBe(firstBrowse.records);
+    expect(catalogueRecords(selected)[0]).toMatchObject({ bulkLabel: "See item details", handsLabel: null });
+    expect(catalogueRecords(selected)[0]).not.toHaveProperty("description");
+    expect(selected.recordSource).toBe(firstBrowse.recordSource);
     expect(getIndex.mock.calls[0]?.[0].fields).not.toContain("system.description.value");
     expect(getIndex.mock.calls[0]?.[0].fields).not.toContain("system.bulk.value");
     expect(getIndex.mock.calls[0]?.[0].fields).not.toContain("system.usage.value");
@@ -673,9 +758,30 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument.mock.calls.length - afterFirstPreview).toBe(0);
 
     const narrowedBrowse = await runtime.uiAdapter.project({ ...request, query: "browse cache 01" });
-    expect(narrowedBrowse.records).toHaveLength(1);
-    expect(narrowedBrowse.records[0]).toBe(firstBrowse.records[1]);
+    expect(catalogueRecords(narrowedBrowse)).toHaveLength(1);
+    expect(catalogueRecords(narrowedBrowse)[0]).toBe(catalogueRecords(firstBrowse)[1]);
     expect(getDocument).toHaveBeenCalledTimes(afterFirstPreview);
+  });
+
+  it("keeps a hydrated preview on the exact cached actor-sized browse price", async () => {
+    const source = dagger({ priceGp: 1, sizeSensitive: true });
+    const getDocument = vi.fn(async () => document(source));
+    const prepareBrowsePhysicalItems = vi.fn(prepareTestBrowsePhysicalItems);
+    const preparePhysicalItem = vi.fn(prepareTestPhysicalItem);
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument },
+      { ancestrySize: "lg", prepareBrowsePhysicalItems, preparePhysicalItem }
+    );
+
+    const browse = await runtime.uiAdapter.project(request);
+    expect(catalogueRecords(browse)[0]).toMatchObject({ priceCopper: 200, priceLabel: "2 gp" });
+
+    const previewed = await runtime.uiAdapter.project({ ...request, previewSourceUuid: DAGGER_UUID });
+    expect(previewed.previewRecord).toMatchObject({ priceCopper: 200, priceLabel: "2 gp" });
+    expect(catalogueRecords(previewed)[0]).toMatchObject({ priceCopper: 200, priceLabel: "2 gp" });
+    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
+    expect(preparePhysicalItem).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -696,9 +802,9 @@ describe("equipment acquisition runtime", () => {
     const projection = await runtime.uiAdapter.project({ ...request, previewSourceUuid: DAGGER_UUID });
 
     expect(projection.matchedRecordCount).toBe(expectedMatched);
-    expect(projection.records).toHaveLength(expectedMatched);
+    expect(catalogueRecords(projection)).toHaveLength(expectedMatched);
     expect(projection.previewRecord).toMatchObject({ level: hydratedLevel });
-    if (expectedMatched > 0) expect(projection.records[0]).toMatchObject({ level: hydratedLevel });
+    if (expectedMatched > 0) expect(catalogueRecords(projection)[0]).toMatchObject({ level: hydratedLevel });
   });
 
   it("overlays current hydrated preview facts without rebuilding the cached browse rows", async () => {
@@ -721,8 +827,8 @@ describe("equipment acquisition runtime", () => {
       previewed
     );
 
-    expect(previewed.records).toBe(browse.records);
-    expect(previewed.records[0]).toMatchObject({ priceCopper: 100 });
+    expect(previewed.recordSource).toBe(browse.recordSource);
+    expect(catalogueRecords(previewed)[0]).toMatchObject({ priceCopper: 100 });
     expect(previewed.previewRecord).toMatchObject({ priceCopper: 200 });
     expect(catalogueRows(pane)[0]).toMatchObject({ priceCopper: 200, previewing: true });
     expect(pane.catalogue.preview).toMatchObject({ priceCopper: 200 });
@@ -748,7 +854,7 @@ describe("equipment acquisition runtime", () => {
       entry: preparedEntry(line),
     });
 
-    expect(projection.records[0]?.priceCopper).toBe(line.price.unitPriceCopper);
+    expect(catalogueRecords(projection)[0]?.priceCopper).toBe(line.price.unitPriceCopper);
     expect(applied.resolvedPrice).toEqual(line.price);
     expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
     expect(prepareBrowsePhysicalItems.mock.calls[0]![0].entries).toHaveLength(1);
@@ -772,7 +878,7 @@ describe("equipment acquisition runtime", () => {
 
     const projection = await runtime.uiAdapter.project(request);
 
-    expect(projection).toMatchObject({
+    expect(materializedProjection(projection)).toMatchObject({
       state: "ready",
       records: [{ name: "Dagger", priceCopper: 200, priceLabel: "2 gp" }],
     });
@@ -780,7 +886,7 @@ describe("equipment acquisition runtime", () => {
     expect(prepareBrowsePhysicalItems).not.toHaveBeenCalled();
 
     const preview = await runtime.uiAdapter.project({ ...request, previewSourceUuid: DAGGER_UUID });
-    expect(preview).toMatchObject({
+    expect(materializedProjection(preview)).toMatchObject({
       state: "ready",
       previewRecord: { name: "Dagger", priceCopper: 200 },
       records: [{ name: "Dagger", priceCopper: 200 }],
@@ -808,7 +914,7 @@ describe("equipment acquisition runtime", () => {
       { ancestrySize: "lg", prepareBrowsePhysicalItems }
     );
 
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       state: "ready",
       records: [{ name: "Dagger", priceCopper: 1_000, priceLabel: "10 gp" }],
     });
@@ -840,7 +946,7 @@ describe("equipment acquisition runtime", () => {
     });
 
     expect(witness.environment).toEqual({ foundryVersion: "14.366", pf2eVersion: "8.4.1" });
-    expect(projection).toMatchObject({
+    expect(materializedProjection(projection)).toMatchObject({
       state: "ready",
       records: [{ sourceUuid, level: witness.expected.level, priceCopper: witness.expected.preparedCopper }],
     });
@@ -892,7 +998,7 @@ describe("equipment acquisition runtime", () => {
       { preparePhysicalItem, prepareBrowsePhysicalItems }
     );
 
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       state: "ready",
       records: [{ available: false, priceCopper: null, unavailableReason: expect.stringMatching(/temporary/i) }],
     });
@@ -938,7 +1044,7 @@ describe("equipment acquisition runtime", () => {
       { ancestrySize: "lg", preparePhysicalItem, prepareBrowsePhysicalItems }
     );
 
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       state: "ready",
       records: [
         { name: "Item ID Alteration", priceCopper: 40 },
@@ -975,7 +1081,7 @@ describe("equipment acquisition runtime", () => {
     const facetRequest = { ...request, filters: { type: ["weapon", "equipment"] } };
 
     const first = await runtime.uiAdapter.project(facetRequest);
-    expect(first.records).toMatchObject([
+    expect(catalogueRecords(first)).toMatchObject([
       { name: "Alpha Ordinary", available: true, priceCopper: 10 },
       {
         name: "Beta Partial Unit",
@@ -990,7 +1096,9 @@ describe("equipment acquisition runtime", () => {
     ]);
     expect(getDocument).toHaveBeenCalledTimes(2);
 
-    await expect(runtime.uiAdapter.project(facetRequest)).resolves.toMatchObject({ records: first.records });
+    await expect(runtime.uiAdapter.project(facetRequest).then(materializedProjection)).resolves.toMatchObject({
+      records: catalogueRecords(first),
+    });
     expect(getDocument).toHaveBeenCalledTimes(2);
     expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(1);
   });
@@ -1012,7 +1120,7 @@ describe("equipment acquisition runtime", () => {
       { prepareBrowsePhysicalItems, preparePhysicalItem }
     );
 
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       state: "ready",
       records: [{ name: "Alpha Ruleless" }, { name: "Beta Rule Bearing" }, { name: "Gamma Nested" }],
     });
@@ -1038,7 +1146,7 @@ describe("equipment acquisition runtime", () => {
 
     await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({ state: "error" });
     shouldFail = false;
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       state: "ready",
       records: [{ name: "Dagger" }],
     });
@@ -1084,7 +1192,7 @@ describe("equipment acquisition runtime", () => {
       matchedRecordCount: 0,
     });
     shouldFail = false;
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       state: "ready",
       matchedRecordCount: 1,
       records: [{ name: "Dagger" }],
@@ -1323,17 +1431,20 @@ describe("equipment acquisition runtime", () => {
       actorSource.flags.pf2e.pricingRevision = revision;
       const projection = await runtime.uiAdapter.project(request);
       if (projection.state === "error") throw new Error(projection.message);
-      expect(projection).toMatchObject({ state: "ready", records: [{ priceCopper: revision }] });
-      if (revision === 1) firstRecord = projection.records[0]!;
+      expect(materializedProjection(projection)).toMatchObject({
+        state: "ready",
+        records: [{ priceCopper: revision }],
+      });
+      if (revision === 1) firstRecord = catalogueRecords(projection)[0]!;
     }
 
     actorSource.system.pricingRevision = 1;
     actorSource.flags.pf2e.pricingRevision = 1;
     const revisited = await runtime.uiAdapter.project(request);
-    expect(revisited.records[0]).not.toBe(firstRecord);
-    expect(revisited.records[0]?.priceCopper).toBe(1);
+    expect(catalogueRecords(revisited)[0]).not.toBe(firstRecord);
+    expect(catalogueRecords(revisited)[0]?.priceCopper).toBe(1);
     const current = await runtime.uiAdapter.project(request);
-    expect(current.records[0]).toBe(revisited.records[0]);
+    expect(catalogueRecords(current)[0]).toBe(catalogueRecords(revisited)[0]);
     expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(MAX_UI_RECORD_VARIANTS_PER_ENTRY + 3);
   });
 
@@ -1410,7 +1521,9 @@ describe("equipment acquisition runtime", () => {
 
     source = dagger({ priceSp: 3 });
     runtime.invalidatePack(PACK_ID);
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({ records: [{ priceCopper: 60 }] });
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
+      records: [{ priceCopper: 60 }],
+    });
     expect(getIndex).toHaveBeenCalledTimes(2);
     expect(getDocument).toHaveBeenCalledTimes(7);
   });
@@ -1458,12 +1571,14 @@ describe("equipment acquisition runtime", () => {
 
     const projection = await runtime.uiAdapter.project(request);
 
-    expect(projection.records).toHaveLength(sources.length);
+    expect(catalogueRecords(projection)).toHaveLength(sources.length);
     expect(projection.matchedRecordCount).toBe(sources.length);
-    expect(projection.records).toContainEqual(
+    expect(catalogueRecords(projection)).toContainEqual(
       expect.objectContaining({ name: "Zed Off-Page Gear", pricePending: true })
     );
-    expect(projection.lineRecords).toEqual([]);
+    expect(projection.lineRecords).toEqual([
+      expect.objectContaining({ sourceUuid: `Compendium.${PACK_ID}.Item.off-page`, name: "Zed Off-Page Gear" }),
+    ]);
     expect(getDocument).toHaveBeenCalledTimes(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(getDocument).not.toHaveBeenCalledWith("off-page");
 
@@ -1494,11 +1609,11 @@ describe("equipment acquisition runtime", () => {
 
     const projection = await runtime.uiAdapter.project({ ...request, previewSourceUuid: sourceUuid });
 
-    expect(projection).toMatchObject({
+    expect(materializedProjection(projection)).toMatchObject({
       state: "ready",
       preview: { sourceUuid },
     });
-    const previewRecord = projection.records.find((record) => record.sourceUuid === sourceUuid);
+    const previewRecord = catalogueRecords(projection).find((record) => record.sourceUuid === sourceUuid);
     expect(previewRecord).toMatchObject({ sourceUuid, priceCopper: 100 });
     expect(previewRecord).not.toHaveProperty("pricePending");
     expect(getDocument).toHaveBeenCalledTimes(1);
@@ -1562,9 +1677,11 @@ describe("equipment acquisition runtime", () => {
       projection
     );
 
-    expect(projection.records).toHaveLength(sources.length);
-    expect(projection.records).toContainEqual(expect.objectContaining({ sourceUuid: grant.expected.sourceUuid, name }));
-    expect(projection.lineRecords).toEqual([]);
+    expect(catalogueRecords(projection)).toHaveLength(sources.length);
+    expect(catalogueRecords(projection)).toContainEqual(
+      expect.objectContaining({ sourceUuid: grant.expected.sourceUuid, name })
+    );
+    expect(projection.lineRecords).toEqual([expect.objectContaining({ sourceUuid: grant.expected.sourceUuid, name })]);
     expect(getDocument).toHaveBeenCalledTimes(STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize);
     expect(getDocument).not.toHaveBeenCalledWith(nativeSourceId);
     expect(catalogueRows(pane)).toHaveLength(sources.length);
@@ -1593,7 +1710,7 @@ describe("equipment acquisition runtime", () => {
     const beforeActor = structuredClone(request.actor);
 
     const projection = await runtime.uiAdapter.project(request);
-    expect(projection).toMatchObject({
+    expect(materializedProjection(projection)).toMatchObject({
       state: "error",
       records: [],
       diagnostics: [missingDiagnostic],
@@ -1625,7 +1742,7 @@ describe("equipment acquisition runtime", () => {
 
     const projection = await runtime.uiAdapter.project(request);
 
-    expect(projection).toMatchObject({
+    expect(materializedProjection(projection)).toMatchObject({
       state: "error",
       records: [],
       diagnostics: [{ code: "equipment-pack-index-corrupt", packId: PACK_ID, sourceIdentity: null }],
@@ -1645,7 +1762,7 @@ describe("equipment acquisition runtime", () => {
 
     const projection = await runtime.uiAdapter.project(request);
 
-    expect(projection).toMatchObject({
+    expect(materializedProjection(projection)).toMatchObject({
       state: "error",
       records: [],
       diagnostics: [
@@ -1730,7 +1847,7 @@ describe("equipment acquisition runtime", () => {
     );
 
     const projection = await runtime.uiAdapter.project(request);
-    expect(projection.records[0]).toMatchObject({
+    expect(catalogueRecords(projection)[0]).toMatchObject({
       priceLabel: "2 sp 4 cp",
       priceContext: { materializedQuantity: 12, pricePer: 10 },
     });
@@ -1766,7 +1883,7 @@ describe("equipment acquisition runtime", () => {
       getDocument: vi.fn(async () => document(source)),
     });
 
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       state: "ready",
       records: [
         {
@@ -1835,7 +1952,7 @@ describe("equipment acquisition runtime", () => {
     );
 
     const projection = await runtime.uiAdapter.project(request);
-    expect(projection).toMatchObject({
+    expect(materializedProjection(projection)).toMatchObject({
       state: "ready",
       records: [{ priceCopper: 1_000, priceLabel: "10 gp" }],
     });
@@ -1871,7 +1988,7 @@ describe("equipment acquisition runtime", () => {
       { ancestrySize: "huge", policy: higherLevelPolicy("lump-sum"), preparePhysicalItem }
     );
 
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       records: [{ itemType: "shield", priceCopper: 3_500 }],
     });
     const line = await runtime.uiAdapter.prepareLine({ ...request, sourceUuid: DAGGER_UUID });
@@ -1930,7 +2047,7 @@ describe("equipment acquisition runtime", () => {
     );
     delete request.draft.selections["ancestry-level-1"];
 
-    await expect(runtime.uiAdapter.project(request)).resolves.toMatchObject({
+    await expect(runtime.uiAdapter.project(request).then(materializedProjection)).resolves.toMatchObject({
       state: "ready",
       records: [{ name: "Dagger", priceCopper: 200 }],
     });
@@ -2107,7 +2224,7 @@ describe("equipment acquisition runtime", () => {
     selectGiantInstinct(request.draft);
 
     const projection = await runtime.uiAdapter.project(request);
-    expect(projection).toMatchObject({
+    expect(materializedProjection(projection)).toMatchObject({
       titanMauler: { required: true, selectedSourceUuid: null },
       records: [{ priceCopper: 900, titanMaulerEligible: true }],
     });
@@ -2130,7 +2247,7 @@ describe("equipment acquisition runtime", () => {
     });
 
     request.draft.acquisition = { ...request.draft.acquisition!, lines: [line] };
-    expect(await runtime.uiAdapter.project(request)).toMatchObject({
+    expect(materializedProjection(await runtime.uiAdapter.project(request))).toMatchObject({
       titanMauler: { required: true, selectedSourceUuid: DAGGER_UUID },
       records: [{ titanMaulerEligible: true }],
     });
@@ -2212,7 +2329,7 @@ describe("equipment acquisition runtime", () => {
     const accessRequest = { ...request, previewSourceUuid: DAGGER_UUID };
 
     const projection = await runtime.uiAdapter.project(accessRequest);
-    expect(projection.records[0]).toMatchObject({
+    expect(catalogueRecords(projection)[0]).toMatchObject({
       priceCopper: 900,
       rarity: "uncommon",
       available: true,
@@ -2246,14 +2363,14 @@ describe("equipment acquisition runtime", () => {
       }
     );
     selectGiantInstinct(over.request.draft);
-    expect((await over.runtime.uiAdapter.project(over.request)).records).toEqual([]);
+    expect(catalogueRecords(await over.runtime.uiAdapter.project(over.request))).toEqual([]);
     expect(
       (
         await over.runtime.uiAdapter.project({
           ...over.request,
           filters: { "titan-mauler": ["all"] },
         })
-      ).records[0]?.titanMaulerEligible
+      ).recordSource.recordAt(0)?.titanMaulerEligible
     ).toBe(false);
     await expect(
       over.runtime.uiAdapter.prepareTitanMaulerLine({ ...over.request, sourceUuid: DAGGER_UUID })
@@ -2781,7 +2898,10 @@ describe("equipment acquisition runtime", () => {
       },
       { policy: excludedPolicy }
     );
-    expect(await runtime.uiAdapter.project(request)).toMatchObject({ state: "ready", records: [] });
+    expect(materializedProjection(await runtime.uiAdapter.project(request))).toMatchObject({
+      state: "ready",
+      records: [],
+    });
     await expect(
       runtime.uiAdapter.prepareLine({
         ...request,
@@ -2913,6 +3033,9 @@ function fixture(
       Parameters<typeof createEquipmentAcquisitionRuntime>[0]["preparePhysicalItem"]
     >;
     readonly prepareBrowsePhysicalItems?: PrepareBrowsePhysicalItems;
+    readonly projectBrowseRecord?: NonNullable<
+      Parameters<typeof createEquipmentAcquisitionRuntime>[0]["projectBrowseRecord"]
+    >;
     readonly prepareDraftedActor?: NonNullable<
       Parameters<typeof createEquipmentAcquisitionRuntime>[0]["prepareDraftedActor"]
     >;
@@ -2975,6 +3098,7 @@ function fixture(
       prepareConfiguredItem: options.prepareConfiguredItem,
       preparePhysicalItem: options.preparePhysicalItem ?? prepareTestPhysicalItem,
       prepareBrowsePhysicalItems: options.prepareBrowsePhysicalItems,
+      projectBrowseRecord: options.projectBrowseRecord,
       prepareDraftedActor: options.prepareDraftedActor ?? prepareTestDraftedActor,
       prepareKitExpansion: options.prepareKitExpansion,
       browsePreparedRecordCacheLimit: options.browsePreparedRecordCacheLimit,

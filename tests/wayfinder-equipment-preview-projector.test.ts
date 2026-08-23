@@ -100,5 +100,6 @@ function preview(
           }
         : options.source,
     entry: null,
+    resolution: null,
   };
 }

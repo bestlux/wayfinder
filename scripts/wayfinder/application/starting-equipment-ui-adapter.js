@@ -1,3 +1,4 @@
+import { EMPTY_EQUIPMENT_CATALOGUE_RECORD_SOURCE } from "./equipment-catalogue-record-source.js";
 export async function resolveStartingEquipmentRenderPlan(args) {
     return args.equipmentOnlyUpdate && args.cachedPlan?.targetLevel === args.targetLevel
         ? args.cachedPlan
@@ -12,7 +13,7 @@ const UNAVAILABLE_ADAPTER = {
             offset: 0,
             limit: request.limit,
             matchedRecordCount: 0,
-            records: [],
+            recordSource: EMPTY_EQUIPMENT_CATALOGUE_RECORD_SOURCE,
             filters: [],
             activeFilters: request.filters,
             previewSourceUuid: request.previewSourceUuid,

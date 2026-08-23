@@ -281,11 +281,11 @@ describe("equipment catalogue performance profile", () => {
       "Rank stage output count does not preserve its input count.",
     ],
     [
-      "browse-record-projection",
+      "browse-record-source-assembly",
       (details: Record<string, unknown>) => {
-        details.recordCount = 11;
+        details.sourceIdentityCount = 11;
       },
-      "Browse-record output count does not reconcile with matched entries.",
+      "Browse-record-source identity count does not reconcile with matched entries.",
     ],
     [
       "equipment-ui-projection",
@@ -297,16 +297,16 @@ describe("equipment catalogue performance profile", () => {
     [
       "equipment-pane-assembly",
       (details: Record<string, unknown>) => {
-        details.recordCount = 13;
+        details.sourceIdentityCount = 13;
       },
-      "Equipment pane record count exceeds its matched-record input.",
+      "Equipment pane source-identity count does not reconcile with its matched-record input.",
     ],
     [
       "mounted-row-projection",
       (details: Record<string, unknown>) => {
-        details.matchedRecordCount = -1;
+        details.projectedRowCount = -1;
       },
-      "Mounted-row stage lacks a nonnegative matched-record count.",
+      "Mounted-row stage lacks nonnegative matched and projected-row counts.",
     ],
     [
       "foundry-on-render-layout",
@@ -1030,7 +1030,7 @@ function equipmentStageTiming(
     "actor-pricing-fingerprint",
     "drafted-size-resolution",
     "criteria-filter-facet-projection",
-    "browse-record-projection",
+    "browse-record-source-assembly",
     "criteria-rank",
     "equipment-ui-projection",
     "equipment-pane-assembly",
@@ -1090,8 +1090,8 @@ function equipmentStageDetails(stage: string): Record<string, unknown> {
       return { inputEntryCount: 19, filteredEntryCount: 12, projectedFacetCount: 5 };
     case "criteria-rank":
       return { inputEntryCount: 12, matchedEntryCount: 12 };
-    case "browse-record-projection":
-      return { matchedEntryCount: 12, recordCount: 12 };
+    case "browse-record-source-assembly":
+      return { matchedEntryCount: 12, sourceIdentityCount: 12 };
     case "equipment-ui-projection":
       return {
         queryLength: 0,
@@ -1101,9 +1101,9 @@ function equipmentStageDetails(stage: string): Record<string, unknown> {
         previewRequested: false,
       };
     case "equipment-pane-assembly":
-      return { recordCount: 12, matchedRecordCount: 12 };
+      return { sourceIdentityCount: 12, matchedRecordCount: 12 };
     case "mounted-row-projection":
-      return { matchedRecordCount: 12 };
+      return { matchedRecordCount: 12, projectedRowCount: 12 };
     default:
       return {};
   }

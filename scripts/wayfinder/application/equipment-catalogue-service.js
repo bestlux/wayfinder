@@ -322,6 +322,9 @@ export class EquipmentCatalogueService {
     #resolutionFromSource(context, sourceUuid, packId, source) {
         const normalized = normalizeCandidate(source, packId, sourceUuid);
         const evaluated = this.#evaluateCandidate(context, normalized, source);
+        return this.#resolutionFromEvaluatedSource(source, evaluated);
+    }
+    #resolutionFromEvaluatedSource(source, evaluated) {
         return Object.freeze({
             source: cloneData(source),
             candidate: stripEvaluation(evaluated),
@@ -523,11 +526,14 @@ export class EquipmentCatalogueService {
         const current = source === null
             ? null
             : normalizeCandidate(source, indexedCandidate.packId, sourceUuid, undefined, pack?.indexedBrowsePricing === "pf2e-physical-source-v1");
+        const entry = context && current ? this.#evaluateCandidate(context, current, source) : null;
+        const resolution = source && entry ? this.#resolutionFromEvaluatedSource(source, entry) : null;
         return Object.freeze({
             sourceUuid,
             previewIdentity: cached.previewIdentity,
             source,
-            entry: context && current ? this.#evaluateCandidate(context, current, source) : null,
+            entry,
+            resolution,
         });
     }
 }

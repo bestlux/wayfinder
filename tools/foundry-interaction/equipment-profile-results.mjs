@@ -419,6 +419,9 @@ export function validateEquipmentSample(sample, profile) {
   for (const key of ["mountedResultCount", "resultOffset", "resultEnd"]) {
     if (!nonnegativeInteger(sample[key])) failures.push(`Sample ${key} is missing or invalid.`);
   }
+  if (!nonnegativeFinite(sample.listClientHeight) || sample.listClientHeight <= 0) {
+    failures.push("Timing sample result list height is missing or invalid.");
+  }
   if (nonnegativeInteger(sample.mountedResultCount)) {
     const expectedMountedRows = expectedEquipmentMountedRows(profile, sample);
     if (["cold-open", "warm-reopen"].includes(sample.actionId) && expectedMountedRows === null) {

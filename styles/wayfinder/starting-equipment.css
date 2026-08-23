@@ -1516,6 +1516,17 @@
 
 /* ── Responsive ────────────────────────────────────────── */
 
+@container wayfinder-root (max-width: 980px) {
+  .wayfinder-app .starting-equipment-pane,
+  .wayfinder-app .equipment-workspace {
+    flex: 0 0 auto;
+  }
+
+  .wayfinder-app .equipment-workspace {
+    grid-template-rows: 18rem auto;
+  }
+}
+
 @container wayfinder-stage (max-width: 980px) {
   .wayfinder-app .equipment-workspace {
     grid-template-columns: minmax(0, 1.25fr) minmax(14rem, 0.75fr);
@@ -1529,7 +1540,7 @@
 @container wayfinder-stage (max-width: 760px) {
   .wayfinder-app .equipment-workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(8rem, 1fr) auto auto;
+    grid-template-rows: 18rem auto auto;
   }
 
   .wayfinder-app .equipment-catalogue,

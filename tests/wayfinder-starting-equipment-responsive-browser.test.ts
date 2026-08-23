@@ -13,8 +13,11 @@ const chromePath = [
 
 const browserIt = chromePath ? it : it.skip;
 
-const styles = ["tokens-base.css", "shell-layout.css", "footer-responsive.css", "starting-equipment.css"]
-  .map((file) => readFileSync(resolve("styles/wayfinder", file), "utf8"))
+const stylesheetEntry = readFileSync(resolve("styles/wayfinder.css"), "utf8");
+const styles = [...stylesheetEntry.matchAll(/@import\s+"(?<path>[^"]+)";/gu)]
+  .map((match) => match.groups?.path)
+  .filter((path): path is string => typeof path === "string")
+  .map((path) => readFileSync(resolve("styles", path.replace(/^\.\//u, "")), "utf8"))
   .join("\n");
 
 browserIt(
@@ -30,11 +33,16 @@ browserIt(
         expect(equipment.rootOverflow, `root horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
         expect(equipment.stageOverflow, `stage horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
         expect(equipment.paneOverflow, `equipment horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
-        expect(equipment.resultElementCount, `result subtree contract at ${width}px`).toBe(12);
+        expect(equipment.mountedResultCount, `mounted result contract at ${width}px`).toBe(36);
         expect(equipment.targetReachable, `review controls unreachable at ${width}px`).toBe(true);
         if (width <= 980) {
           expect(equipment.stageOverflowY).toBe("auto");
           expect(equipment.stageScrollHeight).toBeGreaterThan(equipment.stageClientHeight);
+          expect(equipment.measuredRowHeight, `missing measured row at ${width}px`).toBeGreaterThan(0);
+          expect(equipment.listClientHeight, `collapsed result viewport at ${width}px`).toBeGreaterThanOrEqual(
+            equipment.measuredRowHeight
+          );
+          expect(equipment.cartClientHeight, `collapsed cart at ${width}px`).toBe(equipment.cartScrollHeight);
         }
 
         await page.setContent(layoutFixture(width, "ordinary-pane", ordinaryContent));
@@ -86,8 +94,17 @@ function layoutFixture(width: number, paneClass: string, content: string): strin
     </div>`;
 }
 
-const result = `
-  <button class="equipment-result">A long translated equipment item name · Level 0 · Common · Player Core · 100 gp · Available</button>`;
+const results = Array.from(
+  { length: 36 },
+  (_, index) => `
+    <article class="equipment-result-row" data-result-index="${index}" data-source-uuid="item-${index}">
+      <button class="equipment-result">
+        <span class="equipment-result-art"></span>
+        <span class="equipment-result-copy"><strong>A long translated equipment item name ${index}</strong><small>Level 0 · Common · Player Core</small></span>
+        <span class="equipment-result-price">100 gp</span>
+      </button>
+    </article>`
+).join("");
 
 const cartLine = `
   <article class="equipment-cart-line">
@@ -101,9 +118,16 @@ const equipmentContent = `
     <p class="equipment-policy-context">Owner chooses and applies · Existing gear stays on the actor sheet</p>
   </section>
   <div class="equipment-workspace">
-    <section class="equipment-catalogue"><div class="equipment-result-list">${result.repeat(12)}</div></section>
+    <section class="equipment-catalogue">
+      <div class="equipment-search-row"><label class="search-shell"><i></i><input type="search" value="" /></label><button class="secondary compact">Clear filters</button></div>
+      <div class="equipment-catalogue-projection">
+        <div class="equipment-filter-row">${["Available", "Armor", "Weapons", "Gear", "Level", "Rarity", "Source"].map((label) => `<button class="equipment-type-chip"><span>${label}</span><span class="equipment-filter-count">36</span></button>`).join("")}</div>
+        <p class="equipment-result-count"><span>Showing 36 of 500</span><small>Common equipment</small></p>
+        <div class="equipment-result-list">${results}</div>
+      </div>
+    </section>
     <aside class="equipment-detail">Equipment detail</aside>
-    <section class="equipment-cart">${cartLine.repeat(8)}<footer data-reachability-target><span>Review the complete acquisition</span><div><button>Keep all</button><button>Confirm</button></div></footer></section>
+    <section class="equipment-cart">${cartLine}<footer data-reachability-target><span>Review the complete acquisition</span><div><button>Keep all</button><button>Confirm</button></div></footer></section>
   </div>`;
 
 const ordinaryContent = `${'<div class="ordinary-row">A translated non-equipment choice row</div>'.repeat(
@@ -115,6 +139,9 @@ function measureLayout() {
   const stage = document.querySelector<HTMLElement>(".wizard-stage")!;
   const pane = stage.querySelector<HTMLElement>("section")!;
   const target = stage.querySelector<HTMLElement>("[data-reachability-target]")!;
+  const resultList = stage.querySelector<HTMLElement>(".equipment-result-list");
+  const measuredRow = resultList?.querySelector<HTMLElement>("[data-result-index]");
+  const cart = stage.querySelector<HTMLElement>(".equipment-cart");
   stage.scrollTop = stage.scrollHeight;
   const stageRect = stage.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
@@ -125,7 +152,11 @@ function measureLayout() {
     stageOverflowY: getComputedStyle(stage).overflowY,
     stageClientHeight: stage.clientHeight,
     stageScrollHeight: stage.scrollHeight,
-    resultElementCount: document.querySelector(".equipment-result-list")?.querySelectorAll("*").length ?? 0,
+    listClientHeight: resultList?.clientHeight ?? 0,
+    measuredRowHeight: measuredRow?.clientHeight ?? 0,
+    mountedResultCount: resultList?.querySelectorAll("[data-result-index]").length ?? 0,
+    cartClientHeight: cart?.clientHeight ?? 0,
+    cartScrollHeight: cart?.scrollHeight ?? 0,
     targetReachable: targetRect.top < stageRect.bottom && targetRect.bottom > stageRect.top,
   };
 }

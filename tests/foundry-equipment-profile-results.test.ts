@@ -303,6 +303,11 @@ describe("equipment catalogue performance profile", () => {
     expect(validateEquipmentSample(cold, profile)).toContain(
       "cold-open did not record the exact enabled, healthy default shelf."
     );
+    const collapsed = sample("cold-open");
+    collapsed.listClientHeight = 0;
+    expect(validateEquipmentSample(collapsed, profile)).toContain(
+      "Timing sample result list height is missing or invalid."
+    );
     const cart = sample("cart-quantity");
     const cartOutcome = cart.actionOutcome as { observedQuantity: number; previousQuantity: number };
     cartOutcome.observedQuantity = cartOutcome.previousQuantity;

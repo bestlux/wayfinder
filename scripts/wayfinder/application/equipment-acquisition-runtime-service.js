@@ -18,6 +18,8 @@ import { isQualifiedKitSource, prepareAdventurersPackExpansion } from "./pf2e-ki
 import { registerStartingEquipmentUiAdapter, } from "./starting-equipment-ui-adapter.js";
 export const DEFAULT_BROWSE_PREPARED_RECORD_CACHE_LIMIT = STARTING_EQUIPMENT_RESULT_WINDOW.maximumSize * 2 + STARTING_EQUIPMENT_RESULT_WINDOW.hydrationChunkSize;
 export const DEFAULT_DRAFTED_EQUIPMENT_SIZE_CACHE_LIMIT = 32;
+/** Includes indexed/pending variants plus bounded prepared browse-price projections per immutable entry. */
+export const MAX_UI_RECORD_VARIANTS_PER_ENTRY = 8;
 export class ConfiguredItemHandoffRequiredError extends Error {
     reason;
     constructor(reason) {
@@ -91,10 +93,19 @@ export function createEquipmentAcquisitionRuntime(options) {
             uiRecordByEntry.set(entry, records);
         }
         const cached = records.get(key);
-        if (cached)
+        if (cached) {
+            records.delete(key);
+            records.set(key, cached);
             return cached;
+        }
         const record = toUiRecord(entry, preparedPrice);
         records.set(key, record);
+        while (records.size > MAX_UI_RECORD_VARIANTS_PER_ENTRY) {
+            const oldest = records.keys().next().value;
+            if (typeof oldest !== "string")
+                break;
+            records.delete(oldest);
+        }
         return record;
     };
     const cachedPendingUiRecord = (entry) => {

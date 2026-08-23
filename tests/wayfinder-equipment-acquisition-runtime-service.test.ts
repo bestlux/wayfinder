@@ -7,6 +7,7 @@ import {
   createEquipmentAcquisitionRuntime,
   type EquipmentAcquisitionRuntime,
   EquipmentSourceHealthError,
+  MAX_UI_RECORD_VARIANTS_PER_ENTRY,
 } from "../src/wayfinder/application/equipment-acquisition-runtime-service";
 import type { PrepareBrowsePhysicalItems } from "../src/wayfinder/application/equipment-browse-preparation-service";
 import {
@@ -43,6 +44,7 @@ import {
   startingEquipmentCatalogueRowSource,
 } from "../src/wayfinder/panes/starting-equipment-pane";
 import { STARTING_EQUIPMENT_RESULT_WINDOW } from "../src/wayfinder/starting-equipment-result-window";
+import type { StartingEquipmentCatalogueRecord } from "../src/wayfinder/view-models";
 import { localizeAcquisitionEnglish } from "./fixtures/acquisition-localization-fixture";
 import { PF2E_841_TACTICAL_WEAPON_PRICE_WITNESS } from "./fixtures/pf2e-841-physical-price";
 
@@ -1283,6 +1285,56 @@ describe("equipment acquisition runtime", () => {
     }
 
     expect(prepareDraftedActor).toHaveBeenCalledTimes(4);
+  });
+
+  it("bounds prepared UI-record variants per immutable catalogue entry with LRU eviction", async () => {
+    const actorSource = {
+      type: "character",
+      system: { pricingRevision: 1 },
+      items: [],
+      effects: [],
+      flags: { "wayfinder-pf2e": { draftRevision: 1 }, pf2e: { pricingRevision: 1 } },
+    };
+    const actor = {
+      id: "actor-1",
+      toObject: vi.fn(() => structuredClone(actorSource)),
+    };
+    const source = dagger({ priceCp: 1 });
+    const prepareBrowsePhysicalItems = vi.fn<PrepareBrowsePhysicalItems>(async (input) =>
+      input.entries.map((entry) => {
+        const prepared = prepareTestPhysicalItem({
+          actor: input.actor,
+          targetLevel: input.targetLevel,
+          targetSize: input.targetSize,
+          source: entry.source,
+        }) as { system: { price: { value: unknown } } };
+        prepared.system.price.value = { copperValue: actorSource.system.pricingRevision };
+        return { key: entry.key, prepared, error: null };
+      })
+    );
+    const { runtime, request } = fixture(
+      { getIndex: vi.fn(async () => [source]), getDocument: vi.fn(async () => document(source)) },
+      { actor, prepareBrowsePhysicalItems, browsePreparedRecordCacheLimit: 1 }
+    );
+
+    let firstRecord: StartingEquipmentCatalogueRecord | null = null;
+    for (let revision = 1; revision <= MAX_UI_RECORD_VARIANTS_PER_ENTRY + 2; revision += 1) {
+      actorSource.system.pricingRevision = revision;
+      actorSource.flags.pf2e.pricingRevision = revision;
+      const projection = await runtime.uiAdapter.project(request);
+      if (projection.state === "error") throw new Error(projection.message);
+      expect(projection).toMatchObject({ state: "ready", records: [{ priceCopper: revision }] });
+      if (revision === 1) firstRecord = projection.records[0]!;
+    }
+
+    actorSource.system.pricingRevision = 1;
+    actorSource.flags.pf2e.pricingRevision = 1;
+    const revisited = await runtime.uiAdapter.project(request);
+    expect(revisited.records[0]).not.toBe(firstRecord);
+    expect(revisited.records[0]?.priceCopper).toBe(1);
+    const current = await runtime.uiAdapter.project(request);
+    expect(current.records[0]).toBe(revisited.records[0]);
+    expect(prepareBrowsePhysicalItems).toHaveBeenCalledTimes(MAX_UI_RECORD_VARIANTS_PER_ENTRY + 3);
   });
 
   it("invalidates drafted equipment size on pack source invalidation", async () => {

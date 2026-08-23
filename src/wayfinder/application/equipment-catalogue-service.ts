@@ -375,8 +375,9 @@ export class EquipmentCatalogueService {
       accessRegistryFingerprint: this.#accessRegistry.fingerprint,
     });
     let evaluatedByPolicy = this.#evaluatedEntriesByMaterial.get(loaded);
-    let entries = evaluatedByPolicy?.get(evaluatedKey);
-    if (entries === undefined) {
+    const cachedEntries = evaluatedByPolicy?.get(evaluatedKey);
+    let entries: readonly EquipmentCatalogueEntry[];
+    if (cachedEntries === undefined) {
       let evaluatedEntryCount = 0;
       entries = await profileEquipmentStage(
         "catalogue-policy-evaluation",
@@ -402,6 +403,12 @@ export class EquipmentCatalogueService {
       evaluatedByPolicy ??= new Map();
       setBoundedCache(evaluatedByPolicy, evaluatedKey, entries, PROJECTION_SNAPSHOT_LIMIT);
       this.#evaluatedEntriesByMaterial.set(loaded, evaluatedByPolicy);
+    } else {
+      entries = profileEquipmentStage(
+        "catalogue-policy-evaluation",
+        () => cachedEntries,
+        () => ({ candidateCount: loaded.candidates.length, entryCount: cachedEntries.length, cacheHit: true })
+      );
     }
     if (cacheKey !== this.#projectionKey(context.policy, packIds)) return this.project(context);
     for (const { candidate } of loaded.candidates) this.#latestCandidateByUuid.set(candidate.sourceUuid, candidate);

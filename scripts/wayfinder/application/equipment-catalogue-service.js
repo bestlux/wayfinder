@@ -143,8 +143,9 @@ export class EquipmentCatalogueService {
             accessRegistryFingerprint: this.#accessRegistry.fingerprint,
         });
         let evaluatedByPolicy = this.#evaluatedEntriesByMaterial.get(loaded);
-        let entries = evaluatedByPolicy?.get(evaluatedKey);
-        if (entries === undefined) {
+        const cachedEntries = evaluatedByPolicy?.get(evaluatedKey);
+        let entries;
+        if (cachedEntries === undefined) {
             let evaluatedEntryCount = 0;
             entries = await profileEquipmentStage("catalogue-policy-evaluation", async () => {
                 const sharedAuthority = context.policy.gmJudgments.some((judgment) => judgment.kind === "rarity-source-exception")
@@ -167,6 +168,9 @@ export class EquipmentCatalogueService {
             evaluatedByPolicy ??= new Map();
             setBoundedCache(evaluatedByPolicy, evaluatedKey, entries, PROJECTION_SNAPSHOT_LIMIT);
             this.#evaluatedEntriesByMaterial.set(loaded, evaluatedByPolicy);
+        }
+        else {
+            entries = profileEquipmentStage("catalogue-policy-evaluation", () => cachedEntries, () => ({ candidateCount: loaded.candidates.length, entryCount: cachedEntries.length, cacheHit: true }));
         }
         if (cacheKey !== this.#projectionKey(context.policy, packIds))
             return this.project(context);

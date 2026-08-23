@@ -67,6 +67,37 @@ const REQUIRED_FACET_STAGE_NAMES = [
   "foundry-html-replacement",
   "foundry-on-render-layout",
 ];
+const EQUIPMENT_STAGE_DETAIL_KEYS = Object.freeze({
+  "catalogue-index-wait": ["packId", "requestedFieldCount"],
+  "catalogue-index-materialization": ["packId", "entryCount"],
+  "catalogue-normalization": [
+    "packId",
+    "entryCount",
+    "normalizedCount",
+    "reusedNormalizationCount",
+    "candidateCount",
+    "diagnosticCount",
+  ],
+  "catalogue-policy-evaluation": ["candidateCount", "entryCount", "cacheHit"],
+  "actor-pricing-fingerprint": ["itemCount", "effectCount", "sourceCharacterCount"],
+  "drafted-size-resolution": ["actorPricingFingerprintAvailable"],
+  "criteria-filter-facet-projection": ["inputEntryCount", "filteredEntryCount", "projectedFacetCount"],
+  "browse-record-projection": ["matchedEntryCount", "recordCount"],
+  "criteria-rank": ["inputEntryCount", "matchedEntryCount"],
+  "equipment-ui-projection": [
+    "queryLength",
+    "activeFilterValueCount",
+    "requestedOffset",
+    "requestedLimit",
+    "previewRequested",
+  ],
+  "equipment-pane-assembly": ["recordCount", "matchedRecordCount"],
+  "mounted-row-projection": ["matchedRecordCount"],
+  "foundry-prepare-context": [],
+  "foundry-template-render": [],
+  "foundry-html-replacement": [],
+  "foundry-on-render-layout": [],
+});
 
 const FROZEN_VIEWPORT = { width: 1440, height: 1000 };
 const FROZEN_APP_WIDTHS = [1240, 1180, 980, 760];
@@ -625,20 +656,8 @@ export function validateEquipmentStageTiming(sample) {
     ) {
       failures.push(`${interval?.stage ?? "Equipment stage"} timing evidence is invalid or outside the sample.`);
     }
-    if (
-      interval?.stage === "actor-pricing-fingerprint" &&
-      (!nonnegativeInteger(interval.details?.itemCount) ||
-        !nonnegativeInteger(interval.details?.effectCount) ||
-        !Number.isInteger(interval.details?.sourceCharacterCount) ||
-        interval.details.sourceCharacterCount < 1)
-    ) {
-      failures.push("Actor-pricing stage lacks exact embedded-document and source-size counters.");
-    }
-    if (
-      interval?.stage === "drafted-size-resolution" &&
-      typeof interval.details?.actorPricingFingerprintAvailable !== "boolean"
-    ) {
-      failures.push("Drafted-size stage lacks actor-pricing fingerprint availability.");
+    if (EQUIPMENT_STAGE_NAMES.has(interval?.stage) && plainRecord(interval.details)) {
+      failures.push(...validateEquipmentStageDetails(interval.stage, interval.details));
     }
     if (
       Array.isArray(sample.actionIntervals) &&
@@ -672,6 +691,114 @@ export function validateEquipmentStageTiming(sample) {
     if (!observedStages.has(stage)) failures.push(`${sample.actionId} stage timing lacks ${stage}.`);
   }
   return [...new Set(failures)];
+}
+
+function validateEquipmentStageDetails(stage, details) {
+  const failures = [];
+  const expectedKeys = EQUIPMENT_STAGE_DETAIL_KEYS[stage];
+  if (!sameStrings(Object.keys(details).sort(), [...expectedKeys].sort())) {
+    failures.push(`${stage} stage details do not match its exact counter schema.`);
+    return failures;
+  }
+  const nonnegativeCounters = (...keys) => keys.every((key) => nonnegativeInteger(details[key]));
+  if (
+    stage === "catalogue-index-wait" &&
+    (!nonempty(details.packId) || !Number.isInteger(details.requestedFieldCount) || details.requestedFieldCount < 1)
+  ) {
+    failures.push("Catalogue index-wait stage lacks its pack identity or requested-field count.");
+  }
+  if (
+    stage === "catalogue-index-materialization" &&
+    (!nonempty(details.packId) || !nonnegativeCounters("entryCount"))
+  ) {
+    failures.push("Catalogue materialization stage lacks its pack identity or entry count.");
+  }
+  if (stage === "catalogue-normalization") {
+    if (
+      !nonempty(details.packId) ||
+      !nonnegativeCounters(
+        "entryCount",
+        "normalizedCount",
+        "reusedNormalizationCount",
+        "candidateCount",
+        "diagnosticCount",
+      )
+    ) {
+      failures.push("Catalogue normalization stage lacks nonnegative exact counters.");
+    } else {
+      if (details.normalizedCount + details.reusedNormalizationCount !== details.entryCount) {
+        failures.push("Catalogue normalization work and reuse counters do not reconcile with input entries.");
+      }
+      if (details.candidateCount + details.diagnosticCount !== details.entryCount) {
+        failures.push("Catalogue normalization outputs do not reconcile with input entries.");
+      }
+    }
+  }
+  if (stage === "catalogue-policy-evaluation") {
+    if (
+      !nonnegativeCounters("candidateCount", "entryCount") ||
+      typeof details.cacheHit !== "boolean"
+    ) {
+      failures.push("Catalogue policy stage lacks candidate, output, or cache-hit evidence.");
+    } else if (details.entryCount !== details.candidateCount) {
+      failures.push("Catalogue policy output count does not reconcile with candidate input.");
+    }
+  }
+  if (
+    stage === "actor-pricing-fingerprint" &&
+    (!nonnegativeCounters("itemCount", "effectCount") ||
+      !Number.isInteger(details.sourceCharacterCount) ||
+      details.sourceCharacterCount < 1)
+  ) {
+    failures.push("Actor-pricing stage lacks exact embedded-document and source-size counters.");
+  }
+  if (
+    stage === "drafted-size-resolution" &&
+    typeof details.actorPricingFingerprintAvailable !== "boolean"
+  ) {
+    failures.push("Drafted-size stage lacks actor-pricing fingerprint availability.");
+  }
+  if (stage === "criteria-filter-facet-projection") {
+    if (!nonnegativeCounters("inputEntryCount", "filteredEntryCount", "projectedFacetCount")) {
+      failures.push("Filter/facet stage lacks nonnegative input, output, or facet counters.");
+    } else if (details.filteredEntryCount > details.inputEntryCount) {
+      failures.push("Filter/facet output count exceeds its input count.");
+    }
+  }
+  if (stage === "criteria-rank") {
+    if (!nonnegativeCounters("inputEntryCount", "matchedEntryCount")) {
+      failures.push("Rank stage lacks nonnegative input and output counters.");
+    } else if (details.matchedEntryCount !== details.inputEntryCount) {
+      failures.push("Rank stage output count does not preserve its input count.");
+    }
+  }
+  if (stage === "browse-record-projection") {
+    if (!nonnegativeCounters("matchedEntryCount", "recordCount")) {
+      failures.push("Browse-record stage lacks nonnegative input and output counters.");
+    } else if (details.recordCount !== details.matchedEntryCount) {
+      failures.push("Browse-record output count does not reconcile with matched entries.");
+    }
+  }
+  if (stage === "equipment-ui-projection") {
+    if (
+      !nonnegativeCounters("queryLength", "activeFilterValueCount", "requestedOffset", "requestedLimit") ||
+      details.requestedLimit < 1 ||
+      typeof details.previewRequested !== "boolean"
+    ) {
+      failures.push("Equipment UI stage lacks valid request-shape counters.");
+    }
+  }
+  if (stage === "equipment-pane-assembly") {
+    if (!nonnegativeCounters("recordCount", "matchedRecordCount")) {
+      failures.push("Equipment pane stage lacks nonnegative record counters.");
+    } else if (details.recordCount > details.matchedRecordCount) {
+      failures.push("Equipment pane record count exceeds its matched-record input.");
+    }
+  }
+  if (stage === "mounted-row-projection" && !nonnegativeCounters("matchedRecordCount")) {
+    failures.push("Mounted-row stage lacks a nonnegative matched-record count.");
+  }
+  return failures;
 }
 
 export function validateEquipmentResultWindowObservation(observation, profile) {

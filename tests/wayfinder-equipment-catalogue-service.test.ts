@@ -13,6 +13,10 @@ import {
   type EquipmentSourceAccessRecord,
   WF_080_21_DAGGER_UUID,
 } from "../src/wayfinder/application/equipment-catalogue-service";
+import {
+  type EquipmentProfileStageCompletion,
+  registerEquipmentProfileStageObserver,
+} from "../src/wayfinder/application/equipment-performance-profiler";
 import { CHARACTER_WEALTH_POLICY_REF } from "../src/wayfinder/domain/character-wealth-policy";
 import {
   buildEquipmentPolicyJudgmentFactsFingerprint,
@@ -308,6 +312,41 @@ describe("minimal equipment catalogue", () => {
     await vi.waitFor(() => expect(getIndex).toHaveBeenCalledTimes(2));
     releaseIndex?.(entries);
     expect((await invalidated).cacheKey).not.toBe(changedPolicyProjection.cacheKey);
+  });
+
+  it("attributes policy resolution on both cold evaluation and a live cache hit", async () => {
+    const completions: EquipmentProfileStageCompletion[] = [];
+    const service = createEquipmentCatalogueService({
+      packs: new Map([
+        [
+          PACK_ID,
+          {
+            indexEntryIdentity: "stable-replacement" as const,
+            documentName: "Item",
+            getIndex: vi.fn(async () => [dagger()]),
+            getDocument: vi.fn(async () => null),
+          },
+        ],
+      ]),
+      equipmentPackIds: [PACK_ID],
+    });
+    const restore = registerEquipmentProfileStageObserver({
+      start: ({ id }) => `sample-${id}`,
+      complete: (event) => completions.push(event),
+    });
+    try {
+      await service.project(context());
+      await service.project(context());
+    } finally {
+      restore();
+    }
+
+    expect(
+      completions.filter(({ stage }) => stage === "catalogue-policy-evaluation").map(({ details }) => details)
+    ).toEqual([
+      { candidateCount: 1, entryCount: 1, cacheHit: false },
+      { candidateCount: 1, entryCount: 1, cacheHit: true },
+    ]);
   });
 
   it("retries an index projection invalidated while its pack read is in flight", async () => {

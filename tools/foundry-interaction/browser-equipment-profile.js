@@ -761,7 +761,21 @@ async function instrumentAppPrototype() {
     Object.defineProperty(equipmentAdapter, "__wayfinderEquipmentProfileInstrumented", { value: true });
     const project = equipmentAdapter.project;
     equipmentAdapter.project = function (...args) {
-      return captureHarnessStage("equipment-ui-projection", () => project.apply(this, args));
+      const request = args[0];
+      return captureHarnessStage(
+        "equipment-ui-projection",
+        () => project.apply(this, args),
+        () => ({
+          queryLength: typeof request?.query === "string" ? request.query.length : -1,
+          activeFilterValueCount: Object.values(request?.filters ?? {}).reduce(
+            (count, values) => count + (Array.isArray(values) ? values.length : 0),
+            0,
+          ),
+          requestedOffset: request?.offset,
+          requestedLimit: request?.limit,
+          previewRequested: request?.previewSourceUuid !== null,
+        }),
+      );
     };
   }
   const prototype = WayfinderApp.prototype;
@@ -807,8 +821,8 @@ async function instrumentAppPrototype() {
   }
 }
 
-function captureHarnessStage(stage, operation) {
-  const pending = beginHarnessStage(stage);
+function captureHarnessStage(stage, operation, details = () => ({})) {
+  const pending = beginHarnessStage(stage, details);
   try {
     const result = operation();
     if (result && typeof result.then === "function") {
@@ -831,17 +845,23 @@ function captureHarnessStage(stage, operation) {
   }
 }
 
-function beginHarnessStage(stage) {
+function beginHarnessStage(stage, details = () => ({})) {
   const start = { id: nextHarnessStageId--, stage, startedAt: performance.now() };
-  return { start, owner: captureStageStart(start) };
+  return { start, owner: captureStageStart(start), details };
 }
 
 function completeHarnessStage(pending, status) {
   if (!pending) return;
-  const { start, owner } = pending;
+  const { start, owner, details } = pending;
   const completedAt = performance.now();
+  let completedDetails;
+  try {
+    completedDetails = details();
+  } catch {
+    completedDetails = { detailCaptureFailed: true };
+  }
   captureStageCompletion(
-    { ...start, completedAt, durationMs: completedAt - start.startedAt, status, details: {} },
+    { ...start, completedAt, durationMs: completedAt - start.startedAt, status, details: completedDetails },
     owner,
   );
 }

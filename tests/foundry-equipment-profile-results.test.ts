@@ -209,6 +209,120 @@ describe("equipment catalogue performance profile", () => {
     expect(validateEquipmentStageTiming(missing)).toContain("cold-open stage timing lacks catalogue-normalization.");
   });
 
+  it.each([
+    [
+      "catalogue-index-wait",
+      (details: Record<string, unknown>) => {
+        details.requestedFieldCount = 0;
+      },
+      "Catalogue index-wait stage lacks its pack identity or requested-field count.",
+    ],
+    [
+      "catalogue-index-materialization",
+      (details: Record<string, unknown>) => {
+        details.entryCount = -1;
+      },
+      "Catalogue materialization stage lacks its pack identity or entry count.",
+    ],
+    [
+      "catalogue-normalization",
+      (details: Record<string, unknown>) => {
+        details.reusedNormalizationCount = 4;
+      },
+      "Catalogue normalization work and reuse counters do not reconcile with input entries.",
+    ],
+    [
+      "catalogue-normalization",
+      (details: Record<string, unknown>) => {
+        details.diagnosticCount = 2;
+      },
+      "Catalogue normalization outputs do not reconcile with input entries.",
+    ],
+    [
+      "catalogue-policy-evaluation",
+      (details: Record<string, unknown>) => {
+        delete details.cacheHit;
+      },
+      "catalogue-policy-evaluation stage details do not match its exact counter schema.",
+    ],
+    [
+      "catalogue-policy-evaluation",
+      (details: Record<string, unknown>) => {
+        details.entryCount = 18;
+      },
+      "Catalogue policy output count does not reconcile with candidate input.",
+    ],
+    [
+      "actor-pricing-fingerprint",
+      (details: Record<string, unknown>) => {
+        details.sourceCharacterCount = 0;
+      },
+      "Actor-pricing stage lacks exact embedded-document and source-size counters.",
+    ],
+    [
+      "drafted-size-resolution",
+      (details: Record<string, unknown>) => {
+        details.actorPricingFingerprintAvailable = "yes";
+      },
+      "Drafted-size stage lacks actor-pricing fingerprint availability.",
+    ],
+    [
+      "criteria-filter-facet-projection",
+      (details: Record<string, unknown>) => {
+        details.filteredEntryCount = 20;
+      },
+      "Filter/facet output count exceeds its input count.",
+    ],
+    [
+      "criteria-rank",
+      (details: Record<string, unknown>) => {
+        details.matchedEntryCount = 11;
+      },
+      "Rank stage output count does not preserve its input count.",
+    ],
+    [
+      "browse-record-projection",
+      (details: Record<string, unknown>) => {
+        details.recordCount = 11;
+      },
+      "Browse-record output count does not reconcile with matched entries.",
+    ],
+    [
+      "equipment-ui-projection",
+      (details: Record<string, unknown>) => {
+        details.requestedOffset = -1;
+      },
+      "Equipment UI stage lacks valid request-shape counters.",
+    ],
+    [
+      "equipment-pane-assembly",
+      (details: Record<string, unknown>) => {
+        details.recordCount = 13;
+      },
+      "Equipment pane record count exceeds its matched-record input.",
+    ],
+    [
+      "mounted-row-projection",
+      (details: Record<string, unknown>) => {
+        details.matchedRecordCount = -1;
+      },
+      "Mounted-row stage lacks a nonnegative matched-record count.",
+    ],
+    [
+      "foundry-on-render-layout",
+      (details: Record<string, unknown>) => {
+        details.unexpected = 1;
+      },
+      "foundry-on-render-layout stage details do not match its exact counter schema.",
+    ],
+  ])("rejects malformed %s stage evidence", (stage, mutate, failure) => {
+    const malformed = structuredClone(sample("cold-open"));
+    const interval = malformed.stageTiming.intervals.find((entry: { stage: string }) => entry.stage === stage);
+    expect(interval).toBeDefined();
+    mutate(interval!.details);
+    expect(validateEquipmentStageTiming(malformed)).toContain(failure);
+  });
+
   it("summarizes raw stage intervals without changing the action budgets", () => {
     const summary = summarizeEquipmentProfile(profile, [sample("cold-open"), sample("facet-change")]);
     const cold = summary.byActionWidth.find(
@@ -928,12 +1042,7 @@ function equipmentStageTiming(
     completedAt,
     durationMs: completedAt - startedAt,
     status: "completed",
-    details:
-      stage === "actor-pricing-fingerprint"
-        ? { itemCount: 2, effectCount: 0, sourceCharacterCount: 2048 }
-        : stage === "drafted-size-resolution"
-          ? { actorPricingFingerprintAvailable: true }
-          : {},
+    details: equipmentStageDetails(stage),
   }));
   return {
     schemaVersion: 1,
@@ -945,6 +1054,50 @@ function equipmentStageTiming(
     intervals,
     closed: true,
   };
+}
+
+function equipmentStageDetails(stage: string): Record<string, unknown> {
+  switch (stage) {
+    case "catalogue-index-wait":
+      return { packId: "pf2e.equipment-srd", requestedFieldCount: 24 };
+    case "catalogue-index-materialization":
+      return { packId: "pf2e.equipment-srd", entryCount: 20 };
+    case "catalogue-normalization":
+      return {
+        packId: "pf2e.equipment-srd",
+        entryCount: 20,
+        normalizedCount: 15,
+        reusedNormalizationCount: 5,
+        candidateCount: 19,
+        diagnosticCount: 1,
+      };
+    case "catalogue-policy-evaluation":
+      return { candidateCount: 19, entryCount: 19, cacheHit: false };
+    case "actor-pricing-fingerprint":
+      return { itemCount: 2, effectCount: 0, sourceCharacterCount: 2048 };
+    case "drafted-size-resolution":
+      return { actorPricingFingerprintAvailable: true };
+    case "criteria-filter-facet-projection":
+      return { inputEntryCount: 19, filteredEntryCount: 12, projectedFacetCount: 5 };
+    case "criteria-rank":
+      return { inputEntryCount: 12, matchedEntryCount: 12 };
+    case "browse-record-projection":
+      return { matchedEntryCount: 12, recordCount: 12 };
+    case "equipment-ui-projection":
+      return {
+        queryLength: 0,
+        activeFilterValueCount: 0,
+        requestedOffset: 0,
+        requestedLimit: 48,
+        previewRequested: false,
+      };
+    case "equipment-pane-assembly":
+      return { recordCount: 12, matchedRecordCount: 12 };
+    case "mounted-row-projection":
+      return { matchedRecordCount: 12 };
+    default:
+      return {};
+  }
 }
 
 function qualifiedResult(runId: string) {

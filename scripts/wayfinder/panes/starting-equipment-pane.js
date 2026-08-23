@@ -1,6 +1,7 @@
 import { localizeEquipmentSourceDiagnostic, } from "../application/acquisition-localization.js";
 import { equipmentAllowanceFocusId, equipmentFilterFocusId, equipmentItemFocusId, equipmentLineControlFocusId, equipmentLineFocusId, } from "../application/equipment-accessibility.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
+import { itemLevelWithinCurrencyBoundary, resolveEquipmentItemLevelBoundary, } from "../domain/equipment-item-level-boundary.js";
 import { equipmentPolicyJudgmentFactsEqual } from "../domain/equipment-policy.js";
 import { clampStartingEquipmentResultWindow, STARTING_EQUIPMENT_RESULT_WINDOW, } from "../starting-equipment-result-window.js";
 const FOUNDRY_INTL_LOCALE_ALIASES = Object.freeze({
@@ -32,6 +33,9 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
     const sourceDiagnostics = catalogue.diagnostics ?? [];
     const catalogueReady = catalogue.state === "ready" && sourceDiagnostics.length === 0;
     const policy = acquisition?.policySnapshot?.material ?? null;
+    const itemLevelBoundary = policy
+        ? resolveEquipmentItemLevelBoundary(policy.subject.targetLevel, policy.resolvedRecipe.kind)
+        : null;
     const budgetCopper = policy?.budgetCopper ?? 1_500;
     const spentCopper = acquisition?.lines.reduce((sum, line) => sum + chargedCopper(line), 0) ?? 0;
     const reviewedRemaining = acquisition?.disposition.kind === "purchase-ledger" || acquisition?.disposition.kind === "retain-all"
@@ -68,7 +72,10 @@ export function buildStartingEquipmentPane(step, draft, _evaluation, catalogue, 
     let projectedRowCount = 0;
     const projectRecord = (record, index) => {
         const currencyAffordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
-        const canBuyWithCurrency = record.available && record.level < step.level && currencyAffordable;
+        const canBuyWithCurrency = record.available &&
+            itemLevelBoundary !== null &&
+            itemLevelWithinCurrencyBoundary(itemLevelBoundary, record.level) &&
+            currencyAffordable;
         const eligibleAllowances = record.available && policy?.resolvedRecipe.kind === "permanent-items" && isPermanentItemType(record.itemType)
             ? dedupeAllowanceLevels(availableAllowances.filter((allowance) => allowance.itemLevel >= record.level))
             : [];

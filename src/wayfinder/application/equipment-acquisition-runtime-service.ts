@@ -30,6 +30,10 @@ import {
   titanMaulerTargetSize,
 } from "../domain/class-grant-reconciliation.js";
 import type { EconomicHandoffReason } from "../domain/economic-baseline.js";
+import {
+  itemLevelWithinCurrencyBoundary,
+  resolveEquipmentItemLevelBoundary,
+} from "../domain/equipment-item-level-boundary.js";
 import type {
   EffectiveEquipmentPolicySnapshotV1,
   EquipmentHigherLevelStartClaim,
@@ -612,7 +616,7 @@ export function createEquipmentAcquisitionRuntime(
             throwIfStartingEquipmentProjectionAborted(request.signal);
           }
         }
-        const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
+        const maximumLevel = resolveEquipmentItemLevelBoundary(policy.targetLevel, policy.recipe.kind).catalogueMaximum;
         const { entries, previewOrderMaterial } = overlayHydratedEquipmentEntryAtLevel(
           projection.entries,
           maximumLevel,
@@ -1617,8 +1621,9 @@ function resolveRequestedFunding(
   itemPermanence: "consumable" | "permanent"
 ): AcquisitionLineDraft["funding"] {
   if (requested.lane === "currency") {
-    if (itemLevel >= policy.targetLevel) {
-      throw new Error("Starting currency can buy only items below the character's target level.");
+    const boundary = resolveEquipmentItemLevelBoundary(policy.targetLevel, policy.recipe.kind);
+    if (!itemLevelWithinCurrencyBoundary(boundary, itemLevel)) {
+      throw new Error(`Starting currency can buy only items up to level ${boundary.currencyMaximum}.`);
     }
     return { lane: "currency" };
   }

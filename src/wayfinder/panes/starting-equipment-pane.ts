@@ -15,6 +15,10 @@ import type { EquipmentPreviewProjection } from "../application/equipment-previe
 import type { EquipmentSourceDiagnostic } from "../application/equipment-source-policy.js";
 import { resolveAcquisitionPrice } from "../domain/acquisition-ledger.js";
 import type { EconomicHandoffReason } from "../domain/economic-baseline.js";
+import {
+  itemLevelWithinCurrencyBoundary,
+  resolveEquipmentItemLevelBoundary,
+} from "../domain/equipment-item-level-boundary.js";
 import type {
   EquipmentPolicyJudgmentRecord,
   EquipmentPolicyRequestDecisionV1,
@@ -144,6 +148,9 @@ export function buildStartingEquipmentPane(
   const sourceDiagnostics = catalogue.diagnostics ?? [];
   const catalogueReady = catalogue.state === "ready" && sourceDiagnostics.length === 0;
   const policy = acquisition?.policySnapshot?.material ?? null;
+  const itemLevelBoundary = policy
+    ? resolveEquipmentItemLevelBoundary(policy.subject.targetLevel, policy.resolvedRecipe.kind)
+    : null;
   const budgetCopper = policy?.budgetCopper ?? 1_500;
   const spentCopper = acquisition?.lines.reduce((sum, line) => sum + chargedCopper(line), 0) ?? 0;
   const reviewedRemaining =
@@ -190,7 +197,11 @@ export function buildStartingEquipmentPane(
   let projectedRowCount = 0;
   const projectRecord = (record: StartingEquipmentCatalogueRecord, index: number): CataloguePaneRow => {
     const currencyAffordable = record.priceCopper !== null && record.priceCopper <= remainingCopper;
-    const canBuyWithCurrency = record.available && record.level < step.level && currencyAffordable;
+    const canBuyWithCurrency =
+      record.available &&
+      itemLevelBoundary !== null &&
+      itemLevelWithinCurrencyBoundary(itemLevelBoundary, record.level) &&
+      currencyAffordable;
     const eligibleAllowances =
       record.available && policy?.resolvedRecipe.kind === "permanent-items" && isPermanentItemType(record.itemType)
         ? dedupeAllowanceLevels(availableAllowances.filter((allowance) => allowance.itemLevel >= record.level))

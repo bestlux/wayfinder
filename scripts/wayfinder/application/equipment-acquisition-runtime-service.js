@@ -5,6 +5,7 @@ import { acquisitionPolicyMaterialMatches, createAcquisitionPolicySnapshot, inva
 import { mintAcquisitionLineId } from "../domain/acquisition-identity.js";
 import { createAcquisitionPriceSnapshot } from "../domain/acquisition-ledger.js";
 import { assertPreparedClassGrantPlanMatches, evaluateTitanMaulerCandidate, normalizePlannedClassGrant, titanMaulerTargetSize, } from "../domain/class-grant-reconciliation.js";
+import { itemLevelWithinCurrencyBoundary, resolveEquipmentItemLevelBoundary, } from "../domain/equipment-item-level-boundary.js";
 import { clampStartingEquipmentResultWindow, STARTING_EQUIPMENT_RESULT_WINDOW, } from "../starting-equipment-result-window.js";
 import { buildTitanMaulerCandidate, titanMaulerGrantIdForDraft } from "./class-grant-projection-service.js";
 import { isBrowsePhysicalBatchSafeSource, prepareTransientBrowsePhysicalItems, } from "./equipment-browse-preparation-service.js";
@@ -357,7 +358,7 @@ export function createEquipmentAcquisitionRuntime(options) {
                         throwIfStartingEquipmentProjectionAborted(request.signal);
                     }
                 }
-                const maximumLevel = policy.recipe.kind === "permanent-items" ? policy.targetLevel : policy.targetLevel - 1;
+                const maximumLevel = resolveEquipmentItemLevelBoundary(policy.targetLevel, policy.recipe.kind).catalogueMaximum;
                 const { entries, previewOrderMaterial } = overlayHydratedEquipmentEntryAtLevel(projection.entries, maximumLevel, hydratedPreviewEntry, indexEntries(projection.entries));
                 const actorPricingFingerprint = fingerprintActorPricingContext(request.actor);
                 const targetSize = await profileEquipmentStage("drafted-size-resolution", () => cachedDraftedEquipmentSize(request.actor, request.draft, actorPricingFingerprint), () => ({ actorPricingFingerprintAvailable: actorPricingFingerprint !== null }));
@@ -1242,8 +1243,9 @@ function assertTitanMaulerCandidate(resolved) {
 }
 function resolveRequestedFunding(policy, requested, itemLevel, itemPermanence) {
     if (requested.lane === "currency") {
-        if (itemLevel >= policy.targetLevel) {
-            throw new Error("Starting currency can buy only items below the character's target level.");
+        const boundary = resolveEquipmentItemLevelBoundary(policy.targetLevel, policy.recipe.kind);
+        if (!itemLevelWithinCurrencyBoundary(boundary, itemLevel)) {
+            throw new Error(`Starting currency can buy only items up to level ${boundary.currencyMaximum}.`);
         }
         return { lane: "currency" };
     }

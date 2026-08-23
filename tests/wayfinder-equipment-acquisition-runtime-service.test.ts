@@ -197,7 +197,7 @@ describe("equipment acquisition runtime", () => {
         sourceUuid: `Compendium.${PACK_ID}.Item.at-level`,
         funding: { lane: "currency" },
       })
-    ).rejects.toThrow(/below.*target level/i);
+    ).rejects.toThrow("Starting currency can buy only items up to level 4.");
   });
 
   it("prepares explicit permanent-item allowance assignments without consuming coin", async () => {
@@ -496,11 +496,18 @@ describe("equipment acquisition runtime", () => {
     expect(getDocument).toHaveBeenCalledTimes(2);
   });
 
-  it("reports the uncapped matched level-qualified count while hydrating only the bounded page", async () => {
+  it("admits a level-1 healing consumable to the level-1 catalogue and currency lane", async () => {
     const levelQualified = Array.from({ length: 20 }, (_, index) =>
       dagger({ id: `qualified-${index}`, name: `Common gear ${String(index).padStart(2, "0")}` })
     );
-    const atLevel = dagger({ id: "at-level", name: "Common at-level gear", level: 1 });
+    const atLevel = dagger({
+      id: "at-level",
+      name: "Common Healing Potion (Minor)",
+      itemType: "consumable",
+      level: 1,
+      priceGp: 4,
+      otherTags: ["healing", "potion"],
+    });
     const sources = [...levelQualified, atLevel];
     const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
     const { runtime, request } = fixture({ getIndex: vi.fn(async () => sources), getDocument });
@@ -513,14 +520,46 @@ describe("equipment acquisition runtime", () => {
       projection
     );
 
-    expect(projection.matchedRecordCount).toBe(levelQualified.length);
-    expect(catalogueRecords(projection)).toHaveLength(20);
+    expect(projection.matchedRecordCount).toBe(sources.length);
+    expect(catalogueRecords(projection)).toHaveLength(sources.length);
     expect(pane.catalogue).toMatchObject({
-      message: `${levelQualified.length} pieces of gear on the shelves.`,
-      totalResultCount: levelQualified.length,
-      visibleResultCount: 20,
+      message: `${sources.length} pieces of gear on the shelves.`,
+      totalResultCount: sources.length,
+      visibleResultCount: sources.length,
     });
-    expect(getDocument).toHaveBeenCalledTimes(20);
+    expect(catalogueRows(pane).at(-1)).toMatchObject({
+      name: "Common Healing Potion (Minor)",
+      itemType: "consumable",
+      level: 1,
+      priceCopper: 400,
+      canBuyWithCurrency: true,
+      canAdd: true,
+    });
+    await expect(
+      runtime.uiAdapter.prepareLine({ ...request, sourceUuid: `Compendium.${PACK_ID}.Item.at-level` })
+    ).resolves.toMatchObject({
+      sourceUuid: `Compendium.${PACK_ID}.Item.at-level`,
+      itemLevel: 1,
+      permanence: "consumable",
+      funding: { lane: "currency" },
+      price: { linePriceCopper: 400 },
+    });
+    expect(getDocument).toHaveBeenCalledTimes(sources.length + 1);
+  });
+
+  it("keeps at-level items outside higher-level currency funding", async () => {
+    const source = dagger({ id: "higher-at-level", name: "Level 5 consumable", itemType: "consumable", level: 5 });
+    const { runtime, request } = fixture(
+      {
+        getIndex: vi.fn(async () => [source]),
+        getDocument: vi.fn(async () => document(source)),
+      },
+      { policy: higherLevelPolicy("lump-sum") }
+    );
+
+    await expect(
+      runtime.uiAdapter.prepareLine({ ...request, sourceUuid: `Compendium.${PACK_ID}.Item.higher-at-level` })
+    ).rejects.toThrow("Starting currency can buy only items up to level 4.");
   });
 
   it("keeps a 2,000-entry runtime projection lazy through pane assembly and converts exactly requested rows", async () => {
@@ -2181,14 +2220,14 @@ describe("equipment acquisition runtime", () => {
     expect(drifted.resolvedPrice).toMatchObject({ unitPriceCopper: 30, linePriceCopper: 30 });
   });
 
-  it("fails closed for at-level currency purchases and configured material sources", async () => {
+  it("allows level-1 at-level currency purchases and fails closed for configured material sources", async () => {
     const leveled = fixture({
       getIndex: vi.fn(async () => [dagger({ level: 1 })]),
       getDocument: vi.fn(async () => document(dagger({ level: 1 }))),
     });
     await expect(
       leveled.runtime.uiAdapter.prepareLine({ ...leveled.request, sourceUuid: DAGGER_UUID })
-    ).rejects.toThrow(/below.*target level/i);
+    ).resolves.toMatchObject({ itemLevel: 1, funding: { lane: "currency" } });
 
     const material = dagger({ materialType: "cold-iron" });
     const configured = fixture({

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.3 - 2026-08-23
+
+- Level-1 Starting Equipment now includes common level-1 items such as minor healing potions and elixirs of life. Both official level-1 recipe selections can spend the 15 gp budget on those items, while higher-level residual and lump-sum currency remains limited to items below the character's target level.
+
 ## 0.8.2 - 2026-08-23
 
 - Starting Equipment now exposes the complete matching catalogue through an adaptive virtual list. The mounted window grows with Wayfinder's height, stays ahead of rapid and large scroll jumps, and preserves its host, focus, and scroll position while search, filters, previews, and cart changes update around it.

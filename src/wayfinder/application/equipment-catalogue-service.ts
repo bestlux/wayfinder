@@ -491,11 +491,19 @@ export class EquipmentCatalogueService {
     const results = await Promise.all(
       requests.map(async ({ sourceUuid, pack, packId, documentId }) => {
         try {
+          const candidate = this.#latestCandidateByUuid.get(sourceUuid);
+          const cachedPreview = this.#previewCache.get(sourceUuid);
+          const canReusePreview =
+            !forceFresh && candidate !== undefined && cachedPreview?.previewIdentity === candidate.previewIdentity;
           const source = forceFresh
             ? await forceFreshBrowseSource(pack, documentId)
-            : await pack
-                .getDocument(documentId)
-                .then((document) => (document === null ? null : extractDocumentSource(document)));
+            : canReusePreview
+              ? cachedPreview.source === null
+                ? null
+                : cloneData(cachedPreview.source)
+              : await pack
+                  .getDocument(documentId)
+                  .then((document) => (document === null ? null : extractDocumentSource(document)));
           if (source === null) {
             return Object.freeze({
               sourceUuid,

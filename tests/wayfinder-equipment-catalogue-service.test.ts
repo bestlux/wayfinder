@@ -721,6 +721,32 @@ describe("minimal equipment catalogue", () => {
     expect(getDocument).toHaveBeenCalledTimes(3);
   });
 
+  it("reuses a current preview source for browse resolution and invalidates both together", async () => {
+    const getDocument = vi.fn(async () => daggerSource());
+    const service = createEquipmentCatalogueService({
+      packs: packMap({ entries: [dagger()], getDocument }),
+      equipmentPackIds: [PACK_ID],
+    });
+    const current = context();
+    await service.project(current);
+
+    await expect(service.hydratePreview(WF_080_21_DAGGER_UUID, current)).resolves.toMatchObject({
+      sourceUuid: WF_080_21_DAGGER_UUID,
+      source: { name: "Dagger" },
+    });
+    await expect(service.resolveManyForBrowse(current, [WF_080_21_DAGGER_UUID])).resolves.toMatchObject([
+      { sourceUuid: WF_080_21_DAGGER_UUID, resolution: { source: { name: "Dagger" } }, error: null },
+    ]);
+    expect(getDocument).toHaveBeenCalledTimes(1);
+
+    service.invalidatePack(PACK_ID);
+    await service.project(current);
+    await expect(service.resolveManyForBrowse(current, [WF_080_21_DAGGER_UUID])).resolves.toMatchObject([
+      { sourceUuid: WF_080_21_DAGGER_UUID, resolution: { source: { name: "Dagger" } }, error: null },
+    ]);
+    expect(getDocument).toHaveBeenCalledTimes(2);
+  });
+
   it("keys preview identity from every normalized candidate fact without source object-order noise", async () => {
     let entry = dagger();
     const service = createEquipmentCatalogueService({

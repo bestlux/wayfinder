@@ -1360,6 +1360,33 @@ describe("equipment acquisition runtime", () => {
     expect(pane.cart.lines).toEqual([expect.objectContaining({ name: "Zed Off-Page Gear" })]);
   });
 
+  it("shares one hydrated source between an off-page preview and its exact browse price", async () => {
+    const browseSources = Array.from({ length: STARTING_EQUIPMENT_RESULT_WINDOW.baselineSize }, (_, index) =>
+      dagger({ id: `browse-preview-${index}`, name: `Browse item ${String(index).padStart(2, "0")}` })
+    );
+    const offPage = dagger({ id: "off-page-preview", name: "Zed Preview Gear", priceGp: 1 });
+    const sources = [...browseSources, offPage];
+    const getDocument = vi.fn(async (id) => document(sources.find((source) => source._id === id)!));
+    const { runtime, request } = fixture({ getIndex: vi.fn(async () => sources), getDocument });
+    const sourceUuid = `Compendium.${PACK_ID}.Item.off-page-preview`;
+
+    await runtime.uiAdapter.project(request);
+    expect(getDocument).not.toHaveBeenCalledWith("off-page-preview");
+    getDocument.mockClear();
+
+    const projection = await runtime.uiAdapter.project({ ...request, previewSourceUuid: sourceUuid });
+
+    expect(projection).toMatchObject({
+      state: "ready",
+      preview: { sourceUuid },
+    });
+    const previewRecord = projection.records.find((record) => record.sourceUuid === sourceUuid);
+    expect(previewRecord).toMatchObject({ sourceUuid, priceCopper: 100 });
+    expect(previewRecord).not.toHaveProperty("pricePending");
+    expect(getDocument).toHaveBeenCalledTimes(1);
+    expect(getDocument).toHaveBeenCalledWith("off-page-preview");
+  });
+
   it.each([
     ["Dwarf Clan Dagger", "dwarf-clan-dagger" as const, "Clan Dagger"],
     ["Sarangay Head Gem", "sarangay-head-gem" as const, "Head Gem"],

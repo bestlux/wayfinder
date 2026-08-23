@@ -973,6 +973,16 @@ function scrollResultList(scrollTop) {
 function visibleShelfSnapshot() {
   const list = currentResultList();
   const bounds = list.getBoundingClientRect();
+  const stableCanvas = list.querySelector("[data-equipment-stable-canvas]");
+  const canvasBounds = stableCanvas?.getBoundingClientRect();
+  const logicalCanvasHeight = Number.parseFloat(stableCanvas?.style.height ?? "0");
+  const requiredBounds =
+    canvasBounds && Number.isFinite(logicalCanvasHeight) && logicalCanvasHeight > 0
+      ? {
+          top: Math.max(bounds.top, canvasBounds.top),
+          bottom: Math.min(bounds.bottom, canvasBounds.top + logicalCanvasHeight),
+        }
+      : { top: bounds.top, bottom: bounds.top };
   const resultRows = [...list.querySelectorAll("[data-result-index]")];
   const skeletonBand = list.querySelector("[data-equipment-skeleton-band]");
   const skeletonRows = [...list.querySelectorAll("[data-equipment-result-skeleton]")];
@@ -981,16 +991,19 @@ function visibleShelfSnapshot() {
   const coverageElements = [...resultRows, ...skeletonRows, ...(skeletonBand ? [skeletonBand] : [])];
   const intervals = coverageElements
     .map((row) => row.getBoundingClientRect())
-    .map((row) => ({ top: Math.max(bounds.top, row.top), bottom: Math.min(bounds.bottom, row.bottom) }))
+    .map((row) => ({
+      top: Math.max(requiredBounds.top, row.top),
+      bottom: Math.min(requiredBounds.bottom, row.bottom),
+    }))
     .filter((row) => row.bottom > row.top)
     .sort((left, right) => left.top - right.top);
-  let cursor = bounds.top;
+  let cursor = requiredBounds.top;
   let maxVisibleGapPx = 0;
   for (const interval of intervals) {
     maxVisibleGapPx = Math.max(maxVisibleGapPx, interval.top - cursor);
     cursor = Math.max(cursor, interval.bottom);
   }
-  maxVisibleGapPx = Math.max(maxVisibleGapPx, bounds.bottom - cursor);
+  maxVisibleGapPx = Math.max(maxVisibleGapPx, requiredBounds.bottom - cursor);
   return {
     scrollTop: list.scrollTop,
     viewportHeight: list.clientHeight,

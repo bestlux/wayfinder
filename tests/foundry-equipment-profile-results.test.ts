@@ -232,6 +232,8 @@ describe("equipment catalogue performance profile", () => {
     expect(browserProfile).not.toContain("window.mountedResultCount === expectedMountedRows");
     expect(browserProfile).toContain("async probeStableHostScroll({ framesAfterScroll");
     expect(browserProfile).toContain("const immediateShelf = visibleShelfSnapshot()");
+    expect(browserProfile).toContain("canvasBounds.top + logicalCanvasHeight");
+    expect(browserProfile).toContain("bottom: Math.min(bounds.bottom, canvasBounds.top + logicalCanvasHeight)");
     expect(browserProfile).toContain("stableHostPreserved: currentResultList() === stableHost");
     expect(browserProfile).toContain("packDocumentReadCount: counters.equipmentPackDocument - documentReadsBefore");
     expect(browserProfile).toContain("async probeControllerRecovery(");

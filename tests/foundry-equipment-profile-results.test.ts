@@ -308,6 +308,12 @@ describe("equipment catalogue performance profile", () => {
     expect(validateEquipmentSample(collapsed, profile)).toContain(
       "Timing sample result list height is missing or invalid."
     );
+    const recipe = sample("recipe-change");
+    recipe.listClientHeight = 0;
+    recipe.resultDomElementCount = 0;
+    recipe.mountedResultCount = 0;
+    recipe.resultEnd = 0;
+    expect(validateEquipmentSample(recipe, profile)).toEqual([]);
     const cart = sample("cart-quantity");
     const cartOutcome = cart.actionOutcome as { observedQuantity: number; previousQuantity: number };
     cartOutcome.observedQuantity = cartOutcome.previousQuantity;

@@ -9,6 +9,14 @@ const REQUIRED_ACTIONS = [
   "recipe-change",
   "preview-change",
 ];
+const CATALOGUE_VIEWPORT_ACTIONS = new Set([
+  "cold-open",
+  "warm-reopen",
+  "rapid-search",
+  "facet-change",
+  "cart-quantity",
+  "preview-change",
+]);
 
 const FROZEN_VIEWPORT = { width: 1440, height: 1000 };
 const FROZEN_APP_WIDTHS = [1240, 1180, 980, 760];
@@ -419,7 +427,10 @@ export function validateEquipmentSample(sample, profile) {
   for (const key of ["mountedResultCount", "resultOffset", "resultEnd"]) {
     if (!nonnegativeInteger(sample[key])) failures.push(`Sample ${key} is missing or invalid.`);
   }
-  if (!nonnegativeFinite(sample.listClientHeight) || sample.listClientHeight <= 0) {
+  if (
+    CATALOGUE_VIEWPORT_ACTIONS.has(sample.actionId) &&
+    (!nonnegativeFinite(sample.listClientHeight) || sample.listClientHeight <= 0)
+  ) {
     failures.push("Timing sample result list height is missing or invalid.");
   }
   if (nonnegativeInteger(sample.mountedResultCount)) {

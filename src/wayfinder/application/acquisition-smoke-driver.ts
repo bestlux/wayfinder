@@ -588,13 +588,18 @@ async function reviewDisposition(
     search.value = "Dagger";
     search.dispatchEvent(new Event("input", { bubbles: true }));
     const preview = await waitForValue(() => {
-      const catalogue = wayfinderRoot(application)?.querySelector<HTMLElement>(
+      const catalogueProjection = wayfinderRoot(application)?.querySelector<HTMLElement>(
         '[data-application-part="equipment-catalogue"][data-wayfinder-rendered-query="Dagger"]'
       );
-      const candidate = catalogue?.querySelector<HTMLElement>(
+      const catalogueHost = catalogueProjection
+        ?.closest<HTMLElement>(".equipment-catalogue")
+        ?.querySelector<HTMLElement>(
+          `[data-equipment-stable-host][data-step-id="${EQUIPMENT_STEP_ID}"][data-wayfinder-rendered-query="Dagger"]`
+        );
+      const candidate = catalogueHost?.querySelector<HTMLElement>(
         `[data-equipment-item][data-wayfinder-action="preview-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"]`
       );
-      if (!catalogue?.isConnected || !candidate?.isConnected) return null;
+      if (!catalogueProjection?.isConnected || !catalogueHost?.isConnected || !candidate?.isConnected) return null;
       if (isDisabled(candidate)) throw new Error("The exact Dagger catalogue preview is disabled.");
       return candidate;
     }, "settled exact PF2E Dagger catalogue preview");
@@ -602,7 +607,7 @@ async function reviewDisposition(
     const add = await waitForValue(() => {
       const root = wayfinderRoot(application);
       const selectedPreview = root?.querySelector<HTMLElement>(
-        `[data-application-part="equipment-catalogue"][data-wayfinder-rendered-query="Dagger"] [data-equipment-item][data-wayfinder-action="preview-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"][aria-pressed="true"]`
+        `[data-equipment-stable-host][data-step-id="${EQUIPMENT_STEP_ID}"][data-wayfinder-rendered-query="Dagger"] [data-equipment-item][data-wayfinder-action="preview-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"][aria-pressed="true"]`
       );
       const detail = root?.querySelector<HTMLElement>(
         `[data-application-part="equipment-detail"][data-equipment-preview="${DAGGER_SOURCE_UUID}"]`

@@ -366,9 +366,12 @@ async function reviewDisposition(application, caseDefinition) {
         search.value = "Dagger";
         search.dispatchEvent(new Event("input", { bubbles: true }));
         const preview = await waitForValue(() => {
-            const catalogue = wayfinderRoot(application)?.querySelector('[data-application-part="equipment-catalogue"][data-wayfinder-rendered-query="Dagger"]');
-            const candidate = catalogue?.querySelector(`[data-equipment-item][data-wayfinder-action="preview-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"]`);
-            if (!catalogue?.isConnected || !candidate?.isConnected)
+            const catalogueProjection = wayfinderRoot(application)?.querySelector('[data-application-part="equipment-catalogue"][data-wayfinder-rendered-query="Dagger"]');
+            const catalogueHost = catalogueProjection
+                ?.closest(".equipment-catalogue")
+                ?.querySelector(`[data-equipment-stable-host][data-step-id="${EQUIPMENT_STEP_ID}"][data-wayfinder-rendered-query="Dagger"]`);
+            const candidate = catalogueHost?.querySelector(`[data-equipment-item][data-wayfinder-action="preview-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"]`);
+            if (!catalogueProjection?.isConnected || !catalogueHost?.isConnected || !candidate?.isConnected)
                 return null;
             if (isDisabled(candidate))
                 throw new Error("The exact Dagger catalogue preview is disabled.");
@@ -377,7 +380,7 @@ async function reviewDisposition(application, caseDefinition) {
         clickElement(preview);
         const add = await waitForValue(() => {
             const root = wayfinderRoot(application);
-            const selectedPreview = root?.querySelector(`[data-application-part="equipment-catalogue"][data-wayfinder-rendered-query="Dagger"] [data-equipment-item][data-wayfinder-action="preview-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"][aria-pressed="true"]`);
+            const selectedPreview = root?.querySelector(`[data-equipment-stable-host][data-step-id="${EQUIPMENT_STEP_ID}"][data-wayfinder-rendered-query="Dagger"] [data-equipment-item][data-wayfinder-action="preview-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"][aria-pressed="true"]`);
             const detail = root?.querySelector(`[data-application-part="equipment-detail"][data-equipment-preview="${DAGGER_SOURCE_UUID}"]`);
             const candidate = detail?.querySelector(`[data-wayfinder-action="add-equipment-item"][data-source-uuid="${DAGGER_SOURCE_UUID}"][data-funding="currency"]`);
             if (!selectedPreview?.isConnected || !detail?.isConnected || !candidate?.isConnected)
